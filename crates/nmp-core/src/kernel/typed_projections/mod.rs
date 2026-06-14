@@ -299,6 +299,8 @@ impl super::Kernel {
             file_identifier: String::from_utf8_lossy(CONFIGURED_RELAYS_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_configured_relays(&configured_relays),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `relay_role_options` — encoded from the SAME `relay_role_options()`
@@ -323,6 +325,8 @@ impl super::Kernel {
             file_identifier: String::from_utf8_lossy(RELAY_ROLE_OPTIONS_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_relay_role_options(&relay_role_options),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `settings_hub` — encoded from the SAME relay count the JSON path reads
@@ -336,6 +340,8 @@ impl super::Kernel {
             schema_version: SETTINGS_HUB_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(SETTINGS_HUB_FILE_IDENTIFIER).into_owned(),
             payload: encode_settings_hub(&settings_hub),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // Wave C publish cluster (`publish_queue` / `publish_outbox` /

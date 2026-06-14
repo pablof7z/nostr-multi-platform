@@ -94,6 +94,7 @@ pub fn register_dm_runtime(app: &impl AppHost) {
             file_identifier: String::from_utf8_lossy(nmp_nip17::DM_RELAY_LIST_FILE_IDENTIFIER)
                 .into_owned(),
             payload: nmp_nip17::encode_dm_relay_list(&relay_list),
+            ..Default::default()
         })
     });
 
@@ -184,6 +185,7 @@ fn register_inbox_projection(app: &impl AppHost) {
             file_identifier: String::from_utf8_lossy(nmp_nip17::DM_INBOX_FILE_IDENTIFIER)
                 .into_owned(),
             payload: nmp_nip17::encode_dm_inbox_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 

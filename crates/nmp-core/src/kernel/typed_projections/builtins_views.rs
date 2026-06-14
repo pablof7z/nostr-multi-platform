@@ -67,6 +67,8 @@ impl super::super::Kernel {
             schema_version: ACCOUNTS_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(ACCOUNTS_FILE_IDENTIFIER).into_owned(),
             payload: encode_accounts(&accounts),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `active_account` — encoded from the SAME `account_snapshot().1` the
@@ -82,6 +84,8 @@ impl super::super::Kernel {
             schema_version: ACTIVE_ACCOUNT_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(ACTIVE_ACCOUNT_FILE_IDENTIFIER).into_owned(),
             payload: encode_active_account(&active_account),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `profile` — encoded from the SAME `profile_card()` output the JSON
@@ -93,6 +97,8 @@ impl super::super::Kernel {
             schema_version: PROFILE_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(PROFILE_FILE_IDENTIFIER).into_owned(),
             payload: encode_profile(&profile),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         out

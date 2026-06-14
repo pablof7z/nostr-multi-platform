@@ -181,6 +181,7 @@ impl LongformProjection {
             schema_version: longform_fb::SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(longform_fb::FILE_IDENTIFIER).into_owned(),
             payload,
+            ..Default::default()
         }
     }
 }

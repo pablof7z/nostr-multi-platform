@@ -125,6 +125,7 @@ fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
             schema_version: OP_FEED_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(OP_FEED_FILE_IDENTIFIER).into_owned(),
             payload: encode_op_feed_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 }

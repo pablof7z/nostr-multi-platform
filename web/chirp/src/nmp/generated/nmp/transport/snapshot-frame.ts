@@ -162,8 +162,18 @@ negentropySyncStats(obj?:NegentropySyncStats):NegentropySyncStats|null {
   return offset ? (obj || new NegentropySyncStats()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+snapshotEpoch():bigint {
+  const offset = this.bb!.__offset(this.bb_pos, 44);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
+}
+
+sessionId():bigint {
+  const offset = this.bb!.__offset(this.bb_pos, 46);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
+}
+
 static startSnapshotFrame(builder:flatbuffers.Builder) {
-  builder.startObject(20);
+  builder.startObject(22);
 }
 
 static addSchemaVersion(builder:flatbuffers.Builder, schemaVersion:number) {
@@ -300,6 +310,14 @@ static addNoConfiguredRelays(builder:flatbuffers.Builder, noConfiguredRelays:boo
 
 static addNegentropySyncStats(builder:flatbuffers.Builder, negentropySyncStatsOffset:flatbuffers.Offset) {
   builder.addFieldOffset(19, negentropySyncStatsOffset, 0);
+}
+
+static addSnapshotEpoch(builder:flatbuffers.Builder, snapshotEpoch:bigint) {
+  builder.addFieldInt64(20, snapshotEpoch, BigInt('0'));
+}
+
+static addSessionId(builder:flatbuffers.Builder, sessionId:bigint) {
+  builder.addFieldInt64(21, sessionId, BigInt('0'));
 }
 
 static endSnapshotFrame(builder:flatbuffers.Builder):flatbuffers.Offset {

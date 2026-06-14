@@ -64,6 +64,7 @@ pub fn typed_projection(snapshot: &WotBootstrapSnapshot) -> TypedProjectionData 
         schema_version: SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(FILE_IDENTIFIER).into_owned(),
         payload: encode_wot_bootstrap(snapshot),
+        ..Default::default()
     }
 }
 

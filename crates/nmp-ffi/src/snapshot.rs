@@ -401,6 +401,7 @@ mod tests {
                     schema_version: 1,
                     file_identifier: "NFTS".to_string(),
                     payload: vec![0xde, 0xad, 0xbe, 0xef],
+                    ..Default::default()
                 })
             });
         }

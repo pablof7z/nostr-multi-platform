@@ -276,6 +276,7 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
             file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
                 .into_owned(),
             payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 

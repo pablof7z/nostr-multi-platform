@@ -25,7 +25,7 @@ use std::fmt;
 mod relay_status;
 mod tier3_frame;
 pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};
-pub(crate) use tier3_frame::encode_snapshot_with_envelope;
+pub(crate) use tier3_frame::{encode_snapshot_with_envelope, FrameEpochStamp};
 
 /// Schema version of the periodic snapshot payload. Bump on any breaking
 /// snapshot field change.
@@ -80,6 +80,16 @@ pub struct SnapshotEnvelope {
     pub last_error_category: Option<String>,
     /// Last planner error message, if any.
     pub last_planner_error: Option<String>,
+    // --- ADR-0055 Rung 2: frame-level epoch identity (D4) ---
+    /// Within-session monotonic counter. Bumped on events that invalidate the
+    /// host's entire cached projection set (account-switch, schema-change,
+    /// explicit resync). On bump → the next frame is a full baseline in Rung 3.
+    /// 0 on old (pre-Rung-2) frames (safe: host treats any increase as a bump).
+    pub snapshot_epoch: u64,
+    /// Kernel-start wall-clock ms (`TimingMilestones::started_unix_ms`). Changes
+    /// across process restarts. When the host sees a changed `session_id` it MUST
+    /// discard all per-key applied-rev state and re-baseline. 0 on old frames.
+    pub session_id: u64,
 }
 
 /// Decode the Tier-3 typed `SnapshotFrame` envelope from a FlatBuffers update
@@ -143,6 +153,10 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         last_error_toast: snapshot.last_error_toast().map(str::to_string),
         last_error_category: snapshot.last_error_category().map(str::to_string),
         last_planner_error: snapshot.last_planner_error().map(str::to_string),
+        // ADR-0055 Rung 2: decode frame-level epoch identity (D4). Old
+        // (pre-Rung-2) frames return 0 for both (FlatBuffers default) — safe.
+        snapshot_epoch: snapshot.snapshot_epoch(),
+        session_id: snapshot.session_id(),
     }
 }
 
@@ -189,13 +203,59 @@ pub enum UpdateEnvelope {
     Panic(PanicFrame),
 }
 
+/// ADR-0055 Rung 2: presence state for one emitted projection.
+///
+/// Mirrors the wire `ProjectionPresenceState` enum. Defined in Rust as a
+/// first-class type so callers do not need to import the generated FlatBuffers
+/// binding directly.
+///
+/// - `Changed`: rev advanced; payload present and authoritative.
+/// - `Cleared`: projection went absent this tick (drain empty, view closed);
+///   payload absent; host MUST drop its cached value.
+///
+/// The third logical state — `Unchanged` (rev did not advance; payload omitted;
+/// host reuses its prior decoded value) — is a Rung-3 concept. In Rung 2 every
+/// projection is still emitted each tick, so only `Changed` and `Cleared`
+/// appear on the wire. The enum is defined now so Rung 3 needs no wire change.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+pub enum WireProjectionState {
+    /// Rev advanced; payload authoritative. Default for old (pre-Rung-2) frames.
+    #[default]
+    Changed,
+    /// Projection went absent; host drops its cached value.
+    Cleared,
+}
+
+impl From<fb::ProjectionPresenceState> for WireProjectionState {
+    fn from(v: fb::ProjectionPresenceState) -> Self {
+        if v == fb::ProjectionPresenceState::Cleared {
+            Self::Cleared
+        } else {
+            Self::Changed
+        }
+    }
+}
+
+impl From<WireProjectionState> for fb::ProjectionPresenceState {
+    fn from(v: WireProjectionState) -> Self {
+        match v {
+            WireProjectionState::Changed => fb::ProjectionPresenceState::Changed,
+            WireProjectionState::Cleared => fb::ProjectionPresenceState::Cleared,
+        }
+    }
+}
+
 /// Owned, decoded form of one `nmp.transport.TypedProjection` sidecar entry.
 ///
 /// The `payload` is opaque to `nmp-core`: it is a host-declared, framework-side
 /// FlatBuffers buffer identified by `schema_id` / `schema_version` /
 /// `file_identifier`. The transport layer never interprets these bytes; it only
 /// carries them losslessly alongside the generic `Value` snapshot.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// ADR-0055 Rung 2: `projection_rev` and `state` fields added (tail-appended
+/// on the wire — old decoders read them as default 0 / Changed respectively,
+/// which is correct behavior: treat every emitted entry as a payload update).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TypedProjectionData {
     /// Projection key (host-declared identity of this projection).
     pub key: String,
@@ -207,6 +267,18 @@ pub struct TypedProjectionData {
     pub file_identifier: String,
     /// Opaque typed payload bytes, carried verbatim by the transport.
     pub payload: Vec<u8>,
+    /// ADR-0055 Rung 2: monotonic revision for this projection key, derived
+    /// by the kernel's `ProjectionRevTracker` (SUM of source-version counters
+    /// across the key's declared dependencies). Hosts store this alongside the
+    /// decoded value and use it in Rung 3 to skip re-decode on unchanged keys.
+    /// 0 on old (pre-Rung-2) frames.
+    pub projection_rev: u64,
+    /// ADR-0055 Rung 2: presence classification for this tick. Hosts decode and
+    /// store this value; no behavior change in Rung 2 (all projections are still
+    /// emitted). In Rung 3 `Cleared` tells the host to drop its cached value and
+    /// `Changed` tells it to decode `payload` and update the cache.
+    /// Default `Changed` on old (pre-Rung-2) frames.
+    pub state: WireProjectionState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -294,6 +366,9 @@ pub fn encode_snapshot_frame(
             last_error_toast,
             last_error_category,
             last_planner_error,
+            // ADR-0055 Rung 2: stamp frame-level epoch identity (D4).
+            snapshot_epoch: envelope.snapshot_epoch,
+            session_id: envelope.session_id,
             ..Default::default()
         },
     );
@@ -341,6 +416,9 @@ fn encode_typed_projections<'bldr>(
                 &fb::TypedProjectionArgs {
                     key: Some(key),
                     payload: Some(typed_payload),
+                    // ADR-0055 Rung 2: stamp per-projection rev + state.
+                    projection_rev: entry.projection_rev,
+                    state: entry.state.into(),
                 },
             )
         })
@@ -437,6 +515,11 @@ fn decode_typed_projections(
             schema_version: typed.schema_version(),
             file_identifier: typed.file_identifier().unwrap_or_default().to_string(),
             payload,
+            // ADR-0055 Rung 2: decode rev + state. Old (pre-Rung-2) writers
+            // return 0 / Changed (FlatBuffers defaults) — correct: treat as
+            // a payload update at rev 0.
+            projection_rev: projection.projection_rev(),
+            state: projection.state().into(),
         });
     }
     Ok(out)

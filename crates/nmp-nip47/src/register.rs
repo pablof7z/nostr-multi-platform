@@ -223,6 +223,7 @@ pub fn wallet_typed_projection(slot: &WalletStatusSlot) -> Option<TypedProjectio
         schema_version: WALLET_STATUS_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(WALLET_STATUS_FILE_IDENTIFIER).into_owned(),
         payload: encode_wallet_status(&status),
+        ..Default::default()
     })
 }
 

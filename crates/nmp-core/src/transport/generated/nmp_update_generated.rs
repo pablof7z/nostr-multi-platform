@@ -100,6 +100,97 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_PROJECTION_PRESENCE_STATE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PROJECTION_PRESENCE_STATE: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PROJECTION_PRESENCE_STATE: [ProjectionPresenceState; 2] = [
+            ProjectionPresenceState::Changed,
+            ProjectionPresenceState::Cleared,
+        ];
+
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ProjectionPresenceState(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl ProjectionPresenceState {
+            pub const Changed: Self = Self(0);
+            pub const Cleared: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Changed, Self::Cleared];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Changed => Some("Changed"),
+                    Self::Cleared => Some("Cleared"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ProjectionPresenceState {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ProjectionPresenceState {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ProjectionPresenceState {
+            type Output = ProjectionPresenceState;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ProjectionPresenceState {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ProjectionPresenceState {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ProjectionPresenceState {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_VALUE_KIND: u8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -879,6 +970,8 @@ pub mod nmp {
         impl<'a> TypedProjection<'a> {
             pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
             pub const VT_PAYLOAD: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PROJECTION_REV: ::flatbuffers::VOffsetT = 8;
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -895,12 +988,14 @@ pub mod nmp {
                 args: &'args TypedProjectionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<TypedProjection<'bldr>> {
                 let mut builder = TypedProjectionBuilder::new(_fbb);
+                builder.add_projection_rev(args.projection_rev);
                 if let Some(x) = args.payload {
                     builder.add_payload(x);
                 }
                 if let Some(x) = args.key {
                     builder.add_key(x);
                 }
+                builder.add_state(args.state);
                 builder.finish()
             }
 
@@ -927,6 +1022,31 @@ pub mod nmp {
                         )
                 }
             }
+            #[inline]
+            pub fn projection_rev(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(TypedProjection::VT_PROJECTION_REV, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn state(&self) -> ProjectionPresenceState {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ProjectionPresenceState>(
+                            TypedProjection::VT_STATE,
+                            Some(ProjectionPresenceState::Changed),
+                        )
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for TypedProjection<'_> {
@@ -946,6 +1066,8 @@ pub mod nmp {
                         Self::VT_PAYLOAD,
                         false,
                     )?
+                    .visit_field::<u64>("projection_rev", Self::VT_PROJECTION_REV, false)?
+                    .visit_field::<ProjectionPresenceState>("state", Self::VT_STATE, false)?
                     .finish();
                 Ok(())
             }
@@ -953,6 +1075,8 @@ pub mod nmp {
         pub struct TypedProjectionArgs<'a> {
             pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub payload: Option<::flatbuffers::WIPOffset<TypedPayload<'a>>>,
+            pub projection_rev: u64,
+            pub state: ProjectionPresenceState,
         }
         impl<'a> Default for TypedProjectionArgs<'a> {
             #[inline]
@@ -960,6 +1084,8 @@ pub mod nmp {
                 TypedProjectionArgs {
                     key: None,
                     payload: None,
+                    projection_rev: 0,
+                    state: ProjectionPresenceState::Changed,
                 }
             }
         }
@@ -983,6 +1109,19 @@ pub mod nmp {
                     );
             }
             #[inline]
+            pub fn add_projection_rev(&mut self, projection_rev: u64) {
+                self.fbb_
+                    .push_slot::<u64>(TypedProjection::VT_PROJECTION_REV, projection_rev, 0);
+            }
+            #[inline]
+            pub fn add_state(&mut self, state: ProjectionPresenceState) {
+                self.fbb_.push_slot::<ProjectionPresenceState>(
+                    TypedProjection::VT_STATE,
+                    state,
+                    ProjectionPresenceState::Changed,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> TypedProjectionBuilder<'a, 'b, A> {
@@ -1004,6 +1143,8 @@ pub mod nmp {
                 let mut ds = f.debug_struct("TypedProjection");
                 ds.field("key", &self.key());
                 ds.field("payload", &self.payload());
+                ds.field("projection_rev", &self.projection_rev());
+                ds.field("state", &self.state());
                 ds.finish()
             }
         }
@@ -3419,6 +3560,8 @@ pub mod nmp {
             pub const VT_STORE_OPEN_FAILURE: ::flatbuffers::VOffsetT = 38;
             pub const VT_NO_CONFIGURED_RELAYS: ::flatbuffers::VOffsetT = 40;
             pub const VT_NEGENTROPY_SYNC_STATS: ::flatbuffers::VOffsetT = 42;
+            pub const VT_SNAPSHOT_EPOCH: ::flatbuffers::VOffsetT = 44;
+            pub const VT_SESSION_ID: ::flatbuffers::VOffsetT = 46;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3435,6 +3578,8 @@ pub mod nmp {
                 args: &'args SnapshotFrameArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SnapshotFrame<'bldr>> {
                 let mut builder = SnapshotFrameBuilder::new(_fbb);
+                builder.add_session_id(args.session_id);
+                builder.add_snapshot_epoch(args.snapshot_epoch);
                 builder.add_last_tick_ms(args.last_tick_ms);
                 builder.add_rev(args.rev);
                 if let Some(x) = args.negentropy_sync_stats {
@@ -3733,6 +3878,28 @@ pub mod nmp {
                         )
                 }
             }
+            #[inline]
+            pub fn snapshot_epoch(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(SnapshotFrame::VT_SNAPSHOT_EPOCH, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn session_id(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(SnapshotFrame::VT_SESSION_ID, Some(0))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SnapshotFrame<'_> {
@@ -3817,6 +3984,8 @@ pub mod nmp {
                         Self::VT_NEGENTROPY_SYNC_STATS,
                         false,
                     )?
+                    .visit_field::<u64>("snapshot_epoch", Self::VT_SNAPSHOT_EPOCH, false)?
+                    .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
                     .finish();
                 Ok(())
             }
@@ -3867,6 +4036,8 @@ pub mod nmp {
             pub store_open_failure: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub no_configured_relays: Option<bool>,
             pub negentropy_sync_stats: Option<::flatbuffers::WIPOffset<NegentropySyncStats<'a>>>,
+            pub snapshot_epoch: u64,
+            pub session_id: u64,
         }
         impl<'a> Default for SnapshotFrameArgs<'a> {
             #[inline]
@@ -3891,6 +4062,8 @@ pub mod nmp {
                     store_open_failure: None,
                     no_configured_relays: None,
                     negentropy_sync_stats: None,
+                    snapshot_epoch: 0,
+                    session_id: 0,
                 }
             }
         }
@@ -4076,6 +4249,16 @@ pub mod nmp {
                     );
             }
             #[inline]
+            pub fn add_snapshot_epoch(&mut self, snapshot_epoch: u64) {
+                self.fbb_
+                    .push_slot::<u64>(SnapshotFrame::VT_SNAPSHOT_EPOCH, snapshot_epoch, 0);
+            }
+            #[inline]
+            pub fn add_session_id(&mut self, session_id: u64) {
+                self.fbb_
+                    .push_slot::<u64>(SnapshotFrame::VT_SESSION_ID, session_id, 0);
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> SnapshotFrameBuilder<'a, 'b, A> {
@@ -4114,6 +4297,8 @@ pub mod nmp {
                 ds.field("store_open_failure", &self.store_open_failure());
                 ds.field("no_configured_relays", &self.no_configured_relays());
                 ds.field("negentropy_sync_stats", &self.negentropy_sync_stats());
+                ds.field("snapshot_epoch", &self.snapshot_epoch());
+                ds.field("session_id", &self.session_id());
                 ds.finish()
             }
         }

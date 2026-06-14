@@ -83,6 +83,7 @@ pub fn wire_group_chat(app: &NmpApp, group_id: GroupId) {
             )
             .into_owned(),
             payload: crate::wire::group_chat_fb::encode_group_chat_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 
@@ -125,6 +126,7 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
             payload: crate::wire::discovered_groups_fb::encode_discovered_groups_snapshot(
                 &snapshot,
             ),
+            ..Default::default()
         })
     });
 
@@ -164,6 +166,7 @@ pub fn wire_group_defaults(app: &NmpApp) {
             )
             .into_owned(),
             payload: crate::wire::group_defaults_fb::encode_group_defaults_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 

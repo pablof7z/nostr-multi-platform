@@ -33,7 +33,7 @@
 //! 2. A `BUILTIN_PROJECTION_DEPENDENCIES` table (const) declares which source
 //!    counters each projection key depends on.
 //! 3. `ProjectionRevTracker` derives per-key revs by folding source counters
-//!    through the dependency table (max of deps = derived rev, monotonic).
+//!    through the dependency table (SUM of deps = derived rev, monotonic).
 //!
 //! ## Correctness: co-location enforcement
 //!

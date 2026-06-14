@@ -26,9 +26,23 @@ use super::{
 use crate::transport::wire as fb;
 use flatbuffers::FlatBufferBuilder;
 
+/// ADR-0055 Rung 2: frame-level epoch identity passed from the kernel to the
+/// encoder. Both values come from the `ProjectionManifest` built by
+/// `Kernel::projection_manifest()` in `make_update`.
+pub(crate) struct FrameEpochStamp {
+    /// Within-session monotonic epoch counter (bumped on account-switch etc.).
+    pub(crate) snapshot_epoch: u64,
+    /// Kernel-start wall-clock ms (`TimingMilestones::started_unix_ms`).
+    pub(crate) session_id: u64,
+}
+
 /// Encode a snapshot with the typed projection sidecar AND the typed Tier-3
 /// envelope fields (ADR-0044). The generic `payload:Value` slot is intentionally
 /// left absent (PR-B #991/#979: emission zeroed).
+///
+/// ADR-0055 Rung 2: `epoch` carries the frame-level epoch identity stamps
+/// (`snapshot_epoch` + `session_id`) so old readers ignore them (tail-appended
+/// on the wire) while Rung-2 hosts decode and store them for future use.
 ///
 /// All Rust shells read typed-first; the deprecated `payload` field is absent in
 /// the wire bytes. The `snapshot: Value` parameter has been removed — the kernel
@@ -39,6 +53,7 @@ use flatbuffers::FlatBufferBuilder;
 pub(crate) fn encode_snapshot_with_envelope(
     typed: &[TypedProjectionData],
     envelope: &crate::kernel::KernelSnapshot,
+    epoch: &FrameEpochStamp,
 ) -> UpdateFrameBytes {
     let mut builder = FlatBufferBuilder::new();
     let typed_projections = encode_typed_projections(&mut builder, typed);
@@ -67,6 +82,10 @@ pub(crate) fn encode_snapshot_with_envelope(
             store_open_failure: tier3.store_open_failure,
             no_configured_relays: tier3.no_configured_relays,
             negentropy_sync_stats: Some(tier3.negentropy_sync_stats),
+            // ADR-0055 Rung 2: stamp frame-level epoch identity (D4). Tail-
+            // appended so old readers ignore them (FlatBuffers backward-safety).
+            snapshot_epoch: epoch.snapshot_epoch,
+            session_id: epoch.session_id,
         },
     );
     let root = fb::UpdateFrame::create(

@@ -22,6 +22,7 @@ fn typed_entry(key: &str, payload: &[u8]) -> TypedProjectionData {
         schema_version: 1,
         file_identifier: "TEST".to_string(),
         payload: payload.to_vec(),
+        ..Default::default()
     }
 }
 

@@ -193,6 +193,7 @@ pub(crate) mod churn {
                 schema_version: 1,
                 file_identifier: String::new(),
                 payload: payload.to_vec(),
+                ..Default::default()
             }
         }
 

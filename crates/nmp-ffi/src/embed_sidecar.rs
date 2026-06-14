@@ -234,6 +234,7 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
         file_identifier: String::from_utf8_lossy(nmp_content::wire::EMBED_SIDECAR_FILE_IDENTIFIER)
             .into_owned(),
         payload: encode_claimed_event_embeds(&map),
+        ..Default::default()
     }
 }
 

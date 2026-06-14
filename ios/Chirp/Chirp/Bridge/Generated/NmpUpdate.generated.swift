@@ -20,6 +20,18 @@ public enum nmp_transport_FrameKind: UInt8, FlatbuffersVectorInitializable, Enum
 }
 
 
+public enum nmp_transport_ProjectionPresenceState: UInt8, FlatbuffersVectorInitializable, Enum, Verifiable {
+  public typealias T = UInt8
+  public static var byteSize: Int { return MemoryLayout<UInt8>.size }
+  public var value: UInt8 { return self.rawValue }
+  case changed = 0
+  case cleared = 1
+
+  public static var max: nmp_transport_ProjectionPresenceState { return .cleared }
+  public static var min: nmp_transport_ProjectionPresenceState { return .changed }
+}
+
+
 public enum nmp_transport_ValueKind: UInt8, FlatbuffersVectorInitializable, Enum, Verifiable {
   public typealias T = UInt8
   public static var byteSize: Int { return MemoryLayout<UInt8>.size }
@@ -235,6 +247,8 @@ public struct nmp_transport_TypedProjection: FlatBufferTable, FlatbuffersVectorI
   private enum VTOFFSET: VOffset {
     case key = 4
     case payload = 6
+    case projectionRev = 8
+    case state = 10
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -242,18 +256,26 @@ public struct nmp_transport_TypedProjection: FlatBufferTable, FlatbuffersVectorI
   public var key: String? { let o = _accessor.offset(VTOFFSET.key.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var keySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.key.v) }
   public var payload: nmp_transport_TypedPayload? { let o = _accessor.offset(VTOFFSET.payload.v); return o == 0 ? nil : nmp_transport_TypedPayload(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startTypedProjection(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public var projectionRev: UInt64 { let o = _accessor.offset(VTOFFSET.projectionRev.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var state: nmp_transport_ProjectionPresenceState { let o = _accessor.offset(VTOFFSET.state.v); return o == 0 ? .changed : nmp_transport_ProjectionPresenceState(rawValue: _accessor.readBuffer(of: UInt8.self, at: o)) ?? .changed }
+  public static func startTypedProjection(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
   public static func add(key: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: key, at: VTOFFSET.key.p) }
   public static func add(payload: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: payload, at: VTOFFSET.payload.p) }
+  public static func add(projectionRev: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: projectionRev, def: 0, at: VTOFFSET.projectionRev.p) }
+  public static func add(state: nmp_transport_ProjectionPresenceState, _ fbb: inout FlatBufferBuilder) { fbb.add(element: state.rawValue, def: 0, at: VTOFFSET.state.p) }
   public static func endTypedProjection(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createTypedProjection(
     _ fbb: inout FlatBufferBuilder,
     keyOffset key: Offset = Offset(),
-    payloadOffset payload: Offset = Offset()
+    payloadOffset payload: Offset = Offset(),
+    projectionRev: UInt64 = 0,
+    state: nmp_transport_ProjectionPresenceState = .changed
   ) -> Offset {
     let __start = nmp_transport_TypedProjection.startTypedProjection(&fbb)
     nmp_transport_TypedProjection.add(key: key, &fbb)
     nmp_transport_TypedProjection.add(payload: payload, &fbb)
+    nmp_transport_TypedProjection.add(projectionRev: projectionRev, &fbb)
+    nmp_transport_TypedProjection.add(state: state, &fbb)
     return nmp_transport_TypedProjection.endTypedProjection(&fbb, start: __start)
   }
 
@@ -261,6 +283,8 @@ public struct nmp_transport_TypedProjection: FlatBufferTable, FlatbuffersVectorI
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.key.p, fieldName: "key", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.payload.p, fieldName: "payload", required: false, type: ForwardOffset<nmp_transport_TypedPayload>.self)
+    try _v.visit(field: VTOFFSET.projectionRev.p, fieldName: "projectionRev", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.state.p, fieldName: "state", required: false, type: nmp_transport_ProjectionPresenceState.self)
     _v.finish()
   }
 }
@@ -906,6 +930,8 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
     case storeOpenFailure = 38
     case noConfiguredRelays = 40
     case negentropySyncStats = 42
+    case snapshotEpoch = 44
+    case sessionId = 46
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -934,7 +960,9 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
   public var storeOpenFailureSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.storeOpenFailure.v) }
   public var noConfiguredRelays: Bool? { let o = _accessor.offset(VTOFFSET.noConfiguredRelays.v); return o == 0 ? nil : _accessor.readBuffer(of: Bool.self, at: o) }
   public var negentropySyncStats: nmp_transport_NegentropySyncStats? { let o = _accessor.offset(VTOFFSET.negentropySyncStats.v); return o == 0 ? nil : nmp_transport_NegentropySyncStats(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startSnapshotFrame(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 20) }
+  public var snapshotEpoch: UInt64 { let o = _accessor.offset(VTOFFSET.snapshotEpoch.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var sessionId: UInt64 { let o = _accessor.offset(VTOFFSET.sessionId.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public static func startSnapshotFrame(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 22) }
   public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
   public static func addVectorOf(typedProjections: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: typedProjections, at: VTOFFSET.typedProjections.p) }
   public static func add(rev: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: rev, def: 0, at: VTOFFSET.rev.p) }
@@ -955,6 +983,8 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
   public static func add(storeOpenFailure: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: storeOpenFailure, at: VTOFFSET.storeOpenFailure.p) }
   public static func add(noConfiguredRelays: Bool?, _ fbb: inout FlatBufferBuilder) { fbb.add(element: noConfiguredRelays, at: VTOFFSET.noConfiguredRelays.p) }
   public static func add(negentropySyncStats: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: negentropySyncStats, at: VTOFFSET.negentropySyncStats.p) }
+  public static func add(snapshotEpoch: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: snapshotEpoch, def: 0, at: VTOFFSET.snapshotEpoch.p) }
+  public static func add(sessionId: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: sessionId, def: 0, at: VTOFFSET.sessionId.p) }
   public static func endSnapshotFrame(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createSnapshotFrame(
     _ fbb: inout FlatBufferBuilder,
@@ -976,7 +1006,9 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
     lastPlannerErrorOffset lastPlannerError: Offset = Offset(),
     storeOpenFailureOffset storeOpenFailure: Offset = Offset(),
     noConfiguredRelays: Bool? = nil,
-    negentropySyncStatsOffset negentropySyncStats: Offset = Offset()
+    negentropySyncStatsOffset negentropySyncStats: Offset = Offset(),
+    snapshotEpoch: UInt64 = 0,
+    sessionId: UInt64 = 0
   ) -> Offset {
     let __start = nmp_transport_SnapshotFrame.startSnapshotFrame(&fbb)
     nmp_transport_SnapshotFrame.add(schemaVersion: schemaVersion, &fbb)
@@ -998,6 +1030,8 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
     nmp_transport_SnapshotFrame.add(storeOpenFailure: storeOpenFailure, &fbb)
     nmp_transport_SnapshotFrame.add(noConfiguredRelays: noConfiguredRelays, &fbb)
     nmp_transport_SnapshotFrame.add(negentropySyncStats: negentropySyncStats, &fbb)
+    nmp_transport_SnapshotFrame.add(snapshotEpoch: snapshotEpoch, &fbb)
+    nmp_transport_SnapshotFrame.add(sessionId: sessionId, &fbb)
     return nmp_transport_SnapshotFrame.endSnapshotFrame(&fbb, start: __start)
   }
 
@@ -1022,6 +1056,8 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
     try _v.visit(field: VTOFFSET.storeOpenFailure.p, fieldName: "storeOpenFailure", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.noConfiguredRelays.p, fieldName: "noConfiguredRelays", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.negentropySyncStats.p, fieldName: "negentropySyncStats", required: false, type: ForwardOffset<nmp_transport_NegentropySyncStats>.self)
+    try _v.visit(field: VTOFFSET.snapshotEpoch.p, fieldName: "snapshotEpoch", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.sessionId.p, fieldName: "sessionId", required: false, type: UInt64.self)
     _v.finish()
   }
 }

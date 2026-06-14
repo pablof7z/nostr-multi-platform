@@ -4,6 +4,7 @@
 
 import * as flatbuffers from 'flatbuffers';
 
+import { ProjectionPresenceState } from '../../nmp/transport/projection-presence-state.js';
 import { TypedPayload } from '../../nmp/transport/typed-payload.js';
 
 
@@ -37,8 +38,18 @@ payload(obj?:TypedPayload):TypedPayload|null {
   return offset ? (obj || new TypedPayload()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+projectionRev():bigint {
+  const offset = this.bb!.__offset(this.bb_pos, 8);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
+}
+
+state():ProjectionPresenceState {
+  const offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? this.bb!.readUint8(this.bb_pos + offset) : ProjectionPresenceState.Changed;
+}
+
 static startTypedProjection(builder:flatbuffers.Builder) {
-  builder.startObject(2);
+  builder.startObject(4);
 }
 
 static addKey(builder:flatbuffers.Builder, keyOffset:flatbuffers.Offset) {
@@ -47,6 +58,14 @@ static addKey(builder:flatbuffers.Builder, keyOffset:flatbuffers.Offset) {
 
 static addPayload(builder:flatbuffers.Builder, payloadOffset:flatbuffers.Offset) {
   builder.addFieldOffset(1, payloadOffset, 0);
+}
+
+static addProjectionRev(builder:flatbuffers.Builder, projectionRev:bigint) {
+  builder.addFieldInt64(2, projectionRev, BigInt('0'));
+}
+
+static addState(builder:flatbuffers.Builder, state:ProjectionPresenceState) {
+  builder.addFieldInt8(3, state, ProjectionPresenceState.Changed);
 }
 
 static endTypedProjection(builder:flatbuffers.Builder):flatbuffers.Offset {
