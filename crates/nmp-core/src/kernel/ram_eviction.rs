@@ -336,7 +336,8 @@ impl Kernel {
         if active.is_empty() {
             return true;
         }
-        let truncated = floor::truncated_serve_snapshot(&self.etag_ptag_truncated_serves);
+        // #1380: read the QUERY-KEY view so this floor agrees with `watermark_fn`.
+        let truncated = floor::truncated_serve_snapshot(&self.etag_ptag_truncated_query_keys);
         let mut complete = true;
         for interest in &active {
             let Some(floor) = shape_floor(&interest.shape, self.store.as_ref(), &truncated) else {
