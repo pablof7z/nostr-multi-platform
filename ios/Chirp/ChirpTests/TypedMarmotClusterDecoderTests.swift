@@ -153,14 +153,12 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedMarmotSnapshotDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledMarmotSnapshotBytesFallBack() {
-        var garbled = buildMarmotSnapshot(
-            groups: [], pendingWelcomes: [],
-            keyPackage: KeyPackageFixture.empty,
-            cachedKpPubkeys: [], invitesChipLabel: nil, isRegistered: false)
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedMarmotSnapshotDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // MARK: - nmp.marmot.messages (NMMG)
 
@@ -217,11 +215,12 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedMarmotMessagesDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledMarmotMessagesBytesFallBack() {
-        var garbled = buildMarmotMessages([])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedMarmotMessagesDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyEnvelopesYieldNilForBothMarmotKeys() {
         XCTAssertNil(TypedMarmotSnapshotDecoder.decode(from: []))

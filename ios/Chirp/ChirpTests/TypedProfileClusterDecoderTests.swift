@@ -73,11 +73,12 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedProfileDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledProfileBytesFallBack() {
-        var garbled = buildProfile(Self.fullCard)
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedProfileDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     /// `has_display_name` / `has_picture_url` / `has_lnurl` == false must map to
     /// `nil` optionals (JSON `null`-when-`None` parity), regardless of the empty
@@ -139,11 +140,12 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedClaimedProfilesDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledClaimedProfilesBytesFallBack() {
-        var garbled = buildProfileMap(buildClaimedProfiles, [("pk", .simple(pubkey: "pk", display: "x"))])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedClaimedProfilesDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     /// An empty claimed-profile map (fresh kernel, no claims) must decode to an
     /// EMPTY dictionary, NOT nil — nil would wrongly trigger the JSON fallback

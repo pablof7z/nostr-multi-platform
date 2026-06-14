@@ -122,11 +122,12 @@ final class TypedDmClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedDmInboxDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledDmInboxBytesFallBack() {
-        var garbled = buildDmInbox(conversations: [], decryptState: "ok")
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedDmInboxDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // MARK: - nmp.nip17.dm_relay_list (NDRL)
 
@@ -179,11 +180,12 @@ final class TypedDmClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedDmRelayListDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledDmRelayListBytesFallBack() {
-        var garbled = buildDmRelayList(activePubkey: "pk", readRelayUrls: [])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedDmRelayListDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // MARK: - claimed_events (KCEV)
 
@@ -250,15 +252,12 @@ final class TypedDmClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedClaimedEventsDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledClaimedEventsBytesFallBack() {
-        var garbled = buildClaimedEvents([
-            ClaimedEventFixture(
-                primaryId: "x", id: "x", authorPubkey: "a", kind: 1,
-                createdAt: 1, content: "c", tags: []),
-        ])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedClaimedEventsDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // MARK: - FlatBuffers builders (direct, via generated builders)
 

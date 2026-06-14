@@ -100,14 +100,12 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedBunkerHandshakeDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledBunkerHandshakeBytesFallBack() {
-        var garbled = buildBunkerHandshake(
-            stage: "idle", message: nil, isIdle: true, isInFlight: false,
-            isFailed: false, isTerminalSuccess: false, canCancel: false,
-            stageLabel: "Idle")
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedBunkerHandshakeDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // MARK: - nip46_onboarding (KN46)
 
@@ -212,14 +210,12 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
         XCTAssertNil(TypedNip46OnboardingDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledNip46OnboardingBytesFallBack() {
-        var garbled = buildNip46Onboarding(
-            signerApps: [], stageKind: nil, progressMessage: nil,
-            isInFlight: false, isFailed: false, isTerminalSuccess: false,
-            canCancel: false)
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedNip46OnboardingDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // MARK: - FlatBuffers builders (direct, via generated builders)
 
