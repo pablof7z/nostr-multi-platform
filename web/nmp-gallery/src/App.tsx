@@ -13,8 +13,16 @@ import { NostrMediaGrid } from "./components/content-media-grid/NostrMediaGrid";
 import { NostrArticleCard } from "./components/content-kind-30023/NostrArticleCard";
 import { NostrHighlightCard } from "./components/content-kind-9802/NostrHighlightCard";
 import { NostrQuoteCard } from "./components/content-quote-card/NostrQuoteCard";
-import { NostrEmbeddedEvent, type EmbeddedEventModel } from "./components/content-kind-registry/NostrKindRegistry";
+import { NostrEmbeddedEvent } from "./components/content-kind-registry/NostrKindRegistry";
 import { NostrNpubChip } from "./components/user-npub/NostrNpubChip";
+import {
+  Resolving,
+  Section,
+  StatusBar,
+  collectMediaUrls,
+  contentReady,
+  toEmbedded,
+} from "./gallerySupport";
 import { createGalleryRuntime, type ClaimedEventWire, tagValue } from "./nmp/profileHost";
 import {
   SHOWCASE_PUBKEY,
@@ -23,7 +31,6 @@ import {
   SHOWCASE_ARTICLE,
   SHOWCASE_HIGHLIGHT,
 } from "./showcase";
-import { WireNodeKind } from "./nmp/generated/nmp/content/wire-node-kind";
 
 const runtime = createGalleryRuntime();
 
@@ -181,7 +188,12 @@ export default function App(): JSX.Element {
   return (
     <NostrProfileHostProvider host={runtime.host}>
       <div class="gallery">
-        <StatusBar />
+        <StatusBar
+          status={runtime.status()}
+          relays={runtime.relays()}
+          anyRelayConnected={runtime.anyRelayConnected()}
+          resolvedCount={runtime.resolvedCount()}
+        />
         <header class="gallery-header">
           <h1>NMP Component Gallery — Web</h1>
           <p>
@@ -443,112 +455,6 @@ export default function App(): JSX.Element {
         </Section>
       </div>
     </NostrProfileHostProvider>
-  );
-}
-
-function StatusBar(): JSX.Element {
-  return (
-    <div class="status-bar" data-testid="status-bar">
-      <Pill label="kernel" value={String(typeof runtime.status() === "string" ? runtime.status() : "degraded")} ok={runtime.status() === "running"} />
-      <Pill
-        label="relays"
-        value={`${runtime.relays().filter((r) => r.connection.toLowerCase() === "connected").length}/${runtime.relays().length} connected`}
-        ok={runtime.anyRelayConnected()}
-      />
-      <Pill label="profiles resolved" value={String(runtime.resolvedCount())} ok={runtime.resolvedCount() > 0} />
-    </div>
-  );
-}
-
-function Pill(props: { label: string; value: string; ok: boolean }): JSX.Element {
-  return (
-    <span class="pill" classList={{ "pill--ok": props.ok }}>
-      <span class="pill-label">{props.label}</span>
-      <span class="pill-value">{props.value}</span>
-    </span>
-  );
-}
-
-function Section(props: { id: string; title: string; desc: string; children: JSX.Element }): JSX.Element {
-  return (
-    <section class="component-section" id={props.id}>
-      <h2>{props.title}</h2>
-      <p class="component-desc">{props.desc}</p>
-      <div class="component-stage" data-component={props.title}>
-        {props.children}
-      </div>
-    </section>
-  );
-}
-
-/**
- * Honesty gate for the content-view showcase. Returns the event only when the
- * kernel has parsed it into a content tree that is genuinely renderable from the
- * tree path — non-empty AND free of `Placeholder` nodes (an unresolved `nostr:`
- * URI becomes a placeholder, which the goal forbids showing). Without a tree the
- * component would silently fall back to the raw string, producing a screenshot
- * that looks fine but proves nothing — so we refuse to render until the tree is
- * real.
- */
-function contentReady(ev: ClaimedEventWire | undefined): ClaimedEventWire | undefined {
-  const tree = ev?.contentTree;
-  if (!ev || !tree || tree.rootsLength() === 0) return undefined;
-  for (let i = 0; i < tree.nodesLength(); i += 1) {
-    if (tree.nodes(i)?.kind() === WireNodeKind.Placeholder) return undefined;
-  }
-  return ev;
-}
-
-/** Project a resolved claimed event into the generic embed envelope the kind
- *  registry dispatches on. Author name/picture come from the host's resolved
- *  profile (passed in) — the reliable resolved_profiles path. */
-function toEmbedded(
-  ev: ClaimedEventWire,
-  author: { displayName?: string; pictureUrl?: string } | undefined,
-): EmbeddedEventModel {
-  return {
-    kind: ev.kind,
-    content: ev.content,
-    createdAt: ev.createdAt,
-    tags: ev.tags,
-    authorName: author?.displayName,
-    authorPicture: author?.pictureUrl,
-  };
-}
-
-/** Collect the real image URLs the kernel parsed into a content tree (Image +
- *  Media nodes). Used to feed the media grid real, network-loaded images. */
-function collectMediaUrls(ev: ClaimedEventWire | undefined): string[] {
-  const out: string[] = [];
-  const tree = ev?.contentTree;
-  if (tree) {
-    for (let i = 0; i < tree.nodesLength(); i += 1) {
-      const node = tree.nodes(i);
-      if (!node) continue;
-      if (node.kind() === WireNodeKind.Image) {
-        const url = node.url();
-        if (url) out.push(url);
-      } else if (node.kind() === WireNodeKind.Media) {
-        for (let m = 0; m < node.mediaUrlsLength(); m += 1) {
-          const url = node.mediaUrls(m) as string;
-          if (url) out.push(url);
-        }
-      }
-    }
-  }
-  // The article's hero `image` tag is also a real image — include it first.
-  if (ev) {
-    const hero = tagValue(ev, "image");
-    if (hero && !out.includes(hero)) out.unshift(hero);
-  }
-  return out;
-}
-
-function Resolving(): JSX.Element {
-  return (
-    <div class="resolving" data-testid="resolving">
-      <span class="resolving-dot" /> resolving from relays…
-    </div>
   );
 }
 
