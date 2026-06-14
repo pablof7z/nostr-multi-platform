@@ -38,7 +38,7 @@ mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_declare_incremental_apply,
-    nmp_app_encode_profile, nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_encode_profile, nmp_app_free, nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, nmp_free_string,
 };
 use session::{insert_session, remove_session};
@@ -73,6 +73,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
         eprintln!(
             "nmp_app_declare_incremental_apply failed: rc={rc} (1=AlreadyStarted, 2=RegistryUnavailable)"
         );
+        // The Session that would otherwise own `app` and free it via
+        // `free_native` is never constructed on this path, so free the kernel
+        // here to avoid leaking the `nmp_app_new` allocation.
+        nmp_app_free(app);
         return 0;
     }
     // V-73: null viewer_pubkey (no viewer set at startup) always succeeds.

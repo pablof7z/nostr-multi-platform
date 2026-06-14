@@ -12,8 +12,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.SignerState
 import org.nmp.android.model.ChirpOpFeedSnapshot
@@ -47,6 +45,17 @@ class KernelModel : ViewModel() {
      * Extracted into [MarmotActions] to keep this file under the 500-LOC ceiling.
      */
     val marmot = MarmotActions(dispatchAction = { ns, json -> bridge.dispatchAction(ns, json) })
+
+    /**
+     * Social write operations (NIP-25/57/18/02/17). Extracted into [SocialActions]
+     * to keep this file under the 500-LOC ceiling. The public `zapNote`/`react`/
+     * `repost`/`follow`/`unfollow`/`sendDm` methods below delegate to it, so the
+     * call-site surface (`model.zapNote(…)` etc.) is unchanged.
+     */
+    private val social = SocialActions(
+        buildActionSpec = { intentJson -> bridge.buildActionSpec(intentJson) },
+        dispatchAction = { ns, json -> bridge.dispatchAction(ns, json) },
+    )
 
     private val _state = MutableStateFlow(KernelUpdate())
     val state: StateFlow<KernelUpdate> = _state.asStateFlow()
@@ -224,24 +233,12 @@ class KernelModel : ViewModel() {
     fun encodeProfile(pubkey: String): String? = bridge.encodeProfile(pubkey)
 
     /**
-     * Publish a new note. Kotlin forwards only user intent; Rust builds the
+     * Publish a new note. Delegates to [SocialActions]; Rust builds the
      * `nmp.publish` namespace and `PublishRaw` body, including reply tags.
-     *
      * Returns the correlation_id if accepted, or null on error.
      */
-    fun publishNote(
-        content: String,
-        replyToId: String? = null,
-    ): String? {
-        val response = dispatchTypedIntent(
-            ChirpActionIntent(
-                type = "publish_note",
-                content = content,
-                replyToEventId = replyToId,
-            )
-        ) ?: return null
-        return response.correlationId
-    }
+    fun publishNote(content: String, replyToId: String? = null): String? =
+        social.publishNote(content, replyToId)
 
     /** Extend home-feed window; [after] is an opaque edge cursor (Rust owns page policy). */
     fun loadOlderTimeline(after: TimelineWindowCursor) {
@@ -366,7 +363,8 @@ class KernelModel : ViewModel() {
         bridge.publishDmRelayList(relays)
 
     // -------------------------------------------------------------------------
-    // Social
+    // Social + DM — write ops live in [social: SocialActions]; these delegate so
+    // the public surface (model.zapNote(…) etc.) is unchanged.
     // -------------------------------------------------------------------------
 
     /** Zap a note (NIP-57). */
@@ -375,44 +373,25 @@ class KernelModel : ViewModel() {
         recipientPubkey: String,
         amountMsats: Long = 21000L,
         comment: String = "",
-    ): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(
-            type = "zap",
-            targetEventId = eventId,
-            recipientPubkey = recipientPubkey,
-            amountMsats = amountMsats,
-            comment = comment.takeIf { it.isNotEmpty() },
-        )
-    )
+    ): DispatchResult? = social.zapNote(eventId, recipientPubkey, amountMsats, comment)
 
     /** React to a note (NIP-25). */
-    fun react(eventId: String, reaction: String = "+"): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "react", eventId = eventId, reaction = reaction)
-    )
+    fun react(eventId: String, reaction: String = "+"): DispatchResult? =
+        social.react(eventId, reaction)
 
     /** Repost a note (NIP-18 kind:6). Mirrors iOS `model.repost(eventID:authorPubkey:)`. */
-    fun repost(eventId: String, authorPubkey: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "repost", eventId = eventId, authorPubkey = authorPubkey)
-    )
+    fun repost(eventId: String, authorPubkey: String): DispatchResult? =
+        social.repost(eventId, authorPubkey)
 
     /** Follow a pubkey. */
-    fun follow(pubkey: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "follow", pubkey = pubkey)
-    )
+    fun follow(pubkey: String): DispatchResult? = social.follow(pubkey)
 
     /** Unfollow a pubkey. */
-    fun unfollow(pubkey: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "unfollow", pubkey = pubkey)
-    )
-
-    // -------------------------------------------------------------------------
-    // DMs
-    // -------------------------------------------------------------------------
+    fun unfollow(pubkey: String): DispatchResult? = social.unfollow(pubkey)
 
     /** Send a NIP-17 direct message to the given recipient pubkey. */
-    fun sendDm(recipientPubkey: String, content: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "send_dm", recipientPubkey = recipientPubkey, content = content)
-    )
+    fun sendDm(recipientPubkey: String, content: String): DispatchResult? =
+        social.sendDm(recipientPubkey, content)
 
     // -------------------------------------------------------------------------
     // Marmot registration trampoline — write ops live in [marmot: MarmotActions]
@@ -437,28 +416,6 @@ class KernelModel : ViewModel() {
     fun dispatchWalletDisconnect() {
         val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
         Log.d(TAG, "wallet disconnect response: $response")
-    }
-
-    private fun dispatchTypedIntent(intent: ChirpActionIntent): DispatchResult? {
-        val intentJson = chirpActionJson.encodeToString(intent)
-        val specResponse = bridge.buildActionSpec(intentJson)
-        val spec = try {
-            chirpActionJson.decodeFromString<ChirpActionSpec>(specResponse)
-        } catch (e: Exception) {
-            Log.d(TAG, "buildActionSpec parse error: $specResponse", e)
-            return null
-        }
-        if (spec.error != null) {
-            Log.d(TAG, "buildActionSpec rejected ${intent.type}: ${spec.error}")
-            return null
-        }
-        if (spec.namespace.isBlank() || spec.bodyJson.isBlank()) {
-            Log.d(TAG, "buildActionSpec missing dispatch fields: $specResponse")
-            return null
-        }
-        val response = bridge.dispatchAction(spec.namespace, spec.bodyJson)
-        Log.d(TAG, "dispatchTypedIntent(${intent.type}) response: $response")
-        return response
     }
 
     /**

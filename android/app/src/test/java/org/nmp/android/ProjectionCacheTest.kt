@@ -216,6 +216,60 @@ class ProjectionCacheTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // 6b. NON-EMPTY corrupt payload (mirrors iOS test 12 corrupt vector).
+    //     A Changed row carrying non-empty garbage bytes (byteArrayOf(0x00))
+    //     PASSES the isNotEmpty() decode-before-commit gate, so it commits to the
+    //     cache. The documented fail-closed contract is then end-to-end through
+    //     decodeProjections: the typed decoder rejects the corrupt buffer
+    //     (BufferHasIdentifier check + try/catch) and the slot defaults — NO
+    //     crash. The cache self-heals when a subsequent valid Changed row at a
+    //     higher rev arrives. This pins the corrupt-payload contract.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun nonEmptyCorruptPayloadFailsClosedThenSelfHeals() {
+        val goodBytes = accountsBuffer("alice")
+        // Seed the cache with a valid entry (rev 1).
+        cache.merge(listOf(changedEnvelope("accounts", "accounts", goodBytes, rev = 1UL)),
+            sessionId = 1UL, snapshotEpoch = 1UL)
+
+        // Sanity: the seeded value decodes end-to-end via decodeProjections.
+        val seeded = cache.merge(emptyList(), sessionId = 1UL, snapshotEpoch = 1UL)
+        val seededProjections = KernelUpdateFrameDecoder.decodeProjections(seeded.mergedEnvelopes)
+        assertEquals("seeded accounts must decode to one row", 1, seededProjections.accounts.size)
+
+        // Frame 2: a NON-EMPTY corrupt payload as a Changed row (rev 2).
+        // 0x00 is non-empty so it passes the decode-before-commit gate and commits.
+        val corrupt = TypedProjectionEnvelope(
+            key = "accounts",
+            schemaId = "accounts",
+            schemaVersion = 1u,
+            fileIdentifier = "KACC",
+            payload = byteArrayOf(0x00), // non-empty garbage
+            projectionRev = 2UL,
+            state = ProjectionPresenceState.Changed,
+        )
+        val corruptResult = cache.merge(listOf(corrupt), sessionId = 1UL, snapshotEpoch = 1UL)
+
+        // Fail-closed end-to-end: decodeProjections does NOT crash, and the
+        // corrupt accounts buffer (no KACC identifier) yields an EMPTY accounts
+        // list (the typed decoder fails closed; the slot defaults).
+        val corruptProjections = KernelUpdateFrameDecoder.decodeProjections(corruptResult.mergedEnvelopes)
+        assertTrue("corrupt accounts buffer must default the slot (fail-closed, no crash)",
+            corruptProjections.accounts.isEmpty())
+
+        // Frame 3: a VALID Changed row at a higher rev (rev 3) — the cache self-heals.
+        val healedBytes = accountsBuffer("healed")
+        val healResult = cache.merge(
+            listOf(changedEnvelope("accounts", "accounts", healedBytes, rev = 3UL)),
+            sessionId = 1UL, snapshotEpoch = 1UL)
+        val healedProjections = KernelUpdateFrameDecoder.decodeProjections(healResult.mergedEnvelopes)
+        assertEquals("cache must self-heal to a valid row after a higher-rev Changed frame",
+            1, healedProjections.accounts.size)
+        assertEquals("healed", healedProjections.accounts[0].displayName)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // 7. session_id == 0: pass-through without trusting omission (D3-5)
     // ─────────────────────────────────────────────────────────────────────────
 

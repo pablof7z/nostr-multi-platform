@@ -285,11 +285,11 @@ object KernelUpdateFrameDecoder {
             // Changed row: payload is required.
             val typed: TypedPayload = projection.payload ?: continue
             val schemaId = typed.schemaId ?: continue
-            val payloadBytes: ByteArray = typed.payloadAsByteBuffer?.let { buf ->
-                val bytes = ByteArray(buf.remaining())
-                buf.get(bytes)
-                bytes
-            } ?: ByteArray(0)
+            // `payloadAsByteBuffer` is non-null (FlatBuffers returns an empty
+            // buffer for an absent vector, never null).
+            val buf = typed.payloadAsByteBuffer
+            val payloadBytes = ByteArray(buf.remaining())
+            buf.get(payloadBytes)
             result.add(
                 TypedProjectionEnvelope(
                     key = key,
