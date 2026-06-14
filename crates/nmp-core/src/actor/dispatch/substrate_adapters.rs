@@ -221,3 +221,133 @@ impl<'a> crate::substrate::HostOpHandlerAccess for HostOpHandlerAccessAdapter<'a
         self.slot.lock().ok().and_then(|guard| guard.as_ref().cloned())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Regression guard for #1364 (K2 rung-5.4 regression #1356).
+    //!
+    //! The whole-body `catch_unwind` wrapping a `HostOpCommand` at the dispatch
+    //! arm must NOT drop the `Requested` action-stage write. Before #1363
+    //! deleted the long-lived `with_kernel` exclusive borrow, the
+    //! `ActionStageTrackerAdapter::record_requested` `try_borrow_mut` failed
+    //! (the dispatch arm still held the `&mut Kernel`) and the write was
+    //! silently dropped — a Marmot/MLS *pending* host op then had NO
+    //! `action_stages` entry until its async continuation fired, so the host
+    //! could not tell "pending, awaiting KP fetch" from "silently dropped".
+    //!
+    //! This test exercises the REAL `ActionStageTrackerAdapter` against a REAL
+    //! kernel through the REAL `HostOpCommand::run`, with a handler that returns
+    //! `{"pending":true}` (the Marmot KP-gated path). It asserts the kernel's
+    //! `action_stages` projection carries a `Requested` entry — the durable
+    //! oracle that the panic-guarded host-op path records its Requested stage
+    //! like every other action path.
+
+    use crate::actor::ActorCommand;
+    use crate::kernel::Kernel;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use crate::substrate::{
+        host_op_command, EmptyDmInboxRelayLookup, HostOpHandler, HostOpHandlerAccess,
+        NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
+        NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext,
+        ProtocolCommandContextParts,
+    };
+    use std::cell::RefCell;
+    use std::sync::{Arc, Mutex};
+
+    /// Handler mirroring the Marmot KP-gated MLS op: it defers completion, so
+    /// only the `Requested` stage is written synchronously.
+    struct PendingHandler;
+    impl HostOpHandler for PendingHandler {
+        fn handle(&self, _: &str, _: &str) -> serde_json::Value {
+            serde_json::json!({ "pending": true })
+        }
+    }
+
+    struct SlotAccess(Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>);
+    impl HostOpHandlerAccess for SlotAccess {
+        fn current_handler(&self) -> Option<Arc<dyn HostOpHandler>> {
+            self.0.lock().ok().and_then(|g| g.as_ref().cloned())
+        }
+    }
+
+    /// Read `action_stages.<correlation_id>` straight from the kernel's
+    /// projection (the wire surface the host observes), returning the stage
+    /// history array or `Null` when absent.
+    fn stage_history(kernel: &Kernel, correlation_id: &str) -> serde_json::Value {
+        kernel
+            .action_stages_projection()
+            .get(correlation_id)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    #[test]
+    fn pending_host_op_records_requested_stage_through_real_adapter() {
+        // A real kernel, wrapped in the SAME `RefCell<&mut Kernel>` shape the
+        // dispatch arm builds, so the adapter's `try_borrow_mut` is exercised
+        // exactly as in production.
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let correlation_id = "corr-marmot-pending";
+
+        // Install the pending handler in a real slot accessor.
+        let slot = crate::substrate::new_host_op_handler_slot();
+        *slot.lock().unwrap() = Some(Arc::new(PendingHandler) as Arc<dyn HostOpHandler>);
+        let access = SlotAccess(slot);
+
+        {
+            let kernel_cell = RefCell::new(&mut kernel);
+            let stages = super::ActionStageTrackerAdapter {
+                kernel: &kernel_cell,
+            };
+
+            // Noop surfaces for every capability the host op does not touch.
+            static CLOCK: NoopKernelClock = NoopKernelClock;
+            static SIGNERS: NoopLocalSignerAccess = NoopLocalSignerAccess;
+            static ERRORS: NoopErrorSurface = NoopErrorSurface;
+            static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+            static WALLET: NoopWalletKernelAccess = NoopWalletKernelAccess;
+            static ZAP: NoopZapProfileLookup = NoopZapProfileLookup;
+            static DMS: EmptyDmInboxRelayLookup = EmptyDmInboxRelayLookup;
+
+            let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
+            let command_sender = crate::actor::CommandSender::new(tx);
+            // The host op's terminal verdict re-enters via `send`; a pending op
+            // sends nothing, but the slot must exist.
+            let send: &dyn Fn(ActorCommand) = &|_c: ActorCommand| {};
+
+            let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
+                send,
+                command_sender,
+                clock: &CLOCK,
+                signers: &SIGNERS,
+                dms: &DMS,
+                errors: &ERRORS,
+                stages: &stages,
+                recipients: &RECIPIENTS,
+                host_op_handler: &access,
+                wallet_kernel: &WALLET,
+                zap_profiles: &ZAP,
+            });
+
+            Box::new(host_op_command("{}".into(), correlation_id.into()))
+                .run(&mut ctx)
+                .expect("HostOpCommand::run never returns Err");
+        }
+
+        // ORACLE: a pending host op MUST leave a `Requested` action-stage entry
+        // so the host can tell "pending, awaiting continuation" from "dropped".
+        let history = stage_history(&kernel, correlation_id);
+        let arr = history
+            .as_array()
+            .expect("pending host op must have an action_stages history entry (#1364)");
+        assert!(
+            arr.iter().any(|e| {
+                e.get("stage")
+                    .and_then(serde_json::Value::as_str)
+                    .map(|s| s.eq_ignore_ascii_case("requested"))
+                    .unwrap_or(false)
+            }),
+            "expected a 'Requested' stage entry, got {history:?}"
+        );
+    }
+}
