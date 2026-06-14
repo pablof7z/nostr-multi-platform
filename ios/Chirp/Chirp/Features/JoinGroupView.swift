@@ -193,9 +193,9 @@ private struct DiscoveredGroupRow: View {
 
             Button(action: onJoin) {
                 Text(isJoined ? "Requested" : "Join")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .font(.callout.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                     .background(
                         isJoined ? ChirpColor.controlDisabledBackground : ChirpColor.accent)
                     .foregroundStyle(isJoined ? ChirpColor.textSecondary : ChirpColor.emphasisForeground)

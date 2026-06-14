@@ -36,7 +36,7 @@ struct NostrNpubChip: View {
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
         }
