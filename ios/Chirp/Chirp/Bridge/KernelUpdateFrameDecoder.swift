@@ -19,13 +19,19 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    /// A decoded snapshot frame. `(schemaVersion, typedProjections, flatFeeds,
-    /// typedEnvelope)`. The generic `payload:Value` whole-payload tree is NO
-    /// LONGER decoded — the typed `typed_projections` sidecars + the Tier-3
-    /// `SnapshotFrame` envelope are the sole sources. (The producer still emits
-    /// `payload` for now; PR-B removes it from the schema.)
+    /// A decoded snapshot frame. `(schemaVersion, sessionId, snapshotEpoch,
+    /// typedProjections, flatFeeds, typedEnvelope)`. The generic `payload:Value`
+    /// whole-payload tree is NO LONGER decoded — the typed `typed_projections`
+    /// sidecars + the Tier-3 `SnapshotFrame` envelope are the sole sources. (The
+    /// producer still emits `payload` for now; PR-B removes it from the schema.)
+    ///
+    /// R3-S3 (ADR-0055): `sessionId` + `snapshotEpoch` are read off the SAME
+    /// `frame.snapshot` table in the single decode pass and threaded out here so
+    /// the `ProjectionMergeCache` D3-3 merge needs no second parse of the buffer.
     case snapshot(
         UInt32,
+        UInt64,
+        UInt64,
         [TypedProjectionEnvelope],
         [String: ChirpTimelineSnapshot],
         TypedSnapshotEnvelope?)
@@ -122,7 +128,15 @@ enum KernelUpdateFrameDecoder {
             let envelopes = extractTypedProjections(from: snapshot)
             let flatFeeds = extractFlatFeeds(typed: envelopes)
             let typedEnvelope = extractTypedEnvelope(from: snapshot)
-            return .snapshot(snapshot.schemaVersion, envelopes, flatFeeds, typedEnvelope)
+            // R3-S3 (ADR-0055): read the session/epoch scalars off the SAME
+            // `snapshot` table we already decoded — no second parse needed.
+            return .snapshot(
+                snapshot.schemaVersion,
+                snapshot.sessionId,
+                snapshot.snapshotEpoch,
+                envelopes,
+                flatFeeds,
+                typedEnvelope)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload

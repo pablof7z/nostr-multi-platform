@@ -172,7 +172,7 @@ pub fn render_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
          \x20\x20\x20\x20// `decode(bytes:)` entry point on the generated TypedXDecoder enum —\n\
          \x20\x20\x20\x20// a non-nil result means the bytes are well-formed. On failure we keep\n\
          \x20\x20\x20\x20// the prior cache entry rather than clobbering it with corrupt bytes.\n\
-         \x20\x20\x20\x20private static func decodeSuceeds(key: String, bytes: Data) -> Bool {\n\
+         \x20\x20\x20\x20private static func decodeSucceeds(key: String, bytes: Data) -> Bool {\n\
          \x20\x20\x20\x20\x20\x20\x20\x20guard !bytes.isEmpty else { return false }\n\
          \x20\x20\x20\x20\x20\x20\x20\x20switch key {\n",
     );
@@ -249,7 +249,7 @@ pub fn render_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20// Decode-before-commit (D3-4): run the typed decoder as a\n\
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20// preflight. On success: overwrite cache + advance rev.\n\
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20// On failure: keep prior entry + latch needsResync.\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20if Self.decodeSuceeds(key: envelope.key, bytes: envelope.payload) {\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20if Self.decodeSucceeds(key: envelope.key, bytes: envelope.payload) {\n\
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20cache[envelope.key] = CacheEntry(\n\
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20rev: incomingRev,\n\
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20schemaId: envelope.schemaId,\n\

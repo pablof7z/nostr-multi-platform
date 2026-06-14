@@ -90,7 +90,7 @@ final class ProjectionMergeCache {
     // `decode(bytes:)` entry point on the generated TypedXDecoder enum —
     // a non-nil result means the bytes are well-formed. On failure we keep
     // the prior cache entry rather than clobbering it with corrupt bytes.
-    private static func decodeSuceeds(key: String, bytes: Data) -> Bool {
+    private static func decodeSucceeds(key: String, bytes: Data) -> Bool {
         guard !bytes.isEmpty else { return false }
         switch key {
         case "wallet": return TypedWalletDecoder.decode(bytes: bytes) != nil
@@ -187,7 +187,7 @@ final class ProjectionMergeCache {
                 // Decode-before-commit (D3-4): run the typed decoder as a
                 // preflight. On success: overwrite cache + advance rev.
                 // On failure: keep prior entry + latch needsResync.
-                if Self.decodeSuceeds(key: envelope.key, bytes: envelope.payload) {
+                if Self.decodeSucceeds(key: envelope.key, bytes: envelope.payload) {
                     cache[envelope.key] = CacheEntry(
                         rev: incomingRev,
                         schemaId: envelope.schemaId,

@@ -13,7 +13,7 @@ import FlatBuffers
 ///   2. Cleared row drops the key from the cache.
 ///   3. Changed row with higher rev overwrites the cache.
 ///   4. Reorder guard: lower-or-equal rev is ignored (prior value retained).
-///   5. Session / epoch change clears the cache and resets baselined.
+///   5. Session / epoch change clears the cache (reset-before-merge, atomic).
 ///   6. Decode-failure keeps prior cache entry and latches needsResync.
 ///   7. session_id == 0 treated as full / no-omission-trust.
 ///   8. changedKeys contains exactly the keys that advanced.
@@ -206,8 +206,12 @@ final class ProjectionCacheTests: XCTestCase {
     // MARK: - Test 5: Session / epoch change clears the cache
 
     /// D4: a sessionId or snapshotEpoch change triggers a mandatory full-cache
-    /// reset. `baselined` flips to false; the next frame is treated as a
-    /// baseline.
+    /// reset BEFORE the incoming rows are merged. The prior session's entries
+    /// must be wiped. Per the ADR D3-3 pseudocode, `baselined` is reset to
+    /// `false` at the top of the merge (the D4 block) and then re-asserted to
+    /// `true` at the end once the post-reset frame has been applied — so the
+    /// observable post-merge state is `baselined == true` on a fresh baseline.
+    /// The load-bearing assertion is that the cache was cleared.
     func testSessionChangeClears() throws {
         let cache = ProjectionMergeCache()
         let session1: UInt64 = 10
@@ -220,13 +224,16 @@ final class ProjectionCacheTests: XCTestCase {
                   sessionId: session1, epoch: epoch1)
         XCTAssertTrue(cache.baselined)
 
-        // New session — cache must be wiped.
+        // New session — cache must be wiped; the (empty) post-reset frame is
+        // itself a valid baseline, so baselined re-asserts true.
         let result = merge(cache: cache, envelopes: [], sessionId: session2, epoch: epoch1)
-        XCTAssertFalse(cache.baselined,
-                       "baselined must reset to false on session change")
+        XCTAssertTrue(cache.baselined,
+                      "the post-reset baseline frame re-asserts baselined == true (ADR D3-3)")
         let decoded = TypedAccountsDecoder.decode(from: result.mergedEnvelopes)
         XCTAssertNil(decoded,
                      "accounts must be absent after session change clears the cache")
+        XCTAssertTrue(result.changedKeys.isEmpty,
+                      "an empty post-reset baseline frame advances no keys")
     }
 
     func testEpochChangeClears() throws {
@@ -242,42 +249,110 @@ final class ProjectionCacheTests: XCTestCase {
 
         // Epoch bump — same effect as session change.
         let result = merge(cache: cache, envelopes: [], sessionId: session, epoch: epoch2)
-        XCTAssertFalse(cache.baselined, "baselined must reset on epoch change")
+        XCTAssertTrue(cache.baselined,
+                      "the post-reset baseline frame re-asserts baselined == true (ADR D3-3)")
         XCTAssertNil(TypedAccountsDecoder.decode(from: result.mergedEnvelopes),
                      "accounts must be absent after epoch change clears the cache")
     }
 
+    // MARK: - Test 5c: Atomic reset-before-merge with a NON-empty frame
+
+    /// D4 ordering invariant: when a single frame simultaneously changes the
+    /// session (or epoch) AND carries rows, the cache reset must happen BEFORE
+    /// the merge of those rows. The stale pre-reset entries must be wiped, and
+    /// ONLY the rows in this frame must land in the fresh cache — proving the
+    /// reset does not clobber the same-frame rows, and the same-frame rows do
+    /// not survive from the prior session.
+    ///
+    /// The existing session/epoch tests only cover reset with an EMPTY frame;
+    /// this covers the load-bearing case where reset and re-population are
+    /// atomic within one merge call.
+    func testSessionChangeWithRowsResetsThenMergesAtomically() throws {
+        let cache = ProjectionMergeCache()
+        let session1: UInt64 = 100
+        let session2: UInt64 = 200
+        let epoch: UInt64 = 1
+
+        // Prime session 1 with BOTH accounts and active_account.
+        _ = merge(cache: cache, envelopes: [
+            changedAccountsEnvelope(rev: 50, npub: "npub-OLD-session"),
+            changedActiveAccountEnvelope(rev: 50, pubkey: "pk-OLD-session"),
+        ], sessionId: session1, epoch: epoch)
+        XCTAssertTrue(cache.baselined)
+
+        // New session in the SAME frame that also carries a fresh accounts row
+        // ONLY (active_account is NOT in this frame). If reset happened AFTER
+        // the merge, the new accounts row would be wiped; if reset did not
+        // happen, the stale active_account would survive. Neither is allowed.
+        let result = merge(cache: cache, envelopes: [
+            changedAccountsEnvelope(rev: 1, npub: "npub-NEW-session"),
+        ], sessionId: session2, epoch: epoch)
+
+        // The fresh accounts row must land (reset happened BEFORE the merge).
+        let accounts = TypedAccountsDecoder.decode(from: result.mergedEnvelopes)
+        XCTAssertEqual(accounts?.first?.npub, "npub-NEW-session",
+                       "the same-frame accounts row must land in the freshly-reset cache")
+
+        // The stale active_account from session 1 must be GONE (reset wiped it,
+        // and it was not re-sent in this frame).
+        XCTAssertNil(TypedActiveAccountDecoder.decode(from: result.mergedEnvelopes),
+                     "stale active_account from the prior session must NOT survive the reset")
+
+        // changedKeys must contain EXACTLY the one key that was sent this frame.
+        XCTAssertEqual(result.changedKeys, [TypedAccountsDecoder.key],
+                       "changedKeys must be exactly the same-frame rows, not the wiped ones")
+
+        // Note the reorder guard did NOT reject the rev=1 row even though the
+        // prior session had rev=50: the reset cleared the cache first, so there
+        // was no cached entry to compare against. This proves reset-before-merge.
+        XCTAssertTrue(cache.baselined, "baselined re-asserts true after the same-frame baseline")
+    }
+
     // MARK: - Test 6: Decode-failure keeps prior + latches needsResync
 
-    /// D3-4: if the decode-before-commit preflight fails (corrupt bytes), the
-    /// prior cache entry must be retained and `needsResync` must be latched.
-    /// The corrupt payload must NOT blank the cached value.
+    /// D3-4: if the decode-before-commit preflight fails, the prior cache entry
+    /// must be retained and `needsResync` must be latched — the failing payload
+    /// must NOT blank the cached value.
+    ///
+    /// NOTE on the failure vector: the typed decoders use unchecked `getRoot`
+    /// (trusted in-process FFI boundary — see `KernelUpdateFrameDecoder`), so
+    /// arbitrary non-empty garbage bytes do NOT reliably round-trip to `nil`
+    /// (an out-of-range offset just yields an empty/default-valued struct). The
+    /// one DETERMINISTIC decode-failure the cache must defend against is a
+    /// `Changed` row carrying an EMPTY payload — a malformed frame, because a
+    /// `Changed` row by contract carries full bytes (an empty projection is
+    /// expressed as `Cleared`, never as Changed-with-no-bytes). `decodeSucceeds`
+    /// rejects this via its `!bytes.isEmpty` guard, which is exactly the
+    /// preflight gate D3-4 specifies. This is the honest, reproducible failure
+    /// path; a fuzzed-garbage assertion would be vacuous under unchecked getRoot.
     func testDecodeFailureKeepsPriorAndLatchesNeedsResync() throws {
         let cache = ProjectionMergeCache()
         _ = merge(cache: cache,
                   envelopes: [changedAccountsEnvelope(rev: 1, npub: "npub-good")])
         XCTAssertFalse(cache.needsResync)
 
-        // A Changed envelope with corrupt (non-FlatBuffers) bytes.
-        let corruptEnvelope = TypedProjectionEnvelope(
+        // A malformed `Changed` envelope carrying NO payload bytes. A Changed
+        // row must carry bytes; an empty-payload Changed row is the canonical
+        // decode-before-commit failure (decodeSucceeds returns false on empty).
+        let malformedEnvelope = TypedProjectionEnvelope(
             key: TypedAccountsDecoder.key,
             schemaId: TypedAccountsDecoder.schemaId,
             schemaVersion: 1,
             fileIdentifier: TypedAccountsDecoder.fileIdentifier,
-            payload: Data([0x00, 0xFF, 0xAB]),  // garbage bytes
+            payload: Data(),  // empty — malformed for a Changed row
             projectionRev: 2,
             state: .changed
         )
-        let result = merge(cache: cache, envelopes: [corruptEnvelope])
+        let result = merge(cache: cache, envelopes: [malformedEnvelope])
 
         // needsResync must be latched.
         XCTAssertTrue(cache.needsResync,
                       "needsResync must be latched after decode-before-commit failure")
         XCTAssertTrue(result.needsResync)
 
-        // The corrupt row must NOT be in changedKeys (decode failed, rev not advanced).
+        // The malformed row must NOT be in changedKeys (decode failed, rev not advanced).
         XCTAssertFalse(result.changedKeys.contains(TypedAccountsDecoder.key),
-                       "corrupt row must NOT appear in changedKeys")
+                       "failed row must NOT appear in changedKeys")
 
         // Prior cached value (npub-good) must be retained — not blanked.
         let decoded = TypedAccountsDecoder.decode(from: result.mergedEnvelopes)

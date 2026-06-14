@@ -700,7 +700,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, rawEnvelopes, flatFeeds, typedEnvelope) = frame else {
+            guard case let .snapshot(frameSchemaVersion, sessionId, snapshotEpoch, rawEnvelopes, flatFeeds, typedEnvelope) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -723,19 +723,13 @@ final class KernelHandle {
             // so they keep their exact current behavior. The merge also
             // surfaces the set of keys whose rev advanced in this frame and
             // the sticky needsResync flag.
-            // `snapshot.snapshotEpoch` and `snapshot.sessionId` are read from
-            // the FlatBuffers typedEnvelope; the `rawEnvelopes` come from
-            // `extractTypedProjections` which already carries rev+state.
             //
-            // NOTE: The FlatBuffers frame-level snapshotEpoch and sessionId
-            // are read directly from the raw FlatBuffer. We do not have access
-            // to the snapshot reader here, but we can extract them from the
-            // typed envelope fields that were decoded via `KernelUpdateFrameDecoder`.
-            // For now, extract them from a lightweight re-read of the buffer.
-            var tmpBuf = ByteBuffer(data: data)
-            let tmpFrame: nmp_transport_UpdateFrame = getRoot(byteBuffer: &tmpBuf)
-            let snapshotEpoch = tmpFrame.snapshot?.snapshotEpoch ?? 0
-            let sessionId = tmpFrame.snapshot?.sessionId ?? 0
+            // `sessionId` + `snapshotEpoch` were read off the SAME `frame.snapshot`
+            // table in `KernelUpdateFrameDecoder.decode`'s single pass and threaded
+            // out through the `.snapshot(...)` case — no second parse of the buffer
+            // here (the whole point of this ladder is to stop paying O(buffer) per
+            // tick). The `rawEnvelopes` already carry rev+state from
+            // `extractTypedProjections`.
             let mergeResult = cache.merge(
                 envelopes: rawEnvelopes,
                 sessionId: sessionId,
