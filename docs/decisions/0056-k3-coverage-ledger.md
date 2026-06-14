@@ -1,4 +1,4 @@
-# ADR-0055 — K3 coverage ledger: staged migration from presence-floor to per-(filter, relay) coverage
+# ADR-0056 — K3 coverage ledger: staged migration from presence-floor to per-(filter, relay) coverage
 
 - Status: Accepted (Stage A landed; Stages B–E queued)
 - Date: 2026-06-14
