@@ -157,6 +157,19 @@ pub trait AppHost: ActionRegistrar {
     /// Rung-5 ADR-0053 compose seam), NOT a compat shim.
     fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError>;
 
+    /// ADR-0055 Rung 6 S1 — return a shared handle to the incremental-apply
+    /// capability flag.
+    ///
+    /// The returned `Arc<std::sync::atomic::AtomicBool>` is `true` when
+    /// [`AppHost::declare_incremental_apply`] has been called, `false` otherwise.
+    /// Producer closures registered via
+    /// [`AppHost::register_typed_snapshot_projection`] capture this handle and
+    /// read it at tick time with `load(Acquire)` — the `Arc<AtomicBool>` is the
+    /// only safe way to read the capability flag from inside `run_typed()` without
+    /// re-locking the `SnapshotRegistry` mutex (which is already held by
+    /// `run_typed` and cannot be re-entered without deadlock).
+    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool>;
+
     /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
     /// this host consumes (the union of every projection any of the app's screens
     /// can read, known at app build time).

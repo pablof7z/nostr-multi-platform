@@ -274,4 +274,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         NmpApp::declare_incremental_apply(app)
     }
+
+    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        app.incremental_apply_handle()
+    }
 }

@@ -15,14 +15,19 @@
 //! * [`build_actor_claim_sink`] — turns the engine's `ClaimRequest` stream into
 //!   `ActorCommand::ClaimEvent` / `ReleaseEvent` dispatches, encoding the
 //!   `ThreadPointer` as a `nostr:` URI (`nevent` / `naddr`).
+//! * [`FeedEmissionState`] — ADR-0055 Rung 6 S1: trap-proof per-tick emission
+//!   state that omits an unchanged feed frame when the host has declared
+//!   incremental-apply capability (exact byte equality, monotonic rev).
 //!
 //! See `docs/perf/op-centric-feed-architecture.md` §3-A/B/C/L.
 
 mod attribution;
+pub mod emission_state;
 pub mod typed_wire;
 mod wiring;
 
 pub use attribution::Nip10ReplyAttribution;
+pub use emission_state::FeedEmissionState;
 pub use typed_wire::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER,
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,

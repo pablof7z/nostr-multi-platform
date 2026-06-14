@@ -138,6 +138,7 @@
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
@@ -145,7 +146,9 @@ use nmp_core::{ActorCommand, KernelEventObserver};
 use nmp_feed::FeedController;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::op_feed::{build_actor_claim_sink, register_op_feed, ActorCommandDispatch};
+use nmp_nip01::op_feed::{
+    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, FeedEmissionState,
+};
 use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
 
@@ -252,6 +255,10 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
 
     // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //
+    // ADR-0055 Rung 6 Option A (R6-S1): the typed sidecar now uses
+    // `FeedEmissionState` to omit an unchanged feed frame when the host has
+    // declared incremental-apply capability (exact byte equality, monotonic rev).
+    //
     // Emit the typed FlatBuffers `OpFeedSnapshot` (`schema_id
     // "nmp.nip01.opfeed"`, `file_identifier "NOFS"`) ALONGSIDE the generic
     // `Value` `FeedController` registration above. A host with a `NOFS` decoder
@@ -263,21 +270,72 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     // engine again on the same tick the `FeedController` path snapshots it (two
     // window materializations per 4 Hz tick). Not load-bearing for correctness;
     // a shared per-tick snapshot cache is a tracked follow-up.
+    //
+    // R6-S1 emission state:
+    //
+    // `emission_epoch` is an `Arc<AtomicU64>` bumped on identity switch (via the
+    // account-switch callback below) so the `FeedEmissionState` can force a full
+    // baseline re-emit after an identity reset. The epoch is separate from
+    // `snapshot_epoch` (the frame-level epoch carried by the outer
+    // `SnapshotFrame` wire envelope) because the typed closure signature has no
+    // parameters — it cannot receive the frame epoch. Using an internal
+    // epoch counter driven by the identity-change callback achieves the same
+    // correctness (the first post-reset tick always emits) without changing the
+    // `TypedProjectionFn` signature.
+    let emission_epoch: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+    let emission_epoch_for_typed = Arc::clone(&emission_epoch);
     let engine_for_typed = Arc::clone(&engine);
+    let incremental_apply = app.incremental_apply_handle();
+    // `FeedEmissionState` is NOT `Send` (it holds `Vec<u8>` and is owned by the
+    // closure), but the closure itself must be `Send + Sync` as required by
+    // `register_typed_snapshot_projection`. We wrap the state in a `Mutex` to
+    // satisfy the `Sync` bound; the lock is uncontested in production (only the
+    // actor thread calls the closure under the registry's own mutex).
+    let emission_state = Arc::new(Mutex::new(FeedEmissionState::new(incremental_apply)));
     app.register_typed_snapshot_projection(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, move || {
         // ADR-0038 open-Q1 default: the typed sidecar mirrors the default
         // window (matches the diagnostics-handle path); viewport-aware
         // typed emit is a follow-up tied to the staged-removal close.
         let snapshot = engine_for_typed.snapshot(&nmp_feed::FeedRequest::default());
-        Some(nmp_core::TypedProjectionData {
-            key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
-            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
+        let payload = nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot);
+        let epoch = emission_epoch_for_typed.load(Ordering::Acquire);
+
+        // R6-S1: consult emission state to decide whether to emit or omit.
+        let Ok(mut state) = emission_state.lock() else {
+            // Poisoned mutex — degrade to always-emit (D6: safe fallback).
+            return Some(nmp_core::TypedProjectionData {
+                key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
+                schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+                schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(
+                    nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
+                )
                 .into_owned(),
-            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
-            ..Default::default()
-        })
+                payload,
+                ..Default::default()
+            });
+        };
+
+        let emit_decision = state.should_emit(payload, epoch);
+        drop(state); // release the lock before constructing the return value
+
+        match emit_decision {
+            None => {
+                // Byte-identical to last emission and capability is ON → omit.
+                // The host cache retains the prior value (omit==retain invariant).
+                None
+            }
+            Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
+                key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
+                schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+                schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
+                    .into_owned(),
+                payload,
+                projection_rev,
+                ..Default::default()
+            }),
+        }
     });
 
     // ── 6. Account-switch reset (NOT on kind:3 updates) ──────────────────
@@ -288,9 +346,17 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     // The callback self-detects against the slot, seeded with the
     // registration-time active pubkey so the first kind:3 fire is not a false
     // positive. See the module docs for the full switch race analysis.
+    //
+    // R6-S1: on an actual account switch we also bump `emission_epoch` so the
+    // `FeedEmissionState` forces a full baseline re-emit after the engine reset.
+    // This ensures the first post-switch tick always emits a fresh baseline even
+    // if the new account's feed happens to encode to the same bytes as the prior
+    // account's feed (a corner-case that cannot happen in practice since the
+    // engine resets to empty cards, but we guard it for correctness).
     let last_seen = Arc::new(Mutex::new(read_active(&active_account_slot)));
     let engine_for_cb = engine.clone();
     let slot_for_cb = active_account_slot.clone();
+    let emission_epoch_for_cb = Arc::clone(&emission_epoch);
     follow_set.on_change(Box::new(move || {
         let current = read_active(&slot_for_cb);
         let Ok(mut last) = last_seen.lock() else {
@@ -299,6 +365,9 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
         if *last != current {
             *last = current;
             engine_for_cb.reset_for_identity_change();
+            // R6-S1: bump the emission epoch so the typed closure forces a
+            // full baseline re-emit on the next tick after the identity reset.
+            emission_epoch_for_cb.fetch_add(1, Ordering::Release);
         }
     }));
 

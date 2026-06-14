@@ -58,6 +58,10 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::declare_incremental_apply(self)
     }
 
+    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        NmpApp::incremental_apply_handle(self)
+    }
+
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         NmpApp::set_coverage_hook(self, hook);
     }
