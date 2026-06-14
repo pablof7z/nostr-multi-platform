@@ -81,7 +81,10 @@ struct NostrAvatar: View {
         let resolvedUrl = url ?? profileHost?.profile(forPubkey: pubkey)?.pictureUrl
 
         ZStack {
-            Circle().fill(ChirpColor.avatar(from: resolvedColorHex))
+            // Monochrome grayscale fallback (no per-pubkey color) so generated
+            // avatars stay quiet on a monochrome screen. Real profile pictures
+            // render in full color over this.
+            Circle().fill(ChirpColor.avatarFallbackBackground)
             if let resolvedUrl, let u = URL(string: resolvedUrl) {
                 AsyncImage(url: u) { phase in
                     if let img = phase.image {
@@ -91,8 +94,8 @@ struct NostrAvatar: View {
             }
             if resolvedUrl == nil || resolvedUrl?.isEmpty == true {
                 Text(resolvedInitials)
-                    .font(.system(size: size * 0.4, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: size * 0.38, weight: .medium))
+                    .foregroundStyle(ChirpColor.avatarFallbackForeground)
             }
         }
         .frame(width: size, height: size)
