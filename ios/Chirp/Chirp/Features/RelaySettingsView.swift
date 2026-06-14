@@ -208,6 +208,14 @@ struct RelaySettingsView: View {
     }
 }
 
+/// A configured-relay row in Chirp's relay settings.
+///
+/// Thin shell over the shared `NostrRelayRow` gallery primitive (issue #996):
+/// it resolves the relay's role to the kernel-emitted `label` + `tint` token
+/// from `model.relayRoleOptions` (the same `relay_role_options` projection the
+/// gallery consumes) and hands those straight to the component. No role→label
+/// / role→tint derivation lives in Swift; the only presentation logic is the
+/// token→Color mapping owned by `NostrRelayRow.tintColor(for:)`.
 private struct RelayConfigRow: View {
     let relay: AppRelay
     let relayRoleOptions: [RelayRoleOption]
@@ -216,42 +224,12 @@ private struct RelayConfigRow: View {
         relayRoleOptions.first { $0.value == relay.role }
     }
 
-    private var roleLabel: String {
-        roleOption?.label ?? relay.role
-    }
-
-    private var roleTint: String {
-        roleOption?.tint ?? "accent"
-    }
-
     var body: some View {
-        HStack(spacing: ChirpSpace.m) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .foregroundStyle(roleColor)
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(relay.url)
-                    .font(ChirpFont.mono)
-                    .foregroundStyle(ChirpColor.textPrimary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Text(roleLabel)
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
-                .foregroundStyle(roleColor)
-                .padding(.horizontal, ChirpSpace.s)
-                .padding(.vertical, 3)
-                .background(roleColor.opacity(0.12), in: Capsule())
-        }
-        .padding(.vertical, ChirpSpace.s)
-    }
-
-    private var roleColor: Color {
-        relayRoleTint(roleTint)
+        NostrRelayRow(
+            url: relay.url,
+            roleLabel: roleOption?.label ?? relay.role,
+            roleTint: roleOption?.tint ?? "accent"
+        )
     }
 }
 
@@ -318,18 +296,5 @@ private struct RelayEditSheet: View {
 
     private var trimmedURL: String {
         url.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-private func relayRoleTint(_ tint: String) -> Color {
-    switch tint {
-    case "info":
-        return ChirpColor.network
-    case "success":
-        return ChirpColor.positive
-    case "neutral":
-        return ChirpColor.textSecondary
-    default:
-        return ChirpColor.accent
     }
 }
