@@ -18,6 +18,9 @@
 
 #[cfg(feature = "lmdb-backend")]
 mod conv;
+// K3 Stage D1 (ADR-0056 §3) — coverage-ledger read/write helpers.
+#[cfg(feature = "lmdb-backend")]
+mod coverage;
 #[cfg(feature = "lmdb-backend")]
 mod delete;
 #[cfg(feature = "lmdb-backend")]
@@ -180,6 +183,20 @@ mod inner {
         /// Backfilled once on store open for pre-V-52 databases — see
         /// `open.rs::backfill_relay_index`.
         pub(crate) relay_index: Database<Bytes, Bytes>,
+
+        /// K3 coverage ledger (ADR-0056 §3, Stage D1): `filter_hash || 0x1F ||
+        /// relay_url` → `covered_through` (8-byte BE unix-seconds).
+        ///
+        /// Records, per `(filter_hash, relay)`, the downward-closed timestamp
+        /// through which a sync has COMPLETED (EOSE on an un-floored REQ, or
+        /// NEG-DONE). Written by `EventStore::record_coverage`, read by
+        /// `EventStore::get_coverage`. Stage D1 only writes it (behind the
+        /// kernel's off-by-default `coverage_ledger_enabled` flag); the since-
+        /// floor stays presence-derived until the Stage D2 read swap. This is
+        /// the purpose-built successor to the #1090-deleted `nmp-watermarks`
+        /// sub-db — re-created with real readers/writers, not re-activated
+        /// (ADR-0056 §2.1).
+        pub(crate) coverage: Database<Bytes, Bytes>,
 
         // ── GC scan state (V-117 fixes) ───────────────────────────────────────
         /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that

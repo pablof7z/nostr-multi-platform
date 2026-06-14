@@ -45,10 +45,10 @@ pub mod relay_scores {
 }
 pub use mem::MemEventStore;
 pub use types::{
-    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
-    ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent,
-    TombstoneOrigin, TombstoneRow, VerifiedEvent, GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP,
-    HOT_EVENT_CEILING,
+    coverage_key, coverage_key_parts, CoverageRow, DeleteFilter, DumpFormat, DumpStats, EventId,
+    GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl,
+    StoreQuery, StoredEvent, TombstoneOrigin, TombstoneRow, VerifiedEvent, COVERAGE_KEY_SEP,
+    GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).

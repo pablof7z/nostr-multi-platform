@@ -88,12 +88,16 @@ mod cache_serve_universal_tests;
 #[cfg(test)]
 mod cache_serve_watermark_tests;
 pub(crate) mod closed_reason;
+// K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
+mod coverage_ledger;
 mod diagnostic_counters;
 mod discovery;
 /// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
 pub mod wallet_access;
 #[cfg(test)]
 mod discovery_tests;
+#[cfg(test)]
+mod coverage_ledger_d1_tests;
 #[cfg(test)]
 mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
@@ -272,6 +276,8 @@ mod typed_projections_wave_c_diagnostics_tests;
 mod typed_projections_wave_c_tests;
 mod types;
 mod update;
+// `WireSub` row (moved out of `types.rs` for the LOC cap).
+mod wire_sub;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
 #[cfg(any(test, feature = "test-support"))]
 pub use update::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
@@ -908,6 +914,16 @@ pub struct Kernel {
     /// lifetime. #170: relay-scoped so a CLOSE for one relay never un-pins a
     /// sibling.
     wire: WireSubscriptionState,
+    /// K3 Stage D1 (ADR-0056 §3) — off-by-default flag gating the coverage-
+    /// ledger WRITE path. When `false` (the default) the kernel records NO
+    /// coverage at EOSE / NEG-DONE, so D1 is a pure no-op additive change and
+    /// nothing reads the ledger anyway (the since-floor stays presence-derived
+    /// until Stage D2). When `true` the ledger fills via
+    /// `EventStore::record_coverage`, but READ behaviour is still unchanged in
+    /// D1 — the floor is swapped to read the ledger only in Stage D2. The
+    /// eventual default-on rides a single release cut (ADR-0056 §3 Stage D) so
+    /// git-rev-pinning external consumers can pin across the change.
+    coverage_ledger_enabled: bool,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
     /// `make_update` tick. The `Metrics::payload_bytes` diagnostic is sourced
@@ -1946,6 +1962,8 @@ impl Kernel {
             timeline_requested: false,
             contacts_deadline: None,
             wire: WireSubscriptionState::default(),
+            // K3 Stage D1: OFF by default — D1 ships the write path dormant.
+            coverage_ledger_enabled: false,
             update_sequence: 0,
             last_payload_bytes: 0,
             last_make_update_us: 0,
@@ -2380,6 +2398,7 @@ impl Kernel {
         sub_id: String,
         filter_summary: String,
         initial_state: &str,
+        since_floor: Option<u64>,
     ) {
         self.wire.subs.insert(
             (relay_url.clone(), sub_id.clone()),
@@ -2394,6 +2413,7 @@ impl Kernel {
                 last_event_at: None,
                 eose_at: None,
                 close_reason: None,
+                since_floor,
             },
         );
         self.changed_since_emit = true;

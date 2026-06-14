@@ -7,7 +7,8 @@ use std::collections::HashSet;
 use std::ops::ControlFlow;
 
 use super::{
-    delete, domain, dump as dump_mod, gc, insert, query, query_relay_index, LmdbEventStore,
+    coverage, delete, domain, dump as dump_mod, gc, insert, query, query_relay_index,
+    LmdbEventStore,
 };
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
@@ -177,6 +178,27 @@ impl EventStore for LmdbEventStore {
         // or claim. A missed stamp just means the next claim re-verifies eagerly.
         if let Err(e) = self.inner.lmdb.set_check_again_after_committed(key, ts_ms) {
             tracing::warn!("F-TTL: set_check_again_after failed (ignored): {e}");
+        }
+    }
+
+    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+
+    fn record_coverage(&self, filter_hash: &str, relay: &str, covered_through: u64) {
+        // D6 graceful degrade: a coverage-write failure must never block ingest
+        // or the EOSE/NEG-DONE path. A missed write only means the Stage D2 read
+        // falls back to the presence floor for this shape — never a wrong floor.
+        if let Err(e) = coverage::record_coverage(&self.inner, filter_hash, relay, covered_through) {
+            tracing::warn!("K3 coverage: record_coverage failed (ignored): {e}");
+        }
+    }
+
+    fn get_coverage(&self, filter_hash: &str, relay: &str) -> Option<u64> {
+        match coverage::get_coverage(&self.inner, filter_hash, relay) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("K3 coverage: get_coverage failed (treated as None): {e}");
+                None
+            }
         }
     }
 }

@@ -28,12 +28,14 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     const MAX_READERS: u32 = 126;
     // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
-    // expiry-index (V-118), relay-index (V-52).  The nmp-claims /
-    // nmp-claims-budget sub-dbs were removed in #1090 Stage 1 (persisted claims
-    // deleted in favour of a kernel-derived ephemeral pin set passed to
-    // `gc_step_with_pins`).  The nmp-watermarks sub-db was removed in #1090
-    // Stage 3 (dead persisted-watermark machinery had zero production callers).
-    const NMP_ADDITIONAL_DBS: u32 = 9;
+    // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1).  The
+    // nmp-claims / nmp-claims-budget sub-dbs were removed in #1090 Stage 1
+    // (persisted claims deleted in favour of a kernel-derived ephemeral pin set
+    // passed to `gc_step_with_pins`).  The nmp-watermarks sub-db was removed in
+    // #1090 Stage 3 (dead persisted-watermark machinery had zero production
+    // callers); the K3 coverage ledger below is its purpose-built, actually-read
+    // successor (ADR-0056 §2.1 / §3 — re-created, not re-activated).
+    const NMP_ADDITIONAL_DBS: u32 = 10;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -67,6 +69,9 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let expiry_index = open("nmp-expiry-index", &mut txn)?;
     // V-52 — relay-origin reverse index: relay_url || 0x00 || event_id(32) → empty.
     let relay_index = open("nmp-relay-index", &mut txn)?;
+    // K3 Stage D1 (ADR-0056 §3) — coverage ledger:
+    // filter_hash || 0x1F || relay_url → covered_through(8 BE).
+    let coverage = open("nmp-coverage", &mut txn)?;
 
     // Initialise the in-memory seq counter from the max persisted value so
     // a crash-restart never reuses sequence numbers.
@@ -116,6 +121,7 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             lru_seq: AtomicU64::new(lru_seq_init),
             expiry_index,
             relay_index,
+            coverage,
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
         }),
     })

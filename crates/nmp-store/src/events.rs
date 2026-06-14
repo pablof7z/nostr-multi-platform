@@ -396,6 +396,39 @@ pub trait EventStore: Send + Sync {
     /// missed stamp simply means the next claim re-verifies eagerly).
     fn set_check_again_after(&self, _key: ReplaceableKey, _ts_ms: u64) {}
 
+    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+
+    /// Advance the downward-closed coverage watermark for `(filter_hash, relay)`
+    /// to `max(existing, covered_through)`.
+    ///
+    /// A row means "a sync covering `[0, covered_through]` has COMPLETED for this
+    /// shape on this relay" (EOSE on an un-floored REQ, or NEG-DONE). The
+    /// advance is monotonic: a later completion can only raise the proven bound.
+    /// See [`crate::CoverageRow`] for the honest-coverage rationale (why a
+    /// `since`-floored EOSE must NOT call this).
+    ///
+    /// Stage D1 only WRITES the ledger; nothing reads it yet (the since-floor
+    /// stays presence-derived until Stage D2). The kernel gates every call on
+    /// the off-by-default `coverage_ledger_enabled` flag, so with the flag off
+    /// this method is never invoked and zero rows are written.
+    ///
+    /// Default no-op so any non-overriding backend compiles unchanged; both
+    /// shipped backends (`MemEventStore`, `LmdbEventStore`) override it. Errors
+    /// are swallowed at this seam (D6 graceful degrade — a missed coverage write
+    /// only means the Stage D2 read falls back to the presence floor, never a
+    /// wrong answer).
+    fn record_coverage(&self, _filter_hash: &str, _relay: &str, _covered_through: u64) {}
+
+    /// Read the coverage watermark for `(filter_hash, relay)`, or `None` if no
+    /// completed-coverage row exists.
+    ///
+    /// Stage D2 reads this as the since-floor source; Stage D1 exposes it only
+    /// so the write path is testable. Default `None` (non-overriding backends
+    /// and the un-recorded case both read as "no coverage").
+    fn get_coverage(&self, _filter_hash: &str, _relay: &str) -> Option<u64> {
+        None
+    }
+
     // ─── Export ──────────────────────────────────────────────────────────────
 
     /// Dump all store contents in the requested format.
