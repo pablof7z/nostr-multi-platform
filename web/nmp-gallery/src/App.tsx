@@ -31,17 +31,43 @@ const runtime = createGalleryRuntime();
 void runtime.start(SHOWCASE_RELAYS);
 
 export default function App(): JSX.Element {
-  // Claim the showcase identity only once a relay is actually connected. The
-  // kernel's claim send-gate (relays_ready) parks a claim issued before any
-  // relay is up, so claiming at mount would never send the kind:0 REQ. Claiming
-  // on the connected edge is exactly how Chirp resolves profiles (claims fire
-  // as feed cards mount, after the feed opened post-connect).
-  let claimed = false;
+  // Resolve the showcase profile (and, as events arrive, their authors) with a
+  // release-reclaim retry. A profile claim's kind:0 REQ is dropped if its indexer
+  // relay (e.g. purplepag) isn't connected yet when the claim fires — and
+  // claim_profile then dedupes ("already requested"), so NO later claim ever
+  // re-fetches it (it stays poisoned by the dropped REQ). Releasing the sole
+  // consumer clears that requested state; re-claiming issues a fresh REQ once
+  // more indexers are connected. One consumer per pubkey keeps the release
+  // effective (avatar components add their own consumer only after resolution).
+  const profileConsumer = (pk: string) => `gallery-profile-${pk.slice(0, 8)}`;
+  const profileResolved = (pk: string) => {
+    const p = runtime.host.profile(pk);
+    return !!p && (!!p.displayName || !!p.pictureUrl);
+  };
+  let profileRetryStarted = false;
   createEffect(() => {
-    if (runtime.anyIndexerConnected() && !claimed) {
-      claimed = true;
-      runtime.host.claimProfile(SHOWCASE_PUBKEY, "gallery-root");
-    }
+    if (!runtime.anyIndexerConnected() || profileRetryStarted) return;
+    profileRetryStarted = true;
+    let attempt = 0;
+    const tick = () => {
+      const desired = new Set<string>([SHOWCASE_PUBKEY]);
+      for (const ev of [noteRaw(), articleRaw(), highlightRaw()]) {
+        if (ev?.authorPubkey) desired.add(ev.authorPubkey);
+      }
+      let allResolved = true;
+      for (const pk of desired) {
+        if (profileResolved(pk)) continue;
+        allResolved = false;
+        const c = profileConsumer(pk);
+        if (attempt > 0) runtime.host.releaseProfile(pk, c);
+        runtime.host.claimProfile(pk, c);
+      }
+      attempt += 1;
+      if (allResolved || attempt >= 20) clearInterval(timer);
+    };
+    tick();
+    const timer = setInterval(tick, 3000);
+    onCleanup(() => clearInterval(timer));
   });
 
   // Claim the showcase events for the content-view component. Event-id fetches
@@ -57,9 +83,9 @@ export default function App(): JSX.Element {
   // or we exhaust the budget. Idempotent and self-stopping.
   let claimStarted = false;
   const claimTargets = [
-    { uri: SHOWCASE_NOTE.uri, id: SHOWCASE_NOTE.primaryId, name: "note" },
-    { uri: SHOWCASE_ARTICLE.uri, id: SHOWCASE_ARTICLE.primaryId, name: "article" },
-    { uri: SHOWCASE_HIGHLIGHT.uri, id: SHOWCASE_HIGHLIGHT.primaryId, name: "highlight" },
+    { uri: SHOWCASE_NOTE.uri, id: SHOWCASE_NOTE.primaryId, consumer: "gallery-note" },
+    { uri: SHOWCASE_ARTICLE.uri, id: SHOWCASE_ARTICLE.primaryId, consumer: "gallery-article" },
+    { uri: SHOWCASE_HIGHLIGHT.uri, id: SHOWCASE_HIGHLIGHT.primaryId, consumer: "gallery-highlight" },
   ];
   createEffect(() => {
     if (!runtime.anyContentConnected() || claimStarted) return;
@@ -68,10 +94,14 @@ export default function App(): JSX.Element {
     const tick = () => {
       let allResolved = true;
       for (const t of claimTargets) {
-        if (!runtime.claimedEvent(t.id)) {
-          allResolved = false;
-          runtime.claimEvent(t.uri, `gallery-${t.name}-r${attempt}`);
-        }
+        if (runtime.claimedEvent(t.id)) continue;
+        allResolved = false;
+        // claim_event dedupes ("already requested → no fetch"), so a first REQ
+        // dropped because its hint relay wasn't connected yet would never retry.
+        // Release first (drops the last consumer → clears the requested state),
+        // then re-claim to force a FRESH REQ now that more relays are connected.
+        if (attempt > 0) runtime.releaseEvent(t.uri, t.consumer);
+        runtime.claimEvent(t.uri, t.consumer);
       }
       attempt += 1;
       if (allResolved || attempt >= 15) clearInterval(timer);
@@ -101,22 +131,6 @@ export default function App(): JSX.Element {
   const showcaseNpub = createMemo(() => runtime.npub(SHOWCASE_PUBKEY));
   // Captured once at mount for the relative-time labels on quoted events.
   const nowSeconds = Math.floor(Date.now() / 1000);
-
-  // Claim the author profile of every resolved event so the embed cards show a
-  // REAL display name + avatar, never an "unknown"/unresolved byline (the goal
-  // forbids unresolved data). The kernel re-enriches `claimed_events` with the
-  // author's kind:0 on the next snapshot once the profile resolves. Idempotent:
-  // claimProfile de-dupes per (pubkey, consumer).
-  const claimedAuthors = new Set<string>();
-  createEffect(() => {
-    for (const ev of [noteRaw(), articleRaw(), highlightRaw()]) {
-      const pk = ev?.authorPubkey;
-      if (pk && !claimedAuthors.has(pk)) {
-        claimedAuthors.add(pk);
-        runtime.host.claimProfile(pk, `embed-author-${pk.slice(0, 8)}`);
-      }
-    }
-  });
 
   // Media-grid honesty: only show images that ACTUALLY load. Old articles can
   // carry dead/relative image links; the goal forbids showing a broken image, so

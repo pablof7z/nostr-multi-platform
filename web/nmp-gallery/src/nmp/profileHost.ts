@@ -80,6 +80,10 @@ export type GalleryRuntime = {
   /** Claim a single event by `nostr:` URI (nevent/naddr). Routes through the
    *  content-relay lane (Discovery seed), independent of the indexer lane. */
   claimEvent(uri: string, consumerId: string): void;
+  /** Release an event claim. Dropping the last consumer clears the kernel's
+   *  "already requested" dedupe state, so a subsequent `claimEvent` re-issues a
+   *  fresh REQ — the basis of the cold-start re-claim retry. */
+  releaseEvent(uri: string, consumerId: string): void;
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */
   claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
@@ -376,6 +380,14 @@ export function createGalleryRuntime(): GalleryRuntime {
         action_type: "nmp.kernel.claim_event",
         payload: { uri, consumer_id: consumerId },
         correlation_id: `claim-event-${claimSeq++}`,
+      });
+    },
+    releaseEvent(uri: string, consumerId: string) {
+      void request({
+        type: "dispatch",
+        action_type: "nmp.kernel.release_event",
+        payload: { uri, consumer_id: consumerId },
+        correlation_id: `release-event-${claimSeq++}`,
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
