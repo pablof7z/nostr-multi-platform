@@ -7,6 +7,7 @@ import nmp.kernel.ActiveAccountSnapshot
 import nmp.transport.FrameKind
 import nmp.transport.Metrics
 import nmp.transport.Pair as TransportPair
+import nmp.transport.ProjectionPresenceState
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
 import nmp.transport.TypedProjection
@@ -315,6 +316,7 @@ class TypedAccountsDecoderTest {
             /* storeOpenFailureOffset = */ 0,
             /* noConfiguredRelays = */ null,
             /* negentropySyncStatsOffset = */ 0,
+            /* snapshotEpoch = */ 0UL, /* sessionId = */ 0UL,
         )
         val frame = UpdateFrame.createUpdateFrame(b, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(b, frame)
@@ -327,7 +329,10 @@ class TypedAccountsDecoderTest {
         val fileIdOffset = b.createString(if (key == "accounts") "KACC" else "KACT")
         val payloadVec = TypedPayload.createPayloadVector(b, bytes.toUByteArray())
         val typedPayload = TypedPayload.createTypedPayload(b, schemaIdOffset, 1u, fileIdOffset, payloadVec)
-        return TypedProjection.createTypedProjection(b, keyOffset, typedPayload)
+        return TypedProjection.createTypedProjection(
+            b, keyOffset, typedPayload,
+            /* projectionRev = */ 0UL, /* state = */ ProjectionPresenceState.Changed,
+        )
     }
 
     private fun valueString(b: FlatBufferBuilder, value: String): Int {
