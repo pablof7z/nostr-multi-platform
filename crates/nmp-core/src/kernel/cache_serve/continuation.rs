@@ -139,6 +139,15 @@ impl Kernel {
             let exhausted = visited < visit_limit;
             if exhausted {
                 // Index has no more matches below the cursor — next query.
+                // K3 Stage B3: a cursor-less query that exhausted naturally
+                // covered its whole stored set this session, so clear any
+                // stale truncation mark (the floor is now safe for it).
+                if let Some(key) = super::cursor_less_query_key(&pending.queries[pending.query_idx])
+                {
+                    if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
+                        set.remove(&key);
+                    }
+                }
                 pending.query_idx += 1;
                 continue;
             }
@@ -148,6 +157,24 @@ impl Kernel {
             // this may miss the tail — relay delivery fills the gap (ADR §9
             // "store first, relay refinement second").
             if query_until_mut(&mut pending.queries[pending.query_idx]).is_none() {
+                // K3 Stage B3: this cursor-less query hit the visit limit (not
+                // natural exhaustion) AND serve depth is not yet satisfied
+                // (`remaining_depth > 0`), so the tick BUDGET — not the depth
+                // policy — cut the serve short, stranding the stored tail
+                // within serve depth. Record the truncation so the watermark
+                // refuses to floor this shape; otherwise the floor would
+                // suppress the relay re-send of the stranded tail. (When depth
+                // IS satisfied the cut is the intended `serve_depth_for_shape`
+                // limit, the documented ADR §9 over-serve, not a budget hole.)
+                if pending.remaining_depth > 0 {
+                    if let Some(key) =
+                        super::cursor_less_query_key(&pending.queries[pending.query_idx])
+                    {
+                        if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
+                            set.insert(key);
+                        }
+                    }
+                }
                 pending.query_idx += 1;
                 continue;
             }
@@ -164,7 +191,10 @@ impl Kernel {
                 pending.query_idx += 1;
                 continue;
             }
-            match (new_until, query_until_mut(&mut pending.queries[pending.query_idx])) {
+            match (
+                new_until,
+                query_until_mut(&mut pending.queries[pending.query_idx]),
+            ) {
                 (Some(ts), Some(until)) => *until = Some(ts),
                 _ => {
                     // Cursor-less query variant (cannot occur for E1 shapes;

@@ -87,7 +87,7 @@ pub(super) mod continuation;
 pub(super) mod queries;
 
 pub(in crate::kernel) use queries::{
-    completion_key_for_interest, query_since_mut, query_until_mut,
+    completion_key_for_interest, cursor_less_query_key, query_since_mut, query_until_mut,
     shape_needs_ingest_parser_dispatch, shape_to_store_queries, watermark_from_queries,
 };
 
@@ -372,5 +372,11 @@ impl Kernel {
     pub(in crate::kernel) fn clear_served_interest_shapes(&mut self) {
         self.served_interest_shapes.clear();
         self.pending_cache_serves.clear();
+        // K3 Stage B3: the truncation set is session-scoped (it tracks which
+        // cursor-less serves stranded a tail this session). Account-switch
+        // resets the serve state, so clear it too.
+        if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
+            set.clear();
+        }
     }
 }

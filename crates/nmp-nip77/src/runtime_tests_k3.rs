@@ -163,9 +163,142 @@ fn fallback_req_after_neg_err_keeps_the_floor() {
     );
 }
 
+/// K3 Stage B2 ORACLE — a relay that accepts NEG-OPEN then goes SILENT (no
+/// NEG-MSG, no NEG-ERR, no NOTICE) must not starve the interest: after the
+/// liveness deadline elapses, the idle sweep falls back to a plain REQ.
+///
+/// Scenario: `intercept_req` opens a NEG session (the wire sub is "live" with
+/// no EOSE). The relay never responds. Without a liveness deadline the session
+/// sits in `Probing` forever and the interest is never served. The fix stamps
+/// `opened_at_secs` at open and `on_idle_tick` (the actor's wall-clock-gated
+/// idle hook — D8, no sleep/loop) falls back to the plain REQ once
+/// `now − opened_at ≥ NEG_OPEN_LIVENESS_DEADLINE_SECS`.
+///
+/// A `MonotonicSecondClock` is installed so the deadline can be crossed by
+/// advancing the kernel clock — no real sleep. The companion assertions confirm
+/// the sweep does NOT fire before the deadline (a live-but-slow relay is not
+/// torn down).
+///
+/// FAILS on pre-B2 master (`on_idle_tick` is the no-op default → no REQ ever),
+/// passes after the liveness deadline lands.
+#[test]
+fn silent_relay_after_neg_open_falls_back_to_req_at_deadline() {
+    use nmp_core::time::{Duration, UNIX_EPOCH};
+    use nmp_core::MonotonicSecondClock;
+    use std::sync::Arc;
+
+    let floor: u64 = 9_000;
+    let mut kernel = Kernel::testing_new(50);
+
+    // Install an advanceable clock anchored well past the epoch.
+    let clock = Arc::new(MonotonicSecondClock::new(
+        UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+    ));
+    kernel.set_clock(clock.clone());
+
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let ctx = floored_followfeed_ctx(floor);
+
+    // Open the NEG session. The relay then goes completely silent.
+    let opened = runtime
+        .intercept_req(&mut kernel, &ctx)
+        .expect("large floored filter must open NIP-77");
+    assert_eq!(opened.len(), 1, "OneShot opens a single NEG-OPEN");
+
+    // Before the deadline: the idle sweep must NOT tear the session down.
+    clock.advance_secs(29);
+    let early = runtime.on_idle_tick(&mut kernel);
+    assert!(
+        early.is_empty(),
+        "a NEG session under the liveness deadline must not fall back yet \
+         (a slow-but-live relay must be left alone); got {early:?}"
+    );
+
+    // Cross the 30 s deadline: the sweep falls back to a plain REQ.
+    clock.advance_secs(1);
+    let out = runtime.on_idle_tick(&mut kernel);
+    assert_eq!(
+        out.len(),
+        1,
+        "after the liveness deadline a silent NEG relay must emit exactly one \
+         fallback REQ for the starved interest; got {out:?}"
+    );
+    let value: Value = serde_json::from_str(out[0].text()).expect("fallback REQ JSON");
+    assert_eq!(value[0], Value::from("REQ"), "fallback must be a plain REQ");
+    assert_eq!(
+        value[1], "sub-large",
+        "fallback REQ must reuse the starved interest's sub id"
+    );
+    // The fallback plain REQ retains the watermark floor (same contract as the
+    // NEG-ERR fallback — un-flooring is a NEG-only widening, Stage A).
+    assert_eq!(
+        value[2].get("since").and_then(Value::as_u64),
+        Some(floor),
+        "the liveness-deadline fallback REQ must retain the watermark floor"
+    );
+
+    // Idempotent: the session was removed, so a second sweep emits nothing
+    // (no duplicate REQ storm on every subsequent idle tick).
+    clock.advance_secs(60);
+    assert!(
+        runtime.on_idle_tick(&mut kernel).is_empty(),
+        "the timed-out session must be removed so the sweep does not re-emit"
+    );
+}
+
+/// B2 companion — a relay that RESPONDED (drove the reconciliation to
+/// completion) must never trigger a spurious liveness fallback. The NEG-MSG
+/// terminal removes the session, so a much-later idle sweep emits nothing: the
+/// deadline only ever fires for genuinely silent relays, never as a duplicate
+/// of a completed sync.
+#[test]
+fn responded_relay_never_triggers_liveness_fallback() {
+    use nmp_core::time::{Duration, UNIX_EPOCH};
+    use nmp_core::MonotonicSecondClock;
+    use std::sync::Arc;
+
+    let mut kernel = Kernel::testing_new(50);
+    let clock = Arc::new(MonotonicSecondClock::new(
+        UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+    ));
+    kernel.set_clock(clock.clone());
+
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let ctx = floored_followfeed_ctx(9_000);
+    let opened = runtime
+        .intercept_req(&mut kernel, &ctx)
+        .expect("NEG-OPEN opens");
+
+    // The relay responds with a NEG-MSG that completes the reconciliation
+    // (empty server set → the single round resolves to Done, session removed).
+    let mut server = negentropy_server(Vec::new());
+    let client_payload = client_neg_payload(opened[0].text());
+    let server_payload = server.reconcile(&client_payload).expect("server reconcile");
+    let relay_msg = format!(
+        r#"["NEG-MSG","sub-large","{}"]"#,
+        hex_encode(&server_payload)
+    );
+    let _ = runtime.on_relay_text(&mut kernel, "wss://relay.example", &relay_msg);
+
+    // Long after the deadline window: no session remains, so the sweep is a
+    // no-op — a completed sync must never be re-issued as a fallback REQ.
+    clock.advance_secs(120);
+    assert!(
+        runtime.on_idle_tick(&mut kernel).is_empty(),
+        "a relay that responded and completed reconciliation must never trigger \
+         a liveness fallback — the deadline is only for silent relays"
+    );
+}
+
 // ─── helpers (self-contained for this module) ────────────────────────────────
 
-fn insert_cached_event(kernel: &mut Kernel, id: [u8; 32], author: &str, kind: u32, created_at: u64) {
+fn insert_cached_event(
+    kernel: &mut Kernel,
+    id: [u8; 32],
+    author: &str,
+    kind: u32,
+    created_at: u64,
+) {
     let raw = RawEvent {
         id: hex_encode(&id),
         pubkey: author.to_string(),
