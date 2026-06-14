@@ -17,17 +17,27 @@
 **Goal:** make the win measurable and prevent regressions before changing behavior.
 
 **LANDED** — this PR. Adds:
-- Per-emit `NMP_PERF` log line extended with per-projection key breakdown
-  (`projection_count`, `changed_projection_count`) via a new
-  `EmitProjectionStats` struct in `crates/nmp-core/src/kernel/update/helpers.rs`.
-- Lightweight always-on counters in `Kernel` (two `u64` fields; zero overhead
-  when unchanged projections dominate).
+- Per-emit `NMP_PERF` log line extended (in `test-support` builds only) with a
+  per-projection key breakdown (`projection_count`, `changed_projection_count`,
+  `wasted_bytes`) computed by the `churn` submodule in
+  `crates/nmp-core/src/kernel/update/helpers.rs`.
+- **Instrumentation is entirely `cfg(any(test, feature = "test-support"))`-gated**
+  — a production build does ZERO measurement work on the emit path: no payload
+  hashing, no per-key store, no counters. The measurement pass (a `DefaultHasher`
+  fingerprint of each projection's payload, O(payload bytes)) runs only in
+  test-support builds (ffi-stress enables `test-support`). Rung 1's real O(1) rev
+  manifest supersedes this measurement; it is never carried into production.
+- State (`PREV_PAYLOAD_HASHES`) lives in a `test-support`-only thread-local plus
+  two process-global `AtomicU64`s (`PROCESS_PROJECTIONS_SERIALIZED` /
+  `PROCESS_PROJECTIONS_CHANGED`), NOT on `Kernel` — the production `Kernel`
+  struct carries zero instrumentation fields.
 - New ffi-stress scenario `S6-single-projection-churn` in
   `crates/nmp-testing/bin/ffi-stress/s6_single_projection_churn.rs`: drives a
-  workload where **only one projection changes per tick** (a profile claim cycles
-  through `claim_profile`/`release_profile` to dirty `claimed_profiles`) while
-  the other 17 built-ins are static — measures `projections_serialized /
-  projections_changed` ratio and `wasted_bytes_ratio`.
+  workload where **only one projection family changes per emit cycle** (a profile
+  claim cycles through `claim_profile`/`release_profile`, dirtying the
+  `claimed_profiles` + `resolved_profiles` cluster) while the other built-ins are
+  static — measures `projections_serialized / projections_changed` ratio and the
+  wasted-bytes ratio.
 - The flood baseline (`snapshot-pressure` S3) re-run for comparison.
 
 **Test:** `cargo test -p nmp-core --lib kernel` + doctrine smoke.

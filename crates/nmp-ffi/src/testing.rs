@@ -224,14 +224,14 @@ pub extern "C" fn nmp_app_read_projection_churn_stats(
         // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
         unsafe {
             *out_serialized =
-                nmp_core::PROCESS_PROJECTIONS_SERIALIZED.load(Ordering::Relaxed);
+                nmp_core::testing::PROCESS_PROJECTIONS_SERIALIZED.load(Ordering::Relaxed);
         }
     }
     if !out_changed.is_null() {
         // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
         unsafe {
             *out_changed =
-                nmp_core::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
+                nmp_core::testing::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
         }
     }
 }

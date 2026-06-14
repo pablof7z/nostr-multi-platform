@@ -17,84 +17,21 @@
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
 use super::{ratio, Instant, Kernel, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ};
-use crate::update_envelope::{encode_snapshot_with_envelope, TypedProjectionData, UpdateFrameBytes};
-use std::hash::{Hash, Hasher};
+use crate::update_envelope::{encode_snapshot_with_envelope, UpdateFrameBytes};
 
 mod helpers;
 mod projections;
 mod views;
 
+// ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
+// pass (payload hashing, per-key hash store, cumulative counters) is gated on
+// `test-support` so a production build does ZERO instrumentation work on the
+// emit path. See `update::helpers::churn`. Rung 1's real O(1) rev manifest
+// supersedes this measurement; it is never carried into production.
+#[cfg(any(test, feature = "test-support"))]
+pub use helpers::churn::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
+
 pub use projections::KERNEL_BUILTIN_PROJECTION_KEYS;
-
-/// ADR-0055 Rung 0 — process-global churn counters for the ffi-stress harness.
-///
-/// Gated on `test-support` so they are never compiled into production binaries.
-/// The harness reads the counters before and after a measurement window to
-/// compute per-tick averages without needing a per-tick callback channel.
-///
-/// `PROCESS_PROJECTIONS_SERIALIZED` and `PROCESS_PROJECTIONS_CHANGED` are
-/// incremented by `make_update` on every tick. Both start at 0 and never
-/// reset (lifetime = process). The harness takes a snapshot, runs the
-/// scenario, takes another snapshot, and computes the delta.
-#[cfg(any(test, feature = "test-support"))]
-pub static PROCESS_PROJECTIONS_SERIALIZED: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-#[cfg(any(test, feature = "test-support"))]
-pub static PROCESS_PROJECTIONS_CHANGED: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
-/// ADR-0055 Rung 0 — emit-level projection churn statistics.
-///
-/// Computed once per `make_update` tick and used both in the `NMP_PERF`
-/// log line and by the ffi-stress S6 harness via the accumulator accessors
-/// on `Kernel`. Kept zero-cost for the caller: all computation is in the
-/// helper that fills this struct, never in hot-path branches.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct EmitProjectionStats {
-    /// Total typed projections in this frame (built-in + host-registered).
-    pub(crate) total: u64,
-    /// Projections whose payload bytes changed since the previous tick.
-    /// A missing prior entry (first emit for that key) counts as changed.
-    pub(crate) changed: u64,
-    /// Total bytes of ALL serialized projection payloads this tick.
-    pub(crate) total_bytes: u64,
-    /// Bytes attributable to changed projections only.
-    pub(crate) changed_bytes: u64,
-}
-
-/// Compute [`EmitProjectionStats`] for a single emit and update the kernel's
-/// per-key payload-hash table.
-///
-/// Uses `DefaultHasher` (not a cryptographic hash) to fingerprint each
-/// projection's `payload` bytes. O(total payload bytes) — this is dominated
-/// by the FlatBuffers `encode_snapshot_with_envelope` call that follows.
-///
-/// The hash table is updated in-place so the next tick's comparison is O(1)
-/// per projection (one `HashMap::insert` / `HashMap::get` pair per key).
-fn measure_projection_churn(
-    typed: &[TypedProjectionData],
-    prev_hashes: &mut std::collections::HashMap<String, u64>,
-) -> EmitProjectionStats {
-    let mut stats = EmitProjectionStats::default();
-    for proj in typed {
-        let bytes = proj.payload.len() as u64;
-        // Compute a fast non-cryptographic fingerprint of the payload bytes.
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        proj.payload.hash(&mut hasher);
-        let digest = hasher.finish();
-
-        stats.total += 1;
-        stats.total_bytes += bytes;
-
-        let prev = prev_hashes.insert(proj.key.clone(), digest);
-        if prev != Some(digest) {
-            // Either first-seen (None) or payload changed.
-            stats.changed += 1;
-            stats.changed_bytes += bytes;
-        }
-    }
-    stats
-}
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.
 ///
@@ -341,20 +278,12 @@ impl Kernel {
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
         // ADR-0055 Rung 0 — measure per-tick projection churn BEFORE serializing.
-        // `measure_projection_churn` is O(total payload bytes) which is dominated
-        // by the encode_snapshot_with_envelope call below; no perf regression.
-        let churn = measure_projection_churn(&typed, &mut self.prev_typed_payload_hashes);
-        self.cumulative_projections_serialized =
-            self.cumulative_projections_serialized.saturating_add(churn.total);
-        self.cumulative_projections_changed =
-            self.cumulative_projections_changed.saturating_add(churn.changed);
-        // Feed the test-support process globals (no-op in production builds).
+        // The whole pass (payload hashing, per-key store, process counters) is
+        // `test-support`-only: in a production build this binding does not exist
+        // and the `NMP_PERF` log below compiles with no churn fields, so the
+        // emit path does ZERO instrumentation work. See `helpers::churn`.
         #[cfg(any(test, feature = "test-support"))]
-        {
-            use std::sync::atomic::Ordering;
-            PROCESS_PROJECTIONS_SERIALIZED.fetch_add(churn.total, Ordering::Relaxed);
-            PROCESS_PROJECTIONS_CHANGED.fetch_add(churn.changed, Ordering::Relaxed);
-        }
+        let churn = helpers::churn::measure_emit_churn(&typed);
         // ADR-0044 / PR-B (#991/#979): emit only the typed Tier-3 envelope +
         // typed-projection sidecar. The generic `payload:Value` slot is
         // intentionally absent from the wire (set to `None` in
@@ -373,17 +302,10 @@ impl Kernel {
         // `removed` / `visible`) was removed, so the perf line is gated on
         // `batch_events` alone and no longer reports the feed counters.
         if batch_events > 0 {
-            // ADR-0055 Rung 0: churn fields are the empirical anchor.
-            // `projection_count` = total typed projections serialized this tick.
-            // `changed_projection_count` = those whose payload actually changed
-            //   vs the previous tick (via DefaultHasher digest comparison).
-            // `wasted_bytes` = bytes spent re-serializing unchanged projections.
-            let wasted_bytes = churn.total_bytes.saturating_sub(churn.changed_bytes);
-            self.log(format!(
+            let mut line = format!(
                 "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} \
                  make_update_us={} serialize_us={} event_to_emit_ms={} \
-                 max_event_to_emit_ms={} projection_count={} \
-                 changed_projection_count={} wasted_bytes={}",
+                 max_event_to_emit_ms={}",
                 self.rev,
                 batch_events,
                 encoded.len(),
@@ -392,10 +314,22 @@ impl Kernel {
                 last_event_to_emit_ms
                     .map_or_else(|| "none".to_string(), |value| value.to_string()),
                 self.max_event_to_emit_ms,
-                churn.total,
-                churn.changed,
-                wasted_bytes
-            ));
+            );
+            // ADR-0055 Rung 0: churn fields are the empirical anchor, emitted
+            // only in `test-support` builds (production does no measurement).
+            // `projection_count` = total typed projections serialized this tick.
+            // `changed_projection_count` = those whose payload actually changed
+            //   vs the previous tick. `wasted_bytes` = bytes spent re-serializing
+            //   unchanged projections.
+            #[cfg(any(test, feature = "test-support"))]
+            {
+                let wasted_bytes = churn.total_bytes.saturating_sub(churn.changed_bytes);
+                line.push_str(&format!(
+                    " projection_count={} changed_projection_count={} wasted_bytes={}",
+                    churn.total, churn.changed, wasted_bytes
+                ));
+            }
+            self.log(line);
         }
         self.events_since_last_update = 0;
         self.changed_since_emit = false;

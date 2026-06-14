@@ -417,19 +417,11 @@ pub mod __ffi_internal {
 /// harness — both live on the native runtime — so the whole module is gated
 /// behind `native` as well. Under `--no-default-features` there is no actor
 /// thread to spawn and no harness handlers to drive.
-/// ADR-0055 Rung 0 — process-global churn counters readable by the ffi-stress
-/// harness.
-///
-/// Available whenever `test-support` is enabled (same gate as
-/// `nmp_app_inject_signed_events` and friends). Not compiled into production
-/// builds. See `crates/nmp-core/src/kernel/update.rs` for the write sites.
-#[cfg(any(test, feature = "test-support"))]
-pub use kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
-
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
     pub use crate::store::{RawEvent, VerifiedEvent};
+    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED}; // ADR-0055 churn
 
     /// NIP golden-tag conformance harness — drives the (crate-private) command
     /// handlers against a real `Kernel` + `IdentityRuntime` and returns the
@@ -437,8 +429,7 @@ pub mod testing {
     /// structure. See `tests/nip_tag_conformance.rs`.
     pub use crate::actor::ConformanceHarness;
 
-    use std::sync::mpsc;
-    use std::thread;
+    use std::{sync::mpsc, thread};
 
     /// Spawn the kernel actor on a dedicated thread.
     ///

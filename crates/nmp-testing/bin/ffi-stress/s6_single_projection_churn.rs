@@ -2,11 +2,15 @@
 //!
 //! **Purpose:** quantify the O(total-state) waste that ADR-0055 will fix.
 //!
-//! The scenario drives a workload where **only one projection changes per
-//! emit cycle** while the remaining 17+ built-in projections are static.
-//! It then measures, per emit:
+//! The scenario drives a workload where **only one projection family changes
+//! per emit cycle** while the remaining built-in projections are static.
+//! Claiming a profile dirties a small CLUSTER of related projections
+//! (`claimed_profiles` + `resolved_profiles`, plus any derived view), so the
+//! change count per tick is ~3 of the ~16 typed projections, not literally 1 —
+//! this is why the observed change_ratio is ~19%, not ~6%. It then measures,
+//! per emit:
 //!   - how many typed projections were re-serialized (expected: all of them)
-//!   - how many actually changed vs the previous tick (expected: ~1)
+//!   - how many actually changed vs the previous tick (the claim cluster)
 //!   - the wasted-bytes ratio: `(serialized - changed) / serialized`
 //!
 //! This is the empirical anchor for ADR-0055 D1–D8: it proves the O(N) waste
@@ -15,7 +19,7 @@
 //! **Workload:** after injecting a small event batch to settle the kernel, we
 //! cycle a single profile claim (claim → release → claim → …) through
 //! `nmp_app_claim_profile` / `nmp_app_release_profile`. Each cycle dirties
-//! the `claimed_profiles` + `resolved_profiles` projections while all others
+//! the `claimed_profiles` + `resolved_profiles` cluster while all others
 //! remain unchanged. Between cycles we call `nmp_app_configure` to trigger
 //! one emit tick and read the churn counters.
 //!
@@ -23,7 +27,8 @@
 //! scenario — it is a measurement scenario, not a correctness scenario.
 //! The waste_ratio metric is reported as a measurement and printed in the PR
 //! body. A waste_ratio ≥ 0.80 (≥80% of bytes were for unchanged projections)
-//! is expected pre-ADR-0055 with 18+ built-ins and 1 changing per tick.
+//! is expected pre-ADR-0055 with ~16 built-ins and one claim cluster changing
+//! per cycle.
 //!
 //! D0: uses `nmp_app_inject_signed_events` and `nmp_app_claim_profile` /
 //! `nmp_app_release_profile` — both are cfg-gated test paths.
@@ -34,10 +39,9 @@ use crate::ffi::{
     nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new,
     nmp_app_release_profile, nmp_app_set_update_callback, test_pubkeys, NmpApp,
 };
-use std::ffi::CString;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 

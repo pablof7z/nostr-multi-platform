@@ -923,28 +923,6 @@ pub struct Kernel {
     max_event_to_emit_ms: u128,
     max_events_per_update: u64,
     changed_since_emit: bool,
-    /// ADR-0055 Rung 0 — cumulative count of typed projections serialized across
-    /// all `make_update` ticks since kernel init. Incremented by the total
-    /// number of `TypedProjectionData` entries in each emitted frame. Always-on,
-    /// O(1) per emit (one add per projection entry). Reset to 0 on kernel init.
-    ///
-    /// Together with `cumulative_projections_changed` this lets the ffi-stress
-    /// harness compute the waste ratio: `(serialized - changed) / serialized`.
-    pub(crate) cumulative_projections_serialized: u64,
-    /// ADR-0055 Rung 0 — cumulative count of typed projections whose payload
-    /// content actually changed since the previous tick. Measured by comparing a
-    /// `DefaultHasher` digest of each projection's `payload` bytes against the
-    /// prior tick's digest stored in `prev_typed_payload_hashes`. Always-on;
-    /// hashing cost is O(payload_bytes) but dominated by the FlatBuffers
-    /// serialization that already runs on the same bytes. Reset to 0 on init.
-    pub(crate) cumulative_projections_changed: u64,
-    /// ADR-0055 Rung 0 — per-key payload hash from the previous `make_update`
-    /// tick. Keyed by `TypedProjectionData::key`. Used to determine whether a
-    /// projection's content changed since the last emit (instrumentation path).
-    /// A missing entry (first emit for that key) is treated as "changed".
-    /// Allocation: one `HashMap` entry per live typed projection; currently
-    /// at most ~18 built-in keys + host-registered typed projections.
-    prev_typed_payload_hashes: HashMap<String, u64>,
     logs: VecDeque<String>,
     /// M5+M2+M8 wiring: per-relay NIP-42 driver state. One entry per
     /// `RelayRole`. Default `NotRequired`; an inbound `AUTH` frame transitions
@@ -2025,9 +2003,6 @@ impl Kernel {
             max_event_to_emit_ms: 0,
             max_events_per_update: 0,
             changed_since_emit: true,
-            cumulative_projections_serialized: 0,
-            cumulative_projections_changed: 0,
-            prev_typed_payload_hashes: HashMap::new(),
             logs: VecDeque::new(),
             auth_drivers: RelayRole::all()
                 .into_iter()
