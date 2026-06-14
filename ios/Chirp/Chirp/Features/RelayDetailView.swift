@@ -261,7 +261,7 @@ struct RelayDetailView: View {
                     label: "Active",
                     value: "\(row.activeSubCount)",
                     icon: "bolt.fill",
-                    color: row.activeSubCount == 0 ? ChirpColor.textSecondary : ChirpColor.success
+                    color: row.activeSubCount == 0 ? ChirpColor.textSecondary : ChirpColor.accent
                 )
             }
             HStack(spacing: 12) {
@@ -269,7 +269,7 @@ struct RelayDetailView: View {
                     label: "Events Rx",
                     value: row.totalEventsDisplay,
                     icon: "arrow.down.circle",
-                    color: ChirpColor.success
+                    color: ChirpColor.accent
                 )
                 RelayMetricTile(
                     label: "EOSE'd",

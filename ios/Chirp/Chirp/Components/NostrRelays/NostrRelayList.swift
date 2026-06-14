@@ -198,7 +198,7 @@ public struct NostrRelayRow: View {
     public static func tintColor(for token: String) -> Color {
         switch token.lowercased() {
         case "accent": return .accentColor
-        case "info": return .blue
+        case "info": return ChirpColor.accent
         case "success": return .green
         case "warning": return .orange
         case "danger", "error": return .red
@@ -272,7 +272,7 @@ private struct ConnectionDot: View {
     private var color: Color {
         switch status {
         case "connected": return .green
-        case "connecting": return .orange
+        case "connecting": return ChirpColor.warning
         case "error": return .red
         default: return .secondary
         }
@@ -288,7 +288,7 @@ private struct RoleBadge: View {
     var body: some View {
         Text(label)
             .font(.caption.weight(.medium))
-            .foregroundStyle(.white)
+            .foregroundStyle(ChirpColor.inverseForeground)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(tint, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
