@@ -14,6 +14,19 @@ enum ChirpColor {
     /// legible in both appearances.
     static let onAccent = Color(.systemBackground)
     static let accentSoft = accent.opacity(0.12)
+    /// Generated-avatar fallback (no profile picture): a neutral grayscale
+    /// chip. The deterministic per-pubkey color was the loudest element on an
+    /// otherwise monochrome screen; real profile images keep their color.
+    static let avatarFallbackBackground = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 0.17, alpha: 1)    // ~#2C2C2E
+            : UIColor(white: 0.913, alpha: 1)   // ~#E9E9EB
+    })
+    static let avatarFallbackForeground = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 0.96, alpha: 1)
+            : UIColor(white: 0.07, alpha: 1)
+    })
     static let bg = Color(.systemBackground)
     static let surface = Color(.secondarySystemBackground)
     static let surfaceElevated = Color(.tertiarySystemBackground)

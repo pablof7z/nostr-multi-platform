@@ -172,7 +172,9 @@ struct ProfileView: View {
                         .labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
                 .controlSize(.small)
+                .tint(ChirpColor.accent)
                 .accessibilityLabel(primaryAction.label)
             }
         }
