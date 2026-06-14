@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.components.LocalNostrProfileHost
+import org.nmp.android.ui.embed.EventClaimer
+import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
+import org.nmp.android.ui.embed.LocalEventClaimer
 import org.nmp.android.components.NostrAvatar
 import org.nmp.android.components.NostrNip05Badge
 import org.nmp.android.model.ProfileCard
@@ -92,9 +95,16 @@ fun ProfileScreen(
     val nip05 = profileCard?.nip05?.takeIf { it.isNotEmpty() }
     val noteCount = cards.size
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    val eventClaimer: EventClaimer = { uri, consumerId, claim ->
+        if (claim) model.claimEvent(uri, consumerId)
+        else model.releaseEvent(uri, consumerId)
+    }
+    val claimedEventEmbeds = projections?.claimedEventEmbeds ?: emptyMap()
 
     CompositionLocalProvider(
         LocalResolvedProfiles provides resolvedProfiles,
+        LocalEventClaimer provides eventClaimer,
+        LocalClaimedEventEmbeds provides claimedEventEmbeds,
         LocalNostrProfileHost provides profileHost,
     ) {
         Box(modifier.fillMaxSize()) {
