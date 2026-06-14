@@ -54,8 +54,8 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::declare_consumed_projections(self, keys);
     }
 
-    fn declare_incremental_apply(&self) {
-        NmpApp::declare_incremental_apply(self);
+    fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
+        NmpApp::declare_incremental_apply(self)
     }
 
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {

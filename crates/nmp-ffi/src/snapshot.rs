@@ -184,18 +184,33 @@ pub extern "C" fn nmp_app_register_snapshot_projection(
 /// Must be called before `nmp_app_start`. After this call the kernel guarantees
 /// the next `make_update` frame is a full baseline (all live Tier-2 projections
 /// emitted as `Changed`). Until this is called the kernel emits full rows on
-/// every tick (safe for non-advertising hosts). Idempotent — calling multiple
-/// times is safe. A null `app` is a silent no-op (D6).
+/// every tick (safe for non-advertising hosts). Idempotent — subsequent calls
+/// before start return 0 without re-setting the latch.
+///
+/// S1b finding 5 (issue #1390): returns an `i32` return-code instead of
+/// `void` so the caller can detect a post-start or registry-error condition
+/// in all build configurations (replacing the prior `debug_assert!` which was
+/// silent in release):
+///
+/// - `0`  = ok (or idempotent repeat call before start)
+/// - `1`  = `AlreadyStarted` — called after `nmp_app_start`
+/// - `2`  = `RegistryUnavailable` — registry mutex poisoned
+/// - `-1` = null `app` pointer (D6: defined return code, not a crash)
 ///
 /// # Safety
 /// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn nmp_app_declare_incremental_apply(app: *mut NmpApp) {
+pub extern "C" fn nmp_app_declare_incremental_apply(app: *mut NmpApp) -> i32 {
+    use nmp_core::substrate::IncrementalApplyError;
     let Some(app) = app_ref(app) else {
-        return;
+        return -1;
     };
-    app.declare_incremental_apply();
+    match app.declare_incremental_apply() {
+        Ok(()) => 0,
+        Err(IncrementalApplyError::AlreadyStarted) => 1,
+        Err(IncrementalApplyError::RegistryUnavailable) => 2,
+    }
 }
 
 /// ADR-0053 — declare the static set of Tier-2 built-in projection keys this

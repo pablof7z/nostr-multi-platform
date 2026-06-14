@@ -42,6 +42,13 @@ mod rung3_baseline_tests;
 #[cfg(test)]
 #[path = "rung3_buffer_reuse_tests.rs"]
 mod rung3_buffer_reuse_tests;
+// ADR-0055 Rung 3 S1b — Cleared-signal completeness regression gate (#1390).
+// Drives the full incremental path with genuine non-empty→empty transitions on
+// all four conditional keys and asserts exactly one Cleared row per transition.
+// Lives in `kernel/` for the same reason as the above test modules.
+#[cfg(test)]
+#[path = "rung3_cleared_signal_tests.rs"]
+mod rung3_cleared_signal_tests;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on
@@ -319,8 +326,12 @@ impl Kernel {
         // baseline frame on the first incremental-enabled tick.
         // Must run BEFORE `projection_manifest()` so the reset affects THIS
         // tick's manifest, not only future ticks.
-        let incremental_enabled = self.incremental_apply_enabled();
-        if self.take_incremental_apply_baseline_pending() {
+        //
+        // S1b finding 6 (issue #1390): coalesce the two per-tick mutex
+        // acquisitions into one `incremental_apply_state()` call so we pay a
+        // single lock/unlock per tick on the 4 Hz hot path instead of two.
+        let (incremental_enabled, baseline_pending) = self.incremental_apply_state();
+        if baseline_pending {
             // The latch fires at most once (idempotent declare). Reset here so
             // this tick's manifest sees last_emitted=∅ → all Changed.
             self.projection_rev_tracker.reset_last_emitted();
