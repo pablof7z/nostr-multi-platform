@@ -1,5 +1,7 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, openContactFeedCommand, type RuntimeCommand } from "./nmp/actions";
+import { publishNoteAction, openContactFeedCommand, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
+import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
+import type { ProfileWire } from "./components/user-avatar/ProfileWire";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import {
   featureSnapshotFromEnvelope,
@@ -111,6 +113,20 @@ export default function App() {
     void client.dispatchCommand(command);
   };
 
+  // Profile host for the registry user-* components (NostrAvatar / ProfileName).
+  // `profile(pubkey)` reads the kernel's resolved_profiles (KRPR) full
+  // ProfileCard map — display name + picture URL + nip05, resolved by the
+  // kernel now that the production outbox router is installed. claim/release
+  // ride the quiet dispatcher so refcount bookkeeping doesn't churn the feed.
+  const profileCards = createMemo(
+    () => snapshot().resolvedProfileCards ?? new Map<string, ProfileWire>(),
+  );
+  const profileHost: NostrProfileHost = {
+    profile: (pubkey) => profileCards().get(pubkey),
+    claimProfile: (pubkey, consumerId) => dispatchQuiet(claimProfileCommand(pubkey, consumerId)),
+    releaseProfile: (pubkey, consumerId) => dispatchQuiet(releaseProfileCommand(pubkey, consumerId)),
+  };
+
   return (
     <main class="app-shell">
       <Sidebar active={tab()} onSelect={setTab} feature={feature()} />
@@ -119,6 +135,7 @@ export default function App() {
           <Match when={tab() === "home"}>
             <HomePanel
               rows={rows()}
+              profileHost={profileHost}
               onPublish={publish}
               onCommand={dispatch}
               onClaimCommand={dispatchQuiet}

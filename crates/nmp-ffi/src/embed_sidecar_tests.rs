@@ -30,6 +30,7 @@ fn make_claimed_event_row(
         created_at: 1710000000,
         tags,
         content: content.to_string(),
+        content_tree_bytes: Vec::new(),
     }
 }
 

@@ -4437,6 +4437,7 @@ version = "0.7.0"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
+ "nmp-content",
  "nmp-core",
  "nmp-feed",
  "nmp-nip01",

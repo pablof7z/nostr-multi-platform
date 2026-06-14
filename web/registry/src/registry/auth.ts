@@ -9,6 +9,9 @@ import composeExternalSignerBridgeKotlin from "../vendor/compose/login-block/Ext
 import composeExternalSignerWireKotlin from "../vendor/compose/login-block/ExternalSignerWire.kt?raw";
 import composeAmberIntentCodecKotlin from "../vendor/compose/login-block/AmberIntentCodec.kt?raw";
 
+// Auth - Web (SolidJS, NIP-07)
+import loginBlockWeb from "../vendor/web/login-block/NostrLoginBlock.tsx?raw";
+
 export const authComponents: Component[] = [
   {
     slug: "login-block",
@@ -81,6 +84,23 @@ export const authComponents: Component[] = [
           "Wire `onSignerSelected` to report user intent to Rust (`nativeSignInNip55(signerPackage)` on your kernel bridge). Rust builds the `get_public_key` + permission-batch request and dispatches it back through the kernel's signer-request channel; drain that channel (`nativeNextSignerRequest`) and hand each request JSON to `bridge.handleJson`. Route the `onResult` callback back to Rust via `nativeDeliverSignerResponse` (D7 — Kotlin decides nothing).",
           "Pass the kernel's `signer_state` projection into `NostrLoginBlock(signerState = …)` — the `is*` flags drive the inline waiting / ready / failed indicators without string-matching `state`.",
           "Testable without a real Activity: `shouldUseContentResolver` (the exact predicate `handle()` branches on) and `signerCardUi` (the exact presentation rule `SignerCard` renders from) are pure internal functions exercised directly by the JVM unit suite.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/login-block",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`<NostrLoginBlock />` detects a NIP-07 browser signer (`window.nostr`, e.g. Alby / nos2x) and surfaces it as a one-click sign-in card, falling back to an install hint plus a manual key-entry row (npub for read-only, nsec) when none is present. Detection runs lazily in `onMount` (never at module load) so the asynchronously-injected `window.nostr` is seen, with a short re-probe. The host wires `onSignerSelected` (call `window.nostr.getPublicKey()` then install the signer) and `onManualKey`. Verified in the NMP web gallery: the honest no-signer state (install hint + manual entry) and the detected state against a real injected NIP-07 provider.",
+        files: [
+          { source: "web/login-block/NostrLoginBlock.tsx", target: "src/components/auth/NostrLoginBlock.tsx", role: "source", content: loginBlockWeb },
+        ],
+        screenshots: ["login-block-web-preview.png"],
+        customization: [
+          "Wire `onSignerSelected(info, provider)` to your sign-in flow: `await provider.getPublicKey()` then install the signer on your kernel host (e.g. the web `set_signer` worker request).",
+          "Wire `onManualKey(key)` to your key-import flow; gate `nsec` handling behind explicit user intent.",
+          "Style via the `nostr-login-block*` classes; swap the inline `<svg>` for your brand mark.",
         ],
       },
     },

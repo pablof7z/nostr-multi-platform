@@ -51,6 +51,7 @@ mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
+pub mod content_parser;
 pub mod placeholder;
 mod protocol;
 mod raw_event_forwarding;
@@ -100,6 +101,7 @@ pub use keyring::{
     MALFORMED_RESULT,
 };
 pub use nmp_store::{DomainMigration, MigrationTx};
+pub use content_parser::{ContentParser, NoopContentParser};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use host_op::{host_op_command, HostOpCommand};
 pub use protocol::{

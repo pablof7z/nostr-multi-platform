@@ -1,0 +1,9 @@
+{
+  "name": "web-render-identity",
+  "type": "registry:ui",
+  "title": "Render Identity (web)",
+  "description": "Documentation-only web stance for SwiftUI render identity; SolidJS does not need an installable helper.",
+  "dependencies": [],
+  "registryDependencies": [],
+  "files": []
+}

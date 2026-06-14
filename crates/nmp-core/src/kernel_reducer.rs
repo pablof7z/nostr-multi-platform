@@ -440,6 +440,9 @@ impl KernelReducer {
         self.kernel.set_routing(router, cache);
     }
 
+    pub fn set_content_parser(&mut self, parser: std::sync::Arc<dyn crate::substrate::ContentParser>) {
+        self.kernel.set_content_parser(parser);
+    }
 }
 
 /// Test-support seam: fire the observer slot directly with a `KernelEvent`.

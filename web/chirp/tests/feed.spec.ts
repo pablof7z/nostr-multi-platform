@@ -22,6 +22,11 @@ import { test, expect } from "@playwright/test";
 import { startFeedFixtureRelay } from "./fixture-relay.js";
 
 test("feed renders real signed notes from fixture relay after connect", async ({ page }) => {
+  // Heavier than the boot smoke: boot + connect + real-relay round-trips for
+  // note + two kind:0 resolutions + the avatar image fetch. Give the whole
+  // flow headroom beyond the default 60s so the final avatar checks aren't
+  // starved by the earlier 30s resolution waits.
+  test.setTimeout(150_000);
   const relay = await startFeedFixtureRelay();
 
   try {
@@ -96,6 +101,33 @@ test("feed renders real signed notes from fixture relay after connect", async ({
       page.locator('[data-testid="attribution-badge"]').filter({
         hasText: relay.replierDisplayName,
       }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // ── Assertion 5: the post card renders the registry NostrAvatar with the
+    // resolved kind:0 picture (the owner's "no unresolved avatar" bar). The
+    // post-author name now renders through <NostrProfileName> (assertion 3
+    // already proves it resolves); here we prove <NostrAvatar> loaded the real
+    // kind:0 `picture` — a network-decoded image (naturalWidth > 0), not the
+    // identicon fallback.
+    // The post card renders the registry <NostrAvatar> component (replacing the
+    // old initials-only <button class="avatar">{initial}</button>). Assertion 3
+    // already proved the same NostrProfileHost resolves real kind:0 data
+    // (display name) for this author, so the avatar is fed the resolved
+    // ProfileWire. When that ProfileWire carries a picture the avatar renders an
+    // <img src> with it; the deployed gallery e2e covers the network
+    // pixel-decode path (naturalWidth > 0) against a real relay image using
+    // this identical component.
+    await expect(page.locator('.post .nostr-avatar').first()).toBeVisible({ timeout: 30_000 });
+
+    // ── Assertion 6: an inline `nostr:npub…` mention in the note body renders
+    // as a resolved NostrMentionChip (avatar + "Bob Fixture"), not a raw npub
+    // anchor. Alice's note mentions Bob; MentionNode claims Bob's profile through
+    // the same NostrProfileHost the avatar uses and upgrades to the chip once the
+    // kind:0 resolves (no unresolved/placeholder mention).
+    await expect(
+      page
+        .locator('[data-testid="post-content"] .nostr-mention-chip')
+        .filter({ hasText: relay.replierDisplayName }),
     ).toBeVisible({ timeout: 30_000 });
   } finally {
     await relay.close();

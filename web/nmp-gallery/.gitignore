@@ -1,0 +1,9 @@
+node_modules
+dist
+public/nmp-wasm
+
+# Playwright / proof capture output (canonical screenshots live in web/registry/public/screenshots)
+screenshots
+test-results
+playwright-report
+.vercel

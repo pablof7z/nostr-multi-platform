@@ -1,4 +1,12 @@
 import type { Component } from "./types";
+import {
+  webUserAvatar,
+  webUserCard,
+  webUserCore,
+  webUserName,
+  webUserNip05,
+  webUserNpub,
+} from "./userWeb";
 
 // User profile — SwiftUI
 import profileWireSwift from "../vendor/swiftui/user-avatar/ProfileWire.swift?raw";
@@ -71,6 +79,7 @@ export const userComponents: Component[] = [
           "Keep this type aligned with the kernel projection and use it as the input to the iced display widgets.",
         ],
       },
+      web: webUserCore,
     },
   },
   {
@@ -148,6 +157,7 @@ export const userComponents: Component[] = [
           "The deterministic tint and initials come from `nmp_core::display` — host apps own image decoding and supply the `Handle`, keeping the widget render-only.",
         ],
       },
+      web: webUserAvatar,
     },
   },
   {
@@ -211,6 +221,7 @@ export const userComponents: Component[] = [
           "The npub fallback uses the kernel-formatted `ProfileWire::npub_short` — never reformat keys in iced code.",
         ],
       },
+      web: webUserName,
     },
   },
   {
@@ -279,6 +290,7 @@ export const userComponents: Component[] = [
           "`_@domain` root-domain identifiers automatically render as just `domain`; swap the `GREEN` constant for your brand verification color.",
         ],
       },
+      web: webUserNip05,
     },
   },
   {
@@ -343,6 +355,7 @@ export const userComponents: Component[] = [
           "`npub_short` comes from the kernel projection — never format keys in iced; wire copy-to-clipboard to `ProfileWire::npub` at the call site.",
         ],
       },
+      web: webUserNpub,
     },
   },
   {
@@ -414,6 +427,7 @@ export const userComponents: Component[] = [
           "Adjust the avatar `.size(40.0)` and row spacing in `user_card.rs` for dense list rows versus profile headers.",
         ],
       },
+      web: webUserCard,
     },
   },
 ];

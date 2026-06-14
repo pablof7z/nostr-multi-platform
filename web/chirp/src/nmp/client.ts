@@ -1,7 +1,8 @@
 import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "./degradedRuntime";
-import { decodeHomeFeed, decodeResolvedProfiles, type FeedItem } from "./feedProjection";
+import { decodeHomeFeed, decodeResolvedProfiles, decodeResolvedProfileCards, type FeedItem } from "./feedProjection";
+import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { decodeKrdgTones } from "./relayDiagnosticsProjection";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
@@ -54,6 +55,10 @@ export type RuntimeSnapshot = {
    *  Populated after the first successfully decoded KRPR projection. Empty map
    *  means the kernel currently has no resolved profile facts to expose. */
   resolvedProfiles?: Map<string, string>;
+  /** Decoded resolved_profiles (KRPR) full ProfileCard map: hex pubkey ->
+   *  ProfileWire (display name + picture + nip05 + …). Powers the registry
+   *  user-* components (NostrAvatar needs the picture URL). */
+  resolvedProfileCards?: Map<string, ProfileWire>;
 };
 
 export type RuntimeConnection = {
@@ -135,6 +140,7 @@ abstract class BaseClient implements NmpClient {
   private latestRelayStatuses: DecodedRelayStatus[] | undefined;
   private latestFeedItems: FeedItem[] | undefined;
   private latestResolvedProfiles: Map<string, string> | undefined;
+  private latestResolvedProfileCards: Map<string, ProfileWire> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -150,6 +156,7 @@ abstract class BaseClient implements NmpClient {
       latestRelayStatuses: this.latestRelayStatuses,
       feedItems: this.latestFeedItems,
       resolvedProfiles: this.latestResolvedProfiles,
+      resolvedProfileCards: this.latestResolvedProfileCards,
     };
   }
 
@@ -215,6 +222,12 @@ abstract class BaseClient implements NmpClient {
                     const profilesResult = decodeResolvedProfiles(snap);
                     if (profilesResult !== undefined) {
                       this.latestResolvedProfiles = profilesResult;
+                    }
+                    // Full ProfileCard map (incl. picture URL) for the user-*
+                    // components. Same keep-last-good semantics.
+                    const profileCardsResult = decodeResolvedProfileCards(snap);
+                    if (profileCardsResult !== undefined) {
+                      this.latestResolvedProfileCards = profileCardsResult;
                     }
                     // Decode relay_diagnostics (KRDG) typed projection.
                     // skipDetails=true: only relay-level tones are decoded

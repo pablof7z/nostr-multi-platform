@@ -18,7 +18,35 @@
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { AddressInfo } from "net";
+import { createServer } from "node:http";
+
+// A real 1×1 PNG served over HTTP so the avatar component genuinely fetches +
+// decodes a network image (naturalWidth > 0), with no external dependency.
+const ONE_BY_ONE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** Start a throwaway HTTP server that serves the 1×1 PNG at any path. */
+function startPngServer(): Promise<{ url: string; close: () => Promise<void> }> {
+  return new Promise((resolve, reject) => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "image/png", "access-control-allow-origin": "*" });
+      res.end(ONE_BY_ONE_PNG);
+    });
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      resolve({
+        url: `http://127.0.0.1:${port}/avatar.png`,
+        close: () =>
+          new Promise<void>((res) => server.close(() => res())),
+      });
+    });
+  });
+}
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
+import { npubEncode } from "nostr-tools/nip19";
 
 export type FixtureRelay = {
   /** WebSocket URL the browser can connect to, e.g. `ws://127.0.0.1:52341`. */
@@ -42,6 +70,8 @@ export type FeedFixtureRelay = FixtureRelay & {
   noteContent: string;
   /** Display name resolved from the follow's kind:0 (assert in e2e). */
   followDisplayName: string;
+  /** Picture URL (data: URI) resolved from the follow's kind:0 (assert in e2e). */
+  followPictureUrl: string;
   /** Display name of the second follow who replies (attribution badge). */
   replierDisplayName: string;
 };
@@ -190,10 +220,25 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   const noteContent = "hello from fixture relay";
   const followADisplayName = "Alice Fixture";
   const followBDisplayName = "Bob Fixture";
+  // A real, self-contained 1×1 PNG so the avatar component genuinely loads an
+  // image (naturalWidth > 0) without a network dependency — proving NostrAvatar
+  // renders the resolved kind:0 `picture` in Chirp's feed card. (The deployed
+  // gallery additionally proves the real-network picture path.)
+  // Serve the picture over real HTTP from a local server: the kernel keeps
+  // only `http(s)` picture URLs (nmp-core/kernel/nostr.rs filters non-http
+  // schemes), so a data: URI would be dropped. This is a genuine network image
+  // the avatar fetches + decodes (naturalWidth > 0) with no external dependency.
+  const imageServer = await startPngServer();
+  const followAPictureUrl = imageServer.url;
 
   // kind:0 — Alice's profile (must arrive before or with kind:1 so display resolves)
   const profileA = finalizeEvent(
-    { kind: 0, created_at: now - 100, tags: [], content: JSON.stringify({ name: followADisplayName }) },
+    {
+      kind: 0,
+      created_at: now - 100,
+      tags: [],
+      content: JSON.stringify({ name: followADisplayName, picture: followAPictureUrl }),
+    },
     followASk,
   ) as NostrEvent;
 
@@ -203,9 +248,19 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followBSk,
   ) as NostrEvent;
 
-  // kind:1 — Alice's root note (the one that will appear in the feed)
+  // kind:1 — Alice's root note (the one that will appear in the feed). It
+  // mentions Bob via a `nostr:npub1…` URI + p-tag, so the kernel tokenizes a
+  // Mention node into the content tree and Chirp renders it as a resolved
+  // NostrMentionChip (avatar + "Bob Fixture") rather than a raw npub anchor.
+  const npubBob = npubEncode(followBPubkey);
+  const noteAMention = ` cc nostr:${npubBob}`;
   const noteA = finalizeEvent(
-    { kind: 1, created_at: now - 50, tags: [], content: noteContent },
+    {
+      kind: 1,
+      created_at: now - 50,
+      tags: [["p", followBPubkey]],
+      content: noteContent + noteAMention,
+    },
     followASk,
   ) as NostrEvent;
 
@@ -252,10 +307,15 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   const base = await startServer(seeded);
   return {
     ...base,
+    close: async () => {
+      await base.close();
+      await imageServer.close();
+    },
     viewerPubkey,
     followPubkey: followAPubkey,
     noteContent,
     followDisplayName: followADisplayName,
+    followPictureUrl: followAPictureUrl,
     replierDisplayName: followBDisplayName,
   };
 }

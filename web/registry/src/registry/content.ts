@@ -1,4 +1,5 @@
 import type { Component } from "./types";
+import { webContentCore, webContentKind30023, webContentKind9802, webContentKindRegistry, webContentMediaGrid, webContentMentionChip, webContentMinimal, webContentQuoteCard, webContentView } from "./contentWeb";
 
 // Content — SwiftUI
 import contentCoreSwift from "../vendor/swiftui/content-core/NostrContentRenderer.swift?raw";
@@ -109,6 +110,7 @@ export const contentComponents: Component[] = [
           "`ContentRenderData` is optional so cold-start rows can render immediately and hydrate when kind:0 or quoted events arrive.",
         ],
       },
+      web: webContentCore,
     },
   },
   {
@@ -150,6 +152,7 @@ export const contentComponents: Component[] = [
           "Pair it with the host kernel render-intent loop that claims visible profile and event references.",
         ],
       },
+      web: webContentMinimal,
     },
   },
   {
@@ -163,16 +166,8 @@ export const contentComponents: Component[] = [
         status: "stable",
         installId: "swiftui/content-view",
         version: "0.1.1",
-        dependencies: [
-          "content-core",
-          "content-media-grid",
-          "content-quote-card",
-        ],
-        files: [
-          { source: "swiftui/content-view/NostrContentView.swift", target: "Components/NostrContent/NostrContentView.swift", role: "source", content: contentViewSwift },
-          { source: "swiftui/content-view/NostrContentGrouping.swift", target: "Components/NostrContent/NostrContentGrouping.swift", role: "source", content: contentGroupingSwift },
-          { source: "swiftui/content-view/Examples/NostrContentViewPreview.swift", target: "Components/NostrContent/Examples/NostrContentViewPreview.swift", role: "example", content: contentViewPreviewSwift },
-        ],
+        dependencies: ["content-core", "content-media-grid", "content-quote-card"],
+        files: [{ source: "swiftui/content-view/NostrContentView.swift", target: "Components/NostrContent/NostrContentView.swift", role: "source", content: contentViewSwift }, { source: "swiftui/content-view/NostrContentGrouping.swift", target: "Components/NostrContent/NostrContentGrouping.swift", role: "source", content: contentGroupingSwift }, { source: "swiftui/content-view/Examples/NostrContentViewPreview.swift", target: "Components/NostrContent/Examples/NostrContentViewPreview.swift", role: "example", content: contentViewPreviewSwift }],
         screenshots: ["content-view-ios-gallery-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content`. Each tree node maps to a sub-component you installed alongside it.",
@@ -184,10 +179,7 @@ export const contentComponents: Component[] = [
         installId: "compose/content-view",
         version: "0.1.0",
         dependencies: ["content-core", "content-media-grid", "content-quote-card"],
-        files: [
-          { source: "compose/content-view/NostrContentView.kt", target: "Components/NostrContent/NostrContentView.kt", role: "source", content: composeContentViewKotlin },
-          { source: "compose/content-view/NostrContentGrouping.kt", target: "Components/NostrContent/NostrContentGrouping.kt", role: "source", content: composeContentGroupingKotlin },
-        ],
+        files: [{ source: "compose/content-view/NostrContentView.kt", target: "Components/NostrContent/NostrContentView.kt", role: "source", content: composeContentViewKotlin }, { source: "compose/content-view/NostrContentGrouping.kt", target: "Components/NostrContent/NostrContentGrouping.kt", role: "source", content: composeContentGroupingKotlin }],
         screenshots: ["content-view-kotlin-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` and dispatches each block-level group to the matching sub-component. Customizing usually means editing the sub-component rather than this dispatcher.",
@@ -209,6 +201,7 @@ export const contentComponents: Component[] = [
           "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
         ],
       },
+      web: webContentView,
     },
   },
   {
@@ -257,6 +250,7 @@ export const contentComponents: Component[] = [
           "Keep projection data in Rust; TUI renderers should only choose layout and styling for the typed envelope they receive.",
         ],
       },
+      web: webContentKindRegistry,
     },
   },
   {
@@ -328,6 +322,7 @@ export const contentComponents: Component[] = [
           "Hero image loading is a documented follow-on — add an `iced::widget::image` row above the title once the host decodes the article `image` tag into a `Handle`.",
         ],
       },
+      web: webContentKind30023,
     },
   },
   {
@@ -368,6 +363,7 @@ export const contentComponents: Component[] = [
           "The source footer branches on `source_url` → `source_event_id` → `source_event_addr` in priority order; extend the match arms to render richer previews when the referenced event has been claimed.",
         ],
       },
+      web: webContentKind9802,
     },
   },
   {
@@ -417,6 +413,7 @@ export const contentComponents: Component[] = [
           "The chip displays the kernel-projected kind:0 name when available and shortens the npub/pubkey fallback locally.",
         ],
       },
+      web: webContentMentionChip,
     },
   },
   {
@@ -467,6 +464,7 @@ export const contentComponents: Component[] = [
           "Feed it a `WireNode::EventRef` plus `ContentRenderData`; unresolved references stay visible as a quote placeholder instead of raw `nostr:nevent...` text.",
         ],
       },
+      web: webContentQuoteCard,
     },
   },
   {
@@ -516,6 +514,7 @@ export const contentComponents: Component[] = [
           "Pass host-created `ratatui-image` protocols for URLs that have already been fetched and decoded. The widget lays out up to four inline images and leaves fetching/caching outside the display component.",
         ],
       },
+      web: webContentMediaGrid,
     },
   },
 ];

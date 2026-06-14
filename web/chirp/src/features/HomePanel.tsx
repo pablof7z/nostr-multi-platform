@@ -9,10 +9,19 @@ import {
   releaseProfileCommand,
   type RuntimeCommand,
 } from "../nmp/actions";
-import { displayAuthor, shortKey, type TimelineItem } from "../nmp/snapshot";
+import { shortKey, type TimelineItem } from "../nmp/snapshot";
+import {
+  NostrProfileHostProvider,
+  useNostrProfileHost,
+  type NostrProfileHost,
+} from "../components/user-avatar/NostrProfileHost";
+import { NostrAvatar } from "../components/user-avatar/NostrAvatar";
+import { NostrProfileName } from "../components/user-name/NostrProfileName";
+import { NostrContentView } from "../nmp/content/NostrContentView";
 
 export function HomePanel(props: {
   rows: TimelineItem[];
+  profileHost: NostrProfileHost;
   revision?: number;
   onPublish: (content: string, replyToId: string | null) => Promise<void>;
   onCommand: (command: RuntimeCommand) => Promise<void>;
@@ -35,6 +44,7 @@ export function HomePanel(props: {
     setReplyToId(null);
   };
   return (
+    <NostrProfileHostProvider host={props.profileHost}>
     <section class="feed-panel" id="feed">
       <header class="topbar">
         <div>
@@ -78,6 +88,7 @@ export function HomePanel(props: {
         </For>
       </Show>
     </section>
+    </NostrProfileHostProvider>
   );
 }
 
@@ -135,10 +146,9 @@ function Post(props: {
     }
   };
 
-  if (authorPubkey) {
-    onMount(() => claim(claimProfileCommand(authorPubkey, consumerId)));
-    onCleanup(() => claim(releaseProfileCommand(authorPubkey, consumerId)));
-  }
+  // The author profile is claimed by <NostrAvatar> below (it owns its own
+  // claim/release lifecycle through the NostrProfileHost, using the same stable
+  // `consumerId`), so no manual author claim is needed here.
 
   // F-CR-00 extension — claim attribution badge author profiles.
   //
@@ -156,16 +166,21 @@ function Post(props: {
     }
   }
 
-  const author = () => displayAuthor(props.item);
+  const host = useNostrProfileHost();
+  const authorProfile = () => host.profile(authorPubkey) ?? { pubkey: authorPubkey };
   return (
     <article class="post">
-      <button type="button" class="avatar" title="Open profile" onClick={props.onProfile}>{author().slice(0, 1).toUpperCase()}</button>
+      <button type="button" class="avatar avatar--component" title="Open profile" onClick={props.onProfile}>
+        <NostrAvatar pubkey={authorPubkey} consumerId={consumerId} size={40} />
+      </button>
       <div class="post-body">
         <button type="button" class="post-meta" onClick={props.onProfile}>
-          <strong data-testid="post-author">{author()}</strong>
+          <strong data-testid="post-author"><NostrProfileName profile={authorProfile()} /></strong>
           <span>{props.item.relativeTime ?? labelTime(props.item.createdAt)}</span>
         </button>
-        <p data-testid="post-content">{props.item.content ?? ""}</p>
+        <div data-testid="post-content">
+          <NostrContentView tree={props.item.contentTree} fallback={props.item.content ?? ""} />
+        </div>
         <Show when={props.item.attribution && props.item.attribution.length > 0}>
           <div class="attribution-list" data-testid="attribution-list">
             <For each={props.item.attribution}>

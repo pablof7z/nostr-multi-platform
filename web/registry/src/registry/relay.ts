@@ -4,6 +4,9 @@ import type { Component } from "./types";
 import nostrRelayListSwift from "../vendor/swiftui/relay-list/NostrRelayList.swift?raw";
 import nostrRelayListPreviewSwift from "../vendor/swiftui/relay-list/Examples/NostrRelayListPreview.swift?raw";
 
+// Relay — Web (SolidJS)
+import nostrRelayListWeb from "../vendor/web/relay-list/NostrRelayList.tsx?raw";
+
 // Render Identity — SwiftUI
 import renderIdentifiableSwift from "../vendor/swiftui/render-identity/RenderIdentifiable.swift?raw";
 
@@ -32,6 +35,23 @@ export const relayComponents: Component[] = [
           "Edit `displayUrl` in `NostrRelayEditRow` to strip or preserve the `wss://` scheme prefix.",
         ],
       },
+      web: {
+        status: "stable",
+        installId: "web/relay-list",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`<NostrRelayList relays={...} />` renders relay rows folded from the kernel snapshot — `url` + `role` from `configured_relays`, `connection` from the top-level `relay_statuses` field — with a live connection-status dot (green connected / amber connecting+pulsing / red error / grey disconnected) and per-token role badges. Render-only; the host owns relay config. Verified live in the NMP web gallery against real relays (relay.primal.net + purplepag.es, both connected).",
+        files: [
+          { source: "web/relay-list/NostrRelayList.tsx", target: "src/components/nostr-relays/NostrRelayList.tsx", role: "source", content: nostrRelayListWeb },
+        ],
+        screenshots: ["relay-list-web-preview.png"],
+        customization: [
+          "Fold `relay_statuses` into each row's `connection` before passing `relays` (closed token set: connected | connecting | disconnected | error).",
+          "Edit `connectionColor` / `roleTint` / `roleLabel` to match your theme; `displayUrl` strips the `wss://` scheme.",
+          "Pass `onRelayTap` to make rows interactive; omit it for a read-only list.",
+        ],
+      },
     },
   },
   {
@@ -55,6 +75,19 @@ export const relayComponents: Component[] = [
           "Implement `RenderIdentifiable` on your row model type, comparing only the fields that affect visual rendering.",
           "Avoid comparing closures/callbacks — they're typically not equal even when semantically identical.",
           "Use alongside `@State` and `@Environment` to isolate view state from row data.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/render-identity",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "Not applicable on the web — there is nothing to install. `render-identity` is a SwiftUI-specific optimization (`RenderIdentifiable` + `EquatableRow`) for short-circuiting `ForEach` row re-evaluation via `.equatable()`. SolidJS has no equivalent need: its fine-grained reactivity updates only the exact DOM bindings whose signals changed, so rows never re-evaluate wholesale and there is no row-equatability step to optimize. The web user/content components rely on Solid stores keyed per pubkey/event for the same effect. This entry exists so the component page documents the web stance rather than appearing unsupported.",
+        files: [],
+        screenshots: [],
+        customization: [
+          "Key your reactive stores by id (pubkey / event id) so a change to one row's data updates only that row — Solid's structural sharing is the web analogue of the SwiftUI equatable-row optimization.",
         ],
       },
     },

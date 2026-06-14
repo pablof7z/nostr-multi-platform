@@ -11,6 +11,7 @@ const BUILTIN_REGISTRY_SECTIONS: &[&str] = &[
     include_str!("../../registry/registry.compose.toml"),
     include_str!("../../registry/registry.tui.toml"),
     include_str!("../../registry/registry.desktop.toml"),
+    include_str!("../../registry/registry.web.toml"),
 ];
 const BUILTIN_FILES: &[(&str, &str)] = &[
     (
@@ -309,6 +310,14 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "desktop/content-kind-30023/embed_article.rs",
         include_str!("../../registry/desktop/content-kind-30023/embed_article.rs"),
+    ),
+    (
+        "web/login-block/NostrLoginBlock.tsx",
+        include_str!("../../registry/web/login-block/NostrLoginBlock.tsx"),
+    ),
+    (
+        "web/relay-list/NostrRelayList.tsx",
+        include_str!("../../registry/web/relay-list/NostrRelayList.tsx"),
     ),
 ];
 

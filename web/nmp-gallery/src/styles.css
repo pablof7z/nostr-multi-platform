@@ -1,0 +1,151 @@
+:root {
+  --bg: #0f0f14;
+  --surface: #18181f;
+  --surface-2: #1f1f29;
+  --border: #2a2a36;
+  --text: #ececf1;
+  --text-dim: #9a9aa8;
+  --accent: #7c5cff;
+  --ok: #2ec27e;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.gallery {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+
+.gallery-header h1 {
+  font-size: 28px;
+  margin: 24px 0 8px;
+}
+
+.gallery-header p {
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.gallery-header code {
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.9em;
+}
+
+.status-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.pill--ok {
+  border-color: color-mix(in srgb, var(--ok) 50%, var(--border));
+}
+
+.pill-label {
+  color: var(--text-dim);
+}
+
+.pill-value {
+  font-weight: 600;
+}
+
+.pill--ok .pill-value {
+  color: var(--ok);
+}
+
+.component-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin: 18px 0;
+}
+
+.component-section h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+}
+
+.component-desc {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.component-stage {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+}
+
+.avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.nostr-user-card:hover .nostr-profile-name {
+  text-decoration: underline;
+}
+
+.nostr-nip05-badge {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.nostr-nip05-text {
+  color: var(--text-dim);
+}
+
+.resolving {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.resolving-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}

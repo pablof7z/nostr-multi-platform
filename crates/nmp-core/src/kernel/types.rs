@@ -824,6 +824,9 @@ pub(crate) struct ClaimedEventDto {
     pub(super) tags: Vec<Vec<String>>,
     /// Raw event content. NIP-23 article body, kind:1 note text, etc.
     pub(super) content: String,
+    /// Parsed NFCT bytes for the typed KCEV sidecar; skipped from legacy JSON.
+    #[serde(skip)]
+    pub(super) content_tree_bytes: Vec<u8>,
 }
 
 impl ClaimedEventDto {
@@ -844,7 +847,13 @@ impl ClaimedEventDto {
             created_at: e.created_at,
             tags: e.tags.clone(),
             content: e.content.clone(),
+            content_tree_bytes: Vec::new(),
         }
+    }
+
+    pub(super) fn with_content_tree(mut self, content_tree_bytes: Vec<u8>) -> Self {
+        self.content_tree_bytes = content_tree_bytes;
+        self
     }
 
     /// Stamp the author's display name + picture URL from the kernel's

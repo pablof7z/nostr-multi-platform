@@ -433,10 +433,20 @@ impl Kernel {
                     .map(|p| p.display.clone())
                     .filter(|d| !d.trim().is_empty());
                 let picture_url = profile.and_then(|p| p.picture_url.clone());
+                // Parse raw content → NFCT bytes via the injected content-parser
+                // seam (no-op by default; web composition installs an
+                // nmp-content-backed parser so claim_event renders the
+                // kernel-parsed content tree).
+                let content_tree_bytes = self.content_parser.parse_to_nfct_bytes(
+                    &stored.content,
+                    &stored.tags,
+                    stored.kind,
+                );
                 claimed_events.insert(
                     key.clone(),
                     ClaimedEventDto::from_stored(key.clone(), &stored)
-                        .with_author_profile(display_name, picture_url),
+                        .with_author_profile(display_name, picture_url)
+                        .with_content_tree(content_tree_bytes),
                 );
             }
         }

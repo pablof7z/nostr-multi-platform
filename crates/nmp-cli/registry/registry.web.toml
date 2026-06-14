@@ -1,0 +1,31 @@
+# Split from registry.toml by platform target (file-size rule: 500 LOC hard
+# ceiling). This file holds ONLY [[components]] blocks; schema_version and
+# registry_id live in registry.toml. The loader merges registry.toml with
+# every registry.<target>.toml in this directory (see REGISTRY_SECTION_FILES).
+
+[[components]]
+id = "web/login-block"
+version = "0.1.0"
+target = "web"
+description = "SolidJS login UI with NIP-07 browser signer detection and manual key entry fallback."
+[[components.files]]
+source = "web/login-block/NostrLoginBlock.tsx"
+target = "src/components/auth/NostrLoginBlock.tsx"
+role = "source"
+
+[[components]]
+id = "web/relay-list"
+version = "0.1.0"
+target = "web"
+description = "SolidJS relay list showing relay URLs with role badges and live connection status dots."
+[[components.files]]
+source = "web/relay-list/NostrRelayList.tsx"
+target = "src/components/nostr-relays/NostrRelayList.tsx"
+role = "source"
+
+[[components]]
+id = "web/render-identity"
+version = "0.1.0"
+target = "web"
+description = "Documentation-only web stance for SwiftUI render identity; SolidJS does not need an installable helper."
+files = []

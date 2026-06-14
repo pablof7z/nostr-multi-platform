@@ -18,6 +18,7 @@ pub(crate) const REGISTRY_SECTION_FILES: &[&str] = &[
     "registry.compose.toml",
     "registry.tui.toml",
     "registry.desktop.toml",
+    "registry.web.toml",
 ];
 
 /// Read `registry.toml` at `manifest_path` and append every per-target

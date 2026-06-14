@@ -1,5 +1,6 @@
 /** ADR-0035 reply-attribution badge attached to a feed item. */
 import type { FeedItem, FeedCountState } from "./feedProjection";
+import type { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 
 export type AttributionBadge = {
   authorPubkey: string;
@@ -22,6 +23,7 @@ export type TimelineItem = {
   displayName?: string;
   handle?: string;
   content?: string;
+  contentTree?: ContentTreeWire;
   createdAt?: number;
   relativeTime?: string;
   relationCounts?: RelationCounts;
@@ -148,6 +150,7 @@ export function feedItemsToRows(items: FeedItem[], resolvedProfiles?: Map<string
     authorPubkey: item.authorPubkey,
     displayName: item.authorDisplayName ?? resolvedProfiles?.get(item.authorPubkey),
     content: item.content,
+    contentTree: item.contentTree,
     createdAt: item.createdAt,
     relationCounts: {
       replies: toCountState(item.relationCounts.replies),

@@ -60,6 +60,28 @@ use crate::claim_queue::{
     build_queuing_claim_sink, drain_pending_claims, new_pending_claim_queue,
 };
 
+/// Content-parser seam implementation backed by nmp-content.
+///
+/// nmp-core can't depend on nmp-content (it would create a dependency cycle —
+/// nmp-content depends on nmp-core), so the kernel holds a no-op
+/// [`ContentParser`](nmp_core::substrate::ContentParser) by default. This crate
+/// CAN depend on nmp-content, so it installs the real NIP-10/markdown tokenizer
+/// into the kernel via `set_content_parser`. The kernel then carries a parsed
+/// NFCT content tree in the `claimed_events` typed projection, which the web
+/// content components decode and render — the `claim_event` twin of the native
+/// content path.
+struct NmpContentParser;
+
+impl nmp_core::substrate::ContentParser for NmpContentParser {
+    fn parse_to_nfct_bytes(&self, content: &str, tags: &[Vec<String>], kind: u32) -> Vec<u8> {
+        // `RenderMode::Auto` sniffs the render mode from the event kind
+        // (markdown for long-form 30023, inline for kind:1, …) — matching the
+        // native tokenizer entry point.
+        let tree = nmp_content::tokenize_with_kind(content, tags, nmp_content::RenderMode::Auto, kind);
+        nmp_content::wire::typed_fb::encode_content_tree(&tree.to_wire())
+    }
+}
+
 /// All handles the composition root hands back to the caller after wiring.
 pub struct ChirpWebFeedSetup {
     /// The OP-feed engine. Use `.snapshot(…)` for direct UI reads.
@@ -138,6 +160,14 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         Arc::new(nmp_router::GenericOutboxRouter::new()),
         Arc::new(nmp_router::InMemoryMailboxCache::new()),
     );
+
+    // 0b. Install the content-parser seam so the `claimed_events` projection
+    //     carries a parsed NFCT content tree. nmp-core can't depend on
+    //     nmp-content (layering), so the kernel holds a no-op parser by default;
+    //     here (a layer that CAN depend on nmp-content) we install the real
+    //     tokenizer. This lets a web host render the kernel-parsed content tree
+    //     from a `claim_event` — the content components consume these bytes.
+    reducer.borrow_mut().set_content_parser(Arc::new(NmpContentParser));
 
     // 1. Active-account slot (for follow-set seeding + account switch).
     let active_account_slot = reducer.borrow().active_account_handle();
