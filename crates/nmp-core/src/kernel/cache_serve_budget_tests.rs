@@ -107,31 +107,15 @@ fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
 
 // ─── 5. Watermark ⇄ serve invariant (§6) ────────────────────────────────────
 
-/// ADR-0045 §6: **no watermark floor without cache-serve coverage for the
-/// same shape** — the load-bearing implication is `floored ⇒ served`,
-/// asserted here against the REAL production `watermark_fn` installed by the
-/// kernel constructor (not a re-derivation of its rules).
-///
-/// The kernel is seeded with real stored events for one author so the
-/// watermark has something to floor — making the single-author case a
-/// non-vacuous "floored AND served" probe. A tagged author+kind shape is the
-/// regression direction: the watermark's per-author-newest scan ignores the
-/// tag dimension, so flooring it would park stored tagged events above the
-/// floor with no serve to back them — the watermark must refuse (`None`).
-///
-/// The structural variant mapping (which `StoreQuery` each E1 shape produces)
-/// is pinned alongside.
+/// ADR-0045 §6 — the E1 shape→`StoreQuery` mapping (`shape_to_store_queries`):
+/// which store query each author+kind / kindtime / event-id shape produces.
+/// This is the single serve/pin mapping the floor-coherent pin set and
+/// cache-serve both ride on; pinning the variant mapping guards it from drift.
 #[test]
 fn e1_watermark_serve_invariant_shapes_are_aligned() {
     use crate::planner::InterestShape;
 
-    // A live kernel with stored events for `author` (kind 1).
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let keys = ::nostr::Keys::generate();
-    let author = keys.public_key().to_hex();
-    kernel.timeline_authors.insert(author.clone());
-    seed_events(&mut kernel, &keys, 2, 1_700_000_000);
-
+    let author = hex_pk("a1");
     let shape_single_author = InterestShape {
         authors: BTreeSet::from([author.clone()]),
         kinds: BTreeSet::from([1u32]),
@@ -159,55 +143,12 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
         ..Default::default()
     };
     shape_event_ids.event_ids.insert(hex_pk("1d"));
-    let shape_no_kinds = InterestShape::default();
 
-    // ── The load-bearing implication: floored ⇒ served ──────────────────────
-    let cases: [(&str, &InterestShape); 6] = [
-        ("single-author+kind", &shape_single_author),
-        ("multi-author one-empty", &shape_author_no_events),
-        ("kindtime", &shape_kindtime),
-        ("tagged author+kind", &shape_tagged),
-        ("event-ids", &shape_event_ids),
-        ("no-kinds", &shape_no_kinds),
-    ];
-    for (name, shape) in cases {
-        let floored = kernel
-            .lifecycle
-            .watermark_for_shape_for_test(shape)
-            .is_some();
-        let served = !shape_to_store_queries(shape).is_empty();
-        assert!(
-            !floored || served,
-            "§6 violated for `{name}`: the watermark floors this shape but \
-             cache-serve does not cover it — stored events above the floor \
-             would never reach projections (relay won't resend, serve won't feed)"
-        );
-    }
-
-    // Non-vacuity: the single-author shape with stored events IS floored
-    // (so the implication above is exercised in the `floored == true` arm).
-    assert!(
-        kernel
-            .lifecycle
-            .watermark_for_shape_for_test(&shape_single_author)
-            .is_some(),
-        "single-author shape with stored events must be floored — otherwise \
-         the floored⇒served assertion is vacuous"
-    );
-    // The shape_tagged uses "abc" as the event id (3 chars, not 64-char hex).
-    // hex decode fails → both serve and watermark return None/empty — the
-    // floored⇒served invariant holds vacuously for this specific shape.
-    // E3 covers properly-encoded #e target shapes (see e3_structural_floored_implies_served).
+    // The shape_tagged uses "abc" as the #e target (3 chars, not 64-char hex):
+    // hex decode fails → no queries.
     assert!(
         shape_to_store_queries(&shape_tagged).is_empty(),
         "shape_tagged with 3-char target → no queries (hex decode fails)"
-    );
-    assert!(
-        kernel
-            .lifecycle
-            .watermark_for_shape_for_test(&shape_tagged)
-            .is_none(),
-        "shape_tagged with 3-char target → no watermark floor (hex decode fails)"
     );
 
     // ── Structural variant mapping (E1 shape → StoreQuery) ─────────────────
@@ -229,7 +170,7 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
     assert!(matches!(&queries3[0], StoreQuery::KindTime { .. }));
 
     assert!(
-        shape_to_store_queries(&shape_no_kinds).is_empty(),
+        shape_to_store_queries(&InterestShape::default()).is_empty(),
         "0 kinds → no queries (not covered by any increment)"
     );
     assert!(
@@ -245,24 +186,18 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
 /// well as the E1 author+kind shapes.
 ///
 /// This test uses properly 64-char-hex targets so that `hex_to_pubkey_bytes`
-/// succeeds and real `StoreQuery` variants are produced. It asserts the
-/// invariant structurally: every shape that `watermark_fn` floors ALSO has a
-/// non-empty `shape_to_store_queries` result — the seam identity check the ADR
-/// §6 demands.
+/// succeeds and real `StoreQuery` variants are produced. It asserts that every
+/// E2/E3 shape produces a non-empty `shape_to_store_queries` result and pins the
+/// variant mapping — the single serve/pin mapping seam the ADR §6 demands.
 #[test]
 fn e3_structural_floored_implies_served() {
     use crate::planner::{InterestShape, NaddrCoord};
 
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let keys = ::nostr::Keys::generate();
-    let author = keys.public_key().to_hex();
+    let author = hex_pk("a3");
     // 64-char event id for Etag target
     let event_id_hex = hex_pk("e1");
     // 64-char pubkey for Ptag target
     let ptag_hex = hex_pk("fa");
-
-    kernel.timeline_authors.insert(author.clone());
-    seed_events(&mut kernel, &keys, 2, 1_700_000_000);
 
     // ── E2/E3: #p tag + kind:1059 (DM inbox) ────────────────────────────────
     let mut shape_dm_inbox = InterestShape {
@@ -302,10 +237,8 @@ fn e3_structural_floored_implies_served() {
         d_tag: "my-article".to_string(),
     });
 
-    // The invariant: for every shape where watermark floors, serve also covers.
-    // Note: the watermark returns None for shapes with NO stored events
-    // (so these cases are vacuously satisfied — there is nothing to floor).
-    // The important structural property is that serve IS non-empty for all of them.
+    // Every E2/E3 shape MUST produce a non-empty StoreQuery list (serve covers
+    // it) — the structural property the floor-coherent pin set relies on.
     let cases: [(&str, &InterestShape); 4] = [
         ("DM inbox (#p+1059)", &shape_dm_inbox),
         ("#p mention/zap", &shape_ptag_mention),
@@ -313,19 +246,8 @@ fn e3_structural_floored_implies_served() {
         ("addressable long-form", &shape_address),
     ];
     for (name, shape) in &cases {
-        let floored = kernel
-            .lifecycle
-            .watermark_for_shape_for_test(shape)
-            .is_some();
-        let served = !shape_to_store_queries(shape).is_empty();
         assert!(
-            !floored || served,
-            "§6 E3 violated for `{name}`: watermark floors but serve does not cover — \
-             stored events above the floor would never reach projections"
-        );
-        // Non-vacuity for serve coverage: all E3 shapes MUST produce queries.
-        assert!(
-            served,
+            !shape_to_store_queries(shape).is_empty(),
             "E3 shape `{name}` must produce a non-empty StoreQuery list"
         );
     }

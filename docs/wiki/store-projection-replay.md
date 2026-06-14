@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -16,6 +16,8 @@ sources:
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
+  - session:bf035812-6f7a-46ec-a11d-30fc7369342f
+  - session:019ec57a-fb01-7081-80c8-d7107f302049
 ---
 
 # Store-Projection Replay
@@ -26,6 +28,10 @@ ADR-0045 store→projection replay is accepted (staged); implementation is track
 
 The feedback one-change fix collapses to one mechanism with one retention policy: `action_lifecycle` is the sole host-facing projection with TTL-anchored retention where ack is purely early-dismiss.
 
+Hydration reuses the F-12 store→projection replay mechanism; the web port inherits it and plugs in a backend, requiring no new replay logic.
+
+New nondeterministic inputs (time, randomness, network, OS callbacks, capability completions) must enter the actor as explicit actions/events or injected seams; reducers must remain replayable from message history.
+
 iOS `SignerStateTone.derivedLabel` and `WalletStatusTone.derivedLabel` duplicate Rust business logic by switching on raw state tokens as `??` fallbacks for 'older buffers' that cannot exist in a running app (once a build ships the fields, old buffers from the same process are impossible).
 
-<!-- citations: [^02745-19] [^da6b1-39] [^78c8e-31] [^2e544-70] -->
+<!-- citations: [^02745-19] [^da6b1-39] [^78c8e-31] [^2e544-70] [^bf035-171] [^019ec-19] -->

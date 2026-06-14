@@ -13,7 +13,9 @@ mod query;
 
 // ─── Re-exports ───────────────────────────────────────────────────────────────
 
-pub use coverage::{coverage_key, coverage_key_parts, CoverageRow, COVERAGE_KEY_SEP};
+pub use coverage::{
+    coverage_key, coverage_key_parts, CoverageGuard, CoverageMatchFn, CoverageRow, COVERAGE_KEY_SEP,
+};
 pub use errors::{StoreError, VerifyError};
 pub use events::{RawEvent, StoredEvent, VerifiedEvent};
 pub use gc::{

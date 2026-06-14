@@ -2,15 +2,16 @@
 //!
 //! ## The hole this closes
 //!
-//! The live `since`-floor for a subscription is content-derived: the
-//! `watermark_fn` (`kernel/mod.rs`) queries the store for the newest stored
-//! event matching each REQ shape and floors that REQ's `since` to `floor + 1`,
-//! so the relay does not re-emit events already on disk.
+//! The live `since`-floor for a subscription comes from the coverage ledger: the
+//! `watermark_fn` (`kernel/mod.rs`) reads the relay's `covered_through` for the
+//! REQ shape and floors that REQ's `since` to `covered_through + 1`, so the relay
+//! does not re-emit events already covered.
 //!
-//! LRU eviction (Stage 3 ceiling) is free to delete a *middle* event that is
-//! older than the surviving newest event. The floor stays at `newest + 1`, so
-//! the self-healing REQ — which only asks for events newer than the floor —
-//! will NEVER re-request that middle event: a permanent hole.
+//! LRU eviction (Stage 3 ceiling) is free to delete a *middle* event below
+//! `covered_through`. The floor stays at `covered_through + 1`, so the
+//! self-healing REQ — which only asks for events newer than the floor — will
+//! NEVER re-request that middle event: a permanent hole (unless eviction lowers
+//! the ledger; Stage D3 leg 2).
 //!
 //! The fix: `Kernel::derive_store_pin_set` additionally pins every stored event
 //! at or below each active floored shape's `since`-floor, so the middle event
@@ -112,13 +113,14 @@ fn derive_store_pin_set_pins_events_below_shape_floor() {
     inject_note(&mut kernel, &e_mid, &author, 200);
     inject_note(&mut kernel, &e_new, &author, 300);
 
-    // Register an active floored author+kind interest (kind:1). The store's
-    // newest matching event (created_at=300) sets this shape's `since`-floor.
-    open_interest(
-        &mut kernel,
-        &format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#),
-        "floor-coherent-test",
-    );
+    // Register an active floored author+kind interest (kind:1), and record a
+    // coverage row at covered_through=300 for it — so the ledger floor is 300
+    // (the covered REQ floors at 301 and never re-fetches the ≤300 events).
+    let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);
+    open_interest(&mut kernel, &filter, "floor-coherent-test");
+    let shape = crate::planner::InterestShape::from_filter_json(&filter).unwrap();
+    let fh = crate::planner::canonical_filter_hash(&shape);
+    kernel.store.record_coverage(&fh, "wss://relay.example/", 300);
 
     // Simulate prior RAM-tier eviction: drop the events from the RAM `events`
     // map so the STORE is their sole holder. This is the exact hole scenario —
@@ -159,11 +161,11 @@ fn derive_store_pin_set_returns_complete_for_small_stores() {
     inject_note(&mut kernel, &e_old, &author, 100);
     inject_note(&mut kernel, &e_new, &author, 300);
 
-    open_interest(
-        &mut kernel,
-        &format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#),
-        "complete-flag-test",
-    );
+    let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);
+    open_interest(&mut kernel, &filter, "complete-flag-test");
+    let shape = crate::planner::InterestShape::from_filter_json(&filter).unwrap();
+    let fh = crate::planner::canonical_filter_hash(&shape);
+    kernel.store.record_coverage(&fh, "wss://relay.example/", 300);
 
     kernel.events.clear();
     let (pins, complete) = kernel.derive_store_pin_set();
@@ -185,7 +187,7 @@ fn derive_store_pin_set_returns_complete_for_small_stores() {
 /// unvisited and must NOT be in the pin set (safety: the caller defers eviction).
 #[test]
 fn pin_scan_truncated_returns_truncated_outcome_and_stays_within_budget() {
-    use super::floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
+    use super::floor::{pin_shape_events_below_floor, PinScanOutcome};
     use crate::planner::InterestShape;
     use std::collections::HashSet;
 
@@ -213,8 +215,10 @@ fn pin_scan_truncated_returns_truncated_outcome_and_stays_within_budget() {
     let filter_json = format!(r##"{{"kinds":[1],"#e":["{}"]}}"##, etag_target);
     let shape = InterestShape::from_filter_json(&filter_json).expect("valid Etag filter");
 
-    let floor = shape_floor(&shape, kernel.store.as_ref(), &HashSet::new())
-        .expect("floor must exist: events are stored");
+    // A floor above every stored event so the scan visits all matches and the
+    // budget (not the floor) is what truncates it. The floor SOURCE is not under
+    // test here — the pin-scan budget/truncation behaviour is.
+    let floor = u64::MAX;
 
     let mut pins: HashSet<crate::store::EventId> = HashSet::new();
     let outcome =
@@ -318,7 +322,7 @@ fn run_gc_step_succeeds_and_records_report_after_pin_scan() {
 /// fails); passes once the pin scan clears `since` to `None`.
 #[test]
 fn pin_shape_events_below_floor_clears_since_for_author_kind_shape() {
-    use super::floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
+    use super::floor::{pin_shape_events_below_floor, PinScanOutcome};
     use crate::planner::InterestShape;
     use std::collections::HashSet;
 
@@ -350,11 +354,10 @@ fn pin_shape_events_below_floor_clears_since_for_author_kind_shape() {
         ..Default::default()
     };
 
-    // The floor itself is `since`-blind (shape_floor normalizes since=None), so
-    // it correctly resolves to the newest stored match (300).
-    let floor = shape_floor(&shape, kernel.store.as_ref(), &HashSet::new())
-        .expect("author+kind shape with stored events must have a floor");
-    assert_eq!(floor, 300, "floor must be the newest stored created_at");
+    // The floor the covered REQ would carry (the ledger's covered_through). This
+    // test exercises the pin scan's `since`-normalization, not the floor source,
+    // so we use the floor value directly (300, at the newest stored event).
+    let floor = 300u64;
 
     let mut pins: HashSet<crate::store::EventId> = HashSet::new();
     let outcome = pin_shape_events_below_floor(
@@ -389,17 +392,18 @@ fn derive_store_pin_set_does_not_pin_events_with_no_active_interest() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
 
-    // Author A: floored interest active.
+    // Author A: floored interest active, with a coverage row at 300 so the
+    // ledger floor is 300 and A's ≤300 events are floor-coherent pins.
     let author_a = make_pubkey(7_101);
     let a_old = format!("{:0>64x}", 0xE00001u64);
     let a_new = format!("{:0>64x}", 0xE00002u64);
     inject_note(&mut kernel, &a_old, &author_a, 100);
     inject_note(&mut kernel, &a_new, &author_a, 300);
-    open_interest(
-        &mut kernel,
-        &format!(r#"{{"kinds":[1],"authors":["{author_a}"]}}"#),
-        "floor-coherent-test",
-    );
+    let filter_a = format!(r#"{{"kinds":[1],"authors":["{author_a}"]}}"#);
+    open_interest(&mut kernel, &filter_a, "floor-coherent-test");
+    let shape_a = crate::planner::InterestShape::from_filter_json(&filter_a).unwrap();
+    let fh_a = crate::planner::canonical_filter_hash(&shape_a);
+    kernel.store.record_coverage(&fh_a, "wss://relay.example/", 300);
 
     // Author B: NO active interest. Its cold event must not be pinned.
     let author_b = make_pubkey(7_202);

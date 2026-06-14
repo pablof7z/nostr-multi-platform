@@ -145,91 +145,6 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
     }
 }
 
-/// Compute a watermark floor for `shape` by folding the per-query newest
-/// timestamps returned by `scan` over `shape_to_store_queries(shape)` — the
-/// SINGLE source of shape→store-query truth (ADR-0045 §6 "one table read two
-/// ways" / issue #1119).
-///
-/// `scan` runs the actual store probe for one query (typically a
-/// `query_visit(q, 1, …)` that returns the newest stored `created_at`, or
-/// `None` when nothing matches). It is invoked once per query in
-/// [`shape_to_store_queries`] order, with `since`/`until` already normalized to
-/// `None` (the watermark scan wants the newest match regardless of window).
-///
-/// Folding policy (preserves the prior `watermark_fn` semantics exactly):
-///
-/// - **`AuthorKind`** (per-author feed): `min` across authors, but any author
-///   with no stored events (`scan → None`) aborts the whole floor (`None`) —
-///   their history must be fetched in full (V-118).
-/// - **`KindDtag`** (addressable): `min` across coords, AND any coord with no
-///   stored match (`scan → None`) aborts the whole floor (`None`) — the SAME
-///   min/abort rule the authors branch uses (K3 Stage B1). A multi-coord
-///   addressable shape with one unfetched replaceable coordinate must not be
-///   floored above that coord's never-fetched history; max-ignoring-empties
-///   (the prior policy) was the opposite, unsafe rule for the identical hazard.
-/// - **`Etag` / `Ptag`**: the single query's value (or `None`).
-/// - **`KindTime`** (zero-author global feed): never floored — no safe
-///   per-author floor exists, so the presence of any `KindTime` query forces
-///   `None`.
-///
-/// `is_truncated` reports whether a CURSOR-LESS (`Etag`/`Ptag`) query was
-/// budget-truncated mid-serve this session (K3 Stage B3). A truncated
-/// cursor-less query stranded the stored tail within serve depth, so flooring
-/// it would suppress the relay re-send of that tail — the fold therefore
-/// refuses the floor for that shape (returns `None`). Pass a closure that is
-/// always `false` to opt out (the prior, truncation-unaware behaviour).
-///
-/// Returns `None` when the shape maps to no queries (uncovered → unfloored),
-/// which is exactly the §6 implication `floored ⇒ served`, now structural.
-pub(in crate::kernel) fn watermark_from_queries(
-    shape: &InterestShape,
-    mut scan: impl FnMut(&StoreQuery) -> Option<u64>,
-    mut is_truncated: impl FnMut(u64) -> bool,
-) -> Option<u64> {
-    let queries = shape_to_store_queries(shape);
-    if queries.is_empty() {
-        return None;
-    }
-
-    let mut author_min: Option<u64> = None;
-    let mut addr_min: Option<u64> = None;
-    let mut single: Option<u64> = None;
-
-    for query in &queries {
-        match query {
-            // Zero-author global feed: no safe floor exists.
-            StoreQuery::KindTime { .. } => return None,
-            StoreQuery::AuthorKind { .. } => {
-                // Any empty author aborts the whole floor (must backfill).
-                let ts = scan(query)?;
-                author_min = Some(author_min.map_or(ts, |prev| prev.min(ts)));
-            }
-            StoreQuery::KindDtag { .. } => {
-                // K3 Stage B1: same min/abort rule as AuthorKind. Any coord
-                // with no stored match aborts the whole floor (the unfetched
-                // coord must backfill in full); otherwise floor at the MIN so
-                // no coord is floored above its own newest stored event.
-                let ts = scan(query)?;
-                addr_min = Some(addr_min.map_or(ts, |prev| prev.min(ts)));
-            }
-            StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => {
-                // K3 Stage B3: a budget-truncated cursor-less serve stranded
-                // the stored tail; refuse the floor so the relay re-sends it.
-                if let Some(key) = cursor_less_query_key(query) {
-                    if is_truncated(key) {
-                        return None;
-                    }
-                }
-                single = scan(query);
-            }
-        }
-    }
-
-    // A shape maps to a homogeneous query family, so at most one of these is
-    // populated; `.or` picks whichever the family produced.
-    author_min.or(addr_min).or(single)
-}
-
 /// Whether a shape needs `IngestParser` dispatch in addition to normal
 /// `notify_event_observers` fan-out.
 ///
@@ -289,32 +204,6 @@ pub(in crate::kernel) fn completion_key_for_interest(
         .map(|c| (c.kind, c.pubkey.as_str(), c.d_tag.as_str()))
         .collect();
     stable_hash64((sub_key, &authors, &kinds, &tags, &addresses))
-}
-
-/// Stable session-key for a CURSOR-LESS store query (`Etag` / `Ptag`).
-///
-/// K3 Stage B3 — `Etag`/`Ptag` serves carry no resume cursor (the index does
-/// not support time-bounded pagination), so a budget-truncated chunk advances
-/// PAST the query and silently skips the stored tail within serve depth. The
-/// watermark floor (enabled for these shapes since ADR-0045 E2/E3) would then
-/// suppress the relay re-send of that skipped tail. The serve records the
-/// truncation under this key; [`watermark_from_queries`] refuses to floor a
-/// shape whose cursor-less query is in the truncated set.
-///
-/// Keyed by the query's content identity (target + kinds) so the serve-side
-/// writer and the watermark-side reader compute the SAME key from the same
-/// shape — exactly the "one table read two ways" discipline the floor already
-/// rides on. Returns `None` for cursored variants (which resume by cursor and
-/// never strand a tail this way).
-pub(in crate::kernel) fn cursor_less_query_key(query: &StoreQuery) -> Option<u64> {
-    use crate::stable_hash::stable_hash64;
-    match query {
-        StoreQuery::Etag { target, kinds } => Some(stable_hash64(("etag", target, kinds))),
-        StoreQuery::Ptag { target, kinds } => Some(stable_hash64(("ptag", target, kinds))),
-        StoreQuery::AuthorKind { .. }
-        | StoreQuery::KindTime { .. }
-        | StoreQuery::KindDtag { .. } => None,
-    }
 }
 
 /// Mutable access to a query's `until` cursor — `None` for variants without

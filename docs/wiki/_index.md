@@ -2,7 +2,7 @@
 
 > Derived cache — do not hand-edit. Rebuilt by proactive-context after each capture.
 
-Last updated: 2026-06-13
+Last updated: 2026-06-14
 
 ## cache-serve (2 guides)
 
@@ -33,10 +33,11 @@ Last updated: 2026-06-13
 | [model-substitution](model-substitution.md) | Model Substitution | The fable-5 model is unavailable and all keystone teams now run on Opus/Sonnet instead. | capture | warm | 2026-06-13 | ci-gates |
 | [wasm-publish](wasm-publish.md) | WASM Publish | Issue #1202 (wasm silent publish failure) is resolved by replacing the silent NoTargets with an honest CapabilityFailure (`publish_not_supported_in_web_preview_ | capture | warm | 2026-06-13 | ci-gates |
 
-## codebase-patterns (6 guides)
+## codebase-patterns (7 guides)
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
+| [agent-workflow-policy](agent-workflow-policy.md) | Agent Workflow Policy | Completed PR descriptions must include a short TLDR summary, a detailed overview of the work performed, and any subjective decisions including tradeoffs or assu | capture | warm | 2026-06-14 | codebase-patterns |
 | [agents-md-policy](agents-md-policy.md) | AGENTS.md Policy | The week-one act before any keystone is landing the supersession-deletion policy in AGENTS.md plus the empty mechanism_census test. | capture | warm | 2026-06-13 | codebase-patterns |
 | [codebase-patterns](codebase-patterns.md) | Codebase Patterns | The file-size gate enforces a 500-line hard cap with an anti-cheat rule that blocks raising a file's baseline in a PR; zero baseline bumps were merged across th | capture | warm | 2026-06-13 | codebase-patterns |
 | [excellence-program](excellence-program.md) | Excellence Program | The excellence program identifies six repo-wide patterns found by the reviewers: superseded generations never deleted, presence-is-not-coverage, invariants by c | capture | warm | 2026-06-13 | codebase-patterns |
@@ -44,10 +45,11 @@ Last updated: 2026-06-13
 | [keystone-overview](keystone-overview.md) | Keystone Overview | The three keystones are K1 (signer-session port covering sign\|nip44_encrypt\|nip44_decrypt with mailbox completions), K2 (instance-scoped registration replacing | capture | warm | 2026-06-13 | codebase-patterns |
 | [shell-protocol-violations](shell-protocol-violations.md) | Shell Protocol Violations | Issue #1283 is resolved with the EmbedHost resolver moving to nmp-ffi (which sits above both nmp-core and nmp-content in the DAG), shipping a typed EmbedKindPro | capture | warm | 2026-06-13 | codebase-patterns |
 
-## concurrency (3 guides)
+## concurrency (4 guides)
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
+| [concurrency](concurrency.md) | Concurrency | Polling is forbidden at every layer of the stack: no sleep+check loops, no Timer.scheduledTimer querying state, no try_recv+sleep spin loops, no Task while !can | capture | warm | 2026-06-14 | concurrency |
 | [concurrency-ordering](concurrency-ordering.md) | Concurrency Ordering | All Relaxed orderings on the cancel flag were replaced with Release/Acquire pairs for correctness on ARM. | capture | warm | 2026-06-13 | concurrency |
 | [dispatcher-shutdown](dispatcher-shutdown.md) | Dispatcher Shutdown | The dispatcher thread is joined in `cancel()` with a race guard to prevent thread leaks | capture | warm | 2026-06-13 | concurrency |
 | [network-pool-timeout](network-pool-timeout.md) | Network Pool Timeout | Network pool connection must use `TcpStream::connect_timeout` (10 s) and `client_tls_with_config` to prevent shutdown blocking for ~75 seconds on black-hole hos | capture | warm | 2026-06-13 | concurrency |
@@ -57,6 +59,12 @@ Last updated: 2026-06-13
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
 | [cron-create](cron-create.md) | Cron Create | Recurring CronCreate tasks auto-expire after 7 days. | capture | warm | 2026-06-13 | cron-create |
+
+## data-persistence (1 guide)
+
+| Slug | Title | Summary | Tags | Volatility | Verified | Topic |
+|------|-------|---------|------|------------|----------|-------|
+| [wasm-persistence](wasm-persistence.md) | WASM Persistence | The WASM runtime must use OPFS SyncAccessHandle-backed SQLite as the primary persistence backend, not IndexedDB, because EventStore is a synchronous trait and I | capture | warm | 2026-06-14 | data-persistence |
 
 ## event-acquisition (6 guides)
 
@@ -98,10 +106,11 @@ Last updated: 2026-06-13
 |------|-------|---------|------|------------|----------|-------|
 | [nip-55-signer](nip-55-signer.md) | NIP-55 External Signer | NIP-55 (Amber external signer) ADR-0048 places the signer behind the uniform V-78 SignEventForAccount port with a 90-second per-op interactive deadline, pubkey- | capture | warm | 2026-06-13 | nip-55-signer |
 
-## nmp-app-integration (2 guides)
+## nmp-app-integration (3 guides)
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
+| [cli-registry-manifest](cli-registry-manifest.md) | CLI Registry Manifest | The CLI registry manifest must mirror all component ids that appear in the web registry, including web-targeted components such as web/login-block, web/relay-li | capture | warm | 2026-06-14 | nmp-app-integration |
 | [instance-scoped-registration](instance-scoped-registration.md) | Instance-Scoped Registration | Instance-scoped module registration (register_action by value with &self methods) replaces stateless-by-construction ActionModule trait, and per-app slots repla | capture | warm | 2026-06-13 | nmp-app-integration |
 | [nmp-app-integration](nmp-app-integration.md) | NMP App Integration | The hl app fully embeds the NMP kernel via path deps (including nmp-ffi with the external-signer feature) and uses UniFFI (not JNI) for the FFI boundary, so no | capture | warm | 2026-06-13 | nmp-app-integration |
 
@@ -131,11 +140,12 @@ Last updated: 2026-06-13
 |------|-------|---------|------|------------|----------|-------|
 | [ram-eviction](ram-eviction.md) | RAM Eviction | Open-view RAM eviction pins events matching any of four sets per open thread view: the focused event id, the derived root id, referenced_event_ids of the focuse | capture | warm | 2026-06-13 | ram-eviction |
 
-## relay-routing (1 guide)
+## relay-routing (2 guides)
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
 | [outbox-resolver](outbox-resolver.md) | Outbox Resolver | The OutboxResolver must apply the blocked-relay filter on publish, not just subscribe, to prevent publishing to user-blocked relays | capture | warm | 2026-06-13 | relay-routing |
+| [wasm-relay-pool](wasm-relay-pool.md) | WASM Relay Pool | The WASM relay pool opens one WebSocket per distinct relay URL (native parity), reports inbound frames under a single first-role-wins role, and spawns drivers on demand for kernel-targeted URLs so the kernel owns socket lifecycle on web. | capture | warm | 2026-06-14 | relay-routing |
 
 ## shell-defects (1 guide)
 
@@ -154,84 +164,4 @@ Last updated: 2026-06-13
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
 | [zap-scope](zap-scope.md) | Zap Scope | Zap work is declared post-v1 by owner decision; issues #1008, #999, and #967 are deferred to post-v1 and their needs-decision labels should be dropped | capture | warm | 2026-06-13 | zap-scope |
-
-## Research Records (12 records)
-
-| Record | Date | Finding | Agent |
-|--------|------|---------|-------|
-| [2026-06-13-1-adversarial-review-of-20-wave-1](research/2026-06-13-1-adversarial-review-of-20-wave-1.md) | 2026-06-13 | Adversarial review of 20 Wave-1 PRs against doctrine criteria (file-size gates, real tests, thin shell, no baseline bumps), producing approved (9) and rejected (1, #1298 for hard-cap violation) verdicts with per-PR CI check tallies and detailed parity/correctness/test analysis | wf_64b436b2-acb (Wave 1 workflow) |
-| [2026-06-13-1-audit-of-android-compose-claim-host](research/2026-06-13-1-audit-of-android-compose-claim-host.md) | 2026-06-13 | Audit of Android Compose claim-host components across 5 dimensions (claim lifecycle, D0 thin-shell, dedup, image loading, LazyColumn recycling) with HIGH/MEDIUM/LOW/CLEAN verdicts; found HIGH claim-churn loop bug | Audit new #1294 Android claim components |
-| [2026-06-13-1-diagnosis-of-post-restart-marmot-group](research/2026-06-13-1-diagnosis-of-post-restart-marmot-group.md) | 2026-06-13 | Diagnosis of post-restart Marmot group message delivery failure; confirmed hypothesis that register_with_keys never re-subscribes per-group kind:445 feeds for already-joined groups on restart, with PR-by-PR fix plan and regression test design | sub-agent (diagnosis investigation) |
-| [2026-06-13-1-mls-marmot-support-verification-for-ios](research/2026-06-13-1-mls-marmot-support-verification-for-ios.md) | 2026-06-13 | MLS/Marmot support verification for iOS and Android: verdict SHOULD-WORK-UNVERIFIED for both platforms, with Rust-owns-logic check and V-109 gap quantification | Verify MLS support iOS+Android (aa96677fc89e26ff3) |
-| [2026-06-13-1-mls-support-verification-for-chirp-ios](research/2026-06-13-1-mls-support-verification-for-chirp-ios.md) | 2026-06-13 | MLS support verification for Chirp iOS and Android, verdict SHOULD-WORK-UNVERIFIED for both platforms (report truncated in transcript) | aa96677fc89e26ff3 |
-| [2026-06-13-1-opus-agent-evaluation-of-all-11](research/2026-06-13-1-opus-agent-evaluation-of-all-11.md) | 2026-06-13 | Opus agent evaluation of all 11 needs-decision issues against documented product direction, classifying each as A (determined-by-direction) or B (needs-owner) with verified code facts and unblocked actions | aa54266b1636c10ef |
-| [2026-06-13-1-systematic-triage-of-88-open-github](research/2026-06-13-1-systematic-triage-of-88-open-github.md) | 2026-06-13 | Systematic triage of 88 open GitHub issues against pre-registered doctrine criteria, classifying each as must-fix (39), close-stale (23), owner-decision (8), or legit-deferred (18), with 9 confirmed business-logic-in-UI violations identified | main |
-| [2026-06-13-2-opus-code-review-of-pr-1332](research/2026-06-13-2-opus-code-review-of-pr-1332.md) | 2026-06-13 | Opus code review of PR #1332 (relay-diagnostics raw timestamps): verdict REQUEST-CHANGES with 3 blockers (wrong flatc version, invalid JSON fixture, file-size hard-cap expansion) | Opus review PR #1332 |
-| [2026-06-13-2-re-verification-of-11-wave-1b](research/2026-06-13-2-re-verification-of-11-wave-1b.md) | 2026-06-13 | Re-verification of 11 Wave-1b debt-fix PRs after file-size splits, release-manifest fix, and iOS-lane fix, producing green (8 PRs) and notGreen (3 PRs: #1308 follow-fanout regression, #1319 flaky wasm, #1316 Sendable compile error) verdicts with per-PR CI evidence | wf_94b80062-705 (Wave 1b workflow) |
-| [2026-06-13-2-root-cause-diagnosis-of-post-restart](research/2026-06-13-2-root-cause-diagnosis-of-post-restart.md) | 2026-06-13 | Root-cause diagnosis of post-restart live message reception failure in nmp-marmot, HYPOTHESIS CONFIRMED: register_with_keys never re-subscribes per-group kind:445 feeds | a0bfdad69034b526e |
-| [2026-06-13-3-post-hoc-architectural-review-of-merged](research/2026-06-13-3-post-hoc-architectural-review-of-merged.md) | 2026-06-13 | Post-hoc architectural review of merged ADR-0053 (host-declared projections): verdict HAS-DEBT-FIX-FORWARD — empty=everything footgun, missing drift-protection gate, unenforced init-only invariant | Post-hoc review merged Decision-2 (a1ffdfeca42f52771) |
-| [2026-06-13-3-re-verification-of-5-wave-1c](research/2026-06-13-3-re-verification-of-5-wave-1c.md) | 2026-06-13 | Re-verification of 5 Wave-1c PRs (3 rebases + 2 real-bug fixes), producing green (1, #1308) and notGreen (4 PRs with inherited master reds, negentropy regression, codegen drift, ChirpTests garbled-bytes failure) verdicts with per-PR CI evidence | wf_4ffc29ed-975 (Wave 1c workflow) |
-
-## Episode Cards (58 cards)
-
-| Card | Date | Title | Salience | Status |
-|------|------|-------|----------|--------|
-| [2026-06-13-1-android-compose-profile-claim-churn-loop](episodes/2026-06-13-1-android-compose-profile-claim-churn-loop.md) | 2026-06-13 | Android Compose profile-claim churn loop — same bug class as chirp-web | root-cause | active |
-| [2026-06-13-1-chirp-reference-app-requires-full-parity](episodes/2026-06-13-1-chirp-reference-app-requires-full-parity.md) | 2026-06-13 | Chirp reference app requires full parity across all 3 platforms | product | active |
-| [2026-06-13-1-don-t-restore-pbxproj-after-xcodegen](episodes/2026-06-13-1-don-t-restore-pbxproj-after-xcodegen.md) | 2026-06-13 | Don't restore pbxproj after xcodegen on device builds | architecture | superseded |
-| [2026-06-13-1-ios-device-builds-must-keep-xcodegen](episodes/2026-06-13-1-ios-device-builds-must-keep-xcodegen.md) | 2026-06-13 | iOS device builds must keep xcodegen-generated pbxproj, not restore from git | root-cause | active |
-| [2026-06-13-1-k1-signer-session-capability-port-replaces](episodes/2026-06-13-1-k1-signer-session-capability-port-replaces.md) | 2026-06-13 | K1: Signer-session capability port replaces SignerForSeal | architecture | superseded |
-| [2026-06-13-1-mls-cross-platform-validated-end-to](episodes/2026-06-13-1-mls-cross-platform-validated-end-to.md) | 2026-06-13 | MLS cross-platform validated end-to-end on real devices | product | active |
-| [2026-06-13-1-mls-end-to-end-validated-on](episodes/2026-06-13-1-mls-end-to-end-validated-on.md) | 2026-06-13 | MLS end-to-end validated on both platforms — Rust-owns-all architecture confirmed | product | superseded |
-| [2026-06-13-1-needs-decision-backlog-resolved-by-documented](episodes/2026-06-13-1-needs-decision-backlog-resolved-by-documented.md) | 2026-06-13 | Needs-decision backlog resolved by documented direction (10/11) | architecture | active |
-| [2026-06-13-1-post-restart-mls-group-messages-never](episodes/2026-06-13-1-post-restart-mls-group-messages-never.md) | 2026-06-13 | Post-restart MLS group messages never arrive — resubscribe all groups on register | root-cause | active |
-| [2026-06-13-1-projection-emission-default-inverted-incremental-by](episodes/2026-06-13-1-projection-emission-default-inverted-incremental-by.md) | 2026-06-13 | Projection emission default inverted: incremental-by-default, snapshot-as-resync | reversal | active |
-| [2026-06-13-1-remove-flatbuffers-verifier-on-trusted-in](episodes/2026-06-13-1-remove-flatbuffers-verifier-on-trusted-in.md) | 2026-06-13 | Remove FlatBuffers Verifier on trusted in-process decode path | architecture | active |
-| [2026-06-13-1-signer-session-capability-port-replaces-ambient](episodes/2026-06-13-1-signer-session-capability-port-replaces-ambient.md) | 2026-06-13 | Signer-session capability port replaces ambient signer authority (K1/ADR-0050) | architecture | active |
-| [2026-06-13-1-signer-session-capability-port-replaces-signerforseal](episodes/2026-06-13-1-signer-session-capability-port-replaces-signerforseal.md) | 2026-06-13 | Signer-session capability port replaces SignerForSeal thread cluster (ADR-0050 / K1) | architecture | superseded |
-| [2026-06-13-1-since-none-watermark-exemption-made-lifecycle](episodes/2026-06-13-1-since-none-watermark-exemption-made-lifecycle.md) | 2026-06-13 | since=None watermark exemption made lifecycle-aware | product | active |
-| [2026-06-13-1-since-none-watermark-exemption-must-be](episodes/2026-06-13-1-since-none-watermark-exemption-must-be.md) | 2026-06-13 | since=None watermark exemption must be lifecycle-aware (backfill exempt, Tailing narrowed) | product | superseded |
-| [2026-06-13-1-since-none-watermark-exemption-refined-to](episodes/2026-06-13-1-since-none-watermark-exemption-refined-to.md) | 2026-06-13 | since=None watermark exemption refined to lifecycle-aware | root-cause | superseded |
-| [2026-06-13-1-since-none-watermark-rewrite-exemption-refined](episodes/2026-06-13-1-since-none-watermark-rewrite-exemption-refined.md) | 2026-06-13 | since=None watermark rewrite exemption refined to lifecycle-aware | product | superseded |
-| [2026-06-13-1-store-eviction-ceiling-re-enabled-with](episodes/2026-06-13-1-store-eviction-ceiling-re-enabled-with.md) | 2026-06-13 | Store eviction ceiling re-enabled with floor-coherent pinning (#1090) | product | superseded |
-| [2026-06-13-1-surface-marmot-registration-requirement-on-disabled](episodes/2026-06-13-1-surface-marmot-registration-requirement-on-disabled.md) | 2026-06-13 | Surface Marmot registration requirement on disabled Create Group button | product | active |
-| [2026-06-13-1-systematic-agent-produced-file-size-debt](episodes/2026-06-13-1-systematic-agent-produced-file-size-debt.md) | 2026-06-13 | Systematic agent-produced file-size debt — enforce split, ban baseline bumps | root-cause | active |
-| [2026-06-13-1-thin-shell-d0-doctrine-9-confirmed](episodes/2026-06-13-1-thin-shell-d0-doctrine-9-confirmed.md) | 2026-06-13 | Thin-shell D0 doctrine: 9 confirmed UI-logic violations cataloged for Wave 2 fix | architecture | active |
-| [2026-06-13-2-1281-exempt-since-none-interests-from](episodes/2026-06-13-2-1281-exempt-since-none-interests-from.md) | 2026-06-13 | #1281: exempt since=None interests from T129 watermark rewrite | product | superseded |
-| [2026-06-13-2-4hz-full-kernel-snapshot-cycle-is](episodes/2026-06-13-2-4hz-full-kernel-snapshot-cycle-is.md) | 2026-06-13 | 4Hz full-kernel-snapshot cycle is the performance bottleneck on physical device | root-cause | superseded |
-| [2026-06-13-2-d0-thin-shell-violation-resolved-embed](episodes/2026-06-13-2-d0-thin-shell-violation-resolved-embed.md) | 2026-06-13 | D0 thin-shell violation resolved — embed projection moves to nmp-ffi (#1283) | architecture | superseded |
-| [2026-06-13-2-embedhost-resolution-migrates-from-swift-to](episodes/2026-06-13-2-embedhost-resolution-migrates-from-swift-to.md) | 2026-06-13 | EmbedHost resolution migrates from Swift to Rust (D0 thin-shell) | architecture | active |
-| [2026-06-13-2-excellence-program-deletion-first-doctrine-and](episodes/2026-06-13-2-excellence-program-deletion-first-doctrine-and.md) | 2026-06-13 | Excellence program: deletion-first doctrine and scope exclusions | architecture | superseded |
-| [2026-06-13-2-file-size-gate-enforced-as-debt](episodes/2026-06-13-2-file-size-gate-enforced-as-debt.md) | 2026-06-13 | File-size gate enforced as debt barrier: decompose into siblings, never bump baselines | architecture | superseded |
-| [2026-06-13-2-file-size-hard-cap-enforced-as](episodes/2026-06-13-2-file-size-hard-cap-enforced-as.md) | 2026-06-13 | File-size hard cap enforced as zero-tolerance: always split, never baseline-bump | architecture | superseded |
-| [2026-06-13-2-flatbuffers-verifier-removed-on-trusted-in](episodes/2026-06-13-2-flatbuffers-verifier-removed-on-trusted-in.md) | 2026-06-13 | FlatBuffers Verifier removed on trusted in-process decode path | architecture | superseded |
-| [2026-06-13-2-host-declared-projections-shipped-with-three](episodes/2026-06-13-2-host-declared-projections-shipped-with-three.md) | 2026-06-13 | Host-declared projections shipped with three debts: silent footgun, unbuilt drift gate, unenforced init-only invariant | root-cause | active |
-| [2026-06-13-2-instance-scoped-registration-replaces-ambient-authority](episodes/2026-06-13-2-instance-scoped-registration-replaces-ambient-authority.md) | 2026-06-13 | Instance-scoped registration replaces ambient-authority globals (K2/ADR-0052) | architecture | active |
-| [2026-06-13-2-prohibit-pre-formatted-relative-time-strings](episodes/2026-06-13-2-prohibit-pre-formatted-relative-time-strings.md) | 2026-06-13 | Prohibit pre-formatted relative-time strings in projection builders | product | active |
-| [2026-06-13-2-relay-diagnostics-must-emit-raw-timestamps](episodes/2026-06-13-2-relay-diagnostics-must-emit-raw-timestamps.md) | 2026-06-13 | Relay diagnostics must emit raw timestamps, not formatted relative-time strings | reversal | superseded |
-| [2026-06-13-2-snapshot-path-performance-defects-relay-diagnostics](episodes/2026-06-13-2-snapshot-path-performance-defects-relay-diagnostics.md) | 2026-06-13 | Snapshot-path performance defects: relay-diagnostics time-string churn and FlatBuffers Verifier on trusted data | root-cause | superseded |
-| [2026-06-13-2-standing-doctrine-never-hedge-on-breaking](episodes/2026-06-13-2-standing-doctrine-never-hedge-on-breaking.md) | 2026-06-13 | Standing doctrine: never hedge on breaking changes — upgrade consumers by hand | architecture | active |
-| [2026-06-13-2-store-eviction-floor-coherent-pins-ceiling](episodes/2026-06-13-2-store-eviction-floor-coherent-pins-ceiling.md) | 2026-06-13 | Store eviction: floor-coherent pins + ceiling re-enabled + watermark machinery deleted | architecture | superseded |
-| [2026-06-13-2-supersession-deletion-doctrine-prevents-mechanism-fossil](episodes/2026-06-13-2-supersession-deletion-doctrine-prevents-mechanism-fossil.md) | 2026-06-13 | Supersession-deletion doctrine prevents mechanism fossil accumulation | architecture | active |
-| [2026-06-13-3-adr-0053-invert-projection-emission-from](episodes/2026-06-13-3-adr-0053-invert-projection-emission-from.md) | 2026-06-13 | ADR-0053: Invert projection emission from full-snapshot-default to incremental-default | reversal | superseded |
-| [2026-06-13-3-chirp-scope-full-feature-parity-across](episodes/2026-06-13-3-chirp-scope-full-feature-parity-across.md) | 2026-06-13 | Chirp scope: full feature parity across all 3 platforms | product | active |
-| [2026-06-13-3-doctrine-never-hedge-on-breaking-changes](episodes/2026-06-13-3-doctrine-never-hedge-on-breaking-changes.md) | 2026-06-13 | Doctrine: never hedge on breaking changes — land and upgrade consumers | architecture | superseded |
-| [2026-06-13-3-embedhost-resolution-moves-from-per-platform](episodes/2026-06-13-3-embedhost-resolution-moves-from-per-platform.md) | 2026-06-13 | EmbedHost resolution moves from per-platform Swift to Rust FFI sidecar | architecture | superseded |
-| [2026-06-13-3-flatbuffers-verifier-dropped-on-trusted-in](episodes/2026-06-13-3-flatbuffers-verifier-dropped-on-trusted-in.md) | 2026-06-13 | FlatBuffers Verifier dropped on trusted in-process snapshot decode path | architecture | superseded |
-| [2026-06-13-3-floor-coherent-eviction-replaces-dead-watermark](episodes/2026-06-13-3-floor-coherent-eviction-replaces-dead-watermark.md) | 2026-06-13 | Floor-coherent eviction replaces dead watermark machinery | architecture | active |
-| [2026-06-13-3-nmp-blossom-and-nmp-nip60-parked](episodes/2026-06-13-3-nmp-blossom-and-nmp-nip60-parked.md) | 2026-06-13 | nmp-blossom and nmp-nip60 parked as post-v1 dead islands | reversal | superseded |
-| [2026-06-13-3-read-your-writes-for-follows-via](episodes/2026-06-13-3-read-your-writes-for-follows-via.md) | 2026-06-13 | Read-your-writes for follows via single acquisition path | product | active |
-| [2026-06-13-3-relay-diagnostics-pre-formatted-relative-time](episodes/2026-06-13-3-relay-diagnostics-pre-formatted-relative-time.md) | 2026-06-13 | Relay-diagnostics pre-formatted relative-time strings removed (aim.md §62 violation) | product | superseded |
-| [2026-06-13-3-relay-diagnostics-timestamp-fix-trades-per](episodes/2026-06-13-3-relay-diagnostics-timestamp-fix-trades-per.md) | 2026-06-13 | Relay-diagnostics timestamp fix trades per-second churn for per-millisecond churn — requires deterministic wall-clock anchor | root-cause | active |
-| [2026-06-13-3-timelineitem-naive-move-would-create-crate](episodes/2026-06-13-3-timelineitem-naive-move-would-create-crate.md) | 2026-06-13 | TimelineItem naive move would create crate cycle — envelope-cut is the right shape (#920) | root-cause | superseded |
-| [2026-06-13-4-10-of-11-needs-decision-issues](episodes/2026-06-13-4-10-of-11-needs-decision-issues.md) | 2026-06-13 | 10 of 11 needs-decision issues already determined by documented direction | workflow | superseded |
-| [2026-06-13-4-920-naive-timelineitem-move-creates-crate](episodes/2026-06-13-4-920-naive-timelineitem-move-creates-crate.md) | 2026-06-13 | #920: naive TimelineItem move creates crate cycle — envelope-cut is the correct fix | root-cause | active |
-| [2026-06-13-4-auth-relay-publishes-park-via-availability](episodes/2026-06-13-4-auth-relay-publishes-park-via-availability.md) | 2026-06-13 | AUTH relay publishes park via availability gate instead of failing | product | active |
-| [2026-06-13-4-embed-resolution-migrated-from-swift-embedhost](episodes/2026-06-13-4-embed-resolution-migrated-from-swift-embedhost.md) | 2026-06-13 | Embed resolution migrated from Swift EmbedHost to Rust nmp-ffi sidecar | architecture | superseded |
-| [2026-06-13-4-full-snapshot-per-tick-model-superseded](episodes/2026-06-13-4-full-snapshot-per-tick-model-superseded.md) | 2026-06-13 | Full-snapshot-per-tick model superseded by incremental projection emission (ADR-0053) | reversal | superseded |
-| [2026-06-13-4-post-v1-dead-crates-parked-as](episodes/2026-06-13-4-post-v1-dead-crates-parked-as.md) | 2026-06-13 | Post-v1 dead crates parked as historical | reversal | active |
-| [2026-06-13-4-supersede-adr-0039-allow-host-declared](episodes/2026-06-13-4-supersede-adr-0039-allow-host-declared.md) | 2026-06-13 | Supersede ADR-0039: Allow host-declared projection interest (rejecting the blanket prohibition) | reversal | active |
-| [2026-06-13-5-host-declared-projection-consumption-supersedes-adr](episodes/2026-06-13-5-host-declared-projection-consumption-supersedes-adr.md) | 2026-06-13 | Host-declared projection consumption supersedes ADR-0039's blanket prohibition | reversal | superseded |
-| [2026-06-13-5-pubkey-only-identity-accessor-enables-bunker](episodes/2026-06-13-5-pubkey-only-identity-accessor-enables-bunker.md) | 2026-06-13 | Pubkey-only identity accessor enables bunker account runtimes | product | active |
-| [2026-06-13-5-wasm-publish-path-surfaces-honest-error](episodes/2026-06-13-5-wasm-publish-path-surfaces-honest-error.md) | 2026-06-13 | Wasm publish path surfaces honest error instead of silent drop | product | active |
 

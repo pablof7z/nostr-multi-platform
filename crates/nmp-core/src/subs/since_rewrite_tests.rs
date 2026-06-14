@@ -144,7 +144,7 @@ fn since_none_stays_none_for_backfill_interest_after_watermark_rewrite() {
     // Cache has events up to ts=1700 for this filter, but the interest is a
     // backfill (OneShot, lifecycle!=Tailing) with no since. The watermark
     // rewrite must NOT introduce a lower bound.
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     l.registry_mut().push(backfill_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -166,7 +166,7 @@ fn tailing_since_none_is_narrowed_to_watermark_plus_one() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
     // Watermark = 1700; Tailing interest with no explicit since.
     // T129 must narrow it to since=1701 so the relay skips cached events.
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     l.registry_mut().push(timeline_interest(1, "a")); // lifecycle: Tailing
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -186,7 +186,7 @@ fn some_since_is_raised_to_watermark_plus_one() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
     // Interest has an explicit since=500 (older than the watermark).
     // Watermark = 1700, so the floor is 1701.  The rewrite must raise it.
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     l.registry_mut()
         .push(timeline_interest_with_since(1, "a", 500));
 
@@ -208,7 +208,7 @@ fn some_since_is_raised_to_watermark_plus_one() {
 fn does_not_rewrite_when_watermark_is_none() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
     // Empty cache: watermark fn returns None for every shape.
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| None));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| None));
     l.registry_mut().push(timeline_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -229,7 +229,7 @@ fn does_not_rewrite_when_watermark_is_none() {
 fn user_since_wins_when_newer_than_watermark() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
     // Watermark = 1500, user explicit since = 1800 (newer).
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1500)));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1500)));
     l.registry_mut()
         .push(timeline_interest_with_since(1, "a", 1800));
 
@@ -257,7 +257,7 @@ fn ephemeral_kinds_skip_since_rewrite() {
     // Even though watermark fn would return Some(1700), ephemeral kinds
     // (20000-29999) must SKIP the rewrite — the event store doesn't persist
     // them so the watermark is meaningless.
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     l.registry_mut().push(ephemeral_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -336,7 +336,7 @@ fn multi_author_no_since_when_watermark_fn_returns_none() {
     let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
     // Watermark fn returns None for any multi-author shape (simulating the
     // Option-B behaviour when B has no stored events).
-    l.set_watermark_fn(Arc::new(|shape: &InterestShape| {
+    l.set_watermark_fn(Arc::new(|shape: &InterestShape, _relay: &str| {
         if shape.authors.len() > 1 {
             None
         } else {
@@ -375,7 +375,7 @@ fn multi_author_no_since_when_watermark_fn_returns_none() {
 fn multi_author_since_is_min_watermark_plus_one() {
     let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
     // Watermark fn returns the min(100, 50) = 50 for multi-author shapes.
-    l.set_watermark_fn(Arc::new(|shape: &InterestShape| {
+    l.set_watermark_fn(Arc::new(|shape: &InterestShape, _relay: &str| {
         if shape.authors.len() > 1 {
             Some(50) // min of per-author watermarks
         } else {
@@ -418,7 +418,7 @@ fn multi_relay_emits_identical_rewritten_since() {
     // raise it above the test fanout (3) so this watermark assertion is not
     // confounded by selection-induced relay dropping.
     l.set_selection_budget(usize::MAX, usize::MAX);
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     // since=500 so the watermark rewrite applies (#1281: since=None is exempt).
     l.registry_mut()
         .push(timeline_interest_with_since(1, "a", 500));

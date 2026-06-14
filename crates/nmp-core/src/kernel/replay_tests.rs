@@ -192,7 +192,7 @@ fn replay_applies_t129_watermark_to_since() {
     // 1701 on every replay REQ (#1281: since=None is exempt from the rewrite).
     kernel
         .lifecycle_mut()
-        .set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+        .set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     kernel
         .lifecycle_mut()
         .registry_mut()

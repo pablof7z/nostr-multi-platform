@@ -1,4 +1,4 @@
-//! Browser-side relay driver: one `web_sys::WebSocket` per (URL, role) pair.
+//! Browser-side relay driver: one `web_sys::WebSocket` per relay URL.
 //!
 //! # Step 8 phase C — relocation
 //!
@@ -62,6 +62,7 @@
 //! see this file at all.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -73,6 +74,15 @@ use crate::relay_protocol::{
     RELAY_RECONNECT_DELAY_MAX,
 };
 use crate::role::RelayRole;
+
+/// Upper bound on the per-driver pre-connect send buffer. Frames enqueued via
+/// [`BrowserRelayDriver::send_text`] while the socket is not yet `OPEN` are
+/// held here and flushed on connect (native parity — the native `relay_worker`
+/// buffers `Send` commands in a `pending` VecDeque and drains them on connect).
+/// The cap bounds memory for a relay that is targeted but never connects (e.g.
+/// an on-demand-discovered URL that is unreachable); the oldest frame is
+/// dropped when the buffer is full.
+const MAX_PENDING_FRAMES: usize = 256;
 
 /// Kernel-touchpoint callbacks the driver invokes from its JS event handlers.
 ///
@@ -112,7 +122,7 @@ pub struct BrowserKernelHandlers {
     pub on_failed: Rc<dyn Fn(RelayRole, &str, String)>,
 }
 
-/// Browser-side relay driver — one `web_sys::WebSocket` per (URL, role) pair.
+/// Browser-side relay driver — one `web_sys::WebSocket` per relay URL.
 ///
 /// Held by the runtime behind `Rc<Self>` so the JS closures that drive the
 /// reconnect path can call back into the driver without cycles (the closures
@@ -148,6 +158,11 @@ struct DriverState {
     /// Currently-armed reconnect `setTimeout` callback. Held so the closure
     /// is not GC'd before the timer fires. Reset on every reconnect attempt.
     _reconnect_timer: Option<Closure<dyn FnMut()>>,
+    /// Frames enqueued before the socket reached `OPEN`. Drained and sent by
+    /// `build_on_open` on connect. Survives reconnect attempts (so a frame
+    /// buffered before the *first* successful open is not lost if the first
+    /// dial fails), bounded by [`MAX_PENDING_FRAMES`]; cleared by `close()`.
+    pending: VecDeque<String>,
 }
 
 /// Holder for the four JS closures wired to a single `WebSocket`. Keeping
@@ -192,6 +207,7 @@ impl BrowserRelayDriver {
                 permanent_failure: false,
                 _closures: SocketClosures::default(),
                 _reconnect_timer: None,
+                pending: VecDeque::new(),
             }),
             kernel,
         });
@@ -199,16 +215,35 @@ impl BrowserRelayDriver {
         Ok(driver)
     }
 
-    /// Send a text frame on the live socket, if any. Silently dropped when
-    /// the socket is not currently open — matches the native worker's
-    /// per-relay `pending` queue *after* the queue is drained on Connected
-    /// (the kernel's own `mark_publish_relay_unavailable` arm handles
-    /// re-queueing inside the publish engine).
+    /// Send a text frame, buffering it if the socket is not yet `OPEN`.
+    ///
+    /// `dial()` installs `current_socket` while the WebSocket is still
+    /// `CONNECTING`, so a bare `send_with_str` here would throw
+    /// `InvalidStateError` (and any frame sent before connect would be lost).
+    /// Instead we send only when `ready_state() == OPEN` and otherwise enqueue
+    /// the frame into the [`DriverState::pending`] buffer, which
+    /// [`Self::build_on_open`] drains on connect — mirroring the native
+    /// `relay_worker`'s `pending` VecDeque + flush-on-connect.
+    ///
+    /// This is what makes on-demand relay dials carry traffic: a REQ targeting
+    /// a just-spawned (still-connecting) driver is buffered and replayed when
+    /// the socket opens, rather than dropped (which would leave the relay
+    /// connected-but-idle).
     pub fn send_text(&self, text: &str) -> Result<(), JsValue> {
-        let state = self.state.borrow();
+        let mut state = self.state.borrow_mut();
         match &state.current_socket {
-            Some(socket) => socket.send_with_str(text),
-            None => Ok(()),
+            Some(socket) if socket.ready_state() == WebSocket::OPEN => {
+                socket.send_with_str(text)
+            }
+            // CONNECTING (socket present, not yet open) or between a close and
+            // the next reconnect dial (no socket): buffer until `onopen`.
+            _ => {
+                if state.pending.len() >= MAX_PENDING_FRAMES {
+                    state.pending.pop_front();
+                }
+                state.pending.push_back(text.to_string());
+                Ok(())
+            }
         }
     }
 
@@ -223,6 +258,9 @@ impl BrowserRelayDriver {
         }
         state._closures = SocketClosures::default();
         state._reconnect_timer = None;
+        // Host-initiated teardown: no reconnect is coming, so drop any buffered
+        // frames rather than leak them for the driver's remaining lifetime.
+        state.pending.clear();
     }
 
     /// Relay URL this driver dials.
@@ -272,13 +310,27 @@ impl BrowserRelayDriver {
             // failure streak. Snapshot `is_reconnect` BEFORE flipping the
             // `has_connected_before` flag so the kernel routes through the
             // T116/G1 replay path for every connect after the first.
-            let is_reconnect = {
+            let (is_reconnect, drained) = {
                 let mut s = driver.state.borrow_mut();
                 s.backoff = RELAY_RECONNECT_DELAY_INITIAL;
                 let was_connected = s.has_connected_before;
                 s.has_connected_before = true;
-                was_connected
+                // Take the pre-connect buffer to flush now that we are OPEN.
+                let drained: Vec<String> = s.pending.drain(..).collect();
+                (was_connected, drained)
             };
+            // Flush buffered frames first (causal order: the REQ that triggered
+            // an on-demand dial goes out before any connect-time subscriptions).
+            // The borrow above is dropped; re-borrow read-only to reach the
+            // socket. `send_with_str` is a synchronous enqueue — no JS callback
+            // re-enters the driver while this borrow is held.
+            if !drained.is_empty() {
+                if let Some(socket) = driver.state.borrow().current_socket.as_ref() {
+                    for text in &drained {
+                        let _ = socket.send_with_str(text);
+                    }
+                }
+            }
             (driver.kernel.on_connected)(driver.role, &driver.url, is_reconnect);
         }) as Box<dyn FnMut()>)
     }

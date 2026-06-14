@@ -192,3 +192,7 @@ pub(crate) fn nip46_onboarding_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
 #[cfg(test)]
 #[path = "typed_projections_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "nip46_onboarding_emission_tests.rs"]
+mod nip46_onboarding_emission_tests;

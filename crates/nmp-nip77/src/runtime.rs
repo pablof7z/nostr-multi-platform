@@ -76,6 +76,30 @@ impl NegentropySyncRuntime {
         }
     }
 
+    /// K3 (ADR-0056 §3.D2) — is this `(filter_hash, relay)` uncovered by the
+    /// coverage ledger?
+    ///
+    /// "Uncovered" means there is NO completed-coverage row for
+    /// `(canonical_filter_hash, relay)`. Such a shape has never been fully synced
+    /// against this relay, so a full-window (Stage A un-floored) negentropy
+    /// reconciliation should be preferred over a plain REQ regardless of fanout —
+    /// it is the one mechanism that self-heals a below-floor gap.
+    ///
+    /// The `filter_hash` is the `sub-<hash>` wire-id suffix — the SAME key the
+    /// write path records under and the floor read reads by. Non-planner ids
+    /// (no `sub-` prefix) have no canonical hash and so no ledger row; they are
+    /// treated as covered (not uncovered) — they fall through to the fanout
+    /// gate, never force negentropy on a key the ledger cannot track.
+    fn relay_filter_is_uncovered(&self, kernel: &Kernel, sub_id: &str, relay_url: &str) -> bool {
+        let Some(filter_hash) = sub_id.strip_prefix("sub-") else {
+            return false;
+        };
+        kernel
+            .event_store_handle()
+            .get_coverage(filter_hash, relay_url)
+            .is_none()
+    }
+
     /// Read cached relay support state.
     #[must_use]
     pub fn relay_state(&self, relay_url: &str) -> RelayNegentropyState {
@@ -180,7 +204,16 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
         };
         let filter = EligibleFilter::parse(&ctx.filter_json).ok()?;
         let fanout = FilterFanout::new(filter.authors.len(), filter.kinds.len());
-        if !self.gate.should_use_negentropy_for_filter(fanout, true) {
+        // K3 Stage D2 (ADR-0056 §3.D2): the gate consults coverage-ledger
+        // STALENESS, not fanout alone. When the ledger is enabled and this
+        // `(filter_hash, relay)` has NO completed-coverage row, the shape has
+        // never been fully synced against this relay — exactly the case the
+        // full-window (un-floored, Stage A) negentropy reconciliation is built
+        // to self-heal — so we prefer negentropy regardless of fanout. When a
+        // coverage row DOES exist (already synced) or the flag is OFF, the
+        // fanout heuristic governs as before (the fallback the ADR keeps).
+        let uncovered = self.relay_filter_is_uncovered(kernel, &ctx.sub_id, &ctx.relay_url);
+        if !(uncovered || self.gate.should_use_negentropy_for_filter(fanout, true)) {
             return None;
         }
         // K3 Stage A: reconcile over the FULL window, not the watermark-floored

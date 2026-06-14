@@ -88,13 +88,9 @@ pub(super) fn seed_events(
 /// Register a `LogicalInterest` (from `shape`) into the live interest registry
 /// under `sub_key`, WITHOUT enqueuing or draining a cache-serve.
 ///
-/// #1380: the truncated-serve read view (`recompute_truncated_query_keys`)
-/// resolves completion-key marks back to query keys through the registry, so a
-/// truncated cursor-less interest must be present in the registry under the SAME
-/// `SubKey` its serve's `completion_key` is derived from. Production install
-/// paths register the interest before serving; tests that drive
-/// `enqueue_cache_serve` directly (to control budget orchestration) use this to
-/// install the matching registry slot without the synchronous drain
+/// Production install paths register the interest before serving; tests that
+/// drive `enqueue_cache_serve` directly (to control budget orchestration) use
+/// this to install the matching registry slot without the synchronous drain
 /// `open_interest_sub` would perform.
 pub(super) fn register_interest_for_test(
     kernel: &mut Kernel,

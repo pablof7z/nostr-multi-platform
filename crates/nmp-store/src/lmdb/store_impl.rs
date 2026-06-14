@@ -143,7 +143,17 @@ impl EventStore for LmdbEventStore {
         now_secs: u64,
         pins: &HashSet<EventId>,
     ) -> Result<GcReport, StoreError> {
-        gc::gc_step(&self.inner, budget, now_secs, pins)
+        gc::gc_step(&self.inner, budget, now_secs, pins, &[])
+    }
+
+    fn gc_step_with_pins_and_coverage(
+        &self,
+        budget: GcBudget,
+        now_secs: u64,
+        pins: &HashSet<EventId>,
+        guards: &[crate::types::CoverageGuard],
+    ) -> Result<GcReport, StoreError> {
+        gc::gc_step(&self.inner, budget, now_secs, pins, guards)
     }
 
     fn domain_open(&self, namespace: &'static str) -> Result<DomainHandle, StoreError> {
@@ -198,6 +208,26 @@ impl EventStore for LmdbEventStore {
             Err(e) => {
                 tracing::warn!("K3 coverage: get_coverage failed (treated as None): {e}");
                 None
+            }
+        }
+    }
+
+    fn coverage_max_for_filter_hash(&self, filter_hash: &str) -> Option<u64> {
+        match coverage::max_for_filter_hash(&self.inner, filter_hash) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("K3 coverage: max_for_filter_hash failed (None): {e}");
+                None
+            }
+        }
+    }
+
+    fn coverage_rows_for_filter_hash(&self, filter_hash: &str) -> Vec<(String, u64)> {
+        match coverage::rows_for_filter_hash(&self.inner, filter_hash) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("K3 coverage: rows_for_filter_hash failed (empty): {e}");
+                Vec::new()
             }
         }
     }

@@ -214,25 +214,67 @@ D2 is the read surgery (fixture-relay-gated); D3 is the eviction coherence leg.
   `Kernel::set_coverage_ledger_enabled` (DEFAULT **false**), so D1 is a pure
   additive no-op until D2.
 
-#### Stage D2 — the read swap (fixture-relay-gated)
+#### Stage D2 — the read swap (fixture-relay-gated) — LANDED
 
 - `recompile`'s floor reads the ledger entry for `(filter_hash, relay)` instead of
-  computing presence; the presence-derived floor remains as a **fallback ONLY when
-  the ledger has no row** (migration safety). NOTE: the floor read site
-  (`apply_watermark_rewrite` → `watermark_fn(&shape)`) is currently per-shape, not
-  per-relay — D2 must thread the relay into the floor computation so the ledger is
+  computing presence. NOTE: the floor read site
+  (`apply_watermark_rewrite` → `watermark_fn(&shape)`) was per-shape, not
+  per-relay — D2 threaded the relay into the floor computation so the ledger is
   read by `(filter_hash, relay)`.
 - The coverage gate consults ledger **staleness** (no completed-coverage row ⇒
   refuse to floor) instead of fanout-only.
-- **MERGE GATE:** a `nak serve` in-memory fixture-relay journey test (via the
-  `nmp-testing` real-relay harness) proving **follow-a-user-AFTER-a-thread-reply
-  backfills the author's FULL history** (the H1 headline — presence-floor would
-  suppress it; ledger-floor must not). Unit tests on the ledger are necessary but
-  not sufficient.
-- The flag flips **default-on for exactly ONE release cut** (this PR or a later
+- **MERGE GATE:** a fixture-relay journey test proving
+  **follow-a-user-AFTER-a-thread-reply backfills the author's FULL history** (the
+  H1 headline — presence-floor would suppress it; ledger-floor must not). Unit
+  tests on the ledger are necessary but not sufficient.
+- The flag flips **default-on for exactly ONE release cut** (a later
   release-cut PR, owner's call) so git-rev-pinning external consumers
-  (podcast-player, hl, win-the-day) can pin across the change. The presence floor
-  remains the fallback during migration ONLY.
+  (podcast-player, hl, win-the-day) can pin across the change.
+
+**Disposition (2026-06-14).** Landed flag-gated, **DEFAULT-OFF** (the swap is
+proven under test with the flag on, ships dormant, and is flipped deliberately
+in a later release-cut PR — production is byte-identical to pre-D2 with the flag
+off). Three legs:
+
+1. **Per-relay threading.** `WatermarkFn` became
+   `Fn(&InterestShape, &str /*relay*/) -> Option<u64>`. BOTH floor-application
+   sites — `apply_watermark_rewrite` (`subs/recompile.rs`) and `handle_reconnect`
+   (`subs/handlers.rs`, the reconnect-replay path) — thread the target relay
+   through, so the floor is per-`(filter_hash, relay)`. The presence heuristic
+   ignores the relay (presence is relay-agnostic), so the swap is
+   behaviour-preserving with the flag off.
+2. **Read-with-fallback, single decision table.**
+   `kernel/coverage_ledger.rs::coverage_floor_with_fallback` is the SOLE decision
+   table, called by both the installed `WatermarkFn` closure (`build_watermark_fn`)
+   and the `&self` wrapper `Kernel::coverage_floor_for` (the unit-test surface) —
+   one mapping read two ways, no drift (the Stage-C discipline). The flag is a
+   shared `Arc<AtomicBool>` read live per recompile.
+3. **No-row REFUSES the floor (clarification of "presence fallback").** The §3.D2
+   draft said presence remains "a fallback when the ledger has no row." Read
+   against the **merge gate** (§4) and item 2 above ("no completed-coverage row
+   ⇒ refuse to floor"), the operative semantics are: **flag ON + no row ⇒ refuse
+   the floor (full `[0, ∞)` window)**, NOT a presence fallback. The H1 headline is
+   precisely the case where presence is unsound — a stray kind:1 by A makes the
+   presence floor for A's follow-feed `Some(stray_ts)`, suppressing A's history
+   below the stray, even though that shape never completed a sync against the
+   relay. A presence fallback would re-inherit that poisoned floor and FAIL the
+   gate. Refusing the floor (full backfill) is the soundness fix and is "never a
+   worse one" (a full re-fetch can only fetch MORE, never suppress). The presence
+   computation survives ONLY behind the default-off flag, to be deleted in Stage
+   E. Cost: a one-time full re-fetch per shape the first time the flag is enabled,
+   after which the EOSE/NEG-DONE-recorded `covered_through` floors normally.
+
+**Merge gate (the H1 journey test).** `kernel/coverage_ledger_d2_journey_tests.rs`
+drives a REAL in-process WebSocket relay (tungstenite, `native`-gated, NOT
+`#[ignore]`, so it gates the default `cargo test --workspace` PR lane — a
+`nak serve`-dependent test would `#[ignore]` and run only in the nightly lane,
+and so could not be the gate; §4 sanctions the in-process pattern as the
+alternative). It stores a stray kind:1 by A (t=300), follows A, recompiles
+through the REAL production watermark closure, forwards the compiled REQ over the
+socket, ingests the relay's reply through the REAL Schnorr-verify + store gate,
+and asserts: flag ON ⇒ un-floored REQ ⇒ A's FULL history (t=100/200/300)
+backfills; flag OFF ⇒ `since=301` floored REQ ⇒ only the stray survives
+(suppressed — the bug, intact under the off flag).
 
 #### Stage D3 — eviction⇄ledger coherence
 
@@ -250,11 +292,67 @@ D2 is the read surgery (fixture-relay-gated); D3 is the eviction coherence leg.
   Specify both legs precisely (pin-below-ledger-floor + eviction-lowers-ledger) at
   D3 start; re-verify eviction enablement and the pin-set wiring then.
 
-### Stage E — delete the presence heuristic; correct the docs
+**Disposition (LANDED).** Both legs shipped behind the default-off
+`coverage_ledger_enabled`, so D3 is dormant in production like D1/D2; eviction
+enablement re-verified (`GcBudget::production` keeps `HOT_EVENT_CEILING`).
 
-Once Stage D is proven in a release, delete `watermark_fn`'s presence computation
-and the fallback, leaving the ledger as the sole floor source. Correct any doc
-still claiming the ledger "[LANDED M4]".
+- **Leg 1 — pin below the ledger floor.** `Kernel::pin_floor_for_shape`
+  (`kernel/ram_eviction_coverage.rs`) feeds the floor-coherent pin set
+  (`add_floor_coherent_pins`, relocated to the same file) the floor a REQ will
+  actually carry: flag OFF ⇒ presence (`floor::shape_floor`, unchanged); flag ON
+  + ≥1 coverage row ⇒ the MAX `covered_through` across the shape's relays
+  (`EventStore::coverage_max_for_filter_hash` — the event store is relay-agnostic
+  and over-pinning is always safe); flag ON + no row ⇒ `None` (D2 refuses the
+  floor, so the relay re-sends the full history and no pin is needed). This is
+  the SAME decision `coverage_floor_with_fallback` (D2) makes — no third floor
+  computation (Stage C single-source discipline preserved).
+- **Leg 2 — eviction lowers the ledger.** New
+  `EventStore::gc_step_with_pins_and_coverage(budget, now, pins, &[CoverageGuard])`
+  (default delegates to `gc_step_with_pins`; real impls on both backends).
+  `Kernel::derive_coverage_guards` emits one guard per active covered
+  `(filter_hash, relay)` carrying the kernel-owned
+  `InterestShape::matches_event_with_id` predicate (D0: the shape match never
+  leaks into the store). When Phase-2 LRU deletes a matched event with
+  `created_at <= covered_through`, the store lowers that row to
+  `oldest_evicted - 1` (or clears it on `0`) **in the same transaction/lock as
+  the delete** — mem under the held `MemState` lock, LMDB inside the Phase-2
+  write txn (`coverage::lower_guards_in_txn`). Lowering to `oldest_evicted - 1`
+  (not "just below the oldest surviving covered event") is the hole-free choice:
+  it forces a re-fetch from the oldest evicted hole even under non-contiguous
+  eviction, so the ledger never over-claims a range it no longer holds.
+- **Oracles.** Store-layer `for_each_backend!`
+  (`nmp-testing/tests/store_coverage_eviction_backstop.rs`) proves the backstop
+  atomically on Mem + LMDB (RED-by-sabotage when the lowering is neutered);
+  kernel-layer `gc_coverage_coherent_d3_tests` proves leg 1 (the ledger floor
+  governs over presence) and leg 2 (the guard set) including an integrated
+  production `run_gc_step` pass. The flag stays default-off; the default-on flip
+  is the deliberate Stage-E release-cut PR.
+
+### Stage E — delete the presence heuristic; correct the docs (IMPLEMENTED)
+
+**Disposition (IMPLEMENTED).** The default-on flip landed as the K3 release-cut
+PR, then Stage E deleted the presence heuristic entirely:
+
+- `watermark_fn`'s presence-floor computation and the flag-off fallback are
+  gone; `coverage_ledger::coverage_floor` (ledger `covered_through`, or `None` ⇒
+  refuse the floor / full window) is the SOLE since-floor source.
+- The off-by-default `coverage_ledger_enabled` flag and all its plumbing are
+  removed (the ledger is unconditionally the floor authority).
+- The presence-only support machinery deleted with it: `shape_floor`
+  (`ram_eviction_floor.rs`), `watermark_from_queries` + `cursor_less_query_key`
+  (`cache_serve/queries.rs`), and the entire Stage-B3 truncated-serve tracking
+  (`etag_ptag_truncated_serves` / `etag_ptag_truncated_query_keys` /
+  `recompute_truncated_query_keys` / `truncated_serve_snapshot`), whose only
+  consumer was the presence-floor refusal.
+- `shape_to_store_queries` (the single serve/pin query mapping) is preserved —
+  cache-serve and the floor-coherent pin scan still ride on it.
+- The D3 pin floor (`pin_floor_for_shape`) and backstop guards
+  (`derive_coverage_guards`) read the ledger unconditionally.
+
+The H1 journey test (`coverage_ledger_d2_journey_tests.rs`) and the D3 coherence
+tests (`gc_coverage_coherent_d3_tests.rs`) pass with presence fully removed. The
+stale "[LANDED M4]" doc claims are corrected (the watermark was deleted in #1090
+and superseded by this ledger, not "landed").
 
 ## 4. Gate — Stage D must not land without a fixture-relay journey test
 

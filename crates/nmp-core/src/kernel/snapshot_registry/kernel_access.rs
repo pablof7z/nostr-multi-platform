@@ -105,6 +105,30 @@ impl Kernel {
         }
     }
 
+    /// ADR-0055 R6-S1 — publish this tick's frame identity
+    /// `(session_id, snapshot_epoch)` into the shared registry handles so a
+    /// Tier-1 producer closure (the feed change-signal) reads the SAME signal
+    /// the host's `ProjectionCache` resets on.
+    ///
+    /// MUST be called at the TOP of `make_update`, before ANY host projection
+    /// closure runs (generic projections run during `build_snapshot_struct`,
+    /// typed projections run in `run_typed_projections`) — so every closure
+    /// this tick sees the current values. `session_id` =
+    /// `TimingMilestones::started_unix_ms` (changes on Reset-rebuild);
+    /// `snapshot_epoch` = `ProjectionRevTracker::epoch` (account-switch /
+    /// schema bump). A no-op when no slot is bound or the mutex is poisoned
+    /// (D6: the producer then never rebaselines on identity — but with no slot
+    /// bound there is no producer either, so this is vacuously safe).
+    pub(in crate::kernel) fn publish_frame_identity(&self) {
+        let session_id = self.timing.started_unix_ms.unwrap_or(0);
+        let snapshot_epoch = self.projection_rev_tracker.epoch;
+        if let Some(slot) = &self.snapshot_projections {
+            if let Ok(registry) = slot.lock() {
+                registry.publish_frame_identity(session_id, snapshot_epoch);
+            }
+        }
+    }
+
     /// ADR-0055 Rung 3 — read whether the host has declared incremental-apply
     /// capability for this kernel instance.
     ///

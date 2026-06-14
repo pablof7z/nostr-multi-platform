@@ -48,8 +48,8 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{provenance, tombstones, Inner};
-use crate::types::{EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
+use super::{coverage, provenance, tombstones, Inner};
+use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
 /// Mirrored from `mem/mod.rs:75`.
@@ -87,6 +87,7 @@ pub(super) fn gc_step(
     budget: GcBudget,
     now_secs: u64,
     pins: &HashSet<EventId>,
+    guards: &[CoverageGuard],
 ) -> Result<GcReport, StoreError> {
     let start = std::time::Instant::now();
     let mut report = GcReport::default();
@@ -264,22 +265,44 @@ pub(super) fn gc_step(
                     .env
                     .write_txn()
                     .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
+                // K3 Stage D3 backstop: per guard, the lowest `created_at` of an
+                // evicted event the guard matches at/below its `covered_through`.
+                // Lowered into the SAME `txn` below, so the ledger update commits
+                // atomically with the deletes.
+                let mut min_evicted_covered: Vec<Option<u64>> = vec![None; guards.len()];
                 for (_, id) in &candidates {
                     // Load the event before deletion to capture expiry and
                     // coordinate info needed for O(1) secondary-index cleanup
-                    // (expiry-index + replaceable_freshness — Bug-2 fix).
+                    // (expiry-index + replaceable_freshness — Bug-2 fix) AND the
+                    // guard-relevant fields (author/kind/created_at/tags) for the
+                    // K3 Stage D3 backstop.
                     // Use the write txn for the read (heed RwTxn derefs to
                     // RoTxn; mirrors the pattern in delete.rs:by_ids).
-                    let (expiry, freshness_key) =
+                    let (expiry, freshness_key, guard_fields) =
                         match inner.lmdb.get_event_by_id(&txn, id)
                             .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
                         {
-                            None => (None, None),
+                            None => (None, None, None),
                             Some(ev) => {
                                 let owned = ev.into_owned();
                                 let exp = owned.tags.expiration().map(|ts| ts.as_secs());
                                 let fk = freshness_key_from_event(&owned);
-                                (exp, fk)
+                                let gf = if guards.is_empty() {
+                                    None
+                                } else {
+                                    let tags: Vec<Vec<String>> = owned
+                                        .tags
+                                        .iter()
+                                        .map(|t| t.clone().to_vec())
+                                        .collect();
+                                    Some((
+                                        owned.pubkey.to_hex(),
+                                        owned.kind.as_u16() as u32,
+                                        owned.created_at.as_secs(),
+                                        tags,
+                                    ))
+                                };
+                                (exp, fk, gf)
                             }
                         };
                     let f = Filter::new().id(
@@ -302,13 +325,32 @@ pub(super) fn gc_step(
                             .delete_freshness(&mut txn, &fk)
                             .map_err(|e| StoreError::Io(format!("lru evict delete_freshness: {e}")))?;
                     }
+                    // K3 Stage D3: record the evicted-below-floor timestamp per
+                    // matching guard so the row is lowered before this txn commits.
+                    if let Some((author, kind, created_at, tags)) = guard_fields {
+                        let id_hex = nostr::EventId::from_slice(id)
+                            .map(|e| e.to_hex())
+                            .unwrap_or_default();
+                        for (gi, guard) in guards.iter().enumerate() {
+                            if created_at <= guard.covered_through
+                                && (guard.matches)(&id_hex, &author, kind, created_at, &tags)
+                            {
+                                let slot = &mut min_evicted_covered[gi];
+                                *slot = Some(slot.map_or(created_at, |m| m.min(created_at)));
+                            }
+                        }
+                    }
                     report.lru_evicted += 1;
                     if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
+                        coverage::lower_guards_in_txn(inner, &mut txn, guards, &min_evicted_covered)?;
                         txn.commit()
                             .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
                         return finish(start, report);
                     }
                 }
+                // Atomic with the deletes: lower every covered row that lost a
+                // below-floor event this pass, then commit them together.
+                coverage::lower_guards_in_txn(inner, &mut txn, guards, &min_evicted_covered)?;
                 txn.commit()
                     .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
             }

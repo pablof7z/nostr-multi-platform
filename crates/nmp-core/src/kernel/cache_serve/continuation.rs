@@ -139,21 +139,6 @@ impl Kernel {
             let exhausted = visited < visit_limit;
             if exhausted {
                 // Index has no more matches below the cursor — next query.
-                // K3 Stage B3 / #1380: a cursor-less query that exhausted
-                // naturally covered its whole stored set this session, so clear
-                // THIS interest's truncation mark (the floor is now safe for it).
-                // Keyed by `completion_key` (SubKey-aware), so exhausting one
-                // interest never clears a different interest's still-active mark
-                // even when the two share the same Etag/Ptag shape.
-                let mut mark_changed = false;
-                if super::cursor_less_query_key(&pending.queries[pending.query_idx]).is_some() {
-                    if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
-                        mark_changed = set.remove(&pending.completion_key);
-                    }
-                }
-                if mark_changed {
-                    self.recompute_truncated_query_keys();
-                }
                 pending.query_idx += 1;
                 continue;
             }
@@ -161,31 +146,10 @@ impl Kernel {
             // Etag/Ptag: no cursor to lower; advance to next query to avoid
             // re-scanning the same head on the next chunk. For deep stores
             // this may miss the tail — relay delivery fills the gap (ADR §9
-            // "store first, relay refinement second").
+            // "store first, relay refinement second"). The coverage ledger
+            // refuses the since-floor for any un-synced shape, so a serve that
+            // strands the tail this tick does not suppress the relay re-send.
             if query_until_mut(&mut pending.queries[pending.query_idx]).is_none() {
-                // K3 Stage B3: this cursor-less query hit the visit limit (not
-                // natural exhaustion) AND serve depth is not yet satisfied
-                // (`remaining_depth > 0`), so the tick BUDGET — not the depth
-                // policy — cut the serve short, stranding the stored tail
-                // within serve depth. Record the truncation so the watermark
-                // refuses to floor this shape; otherwise the floor would
-                // suppress the relay re-send of the stranded tail. (When depth
-                // IS satisfied the cut is the intended `serve_depth_for_shape`
-                // limit, the documented ADR §9 over-serve, not a budget hole.)
-                // #1380: keyed by `completion_key` (SubKey-aware) so this
-                // interest's truncation mark is independent of any other
-                // interest that shares the same Etag/Ptag shape.
-                let mut mark_changed = false;
-                if pending.remaining_depth > 0
-                    && super::cursor_less_query_key(&pending.queries[pending.query_idx]).is_some()
-                {
-                    if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
-                        mark_changed = set.insert(pending.completion_key);
-                    }
-                }
-                if mark_changed {
-                    self.recompute_truncated_query_keys();
-                }
                 pending.query_idx += 1;
                 continue;
             }

@@ -448,7 +448,7 @@ fn negentropy_skips_redundant_req() {
     let mut warm_interest = alice_interest.clone();
     warm_interest.shape.since = Some(1);
     let mut lc_warm = SubscriptionLifecycle::new();
-    lc_warm.set_watermark_fn(Arc::new(|_shape| Some(1700)));
+    lc_warm.set_watermark_fn(Arc::new(|_shape, _relay: &str| Some(1700)));
     lc_warm.registry_mut().push(warm_interest);
     let frames_warm = lc_warm
         .recompile_and_diff(&mailboxes)
@@ -468,7 +468,7 @@ fn negentropy_skips_redundant_req() {
 
     // Case 2: cold start (no watermark) → since=None stays None → REQ has no since field (full fetch).
     let mut lc_cold = SubscriptionLifecycle::new();
-    lc_cold.set_watermark_fn(Arc::new(|_shape| None));
+    lc_cold.set_watermark_fn(Arc::new(|_shape, _relay: &str| None));
     lc_cold.registry_mut().push(alice_interest);
     let frames_cold = lc_cold
         .recompile_and_diff(&mailboxes)

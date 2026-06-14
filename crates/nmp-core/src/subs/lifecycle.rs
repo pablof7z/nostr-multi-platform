@@ -236,12 +236,31 @@ impl SubscriptionLifecycle {
     /// load-bearing implication "watermark floors the shape ⇒ cache-serve
     /// covers the shape" against the REAL production watermark closure, not
     /// a re-derivation of its rules.
+    ///
+    /// K3 Stage D2: the watermark fn is now per-`(shape, relay)`. These
+    /// presence-invariant tests exercise the flag-OFF path (the default), where
+    /// the relay is ignored entirely, so a fixed sentinel relay is passed. A
+    /// dedicated relay-aware accessor is used by the D2 ledger-read tests.
     #[cfg(test)]
     pub(crate) fn watermark_for_shape_for_test(
         &self,
         shape: &crate::planner::InterestShape,
     ) -> Option<u64> {
-        self.watermark_fn.as_ref().and_then(|f| f(shape))
+        self.watermark_for_shape_on_relay_for_test(shape, "wss://watermark-test.invalid")
+    }
+
+    /// Evaluate the installed watermark function for `(shape, relay)` — test-only.
+    ///
+    /// K3 Stage D2: the relay-aware form, used by the coverage-ledger read-swap
+    /// tests to assert that the floor for a given `(filter_hash, relay)` reads
+    /// the ledger (flag on, row present) vs the presence fallback.
+    #[cfg(test)]
+    pub(crate) fn watermark_for_shape_on_relay_for_test(
+        &self,
+        shape: &crate::planner::InterestShape,
+        relay_url: &str,
+    ) -> Option<u64> {
+        self.watermark_fn.as_ref().and_then(|f| f(shape, relay_url))
     }
 
     /// Mutable access to the registry — view modules push interests through

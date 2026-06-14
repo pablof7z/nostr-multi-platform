@@ -315,10 +315,17 @@ pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
 /// reusing its index buffers via `query_visit(limit=1)`).
 pub(super) fn apply_watermark_rewrite(
     plan: &mut CompiledPlan,
-    watermark_fn: &(dyn Fn(&InterestShape) -> Option<u64> + Send + Sync),
+    watermark_fn: &(dyn Fn(&InterestShape, &str) -> Option<u64> + Send + Sync),
     interests: &[LogicalInterest],
 ) {
+    // K3 Stage D2 (ADR-0056 §3.D2): the floor is computed per-`(filter_hash,
+    // relay)`, not per-shape. The relay is the `per_relay` map key, in scope
+    // here, so we thread `relay_plan.relay_url` into the resolver. The
+    // presence-derived resolver ignores the relay (presence is relay-agnostic),
+    // so this is behaviour-preserving until the coverage ledger is enabled with
+    // a row for the key — the central plumbing change D1's body flagged.
     for relay_plan in plan.per_relay.values_mut() {
+        let relay_url = relay_plan.relay_url.clone();
         for sub_shape in &mut relay_plan.sub_shapes {
             if shape_is_ephemeral_only(&sub_shape.shape) {
                 continue;
@@ -335,7 +342,7 @@ pub(super) fn apply_watermark_rewrite(
                     continue;
                 }
                 // Tailing + since=None: apply T129 narrowing.
-                let Some(watermark) = watermark_fn(&sub_shape.shape) else {
+                let Some(watermark) = watermark_fn(&sub_shape.shape, &relay_url) else {
                     continue;
                 };
                 sub_shape.shape.since = Some(watermark.saturating_add(1));
@@ -346,7 +353,7 @@ pub(super) fn apply_watermark_rewrite(
             let Some(existing) = sub_shape.shape.since else {
                 continue;
             };
-            let Some(watermark) = watermark_fn(&sub_shape.shape) else {
+            let Some(watermark) = watermark_fn(&sub_shape.shape, &relay_url) else {
                 continue;
             };
             let floor = watermark.saturating_add(1);

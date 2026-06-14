@@ -263,6 +263,19 @@ impl AppHost for GateSpy {
     fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
         unreachable!("register_substrate does not declare incremental apply");
     }
+
+    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        unreachable!("register_substrate does not read the incremental-apply handle");
+    }
+
+    fn frame_identity_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        unreachable!("register_substrate does not read the frame-identity handles");
+    }
 }
 
 /// A `CompiledPlan` with `n` distinct per-relay entries (the hook only reads

@@ -8,20 +8,24 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:bf035812-6f7a-46ec-a11d-30fc7369342f
+  - session:019ec57a-fb01-7081-80c8-d7107f302049
 ---
 
 # Kernel Snapshot ADR
 
 ## Kernel Snapshot Architecture
 
-The full-kernel-snapshot emission model re-encodes every projection every dirty tick (O(state) per tick); the ADR-0037 typed sidecar made each re-encode cheaper but did not make it incremental. This is a deliberate documented architectural bet (ADR-0037) and the highest-risk performance decision; it is not diffed or gated per-projection by design. This simplicity collapses an entire desync bug class, but per-projection revision gating is the minimum acceptable improvement and the correct middle path: re-emit only changed projections while keeping the snapshot/rev correctness invariant. The false binary of full-snapshots versus fragile hand-written deltas ignores this option. Existing generic-JSON projections already have a change-gate (snapshot_registry.rs); typed sidecars and kernel built-ins lack any unchanged-reuse-prior-buffer mechanism.
+FullState/full snapshot is the correctness path; granular ViewBatch or delta variants are added only when profiling proves the snapshot path is the bottleneck and the delta is lossless. The ADR-0037 typed sidecar made each re-encode cheaper but did not make it incremental. This is a deliberate documented architectural bet (ADR-0037) and the highest-risk performance decision; per-projection revision gating is the minimum acceptable improvement and the correct middle path: re-emit only changed projections while keeping the snapshot/rev correctness invariant. The false binary of full-snapshots versus fragile hand-written deltas ignores this option. Existing generic-JSON projections already have a change-gate (snapshot_registry.rs); typed sidecars and kernel built-ins lack any unchanged-reuse-prior-buffer mechanism.
+
+The kernel-authored snapshot via Kernel::make_update must be the single source of truth for all UI state; no hardcoded 'configured' relay statuses or empty typed-projection sidecars.
 
 The KCEV FlatBuffer is deliberately protocol-agnostic — kind rides as an opaque uint with no protocol branching in the kernel-owned buffer, as documented in claimed_events.fbs:31-34.
 
@@ -31,8 +35,12 @@ ADR-0039's rejection of host-declared projection subscriptions is a category err
 
 Relay diagnostics projections must ship raw timestamps over the wire; shells format relative-time strings at render time (aim.md §62 forbids format_ago_* inside projection builders).
 
+The NMP Inspector diagnostics dock decodes the live Tier-3 snapshot envelope for relays, subscriptions, cache, routing, and signer data — no app-side diagnostic logic re-derivation is allowed (doctrine: thin shell, kernel owns tone/health logic).
+
+GAP-5 (negentropy session stats) must be emitted as a Tier-3 field with rounds, have/need, and transfer_avoided_bytes computed kernel-side per doctrine, with honest omission of 'ranges compared'.
+
 The Android KernelProfileHost uses remember(model, profiles) where profiles is a new Map object on every snapshot tick, causing the host to be recreated every tick and triggering a claim/release churn loop in DisposableEffect (same bug class as chirp-web commit 4d1888f9a). The fix for Android profile-claim churn is to remove profileHost from the DisposableEffect key in NostrAvatar and NostrProfileName, and stabilize KernelProfileHost by keying remember on model only with rememberUpdatedState for the profiles map.
 
 The DmConversationListScreen double-collects model.state independently of its parent, causing profiles and conversations to potentially reflect different snapshot generations.
 
-<!-- citations: [^02745-86] [^02745-87] [^78c8e-21] [^2e544-29] [^78c8e-49] [^78c8e-66] [^02745-103] [^78c8e-84] [^78c8e-102] -->
+<!-- citations: [^02745-86] [^02745-87] [^78c8e-21] [^2e544-29] [^78c8e-49] [^78c8e-66] [^02745-103] [^78c8e-84] [^78c8e-102] [^bf035-165] [^019ec-17] -->

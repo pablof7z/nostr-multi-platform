@@ -53,7 +53,7 @@ Critical invariants all framework implementation must honor:
 7. **Idempotent capability lifecycle.** Start/stop/restart of any bridge must be safe.
 8. **Avoid the god module.** When the core actor file exceeds ~1,000 lines, split by domain into submodules with `pub(super)` visibility.
 9. **No high-frequency FFI loops.** Callbacks above ~60Hz across FFI must be batched or delivered via direct memory, not serialized per event.
-10. **Snapshot semantics.** State crosses FFI as a full `Clone`d snapshot by default; granular updates are an optimization, not a default.
+10. **Snapshot semantics.** The full `Clone`d snapshot is the canonical baseline shape — it is what a host receives on first frame and on every epoch/session re-baseline. As of ADR-0055 (profiling-driven), per-projection emission is **incremental by default** for any host that advertises rev-aware apply (`nmp_app_declare_incremental_apply`): unchanged projection rows are omitted from the frame and an NMP-owned generated `ProjectionCache` reconstructs the full set host-side, so app code stays oblivious. Omission is gated on that capability; a host that does not advertise it still gets full rows. This is realized for Tier-2 kernel projections; Tier-1 feed-class projections still emit fully each tick (a later rung). Measured (S6 capstone): ~18% frame-byte reduction + 68.8% Tier-2 row suppression with zero data loss on the churn workload.
 
 The reference crate layout from `rust-multiplatform/rmp` — `rust/` for the core (cdylib + staticlib + rlib), `uniffi-bindgen/` for the binding generator, `ios/`, `android/`, `crates/<app>-desktop/`, a `justfile` for build orchestration, an optional Nix flake — is the layout this framework will scaffold for users. We adopt RMP's `rmp-cli` as the model for our own scaffolding tool.
 
@@ -238,13 +238,13 @@ These rules are the framework's identity. They derive from the TEA + actor model
 9. **No business logic in native code.** Enforced by docs, examples, and an architectural lint where feasible.
 10. **Provenance preserved.** Every event in the store remembers which relays delivered it; private events cannot be accidentally republished to public relays.
 11. **Capabilities, not callbacks.** Native↔Rust interactions go through bounded, idempotent capability bridges modeled on the same capability-bridge pattern.
-12. **Snapshots by default, granular updates as optimization.** Start with `AppUpdate::FullState`; add granular `AppUpdate::*` variants only where profiling demands.
+12. **Snapshot is the baseline; incremental emission is the profiled default.** The full snapshot remains the canonical baseline/resync shape. Per-projection incremental emission (ADR-0055) — omit-unchanged on the wire, NMP-owned rev-aware reconstruction host-side — is the default once a host advertises rev-aware apply, exactly the "add granular updates where profiling demands" this doctrine called for, now driven by the S6 measurement. The granular path must never require app code to handle deltas: the generated `ProjectionCache` makes incremental-apply impossible for an app developer to get wrong.
 
 ---
 
 ## 7. Open design questions (must resolve before substantive coding)
 
-1. **State granularity across FFI.** Full-state snapshots are clean but expensive for large stores. Where do we draw the line, and what granular update variants are needed (e.g. `EventAdded`, `ViewChanged { view_id }`, `SessionSwitched`)?
+1. **State granularity across FFI.** Full-state snapshots are clean but expensive for large stores. Where do we draw the line, and what granular update variants are needed (e.g. `EventAdded`, `ViewChanged { view_id }`, `SessionSwitched`)? — *Partially resolved by ADR-0055 (2026-06-14):* the line is drawn at the **per-projection** grain, not per-event — the wire omits unchanged projection rows (carrying `projection_rev`/`state`) and an NMP-owned generated `ProjectionCache` reconstructs the full set host-side, so no new app-visible `AppUpdate::*` variants are needed and app code never handles deltas. Realized for Tier-2 projections; Tier-1 feed-class granularity (row-deltas) remains open for a later rung.
 2. **Where do views live?** (a) Materialized in `AppState`, (b) lazy with `ViewHandle` opaque references the UI subscribes to, (c) computed in platform code. The actor model rules out (c). Pick between (a) and (b) — leaning (b) for efficiency, but it complicates the FFI surface.
 3. **Reactive cross-FFI subscription protocol.** UniFFI gives callback interfaces, not native reactive streams. Swift wants `@Observable`, Kotlin wants `Flow`, JS wants Observables/Promises. Define a single `Subscription` opaque handle + reconciler-style callback that adapts cleanly per platform.
 4. **NIP-46 bunker as a capability bridge.** Long-lived, stateful, involves user approval on another device. Needs careful design as a capability bridge.

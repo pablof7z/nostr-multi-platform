@@ -190,9 +190,7 @@ mod inner {
         /// Records, per `(filter_hash, relay)`, the downward-closed timestamp
         /// through which a sync has COMPLETED (EOSE on an un-floored REQ, or
         /// NEG-DONE). Written by `EventStore::record_coverage`, read by
-        /// `EventStore::get_coverage`. Stage D1 only writes it (behind the
-        /// kernel's off-by-default `coverage_ledger_enabled` flag); the since-
-        /// floor stays presence-derived until the Stage D2 read swap. This is
+        /// `EventStore::get_coverage` — the kernel's since-floor source. This is
         /// the purpose-built successor to the #1090-deleted `nmp-watermarks`
         /// sub-db — re-created with real readers/writers, not re-activated
         /// (ADR-0056 §2.1).

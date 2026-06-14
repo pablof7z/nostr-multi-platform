@@ -8,12 +8,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
+  - session:bf035812-6f7a-46ec-a11d-30fc7369342f
 ---
 
 # Outbox Resolver
@@ -48,3 +49,11 @@ Publishing to AUTH-required relays must park the event until Authenticated inste
 ## Score Map Ingest from Mainline
 
 The score map must be fed from mainline ingest—recording Hit on every EVENT attributed to (author, relay_url)—rather than only from claims. This activates the dormant W4 warm filter and triggers the record_failure decrement path. <!-- [^2e544-66] -->
+
+## Offline Publish Fail-Closed
+
+The offline publish path (reply/react/follow/unfollow) must fail closed with honest error modes rather than silently dropping or succeeding partially. <!-- [^bf035-168] -->
+
+## Follow/Unfollow Contact-List Guard
+
+Follow/unfollow must use try_current_follows returning Option to distinguish not-loaded from empty, preventing silent wiping of the user's contact list on a redundant SetSigner or incomplete follow list. <!-- [^bf035-169] -->

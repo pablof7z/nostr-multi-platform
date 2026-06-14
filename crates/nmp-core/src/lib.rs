@@ -174,11 +174,11 @@ pub mod stable_hash {
 pub mod store {
     pub use nmp_store::*;
 }
-// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`)
-// and the actor runtime (`crate::actor`) both reach into. Used to live in
-// `crate::ffi::mod.rs` (private); promoted here so the actor module (a
-// crate-private module) can still name them after the FFI extraction.
-// `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
+pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
+// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
+// actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
+// (private); promoted here so the crate-private actor module can still name them after
+// the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
 pub mod slots;
 pub mod subs;
 pub mod substrate;
@@ -276,7 +276,7 @@ pub use update_envelope::{
     decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic,
     encode_snapshot_frame, panic_message, PanicFrame, RelayStatusEntry, SnapshotEnvelope,
     TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
-    WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION,
+    WireProjectionState, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION,
 };
 
 /// Public decode surface for the kernel-owned (Tier-2) typed-projection

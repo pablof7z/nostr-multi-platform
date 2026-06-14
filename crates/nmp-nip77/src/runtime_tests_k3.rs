@@ -290,6 +290,77 @@ fn responded_relay_never_triggers_liveness_fallback() {
     );
 }
 
+// ─── K3 Stage D2: coverage-gate staleness (ADR-0056 §3.D2) ──────────────────────
+//
+// The gate now consults coverage-ledger staleness, not fanout alone: a
+// `(filter_hash, relay)` with no completed-coverage row is "uncovered" and
+// should prefer the full-window negentropy reconciliation regardless of fanout
+// (it is the self-healer for below-floor gaps). A covered shape, or the flag
+// off, leaves the fanout heuristic as the sole gate.
+
+/// A SMALL-fanout REQ (1 author × 1 kind = 1 pair, far below the 50-pair fanout
+/// threshold). On fanout alone this NEVER opens negentropy. Its `sub-<hash>` id
+/// is what the staleness gate keys on.
+fn small_followfeed_ctx() -> ReqFrameContext {
+    ReqFrameContext {
+        role: RelayRole::Content,
+        relay_url: "wss://relay.example".to_string(),
+        sub_id: "sub-smallhash".to_string(),
+        filter_json: serde_json::json!({
+            "authors": [author(0)],
+            "kinds": [1],
+        })
+        .to_string(),
+        interest_id: InterestId(1),
+        lifecycle: InterestLifecycle::OneShot,
+    }
+}
+
+/// NO coverage row ⇒ a SMALL filter (below the fanout threshold) is "uncovered"
+/// and the staleness gate opens negentropy anyway — the self-heal path for a
+/// never-synced shape.
+#[test]
+fn uncovered_small_filter_opens_negentropy_when_ledger_enabled() {
+    let mut kernel = Kernel::testing_new(50);
+    // No coverage row recorded for ("smallhash", relay) → uncovered.
+
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let opened = runtime.intercept_req(&mut kernel, &small_followfeed_ctx());
+
+    let opened = opened.expect(
+        "an uncovered (no-ledger-row) shape must open NIP-77 even below the fanout \
+         threshold — the full-window reconciliation is the below-floor self-healer",
+    );
+    assert!(
+        opened
+            .iter()
+            .any(|m| m.text().starts_with(r#"["NEG-OPEN","sub-smallhash","#)),
+        "expected a NEG-OPEN for the uncovered small filter",
+    );
+}
+
+/// Flag ON + a coverage row PRESENT ⇒ the shape is covered, so the staleness
+/// path does NOT force negentropy; the small filter falls through to the fanout
+/// gate and (being below threshold) opens NO negentropy. Proves the gate is
+/// scoped to genuinely-uncovered shapes, not a blanket "always negentropy".
+#[test]
+fn covered_small_filter_does_not_force_negentropy() {
+    let mut kernel = Kernel::testing_new(50);
+    // Record completed coverage for this (filter_hash, relay) → covered.
+    kernel
+        .event_store_handle()
+        .record_coverage("smallhash", "wss://relay.example", 1_700_000_000);
+
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let opened = runtime.intercept_req(&mut kernel, &small_followfeed_ctx());
+
+    assert!(
+        opened.is_none(),
+        "a COVERED small filter must fall through to the fanout gate (below \
+         threshold ⇒ plain REQ, no negentropy) — staleness must not blanket-force it",
+    );
+}
+
 // ─── helpers (self-contained for this module) ────────────────────────────────
 
 fn insert_cached_event(
