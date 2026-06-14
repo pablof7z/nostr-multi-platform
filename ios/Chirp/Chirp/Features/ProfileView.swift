@@ -18,6 +18,23 @@ struct ProfileView: View {
     private var profileConsumerID: String { "profile-screen-\(pubkey)" }
     private var profile: ProfileCard? { model.claimedProfiles[pubkey] ?? model.resolvedProfileCards[pubkey] }
     private var items: [ChirpRootCard] { model.authorFeed(pubkey: pubkey)?.cards ?? [] }
+
+    /// Rust-authored wire for the shared `NostrUserCard` primitive. Built from
+    /// the same `ProfileCard` the header already reads (claimed → resolved);
+    /// Swift never resolves display name / NIP-05 / avatar URL itself.
+    private var profileWire: ProfileWire {
+        let card = profile
+        return ProfileWire(
+            pubkey: pubkey,
+            displayName: (card?.displayName?.isEmpty == false) ? card?.displayName : nil,
+            about: (card?.about.isEmpty == false) ? card?.about : nil,
+            pictureUrl: card?.pictureUrl,
+            nip05: (card?.nip05.isEmpty == false) ? card?.nip05 : nil,
+            npub: nil,
+            npubShort: pubkey.shortHex
+        )
+    }
+
     private var primaryAction: ProfileAction? { nil }
 
     /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
@@ -67,6 +84,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var profileHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Screen-specific chrome: gradient banner the avatar overlaps.
             Rectangle()
                 .fill(
                     LinearGradient(
@@ -84,23 +102,17 @@ struct ProfileView: View {
                 }
 
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .bottom) {
-                    NostrAvatar(
-                        pubkey: profile?.pubkey ?? "",
-                        url: profile?.pictureUrl,
-                        initials: (profile?.displayLabel ?? "?").displayInitials,
-                        colorHex: profile?.pubkey.pubkeyColorHex ?? "",
-                        size: 82
-                    )
+                // Shared NMP primitive: avatar + display name + NIP-05 badge.
+                // The actions overlay floats on top so it tracks the banner edge.
+                NostrUserCard(profile: profileWire, avatarSize: 82)
                     .padding(.top, -41)
+                    .overlay(alignment: .topTrailing) {
+                        profileActions
+                            .padding(.top, 8)
+                    }
 
-                    Spacer()
-
-                    profileActions
-                        .padding(.top, 8)
-                }
-
-                profileMetadata
+                // Screen-specific chrome: npub copy + about.
+                profileChrome
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
@@ -128,16 +140,11 @@ struct ProfileView: View {
         }
     }
 
-    private var profileMetadata: some View {
+    /// Genuinely screen-specific chrome kept outside `NostrUserCard`: the
+    /// npub-copy chip and the about blurb. Avatar, display name, and the NIP-05
+    /// badge now come from the shared primitive (issue #995).
+    private var profileChrome: some View {
         VStack(alignment: .leading, spacing: 4) {
-            NostrProfileName(
-                displayName: profile?.displayLabel ?? "Loading…",
-                font: .title)
-
-            if let nip05 = profile?.nip05, !nip05.isEmpty {
-                NostrNip05Badge(nip05: nip05)
-            }
-
             // ADR-0032 / V-115: bech32 no longer in projection; encode host-side
             // on demand. Always show the copy button — pubkey is always available.
             Button(action: copyNpub) {
