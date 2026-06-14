@@ -96,7 +96,7 @@ private struct AccountRowView: View {
 
                 if account.isActive {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(ChirpColor.success)
+                        .foregroundStyle(ChirpColor.accent)
                 }
             }
         }

@@ -153,7 +153,6 @@ extension OnboardingView {
                         .disabled(nsec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     .padding(ChirpSpace.l)
-                    .padding(.horizontal, ChirpSpace.l)
 
                     Text("Or use a remote signer")
                         .font(.headline)
