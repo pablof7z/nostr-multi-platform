@@ -1815,8 +1815,11 @@ impl Kernel {
         // floor logic (the file-size cap forbids growing this constructor). The
         // shared `Arc<AtomicBool>` flag is constructed here and cloned into the
         // kernel field below so `set_coverage_ledger_enabled` toggles the LIVE
-        // value the closure reads — default `false` (the read swap is dormant).
-        let coverage_ledger_enabled: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        // value the closure reads — default `true` as of the K3 release-cut flip
+        // (ADR-0056 Stage D/E activation): the ledger now governs the since-floor
+        // in production. The flag remains in place this release as a reversible
+        // kill-switch; Stage E deletes it once the presence heuristic is gone.
+        let coverage_ledger_enabled: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
         // K3 Stage B3 / #1380 — completion-key WRITE set + query-key READ view (field docs).
         let etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>> =
             Arc::new(std::sync::Mutex::new(HashSet::new()));

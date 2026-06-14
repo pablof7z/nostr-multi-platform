@@ -202,7 +202,8 @@ fn no_row_under_flag_pins_nothing_for_the_shape() {
 fn flag_off_uses_presence_floor_ignoring_ledger() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    // Flag stays OFF (default).
+    // The ledger defaults ON now; pin the flag-OFF presence-floor path explicitly.
+    kernel.set_coverage_ledger_enabled(false);
 
     let author = make_pubkey(9_104);
     let e_old = format!("{:0>64x}", 0xD30301u64);
@@ -272,7 +273,8 @@ fn derive_coverage_guards_emits_guard_for_covered_shape() {
 fn derive_coverage_guards_is_empty_when_flag_off() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    // Flag OFF.
+    // The ledger defaults ON now; pin the flag-OFF (empty-guards) path explicitly.
+    kernel.set_coverage_ledger_enabled(false);
 
     let author = make_pubkey(9_202);
     let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);

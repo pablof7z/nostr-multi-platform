@@ -102,6 +102,8 @@ fn id_bytes(hex: &str) -> crate::store::EventId {
 fn derive_store_pin_set_pins_events_below_shape_floor() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
+    // Presence-floor path: disable the now-default-ON ledger (deleted in Stage E).
+    kernel.set_coverage_ledger_enabled(false);
 
     let author = make_pubkey(7_001);
     let e_old = format!("{:0>64x}", 0xF00001u64);
@@ -152,6 +154,8 @@ fn derive_store_pin_set_pins_events_below_shape_floor() {
 fn derive_store_pin_set_returns_complete_for_small_stores() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
+    // Presence-floor path: disable the now-default-ON ledger (deleted in Stage E).
+    kernel.set_coverage_ledger_enabled(false);
 
     let author = make_pubkey(8_001);
     let e_old = format!("{:0>64x}", 0xE10001u64);
@@ -388,6 +392,8 @@ fn pin_shape_events_below_floor_clears_since_for_author_kind_shape() {
 fn derive_store_pin_set_does_not_pin_events_with_no_active_interest() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
+    // Presence-floor path: disable the now-default-ON ledger (deleted in Stage E).
+    kernel.set_coverage_ledger_enabled(false);
 
     // Author A: floored interest active.
     let author_a = make_pubkey(7_101);

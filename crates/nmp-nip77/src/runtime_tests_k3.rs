@@ -368,8 +368,10 @@ fn covered_small_filter_does_not_force_negentropy() {
 #[test]
 fn small_filter_uses_fanout_only_when_ledger_disabled() {
     let mut kernel = Kernel::testing_new(50);
-    // Flag off by default; even though there is no coverage row, staleness must
-    // not engage, so the below-threshold filter stays a plain REQ.
+    // The ledger defaults ON now; pin the flag-OFF path explicitly. Even though
+    // there is no coverage row, staleness must not engage with the flag off, so
+    // the below-threshold filter stays a plain REQ.
+    kernel.set_coverage_ledger_enabled(false);
     assert!(!kernel.coverage_ledger_enabled());
 
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());

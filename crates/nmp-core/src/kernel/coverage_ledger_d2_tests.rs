@@ -84,7 +84,9 @@ fn seed_coverage(kernel: &Kernel, shape: &InterestShape, relay: &str, covered_th
 /// returned verbatim. This is the default, byte-identical-to-today path.
 #[test]
 fn floor_is_presence_when_flag_off_even_if_ledger_has_a_row() {
-    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // The ledger defaults ON now; pin the flag-OFF path explicitly.
+    kernel.set_coverage_ledger_enabled(false);
     let shape = author_kind_shape(&hex_pk("aa"));
     // A ledger row exists, but the flag is OFF — it must be ignored entirely.
     seed_coverage(&kernel, &shape, RELAY_A, 1_600_000_000);
@@ -221,6 +223,8 @@ fn installed_closure_reads_ledger_when_flag_on() {
 #[test]
 fn installed_closure_uses_presence_when_flag_off() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // The ledger defaults ON now; pin the flag-OFF path explicitly.
+    kernel.set_coverage_ledger_enabled(false);
     let author = hex_pk("aa");
     let shape = author_kind_shape(&author);
     insert_author_event(&mut kernel, &hex_pk("e0"), &author, 1_700_000_000);

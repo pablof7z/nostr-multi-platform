@@ -192,6 +192,8 @@ fn budget_truncated_etag_serve_is_not_floored() {
 #[test]
 fn fully_served_etag_shape_is_still_floored() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Presence-floor path: disable the now-default-ON ledger (deleted in Stage E).
+    kernel.set_coverage_ledger_enabled(false);
     let base_ts: u64 = 1_700_000_000;
     let target_hex = hex_pk("e8");
     // 2 stored matches — well within budget and depth, so no truncation.

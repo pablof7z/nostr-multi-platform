@@ -28,6 +28,10 @@ fn floored_implies_served_holds_structurally_for_any_shape() {
     use crate::planner::{InterestShape, NaddrCoord};
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Presence-floor path: disable the now-default-ON ledger so the §6/#1119
+    // "floored ⇒ served" invariant is exercised against the presence floor
+    // (the path deleted in K3 Stage E).
+    kernel.set_coverage_ledger_enabled(false);
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     kernel.timeline_authors.insert(author.clone());
