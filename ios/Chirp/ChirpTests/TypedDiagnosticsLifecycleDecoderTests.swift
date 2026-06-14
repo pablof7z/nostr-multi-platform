@@ -155,11 +155,12 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertNil(TypedRelayDiagnosticsDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledRelayDiagnosticsBytesFallBack() {
-        var garbled = buildRelayDiagnostics()
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedRelayDiagnosticsDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyRelayDiagnosticsPayloadFallsBack() {
         XCTAssertNil(TypedRelayDiagnosticsDecoder.decode(bytes: Data()))
@@ -237,11 +238,12 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertNil(TypedActionLifecycleDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledActionLifecycleBytesFallBack() {
-        var garbled = buildActionLifecycle()
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedActionLifecycleDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyActionLifecyclePayloadFallsBack() {
         XCTAssertNil(TypedActionLifecycleDecoder.decode(bytes: Data()))

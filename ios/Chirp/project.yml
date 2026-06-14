@@ -120,6 +120,15 @@ schemes:
       targets:
         Chirp: all
     test:
+      # Marmot credential-store paths that would otherwise touch the iOS keychain
+      # take the in-memory mock branch when `NMP_MARMOT_MOCK_KEYRING=1` is set
+      # (read by `nmp-marmot` at runtime). The ChirpTests decoder/conformance
+      # suite is hermetic and does not exercise those paths, but baking the env
+      # var into the test action makes the suite runnable headlessly on a CI
+      # macOS runner with no `SecItem*` entitlement (issue #973, Phase 2) and is a
+      # no-op for any path that never reaches the keychain.
+      environmentVariables:
+        NMP_MARMOT_MOCK_KEYRING: "1"
       targets:
         - ChirpTests
         - ChirpUITests
