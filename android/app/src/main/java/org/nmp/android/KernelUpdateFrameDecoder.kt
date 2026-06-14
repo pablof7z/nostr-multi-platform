@@ -204,6 +204,11 @@ object KernelUpdateFrameDecoder {
             actionStages = TypedActionStagesDecoder.decode(typedProjections) ?: emptyMap(),
             actionResults = TypedActionResultsDecoder.decode(typedProjections) ?: emptyList(),
             relayDiagnostics = TypedRelayDiagnosticsDecoder.decode(typedProjections),
+            // #1283 / #1335 item 2: typed NEMB embed sidecar — decoded by
+            // [TypedEmbedSidecarDecoder]. Empty map when the sidecar is absent
+            // (ADR-0037 Commitment 4 fail-closed; no JNI claim/release yet — that
+            // is the #984 follow-up; the decode + gallery-render path is complete).
+            claimedEventEmbeds = TypedEmbedSidecarDecoder.decode(typedProjections),
         )
     }
 
