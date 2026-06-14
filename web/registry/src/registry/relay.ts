@@ -77,6 +77,19 @@ export const relayComponents: Component[] = [
           "Use alongside `@State` and `@Environment` to isolate view state from row data.",
         ],
       },
+      web: {
+        status: "stable",
+        installId: "web/render-identity",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "Not applicable on the web — there is nothing to install. `render-identity` is a SwiftUI-specific optimization (`RenderIdentifiable` + `EquatableRow`) for short-circuiting `ForEach` row re-evaluation via `.equatable()`. SolidJS has no equivalent need: its fine-grained reactivity updates only the exact DOM bindings whose signals changed, so rows never re-evaluate wholesale and there is no row-equatability step to optimize. The web user/content components rely on Solid stores keyed per pubkey/event for the same effect. This entry exists so the component page documents the web stance rather than appearing unsupported.",
+        files: [],
+        screenshots: [],
+        customization: [
+          "Key your reactive stores by id (pubkey / event id) so a change to one row's data updates only that row — Solid's structural sharing is the web analogue of the SwiftUI equatable-row optimization.",
+        ],
+      },
     },
   },
 ];

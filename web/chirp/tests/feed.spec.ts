@@ -118,6 +118,17 @@ test("feed renders real signed notes from fixture relay after connect", async ({
     // pixel-decode path (naturalWidth > 0) against a real relay image using
     // this identical component.
     await expect(page.locator('.post .nostr-avatar').first()).toBeVisible({ timeout: 30_000 });
+
+    // ── Assertion 6: an inline `nostr:npub…` mention in the note body renders
+    // as a resolved NostrMentionChip (avatar + "Bob Fixture"), not a raw npub
+    // anchor. Alice's note mentions Bob; MentionNode claims Bob's profile through
+    // the same NostrProfileHost the avatar uses and upgrades to the chip once the
+    // kind:0 resolves (no unresolved/placeholder mention).
+    await expect(
+      page
+        .locator('[data-testid="post-content"] .nostr-mention-chip')
+        .filter({ hasText: relay.replierDisplayName }),
+    ).toBeVisible({ timeout: 30_000 });
   } finally {
     await relay.close();
   }

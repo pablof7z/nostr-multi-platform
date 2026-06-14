@@ -46,6 +46,7 @@ function startPngServer(): Promise<{ url: string; close: () => Promise<void> }> 
   });
 }
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
+import { npubEncode } from "nostr-tools/nip19";
 
 export type FixtureRelay = {
   /** WebSocket URL the browser can connect to, e.g. `ws://127.0.0.1:52341`. */
@@ -247,9 +248,19 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followBSk,
   ) as NostrEvent;
 
-  // kind:1 — Alice's root note (the one that will appear in the feed)
+  // kind:1 — Alice's root note (the one that will appear in the feed). It
+  // mentions Bob via a `nostr:npub1…` URI + p-tag, so the kernel tokenizes a
+  // Mention node into the content tree and Chirp renders it as a resolved
+  // NostrMentionChip (avatar + "Bob Fixture") rather than a raw npub anchor.
+  const npubBob = npubEncode(followBPubkey);
+  const noteAMention = ` cc nostr:${npubBob}`;
   const noteA = finalizeEvent(
-    { kind: 1, created_at: now - 50, tags: [], content: noteContent },
+    {
+      kind: 1,
+      created_at: now - 50,
+      tags: [["p", followBPubkey]],
+      content: noteContent + noteAMention,
+    },
     followASk,
   ) as NostrEvent;
 

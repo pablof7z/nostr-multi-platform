@@ -202,3 +202,25 @@ button:disabled { cursor: not-allowed; opacity: 0.6; }
   .composer-actions { align-items: stretch; flex-direction: column; }
   .list-row { margin-right: 16px; margin-left: 16px; }
 }
+
+/* Inline profile mention chip (content-mention-chip) rendered inside post body. */
+.nostr-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 2px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.12);
+  vertical-align: middle;
+}
+.nostr-mention-chip__avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+.nostr-mention-chip__name {
+  font-weight: 600;
+  font-size: 0.95em;
+}

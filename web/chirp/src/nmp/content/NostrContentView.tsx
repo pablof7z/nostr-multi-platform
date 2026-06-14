@@ -17,11 +17,13 @@
  * `nostr:npub1…` URI as the label — no mocked profile data.
  */
 import type { JSX } from "solid-js";
-import { For, Show } from "solid-js";
+import { For, Show, createUniqueId, onCleanup, onMount } from "solid-js";
 import type { ContentTreeWire } from "../generated/nmp/content/content-tree-wire";
 import type { WireNode } from "../generated/nmp/content/wire-node";
 import type { ListItem } from "../generated/nmp/content/list-item";
 import { WireNodeKind } from "../generated/nmp/content/wire-node-kind";
+import { useNostrProfileHost } from "../../components/user-avatar/NostrProfileHost";
+import { NostrMentionChip } from "../../components/content-mention-chip/NostrMentionChip";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -149,15 +151,36 @@ function RenderNode(p: { node: WireNode; tree: ContentTreeWire }): JSX.Element {
 
 // ── Inline node implementations ───────────────────────────────────────────────
 
-/** Stage 0: renders the raw `nostr:npub1…` URI. Display-name resolution is
- *  peer-owned (profile-claim fix) and intentionally deferred. */
+/** Renders an inline profile mention. Claims the mentioned pubkey through the
+ *  profile host (same path as NostrAvatar) and renders a resolved avatar+name
+ *  `NostrMentionChip` once its kind:0 arrives; falls back to the raw `nostr:…`
+ *  anchor until then (honest-empty — never a placeholder). The pubkey comes from
+ *  the NFCT `nostrUri().primaryId()` the kernel decoded from the npub. */
 function MentionNode(p: { node: WireNode }): JSX.Element {
   const uri = p.node.nostrUri()?.uri() ?? p.node.text() ?? "";
-  const label = p.node.text() ?? uri;
+  const pubkey = p.node.nostrUri()?.primaryId() ?? "";
+  const host = useNostrProfileHost();
+  if (pubkey) {
+    const consumerId = `nostr-mention.${createUniqueId()}`;
+    onMount(() => host.claimProfile(pubkey, consumerId));
+    onCleanup(() => host.releaseProfile(pubkey, consumerId));
+  }
+  const resolved = () => {
+    if (!pubkey) return undefined;
+    const profile = host.profile(pubkey);
+    return profile && (profile.displayName || profile.pictureUrl) ? profile : undefined;
+  };
   return (
-    <a class="nostr-mention" href={uri} rel="noopener noreferrer">
-      {label}
-    </a>
+    <Show
+      when={resolved()}
+      fallback={
+        <a class="nostr-mention" href={uri} rel="noopener noreferrer">
+          {p.node.text() ?? uri}
+        </a>
+      }
+    >
+      {(profile) => <NostrMentionChip profile={profile()} />}
+    </Show>
   );
 }
 
