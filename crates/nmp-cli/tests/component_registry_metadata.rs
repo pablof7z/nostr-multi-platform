@@ -14,6 +14,7 @@ const CLI_REGISTRY_SECTIONS: &[&str] = &[
     include_str!("../registry/registry.compose.toml"),
     include_str!("../registry/registry.tui.toml"),
     include_str!("../registry/registry.desktop.toml"),
+    include_str!("../registry/registry.web.toml"),
 ];
 const WEB_REGISTRY_INDEX: &str = include_str!("../../../web/registry/src/registry.ts");
 const WEB_REGISTRY_TYPES: &str = include_str!("../../../web/registry/src/registry/types.ts");
