@@ -292,6 +292,42 @@ backfills; flag OFF ⇒ `since=301` floored REQ ⇒ only the stray survives
   Specify both legs precisely (pin-below-ledger-floor + eviction-lowers-ledger) at
   D3 start; re-verify eviction enablement and the pin-set wiring then.
 
+**Disposition (LANDED).** Both legs shipped behind the default-off
+`coverage_ledger_enabled`, so D3 is dormant in production like D1/D2; eviction
+enablement re-verified (`GcBudget::production` keeps `HOT_EVENT_CEILING`).
+
+- **Leg 1 — pin below the ledger floor.** `Kernel::pin_floor_for_shape`
+  (`kernel/ram_eviction_coverage.rs`) feeds the floor-coherent pin set
+  (`add_floor_coherent_pins`, relocated to the same file) the floor a REQ will
+  actually carry: flag OFF ⇒ presence (`floor::shape_floor`, unchanged); flag ON
+  + ≥1 coverage row ⇒ the MAX `covered_through` across the shape's relays
+  (`EventStore::coverage_max_for_filter_hash` — the event store is relay-agnostic
+  and over-pinning is always safe); flag ON + no row ⇒ `None` (D2 refuses the
+  floor, so the relay re-sends the full history and no pin is needed). This is
+  the SAME decision `coverage_floor_with_fallback` (D2) makes — no third floor
+  computation (Stage C single-source discipline preserved).
+- **Leg 2 — eviction lowers the ledger.** New
+  `EventStore::gc_step_with_pins_and_coverage(budget, now, pins, &[CoverageGuard])`
+  (default delegates to `gc_step_with_pins`; real impls on both backends).
+  `Kernel::derive_coverage_guards` emits one guard per active covered
+  `(filter_hash, relay)` carrying the kernel-owned
+  `InterestShape::matches_event_with_id` predicate (D0: the shape match never
+  leaks into the store). When Phase-2 LRU deletes a matched event with
+  `created_at <= covered_through`, the store lowers that row to
+  `oldest_evicted - 1` (or clears it on `0`) **in the same transaction/lock as
+  the delete** — mem under the held `MemState` lock, LMDB inside the Phase-2
+  write txn (`coverage::lower_guards_in_txn`). Lowering to `oldest_evicted - 1`
+  (not "just below the oldest surviving covered event") is the hole-free choice:
+  it forces a re-fetch from the oldest evicted hole even under non-contiguous
+  eviction, so the ledger never over-claims a range it no longer holds.
+- **Oracles.** Store-layer `for_each_backend!`
+  (`nmp-testing/tests/store_coverage_eviction_backstop.rs`) proves the backstop
+  atomically on Mem + LMDB (RED-by-sabotage when the lowering is neutered);
+  kernel-layer `gc_coverage_coherent_d3_tests` proves leg 1 (the ledger floor
+  governs over presence) and leg 2 (the guard set) including an integrated
+  production `run_gc_step` pass. The flag stays default-off; the default-on flip
+  is the deliberate Stage-E release-cut PR.
+
 ### Stage E — delete the presence heuristic; correct the docs
 
 Once Stage D is proven in a release, delete `watermark_fn`'s presence computation

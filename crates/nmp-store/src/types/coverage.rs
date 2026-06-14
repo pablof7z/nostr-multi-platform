@@ -79,6 +79,55 @@ pub fn coverage_key_parts(key: &[u8]) -> Option<(String, String)> {
     Some((filter_hash, relay))
 }
 
+/// Predicate type the [`CoverageGuard`] carries: does an event (by its store
+/// fields) match the covered shape? Owned by the kernel (the shape-match
+/// predicate lives in `nmp-planner`/`nmp-core`, D0), passed opaquely into the
+/// store so the store never links protocol/shape logic.
+///
+/// Args: `(event_id_hex, author_hex, kind, created_at, tags)` — exactly the
+/// fields `InterestShape::matches_event_with_id` consumes.
+pub type CoverageMatchFn =
+    std::sync::Arc<dyn Fn(&str, &str, u32, u64, &[Vec<String>]) -> bool + Send + Sync>;
+
+/// K3 Stage D3 (ADR-0056 §3.D3) — the eviction⇄ledger coherence BACKSTOP input.
+///
+/// One guard per active covered `(filter_hash, relay)`: it pairs the coverage
+/// bound with a predicate that decides whether an about-to-be-evicted event
+/// belongs to the covered shape. When LRU eviction deletes an event the guard
+/// `matches` whose `created_at <= covered_through`, the store MUST lower that
+/// row's `covered_through` to just below the oldest evicted covered event in
+/// the **same transaction** as the delete — so the ledger never claims coverage
+/// of a range it no longer holds (the permanent-hole class the memory review
+/// flagged).
+///
+/// The kernel derives the guard set from the live coverage rows + active
+/// interest registry on each GC pass (relay-agnostic event store, per-relay
+/// ledger), gated on the off-by-default `coverage_ledger_enabled` flag. With the
+/// flag off the guard set is empty and the eviction path is byte-identical to
+/// today.
+#[derive(Clone)]
+pub struct CoverageGuard {
+    /// Canonical filter hash half of the ledger key.
+    pub filter_hash: String,
+    /// Relay half of the ledger key.
+    pub relay: String,
+    /// The downward-closed coverage bound this guard protects.
+    pub covered_through: u64,
+    /// Does an event (by store fields) match the covered shape? (kernel-owned).
+    pub matches: CoverageMatchFn,
+}
+
+impl std::fmt::Debug for CoverageGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CoverageGuard")
+            .field("filter_hash", &self.filter_hash)
+            .field("relay", &self.relay)
+            .field("covered_through", &self.covered_through)
+            .field("matches", &"<fn>")
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
