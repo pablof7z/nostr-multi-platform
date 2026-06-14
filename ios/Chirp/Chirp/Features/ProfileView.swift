@@ -134,7 +134,7 @@ struct ProfileView: View {
             // image can replace this once the projection carries one.
             Rectangle()
                 .fill(ChirpColor.surface)
-                .frame(height: 118)
+                .frame(height: 84)
                 .overlay(alignment: .bottom) {
                     Divider()
                 }
@@ -168,13 +168,16 @@ struct ProfileView: View {
                     // label + iconName both authored by Rust — no Swift
                     // `switch action.kind` over SF Symbol names.
                     Label(primaryAction.label, systemImage: primaryAction.iconName)
-                        .font(.callout.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
+                // Secondary treatment: a quiet gray chip, not a solid-black
+                // block. Black is reserved for the rare assertive CTA; an
+                // edit/follow affordance on your own profile should recede.
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
                 .controlSize(.small)
-                .tint(ChirpColor.accent)
+                .tint(.primary)
                 .accessibilityLabel(primaryAction.label)
             }
         }
