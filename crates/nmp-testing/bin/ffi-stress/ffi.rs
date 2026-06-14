@@ -14,6 +14,10 @@ pub(crate) use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_inject_signed_events,
     nmp_app_new, nmp_app_release_profile, nmp_app_set_update_callback, NmpApp,
 };
+// ADR-0055 Rung 3 S5 — needed by the S6 Phase B measurement to enable
+// incremental-apply on the second NmpApp instance.
+#[allow(unused_imports)]
+pub(crate) use nmp_ffi::nmp_app_declare_incremental_apply;
 // nmp_app_inject_pre_verified_events is retained for possible future harness use
 // but S3/S4/S5 all use nmp_app_inject_signed_events (T44 round-4).
 #[allow(unused_imports)]

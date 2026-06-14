@@ -78,6 +78,11 @@ fn golden_envelope() -> SnapshotEnvelope {
         // ADR-0055 Rung 2: non-default values to catch codec transpositions.
         snapshot_epoch: 3,
         session_id: 1_700_000_000_000,
+        // ADR-0055 Rung 3 S5: serialize_us is produced by the production kernel
+        // path (encode_snapshot_with_envelope) which reads self.last_serialize_us.
+        // The auxiliary encode_snapshot_frame path writes 0 via MetricsArgs default,
+        // so the round-trip of this fixture reads back 0.
+        serialize_us: 0,
     }
 }
 

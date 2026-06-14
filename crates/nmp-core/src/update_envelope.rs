@@ -23,6 +23,8 @@ use std::fmt;
 mod projection_state;
 mod relay_status;
 mod tier3_frame;
+mod typed_projection_decode;
+use typed_projection_decode::decode_typed_projections;
 pub use projection_state::WireProjectionState;
 pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};
 pub(crate) use tier3_frame::{encode_snapshot_with_envelope, FrameEpochStamp};
@@ -90,6 +92,12 @@ pub struct SnapshotEnvelope {
     /// across process restarts. When the host sees a changed `session_id` it MUST
     /// discard all per-key applied-rev state and re-baseline. 0 on old frames.
     pub session_id: u64,
+    // --- ADR-0055 Rung 3 S5: encode-time diagnostic (one-tick lag) ---
+    /// Microseconds spent in the previous tick's `encode_snapshot_with_envelope`
+    /// call (one-tick lag: the value in frame N+1 reflects tick N's encode time).
+    /// Used by the S6 harness to assert no encode-time regression under
+    /// incremental-apply omission. 0 on the very first frame.
+    pub serialize_us: u64,
 }
 
 /// Decode the Tier-3 typed `SnapshotFrame` envelope from a FlatBuffers update
@@ -125,16 +133,17 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
 /// Shared by [`decode_snapshot_envelope`] and [`decode_update_frame`] so the
 /// two public decode paths cannot drift.
 fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnvelope {
-    let (events_rx, visible_items, actor_queue_depth, update_sequence) =
+    let (events_rx, visible_items, actor_queue_depth, update_sequence, serialize_us) =
         if let Some(metrics) = snapshot.metrics() {
             (
                 metrics.events_rx(),
                 metrics.visible_items(),
                 metrics.actor_queue_depth(),
                 metrics.update_sequence(),
+                metrics.serialize_us(),
             )
         } else {
-            (0, 0, 0, 0)
+            (0, 0, 0, 0, 0)
         };
 
     SnapshotEnvelope {
@@ -157,6 +166,8 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         // (pre-Rung-2) frames return 0 for both (FlatBuffers default) — safe.
         snapshot_epoch: snapshot.snapshot_epoch(),
         session_id: snapshot.session_id(),
+        // ADR-0055 Rung 3 S5: one-tick-lag encode time for harness comparison.
+        serialize_us,
     }
 }
 
@@ -440,49 +451,6 @@ pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDe
         ))),
     }
 }
-
-fn decode_typed_projections(
-    snapshot: &fb::SnapshotFrame<'_>,
-) -> Result<Vec<TypedProjectionData>, UpdateFrameDecodeError> {
-    let Some(projections) = snapshot.typed_projections() else {
-        return Ok(Vec::new());
-    };
-    let mut out = Vec::with_capacity(projections.len());
-    for index in 0..projections.len() {
-        let projection = projections.get(index);
-        let key = projection
-            .key()
-            .ok_or_else(|| {
-                UpdateFrameDecodeError::InvalidValue(format!(
-                    "typed projection at index {index} missing key"
-                ))
-            })?
-            .to_string();
-        let typed = projection.payload().ok_or_else(|| {
-            UpdateFrameDecodeError::InvalidValue(format!(
-                "typed projection {key:?} missing payload"
-            ))
-        })?;
-        let payload = typed
-            .payload()
-            .map(|bytes| bytes.bytes().to_vec())
-            .unwrap_or_default();
-        out.push(TypedProjectionData {
-            key,
-            schema_id: typed.schema_id().unwrap_or_default().to_string(),
-            schema_version: typed.schema_version(),
-            file_identifier: typed.file_identifier().unwrap_or_default().to_string(),
-            payload,
-            // ADR-0055 Rung 2: decode rev + state. Old (pre-Rung-2) writers
-            // return 0 / Changed (FlatBuffers defaults) — correct: treat as
-            // a payload update at rev 0.
-            projection_rev: projection.projection_rev(),
-            state: projection.state().into(),
-        });
-    }
-    Ok(out)
-}
-
 
 /// Best-effort message extraction from a `catch_unwind` payload.
 pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
