@@ -4,6 +4,8 @@ import { createStore, reconcile } from "solid-js/store";
 
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
+import { ClaimedEventsSnapshot } from "./generated/nmp/kernel/claimed-events-snapshot";
+import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import {
   eventCorrelationId,
@@ -17,11 +19,25 @@ import type { NostrProfileHost } from "../components/user-avatar/NostrProfileHos
 
 const KRPR_FILE_IDENTIFIER = "KRPR";
 const KRPR_PROJECTION_KEY = "resolved_profiles";
+const KCEV_FILE_IDENTIFIER = "KCEV";
+const KCEV_PROJECTION_KEY = "claimed_events";
 
 export type RelayStatusRow = {
   url: string;
   role: string;
   connection: string;
+};
+
+/** One resolved+enriched event from the kernel's `claimed_events` projection.
+ *  `contentTree` is the kernel-parsed NFCT tree (`nmp-content` behind the
+ *  content-parser seam); `content` is the raw NIP-01 string fallback. */
+export type ClaimedEventWire = {
+  primaryId: string;
+  id: string;
+  kind: number;
+  content: string;
+  /** Decoded NFCT tree, present iff the kernel emitted non-empty NFCT bytes. */
+  contentTree?: ContentTreeWire;
 };
 
 export type GalleryRuntime = {
@@ -38,8 +54,19 @@ export type GalleryRuntime = {
   /** Reactive — true once a connected relay carries the `indexer` role. kind:0
    *  profile REQs route to the indexer lane, so claims must wait for this. */
   anyIndexerConnected: Accessor<boolean>;
+  /** Reactive — true once a connected relay carries the `content` role. Event-id
+   *  fetches (claim_event) route to the content lane, so event claims must wait
+   *  for this — claiming before the content socket is open drops the REQ (the
+   *  wasm transport has no retry/on-demand dial). */
+  anyContentConnected: Accessor<boolean>;
   /** Reactive — number of resolved profiles currently held. */
   resolvedCount: Accessor<number>;
+  /** Claim a single event by `nostr:` URI (nevent/naddr). Routes through the
+   *  content-relay lane (Discovery seed), independent of the indexer lane. */
+  claimEvent(uri: string, consumerId: string): void;
+  /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
+   *  the kernel resolves it. */
+  claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
 };
 
 // ── Profile decode ───────────────────────────────────────────────────────────
@@ -93,6 +120,58 @@ function decodeProfileCards(snapshot: SnapshotFrame): Map<string, ProfileWire> |
   return undefined;
 }
 
+/** Decode the claimed_events (KCEV) typed projection from a snapshot frame into
+ *  a primary_id→ClaimedEventWire map. Each event's `content_tree_bytes` (the
+ *  kernel-parsed NFCT) is decoded into a `ContentTreeWire` when present; empty
+ *  bytes leave `contentTree` undefined (the view then renders raw `content`).
+ *  Returns `undefined` on missing/corrupt projection so the caller keeps the
+ *  last good map (D6 — never blank-reset). */
+function decodeClaimedEvents(snapshot: SnapshotFrame): Map<string, ClaimedEventWire> | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== KCEV_PROJECTION_KEY) continue;
+    const payload = proj.payload();
+    if (!payload || payload.fileIdentifier() !== KCEV_FILE_IDENTIFIER) return undefined;
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) return undefined;
+    try {
+      const bb = new flatbuffers.ByteBuffer(payloadBytes);
+      if (!ClaimedEventsSnapshot.bufferHasIdentifier(bb)) return undefined;
+      const root = ClaimedEventsSnapshot.getRootAsClaimedEventsSnapshot(bb);
+      const out = new Map<string, ClaimedEventWire>();
+      for (let j = 0; j < root.entriesLength(); j += 1) {
+        const entry = root.entries(j);
+        if (!entry) continue;
+        const key = entry.key();
+        const ev = entry.value();
+        if (!key || !ev) continue;
+        const wire: ClaimedEventWire = {
+          primaryId: key,
+          id: ev.id() ?? "",
+          kind: ev.kind(),
+          content: ev.content() ?? "",
+        };
+        const ctBytes = ev.contentTreeBytesArray();
+        if (ctBytes && ctBytes.length > 0) {
+          try {
+            const ctBb = new flatbuffers.ByteBuffer(ctBytes);
+            if (ContentTreeWire.bufferHasIdentifier(ctBb)) {
+              wire.contentTree = ContentTreeWire.getRootAsContentTreeWire(ctBb);
+            }
+          } catch {
+            // Corrupt NFCT bytes — leave contentTree undefined (raw fallback).
+          }
+        }
+        out.set(key, wire);
+      }
+      return out;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 function decodeRelays(snapshot: SnapshotFrame): RelayStatusRow[] {
   const rows: RelayStatusRow[] = [];
   for (let i = 0; i < snapshot.relayStatusesLength(); i += 1) {
@@ -111,6 +190,11 @@ export function createGalleryRuntime(): GalleryRuntime {
   // Reactive stores. `profiles` is a keyed store so user-* components only
   // re-render when their pubkey's ProfileWire actually changes.
   const [profiles, setProfiles] = createStore<Record<string, ProfileWire>>({});
+  // A plain signal, NOT a deep store: a ClaimedEventWire carries a flatbuffers
+  // `ContentTreeWire` holding a live ByteBuffer + prototype accessors. Solid's
+  // store proxy would wrap that object and break its `this.bb`-based accessors,
+  // so the map is kept as an opaque signal value (replaced wholesale per frame).
+  const [claimedEvents, setClaimedEvents] = createSignal<Map<string, ClaimedEventWire>>(new Map());
   const [status, setStatus] = createSignal<RuntimeStatus>("ready");
   const [relays, setRelays] = createSignal<RelayStatusRow[]>([]);
   const [resolvedCount, setResolvedCount] = createSignal(0);
@@ -147,6 +231,8 @@ export function createGalleryRuntime(): GalleryRuntime {
         setProfiles(reconcile(next, { merge: true }));
         setResolvedCount(cards.size);
       }
+      const events = decodeClaimedEvents(snap);
+      if (events !== undefined) setClaimedEvents(events);
     } catch {
       // Keep last-good state on a corrupt frame (D6 — never blank-reset).
     }
@@ -236,6 +322,19 @@ export function createGalleryRuntime(): GalleryRuntime {
       relays().some(
         (r) => r.connection.toLowerCase() === "connected" && r.role.includes("indexer"),
       ),
+    anyContentConnected: () =>
+      relays().some(
+        (r) => r.connection.toLowerCase() === "connected" && r.role.includes("content"),
+      ),
     resolvedCount,
+    claimEvent(uri: string, consumerId: string) {
+      void request({
+        type: "dispatch",
+        action_type: "nmp.kernel.claim_event",
+        payload: { uri, consumer_id: consumerId },
+        correlation_id: `claim-event-${claimSeq++}`,
+      });
+    },
+    claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
   };
 }

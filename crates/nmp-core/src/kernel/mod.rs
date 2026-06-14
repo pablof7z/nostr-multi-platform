@@ -686,6 +686,12 @@ pub struct Kernel {
     /// through the substrate seam at
     /// `RoutingContext::session_keys::app_relays` (lane 7 fallback).
     outbox_router: Arc<dyn OutboxRouter>,
+    /// Content-parser seam (default no-op). A higher composition layer installs
+    /// a real `nmp-content`-backed parser via [`Self::set_content_parser`] so
+    /// the `claimed_events` projection can embed a parsed NFCT content tree
+    /// (web hosts can't run `nmp-content` in JS). nmp-core stays
+    /// `nmp-content`-free (D0).
+    content_parser: Arc<dyn crate::substrate::ContentParser>,
     /// V-51 phase 1 — bounded ring-buffer projection of recent routing
     /// decisions. Constructed once in `Kernel::with_optional_publish_store_and_path`
     /// and threaded into production composition via the
@@ -1311,6 +1317,14 @@ impl Kernel {
         self.mailbox_cache = cache;
     }
 
+    /// Install the content-parser seam. A higher composition layer (which may
+    /// depend on `nmp-content`) injects an `nmp-content`-backed parser so the
+    /// `claimed_events` projection embeds a parsed NFCT content tree. Default is
+    /// the no-op parser (empty bytes → host falls back to raw content).
+    pub fn set_content_parser(&mut self, parser: Arc<dyn crate::substrate::ContentParser>) {
+        self.content_parser = parser;
+    }
+
     /// Install a router-side publish-resolver implementation on the
     /// kernel's `PublishEngine`.
     ///
@@ -1892,6 +1906,8 @@ impl Kernel {
         // layering).
         let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::new());
         let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
+        let content_parser: Arc<dyn crate::substrate::ContentParser> =
+            Arc::new(crate::substrate::NoopContentParser::new());
 
         // Spec §271 (2026-05-25): under `cfg(test)` / `feature="test-support"`
         // the kernel auto-installs the in-crate `TestKind10002OutboxResolver`
@@ -1948,6 +1964,7 @@ impl Kernel {
             #[cfg(not(any(test, feature = "test-support")))]
             mailbox_cache: Arc::new(EmptyMailboxCache::new()),
             outbox_router,
+            content_parser,
             routing_trace,
             dm_inbox_relays: empty_dm_inbox_relay_lookup(),
             blocked_relays: empty_blocked_relay_lookup(),

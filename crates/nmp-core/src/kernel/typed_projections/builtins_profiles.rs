@@ -124,6 +124,7 @@ impl super::super::Kernel {
                             created_at: dto.created_at,
                             tags: dto.tags.clone(),
                             content: dto.content.clone(),
+                            content_tree_bytes: dto.content_tree_bytes.clone(),
                         },
                     )
                 })

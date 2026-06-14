@@ -842,6 +842,17 @@ pub(crate) struct ClaimedEventDto {
     pub(super) tags: Vec<Vec<String>>,
     /// Raw event content. NIP-23 article body, kind:1 note text, etc.
     pub(super) content: String,
+    /// Parsed NFCT content tree (`nmp-content` `ContentTreeWire`) serialized to
+    /// bytes by the injected content-parser seam. Empty when no parser is
+    /// installed (native hosts parse via `nmp-content` directly) — the renderer
+    /// then falls back to `content`. Web hosts (which can't run `nmp-content` in
+    /// JS) decode these bytes to render the kernel-parsed content tree.
+    ///
+    /// `#[serde(skip)]`: rides ONLY the typed `KCEV` FlatBuffer sidecar, never
+    /// the legacy generic-`Value` JSON projection (a raw byte array would bloat
+    /// it).
+    #[serde(skip)]
+    pub(super) content_tree_bytes: Vec<u8>,
 }
 
 impl ClaimedEventDto {
@@ -862,7 +873,16 @@ impl ClaimedEventDto {
             created_at: e.created_at,
             tags: e.tags.clone(),
             content: e.content.clone(),
+            content_tree_bytes: Vec::new(),
         }
+    }
+
+    /// Stamp the serialized NFCT content-tree bytes produced by the kernel's
+    /// content-parser seam (empty = no parser installed → fall back to raw
+    /// `content`).
+    pub(super) fn with_content_tree(mut self, content_tree_bytes: Vec<u8>) -> Self {
+        self.content_tree_bytes = content_tree_bytes;
+        self
     }
 
     /// Stamp the author's display name + picture URL from the kernel's

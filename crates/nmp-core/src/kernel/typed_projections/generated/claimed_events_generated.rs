@@ -133,6 +133,7 @@ impl<'a> ClaimedEvent<'a> {
   pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 20;
   pub const VT_TAGS: ::flatbuffers::VOffsetT = 22;
   pub const VT_CONTENT: ::flatbuffers::VOffsetT = 24;
+  pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 26;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -145,6 +146,7 @@ impl<'a> ClaimedEvent<'a> {
   ) -> ::flatbuffers::WIPOffset<ClaimedEvent<'bldr>> {
     let mut builder = ClaimedEventBuilder::new(_fbb);
     builder.add_created_at(args.created_at);
+    if let Some(x) = args.content_tree_bytes { builder.add_content_tree_bytes(x); }
     if let Some(x) = args.content { builder.add_content(x); }
     if let Some(x) = args.tags { builder.add_tags(x); }
     builder.add_kind(args.kind);
@@ -236,6 +238,13 @@ impl<'a> ClaimedEvent<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ClaimedEvent::VT_CONTENT, None)}
   }
+  #[inline]
+  pub fn content_tree_bytes(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(ClaimedEvent::VT_CONTENT_TREE_BYTES, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for ClaimedEvent<'_> {
@@ -255,6 +264,7 @@ impl ::flatbuffers::Verifiable for ClaimedEvent<'_> {
      .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TagRow>>>>("tags", Self::VT_TAGS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("content_tree_bytes", Self::VT_CONTENT_TREE_BYTES, false)?
      .finish();
     Ok(())
   }
@@ -271,6 +281,7 @@ pub struct ClaimedEventArgs<'a> {
     pub created_at: u64,
     pub tags: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TagRow<'a>>>>>,
     pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub content_tree_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
 }
 impl<'a> Default for ClaimedEventArgs<'a> {
   #[inline]
@@ -287,6 +298,7 @@ impl<'a> Default for ClaimedEventArgs<'a> {
       created_at: 0,
       tags: None,
       content: None,
+      content_tree_bytes: None,
     }
   }
 }
@@ -341,6 +353,10 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ClaimedEventBuilder<'a, 'b, A
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ClaimedEvent::VT_CONTENT, content);
   }
   #[inline]
+  pub fn add_content_tree_bytes(&mut self, content_tree_bytes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , u8>>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ClaimedEvent::VT_CONTENT_TREE_BYTES, content_tree_bytes);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ClaimedEventBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ClaimedEventBuilder {
@@ -369,6 +385,7 @@ impl ::core::fmt::Debug for ClaimedEvent<'_> {
       ds.field("created_at", &self.created_at());
       ds.field("tags", &self.tags());
       ds.field("content", &self.content());
+      ds.field("content_tree_bytes", &self.content_tree_bytes());
       ds.finish()
   }
 }

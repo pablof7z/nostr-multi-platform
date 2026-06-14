@@ -22,6 +22,8 @@ fn sample() -> ClaimedEventsModel {
                         vec![],
                     ],
                     content: "hello world".to_string(),
+                    // Non-empty NFCT bytes must survive the round-trip.
+                    content_tree_bytes: vec![1, 2, 3, 4],
                 },
             ),
             (
@@ -37,6 +39,7 @@ fn sample() -> ClaimedEventsModel {
                     created_at: 1_700_000_500,
                     tags: vec![vec!["d".to_string(), "slug".to_string()]],
                     content: "# Article".to_string(),
+                    content_tree_bytes: Vec::new(),
                 },
             ),
         ],
@@ -77,6 +80,7 @@ fn nested_tags_and_none_authors_preserved() {
                 created_at: 42,
                 tags: vec![vec![], vec!["single".to_string()]],
                 content: String::new(),
+                content_tree_bytes: Vec::new(),
             },
         )],
     };

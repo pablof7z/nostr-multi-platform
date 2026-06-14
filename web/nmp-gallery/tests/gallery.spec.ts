@@ -63,6 +63,27 @@ test("gallery resolves a real profile from real relays — no mocks", async ({ p
   const nip05 = (await page.locator('[data-testid="nip05-demo"]').innerText()).trim();
   expect(nip05.length, "nip05 badge must show a non-empty identifier").toBeGreaterThan(0);
 
+  // 6 — content-view renders a REAL kernel-parsed content tree, not the raw
+  //     fallback. The app only mounts these once the kernel returns a non-empty,
+  //     placeholder-free NFCT tree (the honesty gate). We additionally prove the
+  //     render came from the TREE by asserting tree-derived markup that the raw
+  //     string fallback could never produce.
+  const note = page.locator('[data-testid="content-note"]');
+  await expect(note).toBeVisible({ timeout: 60_000 });
+  const noteText = (await note.innerText()).trim();
+  expect(noteText.length, "note content must be non-empty").toBeGreaterThan(0);
+
+  // The article is the strong honesty proof: markdown → multiple <p class="nostr-p">
+  // block elements + at least one anchor. A fallback string render produces ZERO
+  // of these structural elements, so their presence proves the tree path ran.
+  const article = page.locator('[data-testid="content-article"]');
+  await expect(article).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(() => article.locator("p.nostr-p").count(), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(2);
+  const articleLinks = await article.locator("a.nostr-url, a.nostr-link").count();
+  expect(articleLinks, "article must render at least one tree-derived link").toBeGreaterThanOrEqual(1);
+
   // Byproduct: per-component screenshots of the resolved state.
   mkdirSync(SHOTS, { recursive: true });
   const shot = (sel: string, name: string) =>
@@ -76,6 +97,10 @@ test("gallery resolves a real profile from real relays — no mocks", async ({ p
   await shot("#user-name .component-stage", "web-user-name.png");
   await shot("#user-nip05 .component-stage", "web-user-nip05.png");
   await shot("#user-card .component-stage", "web-user-card.png");
+  await shot("#content-view .component-stage", "web-content-view.png");
 
-  console.log(`[proof] name="${name}" nip05="${nip05}" avatar="${src}"`);
+  console.log(
+    `[proof] name="${name}" nip05="${nip05}" avatar="${src}" ` +
+      `note="${noteText.slice(0, 40)}" articleLinks=${articleLinks}`,
+  );
 });

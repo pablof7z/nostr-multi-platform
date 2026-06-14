@@ -47,6 +47,9 @@ import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/Nostr
 import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
 import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
 
+// Content — Web (SolidJS)
+import webContentViewTsx from "../vendor/web/content-view/NostrContentView.tsx?raw";
+
 export const contentComponents: Component[] = [
   {
     slug: "content-core",
@@ -207,6 +210,23 @@ export const contentComponents: Component[] = [
         customization: [
           "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and keeps event refs as quote cards when render data is present.",
           "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/content-view",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`<NostrContentView tree={...} fallback={...} />` is a SolidJS component that walks a kernel-decoded `ContentTreeWire` (NFCT) — the `nmp-content` tokenizer running behind the kernel's content-parser seam — into HTML: paragraphs, headings, lists, blockquotes, code, inline emphasis/strong/links, hashtags, URLs, emoji, media, and `nostr:` mention/event-ref anchors. It never parses, fetches, or mocks; when no tree is present it renders the raw `fallback` string verbatim (honest-empty per D6). Verified live in the NMP web gallery: a real kind:1 note and a real kind:30023 long-form article, both claimed from real relays and parsed by the real WASM kernel.",
+        files: [
+          { source: "web/content-view/NostrContentView.tsx", target: "src/components/nostr-content/NostrContentView.tsx", role: "source", content: webContentViewTsx },
+        ],
+        screenshots: ["content-view-web-preview.png"],
+        customization: [
+          "Style via the `nostr-*` element classes (`nostr-p`, `nostr-h`, `nostr-url`, `nostr-blockquote`, `nostr-code-block`, …); the component emits semantic HTML with no inline styles.",
+          "The `tree` prop is a decoded `ContentTreeWire` from your kernel snapshot's `claimed_events` / feed projection; decode the NFCT bytes once in your runtime and pass the root object — the component is a pure walker.",
+          "Mention and event-ref nodes render as `nostr:` anchors; install the embed-component layer to upgrade them to profile chips and quoted-event cards.",
         ],
       },
     },

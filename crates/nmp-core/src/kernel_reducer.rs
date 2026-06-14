@@ -440,6 +440,17 @@ impl KernelReducer {
         self.kernel.set_routing(router, cache);
     }
 
+    /// Install the content-parser seam (default no-op). The wasm composition
+    /// injects an `nmp-content`-backed parser so the `claimed_events` projection
+    /// embeds a parsed NFCT content tree — letting web hosts render content from
+    /// a `claim_event` without running `nmp-content` in JS.
+    pub fn set_content_parser(
+        &mut self,
+        parser: std::sync::Arc<dyn crate::substrate::ContentParser>,
+    ) {
+        self.kernel.set_content_parser(parser);
+    }
+
 }
 
 /// Test-support seam: fire the observer slot directly with a `KernelEvent`.

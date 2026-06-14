@@ -286,3 +286,114 @@ body {
   opacity: 0.4;
   cursor: default;
 }
+
+/* ── content-view ─────────────────────────────────────────────────────────── */
+.content-demos {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.content-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.content-demo-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.nostr-content {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  color: var(--text);
+  line-height: 1.55;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.nostr-content--article {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.nostr-content .nostr-p {
+  margin: 0 0 0.7em;
+}
+
+.nostr-content .nostr-p:last-child {
+  margin-bottom: 0;
+}
+
+.nostr-content .nostr-h {
+  margin: 0.6em 0 0.4em;
+  line-height: 1.25;
+}
+
+.nostr-content h1.nostr-h { font-size: 1.5em; }
+.nostr-content h2.nostr-h { font-size: 1.3em; }
+.nostr-content h3.nostr-h { font-size: 1.12em; }
+
+.nostr-content .nostr-url,
+.nostr-content .nostr-link,
+.nostr-content .nostr-mention,
+.nostr-content .nostr-event-ref {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.nostr-content .nostr-url:hover,
+.nostr-content .nostr-link:hover {
+  text-decoration: underline;
+}
+
+.nostr-content .nostr-hashtag {
+  color: var(--accent);
+}
+
+.nostr-content .nostr-blockquote {
+  margin: 0 0 0.7em;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-dim);
+}
+
+.nostr-content .nostr-inline-code,
+.nostr-content .nostr-code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+}
+
+.nostr-content .nostr-code-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 0 0 0.7em;
+}
+
+.nostr-content .nostr-list {
+  margin: 0 0 0.7em;
+  padding-left: 1.4em;
+}
+
+.nostr-content .nostr-image,
+.nostr-content .nostr-media-img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.nostr-content .nostr-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.8em 0;
+}

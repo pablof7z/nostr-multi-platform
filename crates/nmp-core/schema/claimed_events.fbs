@@ -70,6 +70,10 @@ table ClaimedEvent {
   tags:[TagRow];
   // Raw event content.
   content:string;
+  // Serialized NFCT ContentTreeWire (KCTW buffer) of the parsed content, when
+  // the kernel's content-parser seam is installed (web hosts). Empty/absent on
+  // native (which parses via nmp-content directly) — fall back to `content`.
+  content_tree_bytes:[ubyte];
 }
 
 // One `primary_id -> ClaimedEvent` map entry. Entries are sorted by `key`
