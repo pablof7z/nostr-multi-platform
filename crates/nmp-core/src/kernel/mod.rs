@@ -20,6 +20,7 @@ pub(crate) mod action_registry;
 // through `nmp_app_composition_report`. Written only at registration time, not
 // on any hot path (D8).
 pub mod composition_ledger;
+mod composition_seams;
 // Actor-owned per-correlation_id stage tracker. `pub(crate)` so the
 // FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
 // dispatch handler (`actor::dispatch`) can reach the type aliases; the
@@ -722,11 +723,7 @@ pub struct Kernel {
     /// through the substrate seam at
     /// `RoutingContext::session_keys::app_relays` (lane 7 fallback).
     outbox_router: Arc<dyn OutboxRouter>,
-    /// Content-parser seam (default no-op). A higher composition layer installs
-    /// a real `nmp-content`-backed parser via [`Self::set_content_parser`] so
-    /// the `claimed_events` projection can embed a parsed NFCT content tree
-    /// (web hosts can't run `nmp-content` in JS). nmp-core stays
-    /// `nmp-content`-free (D0).
+    /// Injected content parser; default no-op keeps nmp-core nmp-content-free.
     content_parser: Arc<dyn crate::substrate::ContentParser>,
     /// V-51 phase 1 — bounded ring-buffer projection of recent routing
     /// decisions. Constructed once in `Kernel::with_optional_publish_store_and_path`
@@ -1357,44 +1354,6 @@ impl Kernel {
     /// Step 3 of the crate-boundary migration
     /// (`docs/architecture/crate-boundaries.md` §3) wires
     /// `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>` onto the
-    /// kernel. Production composition (apps that depend on
-    /// `nmp-router`) calls this after `Kernel::new` /
-    /// `Kernel::with_storage_path` to swap the
-    /// [`crate::substrate::EmptyOutboxRouter`] +
-    /// [`crate::substrate::EmptyMailboxCache`] defaults (substrate-honest
-    /// debt B, 2026-05-24) for `nmp_router::GenericOutboxRouter` +
-    /// `nmp_router::InMemoryMailboxCache`. The kernel itself cannot
-    /// depend on `nmp-router` (Layer 3 → Layer 2 would invert the
-    /// dependency arrow), so injection is mandatory for the production
-    /// swap.
-    ///
-    /// MUST be called BEFORE any kind:10002 event is ingested — the
-    /// caches are independent stores, not a write-through pair, so a
-    /// swap after ingest would lose the cached entries.
-    ///
-    /// Widened from `pub(crate)` to `pub` (V-51 phase 5): production
-    /// composition (`nmp-app-chirp`) now drives this through the
-    /// `NmpApp::set_routing_substrate` slot the actor's kernel
-    /// constructor reads. Apps that want a competing router
-    /// (`nmp_router::GenericOutboxRouter`, or a future Layer-2 impl)
-    /// inject through that slot; the actor calls this method after
-    /// `Kernel::with_storage_path` returns, threading the kernel's
-    /// `RoutingTraceProjection` through the supplied router's
-    /// `with_trace_observer` so the trace ring keeps populating across
-    /// the swap.
-    pub fn set_routing(&mut self, router: Arc<dyn OutboxRouter>, cache: Arc<dyn MailboxCache>) {
-        self.outbox_router = router;
-        self.mailbox_cache = cache;
-    }
-
-    /// Install the content-parser seam. A higher composition layer (which may
-    /// depend on `nmp-content`) injects an `nmp-content`-backed parser so the
-    /// `claimed_events` projection embeds a parsed NFCT content tree. Default is
-    /// the no-op parser (empty bytes → host falls back to raw content).
-    pub fn set_content_parser(&mut self, parser: Arc<dyn crate::substrate::ContentParser>) {
-        self.content_parser = parser;
-    }
-
     /// Install a router-side publish-resolver implementation on the
     /// kernel's `PublishEngine`.
     ///
