@@ -19,8 +19,13 @@
 //!    incremental ON < p50 with incremental OFF (by approximately the feed payload).
 //! 3. `byte_identity_oracle_pass` — the incremental reconstruction == the full-frame
 //!    reference (fail-closed; see [`crate::s7_feed_oracle`]).
-//! 4. `false_resend_rate` — fraction of out-of-window ingest events that triggered
-//!    a spurious feed re-emit. Gate: ≤ 0.0 (zero false re-sends).
+//! 4. `out_of_window_false_resend_rate` — a FOLLOWED author's OLD event (passes
+//!    the follow predicate, mutates the engine card set, but the top-80 snapshot
+//!    is byte-identical) must NOT trigger a feed re-emit. Gate: ≤ 0.0. This is the
+//!    real over-invalidation proof — it exercises the byte-equality gate as the
+//!    suppressor (a stranger event, by contrast, is rejected by the predicate
+//!    before reaching the engine and would pass even with a broken gate; the
+//!    stranger probe is retained only as a secondary predicate sanity check).
 //!
 //! **Honesty note (mandate from #1415):** these numbers reflect the IDLE /
 //! static-feed scenario. A mutating feed (new in-window event from a followed
@@ -59,20 +64,34 @@ pub(crate) struct S7Outcome {
     pub(crate) phase_a: FeedPhaseMetrics,
     pub(crate) phase_b: FeedPhaseMetrics,
     pub(crate) oracle: FeedOracleResult,
-    /// Number of out-of-window ingest events that triggered a spurious feed
-    /// re-emit (false re-sends). Zero is the gate.
-    pub(crate) false_resend_count: u32,
-    /// Total out-of-window events injected (denominator for the rate).
+    /// **The real over-invalidation probe** (review BLOCKER fix): a FOLLOWED
+    /// author's event with an OLD `created_at` that lands OUTSIDE the visible
+    /// 80-card window. It passes `follow_set.predicate()` and mutates the
+    /// engine's internal card set, but `snapshot(default-80)` is byte-identical
+    /// → the byte-equality gate MUST omit it. This non-trivially exercises the
+    /// gate as the suppressor. Number of feed re-emits observed (gate: 0).
+    pub(crate) out_of_window_resend_count: u32,
+    /// Number of out-of-window followed events injected (denominator).
     pub(crate) out_of_window_events: u32,
+    /// **Secondary predicate sanity check**: a NON-FOLLOWED (stranger) author's
+    /// events, rejected by `follow_set.predicate()` before reaching the engine.
+    /// The feed is trivially byte-identical regardless of the gate — this proves
+    /// the predicate filters, NOT that the byte-equality gate suppresses. Number
+    /// of feed re-emits observed (informational; should also be 0).
+    pub(crate) stranger_resend_count: u32,
+    /// Number of stranger events injected.
+    pub(crate) stranger_events: u32,
     pub(crate) wall_elapsed: f64,
 }
 
 impl S7Outcome {
-    fn false_resend_rate(&self) -> f64 {
+    /// The CAPSTONE false-resend rate: out-of-window FOLLOWED events that
+    /// triggered a spurious feed re-emit. This is the rate the gate checks.
+    fn out_of_window_resend_rate(&self) -> f64 {
         if self.out_of_window_events == 0 {
             return 0.0;
         }
-        self.false_resend_count as f64 / self.out_of_window_events as f64
+        self.out_of_window_resend_count as f64 / self.out_of_window_events as f64
     }
 }
 
@@ -81,7 +100,7 @@ impl S7Outcome {
 pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
     let a = &outcome.phase_a;
     let b = &outcome.phase_b;
-    let false_resend_rate = outcome.false_resend_rate();
+    let out_of_window_resend_rate = outcome.out_of_window_resend_rate();
 
     // ── Gate 1: idle feed bytes omitted (incremental ON) ─────────────────────
     //
@@ -132,11 +151,28 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
         .with_note(outcome.oracle.note.clone()),
     );
 
-    // ── Gate 4: false-resend rate == 0 ───────────────────────────────────────
+    // ── Gate 4: over-invalidation false-resend rate == 0 ─────────────────────
+    //
+    // REVIEW BLOCKER FIX: the probe injects a FOLLOWED author's REPLY to a root
+    // the engine never holds. It passes the follow predicate, reaches the engine
+    // (Inserted → observer fires), and MUTATES internal state (pending_attributions
+    // grows) — but surfaces no card and leaves the roots map / total_blocks
+    // unchanged, so snapshot(default-80) is byte-identical → the byte-equality
+    // gate MUST omit it. This non-trivially exercises the gate as the suppressor.
+    //
+    // (An out-of-window NEW root would NOT work: the OP-centric engine surfaces
+    // ALL roots regardless of author, and the snapshot's page.total_blocks counts
+    // every root — so any new root, even one below the visible window, legitimately
+    // changes the bytes and SHOULD re-emit. Verified empirically: +160 B. A
+    // stranger reply, by contrast, is dropped by the predicate before reaching the
+    // engine and would pass even with a BROKEN gate — retained as a secondary
+    // predicate sanity check below.)
     report.gates.push(
-        Gate::lte("false_resend_rate", false_resend_rate, 0.0).with_note(
-            "out-of-window ingest events (non-followed pubkey, never changes the feed) \
-             must never trigger a spurious feed re-emit; false_resend_rate must be 0.0",
+        Gate::lte("out_of_window_false_resend_rate", out_of_window_resend_rate, 0.0).with_note(
+            "a FOLLOWED author's reply to an unknown root (passes the predicate, reaches the \
+             engine, mutates pending_attributions, but surfaces no card → snapshot byte-identical) \
+             must NOT trigger a feed re-emit — proving the byte-equality gate suppresses, not just \
+             the follow predicate",
         ),
     );
 
@@ -201,10 +237,22 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
         outcome.oracle.note
     ));
     report.notes.push(format!(
-        "False-resend gate: {}/{} out-of-window events → false_resend_rate={:.4}",
-        outcome.false_resend_count,
+        "GATE 4 (over-invalidation proof): {}/{} FOLLOWED reply-to-unknown-root events \
+         (pass predicate, reach engine, mutate pending_attributions, surface no card → \
+         snapshot byte-identical) → out_of_window_false_resend_rate={:.4} (must be 0 — proves \
+         the byte-equality gate suppresses, not just the follow predicate)",
+        outcome.out_of_window_resend_count,
         outcome.out_of_window_events,
-        false_resend_rate,
+        out_of_window_resend_rate,
+    ));
+    report.notes.push(format!(
+        "Secondary predicate sanity check: {}/{} STRANGER (non-followed) replies → \
+         stranger_resend_count={} (dropped by predicate before any engine state change; trivially \
+         byte-identical — informational, NOT the over-invalidation proof). NB: stranger ROOTS \
+         would correctly change the feed — the OP-centric engine surfaces all roots.",
+        outcome.stranger_resend_count,
+        outcome.stranger_events,
+        outcome.stranger_resend_count,
     ));
     report.notes.push(serialize_us_note);
     report.notes.push(format!(
@@ -247,9 +295,11 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
             "idle_feed_bytes_omitted": frames_without_feed_b >= 1,
             "p50_frame_bytes_incremental_lt_baseline": b.p50_frame_bytes < a.p50_frame_bytes,
             "byte_identity_oracle_pass": outcome.oracle.passed,
-            "false_resend_rate": false_resend_rate,
-            "false_resend_count": outcome.false_resend_count,
-            "false_resend_out_of_window_events": outcome.out_of_window_events,
+            "out_of_window_false_resend_rate": out_of_window_resend_rate,
+            "out_of_window_false_resend_count": outcome.out_of_window_resend_count,
+            "out_of_window_events": outcome.out_of_window_events,
+            "stranger_resend_count": outcome.stranger_resend_count,
+            "stranger_events": outcome.stranger_events,
         },
         "wall_seconds": outcome.wall_elapsed,
     });

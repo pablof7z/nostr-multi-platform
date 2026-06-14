@@ -29,6 +29,7 @@ mod s6_gates;
 mod s6_oracle;
 mod s6_single_projection_churn;
 // ADR-0055 R6-S4 — feed-idle capstone: whole-product idle win with op_feed registered.
+mod s7_feed_events;
 mod s7_feed_gates;
 mod s7_feed_idle;
 mod s7_feed_oracle;

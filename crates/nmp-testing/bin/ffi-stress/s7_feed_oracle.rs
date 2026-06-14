@@ -1,23 +1,25 @@
 //! S7 byte-identity oracle for the feed-idle capstone (ADR-0055 R6-S4).
 //!
 //! Extracted per repo file-size doctrine (500-LOC hard ceiling). Mirrors the
-//! structure of [`crate::s6_oracle`] but is updated for the R6-S4 scenario:
+//! structure of [`crate::s6_oracle`] but updated for the R6-S4 scenario:
 //!
-//! - The ALLOWED_ABSENT whitelist is extended to include `"nmp.feed.home"` for
-//!   Phase A frames (it is always-Changed in baseline mode because the engine
-//!   re-serializes the feed every tick). The oracle is run against the Phase B
-//!   incremental stream, where `"nmp.feed.home"` is expected to be OMITTED on
-//!   idle ticks (proving the byte-equality gate fires and the host cache retains
-//!   the prior value).
+//! - The oracle proves LOSSLESSNESS: replaying the Phase B incremental stream
+//!   through `MiniProjectionCache` reconstructs the same end-state as the Phase A
+//!   full-frame reference. `"nmp.feed.home"` is present in the reconstruction from
+//!   the first Phase B tick (the full baseline after `declare_incremental_apply`)
+//!   and stays there, retained from cache, on subsequent idle ticks where it is
+//!   OMITTED (Unchanged → byte-equality gate fires → host retains prior value).
+//!   Because the feed must be present, it is deliberately NOT in `ALLOWED_ABSENT`:
+//!   a missing feed key is a hard FAIL.
 //!
-//! - The oracle proves LOSSLESSNESS: replaying the incremental stream through
-//!   `MiniProjectionCache` reconstructs the same end-state as the Phase A
-//!   reference. The feed key is present in the reconstruction from the first
-//!   Phase B tick (which must be a full baseline after `declare_incremental_apply`)
-//!   and stays there, retained from cache, on subsequent idle ticks.
+//! - `"claimed_event_embeds"` and `"nip46_onboarding"` are the only whitelisted
+//!   absences (nondeterministic Tier-1 keys, always-Changed by D3-7; no manifest
+//!   entry; legitimately differ between the two independent kernel instances).
 //!
-//! - `"claimed_event_embeds"` and `"nip46_onboarding"` remain in the whitelist
-//!   (nondeterministic Tier-1 keys, always-Changed by D3-7; no manifest entry).
+//! - The `MiniProjectionCache` models ONLY the steady-state Changed/Cleared/retain
+//!   subset of the host merge — NOT the session/epoch rebaseline path (this
+//!   scenario never bumps session/epoch; that path is proven by R6-S1's tests).
+//!   See the cache section doc.
 //!
 //! Fail-closed: a dropped key that is NOT in the whitelist is a hard FAIL.
 
@@ -40,7 +42,20 @@ pub(crate) struct FeedFrameRecord {
     pub(crate) feed_bytes: usize,
 }
 
-// ── MiniProjectionCache (D3-3 stand-in) ──────────────────────────────────────
+// ── MiniProjectionCache (steady-state Changed/Cleared/retain subset) ─────────
+//
+// NARROW SCOPE (review honesty fix): this models ONLY the steady-state subset of
+// the host `ProjectionCache` merge (D3-3) that this scenario exercises:
+//   - Changed row → overwrite cache[key]
+//   - Cleared row → remove cache[key]
+//   - absent key  → retain cache[key] (the omit==retain invariant)
+//
+// It deliberately does NOT model the rebaseline path: no `removeAll` on a
+// session/epoch change, no `sessionId == 0` full-snapshot pass-through, no
+// rev-monotonicity guard, no decode-before-commit. This scenario never bumps
+// session or epoch, so that path is never exercised here — and it is already
+// proven by R6-S1's dedicated FrameIdentity rebaseline tests. Modeling it in
+// this stand-in would be asserted-by-doc-but-never-run, so it is omitted.
 
 #[derive(Default)]
 struct MiniProjectionCache {
@@ -48,6 +63,8 @@ struct MiniProjectionCache {
 }
 
 impl MiniProjectionCache {
+    /// Apply one frame's rows: Changed overwrites, Cleared removes, absent keys
+    /// retain. (Steady-state subset only — see the section doc above.)
     fn merge_frame(&mut self, frame_bytes: &[u8]) {
         if let Ok(rows) = decode_snapshot_typed_projections(frame_bytes) {
             for row in rows {

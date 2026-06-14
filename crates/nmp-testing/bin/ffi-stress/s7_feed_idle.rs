@@ -20,16 +20,30 @@
 //!
 //! **Capture structure:**
 //!
-//!   For Phase B, the byte-identity oracle needs ALL raw frames from phase start
-//!   (including settle) to reconstruct incremental state. Metric percentiles use
-//!   only idle frames. We track both windows with explicit index markers:
-//!   `settle_start_idx` and `idle_start_idx` into a single `all_records` Vec.
+//!   The byte-identity oracle needs ALL raw frames from Phase B start (including
+//!   the settle baseline) to reconstruct incremental state. Metric percentiles
+//!   use only idle frames. Window boundaries are tracked as record-count
+//!   snapshots (`record_count()` before a window, `records_window(start, end)`
+//!   after) — this composes cleanly across the idle window AND the two
+//!   sequential false-resend probes.
 //!
-//! **False-resend probe:** After Phase B idle window, inject OUT_OF_WINDOW_EVENTS
-//! from STRANGER_PUBKEY (not followed). Assert feed NOT re-emitted.
+//! **False-resend probes (two, sequential — review BLOCKER fix):**
 //!
-//! **Metric honesty:** IDLE/static-feed scenario only. A new in-window event
-//! still re-sends the whole feed. Row-deltas (Option B) are deferred post-v1.
+//!   1. **Out-of-window FOLLOWED (the real over-invalidation proof).** Inject ONE
+//!      VIEWER_PUBKEY (followed) event with `created_at = base_ts - 1` — older than
+//!      every seeded event, so it lands BELOW the visible 80-card window. It passes
+//!      `follow_set.predicate()` and mutates the engine's internal card set, but
+//!      `snapshot(default-80)` is byte-identical → the byte-equality gate MUST omit
+//!      it. This is Gate 4. A broken gate would re-emit → fail. A stranger event
+//!      could NOT exercise this (it never reaches the engine — see probe 2).
+//!   2. **Stranger (secondary predicate sanity check).** Inject non-followed
+//!      STRANGER_PUBKEY events; rejected by the predicate before reaching the
+//!      engine → feed trivially byte-identical. Proves the predicate filters, NOT
+//!      that the byte-equality gate suppresses. Informational only (not the gate).
+//!
+//! **Metric honesty:** IDLE/static-feed scenario only. A new IN-WINDOW event
+//! (followed, newest) still re-sends the whole feed (the gate correctly fires
+//! Changed). Row-deltas (Option B) are deferred post-v1.
 //!
 //! D0: uses `actor_sender()` + `IngestPreVerifiedEvents` (test-support path).
 //! D8: no polling; idle ticks are explicit configure() calls + wall-clock sleeps.
@@ -37,8 +51,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections, ActorCommand};
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 use nmp_ffi::{
     nmp_app_configure, nmp_app_declare_incremental_apply, nmp_app_free, nmp_app_new,
     nmp_app_set_update_callback, NmpApp,
@@ -46,64 +59,40 @@ use nmp_ffi::{
 
 use crate::common::percentile_u64;
 use crate::report::ScenarioMetrics;
+use crate::s7_feed_events::{
+    inject_events_from, inject_followed_reply_to_unknown_root, inject_stranger_replies,
+    VIEWER_PUBKEY,
+};
 use crate::s7_feed_gates::{apply as apply_gates, FeedPhaseMetrics, S7Outcome};
 use crate::s7_feed_oracle::{run_feed_oracle, FeedFrameRecord};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VIEWER_PUBKEY: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
-const STRANGER_PUBKEY: &str = "bbbb000000000000000000000000000000000000000000000000000000000002";
 const FEED_KEY: &str = "nmp.feed.home";
 const FEED_EVENT_COUNT: u32 = 120;
 const IDLE_TICKS: usize = 8;
 const TICK_SETTLE_MS: u64 = 600;
+/// Over-invalidation probe events (the real proof): 1 FOLLOWED reply to a root
+/// the engine never holds — parked in pending_attributions, surfaces no card,
+/// leaves total_blocks unchanged → snapshot byte-identical → must be omitted.
+const OUT_OF_WINDOW_FOLLOWED_EVENTS: u32 = 1;
+/// Stranger (non-followed) probe events for the secondary predicate sanity check.
 const OUT_OF_WINDOW_EVENTS: u32 = 20;
-
-// ── Event builders ────────────────────────────────────────────────────────────
-
-fn make_event(pubkey: &str, created_at: u64, index: u64) -> VerifiedEvent {
-    let id = format!("{:0>56x}{:0>8x}", 0u64, index as u32);
-    let raw = RawEvent {
-        id: id[..64].to_string(),
-        pubkey: pubkey.to_string(),
-        created_at,
-        kind: 1,
-        tags: Vec::new(),
-        content: format!("feed harness event {index} from {}", &pubkey[..8]),
-        sig: "0".repeat(128),
-    };
-    VerifiedEvent::from_raw_unchecked(raw)
-}
-
-fn inject_events_from(app: *mut NmpApp, pubkey: &str, base_ts: u64, count: u32) {
-    // SAFETY: app is a valid non-null pointer from nmp_app_new.
-    let app_ref = unsafe { &*app };
-    let events: Vec<VerifiedEvent> = (0..count as u64)
-        .map(|i| make_event(pubkey, base_ts + i, i))
-        .collect();
-    app_ref
-        .actor_sender()
-        .send(ActorCommand::IngestPreVerifiedEvents(events))
-        .ok();
-}
 
 // ── Capture state ─────────────────────────────────────────────────────────────
 
 /// All frames captured in a single phase run.
-/// `settle_start_idx`, `idle_start_idx`, and `probe_start_idx` are set by the
-/// scenario code at the appropriate boundaries.
+///
+/// Window boundaries are tracked as record-count snapshots: the scenario reads
+/// `record_count()` before a window, runs the window, and slices
+/// `records_since(start)` afterward. This composes cleanly for the idle window
+/// AND the two sequential false-resend probes (out-of-window-followed, stranger)
+/// without bespoke per-window index fields.
 struct CaptureState {
     /// ALL raw frames (for oracle replay of Phase B).
     oracle_raw_frames: Vec<Vec<u8>>,
-    /// ALL decoded records (indexed by the window markers).
+    /// ALL decoded records.
     all_records: Vec<FeedFrameRecord>,
-    /// Index of the first settle frame (0; set on construction).
-    #[allow(dead_code)]
-    settle_start_idx: usize,
-    /// Index of the first idle frame (set after settle completes).
-    idle_start_idx: usize,
-    /// Index of the first probe frame (set after idle completes).
-    probe_start_idx: usize,
 }
 
 impl CaptureState {
@@ -111,33 +100,32 @@ impl CaptureState {
         CaptureState {
             oracle_raw_frames: Vec::new(),
             all_records: Vec::new(),
-            settle_start_idx: 0,
-            idle_start_idx: 0,
-            probe_start_idx: 0,
         }
     }
 
-    fn mark_idle_start(&mut self) {
-        self.idle_start_idx = self.all_records.len();
+    /// Number of records captured so far (a window-start snapshot).
+    fn record_count(&self) -> usize {
+        self.all_records.len()
     }
 
-    fn mark_probe_start(&mut self) {
-        self.probe_start_idx = self.all_records.len();
+    /// Records captured since the `start` snapshot.
+    fn records_since(&self, start: usize) -> &[FeedFrameRecord] {
+        &self.all_records[start.min(self.all_records.len())..]
     }
 
-    fn idle_records(&self) -> &[FeedFrameRecord] {
-        let start = self.idle_start_idx;
-        // If probe_start was set AFTER idle records, bound to probe_start.
-        let end = if self.probe_start_idx > start {
-            self.probe_start_idx
-        } else {
-            self.all_records.len()
-        };
+    /// Records in the half-open window `[start, end)`.
+    fn records_window(&self, start: usize, end: usize) -> &[FeedFrameRecord] {
+        let start = start.min(self.all_records.len());
+        let end = end.min(self.all_records.len()).max(start);
         &self.all_records[start..end]
     }
 
-    fn probe_records(&self) -> &[FeedFrameRecord] {
-        &self.all_records[self.probe_start_idx..]
+    /// Count of feed-present frames captured since `start` (a false-resend tally).
+    fn feed_resends_since(&self, start: usize) -> u32 {
+        self.records_since(start)
+            .iter()
+            .filter(|r| r.feed_present)
+            .count() as u32
     }
 }
 
@@ -151,6 +139,28 @@ extern "C" fn capture_cb(ctx: *mut std::ffi::c_void, payload: *const u8, payload
         state.oracle_raw_frames.push(bytes.to_vec());
         state.all_records.push(decode_frame_record(bytes));
     }
+}
+
+/// Read the current record count from a `*mut Mutex<CaptureState>` ctx pointer.
+/// Used by the scenario to snapshot window boundaries.
+///
+/// SAFETY: `ctx` must be a live `Box::into_raw`-ed `Mutex<CaptureState>` pointer
+/// that has not yet been reclaimed.
+fn ctx_record_count(ctx: *mut std::ffi::c_void) -> usize {
+    let ptr = ctx as *mut Mutex<CaptureState>;
+    unsafe { (*ptr).lock() }
+        .map(|s| s.record_count())
+        .unwrap_or(0)
+}
+
+/// Count feed-present frames captured since the `start` record-count snapshot.
+///
+/// SAFETY: as [`ctx_record_count`].
+fn ctx_record_count_resends(ctx: *mut std::ffi::c_void, start: usize) -> u32 {
+    let ptr = ctx as *mut Mutex<CaptureState>;
+    unsafe { (*ptr).lock() }
+        .map(|s| s.feed_resends_since(start))
+        .unwrap_or(0)
 }
 
 fn decode_frame_record(bytes: &[u8]) -> FeedFrameRecord {
@@ -262,15 +272,16 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let ctx = Box::into_raw(state) as *mut std::ffi::c_void;
         nmp_app_set_update_callback(app, ctx, Some(capture_cb));
 
-        inject_events_from(app, VIEWER_PUBKEY, base_ts, FEED_EVENT_COUNT);
+        // Seed events with id namespace [0, FEED_EVENT_COUNT) and timestamps
+        // [base_ts, base_ts + FEED_EVENT_COUNT). The top-80 visible window is the
+        // newest 80 (timestamps base_ts+40 .. base_ts+119).
+        inject_events_from(app, VIEWER_PUBKEY, base_ts, 0, FEED_EVENT_COUNT);
         settle(app);
 
-        {
-            let ptr = ctx as *mut Mutex<CaptureState>;
-            unsafe { (*ptr).lock() }.expect("lock").mark_idle_start();
-        }
-
+        // Idle window starts after settle.
+        let idle_start = ctx_record_count(ctx);
         run_idle_ticks(app);
+        let idle_end = ctx_record_count(ctx);
 
         nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
         nmp_app_free(app);
@@ -279,13 +290,13 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             .into_inner()
             .expect("lock");
 
-        let idle: Vec<FeedFrameRecord> = clone_records(s.idle_records());
+        let idle: Vec<FeedFrameRecord> = clone_records(s.records_window(idle_start, idle_end));
         let all: Vec<FeedFrameRecord> = clone_records(&s.all_records);
         (idle, all)
     };
 
     // ── Phase B: incremental ON ───────────────────────────────────────────────
-    let (idle_records_b, oracle_raw_frames_b, false_resend_count) = {
+    let (idle_records_b, oracle_raw_frames_b, out_of_window_resends, stranger_resends) = {
         let app: *mut NmpApp = nmp_app_new();
 
         // Declare BEFORE the first configure tick (settle tick = first baseline).
@@ -307,27 +318,46 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let ctx = Box::into_raw(state) as *mut std::ffi::c_void;
         nmp_app_set_update_callback(app, ctx, Some(capture_cb));
 
-        inject_events_from(app, VIEWER_PUBKEY, base_ts, FEED_EVENT_COUNT);
+        inject_events_from(app, VIEWER_PUBKEY, base_ts, 0, FEED_EVENT_COUNT);
 
         // Settle: oracle_raw_frames captures the first full-frame baseline.
         settle(app);
 
-        {
-            let ptr = ctx as *mut Mutex<CaptureState>;
-            unsafe { (*ptr).lock() }.expect("lock").mark_idle_start();
-        }
-
-        // Idle ticks: feed should be omitted (Unchanged → byte-equality gate).
+        // Idle window.
+        let idle_start = ctx_record_count(ctx);
         run_idle_ticks(app);
+        let idle_end = ctx_record_count(ctx);
 
-        // ── False-resend probe ────────────────────────────────────────────────
-        {
-            let ptr = ctx as *mut Mutex<CaptureState>;
-            unsafe { (*ptr).lock() }.expect("lock").mark_probe_start();
-        }
-        inject_events_from(app, STRANGER_PUBKEY, base_ts + 200_000, OUT_OF_WINDOW_EVENTS);
+        // ── Probe 1 (BLOCKER FIX): FOLLOWED reply to an unknown root ──────────
+        //
+        // A VIEWER_PUBKEY (followed) reply to a root the engine never holds. It
+        // passes follow_set.predicate(), reaches the engine (Inserted → observer
+        // fires), and MUTATES internal state (pending_attributions grows) — but
+        // surfaces no card and does not touch the roots map / total_blocks, so the
+        // serialized snapshot is byte-identical → the byte-equality gate MUST omit
+        // it. This is the genuine "engine touched, output unchanged" proof. (An
+        // out-of-window NEW root would NOT work — it bumps total_blocks/has_more →
+        // snapshot legitimately changes → correct to re-emit; verified +160 B.)
+        // id namespace 10_000 to avoid any seed collision.
+        let oow_start = ctx_record_count(ctx);
+        inject_followed_reply_to_unknown_root(app, base_ts - 1, 10_000);
         nmp_app_configure(app, 0, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
+        let oow_resends = ctx_record_count_resends(ctx, oow_start);
+
+        // ── Probe 2 (secondary sanity): stranger REPLIES ─────────────────────
+        //
+        // Non-followed STRANGER_PUBKEY REPLIES (NOT roots — the OP-centric engine
+        // surfaces all roots regardless of author, so stranger roots would
+        // correctly change the feed). Reply-shaped events from a non-followed
+        // author are dropped by the engine before any state change → feed
+        // trivially byte-identical. Proves the predicate filters, NOT that the
+        // byte-equality gate suppresses (would pass even with a broken gate).
+        let stranger_start = ctx_record_count(ctx);
+        inject_stranger_replies(app, base_ts + 200_000, 20_000, OUT_OF_WINDOW_EVENTS);
+        nmp_app_configure(app, 0, 500, 12);
+        std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
+        let stranger_resends = ctx_record_count_resends(ctx, stranger_start);
 
         nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
         nmp_app_free(app);
@@ -336,15 +366,9 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             .into_inner()
             .expect("lock");
 
-        let false_resends = s
-            .probe_records()
-            .iter()
-            .filter(|r| r.feed_present)
-            .count() as u32;
-
-        let idle: Vec<FeedFrameRecord> = clone_records(s.idle_records());
+        let idle: Vec<FeedFrameRecord> = clone_records(s.records_window(idle_start, idle_end));
         let oracle_frames: Vec<Vec<u8>> = s.oracle_raw_frames.clone();
-        (idle, oracle_frames, false_resends)
+        (idle, oracle_frames, oow_resends, stranger_resends)
     };
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
@@ -364,8 +388,12 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         phase_a: phase_metrics(&idle_records_a),
         phase_b: phase_metrics(&idle_records_b),
         oracle,
-        false_resend_count,
-        out_of_window_events: OUT_OF_WINDOW_EVENTS,
+        // Gate 4: the over-invalidation proof (1 followed out-of-window event).
+        out_of_window_resend_count: out_of_window_resends,
+        out_of_window_events: OUT_OF_WINDOW_FOLLOWED_EVENTS,
+        // Secondary: stranger predicate sanity check.
+        stranger_resend_count: stranger_resends,
+        stranger_events: OUT_OF_WINDOW_EVENTS,
         wall_elapsed,
     };
     apply_gates(report, &outcome);
