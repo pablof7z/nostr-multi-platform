@@ -29,7 +29,7 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
             typedRev: 9_001,
             typedRunning: true)
 
-        guard case let .snapshot(_, _, _, typedEnvelope) =
+        guard case let .snapshot(_, _, _, _, _, typedEnvelope) =
             try KernelUpdateFrameDecoder.decode(data) else {
             return XCTFail("expected snapshot frame")
         }
@@ -91,7 +91,7 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
         // is a non-production frame and `apply()` drops it (staleness guard).
         let data = frameWithoutTypedEnvelope()
 
-        guard case let .snapshot(_, _, _, typedEnvelope) =
+        guard case let .snapshot(_, _, _, _, _, typedEnvelope) =
             try KernelUpdateFrameDecoder.decode(data) else {
             return XCTFail("expected snapshot frame")
         }
