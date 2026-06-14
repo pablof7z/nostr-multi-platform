@@ -212,6 +212,8 @@ impl Kernel {
         self.signed_events
             .insert(correlation_id.to_string(), result);
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump settlement_enqueue_ver (signed_events drain).
+        self.projection_rev_tracker.source_versions.bump_settlement_enqueue();
     }
 
     /// Drain every `SignEventForReturn` result that landed since the last emit
@@ -224,7 +226,14 @@ impl Kernel {
     /// resolver parses. The map is `clear()`ed here (drain-once), so the host
     /// reads each id exactly once.
     pub(in super::super) fn take_signed_events_projection(&mut self) -> serde_json::Value {
-        if self.signed_events.is_empty() {
+        // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit
+        // (mirrors `take_action_results_projection`). Changed on non-empty,
+        // Cleared on the non-empty -> empty transition, Unchanged while stably
+        // empty.
+        let nonempty = !self.signed_events.is_empty();
+        self.projection_rev_tracker
+            .note_drain_emit("signed_events", nonempty);
+        if !nonempty {
             return serde_json::Value::Null;
         }
         let mut out = serde_json::Map::with_capacity(self.signed_events.len());
@@ -277,6 +286,8 @@ impl Kernel {
         self.action_stages
             .record(correlation_id, stage, detail, at_ms);
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump settlement_enqueue_ver for action_stages/lifecycle.
+        self.projection_rev_tracker.source_versions.bump_settlement_enqueue();
     }
 
     /// Read accessor for the `action_lifecycle` display projection
@@ -290,7 +301,16 @@ impl Kernel {
     /// deterministic.
     pub(crate) fn action_lifecycle_projection(&mut self) -> serde_json::Value {
         let now = self.now_ms();
-        self.action_lifecycle.snapshot(now)
+        let len_before = self.action_lifecycle.entry_count();
+        let result = self.action_lifecycle.snapshot(now);
+        let len_after = self.action_lifecycle.entry_count();
+        // ADR-0055 Rung 1 (codex #3): bump ttl_expiry_ver when prune_expired
+        // actually removed a row. Wall-clock gated — called from the existing
+        // emit/ingest edge (D8 compliant, no separate timer).
+        if len_after < len_before {
+            self.projection_rev_tracker.source_versions.bump_ttl_expiry();
+        }
+        result
     }
 
     /// Drop the entry for `correlation_id` from the `action_stages`

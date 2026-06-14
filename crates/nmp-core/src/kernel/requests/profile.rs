@@ -102,6 +102,8 @@ impl Kernel {
             ));
         }
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump profile_claims_ver (also bumps diagnostics_inputs_ver).
+        self.projection_rev_tracker.source_versions.bump_profile_claims();
 
         // F-TTL — a profile is a kind:0 replaceable identity. When the profile
         // is already cached, no cold fetch goes out; instead the TTL gate
@@ -149,6 +151,8 @@ impl Kernel {
             self.profile_requests.pending.remove(pubkey);
         }
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump profile_claims_ver (also bumps diagnostics_inputs_ver).
+        self.projection_rev_tracker.source_versions.bump_profile_claims();
         self.log(format!(
             "release profile {} consumer {} ref {}",
             short_hex(pubkey),

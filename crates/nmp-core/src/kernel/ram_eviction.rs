@@ -115,12 +115,6 @@ pub(super) const PROFILES_RAM_HWM: usize = 2_000;
 /// production.  32 is generous.
 pub(super) const SEED_CONTACTS_RAM_HWM: usize = 32;
 
-/// Reserved for future use: per-pass eviction budget if the single-pass
-/// approach proves too expensive on very large maps.  Currently unused —
-/// eviction removes all excess down to the HWM in one call.
-#[allow(dead_code)]
-pub(super) const RAM_EVICTION_BATCH: usize = 64;
-
 /// Summary returned by [`Kernel::evict_ram_caches`] for diagnostics.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RamEvictionReport {
@@ -460,6 +454,11 @@ impl Kernel {
             if self.profiles.remove(&key).is_some() {
                 removed += 1;
             }
+        }
+        if removed > 0 {
+            // ADR-0055 Rung 1 (F4): stamp the removal so profile-derived
+            // projections' rev stays coherent (else the host serves an evicted one).
+            self.projection_rev_tracker.source_versions.bump_profiles();
         }
         removed
     }

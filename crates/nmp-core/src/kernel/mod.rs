@@ -268,6 +268,10 @@ mod timeline_perf_tests;
 /// wiring. The Wave C counterpart to the host-registered Tier-1 typed
 /// projections (ADR-0037). See the module doc for the mechanism rationale.
 mod typed_projections;
+/// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
+/// Source-version counters + `ProjectionRevTracker` owned by `Kernel`.
+/// Zero wire change in Rung 1 — pure infrastructure for Rung 2/3.
+pub(crate) mod projection_rev;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
@@ -613,6 +617,16 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
+    /// ADR-0055 Rung 1 — per-projection revision tracker (typed `SourceVersions`
+    /// counters + dependency-derived per-key monotonic revs). Internal-only in
+    /// Rung 1: `make_update` does NOT consult it (wire bytes unchanged). Reset to
+    /// 0 on `Kernel` rebuild (fresh `Default`).
+    pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
+    /// ADR-0055 Rung 1 (F3) — biconditional completeness oracle state, carried
+    /// across ticks. `cfg(any(test, test-support))` ONLY: a production build
+    /// neither holds this field nor runs the oracle (ZERO emit-path cost).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) projection_oracle: projection_rev::oracle::OracleState,
     /// FFI diagnostic timing milestones (D0 app-domain state). See
     /// [`TimingMilestones`].
     timing: TimingMilestones,
@@ -1918,6 +1932,11 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
+            // ADR-0055 Rung 1: initialized to default (all counters 0, epoch 0).
+            // Resets are free on the Kernel rebuild (Reset) path.
+            projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
+            #[cfg(any(test, feature = "test-support"))]
+            projection_oracle: projection_rev::oracle::OracleState::default(),
             timing: TimingMilestones::default(),
             relays: RelayRole::all()
                 .into_iter()
@@ -2464,6 +2483,9 @@ impl Kernel {
     pub fn mark_changed_since_emit(&mut self) {
         self.changed_since_emit = true;
     }
+
+    // ADR-0055 Rung 1 — `projection_manifest()` / `projection_state()` live in
+    // `projection_rev/kernel_impl.rs` (sibling) to keep this file at baseline.
 
     /// Mutable access to the subscription lifecycle (registry + trigger inbox).
     ///

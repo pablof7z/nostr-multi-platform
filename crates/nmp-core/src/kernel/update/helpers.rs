@@ -232,6 +232,25 @@ pub(crate) mod churn {
     }
 }
 
+/// ADR-0055 Rung 1 (F5): fingerprint the `relay_diagnostics` payload bytes from
+/// the typed sidecar. The kernel reconciles this against `diagnostics_inputs_ver`
+/// each emit (`reconcile_diagnostics_fingerprint`) so the broad diagnostic stamp
+/// advances iff the projection's encoded content actually changed — leak-proof
+/// coverage of every relay-status / wire-sub / interest input without enumerating
+/// each mutation site. Returns 0 when the key is absent this tick (steady state
+/// with no diagnostics payload), which is itself a stable fingerprint.
+pub(super) fn diagnostics_payload_fingerprint(
+    typed: &[crate::update_envelope::TypedProjectionData],
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    match typed.iter().find(|t| t.key == "relay_diagnostics") {
+        Some(t) => t.payload.hash(&mut h),
+        None => 0u8.hash(&mut h),
+    }
+    h.finish()
+}
+
 #[cfg(test)]
 mod repost_inner_tests {
     use super::parse_repost_inner;
