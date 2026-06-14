@@ -2009,6 +2009,7 @@ dependencies = [
 name = "nmp-nip51"
 version = "0.6.2"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "serde",

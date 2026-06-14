@@ -3,6 +3,7 @@ package org.nmp.android
 import android.util.Log
 import nmp.transport.FrameKind
 import nmp.transport.Pair
+import nmp.transport.ProjectionPresenceState
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
 import nmp.transport.TypedProjection
@@ -34,17 +35,26 @@ sealed interface KernelDecodedUpdateFrame {
     data class Snapshot(
         val update: KernelUpdate,
         val typedProjections: List<TypedProjectionEnvelope>,
+        // ADR-0055 R3-S4: session/epoch carried out of the single FlatBuffers decode
+        // pass (read off the SnapshotFrame table next to schemaVersion — NOT a second
+        // buffer parse). Fed to ProjectionMergeCache.merge() in KernelModel.
+        val sessionId: ULong,
+        val snapshotEpoch: ULong,
     ) : KernelDecodedUpdateFrame
 
     data class Panic(val message: String) : KernelDecodedUpdateFrame
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 data class TypedProjectionEnvelope(
     val key: String,
     val schemaId: String,
     val schemaVersion: UInt,
     val fileIdentifier: String,
     val payload: ByteArray,
+    // ADR-0055 R3-S4: per-projection rev and wire state
+    val projectionRev: ULong = 0UL,
+    val state: UByte = ProjectionPresenceState.Changed,
 ) {
     // ByteArray equality is structural; override to avoid identity comparison.
     override fun equals(other: Any?): Boolean {
@@ -54,7 +64,9 @@ data class TypedProjectionEnvelope(
             schemaId == other.schemaId &&
             schemaVersion == other.schemaVersion &&
             fileIdentifier == other.fileIdentifier &&
-            payload.contentEquals(other.payload)
+            payload.contentEquals(other.payload) &&
+            projectionRev == other.projectionRev &&
+            state == other.state
     }
 
     override fun hashCode(): Int {
@@ -63,6 +75,8 @@ data class TypedProjectionEnvelope(
         result = 31 * result + schemaVersion.hashCode()
         result = 31 * result + fileIdentifier.hashCode()
         result = 31 * result + payload.contentHashCode()
+        result = 31 * result + projectionRev.hashCode()
+        result = 31 * result + state.hashCode()
         return result
     }
 }
@@ -96,6 +110,7 @@ object KernelUpdateFrameDecoder {
         }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun decodeSnapshot(frame: UpdateFrame, byteCount: Int): KernelDecodedUpdateFrame? {
         val snapshot = frame.snapshot ?: run {
             Log.e(TAG, "snapshot frame missing bytes=$byteCount")
@@ -108,9 +123,20 @@ object KernelUpdateFrameDecoder {
         //   - Typed projection sidecars for every named projection key (ADR-0037)
         // iOS `KernelUpdateFrameDecoder.swift` follows the same approach and was
         // unaffected by PR-B because it never read `payload` (#1084).
+        //
+        // ADR-0055 R3-S4: sessionId and snapshotEpoch are read off the SnapshotFrame
+        // table in THIS single decode pass — we do NOT re-parse the buffer a second
+        // time. They ride alongside schemaVersion on the same FlatBuffers table root.
+        val sessionId: ULong = snapshot.sessionId
+        val snapshotEpoch: ULong = snapshot.snapshotEpoch
         val typedProjections = extractTypedProjections(snapshot)
         val update = decodeKernelUpdate(snapshot, typedProjections) ?: return null
-        return KernelDecodedUpdateFrame.Snapshot(update, typedProjections)
+        return KernelDecodedUpdateFrame.Snapshot(
+            update = update,
+            typedProjections = typedProjections,
+            sessionId = sessionId,
+            snapshotEpoch = snapshotEpoch,
+        )
     }
 
     private fun decodeKernelUpdate(
@@ -166,7 +192,16 @@ object KernelUpdateFrameDecoder {
         return result
     }
 
-    private fun decodeProjections(
+    /**
+     * ADR-0055 R3-S4: re-run projection decoding against a merged envelope set.
+     * Called from [KernelModel.decodeUpdate] AFTER [ProjectionMergeCache.merge]
+     * has reconstituted the full set (cached values for omitted keys, tombstones
+     * removed for Cleared keys, fresh bytes for Changed keys).
+     *
+     * Exposed as `internal` so it is reachable from `KernelModel` (same module)
+     * without widening to `public`.
+     */
+    internal fun decodeProjections(
         typedProjections: List<TypedProjectionEnvelope>,
     ): SnapshotProjections {
         // PR-B (#991/#979): the generic `payload:Value` projections sub-map is no
@@ -216,6 +251,7 @@ object KernelUpdateFrameDecoder {
     // Typed projection sidecar extraction (ADR-0037)
     // ─────────────────────────────────────────────────────────────────────────
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun extractTypedProjections(snapshot: SnapshotFrame): List<TypedProjectionEnvelope> {
         val count = snapshot.typedProjectionsLength
         if (count == 0) return emptyList()
@@ -223,13 +259,37 @@ object KernelUpdateFrameDecoder {
         for (i in 0 until count) {
             val projection: TypedProjection = snapshot.typedProjections(i) ?: continue
             val key = projection.key ?: continue
+            // ADR-0055 R3-S4: read wire state from the FlatBuffers accessor (slot 10).
+            // Cleared rows carry null payload by design — do NOT skip them.
+            val wireState: UByte = projection.state
+            // ADR-0055 R3-S4: read projectionRev from FlatBuffers (slot 8).
+            val projectionRev: ULong = projection.projectionRev
+
+            if (wireState == ProjectionPresenceState.Cleared) {
+                // Cleared row: no payload expected. Emit a tombstone envelope so
+                // ProjectionMergeCache.merge() can remove the key from its cache.
+                result.add(
+                    TypedProjectionEnvelope(
+                        key = key,
+                        schemaId = "",
+                        schemaVersion = 0u,
+                        fileIdentifier = "",
+                        payload = ByteArray(0),
+                        projectionRev = projectionRev,
+                        state = wireState,
+                    )
+                )
+                continue
+            }
+
+            // Changed row: payload is required.
             val typed: TypedPayload = projection.payload ?: continue
             val schemaId = typed.schemaId ?: continue
-            val payloadBytes: ByteArray = typed.payloadAsByteBuffer?.let { buf ->
-                val bytes = ByteArray(buf.remaining())
-                buf.get(bytes)
-                bytes
-            } ?: ByteArray(0)
+            // `payloadAsByteBuffer` is non-null (FlatBuffers returns an empty
+            // buffer for an absent vector, never null).
+            val buf = typed.payloadAsByteBuffer
+            val payloadBytes = ByteArray(buf.remaining())
+            buf.get(payloadBytes)
             result.add(
                 TypedProjectionEnvelope(
                     key = key,
@@ -237,6 +297,8 @@ object KernelUpdateFrameDecoder {
                     schemaVersion = typed.schemaVersion,
                     fileIdentifier = typed.fileIdentifier ?: "",
                     payload = payloadBytes,
+                    projectionRev = projectionRev,
+                    state = wireState,
                 )
             )
         }

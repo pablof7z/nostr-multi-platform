@@ -42,12 +42,21 @@ pub mod swift_typed_decoders;
 // drift from the decoder set. Implements the D3-3 merge algorithm +
 // decode-before-commit (D3-4) so app code is oblivious to delta mechanics.
 pub mod swift_projection_cache;
+// ADR-0055 R3-S4 — generated `ProjectionMergeCache` (Android/Kotlin). Sourced
+// from the SAME projection registry as `swift_projection_cache` so the cache
+// is byte-for-byte semantically identical to the iOS implementation. Generates
+// `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
+pub mod kotlin_projection_cache;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
 pub use swift_projection_cache::{
     check_projection_cache, generate_projection_cache, render_projection_cache,
     ProjectionCacheCheckOutcome,
+};
+pub use kotlin_projection_cache::{
+    check_kotlin_projection_cache, generate_kotlin_projection_cache,
+    render_kotlin_projection_cache, KotlinProjectionCacheCheckOutcome,
 };
 pub use swift_typed_decoders::{
     check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,
