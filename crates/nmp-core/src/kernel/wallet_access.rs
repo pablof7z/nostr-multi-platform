@@ -37,7 +37,8 @@ pub struct KernelWalletAccess<'a> {
 }
 
 impl<'a> KernelWalletAccess<'a> {
-    /// Wrap `kernel` as the wallet/zap capability surface.
+    /// Wrap `kernel` as the wallet/zap capability surface. Prefer
+    /// [`Kernel::as_wallet_access`] at call sites that already hold the kernel.
     #[must_use]
     pub fn new(kernel: &'a mut Kernel) -> Self {
         Self {
