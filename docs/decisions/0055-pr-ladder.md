@@ -112,6 +112,20 @@ unchanged. Pure additive metadata.
 > That addendum is the single source of truth for this rung; the summary below is
 > the ladder-level pointer only.
 
+> **STATUS: LANDED (2026-06-14).** All sub-steps merged:
+> S1 #1388 (producer omit + capability) · S1b #1393 (Cleared-signal completeness,
+> fix #1390) · S2 #1389 (encoder buffer reuse) · S3 #1409 (iOS ProjectionCache
+> interposer, iOS advertises) · S4 #1410 (Android interposer, Android advertises) ·
+> S5 #1413 (S6 capstone + empirical PASS/FAIL gate). Doc PR (this) = S6.
+> **Measured (S6 capstone, opus-reproduced 5×):** ~18% frame-byte reduction
+> (9640→7928 B p50) + 68.8% Tier-2 row suppression (1600→500 rows/window), zero
+> data loss (byte-identity oracle, end-state fail-closed). The capstone gate metric
+> is `row_suppression_ratio ≥ 0.50`, not `waste_ratio < 0.05` — the latter is
+> unachievable while Tier-1 feed-class projections stay always-Changed (D3-7), and
+> those two keys (`claimed_event_embeds`, `nip46_onboarding`) are the entire 40%
+> residual hash-waste. **The larger remaining byte win is Tier-1 / feed gating
+> (row-deltas) — a future rung (see §"Rung 6 / D8").**
+
 **Goal:** the actual O(changed) win. The producer stops serializing projections
 whose `projection_rev` is unchanged since the last emit; an NMP-owned (generated)
 host cache-merge layer retains the prior decoded value for omitted keys so the app
