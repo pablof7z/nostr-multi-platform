@@ -15,6 +15,8 @@ mod reconciler;
 mod runtime;
 #[cfg(test)]
 mod runtime_tests;
+#[cfg(test)]
+mod runtime_tests_k3;
 
 pub use filter::{EligibleFilter, FilterEligibilityError};
 pub use reconciler::{Reconciler, ReconcilerError, ReconcilerOutcome, SyncedItem};
