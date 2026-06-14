@@ -166,30 +166,45 @@ fn run_gen_typed_decoders(args: Vec<String>) -> Result<(), String> {
     }
 }
 
-/// `nmp gen projection-cache [--out <path>] [--check]`.
+/// `nmp gen projection-cache [--platform swift|kotlin] [--out <path>] [--check]`.
 ///
-/// Generates `ProjectionCache.generated.swift` — the NMP-owned rev-aware
-/// projection cache implementing the ADR-0055 D3-3 merge algorithm. Driven by
-/// the same registry as `typed-decoders`; takes no schema stdin.
+/// Generates the NMP-owned rev-aware projection cache implementing the
+/// ADR-0055 D3-3 merge algorithm. Driven by the same registry as
+/// `typed-decoders`; takes no schema stdin.
 ///
-/// `--out` defaults to
+/// `--platform swift` (default): generates
 /// `ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift`.
+///
+/// `--platform kotlin`: generates
+/// `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift. The
 /// CI gate at `.github/workflows/codegen-drift.yml` uses this mode.
 fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
-    let mut out =
+    let default_swift =
         PathBuf::from("ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift");
+    let default_kotlin =
+        PathBuf::from("android/app/src/main/java/org/nmp/android/ProjectionCache.kt");
+    let mut platform = "swift".to_string();
     let mut check = false;
+    let mut custom_out: Option<PathBuf> = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--platform" => {
+                index += 1;
+                platform = args
+                    .get(index)
+                    .cloned()
+                    .ok_or_else(|| "--platform requires swift|kotlin".to_string())?;
+            }
             "--out" => {
                 index += 1;
-                out = args
-                    .get(index)
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "--out requires a path".to_string())?;
+                custom_out = Some(
+                    args.get(index)
+                        .map(PathBuf::from)
+                        .ok_or_else(|| "--out requires a path".to_string())?,
+                );
             }
             "--check" => check = true,
             other => return Err(format!("unknown argument {other}\n{}", help())),
@@ -197,27 +212,68 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
         index += 1;
     }
 
-    if check {
-        let outcome = nmp_codegen::check_projection_cache(&out).map_err(|e| e.to_string())?;
-        if outcome.up_to_date {
-            println!("nmp gen projection-cache --check: ok ({})", out.display());
-            Ok(())
-        } else {
-            let where_diff = outcome
-                .first_diff_line
-                .map(|n| format!(" (first differing line {n})"))
-                .unwrap_or_else(|| " (file missing)".to_string());
-            Err(format!(
-                "projection-cache codegen stale at {}{where_diff}.\n\
-                 Regenerate with:\n  \
-                 cargo run -p nmp-codegen -- gen projection-cache",
-                out.display()
-            ))
+    match platform.as_str() {
+        "swift" => {
+            let out = custom_out.unwrap_or(default_swift);
+            if check {
+                let outcome =
+                    nmp_codegen::check_projection_cache(&out).map_err(|e| e.to_string())?;
+                if outcome.up_to_date {
+                    println!("nmp gen projection-cache --check: ok ({})", out.display());
+                    Ok(())
+                } else {
+                    let where_diff = outcome
+                        .first_diff_line
+                        .map(|n| format!(" (first differing line {n})"))
+                        .unwrap_or_else(|| " (file missing)".to_string());
+                    Err(format!(
+                        "projection-cache (swift) codegen stale at {}{where_diff}.\n\
+                         Regenerate with:\n  \
+                         cargo run -p nmp-codegen -- gen projection-cache",
+                        out.display()
+                    ))
+                }
+            } else {
+                nmp_codegen::generate_projection_cache(&out).map_err(|e| e.to_string())?;
+                println!("wrote {}", out.display());
+                Ok(())
+            }
         }
-    } else {
-        nmp_codegen::generate_projection_cache(&out).map_err(|e| e.to_string())?;
-        println!("wrote {}", out.display());
-        Ok(())
+        "kotlin" => {
+            let out = custom_out.unwrap_or(default_kotlin);
+            if check {
+                let outcome = nmp_codegen::check_kotlin_projection_cache(&out)
+                    .map_err(|e| e.to_string())?;
+                if outcome.up_to_date {
+                    println!(
+                        "nmp gen projection-cache --platform kotlin --check: ok ({})",
+                        out.display()
+                    );
+                    Ok(())
+                } else {
+                    let where_diff = outcome
+                        .first_diff_line
+                        .map(|n| format!(" (first differing line {n})"))
+                        .unwrap_or_else(|| " (file missing)".to_string());
+                    Err(format!(
+                        "projection-cache (kotlin) codegen stale at {}{where_diff}.\n\
+                         Regenerate with:\n  \
+                         cargo run -p nmp-codegen -- gen projection-cache --platform kotlin",
+                        out.display()
+                    ))
+                }
+            } else {
+                nmp_codegen::generate_kotlin_projection_cache(&out)
+                    .map_err(|e| e.to_string())?;
+                println!("wrote {}", out.display());
+                Ok(())
+            }
+        }
+        other => Err(format!(
+            "unknown --platform {:?}: expected swift or kotlin\n{}",
+            other,
+            help()
+        )),
     }
 }
 
@@ -245,6 +301,6 @@ fn help() -> String {
     "usage:\n  \
      nmp gen swift             [--schemas - | <path>] [--out <path>] [--check]\n  \
      nmp gen typed-decoders    [--out <path>] [--check]\n  \
-     nmp gen projection-cache  [--out <path>] [--check]"
+     nmp gen projection-cache  [--platform swift|kotlin] [--out <path>] [--check]"
         .to_string()
 }

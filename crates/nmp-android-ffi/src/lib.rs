@@ -37,9 +37,9 @@ mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_encode_profile, nmp_app_new,
-    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
-    nmp_app_switch_active, nmp_free_string,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_declare_incremental_apply,
+    nmp_app_encode_profile, nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, nmp_free_string,
 };
 use session::{insert_session, remove_session};
 pub(crate) use session::{session_arc, Session};
@@ -60,6 +60,21 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     // nmp-app-chirp). Must run before `nmp_app_start`. Thin: one static call, no
     // logic in the shell.
     nmp_app_chirp_declare_consumed_projections(app);
+    // ADR-0055 R3-S4 — declare that this host implements the incremental-apply
+    // contract (D3-3/D3-4/D3-5). The kernel switches from full-snapshot mode to
+    // delta mode after this call. Must run after declare_consumed_projections and
+    // before nmp_app_start. Non-zero return is a hard init error.
+    let rc = nmp_app_declare_incremental_apply(app);
+    if rc != 0 {
+        // RegistryUnavailable (2) or AlreadyStarted (1) — neither should occur
+        // here (called before start, registry is fresh). Abort; returning 0 would
+        // leave the kernel in an undefined incremental state.
+        // rc legend: 0=Ok, 1=AlreadyStarted, 2=RegistryUnavailable, -1=null-app.
+        eprintln!(
+            "nmp_app_declare_incremental_apply failed: rc={rc} (1=AlreadyStarted, 2=RegistryUnavailable)"
+        );
+        return 0;
+    }
     // V-73: null viewer_pubkey (no viewer set at startup) always succeeds.
     // Android passes null until the user signs in; the status is expected to
     // be Ok.  If registration fails for an unexpected reason, fall back to a

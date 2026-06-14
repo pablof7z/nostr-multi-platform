@@ -36,6 +36,11 @@ class KernelModel : ViewModel() {
 
     private val bridge = KernelBridge()
 
+    // ADR-0055 R3-S4: NMP-owned rev-aware projection cache. One instance per
+    // kernel session. Reset on session teardown (onCleared). Fed each FlatBuffers
+    // frame in decodeUpdate before the TypedXDecoder family runs.
+    private val projectionCache = ProjectionMergeCache()
+
     /**
      * Marmot (MLS-over-Nostr encrypted groups) write operations. Mirrors the iOS
      * `model.marmot` surface; all UI call sites use `model.marmot.<op>()`.
@@ -460,7 +465,14 @@ class KernelModel : ViewModel() {
      * Decode one FlatBuffers update frame (single pass: SnapshotEnvelope + typed
      * nmp.feed.home sidecar). Returns null on parse error (fail-closed, D1).
      * Panic frames latch [kernelIsDead] (D7).
+     *
+     * ADR-0055 R3-S4: runs ProjectionMergeCache.merge() BEFORE the TypedXDecoder
+     * family. The cache implements the D3-3 algorithm: omitted keys retain their
+     * prior cached value, Cleared keys are removed, Changed keys are rev-guarded
+     * and decode-before-commit guarded. The merged envelope set (not the raw wire
+     * set) is fed to decodeProjections() in KernelUpdateFrameDecoder.
      */
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun decodeUpdate(bytes: ByteArray): KernelUpdate? {
         return when (val frame = KernelUpdateFrameDecoder.decode(bytes)) {
             null -> null
@@ -470,10 +482,34 @@ class KernelModel : ViewModel() {
                 null
             }
             is KernelDecodedUpdateFrame.Snapshot -> {
+                // ADR-0055 R3-S4: merge incoming envelopes into the cache.
+                // The cache resets internally on session/epoch change (D4).
+                val mergeResult = projectionCache.merge(
+                    envelopes = frame.typedProjections,
+                    sessionId = frame.sessionId,
+                    snapshotEpoch = frame.snapshotEpoch,
+                )
+                if (mergeResult.needsResync) {
+                    Log.e(TAG, "projection cache needsResync — decode-before-commit failed for " +
+                        "one or more keys; changedKeys=${mergeResult.changedKeys}")
+                }
+                if (mergeResult.changedKeys.isNotEmpty()) {
+                    Log.d(TAG, "projection cache merge: changedKeys=${mergeResult.changedKeys}")
+                }
+                // Re-decode using the MERGED envelope set (cached values for omitted keys
+                // are reinstated; Cleared keys are absent; Changed keys carry fresh bytes).
+                // Replace the projections slot on the already-decoded KernelUpdate with the
+                // merged version — all other fields (rev, running, metrics, relayStatuses,
+                // lastErrorToast) were decoded from Tier-3 SnapshotFrame fields and are
+                // correct already.
+                val mergedProjections = KernelUpdateFrameDecoder.decodeProjections(
+                    mergeResult.mergedEnvelopes,
+                )
+                val mergedUpdate = frame.update.copy(projections = mergedProjections)
                 // Prefer typed nmp.feed.home sidecar (ADR-0038 V-85 / ADR-0037 C4).
                 val typed: ChirpOpFeedSnapshot? =
-                    TypedHomeFeedDecoder.decode(frame.typedProjections)
-                if (typed != null) frame.update.copy(modularTimeline = typed) else frame.update
+                    TypedHomeFeedDecoder.decode(mergeResult.mergedEnvelopes)
+                if (typed != null) mergedUpdate.copy(modularTimeline = typed) else mergedUpdate
             }
         }
     }
@@ -486,6 +522,9 @@ class KernelModel : ViewModel() {
         // signer-request listener (issue #1284). No reader coroutine to join.
         bridge.closeUpdates()
         bridge.free()
+        // ADR-0055 R3-S4: reset the projection cache so the next session
+        // starts from a clean baseline (D4 mandatory reset on session end).
+        projectionCache.reset()
         super.onCleared()
     }
 }
