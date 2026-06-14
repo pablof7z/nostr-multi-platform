@@ -382,7 +382,9 @@ impl super::Kernel {
         if changed {
             self.configured_relays = rows.clone();
             self.changed_since_emit = true;
-            // ADR-0055 Rung 1: bump configured_relays_ver + diagnostics_inputs_ver.
+            // ADR-0055 Rung 1: bump configured_relays_ver.
+            // (diagnostics_inputs_ver is NOT co-bumped here — F5 derives it from the
+            // relay_diagnostics payload fingerprint each emit, not per mutation site.)
             self.projection_rev_tracker.source_versions.bump_configured_relays();
         }
         if let Some(handle) = self.configured_relays_handle.as_ref() {

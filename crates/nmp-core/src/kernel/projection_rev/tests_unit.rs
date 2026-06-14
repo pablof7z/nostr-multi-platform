@@ -181,6 +181,7 @@ fn s1_bite_oracle_catches_stale_claimed_events() {
             schema_version: 1,
             file_identifier: String::new(),
             payload: payload.to_vec(),
+            ..Default::default()
         }
     }
 

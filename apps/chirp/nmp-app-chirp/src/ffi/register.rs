@@ -463,6 +463,7 @@ pub(crate) fn zaps_typed_projection(
         schema_version: nmp_nip57::ZAPS_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(nmp_nip57::ZAPS_FILE_IDENTIFIER).into_owned(),
         payload: nmp_nip57::encode_zaps_snapshot(&snapshot),
+        ..Default::default()
     })
 }
 
@@ -489,5 +490,6 @@ pub(crate) fn follow_list_typed_projection(
         file_identifier: String::from_utf8_lossy(nmp_nip02::FOLLOW_LIST_FILE_IDENTIFIER)
             .into_owned(),
         payload: nmp_nip02::encode_follow_list(&snapshot),
+        ..Default::default()
     })
 }

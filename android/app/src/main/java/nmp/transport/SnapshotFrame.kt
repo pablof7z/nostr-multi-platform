@@ -204,6 +204,16 @@ class SnapshotFrame : Table() {
             null
         }
     }
+    val snapshotEpoch : ULong
+        get() {
+            val o = __offset(44)
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
+        }
+    val sessionId : ULong
+        get() {
+            val o = __offset(46)
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
+        }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsSnapshotFrame(_bb: ByteBuffer): SnapshotFrame = getRootAsSnapshotFrame(_bb, SnapshotFrame())
@@ -211,8 +221,10 @@ class SnapshotFrame : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createSnapshotFrame(builder: FlatBufferBuilder, schemaVersion: UInt, typedProjectionsOffset: Int, rev: ULong, kernelSchemaVersion: UInt, lastTickMs: ULong, updateKindOffset: Int, running: Boolean, metricsOffset: Int, relayStatusOffset: Int, relayStatusesOffset: Int, logicalInterestsOffset: Int, wireSubscriptionsOffset: Int, logsOffset: Int, lastErrorToastOffset: Int, lastErrorCategoryOffset: Int, lastPlannerErrorOffset: Int, storeOpenFailureOffset: Int, noConfiguredRelays: Boolean?, negentropySyncStatsOffset: Int) : Int {
-            builder.startTable(20)
+        fun createSnapshotFrame(builder: FlatBufferBuilder, schemaVersion: UInt, typedProjectionsOffset: Int, rev: ULong, kernelSchemaVersion: UInt, lastTickMs: ULong, updateKindOffset: Int, running: Boolean, metricsOffset: Int, relayStatusOffset: Int, relayStatusesOffset: Int, logicalInterestsOffset: Int, wireSubscriptionsOffset: Int, logsOffset: Int, lastErrorToastOffset: Int, lastErrorCategoryOffset: Int, lastPlannerErrorOffset: Int, storeOpenFailureOffset: Int, noConfiguredRelays: Boolean?, negentropySyncStatsOffset: Int, snapshotEpoch: ULong, sessionId: ULong) : Int {
+            builder.startTable(22)
+            addSessionId(builder, sessionId)
+            addSnapshotEpoch(builder, snapshotEpoch)
             addLastTickMs(builder, lastTickMs)
             addRev(builder, rev)
             addNegentropySyncStats(builder, negentropySyncStatsOffset)
@@ -234,7 +246,7 @@ class SnapshotFrame : Table() {
             addRunning(builder, running)
             return endSnapshotFrame(builder)
         }
-        fun startSnapshotFrame(builder: FlatBufferBuilder) = builder.startTable(20)
+        fun startSnapshotFrame(builder: FlatBufferBuilder) = builder.startTable(22)
         fun addSchemaVersion(builder: FlatBufferBuilder, schemaVersion: UInt) = builder.addInt(0, schemaVersion.toInt(), 1)
         fun addTypedProjections(builder: FlatBufferBuilder, typedProjections: Int) = builder.addOffset(2, typedProjections, 0)
         fun createTypedProjectionsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
@@ -294,6 +306,8 @@ class SnapshotFrame : Table() {
         fun addStoreOpenFailure(builder: FlatBufferBuilder, storeOpenFailure: Int) = builder.addOffset(17, storeOpenFailure, 0)
         fun addNoConfiguredRelays(builder: FlatBufferBuilder, noConfiguredRelays: Boolean) = builder.addBoolean(18, noConfiguredRelays, false)
         fun addNegentropySyncStats(builder: FlatBufferBuilder, negentropySyncStats: Int) = builder.addOffset(19, negentropySyncStats, 0)
+        fun addSnapshotEpoch(builder: FlatBufferBuilder, snapshotEpoch: ULong) = builder.addLong(20, snapshotEpoch.toLong(), 0)
+        fun addSessionId(builder: FlatBufferBuilder, sessionId: ULong) = builder.addLong(21, sessionId.toLong(), 0)
         fun endSnapshotFrame(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

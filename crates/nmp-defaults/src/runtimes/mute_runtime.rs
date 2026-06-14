@@ -110,6 +110,7 @@ pub fn register_mute_runtime(app: &impl AppHost) -> Arc<MuteListProjection> {
             file_identifier: String::from_utf8_lossy(nmp_nip51::MUTE_LIST_FILE_IDENTIFIER)
                 .into_owned(),
             payload: nmp_nip51::encode_mute_list(&snapshot),
+            ..Default::default()
         })
     });
 

@@ -21,6 +21,7 @@ use crate::update_envelope::{encode_snapshot_with_envelope, UpdateFrameBytes};
 
 mod helpers;
 mod projections;
+mod rung2_stamp;
 mod views;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
@@ -290,6 +291,14 @@ impl Kernel {
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
         self.projection_rev_tracker
             .reconcile_diagnostics_fingerprint(diag_fp);
+        // ADR-0055 Rung 2 — build the per-projection revision manifest and stamp
+        // each TypedProjectionData with its rev + presence from it (see
+        // `rung2_stamp`). The diagnostics fingerprint MUST be reconciled before
+        // this call so `diagnostics_inputs_ver` reflects any change in the
+        // relay_diagnostics payload bytes emitted this tick.
+        let manifest = self.projection_manifest();
+        let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
         // ADR-0055 Rung 1 (F3) — biconditional completeness oracle. Runs AFTER
         // the single production encode-shaping pass (`typed` here is the exact
         // sidecar that `encode_snapshot_with_envelope` serializes below), so it
@@ -314,7 +323,12 @@ impl Kernel {
         // is encoded directly into the Tier-3 FlatBuffers fields. For Rust
         // test helpers that still need a JSON view, use `make_update_value_for_test`
         // which serializes the struct directly (no wire roundtrip needed).
-        let encoded = encode_snapshot_with_envelope(&typed, &update);
+        let encoded = encode_snapshot_with_envelope(&typed, &update, &epoch_stamp);
+        // ADR-0055 Rung 2 (production path): advance the last-emitted baseline.
+        // Test builds do this in the oracle AFTER its check (see `rung2_stamp`);
+        // the cfg ensures no double-call.
+        #[cfg(not(any(test, feature = "test-support")))]
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
@@ -396,7 +410,16 @@ impl Kernel {
         let typed = self.run_typed_projections();
         self.run_tick_observers();
         let typed = self.merge_builtin_typed_projections(typed);
-        let frame = encode_snapshot_with_envelope(&typed, &update);
+        // ADR-0055 Rung 2: stamp rev/state/epoch identical to the production path.
+        let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
+        self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
+        let manifest = self.projection_manifest();
+        let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
+        let frame = encode_snapshot_with_envelope(&typed, &update, &epoch_stamp);
+        // Advance the tracker's last-emitted baseline so the next tick's presence
+        // computation is accurate (matches the production path).
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         let this_serialize_us = before_serialize.elapsed().as_micros();
         let this_make_update_us = emit_started.elapsed().as_micros();
         self.events_since_last_update = 0;
@@ -436,6 +459,12 @@ impl Kernel {
         let _typed_host = self.run_typed_projections();
         self.run_tick_observers();
         let _typed_merged = self.merge_builtin_typed_projections(_typed_host);
+        // ADR-0055 Rung 2: keep the projection-rev tracker in the same state as
+        // the production path so oracle-gated tests see consistent revs.
+        let diag_fp = helpers::diagnostics_payload_fingerprint(&_typed_merged);
+        self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
+        let manifest = self.projection_manifest();
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null)
     }
 

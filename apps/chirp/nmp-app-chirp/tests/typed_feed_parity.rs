@@ -86,6 +86,7 @@ fn typed_entry(snapshot: &OpFeedSnapshot) -> (Vec<u8>, TypedProjectionData) {
         schema_version: OP_FEED_SCHEMA_VERSION,
         file_identifier: std::str::from_utf8(OP_FEED_FILE_IDENTIFIER).unwrap().to_string(),
         payload: bytes.clone(),
+        ..Default::default()
     };
     (bytes, entry)
 }

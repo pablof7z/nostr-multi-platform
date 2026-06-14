@@ -78,6 +78,7 @@ fn typed_projection_registry_rejects_overflow() {
             schema_version: 1,
             file_identifier: "TEST".into(),
             payload: vec![0u8],
+            ..Default::default()
         })
     };
 

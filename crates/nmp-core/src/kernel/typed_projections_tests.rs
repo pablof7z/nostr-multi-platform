@@ -342,6 +342,7 @@ fn builtin_key_wins_over_colliding_host_typed_projection() {
                 schema_version: 99,
                 file_identifier: "HOST".to_string(),
                 payload: vec![0xFF, 0xFF, 0xFF, 0xFF],
+                ..Default::default()
             })
         });
         registry.register_typed("host.feed", || {
@@ -351,6 +352,7 @@ fn builtin_key_wins_over_colliding_host_typed_projection() {
                 schema_version: 1,
                 file_identifier: "HFED".to_string(),
                 payload: vec![0x01],
+                ..Default::default()
             })
         });
     }

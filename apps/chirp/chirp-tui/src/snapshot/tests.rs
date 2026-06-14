@@ -209,6 +209,7 @@ fn nofs_projection(snapshot: &Value) -> nmp_core::TypedProjectionData {
         schema_version: nmp_nip01::OP_FEED_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(nmp_nip01::OP_FEED_FILE_IDENTIFIER).into_owned(),
         payload: nmp_nip01::encode_op_feed_snapshot(&typed),
+        ..Default::default()
     }
 }
 
@@ -301,6 +302,7 @@ fn ignores_typed_projection_with_wrong_schema_id() {
         schema_version: 1,
         file_identifier: "NFTS".to_string(),
         payload: vec![0x00, 0x01, 0x02],
+        ..Default::default()
     }];
 
     let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));

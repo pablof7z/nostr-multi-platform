@@ -478,9 +478,9 @@ class OpFeedDecoderTest {
             /* logsOffset = */ 0,
             /* lastErrorToastOffset = */ 0,
             /* lastErrorCategoryOffset = */ 0,
-            /* lastPlannerErrorOffset = */ 0,
-            /* storeOpenFailureOffset = */ 0,
+            /* lastPlannerErrorOffset = */ 0, /* storeOpenFailureOffset = */ 0,
             /* noConfiguredRelays = */ null, /* negentropySyncStatsOffset = */ 0,
+            /* snapshotEpoch = */ 0UL, /* sessionId = */ 0UL,
         )
         val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(builder, frame)
@@ -493,15 +493,14 @@ class OpFeedDecoderTest {
         val schemaIdOffset = builder.createString(TypedHomeFeedDecoder.SCHEMA_ID)
         val fileIdOffset = builder.createString(TypedHomeFeedDecoder.FILE_IDENTIFIER)
         val payloadVec = nmp.transport.TypedPayload.createPayloadVector(builder, nofsBytes.toUByteArray())
+        // schema_version 1 — the only version TypedHomeFeedDecoder accepts.
         val typedPayload = nmp.transport.TypedPayload.createTypedPayload(
-            builder,
-            schemaIdOffset,
-            // schema_version 1 — the only version TypedHomeFeedDecoder accepts.
-            1u,
-            fileIdOffset,
-            payloadVec,
+            builder, schemaIdOffset, 1u, fileIdOffset, payloadVec,
         )
-        return nmp.transport.TypedProjection.createTypedProjection(builder, keyOffset, typedPayload)
+        return nmp.transport.TypedProjection.createTypedProjection(
+            builder, keyOffset, typedPayload,
+            /* projectionRev = */ 0UL, /* state = */ nmp.transport.ProjectionPresenceState.Changed,
+        )
     }
 
     private fun valueString(builder: FlatBufferBuilder, value: String): Int {

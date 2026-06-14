@@ -103,6 +103,8 @@ pub(crate) fn signer_state_typed(slot: &SignerStateSlot) -> Option<TypedProjecti
         schema_version: SIGNER_STATE_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(SIGNER_STATE_FILE_IDENTIFIER).into_owned(),
         payload: encode_signer_state(&model),
+        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        ..Default::default()
     })
 }
 
@@ -136,6 +138,8 @@ pub(crate) fn bunker_handshake_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
         schema_version: BUNKER_HANDSHAKE_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(BUNKER_HANDSHAKE_FILE_IDENTIFIER).into_owned(),
         payload: encode_bunker_handshake(&model),
+        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        ..Default::default()
     })
 }
 
@@ -180,6 +184,8 @@ pub(crate) fn nip46_onboarding_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
         schema_version: NIP46_ONBOARDING_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(NIP46_ONBOARDING_FILE_IDENTIFIER).into_owned(),
         payload: encode_nip46_onboarding(&model),
+        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        ..Default::default()
     })
 }
 
