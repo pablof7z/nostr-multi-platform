@@ -1252,6 +1252,21 @@ pub struct Kernel {
     /// of per-follow interests never bursts unbounded synchronous work on the
     /// actor thread (the #1085 lesson at the aggregate level).
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
+    /// K3 Stage B3 — session-scoped set of CURSOR-LESS (`Etag`/`Ptag`) store
+    /// queries whose cache-serve was budget-truncated mid-chunk, stranding the
+    /// stored tail within serve depth.
+    ///
+    /// Keyed by [`cache_serve::cursor_less_query_key`] (query content identity).
+    /// Written by `serve_chunk` (insert on budget-truncation, remove on natural
+    /// exhaustion) and read by the `watermark_fn` closure, which refuses to
+    /// floor a shape whose cursor-less query is present — otherwise the floor
+    /// would suppress the relay re-send of the stranded tail (the relay never
+    /// re-sends below-floor events that session). Shared with the closure via
+    /// `Arc<Mutex<…>>` because [`crate::subs::WatermarkFn`] is `Send + Sync`;
+    /// the kernel is single-threaded so the lock is uncontended. Cleared on
+    /// account-switch by [`Kernel::clear_served_interest_shapes`]. Not a
+    /// `Vec`-shaped relay cache, so out of D14's scope.
+    pub(in crate::kernel) etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -1774,15 +1789,22 @@ impl Kernel {
         // match on the `idx_author_kind` index per author (D8: no per-emit
         // allocation beyond one u64 per author in the shape).
         let watermark_store = Arc::clone(&store);
+        // K3 Stage B3 — the truncated-serve set is shared between `serve_chunk`
+        // (writer) and the watermark closure (reader). Constructed here so the
+        // closure can capture a clone; the kernel field below holds the other.
+        let etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>> =
+            Arc::new(std::sync::Mutex::new(HashSet::new()));
+        let watermark_truncated = Arc::clone(&etag_ptag_truncated_serves);
         let watermark_fn: crate::subs::WatermarkFn =
             Arc::new(move |shape: &crate::planner::InterestShape| {
                 // ADR-0045 §6 / #1119: the watermark floor is now derived from
                 // the SAME `shape_to_store_queries` mapping cache-serve uses —
                 // "one table read two ways". `watermark_from_queries` folds the
                 // per-query newest timestamps with the established policy (min
-                // across AuthorKind with abort-on-empty author, max across
-                // KindDtag coords, single value for Etag/Ptag, never-floor for
-                // the zero-author KindTime global feed). This makes the
+                // across AuthorKind with abort-on-empty author, min across
+                // KindDtag coords with abort-on-empty coord (K3 Stage B1 — the
+                // same min/abort rule as authors), single value for Etag/Ptag,
+                // never-floor for the zero-author KindTime global feed). This makes the
                 // floored⇒served invariant structural: an uncovered shape maps
                 // to no queries, so it cannot be floored.
                 //
@@ -1790,21 +1812,33 @@ impl Kernel {
                 // (since/until = None) and reads the newest stored match via a
                 // `limit = 1` early-stopping `query_visit` (D8: one u64 per
                 // query, no per-emit allocation).
-                cache_serve::watermark_from_queries(shape, |query| {
-                    let mut q = query.clone();
-                    if let Some(since) = cache_serve::query_since_mut(&mut q) {
-                        *since = None;
-                    }
-                    if let Some(until) = cache_serve::query_until_mut(&mut q) {
-                        *until = None;
-                    }
-                    let mut ts: Option<u64> = None;
-                    let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
-                        ts = Some(ev.raw.created_at);
-                        std::ops::ControlFlow::Break(())
-                    });
-                    ts
-                })
+                cache_serve::watermark_from_queries(
+                    shape,
+                    |query| {
+                        let mut q = query.clone();
+                        if let Some(since) = cache_serve::query_since_mut(&mut q) {
+                            *since = None;
+                        }
+                        if let Some(until) = cache_serve::query_until_mut(&mut q) {
+                            *until = None;
+                        }
+                        let mut ts: Option<u64> = None;
+                        let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
+                            ts = Some(ev.raw.created_at);
+                            std::ops::ControlFlow::Break(())
+                        });
+                        ts
+                    },
+                    // K3 Stage B3: refuse the floor for a cursor-less shape whose
+                    // serve was budget-truncated this session (stored tail
+                    // stranded within serve depth; the relay must re-send it).
+                    |key| {
+                        watermark_truncated
+                            .lock()
+                            .map(|set| set.contains(&key))
+                            .unwrap_or(false)
+                    },
+                )
             });
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
@@ -1978,6 +2012,7 @@ impl Kernel {
             last_gc_at_ms: None,
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
+            etag_ptag_truncated_serves,
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
@@ -2000,7 +2035,18 @@ impl Kernel {
     // code path that calls this, even though production never installs a
     // non-default clock. `allow(dead_code)` covers builds with neither the
     // `test` cfg nor any clock-injecting consumer linked.
+    // `pub` under `test-support` (not just `pub(crate)`) so external crate
+    // integration tests — e.g. `nmp-nip77`'s NEG-OPEN liveness-deadline oracle
+    // (K3 Stage B2) — can install a `MonotonicSecondClock` and advance it to
+    // drive a wall-clock-gated `on_idle_tick` without a real sleep (D8).
     #[allow(dead_code)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.clock = clock;
+    }
+
+    #[allow(dead_code)]
+    #[cfg(not(any(test, feature = "test-support")))]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;
     }
