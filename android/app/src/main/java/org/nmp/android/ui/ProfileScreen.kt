@@ -13,16 +13,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -175,6 +181,9 @@ fun ProfileScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
+                    Spacer(Modifier.size(12.dp))
+                    FollowButton(pubkey = pubkey, model = model)
                 }
 
                 HorizontalDivider()
@@ -214,6 +223,37 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Follow / Unfollow action (#1291 GAP 1b). MVP dispatch-only: Android has no
+ * follow-list projection yet, so the label toggles on local optimistic state
+ * seeded from the last dispatch. The kernel owns the kind:3 contact-list write;
+ * this is a thin call site into the existing `model.follow`/`model.unfollow`.
+ * Mirrors iOS `ProfileView`'s follow button.
+ */
+@Composable
+private fun FollowButton(pubkey: String, model: KernelModel) {
+    if (pubkey.isEmpty()) return
+    var following by remember(pubkey) { mutableStateOf(false) }
+    if (following) {
+        OutlinedButton(onClick = {
+            model.unfollow(pubkey)
+            following = false
+        }) {
+            Text("Following")
+        }
+    } else {
+        Button(
+            onClick = {
+                model.follow(pubkey)
+                following = true
+            },
+            colors = ButtonDefaults.buttonColors(),
+        ) {
+            Text("Follow")
         }
     }
 }

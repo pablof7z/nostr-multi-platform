@@ -289,6 +289,16 @@ class KernelModel : ViewModel() {
         bridge.ackActionStage(correlationId)
     }
 
+    /** Retry a failed publish from the outbox (#1291 GAP 4). */
+    fun retryPublish(correlationId: String) {
+        bridge.retryPublish(correlationId)
+    }
+
+    /** Cancel an in-flight publish from the outbox (#1291 GAP 4). */
+    fun cancelPublish(correlationId: String) {
+        bridge.cancelPublish(correlationId)
+    }
+
     // -------------------------------------------------------------------------
     // Account management
     // -------------------------------------------------------------------------
@@ -346,6 +356,14 @@ class KernelModel : ViewModel() {
     /** Remove a relay by URL. */
     fun removeRelay(url: String) = bridge.removeRelay(url)
 
+    /** Publish the current relay set as NIP-65 (kind:10002). #1291 GAP 5. */
+    fun publishRelayList(relays: List<RelayStatus>): DispatchResult =
+        bridge.publishRelayList(relays)
+
+    /** Publish a NIP-17 DM relay-list (kind:10050) from `wss://` URLs. #1291 GAP 5. */
+    fun publishDmRelayList(relays: List<String>): DispatchResult =
+        bridge.publishDmRelayList(relays)
+
     // -------------------------------------------------------------------------
     // Social
     // -------------------------------------------------------------------------
@@ -369,6 +387,11 @@ class KernelModel : ViewModel() {
     /** React to a note (NIP-25). */
     fun react(eventId: String, reaction: String = "+"): DispatchResult? = dispatchTypedIntent(
         ChirpActionIntent(type = "react", eventId = eventId, reaction = reaction)
+    )
+
+    /** Repost a note (NIP-18 kind:6). Mirrors iOS `model.repost(eventID:authorPubkey:)`. */
+    fun repost(eventId: String, authorPubkey: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "repost", eventId = eventId, authorPubkey = authorPubkey)
     )
 
     /** Follow a pubkey. */
