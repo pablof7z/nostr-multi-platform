@@ -122,16 +122,21 @@ impl SubscriptionLifecycle {
                     // - Non-Tailing + since=None → leave None (backfill/oneshot,
                     //   full history requested; exempt from T129).
                     // - since=Some(t) → raise floor to max(t, watermark+1).
+                    // K3 Stage D2 (ADR-0056 §3.D2): the floor is per-`(filter_hash,
+                    // relay)`. This reconnect-replay path already has the target
+                    // `relay_url` in scope (the method arg), so thread it into the
+                    // resolver exactly as `apply_watermark_rewrite` does — both
+                    // floor-application sites must read the ledger by the same key.
                     if wire_shape.since.is_none() {
                         let lc = lifecycle_for_shape(shape, &interests);
                         if lc == InterestLifecycle::Tailing {
-                            if let Some(watermark) = wm(&wire_shape) {
+                            if let Some(watermark) = wm(&wire_shape, &relay_url) {
                                 wire_shape.since = Some(watermark.saturating_add(1));
                             }
                         }
                         // non-Tailing: leave since=None (backfill exemption).
                     } else if let Some(existing) = wire_shape.since {
-                        if let Some(watermark) = wm(&wire_shape) {
+                        if let Some(watermark) = wm(&wire_shape, &relay_url) {
                             let floor = watermark.saturating_add(1);
                             if floor > existing {
                                 wire_shape.since = Some(floor);

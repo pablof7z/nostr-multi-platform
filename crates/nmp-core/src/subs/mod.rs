@@ -96,9 +96,9 @@ pub use wire::{plan_diff, WireFrame};
 // and `apps/chirp/nmp-app-chirp/src/ffi/register.rs`).
 pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 
-/// T129 watermark resolver — returns the most-recent stored `created_at`
-/// (unix seconds) for events matching `shape`, or `None` when the store has
-/// no matching events.
+/// T129 watermark resolver — returns the floor base (unix seconds) for events
+/// matching `shape` on a given `relay_url`, or `None` when there is no floor
+/// (the relay's REQ must run un-floored).
 ///
 /// Installed by the kernel via [`SubscriptionLifecycle::set_watermark_fn`].
 /// The kernel is the only legitimate caller — view modules and tests inject a
@@ -107,11 +107,24 @@ pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 /// `KindTime`) and invokes `EventStore::query_visit` with `limit = 1`, which
 /// early-stops at the newest stored match on the relevant secondary index.
 ///
+/// # The `relay_url` parameter (K3 Stage D2, ADR-0056 §3.D2)
+///
+/// The floor is now computed per-`(filter_hash, relay)`, not per-shape. The
+/// coverage ledger ([`crate::kernel::Kernel`] write path, D1) is keyed by
+/// `(canonical_filter_hash(shape), relay)`, so the D2 read swap must thread the
+/// relay this REQ targets into the resolver. The presence-derived heuristic
+/// ignores `relay_url` (presence is relay-agnostic — any stored event matching
+/// the shape, regardless of which relay delivered it, raises the floor), so the
+/// pre-D2 behaviour is preserved exactly when the coverage ledger is disabled
+/// or has no row for `(filter_hash, relay)`. When the ledger is enabled AND has
+/// a row, the resolver returns the ledger's `covered_through` for that key — the
+/// coverage-based floor that is sound where presence is not.
+///
 /// The trait-object signature keeps `nmp-core::subs` independent of any
 /// concrete store type (D8: zero per-emit alloc, dispatch is a single vtable
 /// lookup; the closure itself reuses the index buffers underlying
 /// `query_visit`).
-pub type WatermarkFn = Arc<dyn Fn(&InterestShape) -> Option<u64> + Send + Sync>;
+pub type WatermarkFn = Arc<dyn Fn(&InterestShape, &str) -> Option<u64> + Send + Sync>;
 
 /// Default upper bound on concurrent relay connections after greedy
 /// max-coverage reduction. Mirrors the `outbox_perf` example budget.

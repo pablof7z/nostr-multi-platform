@@ -101,6 +101,13 @@ mod discovery_tests;
 #[cfg(test)]
 mod coverage_ledger_d1_tests;
 #[cfg(test)]
+mod coverage_ledger_d2_tests;
+// The D2 merge-gate journey test drives a real in-process WebSocket relay
+// (tungstenite), so it is gated on `native` like the other loopback-relay test
+// fixtures (`actor::relay_mgmt::tests`).
+#[cfg(all(test, feature = "native"))]
+mod coverage_ledger_d2_journey_tests;
+#[cfg(test)]
 mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
 mod event_claim_tests;
@@ -510,7 +517,7 @@ use crate::substrate::{
 };
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64};
 // ADR-0044 — re-exported crate-wide (not just `use`d into `kernel`) so the
 // transport layer (`crate::update_envelope::encode_snapshot_with_envelope`) can
 // name `&KernelSnapshot` to populate the typed Tier-3 `SnapshotFrame` fields.
@@ -939,7 +946,14 @@ pub struct Kernel {
     /// D1 — the floor is swapped to read the ledger only in Stage D2. The
     /// eventual default-on rides a single release cut (ADR-0056 §3 Stage D) so
     /// git-rev-pinning external consumers can pin across the change.
-    coverage_ledger_enabled: bool,
+    /// K3 Stage D2 (ADR-0056 §3.D2): shared with the installed `WatermarkFn`
+    /// closure so the read swap reads the LIVE flag value at recompile time, not
+    /// a capture-time snapshot. `Arc<AtomicBool>` (not a plain `bool`) because
+    /// the closure is installed once at construction but the flag is toggled
+    /// later via `set_coverage_ledger_enabled`; a lock-free `Relaxed` read keeps
+    /// the hot recompile path allocation- and contention-free (D8). Default
+    /// `false` — the read swap is dormant until a deliberate release-cut flip.
+    coverage_ledger_enabled: Arc<AtomicBool>,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
     /// `make_update` tick. The `Metrics::payload_bytes` diagnostic is sourced
@@ -1794,84 +1808,25 @@ impl Kernel {
             Arc::clone(&publish_store),
         );
 
-        // T129 — install the store-backed watermark resolver on the
-        // subscription lifecycle. On reconnect, `recompile_and_diff` bumps
-        // each non-ephemeral sub-shape's `since` to the newest stored
-        // `created_at` matching that shape, so the relay does not re-emit
-        // events already on disk. The closure captures a clone of the
-        // `EventStore` handle and translates the `InterestShape` into a
-        // per-author minimum watermark:
-        //
-        // - Exactly-one-author + ≥1 kind  → single `AuthorKind` scan.
-        // - Multi-author + ≥1 kind         → per-author `AuthorKind` scan for
-        //   every author; returns min(per-author newest) so the floor is safe
-        //   for the entire shape. Any author with zero stored events forces
-        //   `None` (no rewrite) — their history must be fetched in full.
-        //   (V-118 fix: the old KindTime path returned newest-from-anyone,
-        //   which could floor a newly-followed author above all their past
-        //   events.)
-        // - Zero authors + ≥1 kind         → `None` (no rewrite) — we cannot
-        //   safely floor a global-kind scan without risking missing events.
-        // - No kinds                        → `None`.
-        //
-        // `query_visit` with `limit = 1` early-stops at the newest stored
-        // match on the `idx_author_kind` index per author (D8: no per-emit
-        // allocation beyond one u64 per author in the shape).
-        let watermark_store = Arc::clone(&store);
+        // T129 + K3 Stage D2 — install the store-backed since-floor resolver on
+        // the subscription lifecycle. The closure construction (presence-floor
+        // scan + the D2 coverage-ledger read swap) lives in
+        // `coverage_ledger::build_watermark_fn` as the cohesive owner of the
+        // floor logic (the file-size cap forbids growing this constructor). The
+        // shared `Arc<AtomicBool>` flag is constructed here and cloned into the
+        // kernel field below so `set_coverage_ledger_enabled` toggles the LIVE
+        // value the closure reads — default `false` (the read swap is dormant).
+        let coverage_ledger_enabled: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         // K3 Stage B3 / #1380 — completion-key WRITE set + query-key READ view (field docs).
         let etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>> =
             Arc::new(std::sync::Mutex::new(HashSet::new()));
         let etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>> =
             Arc::new(std::sync::Mutex::new(HashSet::new()));
-        let watermark_truncated = Arc::clone(&etag_ptag_truncated_query_keys);
-        let watermark_fn: crate::subs::WatermarkFn =
-            Arc::new(move |shape: &crate::planner::InterestShape| {
-                // ADR-0045 §6 / #1119: the watermark floor is now derived from
-                // the SAME `shape_to_store_queries` mapping cache-serve uses —
-                // "one table read two ways". `watermark_from_queries` folds the
-                // per-query newest timestamps with the established policy (min
-                // across AuthorKind with abort-on-empty author, min across
-                // KindDtag coords with abort-on-empty coord (K3 Stage B1 — the
-                // same min/abort rule as authors), single value for Etag/Ptag,
-                // never-floor for the zero-author KindTime global feed). This makes the
-                // floored⇒served invariant structural: an uncovered shape maps
-                // to no queries, so it cannot be floored.
-                //
-                // The scan normalizes each query to its watermark form
-                // (since/until = None) and reads the newest stored match via a
-                // `limit = 1` early-stopping `query_visit` (D8: one u64 per
-                // query, no per-emit allocation).
-                cache_serve::watermark_from_queries(
-                    shape,
-                    |query| {
-                        let mut q = query.clone();
-                        if let Some(since) = cache_serve::query_since_mut(&mut q) {
-                            *since = None;
-                        }
-                        if let Some(until) = cache_serve::query_until_mut(&mut q) {
-                            *until = None;
-                        }
-                        let mut ts: Option<u64> = None;
-                        let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
-                            ts = Some(ev.raw.created_at);
-                            std::ops::ControlFlow::Break(())
-                        });
-                        ts
-                    },
-                    // K3 Stage B3 / #1380: refuse the floor for a cursor-less
-                    // shape whose serve was budget-truncated this session. `key`
-                    // is the query-content key; the captured read view holds it
-                    // iff AT LEAST ONE active interest mapping to that query is
-                    // truncated, so any contributing interest's truncation refuses
-                    // the shared merged-REQ floor (the conservative, correct merge).
-                    |key| {
-                        watermark_truncated
-                            .lock()
-                            .map(|set| set.contains(&key))
-                            .unwrap_or(false)
-                    },
-                )
-            });
+        let watermark_fn: crate::subs::WatermarkFn = coverage_ledger::build_watermark_fn(
+            Arc::clone(&store),
+            Arc::clone(&coverage_ledger_enabled),
+            Arc::clone(&etag_ptag_truncated_query_keys),
+        );
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
 
@@ -1984,7 +1939,7 @@ impl Kernel {
             contacts_deadline: None,
             wire: WireSubscriptionState::default(),
             // K3 Stage D1: OFF by default — D1 ships the write path dormant.
-            coverage_ledger_enabled: false,
+            coverage_ledger_enabled: Arc::clone(&coverage_ledger_enabled),
             update_sequence: 0,
             last_payload_bytes: 0,
             last_make_update_us: 0,
