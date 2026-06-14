@@ -201,36 +201,50 @@ fn earlier_frame_not_mutated_by_later_encode() {
     // Tick 1: no relays.
     let frame1 = kernel.make_update(true);
     let env1_pre = decode_snapshot_envelope(&frame1).expect("frame1 must decode");
-    // Initially no relays are configured, so no_configured_relays is absent/false.
-    // (It is only Some(true) when signed-in + configured_relays empty, but we
-    // have no active account here, so the field is None / false — see update.rs.)
-    let no_relays_before = env1_pre.no_configured_relays_field();
+    // Snapshot frame1's exact bytes BEFORE any later encode runs. The owned
+    // `Vec<u8>` returned by the encoder must be fully independent of the kernel's
+    // reused builder buffer; this clone is the ground truth we compare against
+    // after two more builder resets. If `to_vec()` ever returned a view that
+    // aliased the builder, the live `frame1` would diverge from this snapshot
+    // once the builder is reset+rewritten below.
+    let frame1_bytes_snapshot = frame1.clone();
 
-    // Mutate: add a relay.
+    // Mutate: add a relay so the next tick produces materially different content.
     kernel.set_configured_relays(vec![AppRelay::new(
         "wss://relay.damus.io/".to_string(),
         "both".to_string(),
     )]);
 
     // Tick 2: relay now configured. Encode reuses the builder (reset).
-    let _frame2 = kernel.make_update(true);
+    let frame2 = kernel.make_update(true);
+    let env2 = decode_snapshot_envelope(&frame2).expect("frame2 must decode");
 
-    // Tick 3: no further mutation.
+    // Tick 3: no further mutation (another reset of the shared builder).
     let _frame3 = kernel.make_update(true);
 
-    // Re-decode frame 1 AFTER two more builder resets. If the builder's
-    // internal buffer was aliased by frame1, the re-decode would see tick 3's
-    // state instead of tick 1's state.
+    // (1) frame1's bytes must be byte-identical after two more builder resets —
+    // the core anti-aliasing assertion (non-vacuous: it fails if the returned
+    // Vec aliased the builder buffer that tick 2/3 overwrote).
+    assert_eq!(
+        frame1, frame1_bytes_snapshot,
+        "frame1's bytes must be immutable after later encodes reuse+reset the \
+         builder (buffer aliasing would corrupt the earlier frame)"
+    );
+
+    // (2) Re-decoding frame1 must still yield tick-1 state.
     let env1_post = decode_snapshot_envelope(&frame1).expect("frame1 re-decode must succeed");
     assert_eq!(
         env1_pre.rev, env1_post.rev,
         "frame1's rev must not change when later frames are encoded"
     );
-    assert_eq!(
-        no_relays_before,
-        env1_post.no_configured_relays_field(),
-        "frame1's no_configured_relays must not change when later frames are encoded \
-         (buffer aliasing would corrupt the earlier frame)"
+
+    // (3) frame2 must be a genuinely DISTINCT frame from frame1 — proving the
+    // reused builder produced independent output per tick (not an alias where
+    // frame1 would have appeared to reflect tick-2's bumped rev).
+    assert_ne!(
+        env1_pre.rev, env2.rev,
+        "frame2 must be a distinct frame from frame1 (each tick bumps rev); \
+         equal revs would mean the frames aliased"
     );
 }
 
@@ -281,29 +295,5 @@ fn buffer_capacity_stable_after_warmup() {
              frame 0 = {first_size} bytes, frame {i} = {size} bytes \
              (unexpected growth; the kernel content did not change)"
         );
-    }
-}
-
-// Helper extension so the test can read a field without naming the exact type.
-trait SnapshotEnvelopeExt {
-    fn no_configured_relays_field(&self) -> Option<bool>;
-}
-
-impl SnapshotEnvelopeExt for crate::update_envelope::SnapshotEnvelope {
-    fn no_configured_relays_field(&self) -> Option<bool> {
-        // `no_configured_relays` is not a field on `SnapshotEnvelope` in the
-        // current Rust-decoded form (it is a Tier-3 field carried in the
-        // FlatBuffers wire but not mirrored into `SnapshotEnvelope`). Instead
-        // we use the `running` + `rev` fields which ARE on the struct and are
-        // sufficient to prove the frame bytes did not get corrupted by the
-        // next encode. The actual per-relay state test lives in other test
-        // modules; here we only need a stable field to assert identity.
-        //
-        // Returning `None` unconditionally is fine — the assertion in
-        // `earlier_frame_not_mutated_by_later_encode` then becomes
-        // `None == None`, which always passes and still exercises the
-        // re-decode path (the important half of the test).
-        let _ = self;
-        None
     }
 }
