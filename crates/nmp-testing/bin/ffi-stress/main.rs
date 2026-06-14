@@ -28,6 +28,10 @@ mod s5_reentrancy;
 mod s6_gates;
 mod s6_oracle;
 mod s6_single_projection_churn;
+// ADR-0055 R6-S4 — feed-idle capstone: whole-product idle win with op_feed registered.
+mod s7_feed_gates;
+mod s7_feed_idle;
+mod s7_feed_oracle;
 
 use report::{now_unix_seconds, write_scenario_report, ScenarioMetrics};
 use std::process;
@@ -90,6 +94,10 @@ fn main() {
                 let cfg = s6_single_projection_churn::S6Config::default();
                 s6_single_projection_churn::run(cfg, &mut metrics);
             }
+            Scenario::FeedIdle => {
+                let cfg = s7_feed_idle::S7Config::default();
+                s7_feed_idle::run(cfg, &mut metrics);
+            }
         }
 
         let passed = metrics.passed;
@@ -139,6 +147,7 @@ Scenarios:
   reconciler-backpressure    S4 — 250 ms main-thread stall simulation
   reentrancy                 S5 — dispatch from inside reconciler callback
   single-projection-churn    S6 — ADR-0055 Rung 0: per-tick churn waste measurement
+  feed-idle                  S7 — ADR-0055 R6-S4: whole-product feed-idle byte reduction
 
 Options:
   --duration <D>           Wall-clock duration (e.g. 60s, 10m). Default: scenario-specific.
@@ -156,6 +165,8 @@ enum Scenario {
     Reentrancy,
     /// ADR-0055 Rung 0 — single-projection-churn measurement.
     SingleProjectionChurn,
+    /// ADR-0055 R6-S4 — feed-idle capstone: whole-product idle win with op_feed registered.
+    FeedIdle,
 }
 
 fn scenario_name(s: &Scenario) -> &'static str {
@@ -166,6 +177,7 @@ fn scenario_name(s: &Scenario) -> &'static str {
         Scenario::ReconcilerBackpressure => "S4-reconciler-backpressure",
         Scenario::Reentrancy => "S5-reentrancy",
         Scenario::SingleProjectionChurn => "S6-single-projection-churn",
+        Scenario::FeedIdle => "S7-feed-idle",
     }
 }
 
@@ -221,6 +233,7 @@ impl Cli {
             Some(Scenario::ReconcilerBackpressure) => Duration::from_secs(60),
             Some(Scenario::Reentrancy) => Duration::from_secs(30),
             Some(Scenario::SingleProjectionChurn) => Duration::from_secs(30),
+            Some(Scenario::FeedIdle) => Duration::from_secs(60),
             None => Duration::from_secs(30),
         });
 
@@ -242,6 +255,7 @@ fn parse_scenario(s: &str) -> Result<Scenario, String> {
         "reconciler-backpressure" | "s4" => Ok(Scenario::ReconcilerBackpressure),
         "reentrancy" | "s5" => Ok(Scenario::Reentrancy),
         "single-projection-churn" | "s6" => Ok(Scenario::SingleProjectionChurn),
+        "feed-idle" | "s7" => Ok(Scenario::FeedIdle),
         other => Err(format!("unknown scenario: {other}")),
     }
 }
