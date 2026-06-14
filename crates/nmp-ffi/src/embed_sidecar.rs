@@ -254,237 +254,65 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
 /// `Mutex::lock` read + encode, non-blocking on the actor thread. D0: kind
 /// dispatch lives in `nmp-content`; these are thin readers/encoders.
 ///
+/// ADR-0055 R6-S2: the typed projection now uses `TypedProjectionEmissionState`
+/// to omit an unchanged `claimed_event_embeds` frame when the host has declared
+/// incremental-apply capability (exact byte equality, monotonic rev, freeze
+/// guard on the same FrameIdentity the feed uses — one shared implementation).
+///
 /// Keeping the registration body here — rather than inline in `lib.rs` — keeps
 /// the already-over-cap `lib.rs` from growing (AGENTS.md file-size anti-cheat).
 pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedSidecarSlot) {
+    use nmp_core::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
+    use std::sync::atomic::Ordering;
+
     let json_slot = Arc::clone(&slot);
     app.register_snapshot_projection(EMBED_SIDECAR_KEY, move || read_embed_sidecar(&json_slot));
+
+    // R6-S2: read capability + frame-identity handles once at registration time
+    // (the NmpApp APIs acquire the registry lock internally).
+    let incremental_apply = app.incremental_apply_handle();
+    let (frame_session_id, frame_snapshot_epoch) = app.frame_identity_handles();
+    // Wrap the emission state in `Arc<Mutex<…>>` so the `Send + Sync` closure
+    // requirement is satisfied. The lock is uncontested in production (only the
+    // actor thread calls this closure under the registry's own mutex).
+    let emission_state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        incremental_apply,
+    )));
+
     app.register_typed_snapshot_projection(EMBED_SIDECAR_KEY, move || {
-        Some(read_embed_sidecar_typed(&slot))
+        let typed_data = read_embed_sidecar_typed(&slot);
+        // R6-S2: apply byte-equality omit (same mechanism as feed R6-S1).
+        let identity = FrameIdentity {
+            session_id: frame_session_id.load(Ordering::Acquire),
+            snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
+        };
+        let Ok(mut state) = emission_state.lock() else {
+            // Poisoned mutex — degrade to always-emit (D6: safe fallback).
+            return Some(typed_data);
+        };
+        let payload = typed_data.payload.clone();
+        let emit_decision = state.should_emit(payload, identity);
+        drop(state);
+        match emit_decision {
+            None => None,
+            Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
+                payload,
+                projection_rev,
+                ..typed_data
+            }),
+        }
     });
 }
 
 // ── Unit tests ──────────────────────────────────────────────────────────────
+// Extracted to sibling files to keep this file under the 500 LOC gate:
+// - `embed_sidecar_tests.rs`    — resolve path + wire shape tests (pre-R6-S2).
+// - `embed_sidecar_emission_tests.rs` — ADR-0055 R6-S2 cardinal-trap tests.
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "embed_sidecar_tests.rs"]
+mod tests;
 
-    fn make_claimed_event_row(
-        primary_id: &str,
-        id: &str,
-        author: &str,
-        kind: u32,
-        content: &str,
-        tags: Vec<Vec<String>>,
-    ) -> ClaimedEventRow {
-        ClaimedEventRow {
-            primary_id: primary_id.to_string(),
-            id: id.to_string(),
-            author_pubkey: author.to_string(),
-            author_display_name: None,
-            author_picture_url: None,
-            kind,
-            created_at: 1710000000,
-            tags,
-            content: content.to_string(),
-        }
-    }
-
-    #[test]
-    fn resolve_short_note_row_produces_short_note_projection() {
-        let row = make_claimed_event_row(
-            "aabbcc",
-            "aabbcc",
-            &"aa".repeat(32),
-            1,
-            "Hello nostr",
-            vec![],
-        );
-        let ctx = RenderContext::new();
-        let event = row_to_kernel_event(&row);
-        let proj = resolve_embed_projection(&event, &ctx);
-        assert!(
-            matches!(proj, EmbedKindProjection::ShortNote(_)),
-            "kind:1 must resolve to ShortNote"
-        );
-    }
-
-    #[test]
-    fn resolve_article_row_produces_article_projection() {
-        let tags = vec![vec!["d".to_string(), "my-article".to_string()]];
-        let row = make_claimed_event_row(
-            "art456",
-            "art456",
-            &"bb".repeat(32),
-            30023,
-            "# My Article",
-            tags,
-        );
-        let ctx = RenderContext::new();
-        let event = row_to_kernel_event(&row);
-        let proj = resolve_embed_projection(&event, &ctx);
-        assert!(
-            matches!(proj, EmbedKindProjection::Article(_)),
-            "kind:30023 must resolve to Article"
-        );
-    }
-
-    #[test]
-    fn resolve_highlight_row_produces_highlight_projection() {
-        let tags = vec![vec!["e".to_string(), "source-event-id".to_string()]];
-        let row = make_claimed_event_row(
-            "hl789",
-            "hl789",
-            &"cc".repeat(32),
-            9802,
-            "quoted text",
-            tags,
-        );
-        let ctx = RenderContext::new();
-        let event = row_to_kernel_event(&row);
-        let proj = resolve_embed_projection(&event, &ctx);
-        assert!(
-            matches!(proj, EmbedKindProjection::Highlight(_)),
-            "kind:9802 must resolve to Highlight"
-        );
-    }
-
-    #[test]
-    fn resolve_profile_row_produces_profile_projection() {
-        let row = make_claimed_event_row(
-            "aa".repeat(32).as_str(),
-            "aa".repeat(32).as_str(),
-            &"aa".repeat(32),
-            0,
-            r#"{"name":"Alice","picture":"https://example.com/pic.jpg"}"#,
-            vec![],
-        );
-        let ctx = RenderContext::new();
-        let event = row_to_kernel_event(&row);
-        let proj = resolve_embed_projection(&event, &ctx);
-        assert!(
-            matches!(proj, EmbedKindProjection::Profile(_)),
-            "kind:0 must resolve to Profile"
-        );
-    }
-
-    #[test]
-    fn resolve_unknown_kind_row_produces_unknown_projection() {
-        let row = make_claimed_event_row(
-            "unk001",
-            "unk001",
-            &"dd".repeat(32),
-            30402,
-            "classified ad",
-            vec![],
-        );
-        let ctx = RenderContext::new();
-        let event = row_to_kernel_event(&row);
-        let proj = resolve_embed_projection(&event, &ctx);
-        assert!(
-            matches!(proj, EmbedKindProjection::Unknown(_)),
-            "unregistered kind must resolve to Unknown"
-        );
-    }
-
-    #[test]
-    fn read_embed_sidecar_returns_empty_object_when_slot_is_none() {
-        let slot = new_embed_sidecar_slot();
-        let val = read_embed_sidecar(&slot);
-        assert_eq!(
-            val,
-            Value::Object(serde_json::Map::new()),
-            "empty slot must yield an empty JSON object"
-        );
-    }
-
-    #[test]
-    fn embed_sidecar_json_shape_matches_expected_variant_tag() {
-        // Golden test: a kind:1 row must produce a JSON envelope whose
-        // `projection.variant` equals `"shortNote"` (camelCase, matching the
-        // Rust `#[serde(rename_all = "camelCase")]` on the `EmbedKindProjection`
-        // enum's variant discriminator — held by the EmbedKindProjection serde
-        // attributes `#[serde(tag = "variant", content = "data", rename_all = "camelCase")]`).
-        let row = make_claimed_event_row(
-            "aabbcc",
-            "aabbcc",
-            &"aa".repeat(32),
-            1,
-            "Hello nostr",
-            vec![],
-        );
-        let ctx = RenderContext::new();
-        let event = row_to_kernel_event(&row);
-        let proj = resolve_embed_projection(&event, &ctx);
-        let json = serde_json::to_value(&proj).expect("EmbedKindProjection must serialize");
-        assert_eq!(
-            json.get("variant").and_then(|v| v.as_str()),
-            Some("shortNote"),
-            "ShortNote variant must serialize as `shortNote` (camelCase tag)"
-        );
-    }
-
-    #[test]
-    fn typed_sidecar_is_present_and_empty_when_slot_is_none() {
-        let slot = new_embed_sidecar_slot();
-        let typed = read_embed_sidecar_typed(&slot);
-        assert_eq!(typed.key, EMBED_SIDECAR_KEY);
-        assert_eq!(typed.schema_id, EMBED_SIDECAR_KEY);
-        // An empty slot still yields a present, decodable (empty) NEMB buffer.
-        let decoded = nmp_content::wire::decode_claimed_event_embeds(&typed.payload)
-            .expect("empty typed sidecar must decode");
-        assert!(decoded.is_empty(), "absent slot ⇒ empty typed map");
-    }
-
-    #[test]
-    fn json_and_typed_sidecars_carry_the_same_resolved_map() {
-        // Populate the slot via the real resolve path, then prove the JSON and
-        // typed projections agree on the key set and per-key variant — the
-        // gallery (JSON) and Chirp (typed) shells must see identical embeds.
-        let slot = new_embed_sidecar_slot();
-        let ctx = RenderContext::new();
-        let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
-        for (pid, kind, content) in [
-            ("note", 1u32, "hi"),
-            ("art", 30023u32, "# A"),
-            ("unk", 30402u32, "x"),
-        ] {
-            let row = make_claimed_event_row(pid, pid, &"aa".repeat(32), kind, content, vec![]);
-            let proj = resolve_embed_projection(&row_to_kernel_event(&row), &ctx);
-            map.insert(pid.to_string(), build_envelope(pid, proj));
-        }
-        *slot.lock().unwrap() = Some(map);
-
-        let json = read_embed_sidecar(&slot);
-        let typed = read_embed_sidecar_typed(&slot);
-        let decoded = nmp_content::wire::decode_claimed_event_embeds(&typed.payload)
-            .expect("typed sidecar must decode");
-
-        let json_obj = json.as_object().expect("json is an object");
-        assert_eq!(json_obj.len(), decoded.len(), "same number of entries");
-        for key in ["note", "art", "unk"] {
-            assert!(json_obj.contains_key(key), "JSON missing {key}");
-            assert!(decoded.contains_key(key), "typed missing {key}");
-            // JSON envelope carries the snake_case primary_id mirror.
-            assert_eq!(
-                json_obj[key]["primary_id"].as_str(),
-                Some(key),
-                "JSON primary_id mismatch for {key}"
-            );
-            assert_eq!(decoded[key].primary_id, key, "typed primary_id mismatch for {key}");
-        }
-        assert!(matches!(
-            decoded["note"].projection,
-            EmbedKindProjection::ShortNote(_)
-        ));
-        assert!(matches!(
-            decoded["art"].projection,
-            EmbedKindProjection::Article(_)
-        ));
-        assert!(matches!(
-            decoded["unk"].projection,
-            EmbedKindProjection::Unknown(_)
-        ));
-    }
-}
+#[cfg(test)]
+#[path = "embed_sidecar_emission_tests.rs"]
+mod emission_tests;

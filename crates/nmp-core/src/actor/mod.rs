@@ -1769,6 +1769,11 @@ pub fn run_actor_with_observers(
     // Rust-owned static signer-app list (no platform-shell ownership of
     // protocol-knowledge tables). Always present (never JSON null) so the host
     // can read `signer_apps` even when no handshake is in flight.
+    //
+    // ADR-0055 R6-S2: the typed sidecar now uses `TypedProjectionEmissionState`
+    // to omit an unchanged `nip46_onboarding` frame when the host has declared
+    // incremental-apply capability (exact byte equality, monotonic rev, freeze
+    // guard on the same FrameIdentity the feed uses — one implementation, shared).
     {
         let projection_slot = Arc::clone(&bunker_handshake);
         // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
@@ -1777,13 +1782,59 @@ pub fn run_actor_with_observers(
         // is emitted even when idle, so the builder always returns `Some` — see
         // `typed_projections::nip46_onboarding_typed`.
         let typed_slot = Arc::clone(&bunker_handshake);
+        // R6-S2: read the frame-identity and capability handles from the
+        // registry (one lock) before the registration lock below. D8: these
+        // reads are cheap — clones of existing `Arc` handles. D6: falls back to
+        // non-omitting handles if the mutex is poisoned.
+        let (nip46_onboarding_incremental_apply, nip46_onboarding_frame_session_id,
+             nip46_onboarding_frame_snapshot_epoch) =
+            if let Ok(reg) = snapshot_projections.lock() {
+                let cap = reg.incremental_apply_handle();
+                let (sid, epoch) = reg.frame_identity_handles();
+                (cap, sid, epoch)
+            } else {
+                use std::sync::atomic::AtomicU64;
+                (
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    Arc::new(AtomicU64::new(0)),
+                    Arc::new(AtomicU64::new(0)),
+                )
+            };
+        let nip46_onboarding_emission_state = Arc::new(Mutex::new(
+            crate::projection_emission::TypedProjectionEmissionState::new(
+                nip46_onboarding_incremental_apply,
+            ),
+        ));
         if let Ok(mut registry) = snapshot_projections.lock() {
             registry.register("nip46_onboarding", move || {
                 let dto = build_nip46_onboarding_dto(&projection_slot);
                 serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
             });
+            let emission_state = Arc::clone(&nip46_onboarding_emission_state);
+            let frame_session_id = Arc::clone(&nip46_onboarding_frame_session_id);
+            let frame_snapshot_epoch = Arc::clone(&nip46_onboarding_frame_snapshot_epoch);
             registry.register_typed("nip46_onboarding", move || {
-                typed_projections::nip46_onboarding_typed(&typed_slot)
+                // Build the typed payload (always Some for nip46_onboarding).
+                let typed_data = typed_projections::nip46_onboarding_typed(&typed_slot)?;
+                // R6-S2: apply byte-equality omit (same mechanism as feed R6-S1).
+                let identity = crate::projection_emission::FrameIdentity {
+                    session_id: frame_session_id.load(Ordering::Acquire),
+                    snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
+                };
+                let Ok(mut state) = emission_state.lock() else {
+                    // Poisoned mutex — degrade to always-emit (D6: safe fallback).
+                    return Some(typed_data);
+                };
+                let emit_decision = state.should_emit(typed_data.payload.clone(), identity);
+                drop(state);
+                match emit_decision {
+                    None => None,
+                    Some((payload, projection_rev)) => Some(crate::update_envelope::TypedProjectionData {
+                        payload,
+                        projection_rev,
+                        ..typed_data
+                    }),
+                }
             });
         }
     }
