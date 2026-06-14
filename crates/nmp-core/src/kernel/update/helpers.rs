@@ -95,6 +95,143 @@ pub(super) fn format_next_count_label(count: usize) -> String {
     }
 }
 
+/// ADR-0055 Rung 0 — projection-churn measurement.
+///
+/// The ENTIRE module is gated on `cfg(any(test, feature = "test-support"))`,
+/// so a production build of `nmp-core` compiles none of it: no hashing, no
+/// per-key store, no counters. `make_update` references it only inside its own
+/// `cfg`-gated blocks. Rung 1's real O(1) per-projection rev manifest
+/// supersedes this measurement — it is deliberately never carried into a
+/// production emit path.
+///
+/// State lives in a thread-local (not on `Kernel`) so the production `Kernel`
+/// struct carries zero instrumentation fields. The actor runs `make_update` on
+/// a single dedicated thread, so the thread-local is effectively per-kernel for
+/// the ffi-stress harness's single-kernel scenarios.
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) mod churn {
+    use crate::update_envelope::TypedProjectionData;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::hash::{Hash, Hasher};
+    use std::sync::atomic::AtomicU64;
+
+    /// Process-global cumulative count of typed projections serialized across
+    /// every `make_update` tick since process start. Read by the ffi-stress
+    /// harness before/after a measurement window. Never resets.
+    pub static PROCESS_PROJECTIONS_SERIALIZED: AtomicU64 = AtomicU64::new(0);
+    /// Process-global cumulative count of typed projections whose payload
+    /// content changed vs the previous tick. Never resets.
+    pub static PROCESS_PROJECTIONS_CHANGED: AtomicU64 = AtomicU64::new(0);
+
+    thread_local! {
+        /// Per-key payload-hash from the previous tick on this (actor) thread.
+        /// Keyed by `TypedProjectionData::key`. A missing entry (first emit for
+        /// that key) counts the projection as changed.
+        static PREV_PAYLOAD_HASHES: RefCell<HashMap<String, u64>> =
+            RefCell::new(HashMap::new());
+    }
+
+    /// Emit-level projection churn statistics for one `make_update` tick.
+    #[derive(Clone, Copy, Debug, Default)]
+    pub(crate) struct EmitProjectionStats {
+        /// Total typed projections in this frame (built-in + host-registered).
+        pub(crate) total: u64,
+        /// Projections whose payload bytes changed since the previous tick.
+        pub(crate) changed: u64,
+        /// Total bytes of ALL serialized projection payloads this tick.
+        pub(crate) total_bytes: u64,
+        /// Bytes attributable to changed projections only.
+        pub(crate) changed_bytes: u64,
+    }
+
+    /// Measure churn for one emit: hash each projection's payload, compare to
+    /// the previous tick's digest, update the per-key store, and bump the
+    /// process-global counters. Returns the per-tick stats for the `NMP_PERF`
+    /// log line.
+    ///
+    /// Uses `DefaultHasher` (non-cryptographic) to fingerprint payload bytes.
+    /// O(total payload bytes) — but this only ever runs in `test-support`
+    /// builds, so production pays nothing.
+    pub(crate) fn measure_emit_churn(typed: &[TypedProjectionData]) -> EmitProjectionStats {
+        use std::sync::atomic::Ordering;
+
+        let mut stats = EmitProjectionStats::default();
+        PREV_PAYLOAD_HASHES.with(|cell| {
+            let mut prev_hashes = cell.borrow_mut();
+            for proj in typed {
+                let bytes = proj.payload.len() as u64;
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                proj.payload.hash(&mut hasher);
+                let digest = hasher.finish();
+
+                stats.total += 1;
+                stats.total_bytes += bytes;
+
+                let prev = prev_hashes.insert(proj.key.clone(), digest);
+                if prev != Some(digest) {
+                    // First-seen (None) or payload changed.
+                    stats.changed += 1;
+                    stats.changed_bytes += bytes;
+                }
+            }
+        });
+
+        PROCESS_PROJECTIONS_SERIALIZED.fetch_add(stats.total, Ordering::Relaxed);
+        PROCESS_PROJECTIONS_CHANGED.fetch_add(stats.changed, Ordering::Relaxed);
+        stats
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn proj(key: &str, payload: &[u8]) -> TypedProjectionData {
+            TypedProjectionData {
+                key: key.to_string(),
+                schema_id: "test".to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: payload.to_vec(),
+            }
+        }
+
+        #[test]
+        fn first_emit_counts_all_projections_as_changed() {
+            // Fresh thread-local: every projection is first-seen → changed.
+            let typed = vec![proj("a", b"alpha"), proj("b", b"beta")];
+            let stats = measure_emit_churn(&typed);
+            assert_eq!(stats.total, 2);
+            assert_eq!(stats.changed, 2);
+            assert_eq!(stats.total_bytes, 9);
+            assert_eq!(stats.changed_bytes, 9);
+        }
+
+        #[test]
+        fn unchanged_payload_is_not_counted_as_changed() {
+            // Use keys unique to this test so the thread-local store does not
+            // collide with sibling tests sharing the worker thread.
+            let typed = vec![proj("u1", b"same"), proj("u2", b"static")];
+            let _ = measure_emit_churn(&typed); // seed
+            let stats = measure_emit_churn(&typed); // identical second tick
+            assert_eq!(stats.total, 2);
+            assert_eq!(stats.changed, 0, "identical payloads must not count as changed");
+            assert_eq!(stats.changed_bytes, 0);
+        }
+
+        #[test]
+        fn only_the_mutated_projection_is_counted() {
+            let seed = vec![proj("m1", b"one"), proj("m2", b"two")];
+            let _ = measure_emit_churn(&seed);
+            // m2 changes, m1 stays.
+            let next = vec![proj("m1", b"one"), proj("m2", b"TWO-CHANGED")];
+            let stats = measure_emit_churn(&next);
+            assert_eq!(stats.total, 2);
+            assert_eq!(stats.changed, 1, "only the mutated projection counts");
+        }
+    }
+}
+
 #[cfg(test)]
 mod repost_inner_tests {
     use super::parse_repost_inner;

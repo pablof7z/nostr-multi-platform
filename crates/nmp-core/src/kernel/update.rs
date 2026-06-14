@@ -23,6 +23,14 @@ mod helpers;
 mod projections;
 mod views;
 
+// ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
+// pass (payload hashing, per-key hash store, cumulative counters) is gated on
+// `test-support` so a production build does ZERO instrumentation work on the
+// emit path. See `update::helpers::churn`. Rung 1's real O(1) rev manifest
+// supersedes this measurement; it is never carried into production.
+#[cfg(any(test, feature = "test-support"))]
+pub use helpers::churn::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
+
 pub use projections::KERNEL_BUILTIN_PROJECTION_KEYS;
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.
@@ -269,6 +277,13 @@ impl Kernel {
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
+        // ADR-0055 Rung 0 — measure per-tick projection churn BEFORE serializing.
+        // The whole pass (payload hashing, per-key store, process counters) is
+        // `test-support`-only: in a production build this binding does not exist
+        // and the `NMP_PERF` log below compiles with no churn fields, so the
+        // emit path does ZERO instrumentation work. See `helpers::churn`.
+        #[cfg(any(test, feature = "test-support"))]
+        let churn = helpers::churn::measure_emit_churn(&typed);
         // ADR-0044 / PR-B (#991/#979): emit only the typed Tier-3 envelope +
         // typed-projection sidecar. The generic `payload:Value` slot is
         // intentionally absent from the wire (set to `None` in
@@ -287,8 +302,10 @@ impl Kernel {
         // `removed` / `visible`) was removed, so the perf line is gated on
         // `batch_events` alone and no longer reports the feed counters.
         if batch_events > 0 {
-            self.log(format!(
-                "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} make_update_us={} serialize_us={} event_to_emit_ms={} max_event_to_emit_ms={}",
+            let mut line = format!(
+                "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} \
+                 make_update_us={} serialize_us={} event_to_emit_ms={} \
+                 max_event_to_emit_ms={}",
                 self.rev,
                 batch_events,
                 encoded.len(),
@@ -296,8 +313,23 @@ impl Kernel {
                 this_serialize_us,
                 last_event_to_emit_ms
                     .map_or_else(|| "none".to_string(), |value| value.to_string()),
-                self.max_event_to_emit_ms
-            ));
+                self.max_event_to_emit_ms,
+            );
+            // ADR-0055 Rung 0: churn fields are the empirical anchor, emitted
+            // only in `test-support` builds (production does no measurement).
+            // `projection_count` = total typed projections serialized this tick.
+            // `changed_projection_count` = those whose payload actually changed
+            //   vs the previous tick. `wasted_bytes` = bytes spent re-serializing
+            //   unchanged projections.
+            #[cfg(any(test, feature = "test-support"))]
+            {
+                let wasted_bytes = churn.total_bytes.saturating_sub(churn.changed_bytes);
+                line.push_str(&format!(
+                    " projection_count={} changed_projection_count={} wasted_bytes={}",
+                    churn.total, churn.changed, wasted_bytes
+                ));
+            }
+            self.log(line);
         }
         self.events_since_last_update = 0;
         self.changed_since_emit = false;

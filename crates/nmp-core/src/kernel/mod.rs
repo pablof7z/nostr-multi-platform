@@ -273,6 +273,8 @@ mod typed_projections_wave_c_tests;
 mod types;
 mod update;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
+#[cfg(any(test, feature = "test-support"))]
+pub use update::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
 #[cfg(test)]
 mod v66_no_configured_relays_tests;
 #[cfg(test)]
