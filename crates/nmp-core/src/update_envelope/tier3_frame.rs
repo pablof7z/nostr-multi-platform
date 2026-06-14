@@ -44,6 +44,15 @@ pub(crate) struct FrameEpochStamp {
 /// (`snapshot_epoch` + `session_id`) so old readers ignore them (tail-appended
 /// on the wire) while Rung-2 hosts decode and store them for future use.
 ///
+/// ADR-0055 Rung 3 (D3-6): `builder` is the kernel-owned reusable
+/// `FlatBufferBuilder`. It is `reset()` at the top of this function so the
+/// kernel can hold one builder across ticks and avoid per-tick heap allocation.
+/// The returned `UpdateFrameBytes` (`Vec<u8>`) owns its bytes independently —
+/// `to_vec()` copies the finished buffer out before this function returns, so
+/// the builder buffer is free to reuse on the next tick. No pointer, slice, or
+/// FlatBuffers offset into the builder's internal buffer may be retained past
+/// this function's return (the builder is single-writer on the actor thread).
+///
 /// All Rust shells read typed-first; the deprecated `payload` field is absent in
 /// the wire bytes. The `snapshot: Value` parameter has been removed — the kernel
 /// no longer needs to serialise the full JSON snapshot for transport. The field
@@ -51,15 +60,23 @@ pub(crate) struct FrameEpochStamp {
 /// compatibility with old pre-PR-B binaries; new readers never read it.
 #[must_use]
 pub(crate) fn encode_snapshot_with_envelope(
+    builder: &mut FlatBufferBuilder<'_>,
     typed: &[TypedProjectionData],
     envelope: &crate::kernel::KernelSnapshot,
     epoch: &FrameEpochStamp,
 ) -> UpdateFrameBytes {
-    let mut builder = FlatBufferBuilder::new();
-    let typed_projections = encode_typed_projections(&mut builder, typed);
-    let tier3 = envelope.encode_tier3(&mut builder);
+    // ADR-0055 Rung 3 (D3-6): reset the reused builder in place of
+    // `FlatBufferBuilder::new()`. This preserves the internal heap allocation
+    // across ticks (capacity is stable after the first tick warms up), so each
+    // 4 Hz encode avoids a fresh heap allocation. The `to_vec()` at the end of
+    // this function copies the finished bytes into an owned `Vec<u8>` BEFORE
+    // this reset is invoked on the next tick — no caller may retain a borrow
+    // into the builder buffer past the return of this function.
+    builder.reset();
+    let typed_projections = encode_typed_projections(builder, typed);
+    let tier3 = envelope.encode_tier3(builder);
     let snapshot = fb::SnapshotFrame::create(
-        &mut builder,
+        builder,
         &fb::SnapshotFrameArgs {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             // PR-B: the deprecated `payload:Value` slot no longer exists in
@@ -89,13 +106,18 @@ pub(crate) fn encode_snapshot_with_envelope(
         },
     );
     let root = fb::UpdateFrame::create(
-        &mut builder,
+        builder,
         &fb::UpdateFrameArgs {
             kind: fb::FrameKind::Snapshot,
             snapshot: Some(snapshot),
             panic: None,
         },
     );
-    fb::finish_update_frame_buffer(&mut builder, root);
+    fb::finish_update_frame_buffer(builder, root);
+    // ADR-0055 Rung 3 (D3-6): copy the finished bytes OUT of the builder
+    // buffer into an owned Vec<u8> BEFORE this function returns. The builder
+    // will be reset() on the next encode call; no reference into its internal
+    // buffer may survive past here. This is the single ownership transfer point
+    // that makes the reuse pattern safe.
     builder.finished_data().to_vec()
 }

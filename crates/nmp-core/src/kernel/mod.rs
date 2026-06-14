@@ -1295,6 +1295,7 @@ pub struct Kernel {
     /// it is truncated; read by the shape-only `watermark_fn` / `shape_floor`. See
     /// [`Kernel::recompute_truncated_query_keys`].
     pub(in crate::kernel) etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>>,
+    snapshot_builder: flatbuffers::FlatBufferBuilder<'static>, // Rung 3 D3-6: reset+to_vec pattern
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -2017,8 +2018,6 @@ impl Kernel {
             configured_relays: Vec::new(),
             action_stages: action_stages::ActionStageTracker::new(),
             action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
-            // Per-tick typed-sidecar capture slots — empty until the first
-            // `make_update` writes them at the JSON-insertion site (Wave C).
             captured_action_results: None,
             captured_signed_events: None,
             captured_action_stages: None,
@@ -2052,6 +2051,7 @@ impl Kernel {
             pending_cache_serves: VecDeque::new(),
             etag_ptag_truncated_serves,
             etag_ptag_truncated_query_keys,
+            snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {

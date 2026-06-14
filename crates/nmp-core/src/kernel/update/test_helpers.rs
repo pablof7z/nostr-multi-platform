@@ -50,7 +50,9 @@ impl Kernel {
         let manifest = self.projection_manifest();
         let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
         let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
-        let frame = encode_snapshot_with_envelope(&typed, &update, &epoch_stamp);
+        // ADR-0055 Rung 3 (D3-6): pass the kernel-owned reusable builder,
+        // matching the production path in `make_update`.
+        let frame = encode_snapshot_with_envelope(&mut self.snapshot_builder, &typed, &update, &epoch_stamp);
         // Advance the tracker's last-emitted baseline so the next tick's presence
         // computation is accurate (matches the production path).
         rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
