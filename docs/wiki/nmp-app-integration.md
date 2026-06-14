@@ -8,13 +8,15 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:da6b1d73-e1c8-4765-8ac7-056aa90fc154
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:bf035812-6f7a-46ec-a11d-30fc7369342f
+  - session:019ec57a-fb01-7081-80c8-d7107f302049
 ---
 
 # NMP App Integration
@@ -95,6 +97,8 @@ The Compose profile components (NostrAvatar, NostrProfileName, KernelProfileHost
 
 Desktop (egui) and web (SolidJS) are framework-blocked for NMP component reuse — desktop because registry components are iced (not egui), web because there is no web registry target. The Chirp Android APK unconditionally builds with `--features marmot` (MLS), confirmed at `android/app/build.gradle.kts:79`. <!-- [^da6b1-56] -->
 
+
+A feature belongs in an NMP crate when it is a general building block that any Nostr app could use directly; app-specific logic belongs in the app's own Rust crates under apps/<app>/. The line for crate placement is not protocol vs. product but generic Nostr building block vs. this app's proprietary domain. <!-- [^019ec-18] -->
 ## MLS Key Package Autopublish
 
 All local-key sign-in paths (nsec sign-in, account creation, keyring restore) set the pending_mls_autopublish flag, and the autopublish tail is hoisted into the shared register_with_keys so every register path publishes a key package. The set_pending_mls_autopublish setter is pub(crate) and centralized into NmpApp::add_signer (D4 single-writer); tests exercise the real nmp_app_signin_nsec entry point. <!-- [^78c8e-72] -->
@@ -102,3 +106,5 @@ All local-key sign-in paths (nsec sign-in, account creation, keyring restore) se
 ## Interest Enforcement
 
 Interest declaration must be enforced at the nmp-defaults builder layer (mandatory for apps), while the kernel primitive remains permissive (legitimate for test/embedded Rust callers). <!-- [^78c8e-110] -->
+
+Interest declaration must be enforced at the nmp-defaults builder layer (mandatory for apps), while the kernel primitive remains permissive (legitimate for test/embedded Rust callers). Malicious/untrusted-hosting security doctrine is not needed at the NMP level because the app is already trusted by the user; if napplet/runtime hosting is ever built, the security layer goes at that level. <!-- [^bf035-166] -->

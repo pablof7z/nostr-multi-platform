@@ -41,7 +41,7 @@ use nmp_signers::Signer;
 #[cfg(target_arch = "wasm32")]
 use crate::protocol::{AppAction, CapabilityFailure, WorkerEvent};
 #[cfg(target_arch = "wasm32")]
-use nmp_network::browser_driver::BrowserRelayDriver;
+use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 #[cfg(target_arch = "wasm32")]
 use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 
@@ -182,12 +182,12 @@ fn is_hex_pubkey(v: &str) -> bool {
 }
 
 // The fan-out helper previously lived here with a `.find()` loop (first
-// matching driver only), which dropped frames addressed to `"both"`-role
-// URLs that spawn two drivers sharing the same relay URL (issue #1143 fix 2).
-// It has been unified into `crate::relay_pool::fan_out_outbound`, which uses
-// `.filter()` so every matching driver receives the frame.  All callers
-// (`tick::start_tick_interval`, `runtime::WasmRuntime::fan_outbound`, and
-// `publish_app_action` below) now route through that single implementation.
+// matching driver only). It has been unified into
+// `crate::relay_pool::fan_out_outbound`, which is now URL-keyed (one driver
+// per relay URL) and spawns a driver on demand for any kernel-targeted URL
+// not yet in the pool. All callers (`tick::start_tick_interval`,
+// `runtime::WasmRuntime::fan_outbound`, and `publish_app_action` below) route
+// through that single implementation.
 
 /// Shared sign-and-publish tail for all [`publish_app_action`] arms.
 ///
@@ -212,6 +212,7 @@ async fn sign_and_publish(
     correlation_id: String,
     reducer: Rc<RefCell<KernelReducer>>,
     drivers: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
+    handlers_slot: Rc<RefCell<Option<BrowserKernelHandlers>>>,
     snapshot_callback: Rc<RefCell<Option<js_sys::Function>>>,
     meta: Rc<RefCell<RuntimeMeta>>,
 ) -> WorkerEvent {
@@ -229,7 +230,7 @@ async fn sign_and_publish(
         let mut r = reducer.borrow_mut();
         r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
     };
-    crate::relay_pool::fan_out_outbound(&drivers, &outbound);
+    crate::relay_pool::fan_out_outbound(&drivers, &handlers_slot, &outbound);
     push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
     WorkerEvent::ActionAccepted {
         action_type,

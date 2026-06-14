@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -16,14 +16,16 @@ sources:
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:019ec57a-fb01-7081-80c8-d7107f302049
 ---
 
 # CI Gates
 
 ## Test Plan
 
-CI must include `cargo test -p nmp-app-template` and `cargo build --workspace --examples` in the test plan to prevent the example-compile gap class that let a `pub(crate)` visibility slip through twice. <!-- [^da6b1-12] -->
+CI must include `cargo test -p nmp-app-template` and `cargo build --workspace --examples` in the test plan to prevent the example-compile gap class that let a `pub(crate)` visibility slip through twice. Local cargo test validation must be scoped to the crates touched, not the whole workspace; `cargo test --workspace` is reserved for the merging agent and CI only. `cargo test -p nmp-testing --test doctrine_lint_smoke` must be run as an always-on local gate because doctrine rules trip silently in plain scoped test runs. `cargo build --workspace` must be run as a compile-only check whenever a public symbol is renamed, a module is moved, a Cargo.toml dep path is changed, or a workspace member is added.
 
+<!-- citations: [^da6b1-12] [^019ec-3] -->
 ## File-Size Gate
 
 The file-size gate requires splitting files approaching 500 LOC rather than bumping baselines, enforced by `check-file-size.sh` with a no-debt doctrine. File-size ratchet violations must be resolved by extracting cohesive modules (not raising baselines). New test files must also be split into separate submodules when they would push a file past the 500-LOC hard cap. A pre-emptive split of test files hovering near the 500-LOC cap eliminates the recurring round-trip where every fix PR tips a file over and needs a split before merge. PR #1295 extracts `settings_view` and `diagnostics_panel` (361 lines) from `app.rs` into a new `settings.rs`, reducing `app.rs` from 2172 to 801 lines (the split was needed for the file-size gate, though the file remains above the 500-line baseline). The push-event file-size CI workflow has a known gap: force-pushed branches produce a red check because the orphaned before SHA is unavailable in the clone; this should be fixed to fall back to the merge-base or skip with a notice.
@@ -31,9 +33,9 @@ The file-size gate requires splitting files approaching 500 LOC rather than bump
 <!-- citations: [^da6b1-13] [^02745-2] [^02745-28] [^02745-50] [^78c8e-45] -->
 ## Pre-existing CI Breakages
 
-The `committed_registry_json_matches_generated_output` CI test currently fails on master (registry.json stale), causing `cargo test` red on multiple PRs that don't touch registry code; this is a pre-existing breakage. The AI architecture signoff CI check (#1267) is RED due to a bad `OPENAI_API_KEY` and is explicitly ignored per standing instructions. (Previously: The 'AI architecture signoff' CI check was a known-broken gate due to a bad `OPENAI_API_KEY` (#1267) and must be ignored when gating PR merges.) The podcast-player TestFlight pipeline has never shipped because CI never built the Rust core for the simulator architecture, causing an undefined symbol `_nmp_free_string` link failure that gated off the deploy step for 40 consecutive runs; PR #429 fixes this by prepending the sim-arch Rust build. (Previously: The podcast-player TestFlight pipeline failed for 40 consecutive runs because CI never built the Rust core for the simulator architecture, causing an undefined-symbol link failure that gated off the deploy job.) The compound `&&` merge command pattern swallowed exit codes and merged PR #1165 with a failing check; merges must gate on explicit pass/nonpass counts, never chain push after piped check. When merging any PR, the full cargo test lane must complete green before merging — 'no failures yet' does not constitute a passed check. (Previously: 'no failures yet' did not constitute a passed check; lesson from #1302 breaking master by merging on incomplete CI.) Ten of eleven needs-decision issues are determined by existing documented direction; only #1281 (whether `since=None` interests should be exempted from the T129 watermark rewrite) genuinely requires owner input.
+The `committed_registry_json_matches_generated_output` CI test currently fails on master (registry.json stale), causing `cargo test` red on multiple PRs that don't touch registry code; this is a pre-existing breakage. The AI architecture signoff CI check (#1267) is RED due to a bad `OPENAI_API_KEY` and is treated as infrastructure noise for merge decisions. (Previously: The 'AI architecture signoff' CI check was a known-broken gate due to a bad `OPENAI_API_KEY` (#1267) and must be ignored when gating PR merges.) The podcast-player TestFlight pipeline has never shipped because CI never built the Rust core for the simulator architecture, causing an undefined symbol `_nmp_free_string` link failure that gated off the deploy step for 40 consecutive runs; PR #429 fixes this by prepending the sim-arch Rust build. (Previously: The podcast-player TestFlight pipeline failed for 40 consecutive runs because CI never built the Rust core for the simulator architecture, causing an undefined-symbol link failure that gated off the deploy job.) The compound `&&` merge command pattern swallowed exit codes and merged PR #1165 with a failing check; merges must gate on explicit pass/nonpass counts, never chain push after piped check. When merging any PR, the full cargo test lane must complete green before merging — 'no failures yet' does not constitute a passed check. (Previously: 'no failures yet' did not constitute a passed check; lesson from #1302 breaking master by merging on incomplete CI.) Ten of eleven needs-decision issues are determined by existing documented direction; only #1281 (whether `since=None` interests should be exempted from the T129 watermark rewrite) genuinely requires owner input.
 
-<!-- citations: [^da6b1-14] [^02745-3] [^02745-29] [^02745-51] [^da6b1-44] [^da6b1-65] [^02745-115] [^02745-126] -->
+<!-- citations: [^da6b1-14] [^02745-3] [^02745-29] [^02745-51] [^da6b1-44] [^da6b1-65] [^02745-115] [^02745-126] [^019ec-4] -->
 ## Android CI Gate
 
 An Android `--features marmot` build was broken by a missing vendored OpenSSL dependency (libsqlite3-sys bundled-sqlcipher-vendored-openssl), a missing `zeroize` std feature, and a missing import—all uncaught by CI because the featureless lane was green. A CI gate was added to prevent regression. The `NMP_MARMOT_MOCK_KEYRING=1` environment variable remains as an escape hatch for headless/CI/repl contexts, unconditionally installing the in-memory mock store.

@@ -30,32 +30,64 @@ use crate::protocol::RelayBootstrapEntry;
 use crate::runtime::WasmRuntimeError;
 use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 
-/// Fan an outbound batch back to the driver(s) whose URL matches each
-/// message. Used by every kernel-handler closure (connected/text/binary)
-/// after the kernel returns a non-empty outbound queue, and by the tick
-/// path and publish path after kernel pump calls.
+/// Fan an outbound batch to the driver whose URL matches each message,
+/// spawning a driver on demand for any kernel-targeted URL not yet in the
+/// pool. Used by every kernel-handler closure (connected/text/binary), the
+/// 1 Hz tick path (`tick::start_tick_interval`), and the write publish path.
 ///
-/// A single bootstrap URL can map to multiple drivers when the role string
-/// is `"both,indexer"` (one Content lane + one Indexer lane share the same
-/// WebSocket target). The outbound is fanned to **all** matching drivers,
-/// not just the first, so each lane sees the frame and the kernel's
-/// per-lane `RelayHealth` counters stay accurate. A miss drops the frame
-/// (the relay is not in our bootstrap — fabricating a socket would violate
-/// the host's relay-policy declaration).
+/// One driver per URL (relay pool is now URL-keyed — see
+/// [`crate::relay_plan`]), so each message goes to the single matching driver;
+/// there is no per-lane duplicate to fan to.
 ///
-/// This is the single canonical fan-out implementation shared by the
-/// relay-pool sink, the 1 Hz tick path (`tick::start_tick_interval`), and
-/// the write publish path (`publish_path::publish_app_action`). It
-/// replaces the former `publish_path::fan_out_outbound` which used
-/// `.find()` (first match only) and therefore dropped frames on
-/// `"both"`-role URLs (issue #1143 fix 2).
+/// # Spawn-on-miss — the kernel owns socket lifecycle
+///
+/// When the kernel emits an `OutboundMessage` for a URL the pool has not
+/// opened yet, this **spawns** a driver for it rather than dropping the frame
+/// — mirroring the native actor's `send_outbound`, which calls
+/// `ensure_relay_worker` for any new target URL. This is what lets the kernel
+/// own the "which relays to dial" decision on web exactly as it does on
+/// native: the kernel discovers relays (NIP-65 mailboxes, event-tag hints)
+/// and targets them; the transport merely obeys.
+///
+/// The transport trusts the URL without re-checking admission: the router
+/// already applies `RelayAdmissionPolicy` on the untrusted lanes (NIP-65
+/// mailbox, hints, provenance) and filters per-account blocked relays BEFORE
+/// an `OutboundMessage` exists, so every URL reaching here is already
+/// admissible. (Native's `send_outbound` likewise carries no admission check.)
+/// The spawned driver reports inbound frames under the message's role.
+///
+/// A spawn needs the `handlers` slot populated — the runtime fills it in
+/// `spawn_relay_drivers` before any callback can fire. If it is empty (pool
+/// not started) or the URL fails to dial (unparseable), the frame is dropped,
+/// preserving the prior no-fabrication semantics for those edge cases.
+///
+/// # Reentrancy / borrow safety
+///
+/// `BrowserRelayDriver::new` dials synchronously, but its JS `onopen` /
+/// `onmessage` closures cannot fire until control returns to the event loop,
+/// so no nested `fan_out_outbound` runs while a `borrow`/`borrow_mut` here is
+/// held. Each `drivers` borrow is scoped to a single statement.
 pub(crate) fn fan_out_outbound(
     drivers: &Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
+    handlers: &Rc<RefCell<Option<BrowserKernelHandlers>>>,
     outbound: &[OutboundMessage],
 ) {
-    let drivers = drivers.borrow();
     for message in outbound {
-        for driver in drivers.iter().filter(|d| d.url() == message.relay_url()) {
+        let url = message.relay_url();
+        let known = drivers.borrow().iter().any(|driver| driver.url() == url);
+        if !known {
+            // Spawn-on-miss: the kernel targeted a URL not yet in the pool.
+            let Some(handlers) = handlers.borrow().as_ref().cloned() else {
+                // Pool not started (no handler bag) — preserve drop semantics.
+                continue;
+            };
+            match BrowserRelayDriver::new(url.to_string(), message.role(), handlers) {
+                Ok(driver) => drivers.borrow_mut().push(driver),
+                // Unparseable/invalid URL — nothing safe to dial; drop it.
+                Err(_err) => continue,
+            }
+        }
+        for driver in drivers.borrow().iter().filter(|driver| driver.url() == url) {
             let _ = driver.send_text(message.text());
         }
     }
@@ -93,21 +125,28 @@ pub(crate) fn build_handlers(
     snapshot_callback: Rc<RefCell<Option<js_sys::Function>>>,
     reducer: Rc<RefCell<KernelReducer>>,
     meta: Rc<RefCell<RuntimeMeta>>,
+    handlers_slot: Rc<RefCell<Option<BrowserKernelHandlers>>>,
 ) -> BrowserKernelHandlers {
-    // Each closure clones the four `Rc` handles it needs. The driver invokes
-    // them with `&str` URLs (we copy into owned `String` only where the
-    // kernel API requires it, which today is zero places — every kernel
-    // entrypoint takes `&str` directly).
+    // Each closure clones the `Rc` handles it needs. The driver invokes them
+    // with `&str` URLs (we copy into owned `String` only where the kernel API
+    // requires it, which today is zero places — every kernel entrypoint takes
+    // `&str` directly). `handlers_slot` is the self-referential bag the runtime
+    // populates with these very handlers after `build_handlers` returns; the
+    // closures pass it to `fan_out_outbound` so a kernel frame that targets a
+    // not-yet-open URL can spawn a driver on demand (the slot is non-empty by
+    // the time any callback can fire — see the ordering invariant on
+    // `spawn_drivers`).
     let on_connected = {
         let drivers = Rc::clone(&drivers);
         let reducer = Rc::clone(&reducer);
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
+        let handlers_slot = Rc::clone(&handlers_slot);
         Rc::new(move |role: RelayRole, url: &str, is_reconnect: bool| {
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_connected(role, url, is_reconnect);
-            fan_out_outbound(&drivers, &outbound);
+            fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }) as Rc<dyn Fn(RelayRole, &str, bool)>
     };
@@ -117,11 +156,12 @@ pub(crate) fn build_handlers(
         let reducer = Rc::clone(&reducer);
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
+        let handlers_slot = Rc::clone(&handlers_slot);
         Rc::new(move |role: RelayRole, url: &str, text: String| {
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_frame(role, url, RelayFrame::Text(text));
-            fan_out_outbound(&drivers, &outbound);
+            fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }) as Rc<dyn Fn(RelayRole, &str, String)>
     };
@@ -131,11 +171,12 @@ pub(crate) fn build_handlers(
         let reducer = Rc::clone(&reducer);
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
+        let handlers_slot = Rc::clone(&handlers_slot);
         Rc::new(move |role: RelayRole, url: &str, bytes: Vec<u8>| {
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_frame(role, url, RelayFrame::Binary(bytes));
-            fan_out_outbound(&drivers, &outbound);
+            fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }) as Rc<dyn Fn(RelayRole, &str, Vec<u8>)>
     };
@@ -184,56 +225,22 @@ pub(crate) fn build_handlers(
     }
 }
 
-/// Map a [`RelayBootstrapEntry::role`] string to the diagnostic lanes the
-/// driver pool should open for that URL.
-///
-/// V-01 Stage 3c — parses the same `RelayRole`-bearing role grammar the
-/// native bootstrap uses (see `nmp-core/src/relay.rs`). The role grammar is
-/// host-supplied via `StartConfig.relay_bootstrap`; the framework defines no
-/// relay defaults of its own:
-///
-/// | role string                | lanes spawned                  |
-/// |----------------------------|--------------------------------|
-/// | `"content"`                | `[Content]`                    |
-/// | `"indexer"`                | `[Indexer]`                    |
-/// | `"both"` / `"both,indexer"`| `[Content, Indexer]`           |
-/// | anything else (incl. `""`) | `[Content]` (safe fallback)    |
-///
-/// Case-insensitive; surrounding whitespace is trimmed. Returns a
-/// `&'static` slice so the caller does not allocate per-entry — the four
-/// outcomes cover the entire `RelayRole::all()` bootstrap surface
-/// (`Wallet` spawns on demand, not at startup).
-///
-/// Substrate-grade (D0): the helper carries no app/protocol nouns and
-/// rejects nothing — unrecognized strings fall back to `Content` so a
-/// future role token does not silently drop a relay from the pool.
-fn roles_for_entry(role_str: &str) -> &'static [RelayRole] {
-    const CONTENT_ONLY: &[RelayRole] = &[RelayRole::Content];
-    const INDEXER_ONLY: &[RelayRole] = &[RelayRole::Indexer];
-    const BOTH_LANES: &[RelayRole] = &[RelayRole::Content, RelayRole::Indexer];
-
-    match role_str.trim().to_ascii_lowercase().as_str() {
-        "indexer" => INDEXER_ONLY,
-        "both" | "both,indexer" => BOTH_LANES,
-        // "content" and every unrecognized value — safe fallback so a
-        // typo or future-protocol role token never drops the relay.
-        _ => CONTENT_ONLY,
-    }
-}
-
-/// Instantiate one [`BrowserRelayDriver`] per (URL, role) pair derived from
+/// Instantiate one [`BrowserRelayDriver`] per **distinct URL** derived from
 /// the bootstrap entries, wiring each driver's kernel handlers through the
 /// shared callback bag. Returns the populated driver list ready to move
 /// into the runtime's relay slot.
 ///
-/// V-01 Stage 3c — role assignment now honors the role string instead of
-/// hardcoding [`RelayRole::Content`] for every entry. A `"both,indexer"`
-/// URL spawns two drivers (one Content, one Indexer) sharing the same
-/// `relay_url`, so kernel-side `RelayHealth` rows for the Indexer lane
-/// observe their own connect/EOSE/NOTICE counters instead of being
-/// mis-bucketed under Content. Wire-path correctness was never at stake —
-/// the kernel routes outbound by URL (T105) — only the per-lane
-/// diagnostics surface.
+/// One socket per URL — native parity. A `"both,indexer"` URL yields a
+/// **single** driver, recorded under the native first-role-wins primary
+/// (`Content`), not two. The native pool keys sockets by URL alone
+/// (`nmp_network::pool::ensure_open` ignores the role once a URL is open), so
+/// per-`(URL, role)` drivers were a wasm-only divergence that opened duplicate
+/// WebSockets to the same host. Inbound role is diagnostics-only (the kernel
+/// ingests events identically regardless of role and routes outbound purely by
+/// URL), and the host's full declared role set still reaches the UI via the
+/// kernel's `configured_relays` projection — so collapsing is
+/// behaviour-preserving. The dedup/role-collapse decision lives in the
+/// always-compiled, native-tested [`crate::relay_plan::plan_drivers`].
 ///
 /// # Ordering invariant
 ///
@@ -252,22 +259,17 @@ pub(crate) fn spawn_drivers(
     bootstrap: &[RelayBootstrapEntry],
     handlers: BrowserKernelHandlers,
 ) -> Result<Vec<Rc<BrowserRelayDriver>>, WasmRuntimeError> {
-    // Reserve room for the worst case (every entry expands to two lanes)
-    // so the per-entry inner loop never reallocates mid-spawn.
-    let mut drivers = Vec::with_capacity(bootstrap.len() * 2);
-    for entry in bootstrap {
-        for &role in roles_for_entry(&entry.role) {
-            let driver =
-                BrowserRelayDriver::new(entry.url.clone(), role, handlers.clone()).map_err(
-                    |err| {
-                        WasmRuntimeError::InvalidConfig(format!(
-                            "failed to open WebSocket to {}: {err:?}",
-                            entry.url
-                        ))
-                    },
-                )?;
-            drivers.push(driver);
-        }
+    let plans = crate::relay_plan::plan_drivers(bootstrap);
+    let mut drivers = Vec::with_capacity(plans.len());
+    for plan in plans {
+        let driver = BrowserRelayDriver::new(plan.url.clone(), plan.primary_role, handlers.clone())
+            .map_err(|err| {
+                WasmRuntimeError::InvalidConfig(format!(
+                    "failed to open WebSocket to {}: {err:?}",
+                    plan.url
+                ))
+            })?;
+        drivers.push(driver);
     }
     Ok(drivers)
 }

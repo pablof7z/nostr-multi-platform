@@ -68,6 +68,7 @@ pub(crate) fn tick_once(
 pub(crate) fn start_tick_interval(
     reducer: Rc<RefCell<KernelReducer>>,
     drivers: Rc<RefCell<Vec<Rc<nmp_network::browser_driver::BrowserRelayDriver>>>>,
+    handlers_slot: Rc<RefCell<Option<nmp_network::browser_driver::BrowserKernelHandlers>>>,
     snapshot_callback: Rc<RefCell<Option<js_sys::Function>>>,
     meta: Rc<RefCell<crate::snapshot::RuntimeMeta>>,
     post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
@@ -77,8 +78,9 @@ pub(crate) fn start_tick_interval(
         // before this closure continues — the post-tick drain is therefore
         // safe to call here without a RefCell panic.
         let (outbound, dirty) = tick_once(&reducer);
-        // Step 2: fan outbound relay frames (canonical fan-out via relay_pool).
-        crate::relay_pool::fan_out_outbound(&drivers, &outbound);
+        // Step 2: fan outbound relay frames (canonical fan-out via relay_pool;
+        // spawns drivers on demand for kernel-discovered relay URLs).
+        crate::relay_pool::fan_out_outbound(&drivers, &handlers_slot, &outbound);
         // Step 3: post-tick drain (PR-4). Runs AFTER the reducer borrow
         // from tick_once is fully released, so the drain closure can safely
         // call reducer.borrow_mut() to process queued claim/release requests.

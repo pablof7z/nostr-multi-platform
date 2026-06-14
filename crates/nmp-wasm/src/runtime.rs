@@ -26,7 +26,7 @@ use nmp_signers::Signer;
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
 #[cfg(target_arch = "wasm32")]
-use nmp_network::browser_driver::BrowserRelayDriver;
+use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 
 use crate::dispatch_routing::{
     browser_driver_missing_reason, claim_dispatch_from_action, execute_claim_dispatch,
@@ -92,10 +92,19 @@ pub struct WasmRuntime {
     /// PR-4 post-tick drain — fired AFTER `tick_once`'s `borrow_mut` drops.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
-    /// Live `web_sys::WebSocket` drivers — one per relay URL in the bootstrap.
-    /// `wasm32`-only: native tests never construct drivers.
+    /// Live `web_sys::WebSocket` drivers — one per relay URL. Seeded from the
+    /// bootstrap at `Start`, then grown on demand: a kernel frame targeting a
+    /// not-yet-open URL spawns a driver via `fan_out_outbound`. `wasm32`-only:
+    /// native tests never construct drivers.
     #[cfg(target_arch = "wasm32")]
     relays: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
+    /// The kernel-handler callback bag, shared back into the relay-pool fan-out
+    /// so on-demand driver spawns wire up identical kernel callbacks. Populated
+    /// in `spawn_relay_drivers` after `build_handlers` returns (the closures
+    /// capture this slot while it is still empty — safe per the `spawn_drivers`
+    /// ordering invariant) and cleared on `Stop`. `wasm32`-only.
+    #[cfg(target_arch = "wasm32")]
+    handlers_slot: Rc<RefCell<Option<BrowserKernelHandlers>>>,
     /// PR-2 — 1 Hz tick timer. Dropping cancels the JS `setInterval`.
     /// `start()` fills it; `stop()` clears it. `wasm32`-only.
     #[cfg(target_arch = "wasm32")]
@@ -112,6 +121,8 @@ impl Default for WasmRuntime {
             post_tick_drain: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
+            #[cfg(target_arch = "wasm32")]
+            handlers_slot: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             tick_interval: None,
         }
@@ -266,6 +277,7 @@ impl WasmRuntime {
             self.tick_interval = Some(crate::tick::start_tick_interval(
                 Rc::clone(&self.reducer),
                 Rc::clone(&self.relays),
+                Rc::clone(&self.handlers_slot),
                 Rc::clone(&self.snapshot_callback),
                 Rc::clone(&self.meta),
                 Rc::clone(&self.post_tick_drain),
@@ -292,6 +304,12 @@ impl WasmRuntime {
         // want to settle observers on.
         #[cfg(target_arch = "wasm32")]
         relay_pool::close_drivers(&self.relays);
+        // Drop the handler bag so any late callback cannot spawn a driver into
+        // a stopped pool, and a subsequent `Start` rebuilds it cleanly.
+        #[cfg(target_arch = "wasm32")]
+        {
+            *self.handlers_slot.borrow_mut() = None;
+        }
 
         let stopped = self.reducer.borrow_mut().reduce(KernelAction::Stop);
         match stopped {
@@ -326,7 +344,14 @@ impl WasmRuntime {
             Rc::clone(&self.snapshot_callback),
             Rc::clone(&self.reducer),
             Rc::clone(&self.meta),
+            Rc::clone(&self.handlers_slot),
         );
+        // Publish the handler bag so on-demand spawns (`fan_out_outbound`'s
+        // spawn-on-miss) wire up identical callbacks. The bag's closures
+        // captured `handlers_slot` while it was empty; populating it now is
+        // safe because no JS callback can fire until control returns to the
+        // event loop, after the bootstrap drivers below are installed.
+        *self.handlers_slot.borrow_mut() = Some(handlers.clone());
         let drivers = relay_pool::spawn_drivers(&self.meta.borrow().relay_bootstrap, handlers)?;
         *self.relays.borrow_mut() = drivers;
         Ok(())
@@ -372,7 +397,7 @@ impl WasmRuntime {
     /// (native — the driver pool does not exist in test builds).
     fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
         #[cfg(target_arch = "wasm32")]
-        crate::relay_pool::fan_out_outbound(&self.relays, &outbound);
+        crate::relay_pool::fan_out_outbound(&self.relays, &self.handlers_slot, &outbound);
         #[cfg(not(target_arch = "wasm32"))]
         let _ = outbound;
     }

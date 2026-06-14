@@ -17,6 +17,11 @@ pub mod protocol;
 // constructs a relay pool directly — the runtime owns the lifecycle.
 #[cfg(target_arch = "wasm32")]
 mod relay_pool;
+// Pure relay-driver planning (one socket per URL). Always-compiled so the
+// dedup/role-collapse logic is unit-tested on native CI, even though the
+// `relay_pool` consumer that turns plans into live `BrowserRelayDriver`s is
+// wasm32-only.
+mod relay_plan;
 mod runtime;
 // V-01 Stage 3b — signer install path + snapshot push helpers. Both modules
 // are always-compiled (no `cfg(wasm32)`): the signer slot is a `Signer`

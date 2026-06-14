@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -16,6 +16,7 @@ sources:
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
+  - session:bf035812-6f7a-46ec-a11d-30fc7369342f
 ---
 
 # NMP FFI Surface
@@ -84,3 +85,7 @@ Android --features marmot must compile in CI (cargo check --features marmot in t
 ## Push-Event File-Size CI Orphan Handling
 
 The push-event file-size CI workflow should fall back to the merge-base (or skip with a notice) when the before SHA is orphaned after a rebase, instead of reporting a permanent red that reviewers learn to ignore. <!-- [^78c8e-90] -->
+
+## WASM Spec Location
+
+The WASM spec (ADR-0047, wasm-surface.md) belongs at the framework level, not under the chirp example app's design docs. <!-- [^bf035-167] -->

@@ -8,12 +8,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:da6b1d73-e1c8-4765-8ac7-056aa90fc154
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:bf035812-6f7a-46ec-a11d-30fc7369342f
 ---
 
 # Chirp Migration
@@ -64,6 +65,12 @@ Desktop chirp-desktop never calls nmp_app_ack_action_stage, causing action_stage
 Desktop chirp-desktop leaves the nsec in three plain heap allocations (fs::read_to_string, KeyringResult, serde_json serialization) with no zeroization; the nsec is also persisted as a plaintext file at mode 0600 under ~/Library/Application Support/chirp-desktop/sessions/. It must wrap keyring secret intermediates in Zeroizing<String> to prevent nsec strings from persisting in plain heap allocations across multiple copies.
 
 Desktop chirp-desktop double-rends every note card body on every frame (ui.label at line 1054 followed by note_body at line 1059) and contains dead effective_content code that JSON-parses kind:6 content the kernel already unwraps at projection time. It must remove the duplicate ui.label(text.as_ref()) call at app.rs:1054 that renders every note card body twice per frame alongside the note_body rich-text render.
+
+Chirp Web must be simple in implementation terms — if it becomes complex, something is wrong in a lower layer that must be fixed at that layer. <!-- [^bf035-161] -->
+
+Content rendering in the web uses ContentTreeWire (NFCT) bytes already present in every TimelineEventCard inside the NOFS feed projection — no new schema/kernel/drift work needed for content, only TypeScript decode and render. The kernel's ContentTreeWire (NFCT) bytes are already present in every TimelineEventCard inside the NOFS feed projection that the web decodes; the web was just ignoring them and rendering plaintext. <!-- [^bf035-162] -->
+
+Quoted-event embed cards in Chirp require decoding the claimed_events (KCEV) projection, claiming referenced events, and wiring EventRefNode to render as a card rather than a raw nostr: link. <!-- [^bf035-163] -->
 
 <!-- citations: [^da6b1-11] [^02745-24] [^02745-25] [^02745-26] [^02745-27] [^02745-79] [^da6b1-80] -->
 ## Cross-Platform Parity
