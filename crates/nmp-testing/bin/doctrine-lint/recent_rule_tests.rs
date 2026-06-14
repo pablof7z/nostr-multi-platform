@@ -200,3 +200,135 @@ fn wasm_reachable_crates_are_d20_clean() {
         let _ = code;
     }
 }
+
+// ─── D21 (no ambient authority — K2 / ADR-0052 §D6 regression gate) ───────────
+
+#[test]
+fn d21_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d21_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d21/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D21 is path-scoped to the K2 blast-radius crates' `src/` trees — the
+    // staged fixture under `target/` falls outside that scope, so
+    // `--d21-extra-scope` opts it in (mirrors `--d20-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d21-extra-scope",
+        "doctrine_lint_d21_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d21 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D21]"),
+        "d21 positive must emit >=1 D21 finding; stdout:\n{}",
+        stdout
+    );
+    // The fixture plants 8 banned ambient-authority statics. All must surface —
+    // a regression that silently swallows one shape cannot pass this test.
+    for token in [
+        "ACTIVE_WALLET_RUNTIME",
+        "GLOBAL_BROKER",
+        "HOOK",
+        "SESSIONS",
+        "STORE",
+        "SINK",
+        "DRIVER",
+        "BROKER2",
+    ] {
+        assert!(
+            stdout.contains(token),
+            "d21 positive must name banned static `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+    let d21_count = stdout.matches("error[D21]").count();
+    assert!(
+        d21_count >= 8,
+        "d21 must flag all 8 planted ambient-authority statics; got {}; stdout:\n{}",
+        d21_count,
+        stdout
+    );
+}
+
+#[test]
+fn d21_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d21_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d21/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d21-extra-scope",
+        "doctrine_lint_d21_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d21 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D21]"),
+        "d21 negative must produce zero D21 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+/// Integration guard (K2 / ADR-0052): every K2 blast-radius crate — the crates
+/// that hosted the five deleted process-global singletons (`ACTIVE_WALLET_RUNTIME`
+/// in nmp-nip47, the bunker/NIP-55 `HOOK`s + `kernel_mut` in nmp-core,
+/// `GLOBAL_BROKER`/`GLOBAL_DRIVER` in nmp-ffi) plus the two read-once-config
+/// residuals (nmp-core wire_log, nmp-network socket_io) — must be D21-clean. If
+/// a future change reintroduces an ambient-authority `static`/`OnceLock`/`Lazy`/
+/// `lazy_static!` of a handle/runtime/sender/hook (outside `#[cfg(test)]`, a
+/// test-only file, or an explicit `// doctrine-allow: D21 — reason`), this test
+/// fails. This is the production-facing teeth of the rule that locks K2 in.
+#[test]
+fn k2_blast_radius_crates_are_d21_clean() {
+    const K2_CRATES: &[&str] = &[
+        "nmp-core",
+        "nmp-ffi",
+        "nmp-nip47",
+        "nmp-network",
+        "nmp-signer-broker",
+        "nmp-signers",
+        "nmp-signer-iface",
+    ];
+    for c in K2_CRATES {
+        let path = format!("crates/{}/src", c);
+        let (code, stdout, stderr) = run_lint(&["--path", &path]);
+        let d21_findings: Vec<&str> = stdout
+            .lines()
+            .filter(|l| l.contains("error[D21]"))
+            .collect();
+        assert!(
+            d21_findings.is_empty(),
+            "{} must be D21-clean — no ambient-authority process-globals. \
+             Thread per-app state through an `Arc`-slot instance field instead \
+             (the K2 pattern), or gate a justified residual with \
+             `// doctrine-allow: D21 — reason`. D21 findings:\n{}\nfull stdout:\n{}\nstderr:\n{}",
+            c,
+            d21_findings.join("\n"),
+            stdout,
+            stderr
+        );
+        // The lint may exit 1 because of OTHER unrelated rule findings in a
+        // crate; we only assert D21-cleanliness here, not a clean exit code.
+        let _ = code;
+    }
+}

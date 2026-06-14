@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20.
+//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20}.rs` for
+//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -64,11 +64,11 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
-use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d6, d7, d8, d9};
+use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d6, d7, d8, d9};
 use scope::{
-    a5_file_in_scope, d9_file_in_scope, d10_file_in_scope, d12_file_in_scope,
-    d13_file_extra_in_scope, d14_file_in_scope, d15_file_in_scope, d16_file_in_scope,
-    d17_file_in_scope, d19_file_in_scope, d20_file_in_scope, is_doctrine_lint_source,
+    a5_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
+    d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
+    d20_file_in_scope, d21_file_in_scope, d9_file_in_scope, is_doctrine_lint_source,
 };
 
 fn main() -> ExitCode {
@@ -139,6 +139,7 @@ fn main() -> ExitCode {
                 &cfg.d17_extra_scopes,
                 &cfg.d19_extra_scopes,
                 &cfg.d20_extra_scopes,
+                &cfg.d21_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -151,7 +152,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20"
+        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -215,6 +216,7 @@ fn scan_one_file(
     d17_extra_scopes: &[String],
     d19_extra_scopes: &[String],
     d20_extra_scopes: &[String],
+    d21_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -258,6 +260,10 @@ fn scan_one_file(
     // Scope is the wasm-reachable crates (minus the two time shims and the
     // native-only actor/relay_worker/lmdb subtrees).
     let d20_in_scope = d20_file_in_scope(path, d20_extra_scopes);
+    // D21 — no ambient authority (K2 / ADR-0052 §D6 regression gate).
+    // Scope is the K2 blast-radius crates (where the five deleted process-
+    // globals + two read-once-config residuals lived).
+    let d21_in_scope = d21_file_in_scope(path, d21_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
@@ -626,6 +632,32 @@ fn scan_one_file(
                 }
                 findings.push(report::Finding {
                     rule: d20::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D21 — no ambient authority (K2 / ADR-0052 §D6 regression gate).
+        // Bans module-/block-level `static`/`OnceLock`/`Lazy`/`lazy_static!`
+        // holding non-const, interior-mutable, process-wide authority (handles,
+        // runtimes, senders, hooks) — the shape of the five globals K2 deleted.
+        // Type-scoped: `OnceLock`/`Lazy` of plain read-once config (`bool`,
+        // `PathBuf`, `Regex`, …) is NOT authority, so the two benign residuals
+        // never trip. Scope is the K2 blast-radius crates. Test-only files
+        // (`d6_test_file`) and #[cfg(test)] bodies (`sl.in_test_cfg`) are exempt.
+        // Skipped in --workspace-d8 (no-polling sweep only). Like D10, D21 uses
+        // its OWN tightened parser [`d21::line_allows_d21`] that REQUIRES a
+        // written reason — a bare `// doctrine-allow: D21` does NOT silence it.
+        if !workspace_d8 && d21_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d21::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if d21::line_allows_d21(sl.text) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d21::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,

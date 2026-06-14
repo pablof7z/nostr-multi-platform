@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::rules::{a5, d9, d10, d12, d14, d15, d16, d17, d19, d20};
+use crate::rules::{a5, d10, d12, d14, d15, d16, d17, d19, d20, d21, d9};
 
 /// True iff D9 should scan `path` — either the file is inside a protocol/
 /// substrate crate (`d9::file_in_scope`), or the caller opted-in via
@@ -137,6 +137,20 @@ pub(crate) fn d19_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// `d19_file_in_scope`.
 pub(crate) fn d20_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d20::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D21 should scan `path` — either the file is inside a K2
+/// blast-radius crate's `src/` tree via `d21::file_in_scope` (the crates that
+/// hosted the five deleted process-global singletons plus the two read-once-
+/// config residuals), or the caller opted-in via `--d21-extra-scope <fragment>`
+/// (the fixture smoke test stages a positive fixture under `target/` outside any
+/// `crates/nmp-*/src/` tree). Mirrors `d20_file_in_scope`.
+pub(crate) fn d21_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d21::file_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");
