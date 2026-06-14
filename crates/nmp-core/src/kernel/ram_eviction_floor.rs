@@ -179,7 +179,7 @@ pub(super) fn pin_shape_events_below_floor(
     pins: &mut HashSet<crate::store::EventId>,
     max_events: usize,
 ) -> PinScanOutcome {
-    use super::super::cache_serve::{query_until_mut, shape_to_store_queries};
+    use super::super::cache_serve::{query_since_mut, query_until_mut, shape_to_store_queries};
 
     let mut remaining = max_events;
 
@@ -220,6 +220,19 @@ pub(super) fn pin_shape_events_below_floor(
         // only reaches here for shapes `shape_floor` returned `Some` for).
         if matches!(q, StoreQuery::KindTime { .. }) {
             continue;
+        }
+        // Clear `since` BEFORE applying the `<= floor` bound, exactly mirroring
+        // `shape_floor`'s probe normalization above. `shape_to_store_queries`
+        // embeds `shape.since`; a shape with `shape.since = Some(T)` where
+        // `T > floor` would otherwise run an inverted range
+        // `{ since: Some(T), until: Some(floor) }` → the store returns ZERO
+        // events → the scan vacuously reports `Complete` → below-floor events go
+        // unpinned → LRU eviction drops them → a permanent floor-coherence hole.
+        // The floor is enforced via `until` = floor (cursored) or in the visitor
+        // (cursor-less); `since` MUST be `None` so the scan reaches every
+        // below-floor event. (K3 #1380 Bug 2.)
+        if let Some(since) = query_since_mut(&mut q) {
+            *since = None;
         }
         // Cursored queries (`AuthorKind`/`KindDtag`) push the `<= floor` bound
         // into the index; cursor-less (`Etag`/`Ptag`) enforce it in the visitor.

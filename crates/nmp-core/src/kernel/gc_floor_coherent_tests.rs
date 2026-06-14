@@ -294,6 +294,92 @@ fn run_gc_step_succeeds_and_records_report_after_pin_scan() {
     );
 }
 
+// ── #1380 K3 Bug 2 — `since:None` pin-scan normalization ─────────────────────
+
+/// #1380 Bug 2 — `pin_shape_events_below_floor` must clear `shape.since` before
+/// applying the `<= floor` bound, EXACTLY mirroring `shape_floor`'s probe
+/// normalization.
+///
+/// The bug: `shape_to_store_queries(shape)` embeds `shape.since`. A shape with
+/// `shape.since = Some(T)` where `T > floor` makes the pin scan run an INVERTED
+/// range `{ since: Some(T), until: Some(floor) }` → the store returns ZERO
+/// events → the scan vacuously reports `Complete` → the below-floor event is
+/// NOT pinned → LRU eviction is free to drop it → a permanent floor-coherence
+/// hole (silent missing thread replies / DMs). Its sibling `shape_floor`
+/// already normalizes `since = None` before probing; the pin scan must too.
+///
+/// This is the only test in the floor/eviction suite that exercises a non-`None`
+/// `shape.since` — the gap the K3 verifier flagged. The shape is `author+kind`
+/// (an `AuthorKind` query carries `since`, unlike `Etag`/`Ptag`), with
+/// `shape.since` set NEWER than the stored event's `created_at`, so the inverted
+/// range is provably empty pre-fix.
+///
+/// FAILS pre-fix (pin set empty → assertion that the below-floor event is pinned
+/// fails); passes once the pin scan clears `since` to `None`.
+#[test]
+fn pin_shape_events_below_floor_clears_since_for_author_kind_shape() {
+    use super::floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
+    use crate::planner::InterestShape;
+    use std::collections::HashSet;
+
+    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
+    pin_clock(&mut kernel, T0_SECS + 10_000);
+
+    let author = make_pubkey(7_701);
+    let e_old = format!("{:0>64x}", 0xB20001u64);
+    let e_new = format!("{:0>64x}", 0xB20002u64);
+
+    // Two stored notes: old (100) and new (300). The floor sits at the newest
+    // (300); the old event lives below the floor and must be pinned.
+    inject_note(&mut kernel, &e_old, &author, 100);
+    inject_note(&mut kernel, &e_new, &author, 300);
+
+    // A floored author+kind shape carrying `since = Some(250)` — NEWER than the
+    // below-floor event (100) AND newer than the floor target (300 is the floor,
+    // but the inverted range `{since:250, until:300}` still excludes the
+    // created_at=100 event regardless). Pre-fix the pin scan runs
+    // `{since:Some(250), until:Some(300)}` and the e_old (100) event falls
+    // outside the window → not pinned. With the bug it would even run the truly
+    // inverted `{since:Some(350), until:floor}` form for a since past the floor;
+    // we use 250 (below floor) so the window is non-empty for the NEW event yet
+    // still drops e_old — proving `since` is what excludes the below-floor tail.
+    let shape = InterestShape {
+        authors: std::collections::BTreeSet::from([author.clone()]),
+        kinds: std::collections::BTreeSet::from([1u32]),
+        since: Some(250),
+        ..Default::default()
+    };
+
+    // The floor itself is `since`-blind (shape_floor normalizes since=None), so
+    // it correctly resolves to the newest stored match (300).
+    let floor = shape_floor(&shape, kernel.store.as_ref(), &HashSet::new())
+        .expect("author+kind shape with stored events must have a floor");
+    assert_eq!(floor, 300, "floor must be the newest stored created_at");
+
+    let mut pins: HashSet<crate::store::EventId> = HashSet::new();
+    let outcome = pin_shape_events_below_floor(
+        &shape,
+        floor,
+        kernel.store.as_ref(),
+        &mut pins,
+        super::floor::PIN_SCAN_MAX_EVENTS,
+    );
+
+    assert_eq!(
+        outcome,
+        PinScanOutcome::Complete,
+        "scan must complete within budget"
+    );
+    assert!(
+        pins.contains(&id_bytes(&e_old)),
+        "#1380 Bug 2: the below-floor event (created_at=100) MUST be pinned even \
+         though shape.since=Some(250) — the pin scan must clear `since` to None \
+         before applying the `<= floor` bound, mirroring shape_floor. Pre-fix the \
+         embedded since produces an inverted/exclusionary range that drops it, \
+         leaving it open to LRU eviction (permanent floor-coherence hole)."
+    );
+}
+
 // ── Original tests (unchanged signature, updated for derive_store_pin_set return type) ─
 
 /// A stored event for an author with NO active interest must NOT be pinned by
