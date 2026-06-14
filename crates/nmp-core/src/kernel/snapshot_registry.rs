@@ -184,6 +184,28 @@ pub struct SnapshotRegistry {
     /// projections are unaffected (they self-gate by registration). See
     /// [`DeclaredProjections`].
     declared_projections: DeclaredProjections,
+    /// ADR-0055 Rung 3 — the host-declared incremental-apply capability.
+    ///
+    /// `false` (the default) means "full rows every tick" — the kernel emits
+    /// the complete typed sidecar on every `make_update`, unchanged from Rung 2.
+    ///
+    /// `true` means the host runtime owns the NMP cache-merge layer (D3-3) and
+    /// the kernel is permitted to omit `Unchanged` projections from the frame.
+    /// The host MUST set this before `nmp_app_start` (single-writer,
+    /// set-before-start) via [`declare_incremental_apply`] /
+    /// [`AppHost::declare_incremental_apply`] /
+    /// `nmp_app_declare_incremental_apply()`. This is durable architecture (the
+    /// per-attach baseline gate + the Rung-5 ADR-0053 compose seam), NOT a
+    /// compat shim — it is deleted only when every NMP host advertises it
+    /// unconditionally (a future cleanup once Tier-1 gating + Rung 4 land).
+    incremental_apply_enabled: bool,
+    /// ADR-0055 Rung 3 (D3-5) — one-shot latch set by `declare_incremental_apply`.
+    ///
+    /// The kernel reads and clears this in `make_update` (via
+    /// `take_incremental_apply_baseline_pending`) and calls
+    /// `ProjectionRevTracker::reset_last_emitted` when `true`, guaranteeing
+    /// the next frame is a full baseline for the newly-declared host.
+    incremental_apply_baseline_pending: bool,
 }
 
 impl SnapshotRegistry {
@@ -415,6 +437,52 @@ impl SnapshotRegistry {
     #[must_use]
     pub fn declared_projections(&self) -> &DeclaredProjections {
         &self.declared_projections
+    }
+
+    /// ADR-0055 Rung 3 — declare that this host's runtime owns the NMP
+    /// cache-merge layer (D3-3) and can therefore receive frames with
+    /// `Unchanged` projections omitted.
+    ///
+    /// Single-writer, set before `nmp_app_start`. After this call the kernel
+    /// MUST emit a full baseline on the next `make_update` tick (all live
+    /// Tier-2 projections as `Changed`) — enforced by setting a
+    /// `baseline_pending` latch that `make_update` drains via
+    /// `take_incremental_apply_baseline_pending`, triggering
+    /// `ProjectionRevTracker::reset_last_emitted` (D3-5).
+    ///
+    /// Idempotent: calling more than once before start is a no-op.
+    pub fn declare_incremental_apply(&mut self) {
+        if !self.incremental_apply_enabled {
+            self.incremental_apply_enabled = true;
+            // D3-5: signal that the kernel must reset its last-emitted baseline
+            // so the next frame is a full baseline. The latch is consumed once
+            // by `take_incremental_apply_baseline_pending` in `make_update`.
+            self.incremental_apply_baseline_pending = true;
+        }
+    }
+
+    /// Read whether the host has declared incremental-apply capability.
+    ///
+    /// The kernel reads this once per tick (inside `make_update`) to decide
+    /// whether to pass `enabled = true` to `rung3_omit::omit_unchanged`.
+    #[must_use]
+    pub fn is_incremental_apply_enabled(&self) -> bool {
+        self.incremental_apply_enabled
+    }
+
+    /// ADR-0055 Rung 3 (D3-5) — take the "baseline pending" latch.
+    ///
+    /// Returns `true` exactly once after `declare_incremental_apply` sets the
+    /// latch. The caller (`make_update`) must then call
+    /// `ProjectionRevTracker::reset_last_emitted` so the next frame is a full
+    /// baseline for the newly-attached incremental host.
+    pub fn take_incremental_apply_baseline_pending(&mut self) -> bool {
+        if self.incremental_apply_baseline_pending {
+            self.incremental_apply_baseline_pending = false;
+            true
+        } else {
+            false
+        }
     }
 
     /// Run every registered per-tick observer.

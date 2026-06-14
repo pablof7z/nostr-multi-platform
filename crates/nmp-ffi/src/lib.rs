@@ -170,7 +170,11 @@ pub use signer_broker::{
 };
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
-pub use snapshot::{nmp_app_declare_consumed_projections, nmp_app_register_snapshot_projection};
+pub use snapshot::{
+    nmp_app_declare_consumed_projections,
+    nmp_app_declare_incremental_apply,
+    nmp_app_register_snapshot_projection,
+};
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
 #[cfg(feature = "native")]
@@ -1553,6 +1557,27 @@ impl NmpApp {
         );
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             registry.declare_consumed_projections(keys);
+        }
+    }
+
+    /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+    /// cache-merge layer (D3-3) and is ready to receive frames with
+    /// `Unchanged` projections omitted.
+    ///
+    /// Single-writer, set before `nmp_app_start`. After this call the kernel
+    /// guarantees the next `make_update` frame is a full baseline (all live
+    /// Tier-2 projections emitted as `Changed`). Until this is called the
+    /// kernel emits full rows on every tick. A poisoned registry mutex is a
+    /// silent no-op (D6).
+    pub fn declare_incremental_apply(&self) {
+        debug_assert!(
+            !self.started.load(Ordering::SeqCst),
+            "declare_incremental_apply called after nmp_app_start — \
+             the incremental-apply flag must be set before the kernel emits \
+             its first real frame (ADR-0055 Rung 3 / init-only invariant)"
+        );
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.declare_incremental_apply();
         }
     }
 

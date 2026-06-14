@@ -177,6 +177,27 @@ pub extern "C" fn nmp_app_register_snapshot_projection(
     });
 }
 
+/// ADR-0055 Rung 3 — declare that this host runtime owns the NMP cache-merge
+/// layer (D3-3) and is ready to receive frames with `Unchanged` projections
+/// omitted.
+///
+/// Must be called before `nmp_app_start`. After this call the kernel guarantees
+/// the next `make_update` frame is a full baseline (all live Tier-2 projections
+/// emitted as `Changed`). Until this is called the kernel emits full rows on
+/// every tick (safe for non-advertising hosts). Idempotent — calling multiple
+/// times is safe. A null `app` is a silent no-op (D6).
+///
+/// # Safety
+/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_declare_incremental_apply(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    app.declare_incremental_apply();
+}
+
 /// ADR-0053 — declare the static set of Tier-2 built-in projection keys this
 /// host consumes (the output-side sibling of relay `push_interest`).
 ///

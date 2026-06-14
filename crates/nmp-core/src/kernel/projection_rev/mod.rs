@@ -302,6 +302,12 @@ impl ProjectionRevTracker {
     /// Return `true` if the projection's derived rev advanced since the last
     /// recorded emit. For drain keys, this also returns true when an explicit
     /// `Changed` / `Cleared` presence is pending this tick.
+    ///
+    /// Crucially: a key **absent** from `last_emitted` (i.e. never emitted, or
+    /// cleared by `reset_last_emitted` / `bump_epoch`) is treated as `Changed`
+    /// regardless of the current rev. This handles the case where the rev is
+    /// still 0 (no mutations since kernel init) — the key must still be emitted
+    /// in any full-baseline frame (D3-5).
     pub(crate) fn changed_since_last_emit(&self, key: &str) -> bool {
         // A pending explicit presence (drain keys) takes precedence.
         if let Some(static_key) = static_key(key) {
@@ -310,8 +316,13 @@ impl ProjectionRevTracker {
             }
         }
         let current = self.compute_rev(key);
-        let last = self.last_emitted.get(key).copied().unwrap_or(0);
-        current > last
+        match self.last_emitted.get(key).copied() {
+            // Never emitted (or last_emitted cleared by reset/epoch bump) →
+            // always Changed, even when rev is still 0.
+            None => true,
+            // Previously emitted at `last`; Changed only when rev advanced.
+            Some(last) => current > last,
+        }
     }
 
     /// Compute the presence for `key` this tick.
@@ -332,8 +343,30 @@ impl ProjectionRevTracker {
 
     /// Bump the epoch. Called on account-switch / schema-change / kernel rebuild.
     /// The next emit MUST be a full baseline (all projections -> `Changed`).
+    ///
+    /// ADR-0055 Rung 3 (D3-5): also clears the per-key `last_emitted` tracker
+    /// so every live Tier-2 projection is classified `Changed` on the next
+    /// `make_update` tick, guaranteeing the mandatory full baseline frame.
     pub(crate) fn bump_epoch(&mut self) {
         self.epoch = self.epoch.saturating_add(1);
+        // D3-5: clear the emitted-rev baseline so the NEXT frame is a full
+        // baseline (all projections Changed). This is correct whether or not
+        // incremental-apply is enabled — the epoch bump always signals a new
+        // session context that requires a full re-baseline.
+        self.last_emitted.clear();
+    }
+
+    /// ADR-0055 Rung 3 (D3-5) — reset the per-key emitted-rev baseline so the
+    /// NEXT `make_update` frame is a full baseline (every live Tier-2
+    /// projection emitted as `Changed`).
+    ///
+    /// Called when `declare_incremental_apply()` is set (the first host-attach
+    /// after advertising incremental-apply must see a complete picture) and on
+    /// `bump_epoch()` (above). Does NOT bump the epoch counter — only clears
+    /// the `last_emitted` rev map so `presence_for` returns `Changed` for every
+    /// key on the next tick.
+    pub(crate) fn reset_last_emitted(&mut self) {
+        self.last_emitted.clear();
     }
 
     /// ADR-0055 Rung 1 (F5): reconcile `diagnostics_inputs_ver` against a

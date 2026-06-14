@@ -267,4 +267,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.register_identity_change_observer(f);
     }
+
+    fn declare_incremental_apply(&self) {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        NmpApp::declare_incremental_apply(app);
+    }
 }

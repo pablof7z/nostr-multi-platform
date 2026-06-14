@@ -259,6 +259,10 @@ impl AppHost for GateSpy {
     {
         unreachable!("register_substrate does not register identity-change observers");
     }
+
+    fn declare_incremental_apply(&self) {
+        unreachable!("register_substrate does not declare incremental apply");
+    }
 }
 
 /// A `CompiledPlan` with `n` distinct per-relay entries (the hook only reads

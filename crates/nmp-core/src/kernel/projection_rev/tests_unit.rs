@@ -123,18 +123,59 @@ fn build_manifest_covers_all_builtin_keys() {
     );
 }
 
-/// `build_state` returns `Unchanged` at rev 0 for a fresh tracker.
+/// `build_state` returns `Changed` at rev 0 for a fresh tracker.
+///
+/// ADR-0055 Rung 3 (D3-5): a key absent from `last_emitted` (never emitted,
+/// or cleared by `reset_last_emitted` / `bump_epoch`) is treated as `Changed`
+/// regardless of the current rev. This ensures that a full-baseline frame is
+/// emitted the very first time — even when all source versions are still 0.
+/// `Unchanged` requires a PRIOR emit at the same rev; absence == never-emitted
+/// == Changed.
 #[test]
-fn build_state_fresh_tracker_all_unchanged() {
+fn build_state_fresh_tracker_all_changed() {
     let tracker = ProjectionRevTracker::default();
     for key in KERNEL_BUILTIN_PROJECTION_KEYS {
+        let s = build_state(&tracker, key);
+        // Drain keys use the `pending_presence` / `note_drain_emit` state
+        // machine rather than `last_emitted`; their default presence when
+        // `pending_presence` is empty is also driven by `changed_since_last_emit`
+        // which returns `true` (None → Changed), so drain keys are Changed too
+        // on a completely fresh tracker.
+        assert_eq!(
+            s.presence,
+            ProjectionPresence::Changed,
+            "fresh tracker: key '{key}' must be Changed (never emitted)"
+        );
+        assert_eq!(s.rev, 0, "fresh tracker: key '{key}' must have rev=0");
+    }
+}
+
+/// `build_state` returns `Unchanged` at rev 0 after `record_emitted`.
+///
+/// After emitting a key at rev 0 and recording it, the next tick with no
+/// source mutations returns `Unchanged`.
+#[test]
+fn build_state_after_emit_at_rev0_is_unchanged() {
+    let mut tracker = ProjectionRevTracker::default();
+    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
+        // Skip drain keys: their presence is driven by `note_drain_emit`, not
+        // by `record_emitted` + rev comparison.
+        if DRAIN_PROJECTION_KEYS.contains(key) {
+            continue;
+        }
+        tracker.record_emitted(key);
+    }
+    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
+        if DRAIN_PROJECTION_KEYS.contains(key) {
+            continue;
+        }
         let s = build_state(&tracker, key);
         assert_eq!(
             s.presence,
             ProjectionPresence::Unchanged,
-            "fresh tracker: key '{key}' must be Unchanged"
+            "after record_emitted at rev=0: key '{key}' must be Unchanged"
         );
-        assert_eq!(s.rev, 0, "fresh tracker: key '{key}' must have rev=0");
+        assert_eq!(s.rev, 0, "after record_emitted at rev=0: key '{key}' must have rev=0");
     }
 }
 
