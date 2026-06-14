@@ -354,13 +354,6 @@ impl Kernel {
         // missed stamp = silent dark UI, which Rung 3 would trust — fail loud).
         #[cfg(any(test, feature = "test-support"))]
         self.run_projection_oracle(&typed);
-        // ADR-0055 Rung 0 — measure per-tick projection churn BEFORE serializing.
-        // The whole pass (payload hashing, per-key store, process counters) is
-        // `test-support`-only: in a production build this binding does not exist
-        // and the `NMP_PERF` log below compiles with no churn fields, so the
-        // emit path does ZERO instrumentation work. See `helpers::churn`.
-        #[cfg(any(test, feature = "test-support"))]
-        let churn = helpers::churn::measure_emit_churn(&typed);
         // ADR-0055 Rung 3 — omit `Unchanged` projections when the host has
         // declared incremental-apply capability (D3-2). Rows classified
         // `Unchanged` in the manifest are dropped from the frame; `Cleared`
@@ -369,6 +362,18 @@ impl Kernel {
         // When the host has NOT declared incremental-apply, `typed` is returned
         // unchanged — full rows, no behavior change from Rung 2.
         let typed = rung3_omit::omit_unchanged(typed, &manifest, incremental_enabled);
+        // ADR-0055 Rung 0 — measure per-tick projection churn AFTER the Rung-3
+        // omit transform so the counters reflect what's actually emitted on the
+        // wire. This is the correct measurement surface for S6: pre-omission,
+        // `PROCESS_PROJECTIONS_SERIALIZED` would always equal the full Tier-2 set
+        // regardless of incremental mode, making waste_ratio identical in both
+        // phases (the Rung-0 measurement bug). Post-omission, with incremental ON,
+        // only Changed/Cleared rows are counted → waste_ratio → ~0.
+        // The whole pass (payload hashing, per-key store, process counters) is
+        // `test-support`-only: a production build does ZERO instrumentation work.
+        // See `helpers::churn`.
+        #[cfg(any(test, feature = "test-support"))]
+        let churn = helpers::churn::measure_emit_churn(&typed);
         // ADR-0044 / PR-B (#991/#979): emit only the typed Tier-3 envelope +
         // typed-projection sidecar. The generic `payload:Value` slot is
         // intentionally absent from the wire (set to `None` in

@@ -90,6 +90,12 @@ pub struct SnapshotEnvelope {
     /// across process restarts. When the host sees a changed `session_id` it MUST
     /// discard all per-key applied-rev state and re-baseline. 0 on old frames.
     pub session_id: u64,
+    // --- ADR-0055 Rung 3 S5: encode-time diagnostic (one-tick lag) ---
+    /// Microseconds spent in the previous tick's `encode_snapshot_with_envelope`
+    /// call (one-tick lag: the value in frame N+1 reflects tick N's encode time).
+    /// Used by the S6 harness to assert no encode-time regression under
+    /// incremental-apply omission. 0 on the very first frame.
+    pub serialize_us: u64,
 }
 
 /// Decode the Tier-3 typed `SnapshotFrame` envelope from a FlatBuffers update
@@ -125,16 +131,17 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
 /// Shared by [`decode_snapshot_envelope`] and [`decode_update_frame`] so the
 /// two public decode paths cannot drift.
 fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnvelope {
-    let (events_rx, visible_items, actor_queue_depth, update_sequence) =
+    let (events_rx, visible_items, actor_queue_depth, update_sequence, serialize_us) =
         if let Some(metrics) = snapshot.metrics() {
             (
                 metrics.events_rx(),
                 metrics.visible_items(),
                 metrics.actor_queue_depth(),
                 metrics.update_sequence(),
+                metrics.serialize_us(),
             )
         } else {
-            (0, 0, 0, 0)
+            (0, 0, 0, 0, 0)
         };
 
     SnapshotEnvelope {
@@ -157,6 +164,8 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         // (pre-Rung-2) frames return 0 for both (FlatBuffers default) — safe.
         snapshot_epoch: snapshot.snapshot_epoch(),
         session_id: snapshot.session_id(),
+        // ADR-0055 Rung 3 S5: one-tick-lag encode time for harness comparison.
+        serialize_us,
     }
 }
 
