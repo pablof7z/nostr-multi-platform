@@ -329,11 +329,33 @@ impl Kernel {
 
     /// Drop the entry for `correlation_id` from the `action_stages`
     /// mirror. Idempotent — an unknown id is a silent no-op (D6).
-    /// `changed_since_emit` is set so the next tick re-serialises the now-
-    /// reduced mirror.
+    ///
+    /// An ack is a genuine content change to the `action_stages` projection: the
+    /// reduced mirror serialises to different bytes. So besides flipping
+    /// `changed_since_emit` (so the actor ticks) we MUST advance the projection
+    /// rev — otherwise the StaleStamp oracle fires (content changed, rev didn't)
+    /// and, with Rung 3 omit-Unchanged live, the host would serve the stale
+    /// (un-acked) row forever. We bump `settlement_enqueue_ver` — the same
+    /// source version `record_action_stage` bumps on enqueue; both
+    /// `action_stages` and `action_lifecycle` depend on it (see PROJECTION_DEPS
+    /// in `projection_rev/mod.rs`), and an ack is the symmetric content edit to
+    /// an enqueue.
+    ///
+    /// NOTE: this is distinct from the `note_copy_emit` Cleared edge. The Cleared
+    /// edge (bumps `ttl_expiry_ver`) fires only on ack-of-the-LAST entry
+    /// (non-empty → empty). A PARTIAL ack (entries remain) keeps the projection
+    /// non-empty and is governed entirely by this `settlement_enqueue_ver` bump
+    /// → delivered as `Changed` exactly once. Both mechanisms are required
+    /// (#1390 review FIX 2).
     pub(crate) fn ack_action_stage(&mut self, correlation_id: &str) {
         if self.action_stages.ack(correlation_id) {
             self.changed_since_emit = true;
+            // Advance the rev so a partial ack is delivered as Changed exactly
+            // once and the oracle stays sharp without relying on a presence
+            // override.
+            self.projection_rev_tracker
+                .source_versions
+                .bump_settlement_enqueue();
         }
     }
 

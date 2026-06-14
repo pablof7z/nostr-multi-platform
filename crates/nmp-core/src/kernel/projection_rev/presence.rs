@@ -78,18 +78,35 @@ impl ProjectionRevTracker {
     /// tracker is copied (not drained) each tick:
     /// `action_stages` and `action_lifecycle`.
     ///
-    /// State machine (§10.4 of `docs/decisions/0055-rung3.md`):
+    /// State machine (§10.4 of `docs/decisions/0055-rung3.md`).
     ///
-    /// - `nonempty`                  → `Changed` (no extra bump — the rev
-    ///                                  already moved on enqueue/expiry)
-    /// - `!nonempty` && was nonempty → bump `ttl_expiry_ver` so the rev
-    ///                                  advances on the Cleared frame; `Cleared`
-    /// - `!nonempty` && was empty    → `Unchanged`
+    /// CRITICAL — unlike `note_drain_emit`, the copy-with-TTL keys
+    /// (`action_stages` / `action_lifecycle`) PERSIST across ticks: a stable
+    /// in-flight action keeps the same content every 4Hz tick. So this machine
+    /// is **edge-only**: it parks `pending_presence` ONLY on the
+    /// non-empty → empty (`Cleared`) edge. The non-empty steady state is left
+    /// to the normal rev-vs-last-emit rule in `presence_for`, so a tick whose
+    /// content genuinely did not change settles to `Unchanged` and is omitted
+    /// from the frame (the whole point of Rung 3). If we parked `Changed` here
+    /// unconditionally, every stable tick would re-emit the full payload
+    /// forever — a regression vs master on the exact path the ADR optimizes
+    /// (#1390 review FIX 1).
+    ///
+    /// Per-content-change advance is the responsibility of the source-version
+    /// bump at the mutation site: `ack_action_stage` /
+    /// `enqueue` / TTL-expiry bump `settlement_enqueue_ver` / `ttl_expiry_ver`,
+    /// which `presence_for` reads via `changed_since_last_emit`.
+    ///
+    /// - `nonempty`                  → `Changed` (informational return; does
+    ///                                  NOT park presence — rev rule governs)
+    /// - `!nonempty` && was nonempty → bump `ttl_expiry_ver`; park `Cleared`
+    ///                                  (the one edge this machine injects)
+    /// - `!nonempty` && was empty    → `Unchanged` (informational; not parked)
     ///
     /// This ensures that `ack_action_stage` removing the last entry →
-    /// next emit sees `was_nonempty=true`, snapshot Null → `Cleared` presence
-    /// → §10.2 synthesis emits the Cleared row → host drops the stale stage.
-    /// Without this machine the post-ack manifest presence would stay
+    /// next emit sees `was_nonempty=true`, snapshot Null → parks `Cleared`
+    /// presence → §10.2 synthesis emits the Cleared row → host drops the stale
+    /// stage. Without this edge the post-ack manifest presence would stay
     /// `Unchanged` and the host would retain the stale row forever.
     ///
     /// Called once per emit inside `action_stages_projection` and
@@ -103,20 +120,25 @@ impl ProjectionRevTracker {
             .get(static_key)
             .copied()
             .unwrap_or(false);
-        let presence = if nonempty {
+        self.copy_prev_nonempty.insert(static_key, nonempty);
+        if nonempty {
+            // Steady-state non-empty: do NOT park presence. Leave the key to
+            // the rev-vs-last-emit rule so an unchanged tick resolves to
+            // Unchanged (and is omitted). Content changes are signalled by the
+            // source-version bump at the mutation site (e.g. ack_action_stage).
             ProjectionPresence::Changed
         } else if was_nonempty {
             // non-empty → empty transition: bump ttl_expiry_ver so the rev
             // advances, making the Cleared frame distinguishable from the
-            // prior Changed frame (same advance discipline as note_drain_emit).
+            // prior frame, and park Cleared so §10.2 synthesises the row.
             self.source_versions.bump_ttl_expiry();
+            self.pending_presence
+                .insert(static_key, ProjectionPresence::Cleared);
             ProjectionPresence::Cleared
         } else {
+            // stably empty: no bump, no park, no churn.
             ProjectionPresence::Unchanged
-        };
-        self.copy_prev_nonempty.insert(static_key, nonempty);
-        self.pending_presence.insert(static_key, presence);
-        presence
+        }
     }
 
     /// Compute the presence for `key` this tick.

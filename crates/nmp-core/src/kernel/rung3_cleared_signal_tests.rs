@@ -354,8 +354,9 @@ fn always_empty_key_never_produces_cleared_row() {
 // ── Multiple entries: partial ack does not clear ──────────────────────────────
 
 /// When action_stages has TWO entries and one is acked, the remaining entry
-/// means the tracker is NOT empty → no Cleared row → key stays Changed on
-/// the next tick.
+/// means the tracker is NOT empty → no Cleared row → key delivered as Changed
+/// EXACTLY ONCE on the next tick (the ack is a genuine content edit so the rev
+/// MUST advance — #1390 review FIX 2), then settles to absent (Unchanged).
 #[test]
 fn action_stages_partial_ack_stays_changed() {
     let (mut kernel, _slot) = kernel_incremental();
@@ -363,27 +364,96 @@ fn action_stages_partial_ack_stays_changed() {
 
     kernel.record_action_stage("c1", ActionStage::Requested, None);
     kernel.record_action_stage("c2", ActionStage::Requested, None);
-    let _ = emit(&mut kernel); // frame A — both entries
+    let frame_a = emit(&mut kernel); // frame A — both entries
+    let row_a = find_row(&frame_a, "action_stages")
+        .expect("frame A: action_stages must be Changed (both entries)");
+    assert_eq!(row_a.state, WireProjectionState::Changed);
+    let payload_two = row_a.payload.clone();
 
-    // Ack only c1; c2 remains.
+    // Ack only c1; c2 remains. The reduced mirror is a different payload.
     kernel.ack_action_stage("c1");
     let frame_b = emit(&mut kernel);
 
-    // action_stages must be Changed (one entry remains), NOT Cleared.
-    if let Some(row) = find_row(&frame_b, "action_stages") {
+    // FIX 2: a partial ack bumps settlement_enqueue_ver, so the rev advances and
+    // the reduced (c2-only) mirror is delivered as Changed EXACTLY ONCE — not
+    // omitted (which would leave the host caching the stale two-entry mirror),
+    // and not Cleared (entries remain).
+    let row_b = find_row(&frame_b, "action_stages").expect(
+        "frame B: partial ack MUST deliver action_stages as Changed exactly once \
+         (rev advanced via settlement_enqueue_ver — #1390 FIX 2)",
+    );
+    assert_eq!(
+        row_b.state,
+        WireProjectionState::Changed,
+        "partial ack: action_stages must be Changed (c2 still tracked)"
+    );
+    assert_ne!(
+        row_b.payload, payload_two,
+        "partial ack: the reduced (c2-only) payload must differ from the two-entry payload"
+    );
+
+    // Frame C: no further mutation → action_stages settles to absent (Unchanged).
+    let frame_c = emit(&mut kernel);
+    assert!(
+        find_row(&frame_c, "action_stages").is_none(),
+        "frame C: action_stages must be ABSENT once the partial-ack Changed frame is delivered"
+    );
+}
+
+// ── Steady-state omission (the FIX 1 regression gate) ─────────────────────────
+
+/// **FIX 1 regression gate (#1390 review).** A STABLE non-empty
+/// `action_stages` / `action_lifecycle` (an in-flight action whose content does
+/// not change tick-to-tick) must be delivered as Changed EXACTLY ONCE, then
+/// OMITTED (absent) on every subsequent tick.
+///
+/// On the PR head before FIX 1, `note_copy_emit` parked `Changed` into
+/// `pending_presence` on every non-empty tick, so `presence_for` returned the
+/// parked value before the rev-vs-last-emit rule could settle it — the full
+/// payload re-emitted on every 4Hz tick forever. This test FAILS on that head
+/// (it would find a row on ticks 2..N) and PASSES once FIX 1 restricts parking
+/// to the Cleared edge only.
+///
+/// This mirrors the finding-9 discipline that made the cleared-signal gate real:
+/// prove the OPTIMIZED path (omission), not just the correctness path (Cleared).
+#[test]
+fn stable_nonempty_copy_keys_omitted_after_first_changed() {
+    let (mut kernel, _slot) = kernel_incremental();
+    let epoch = SystemTime::UNIX_EPOCH;
+    // Pin the clock so action_lifecycle's terminal never crosses its TTL during
+    // the probe — we want a genuinely STABLE non-empty projection, not a TTL edge.
+    kernel.set_clock(Arc::new(FixedClock(epoch)));
+    let _ = emit(&mut kernel); // baseline
+
+    // Populate BOTH copy-with-TTL keys with a stable, non-terminal-expiring
+    // payload: an in-flight (non-terminal) stage drives action_stages, and a
+    // terminal success drives action_lifecycle (frozen clock keeps it alive).
+    kernel.record_action_stage("inflight", ActionStage::Requested, None);
+    kernel.record_action_success("done".to_string(), None);
+
+    // Frame 1: both keys delivered as Changed exactly once.
+    let frame_1 = emit(&mut kernel);
+    for key in ["action_stages", "action_lifecycle"] {
+        let row = find_row(&frame_1, key)
+            .unwrap_or_else(|| panic!("frame 1: {key} must be Changed (freshly populated)"));
         assert_eq!(
             row.state,
             WireProjectionState::Changed,
-            "partial ack: action_stages must be Changed (c2 still tracked)"
+            "frame 1: {key} must be Changed on first non-empty emit"
         );
     }
-    // It's also acceptable for it to be absent if nothing changed rev-wise,
-    // but it must not be Cleared.
-    let has_cleared_stages = frame_b
-        .iter()
-        .any(|r| r.key == "action_stages" && r.state == WireProjectionState::Cleared);
-    assert!(
-        !has_cleared_stages,
-        "partial ack: action_stages must NOT be Cleared while entries remain"
-    );
+
+    // Frames 2..=6: NO mutation, clock frozen → content is byte-identical.
+    // Each key MUST be OMITTED (absent). A present row on any of these ticks is
+    // the perpetual-Changed byte leak FIX 1 closes.
+    for tick in 2..=6 {
+        let frame = emit(&mut kernel);
+        for key in ["action_stages", "action_lifecycle"] {
+            assert!(
+                find_row(&frame, key).is_none(),
+                "tick {tick}: {key} must be OMITTED on a stable non-empty tick \
+                 (perpetual-Changed byte leak — #1390 FIX 1). Found a row instead."
+            );
+        }
+    }
 }

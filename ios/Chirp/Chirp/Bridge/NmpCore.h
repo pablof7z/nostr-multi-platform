@@ -350,7 +350,8 @@ void nmp_app_declare_consumed_projections(void *app, const char *const *keys, ui
 //
 // Return codes (R3-S1b / issue #1390):
 //   0  — success
-//   1  — AlreadyStarted: called after incremental-apply was already declared
+//   1  — AlreadyStarted: called after nmp_app_start (a repeat declare BEFORE
+//          start is idempotent and returns 0)
 //   2  — RegistryUnavailable: internal snapshot registry is not yet ready
 //  -1  — null `app` pointer (D6 silent guard)
 int nmp_app_declare_incremental_apply(void *app);
