@@ -66,7 +66,7 @@ mod view;
 pub use action::{
     ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
-pub use app_host::AppHost;
+pub use app_host::{AppHost, IncrementalApplyError};
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
 pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};

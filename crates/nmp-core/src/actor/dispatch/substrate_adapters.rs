@@ -273,7 +273,10 @@ mod tests {
     /// Read `action_stages.<correlation_id>` straight from the kernel's
     /// projection (the wire surface the host observes), returning the stage
     /// history array or `Null` when absent.
-    fn stage_history(kernel: &Kernel, correlation_id: &str) -> serde_json::Value {
+    ///
+    /// Takes `&mut Kernel` because `action_stages_projection` drives the
+    /// `note_copy_emit` Cleared-edge machine (ADR-0055 Rung 3 S1b §10.4).
+    fn stage_history(kernel: &mut Kernel, correlation_id: &str) -> serde_json::Value {
         kernel
             .action_stages_projection()
             .get(correlation_id)
@@ -336,7 +339,7 @@ mod tests {
 
         // ORACLE: a pending host op MUST leave a `Requested` action-stage entry
         // so the host can tell "pending, awaiting continuation" from "dropped".
-        let history = stage_history(&kernel, correlation_id);
+        let history = stage_history(&mut kernel, correlation_id);
         let arr = history
             .as_array()
             .expect("pending host op must have an action_stages history entry (#1364)");

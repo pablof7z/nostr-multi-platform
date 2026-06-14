@@ -345,10 +345,15 @@ void nmp_app_declare_consumed_projections(void *app, const char *const *keys, ui
 
 // ADR-0055 Rung 3 — declare that this host's runtime owns the NMP cache-merge
 // layer (D3-3) so the kernel may omit `Unchanged` projections from the frame.
-// Single-writer, call before `nmp_app_start`; idempotent. After this call the
-// next snapshot is a full baseline (all live Tier-2 projections as Changed).
-// A null `app` is a silent no-op (D6).
-void nmp_app_declare_incremental_apply(void *app);
+// Single-writer, call before `nmp_app_start`. After this call the next snapshot
+// is a full baseline (all live Tier-2 projections as Changed).
+//
+// Return codes (R3-S1b / issue #1390):
+//   0  — success
+//   1  — AlreadyStarted: called after incremental-apply was already declared
+//   2  — RegistryUnavailable: internal snapshot registry is not yet ready
+//  -1  — null `app` pointer (D6 silent guard)
+int nmp_app_declare_incremental_apply(void *app);
 
 // ── V-51 phase 2 — routing-trace snapshot accessor ───────────────────────
 //

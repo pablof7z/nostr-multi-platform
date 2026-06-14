@@ -28,6 +28,23 @@ use super::{
     ReqFrameInterceptor, RoutingTraceObserver,
 };
 
+/// Error returned by [`AppHost::declare_incremental_apply`] when the
+/// pre-start invariant is violated or the registry is unavailable.
+///
+/// ADR-0055 Rung 3 S1b (finding 5 / issue #1390) — replaces the
+/// `debug_assert!` (silent in release) with a hard `Result` return-code so
+/// a post-start call is caught in all builds, not only debug.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IncrementalApplyError {
+    /// `declare_incremental_apply` was called AFTER `nmp_app_start`.
+    /// The incremental-apply flag must be set before the kernel emits its
+    /// first real frame (ADR-0055 Rung 3 / init-only invariant).
+    AlreadyStarted,
+    /// The snapshot-projection registry mutex was poisoned (another thread
+    /// panicked while holding it). Treat as a non-recoverable kernel error.
+    RegistryUnavailable,
+}
+
 /// Host surface needed by reusable NMP composition crates.
 ///
 /// This is intentionally a Rust trait rather than an FFI handle. Protocol
@@ -127,11 +144,18 @@ pub trait AppHost: ActionRegistrar {
     /// guarantees the NEXT `make_update` frame is a full baseline (all live
     /// Tier-2 projections emitted as `Changed`). Until this is called the
     /// kernel emits full rows on every tick (no behavior change for
-    /// non-advertising hosts). Idempotent — calling multiple times is safe.
+    /// non-advertising hosts). Idempotent — subsequent calls before start
+    /// return `Ok(())` without re-setting the latch.
+    ///
+    /// Returns `Err(AlreadyStarted)` when called after `nmp_app_start` (the
+    /// incremental-apply flag must be set before the kernel's first real
+    /// frame), or `Err(RegistryUnavailable)` when the registry mutex is
+    /// poisoned. In both error cases the kernel continues emitting full rows —
+    /// the error is informational, not fatal to the kernel.
     ///
     /// This is durable architecture (the per-attach baseline gate + the
     /// Rung-5 ADR-0053 compose seam), NOT a compat shim.
-    fn declare_incremental_apply(&self);
+    fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError>;
 
     /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
     /// this host consumes (the union of every projection any of the app's screens

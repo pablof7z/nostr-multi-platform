@@ -57,6 +57,10 @@ pub(crate) mod source_versions;
 // ADR-0055 Rung 1: the `impl Kernel` manifest accessors live in a sibling file
 // so `kernel/mod.rs` stays at its file-size baseline.
 mod kernel_impl;
+// ADR-0055 Rung 3 S1b: the presence state-machine impls (`note_drain_emit`,
+// `note_copy_emit`, `presence_for`) live in a sibling file to keep this module
+// under the 500-LOC hard ceiling while adding the new copy-with-TTL edge machine.
+mod presence;
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod oracle;
 // ADR-0055 Rung 1 (F3): the `impl Kernel` oracle methods live in a sibling file
@@ -208,12 +212,19 @@ pub(crate) struct ProjectionRevTracker {
     /// for the `action_results` / `signed_events` drain projections (codex #2,
     /// F2). A key absent here is treated as "previously empty".
     drain_prev_nonempty: std::collections::HashMap<&'static str, bool>,
+    /// Per-copy-with-TTL-key content state at the LAST emit. Analogous to
+    /// `drain_prev_nonempty` but for the two keys whose tracker is copied (not
+    /// drained) each tick: `action_stages` / `action_lifecycle`. Used by
+    /// `note_copy_emit` to drive the same `Changed → Cleared → Unchanged`
+    /// tristate (ADR-0055 Rung 3 S1b / §10.4).
+    pub(super) copy_prev_nonempty: std::collections::HashMap<&'static str, bool>,
     /// This-tick presence OVERRIDE for keys whose presence cannot be derived from
-    /// the rev alone — the drain projections. `note_drain_emit` writes here during
-    /// the emit; `build_manifest` / `build_state` consult it before falling back
-    /// to the rev-vs-last-emit rule; `record_emitted` clears the entry once the
-    /// emit is recorded so the next tick starts fresh.
-    pending_presence: std::collections::HashMap<&'static str, ProjectionPresence>,
+    /// the rev alone — drain + copy-with-TTL projections. `note_drain_emit` /
+    /// `note_copy_emit` write here during the emit; `build_manifest` /
+    /// `build_state` consult it before falling back to the rev-vs-last-emit
+    /// rule; `record_emitted` clears the entry once the emit is recorded so
+    /// the next tick starts fresh.
+    pub(super) pending_presence: std::collections::HashMap<&'static str, ProjectionPresence>,
     /// ADR-0055 Rung 1 (F5): fingerprint of the `relay_diagnostics` inputs at the
     /// LAST reconcile. The kernel re-fingerprints them each emit and folds any
     /// change into `diagnostics_inputs_ver` — see `reconcile_diagnostics_fingerprint`.
@@ -223,6 +234,18 @@ pub(crate) struct ProjectionRevTracker {
 /// The two drain projections whose presence is a `Changed -> Cleared ->
 /// Unchanged` tristate driven by `note_drain_emit`, not by the rev alone.
 pub(crate) const DRAIN_PROJECTION_KEYS: &[&str] = &["action_results", "signed_events"];
+
+/// The four conditionally-present keys: `action_results` / `signed_events`
+/// (true drains) + `action_stages` / `action_lifecycle` (copy-with-TTL).
+/// These are the keys whose accessor returns `Null` when the tracker is
+/// empty, so absence in `typed` is unambiguous — it means the tracker went
+/// empty this tick. Used by `omit_unchanged`'s inverse pass (§10.2).
+pub(crate) const CONDITIONAL_PRESENCE_KEYS: &[&str] = &[
+    "action_results",
+    "signed_events",
+    "action_stages",
+    "action_lifecycle",
+];
 
 impl ProjectionRevTracker {
     /// Return the current derived revision for `key`.
@@ -246,47 +269,6 @@ impl ProjectionRevTracker {
         deps.iter()
             .map(|dep_name| self.source_versions.get(dep_name))
             .fold(0u64, |acc, v| acc.saturating_add(v))
-    }
-
-    /// Record a drain-projection emit and return its presence for THIS tick
-    /// (F2 — the real tristate). Called from the drain chokepoint
-    /// (`take_action_results_projection` / `take_signed_events_projection`)
-    /// EXACTLY ONCE per emit per drain key, with `nonempty` = "the drain carried
-    /// content this tick".
-    ///
-    /// State machine (codex #2 — Cleared is emitted exactly once on the
-    /// non-empty -> empty transition so the host drops its prior copy without a
-    /// replay, and a stably-empty drain settles to Unchanged):
-    /// - `nonempty`                 -> bump `settlement_drain_ver`; `Changed`
-    /// - `!nonempty` & was nonempty -> bump `settlement_drain_ver`; `Cleared`
-    /// - `!nonempty` & was empty    -> NO bump; `Unchanged`
-    ///
-    /// The presence is parked in `pending_presence` for `build_manifest` to read
-    /// and the `drain_prev_nonempty` content state is updated for the next tick.
-    pub(crate) fn note_drain_emit(&mut self, key: &str, nonempty: bool) -> ProjectionPresence {
-        let Some(static_key) = static_key(key) else {
-            return ProjectionPresence::Unchanged;
-        };
-        let was_nonempty = self
-            .drain_prev_nonempty
-            .get(static_key)
-            .copied()
-            .unwrap_or(false);
-        let presence = if nonempty {
-            self.source_versions.bump_settlement_drain();
-            ProjectionPresence::Changed
-        } else if was_nonempty {
-            // non-empty -> empty transition: advance the rev once so the Cleared
-            // frame is distinguishable, then settle.
-            self.source_versions.bump_settlement_drain();
-            ProjectionPresence::Cleared
-        } else {
-            // stably empty: no bump, no churn.
-            ProjectionPresence::Unchanged
-        };
-        self.drain_prev_nonempty.insert(static_key, nonempty);
-        self.pending_presence.insert(static_key, presence);
-        presence
     }
 
     /// Record that `key` was emitted at the current derived rev.
@@ -322,22 +304,6 @@ impl ProjectionRevTracker {
             None => true,
             // Previously emitted at `last`; Changed only when rev advanced.
             Some(last) => current > last,
-        }
-    }
-
-    /// Compute the presence for `key` this tick.
-    ///
-    /// Drain keys use the parked `pending_presence` (the `note_drain_emit` state
-    /// machine). All other keys use the rev-vs-last-emit rule: `Changed` when the
-    /// rev advanced, else `Unchanged`.
-    fn presence_for(&self, key: &'static str) -> ProjectionPresence {
-        if let Some(p) = self.pending_presence.get(key) {
-            return *p;
-        }
-        if self.changed_since_last_emit(key) {
-            ProjectionPresence::Changed
-        } else {
-            ProjectionPresence::Unchanged
         }
     }
 

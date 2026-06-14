@@ -260,7 +260,7 @@ impl AppHost for GateSpy {
         unreachable!("register_substrate does not register identity-change observers");
     }
 
-    fn declare_incremental_apply(&self) {
+    fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
         unreachable!("register_substrate does not declare incremental apply");
     }
 }
