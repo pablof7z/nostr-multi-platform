@@ -211,6 +211,14 @@ impl ActionLifecycleTracker {
         }
     }
 
+    /// Return the current number of tracked entries.
+    ///
+    /// Used by `action_lifecycle_projection` to detect when `snapshot`'s
+    /// `prune_expired` actually removed rows (ADR-0055 Rung 1 codex #3).
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
     /// Drop terminal rows whose TTL has expired. Called from
     /// [`Self::snapshot`] so a quiet kernel still prunes on the next
     /// emit. Non-terminal rows are untouched — only the host's progression

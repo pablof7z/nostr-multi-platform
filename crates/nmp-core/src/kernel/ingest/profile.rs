@@ -17,8 +17,15 @@ impl Kernel {
         });
 
         if should_replace {
-            self.profiles.insert(event.pubkey, candidate);
+            self.profiles.insert(event.pubkey.clone(), candidate);
             self.cached_estimated_store_bytes.set(None);
+            // ADR-0055 Rung 1: bump profiles_ver + diagnostics_inputs_ver.
+            // Also bump claimed_event_content_ver when event_claims is non-empty
+            // (codex #1 condition 3 — enrichment dependency).
+            self.projection_rev_tracker.source_versions.bump_profiles();
+            if !self.event_claims.is_empty() {
+                self.projection_rev_tracker.source_versions.bump_claimed_event_content();
+            }
         }
     }
 }

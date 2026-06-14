@@ -225,9 +225,15 @@ impl super::Kernel {
     /// Replace the account projection (D4: actor is sole writer).
     pub(crate) fn set_accounts(&mut self, accounts: Vec<AccountSummary>, active: Option<String>) {
         if self.accounts != accounts || self.active_account != active {
+            let active_changed = self.active_account != active;
             self.accounts = accounts;
             self.active_account = active;
             self.changed_since_emit = true;
+            // ADR-0055 Rung 1: bump source version counters.
+            self.projection_rev_tracker.source_versions.bump_accounts();
+            if active_changed {
+                self.projection_rev_tracker.source_versions.bump_active_account();
+            }
         }
         if let Ok(mut guard) = self.active_account_handle.lock() {
             *guard = self.active_account.clone();
@@ -251,6 +257,8 @@ impl super::Kernel {
     pub(crate) fn set_active_account(&mut self, pubkey: String) {
         self.active_account = Some(pubkey);
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump active_account_ver (wasm path — no full accounts vec).
+        self.projection_rev_tracker.source_versions.bump_active_account();
         if let Ok(mut guard) = self.active_account_handle.lock() {
             *guard = self.active_account.clone();
         }
@@ -266,6 +274,8 @@ impl super::Kernel {
             self.publish_queue.drain(0..drop);
         }
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump publish_ver.
+        self.projection_rev_tracker.source_versions.bump_publish();
     }
 
     pub(crate) fn remove_publish_entry(&mut self, event_id: &str) -> bool {
@@ -278,6 +288,8 @@ impl super::Kernel {
         };
         self.publish_queue.remove(idx);
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump publish_ver.
+        self.projection_rev_tracker.source_versions.bump_publish();
         true
     }
 
@@ -318,6 +330,8 @@ impl super::Kernel {
         entry.can_retry = publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump publish_ver on terminal state transition.
+        self.projection_rev_tracker.source_versions.bump_publish();
     }
 
     /// Surface a coarse error string to the UI (D6: errors are state, never
@@ -358,6 +372,8 @@ impl super::Kernel {
         if changed {
             self.configured_relays = rows.clone();
             self.changed_since_emit = true;
+            // ADR-0055 Rung 1: bump configured_relays_ver + diagnostics_inputs_ver.
+            self.projection_rev_tracker.source_versions.bump_configured_relays();
         }
         if let Some(handle) = self.configured_relays_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {

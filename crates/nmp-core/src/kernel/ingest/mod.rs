@@ -542,6 +542,48 @@ impl Kernel {
                     }
                 }
 
+                // ADR-0055 Rung 1, codex #1 condition 2: when a store
+                // insert/replace lands an event whose id or addressable coord
+                // matches a live `event_claims` key, bump
+                // `claimed_event_content_ver` so the `claimed_events`
+                // projection rev advances without waiting for a profile bump.
+                //
+                // `event_claims` keys are String (hex or "kind:pubkey:d_tag");
+                // `InsertOutcome` ids are `[u8; 32]` bytes — convert to hex.
+                let should_bump_claimed = match &outcome {
+                    crate::store::InsertOutcome::Inserted { id, .. } => {
+                        let hex_id: String = id.iter().map(|b| format!("{b:02x}")).collect();
+                        self.event_claims.contains_key(&hex_id)
+                    }
+                    crate::store::InsertOutcome::Replaced { new_id, .. } => {
+                        // For replaceable events the addressable coord key
+                        // "kind:pubkey:d_tag" may be in `event_claims` even
+                        // though we only have the new event id here. Check
+                        // both the id and the addressable coord.
+                        let hex_id: String = new_id.iter().map(|b| format!("{b:02x}")).collect();
+                        if self.event_claims.contains_key(&hex_id) {
+                            true
+                        } else {
+                            // Build the coord key and check that too.
+                            let d = event
+                                .tags
+                                .iter()
+                                .find(|t| t.first().map(|s| *s == "d").unwrap_or(false))
+                                .and_then(|t| t.get(1))
+                                .map(|s| s.as_str())
+                                .unwrap_or("");
+                            let coord_key = format!("{}:{}:{}", event.kind, event.pubkey, d);
+                            self.event_claims.contains_key(&coord_key)
+                        }
+                    }
+                    _ => false,
+                };
+                if should_bump_claimed {
+                    self.projection_rev_tracker
+                        .source_versions
+                        .bump_claimed_event_content();
+                }
+
                 Some(outcome)
             }
             Err(e) => {

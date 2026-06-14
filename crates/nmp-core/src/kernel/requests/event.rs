@@ -193,6 +193,8 @@ impl Kernel {
         // out (the host needs the `claimed_events[primary_id]` entry
         // to render the embed card).
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
+        self.projection_rev_tracker.source_versions.bump_claimed_event_content();
 
         // Already resolved or already requested → no fetch needed.
         if self.event_already_known(&primary_id) {
@@ -354,6 +356,8 @@ impl Kernel {
             self.release_claim_expansion(&primary_id);
         }
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
+        self.projection_rev_tracker.source_versions.bump_claimed_event_content();
         self.log(format!(
             "release event {} consumer {} ref {}",
             truncate(&primary_id, 80),

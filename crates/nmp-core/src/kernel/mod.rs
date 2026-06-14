@@ -268,6 +268,10 @@ mod timeline_perf_tests;
 /// wiring. The Wave C counterpart to the host-registered Tier-1 typed
 /// projections (ADR-0037). See the module doc for the mechanism rationale.
 mod typed_projections;
+/// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
+/// Source-version counters + `ProjectionRevTracker` owned by `Kernel`.
+/// Zero wire change in Rung 1 — pure infrastructure for Rung 2/3.
+pub(crate) mod projection_rev;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
@@ -613,6 +617,15 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
+    /// ADR-0055 Rung 1 — per-projection revision tracker.
+    ///
+    /// Holds the typed `SourceVersions` counters (bumped at each domain's
+    /// write chokepoint) and derives per-key monotonic revisions from the
+    /// dependency table. Reset to 0 on `Kernel` rebuild (fresh `Default`).
+    ///
+    /// In Rung 1 this is internal-only; `make_update` does NOT consult it
+    /// yet — wire bytes are byte-identical to pre-Rung-1 builds.
+    pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
     /// FFI diagnostic timing milestones (D0 app-domain state). See
     /// [`TimingMilestones`].
     timing: TimingMilestones,
@@ -1918,6 +1931,9 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
+            // ADR-0055 Rung 1: initialized to default (all counters 0, epoch 0).
+            // Resets are free on the Kernel rebuild (Reset) path.
+            projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
             timing: TimingMilestones::default(),
             relays: RelayRole::all()
                 .into_iter()
@@ -2417,6 +2433,8 @@ impl Kernel {
             },
         );
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: opening a wire sub is a relay_diagnostics input.
+        self.projection_rev_tracker.source_versions.bump_diagnostics_inputs();
     }
 
     pub(crate) fn start(&mut self) {
@@ -2463,6 +2481,32 @@ impl Kernel {
     /// projection refresh on the next due tick.
     pub fn mark_changed_since_emit(&mut self) {
         self.changed_since_emit = true;
+    }
+
+    // ── ADR-0055 Rung 1 — projection manifest accessors ──────────────────────
+
+    /// Return the full per-projection revision manifest for the current tick.
+    ///
+    /// In Rung 1 this is internal-only. `make_update` does NOT consult it yet —
+    /// wire bytes are byte-identical to pre-Rung-1 builds. Rung 2 stamps the
+    /// data onto the wire; Rung 3 uses it to omit Unchanged projections.
+    ///
+    /// `session_id` = `TimingMilestones::started_unix_ms` (ADR-0055 D4).
+    pub(crate) fn projection_manifest(
+        &self,
+    ) -> projection_rev::ProjectionManifest {
+        let session_id = self.timing.started_unix_ms.unwrap_or(0);
+        projection_rev::build_manifest(&self.projection_rev_tracker, session_id)
+    }
+
+    /// Return the revision state for a single projection key.
+    ///
+    /// Returns `Unchanged` at rev 0 for an unknown key.
+    pub(crate) fn projection_state(
+        &self,
+        key: &str,
+    ) -> projection_rev::ProjectionState {
+        projection_rev::build_state(&self.projection_rev_tracker, key)
     }
 
     /// Mutable access to the subscription lifecycle (registry + trigger inbox).
