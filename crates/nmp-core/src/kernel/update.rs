@@ -26,6 +26,15 @@ mod rung3_omit;
 mod views;
 #[cfg(test)]
 mod test_helpers;
+// ADR-0055 Rung 3 (D3-5) — baseline-semantics + omission-oracle integration
+// tests. They drive the real `make_update` path (this module's hot path), so
+// they are homed under `update` rather than the `kernel/mod.rs` module list,
+// keeping that ratcheted god-module at its size baseline. The file lives in
+// `kernel/` (it reaches across to `snapshot_registry` / `Kernel`), so it is
+// pulled in via `#[path]`.
+#[cfg(test)]
+#[path = "rung3_baseline_tests.rs"]
+mod rung3_baseline_tests;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on

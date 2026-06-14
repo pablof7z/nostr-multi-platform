@@ -14,9 +14,13 @@
 
 use std::sync::Arc;
 
-use super::snapshot_registry::new_snapshot_projection_slot;
-use super::update::KERNEL_BUILTIN_PROJECTION_KEYS;
-use super::Kernel;
+// This module is pulled in via `#[path]` from `kernel::update` (so the
+// `kernel/mod.rs` god-module stays at its size baseline), so `super` here is
+// `kernel::update`. Reach the kernel root through `super::super` and read the
+// built-in-keys list from the enclosing `update` module directly.
+use super::super::snapshot_registry::new_snapshot_projection_slot;
+use super::super::Kernel;
+use super::KERNEL_BUILTIN_PROJECTION_KEYS;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::{decode_snapshot_typed_projections, WireProjectionState};
 
@@ -62,7 +66,7 @@ fn declare_before_first_emit_still_has_typed_projections() {
 
 /// Construct a fresh kernel with a snapshot slot installed (so registry reads
 /// in `make_update` succeed).
-fn kernel_with_slot() -> (Kernel, super::snapshot_registry::SnapshotProjectionSlot) {
+fn kernel_with_slot() -> (Kernel, super::super::snapshot_registry::SnapshotProjectionSlot) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let slot = new_snapshot_projection_slot();
     kernel.set_snapshot_projection_handle(Arc::clone(&slot));
@@ -289,6 +293,76 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
             !present_tick2.contains(key),
             "Tick 2 (no mutations, incremental ON): key `{key}` must be ABSENT \
              (Unchanged → omitted); present = {present_tick2:?}"
+        );
+    }
+
+    // ── Tick 3: MIXED tick — mutate exactly ONE source cluster, leave the rest ──
+    //
+    // The two-tick check above only exercises the all-Changed and all-Unchanged
+    // extremes. The real value of the omission layer is the MIXED case: when a
+    // single input changes, the kernel must keep exactly the projections that
+    // depend on it and omit every other (still-Unchanged) key in the SAME frame.
+    //
+    // `set_configured_relays` is a real-kernel mutation that advances
+    // `configured_relays_ver` — driving the `configured_relays` /
+    // `relay_role_options` / `settings_hub` cluster — plus `relay_diagnostics`
+    // (whose per-emit fingerprint folds in the configured-relay set). Every
+    // OTHER Tier-2 key (`profile`, `accounts`, `active_account`,
+    // `claimed_profiles`, `resolved_profiles`, `claimed_events`,
+    // `mention_profiles`, the publish cluster) is untouched and MUST be omitted.
+    use crate::kernel::AppRelay;
+    kernel.set_configured_relays(vec![AppRelay::new(
+        "wss://relay.example/".to_string(),
+        "both".to_string(),
+    )]);
+
+    let frame3 = emit_frame(&mut kernel);
+    let present_tick3: std::collections::HashSet<&str> =
+        frame3.iter().map(|r| r.key.as_str()).collect();
+
+    // Kept (Changed): the configured-relays cluster + relay_diagnostics.
+    for key in ["configured_relays", "relay_role_options", "settings_hub", "relay_diagnostics"] {
+        assert!(
+            present_tick3.contains(key),
+            "Tick 3 (mixed): key `{key}` depends on the mutated input → must be \
+             KEPT (Changed), not omitted; present = {present_tick3:?}"
+        );
+        let state = frame3
+            .iter()
+            .find(|r| r.key.as_str() == key)
+            .map(|r| r.state);
+        assert_eq!(
+            state,
+            Some(WireProjectionState::Changed),
+            "Tick 3 (mixed): kept key `{key}` must carry state=Changed; got {state:?}"
+        );
+    }
+
+    // Omitted (Unchanged): every other non-drain Tier-2 key. Their inputs did
+    // not move this tick, so the omission layer must drop them from the SAME
+    // frame that still carries the changed cluster.
+    let changed_cluster: std::collections::HashSet<&str> = [
+        "configured_relays",
+        "relay_role_options",
+        "settings_hub",
+        "relay_diagnostics",
+    ]
+    .into_iter()
+    .collect();
+    for &key in tier2_keys() {
+        if changed_cluster.contains(key) {
+            continue;
+        }
+        // Drain/stage keys are conditional (absent without settlements) — their
+        // absence is not an omission signal, so skip them here.
+        if matches!(key, "action_results" | "signed_events" | "action_stages" | "action_lifecycle") {
+            continue;
+        }
+        assert!(
+            !present_tick3.contains(key),
+            "Tick 3 (mixed): key `{key}` was NOT affected by set_configured_relays → \
+             must be ABSENT (Unchanged → omitted) while the changed cluster is kept; \
+             present = {present_tick3:?}"
         );
     }
 }

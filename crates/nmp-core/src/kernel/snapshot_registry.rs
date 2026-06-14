@@ -439,52 +439,6 @@ impl SnapshotRegistry {
         &self.declared_projections
     }
 
-    /// ADR-0055 Rung 3 — declare that this host's runtime owns the NMP
-    /// cache-merge layer (D3-3) and can therefore receive frames with
-    /// `Unchanged` projections omitted.
-    ///
-    /// Single-writer, set before `nmp_app_start`. After this call the kernel
-    /// MUST emit a full baseline on the next `make_update` tick (all live
-    /// Tier-2 projections as `Changed`) — enforced by setting a
-    /// `baseline_pending` latch that `make_update` drains via
-    /// `take_incremental_apply_baseline_pending`, triggering
-    /// `ProjectionRevTracker::reset_last_emitted` (D3-5).
-    ///
-    /// Idempotent: calling more than once before start is a no-op.
-    pub fn declare_incremental_apply(&mut self) {
-        if !self.incremental_apply_enabled {
-            self.incremental_apply_enabled = true;
-            // D3-5: signal that the kernel must reset its last-emitted baseline
-            // so the next frame is a full baseline. The latch is consumed once
-            // by `take_incremental_apply_baseline_pending` in `make_update`.
-            self.incremental_apply_baseline_pending = true;
-        }
-    }
-
-    /// Read whether the host has declared incremental-apply capability.
-    ///
-    /// The kernel reads this once per tick (inside `make_update`) to decide
-    /// whether to pass `enabled = true` to `rung3_omit::omit_unchanged`.
-    #[must_use]
-    pub fn is_incremental_apply_enabled(&self) -> bool {
-        self.incremental_apply_enabled
-    }
-
-    /// ADR-0055 Rung 3 (D3-5) — take the "baseline pending" latch.
-    ///
-    /// Returns `true` exactly once after `declare_incremental_apply` sets the
-    /// latch. The caller (`make_update`) must then call
-    /// `ProjectionRevTracker::reset_last_emitted` so the next frame is a full
-    /// baseline for the newly-attached incremental host.
-    pub fn take_incremental_apply_baseline_pending(&mut self) -> bool {
-        if self.incremental_apply_baseline_pending {
-            self.incremental_apply_baseline_pending = false;
-            true
-        } else {
-            false
-        }
-    }
-
     /// Run every registered per-tick observer.
     ///
     /// Mirrors [`Self::run`]'s safety contract: each observer runs on the actor
@@ -526,3 +480,9 @@ pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
 // typed projections, run tick observers, ADR-0053 declared-set snapshot) live in
 // the `kernel_access` submodule to keep this file within its LOC ceiling.
 mod kernel_access;
+
+// ADR-0055 Rung 3 — the `declare_incremental_apply` / `is_incremental_apply_enabled`
+// / `take_incremental_apply_baseline_pending` inherent methods live in the
+// `incremental_apply` submodule to keep this file within its LOC ceiling. The
+// two backing fields remain on the struct definition above.
+mod incremental_apply;

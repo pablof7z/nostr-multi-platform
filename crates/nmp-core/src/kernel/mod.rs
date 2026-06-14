@@ -280,9 +280,6 @@ mod typed_projections_tests;
 mod typed_projections_wave_c_diagnostics_tests;
 #[cfg(test)]
 mod typed_projections_wave_c_tests;
-// ADR-0055 Rung 3 (D3-5) — baseline semantics + omission oracle integration tests.
-#[cfg(test)]
-mod rung3_baseline_tests;
 mod types;
 mod update;
 // `WireSub` row (moved out of `types.rs` for the LOC cap).

@@ -343,6 +343,13 @@ void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapsho
 // skipped (D6).
 void nmp_app_declare_consumed_projections(void *app, const char *const *keys, uintptr_t len);
 
+// ADR-0055 Rung 3 — declare that this host's runtime owns the NMP cache-merge
+// layer (D3-3) so the kernel may omit `Unchanged` projections from the frame.
+// Single-writer, call before `nmp_app_start`; idempotent. After this call the
+// next snapshot is a full baseline (all live Tier-2 projections as Changed).
+// A null `app` is a silent no-op (D6).
+void nmp_app_declare_incremental_apply(void *app);
+
 // ── V-51 phase 2 — routing-trace snapshot accessor ───────────────────────
 //
 // Return a heap-owned NUL-terminated JSON snapshot of the kernel's recent
