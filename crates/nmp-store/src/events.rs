@@ -366,9 +366,9 @@ pub trait EventStore: Send + Sync {
     /// hole the memory review flagged). See [`CoverageGuard`].
     ///
     /// `guards` is derived by the kernel on each GC pass from the live coverage
-    /// rows + active interest registry, gated on the off-by-default
-    /// `coverage_ledger_enabled` flag. With the flag off the slice is **empty**
-    /// and this method is byte-identical to `gc_step_with_pins`.
+    /// rows + active interest registry. When there are no covered
+    /// `(filter_hash, relay)` rows the slice is **empty** and this method is
+    /// byte-identical to `gc_step_with_pins`.
     ///
     /// Default impl ignores `guards` and delegates to `gc_step_with_pins`, so a
     /// non-overriding backend compiles unchanged; both shipped backends
@@ -458,10 +458,8 @@ pub trait EventStore: Send + Sync {
     /// See [`crate::CoverageRow`] for the honest-coverage rationale (why a
     /// `since`-floored EOSE must NOT call this).
     ///
-    /// Stage D1 only WRITES the ledger; nothing reads it yet (the since-floor
-    /// stays presence-derived until Stage D2). The kernel gates every call on
-    /// the off-by-default `coverage_ledger_enabled` flag, so with the flag off
-    /// this method is never invoked and zero rows are written.
+    /// The kernel records coverage here at a completion (EOSE for an un-floored
+    /// REQ, or NEG-DONE), and reads it back as the since-floor source.
     ///
     /// Default no-op so any non-overriding backend compiles unchanged; both
     /// shipped backends (`MemEventStore`, `LmdbEventStore`) override it. Errors

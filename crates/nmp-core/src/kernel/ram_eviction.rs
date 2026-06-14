@@ -104,9 +104,6 @@ mod coverage;
 #[cfg(test)]
 #[path = "gc_floor_coherent_tests.rs"]
 mod gc_floor_coherent_tests;
-#[cfg(test)]
-#[path = "gc_floor_unification_tests.rs"]
-mod gc_floor_unification_tests;
 
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;

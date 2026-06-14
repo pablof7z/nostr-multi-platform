@@ -102,9 +102,8 @@ pub type CoverageMatchFn =
 ///
 /// The kernel derives the guard set from the live coverage rows + active
 /// interest registry on each GC pass (relay-agnostic event store, per-relay
-/// ledger), gated on the off-by-default `coverage_ledger_enabled` flag. With the
-/// flag off the guard set is empty and the eviction path is byte-identical to
-/// today.
+/// ledger). When there are no covered rows the guard set is empty and the
+/// eviction path is byte-identical to the pin-only path.
 #[derive(Clone)]
 pub struct CoverageGuard {
     /// Canonical filter hash half of the ledger key.

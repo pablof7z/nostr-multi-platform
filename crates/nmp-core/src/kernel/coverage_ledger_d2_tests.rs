@@ -1,26 +1,25 @@
-//! K3 Stage D2 (ADR-0056 §3.D2) — coverage-ledger READ-swap tests.
+//! K3 (ADR-0056 §3.D2) — coverage-ledger since-floor READ tests.
 //!
 //! D1 (`coverage_ledger_d1_tests.rs`) proved the WRITE path; these tests prove
-//! the READ swap: the since-floor reads the coverage ledger for
-//! `(canonical_filter_hash(shape), relay)` when the flag is ON, with a
-//! presence-derived fallback ONLY when the ledger has no row, and behaviour
-//! identical to today when the flag is OFF.
+//! the READ: the since-floor reads the coverage ledger for
+//! `(canonical_filter_hash(shape), relay)` — `Some(covered_through)` when the
+//! relay has a completed-coverage row, `None` (refuse the floor / full window)
+//! when it has none.
 //!
 //! Two layers, both load-bearing:
 //!
-//! 1. **The decision table** (`Kernel::coverage_floor_for`) — flag off ⇒
-//!    presence; flag on + row ⇒ ledger `covered_through`; flag on + no row ⇒
-//!    presence. Driven directly so the table is pinned without standing up the
-//!    full recompile path.
+//! 1. **The decision** (`Kernel::coverage_floor_for`) — row ⇒ ledger
+//!    `covered_through`; no row ⇒ refuse (`None`). Driven directly so the
+//!    decision is pinned without standing up the full recompile path.
 //! 2. **The production `WatermarkFn` closure** (via the relay-aware
 //!    `watermark_for_shape_on_relay_for_test` accessor) — proves the kernel's
 //!    INSTALLED closure reads the ledger by the canonical hash AND threads the
 //!    relay through, so the SAME shape on two relays can floor differently.
 //!
 //! The fixture-relay journey test (the merge gate) lives in
-//! `crates/nmp-testing/tests/` and exercises the real recompile→REQ→ingest path
-//! end to end; these unit tests are necessary but, per ADR-0056 §4, not
-//! sufficient on their own.
+//! `coverage_ledger_d2_journey_tests.rs` and exercises the real
+//! recompile→REQ→ingest path end to end; these unit tests are necessary but,
+//! per ADR-0056 §4, not sufficient on their own.
 
 use std::collections::BTreeSet;
 
@@ -78,102 +77,53 @@ fn seed_coverage(kernel: &Kernel, shape: &InterestShape, relay: &str, covered_th
         .record_coverage(&filter_hash, relay, covered_through);
 }
 
-// ─── Layer 1: the decision table (`coverage_floor_for`) ─────────────────────────
+// ─── Layer 1: the floor decision (`coverage_floor_for`) ─────────────────────────
 
-/// Flag OFF: the relay and ledger are ignored; the presence closure result is
-/// returned verbatim. This is the default, byte-identical-to-today path.
-#[test]
-fn floor_is_presence_when_flag_off_even_if_ledger_has_a_row() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // The ledger defaults ON now; pin the flag-OFF path explicitly.
-    kernel.set_coverage_ledger_enabled(false);
-    let shape = author_kind_shape(&hex_pk("aa"));
-    // A ledger row exists, but the flag is OFF — it must be ignored entirely.
-    seed_coverage(&kernel, &shape, RELAY_A, 1_600_000_000);
-    assert!(!kernel.coverage_ledger_enabled());
-
-    let floor = kernel.coverage_floor_for(&shape, RELAY_A, || Some(1_700_000_000));
-    assert_eq!(
-        floor,
-        Some(1_700_000_000),
-        "flag OFF must return the presence floor verbatim, ignoring the ledger row",
-    );
-
-    // And the presence closure's None is preserved too (no ledger leak).
-    let floor_none = kernel.coverage_floor_for(&shape, RELAY_A, || None);
-    assert_eq!(
-        floor_none, None,
-        "flag OFF must return the presence None verbatim, ignoring the ledger row",
-    );
-}
-
-/// Flag ON + ledger HAS a row: the floor is the ledger's `covered_through`, NOT
-/// the presence value. The presence closure must not even be consulted.
+/// Ledger HAS a row: the floor is the ledger's `covered_through`.
 #[test]
 fn floor_reads_ledger_covered_through_when_flag_on_and_row_present() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(true);
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let shape = author_kind_shape(&hex_pk("aa"));
     seed_coverage(&kernel, &shape, RELAY_A, 1_650_000_000);
 
-    let presence_consulted = std::cell::Cell::new(false);
-    let floor = kernel.coverage_floor_for(&shape, RELAY_A, || {
-        presence_consulted.set(true);
-        Some(1_700_000_000)
-    });
+    let floor = kernel.coverage_floor_for(&shape, RELAY_A);
 
     assert_eq!(
         floor,
         Some(1_650_000_000),
-        "flag ON + row present must floor at the ledger's covered_through, not presence",
-    );
-    assert!(
-        !presence_consulted.get(),
-        "a ledger HIT must NOT consult the (potentially expensive) presence closure",
+        "a row present must floor at the ledger's covered_through",
     );
 }
 
-/// Flag ON + ledger has NO row: REFUSE to floor (full window). The H1 fix —
-/// an un-synced `(filter_hash, relay)` must NOT inherit the (unsound) presence
-/// floor, else a stray below-floor event would suppress backfill. The presence
-/// closure must not even be consulted on the flag-on path.
+/// Ledger has NO row: REFUSE to floor (full window). The H1 fix — an un-synced
+/// `(filter_hash, relay)` must NOT be floored, else a stray below-floor event
+/// would suppress backfill.
 #[test]
 fn floor_is_refused_when_flag_on_but_no_row() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(true);
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let shape = author_kind_shape(&hex_pk("aa"));
     // No coverage row seeded for this (shape, relay).
 
-    let presence_consulted = std::cell::Cell::new(false);
-    let floor = kernel.coverage_floor_for(&shape, RELAY_A, || {
-        presence_consulted.set(true);
-        Some(1_700_000_000)
-    });
+    let floor = kernel.coverage_floor_for(&shape, RELAY_A);
     assert_eq!(
         floor, None,
-        "flag ON + NO row must REFUSE the floor (full window), not re-inherit \
-         the unsound presence floor (the H1 fix)",
-    );
-    assert!(
-        !presence_consulted.get(),
-        "under flag ON the presence heuristic must NEVER govern the floor — \
-         coverage is the sole authority",
+        "NO row must REFUSE the floor (full window), not inherit an unsound \
+         store-presence floor (the H1 fix)",
     );
 }
 
-/// Flag ON: coverage is per-`(filter_hash, relay)`. The SAME shape with a row
-/// on relay A but none on relay B floors from the ledger on A and from presence
-/// on B — the relay-threading correctness at the decision-table layer.
+/// Coverage is per-`(filter_hash, relay)`. The SAME shape with a row on relay A
+/// but none on relay B floors from the ledger on A and is refused on B — the
+/// relay-threading correctness at the decision layer.
 #[test]
 fn floor_is_per_relay_when_flag_on() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(true);
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let shape = author_kind_shape(&hex_pk("aa"));
     // Relay A has completed coverage through 1_650_000_000; relay B has none.
     seed_coverage(&kernel, &shape, RELAY_A, 1_650_000_000);
 
-    let floor_a = kernel.coverage_floor_for(&shape, RELAY_A, || Some(1_700_000_000));
-    let floor_b = kernel.coverage_floor_for(&shape, RELAY_B, || Some(1_700_000_000));
+    let floor_a = kernel.coverage_floor_for(&shape, RELAY_A);
+    let floor_b = kernel.coverage_floor_for(&shape, RELAY_B);
 
     assert_eq!(
         floor_a,
@@ -190,19 +140,19 @@ fn floor_is_per_relay_when_flag_on() {
 // ─── Layer 2: the installed production `WatermarkFn` closure ─────────────────────
 
 /// The kernel's INSTALLED watermark closure (not a test stub) reads the ledger
-/// by the canonical filter hash when the flag is ON and a row is present —
-/// proving the `mod.rs` closure wiring, not just the `coverage_floor_for`
-/// method. The presence watermark (newest stored event) is DIFFERENT from the
-/// ledger value, so the assertion distinguishes the two sources.
+/// by the canonical filter hash when a row is present — proving the `mod.rs`
+/// closure wiring, not just the `coverage_floor_for` method. A stray stored
+/// event sits at a DIFFERENT (higher) timestamp than the ledger value, so the
+/// assertion proves the ledger — not store presence — governs.
 #[test]
 fn installed_closure_reads_ledger_when_flag_on() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let author = hex_pk("aa");
     let shape = author_kind_shape(&author);
-    // Presence: newest stored kind:1 by this author is at 1_700_000_000.
+    // A stray stored kind:1 by this author at 1_700_000_000 (a store-presence
+    // floor WOULD floor here — the ledger must not).
     insert_author_event(&mut kernel, &hex_pk("e0"), &author, 1_700_000_000);
     // Ledger: completed coverage only through 1_650_000_000 on RELAY_A.
-    kernel.set_coverage_ledger_enabled(true);
     seed_coverage(&kernel, &shape, RELAY_A, 1_650_000_000);
 
     let floor = kernel
@@ -213,34 +163,7 @@ fn installed_closure_reads_ledger_when_flag_on() {
         floor,
         Some(1_650_000_000),
         "the installed closure must floor at the ledger covered_through (1_650…), \
-         not the presence watermark (1_700…)",
-    );
-}
-
-/// Flag OFF (default): the installed closure floors at the PRESENCE watermark
-/// (newest stored event), ignoring any ledger row — the regression guard that
-/// proves D2 is dormant by default.
-#[test]
-fn installed_closure_uses_presence_when_flag_off() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // The ledger defaults ON now; pin the flag-OFF path explicitly.
-    kernel.set_coverage_ledger_enabled(false);
-    let author = hex_pk("aa");
-    let shape = author_kind_shape(&author);
-    insert_author_event(&mut kernel, &hex_pk("e0"), &author, 1_700_000_000);
-    // A ledger row exists but the flag is OFF — it must be ignored.
-    seed_coverage(&kernel, &shape, RELAY_A, 1_650_000_000);
-    assert!(!kernel.coverage_ledger_enabled());
-
-    let floor = kernel
-        .lifecycle
-        .watermark_for_shape_on_relay_for_test(&shape, RELAY_A);
-
-    assert_eq!(
-        floor,
-        Some(1_700_000_000),
-        "flag OFF: the installed closure must floor at the presence watermark \
-         (1_700…), proving the read swap is dormant by default",
+         not the stray stored event (1_700…)",
     );
 }
 
@@ -259,9 +182,9 @@ fn installed_closure_refuses_floor_for_followfeed_with_stray_but_no_coverage() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let author = hex_pk("bb");
     let shape = author_kind_shape(&author);
-    // The stray thread-reply by A is on disk (presence WOULD floor at 1_700…).
+    // The stray thread-reply by A is on disk (a store-presence floor WOULD floor
+    // at 1_700…).
     insert_author_event(&mut kernel, &hex_pk("57"), &author, 1_700_000_000);
-    kernel.set_coverage_ledger_enabled(true);
     // No coverage row for the follow-feed (filter_hash, RELAY_A): the stray was
     // acquired under a different shape, so the follow feed is un-synced here.
 
@@ -281,8 +204,7 @@ fn installed_closure_refuses_floor_for_followfeed_with_stray_but_no_coverage() {
 /// (floored at its `covered_through`).
 #[test]
 fn installed_closure_coverage_does_not_leak_across_relays() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(true);
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let author = hex_pk("cc");
     let shape = author_kind_shape(&author);
     seed_coverage(&kernel, &shape, RELAY_B, 1_650_000_000);

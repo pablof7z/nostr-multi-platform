@@ -11,9 +11,9 @@
 //! ## Why this drives the kernel, not the C-ABI
 //!
 //! The load-bearing path is `recompile → REQ → ingest → projection`, all
-//! kernel-internal. The since-floor read swap lives in the kernel's installed
+//! kernel-internal. The since-floor read lives in the kernel's installed
 //! `WatermarkFn` closure (`kernel/mod.rs`), reachable only from inside this
-//! crate (the closure reads the kernel store + the live flag). So the gate is a
+//! crate (the closure reads the coverage ledger off the kernel store). So the gate is a
 //! kernel-level integration test: it drives the REAL production watermark
 //! closure (NOT a stub) through `lifecycle_mut().recompile_and_diff`, forwards
 //! the compiled REQ over a REAL WebSocket to an in-process responding relay,
@@ -303,10 +303,9 @@ fn stored_note_count(kernel: &Kernel, _author_hex: &str) -> usize {
 /// Build a kernel pre-loaded with the stray (t=300) event for `keys`, the
 /// author followed, and a follow-feed interest registered + recompiled against
 /// `relay_url`. Returns the kernel and the compiled follow-feed REQ text.
-fn scenario(keys: &Keys, relay_url: &str, flag_on: bool) -> (Kernel, String) {
+fn scenario(keys: &Keys, relay_url: &str) -> (Kernel, String) {
     let author_hex = keys.public_key().to_hex();
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(flag_on);
 
     // The user follows A (admits A's notes into the timeline store).
     kernel.timeline_authors.insert(author_hex.clone());
@@ -376,14 +375,14 @@ fn h1_followfeed_backfills_full_history_with_coverage_ledger() {
     ]);
     let url = relay.ws_url();
 
-    let (mut kernel, req_text) = scenario(&keys, &url, /* flag_on */ true);
+    let (mut kernel, req_text) = scenario(&keys, &url);
 
-    // THE SWAP PROOF: with the flag ON and NO coverage row for the follow-feed
-    // (filter_hash, relay), the floor is REFUSED — the REQ is un-floored.
+    // THE SWAP PROOF: with NO coverage row for the follow-feed (filter_hash,
+    // relay), the coverage ledger REFUSES the floor — the REQ is un-floored.
     assert!(
         !req_text.contains("\"since\""),
-        "flag ON + no coverage row ⇒ the follow-feed REQ must be UN-floored \
-         (full window), so the relay can backfill below the stray; got {req_text}",
+        "no coverage row ⇒ the follow-feed REQ must be UN-floored (full window), \
+         so the relay can backfill below the stray; got {req_text}",
     );
 
     run_req_through_relay(&mut kernel, &url, &req_text);
@@ -395,40 +394,5 @@ fn h1_followfeed_backfills_full_history_with_coverage_ledger() {
         3,
         "H1: with the coverage ledger, following A AFTER a stray reply must \
          backfill A's FULL history (t=100, t=200, t=300), not just the stray",
-    );
-}
-
-// ─── Flag-OFF regression: today's presence floor still suppresses ──────────────
-
-#[test]
-fn h1_followfeed_is_suppressed_with_flag_off_unchanged_behaviour() {
-    let keys = Keys::generate();
-    let relay = RespondingRelay::spawn(vec![
-        signed_note(&keys, E1, "oldest"),
-        signed_note(&keys, E2, "middle"),
-        signed_note(&keys, E3_STRAY, "stray thread reply"),
-    ]);
-    let url = relay.ws_url();
-
-    let (mut kernel, req_text) = scenario(&keys, &url, /* flag_on */ false);
-
-    // Flag OFF: the presence floor finds the stray (t=300) and floors the REQ
-    // at since = stray + 1 = 301 — exactly today's behaviour.
-    assert!(
-        req_text.contains("\"since\":301"),
-        "flag OFF: the presence floor must still floor the follow-feed REQ at \
-         stray+1 (=301), proving the read swap is dormant by default; got {req_text}",
-    );
-
-    run_req_through_relay(&mut kernel, &url, &req_text);
-
-    // The floored REQ returns only the at/above-floor event (t=300). The older
-    // history (t=100, t=200) stays suppressed — the H1 bug, intact under the
-    // off flag (so the swap is the ONLY thing that fixes it).
-    assert_eq!(
-        stored_note_count(&kernel, &keys.public_key().to_hex()),
-        1,
-        "flag OFF: the floored REQ backfills only the at-floor stray (t=300); \
-         below-floor history stays suppressed (the H1 bug, unchanged)",
     );
 }

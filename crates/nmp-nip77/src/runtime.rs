@@ -76,26 +76,21 @@ impl NegentropySyncRuntime {
         }
     }
 
-    /// K3 Stage D2 (ADR-0056 §3.D2) — is this `(filter_hash, relay)` uncovered
-    /// by the coverage ledger?
+    /// K3 (ADR-0056 §3.D2) — is this `(filter_hash, relay)` uncovered by the
+    /// coverage ledger?
     ///
-    /// "Uncovered" means: the coverage ledger is ENABLED and there is NO
-    /// completed-coverage row for `(canonical_filter_hash, relay)`. Such a shape
-    /// has never been fully synced against this relay, so a full-window (Stage A
-    /// un-floored) negentropy reconciliation should be preferred over a plain
-    /// REQ regardless of fanout — it is the one mechanism that self-heals a
-    /// below-floor gap. When the flag is OFF this always returns `false`, so the
-    /// fanout heuristic remains the sole gate (zero behaviour change).
+    /// "Uncovered" means there is NO completed-coverage row for
+    /// `(canonical_filter_hash, relay)`. Such a shape has never been fully synced
+    /// against this relay, so a full-window (Stage A un-floored) negentropy
+    /// reconciliation should be preferred over a plain REQ regardless of fanout —
+    /// it is the one mechanism that self-heals a below-floor gap.
     ///
     /// The `filter_hash` is the `sub-<hash>` wire-id suffix — the SAME key the
-    /// D1 write path records under and the D2 floor read reads by. Non-planner
-    /// ids (no `sub-` prefix) have no canonical hash and so no ledger row; they
-    /// are treated as covered (not uncovered) — they fall through to the fanout
+    /// write path records under and the floor read reads by. Non-planner ids
+    /// (no `sub-` prefix) have no canonical hash and so no ledger row; they are
+    /// treated as covered (not uncovered) — they fall through to the fanout
     /// gate, never force negentropy on a key the ledger cannot track.
     fn relay_filter_is_uncovered(&self, kernel: &Kernel, sub_id: &str, relay_url: &str) -> bool {
-        if !kernel.coverage_ledger_enabled() {
-            return false;
-        }
         let Some(filter_hash) = sub_id.strip_prefix("sub-") else {
             return false;
         };
