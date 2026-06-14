@@ -1,7 +1,7 @@
 # 15 — Codegen: `nmp gen modules` + per-app FFI crate
 
-**Status: SHIPS** (codegen + legacy raw C FFI) · FlatBuffers transport
-migration is in progress · UniFFI M14 PLANNED · `nmp init` basic scaffold ships ·
+**Status: SHIPS** (codegen + raw C/JNI FFI + FlatBuffers update transport) ·
+UniFFI M14 PLANNED · `nmp init` basic scaffold ships ·
 full starter M16 PLANNED · Audience: both
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. Each
@@ -10,9 +10,9 @@ needs **concrete closed enums** (ADR-0010 rejected a type-erased registry). You
 do not hand-write that aggregation — `nmp-codegen` generates it from a manifest.
 
 This section covers the manifest format, the generated outputs, and — critically
-— the gap between **what ships today** (legacy raw C JSON-over-string FFI on
-master) and **what the design targets** (FlatBuffers as the canonical runtime
-update transport, UniFFI for bindings/lifecycle at M14, `nmp init` at M16).
+— the current boundary split: raw C/JNI owns lifecycle/action/capability calls
+today, binary FlatBuffers owns the hot update stream today, UniFFI is still the
+planned binding/lifecycle target for M14, and the full starter remains M16.
 
 ## The manifest: `nmp.toml`
 
@@ -102,19 +102,21 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 
 ```
 ┌─ TODAY (SHIPS) ─────────────────────────────────────────────────────┐
-│ Legacy raw C FFI. crates/nmp-core/src/ffi.rs exports `nmp_app_*`     │
-│ extern "C" fns (nmp_app_new, nmp_app_start, nmp_app_open_author …).  │
-│ On master, updates still cross as one JSON string via a callback.    │
-│ That is the historical transport being retired, not a fallback path. │
-│ The GENERATED FfiApp (nmp-app-fixture/src/ffi.rs) is the live per-  │
-│ app FFI entry-point: it allocates NmpApp, calls each module's        │
+│ Raw C/JNI lifecycle/action/capability ABI in crates/nmp-ffi. It      │
+│ exports the `nmp_app_*` surface (`new`, `start`, `dispatch_action`,  │
+│ capability callbacks, projection/observer registration, etc.).       │
+│ The update callback carries one binary `nmp.transport.UpdateFrame`   │
+│ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
+│ runtime snapshot fallback and no pull/drain update symbol.           │
+│ The GENERATED FfiApp (nmp-app-fixture/src/ffi.rs) is the live per-   │
+│ app Rust entry-point: it allocates NmpApp, calls each module's       │
 │ register(), and routes AppAction variants through dispatch_action.   │
-│ ios/Chirp consumes the hand-written raw C FFI in nmp-core directly. │
-├─ FlatBuffers runtime transport (IN PROGRESS) ───────────────────────┤
-│ One canonical schema carries `FullState`, `ViewBatch`, and effects   │
-│ from Rust to frontend shells. JSON is allowed only for Nostr relay    │
-│ frames, diagnostics/goldens, legacy raw-C migration shims, or tests. │
-│ There is no runtime "try FlatBuffers, fall back to JSON" mode.       │
+│ ios/Chirp consumes NmpCore.h backed by nmp-ffi plus Chirp wrappers.  │
+├─ FlatBuffers runtime transport (SHIPS) ─────────────────────────────┤
+│ One canonical transport frame carries typed SnapshotEnvelope fields  │
+│ and typed projection sidecars from Rust to frontend shells. JSON is  │
+│ allowed for Nostr relay frames, capability envelopes, diagnostics,   │
+│ goldens, or tests. It is not a second production update transport.   │
 ├─ M14 — UniFFI (PLANNED, docs/plan/m14-uniffi.md) ───────────────────┤
 │ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +       │
 │ lifecycle/binding wrappers (see ADR-0010 §Codegen output). iOS stops │
@@ -134,7 +136,7 @@ ADR-0010 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
 `bindings/{swift,kotlin,typescript}/` tree. **That is the M14 target shape, not
 master.** Master emits plain `#[derive(Clone, Debug, PartialEq)]` and no
 bindings dir. Any doc or agent claiming UniFFI ships today, or claiming JSON
-remains a runtime fallback after the FlatBuffers migration, is drift — file it
+remains a runtime fallback for the update stream, is drift — file it
 into [27 — Doc/code discrepancies](27-discrepancies.md).
 
 ## How to add a snapshot projection to your app
@@ -143,62 +145,51 @@ into [27 — Doc/code discrepancies](27-discrepancies.md).
 > in two senses. The `KernelEventObserver`-driven view system (a reactive event
 > fan-out into an app-owned store, described in [05a](05a-substrate-traits.md) +
 > [06](06-reactivity-contract.md)) is one sense. **This section** is the other:
-> a **snapshot projection** — a named JSON slice of app/module state delivered
-> under its key in `KernelSnapshot.projections[key]`, registered via
-> `register_snapshot_projection`. These two mechanisms are unrelated. Everywhere
-> below, "snapshot projection" means the `projections` map, never the
-> event-observer view update path.
+> a **snapshot projection** — an app/module-owned slice of state emitted inside
+> the kernel's pushed update frame. In production host shells, that slice should
+> be a typed FlatBuffers sidecar in `SnapshotFrame.typed_projections`, registered
+> via `register_typed_snapshot_projection`.
 
 **What it is.** A snapshot projection is a named slice of app- or module-owned
-state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.publish.status`,
+state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.feed.home`,
 `nmp.nip57.zaps`, `nmp.follow_list`), that rides the kernel's reactive snapshot
 push frame ([06 — Reactivity contract](06-reactivity-contract.md)) into the host.
-The kernel pushes a **whole snapshot every emit tick**; each registered
-projection appears under its key in that snapshot's `projections` map
-(`crates/nmp-core/src/kernel/types.rs:868`). The host reads `projections[key]`
-in its apply callback. **No polling, no pull symbol** — the value arrives on the
-same frame as every other field.
+The kernel pushes a **whole frame every emit tick when state changed**; hosts
+decode the binary `UpdateFrame`, apply its `SnapshotEnvelope` fields, then read
+projection sidecars by key. **No polling, no pull symbol** — render state arrives
+on the callback path as part of the same frame as every other field.
 
-### The seam it rides — `register_snapshot_projection`
+### Production seam — `register_typed_snapshot_projection`
 
-Registration lands on the permanent C-ABI seam
-`nmp_app_register_snapshot_projection` (Rust method
-`NmpApp::register_snapshot_projection`, `crates/nmp-ffi/src/lib.rs:1109`; C-ABI
-export `crates/nmp-ffi/src/snapshot.rs:83`; header declaration
-`ios/Chirp/Chirp/Bridge/NmpCore.h:255`). You give it a key and a closure
-`Fn() -> serde_json::Value`; on every snapshot tick the kernel runs the closure
-and appends the result to `KernelSnapshot.projections` under your key. Keys are
-last-writer-wins; the handful of **kernel-reserved built-in keys**
-(`publish_queue`, `accounts`, `profile`, the views cluster — see
-`types.rs:846-867`) always win over a host registration of the same name.
+Register host-rendered projection state as a typed sidecar with
+`NmpApp::register_typed_snapshot_projection` (C-ABI registration support lives
+in `crates/nmp-ffi/src/snapshot.rs`). The closure returns
+`Option<TypedProjectionData>` containing:
 
-This seam is **structurally permanent**, not transitional: it is listed under
-"Structural permanent (26) — keep, freeze-locked" in
-`docs/architecture-audit/ffi-deprecation-calendar.md:61` (entry at `:152`). It is
-the output-side counterpart to the action-registry seam — the supported way a
-non-social app extends the snapshot **without editing `nmp-core`'s typed
-fields**. ADR-0037's typed FlatBuffers projection reuses this exact seam.
+- the projection key, e.g. `nmp.feed.home`;
+- `schema_id`, `schema_version`, and FlatBuffers `file_identifier`;
+- the projection payload bytes, owned by the app/protocol crate that owns the
+  schema.
 
-**Register it from your module's `register`/wiring fn.** The canonical exemplar
-is `nmp-nip29`: its module wiring fn registers the projector directly
-(`crates/nmp-nip29/src/register.rs:66`):
+`nmp-core` treats those bytes as opaque. The host chooses the decoder by key and
+descriptor and reads the generated native model from the `typed_projections`
+vector. This is the production path for Swift/Kotlin/TS render inputs because it
+does not rely on a dynamic `payload:Value` tree.
 
-```rust
-// crates/nmp-nip29/src/register.rs — inside the module's wiring fn.
-// `projection` is the module's read-model (a NIP-29 group-chat aggregate).
-app.register_snapshot_projection("nmp.nip29.group_chat", move || {
-    projection.snapshot_json() // cheap, non-blocking: returns serde_json::Value
-});
-```
+The OP feed wiring is the canonical high-volume exemplar:
+`nmp-defaults` registers the `nmp.feed.home` typed sidecar, `nmp-nip01` owns the
+feed schema and encoder, and iOS decodes it through `TypedHomeFeedDecoder`
+before assigning the corresponding `KernelModel` slot.
 
-The same one-liner is how Chirp wires its NIP-02 follow list
-(`apps/chirp/nmp-app-chirp/src/ffi/register.rs:371`:
-`register_snapshot_projection("nmp.follow_list", move || projection.snapshot_json())`)
-and how `nmp-nip57` exposes its zap-count aggregate
-(`crates/nmp-nip57/src/projection.rs:47`, key `nmp.nip57.zaps`). A protocol
-module owns a `snapshot_json(&self) -> serde_json::Value` method on its read
-model; the host (or the module's wiring fn) registers it under an `nmp.<module>.*`
-key.
+### Legacy/internal seam — `register_snapshot_projection`
+
+`NmpApp::register_snapshot_projection` still exists for Rust-side composition,
+tests, diagnostics, and legacy helpers that want a `serde_json::Value` snapshot
+inside `KernelSnapshot::projections`. It is structurally useful as a framework
+extension seam, but the production `UpdateFrame` no longer carries a generic
+`payload:Value` tree for hosts to walk. Do not introduce new Swift/Kotlin UI
+state that depends on `snapshot.projections[key]` JSON being available on the
+wire; add a typed sidecar instead.
 
 > **D8 + D6 — the projector runs on the actor thread inside the snapshot tick.**
 > It MUST be cheap and non-blocking — no I/O, no mutex waits (D8); a blocking
@@ -207,36 +198,22 @@ key.
 > `crates/nmp-core/src/kernel/snapshot_registry.rs:125`), so a panic in one
 > projector never aborts the snapshot.
 
-### Sibling channel — typed FlatBuffers projections (NOT `projections[key]`)
-
-For schema-validated payloads, `NmpApp::register_typed_snapshot_projection`
-(`crates/nmp-ffi/src/snapshot.rs:48`, `Fn() -> Option<TypedProjectionData>`)
-rides a **separate sidecar**: its output lands in the frame's
-`typed_projections`, read on the host via `snapshot.typedProjections`
-(`KernelUpdateFrameDecoder.swift:74`), **not** in `projections[key]`. The
-production exemplar is the op-feed (`crates/nmp-defaults/src/op_feed_defaults.rs:286`,
-`OP_FEED_SNAPSHOT_KEY`), decoded by `TypedHomeFeedDecoder` (ADR-0037 / ADR-0038).
-Reach for this only when you need typed FlatBuffers across the boundary; for the
-common "expose a named JSON slice and read it in `apply()`" case, use the generic
-`register_snapshot_projection` path above and read `projections[key]` — see
-[17 — iOS shell](17-ios-shell.md) for the read half.
-
 > **One thing to avoid.** Do **not** mint a bespoke `nmp_app_<app>_snapshot`
 > pull symbol that returns a JSON C string (the deprecated anti-pattern —
 > `nmp_app_chirp_snapshot`, retired per ADR-0037; bespoke-FFI sprawl per the
 > deprecation calendar). A pull symbol forces the shell to call on a timer to
 > stay current — a polling loop, which violates D8 and defeats the rev guard.
 > The projection registry **is** the replacement: register once, ride the push
-> frame, read `projections[key]`.
+> frame, read the typed sidecar.
 
 ### Post-0.3.0 snapshot consumption rules
 
 **`payload:Value` no longer exists.** As of nmp-v0.3.0, `SnapshotFrame` carries no
-generic JSON blob. Every byte of snapshot state is either a named `projections[key]`
-JSON slice (registered via `register_snapshot_projection`) or a typed FlatBuffers
-sidecar (registered via `register_typed_snapshot_projection`). The deleted functions
-`decode_snapshot_payload`, `decode_snapshot_with_typed`, and `encode_snapshot_value`
-have no replacement — migrate callers as described below.
+generic JSON blob. Every byte that crosses into production hosts is either a
+typed `SnapshotEnvelope` field or a typed FlatBuffers projection sidecar. The
+deleted functions `decode_snapshot_payload`, `decode_snapshot_with_typed`, and
+`encode_snapshot_value` have no replacement — migrate callers as described
+below.
 
 **Rule A — never read a generic payload tree.**  It no longer exists. If your code
 once accessed `payload[...]` from a decoded frame, it must switch to one of the
@@ -269,10 +246,10 @@ if let UpdateEnvelope::Snapshot(env) = decode_update_frame(&frame_bytes)? {
 }
 ```
 
-**Rule D — large host projections use `register_snapshot_projection_gated`.** Apps
-with expensive serialization in a host projection should wrap it with a
-`ChangeGate` rev counter so the closure is skipped when the underlying data has not
-changed since the last emit:
+**Rule D — gate expensive projection encodes.** Apps with expensive projection
+serialization should maintain a change/revision gate so the closure can skip work
+when the underlying data has not changed since the last emit. For legacy JSON
+projections, `register_snapshot_projection_gated` provides that gate:
 ```rust
 use std::sync::{Arc, atomic::AtomicU64};
 use nmp_core::ChangeGate;
@@ -308,7 +285,7 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
    are deleted. Add a real module crate and a manifest entry instead.
 2. **Expecting UniFFI to carry hot update payloads.** UniFFI is the planned
    generated binding/lifecycle surface. Runtime updates are FlatBuffers.
-3. **Adding a JSON runtime fallback.** JSON may exist in legacy raw-C shims,
+3. **Adding a JSON runtime fallback.** JSON may exist in capability envelopes,
    relay protocol frames, fixtures, and diagnostics. It must not be a second
    production update transport.
 4. **Expecting `nmp init` to scaffold an iOS/Android project.** `nmp init`
@@ -327,10 +304,10 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
 
 - Annotated `nmp.toml` (above) — the five keys the parser actually reads.
 - Before/after `AppAction` diff — what one `[modules]` line adds, hands-free.
-- Current-vs-future FFI box — legacy raw C JSON today, FlatBuffers runtime
-  transport target, UniFFI M14, `nmp init` CLI ships.
+- Current-vs-future FFI box — raw C/JNI calls today, FlatBuffers runtime
+  transport today, UniFFI M14, `nmp init` CLI ships.
 
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
-[06 — Reactivity contract — the push frame carries `projections`](06-reactivity-contract.md) ·
-[17 — iOS shell — reading `projections[key]` in `apply()`](17-ios-shell.md)
+[06 — Reactivity contract — the push frame carries typed projections](06-reactivity-contract.md) ·
+[17 — iOS shell — reading typed projections in `apply()`](17-ios-shell.md)

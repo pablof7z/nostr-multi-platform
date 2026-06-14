@@ -93,15 +93,16 @@
 use super::Kernel;
 use std::collections::HashSet;
 
-// #1090 Stage 2 — floor-coherent store-scan helpers, kept in a sibling file so
-// `ram_eviction.rs` stays under the 500-LOC cap. Declared here (not in
-// `kernel/mod.rs`) so the already-at-baseline `kernel/mod.rs` is not grown.
+// Sibling files (kept out of at-baseline `kernel/mod.rs`): #1090 floor helpers +
+// tests, and the K3 Stage C (ADR-0056) floor⇄serve unification lock tests.
 #[path = "ram_eviction_floor.rs"]
 mod floor;
-// #1090 Stage 2 — floor-coherence tests (sibling file, same rationale).
 #[cfg(test)]
 #[path = "gc_floor_coherent_tests.rs"]
 mod gc_floor_coherent_tests;
+#[cfg(test)]
+#[path = "gc_floor_unification_tests.rs"]
+mod gc_floor_unification_tests;
 
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;
@@ -113,12 +114,6 @@ pub(super) const PROFILES_RAM_HWM: usize = 2_000;
 /// pubkeys whose kind:3 was ingested — almost always ≤ a handful in
 /// production.  32 is generous.
 pub(super) const SEED_CONTACTS_RAM_HWM: usize = 32;
-
-/// Reserved for future use: per-pass eviction budget if the single-pass
-/// approach proves too expensive on very large maps.  Currently unused —
-/// eviction removes all excess down to the HWM in one call.
-#[allow(dead_code)]
-pub(super) const RAM_EVICTION_BATCH: usize = 64;
 
 /// Summary returned by [`Kernel::evict_ram_caches`] for diagnostics.
 #[derive(Debug, Clone, Default)]
@@ -253,7 +248,16 @@ impl Kernel {
     /// This replaces the deleted persisted-claims sub-db: the pin set is
     /// recomputed from live kernel state on every GC pass and passed straight
     /// into `gc_step_with_pins`, never persisted.
-    pub(crate) fn derive_store_pin_set(&self) -> HashSet<crate::store::EventId> {
+    ///
+    /// ## Return value
+    ///
+    /// Returns `(pins, complete)`. When `complete` is `false` the floor-coherent
+    /// scan (#1090 Stage 2) hit its per-tick event-visit budget
+    /// ([`floor::PIN_SCAN_MAX_EVENTS`]) before covering all active shapes.
+    /// The caller (`run_gc_step`) must then skip LRU eviction for this tick
+    /// (pass `max_total_events = usize::MAX`) — we cannot safely evict events
+    /// we may not have pinned. The next tick retries from scratch. See #1348.
+    pub(crate) fn derive_store_pin_set(&self) -> (HashSet<crate::store::EventId>, bool) {
         let view_pins = self.open_view_pins();
 
         // Convert a hex64 event-id string into a store `EventId` ([u8; 32]).
@@ -279,9 +283,37 @@ impl Kernel {
         // content-derived `since`-floor, pin every stored event matching that
         // shape at or below the floor so LRU cannot evict a middle event the
         // floored REQ will never re-request.
-        self.add_floor_coherent_pins(&mut pins);
+        // Returns false when any shape's scan was truncated (D8 budget).
+        let complete = self.add_floor_coherent_pins(&mut pins);
 
-        pins
+        (pins, complete)
+    }
+
+    /// Derive the store-tier pin set **and** the matching [`GcBudget`] for one
+    /// [`Kernel::run_gc_step`] pass (#1348).
+    ///
+    /// Wraps [`Self::derive_store_pin_set`] and owns the truncation→budget
+    /// decision so `run_gc_step` (in the already-at-baseline `kernel/mod.rs`)
+    /// stays a thin call site:
+    ///
+    /// - pin scan **complete** → [`GcBudget::production`] (LRU ceiling enabled);
+    /// - pin scan **truncated** → production budget with `max_total_events =
+    ///   usize::MAX` so LRU eviction is conservatively skipped for this tick.
+    ///   We cannot safely evict events the truncated scan may not have pinned;
+    ///   the next 60-second tick retries from scratch.
+    pub(crate) fn derive_store_gc_inputs(
+        &self,
+    ) -> (HashSet<crate::store::EventId>, crate::store::GcBudget) {
+        let (pins, complete) = self.derive_store_pin_set();
+        let budget = if complete {
+            crate::store::GcBudget::production()
+        } else {
+            crate::store::GcBudget {
+                max_total_events: usize::MAX, // LRU eviction deferred this tick
+                ..crate::store::GcBudget::production()
+            }
+        };
+        (pins, budget)
     }
 
     /// Extend `pins` with every stored event at or below each active floored
@@ -289,24 +321,50 @@ impl Kernel {
     ///
     /// For each active `LogicalInterest`, [`shape_floor`](floor::shape_floor)
     /// computes the same floor the `watermark_fn` would (the newest stored
-    /// matching event), then
-    /// every stored event matching that shape with `created_at <= floor` is
-    /// added to the pin set. Shapes with no floor (`None`) contribute nothing —
-    /// they are not floored, so the relay re-sends their history and no hole can
-    /// form.
-    fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) {
-        use floor::{pin_shape_events_below_floor, shape_floor};
+    /// matching event), then every stored event matching that shape with
+    /// `created_at <= floor` is added to the pin set. Shapes with no floor
+    /// (`None`) contribute nothing — they are not floored, so the relay
+    /// re-sends their history and no hole can form.
+    ///
+    /// Returns `true` when all shapes were fully scanned, `false` when any
+    /// shape's scan was truncated by the [`floor::PIN_SCAN_MAX_EVENTS`] budget.
+    /// Callers must treat `false` conservatively — see `derive_store_pin_set`.
+    fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) -> bool {
+        use floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
 
         let active = self.lifecycle.registry().iter_active();
         if active.is_empty() {
-            return;
+            return true;
         }
+        // #1380: read the QUERY-KEY view so this floor agrees with `watermark_fn`.
+        let truncated = floor::truncated_serve_snapshot(&self.etag_ptag_truncated_query_keys);
+        let mut complete = true;
         for interest in &active {
-            let Some(floor) = shape_floor(&interest.shape, self.store.as_ref()) else {
+            let Some(floor) = shape_floor(&interest.shape, self.store.as_ref(), &truncated) else {
                 continue;
             };
-            pin_shape_events_below_floor(&interest.shape, floor, self.store.as_ref(), pins);
+            let outcome = pin_shape_events_below_floor(
+                &interest.shape,
+                floor,
+                self.store.as_ref(),
+                pins,
+                floor::PIN_SCAN_MAX_EVENTS,
+            );
+            if outcome == PinScanOutcome::Truncated {
+                tracing::warn!(
+                    "floor-coherent pin scan truncated at {} events for shape \
+                     (Etag/Ptag with many matches); LRU eviction deferred this tick. \
+                     See #1348.",
+                    floor::PIN_SCAN_MAX_EVENTS,
+                );
+                complete = false;
+                // Do not break: keep scanning remaining shapes so we pin as
+                // many events as possible within the overall budget. Each shape
+                // gets its own fresh PIN_SCAN_MAX_EVENTS allowance — truncation
+                // of one shape does not starve others.
+            }
         }
+        complete
     }
 
     // ─── events ────────────────────────────────────────────────────────────
@@ -397,6 +455,11 @@ impl Kernel {
             if self.profiles.remove(&key).is_some() {
                 removed += 1;
             }
+        }
+        if removed > 0 {
+            // ADR-0055 Rung 1 (F4): stamp the removal so profile-derived
+            // projections' rev stays coherent (else the host serves an evicted one).
+            self.projection_rev_tracker.source_versions.bump_profiles();
         }
         removed
     }

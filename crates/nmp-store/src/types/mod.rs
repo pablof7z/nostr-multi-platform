@@ -3,6 +3,7 @@
 //! These types live here and are re-exported from `nmp_core::store`.
 //! They track the design in `docs/design/lmdb/trait.md`.
 
+mod coverage;
 mod errors;
 mod events;
 mod gc;
@@ -12,6 +13,7 @@ mod query;
 
 // ─── Re-exports ───────────────────────────────────────────────────────────────
 
+pub use coverage::{coverage_key, coverage_key_parts, CoverageRow, COVERAGE_KEY_SEP};
 pub use errors::{StoreError, VerifyError};
 pub use events::{RawEvent, StoredEvent, VerifiedEvent};
 pub use gc::{

@@ -52,6 +52,18 @@ struct GalleryShowcaseRelay: Decodable, Sendable {
     let role: String
 }
 
+/// One entry of the kernel's `projections.relay_role_options` array — the
+/// canonical role token paired with the kernel-emitted human-readable `label`
+/// and semantic `tint`. The relay-list component consumes `label`/`tint` from
+/// here directly; no role→label/tint derivation lives in Swift (ADR-0041,
+/// issue #996). Mirrors Chirp's `RelayRoleOption`.
+struct GalleryRelayRoleOption: Decodable, Equatable, Sendable {
+    let value: String
+    let label: String
+    let tint: String
+    let isDefault: Bool
+}
+
 let GALLERY_SHOWCASE = GalleryShowcaseReferences.loadFromRust()
 let SHOWCASE_PUBKEY_HEX = GALLERY_SHOWCASE.profile.pubkeyHex
 let SHOWCASE_NPUB = GALLERY_SHOWCASE.profile.npub
@@ -99,13 +111,27 @@ struct GallerySnapshot: Decodable, Equatable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
+    /// Pre-resolved embed-projection map produced by `nmp-ffi`'s embed sidecar
+    /// (issue #1283 / ADR-0034). Key = `primary_id`; value = fully resolved
+    /// `EmbeddedEventEnvelope` with `projection` already kind-dispatched in
+    /// Rust. Nil when the projection is absent (kernel not yet updated).
+    let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
+    /// Kernel-emitted relay-role presentation tokens from
+    /// `projections.relay_role_options` (issue #996). The relay-list page
+    /// looks `configured_relays.role` up here for `label`/`tint`, exactly as
+    /// Chirp's `RelayConfigRow` does — no Swift-side role derivation.
+    let relayRoleOptions: [GalleryRelayRoleOption]
 
-    static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [])
+    static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], claimedEventEmbeds: nil)
 
-    init(running: Bool, profiles: [String: ProfileWire], accounts: [AccountWire]) {
+    init(running: Bool, profiles: [String: ProfileWire], accounts: [AccountWire],
+         claimedEventEmbeds: [String: EmbeddedEventEnvelope]? = nil,
+         relayRoleOptions: [GalleryRelayRoleOption] = []) {
         self.running = running
         self.profiles = profiles
         self.accounts = accounts
+        self.claimedEventEmbeds = claimedEventEmbeds
+        self.relayRoleOptions = relayRoleOptions
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -114,6 +140,11 @@ struct GallerySnapshot: Decodable, Equatable {
 
     private enum ProjectionsKeys: String, CodingKey {
         case resolvedProfiles, accounts
+        // `claimed_event_embeds` — with `.convertFromSnakeCase` this matches
+        // the camelCase key after conversion.
+        case claimedEventEmbeds
+        // `relay_role_options` → camelCase after `.convertFromSnakeCase`.
+        case relayRoleOptions
     }
 
     init(from decoder: Decoder) throws {
@@ -125,6 +156,8 @@ struct GallerySnapshot: Decodable, Equatable {
         var resolvedAccounts: [AccountWire] = []
 
         var assembled: [String: ProfileWire] = [:]
+        var claimedEmbeds: [String: EmbeddedEventEnvelope]? = nil
+        var roleOptions: [GalleryRelayRoleOption] = []
         if let projections = try? container.nestedContainer(
             keyedBy: ProjectionsKeys.self,
             forKey: .projections
@@ -148,6 +181,21 @@ struct GallerySnapshot: Decodable, Equatable {
             ) {
                 resolvedAccounts = accs
             }
+            // Issue #1283 / ADR-0034: decode the pre-resolved embed map from
+            // the `nmp-ffi` sidecar. Fault-tolerant — nil when absent.
+            claimedEmbeds = try? projections.decodeIfPresent(
+                [String: EmbeddedEventEnvelope].self,
+                forKey: .claimedEventEmbeds
+            )
+            // Issue #996: decode the kernel's relay-role presentation tokens so
+            // the relay-list page resolves label/tint from the kernel source of
+            // truth instead of deriving them in Swift.
+            if let opts = try? projections.decodeIfPresent(
+                [GalleryRelayRoleOption].self,
+                forKey: .relayRoleOptions
+            ) {
+                roleOptions = opts
+            }
         }
         // Top-level `accounts` fallback for tests / fixtures pre-projections.
         if resolvedAccounts.isEmpty,
@@ -161,6 +209,8 @@ struct GallerySnapshot: Decodable, Equatable {
 
         self.profiles = assembled
         self.accounts = resolvedAccounts
+        self.claimedEventEmbeds = claimedEmbeds
+        self.relayRoleOptions = roleOptions
     }
 }
 
@@ -276,13 +326,11 @@ final class GalleryModel: NostrProfileHost {
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
-    /// The decode is split into two reads of the same JSON blob:
-    ///   1. Typed `GallerySnapshot` decode — resolved_profiles / accounts.
-    ///      Lean: stays decoupled from any embed-projection drift.
-    ///   2. Raw JSONSerialization read passed through to `embedHost` so the
-    ///      kind-dispatched embed projection (`projections.claimed_events`)
-    ///      flows into the SwiftUI environment without expanding the typed
-    ///      `GallerySnapshot` shape.
+    /// `GallerySnapshot` now includes `claimedEventEmbeds` — the pre-resolved
+    /// embed-projection map produced by `nmp-ffi` (issue #1283 / ADR-0034).
+    /// A single `JSONDecoder` pass fills both the profile/account fields and the
+    /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
+    /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
     func decode(frame: Data) {
         guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
             return
@@ -294,18 +342,13 @@ final class GalleryModel: NostrProfileHost {
             let next = try decoder.decode(GallerySnapshot.self, from: data)
             self.snapshot = next
             self.lastDecodeError = nil
+            // Embed-projection: feed the pre-resolved map directly from the
+            // typed `GallerySnapshot` field (no separate JSONSerialization pass).
+            embedHost.update(claimedEventEmbeds: next.claimedEventEmbeds)
         } catch {
             let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
             self.lastDecodeError = msg
-        }
-
-        // Embed-projection ingest. Separate from the typed decode so a
-        // claimed_events shape change cannot break user/relay/content pages.
-        if let raw = try? JSONSerialization.jsonObject(with: data),
-           let dict = raw as? [String: Any]
-        {
-            embedHost.update(fromSnapshotJSON: dict)
         }
     }
 
@@ -348,6 +391,14 @@ final class GalleryModel: NostrProfileHost {
     /// Lookup any profile that arrived through the gallery's profiles map.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         snapshot.profiles[pubkey]
+    }
+
+    /// Kernel-emitted relay-role presentation tokens (issue #996). The
+    /// relay-list page resolves each `configured_relays.role` against this
+    /// list for its `label`/`tint` — the same kernel source of truth Chirp
+    /// uses, with no Swift-side role derivation.
+    var relayRoleOptions: [GalleryRelayRoleOption] {
+        snapshot.relayRoleOptions
     }
 
     /// NostrProfileHost: demand a profile projection for a mounted component.

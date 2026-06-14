@@ -63,9 +63,12 @@ pub struct WireSubRow {
     pub consumer_count_label: String,
     pub events_rx_display: Option<String>,
     pub eose_observed: bool,
-    pub opened_display: String,
-    pub last_event_display: Option<String>,
-    pub eose_display: Option<String>,
+    /// Unix epoch milliseconds when the subscription opened. 0 when unknown.
+    pub opened_ms: u64,
+    /// Unix epoch milliseconds of the last event; 0 when none.
+    pub last_event_ms: u64,
+    /// Unix epoch milliseconds when EOSE was observed; 0 when none.
+    pub eose_ms: u64,
     pub close_reason: Option<String>,
 }
 
@@ -88,8 +91,10 @@ pub struct RelayRow {
     pub reconnect_count: u32,
     pub bytes_rx_display: Option<String>,
     pub bytes_tx_display: Option<String>,
-    pub last_connected_display: Option<String>,
-    pub last_event_display: Option<String>,
+    /// Unix epoch milliseconds of the last successful connect; 0 when never connected.
+    pub last_connected_ms: u64,
+    /// Unix epoch milliseconds of the last event received; 0 when none.
+    pub last_event_ms: u64,
     pub last_notice: Option<String>,
     pub last_error: Option<String>,
     pub wire_subs: Vec<WireSubRow>,
@@ -145,9 +150,6 @@ fn create_wire_sub<'a>(
     let state_tone = fbb.create_string(&row.state_tone);
     let consumer_count_label = fbb.create_string(&row.consumer_count_label);
     let events_rx_display = row.events_rx_display.as_ref().map(|v| fbb.create_string(v));
-    let opened_display = fbb.create_string(&row.opened_display);
-    let last_event_display = row.last_event_display.as_ref().map(|v| fbb.create_string(v));
-    let eose_display = row.eose_display.as_ref().map(|v| fbb.create_string(v));
     let close_reason = row.close_reason.as_ref().map(|v| fbb.create_string(v));
     fb::RelayDiagnosticsWireSub::create(
         fbb,
@@ -162,11 +164,9 @@ fn create_wire_sub<'a>(
             has_events_rx_display: row.events_rx_display.is_some(),
             events_rx_display,
             eose_observed: row.eose_observed,
-            opened_display: Some(opened_display),
-            has_last_event_display: row.last_event_display.is_some(),
-            last_event_display,
-            has_eose_display: row.eose_display.is_some(),
-            eose_display,
+            opened_ms: row.opened_ms,
+            last_event_ms: row.last_event_ms,
+            eose_ms: row.eose_ms,
             has_close_reason: row.close_reason.is_some(),
             close_reason,
         },
@@ -235,11 +235,6 @@ fn create_relay_row<'a>(
     let total_events_display = fbb.create_string(&row.total_events_display);
     let bytes_rx_display = row.bytes_rx_display.as_ref().map(|v| fbb.create_string(v));
     let bytes_tx_display = row.bytes_tx_display.as_ref().map(|v| fbb.create_string(v));
-    let last_connected_display = row
-        .last_connected_display
-        .as_ref()
-        .map(|v| fbb.create_string(v));
-    let last_event_display = row.last_event_display.as_ref().map(|v| fbb.create_string(v));
     let last_notice = row.last_notice.as_ref().map(|v| fbb.create_string(v));
     let last_error = row.last_error.as_ref().map(|v| fbb.create_string(v));
     fb::RelayDiagnosticsRow::create(
@@ -263,10 +258,8 @@ fn create_relay_row<'a>(
             bytes_rx_display,
             has_bytes_tx_display: row.bytes_tx_display.is_some(),
             bytes_tx_display,
-            has_last_connected_display: row.last_connected_display.is_some(),
-            last_connected_display,
-            has_last_event_display: row.last_event_display.is_some(),
-            last_event_display,
+            last_connected_ms: row.last_connected_ms,
+            last_event_ms: row.last_event_ms,
             has_last_notice: row.last_notice.is_some(),
             last_notice,
             has_last_error: row.last_error.is_some(),
@@ -373,9 +366,9 @@ fn wire_sub_from_fb(row: fb::RelayDiagnosticsWireSub<'_>) -> WireSubRow {
         consumer_count_label: row.consumer_count_label().unwrap_or_default().to_string(),
         events_rx_display: row.has_events_rx_display().then(|| opt(row.events_rx_display())).flatten(),
         eose_observed: row.eose_observed(),
-        opened_display: row.opened_display().unwrap_or_default().to_string(),
-        last_event_display: row.has_last_event_display().then(|| opt(row.last_event_display())).flatten(),
-        eose_display: row.has_eose_display().then(|| opt(row.eose_display())).flatten(),
+        opened_ms: row.opened_ms(),
+        last_event_ms: row.last_event_ms(),
+        eose_ms: row.eose_ms(),
         close_reason: row.has_close_reason().then(|| opt(row.close_reason())).flatten(),
     }
 }
@@ -405,8 +398,8 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         reconnect_count: row.reconnect_count(),
         bytes_rx_display: row.has_bytes_rx_display().then(|| opt(row.bytes_rx_display())).flatten(),
         bytes_tx_display: row.has_bytes_tx_display().then(|| opt(row.bytes_tx_display())).flatten(),
-        last_connected_display: row.has_last_connected_display().then(|| opt(row.last_connected_display())).flatten(),
-        last_event_display: row.has_last_event_display().then(|| opt(row.last_event_display())).flatten(),
+        last_connected_ms: row.last_connected_ms(),
+        last_event_ms: row.last_event_ms(),
         last_notice: row.has_last_notice().then(|| opt(row.last_notice())).flatten(),
         last_error: row.has_last_error().then(|| opt(row.last_error())).flatten(),
         wire_subs,

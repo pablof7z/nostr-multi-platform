@@ -10,16 +10,20 @@ name: native-tests
 # cross-compile, ubuntu runner).
 #
 # Phase staging (see #973):
-#   Phase 1 (this file): Android JUnit on every PR, ubuntu, path-filtered.
-#   Phase 2 (blocked):   ChirpTests (XCTest unit) on macOS — gated on proving the
-#                        Chirp scheme builds green on a CI macOS runner without
-#                        the Apple-only `apple-native-keyring-store` entitlement
-#                        and without a booted app / NMP_SMOKE. Tracked in #973.
-#   Phase 3 (blocked):   ChirpUITests (XCUITest) nightly on macOS + simulator.
+#   Phase 1: Android JUnit on every PR, ubuntu, path-filtered.
+#   Phase 2 (this file): ChirpTests (XCTest unit) on macOS — the consumer-side
+#                        decoder/conformance suite. The original `status:blocked`
+#                        unknowns are now resolved: ChirpTests compiles again
+#                        (#1293 closed), the keychain-needing paths are gated
+#                        behind `NMP_MARMOT_MOCK_KEYRING`, and the real-relay
+#                        smoke tests self-`XCTSkip` unless `NMP_SMOKE=1`.
+#   Phase 3: ChirpUITests (XCUITest) nightly on macOS + booted simulator —
+#                        see `.github/workflows/ios-ui-nightly.yml`.
 #
 # Why path-filtered: `android/**` and `crates/nmp-android-ffi/**` are the obvious
-# triggers; `crates/nmp-codegen/**` and `crates/nmp-core/**` are included because
-# the nmp-core projection types are the single source of truth the Kotlin
+# Android triggers; `ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
+# `crates/nmp-codegen/**` and `crates/nmp-core/**` are included on both because
+# the nmp-core projection types are the single source of truth the native
 # decoders mirror — a change there is precisely when the consumer tests must run.
 # `apps/nmp-gallery/android/**` and `crates/nmp-app-gallery/**` are included so
 # the gallery JUnit suite (VendorDriftGateTest + NIP-55 login-block tests) runs
@@ -36,6 +40,8 @@ on:
       - "crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
+      - "ios/**"
+      - "crates/nmp-ffi/**"
   pull_request:
     branches: ["**"]
     paths:
@@ -46,6 +52,8 @@ on:
       - "crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
+      - "ios/**"
+      - "crates/nmp-ffi/**"
 
 jobs:
   android-junit:
@@ -147,4 +155,114 @@ jobs:
           path: |
             apps/nmp-gallery/android/app/build/reports/tests/testDebugUnitTest
             apps/nmp-gallery/android/app/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
+
+  ios-unit:
+    # Phase 2 of #973 — the consumer half of the Rust→Swift codegen contract.
+    #
+    # ChirpTests is a fast, hermetic XCTest unit suite: typed-projection decoder
+    # conformance, profile-name fallback regression, note-content rendering. It is
+    # the only thing that proves the *hand-written* Swift decode/render code still
+    # works after the Rust projection shape changes — `codegen-drift.yml` only
+    # catches a diff in the *generated* files. This is exactly the class of test
+    # that must gate the PR boundary when an `ios/**` or projection-source change
+    # lands.
+    #
+    # Restricted to `-only-testing:ChirpTests` so this job boots no app and never
+    # runs the slow/flake-prone XCUITest suite (that is the nightly lane in
+    # `ios-ui-nightly.yml`). The real-relay `SmokeScenariosTests` self-`XCTSkip`s
+    # unless `NMP_SMOKE=1`, which we deliberately do NOT set here.
+    #
+    # Keyring: Marmot credential paths that touch the iOS keychain are gated
+    # behind `NMP_MARMOT_MOCK_KEYRING=1` (read by `nmp-marmot` at runtime), so the
+    # hermetic decoder tests never depend on a real `SecItem*` entitlement that a
+    # CI runner cannot satisfy. It is exported into the test runner's process
+    # environment via the Chirp scheme's test-action `environmentVariables`
+    # (see ios/Chirp/project.yml), so it is present whenever the scheme runs.
+    #
+    # NOTE (#1293): the ChirpTests target must compile for this lane to be
+    # meaningful. #1293 (stale `ProfileCard.npub` references + missing
+    # `import SwiftUI`) is closed, so the suite compiles on master. If a future
+    # change breaks ChirpTests compilation again, this job goes red — which is the
+    # intended behavior.
+    name: Chirp iOS unit tests (ChirpTests / XCTest)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Chirp scheme links one aggregate static archive (libnmp_app_chirp.a)
+      # built WITH `--features marmot`; a bare `cargo build` omits Marmot and the
+      # link fails (per the `feedback_ios_sim_build` discipline). `just
+      # rust-ios-sim` is the single source of truth for that build, so we reuse it
+      # rather than duplicating the cargo invocation here.
+      - name: Install Rust toolchain (+ iOS simulator target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-ios-unit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-ios-unit-
+
+      - name: Install just + xcodegen
+        run: brew install just xcodegen
+
+      # Builds libnmp_app_chirp.a (with marmot) + the standalone nmp-core archive
+      # for the iOS simulator target. This is the link prerequisite for the Chirp
+      # scheme.
+      - name: Build Rust iOS simulator archives
+        run: just rust-ios-sim
+
+      # The .xcodeproj is generated from project.yml (not committed in a usable
+      # form for CI), so regenerate it before building.
+      - name: Generate Xcode project
+        run: just gen-ios
+
+      # Pick a concrete simulator that exists on the runner image. A unit-test
+      # bundle still requires a simulator destination even though it boots no app
+      # UI; resolve the first available iPhone runtime rather than pinning a name
+      # that may not exist on the current macos-latest image.
+      - name: Resolve a simulator destination
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json \
+            | python3 -c "import sys,json; d=json.load(sys.stdin)['devices']; \
+                ids=[dev['udid'] for rt,devs in d.items() if 'iOS' in rt for dev in devs if dev.get('isAvailable') and 'iPhone' in dev['name']]; \
+                print(ids[0] if ids else '')")
+          if [ -z "$DEVICE" ]; then
+            echo "::error ::No available iOS Simulator iPhone device on the runner"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
+          echo "Using simulator UDID: $DEVICE"
+
+      # Run ONLY the ChirpTests target. The Chirp scheme's test action exports
+      # `NMP_MARMOT_MOCK_KEYRING=1` into the test runner process so any Marmot
+      # credential-store path takes the mock branch instead of failing on a
+      # missing keychain entitlement. `NMP_SMOKE` is intentionally unset →
+      # SmokeScenariosTests self-skips.
+      - name: xcodebuild test (ChirpTests only)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project ios/Chirp/Chirp.xcodeproj \
+            -scheme Chirp \
+            -only-testing:ChirpTests \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath ios/DerivedData \
+            | tee ios_unit_output.txt
+
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unit-output-${{ github.run_id }}
+          path: ios_unit_output.txt
           if-no-files-found: ignore

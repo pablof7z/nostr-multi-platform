@@ -42,6 +42,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.components.NostrAvatar
+import org.nmp.android.ui.embed.EventClaimer
+import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
+import org.nmp.android.ui.embed.LocalEventClaimer
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpRootCard
 import org.nmp.android.model.ProfileCard
@@ -154,13 +157,20 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         if (claim) model.claimProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
+    val eventClaimer: EventClaimer = { uri, consumerId, claim ->
+        if (claim) model.claimEvent(uri, consumerId)
+        else model.releaseEvent(uri, consumerId)
+    }
 
     val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
+    val claimedEventEmbeds = s.projections?.claimedEventEmbeds ?: emptyMap()
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
 
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
+        LocalEventClaimer provides eventClaimer,
         LocalResolvedProfiles provides resolvedProfiles,
+        LocalClaimedEventEmbeds provides claimedEventEmbeds,
         LocalNostrProfileHost provides profileHost,
     ) {
         Box(modifier.fillMaxSize()) {
@@ -399,36 +409,8 @@ internal fun NoteRow(
             embedDepth = embedDepth,
         )
         Spacer(Modifier.size(8.dp))
-        NoteActionsSummary(card)
+        NoteActionsSummary(card, model)
     }
-}
-
-@Composable
-private fun NoteActionsSummary(card: ChirpEventCard?) {
-    val counts = card?.relationCounts ?: return
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        RelationCountLabel("Reply", counts.replies.value)
-        RelationCountLabel("React", counts.reactions.value)
-        RelationCountLabel("Repost", counts.reposts.value)
-        RelationCountLabel("Zap", counts.zaps.value, muted = true)
-    }
-}
-
-@Composable
-private fun RelationCountLabel(label: String, count: ULong?, muted: Boolean = false) {
-    Text(
-        "$label ${count?.toString() ?: "..."}",
-        style = MaterialTheme.typography.labelSmall,
-        color = if (muted) {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-    )
 }
 
 @Composable

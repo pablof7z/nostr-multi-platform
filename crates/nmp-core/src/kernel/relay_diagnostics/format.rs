@@ -141,22 +141,3 @@ pub(super) fn compact_count(n: u64) -> String {
     }
 }
 
-/// Format an "X ago" label given a `now` and a `then`, both in
-/// milliseconds-since-kernel-start. Returns `"now"` when `then >= now`
-/// (clock skew or 0-elapsed kernels).
-pub(super) fn format_ago_ms(now_ms: u128, then_ms: u128) -> String {
-    if then_ms == 0 || now_ms <= then_ms {
-        return "now".to_string();
-    }
-    let diff_ms = now_ms - then_ms;
-    let secs = diff_ms / 1_000;
-    if secs < 60 {
-        format!("{secs}s ago")
-    } else if secs < 3_600 {
-        format!("{}m ago", secs / 60)
-    } else if secs < 86_400 {
-        format!("{}h ago", secs / 3_600)
-    } else {
-        format!("{}d ago", secs / 86_400)
-    }
-}

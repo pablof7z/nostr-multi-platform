@@ -80,11 +80,12 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertNil(TypedFollowListDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledFollowListBytesFallBack() {
-        var garbled = buildFollowList(["x"])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedFollowListDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyFollowListBufferDecodesToNoFollows() throws {
         // A fresh kernel (no account / no kind:3) pushes an empty buffer — the
@@ -131,11 +132,12 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertNil(TypedZapsDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledZapsBytesFallBack() {
-        var garbled = buildZaps([("e", 1, 1)])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedZapsDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyZapsBufferDecodesToNoTotals() throws {
         let snap = try XCTUnwrap(TypedZapsDecoder.decode(bytes: buildZaps([])))
@@ -185,11 +187,12 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertNil(TypedGroupChatDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledGroupChatBytesFallBack() {
-        var garbled = buildGroupChat([("i", "p", "c", 1, 9)])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedGroupChatDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyGroupChatBufferDecodesToNoMessages() throws {
         let snap = try XCTUnwrap(TypedGroupChatDecoder.decode(bytes: buildGroupChat([])))
@@ -255,11 +258,12 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertNil(TypedDiscoveredGroupsDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledDiscoveredGroupsBytesFallBack() {
-        var garbled = buildDiscoveredGroups()
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedDiscoveredGroupsDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyDiscoveredGroupsBufferDecodesToNoGroups() throws {
         var fbb = FlatBufferBuilder(initialSize: 64)

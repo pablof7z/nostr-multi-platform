@@ -375,7 +375,7 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     // bunker (D13 — the chain never holds raw keys; it signs through the port).
     use crate::substrate::{
         EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
-        NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
+        NoopHostOpHandlerAccess, NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
         ProtocolCommandContextParts,
     };
 
@@ -411,6 +411,10 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
     static STAGES: NoopActionStageTracker = NoopActionStageTracker;
     static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+    static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
+    static WALLET: crate::substrate::NoopWalletKernelAccess =
+        crate::substrate::NoopWalletKernelAccess;
+    static ZAP: crate::substrate::NoopZapProfileLookup = crate::substrate::NoopZapProfileLookup;
     let send = |_: crate::actor::ActorCommand| {};
     let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
     let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
@@ -422,6 +426,9 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
         errors: &ERRORS,
         stages: &STAGES,
         recipients: &RECIPIENTS,
+        host_op_handler: &HOST_OP,
+        wallet_kernel: &WALLET,
+        zap_profiles: &ZAP,
     });
 
     // Backend-transparent: the active bunker's pubkey resolves through the
@@ -897,6 +904,11 @@ fn snapshot_carries_nip46_onboarding_projection() {
             bunker_slot,
             // V-14 step b: throwaway connection-state slot.
             crate::actor::new_signer_state_slot(),
+            // ADR-0052 §D3: throwaway per-app signer hook slots (this
+            // remote-signer test drives the broker through the bunker_slot
+            // shared handshake slot, not the hook seam).
+            crate::new_bunker_hook_slot(),
+            crate::new_external_signer_hook_slot(),
             // Typed slot constructor.
             crate::kernel::new_app_relay_slot(),
             Arc::new(std::sync::Mutex::new(None)),

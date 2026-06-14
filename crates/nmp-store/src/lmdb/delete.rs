@@ -68,7 +68,7 @@ fn by_ids(
             .lmdb
             .delete(txn, f)
             .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-        provenance::delete(inner.provenance, txn, &id)?;
+        provenance::delete(inner.provenance, inner.relay_index, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
         n += 1;
@@ -98,7 +98,7 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
     for (id, expiry) in victims {
-        provenance::delete(inner.provenance, txn, &id)?;
+        provenance::delete(inner.provenance, inner.relay_index, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
     }
@@ -132,7 +132,7 @@ fn by_kind_range(
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
     for (id, expiry) in victims {
-        provenance::delete(inner.provenance, txn, &id)?;
+        provenance::delete(inner.provenance, inner.relay_index, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
     }
@@ -144,21 +144,47 @@ fn by_relay_only(
     txn: &mut heed::RwTxn,
     relay: String,
 ) -> Result<usize, StoreError> {
+    // V-52: candidate ids come from the relay-origin reverse index — an
+    // O(events-on-relay) prefix scan — instead of an O(store) provenance scan.
+    // Each candidate's provenance is still loaded so only events seen on EXACTLY
+    // this relay (`len() == 1`) are deleted; an event also seen on another relay
+    // must survive.
     let mut victims: Vec<EventId> = Vec::new();
-    for entry in inner
-        .provenance
-        .iter(txn)
-        .map_err(|e| StoreError::Io(format!("prov iter: {e}")))?
     {
-        let (k, v) = entry.map_err(|e| StoreError::Io(format!("prov step: {e}")))?;
-        if k.len() != 32 {
-            continue;
-        }
-        let entries = decode_local(v)?;
-        if entries.len() == 1 && entries[0].relay_url == relay {
-            let mut id = [0u8; 32];
-            id.copy_from_slice(k);
-            victims.push(id);
+        let (lo, hi) = provenance::relay_index_prefix_bounds(&relay);
+        let range = (
+            std::ops::Bound::Included(lo.as_slice()),
+            std::ops::Bound::Excluded(hi.as_slice()),
+        );
+        // Collect candidate ids first so the immutable index borrow ends before
+        // the per-candidate provenance reads below.
+        let candidates: Vec<EventId> = {
+            let mut out = Vec::new();
+            for entry in inner
+                .relay_index
+                .range(txn, &range)
+                .map_err(|e| StoreError::Io(format!("relay_index range: {e}")))?
+            {
+                let (k, _) =
+                    entry.map_err(|e| StoreError::Io(format!("relay_index step: {e}")))?;
+                if let Some(id) = provenance::relay_index_id_from_key(k, relay.len()) {
+                    out.push(id);
+                }
+            }
+            out
+        };
+        for id in candidates {
+            let entries = match inner
+                .provenance
+                .get(txn, &id)
+                .map_err(|e| StoreError::Io(format!("prov get: {e}")))?
+            {
+                Some(v) => decode_local(v)?,
+                None => continue,
+            };
+            if entries.len() == 1 && entries[0].relay_url == relay {
+                victims.push(id);
+            }
         }
     }
     let n = victims.len();
@@ -175,7 +201,7 @@ fn by_relay_only(
             .lmdb
             .delete(txn, f)
             .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-        provenance::delete(inner.provenance, txn, &id)?;
+        provenance::delete(inner.provenance, inner.relay_index, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
     }

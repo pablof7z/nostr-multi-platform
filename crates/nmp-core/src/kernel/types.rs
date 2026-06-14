@@ -387,28 +387,10 @@ pub(super) struct Counters {
     pub(super) bytes_tx: u64,
 }
 
-/// Active wire (WebSocket) subscription state.
-///
-/// T105: `relay_url` is the resolved wire target this sub was opened on. The
-/// CLOSE frame for this sub-id must be routed back to the same `relay_url`
-/// (the transport pool is URL-keyed, so closing on the wrong socket would
-/// leave the original subscription open). `role` is the transport lane label.
-pub(super) struct WireSub {
-    pub(super) id: String,
-    pub(super) role: RelayRole,
-    /// Resolved relay URL this subscription was opened on (T105). The CLOSE
-    /// frame for `id` must target this URL — the transport pool is URL-keyed
-    /// and would otherwise leak the open subscription on the original relay.
-    /// Canonical by construction: this field mirrors the `wire_subs` key half.
-    pub(super) relay_url: CanonicalRelayUrl,
-    pub(super) filter_summary: String,
-    pub(super) state: String,
-    pub(super) events_rx: u64,
-    pub(super) opened_at: Instant,
-    pub(super) last_event_at: Option<Instant>,
-    pub(super) eose_at: Option<Instant>,
-    pub(super) close_reason: Option<String>,
-}
+// `WireSub` moved to `kernel/wire_sub.rs` (LOC cap; K3 Stage D1 added a field).
+// Re-exported so the established `super::WireSub` / `types::WireSub` paths and
+// the `WireSubscriptionState::subs` map below resolve unchanged.
+pub(super) use super::wire_sub::WireSub;
 
 /// Per-relay health state: connection status, timestamps, and counters.
 #[derive(Clone, Debug)]
@@ -548,15 +530,15 @@ pub(super) struct ProfileRequestState {
 pub(super) struct TimingMilestones {
     /// When `Kernel::start` first ran.
     pub(super) started_at: Option<Instant>,
-    /// Most recent ingested event (drives `last_event_to_emit_ms`).
+    /// Byte-stable Unix-ms wall anchor (see `relay_diagnostics::event_to_unix_ms`).
+    pub(super) started_unix_ms: Option<u64>,
+    /// Most recent / first ingested event (drives `last_event_to_emit_ms`).
     pub(super) last_event_at: Option<Instant>,
-    /// First ingested event ever.
     pub(super) first_event_at: Option<Instant>,
     /// When the target profile's kind:0 first loaded.
     pub(super) target_profile_loaded_at: Option<Instant>,
-    /// When the timeline view was first opened.
+    /// When the timeline view was first opened / first item rendered.
     pub(super) timeline_opened_at: Option<Instant>,
-    /// When the first timeline item was rendered.
     pub(super) timeline_first_item_at: Option<Instant>,
 }
 

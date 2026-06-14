@@ -106,8 +106,20 @@ use inner::PoolInner;
 /// which is already the terminal "actor gone" condition under the old
 /// `Sender::send().is_err()` break. The translator's worker→pool channel still
 /// closes when the workers exit on pool shutdown, so it does not spin.
-pub trait PoolEventSink: Send + 'static {
-    /// Deliver one event to the consumer. Errors are intentionally swallowed.
+///
+/// **Non-blocking contract (ADR-0050 §D3a):** `send_event` MUST be
+/// non-blocking — it must enqueue without waiting on the consumer (the
+/// blanket impl below wraps an *unbounded* `mpsc::Sender`, and the actor's
+/// adapter likewise pushes onto an unbounded inbox). The translator clones
+/// the sink handle out under the `PoolInner` lock and then *drops the guard
+/// before* calling `send_event`, so a sink is never invoked while the lock is
+/// held. A sink that blocked (e.g. on a bounded full channel) would stall the
+/// single translator thread for the whole pool, but it would no longer stall
+/// concurrent `Pool::send` callers. `Sync` is required because the boxed sink
+/// is shared (via `Arc`) across the translator thread and the `Pool` handle.
+pub trait PoolEventSink: Send + Sync + 'static {
+    /// Deliver one event to the consumer. Must be non-blocking (enqueue and
+    /// return). Errors (gone consumer) are intentionally swallowed.
     fn send_event(&self, event: PoolEvent);
 }
 
@@ -140,7 +152,7 @@ impl Pool {
     #[must_use]
     pub fn new(cfg: PoolConfig, events: impl PoolEventSink) -> Self {
         Self {
-            inner: PoolInner::new(cfg, Box::new(events)),
+            inner: PoolInner::new(cfg, Arc::new(events)),
         }
     }
 

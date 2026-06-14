@@ -212,6 +212,8 @@ impl Kernel {
         self.signed_events
             .insert(correlation_id.to_string(), result);
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump settlement_enqueue_ver (signed_events drain).
+        self.projection_rev_tracker.source_versions.bump_settlement_enqueue();
     }
 
     /// Drain every `SignEventForReturn` result that landed since the last emit
@@ -224,7 +226,14 @@ impl Kernel {
     /// resolver parses. The map is `clear()`ed here (drain-once), so the host
     /// reads each id exactly once.
     pub(in super::super) fn take_signed_events_projection(&mut self) -> serde_json::Value {
-        if self.signed_events.is_empty() {
+        // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit
+        // (mirrors `take_action_results_projection`). Changed on non-empty,
+        // Cleared on the non-empty -> empty transition, Unchanged while stably
+        // empty.
+        let nonempty = !self.signed_events.is_empty();
+        self.projection_rev_tracker
+            .note_drain_emit("signed_events", nonempty);
+        if !nonempty {
             return serde_json::Value::Null;
         }
         let mut out = serde_json::Map::with_capacity(self.signed_events.len());
@@ -277,6 +286,8 @@ impl Kernel {
         self.action_stages
             .record(correlation_id, stage, detail, at_ms);
         self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump settlement_enqueue_ver for action_stages/lifecycle.
+        self.projection_rev_tracker.source_versions.bump_settlement_enqueue();
     }
 
     /// Read accessor for the `action_lifecycle` display projection
@@ -288,18 +299,63 @@ impl Kernel {
     /// kernel still drops expired terminals on the next emit. `now_ms`
     /// routes through the kernel clock so a `FixedClock` keeps tests
     /// deterministic.
+    ///
+    /// ADR-0055 Rung 3 S1b (§10.4): also drives the `note_copy_emit` Cleared-
+    /// edge machine for `action_lifecycle` so that the non-empty → empty
+    /// transition (e.g. TTL expiry of the last terminal) parks a `Cleared`
+    /// presence in the manifest rather than staying `Unchanged`. This makes
+    /// `omit_unchanged`'s inverse pass synthesize an explicit Cleared row,
+    /// preventing incremental hosts from retaining the stale lifecycle overlay.
     pub(crate) fn action_lifecycle_projection(&mut self) -> serde_json::Value {
         let now = self.now_ms();
-        self.action_lifecycle.snapshot(now)
+        let len_before = self.action_lifecycle.entry_count();
+        let result = self.action_lifecycle.snapshot(now);
+        let len_after = self.action_lifecycle.entry_count();
+        // ADR-0055 Rung 1 (codex #3): bump ttl_expiry_ver when prune_expired
+        // actually removed a row. Wall-clock gated — called from the existing
+        // emit/ingest edge (D8 compliant, no separate timer).
+        if len_after < len_before {
+            self.projection_rev_tracker.source_versions.bump_ttl_expiry();
+        }
+        // ADR-0055 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
+        // emit. `note_copy_emit` parks `Cleared` in `pending_presence` on the
+        // was_nonempty && !nonempty edge so the manifest flips to Cleared and
+        // the synthesis in `omit_unchanged` emits the host-facing Cleared row.
+        // Must be called AFTER the TTL bump above (the bump may advance the rev,
+        // which is the Cleared frame's distinguishing rev increment).
+        self.projection_rev_tracker.note_copy_emit("action_lifecycle", !result.is_null());
+        result
     }
 
     /// Drop the entry for `correlation_id` from the `action_stages`
     /// mirror. Idempotent — an unknown id is a silent no-op (D6).
-    /// `changed_since_emit` is set so the next tick re-serialises the now-
-    /// reduced mirror.
+    ///
+    /// An ack is a genuine content change to the `action_stages` projection: the
+    /// reduced mirror serialises to different bytes. So besides flipping
+    /// `changed_since_emit` (so the actor ticks) we MUST advance the projection
+    /// rev — otherwise the StaleStamp oracle fires (content changed, rev didn't)
+    /// and, with Rung 3 omit-Unchanged live, the host would serve the stale
+    /// (un-acked) row forever. We bump `settlement_enqueue_ver` — the same
+    /// source version `record_action_stage` bumps on enqueue; both
+    /// `action_stages` and `action_lifecycle` depend on it (see PROJECTION_DEPS
+    /// in `projection_rev/mod.rs`), and an ack is the symmetric content edit to
+    /// an enqueue.
+    ///
+    /// NOTE: this is distinct from the `note_copy_emit` Cleared edge. The Cleared
+    /// edge (bumps `ttl_expiry_ver`) fires only on ack-of-the-LAST entry
+    /// (non-empty → empty). A PARTIAL ack (entries remain) keeps the projection
+    /// non-empty and is governed entirely by this `settlement_enqueue_ver` bump
+    /// → delivered as `Changed` exactly once. Both mechanisms are required
+    /// (#1390 review FIX 2).
     pub(crate) fn ack_action_stage(&mut self, correlation_id: &str) {
         if self.action_stages.ack(correlation_id) {
             self.changed_since_emit = true;
+            // Advance the rev so a partial ack is delivered as Changed exactly
+            // once and the oracle stays sharp without relying on a presence
+            // override.
+            self.projection_rev_tracker
+                .source_versions
+                .bump_settlement_enqueue();
         }
     }
 
@@ -308,8 +364,21 @@ impl Kernel {
     /// stays in the snapshot across every tick until the host acks. Returns
     /// `serde_json::Value::Null` when nothing is tracked so the helper can
     /// omit the projection key in steady state.
-    pub(crate) fn action_stages_projection(&self) -> serde_json::Value {
-        self.action_stages.snapshot()
+    ///
+    /// ADR-0055 Rung 3 S1b (§10.4): also drives the `note_copy_emit`
+    /// Cleared-edge machine for `action_stages`. Takes `&mut self` to write
+    /// into the `projection_rev_tracker`. The `action_results` drain above
+    /// this site (in `projections.rs`) may record a terminal into `action_stages`
+    /// within the same tick; this accessor runs after that, so it observes the
+    /// final post-drain state.
+    pub(crate) fn action_stages_projection(&mut self) -> serde_json::Value {
+        let result = self.action_stages.snapshot();
+        // ADR-0055 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
+        // emit. On ack-of-last-entry the snapshot is Null; was_nonempty=true →
+        // note_copy_emit parks Cleared → manifest Cleared → synthesis emits the
+        // Cleared row → host drops the stale stage entry.
+        self.projection_rev_tracker.note_copy_emit("action_stages", !result.is_null());
+        result
     }
 
     /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is
@@ -325,29 +394,6 @@ impl Kernel {
     #[must_use]
     pub(crate) fn event_author(&self, event_id_hex: &str) -> Option<String> {
         self.events.get(event_id_hex).map(|e| e.author.clone())
-    }
-
-    /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),
-    /// read from the shared store. Empty if no kind:3 is known yet.
-    #[must_use]
-    pub(crate) fn current_follows(&self, author_hex: &str) -> Vec<String> {
-        let Some(author) = crate::kernel::hex_to_pubkey_bytes(author_hex) else {
-            return Vec::new();
-        };
-        let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
-            return Vec::new();
-        };
-        let Some(Ok(stored)) = iter.next() else {
-            return Vec::new();
-        };
-        stored
-            .raw
-            .tags
-            .iter()
-            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
-            .filter_map(|t| t.get(1).cloned())
-            .filter(|pk| is_hex_pubkey(pk))
-            .collect()
     }
 
     /// Latest kind:3 follow set for the active account, distinguishing
@@ -370,6 +416,31 @@ impl Kernel {
     /// would silently drop follows ≥501 on every edit.
     #[must_use]
     pub(crate) fn try_current_follows(&self) -> Option<Vec<String>> {
+        let (tags, _content) = self.try_current_kind3_event()?;
+        let follows = tags
+            .iter()
+            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
+            .filter_map(|t| t.get(1).cloned())
+            .filter(|pk| is_hex_pubkey(pk))
+            .collect();
+        Some(follows)
+    }
+
+    /// Return the active account's FULL existing kind:3 raw event — every tag
+    /// verbatim (`Vec<Vec<String>>`, including relay-hint and petname columns
+    /// on `p` tags and every non-`p` tag) plus the original `content` string —
+    /// so a follow-list edit can splice ONLY the `p` section and re-publish
+    /// without discarding the rest of the user's contact list (issue #1246).
+    ///
+    /// Fails closed: returns `None` when no active account is set OR the active
+    /// account's kind:3 has not been ingested yet — the SAME safety gate as
+    /// [`Self::try_current_follows`]. Callers MUST receive `Some` before
+    /// editing; publishing an edit built from `None` would silently wipe an
+    /// unloaded contact list. The tag set is uncapped (a cap is a subscription
+    /// concern, not a contact-list-editing one — capping here would silently
+    /// drop follows ≥501 on every edit).
+    #[must_use]
+    pub(crate) fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String)> {
         let author_hex = self.active_account_pubkey()?;
         let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
         let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
@@ -379,14 +450,6 @@ impl Kernel {
             // kind:3 not yet ingested — None, not empty.
             return None;
         };
-        let follows = stored
-            .raw
-            .tags
-            .iter()
-            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
-            .filter_map(|t| t.get(1).cloned())
-            .filter(|pk| is_hex_pubkey(pk))
-            .collect();
-        Some(follows)
+        Some((stored.raw.tags.clone(), stored.raw.content.clone()))
     }
 }

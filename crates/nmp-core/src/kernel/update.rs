@@ -21,7 +21,42 @@ use crate::update_envelope::{encode_snapshot_with_envelope, UpdateFrameBytes};
 
 mod helpers;
 mod projections;
+mod rung2_stamp;
+mod rung3_omit;
 mod views;
+#[cfg(test)]
+mod test_helpers;
+// ADR-0055 Rung 3 (D3-5) — baseline-semantics + omission-oracle integration
+// tests. They drive the real `make_update` path (this module's hot path), so
+// they are homed under `update` rather than the `kernel/mod.rs` module list,
+// keeping that ratcheted god-module at its size baseline. The file lives in
+// `kernel/` (it reaches across to `snapshot_registry` / `Kernel`), so it is
+// pulled in via `#[path]`.
+#[cfg(test)]
+#[path = "rung3_baseline_tests.rs"]
+mod rung3_baseline_tests;
+// ADR-0055 Rung 3 (D3-6) — encoder buffer reuse safety tests. Verifies the
+// no-aliasing invariant: each frame's `Vec<u8>` owns its bytes independently
+// after the builder is `reset()` on subsequent ticks. Lives in `kernel/` for
+// the same reason as `rung3_baseline_tests`: it drives `make_update` directly.
+#[cfg(test)]
+#[path = "rung3_buffer_reuse_tests.rs"]
+mod rung3_buffer_reuse_tests;
+// ADR-0055 Rung 3 S1b — Cleared-signal completeness regression gate (#1390).
+// Drives the full incremental path with genuine non-empty→empty transitions on
+// all four conditional keys and asserts exactly one Cleared row per transition.
+// Lives in `kernel/` for the same reason as the above test modules.
+#[cfg(test)]
+#[path = "rung3_cleared_signal_tests.rs"]
+mod rung3_cleared_signal_tests;
+
+// ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
+// pass (payload hashing, per-key hash store, cumulative counters) is gated on
+// `test-support` so a production build does ZERO instrumentation work on the
+// emit path. See `update::helpers::churn`. Rung 1's real O(1) rev manifest
+// supersedes this measurement; it is never carried into production.
+#[cfg(any(test, feature = "test-support"))]
+pub use helpers::churn::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
 
 pub use projections::KERNEL_BUILTIN_PROJECTION_KEYS;
 
@@ -269,6 +304,71 @@ impl Kernel {
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
+        // ADR-0055 Rung 1 (F5) — reconcile `diagnostics_inputs_ver` against a
+        // fingerprint of the EXACT `relay_diagnostics` payload bytes the host
+        // will cache this tick. `relay_diagnostics` aggregates too many
+        // high-frequency inputs across too many mutation sites to stamp each one
+        // (relay status transitions, per-event sub counters, the interest
+        // registry's push/withdraw/ensure/drop across discovery, cache-serve,
+        // contacts, startup, claim-expansion). Sub-fork A mandates ONE broad
+        // stamp that covers ALL inputs; deriving it from the projection's own
+        // encoded bytes is the only leak-proof way. Runs in production too so the
+        // manifest stays correct for Rung 2/3, not only the test oracle.
+        let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
+        self.projection_rev_tracker
+            .reconcile_diagnostics_fingerprint(diag_fp);
+        // ADR-0055 Rung 3 (D3-5) — drain the one-shot baseline-pending latch
+        // BEFORE building the manifest. If `declare_incremental_apply` was
+        // called before start, the registry sets this latch; we reset the
+        // per-key last-emitted baseline HERE so the manifest built on the very
+        // next line classifies every live projection as `Changed` (all computed
+        // revs > 0 > cleared last_emitted), guaranteeing the mandatory full
+        // baseline frame on the first incremental-enabled tick.
+        // Must run BEFORE `projection_manifest()` so the reset affects THIS
+        // tick's manifest, not only future ticks.
+        //
+        // S1b finding 6 (issue #1390): coalesce the two per-tick mutex
+        // acquisitions into one `incremental_apply_state()` call so we pay a
+        // single lock/unlock per tick on the 4 Hz hot path instead of two.
+        let (incremental_enabled, baseline_pending) = self.incremental_apply_state();
+        if baseline_pending {
+            // The latch fires at most once (idempotent declare). Reset here so
+            // this tick's manifest sees last_emitted=∅ → all Changed.
+            self.projection_rev_tracker.reset_last_emitted();
+        }
+        // ADR-0055 Rung 2 — build the per-projection revision manifest and stamp
+        // each TypedProjectionData with its rev + presence from it (see
+        // `rung2_stamp`). The diagnostics fingerprint MUST be reconciled before
+        // this call so `diagnostics_inputs_ver` reflects any change in the
+        // relay_diagnostics payload bytes emitted this tick. The Rung-3
+        // baseline-pending reset (above) MUST also happen before this call.
+        let manifest = self.projection_manifest();
+        let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
+        // ADR-0055 Rung 1 (F3) — biconditional completeness oracle. Runs AFTER
+        // the single production encode-shaping pass (`typed` here is the exact
+        // sidecar that `encode_snapshot_with_envelope` serializes below), so it
+        // reuses the real cache units with no double-encode. `test-support`-only:
+        // a production build neither holds `projection_oracle` nor calls this, so
+        // the emit path carries ZERO oracle/hash cost. A violation panics (a
+        // missed stamp = silent dark UI, which Rung 3 would trust — fail loud).
+        #[cfg(any(test, feature = "test-support"))]
+        self.run_projection_oracle(&typed);
+        // ADR-0055 Rung 0 — measure per-tick projection churn BEFORE serializing.
+        // The whole pass (payload hashing, per-key store, process counters) is
+        // `test-support`-only: in a production build this binding does not exist
+        // and the `NMP_PERF` log below compiles with no churn fields, so the
+        // emit path does ZERO instrumentation work. See `helpers::churn`.
+        #[cfg(any(test, feature = "test-support"))]
+        let churn = helpers::churn::measure_emit_churn(&typed);
+        // ADR-0055 Rung 3 — omit `Unchanged` projections when the host has
+        // declared incremental-apply capability (D3-2). Rows classified
+        // `Unchanged` in the manifest are dropped from the frame; `Cleared`
+        // rows are kept with empty payload + state=Cleared. `Changed` rows and
+        // Tier-1 keys (no manifest entry) are always kept (D3-7).
+        // When the host has NOT declared incremental-apply, `typed` is returned
+        // unchanged — full rows, no behavior change from Rung 2.
+        let typed = rung3_omit::omit_unchanged(typed, &manifest, incremental_enabled);
         // ADR-0044 / PR-B (#991/#979): emit only the typed Tier-3 envelope +
         // typed-projection sidecar. The generic `payload:Value` slot is
         // intentionally absent from the wire (set to `None` in
@@ -277,7 +377,19 @@ impl Kernel {
         // is encoded directly into the Tier-3 FlatBuffers fields. For Rust
         // test helpers that still need a JSON view, use `make_update_value_for_test`
         // which serializes the struct directly (no wire roundtrip needed).
-        let encoded = encode_snapshot_with_envelope(&typed, &update);
+        //
+        // ADR-0055 Rung 3 (D3-6): pass the kernel-owned reusable builder.
+        // `encode_snapshot_with_envelope` calls `builder.reset()` at the top
+        // and copies out the finished bytes via `to_vec()` before returning,
+        // so `encoded` owns its bytes independently of `self.snapshot_builder`.
+        // The builder's internal heap allocation is retained across ticks,
+        // eliminating the per-tick `FlatBufferBuilder::new()` allocation.
+        let encoded = encode_snapshot_with_envelope(&mut self.snapshot_builder, &typed, &update, &epoch_stamp);
+        // ADR-0055 Rung 2 (production path): advance the last-emitted baseline.
+        // Test builds do this in the oracle AFTER its check (see `rung2_stamp`);
+        // the cfg ensures no double-call.
+        #[cfg(not(any(test, feature = "test-support")))]
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
@@ -287,8 +399,10 @@ impl Kernel {
         // `removed` / `visible`) was removed, so the perf line is gated on
         // `batch_events` alone and no longer reports the feed counters.
         if batch_events > 0 {
-            self.log(format!(
-                "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} make_update_us={} serialize_us={} event_to_emit_ms={} max_event_to_emit_ms={}",
+            let mut line = format!(
+                "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} \
+                 make_update_us={} serialize_us={} event_to_emit_ms={} \
+                 max_event_to_emit_ms={}",
                 self.rev,
                 batch_events,
                 encoded.len(),
@@ -296,8 +410,23 @@ impl Kernel {
                 this_serialize_us,
                 last_event_to_emit_ms
                     .map_or_else(|| "none".to_string(), |value| value.to_string()),
-                self.max_event_to_emit_ms
-            ));
+                self.max_event_to_emit_ms,
+            );
+            // ADR-0055 Rung 0: churn fields are the empirical anchor, emitted
+            // only in `test-support` builds (production does no measurement).
+            // `projection_count` = total typed projections serialized this tick.
+            // `changed_projection_count` = those whose payload actually changed
+            //   vs the previous tick. `wasted_bytes` = bytes spent re-serializing
+            //   unchanged projections.
+            #[cfg(any(test, feature = "test-support"))]
+            {
+                let wasted_bytes = churn.total_bytes.saturating_sub(churn.changed_bytes);
+                line.push_str(&format!(
+                    " projection_count={} changed_projection_count={} wasted_bytes={}",
+                    churn.total, churn.changed, wasted_bytes
+                ));
+            }
+            self.log(line);
         }
         self.events_since_last_update = 0;
         self.changed_since_emit = false;
@@ -309,108 +438,4 @@ impl Kernel {
         encoded
     }
 
-    /// PR-B (#991/#979): drive `make_update` for one tick and return BOTH the
-    /// raw `UpdateFrameBytes` AND a `serde_json::Value` serialized from the same
-    /// tick's `KernelSnapshot` struct (without a wire roundtrip).
-    ///
-    /// Used by `tier3_envelope_tests` to compare typed Tier-3 FlatBuffers fields
-    /// against the struct-serialized JSON on the SAME tick — the two were
-    /// previously both decoded from the same frame bytes (before payload zeroing).
-    /// Now JSON comes from the struct and the typed fields come from the wire.
-    /// Rev and all other fields still agree because both come from the same tick.
-    #[cfg(test)]
-    pub(crate) fn make_update_frame_and_json_for_test(
-        &mut self,
-        running: bool,
-    ) -> (crate::update_envelope::UpdateFrameBytes, serde_json::Value) {
-        let emit_started = Instant::now();
-        let last_tick_ms = self.now_ms();
-        self.rev = self.rev.saturating_add(1);
-        self.update_sequence = self.update_sequence.saturating_add(1);
-        let batch_events = self.events_since_last_update;
-        self.max_events_per_update = self.max_events_per_update.max(batch_events);
-        let last_event_to_emit_ms = self
-            .timing
-            .last_event_at
-            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
-        if let Some(value) = last_event_to_emit_ms {
-            self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
-        }
-        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
-        let json = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
-        let before_serialize = Instant::now();
-        let typed = self.run_typed_projections();
-        self.run_tick_observers();
-        let typed = self.merge_builtin_typed_projections(typed);
-        let frame = encode_snapshot_with_envelope(&typed, &update);
-        let this_serialize_us = before_serialize.elapsed().as_micros();
-        let this_make_update_us = emit_started.elapsed().as_micros();
-        self.events_since_last_update = 0;
-        self.changed_since_emit = false;
-        self.last_serialize_us = this_serialize_us;
-        self.last_make_update_us = this_make_update_us;
-        self.last_payload_bytes = frame.len();
-        (frame, json)
-    }
-
-    /// PR-B (#991/#979): run a full tick (identical to `make_update`, including
-    /// `run_tick_observers`, `run_typed_projections`, and
-    /// `merge_builtin_typed_projections`), then serialize the `KernelSnapshot`
-    /// struct to `serde_json::Value` for test assertions.
-    ///
-    /// The `payload:Value` slot is no longer emitted on the wire (the decoder
-    /// itself is deleted), so JSON-shaped assertions cannot come off the frame.
-    /// Test helpers serialize the struct directly — equivalent coverage,
-    /// no wire roundtrip.
-    ///
-    /// `run_tick_observers()` is called, matching production semantics (tests
-    /// that count observer invocations get exact per-tick counts).
-    #[cfg(test)]
-    pub(crate) fn make_update_value_for_test(&mut self, running: bool) -> serde_json::Value {
-        let emit_started = Instant::now();
-        let last_tick_ms = self.now_ms();
-        self.rev = self.rev.saturating_add(1);
-        self.update_sequence = self.update_sequence.saturating_add(1);
-        let last_event_to_emit_ms = self
-            .timing
-            .last_event_at
-            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
-        let snapshot = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
-        // Run the same side-effect hooks that `make_update` runs, so tests
-        // observing tick observers / typed projection closures see the same
-        // per-tick semantics.
-        let _typed_host = self.run_typed_projections();
-        self.run_tick_observers();
-        let _typed_merged = self.merge_builtin_typed_projections(_typed_host);
-        serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn make_update_json_for_test(&mut self, running: bool) -> String {
-        serde_json::to_string(&self.make_update_value_for_test(running)).unwrap_or_default()
-    }
-
-    /// Drive a single tick and return BOTH the JSON view of the `KernelSnapshot`
-    /// struct AND the typed-projection sidecar from the SAME tick.
-    ///
-    /// Uses `make_update_frame_and_json_for_test` internally so draining
-    /// projections (e.g. `action_results`, which is `take_*` / drain-on-emit)
-    /// are captured in both the JSON struct serialisation and the typed sidecar
-    /// in the same tick — no second tick, no double-drain.
-    ///
-    /// All current callers that only use the typed sidecar ignore `_value`;
-    /// callers that assert BOTH channels can use both fields.
-    #[cfg(test)]
-    pub(crate) fn make_update_typed_for_test(
-        &mut self,
-        running: bool,
-    ) -> (
-        serde_json::Value,
-        Vec<crate::update_envelope::TypedProjectionData>,
-    ) {
-        let (frame, value) = self.make_update_frame_and_json_for_test(running);
-        let typed = crate::update_envelope::decode_snapshot_typed_projections(&frame)
-            .unwrap_or_default();
-        (value, typed)
-    }
 }

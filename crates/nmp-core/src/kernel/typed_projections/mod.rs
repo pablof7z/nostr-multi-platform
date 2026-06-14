@@ -299,6 +299,8 @@ impl super::Kernel {
             file_identifier: String::from_utf8_lossy(CONFIGURED_RELAYS_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_configured_relays(&configured_relays),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `relay_role_options` — encoded from the SAME `relay_role_options()`
@@ -323,6 +325,8 @@ impl super::Kernel {
             file_identifier: String::from_utf8_lossy(RELAY_ROLE_OPTIONS_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_relay_role_options(&relay_role_options),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `settings_hub` — encoded from the SAME relay count the JSON path reads
@@ -336,6 +340,8 @@ impl super::Kernel {
             schema_version: SETTINGS_HUB_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(SETTINGS_HUB_FILE_IDENTIFIER).into_owned(),
             payload: encode_settings_hub(&settings_hub),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // Wave C publish cluster (`publish_queue` / `publish_outbox` /
@@ -365,7 +371,27 @@ impl super::Kernel {
         // drain-on-emit entries are pushed only when captured this tick (present
         // iff their JSON key is); `relay_diagnostics` is unconditional once
         // captured. Extracted to `builtins_diagnostics.rs` (LOC ceiling).
+        //
+        // ADR-0053: the capture-based diagnostics cluster already self-gates —
+        // `snapshot_projections_with_publish_cluster` only sets `captured_*` for
+        // declared keys, so a gated-out diagnostics built-in (notably the
+        // expensive `relay_diagnostics`) was never captured and produces no
+        // encode here.
         out.extend(self.diagnostics_cluster_typed_projections());
+
+        // ADR-0053 — the final declared-set gate, mirroring the JSON path's
+        // per-key `permits()` so the typed sidecar and the JSON map carry the
+        // EXACT same key set (the ADR-0037 divergence-safety invariant extended
+        // to the gate). The capture-based diagnostics built-ins are already
+        // gated upstream (so the costly `relay_diagnostics` encode is skipped);
+        // the remaining live-accessor clusters above are cheap to encode, and
+        // this filter guarantees a gated-out key never ships even if a future
+        // cluster forgets its own gate. Empty declared set ⇒ `permits()` is
+        // always true ⇒ no filtering (no narrowing).
+        let declared = self.declared_projections_snapshot();
+        if declared.is_narrowing() {
+            out.retain(|entry| declared.permits(&entry.key));
+        }
 
         out
     }

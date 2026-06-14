@@ -24,8 +24,10 @@
 //! registered `nmp.wallet.connect` / `nmp.wallet.disconnect` /
 //! `nmp.wallet.pay_invoice` against its `NmpApp`'s `ActionRegistry`
 //! (via `nmp_nip47::{WalletConnectModule, WalletDisconnectModule,
-//! WalletPayInvoiceModule}`) and called `nmp_nip47::install_wallet_runtime`
-//! before any of these symbols are invoked.
+//! WalletPayInvoiceModule}::new(handle)`) before any of these symbols are
+//! invoked. ADR-0052 rung 5.2: each module VALUE owns its per-app
+//! `WalletRuntimeHandle` (captured at composition time) — there is no
+//! process-global `install_wallet_runtime` step.
 
 use super::action::dispatch_action_json;
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};

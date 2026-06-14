@@ -5,10 +5,12 @@
 //! `action_lifecycle` / `relay_diagnostics`) differ from every prior Wave C
 //! built-in: their producing accessors must NOT be invoked from the typed path,
 //! because they DRAIN (`action_results` / `signed_events`), run a wall-clock TTL
-//! sweep (`action_lifecycle`), are mutated mid-tick by the `action_results` drain
-//! (`action_stages`), or pre-format wall-clock-relative labels against an
-//! internal `now` (`relay_diagnostics`). So each is CAPTURED once at its
-//! JSON-insertion site in
+//! sweep (`action_lifecycle`), or are mutated mid-tick by the `action_results`
+//! drain (`action_stages`). `relay_diagnostics` is the cheap-but-non-trivial
+//! roll-up of the full relay/wire-sub tree; it is captured once for the same
+//! divergence-safety reason (the JSON and typed forms must read the SAME struct
+//! in the SAME tick) and to avoid rebuilding the whole tree twice per tick. So
+//! each is CAPTURED once at its JSON-insertion site in
 //! [`snapshot_projections_with_publish_cluster`](super::super::Kernel::snapshot_projections_with_publish_cluster)
 //! into a per-tick `Kernel` field, and this cluster encodes the typed sidecar
 //! from that captured value — guaranteeing the JSON and typed forms read the SAME
@@ -55,9 +57,9 @@ fn wire_sub_row(sub: &super::super::relay_diagnostics::RelayDiagnosticsWireSub) 
         consumer_count_label: sub.consumer_count_label.clone(),
         events_rx_display: sub.events_rx_display.clone(),
         eose_observed: sub.eose_observed,
-        opened_display: sub.opened_display.clone(),
-        last_event_display: sub.last_event_display.clone(),
-        eose_display: sub.eose_display.clone(),
+        opened_ms: sub.opened_ms,
+        last_event_ms: sub.last_event_ms.unwrap_or(0),
+        eose_ms: sub.eose_ms.unwrap_or(0),
         close_reason: sub.close_reason.clone(),
     }
 }
@@ -81,8 +83,8 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
         reconnect_count: row.reconnect_count,
         bytes_rx_display: row.bytes_rx_display.clone(),
         bytes_tx_display: row.bytes_tx_display.clone(),
-        last_connected_display: row.last_connected_display.clone(),
-        last_event_display: row.last_event_display.clone(),
+        last_connected_ms: row.last_connected_ms.unwrap_or(0),
+        last_event_ms: row.last_event_ms.unwrap_or(0),
         last_notice: row.last_notice.clone(),
         last_error: row.last_error.clone(),
         wire_subs: row.wire_subs.iter().map(wire_sub_row).collect(),
@@ -146,6 +148,8 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(ACTION_RESULTS_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_action_results(&model),
+                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                ..Default::default()
             });
         }
 
@@ -160,6 +164,8 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(SIGNED_EVENTS_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_signed_events(&model),
+                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                ..Default::default()
             });
         }
 
@@ -174,6 +180,8 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(ACTION_STAGES_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_action_stages(&model),
+                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                ..Default::default()
             });
         }
 
@@ -188,6 +196,8 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(ACTION_LIFECYCLE_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_action_lifecycle(&model),
+                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                ..Default::default()
             });
         }
 
@@ -206,6 +216,8 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(RELAY_DIAGNOSTICS_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_relay_diagnostics(&model),
+                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                ..Default::default()
             });
         }
 

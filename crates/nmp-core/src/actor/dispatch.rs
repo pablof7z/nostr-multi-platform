@@ -320,11 +320,14 @@ pub(super) struct ActorContext<'a> {
     /// Outbound planner REQ interceptor slot. Read by the `Reset` arm to
     /// re-install the hook on the rebuilt kernel.
     pub(super) req_frame_interceptor_slot: &'a crate::substrate::ReqFrameInterceptorSlot,
-    /// Host-installed [`crate::substrate::HostOpHandler`] slot. Read by the
-    /// [`ActorCommand::DispatchHostOp`] arm to route the action body to the
-    /// owner of the app-side state (today: `nmp-app-marmot`'s MLS service).
-    /// `None` means no handler was installed before the dispatch — the arm
-    /// records a `Failed` terminal stage for the correlation id.
+    /// Host-installed [`crate::substrate::HostOpHandler`] slot. ADR-0052 §D4
+    /// (K2 rung 5.4): read by the `Protocol` arm (via the
+    /// `HostOpHandlerAccessAdapter`) so the [`crate::substrate::HostOpCommand`]
+    /// can clone the installed handler out at `run` time and route the action
+    /// body to the owner of the app-side state (today: `nmp-app-marmot`'s MLS
+    /// service). `None` means no handler was installed before the dispatch —
+    /// the command records a `Failed` terminal stage for the correlation id.
+    /// (Before rung 5.4 the deleted `DispatchHostOp` arm read this slot.)
     pub(super) host_op_handler: &'a HostOpHandlerSlot,
     /// V-40 — shared [`crate::substrate::EventIngestDispatcher`] slot.
     /// Read by the `Reset` arm to re-bind the slot onto the rebuilt
@@ -391,8 +394,9 @@ pub(super) struct ActorContext<'a> {
 // a submodule so this file stays within its LOC ceiling.
 mod substrate_adapters;
 use substrate_adapters::{
-    ActionStageTrackerAdapter, ErrorSurfaceAdapter, KernelClockAdapter, LocalSignerAccessAdapter,
-    RecipientRelayLookupAdapter,
+    ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter, KernelClockAdapter,
+    LocalSignerAccessAdapter, RecipientRelayLookupAdapter, WalletKernelAccessAdapter,
+    ZapProfileLookupAdapter,
 };
 
 /// M2 (ADR-0042) — thin shim delegating to the always-compiled
@@ -1171,76 +1175,13 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::DispatchHostOp {
-            action_json,
-            correlation_id,
-        } => {
-            // Substrate-generic seam for stateful, app-owned op handlers
-            // (today: `nmp-app-marmot`'s MLS service). The handler was installed
-            // via `NmpApp::set_host_op_handler` during host init.
-            //
-            // Record `Requested` first so the host's spinner sees the action
-            // entered the actor lane even if the handler is absent or panics
-            // (mirrors the `WalletPayInvoice` arm and the V-41 LNURL
-            // protocol command — see
-            // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`).
-            ctx.kernel.record_action_stage(
-                &correlation_id,
-                crate::kernel::action_stages::ActionStage::Requested,
-                None,
-            );
-            // Pull the handler clone OUT of the slot before calling `handle`
-            // so the outer mutex is not held across the SQLite-bound work
-            // (D8 — long-running ops must not block the slot writer).
-            let handler = ctx
-                .host_op_handler
-                .lock()
-                .ok()
-                .and_then(|guard| guard.as_ref().cloned());
-            let result = match handler {
-                Some(handler) => {
-                    // D6 — wrap in catch_unwind so a buggy handler that panics
-                    // does NOT unwind across the FFI boundary; mirror
-                    // `ActionRegistry::execute`'s pattern.
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        handler.handle(&action_json, &correlation_id)
-                    }))
-                    .unwrap_or_else(|_| {
-                        serde_json::json!({
-                            "ok": false,
-                            "error": "host op handler panicked"
-                        })
-                    })
-                }
-                None => serde_json::json!({
-                    "ok": false,
-                    "error": "no host op handler installed"
-                }),
-            };
-            // Route the envelope to the action_results/action_stages mirror.
-            // `{"pending":true}` means the handler deferred completion (e.g. a
-            // Marmot KP-gated op awaiting a key-package fetch): leave the action
-            // in its already-written `Requested` stage and let the handler push
-            // a later `RecordActionSuccess`/`RecordActionFailure` actor command
-            // (D8-safe — no timer, no polling). Otherwise `{"ok":true}` records
-            // success and anything else records failure (static reason fallback).
-            let flag = |k| result.get(k).and_then(serde_json::Value::as_bool).unwrap_or(false);
-            if flag("pending") {
-                // Deferred path owns the terminal write; nothing to record now.
-            } else if flag("ok") {
-                // Host-op success carries no structured result body (D0).
-                ctx.kernel.record_action_success(correlation_id, None);
-            } else {
-                let reason = result
-                    .get("error")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("host op failed without an error message")
-                    .to_string();
-                ctx.kernel.record_action_failure(correlation_id, reason);
-            }
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
-        }
+        // ADR-0052 §D4 (K2 rung 5.4): the `DispatchHostOp` arm was DELETED —
+        // its host-op dispatch now flows through the single `Protocol` write
+        // seam above as `crate::substrate::HostOpCommand`. Both guarantees the
+        // old arm carried are preserved there: whole-body `catch_unwind` (the
+        // `Protocol` arm now wraps `cmd.run`) and the persistent app-installed
+        // handler (still in the per-app `HostOpHandlerSlot`, reached at run
+        // time through the narrow `HostOpHandlerAccess` capability).
         #[cfg(feature = "native")]
         ActorCommand::CapabilityResultReady {
             account_id,
@@ -1669,14 +1610,14 @@ pub(super) fn dispatch_command(
             // single-threaded sync, so the inner `borrow`/`borrow_mut`
             // calls serialize naturally.
             //
-            // V-38: the typed capability adapters borrow `ctx.kernel` via
-            // `RefCell`; the V-38 `with_kernel` builder needs an exclusive
-            // `&mut Kernel` borrow. The adapters and the direct kernel
-            // borrow are mutually exclusive — the `with_kernel` borrow
-            // begins after the adapters drop at end-of-block. We capture
-            // the identity-runtime ref first (immutable) so it can outlive
-            // the adapter scope; the kernel borrow is rebuilt in the
-            // post-adapter block below.
+            // ADR-0052 §D5: ALL kernel-touching capability adapters — including
+            // the new `WalletKernelAccessAdapter` (mutating) and
+            // `ZapProfileLookupAdapter` (reading) — go through this one
+            // `kernel_cell` via per-call `try_borrow[_mut]`. The prior V-38
+            // `with_kernel` exclusive borrow (a long-lived `&mut Kernel` held
+            // for the whole `cmd.run`) is deleted: a wallet command's eight
+            // mutations now interleave with the sibling reads through the same
+            // `RefCell`, so no separate exclusive-borrow window is needed.
             let identity_cell = std::cell::RefCell::new(&*ctx.identity);
             let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
 
@@ -1695,14 +1636,66 @@ pub(super) fn dispatch_command(
             let recipients = RecipientRelayLookupAdapter {
                 kernel: &kernel_cell,
             };
+            // ADR-0052 §D4 — per-app host-op handler slot accessor, so the
+            // `HostOpCommand` (which replaced the deleted `DispatchHostOp` arm)
+            // can clone the installed handler out at `run` time. Reaches no
+            // kernel/identity state, only the slot — so it needs no `RefCell`
+            // borrow and is safe to read inside the whole-body catch_unwind.
+            let host_op_handler = HostOpHandlerAccessAdapter {
+                slot: ctx.host_op_handler,
+            };
+            // ADR-0052 §D5 — narrow wallet kernel-mutation + zap-profile-read
+            // adapters replace the deleted `kernel_mut()` / `lnurl_for_pubkey`
+            // surfaces. Both borrow the SAME `kernel_cell` the read adapters
+            // use, via per-call `try_borrow_mut` / `try_borrow`, so the prior
+            // long-lived `with_kernel` exclusive borrow is gone and the wallet
+            // command's eight mutations interleave naturally with the other
+            // capability reads during `cmd.run`.
+            let wallet_kernel = WalletKernelAccessAdapter {
+                kernel: &kernel_cell,
+            };
+            let zap_profiles = ZapProfileLookupAdapter {
+                kernel: &kernel_cell,
+            };
 
             // A second sender clone for the worker-thread surface. Cloning
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
             // dispatch arm always populates this slot in production.
             let worker_tx = ctx.command_tx_self.clone();
             let mut outbound: Vec<crate::relay::OutboundMessage> = Vec::new();
-            let run_err = {
-                let pctx = crate::substrate::ProtocolCommandContext::new(
+            // ADR-0052 §D4 guarantee #1 — WHOLE-BODY panic isolation. Before
+            // this rung the `Protocol` arm called `cmd.run` bare; a panic in a
+            // command's own non-capability logic unwound the actor thread
+            // (only per-accessor D15 shortcuts were caught). The
+            // `DispatchHostOp` arm we are deleting wrapped its handler in
+            // `catch_unwind`; merging the two seams MUST preserve that, so the
+            // entire `cmd.run` is wrapped here. A panic becomes a logged
+            // `ProtocolCommand panicked` (the same observable surface as an
+            // `Err` return) and the actor survives.
+            //
+            // Borrow scoping (#1364 / ADR-0052 §D5): NO long-lived
+            // `kernel_cell.borrow_mut()` is held across `cmd.run`. Every kernel
+            // touch a command makes — including the very first one, the
+            // `HostOpCommand`'s `record_action_stage_requested` write — goes
+            // through a per-call `try_borrow_mut` on the sibling adapters (see
+            // `ActionStageTrackerAdapter::record_requested`). Because no borrow
+            // outlives the call, that `try_borrow_mut` always succeeds, so a
+            // panic-guarded `HostOpCommand` records its `Requested` stage like
+            // every other action path (the #1356 regression — a held
+            // `with_kernel` exclusive borrow that made the `try_borrow_mut`
+            // return `Err` and silently drop the stage — was eliminated when
+            // that exclusive borrow was deleted). On a panic the unwinding
+            // closure has no outstanding `RefCell` borrow to drop, so the
+            // post-arm `emit_now` re-borrow is always safe.
+            // `AssertUnwindSafe` is required because the closure captures `&mut`
+            // state (`outbound`, the adapters' shared `RefCell`s) across the
+            // unwind boundary; that is sound here because a panic abandons the
+            // command and the actor reads no partially-mutated `outbound`
+            // (`run_err` is `Err`-shaped on panic and the outbound drain below
+            // only carries whatever frames were pushed before the panic, which
+            // is benign — same as an early `Err` return).
+            let run_err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut pctx = crate::substrate::ProtocolCommandContext::new(
                     crate::substrate::ProtocolCommandContextParts {
                         send: &send,
                         command_sender: worker_tx,
@@ -1712,24 +1705,29 @@ pub(super) fn dispatch_command(
                         errors: &errors,
                         stages: &stages,
                         recipients: &recipients,
+                        host_op_handler: &host_op_handler,
+                        // ADR-0052 §D5 — the narrow wallet kernel-mutation +
+                        // zap-profile-read capabilities. A wallet/zap command
+                        // reaches its needs through these; every other command
+                        // ignores them (it holds the noop singleton's surface).
+                        wallet_kernel: &wallet_kernel,
+                        zap_profiles: &zap_profiles,
                     },
                 )
                 .with_outbound(&mut outbound);
-                // V-38: attach the kernel handle so wallet `ProtocolCommand`
-                // bodies can drive kernel state (toast, persistent-sub
-                // register, action-terminal record) directly. The kernel
-                // borrow here is taken through the `RefCell` so the typed
-                // adapters above continue to function during `cmd.run`.
-                // Since `ProtocolCommand::run` is single-threaded sync, the
-                // adapters' `RefCell` borrows and the `with_kernel` borrow
-                // are sequenced naturally inside the command body.
-                let mut kernel_ref = kernel_cell.borrow_mut();
-                let mut pctx = pctx.with_kernel(&mut *kernel_ref);
-                let res = cmd.run(&mut pctx);
-                drop(pctx);
-                drop(kernel_ref);
-                res
-            };
+                cmd.run(&mut pctx)
+            }))
+            .unwrap_or_else(|_| {
+                // A panic in the command body is converted to the same
+                // observable surface as an `Err` return (logged below). For a
+                // host op this is belt-and-suspenders: `HostOpCommand` already
+                // catches a panicking handler internally and records a
+                // `RecordActionFailure`; this whole-body catch covers a panic
+                // in any OTHER part of any command's `run`.
+                Err(crate::substrate::ProtocolCommandError::new(
+                    "ProtocolCommand panicked",
+                ))
+            });
             if let Err(e) = run_err {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");
             }
@@ -1741,6 +1739,12 @@ pub(super) fn dispatch_command(
             // released `ctx.kernel`. The `RefCell` owners themselves are
             // moved at function end (no explicit `drop` needed once the
             // adapters that borrowed them are dropped).
+            //
+            // ADR-0052 §D5: `wallet_kernel` / `zap_profiles` also borrow
+            // `kernel_cell`, so they too must drop before the `emit_now`
+            // re-borrow.
+            drop(zap_profiles);
+            drop(wallet_kernel);
             drop(recipients);
             drop(stages);
             drop(errors);

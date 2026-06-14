@@ -59,19 +59,15 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
 
     match event.kind {
         0 => {
-            // Profile (kind:0). Content is JSON; for the projection we surface
-            // the raw content + a parsed tree. Rich profile fields (name, about,
-            // nip05, etc.) are typically enriched by the caller from a live
-            // kind:0 projection cache. We keep the resolver minimal.
-            EmbedKindProjection::Profile(ProfileProjection {
-                pubkey: author_pubkey,
-                display_name: None,
-                picture_url: None,
-                about: None,
-                nip05: None,
-                lud16: None,
-                banner_url: None,
-            })
+            // Profile (kind:0). The embed IS a kind:0 event, so its `content` is
+            // the profile metadata JSON — parse it here (a rendering/projection
+            // concern, D0-clean: serde_json on already-claimed content, no crypto,
+            // no kind dispatch leaking to the shell). This is what lets the shell
+            // delete its in-Swift `parseProfileMetadata` (#1283) and fixes the
+            // #1299 inverted `display_name` precedence: NIP-01/24 says
+            // `display_name` wins over `displayName` wins over `name` (mirrors the
+            // kernel's `parse_profile` in `nmp-core::kernel::nostr`).
+            EmbedKindProjection::Profile(parse_profile_metadata(&event.content, author_pubkey))
         }
         1 => {
             // Short note
@@ -147,6 +143,56 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
                 alt_text,
             })
         }
+    }
+}
+
+/// Parse a kind:0 profile metadata JSON `content` into a [`ProfileProjection`].
+///
+/// NIP-01/24 display-name precedence: `display_name` wins over the camelCase
+/// `displayName` alias wins over `name` (mirrors `nmp_core::kernel::nostr::
+/// parse_profile`; the old in-Swift resolver had this INVERTED — see #1299).
+/// Empty / whitespace-only values are normalised to `None` so the shell never
+/// renders a blank name. `picture` / `banner` must be http(s) URLs. A malformed
+/// or empty content yields a projection with only the `pubkey` populated (D6 —
+/// never a panic).
+fn parse_profile_metadata(content: &str, pubkey: String) -> ProfileProjection {
+    #[derive(Default, serde::Deserialize)]
+    struct ProfileContent {
+        name: Option<String>,
+        display_name: Option<String>,
+        #[serde(rename = "displayName")]
+        display_name_camel: Option<String>,
+        picture: Option<String>,
+        nip05: Option<String>,
+        about: Option<String>,
+        lud16: Option<String>,
+        banner: Option<String>,
+    }
+
+    let parsed = serde_json::from_str::<ProfileContent>(content).unwrap_or_default();
+    let non_empty = |value: Option<String>| -> Option<String> {
+        value
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let http_url = |value: Option<String>| -> Option<String> {
+        value.filter(|v| v.starts_with("http://") || v.starts_with("https://"))
+    };
+
+    ProfileProjection {
+        pubkey,
+        // NIP-01/24 precedence: display_name → displayName → name (#1299).
+        display_name: non_empty(
+            parsed
+                .display_name
+                .or(parsed.display_name_camel)
+                .or(parsed.name),
+        ),
+        picture_url: http_url(parsed.picture),
+        about: non_empty(parsed.about),
+        nip05: non_empty(parsed.nip05),
+        lud16: non_empty(parsed.lud16),
+        banner_url: http_url(parsed.banner),
     }
 }
 

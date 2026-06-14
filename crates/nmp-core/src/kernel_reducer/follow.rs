@@ -31,4 +31,20 @@ impl super::KernelReducer {
     pub fn try_current_follows(&self) -> Option<Vec<String>> {
         self.kernel.try_current_follows()
     }
+
+    /// Read the active account's FULL existing kind:3 raw event — every tag
+    /// verbatim (relay-hint + petname columns on `p` tags, every non-`p` tag)
+    /// plus the original `content` string — so the wasm Follow / Unfollow
+    /// write-path can splice ONLY the `p` section and preserve the rest of the
+    /// user's contact list on re-publish (issue #1246).
+    ///
+    /// Same fail-closed gate as [`Self::try_current_follows`]: `None` when no
+    /// active account is set OR the kind:3 has not been ingested yet. The wasm
+    /// path MUST check for `Some` before editing — building a kind:3 from
+    /// `None` would silently wipe the user's contacts. Takes `&self`; the
+    /// borrow drops before any async boundary (wasm `RefCell` discipline).
+    #[must_use]
+    pub fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String)> {
+        self.kernel.try_current_kind3_event()
+    }
 }

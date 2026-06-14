@@ -126,9 +126,16 @@ struct KernelUpdateResult {
     /// consumer yet — read through the `dmRelayList` accessor (added for parity).
     let typedDmRelayList: DmRelayListSnapshot?
     /// Typed `claimed_events` projection decode (`KCEV`). `nil` ⇒ generic
-    /// `projections.claimedEvents` JSON fallback. Routed to `EmbedHost.update`
-    /// (typed-first effective value) in `KernelModel.apply`.
+    /// `projections.claimedEvents` JSON fallback. Still a live projection; no
+    /// longer the embed-resolution input (issue #1283 Phase 1 — see below).
     let typedClaimedEvents: [String: ClaimedEventDto]?
+    /// Typed `claimed_event_embeds` projection decode (`NEMB`, issue #1283
+    /// Phase 1). `nil` ⇒ generic `projections.claimedEventEmbeds` JSON fallback.
+    /// The kernel-resolved (`nmp_content::resolve_embed_projection`) embed map;
+    /// routed to `EmbedHost.update(envelopes:)` in `KernelModel.apply`. Replaces
+    /// the deleted in-Swift resolver — this is what closes the EmbedHost D0
+    /// violation and fixes the #1299 display_name precedence.
+    let typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
     /// Typed `bunker_handshake` projection decode (`KBHS`). `nil` ⇒ generic
     /// `projections["bunker_handshake"]` JSON fallback. The producer emits no
     /// sidecar while the handshake slot is idle, so nil is the steady state.
@@ -197,6 +204,18 @@ struct KernelUpdateResult {
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int
+    /// R3-S3 (ADR-0055 D7): the set of projection keys whose `projectionRev`
+    /// advanced in this frame. `KernelModel.apply(result:)` assigns ONLY the
+    /// `@Published` slots corresponding to these keys; slots NOT in the set
+    /// keep their prior value (the `ProjectionMergeCache` already retained the
+    /// decoded bytes). This is the SwiftUI broad-invalidation kill.
+    let changedKeys: Set<String>
+    /// R3-S3 (ADR-0055 D3-4): latched `true` when the cache-merge layer
+    /// encountered a typed-decode failure for at least one row. The prior cache
+    /// entry is retained (no silent corruption), but the host is
+    /// known-degraded for that key until the next genuine rev bump. Rung 3
+    /// logs this; Rung 4 drains it via `nmp_app_request_full_snapshot()`.
+    let needsResync: Bool
 }
 
 // ─── dispatch_action return envelope (PR-A) ───────────────────────────────

@@ -3,23 +3,26 @@
  * Tone system maps 1:1 to kernel tone vocabulary: ok / warn / error / muted.
  */
 
+/* Inspector vars alias the shared design tokens (tokens.css) so the dock and
+ * the social shell stay one palette and dark mode flows through both from a
+ * single source of truth. */
 :root {
-  --ins-bg:          #f8fafb;
-  --ins-bg-raised:   #ffffff;
-  --ins-bg-inset:    #f0f2f5;
-  --ins-ink:         #1c1d1a;
-  --ins-ink-2:       #6b6c66;
-  --ins-ink-3:       #a3a49c;
-  --ins-line:        #e6e6e0;
-  --ins-accent:      #2f7d5b;
+  --ins-bg:          var(--bg);
+  --ins-bg-raised:   var(--bg-raised);
+  --ins-bg-inset:    var(--bg-inset);
+  --ins-ink:         var(--ink);
+  --ins-ink-2:       var(--ink-2);
+  --ins-ink-3:       var(--ink-3);
+  --ins-line:        var(--line);
+  --ins-accent:      var(--accent);
 
-  --ins-tone-ok:     #2f7d5b;
-  --ins-tone-warn:   #b07a1e;
-  --ins-tone-error:  #b3403a;
-  --ins-tone-muted:  #a3a49c;
+  --ins-tone-ok:     var(--tone-ok);
+  --ins-tone-warn:   var(--tone-warn);
+  --ins-tone-error:  var(--tone-error);
+  --ins-tone-muted:  var(--tone-muted);
 
-  --ins-font-mono:   "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
-  --ins-transition:  200ms cubic-bezier(.2,.8,.2,1);
+  --ins-font-mono:   var(--font-mono);
+  --ins-transition:  var(--t-med);
 }
 
 /* ── Layout ── */
@@ -52,7 +55,7 @@
   user-select: none;
 }
 
-.ins-pulse-strip:hover { background: #eef1f3; }
+.ins-pulse-strip:hover { background: var(--ins-bg-inset); }
 
 .ins-strip-dots {
   display: flex;

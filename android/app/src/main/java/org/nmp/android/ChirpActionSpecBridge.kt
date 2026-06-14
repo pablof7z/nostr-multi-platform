@@ -18,6 +18,7 @@ internal data class ChirpActionIntent(
     val content: String? = null,
     @SerialName("reply_to_event_id") val replyToEventId: String? = null,
     @SerialName("event_id") val eventId: String? = null,
+    @SerialName("author_pubkey") val authorPubkey: String? = null,
     val reaction: String? = null,
     val pubkey: String? = null,
     @SerialName("recipient_pubkey") val recipientPubkey: String? = null,

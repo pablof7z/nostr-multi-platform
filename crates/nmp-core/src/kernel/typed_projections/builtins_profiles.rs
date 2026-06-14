@@ -85,6 +85,8 @@ impl super::super::Kernel {
             payload: encode_mention_profiles(&MentionProfilesModel {
                 entries: mention_entries,
             }),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `claimed_profiles` — encoded from the SAME `claimed_profiles()` BTreeMap
@@ -102,6 +104,8 @@ impl super::super::Kernel {
             schema_version: CLAIMED_PROFILES_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(CLAIMED_PROFILES_FILE_IDENTIFIER).into_owned(),
             payload: encode_claimed_profiles(&claimed_profiles),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `claimed_events` — encoded from the SAME `claimed_events()` BTreeMap the
@@ -136,6 +140,8 @@ impl super::super::Kernel {
             schema_version: CLAIMED_EVENTS_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(CLAIMED_EVENTS_FILE_IDENTIFIER).into_owned(),
             payload: encode_claimed_events(&claimed_events),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         // `resolved_profiles` — encoded from the SAME `resolved_profiles()`
@@ -154,6 +160,8 @@ impl super::super::Kernel {
             file_identifier: String::from_utf8_lossy(RESOLVED_PROFILES_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_resolved_profiles(&resolved_profiles),
+            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            ..Default::default()
         });
 
         out

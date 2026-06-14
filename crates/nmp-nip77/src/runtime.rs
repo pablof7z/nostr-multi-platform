@@ -38,7 +38,19 @@ struct Session {
     rounds: u64,
     /// Local item count at session open (before items moved into reconciler).
     local_item_count: u64,
+    /// Kernel wall-clock seconds at NEG-OPEN (K3 Stage B2 liveness deadline).
+    /// A relay that silently ignores NEG-OPEN (no NEG-MSG / NEG-ERR / NOTICE)
+    /// would otherwise leave this session stuck in `Probing` forever; the
+    /// `on_idle_tick` sweep falls back to a plain REQ once
+    /// `now − opened_at ≥ NEG_OPEN_LIVENESS_DEADLINE_SECS`.
+    opened_at_secs: u64,
 }
+
+/// K3 Stage B2 — how long a `Probing` NEG session may sit with no terminal
+/// response (NEG-MSG / NEG-ERR / NOTICE) before the liveness sweep falls back
+/// to a plain REQ. Generous (30 s) so a slow-but-live relay mid-reconciliation
+/// is not torn down; a NEG-MSG resets the wait by ending the `Probing` state.
+const NEG_OPEN_LIVENESS_DEADLINE_SECS: u64 = 30;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SessionMode {
@@ -171,10 +183,18 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
         if !self.gate.should_use_negentropy_for_filter(fanout, true) {
             return None;
         }
+        // K3 Stage A: reconcile over the FULL window, not the watermark-floored
+        // `[floor, ∞)`. The `since` floor is a presence heuristic (avoid
+        // re-fetching cached events on a plain REQ); NIP-77 transfers exactly the
+        // id-set symmetric difference, so an un-floored reconciliation is
+        // self-healing for below-floor gaps. The floored filter is retained only
+        // for the fallback / live-only plain REQs below, which legitimately keep
+        // the floor.
+        let neg_filter = filter.unfloored();
         let store = kernel.event_store_handle();
-        let items = filter.local_items(store.as_ref()).ok()?;
+        let items = neg_filter.local_items(store.as_ref()).ok()?;
         let local_item_count = items.len() as u64;
-        let nostr_filter: Filter = serde_json::from_value(filter.value.clone()).ok()?;
+        let nostr_filter: Filter = serde_json::from_value(neg_filter.value.clone()).ok()?;
         let mut reconciler = Reconciler::client(items).ok()?;
         let initial_msg = reconciler.initiate().ok()?;
         let session = Session {
@@ -186,6 +206,9 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
             mode: mode.clone(),
             rounds: 0,
             local_item_count,
+            // K3 Stage B2: stamp the kernel wall-clock at open so the liveness
+            // sweep can detect a relay that never responds to NEG-OPEN.
+            opened_at_secs: kernel.now_secs(),
         };
         let text = messages::neg_open_text(&ctx.sub_id, nostr_filter, &initial_msg);
         self.set_relay_state(
@@ -270,6 +293,11 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                     RelayNegentropyState::Supported,
                 );
                 session.rounds = session.rounds.saturating_add(1);
+                // K3 Stage B2: a NEG-MSG is forward progress — re-anchor the
+                // liveness deadline so a slow-but-live multi-round
+                // reconciliation is measured from its LAST progress, not from
+                // open, and is never torn down while it is actively advancing.
+                session.opened_at_secs = kernel.now_secs();
                 match session.reconciler.reconcile(&msg) {
                     Ok(ReconcilerOutcome::Send(next)) => {
                         let outbound = OutboundMessage::new(
@@ -290,6 +318,14 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                             need.len() as u64,
                             session.local_item_count,
                         );
+                        // K3 Stage D1 (ADR-0056 §3) — reconciliation COMPLETED
+                        // for this (filter, relay). Per Stage A the NEG window is
+                        // un-floored `[0, ∞)`, so the completed sync honestly
+                        // covers `[0, now]`; advance the coverage ledger. Gated
+                        // on the kernel's off-by-default flag, so this is a no-op
+                        // in D1's default configuration.
+                        let now_secs = kernel.now_secs();
+                        kernel.record_neg_done_coverage(&session.sub_id, relay_url, now_secs);
                         let mut out = vec![Self::close_msg(&session)];
                         if need.is_empty() {
                             if matches!(session.mode, SessionMode::ReplaceOneShot) {
@@ -307,5 +343,55 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
             }
             _ => Vec::new(),
         }
+    }
+
+    /// K3 Stage B2 — NEG-OPEN liveness sweep (D8: wall-clock-gated, no
+    /// sleep/loop). The actor calls this on every idle iteration (~250 ms
+    /// cadence). A relay that accepts NEG-OPEN but then goes silent — no
+    /// NEG-MSG, no NEG-ERR, no NOTICE — would otherwise leave the interest's
+    /// wire sub "live" with no EOSE and no retry, starving it forever. For
+    /// every session that has sat with no terminal response for at least
+    /// [`NEG_OPEN_LIVENESS_DEADLINE_SECS`], fall back to the plain (floored)
+    /// REQ — the SAME fallback path NEG-ERR triggers — so the interest is
+    /// never stuck. `opened_at_secs` is re-anchored on each NEG-MSG, so a
+    /// slow-but-live reconciliation is measured from its last progress and is
+    /// never torn down while actively advancing.
+    fn on_idle_tick(&self, kernel: &mut Kernel) -> Vec<OutboundMessage> {
+        let now = kernel.now_secs();
+        let mut out = Vec::new();
+
+        // Phase 1: collect timed-out sessions under the lock (no kernel touch
+        // inside the lock; the set_relay_state below re-enters the kernel).
+        let timed_out: Vec<(String, String)> = {
+            let Ok(sessions) = self.sessions.lock() else {
+                return out;
+            };
+            sessions
+                .iter()
+                .filter(|(_, s)| {
+                    now.saturating_sub(s.opened_at_secs) >= NEG_OPEN_LIVENESS_DEADLINE_SECS
+                })
+                .map(|(key, _)| key.clone())
+                .collect()
+        };
+
+        // Phase 2: remove each timed-out session and emit its fallback REQ.
+        for key in timed_out {
+            let Some(session) = self.sessions.lock().ok().and_then(|mut s| s.remove(&key)) else {
+                continue;
+            };
+            // Mark the relay Unsupported for this session's lifetime — the same
+            // terminal state NEG-ERR records — so subsequent interests on this
+            // relay skip the NEG probe and go straight to a plain REQ rather
+            // than re-incurring the deadline.
+            self.set_relay_state(
+                kernel,
+                session.role,
+                &session.relay_url,
+                RelayNegentropyState::Unsupported,
+            );
+            out.push(Self::fallback_req(&session));
+        }
+        out
     }
 }

@@ -19,17 +19,36 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    /// A decoded snapshot frame. `(schemaVersion, typedProjections, flatFeeds,
-    /// typedEnvelope)`. The generic `payload:Value` whole-payload tree is NO
-    /// LONGER decoded — the typed `typed_projections` sidecars + the Tier-3
-    /// `SnapshotFrame` envelope are the sole sources. (The producer still emits
-    /// `payload` for now; PR-B removes it from the schema.)
+    /// A decoded snapshot frame. `(schemaVersion, sessionId, snapshotEpoch,
+    /// typedProjections, flatFeeds, typedEnvelope)`. The generic `payload:Value`
+    /// whole-payload tree is NO LONGER decoded — the typed `typed_projections`
+    /// sidecars + the Tier-3 `SnapshotFrame` envelope are the sole sources. (The
+    /// producer still emits `payload` for now; PR-B removes it from the schema.)
+    ///
+    /// R3-S3 (ADR-0055): `sessionId` + `snapshotEpoch` are read off the SAME
+    /// `frame.snapshot` table in the single decode pass and threaded out here so
+    /// the `ProjectionMergeCache` D3-3 merge needs no second parse of the buffer.
     case snapshot(
         UInt32,
+        UInt64,
+        UInt64,
         [TypedProjectionEnvelope],
         [String: ChirpTimelineSnapshot],
         TypedSnapshotEnvelope?)
     case panic(String)
+}
+
+/// The wire presence state of one typed projection row, mirroring the
+/// `nmp_transport_ProjectionPresenceState` FlatBuffers enum (ubyte values
+/// must match exactly). `Unchanged` is never on the wire — absence IS
+/// Unchanged per ADR-0055 D3.
+///
+/// Raw values match the FlatBuffers ubyte encoding:
+///   0 = Changed  (full payload row)
+///   1 = Cleared  (payload-less row; host must drop the cached value)
+enum WireProjectionState: UInt8 {
+    case changed = 0
+    case cleared = 1
 }
 
 /// ADR-0037: a typed FlatBuffers sidecar carried alongside the generic
@@ -37,12 +56,49 @@ enum KernelUpdateFrame {
 /// NFTS/NFCT bytes plus its schema identity. Hosts that recognise a `schemaId`
 /// decode the bytes with the matching typed decoder; others ignore it and fall
 /// back to the generic snapshot.
+///
+/// R3-S3 (ADR-0055): `projectionRev` and `state` are now populated from
+/// the FlatBuffers `TypedProjection` fields so the `ProjectionMergeCache`
+/// can implement the D3-3 merge algorithm without re-reading the wire.
 struct TypedProjectionEnvelope {
     let key: String
     let schemaId: String
     let schemaVersion: UInt32
     let fileIdentifier: String
     let payload: Data
+    /// Per-projection monotonic revision counter. Advances on every semantic
+    /// change; the cache-merge layer uses this to implement the D3 reorder
+    /// guard (lower-or-equal rev → skip; advancing rev → overwrite).
+    ///
+    /// Default `1` is used by decoder-only tests that do not exercise the
+    /// cache layer — a non-zero rev so the reorder guard never rejects, but
+    /// small enough to leave room for cache tests to assert on specific values.
+    let projectionRev: UInt64
+    /// Wire presence state for this row. `.changed` means full payload;
+    /// `.cleared` means the projection went empty (payload is empty Data).
+    /// `Unchanged` is never on the wire — omitted rows ARE unchanged.
+    ///
+    /// Default `.changed` is used by decoder-only tests that construct
+    /// well-formed payload envelopes and do not test cache semantics.
+    let state: WireProjectionState
+
+    init(
+        key: String,
+        schemaId: String,
+        schemaVersion: UInt32,
+        fileIdentifier: String,
+        payload: Data,
+        projectionRev: UInt64 = 1,
+        state: WireProjectionState = .changed
+    ) {
+        self.key = key
+        self.schemaId = schemaId
+        self.schemaVersion = schemaVersion
+        self.fileIdentifier = fileIdentifier
+        self.payload = payload
+        self.projectionRev = projectionRev
+        self.state = state
+    }
 }
 
 enum KernelUpdateFrameDecoder {
@@ -72,7 +128,15 @@ enum KernelUpdateFrameDecoder {
             let envelopes = extractTypedProjections(from: snapshot)
             let flatFeeds = extractFlatFeeds(typed: envelopes)
             let typedEnvelope = extractTypedEnvelope(from: snapshot)
-            return .snapshot(snapshot.schemaVersion, envelopes, flatFeeds, typedEnvelope)
+            // R3-S3 (ADR-0055): read the session/epoch scalars off the SAME
+            // `snapshot` table we already decoded — no second parse needed.
+            return .snapshot(
+                snapshot.schemaVersion,
+                snapshot.sessionId,
+                snapshot.snapshotEpoch,
+                envelopes,
+                flatFeeds,
+                typedEnvelope)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload
@@ -82,8 +146,14 @@ enum KernelUpdateFrameDecoder {
     }
 
     /// ADR-0037: lift the typed projection sidecar into plain Swift envelopes.
-    /// Projections missing a key, schema id, or payload table are skipped so a
-    /// malformed entry never aborts the whole snapshot.
+    /// Projections missing a key are skipped so a malformed entry never aborts
+    /// the whole snapshot.
+    ///
+    /// R3-S3 (ADR-0055): `projectionRev` and `state` are now populated from the
+    /// FlatBuffers `TypedProjection` fields. `Cleared` rows carry no payload
+    /// table — that is correct and expected; the cache-merge layer handles them
+    /// by removing the key from the cache. The envelope `payload` is `Data()`
+    /// for Cleared rows.
     private static func extractTypedProjections(
         from snapshot: nmp_transport_SnapshotFrame
     ) -> [TypedProjectionEnvelope] {
@@ -91,17 +161,37 @@ enum KernelUpdateFrameDecoder {
         let projections = snapshot.typedProjections
         envelopes.reserveCapacity(projections.count)
         for projection in projections {
-            guard let key = projection.key,
-                  let typed = projection.payload,
-                  let schemaId = typed.schemaId else {
+            guard let key = projection.key else { continue }
+            // Map the FlatBuffers ubyte enum to our typed WireProjectionState.
+            // Default to .changed when the field is absent (legacy frames or
+            // Tier-1 always-Changed rows that pre-date Rung-2 stamping).
+            let state: WireProjectionState = projection.state == .cleared ? .cleared : .changed
+            let projectionRev = projection.projectionRev
+            // Cleared rows carry no payload table — extract what is present.
+            let (schemaId, schemaVersion, fileIdentifier, payload): (String, UInt32, String, Data)
+            if let typed = projection.payload, let sid = typed.schemaId {
+                (schemaId, schemaVersion, fileIdentifier, payload) = (
+                    sid,
+                    typed.schemaVersion,
+                    typed.fileIdentifier ?? "",
+                    Data(typed.payload)
+                )
+            } else if state == .cleared {
+                // Cleared rows have no payload; fill identity fields with empty
+                // so the envelope is well-formed for the cache-merge layer.
+                (schemaId, schemaVersion, fileIdentifier, payload) = ("", 0, "", Data())
+            } else {
+                // Changed row without a payload table — malformed; skip.
                 continue
             }
             envelopes.append(TypedProjectionEnvelope(
                 key: key,
                 schemaId: schemaId,
-                schemaVersion: typed.schemaVersion,
-                fileIdentifier: typed.fileIdentifier ?? "",
-                payload: Data(typed.payload)
+                schemaVersion: schemaVersion,
+                fileIdentifier: fileIdentifier,
+                payload: payload,
+                projectionRev: projectionRev,
+                state: state
             ))
         }
         return envelopes

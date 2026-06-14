@@ -1,9 +1,11 @@
 //! NIP-47 Nostr Wallet Connect actor-side runtime.
 //!
 //! Moved from `nmp-core::actor::commands::wallet` in V-38. The runtime lives
-//! on the actor thread; the actor reaches into it via the
-//! [`WalletRuntimeHandle`] slot installed via
-//! `nmp_core::NmpApp::set_wallet_runtime_handle`.
+//! behind a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`).
+//! Each wallet `ActionModule` value and the `WalletInterceptor` hold their own
+//! `Arc` clone of the handle, obtained at composition time via
+//! [`crate::register::register_wallet`] (ADR-0052 rung 5.2 — register-by-value,
+//! no process-global install).
 //!
 //! D0: `nmp-core` no longer depends on `nmp-nwc`. D6: every error path
 //! surfaces as a `last_error_toast` + `WalletStatus::status = "error"`,
@@ -54,8 +56,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::display::short_npub;
-use nmp_core::substrate::UnsignedEvent;
-use nmp_core::{AuthSignerFn, Kernel, OutboundMessage, RelayRole};
+use nmp_core::substrate::{UnsignedEvent, WalletKernelAccess};
+use nmp_core::{AuthSignerFn, OutboundMessage, RelayRole};
 use nostr::nips::nip19::ToBech32;
 use nostr::{Keys, PublicKey, SecretKey};
 use serde_json::json;
@@ -194,49 +196,24 @@ impl std::fmt::Debug for WalletRuntime {
 /// relay-event handler) does the same.
 pub type WalletRuntimeHandle = Arc<Mutex<Option<WalletRuntime>>>;
 
-/// Construct a fresh, empty [`WalletRuntimeHandle`]. The host installs it
-/// via [`install_wallet_runtime`] at app startup; the actor's relay-text
-/// intercept and the action-seam executor both pull it via
-/// [`active_wallet_runtime`].
+/// Construct a fresh, empty [`WalletRuntimeHandle`]. The host clones it into
+/// (a) each wallet `ActionModule` value, (b) each `ProtocolCommand` those
+/// modules construct, and (c) the relay-text interceptor — every consumer
+/// carries the handle by value (ADR-0052 rung 5.2). No process-global slot.
 #[must_use]
 pub fn new_wallet_runtime_handle() -> WalletRuntimeHandle {
     Arc::new(Mutex::new(None))
 }
 
-/// Process-wide slot holding the active [`WalletRuntimeHandle`]. There is
-/// exactly one wallet runtime per process; the action-seam executor
-/// ([`crate::WalletPayInvoiceModule::execute`]) and the FFI shims read it
-/// here so they don't need an [`nmp_core::NmpApp`] reference. Hosts install
-/// it once at app construction via [`install_wallet_runtime`].
-///
-/// Static rather than per-app because:
-/// * `ActionModule::execute` is a `fn` (no `&self`, no `&NmpApp`);
-/// * the FFI shims have an `app: *mut NmpApp` but no typed wallet field;
-/// * the wallet runtime IS naturally process-scoped (the actor thread is
-///   process-singleton too).
-static ACTIVE_WALLET_RUNTIME: std::sync::OnceLock<WalletRuntimeHandle> =
-    std::sync::OnceLock::new();
-
-/// Install the process-wide wallet runtime handle. Must be called exactly
-/// once per process; subsequent calls return `Err(_)` and the install is a
-/// no-op (the first handle wins).
-///
-/// The host typically does this in its app-construction code, alongside
-/// registering the `nmp.wallet.pay_invoice` action module and the
-/// `"wallet"` snapshot projection.
-pub fn install_wallet_runtime(handle: WalletRuntimeHandle) -> Result<(), &'static str> {
-    ACTIVE_WALLET_RUNTIME
-        .set(handle)
-        .map_err(|_| "wallet runtime already installed")
-}
-
-/// Fetch a clone of the installed [`WalletRuntimeHandle`]. Returns `None`
-/// when the host never called [`install_wallet_runtime`] — the action seam
-/// then surfaces a `Failed` terminal stage rather than panicking (D6).
-#[must_use]
-pub fn active_wallet_runtime() -> Option<WalletRuntimeHandle> {
-    ACTIVE_WALLET_RUNTIME.get().cloned()
-}
+// ADR-0052 rung 5.2: the process-global `ACTIVE_WALLET_RUNTIME`
+// (`OnceLock<WalletRuntimeHandle>`) plus `install_wallet_runtime` /
+// `active_wallet_runtime` were DELETED. The wallet runtime is now owned by
+// value: each of the three wallet `ActionModule`s holds an
+// `Arc<WalletRuntimeHandle>` captured at composition time, and the NIP-57 zap
+// auto-chain carries the same handle through `FetchLnurlInvoiceCommand`. Two
+// `NmpApp` instances in one process therefore drive fully independent wallet
+// runtimes (proven by the `k2_two_instance_wallet_isolation` oracle), and a
+// freed-then-recreated app re-initialises cleanly (no fired `OnceLock`).
 
 impl WalletRuntime {
     /// Construct a wallet runtime bound to the shared status slot.
@@ -488,7 +465,7 @@ impl WalletRuntime {
     /// that was not available inside the Kernel-free `tick_heartbeat` body.
     pub fn build_get_info_probe(
         &mut self,
-        kernel: &mut Kernel,
+        kernel: &dyn WalletKernelAccess,
     ) -> Option<OutboundMessage> {
         let relay = self.connection.as_ref()?.relay_url.clone();
         build_request(self, kernel, &relay, NwcMethod::GetInfo, json!({}), None).map(|(msg, _id)| msg)
@@ -497,7 +474,7 @@ impl WalletRuntime {
     /// Push the current `connection_state` into the `status_slot` and mark the
     /// snapshot dirty. Called by the host interceptor when `tick_heartbeat`
     /// reports `state_changed = true`.
-    pub fn sync_connection_state(&self, kernel: &mut Kernel) {
+    pub fn sync_connection_state(&self, kernel: &dyn WalletKernelAccess) {
         sync_wallet_status(self, kernel);
     }
 }
@@ -543,7 +520,7 @@ pub struct HeartbeatOutbound {
 /// initial `get_info` + `get_balance` request to the NWC relay.
 pub(crate) fn wallet_connect(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
     uri: &str,
 ) -> Vec<OutboundMessage> {
     // Disconnect any existing connection first.
@@ -653,14 +630,14 @@ pub(crate) fn wallet_connect(
 /// Clear wallet state and send a CLOSE to the NWC relay.
 pub(crate) fn wallet_disconnect(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
 ) -> Vec<OutboundMessage> {
     wallet_disconnect_inner(wallet, kernel)
 }
 
 fn wallet_disconnect_inner(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
 ) -> Vec<OutboundMessage> {
     let Some(conn) = wallet.connection.take() else {
         return Vec::new();
@@ -750,7 +727,7 @@ fn wallet_disconnect_inner(
 /// host spinner exists to close.
 pub(crate) fn wallet_pay_invoice(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
     bolt11: &str,
     amount_msats: Option<u64>,
     correlation_id: Option<String>,
@@ -809,7 +786,7 @@ pub(crate) fn wallet_pay_invoice(
 pub(crate) fn handle_nwc_text(
     wallet: &mut WalletRuntime,
     relay_text: &str,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
 ) -> Vec<OutboundMessage> {
     // Split-borrow the two distinct fields so the payment-correlation arms can
     // touch the durable store while `conn` is mutably borrowed.
@@ -976,7 +953,7 @@ pub(crate) fn handle_nwc_text(
 /// `pending_lookups` so the reply maps back to the original payment.
 fn reconcile_unresolved_payments(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
     relay: &str,
 ) -> Vec<OutboundMessage> {
     let Some(store) = wallet.payment_store.as_ref() else {
@@ -1034,7 +1011,7 @@ fn encode_frame(value: &serde_json::Value) -> Result<String, serde_json::Error> 
 /// transition can write the `Unknown` record without re-deriving the invoice.
 fn build_request(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
     relay_url: &str,
     method: NwcMethod,
     params: serde_json::Value,
@@ -1051,7 +1028,7 @@ struct PayMeta {
 
 fn build_request_with_meta(
     wallet: &mut WalletRuntime,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
     relay_url: &str,
     method: NwcMethod,
     params: serde_json::Value,
@@ -1164,7 +1141,7 @@ fn build_request_with_meta(
     ))
 }
 
-fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
+fn sync_wallet_status(wallet: &WalletRuntime, kernel: &dyn WalletKernelAccess) {
     let status = wallet.connection.as_ref().map(|c| {
         let balance_sats = c.balance_msats.map(|m| m / 1000);
         WalletStatus {

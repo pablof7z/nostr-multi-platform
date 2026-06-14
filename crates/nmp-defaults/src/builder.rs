@@ -2,27 +2,13 @@
 //!
 //! # V-94 — compile-time enforcement of pre-start ordering
 //!
-//! The problem: `nmp_app_new()` allocates an un-started `NmpApp`; every
-//! wiring setter (`set_routing_substrate`, `register_action`, etc.) must be
-//! called **before** `nmp_app_start` sends the first `ActorCommand::Start`.
-//! The actor reads all wiring slots once, at kernel-construction time; any
-//! setter called *after* that point is silently ignored (D6). Up to this PR
-//! ordering was enforced by prose only (18 "MUST be called before
-//! `nmp_app_start`" doc-block sites in `nmp-ffi/src/lib.rs`).
-//!
-//! # Design decisions (V-94 ABI fork — resolved in task brief)
-//!
-//! The task explicitly chose the **consume-and-return typestate** approach:
+//! The problem: every wiring setter (`set_routing_substrate`,
+//! `register_action`, …) must run **before** `nmp_app_start` — the actor reads
+//! all wiring slots once at kernel construction; a later setter is silently
+//! ignored (D6). The **consume-and-return typestate** enforces this in Rust:
 //! `start(self, config)` moves the builder, so no setter is reachable
-//! post-start in Rust. This is stronger than an in-place `started` flag
-//! (which would still compile at the wrong call site) and stronger than a
-//! runtime check (which fires at runtime, not compile time).
-//!
-//! The **C-ABI boundary** (`nmp_app_start`, `nmp_app_set_*`) is outside the
-//! reach of Rust's type system. Swift/Kotlin hosts driving raw C-ABI symbols
-//! get no compile-time guarantee here. A runtime late-wiring diagnostic
-//! (`KernelDiagnostic::LateWiring`) is the correct complement for that surface
-//! — it is **not** implemented in this PR (scope: Rust composition roots only).
+//! post-start. The C-ABI boundary (`nmp_app_*`) is outside Rust's type system;
+//! a runtime late-wiring diagnostic is the complement there (not in this PR).
 //!
 //! # Type-state chain
 //!
@@ -31,13 +17,23 @@
 //!       │  .storage_path(p)   ─┐
 //!       │  .in_memory()       ─┤─→  NmpAppBuilder<StorageSet>
 //!       │                       │         │
-//!       │ (AppHost + ActionRegistrar       │  .start(RunConfig)
-//!       │  setters available on BOTH       │        │
-//!       │  states — they don't advance     ▼        ▼
-//!       │  the required chain)         StartedApp (*mut NmpApp, running)
+//!       │ (AppHost + ActionRegistrar       │  .declare_consumed_projections(keys)   ─┐
+//!       │  setters available on ALL        │  .consume_all_builtin_projections()    ─┤
+//!       │  states — they don't advance     │                                          │
+//!       │  the required chain)             ▼                                          ▼
+//!       │                          (no .start here)            NmpAppBuilder<ProjectionsDeclared>
+//!       │                                                                  │  .start(RunConfig)
+//!       │                                                                  ▼
+//!       │                                                  StartedApp (*mut NmpApp, running)
 //!       │
-//!       ╰─ .start(RunConfig) — DOES NOT COMPILE (only on StorageSet)
+//!       ╰─ .start(RunConfig) — DOES NOT COMPILE until ProjectionsDeclared
 //! ```
+//!
+//! Two compile-time gates: (1) a storage decision (`Unstarted → StorageSet`),
+//! and (2) an ADR-0053 projection-consumption decision
+//! (`StorageSet → ProjectionsDeclared`). Forgetting either is a compile error,
+//! so a host can never silently ship the full Tier-2 built-in firehose —
+//! "everything" is the explicit `.consume_all_builtin_projections()` call.
 //!
 //! # Usage (canonical Rust composition root)
 //!
@@ -45,15 +41,18 @@
 //! use nmp_defaults::{NmpAppBuilder, RunConfig};
 //!
 //! let app: *mut nmp_ffi::NmpApp = NmpAppBuilder::new()
-//!     .in_memory()                  // required: choose storage
-//!     .start(RunConfig::default()); // consume builder → started handle
+//!     .in_memory()                                  // required: choose storage
+//!     .declare_consumed_projections(["profile"])    // required: declare ADR-0053 set
+//!     .start(RunConfig::default());                 // consume builder → started handle
 //!
 //! // `NmpAppBuilder` is gone; setters are unreachable.
 //! // Use `app` for FFI calls; free with `nmp_ffi::nmp_app_free(app)`.
 //! ```
 //!
 //! The canonical production step replaces `.in_memory()` with
-//! `.storage_path("/path/to/lmdb/dir")`.
+//! `.storage_path("/path/to/lmdb/dir")`. A diagnostics shell that genuinely
+//! reads every built-in calls `.consume_all_builtin_projections()` in place of
+//! `.declare_consumed_projections(...)`.
 //!
 //! # Scope
 //!
@@ -71,6 +70,7 @@ use nmp_core::substrate::{ActionRegistrar, AppHost};
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 
 use crate::relay_config;
+mod app_host_impl; // ADR-0053: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
 mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
 
 /// The app-template's built-in default relay configuration.
@@ -94,8 +94,25 @@ pub struct Unstarted;
 /// Builder state: storage has been explicitly chosen.
 ///
 /// Either `.storage_path(p)` (LMDB-backed) or `.in_memory()` (explicit
-/// ephemeral opt-in) was called. `start()` is now available.
+/// ephemeral opt-in) was called. `start()` is NOT yet available — a
+/// projection-consumption decision must be made first (ADR-0053 DEBT 2):
+/// call `.declare_consumed_projections(keys)` to narrow to a set, or
+/// `.consume_all_builtin_projections()` to explicitly opt into the full
+/// Tier-2 firehose.
 pub struct StorageSet;
+
+/// Builder state: the host has made an explicit projection-consumption
+/// decision (ADR-0053 DEBT 2).
+///
+/// Reached from `StorageSet` via either `.declare_consumed_projections(keys)`
+/// (narrowing) or `.consume_all_builtin_projections()` (explicit "I want
+/// everything"). `start()` is available ONLY in this state — so a host
+/// CANNOT silently ship the full Tier-2 built-in firehose by forgetting to
+/// decide; "everything" is a visible, greppable, intentional call, never a
+/// default. The kernel-primitive empty=permissive semantic
+/// (`SnapshotRegistry`/`NmpApp`) is unchanged; only the app-facing builder
+/// gains this compile-time gate.
+pub struct ProjectionsDeclared;
 
 // ── RunConfig ────────────────────────────────────────────────────────────────
 
@@ -139,7 +156,11 @@ impl Default for RunConfig {
 ///    substrate, coverage hook, …) run **before** `start()`.
 /// 2. A storage decision (`.storage_path` or `.in_memory()`) is made before
 ///    `start()` — the one slot whose omission causes silent data loss.
-/// 3. `start()` is callable **exactly once** (it moves `self`).
+/// 3. An ADR-0053 projection-consumption decision
+///    (`.declare_consumed_projections(keys)` or
+///    `.consume_all_builtin_projections()`) is made before `start()` — so the
+///    full Tier-2 built-in firehose can never be shipped silently.
+/// 4. `start()` is callable **exactly once** (it moves `self`).
 ///
 /// On `Drop`, if `start()` was never called, the inner `NmpApp` is freed with
 /// `nmp_app_free` to prevent a memory leak.
@@ -148,12 +169,14 @@ impl Default for RunConfig {
 ///
 /// `S` is a zero-size type-state marker. Use `NmpAppBuilder<Unstarted>` as
 /// the initial type; advance to `NmpAppBuilder<StorageSet>` via
-/// `.storage_path(p)` or `.in_memory()`.
+/// `.storage_path(p)` or `.in_memory()`, then to
+/// `NmpAppBuilder<ProjectionsDeclared>` via `.declare_consumed_projections(…)`
+/// or `.consume_all_builtin_projections()`.
 ///
 /// # Compile-fail: calling `start()` without a storage choice is an error
 ///
 /// The following code does **not** compile because `start()` only exists on
-/// `NmpAppBuilder<StorageSet>`, not on `NmpAppBuilder<Unstarted>`:
+/// `NmpAppBuilder<ProjectionsDeclared>`, not on `NmpAppBuilder<Unstarted>`:
 ///
 /// ```compile_fail
 /// use nmp_defaults::{NmpAppBuilder, RunConfig};
@@ -162,14 +185,31 @@ impl Default for RunConfig {
 /// let _app = NmpAppBuilder::new().start(RunConfig::default());
 /// ```
 ///
+/// # Compile-fail: calling `start()` without a projection decision is an error
+///
+/// The following code does **not** compile because `start()` only exists on
+/// `NmpAppBuilder<ProjectionsDeclared>`, not on `NmpAppBuilder<StorageSet>` —
+/// ADR-0053 DEBT 2's compile-time enforcement that the host cannot silently
+/// ship the full Tier-2 built-in firehose:
+///
+/// ```compile_fail
+/// use nmp_defaults::{NmpAppBuilder, RunConfig};
+///
+/// // ERROR: no method named `start` found for `NmpAppBuilder<StorageSet>`
+/// let _app = NmpAppBuilder::new()
+///     .in_memory()                  // advances to StorageSet
+///     .start(RunConfig::default()); // ← still missing the projection decision
+/// ```
+///
 /// The correct sequence is:
 ///
 /// ```rust,no_run
 /// use nmp_defaults::{NmpAppBuilder, RunConfig};
 ///
 /// let _app = NmpAppBuilder::new()
-///     .in_memory()                  // ← required: advance to StorageSet
-///     .start(RunConfig::default()); // ← now compiles
+///     .in_memory()                               // ← required: advance to StorageSet
+///     .declare_consumed_projections(["profile"]) // ← required: advance to ProjectionsDeclared
+///     .start(RunConfig::default());              // ← now compiles
 /// ```
 pub struct NmpAppBuilder<S> {
     /// Owned pointer. INVARIANT: non-null while the builder exists; freed
@@ -255,7 +295,9 @@ impl Default for NmpAppBuilder<Unstarted> {
 impl NmpAppBuilder<Unstarted> {
     /// Use a persistent LMDB store at `path`.
     ///
-    /// Transitions to `NmpAppBuilder<StorageSet>`, enabling `start()`.
+    /// Transitions to `NmpAppBuilder<StorageSet>`. A projection-consumption
+    /// decision (`.declare_consumed_projections` /
+    /// `.consume_all_builtin_projections`) is still required before `start()`.
     ///
     /// In practice `path` is the host-provided application-support directory
     /// (iOS) or files directory (Android). A `NULL` or empty `path` passed to
@@ -294,7 +336,9 @@ impl NmpAppBuilder<Unstarted> {
 
     /// Use an ephemeral in-memory store (explicit opt-in).
     ///
-    /// This transitions to `NmpAppBuilder<StorageSet>` and enables `start()`.
+    /// This transitions to `NmpAppBuilder<StorageSet>`. A projection-consumption
+    /// decision is still required before `start()` (see
+    /// `.declare_consumed_projections` / `.consume_all_builtin_projections`).
     /// An in-memory store loses all events when the process exits — this opt-in
     /// makes that choice explicit and visible in code, unlike the old silent
     /// default where omitting `nmp_app_set_storage_path` gave in-memory
@@ -322,20 +366,94 @@ impl NmpAppBuilder<Unstarted> {
     }
 }
 
-// ── Terminal transition: start (StorageSet only) ─────────────────────────────
+// ── Projection-consumption decision (StorageSet → ProjectionsDeclared) ───────
+//
+// ADR-0053 DEBT 2: the host MUST make an explicit decision about which Tier-2
+// kernel built-in projections it consumes before `start()`. Forgetting is a
+// compile error (start() only exists on ProjectionsDeclared). Two ways to
+// decide — both advance the typestate:
+//   * `.declare_consumed_projections(keys)` — narrow to the declared set.
+//   * `.consume_all_builtin_projections()`  — explicit "I want everything".
 
 impl NmpAppBuilder<StorageSet> {
+    /// Declare the static set of Tier-2 kernel built-in projection keys this
+    /// app consumes, and advance to `ProjectionsDeclared` (unlocking `start()`).
+    ///
+    /// The kernel then serializes ONLY these built-ins (plus any Tier-1
+    /// host-registered projections, which self-gate by registration) into each
+    /// pushed `SnapshotFrame` — the ADR-0053 narrowing optimization. Keys
+    /// accumulate with any added earlier via the `AppHost` trait method (e.g.
+    /// by a protocol crate during `register`), since the underlying
+    /// `SnapshotRegistry` declaration is additive.
+    ///
+    /// This is the narrowing path. To opt into the full firehose explicitly
+    /// (e.g. a TUI/desktop diagnostic shell that genuinely reads everything),
+    /// call [`Self::consume_all_builtin_projections`] instead.
+    #[must_use]
+    pub fn declare_consumed_projections<I, K>(self, keys: I) -> NmpAppBuilder<ProjectionsDeclared>
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        // SAFETY: `self.app` non-null (builder invariant); not yet started.
+        let app: &NmpApp = unsafe { &*self.app };
+        NmpApp::declare_consumed_projections(app, keys);
+        self.into_projections_declared()
+    }
+
+    /// Explicitly opt into receiving ALL Tier-2 kernel built-in projections
+    /// (the full firehose — no narrowing), and advance to `ProjectionsDeclared`
+    /// (unlocking `start()`).
+    ///
+    /// This is the **visible, greppable** "I want everything" choice. It leaves
+    /// the kernel's declared set empty, which the kernel treats as permissive
+    /// (ADR-0053 Decision 4: empty = no narrowing = emit all built-ins). Use it
+    /// only when the host genuinely consumes the full set (diagnostics shells,
+    /// TUIs, tests). Production app shells should prefer
+    /// [`Self::declare_consumed_projections`] to avoid serializing built-ins no
+    /// screen reads (e.g. `relay_diagnostics`).
+    ///
+    /// The distinction from the old silent default is the whole point: omission
+    /// no longer compiles, so shipping the firehose is now an explicit act.
+    #[must_use]
+    pub fn consume_all_builtin_projections(self) -> NmpAppBuilder<ProjectionsDeclared> {
+        // Intentionally declare nothing → the kernel's empty=permissive
+        // semantic emits every Tier-2 built-in. The typestate advance is the
+        // record that this was a deliberate choice.
+        self.into_projections_declared()
+    }
+
+    /// Internal: move ownership of the inner `NmpApp` + relays into a
+    /// `ProjectionsDeclared` builder WITHOUT running `Drop` (same `ptr::read` +
+    /// `mem::forget` rationale as the storage transitions — see `storage_path`).
+    fn into_projections_declared(self) -> NmpAppBuilder<ProjectionsDeclared> {
+        let app = self.app;
+        let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        std::mem::forget(self);
+        NmpAppBuilder {
+            app,
+            user_relays,
+            _state: PhantomData,
+        }
+    }
+}
+
+// ── Terminal transition: start (ProjectionsDeclared only) ────────────────────
+
+impl NmpAppBuilder<ProjectionsDeclared> {
     /// Consume the builder and start the NMP kernel.
     ///
-    /// This is the **only** path from `NmpAppBuilder<StorageSet>` to a live
-    /// `*mut NmpApp`. It:
+    /// This is the **only** path from `NmpAppBuilder<ProjectionsDeclared>` to a
+    /// live `*mut NmpApp`. It:
     ///
     /// 1. Calls `nmp_app_start` with the given `RunConfig`.
     /// 2. Releases ownership of the `NmpApp` pointer to the caller.
     ///
-    /// After this call, the builder is gone — no setter is reachable (compile
-    /// error). The returned pointer is owned by the caller; free it with
-    /// `nmp_ffi::nmp_app_free`.
+    /// `start()` is reachable ONLY after a projection-consumption decision
+    /// (`.declare_consumed_projections` or `.consume_all_builtin_projections`)
+    /// — ADR-0053 DEBT 2's compile-time enforcement. After this call, the
+    /// builder is gone — no setter is reachable (compile error). The returned
+    /// pointer is owned by the caller; free it with `nmp_ffi::nmp_app_free`.
     ///
     /// # Safety
     ///
@@ -388,6 +506,14 @@ impl NmpAppBuilder<StorageSet> {
         // SAFETY: `app` non-null; not yet started.
         unsafe { &*app }.set_initial_relays_for_start(initial_relays);
 
+        // ADR-0053 DEBT 2: by the time we reach `start()` the host has ALREADY
+        // made an explicit projection-consumption decision — the typestate
+        // guarantees it (`ProjectionsDeclared` is only reachable via
+        // `.declare_consumed_projections` or `.consume_all_builtin_projections`).
+        // No runtime check is needed on the builder path. The complementary
+        // `tracing::warn!` in `nmp_app_start` (nmp-ffi) is the backstop for the
+        // raw C-ABI path (Swift/Kotlin), which is outside Rust's type system.
+
         // SAFETY: `app` is non-null (builder invariant).
         nmp_app_start(app, 0, config.visible_limit, config.emit_hz);
         app
@@ -401,256 +527,27 @@ impl NmpAppBuilder<StorageSet> {
 // run before `start()`, which the typestate already guarantees.
 
 impl<S> ActionRegistrar for NmpAppBuilder<S> {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
         // SAFETY: `self.app` non-null (builder invariant). Exclusive borrow via
         // `&mut self` ⇒ no aliasing.
         let app: &mut NmpApp = unsafe { &mut *self.app };
-        app.register_action::<M>();
-    }
-}
-
-impl<S> AppHost for NmpAppBuilder<S> {
-    fn register_snapshot_projection<K, F>(&self, key: K, f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_snapshot_projection(key, f);
+        app.register_action(module);
     }
 
-    fn register_snapshot_projection_gated<K, F>(
-        &self,
-        key: K,
-        gate: Arc<dyn nmp_core::ChangeGate>,
-        f: F,
-    ) where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_snapshot_projection_gated(key, gate, f);
-    }
-
-    fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
-    {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        // Forward into the same shared registry the generic projection seam
-        // writes to (ADR-0037 Commitment 4: typed + generic share the key
-        // space). Fully qualified to the inherent `NmpApp` method.
-        NmpApp::register_typed_snapshot_projection(app, key, f);
-    }
-
-    fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        // Forwards into the same shared registry the projection seams write to;
-        // tick observers live alongside the projection closures (one slot, bound
-        // onto the kernel and surviving `Reset`). Fully qualified to the
-        // inherent `NmpApp` method.
-        NmpApp::register_snapshot_tick_observer(app, f);
-    }
-
-    fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_coverage_hook(hook);
-    }
-
-    fn set_req_frame_interceptor(
-        &self,
-        interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
-    ) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_req_frame_interceptor(interceptor);
-    }
-
-    fn add_relay_text_interceptor(
-        &self,
-        interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
-    ) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.add_relay_text_interceptor(interceptor);
-    }
-
-    fn add_relay_connected_hook(&self, hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.add_relay_connected_hook(hook);
-    }
-
-    fn register_ingest_parser(
-        &self,
-        kind: u32,
-        parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_ingest_parser(kind, parser);
-    }
-
-    fn replace_ingest_parser(
-        &self,
-        kind: u32,
-        slot_key: &'static str,
-        parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.replace_ingest_parser(kind, slot_key, parser)
-    }
-
-    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.unregister_ingest_parser(kind, slot_key);
-    }
-
-    fn replace_ingest_parser_range(
-        &self,
-        range: std::ops::Range<u32>,
-        slot_key: &'static str,
-        parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.replace_ingest_parser_range(range, slot_key, parser)
-    }
-
-    fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.unregister_ingest_parser_range(slot_key);
-    }
-
-    fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_dm_inbox_relay_lookup(lookup);
-    }
-
-    fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_mailbox_cache_reader(cache);
-    }
-
-    fn set_routing_substrate<F>(&self, factory: F)
-    where
-        F: Fn(
-                Arc<dyn nmp_core::substrate::RoutingTraceObserver>,
-            ) -> (
-                Arc<dyn nmp_core::substrate::OutboxRouter>,
-                Arc<dyn nmp_core::substrate::MailboxCache>,
-            ) + Send
-            + Sync
-            + 'static,
-    {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_routing_substrate(factory);
-    }
-
-    fn set_publish_resolver_factory<F>(&self, factory: F)
-    where
-        F: Fn(
-                Arc<dyn nmp_core::store::EventStore>,
-                nmp_core::slots::IndexerRelaysSlot,
-                nmp_core::slots::LocalWriteRelaysSlot,
-                nmp_core::slots::ActiveAccountSlot,
-            ) -> Arc<dyn nmp_core::publish::OutboxResolver>
-            + Send
-            + Sync
-            + 'static,
-    {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_publish_resolver_factory(factory);
-    }
-
-    fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
-    where
-        F: Fn(
-                nmp_core::substrate::RawEventForwardPolicyContext,
-            ) -> Vec<Arc<dyn nmp_core::substrate::RawEventForwardPolicy>>
-            + Send
-            + Sync
-            + 'static,
-    {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_raw_event_forward_policy_factory(factory);
-    }
-
-    fn active_local_keys(&self) -> nmp_core::slots::ActiveLocalKeysSlot {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.active_local_keys()
-    }
-
-    fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.active_account_handle()
-    }
-
-    fn actor_sender(&self) -> nmp_core::CommandSender {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.actor_sender()
-    }
-
-    fn register_event_observer(
-        &self,
-        observer: Arc<dyn nmp_core::KernelEventObserver>,
-    ) -> nmp_core::KernelEventObserverId {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_event_observer(observer)
-    }
-
-    fn unregister_event_observer(&self, id: nmp_core::KernelEventObserverId) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.unregister_event_observer(id);
-    }
-
-    fn swap_singleton_event_observer(
-        &self,
-        new: Option<nmp_core::KernelEventObserverId>,
-    ) -> Option<nmp_core::KernelEventObserverId> {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.swap_singleton_event_observer(new)
-    }
-
-    fn register_raw_event_observer(
-        &self,
-        kinds: nmp_core::KindFilter,
-        observer: Arc<dyn nmp_core::RawEventObserver>,
-    ) -> nmp_core::RawEventObserverId {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_raw_event_observer(kinds, observer)
-    }
-
-    fn unregister_raw_event_observer(&self, id: nmp_core::RawEventObserverId) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.unregister_raw_event_observer(id);
-    }
-
-    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.configured_relays_handle()
-    }
-
-    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_nostrconnect_bootstrap_relay(url);
-    }
-
-    fn register_identity_change_observer<F>(&self, f: F)
-    where
-        F: Fn(Option<String>) + Send + Sync + 'static,
-    {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_identity_change_observer(f);
+    /// Route the yielding-default path to `NmpApp::register_default_action` (the
+    /// kernel's true entry-or-insert semantics), NOT the trait default — which
+    /// delegates to the *app* path and would record every canonical NMP default
+    /// as an app registration, so a later app-path override of the same
+    /// namespace (e.g. ADR-0052 rung 5.2's `register_zap_with_wallet`) trips the
+    /// app-over-app collision `debug_assert!` instead of cleanly replacing a
+    /// `Provenance::Default` entry (ADR-0049 Part 1).
+    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> bool {
+        // SAFETY: as `register_action` above.
+        let app: &mut NmpApp = unsafe { &mut *self.app };
+        app.register_default_action(module)
     }
 }
 

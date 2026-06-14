@@ -35,6 +35,10 @@ final class KernelHandle {
     /// `Bridge/MarmotBridge.swift`. Registered lazily once a secret key is
     /// known (nsec sign-in); nil until then (and for bunker sign-in).
     var marmotHandle: UnsafeMutableRawPointer?
+    /// ADR-0055 R3-S3: NMP-owned rev-aware projection cache. Lives here (one
+    /// instance per kernel) so the cache lifetime exactly matches the kernel
+    /// lifetime, and `resetAndRestart()` can call `projectionCache.reset()`.
+    let projectionCache = ProjectionMergeCache()
 
     init() {
         raw = nmp_app_new()
@@ -46,6 +50,27 @@ final class KernelHandle {
         // broker's signer-ready event into
         // `AddSigner(source: RemoteHandle, make_active:)`.
         nmp_signer_broker_init(raw)
+        // ADR-0053 — declare Chirp's static Tier-2 built-in projection
+        // consumption set so the kernel narrows snapshot output to what this
+        // shell decodes (the single source of truth is
+        // `CHIRP_CONSUMED_BUILTIN_PROJECTIONS` in nmp-app-chirp). Must run
+        // before `nmp_app_start`; the kernel stops serializing built-ins this
+        // shell never reads. Tier-1 host projections (registered below /
+        // per-view feeds) self-gate by registration and are unaffected.
+        nmp_app_chirp_declare_consumed_projections(raw)
+        // ADR-0055 R3-S3: advertise that this host owns a rev-aware
+        // cache-merge layer (the `ProjectionMergeCache`). The kernel uses this
+        // to enable omission of Unchanged rows and emission of Cleared rows.
+        // Must run BEFORE `nmp_app_start`. Return code contract:
+        //   0  = ok
+        //   1  = AlreadyStarted (logic error — hard fault in debug)
+        //   2  = RegistryUnavailable (internal error — hard fault in debug)
+        //  -1  = null app (should never happen here)
+        let iaResult = nmp_app_declare_incremental_apply(raw)
+        if iaResult != 0 {
+            kbLog.fault("nmp_app_declare_incremental_apply returned \(iaResult) — incremental apply NOT active; init logic error")
+            assertionFailure("nmp_app_declare_incremental_apply failed with code \(iaResult)")
+        }
         // T146 — register the modular timeline projection on the kernel
         // event observer slot. See `Bridge/ModularTimelineBridge.swift`.
         registerChirpProjection()
@@ -103,7 +128,7 @@ final class KernelHandle {
         // callback can still hold the old context pointer — so releasing the
         // previous retain immediately afterwards is safe.
         clearUpdateCallback()
-        let sink = KernelUpdateSink(handler: handler, onPanic: onPanic)
+        let sink = KernelUpdateSink(handler: handler, onPanic: onPanic, cache: projectionCache)
         // `passRetained` hands Rust its own +1 on the sink; the matching
         // release happens in `clearUpdateCallback()` (on replace or deinit).
         let retained = Unmanaged.passRetained(sink)
@@ -666,12 +691,16 @@ final class KernelHandle {
         nmp_app_lifecycle_background(raw)
     }
 
-    fileprivate static func decodeFlatBuffer(bytes: UnsafeRawPointer, count: Int) -> KernelDecodedUpdateFrame? {
+    fileprivate static func decodeFlatBuffer(
+        bytes: UnsafeRawPointer,
+        count: Int,
+        cache: ProjectionMergeCache
+    ) -> KernelDecodedUpdateFrame? {
         let start = ContinuousClock.now
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, envelopes, flatFeeds, typedEnvelope) = frame else {
+            guard case let .snapshot(frameSchemaVersion, sessionId, snapshotEpoch, rawEnvelopes, flatFeeds, typedEnvelope) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -688,10 +717,38 @@ final class KernelHandle {
                 kbLog.error("schema version mismatch: frame=\(frameSchemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
                 return nil
             }
+            // ADR-0055 R3-S3: Run the cache-merge BEFORE the TypedXDecoder
+            // family. The merge re-feeds decoders the FULL merged envelope set
+            // (retained cached rows for omitted keys, Cleared keys removed),
+            // so they keep their exact current behavior. The merge also
+            // surfaces the set of keys whose rev advanced in this frame and
+            // the sticky needsResync flag.
+            //
+            // `sessionId` + `snapshotEpoch` were read off the SAME `frame.snapshot`
+            // table in `KernelUpdateFrameDecoder.decode`'s single pass and threaded
+            // out through the `.snapshot(...)` case — no second parse of the buffer
+            // here (the whole point of this ladder is to stop paying O(buffer) per
+            // tick). The `rawEnvelopes` already carry rev+state from
+            // `extractTypedProjections`.
+            let mergeResult = cache.merge(
+                envelopes: rawEnvelopes,
+                sessionId: sessionId,
+                snapshotEpoch: snapshotEpoch
+            )
+            let envelopes = mergeResult.mergedEnvelopes
+            let changedKeys = mergeResult.changedKeys
+            let needsResync = mergeResult.needsResync
+            if needsResync {
+                kbLog.error("ProjectionMergeCache needsResync=true — one or more projection decode-before-commit failures; will be repaired on next genuine rev bump")
+            }
             // ADR-0038 typed path: prefer the typed home-feed decode when the
             // NOFS sidecar is present and fully decodable (NFCT bytes filled).
             // Returns nil when absent or malformed → generic path stays active
             // (ADR-0037 Commitment 4 graceful fallback).
+            // NOTE: flat feeds are extracted BEFORE the cache merge re-filters
+            // the envelope set, so dynamic per-view feeds (author/thread) still
+            // route correctly. They are Tier-1 always-Changed so the cache
+            // pass-through is a no-op for them.
             let typedHomeFeed = TypedHomeFeedDecoder.decode(from: envelopes)
             // V6 Stage 4 (Wave B): prefer the typed `accounts` / `active_account`
             // sidecars when present and well-formed. Each returns nil when the
@@ -751,6 +808,12 @@ final class KernelHandle {
             let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
             let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
             let typedClaimedEvents = TypedClaimedEventsDecoder.decode(from: envelopes)
+            // Issue #1283 Phase 1: the kernel-resolved embed map (`NEMB`). Returns
+            // nil when the sidecar is absent/malformed → the generic
+            // `projections.claimedEventEmbeds` JSON path stays active (ADR-0037
+            // Commitment 4). This is what feeds `EmbedHost` after the in-Swift
+            // resolver was deleted.
+            let typedClaimedEventEmbeds = TypedClaimedEventEmbedsDecoder.decode(from: envelopes)
             // NIP-46 cluster (`bunker_handshake` / `nip46_onboarding`). Each
             // returns nil when its sidecar is absent/malformed → the generic
             // `projections.<field>` JSON path stays active (ADR-0037 Commitment
@@ -814,6 +877,7 @@ final class KernelHandle {
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
                     typedClaimedEvents: typedClaimedEvents,
+                    typedClaimedEventEmbeds: typedClaimedEventEmbeds,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,
                     typedSignerState: typedSignerState,
@@ -828,7 +892,9 @@ final class KernelHandle {
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
-                    decodeMicros: duration.microseconds
+                    decodeMicros: duration.microseconds,
+                    changedKeys: changedKeys,
+                    needsResync: needsResync
                 )
             )
         } catch let error as DecodingError {
@@ -853,13 +919,21 @@ private final class KernelUpdateSink {
     /// D7 actor-death hook. Rust emits a FlatBuffers panic frame before the
     /// update channel closes; the host flips its fatal-error UI from here.
     let onPanic: () -> Void
+    /// ADR-0055 R3-S3: reference to the per-kernel projection cache so the
+    /// callback can run the merge before feeding the decoded frame to the
+    /// TypedXDecoder family. Unowned — the cache lifetime is the kernel
+    /// lifetime; the sink is always released before the kernel (clearUpdateCallback
+    /// runs before nmp_app_free in deinit).
+    unowned let cache: ProjectionMergeCache
 
     init(
         handler: @escaping (KernelUpdateResult) -> Void,
-        onPanic: @escaping () -> Void
+        onPanic: @escaping () -> Void,
+        cache: ProjectionMergeCache
     ) {
         self.handler = handler
         self.onPanic = onPanic
+        self.cache = cache
     }
 }
 
@@ -884,7 +958,11 @@ private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSO
 private let nmpUpdateCallback: NmpUpdateCallback = { context, bytes, count in
     guard let context, let bytes, count > 0 else { return }
     let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
-    guard let frame = KernelHandle.decodeFlatBuffer(bytes: UnsafeRawPointer(bytes), count: Int(count)) else {
+    guard let frame = KernelHandle.decodeFlatBuffer(
+        bytes: UnsafeRawPointer(bytes),
+        count: Int(count),
+        cache: sink.cache
+    ) else {
         return
     }
     switch frame {

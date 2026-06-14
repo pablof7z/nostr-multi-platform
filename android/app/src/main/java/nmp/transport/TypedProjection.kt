@@ -48,6 +48,16 @@ class TypedProjection : Table() {
             null
         }
     }
+    val projectionRev : ULong
+        get() {
+            val o = __offset(8)
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
+        }
+    val state : UByte
+        get() {
+            val o = __offset(10)
+            return if(o != 0) bb.get(o + bb_pos).toUByte() else 0u
+        }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsTypedProjection(_bb: ByteBuffer): TypedProjection = getRootAsTypedProjection(_bb, TypedProjection())
@@ -55,15 +65,19 @@ class TypedProjection : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createTypedProjection(builder: FlatBufferBuilder, keyOffset: Int, payloadOffset: Int) : Int {
-            builder.startTable(2)
+        fun createTypedProjection(builder: FlatBufferBuilder, keyOffset: Int, payloadOffset: Int, projectionRev: ULong, state: UByte) : Int {
+            builder.startTable(4)
+            addProjectionRev(builder, projectionRev)
             addPayload(builder, payloadOffset)
             addKey(builder, keyOffset)
+            addState(builder, state)
             return endTypedProjection(builder)
         }
-        fun startTypedProjection(builder: FlatBufferBuilder) = builder.startTable(2)
+        fun startTypedProjection(builder: FlatBufferBuilder) = builder.startTable(4)
         fun addKey(builder: FlatBufferBuilder, key: Int) = builder.addOffset(0, key, 0)
         fun addPayload(builder: FlatBufferBuilder, payload: Int) = builder.addOffset(1, payload, 0)
+        fun addProjectionRev(builder: FlatBufferBuilder, projectionRev: ULong) = builder.addLong(2, projectionRev.toLong(), 0)
+        fun addState(builder: FlatBufferBuilder, state: UByte) = builder.addByte(3, state.toByte(), 0)
         fun endTypedProjection(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

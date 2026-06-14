@@ -3,17 +3,20 @@
 //! # What this file covers
 //!
 //! 1. **Happy path** — builder constructed, defaults wired, storage chosen,
-//!    `start()` called, resulting pointer non-null.
+//!    projection decision made, `start()` called, resulting pointer non-null.
 //! 2. **Storage explicit opt-in** — both `.storage_path(p)` and `.in_memory()`
-//!    transition to `StorageSet` and allow `start()`.
+//!    transition to `StorageSet`.
 //! 3. **`register_defaults` through the builder** — the builder implements
 //!    `AppHost + ActionRegistrar` so the existing free function still works.
 //! 4. **Drop guard** — a builder dropped without `start()` does not leak
 //!    (this is structural; the test merely checks the builder allocates and
 //!    frees without aborting/leaking in sanitiser runs).
-//! 5. **Compile-fail proof** — a `compile_fail` doctest in `builder.rs`
-//!    documents that calling `.start()` before a storage choice is a compile
-//!    error.
+//! 5. **Compile-fail proof** — two `compile_fail` doctests in `builder.rs`
+//!    document that calling `.start()` before a storage choice OR before a
+//!    projection-consumption decision is a compile error (ADR-0053 DEBT 2).
+//! 6. **ADR-0053 DEBT 2 narrowing** — `.declare_consumed_projections(keys)`
+//!    advances the typestate AND narrows; `.consume_all_builtin_projections()`
+//!    advances the typestate without narrowing (explicit firehose opt-in).
 //!
 //! # What this file does NOT try to test
 //!
@@ -31,6 +34,7 @@ use nmp_defaults::{NmpAppBuilder, RunConfig};
 fn start_default() -> *mut nmp_ffi::NmpApp {
     let app = NmpAppBuilder::new()
         .in_memory()
+        .consume_all_builtin_projections()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() returned null pointer");
     app
@@ -54,6 +58,7 @@ fn builder_storage_path_start_returns_non_null() {
     // and the pointer is non-null.
     let app = NmpAppBuilder::new()
         .storage_path("/tmp/nmp_test_v94")
+        .consume_all_builtin_projections()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() returned null after storage_path()");
     nmp_app_stop(app);
@@ -69,7 +74,10 @@ fn builder_implements_apphost_for_register_defaults() {
     let app = {
         let mut builder = NmpAppBuilder::new();
         nmp_defaults::register_defaults(&mut builder);
-        builder.in_memory().start(RunConfig::default())
+        builder
+            .in_memory()
+            .consume_all_builtin_projections()
+            .start(RunConfig::default())
     };
     assert!(!app.is_null());
     nmp_app_stop(app);
@@ -115,9 +123,83 @@ fn builder_full_pipeline_with_register_defaults_and_custom_run_config() {
     let app = {
         let mut builder = NmpAppBuilder::new();
         nmp_defaults::register_defaults(&mut builder);
-        builder.in_memory().start(cfg)
+        builder
+            .in_memory()
+            .consume_all_builtin_projections()
+            .start(cfg)
     };
     assert!(!app.is_null());
+    nmp_app_stop(app);
+    nmp_app_free(app);
+}
+
+/// ADR-0053 DEBT 2 — the narrowing path. `.declare_consumed_projections(keys)`
+/// is the typestate-advancing consuming method (`StorageSet →
+/// ProjectionsDeclared`): it declares the set into the `SnapshotRegistry` AND
+/// unlocks `.start()`. The declared set survives through `start()` and the
+/// `consumed_projections_are_narrowing()` query returns `true`.
+#[test]
+fn builder_declare_consumed_projections_narrows_and_advances_typestate() {
+    let app = NmpAppBuilder::new()
+        .in_memory()
+        .declare_consumed_projections(["profile", "accounts"])
+        .start(RunConfig::default());
+    assert!(!app.is_null());
+    // SAFETY: `nmp_app_start` returned non-null; the pointer is valid for the
+    // duration of this test (we call `nmp_app_stop` + `nmp_app_free` below).
+    assert!(
+        unsafe { &*app }.consumed_projections_are_narrowing(),
+        "after declaring a non-empty set the app must be in narrowing state"
+    );
+    nmp_app_stop(app);
+    nmp_app_free(app);
+}
+
+/// ADR-0053 DEBT 2 — the explicit firehose opt-out.
+/// `.consume_all_builtin_projections()` advances the typestate (unlocking
+/// `.start()`) WITHOUT narrowing: the kernel's empty=permissive semantic
+/// (Decision 4) is preserved, so `consumed_projections_are_narrowing()` is
+/// `false`. The point is that "everything" is now an explicit, greppable call
+/// rather than a silent default.
+#[test]
+fn builder_consume_all_builtin_projections_is_not_narrowing() {
+    let app = NmpAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .start(RunConfig::default());
+    assert!(!app.is_null());
+    // SAFETY: non-null pointer from start(); freed below.
+    assert!(
+        !unsafe { &*app }.consumed_projections_are_narrowing(),
+        "consume_all_builtin_projections() must leave the app permissive (not narrowing)"
+    );
+    nmp_app_stop(app);
+    nmp_app_free(app);
+}
+
+/// ADR-0053 DEBT 2 — declarations are additive across the trait method and the
+/// typestate method. A protocol crate may add keys via `AppHost`
+/// (`&self`-receiver) during `register`, then the composition root finalizes
+/// the decision via the consuming `.declare_consumed_projections` typestate
+/// method. Both unions land; the result is narrowing.
+#[test]
+fn builder_declared_projections_union_across_trait_and_typestate_methods() {
+    use nmp_core::substrate::AppHost;
+    let builder = NmpAppBuilder::new();
+    // Simulate a protocol-crate additive declaration via the AppHost trait
+    // (&self receiver — does NOT advance the typestate).
+    AppHost::declare_consumed_projections(&builder, ["profile"]);
+    // Composition root finalizes via the consuming typestate method.
+    let app = builder
+        .in_memory()
+        .declare_consumed_projections(["accounts"])
+        .start(RunConfig::default());
+    assert!(!app.is_null());
+    // SAFETY: non-null pointer from start(); freed below.
+    assert!(
+        unsafe { &*app }.consumed_projections_are_narrowing(),
+        "the union of both declarations must be narrowing"
+    );
     nmp_app_stop(app);
     nmp_app_free(app);
 }

@@ -23,12 +23,19 @@ fn main() {
     //    `nmp_defaults::register_defaults`) is the whole point of ADR-0046.
     {{crate_ident}}::register(&mut builder);
 
-    // 3. Commit the storage choice and start the kernel.
-    //    `.in_memory()` transitions the builder typestate, unlocking
-    //    `.start()`. For production replace with
-    //    `.storage_path("/path/to/lmdb")`.
-    //    Omitting the storage choice is a COMPILE ERROR (V-94 typestate).
-    let app = builder.in_memory().start(RunConfig::default());
+    // 3. Commit the storage choice, declare the consumed projections, and
+    //    start the kernel. `.in_memory()` advances to `StorageSet`;
+    //    `.consume_all_builtin_projections()` makes the ADR-0053 decision
+    //    (this headless shell reads the full built-in set) and advances to
+    //    `ProjectionsDeclared`, unlocking `.start()`. For production replace
+    //    `.in_memory()` with `.storage_path("/path/to/lmdb")`, and prefer
+    //    `.declare_consumed_projections([..])` to narrow to the keys your UI
+    //    actually reads. Omitting EITHER decision is a COMPILE ERROR
+    //    (storage = V-94, projections = ADR-0053 DEBT 2).
+    let app = builder
+        .in_memory()
+        .consume_all_builtin_projections()
+        .start(RunConfig::default());
 
     println!("{{display}}: NmpAppBuilder → register_defaults → start() complete.");
 

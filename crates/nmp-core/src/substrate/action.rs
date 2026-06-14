@@ -69,8 +69,13 @@ pub trait ActionModule: Send + Sync + 'static {
     /// Default: no-op accept. Override only when upfront validation is
     /// needed (empty fields, hex shape, invariant checks). Modules whose
     /// kernel command handler owns all error toasting can omit this method.
+    ///
+    /// Takes `&self` (ADR-0052 rung 5.2): the registry stores the concrete
+    /// module **value**, so `start` may read state the host captured at
+    /// composition time (a stateful module owns e.g. an
+    /// `Arc<WalletRuntimeHandle>`). Stateless modules ignore `&self`.
     #[allow(unused_variables)]
-    fn start(ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
 
@@ -113,7 +118,13 @@ pub trait ActionModule: Send + Sync + 'static {
     /// The pre-ADR-0027 dual-registration path (`register_action_module` /
     /// `register_action_executor`) was deleted; `execute` is now the sole
     /// executor seam for any registered module.
+    ///
+    /// Takes `&self` (ADR-0052 rung 5.2): the dependencies a command needs
+    /// (e.g. an `Arc<WalletRuntimeHandle>`) are owned by the registered
+    /// module value and captured at composition time, rather than reached
+    /// through a process-global. Stateless modules ignore `&self`.
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
@@ -131,7 +142,12 @@ pub trait ActionRegistrar {
     /// (legal) but collides loudly with another app registration of the same
     /// namespace (ADR-0049 Part 1). This is the path app-specific verbs
     /// (Chirp's NIP-29, wallet, …) use.
-    fn register_action<M: ActionModule + 'static>(&mut self);
+    ///
+    /// Takes the module **value** (ADR-0052 rung 5.2): a stateful module
+    /// (e.g. a wallet module owning an `Arc<WalletRuntimeHandle>`) carries
+    /// its dependencies, captured by the host at composition time. Stateless
+    /// modules pass a unit-shaped value (`register_action(PublishModule)`).
+    fn register_action<M: ActionModule + 'static>(&mut self, module: M);
 
     /// Register `M` as a **yielding default** under `M::NAMESPACE` — install it
     /// ONLY if the namespace is unclaimed; otherwise yield to the existing
@@ -147,8 +163,10 @@ pub trait ActionRegistrar {
     /// This keeps non-recording / test [`ActionRegistrar`] impls valid without
     /// re-implementing yielding semantics; the real entry-or-insert behaviour
     /// lives in the kernel's `ActionRegistry` override.
-    fn register_default_action<M: ActionModule + 'static>(&mut self) -> bool {
-        self.register_action::<M>();
+    ///
+    /// Takes the module **value** (ADR-0052 rung 5.2), as [`Self::register_action`].
+    fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
+        self.register_action(module);
         true
     }
 }

@@ -139,6 +139,7 @@ impl ActionModule for FollowModule {
     type Action = PubkeyAction;
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -163,6 +164,7 @@ impl ActionModule for UnfollowModule {
     type Action = PubkeyAction;
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -189,6 +191,7 @@ impl ActionModule for ReactModule {
     type Action = ReactAction;
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -219,9 +222,9 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
     // Yielding defaults (ADR-0049 Part 1): each module installs only if its
     // namespace is unclaimed, so an app may pre-empt any of them regardless of
     // whether it registers before or after `register_defaults`.
-    app.register_default_action::<FollowModule>();
-    app.register_default_action::<UnfollowModule>();
-    app.register_default_action::<ReactModule>();
+    app.register_default_action(FollowModule);
+    app.register_default_action(UnfollowModule);
+    app.register_default_action(ReactModule);
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +310,7 @@ mod tests {
     #[test]
     fn follow_executor_enqueues_follow_with_correlation_id() {
         let cmd = capture_one(|send| {
-            FollowModule::execute(
+            FollowModule.execute(
                 PubkeyAction {
                     pubkey: "deadbeef".to_string(),
                 },
@@ -336,7 +339,7 @@ mod tests {
     #[test]
     fn unfollow_executor_enqueues_unfollow_with_correlation_id() {
         let cmd = capture_one(|send| {
-            UnfollowModule::execute(
+            UnfollowModule.execute(
                 PubkeyAction {
                     pubkey: "cafebabe".to_string(),
                 },
@@ -360,7 +363,7 @@ mod tests {
     #[test]
     fn react_executor_enqueues_react_with_payload_and_correlation_id() {
         let cmd = capture_one(|send| {
-            ReactModule::execute(
+            ReactModule.execute(
                 ReactAction {
                     target_event_id: "abc".to_string(),
                     reaction: "+".to_string(),

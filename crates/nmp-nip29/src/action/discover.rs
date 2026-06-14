@@ -41,11 +41,13 @@ fn validate_relay_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Default)]
 pub struct DiscoverGroupsAction;
 impl ActionModule for DiscoverGroupsAction {
     const NAMESPACE: &'static str = "nmp.nip29.discover";
     type Action = DiscoverGroupsInput;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -54,6 +56,7 @@ impl ActionModule for DiscoverGroupsAction {
         Ok(())
     }
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -81,7 +84,7 @@ mod tests {
     /// Run the typed executor and capture every `ActorCommand` it sends.
     fn run_execute(input: DiscoverGroupsInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        DiscoverGroupsAction::execute(input, "test-cid", &|cmd| {
+        DiscoverGroupsAction.execute(input, "test-cid", &|cmd| {
             captured.borrow_mut().push(cmd);
         })?;
         Ok(captured.into_inner())
@@ -124,7 +127,7 @@ mod tests {
     fn empty_relay_url_is_rejected_in_start() {
         let mut ctx = ActionContext::default();
         assert!(matches!(
-            DiscoverGroupsAction::start(
+            DiscoverGroupsAction.start(
                 &mut ctx,
                 DiscoverGroupsInput { relay_url: String::new() },
             ),
@@ -136,7 +139,7 @@ mod tests {
     fn non_websocket_scheme_is_rejected_in_start() {
         let mut ctx = ActionContext::default();
         assert!(matches!(
-            DiscoverGroupsAction::start(
+            DiscoverGroupsAction.start(
                 &mut ctx,
                 DiscoverGroupsInput {
                     relay_url: "https://groups.example.com".to_string(),

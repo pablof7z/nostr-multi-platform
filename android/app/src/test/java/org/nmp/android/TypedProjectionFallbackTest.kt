@@ -5,6 +5,7 @@ import nmp.kernel.RelayRoleOption as FbRelayRoleOption
 import nmp.kernel.RelayRoleOptionsSnapshot
 import nmp.transport.FrameKind
 import nmp.transport.Metrics
+import nmp.transport.ProjectionPresenceState
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
 import nmp.transport.TypedProjection
@@ -186,6 +187,7 @@ class TypedProjectionFallbackTest {
             /* storeOpenFailureOffset = */ 0,
             /* noConfiguredRelays = */ null,
             /* negentropySyncStatsOffset = */ 0,
+            /* snapshotEpoch = */ 0UL, /* sessionId = */ 0UL,
         )
         val frame = UpdateFrame.createUpdateFrame(b, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(b, frame)
@@ -213,6 +215,9 @@ class TypedProjectionFallbackTest {
         val fileIdOffset = b.createString("KRRO")
         val payloadVec = TypedPayload.createPayloadVector(b, bytes.toUByteArray())
         val typedPayload = TypedPayload.createTypedPayload(b, schemaIdOffset, 1u, fileIdOffset, payloadVec)
-        return TypedProjection.createTypedProjection(b, keyOffset, typedPayload)
+        return TypedProjection.createTypedProjection(
+            b, keyOffset, typedPayload,
+            /* projectionRev = */ 0UL, /* state = */ ProjectionPresenceState.Changed,
+        )
     }
 }

@@ -50,7 +50,7 @@ impl InnerHandle<'_> {
     /// When a KP-gated op hits `key_package_unavailable` AND a `correlation_id`
     /// is available (typed dispatch pipeline), park the op and return a
     /// `{"pending":true}` envelope instead of a terminal failure. The
-    /// `DispatchHostOp` arm reads `{"pending":true}` as "leave the action in
+    /// `HostOpCommand` reads `{"pending":true}` as "leave the action in
     /// `Requested`; the handler records the terminal verdict later". Without a
     /// `correlation_id` (REPL / tests) fall back to the old `{"ok":false}`.
     ///

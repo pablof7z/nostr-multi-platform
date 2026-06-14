@@ -103,9 +103,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// feeds `EmbedHost` from the SAME typed value in `apply(result:)`;
     /// `typedDmRelayList` is read through the `dmRelayList` accessor (no consumer
     /// yet — wired for parity).
+    /// Issue #1283 Phase 1: the embed resolver moved to Rust. `typedClaimedEventEmbeds`
+    /// carries the kernel-resolved `claimed_event_embeds` (`NEMB`) map that feeds
+    /// `EmbedHost`; `typedClaimedEvents` (`KCEV`) is retained as a separate live
+    /// projection but is no longer the embed-resolution input.
     @Published private(set) var typedDmInbox: DmInboxSnapshot?
     @Published private(set) var typedDmRelayList: DmRelayListSnapshot?
     @Published private(set) var typedClaimedEvents: [String: ClaimedEventDto]?
+    @Published private(set) var typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
 
     /// NIP-46 cluster typed sidecars (`bunker_handshake` / `nip46_onboarding`).
     /// `nil` ⇒ the `bunkerHandshake` / `nip46Onboarding` accessors return nil.
@@ -349,6 +354,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     func resetAndRestart() {
         kernel.reset()
+        // ADR-0055 R3-S3: reset the projection cache so the next frame after
+        // restart is treated as a full baseline. Must happen BEFORE
+        // clearTypedProjections so the cache is clean when the next
+        // `listen` callback fires.
+        kernel.projectionCache.reset()
         // Clear every typed projection slot so the computed accessors collapse
         // to their empty defaults. The next post-reset tick reassigns them all
         // unconditionally. Local-only slots clear explicitly below.
@@ -754,57 +764,64 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         let prevTimelineCount = modularTimeline.cards.count
         #endif
 
-        // Claimed-event map: `EmbedHost` rebuilds the embed envelope map from
-        // the typed `claimed_events` (`KCEV`) sidecar.
-        embedHost.update(claimedEvents: result.typedClaimedEvents)
-        // ADR-0038: store the typed home-feed result. `nil` ⇒ no home-feed
-        // sidecar this tick (accessor collapses to `.empty`).
-        typedHomeFeed = result.typedHomeFeed
-        // V6 Stage 4 (Wave B): store the typed accounts / active-account decode.
-        typedAccounts = result.typedAccounts
-        typedActiveAccount = result.typedActiveAccount
+        // ADR-0055 R3-S3 (D7): assign ONLY the @Published slots whose projection
+        // key advanced in this frame (`result.changedKeys`). Slots NOT in the
+        // set keep their prior value — the ProjectionMergeCache already retained
+        // the decoded bytes and the TypedXDecoder.decode(from:) family already
+        // read them from the full merged envelope set. This is the SwiftUI
+        // broad-invalidation kill: we emit @Published changes only when the
+        // underlying data actually changed.
+        //
+        // The `changedKeys` set uses the projection key strings exactly as
+        // the TypedXDecoder enums declare them (TypedAccountsDecoder.key == "accounts",
+        // etc.). For non-keyed slots (typedEnvelope, flatFeeds) we always assign.
+        let ck = result.changedKeys
+        // Issue #1283 Phase 1: EmbedHost is always updated when claimed_event_embeds
+        // changed, or on first frame (cache is idempotent for unchanged data).
+        if ck.contains(TypedClaimedEventEmbedsDecoder.key) {
+            embedHost.update(envelopes: result.typedClaimedEventEmbeds)
+        }
+        // ADR-0038: typed home-feed slot.
+        if ck.contains("nmp.feed.home") { typedHomeFeed = result.typedHomeFeed }
+        // V6 Stage 4 (Wave B): accounts / active-account.
+        if ck.contains(TypedAccountsDecoder.key) { typedAccounts = result.typedAccounts }
+        if ck.contains(TypedActiveAccountDecoder.key) { typedActiveAccount = result.typedActiveAccount }
         // V6 Stage 4 (Wave B batch #2): relay-settings + publish-cluster slots.
-        typedConfiguredRelays = result.typedConfiguredRelays
-        typedRelayRoleOptions = result.typedRelayRoleOptions
-        typedOutboxSummary = result.typedOutboxSummary
-        typedPublishOutbox = result.typedPublishOutbox
-        typedPublishQueue = result.typedPublishQueue
+        if ck.contains(TypedConfiguredRelaysDecoder.key) { typedConfiguredRelays = result.typedConfiguredRelays }
+        if ck.contains(TypedRelayRoleOptionsDecoder.key) { typedRelayRoleOptions = result.typedRelayRoleOptions }
+        if ck.contains(TypedOutboxSummaryDecoder.key) { typedOutboxSummary = result.typedOutboxSummary }
+        if ck.contains(TypedPublishOutboxDecoder.key) { typedPublishOutbox = result.typedPublishOutbox }
+        if ck.contains(TypedPublishQueueDecoder.key) { typedPublishQueue = result.typedPublishQueue }
         // V6 Stage 4 (Wave B batch #3): diagnostics + action-lifecycle slots.
-        typedRelayDiagnostics = result.typedRelayDiagnostics
-        typedActionLifecycle = result.typedActionLifecycle
-        // V6 Stage 4 (Wave B Tier-1 #4): app-projection typed slots. `typedZaps`
-        // is read through the `zaps` accessor; the other three are consumed
-        // below via the same typed value fed to their stores (no split-brain).
-        typedFollowList = result.typedFollowList
-        typedZaps = result.typedZaps
-        typedGroupChat = result.typedGroupChat
-        typedDiscoveredGroups = result.typedDiscoveredGroups
-        typedGroupDefaults = result.typedGroupDefaults
-        typedProfile = result.typedProfile
-        typedClaimedProfiles = result.typedClaimedProfiles
-        typedResolvedProfiles = result.typedResolvedProfiles
-        // NIP-17 DM cluster + claimed-event map. `typedDmInbox` is consumed
-        // below via the same typed value fed to the `dmInbox` store;
-        // `typedClaimedEvents` via the map fed to `EmbedHost.update` above;
-        // `typedDmRelayList` is read through the `dmRelayList` accessor.
-        typedDmInbox = result.typedDmInbox
-        typedDmRelayList = result.typedDmRelayList
-        typedClaimedEvents = result.typedClaimedEvents
-        // NIP-46 cluster: typed bunker-handshake / onboarding slots.
-        typedBunkerHandshake = result.typedBunkerHandshake
-        typedNip46Onboarding = result.typedNip46Onboarding
-        // ADR-0048 D6: unified remote-signer health (`signer_state`). Nil while
-        // no remote-signer session is active; the flag fields drive the status
-        // badge rendered in `AccountsView.SignerStateRow`.
-        typedSignerState = result.typedSignerState
-        // `wallet` (NWST) + `settings_hub` (KSHB) typed slots.
-        typedWallet = result.typedWallet
-        typedSettingsHub = result.typedSettingsHub
-        // ADR-0044 Tier-3: store the typed `SnapshotFrame` envelope decode. This
-        // is the authoritative source for `rev` / `running` / `metrics` /
-        // relay+interest+wire vectors / logs / `last_error_toast`. `env` (bound
-        // by the staleness guard above) is the same value.
+        if ck.contains(TypedRelayDiagnosticsDecoder.key) { typedRelayDiagnostics = result.typedRelayDiagnostics }
+        if ck.contains(TypedActionLifecycleDecoder.key) { typedActionLifecycle = result.typedActionLifecycle }
+        // V6 Stage 4 (Wave B Tier-1 #4): app-projection typed slots.
+        if ck.contains(TypedFollowListDecoder.key) { typedFollowList = result.typedFollowList }
+        if ck.contains(TypedZapsDecoder.key) { typedZaps = result.typedZaps }
+        if ck.contains(TypedGroupChatDecoder.key) { typedGroupChat = result.typedGroupChat }
+        if ck.contains(TypedDiscoveredGroupsDecoder.key) { typedDiscoveredGroups = result.typedDiscoveredGroups }
+        if ck.contains(TypedGroupDefaultsDecoder.key) { typedGroupDefaults = result.typedGroupDefaults }
+        if ck.contains(TypedProfileDecoder.key) { typedProfile = result.typedProfile }
+        if ck.contains(TypedClaimedProfilesDecoder.key) { typedClaimedProfiles = result.typedClaimedProfiles }
+        if ck.contains(TypedResolvedProfilesDecoder.key) { typedResolvedProfiles = result.typedResolvedProfiles }
+        // NIP-17 DM cluster + claimed-event map.
+        if ck.contains(TypedDmInboxDecoder.key) { typedDmInbox = result.typedDmInbox }
+        if ck.contains(TypedDmRelayListDecoder.key) { typedDmRelayList = result.typedDmRelayList }
+        if ck.contains(TypedClaimedEventsDecoder.key) { typedClaimedEvents = result.typedClaimedEvents }
+        if ck.contains(TypedClaimedEventEmbedsDecoder.key) { typedClaimedEventEmbeds = result.typedClaimedEventEmbeds }
+        // NIP-46 cluster.
+        if ck.contains(TypedBunkerHandshakeDecoder.key) { typedBunkerHandshake = result.typedBunkerHandshake }
+        if ck.contains(TypedNip46OnboardingDecoder.key) { typedNip46Onboarding = result.typedNip46Onboarding }
+        // ADR-0048 D6: unified remote-signer health.
+        if ck.contains(TypedSignerStateDecoder.key) { typedSignerState = result.typedSignerState }
+        // Wallet + settings_hub.
+        if ck.contains(TypedWalletDecoder.key) { typedWallet = result.typedWallet }
+        if ck.contains(TypedSettingsHubDecoder.key) { typedSettingsHub = result.typedSettingsHub }
+        // ADR-0044 Tier-3: the typed SnapshotFrame envelope is always updated
+        // (it carries rev/metrics/logs/lastErrorToast which are per-tick).
         typedEnvelope = result.typedEnvelope
+        // flatFeeds are Tier-1 dynamic keys; always pass through from the result
+        // since they route via the extractFlatFeeds path independently.
         flatFeeds = result.flatFeeds
         // Snapshot-driven error toast, re-homed onto the typed envelope. Stays
         // in this distinct slot because tap-to-dismiss has nowhere else to land.
@@ -939,6 +956,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedDmInbox = nil
         typedDmRelayList = nil
         typedClaimedEvents = nil
+        typedClaimedEventEmbeds = nil
         typedBunkerHandshake = nil
         typedNip46Onboarding = nil
         typedSignerState = nil

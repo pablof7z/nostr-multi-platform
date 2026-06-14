@@ -42,16 +42,27 @@ fn unwrap_non_gift_wrap_event_returns_not_gift_wrap() {
 
 #[test]
 fn unwrap_with_wrong_key_returns_err_not_panic() {
-    // Charlie holds the wrong key: NIP-44 decryption of the outer layer
-    // fails. The contract is "typed Err", and crucially: no panic.
+    // Charlie holds the wrong key for an envelope addressed to him: the `#p`
+    // routing check passes (the wrap names charlie) but the outer NIP-44 layer
+    // was encrypted to bob, so the decrypt fails. The contract is "typed Err",
+    // and crucially: no panic.
     let alice = Keys::generate();
     let bob = Keys::generate();
     let charlie = Keys::generate();
     let rumor = pinned_rumor(&alice, "secret for bob only");
 
+    // Encrypt the outer layer to bob, but re-tag the wrap to address charlie so
+    // the cleartext `#p` routing check is satisfied and we exercise the decrypt
+    // failure rather than the early `#p` reject.
     let wrapped = wrap(&alice, &bob.public_key(), &rumor);
+    let ephemeral = Keys::generate();
+    let misrouted = EventBuilder::new(wrapped.kind, wrapped.content.clone())
+        .tag(nostr::Tag::public_key(charlie.public_key()))
+        .custom_created_at(wrapped.created_at)
+        .sign_with_keys(&ephemeral)
+        .expect("re-signing the misrouted envelope should succeed");
 
-    let result = unwrap_gift_wrap(&charlie, &wrapped);
+    let result = unwrap_gift_wrap(&charlie, &misrouted);
 
     assert!(
         result.is_err(),
@@ -62,6 +73,27 @@ fn unwrap_with_wrong_key_returns_err_not_panic() {
     assert!(
         matches!(result, Err(Nip59Error::Nostr(_))),
         "wrong-key failure should map to Nip59Error::Nostr, got {result:?}"
+    );
+}
+
+#[test]
+fn unwrap_gift_wrap_not_addressed_to_recipient_returns_not_gift_wrap() {
+    // Defense-in-depth (issue #1265): a kind:1059 whose cleartext `#p` tag does
+    // not address the active account must be rejected up front — before any
+    // NIP-44 decrypt is attempted — so a misbehaving/spam wrap cannot drive a
+    // decrypt (nor, on a bunker, an out-of-process round-trip) against us.
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let charlie = Keys::generate();
+    let rumor = pinned_rumor(&alice, "for bob, not charlie");
+
+    // Wrap addressed to bob; charlie tries to unwrap it.
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
+
+    let result = unwrap_gift_wrap(&charlie, &wrapped);
+    assert!(
+        matches!(result, Err(Nip59Error::NotGiftWrap)),
+        "a wrap not addressed to the recipient must reject as NotGiftWrap before decrypt, got {result:?}"
     );
 }
 

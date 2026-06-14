@@ -1,0 +1,11 @@
+//! Typed FlatBuffers wire codecs for the NIP-51 snapshot projections.
+//!
+//! Each submodule is a sidecar codec (ADR-0037) for one projection: it encodes
+//! the projection's read model into a schema-versioned, language-neutral
+//! FlatBuffers buffer carried in the snapshot frame's `typed_projections`
+//! sidecar, alongside — never replacing — the existing generic
+//! `serde_json::Value` projection registered under the same key.
+//!
+//! - [`mute_list_fb`] — `"nmp.nip51.mute_list"` (`NMUT`).
+
+pub mod mute_list_fb;

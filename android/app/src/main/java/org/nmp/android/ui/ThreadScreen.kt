@@ -27,6 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.components.LocalNostrProfileHost
+import org.nmp.android.ui.embed.EventClaimer
+import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
+import org.nmp.android.ui.embed.LocalEventClaimer
 
 @Composable
 fun ThreadScreen(
@@ -49,8 +52,25 @@ fun ThreadScreen(
     val resolvedProfiles = projections?.resolvedProfiles ?: emptyMap()
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
 
+    // Provide the on-demand claimer at the thread root so `RememberProfileClaim`
+    // calls in thread author rows are live (not no-ops) — mirrors TimelineScreen
+    // and DmConversationListScreen. Without it, thread author display names never
+    // trigger an on-demand kind:0 fetch (issue #1303).
+    val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
+        if (claim) model.claimProfile(pubkey, consumerId)
+        else model.releaseProfile(pubkey, consumerId)
+    }
+    val eventClaimer: EventClaimer = { uri, consumerId, claim ->
+        if (claim) model.claimEvent(uri, consumerId)
+        else model.releaseEvent(uri, consumerId)
+    }
+    val claimedEventEmbeds = projections?.claimedEventEmbeds ?: emptyMap()
+
     CompositionLocalProvider(
+        LocalProfileClaimer provides claimer,
+        LocalEventClaimer provides eventClaimer,
         LocalResolvedProfiles provides resolvedProfiles,
+        LocalClaimedEventEmbeds provides claimedEventEmbeds,
         LocalNostrProfileHost provides profileHost,
     ) {
         Column(modifier.fillMaxSize()) {

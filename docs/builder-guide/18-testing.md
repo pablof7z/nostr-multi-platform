@@ -176,8 +176,10 @@ app.launchEnvironment["NMP_TEST_RELAYS"] = #"[["ws://127.0.0.1:10547","both"]]"#
 
 Both extras are read in `MainActivity.onCreate()` and are **only honoured in
 debug builds** (`BuildConfig.DEBUG`). Kotlin passes them verbatim to
-`KernelModel.startWithContext(testNsec, testRelays)` → `KernelBridge.seedRelays`.
-Parsing the relay JSON and calling `nmp_app_add_relay` happens in Rust
+`KernelModel.start(context, storagePath, testNsec, testRelays)`, where they ride
+on top of the single unconditional launch path (keyring capability + identity
+restore run in production too) → `KernelBridge.seedRelays`. Parsing the relay
+JSON and calling `nmp_app_add_relay` happens in Rust
 (`nmp-android-ffi/src/relay_seeding.rs`).
 
 Example adb invocation:

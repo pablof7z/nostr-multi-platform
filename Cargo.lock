@@ -4586,6 +4586,7 @@ dependencies = [
 name = "nmp-ffi"
 version = "0.6.2"
 dependencies = [
+ "nmp-content",
  "nmp-core",
  "nmp-feed",
  "nmp-signer-broker",
@@ -4775,6 +4776,7 @@ dependencies = [
 name = "nmp-nip51"
 version = "0.6.2"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-nip01",
@@ -4987,7 +4989,6 @@ dependencies = [
  "console_error_panic_hook",
  "gloo-timers",
  "js-sys",
- "nmp-chirp-config",
  "nmp-core",
  "nmp-network",
  "nmp-signer-iface",

@@ -51,8 +51,8 @@ fn sample_payload() -> Value {
                             "reconnect_count": 2,
                             "bytes_rx_display": "1 KB",
                             "bytes_tx_display": "128 B",
-                            "last_connected_display": "3s ago",
-                            "last_event_display": "now",
+                            "last_connected_ms": 1700000000000,
+                            "last_event_ms": 1700000003000,
                             "last_notice": "NOTICE text",
                             "last_error": null,
                             "wire_subs": [{
@@ -65,9 +65,9 @@ fn sample_payload() -> Value {
                                 "consumer_count_label": "1 consumer",
                                 "events_rx_display": "12",
                                 "eose_observed": true,
-                                "opened_display": "5s ago",
-                                "last_event_display": "now",
-                                "eose_display": "1s ago",
+                                "opened_ms": 1700000000000,
+                                "last_event_ms": 1700000003000,
+                                "eose_ms": 1700000001000,
                                 "close_reason": null
                             }]
                         }],
@@ -131,7 +131,7 @@ fn unwraps_snapshot_envelope_when_present() {
                         "connection_label": "Open",
                         "active_sub_count": 1,
                         "total_events_display": "7",
-                        "last_event_display": null,
+                        "last_event_ms": 0,
                         "last_error": null
                     }],
                     "interests": []
@@ -209,6 +209,7 @@ fn nofs_projection(snapshot: &Value) -> nmp_core::TypedProjectionData {
         schema_version: nmp_nip01::OP_FEED_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(nmp_nip01::OP_FEED_FILE_IDENTIFIER).into_owned(),
         payload: nmp_nip01::encode_op_feed_snapshot(&typed),
+        ..Default::default()
     }
 }
 
@@ -301,6 +302,7 @@ fn ignores_typed_projection_with_wrong_schema_id() {
         schema_version: 1,
         file_identifier: "NFTS".to_string(),
         payload: vec![0x00, 0x01, 0x02],
+        ..Default::default()
     }];
 
     let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));

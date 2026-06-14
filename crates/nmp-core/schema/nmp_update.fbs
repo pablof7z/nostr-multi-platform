@@ -13,6 +13,24 @@ enum FrameKind:ubyte {
   Panic = 1
 }
 
+// ADR-0055 Rung 2 — per-projection presence state stamped on the wire.
+//
+// Wire contract (ADR-0055 D1/D3):
+//   Changed (0) — rev advanced since last host apply; payload PRESENT this tick.
+//   Cleared (1) — projection went absent this tick (drain emptied, view closed);
+//                 payload omitted; host MUST drop its cached value explicitly.
+//   Unchanged   — represented by ABSENCE of the TypedProjection entry (Rung-3
+//                 concept). In Rung 2 all projections are still emitted every
+//                 tick, so only Changed appears in practice. The enum is defined
+//                 now so no schema change is needed when Rung 3 omits entries.
+//
+// Default = Changed so an old reader (pre-Rung-2) that does not decode this
+// field treats every emitted entry as a payload update — correct behavior.
+enum ProjectionPresenceState:ubyte {
+  Changed = 0,
+  Cleared = 1
+}
+
 enum ValueKind:ubyte {
   Null = 0,
   Bool = 1,
@@ -50,6 +68,21 @@ table TypedPayload {
 table TypedProjection {
   key:string;
   payload:TypedPayload;
+  // ADR-0055 Rung 2 — APPENDED at the tail (new vtable slots) so old readers
+  // that do not know these fields ignore them and still decode key+payload
+  // correctly (FlatBuffers backward-safety: tail-appended fields read as their
+  // default on an older reader).
+  //
+  // projection_rev: monotonic u64 for this key derived by the kernel's
+  // ProjectionRevTracker (SUM of source-version counters across the key's
+  // declared dependencies). Resets to 0 on session_id / snapshot_epoch change.
+  // The host keys its decoded-value cache on (key, projection_rev) and skips
+  // re-decode when the rev is unchanged (Rung-3 apply logic; Rung 2 stores
+  // but does not yet act on this field).
+  projection_rev:ulong;                    // ADR-0055 Rung 2: per-key monotonic rev
+  // state: presence classification for this tick. Default = Changed (0) so
+  // pre-Rung-2 readers treat every emitted projection as a payload update.
+  state:ProjectionPresenceState = Changed; // ADR-0055 Rung 2: Changed|Cleared
 }
 
 // ADR-0044 Tier-3 nested tables. Each mirrors the framework-owned `nmp-core`
@@ -193,6 +226,21 @@ table SnapshotFrame {
   store_open_failure:string;
   no_configured_relays:bool = null;       // Option<bool> -> native-optional
   negentropy_sync_stats:NegentropySyncStats; // GAP-5: absent = zero/pre-first-session
+
+  // ADR-0055 Rung 2 — frame-level epoch identity. APPENDED at the tail so
+  // existing readers ignore them (FlatBuffers backward-safety). Spec: D4.
+  //
+  // session_id: kernel-start wall-clock stamp (TimingMilestones::started_unix_ms).
+  // Differs across process restarts. When the host sees a changed session_id it
+  // MUST discard all per-key applied-rev state and re-baseline (D4). Default 0
+  // on old writers (pre-Rung-2) — any value that differs across restarts
+  // suffices; 0 is a safe sentinel (host treats a 0→N transition as a restart).
+  snapshot_epoch:ulong;                    // ADR-0055 Rung 2: within-session monotonic epoch
+  // snapshot_epoch: within-session monotonic counter, bumped on any event that
+  // invalidates the host's entire cached projection set without a process restart:
+  // account-switch, KERNEL_SCHEMA_VERSION change, explicit resync request (D5).
+  // On bump → next frame is a full baseline (all projections -> Changed, Rung 3).
+  session_id:ulong;                        // ADR-0055 Rung 2: kernel-start wall-clock ms
 }
 
 // GAP-5: Mirrors nmp_core::kernel::types::NegentropySyncStats.

@@ -27,8 +27,11 @@
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
 
 mod auth_handlers;
+mod claimed_event_stamp; // ADR-0055 Rung 1 (F1) claimed-event stamp — sibling for size baseline
 mod closed;
 mod contacts;
+// EOSE frame handling (incl. K3 Stage D1 coverage write), split for the LOC cap.
+mod eose;
 // `pub(in crate::kernel)`: shares `kernel_event_from_nostr` with the
 // local-publish-intent path (read-your-writes fan-out, one construction site).
 pub(in crate::kernel) mod helpers;
@@ -134,95 +137,9 @@ impl Kernel {
             }
             "EOSE" => {
                 let sub_id = array.get(1).and_then(Value::as_str).unwrap_or("unknown");
-                {
-                    let relay = self.relay_mut(role);
-                    relay.counters.eose_rx = relay.counters.eose_rx.saturating_add(1);
-                }
-                self.record_transport_eose(role, relay_url);
-                // T105: the follow-feed (seed-timeline) is now per-relay
-                // (`seed-timeline-<short-hash>`). Both the legacy id and its
-                // per-relay variants stay live after EOSE. Persistent subs
-                // (NWC kind:23195 listener, …) registered via
-                // `register_persistent_sub` also survive EOSE.
-                let keep_live = sub_id == "seed-timeline"
-                    || sub_id.starts_with("seed-timeline-")
-                    || sub_id.starts_with("diag-firehose-")
-                    || self.is_persistent_sub(&wire_key_url, sub_id);
-                let wire_key = (wire_key_url.clone(), sub_id.to_string());
-                if let Some(sub) = self.wire.subs.get_mut(&wire_key) {
-                    sub.eose_at = Some(Instant::now());
-                    if keep_live {
-                        sub.state = "live".to_string();
-                    } else {
-                        // T133: mark closed for the brief window before
-                        // eviction below; ingest path readers (e.g. EVENT for
-                        // an already-EOSE'd sub) will see the row absent.
-                        sub.state = "closed".to_string();
-                    }
-                }
-                // V-112 (ADR-0042): thread-ids-/thread-replies- inflight-flag
-                // updates deleted; thread_view state no longer exists in the kernel.
-                // T82/T104: a discovery oneshot's first stored set has landed
-                // (OneShot lifecycle == "EOSE closes"). Complete + release the
-                // token; the generic CLOSE below tears down the wire sub.
-                // Dispatch is on the typed OneshotKind stored in oneshot_subs
-                // (not a string-prefix scan — T104 typed routing).
-                if self.is_discovery_oneshot(sub_id) {
-                    self.complete_unknown_oneshot(sub_id);
-                }
-                self.record_claim_expansion_eose_no_match(sub_id, relay_url);
-
-                // F-TTL — handle EOSE for in-flight re-verification REQs.
-                //
-                // On EOSE the relay has delivered everything it has for the
-                // reverify filter, so the cached replaceable identity is now
-                // confirmed fresh: stamp each tracked key's `check_again_after`
-                // forward by its per-kind TTL. This both clears the in-flight
-                // tracking and gates the next claim (claim_replaceable will see
-                // a future timestamp and skip the REQ until the TTL elapses).
-                //
-                // D9 clock seam: `now_ms()` reads the injected `Clock`.
-                if let Some(keys) = self.reverify_subs.remove(sub_id) {
-                    let now = self.now_ms();
-                    for key in keys {
-                        let ttl_ms =
-                            self.replaceable_ttl.ttl_for_kind(key.kind()).as_millis() as u64;
-                        self.store.set_check_again_after(key, now + ttl_ms);
-                    }
-                }
-
-                if !keep_live {
-                    // T105: CLOSE must travel back to the same socket the REQ
-                    // went out on — the transport pool is URL-keyed, so a
-                    // role-only close would target the bootstrap socket and
-                    // leave the resolved sub open. Pull the recorded URL from
-                    // the WireSub set on req_for_relay; fall back to the
-                    // delivering relay's URL when the sub_id is unknown.
-                    // #170: the CLOSE travels back on the SAME socket the
-                    // EOSE arrived on (relay_url) — the wire_subs key is now
-                    // relay-scoped so the row, if any, is this relay's row,
-                    // not a sibling's. Fall back to the delivering URL.
-                    let close_url = self
-                        .wire
-                        .subs
-                        .get(&wire_key)
-                        .map_or_else(|| relay_url.to_string(), |sub| sub.relay_url.to_string());
-                    outbound.push(OutboundMessage {
-                        role,
-                        relay_url: close_url,
-                        text: json!(["CLOSE", sub_id]).to_string(),
-                    });
-                    // T133: evict the row now that the CLOSE outbound is
-                    // queued. The closed state is logically terminal for any
-                    // sub that is not the live follow-feed / firehose; keeping
-                    // the row was a diagnostic-only courtesy that grew the
-                    // table unboundedly across long sessions (every
-                    // profile-claim, thread-ids, thread-replies, and discovery
-                    // oneshot completes via this EOSE→CLOSE path).
-                    self.wire.subs.remove(&wire_key);
-                }
-                self.changed_since_emit = true;
-                self.log(format!("EOSE {sub_id}"));
+                // Full EOSE handling (keep-live decision, F-TTL freshness stamp,
+                // K3 Stage D1 coverage write, CLOSE/evict) lives in `eose.rs`.
+                self.handle_eose(role, relay_url, sub_id, &wire_key_url, &mut outbound);
             }
             "NOTICE" => {
                 let notice = array
@@ -361,7 +278,6 @@ impl Kernel {
             sub.events_rx = sub.events_rx.saturating_add(1);
             sub.last_event_at = Some(now);
         }
-
         let claim_match_author = self.claim_expansion_match_author(sub_id, &event);
 
         // D4: all events are persisted before kind-specific dispatch.
@@ -428,13 +344,11 @@ impl Kernel {
                 // kinds + group metadata, gift-wraps kind:1059, future
                 // NIP-51 lists — all fan through the IngestParser registry
                 // inside `verify_and_persist`) reaches `KernelEventObserver`s
-                // through this seam. Pre-fix the wildcard called only
-                // `verify_and_persist`, so projections like
-                // `GroupChatProjection`, `DiscoveredGroupsProjection`, and
-                // the NIP-57 zap-aggregate projection registered as
-                // observers were structurally deaf. Gate fan-out on the
-                // store outcome (`Inserted | Replaced` only — D4 dedup so
-                // duplicate sibling-relay deliveries do not double-notify).
+                // through this seam (e.g. `GroupChatProjection`,
+                // `DiscoveredGroupsProjection`, the NIP-57 zap-aggregate
+                // projection). Gate fan-out on the store outcome
+                // (`Inserted | Replaced` only — D4 dedup so duplicate
+                // sibling-relay deliveries do not double-notify).
                 //
                 // V-40 — the substrate `EventIngestDispatcher` runs inside
                 // `verify_and_persist` for every gated outcome, so per-NIP
@@ -626,6 +540,7 @@ impl Kernel {
                     }
                 }
 
+                self.maybe_bump_claimed_event_content(&outcome, &event); // ADR-0055 (F1)
                 Some(outcome)
             }
             Err(e) => {

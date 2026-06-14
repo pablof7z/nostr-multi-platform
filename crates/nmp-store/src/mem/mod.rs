@@ -109,6 +109,12 @@ pub(super) struct MemState {
     /// in-memory backend used by tests and the lmdb-off build.
     pub(super) replaceable_freshness: HashMap<crate::ReplaceableKey, u64>,
 
+    /// K3 coverage ledger (ADR-0056 §3, Stage D1): `(filter_hash, relay)` →
+    /// `covered_through` unix-seconds. Parity with the LMDB backend's
+    /// `nmp-coverage` sub-db. Downward-closed and monotonic — see
+    /// `EventStore::record_coverage` / `crate::CoverageRow`.
+    pub(super) coverage: HashMap<(String, String), u64>,
+
     /// Domain data per namespace.
     pub(super) domain_data: HashMap<&'static str, DomainMap>,
 
@@ -139,6 +145,7 @@ impl MemState {
             provenance: HashMap::new(),
             relay_index: HashMap::new(),
             replaceable_freshness: HashMap::new(),
+            coverage: HashMap::new(),
             domain_data: HashMap::new(),
             domain_versions: HashMap::new(),
             access_seq: 0,

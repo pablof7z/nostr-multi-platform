@@ -8,7 +8,10 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
-use nmp_ffi::{nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_free_string};
+use nmp_ffi::{
+    nmp_app_ack_action_stage, nmp_app_cancel_publish, nmp_app_dispatch_action, nmp_app_retry_publish,
+    nmp_free_string,
+};
 
 use crate::{jstring_to_cstring, session_arc};
 
@@ -82,4 +85,44 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeAckActionStage(
         return;
     };
     s.with_app(|app| nmp_app_ack_action_stage(app, correlation_id.as_ptr()));
+}
+
+/// Retry a failed publish identified by its correlation id (outbox UI).
+/// Control-plane only: Rust owns the publish ledger and re-enqueues the event;
+/// Kotlin forwards the handle string verbatim. D6: a null handle / malformed
+/// JNI argument is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRetryPublish(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    correlation_id: JString,
+) {
+    let Some(s) = session_arc(handle) else {
+        return;
+    };
+    let Some(correlation_id) = jstring_to_cstring(&mut env, &correlation_id) else {
+        return;
+    };
+    s.with_app(|app| nmp_app_retry_publish(app, correlation_id.as_ptr()));
+}
+
+/// Cancel an in-flight publish identified by its correlation id (outbox UI).
+/// Control-plane only: Rust owns the publish ledger and aborts the in-flight
+/// send; Kotlin forwards the handle string verbatim. D6: a null handle /
+/// malformed JNI argument is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCancelPublish(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    correlation_id: JString,
+) {
+    let Some(s) = session_arc(handle) else {
+        return;
+    };
+    let Some(correlation_id) = jstring_to_cstring(&mut env, &correlation_id) else {
+        return;
+    };
+    s.with_app(|app| nmp_app_cancel_publish(app, correlation_id.as_ptr()));
 }

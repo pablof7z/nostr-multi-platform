@@ -195,10 +195,8 @@ pub use app::{
     resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting,
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
-pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
-pub use external_signer_hook::{
-    register_external_signer_hook, ExternalSignerHookFn, ExternalSignerHookRequest,
-};
+pub use bunker_hook::{install_bunker_hook, new_bunker_hook_slot, BunkerHookFn, BunkerHookRequest, BunkerHookSlot};
+pub use external_signer_hook::{install_external_signer_hook, new_external_signer_hook_slot, ExternalSignerHookFn, ExternalSignerHookRequest, ExternalSignerHookSlot};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
@@ -241,7 +239,7 @@ pub mod relay_score {
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
-pub use kernel::AuthSignerFn;
+pub use kernel::{wallet_access::KernelWalletAccess, AuthSignerFn}; // KernelWalletAccess: ADR-0052 §D5 wallet/zap adapter
 // V-51 phase 4 (validation harness) — the projection's three public types
 // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
 // is the bounded ring-buffer the kernel hands to production composition
@@ -423,6 +421,7 @@ pub mod __ffi_internal {
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
     pub use crate::store::{RawEvent, VerifiedEvent};
+    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED}; // ADR-0055 churn
 
     /// NIP golden-tag conformance harness — drives the (crate-private) command
     /// handlers against a real `Kernel` + `IdentityRuntime` and returns the
@@ -430,8 +429,7 @@ pub mod testing {
     /// structure. See `tests/nip_tag_conformance.rs`.
     pub use crate::actor::ConformanceHarness;
 
-    use std::sync::mpsc;
-    use std::thread;
+    use std::{sync::mpsc, thread};
 
     /// Spawn the kernel actor on a dedicated thread.
     ///
@@ -500,6 +498,8 @@ pub mod testing {
                 crate::substrate::new_relay_connected_hook_slot(),
                 crate::actor::new_bunker_handshake_slot(),
                 crate::actor::new_signer_state_slot(),
+                crate::new_bunker_hook_slot(), // ADR-0052 §D3 throwaway slots
+                crate::new_external_signer_hook_slot(),
                 crate::kernel::new_app_relay_slot(),
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),

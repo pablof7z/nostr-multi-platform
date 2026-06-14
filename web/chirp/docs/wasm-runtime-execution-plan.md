@@ -269,15 +269,14 @@ PR-3/4/#1140.
   `.github/workflows/real-relay-nightly.yml`) depend on public-relay uptime —
   wrong for a merge-blocking smoke. (A public-relay variant can ride the
   nightly later.)
-- **Relay override hook** — the web client currently sends no `relays` in
-  `start` (`web/chirp/src/nmp/client.ts:170-177`), so the wasm falls back to
-  the production defaults baked in via serde
-  (`crates/nmp-wasm/src/protocol.rs:42` →
-  `apps/chirp/nmp-chirp-config/src/lib.rs:12-13`: `wss://relay.primal.net`,
-  `wss://purplepag.es`). Add `?relays=ws://…` URL-param parsing in
-  `client.ts` that forwards `relays: string[]` on the `start` request — the
-  protocol already supports it (`protocol.ts:6`). Honest and dev-useful; no
-  test-only forks in Rust.
+- **Relay override hook** — relay policy is host policy, not framework default
+  (#1125): the web client always sends explicit `relays` + `relay_bootstrap` on
+  `start` (`chirpStartRelays` in `web/chirp/src/nmp/client.ts`). The Chirp web
+  defaults (`wss://relay.primal.net`, `wss://purplepag.es`) live in
+  `web/chirp/src/chirpConfig.ts` (mirrors the Rust source of truth
+  `apps/chirp/nmp-chirp-config/src/lib.rs`). A `?relay=<url>` URL-param injected
+  via `client.start(relays)` overrides those defaults. Honest and dev-useful;
+  no serde defaults and no test-only forks in Rust.
 - **Boot smoke** (`web/chirp/tests/e2e/boot.spec.ts`): navigate to
   `/?relays=<fixture>`; the app auto-starts (`web/chirp/src/App.tsx:28`).
   Assert, in order: (1) **no** `wasm_bridge_unavailable` / `worker_exception`

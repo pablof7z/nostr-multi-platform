@@ -14,7 +14,7 @@ import FlatBuffers
 /// PRECEDENCE CONTRACT: the typed value must be USED, not merely decodable. Each
 /// "typed present" case uses values that DIFFER from any plausible JSON value,
 /// so a passing assertion proves the typed path won rather than coincided. The
-/// "absent / wrong-schema / garbled" cases assert `nil`, the signal the read
+/// "absent / wrong-schema" cases assert `nil`, the signal the read
 /// site interprets as "fall back to the generic JSON `projections.<field>` path"
 /// (ADR-0037 Commitment 4).
 ///
@@ -110,16 +110,13 @@ final class TypedWalletSettingsHubDecoderTests: XCTestCase {
         XCTAssertNil(TypedWalletDecoder.decode(from: [envelope]))
     }
 
-    func testTypedWalletSidecarGarbledPayloadReturnsNil() {
-        // Right (key, schemaId) but a payload that is not a valid NWST buffer.
-        let envelope = TypedProjectionEnvelope(
-            key: TypedWalletDecoder.key,
-            schemaId: TypedWalletDecoder.schemaId,
-            schemaVersion: 1,
-            fileIdentifier: TypedWalletDecoder.fileIdentifier,
-            payload: Data([0x00, 0x01, 0x02, 0x03]))
-        XCTAssertNil(TypedWalletDecoder.decode(from: [envelope]))
-    }
+    // NOTE: the garbled-payload test was removed. The decode path now uses
+    // unchecked `getRoot` (trusted in-process FFI boundary); a structurally
+    // invalid payload that survives the `!isEmpty` guard is NOT validated and
+    // makes `getRoot` read past the buffer — it traps rather than returning nil,
+    // so the old "garbled → nil fallback" contract is impossible to assert. The
+    // key+schemaId envelope routing in `decode(from:)` is the selection
+    // mechanism, not buffer well-formedness.
 
     // MARK: - settings_hub (KSHB)
 
@@ -174,15 +171,13 @@ final class TypedWalletSettingsHubDecoderTests: XCTestCase {
         XCTAssertNil(TypedSettingsHubDecoder.decode(from: [envelope]))
     }
 
-    func testTypedSettingsHubGarbledPayloadReturnsNil() {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedSettingsHubDecoder.key,
-            schemaId: TypedSettingsHubDecoder.schemaId,
-            schemaVersion: 1,
-            fileIdentifier: TypedSettingsHubDecoder.fileIdentifier,
-            payload: Data([0xFF, 0xFE, 0xFD, 0xFC]))
-        XCTAssertNil(TypedSettingsHubDecoder.decode(from: [envelope]))
-    }
+    // NOTE: the garbled-payload test was removed. The decode path now uses
+    // unchecked `getRoot` (trusted in-process FFI boundary); a structurally
+    // invalid payload that survives the `!isEmpty` guard is NOT validated and
+    // makes `getRoot` read past the buffer — it traps rather than returning nil,
+    // so the old "garbled → nil fallback" contract is impossible to assert. The
+    // key+schemaId envelope routing in `decode(from:)` is the selection
+    // mechanism, not buffer well-formedness.
 
     // MARK: - buffer builders
 

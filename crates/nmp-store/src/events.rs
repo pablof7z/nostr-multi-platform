@@ -287,20 +287,15 @@ pub trait EventStore: Send + Sync {
 
     /// V-52 — Return the ids of events whose provenance includes `relay_url`.
     ///
-    /// The `MemEventStore` backend maintains a secondary `relay_index` map
-    /// (relay_url → event_ids) that makes this an O(1) lookup. The LMDB backend
-    /// does not yet maintain this index and returns `Err(StoreError::NotSupported)`
-    /// as a tracked follow-up (V-52 LMDB index — see issue #969).
+    /// Both backends maintain a secondary relay-origin reverse index so this is
+    /// an O(events-on-relay) lookup: the `MemEventStore` keeps a
+    /// `relay_url → event_ids` map; the `LmdbEventStore` keeps an
+    /// `nmp-relay-index` sub-db keyed `relay_url || 0x00 || event_id` and scans
+    /// the relay's prefix range (issue #969).
     ///
-    /// Callers that need fallback behaviour for LMDB should inspect the error
-    /// variant and degrade gracefully (e.g. fall back to a provenance scan,
-    /// which is correct but O(N × MAX_PROVENANCE_ENTRIES)).
-    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
-        let _ = relay_url;
-        Err(StoreError::NotSupported(
-            "list_events_seen_on not implemented for this backend".to_string(),
-        ))
-    }
+    /// Both backends return the same set; only the events still present in the
+    /// store appear (every removal path prunes the reverse index).
+    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError>;
 
     // ─── Writes ──────────────────────────────────────────────────────────────
 
@@ -400,6 +395,39 @@ pub trait EventStore: Send + Sync {
     /// failure must never block ingest or claim (D6 graceful degrade — a
     /// missed stamp simply means the next claim re-verifies eagerly).
     fn set_check_again_after(&self, _key: ReplaceableKey, _ts_ms: u64) {}
+
+    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+
+    /// Advance the downward-closed coverage watermark for `(filter_hash, relay)`
+    /// to `max(existing, covered_through)`.
+    ///
+    /// A row means "a sync covering `[0, covered_through]` has COMPLETED for this
+    /// shape on this relay" (EOSE on an un-floored REQ, or NEG-DONE). The
+    /// advance is monotonic: a later completion can only raise the proven bound.
+    /// See [`crate::CoverageRow`] for the honest-coverage rationale (why a
+    /// `since`-floored EOSE must NOT call this).
+    ///
+    /// Stage D1 only WRITES the ledger; nothing reads it yet (the since-floor
+    /// stays presence-derived until Stage D2). The kernel gates every call on
+    /// the off-by-default `coverage_ledger_enabled` flag, so with the flag off
+    /// this method is never invoked and zero rows are written.
+    ///
+    /// Default no-op so any non-overriding backend compiles unchanged; both
+    /// shipped backends (`MemEventStore`, `LmdbEventStore`) override it. Errors
+    /// are swallowed at this seam (D6 graceful degrade — a missed coverage write
+    /// only means the Stage D2 read falls back to the presence floor, never a
+    /// wrong answer).
+    fn record_coverage(&self, _filter_hash: &str, _relay: &str, _covered_through: u64) {}
+
+    /// Read the coverage watermark for `(filter_hash, relay)`, or `None` if no
+    /// completed-coverage row exists.
+    ///
+    /// Stage D2 reads this as the since-floor source; Stage D1 exposes it only
+    /// so the write path is testable. Default `None` (non-overriding backends
+    /// and the un-recorded case both read as "no coverage").
+    fn get_coverage(&self, _filter_hash: &str, _relay: &str) -> Option<u64> {
+        None
+    }
 
     // ─── Export ──────────────────────────────────────────────────────────────
 

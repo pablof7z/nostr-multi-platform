@@ -1,5 +1,8 @@
 # FFI hardening — scenarios (§3)
 
+> Historical M10.5 scenario set. It names the FFI symbols that existed when the
+> stress plan was written; use `docs/ffi-surface.md` for the current ABI.
+
 Eleven named failure modes. Each entry: setup, assertion, threading target,
 runner (Rust harness / XCUITest / Sonnet-agent), and numeric threshold.
 Numeric thresholds are quoted here for clarity; the canonical exit-gate

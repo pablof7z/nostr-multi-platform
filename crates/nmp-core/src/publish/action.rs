@@ -220,7 +220,7 @@ impl ActionModule for PublishModule {
         true
     }
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match action {
             PublishAction::Publish { event, target, .. } => {
                 if event.id.is_empty() || event.sig.is_empty() {
@@ -280,6 +280,7 @@ impl ActionModule for PublishModule {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

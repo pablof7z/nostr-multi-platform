@@ -30,6 +30,13 @@ impl Kernel {
     /// `action_stages` is the persisted mirror. A host may use either.
     pub(in super::super) fn take_action_results_projection(&mut self) -> serde_json::Value {
         let terminals = self.publish_engine.take_pending_terminals();
+        // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit.
+        // `note_drain_emit` bumps `settlement_drain_ver` only on a non-empty
+        // drain (Changed) or on the non-empty -> empty transition (Cleared, so
+        // the host drops its prior copy without a replay); a stably-empty drain
+        // settles to Unchanged with no churn.
+        self.projection_rev_tracker
+            .note_drain_emit("action_results", !terminals.is_empty());
         if terminals.is_empty() {
             return serde_json::Value::Null;
         }

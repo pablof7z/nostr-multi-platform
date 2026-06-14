@@ -1,0 +1,117 @@
+//! Typed FlatBuffers wire codec for the `"nmp.nip51.mute_list"` projection.
+//!
+//! The authoritative FFI shape of this projection is the serde JSON produced by
+//! [`crate::MuteListProjection::snapshot_json`], registered in
+//! `crates/nmp-defaults/src/runtimes/mute_runtime.rs` (`register_mute_runtime`)
+//! via `register_snapshot_projection`. This module adds a **typed FlatBuffers**
+//! encoding of the same shape, carried in the `typed_projections` sidecar
+//! (ADR-0037) ALONGSIDE — never replacing — the generic `Value` projection.
+//!
+//! [`crate::MuteListSnapshot`] is the SINGLE read model both wire forms share:
+//! its `Serialize` impl drives the generic `Value` projection (the producer's
+//! `snapshot_json` closure serialises it) AND this module's codec drives the
+//! typed sidecar, so the two can never structurally diverge.
+//!
+//! Both vectors carry raw protocol data only (ADR-0032): 64-char lowercase hex
+//! pubkeys and event ids. Empty and absent are the same observable state (no
+//! active account / no kind:10000 yet), so no presence flag is needed.
+//!
+//! Honours D6 (no panics): decode returns `Err(String)` on any malformed input.
+
+// The generated FlatBuffers bindings are intrinsically `unsafe`. This `allow`
+// block scopes the relaxation to the single generated module.
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/mute_list_generated.rs"]
+pub mod generated;
+
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
+
+use generated::nmp::nip_51 as fb;
+
+use crate::MuteListSnapshot;
+
+/// Stable schema identifier carried in the typed-projection envelope.
+pub const MUTE_LIST_SCHEMA_ID: &str = "nmp.nip51.mute_list";
+/// FlatBuffers file identifier embedded in every buffer this module emits.
+pub const MUTE_LIST_FILE_IDENTIFIER: &[u8; 4] = b"NMUT";
+/// Wire schema version. Bump on any breaking change to `mute_list.fbs`.
+pub const MUTE_LIST_SCHEMA_VERSION: u32 = 1;
+
+// --- encode ---------------------------------------------------------------
+
+/// Encode a [`MuteListSnapshot`] to typed FlatBuffers bytes (with the `NMUT`
+/// file identifier). Both vectors' order is preserved verbatim.
+#[must_use]
+pub fn encode_mute_list(snapshot: &MuteListSnapshot) -> Vec<u8> {
+    let mut fbb = FlatBufferBuilder::new();
+
+    let pubkey_offsets: Vec<WIPOffset<&str>> = snapshot
+        .muted_pubkeys
+        .iter()
+        .map(|pk| fbb.create_string(pk))
+        .collect();
+    let muted_pubkeys = fbb.create_vector(&pubkey_offsets);
+
+    let event_id_offsets: Vec<WIPOffset<&str>> = snapshot
+        .muted_event_ids
+        .iter()
+        .map(|id| fbb.create_string(id))
+        .collect();
+    let muted_event_ids = fbb.create_vector(&event_id_offsets);
+
+    let root = fb::MuteListSnapshot::create(
+        &mut fbb,
+        &fb::MuteListSnapshotArgs {
+            muted_pubkeys: Some(muted_pubkeys),
+            muted_event_ids: Some(muted_event_ids),
+        },
+    );
+    fb::finish_mute_list_snapshot_buffer(&mut fbb, root);
+    fbb.finished_data().to_vec()
+}
+
+// --- decode ---------------------------------------------------------------
+
+/// Decode typed FlatBuffers bytes (as produced by [`encode_mute_list`]) back
+/// into a [`MuteListSnapshot`]. Returns an error string on any malformed input.
+pub fn decode_mute_list(bytes: &[u8]) -> Result<MuteListSnapshot, String> {
+    if bytes.len() < 8 || !fb::mute_list_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NMUT file identifier".to_string());
+    }
+    let root = fb::root_as_mute_list_snapshot(bytes)
+        .map_err(|e| format!("not a valid MuteListSnapshot buffer: {e}"))?;
+
+    let mut muted_pubkeys = Vec::new();
+    if let Some(fb_pubkeys) = root.muted_pubkeys() {
+        muted_pubkeys.reserve(fb_pubkeys.len());
+        for pk in fb_pubkeys.iter() {
+            muted_pubkeys.push(pk.to_string());
+        }
+    }
+
+    let mut muted_event_ids = Vec::new();
+    if let Some(fb_event_ids) = root.muted_event_ids() {
+        muted_event_ids.reserve(fb_event_ids.len());
+        for id in fb_event_ids.iter() {
+            muted_event_ids.push(id.to_string());
+        }
+    }
+
+    Ok(MuteListSnapshot {
+        muted_pubkeys,
+        muted_event_ids,
+    })
+}
+
+#[cfg(test)]
+#[path = "mute_list_fb_tests.rs"]
+mod tests;

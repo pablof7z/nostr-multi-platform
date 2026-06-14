@@ -83,6 +83,7 @@ pub fn wire_group_chat(app: &NmpApp, group_id: GroupId) {
             )
             .into_owned(),
             payload: crate::wire::group_chat_fb::encode_group_chat_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 
@@ -125,6 +126,7 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
             payload: crate::wire::discovered_groups_fb::encode_discovered_groups_snapshot(
                 &snapshot,
             ),
+            ..Default::default()
         })
     });
 
@@ -164,6 +166,7 @@ pub fn wire_group_defaults(app: &NmpApp) {
             )
             .into_owned(),
             payload: crate::wire::group_defaults_fb::encode_group_defaults_snapshot(&snapshot),
+            ..Default::default()
         })
     });
 
@@ -185,9 +188,9 @@ pub fn wire_group_defaults(app: &NmpApp) {
 /// after the actor loop starts. Requires `&mut NmpApp` because registration
 /// writes into the app's shared action registry.
 pub fn register_actions(app: &mut NmpApp) {
-    app.register_action::<PostChatMessageAction>();
-    app.register_action::<ReactInGroupAction>();
-    app.register_action::<CreatePublicGroupAction>();
-    app.register_action::<DiscoverGroupsAction>();
-    app.register_action::<JoinGroupAction>();
+    app.register_action(PostChatMessageAction);
+    app.register_action(ReactInGroupAction);
+    app.register_action(CreatePublicGroupAction);
+    app.register_action(DiscoverGroupsAction);
+    app.register_action(JoinGroupAction);
 }

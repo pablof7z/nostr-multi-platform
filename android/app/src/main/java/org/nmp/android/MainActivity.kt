@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Group
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import org.nmp.android.ui.DiagnosticsScreen
 import org.nmp.android.ui.DmScreen
 import org.nmp.android.ui.GroupsScreen
+import org.nmp.android.ui.OutboxScreen
 import org.nmp.android.ui.RelayScreen
 import org.nmp.android.ui.SignInAmberDelegate
 import org.nmp.android.ui.SignInScreen
@@ -61,25 +63,27 @@ class MainActivity : ComponentActivity(), SignInAmberDelegate {
         model.registerExternalSignerHandler { requestJson ->
             signerBridge.handleJson(requestJson)
         }
+        // Single cold-start path (production AND debug): always installs the
+        // Keystore keyring capability and restores the persisted identity, so a
+        // signed-in user survives a restart. Mirrors iOS, which registers its
+        // keychain capability + restores unconditionally at launch.
+        //
         // E2E test seams: adb shell am start -e nmp.test_nsec <nsec>
         //                                   -e nmp.test_relays '[["ws://…","both"]]'
-        // Both extras are ignored in production (no-op when absent or in
-        // release builds where BuildConfig.DEBUG is false). Kotlin ferries the
-        // raw strings verbatim; all parsing and policy live in Rust (D7).
+        // Both extras are null in production (absent, or in release builds where
+        // BuildConfig.DEBUG is false) and merely ride on top of the same launch
+        // path. Kotlin ferries the raw strings verbatim; all parsing and policy
+        // live in Rust (D7).
         val testNsec: String? = if (BuildConfig.DEBUG)
             intent?.getStringExtra("nmp.test_nsec") else null
         val testRelays: String? = if (BuildConfig.DEBUG)
             intent?.getStringExtra("nmp.test_relays") else null
-        if (testNsec != null || testRelays != null) {
-            model.startWithContext(
-                context = this,
-                storagePath = kernelStoragePath(),
-                testNsec = testNsec,
-                testRelays = testRelays,
-            )
-        } else {
-            model.start(storagePath = kernelStoragePath())
-        }
+        model.start(
+            context = this,
+            storagePath = kernelStoragePath(),
+            testNsec = testNsec,
+            testRelays = testRelays,
+        )
         setContent {
             MaterialTheme {
                 RootTabs(model, amberDelegate = this)
@@ -160,6 +164,12 @@ private fun RootTabs(model: KernelModel, amberDelegate: SignInAmberDelegate? = n
                 NavigationBarItem(
                     selected = tab == 6,
                     onClick = { tab = 6 },
+                    icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
+                    label = { Text("Outbox") },
+                )
+                NavigationBarItem(
+                    selected = tab == 7,
+                    onClick = { tab = 7 },
                     icon = { Icon(Icons.Filled.Speed, contentDescription = null) },
                     label = { Text("Diagnostics") },
                 )
@@ -173,6 +183,7 @@ private fun RootTabs(model: KernelModel, amberDelegate: SignInAmberDelegate? = n
             3 -> RelayScreen(model, Modifier.padding(inner))
             4 -> SignInScreen(model, amberDelegate = amberDelegate, modifier = Modifier.padding(inner))
             5 -> WalletScreen(model, Modifier.padding(inner))
+            6 -> OutboxScreen(model, Modifier.padding(inner))
             else -> DiagnosticsScreen(model, Modifier.padding(inner))
         }
     }

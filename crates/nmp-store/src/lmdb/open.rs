@@ -28,12 +28,14 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     const MAX_READERS: u32 = 126;
     // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
-    // expiry-index (V-118).  The nmp-claims / nmp-claims-budget sub-dbs were
-    // removed in #1090 Stage 1 (persisted claims deleted in favour of a
-    // kernel-derived ephemeral pin set passed to `gc_step_with_pins`).  The
-    // nmp-watermarks sub-db was removed in #1090 Stage 3 (dead persisted-
-    // watermark machinery had zero production callers).
-    const NMP_ADDITIONAL_DBS: u32 = 8;
+    // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1).  The
+    // nmp-claims / nmp-claims-budget sub-dbs were removed in #1090 Stage 1
+    // (persisted claims deleted in favour of a kernel-derived ephemeral pin set
+    // passed to `gc_step_with_pins`).  The nmp-watermarks sub-db was removed in
+    // #1090 Stage 3 (dead persisted-watermark machinery had zero production
+    // callers); the K3 coverage ledger below is its purpose-built, actually-read
+    // successor (ADR-0056 §2.1 / §3 — re-created, not re-activated).
+    const NMP_ADDITIONAL_DBS: u32 = 10;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -65,6 +67,11 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let lru_access = open("nmp-lru-access", &mut txn)?;
     // V-118 — expiry index: expiry_ts(8 BE) || event_id(32) → empty.
     let expiry_index = open("nmp-expiry-index", &mut txn)?;
+    // V-52 — relay-origin reverse index: relay_url || 0x00 || event_id(32) → empty.
+    let relay_index = open("nmp-relay-index", &mut txn)?;
+    // K3 Stage D1 (ADR-0056 §3) — coverage ledger:
+    // filter_hash || 0x1F || relay_url → covered_through(8 BE).
+    let coverage = open("nmp-coverage", &mut txn)?;
 
     // Initialise the in-memory seq counter from the max persisted value so
     // a crash-restart never reuses sequence numbers.
@@ -93,6 +100,12 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // the domain_versions key so the O(store) scan runs exactly once.
     backfill_expiry_index(&env, &lmdb, expiry_index, domain_versions)?;
 
+    // V-52 — one-time backfill: populate the relay index from existing
+    // provenance for any events stored before the index existed (pre-V-52
+    // databases).  Gated by the domain_versions key so the O(provenance) scan
+    // runs exactly once.
+    backfill_relay_index(&env, provenance, relay_index, domain_versions)?;
+
     Ok(LmdbEventStore {
         path: path.to_path_buf(),
         inner: Arc::new(Inner {
@@ -107,6 +120,8 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             lru_access,
             lru_seq: AtomicU64::new(lru_seq_init),
             expiry_index,
+            relay_index,
+            coverage,
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
         }),
     })
@@ -198,5 +213,84 @@ fn backfill_expiry_index(
         .map_err(|e| StoreError::Io(format!("backfill version put: {e}")))?;
     txn.commit()
         .map_err(|e| StoreError::Io(format!("backfill commit: {e}")))?;
+    Ok(())
+}
+
+/// Key recording that the V-52 relay-index backfill has completed for this
+/// store.  Shares the `nmp-domain-versions` sub-db; relies on the same
+/// repository-wide `nmp-` prefix reservation as `EXPIRY_INDEX_BACKFILL_KEY`
+/// (no host namespace can begin with `nmp-`).
+const RELAY_INDEX_BACKFILL_KEY: &[u8] = b"nmp-relay-index";
+
+/// Populate the relay-origin reverse index from existing provenance for any
+/// events stored before the index existed (pre-V-52 databases).
+///
+/// **Migration gate**: the `domain_versions` sub-db is checked first.  If
+/// `RELAY_INDEX_BACKFILL_KEY` is already present this returns immediately — the
+/// O(provenance) scan runs exactly once per physical database.
+///
+/// The relay index is derived purely from provenance: for every stored event
+/// we record one `(relay_url, event_id)` entry per relay in its provenance
+/// list.  This mirrors the `MemEventStore::relay_index` which is likewise a
+/// projection of per-event provenance.
+fn backfill_relay_index(
+    env: &Env,
+    provenance: Database<Bytes, Bytes>,
+    relay_index: Database<Bytes, Bytes>,
+    domain_versions: Database<Bytes, Bytes>,
+) -> Result<(), StoreError> {
+    // O(1) gate — skip the full provenance scan if the migration already ran.
+    {
+        let txn = env
+            .read_txn()
+            .map_err(|e| StoreError::Io(format!("relay backfill gate read_txn: {e}")))?;
+        if domain_versions
+            .get(&txn, RELAY_INDEX_BACKFILL_KEY)
+            .map_err(|e| StoreError::Io(format!("relay backfill gate get: {e}")))?
+            .is_some()
+        {
+            return Ok(());
+        }
+    }
+
+    // One-time scan: collect (relay_url, event_id) for every provenance entry.
+    let entries: Vec<(String, [u8; 32])> = {
+        let txn = env
+            .read_txn()
+            .map_err(|e| StoreError::Io(format!("relay backfill read_txn: {e}")))?;
+        let mut out: Vec<(String, [u8; 32])> = Vec::new();
+        for entry in provenance
+            .iter(&txn)
+            .map_err(|e| StoreError::Io(format!("relay backfill prov iter: {e}")))?
+        {
+            let (k, v) =
+                entry.map_err(|e| StoreError::Io(format!("relay backfill prov step: {e}")))?;
+            if k.len() != 32 {
+                continue;
+            }
+            let mut id = [0u8; 32];
+            id.copy_from_slice(k);
+            for relay_url in super::provenance::decode_relays(v)? {
+                out.push((relay_url, id));
+            }
+        }
+        out
+    };
+
+    // Write index entries + version key in a single atomic transaction.
+    let mut txn = env
+        .write_txn()
+        .map_err(|e| StoreError::Io(format!("relay backfill write_txn: {e}")))?;
+    for (relay_url, id) in entries {
+        let key = super::provenance::relay_index_key(&relay_url, &id);
+        relay_index
+            .put(&mut txn, &key, &[])
+            .map_err(|e| StoreError::Io(format!("relay backfill put: {e}")))?;
+    }
+    domain_versions
+        .put(&mut txn, RELAY_INDEX_BACKFILL_KEY, &1u32.to_be_bytes())
+        .map_err(|e| StoreError::Io(format!("relay backfill version put: {e}")))?;
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("relay backfill commit: {e}")))?;
     Ok(())
 }

@@ -96,7 +96,7 @@ pub(super) fn handle_kind5(
                 .delete(txn, filter)
                 .map_err(|e| StoreError::Io(format!("k5 delete: {e}")))?;
             // Also drop NMP-side provenance and LRU entry.
-            provenance::delete(inner.provenance, txn, &target_id_bytes)?;
+            provenance::delete(inner.provenance, inner.relay_index, txn, &target_id_bytes)?;
             gc::lru_delete(inner, txn, &target_id_bytes)?;
             // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
             gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
@@ -152,7 +152,7 @@ pub(super) fn handle_kind5(
                             .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
                             .map_err(|e| StoreError::Io(format!("k5 remove_addressable: {e}")))?;
                         // Clean NMP-side secondary indexes for the removed event.
-                        provenance::delete(inner.provenance, txn, &existing_id)?;
+                        provenance::delete(inner.provenance, inner.relay_index, txn, &existing_id)?;
                         gc::lru_delete(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
                     }
@@ -185,7 +185,7 @@ pub(super) fn handle_kind5(
                             .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
                             .map_err(|e| StoreError::Io(format!("k5 remove_replaceable: {e}")))?;
                         // Clean NMP-side secondary indexes for the removed event.
-                        provenance::delete(inner.provenance, txn, &existing_id)?;
+                        provenance::delete(inner.provenance, inner.relay_index, txn, &existing_id)?;
                         gc::lru_delete(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
                     }
@@ -225,6 +225,7 @@ pub(super) fn handle_kind5(
     if already {
         let count = provenance::upsert(
             inner.provenance,
+            inner.relay_index,
             txn,
             &kind5_id,
             source.clone(),
@@ -241,6 +242,7 @@ pub(super) fn handle_kind5(
         .map_err(|e| StoreError::Io(format!("k5 store: {e}")))?;
     let count = provenance::upsert(
         inner.provenance,
+        inner.relay_index,
         txn,
         &kind5_id,
         source.clone(),

@@ -155,4 +155,51 @@ if [[ "${kernel_drift}" -ne 0 ]]; then
     exit 1
 fi
 
-echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel bindings in sync)"
+# ── Embed sidecar bindings (#1283/#1335 item 2) — nmp.embed namespace ───────
+#
+# `embed_sidecar.fbs` (crates/nmp-content/schema/) uses `namespace nmp.embed`
+# (distinct from nmp.kernel) and has no `include` directives, so it is
+# generated independently into `nmp/embed/`.  The drift assertion is identical
+# to the kernel check: every checked-in nmp/embed/*.kt must be byte-identical
+# to a fresh flatc run.
+EMBED_SCHEMA="${REPO_ROOT}/crates/nmp-content/schema/embed_sidecar.fbs"
+EMBED_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/embed"
+
+flatc --kotlin -o "${TMP_DIR}" "${EMBED_SCHEMA}"
+EMBED_GENERATED_DIR="${TMP_DIR}/nmp/embed"
+
+embed_drift=0
+embed_checked=0
+if [[ -d "${EMBED_CHECKED_IN_DIR}" ]]; then
+    for checked_in in "${EMBED_CHECKED_IN_DIR}"/*.kt; do
+        [[ -f "${checked_in}" ]] || continue
+        base="$(basename "${checked_in}")"
+        fresh="${EMBED_GENERATED_DIR}/${base}"
+        if [[ ! -f "${fresh}" ]]; then
+            echo "kotlin-flatc-drift: checked-in embed binding ${base} has no" >&2
+            echo "  counterpart in a fresh flatc run over embed_sidecar.fbs —" >&2
+            echo "  its source table was renamed or removed from the schema." >&2
+            embed_drift=$((embed_drift + 1))
+            continue
+        fi
+        if ! diff -u "${checked_in}" "${fresh}"; then
+            echo "kotlin-flatc-drift: embed binding ${base} drifted from a fresh run." >&2
+            embed_drift=$((embed_drift + 1))
+            continue
+        fi
+        embed_checked=$((embed_checked + 1))
+    done
+fi
+
+if [[ "${embed_drift}" -ne 0 ]]; then
+    echo "" >&2
+    echo "kotlin-flatc-drift: ${embed_drift} embed binding(s) drifted from a fresh" >&2
+    echo "'flatc --kotlin' run over crates/nmp-content/schema/embed_sidecar.fbs." >&2
+    echo "Regenerate with:" >&2
+    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "      crates/nmp-content/schema/embed_sidecar.fbs" >&2
+    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
+    exit 1
+fi
+
+echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed bindings in sync)"

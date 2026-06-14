@@ -124,6 +124,9 @@ impl Kernel {
             relay_url
         ));
         let paused = self.relay_auth_paused(role);
+        // K3 Stage D1: capture the REQ's `since` floor so the EOSE handler can
+        // record coverage honestly (un-floored ⇒ `[0, now]`; floored ⇒ no row).
+        let since_floor = filter.get("since").and_then(serde_json::Value::as_u64);
         // PD-033-C Stage 0: route through the single-writer helper. Stage 6
         // retires this M1 caller entirely; until then the helper preserves
         // M1's `auth_paused` initial state (M2 hardcodes `"opening"`, which
@@ -134,6 +137,7 @@ impl Kernel {
             sub_id.to_string(),
             summary.to_string(),
             if paused { "auth_paused" } else { "opening" },
+            since_floor,
         );
         OutboundMessage {
             role,
@@ -279,12 +283,26 @@ impl Kernel {
                             });
                         }
                     }
+                    // K3 Stage D1: parse the planner filter's `since` floor so
+                    // the EOSE handler records coverage honestly (un-floored ⇒
+                    // `[0, now]`; `since`-floored ⇒ no row, never over-claiming
+                    // `[0, floor)`).
+                    let since_floor = serde_json::from_str::<serde_json::Value>(filter_json)
+                        .ok()
+                        .and_then(|v| v.get("since").and_then(serde_json::Value::as_u64));
                     // PD-033-C Stage 0: route through the single-writer helper.
                     // After Stage 6 this is the SOLE caller of `insert_wire_sub`.
                     // M2 keeps its `"opening"` initial state (M1 has an extra
                     // `auth_paused` branch — see pd033c-plan.md §4.1 for the
                     // gap and the AuthGate consolidation that closes it).
-                    self.insert_wire_sub(role, key, sub_id.clone(), filter_json.clone(), "opening");
+                    self.insert_wire_sub(
+                        role,
+                        key,
+                        sub_id.clone(),
+                        filter_json.clone(),
+                        "opening",
+                        since_floor,
+                    );
                 }
                 WireFrame::Close { relay_url, sub_id } => {
                     // Same canonicalization as the Req arm: a Close emitted

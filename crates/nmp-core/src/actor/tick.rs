@@ -139,6 +139,13 @@ pub(super) fn maybe_emit_after_dispatch(
 #[cfg(all(test, feature = "native"))]
 mod emit_hz_clamp_tests;
 
+// ADR-0050 §D3a / issue #1231 — drives the real `run_actor` loop to lock the
+// single-waking-inbox wake property AND the single `drain_command_lane` routing
+// (follow-up #3). Kept here (sibling module, off `actor/mod.rs`'s ratcheted
+// list and out of `mod tests` to avoid collisions).
+#[cfg(all(test, feature = "native"))]
+mod command_wakes_blocked_actor_tests;
+
 #[cfg(test)]
 mod tests {
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};

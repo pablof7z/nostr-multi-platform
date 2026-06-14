@@ -21,9 +21,7 @@ use std::sync::Arc;
 use nmp_core::substrate::{AppHost, RelayTextInterceptor};
 use nmp_core::{Kernel, OutboundMessage, TypedProjectionData};
 
-use crate::runtime::{
-    install_wallet_runtime, new_wallet_runtime_handle, WalletRuntimeHandle,
-};
+use crate::runtime::{new_wallet_runtime_handle, WalletRuntimeHandle};
 use crate::status::WalletStatusSlot;
 use crate::dispatch_nwc_relay_text;
 use crate::{
@@ -59,7 +57,11 @@ impl RelayTextInterceptor for WalletInterceptor {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage> {
-        dispatch_nwc_relay_text(&self.runtime, kernel, relay_url, text)
+        // ADR-0052 §D5: the runtime helpers name only the narrow
+        // `WalletKernelAccess` capability. The interceptor holds a real
+        // `&mut Kernel`, so wrap it through `as_wallet_access` — the same
+        // surface the `Protocol` dispatch arm installs on the command context.
+        dispatch_nwc_relay_text(&self.runtime, &kernel.as_wallet_access(), relay_url, text)
     }
 
     fn on_idle_tick(&self, kernel: &mut Kernel) -> Vec<OutboundMessage> {
@@ -101,7 +103,7 @@ impl RelayTextInterceptor for WalletInterceptor {
                 return outbound;
             };
             if let Some(rt) = guard.as_mut() {
-                rt.sync_connection_state(kernel);
+                rt.sync_connection_state(&kernel.as_wallet_access());
             }
         }
 
@@ -111,7 +113,7 @@ impl RelayTextInterceptor for WalletInterceptor {
                 return outbound;
             };
             if let Some(rt) = guard.as_mut() {
-                if let Some(msg) = rt.build_get_info_probe(kernel) {
+                if let Some(msg) = rt.build_get_info_probe(&kernel.as_wallet_access()) {
                     outbound.push(msg);
                 }
             }
@@ -126,38 +128,37 @@ impl RelayTextInterceptor for WalletInterceptor {
 /// This is the reusable composition root for Nostr Wallet Connect: it
 ///
 /// 1. registers the three `nmp.wallet.{connect,disconnect,pay_invoice}`
-///    action modules so the dispatch seam reaches the runtime;
+///    action modules — ADR-0052 rung 5.2: each module VALUE owns a clone of
+///    the per-app [`WalletRuntimeHandle`], so dispatch reaches THIS app's
+///    runtime with no process-global;
 /// 2. constructs the [`WalletRuntime`] behind a shared handle, installing the
 ///    durable [`FsPaymentStore`] when `storage_path` is `Some` (the
 ///    double-pay-safe write-before-enqueue path);
-/// 3. installs the process-wide active runtime handle via
-///    [`install_wallet_runtime`] — the action-seam executor (`execute` is a
-///    static `fn`) fetches it through `active_wallet_runtime` without an
-///    `NmpApp` reference;
-/// 4. installs the relay-text interceptor that drives inbound kind:23195
+/// 3. installs the relay-text interceptor that drives inbound kind:23195
 ///    decoding + the V-79 heartbeat/TTL sweeps;
-/// 5. registers the generic + typed `"wallet"` snapshot projections.
+/// 4. registers the generic + typed `"wallet"` snapshot projections.
+///
+/// Returns the per-app [`WalletRuntimeHandle`] so the caller can thread it into
+/// the NIP-57 zap auto-chain (`nmp_nip57::register_zap_with_wallet`) — the zap
+/// override lives at the caller because `nmp-nip47` must not depend on
+/// `nmp-nip57` (layer/D0). Two `NmpApp` instances therefore drive fully
+/// independent wallet runtimes (no `ACTIVE_WALLET_RUNTIME` global — deleted).
 ///
 /// MUST run during the config phase, before the kernel starts (the actor reads
 /// the interceptor + action registry once, at kernel construction). The
 /// `NmpAppBuilder::with_wallet` step in `nmp-defaults` enforces this ordering
 /// at compile time for Rust callers.
-pub fn register_wallet(app: &mut impl AppHost, storage_path: Option<String>) {
-    // 1. Action modules — exposed under `nmp.wallet.{connect,disconnect,
-    //    pay_invoice}` so dispatch reaches the runtime.
-    app.register_action::<WalletConnectModule>();
-    app.register_action::<WalletDisconnectModule>();
-    app.register_action::<WalletPayInvoiceModule>();
-
-    // 2. Shared status slot — one `Arc` clone goes to the runtime (sole
+pub fn register_wallet(app: &mut impl AppHost, storage_path: Option<String>) -> WalletRuntimeHandle {
+    // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
     //    writer, D4), the others are captured below by the `"wallet"`
     //    generic + typed snapshot projection closures.
     let status_slot: WalletStatusSlot = new_wallet_status_slot();
     let projection_slot = Arc::clone(&status_slot);
     let typed_projection_slot = Arc::clone(&status_slot);
 
-    // 3. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
-    //    handle the `ProtocolCommand` impls and the interceptor both lock.
+    // 2. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
+    //    handle the action modules, the `ProtocolCommand` impls, and the
+    //    interceptor all clone and lock.
     let mut runtime = WalletRuntime::new(status_slot);
 
     // Install the durable payment store when a persistent storage path is
@@ -174,18 +175,20 @@ pub fn register_wallet(app: &mut impl AppHost, storage_path: Option<String>) {
         *guard = Some(runtime);
     }
 
-    // 4. Install the process-wide active handle so the action-seam executor
-    //    (a static `fn`) can fetch it without an `NmpApp` reference. Silent
-    //    second-install is OK (e.g. tests) — the first handle wins.
-    let _ = install_wallet_runtime(Arc::clone(&handle));
+    // 3. Action modules — exposed under `nmp.wallet.{connect,disconnect,
+    //    pay_invoice}`. ADR-0052 rung 5.2: each module VALUE owns a clone of
+    //    the per-app handle (no process-global install).
+    app.register_action(WalletConnectModule::new(Arc::clone(&handle)));
+    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)));
+    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)));
 
-    // 5. Substrate-generic relay-text interceptor — the actor calls this for
+    // 4. Substrate-generic relay-text interceptor — the actor calls this for
     //    every inbound text frame.
     app.add_relay_text_interceptor(Arc::new(WalletInterceptor {
         runtime: Arc::clone(&handle),
     }));
 
-    // 6. The `"wallet"` snapshot projection — reads `status_slot`.
+    // 5. The `"wallet"` snapshot projection — reads `status_slot`.
     app.register_snapshot_projection("wallet", move || match projection_slot.lock() {
         Ok(slot) => slot
             .as_ref()
@@ -194,11 +197,16 @@ pub fn register_wallet(app: &mut impl AppHost, storage_path: Option<String>) {
         Err(_) => serde_json::Value::Null,
     });
 
-    // 7. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
+    // 6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
     //    generic `Value` projection above, never replacing it.
     app.register_typed_snapshot_projection("wallet", move || {
         wallet_typed_projection(&typed_projection_slot)
     });
+
+    // Hand the per-app handle back so the caller can thread it into the NIP-57
+    // zap auto-chain (ADR-0052 rung 5.2; `nmp-nip47` must not depend on
+    // `nmp-nip57`, so the zap override lives at the caller).
+    handle
 }
 
 /// Build the typed `"wallet"` sidecar entry from the shared status slot, or
@@ -215,6 +223,7 @@ pub fn wallet_typed_projection(slot: &WalletStatusSlot) -> Option<TypedProjectio
         schema_version: WALLET_STATUS_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(WALLET_STATUS_FILE_IDENTIFIER).into_owned(),
         payload: encode_wallet_status(&status),
+        ..Default::default()
     })
 }
 

@@ -41,6 +41,10 @@ mod active_timeline_authors;
 #[cfg(test)]
 mod active_timeline_authors_tests;
 mod auth;
+// V-06 / #960 — NIP-42 AUTH signer-binding state (local-vs-remote disjoint
+// bindings) + the `PendingAuthSign` async-AUTH queue, extracted from this file to
+// keep it within its size budget. Adds methods to `impl Kernel`.
+mod auth_sign_state;
 pub(crate) mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
@@ -80,12 +84,22 @@ mod cache_serve_budget_tests;
 #[cfg(test)]
 mod cache_serve_tests;
 #[cfg(test)]
+mod cache_serve_truncation_tests;
+#[cfg(test)]
 mod cache_serve_universal_tests;
+#[cfg(test)]
+mod cache_serve_watermark_tests;
 pub(crate) mod closed_reason;
+// K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
+mod coverage_ledger;
 mod diagnostic_counters;
 mod discovery;
+/// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
+pub mod wallet_access;
 #[cfg(test)]
 mod discovery_tests;
+#[cfg(test)]
+mod coverage_ledger_d1_tests;
 #[cfg(test)]
 mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
@@ -256,6 +270,10 @@ mod timeline_perf_tests;
 /// wiring. The Wave C counterpart to the host-registered Tier-1 typed
 /// projections (ADR-0037). See the module doc for the mechanism rationale.
 mod typed_projections;
+/// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
+/// Source-version counters + `ProjectionRevTracker` owned by `Kernel`.
+/// Zero wire change in Rung 1 — pure infrastructure for Rung 2/3.
+pub(crate) mod projection_rev;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
@@ -264,7 +282,11 @@ mod typed_projections_wave_c_diagnostics_tests;
 mod typed_projections_wave_c_tests;
 mod types;
 mod update;
+// `WireSub` row (moved out of `types.rs` for the LOC cap).
+mod wire_sub;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
+#[cfg(any(test, feature = "test-support"))]
+pub use update::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
 #[cfg(test)]
 mod v66_no_configured_relays_tests;
 #[cfg(test)]
@@ -359,6 +381,10 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
+// V-06 / #960 — surfaced at the kernel-module root so the `Kernel` field type and
+// the `ingest::auth_handlers` enqueue site (`super::super::PendingAuthSign`)
+// resolve exactly as they did when the struct lived in this file.
+pub use auth_sign_state::PendingAuthSign;
 use clock::SystemClock;
 // Re-export `Clock` at `crate::kernel::Clock` so the always-compiled
 // `crate::slots::KernelClockSlot` (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) can
@@ -593,6 +619,16 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
+    /// ADR-0055 Rung 1 — per-projection revision tracker (typed `SourceVersions`
+    /// counters + dependency-derived per-key monotonic revs). Internal-only in
+    /// Rung 1: `make_update` does NOT consult it (wire bytes unchanged). Reset to
+    /// 0 on `Kernel` rebuild (fresh `Default`).
+    pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
+    /// ADR-0055 Rung 1 (F3) — biconditional completeness oracle state, carried
+    /// across ticks. `cfg(any(test, test-support))` ONLY: a production build
+    /// neither holds this field nor runs the oracle (ZERO emit-path cost).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) projection_oracle: projection_rev::oracle::OracleState,
     /// FFI diagnostic timing milestones (D0 app-domain state). See
     /// [`TimingMilestones`].
     timing: TimingMilestones,
@@ -900,6 +936,16 @@ pub struct Kernel {
     /// lifetime. #170: relay-scoped so a CLOSE for one relay never un-pins a
     /// sibling.
     wire: WireSubscriptionState,
+    /// K3 Stage D1 (ADR-0056 §3) — off-by-default flag gating the coverage-
+    /// ledger WRITE path. When `false` (the default) the kernel records NO
+    /// coverage at EOSE / NEG-DONE, so D1 is a pure no-op additive change and
+    /// nothing reads the ledger anyway (the since-floor stays presence-derived
+    /// until Stage D2). When `true` the ledger fills via
+    /// `EventStore::record_coverage`, but READ behaviour is still unchanged in
+    /// D1 — the floor is swapped to read the ledger only in Stage D2. The
+    /// eventual default-on rides a single release cut (ADR-0056 §3 Stage D) so
+    /// git-rev-pinning external consumers can pin across the change.
+    coverage_ledger_enabled: bool,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
     /// `make_update` tick. The `Metrics::payload_bytes` diagnostic is sourced
@@ -986,6 +1032,18 @@ pub struct Kernel {
     /// that role are recorded but unanswered (driver stays in
     /// `ChallengeReceived` until a signer is bound for that role).
     auth_signers: HashMap<RelayRole, RelayAuthCredentials>,
+    /// V-06 / #960 — per-role AUTH pubkey for a *remote* (NIP-46 / NIP-55)
+    /// account. The kernel knows WHOM to AUTH as but holds no synchronous signer
+    /// (the broker is the only thing that can sign), so a challenge on such a
+    /// lane enqueues a [`PendingAuthSign`] instead of signing inline. A role is
+    /// in `auth_signers` XOR `auth_remote_pubkeys` (local-key XOR remote signer),
+    /// never both — `bind_auth_signer` / `bind_auth_remote` keep them disjoint.
+    auth_remote_pubkeys: HashMap<RelayRole, String>,
+    /// V-06 / #960 — AUTH kind:22242 events awaiting a remote signature. The
+    /// actor drains this after each inbound frame (`take_pending_auth_signs`),
+    /// routes each through the async signer port, and re-enters
+    /// `dispatch_signed_auth` on resolution.
+    pending_auth_signs: Vec<PendingAuthSign>,
     /// T66a identity/publish projections — flat wire-protocol summaries the
     /// actor pushes after each AccountManager-equivalent mutation. The actor
     /// (in `nmp-core`, so it CANNOT import `nmp-signers` per D0) owns the
@@ -1232,6 +1290,18 @@ pub struct Kernel {
     /// of per-follow interests never bursts unbounded synchronous work on the
     /// actor thread (the #1085 lesson at the aggregate level).
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
+    /// K3 Stage B3 / #1380 — WRITE surface of cursor-less (`Etag`/`Ptag`) serves
+    /// budget-truncated mid-chunk. Keyed by `PendingCacheServe::completion_key`
+    /// (SubKey-aware), NOT `cursor_less_query_key`, so one interest's exhaustion
+    /// cannot clear a sibling's mark (#1380 Bug 1). Written by `serve_chunk`, which
+    /// then refreshes the read view via [`Kernel::recompute_truncated_query_keys`].
+    pub(in crate::kernel) etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>>,
+    /// K3 #1380 — READ view of [`Self::etag_ptag_truncated_serves`] keyed by
+    /// `cursor_less_query_key`: holds a query key iff ≥1 active interest mapping to
+    /// it is truncated; read by the shape-only `watermark_fn` / `shape_floor`. See
+    /// [`Kernel::recompute_truncated_query_keys`].
+    pub(in crate::kernel) etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>>,
+    snapshot_builder: flatbuffers::FlatBufferBuilder<'static>, // Rung 3 D3-6: reset+to_vec pattern
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -1762,121 +1832,59 @@ impl Kernel {
         // match on the `idx_author_kind` index per author (D8: no per-emit
         // allocation beyond one u64 per author in the shape).
         let watermark_store = Arc::clone(&store);
+        // K3 Stage B3 / #1380 — completion-key WRITE set + query-key READ view (field docs).
+        let etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>> =
+            Arc::new(std::sync::Mutex::new(HashSet::new()));
+        let etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>> =
+            Arc::new(std::sync::Mutex::new(HashSet::new()));
+        let watermark_truncated = Arc::clone(&etag_ptag_truncated_query_keys);
         let watermark_fn: crate::subs::WatermarkFn =
             Arc::new(move |shape: &crate::planner::InterestShape| {
-                // ADR-0045 §6 invariant: no watermark floor without
-                // cache-serve coverage for the same shape.
+                // ADR-0045 §6 / #1119: the watermark floor is now derived from
+                // the SAME `shape_to_store_queries` mapping cache-serve uses —
+                // "one table read two ways". `watermark_from_queries` folds the
+                // per-query newest timestamps with the established policy (min
+                // across AuthorKind with abort-on-empty author, min across
+                // KindDtag coords with abort-on-empty coord (K3 Stage B1 — the
+                // same min/abort rule as authors), single value for Etag/Ptag,
+                // never-floor for the zero-author KindTime global feed). This makes the
+                // floored⇒served invariant structural: an uncovered shape maps
+                // to no queries, so it cannot be floored.
                 //
-                // E2/E3 now covers: Ptag (kind:1059 DM inbox + mentions),
-                // Etag (thread replies), KindDtag (addressable/long-form).
-                // Their floors are enabled below. The structural guard
-                // `cache_serve_budget_tests::e3_structural_floored_implies_served`
-                // asserts floored⇒served for every shape this function floors.
-                //
-                // event_ids shapes are still refused: id-pointer loads are
-                // one-shot, already handled at ingest, and do not map to a
-                // cache-serve index scan.
-                // Multi-tag / multi-value shapes remain refused (shape_to_store_queries
-                // in queries.rs only covers single-tag-single-value).
-                if !shape.event_ids.is_empty() {
-                    return None;
-                }
-                let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
-                if kinds.is_empty() {
-                    return None;
-                }
-
-                // ── E3: address-pointer (NaddrCoord → KindDtag) ────────────
-                // Watermark = newest stored event matching any coord in the set.
-                if !shape.addresses.is_empty() {
-                    let mut newest: Option<u64> = None;
-                    for coord in &shape.addresses {
-                        let d_tag = coord.d_tag.as_bytes().to_vec();
-                        let q = crate::store::StoreQuery::KindDtag {
-                            kind: coord.kind,
-                            d_tag,
-                            since: None,
-                            until: None,
-                        };
-                        let mut ts: Option<u64> = None;
-                        let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
-                            ts = Some(ev.raw.created_at);
-                            std::ops::ControlFlow::Break(())
-                        });
-                        if let Some(t) = ts {
-                            newest = Some(newest.map_or(t, |prev| prev.max(t)));
+                // The scan normalizes each query to its watermark form
+                // (since/until = None) and reads the newest stored match via a
+                // `limit = 1` early-stopping `query_visit` (D8: one u64 per
+                // query, no per-emit allocation).
+                cache_serve::watermark_from_queries(
+                    shape,
+                    |query| {
+                        let mut q = query.clone();
+                        if let Some(since) = cache_serve::query_since_mut(&mut q) {
+                            *since = None;
                         }
-                    }
-                    return newest;
-                }
-
-                // ── E2/E3: single-tag-single-value (Etag / Ptag) ───────────
-                if !shape.tags.is_empty() {
-                    // Only floor single-key single-value tag shapes (the same
-                    // constraint shape_to_store_queries enforces — multi-key or
-                    // multi-value shapes stay unfloored so the relay re-sends).
-                    if shape.tags.len() != 1 {
-                        return None;
-                    }
-                    let (tag_key, values) = shape.tags.iter().next().unwrap(); // doctrine-allow: D6 — infallible: len!=1 guard above ensures exactly one entry; BTreeMap::iter().next() is always Some
-                    if values.len() != 1 {
-                        return None;
-                    }
-                    let target_hex = values.iter().next().unwrap(); // doctrine-allow: D6 — infallible: len!=1 guard above ensures exactly one value; BTreeSet::iter().next() is always Some
-                    if let Some(target) = hex_to_pubkey_bytes(target_hex) {
-                        let q = if tag_key == "e" {
-                            crate::store::StoreQuery::Etag {
-                                target,
-                                kinds: kinds.clone(),
-                            }
-                        } else if tag_key == "p" {
-                            crate::store::StoreQuery::Ptag {
-                                target,
-                                kinds: kinds.clone(),
-                            }
-                        } else {
-                            // Unrecognized tag key: refuse floor, relay re-sends.
-                            return None;
-                        };
+                        if let Some(until) = cache_serve::query_until_mut(&mut q) {
+                            *until = None;
+                        }
                         let mut ts: Option<u64> = None;
                         let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
                             ts = Some(ev.raw.created_at);
                             std::ops::ControlFlow::Break(())
                         });
-                        return ts;
-                    }
-                    return None;
-                }
-
-                // ── E1: author+kind or KindTime ─────────────────────────────
-                // Zero-author shapes: no safe per-author floor exists.
-                if shape.authors.is_empty() {
-                    return None;
-                }
-                // One or more authors: compute min over per-author newest.
-                // Any author with no stored events → None (must backfill).
-                let mut min_ts: Option<u64> = None;
-                for author_hex in &shape.authors {
-                    let author = hex_to_pubkey_bytes(author_hex)?;
-                    let query = crate::store::StoreQuery::AuthorKind {
-                        author,
-                        kinds: kinds.clone(),
-                        since: None,
-                        until: None,
-                    };
-                    let mut ts: Option<u64> = None;
-                    let _ = watermark_store.query_visit(&query, 1, &mut |ev| {
-                        ts = Some(ev.raw.created_at);
-                        std::ops::ControlFlow::Break(())
-                    });
-                    // Author has no stored events → floor is unsafe; abort.
-                    let author_ts = ts?;
-                    min_ts = Some(match min_ts {
-                        None => author_ts,
-                        Some(prev) => prev.min(author_ts),
-                    });
-                }
-                min_ts
+                        ts
+                    },
+                    // K3 Stage B3 / #1380: refuse the floor for a cursor-less
+                    // shape whose serve was budget-truncated this session. `key`
+                    // is the query-content key; the captured read view holds it
+                    // iff AT LEAST ONE active interest mapping to that query is
+                    // truncated, so any contributing interest's truncation refuses
+                    // the shared merged-REQ floor (the conservative, correct merge).
+                    |key| {
+                        watermark_truncated
+                            .lock()
+                            .map(|set| set.contains(&key))
+                            .unwrap_or(false)
+                    },
+                )
             });
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
@@ -1942,6 +1950,11 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
+            // ADR-0055 Rung 1: initialized to default (all counters 0, epoch 0).
+            // Resets are free on the Kernel rebuild (Reset) path.
+            projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
+            #[cfg(any(test, feature = "test-support"))]
+            projection_oracle: projection_rev::oracle::OracleState::default(),
             timing: TimingMilestones::default(),
             relays: RelayRole::all()
                 .into_iter()
@@ -1987,6 +2000,8 @@ impl Kernel {
             timeline_requested: false,
             contacts_deadline: None,
             wire: WireSubscriptionState::default(),
+            // K3 Stage D1: OFF by default — D1 ships the write path dormant.
+            coverage_ledger_enabled: false,
             update_sequence: 0,
             last_payload_bytes: 0,
             last_make_update_us: 0,
@@ -2009,6 +2024,8 @@ impl Kernel {
             pending_claims: std::collections::BTreeMap::new(),
             claim_sub_index: std::collections::BTreeMap::new(),
             auth_signers: HashMap::new(),
+            auth_remote_pubkeys: HashMap::new(),
+            pending_auth_signs: Vec::new(),
             accounts: Vec::new(),
             active_account: None,
             signed_events: HashMap::new(),
@@ -2018,8 +2035,6 @@ impl Kernel {
             configured_relays: Vec::new(),
             action_stages: action_stages::ActionStageTracker::new(),
             action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
-            // Per-tick typed-sidecar capture slots — empty until the first
-            // `make_update` writes them at the JSON-insertion site (Wave C).
             captured_action_results: None,
             captured_signed_events: None,
             captured_action_stages: None,
@@ -2051,6 +2066,9 @@ impl Kernel {
             last_gc_at_ms: None,
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
+            etag_ptag_truncated_serves,
+            etag_ptag_truncated_query_keys,
+            snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
@@ -2073,7 +2091,18 @@ impl Kernel {
     // code path that calls this, even though production never installs a
     // non-default clock. `allow(dead_code)` covers builds with neither the
     // `test` cfg nor any clock-injecting consumer linked.
+    // `pub` under `test-support` (not just `pub(crate)`) so external crate
+    // integration tests — e.g. `nmp-nip77`'s NEG-OPEN liveness-deadline oracle
+    // (K3 Stage B2) — can install a `MonotonicSecondClock` and advance it to
+    // drive a wall-clock-gated `on_idle_tick` without a real sleep (D8).
     #[allow(dead_code)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.clock = clock;
+    }
+
+    #[allow(dead_code)]
+    #[cfg(not(any(test, feature = "test-support")))]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;
     }
@@ -2095,10 +2124,9 @@ impl Kernel {
     }
 
     /// Current wall-clock time as milliseconds since the Unix epoch, read
-    /// through the injected [`Clock`]. Used by the `action_stages` mirror
-    /// so per-stage timestamps survive `FixedClock` injection and
-    /// stay deterministic in tests/replay. A pre-epoch clock collapses to
-    /// `0` (D6 — never panics).
+    /// through the injected [`Clock`] so `FixedClock` keeps it deterministic
+    /// (used by the `action_stages` mirror and the `start()` wall anchor). A
+    /// pre-epoch clock collapses to `0` (D6 — never panics).
     pub(crate) fn now_ms(&self) -> u64 {
         self.clock
             .now()
@@ -2116,10 +2144,10 @@ impl Kernel {
     /// purge) was dead on every device (audit Finding 1).
     ///
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
-    ///   bounds with the LRU ceiling **disabled** (`max_total_events =
-    ///   usize::MAX`): store-claims have no production callers yet, so a finite
-    ///   ceiling would silently evict live events (V-117). GitHub issue #1090
-    ///   tracks wiring claims and re-enabling `HOT_EVENT_CEILING` (`gc.md` §3).
+    ///   bounds, LRU ceiling at [`crate::store::HOT_EVENT_CEILING`] (10 000
+    ///   events, enabled by #1090 Stage 3 / #1327). When the floor-coherent
+    ///   pin scan is truncated by its D8 budget, [`Self::derive_store_gc_inputs`]
+    ///   returns a no-eviction budget so LRU is skipped this tick (#1348).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
@@ -2148,13 +2176,11 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
-        // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
-        let pins = self.derive_store_pin_set();
-        match self
-            .store
-            .gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins)
-        {
+        // #1090 Stage 1 — derive the ephemeral store-tier pin set and the
+        // matching budget (#1348 truncation→no-eviction decision lives in
+        // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
+        let (pins, gc_budget) = self.derive_store_gc_inputs();
+        match self.store.gc_step_with_pins(gc_budget, now_secs, &pins) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
@@ -2293,38 +2319,6 @@ impl Kernel {
         self.auth_signers.remove(&role);
     }
 
-    /// Compat wrapper: bind the same identity signer to every user-identity
-    /// relay role (Content + Indexer). Replaces any previously-bound identity
-    /// signer on those roles; other roles (e.g. NWC `Wallet`) are unaffected.
-    /// FFI bridge that surfaces this from Swift is T59
-    /// (filed in `docs/perf/pending-user-decisions.md`).
-    pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
-        self.auth_signers.insert(
-            RelayRole::Content,
-            RelayAuthCredentials {
-                signer: Arc::clone(&signer),
-                pubkey_hex: pubkey_hex.clone(),
-            },
-        );
-        self.auth_signers.insert(
-            RelayRole::Indexer,
-            RelayAuthCredentials { signer, pubkey_hex },
-        );
-    }
-
-    /// Compat wrapper: drop the identity signer for the user-identity roles
-    /// (Content + Indexer). Other roles (e.g. NWC `Wallet`) are unaffected —
-    /// use `clear_relay_auth_signer(role)` for per-role clearing.
-    pub(crate) fn clear_auth_signer(&mut self) {
-        self.auth_signers.remove(&RelayRole::Content);
-        self.auth_signers.remove(&RelayRole::Indexer);
-    }
-
-    /// Returns `true` if at least one relay role has an auth signer bound.
-    pub(crate) fn has_auth_signer(&self) -> bool {
-        !self.auth_signers.is_empty()
-    }
-
     /// Bind the shared relay-edit rows slot so the FFI layer can read
     /// relay-edit rows without reaching into kernel internals.
     ///
@@ -2442,6 +2436,7 @@ impl Kernel {
         sub_id: String,
         filter_summary: String,
         initial_state: &str,
+        since_floor: Option<u64>,
     ) {
         self.wire.subs.insert(
             (relay_url.clone(), sub_id.clone()),
@@ -2456,6 +2451,7 @@ impl Kernel {
                 last_event_at: None,
                 eose_at: None,
                 close_reason: None,
+                since_floor,
             },
         );
         self.changed_since_emit = true;
@@ -2464,6 +2460,7 @@ impl Kernel {
     pub(crate) fn start(&mut self) {
         if self.timing.started_at.is_none() {
             self.timing.started_at = Some(Instant::now());
+            self.timing.started_unix_ms = Some(self.now_ms()); // D9 wall anchor
         }
         self.changed_since_emit = true;
         self.log("starting role-aware nmp demo slice");
@@ -2505,6 +2502,9 @@ impl Kernel {
     pub fn mark_changed_since_emit(&mut self) {
         self.changed_since_emit = true;
     }
+
+    // ADR-0055 Rung 1 — `projection_manifest()` / `projection_state()` live in
+    // `projection_rev/kernel_impl.rs` (sibling) to keep this file at baseline.
 
     /// Mutable access to the subscription lifecycle (registry + trigger inbox).
     ///
