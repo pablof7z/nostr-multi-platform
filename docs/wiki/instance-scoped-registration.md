@@ -2,13 +2,13 @@
 title: Instance-Scoped Registration
 slug: instance-scoped-registration
 topic: nmp-app-integration
-summary: Instance-scoped module registration (register_action by value with &self methods) replaces stateless-by-construction ActionModule trait, and per-app slots repla
+summary: "Instance-scoped module registration replaces type-based register_action::<M>() with instance-scoped register_action(&mut self, module: M), where extension modul"
 tags:
   - capture
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -19,24 +19,6 @@ sources:
 
 ## Instance-Scoped Registration
 
-Instance-scoped module registration (register_action by value with &self methods) replaces stateless-by-construction ActionModule trait, and per-app slots replace OnceLock globals. The extension one-change fix is making extension traits instance-scoped: register_action(&mut self, module: M) registers a value, ProtocolCommand::run(&self, ...) operates on instance state, deleting all OnceLock globals.
+Instance-scoped module registration replaces type-based register_action::<M>() with instance-scoped register_action(&mut self, module: M), where extension modules are instance-scoped values (not types) with &self methods on start/execute. ProtocolCommand::run(&self, ...) carries its dependencies captured at composition time, deleting the OnceLock globals and restoring multi-instance correctness. ActionModule is stateless-by-construction (start/execute take no &self), forcing process-global module state via OnceLock; the wallet runtime's OnceLock makes two NmpApp instances in one process share one wallet. Instance-scoped registration (K2) discharges P5 wholesale, enables deleting kernel_mut(), merges the duplicate write seams, and makes the previously impossible two-instance interop test pass. Per-app slots, created in nmp_app_new, replace the five process-global hook/driver singletons (GLOBAL_BROKER, bunker_hook, external_signer_hook, GLOBAL_DRIVER, and the nmp-core/external_signer_hook.rs HOOK); all five are deleted. DispatchHostOp is merged into the Protocol seam (preserving its panic-isolation and persistent-handler semantics); the single open write seam is Protocol. K2 rung 5.5 deletes ProtocolCommandContext::kernel_mut(); genuine kernel services are promoted to narrow capability traits, and lnurl_for_pubkey is relocated off the generic context to a capability the zap command carries. The D21 no-ambient-authority doctrine-lint bans OnceLock/lazy_static/static Mutex/RwLock/AtomicPtr holding non-const state in production nmp-* crates, with a justification-required allowlist that burns to zero. Two NmpApp instances in one process pass an interop test with separate wallets, bunker sessions, and signer ports. ActionTicket is a #[must_use] linear type whose Drop records Failed{dropped}; the ~15 hand-patch sites and their broken-promise-fix comments are deleted. The three correlation-id regimes are collapsed into one (the ticket IS the identity; event_id becomes payload). Spawn-at-start: nmp_app_new returns a passive handle; nmp_app_start moves config into the spawned actor, deleting the preflight kernel, the #601 rev hack, and the first-command-of-any-type trap. Action feedback is collapsed to a single mechanism (action_lifecycle) with TTL-anchored retention; ack is early-dismiss only; the action_results drain and action_stages ack-mirror are deleted. K2 ADR-0052 is merged as PR #1323; register-by-value + ACTIVE_WALLET_RUNTIME deletion as PR #1326; per-app bunker/NIP-55 ports + four hook/driver globals deleted as PR #1344.
 
-K2 (instance-scoped registration) is in flight: rung 5.1 (ADR-0052) is merged on master, and rung 5.2 (register-by-value trait change, delete ACTIVE_WALLET_RUNTIME, two-instance interop oracle) is being implemented. ADR-0052 adversarial review found a fifth ambient-authority global (nmp-core/src/external_signer_hook.rs HOOK) and confirmed DispatchHostOp ≠ Protocol (it has panic-isolation + persistent-handler semantics that must be preserved before merging). Rung 5.2 design was expanded: the WalletRuntimeHandle is also consumed by the WalletInterceptor (not just action modules), and the composition root already threads it by value into the interceptor, so deleting ACTIVE_WALLET_RUNTIME extends the same pattern. Rung 5.2 closes #619 and supersedes #1312 by construction: when the wallet module is a value owning its handle, composition IS installation and there is no separate install step to order.
-
-K2 runs after K1 and before K3, with K3 gated behind K2.
-
-Action_lifecycle is the sole host-facing action feedback projection, replacing action_results drain and action_stages ack-mirror.
-
-gc_step receives a derived pinned HashSet instead of the persisted claims sub-db, deleting ClaimerId and OverPinned machinery.
-
-ActionTicket is a linear #[must_use] type with a Drop bomb that records Failed{dropped} through the actor channel, replacing the three correlation-id regimes.
-
-DispatchHostOp is merged into Protocol, leaving one open write seam. (Previously: DispatchHostOp ≠ Protocol — panic-isolation + persistent-handler semantics must be preserved before merging.)
-
-kernel_mut() is deleted from ProtocolCommandContext; genuine kernel services are promoted to narrow capability traits.
-
-The per-dispatch snapshot emit path is conflation-safe only after drain-once state (action_results, signed_events) is removed from the snapshot.
-
-No LateWiring runtime diagnostic is built for #618 because spawn-at-start makes the failure inexpressible.
-
-<!-- citations: [^2e544-20] [^2e544-21] [^2e544-22] [^2e544-23] [^2e544-24] [^2e544-25] [^2e544-26] [^2e544-27] [^2e544-28] [^2e544-60] -->
+<!-- citations: [^2e544-20] [^2e544-21] [^2e544-22] [^2e544-23] [^2e544-24] [^2e544-25] [^2e544-26] [^2e544-27] [^2e544-28] [^2e544-60] [^2e544-350] [^2e544-370] [^2e544-392] [^2e544-465] -->

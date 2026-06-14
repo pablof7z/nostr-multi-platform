@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -25,7 +25,11 @@ There is a single event-acquisition mechanism: serving from the local store is i
 
 Persisted WatermarkRow.synced_up_to has zero production writers; the live since-floor is derived from store content (newest matching event via query_visit), making the issue's conservative-floor premise false. (Previously: sync.md claimed WatermarkRow '[LANDED M4]', but it was deleted and replaced by the presence heuristic without re-deciding the soundness question; then the heuristic itself was superseded by direct store-content derivation.)
 
-Locally published events route through the same ingest_contacts plus notify_event_observers fan-out as relay events, replacing the local_publish_intent private path. Follow/unfollow local publish feeds this same observer fan-out (read-your-writes), routed through the same ingest path as relay events. (Previously: routing was described without the read-your-writes-on-exact-surface rationale and the PR #1199 landing.)
+The `shape_to_store_queries` mapping is the single source for both the floor computation and the serve decision (ADR-0045 §6); no second shape→query mapping exists.
+
+Locally published events route through the same `ingest_…` + `notify_event_observers` fan-out the relay arm uses, providing read-your-writes for follows and giving local echo to kind:0 and DM self-copies. Follow/unfollow local publish feeds this same observer fan-out, restoring read-your-writes (Previously: locally published follow/unfollow events skipped observer fan-out, so the follow-list projection and ActiveFollowSet never updated until app restart, account switch, or a different kind:3 arrived; then PR #1199 landed the read-your-writes fix). (Previously: routing was described without the read-your-writes-on-exact-surface rationale and the PR #1199 landing.)
+
+The ActiveFollowSet/FollowListProjection producer is merged into one fold with two views, and the 500-cap divergence between kernel and observer is fixed.
 
 Un-floored NEG-OPEN reconciles the full un-watermarked window so set reconciliation can repair gaps below the heuristic floor.
 
@@ -35,7 +39,7 @@ Every EVENT arriving on ingest records a delivery Hit (sampled or saturating) to
 
 Permanent relay errors (401/403) enter a Denied{until} long-backoff state instead of killing the worker thread, and ensure_open respawns exited slots.
 
-Publishing to AUTH-required relays parks via the availability gate instead of failing, and re-dispatches on Authenticated.
+Publishing to AUTH-requiring relays parks the publish via the existing availability-gate seam and re-dispatches on `Authenticated`, instead of failing after one-shot reauth within a 250ms tick.
 
 NEG-OPEN liveness has a wall-clock deadline via the existing actor tick infrastructure, preventing silent starvation when a relay ignores the frame.
 
@@ -59,6 +63,6 @@ Rule 1 wildcard-kinds × concrete-kinds merges are refused (mirroring Rule 9) to
 
 The planner PR was split to keep only the two genuinely-safe fixes (DM-inbox-discovery bug and merge determinism); Defect 2 (T129 watermark rewrite) and Defect 4 (wildcard absorption) were reverted as documented, tested features, and escalated as owner decisions #1281/#1282.
 
-The `gc_step` budgeting uses a resumable Phase-1 cursor, O(1) Phase-2 count, and hourly Phase-3 tombstone gate, with the LRU event-count ceiling (`HOT_EVENT_CEILING`) disabled until store-claims are wired. <!-- [^da6b1-82] -->
+The `gc_step` budgeting uses a resumable Phase-1 cursor, O(1) Phase-2 count, and hourly Phase-3 tombstone gate, with the LRU event-count ceiling (`HOT_EVENT_CEILING`) disabled until store-claims are wired.
 
-<!-- citations: [^da6b1-15] [^2e544-8] [^2e544-9] [^2e544-10] [^4277-4280] [^3720-3721] [^2e544-11] [^2e544-12] [^2e544-13] [^2e544-14] [^2e544-15] [^2e544-16] [^2e544-17] [^2e544-18] [^2e544-19] [^1278-2238-2267] [^1278-2249-2255] [^1278-2253-2254] [^1280-2386-2436] [^1280-2396-2436] [^02745-7] [^2e544-55] [^02745-55] [^02745-99] -->
+<!-- citations: [^da6b1-82] [^da6b1-15] [^2e544-8] [^2e544-9] [^2e544-10] [^4277-4280] [^3720-3721] [^2e544-11] [^2e544-12] [^2e544-13] [^2e544-14] [^2e544-15] [^2e544-16] [^2e544-17] [^2e544-18] [^2e544-19] [^1278-2238-2267] [^1278-2249-2255] [^1278-2253-2254] [^1280-2386-2436] [^1280-2396-2436] [^02745-7] [^2e544-55] [^02745-55] [^02745-99] [^2e544-349] [^2e544-369] [^2e544-463] -->

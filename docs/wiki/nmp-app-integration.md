@@ -17,15 +17,16 @@ sources:
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:bf035812-6f7a-46ec-a11d-30fc7369342f
   - session:019ec57a-fb01-7081-80c8-d7107f302049
+  - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
 ---
 
 # NMP App Integration
 
 ## Kernel Integration
 
-The hl app fully embeds the NMP kernel via path deps (including nmp-ffi with the external-signer feature) and uses UniFFI (not JNI) for the FFI boundary, so no C-ABI symbols are added; all new NIP-55 methods flow through the existing UniFFI boundary. (Previously: the Android bridge was called out specifically.) The nmp-app-template crate no longer exists (renamed to nmp-defaults via ADR-0046); podcast-player's pin carried over as nmp-defaults.
+The hl app fully embeds the NMP kernel via path deps (including nmp-ffi with the external-signer feature) and uses UniFFI (not JNI) for the FFI boundary, so no C-ABI symbols are added; all new NIP-55 methods flow through the existing UniFFI boundary. (Previously: the Android bridge was called out specifically.) The nmp-app-template crate no longer exists (renamed to nmp-defaults via ADR-0046); podcast-player's pin carried over as nmp-defaults. Parked crates that are excluded from the workspace must have an empty `[workspace]` table and explicit (non-inherited) `package` fields so they remain standalone-buildable as external path dependencies. The final pin for external consumers is nmp-v0.7.1 (92fdfca327a782b82ee999a414190d39265b8243), which includes the parked-crate standalone-buildability fix (#1424) on top of v0.7.0. nmp-v0.7.1 fixes the parked-crate defect by de-inheriting workspace fields in nmp-blossom and nmp-nip60, making them standalone-buildable as external path-deps. podcast-player adopts the 0.7.2 git-dep model (all 6 NMP crates pinned to 45ac8c3e4/0.7.2, the vendor/nmp-blossom directory and its [patch]/workspace-member entries are deleted, nmp-blossom resolves as an ordinary git dep with a single nmp-core version); it builds clean against nmp-v0.7.1 and now 0.7.2; no structural migration was needed. hl path-tracks the NMP monorepo via local path deps and builds green against 0.7.2 with nmp-blossom resolving as a normal workspace member; no hl code change is needed. win-the-day is not an NMP consumer; its local checkout has zero Rust/NMP linkage and the external-consumers doc listing is stale.
 
-<!-- citations: [^da6b1-24] [^da6b1-53] -->
+<!-- citations: [^2e544-377] [^da6b1-24] [^da6b1-53] [^2e544-415] [^2e544-434] [^2e544-467] -->
 ## Android Frame Decoding
 
 The podcast-player Android app has no Kotlin-side UpdateFrame/payload decoder; binary frames are decoded in Rust via nmp_app_podcast_decode_update_frame, so no Tier-3 Kotlin rebuild was needed for NIP-55. The nmp_free_string rename in v0.6.0 required podcast-player to adapt; the app was already past this rename on main when the v0.6.2 bump landed.
@@ -33,34 +34,9 @@ The podcast-player Android app has no Kotlin-side UpdateFrame/payload decoder; b
 <!-- citations: [^da6b1-25] [^da6b1-54] -->
 ## Known Defects
 
-The podcast-player has a pre-existing latent push-path bug: SnapshotCodec.decodeEnvelope decodes the envelope directly as PodcastSnapshot, but the wire never carried that shape; same defect class as NMP #1084. <!-- [^da6b1-26] -->
+The podcast-player has a pre-existing latent push-path bug: SnapshotCodec.decodeEnvelope decodes the envelope directly as PodcastSnapshot, but the wire never carried that shape; same defect class as NMP #1084. iOS `EmbedHost.swift` reimplements the Rust embed-projection resolver in Swift (a D0 violation), switching on raw Nostr kind integers, parsing kind:0 JSON via `JSONSerialization`, and heuristically detecting media URLs, duplicating logic that lives in `nmp-content/src/embed_projection/mod.rs`. iOS `ThreadNoteRow` re-derives `isRepost` from the raw `kind: UInt32` integer instead of consuming the Rust-emitted `isRepost: Bool` typed field on `TimelineItem`. iOS `RelaySeeding.swift` hardcodes relay URLs and parses JSON in Swift, while Android delegates to Rust via `nmp_chirp_config::chirp_default_relay_bootstrap()`; no C-ABI `nmp_app_seed_default_relays` symbol exists for iOS to call. Desktop `app.rs` double-renders every note card body on every frame: line 1054 renders `ui.label(text.as_ref())` (plain text) and line 1059 immediately calls `note_body(ui, text.as_ref())` (rich re-tokenization), showing content twice at 60fps. Desktop `app.rs`'s `effective_content` function is dead code: it attempts to JSON-parse kind:6 content, but the kernel projection already extracts the inner note body before the card reaches the shell. Desktop `decode_snapshot_typed` silently discards `signer_state` (KSST), `bunker_handshake` (KBHS), and `nip46_onboarding` (KNBO) projections — there are no `find()` calls for any of their schema IDs, so bunker sign-in has no UI feedback (no progress, success, failure, or timeout states rendered). Desktop never calls `nmp_app_ack_action_stage`, so action stage outbox entries accumulate indefinitely until exceeding `MAX_TRACKED_CORRELATIONS` (1024), bloating the `action_stages` sidecar on every snapshot tick. Desktop keyring allocates the nsec secret in multiple plain heap `String`s (via `fs::read_to_string`, `KeyringResult`, `serde_json::to_string`, `CString::new`) with no zeroization; macOS Keychain is explicitly bypassed by design. Desktop `follow_list` projection is decoded but silently unused — follow/unfollow are wired in the bridge but no follow button is rendered in the UI. Desktop `DmConversationListScreen` double-collects `model.state` independently from its parent `DmScreen`, creating a minor consistency hazard where profiles and conversations can reflect different snapshot generations. Desktop `ThreadScreen` does not provide `LocalProfileClaimer`, so thread author names never trigger on-demand kind:0 fetch (a functional gap, not a leak). Android `KernelProfileHost.kt` keys `remember(model, profiles)` on a per-tick-fresh `profiles` map, recreating the host every snapshot tick, which causes `NostrAvatar` and `NostrProfileName` DisposableEffect to fire claim/release on every tick (the same churn bug as chirp-web commit 4d1888f9a). The podcast-player identity projection was gated only on an app-side rev counter that kernel-driven NIP-55 sign-in never advances; the fix dual-gates on the rev counter AND the kernel active-account hex. nmp-blossom is a v1 workspace member, not a parked dead island; it is CI-built and tested as part of the workspace. nmp-feedback is pinned at 0.7.2 (857dedf45be721d748bf4ed55a76144ba89018b9) with nmp-core/nmp-ffi re-pinned to 0.7.2. (Previously: nmp-feedback had a hard version constraint (nmp-core ^0.6.2) that rejected the 0.7.x breaking release; it was bumped to 0.7.2 and merged as pablof7z/nmp-feedback#1.)
 
-
-iOS `EmbedHost.swift` reimplements the Rust embed-projection resolver in Swift (a D0 violation), switching on raw Nostr kind integers, parsing kind:0 JSON via `JSONSerialization`, and heuristically detecting media URLs, duplicating logic that lives in `nmp-content/src/embed_projection/mod.rs`.
-
-iOS `ThreadNoteRow` re-derives `isRepost` from the raw `kind: UInt32` integer instead of consuming the Rust-emitted `isRepost: Bool` typed field on `TimelineItem`.
-
-iOS `RelaySeeding.swift` hardcodes relay URLs and parses JSON in Swift, while Android delegates to Rust via `nmp_chirp_config::chirp_default_relay_bootstrap()`; no C-ABI `nmp_app_seed_default_relays` symbol exists for iOS to call.
-
-Desktop `app.rs` double-renders every note card body on every frame: line 1054 renders `ui.label(text.as_ref())` (plain text) and line 1059 immediately calls `note_body(ui, text.as_ref())` (rich re-tokenization), showing content twice at 60fps.
-
-Desktop `app.rs`'s `effective_content` function is dead code: it attempts to JSON-parse kind:6 content, but the kernel projection already extracts the inner note body before the card reaches the shell.
-
-Desktop `decode_snapshot_typed` silently discards `signer_state` (KSST), `bunker_handshake` (KBHS), and `nip46_onboarding` (KNBO) projections — there are no `find()` calls for any of their schema IDs, so bunker sign-in has no UI feedback (no progress, success, failure, or timeout states rendered).
-
-Desktop never calls `nmp_app_ack_action_stage`, so action stage outbox entries accumulate indefinitely until exceeding `MAX_TRACKED_CORRELATIONS` (1024), bloating the `action_stages` sidecar on every snapshot tick.
-
-Desktop keyring allocates the nsec secret in multiple plain heap `String`s (via `fs::read_to_string`, `KeyringResult`, `serde_json::to_string`, `CString::new`) with no zeroization; macOS Keychain is explicitly bypassed by design.
-
-Desktop `follow_list` projection is decoded but silently unused — follow/unfollow are wired in the bridge but no follow button is rendered in the UI.
-
-Desktop `DmConversationListScreen` double-collects `model.state` independently from its parent `DmScreen`, creating a minor consistency hazard where profiles and conversations can reflect different snapshot generations.
-
-Desktop `ThreadScreen` does not provide `LocalProfileClaimer`, so thread author names never trigger on-demand kind:0 fetch (a functional gap, not a leak).
-
-Android `KernelProfileHost.kt` keys `remember(model, profiles)` on a per-tick-fresh `profiles` map, recreating the host every snapshot tick, which causes `NostrAvatar` and `NostrProfileName` DisposableEffect to fire claim/release on every tick (the same churn bug as chirp-web commit 4d1888f9a). <!-- [^02745-8] -->
-
-The podcast-player identity projection was gated only on an app-side rev counter that kernel-driven NIP-55 sign-in never advances; the fix dual-gates on the rev counter AND the kernel active-account hex. <!-- [^da6b1-55] -->
+<!-- citations: [^da6b1-26] [^02745-8] [^da6b1-55] [^2e544-416] [^2e544-435] [^2e544-468] -->
 ## Shared Component Vending
 
 The Android login-block Compose component in nmp-gallery is the canonical source; Chirp vendors an identical copy with only the package declaration changed, enforced by a VendorDriftGateTest. <!-- [^da6b1-27] -->
@@ -91,6 +67,8 @@ NMP_TEST_RELAYS (iOS env var) and nmp.test_relays/nmp.test_nsec (Android debug i
 ## Cross-Platform Vending & FFI Readiness
 
 The Compose profile components (NostrAvatar, NostrProfileName, KernelProfileHost) are vendored under a byte-identical drift gate — any fix must edit both `crates/nmp-cli/registry/compose/...` and `android/app/src/main/java/org/nmp/android/components/...`. Android has zero EmbedHost resolver duplication today (its `EmbedEntry` is pre-resolved in Rust), so landing the #1283 nmp-ffi sidecar now means Android writes a decode-only path from day one and the duplication never spreads. The nmp-android-ffi standalone Cargo.lock must not contain apple-native-keyring-store references after the hard break; it must contain base64 under nmp-marmot deps.
+
+The gallery's curated minimal nmp/transport subset must not be force-regenerated; only android/app/src/main/java/nmp/ gets the full regen. <!-- [^78c8e-455] -->
 
 <!-- citations: [^02745-10] [^78c8e-109] -->
 ## Platform Constraints

@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -22,10 +22,12 @@ sources:
 
 iOS KernelBridge.listen() uses passUnretained(sink) creating a fragile ARC teardown contract; passRetained(sink) with takeRetainedValue in the callback is safer given Rust's quiescence guarantee.
 
+The R3-S3 iOS review caught a missing import FlatBuffers in KernelBridge.swift that caused a build break, and identified the root cause as a double-decode of the same buffer for session_id/snapshot_epoch; the fix threads those scalars out of the single existing decode, eliminating both the break and the per-tick O(buffer) waste.
+
 The FlatBuffers Verifier is dropped on the trusted in-process kernel snapshot decode path; all 35 iOS decoder sites use unchecked getRoot instead of getCheckedRoot. The buffer is produced microseconds earlier by the same in-process Rust kernel and crosses a trusted FFI boundary; routing-by-schemaId is the real type guard.
 
 Issue #1289 was filed for wiring the Swift consumer of RelayDiagnosticsInfo (the regenerated binding) separately from the drift-gate PR.
 
 iOS forward-compat fallback derivedLabel/derivedTone duplicates Rust business logic and silently falls through to default on unknown tokens without compile-time or runtime warning.
 
-<!-- citations: [^02745-102] [^78c8e-65] [^02745-85] [^02745-34] [^02745-57] [^02745-101] [^78c8e-101] -->
+<!-- citations: [^02745-102] [^78c8e-65] [^02745-85] [^02745-34] [^02745-57] [^02745-101] [^78c8e-101] [^78c8e-470] -->

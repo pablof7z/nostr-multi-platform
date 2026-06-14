@@ -28,9 +28,9 @@ CI must include `cargo test -p nmp-app-template` and `cargo build --workspace --
 <!-- citations: [^da6b1-12] [^019ec-3] -->
 ## File-Size Gate
 
-The file-size gate requires splitting files approaching 500 LOC rather than bumping baselines, enforced by `check-file-size.sh` with a no-debt doctrine. File-size ratchet violations must be resolved by extracting cohesive modules (not raising baselines). New test files must also be split into separate submodules when they would push a file past the 500-LOC hard cap. A pre-emptive split of test files hovering near the 500-LOC cap eliminates the recurring round-trip where every fix PR tips a file over and needs a split before merge. PR #1295 extracts `settings_view` and `diagnostics_panel` (361 lines) from `app.rs` into a new `settings.rs`, reducing `app.rs` from 2172 to 801 lines (the split was needed for the file-size gate, though the file remains above the 500-line baseline). The push-event file-size CI workflow has a known gap: force-pushed branches produce a red check because the orphaned before SHA is unavailable in the clone; this should be fixed to fall back to the merge-base or skip with a notice.
+The file-size gate must always use `--from-ref origin/master --to-ref HEAD --baseline-ref origin/master` (never `--changed-only`) because `--changed-only` only checks modified files and passes locally while failing CI on files that expanded but weren't in the diff. File-size ratchet violations must be resolved by extracting cohesive modules (not raising baselines). New test files must also be split into separate submodules when they would push a file past the 500-LOC hard cap. A pre-emptive split of test files hovering near the 500-LOC cap eliminates the recurring round-trip where every fix PR tips a file over and needs a split before merge. PR #1295 extracts `settings_view` and `diagnostics_panel` (361 lines) from `app.rs` into a new `settings.rs`, reducing `app.rs` from 2172 to 801 lines (the split was needed for the file-size gate, though the file remains above the 500-line baseline). The push-event file-size CI workflow has a known gap: force-pushed branches produce a red check because the orphaned before SHA is unavailable in the clone; this should be fixed to fall back to the merge-base or skip with a notice.
 
-<!-- citations: [^da6b1-13] [^02745-2] [^02745-28] [^02745-50] [^78c8e-45] -->
+<!-- citations: [^da6b1-13] [^02745-2] [^02745-28] [^02745-50] [^78c8e-45] [^78c8e-462] -->
 ## Pre-existing CI Breakages
 
 The `committed_registry_json_matches_generated_output` CI test currently fails on master (registry.json stale), causing `cargo test` red on multiple PRs that don't touch registry code; this is a pre-existing breakage. The AI architecture signoff CI check (#1267) is RED due to a bad `OPENAI_API_KEY` and is treated as infrastructure noise for merge decisions. (Previously: The 'AI architecture signoff' CI check was a known-broken gate due to a bad `OPENAI_API_KEY` (#1267) and must be ignored when gating PR merges.) The podcast-player TestFlight pipeline has never shipped because CI never built the Rust core for the simulator architecture, causing an undefined symbol `_nmp_free_string` link failure that gated off the deploy step for 40 consecutive runs; PR #429 fixes this by prepending the sim-arch Rust build. (Previously: The podcast-player TestFlight pipeline failed for 40 consecutive runs because CI never built the Rust core for the simulator architecture, causing an undefined-symbol link failure that gated off the deploy job.) The compound `&&` merge command pattern swallowed exit codes and merged PR #1165 with a failing check; merges must gate on explicit pass/nonpass counts, never chain push after piped check. When merging any PR, the full cargo test lane must complete green before merging — 'no failures yet' does not constitute a passed check. (Previously: 'no failures yet' did not constitute a passed check; lesson from #1302 breaking master by merging on incomplete CI.) Ten of eleven needs-decision issues are determined by existing documented direction; only #1281 (whether `since=None` interests should be exempted from the T129 watermark rewrite) genuinely requires owner input.
@@ -45,12 +45,14 @@ Marmot group relays are persisted by MDK (replace_group_relays on create/accept)
 <!-- citations: [^78c8e-19] [^78c8e-46] -->
 ## Mechanism Census
 
-Superseded mechanism generations must be deleted in the same milestone, enforced by a mechanism_census test that fails CI when a second generation appears. <!-- [^2e544-3] -->
+The mechanism_census test fails CI when a second generation of any tracked capability appears.
 
+<!-- citations: [^2e544-3] [^2e544-342] -->
 ## CI Parity Matrix
 
-A CI parity matrix runs every journey acceptance test with backend ∈ {local, bunker} to prevent silent second-classness regression. <!-- [^2e544-4] -->
+A bunker parity matrix runs every journey acceptance test with backend ∈ {local, bunker} via the nak bunker harness, blocking merge on divergence.
 
+<!-- citations: [^2e544-4] [^2e544-343] [^2e544-426] -->
 ## Dormant-Surface Inventory
 
 A dormant-surface inventory test fails CI on unregistered public enum variants or hooks with no production construction site. <!-- [^2e544-5] -->
@@ -61,8 +63,9 @@ Stale cross-module contract comments must cite a test or are review-rejectable. 
 
 ## Multi-Instance Interop
 
-Two NmpApp instances in one process pass an interop test with separate wallets, bunker sessions, and no crosstalk. <!-- [^2e544-7] -->
+The two-instance interop test runs two NmpApp instances in one process with separate wallets, separate bunker sessions, and no crosstalk.
 
+<!-- citations: [^2e544-7] [^2e544-427] -->
 ## Kotlin Flatc-Drift CI Gate
 
 The Kotlin flatc-drift CI gate must be extended to cover `nmp/kernel/*.kt` hand-written bindings, not just `nmp/transport/*.kt`, to prevent silent binding divergence. The cross-platform typed-decoder parity gap (projections wired on iOS but silently null on Android) has no CI gate to catch it; issue #1288 was filed for extending the Kotlin drift gate to cover `nmp/kernel/*.kt` bindings.
@@ -76,3 +79,14 @@ A Swift flatc-drift CI gate (`check-swift-flatc-drift.sh`) was added to detect s
 ## Fix-Agent Reversal Gate
 
 When a fix agent reverses documented tested features rather than genuine bugs, those reversals must be split out and escalated as owner decisions instead of merged autonomously. <!-- [^02745-32] -->
+
+## Release Versioning
+
+NMP release version is 0.7.0 with tag nmp-v0.7.0 at SHA ce0097cde.
+
+The parked crates nmp-blossom and nmp-nip60 were unbuildable when excluded from the workspace because they still inherited edition/version/license/repository via `workspace = true`, fixed in #1427 by adding an empty `[workspace]` table per parked crate, making each its own workspace root so they remain standalone-buildable as external path dependencies.
+
+<!-- citations: [^2e544-344] [^2e544-345] [^2e544-386] [^2e544-428] -->
+## Nightly CI Gates
+
+The nightly CI gate for feed-idle (`ffi-stress feed-idle --fail-on-gate`) is wired into the existing s3-snapshot-pressure-gate workflow so future changes that break feed omission fail nightly CI. <!-- [^78c8e-463] -->

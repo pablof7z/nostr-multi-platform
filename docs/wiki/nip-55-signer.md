@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -20,9 +20,9 @@ sources:
 
 ## Architecture & Integration
 
-NIP-55 (Amber external signer) ADR-0048 places the signer behind the uniform V-78 SignEventForAccount port with a 90-second per-op interactive deadline, pubkey-only persistence, and degradation via the existing connection-state pattern. The NIP-55 capability seam uses a registry-handle-id context for in-flight dispatch (not a raw Arc pointer), preventing a teardown use-after-free window where nmp_app_set_capability_callback(None) could free the context while a dispatch is active. HL integrates NIP-55 via UniFFI (not JNI), with a blocking timed drain using recv_timeout and a registry-handle-id context for safe teardown rather than raw Arc pointer. NIP-55 Stage 2 was initially built but unwired (the V-14 pattern): the ExternalSignerCapabilityBridge existed in both apps but was registered/dispatched nowhere, and no kernel↔host capability seam existed. The ExternalSignerCapability bridge dispatches Intent vs ContentResolver based on the host's granted_permissions, with Kotlin reporting raw results (per D7 doctrine that the host decides nothing about signing).
+NIP-55 (Amber external signer) ADR-0048 places the signer behind the uniform V-78 SignEventForAccount port with a 90-second per-op interactive deadline, pubkey-only persistence, and degradation via the existing connection-state pattern. A pubkey-only active_pubkey() accessor replaces active_local_keys() for identity-only consumers (WOT bootstrap, DM relay list, self-zap receipts), enabling bunker accounts. The NIP-55 capability seam uses a registry-handle-id context for in-flight dispatch (not a raw Arc pointer), preventing a teardown use-after-free window where nmp_app_set_capability_callback(None) could free the context while a dispatch is active. HL integrates NIP-55 via UniFFI (not JNI), with a blocking timed drain using recv_timeout and a registry-handle-id context for safe teardown rather than raw Arc pointer. NIP-55 Stage 2 was initially built but unwired (the V-14 pattern): the ExternalSignerCapabilityBridge existed in both apps but was registered/dispatched nowhere, and no kernel↔host capability seam existed. The ExternalSignerCapability bridge dispatches Intent vs ContentResolver based on the host's granted_permissions, with Kotlin reporting raw results (per D7 doctrine that the host decides nothing about signing).
 
-<!-- citations: [^da6b1-18] [^da6b1-47] [^da6b1-71] [^da6b1-84] -->
+<!-- citations: [^da6b1-18] [^da6b1-47] [^da6b1-71] [^da6b1-84] [^2e544-451] -->
 ## Timeouts & Deadlines
 
 The per-op sign timeout for NIP-55 interactive approval is 90 seconds, sourced from a per-op property (RemoteSignerHandle::sign_timeout()) rather than a bumped global PENDING_SIGN_TIMEOUT; NIP-46 and local signers remain at 5 seconds. The named-account deadline uses sign_deadline_for(signer_pubkey) instead of the active account's budget, preventing 5-second timeouts on 90-second NIP-55 operations. The hl app's NIP-55 sign-in deadline was initially 30s (truncating deliberate Amber approvals); the fix mirrors PairBunker end-to-end via pair_nip55 + OpOutcome::Nip55SignIn with credential persisted only after success, and raised the deadline to 310s (OP_DEADLINE_SIGNER_PAIR) matching the interactive-approval timeout.
@@ -40,9 +40,9 @@ Android apps support NIP-55 signing via an ExternalSignerCapabilityBridge that d
 <!-- citations: [^da6b1-21] [^da6b1-50] [^da6b1-73] [^da6b1-86] -->
 ## DM Handling
 
-DM send through NIP-55 requires zero production code changes because `active_signer_for_seal()` routes any RemoteSignerHandle impl (NIP-46 or NIP-55) through the same nip44 seal seam; DM receive-side decrypt wiring is deferred to V-08/#961 to avoid creating a NIP-55-specific receive path that must later be unified.
+DM send through NIP-55 requires zero production code changes because `active_signer_for_seal()` routes any RemoteSignerHandle impl (NIP-46 or NIP-55) through the same nip44 seal seam; DM receive-side decrypt wiring is deferred to V-08/#961 to avoid creating a NIP-55-specific receive path that must later be unified. The bulk-decrypt policy for bunker accounts surfaces errors-as-state (decrypt_state: ok|limited|unavailable + undecrypted_count), never silent no-op.
 
-<!-- citations: [^da6b1-22] [^da6b1-51] [^da6b1-74] [^da6b1-87] -->
+<!-- citations: [^da6b1-22] [^da6b1-51] [^da6b1-74] [^da6b1-87] [^2e544-452] -->
 ## Known Issues & Follow-Ups
 
 The `restore_nip55_session` kernel bug (NMP #1238) prevents silent cold-start restore of NIP-55 accounts, causing one Connect dialog per cold start in both hl and podcast-player; every cold start re-prompts one Connect dialog, suspected to be an NMP-side hook-registration init-order issue. hl's SignInNip55 was initially fire-and-forget with nothing completing the login or clearing is_signing_in; the fix mirrors PairBunker end-to-end via pair_nip55 + OpOutcome::Nip55SignIn with credential persisted only after success. The D7 Kotlin-side permissions-format conversion (internal NIP-55 format to Amber's {type,kind} JSON) is triplicated across vendor copies and should move to Rust per D7 as a follow-up, not a blocker.

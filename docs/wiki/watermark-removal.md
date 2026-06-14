@@ -8,11 +8,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
 ---
 
 # Watermark Removal
@@ -21,7 +22,17 @@ sources:
 
 The live since-floor for REQ subscriptions is derived from store content (newest matching event per author/coord/tag) via watermark_fn, not from persisted WatermarkRow.synced_up_to — which has zero production writers. The persisted watermark machinery (WatermarkKey/WatermarkRow/SyncMethod/Coverage, read_watermark/write_watermark/coverage trait methods, LMDB watermarks sub-db) has been deleted as dead code.
 
-<!-- citations: [^02745-109] [^02745-121] [^02745-136] -->
+The address-pointer (KindDtag) watermark branch uses the authors' min/abort rule instead of max/ignore-empty, aligning with the V-118 soundness standard.
+
+One stray stored event per author permanently suppresses that author's backfill because the watermark fn floors a shape when every author has ≥1 stored event regardless of how that event arrived.
+
+Enabling Phase-2 LRU eviction will punch permanent holes under the watermark floor because evicted events are never re-fetched (the standing sub never REQs below watermark+1), and the ADR-0045 structural guard checks shape-class coverage not data completeness.
+
+NEG-OPEN inherits the watermark-floored since, so set reconciliation cannot repair below-floor gaps — the correctness layer is reduced to a bandwidth optimization of the already-truncated REQ.
+
+The persisted claims sub-db, ClaimerId, and OverPinned machinery are deleted; gc_step receives a derived pin set from event_claims + timeline + active interests.
+
+<!-- citations: [^2e544-357] [^2e544-359] [^2e544-358] [^02745-109] [^02745-121] [^02745-136] [^2e544-381] [^2e544-403] [^2e544-442] -->
 ## T129 Watermark Rewrite and Rule 1 Reversal
 
 R4 defects 2 (T129 watermark rewrite) and 4 (Rule 1 wildcard absorption) were documented, tested features, not bugs; their reversal was escalated as owner decisions (#1281, #1282) rather than merged autonomously. <!-- [^02745-110] -->

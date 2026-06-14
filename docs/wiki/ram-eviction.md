@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -26,6 +26,6 @@ Open-view RAM eviction pins events matching any of four sets per open thread vie
 <!-- citations: [^da6b1-37] [^da6b1-60] -->
 ## Budget & Gate Status
 
-The GC resumable Phase-1 cursor, O(1) Phase-2 count, and hourly tombstone gate constitute honest budgets; the LRU event-count ceiling (HOT_EVENT_CEILING) is disabled until store-claims are wired. LRU recency stamps are deferred to a batch flush (once per 60s GC pass via AtomicU64) instead of a per-read write transaction. Issue #1090 is resolved with floor-coherent eviction: derive_store_pin_set pins every stored event matching an active floored shape with created_at <= shape_floor, reusing the same content-derived floor on the GC path and closing the middle-event eviction hole, and re-enabling the HOT_EVENT_CEILING (10,000) in production. The persisted WatermarkRow machinery (write_watermark/coverage) has zero production writers; only nmp-testing writes rows, so the live since-floor is derived from store content (newest matching event) rather than from persisted watermarks. The dead persisted-watermark machinery is deleted entirely. `GcBudget::production()` now sets `max_total_events = HOT_EVENT_CEILING` (10,000), with `default()` keeping `usize::MAX` for tests. Evicted-root attribution must be reclaimed from the state when `insert_returning_evicted` displaces a root, preventing attribution leaks. The memory one-change fix is threading a derived pin-set into gc_step and deleting the persisted claims sub-db, ClaimerId, and OverPinned, collapsing three pin representations into one.
+The GC resumable Phase-1 cursor, O(1) Phase-2 count, and hourly tombstone gate constitute honest budgets; the LRU event-count ceiling (HOT_EVENT_CEILING) is disabled until store-claims are wired. LRU recency stamps are deferred to a batch flush (once per 60s GC pass via AtomicU64) instead of a per-read write transaction. Issue #1090 is resolved with floor-coherent eviction: derive_store_pin_set pins every stored event matching an active floored shape with created_at <= shape_floor, reusing the same content-derived floor on the GC path and closing the middle-event eviction hole, and re-enabling the HOT_EVENT_CEILING (10,000) in production. The persisted WatermarkRow machinery (write_watermark/coverage) has zero production writers; only nmp-testing writes rows, so the live since-floor is derived from store content (newest matching event) rather than from persisted watermarks. The dead persisted-watermark machinery is deleted entirely. `GcBudget::production()` now sets `max_total_events = HOT_EVENT_CEILING` (10,000), with `default()` keeping `usize::MAX` for tests. Evicted-root attribution must be reclaimed from the state when `insert_returning_evicted` displaces a root, preventing attribution leaks. gc_step accepts a derived pinned-event set from the kernel (`gc_step(budget, now_secs, pinned: &HashSet<EventId>)` or a `PinProvider` callback) instead of using the persisted claims sub-db; the persisted claims sub-db, `ClaimerId`, and `OverPinned` machinery are deleted.
 
-<!-- citations: [^da6b1-38] [^2e544-32] [^02745-18] [^02745-48] [^2e544-67] [^02745-91] [^02745-106] -->
+<!-- citations: [^da6b1-38] [^2e544-32] [^02745-18] [^02745-48] [^2e544-67] [^02745-91] [^02745-106] [^2e544-400] [^2e544-471] -->

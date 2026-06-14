@@ -37,16 +37,18 @@ The claimed_profiles decode cluster is promoted to the public typed surface (pub
 
 ## Android Version Pinning
 
-Android consumers must skip v0.3.0 and pin v0.4.0 directly because v0.3.0 shipped with Android completely dark (the KernelUpdateFrameDecoder was not rebuilt for the typed-frame wire). <!-- [^da6b1-32] -->
+Android consumers must skip v0.3.0 and pin v0.4.0 directly because v0.3.0 shipped with Android completely dark (the KernelUpdateFrameDecoder was not rebuilt for the typed-frame wire). The final master SHA consumers should pin is 92fdfca327a782b82ee999a414190d39265b8243 (tag nmp-v0.7.1).
 
+<!-- citations: [^da6b1-32] [^2e544-397] -->
 ## Bunker Connection State Localization
 
 The bunker connection state label and tone should be moved into Rust (BunkerConnectionStateDto) so both shells render verbatim through a single tone resolver instead of synthesizing English labels and hardcoding colors; tracked as #1099 at priority p3/post-v1. <!-- [^da6b1-33] -->
 
 ## Handle & Actor Startup
 
-nmp_app_new returns a passive handle; nmp_app_start moves config into the spawned actor, deleting the preflight kernel and the late-config window. The OnceLock globals (bunker hook, external signer hook, wallet runtime) are replaced by per-app slots created in nmp_app_new. <!-- [^2e544-31] -->
+nmp_app_new returns a passive handle with config; nmp_app_start moves config into the spawned actor, deleting the preflight kernel and the #601 rev hack. No setter exists after start, making late config inexpressible and closing #618 by construction (no LateWiring runtime diagnostic will be built).
 
+<!-- citations: [^2e544-31] [^2e544-378] [^2e544-417] [^2e544-469] -->
 ## iOS KernelHandle Lifetime
 
 iOS `KernelHandle.listen()` uses `passUnretained` with an implicit ARC lifetime dependency; `passRetained` would be safer given Rust's quiescence contract that no callback fires after `nmp_app_set_update_callback(raw, nil, nil)` returns. <!-- [^02745-11] -->
@@ -89,3 +91,13 @@ The push-event file-size CI workflow should fall back to the merge-base (or skip
 ## WASM Spec Location
 
 The WASM spec (ADR-0047, wasm-surface.md) belongs at the framework level, not under the chirp example app's design docs. <!-- [^bf035-167] -->
+
+## Incremental Apply Declaration
+
+Omission is gated on a per-instance nmp_app_declare_incremental_apply() capability. The function returns an i32 error code (0=ok, 1=AlreadyStarted after nmp_app_start, 2=RegistryUnavailable, -1=null app) rather than using a debug_assert, ensuring fail-closed behavior on the Android FFI path. On Android, a nonzero return aborts initialization (the dead-handle sentinel causes all subsequent JNI calls to no-op). When nmp_app_declare_incremental_apply returns nonzero on Android, the app pointer allocated at line 53 is freed via nmp_app_free(app) on the error path before the early return to avoid a memory leak, since Session (which owns the free) is never constructed.
+
+<!-- citations: [^78c8e-456] [^78c8e-472] -->
+
+## Gallery Kotlin Regeneration
+
+The gallery's curated minimal nmp/transport Kotlin subset (SnapshotFrame.kt, Value.kt) must not be force-regenerated; only android/app/src/main/java/nmp/ gets the full regen. <!-- [^78c8e-473] -->

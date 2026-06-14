@@ -8,12 +8,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
+  - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
 ---
 
 # Shell Protocol Violations
@@ -34,4 +35,12 @@ The desktop keyring stores nsec as plaintext in a mode-0600 file (bypassing macO
 
 ## Composition Instability & Churn
 
-Android NostrAvatar and NostrProfileName key their DisposableEffect on profileHost, which changes identity on every snapshot tick (because rememberKernelProfileHost uses remember(model, profiles) with a fresh map), causing an infinite claim/release churn loop. The fix for the Android claim churn is to remove profileHost from the DisposableEffect key and stabilize KernelProfileHost by keying remember on model only, threading the latest profiles via rememberUpdatedState. <!-- [^02745-69] -->
+Android NostrAvatar and NostrProfileName key their DisposableEffect on profileHost, which changes identity on every snapshot tick (because rememberKernelProfileHost uses remember(model, profiles) with a fresh map), causing an infinite claim/release churn loop. The fix for the Android claim churn is to remove profileHost from the DisposableEffect key and stabilize KernelProfileHost by keying remember on model only, threading the latest profiles via rememberUpdatedState.
+
+Spawn-at-start makes nmp_app_new return a passive handle (owned config + pre-created channel) and nmp_app_start moves config into the spawned actor, deleting the preflight kernel, the #601 rev hack, and the first-command trap, and making late config inexpressible. No LateWiring runtime diagnostic is built for #618 because spawn-at-start makes the failure inexpressible. The five wrong-shaped queued fixes (#1090, V-08 Stage 3, the publish-auth M6 plan, #618's runtime diagnostic, ADR-0036's never-built topology) are re-reviewed, re-decided, and corrected before implementation.
+
+ProtocolCommandContext::kernel_mut() is deleted and replaced with narrow capability traits (WalletKernelAccess, ZapProfileLookup), making ambient authority over the kernel unrepresentable. DispatchHostOp is merged into the Protocol seam with whole-body catch_unwind panic isolation preserved via a narrow HostOpHandlerAccess capability. All five process-global hook/runtime singletons (ACTIVE_WALLET_RUNTIME, GLOBAL_BROKER, bunker_hook, external_signer_hook, GLOBAL_DRIVER) are replaced by per-app ports.
+
+NMP breaking releases land behind a minor version bump (0.7.x) with a BREAKING CHANGELOG for external consumers; external git-rev-pinning consumers (podcast-player, hl) must pin across the nmp-v0.7.0 behavioral change deliberately. win-the-day as checked out locally is not an NMP consumer and the external-consumers doc must be reconciled.
+
+<!-- citations: [^02745-69] [^2e544-438] [^2e544-439] [^2e544-456] -->

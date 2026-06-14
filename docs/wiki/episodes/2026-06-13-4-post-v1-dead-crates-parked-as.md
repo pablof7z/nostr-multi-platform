@@ -4,7 +4,7 @@ date: 2026-06-13
 session: 027459be-7102-4e1a-b6d4-02e8e7863642
 transcript: /Users/pablofernandez/.claude/projects/-Users-pablofernandez-Work-nostr-multi-platform/027459be-7102-4e1a-b6d4-02e8e7863642.jsonl
 salience: reversal
-status: active
+status: superseded
 subjects:
   - nmp-nip60
   - nmp-blossom

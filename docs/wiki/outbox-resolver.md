@@ -23,6 +23,8 @@ sources:
 
 The OutboxResolver must apply the blocked-relay filter on publish, not just subscribe, to prevent publishing to user-blocked relays. The publish path applies this filter across all lanes including explicit targets. The publish-engine holds an Arc<dyn BlockedRelayLookup> resolved per publish so that publish and subscribe share one blocked-relay cache.
 
+Follow read-your-writes (local publish routed through the same ingest + observer fan-out as relay events) landed as PR #1199. Previously, tapping Follow updated the router immediately but never reached the follow-list projection or ActiveFollowSet until restart, because local publish skipped observer fan-out and the relay echo deduped as Duplicate. <!-- [^2e544-398] -->
+
 <!-- citations: [^02745-13] [^02745-40] [^02745-61] -->
 ## URL Canonicalization
 
@@ -44,8 +46,11 @@ Wildcard-kinds × concrete-kinds merges must be refused (mirroring Rule 9) to pr
 
 ## Auth-Relay Publish Parking
 
-Publishing to AUTH-required relays must park the event until Authenticated instead of failing, as implemented in PR #1192. <!-- [^2e544-65] -->
+Publishing to AUTH-required relays must park the event via the availability-gate seam and re-dispatch on Authenticated instead of failing terminal (landed as PR #1192). The AUTH handler re-dispatches via mark_publish_relay_available. Previously, publishing to an AUTH-requiring relay raced the handshake and settled FailedAfterRetries because the one-shot reauth budget was consumed within a 250ms tick.
 
+Failed publish terminals must not double-report into a last-writer-wins global slot that clobbers unrelated error toasts. <!-- [^2e544-453] -->
+
+<!-- citations: [^2e544-65] [^2e544-353] [^2e544-399] [^2e544-436] -->
 ## Score Map Ingest from Mainline
 
 The score map must be fed from mainline ingest—recording Hit on every EVENT attributed to (author, relay_url)—rather than only from claims. This activates the dormant W4 warm filter and triggers the record_failure decrement path. <!-- [^2e544-66] -->

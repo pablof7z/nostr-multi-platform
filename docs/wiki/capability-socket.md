@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-14
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -39,3 +39,9 @@ set_pending_mls_autopublish must remain pub(crate) (not pub); the test exercises
 ## Error Mapping
 
 CapabilityCredentialStore error mapping ensures no transport/handler failure path maps to NoEntry; only explicit KeyringStatus::NotFound yields NoEntry, all others yield PlatformFailure. <!-- [^78c8e-97] -->
+
+## Capability Boundary
+
+ProtocolCommandContext::kernel_mut() is deleted; it previously granted full ambient authority over the Kernel to any boxed Protocol. The nine kernel methods the wallet runtime actually mutates are now exposed via a WalletKernelAccess capability trait. DispatchHostOp is merged into the Protocol seam, preserving its panic-isolation and persistent-handler semantics via a narrow HostOpHandlerAccess capability.
+
+<!-- citations: [^2e544-362] [^2e544-407] -->
