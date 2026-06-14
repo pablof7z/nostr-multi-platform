@@ -35,6 +35,13 @@ mod test_helpers;
 #[cfg(test)]
 #[path = "rung3_baseline_tests.rs"]
 mod rung3_baseline_tests;
+// ADR-0055 Rung 3 (D3-6) — encoder buffer reuse safety tests. Verifies the
+// no-aliasing invariant: each frame's `Vec<u8>` owns its bytes independently
+// after the builder is `reset()` on subsequent ticks. Lives in `kernel/` for
+// the same reason as `rung3_baseline_tests`: it drives `make_update` directly.
+#[cfg(test)]
+#[path = "rung3_buffer_reuse_tests.rs"]
+mod rung3_buffer_reuse_tests;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on
@@ -359,7 +366,14 @@ impl Kernel {
         // is encoded directly into the Tier-3 FlatBuffers fields. For Rust
         // test helpers that still need a JSON view, use `make_update_value_for_test`
         // which serializes the struct directly (no wire roundtrip needed).
-        let encoded = encode_snapshot_with_envelope(&typed, &update, &epoch_stamp);
+        //
+        // ADR-0055 Rung 3 (D3-6): pass the kernel-owned reusable builder.
+        // `encode_snapshot_with_envelope` calls `builder.reset()` at the top
+        // and copies out the finished bytes via `to_vec()` before returning,
+        // so `encoded` owns its bytes independently of `self.snapshot_builder`.
+        // The builder's internal heap allocation is retained across ticks,
+        // eliminating the per-tick `FlatBufferBuilder::new()` allocation.
+        let encoded = encode_snapshot_with_envelope(&mut self.snapshot_builder, &typed, &update, &epoch_stamp);
         // ADR-0055 Rung 2 (production path): advance the last-emitted baseline.
         // Test builds do this in the oracle AFTER its check (see `rung2_stamp`);
         // the cfg ensures no double-call.
