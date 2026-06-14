@@ -26,6 +26,22 @@ import {
   type DecodedRelayStatus,
 } from "./updateFrame";
 
+/** Builds a unique worker-request correlation id.
+ *
+ * `Date.now()` has millisecond resolution, so two calls in the same tick
+ * (e.g. two component `onMount` handlers that both call `dispatch`) can
+ * produce the SAME string — the second `pending.set()` would silently
+ * overwrite the first, leaking the first promise.  The monotonic `seq`
+ * counter is appended to guarantee uniqueness regardless of timing.
+ *
+ * @param prefix Human-readable tag (e.g. `"web"`, `"web-signer"`).
+ * @param seq    Per-client monotonic counter; caller is responsible for
+ *               incrementing it on every call.
+ */
+export function makeCorrelationId(prefix: string, seq: number): string {
+  return `${prefix}-${Date.now()}-${seq}`;
+}
+
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
   /** Identifies which runtime path is active.
@@ -291,6 +307,7 @@ class WorkerNmpClient extends BaseClient {
   private readonly pending = new Map<string, (snapshot: RuntimeSnapshot) => void>();
   private helloReady: Promise<void>;
   private resolveHello?: () => void;
+  private nextCorrelationId = 0;
 
   constructor() {
     super("worker");
@@ -327,7 +344,7 @@ class WorkerNmpClient extends BaseClient {
       type: "dispatch",
       action_type: actionType,
       payload,
-      correlation_id: `web-${Date.now()}`,
+      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
     });
   }
 
@@ -336,7 +353,7 @@ class WorkerNmpClient extends BaseClient {
     return this.request({
       type: "app_action",
       action,
-      correlation_id: `web-${Date.now()}`,
+      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
     });
   }
 
@@ -346,7 +363,7 @@ class WorkerNmpClient extends BaseClient {
       type: "set_signer",
       kind: "nip07",
       pubkey_hex: pubkeyHex,
-      correlation_id: `web-signer-${Date.now()}`,
+      correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
     });
   }
 
@@ -384,6 +401,7 @@ class InProcessNmpClient extends BaseClient {
     "browser_bridge_unavailable",
     "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
   );
+  private nextCorrelationId = 0;
 
   constructor() {
     super("in_process_fallback");
@@ -414,7 +432,7 @@ class InProcessNmpClient extends BaseClient {
       type: "dispatch",
       action_type: actionType,
       payload,
-      correlation_id: `web-${Date.now()}`,
+      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
     });
   }
 
@@ -422,7 +440,7 @@ class InProcessNmpClient extends BaseClient {
     return this.send({
       type: "app_action",
       action,
-      correlation_id: `web-${Date.now()}`,
+      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
     });
   }
 
@@ -431,7 +449,7 @@ class InProcessNmpClient extends BaseClient {
       type: "set_signer",
       kind: "nip07",
       pubkey_hex: pubkeyHex,
-      correlation_id: `web-signer-${Date.now()}`,
+      correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
     });
   }
 

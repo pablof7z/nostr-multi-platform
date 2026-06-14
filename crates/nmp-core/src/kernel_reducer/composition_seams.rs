@@ -27,6 +27,7 @@ use std::sync::Arc;
 use crate::actor::register_rust_observer;
 use crate::slots::ActiveAccountSlot;
 use crate::store::EventStore;
+use crate::substrate::{ContactsLookup, IngestParser, ProfileLookup};
 use crate::{KernelEventObserver, KernelEventObserverId, TypedProjectionData};
 
 impl super::KernelReducer {
@@ -97,4 +98,57 @@ impl super::KernelReducer {
         self.kernel.event_store_handle()
     }
 
+    /// Install the profile lookup used by kernel profile readers.
+    ///
+    /// Wasm composition roots cannot go through the native `AppHost`
+    /// `set_profile_lookup` seam, so they use this method to share one
+    /// profile cache between the kind:0 ingest parser and kernel readers.
+    pub fn set_profile_lookup(&mut self, lookup: Arc<dyn ProfileLookup>) {
+        self.kernel.set_profile_lookup(lookup);
+    }
+
+    /// Install the contacts lookup used by kernel follow-feed readers.
+    ///
+    /// Wasm composition roots cannot go through the native `AppHost`
+    /// `set_contacts_lookup` seam, so they use this method to share one
+    /// contacts cache between the kind:3 ingest parser and kernel readers.
+    pub fn set_contacts_lookup(&mut self, lookup: Arc<dyn ContactsLookup>) {
+        self.kernel.set_contacts_lookup(lookup);
+    }
+
+    /// Register a post-store ingest parser against the wrapped kernel.
+    ///
+    /// Mirrors `NmpApp::register_ingest_parser` for reducer-owned wasm
+    /// compositions. Parsers registered here fire on the same
+    /// `project_accepted_event` path as native ingest.
+    pub fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>) {
+        self.kernel.register_ingest_parser(kind, parser);
+    }
+
+    /// Snapshot the active account's timeline-author projection.
+    ///
+    /// This is a reducer-owned wrapper around the kernel accessor so wasm
+    /// composition tests can assert the follow-feed planner projection without
+    /// reaching through private kernel state.
+    #[must_use]
+    pub fn active_timeline_authors(&self) -> Vec<String> {
+        self.kernel.active_timeline_authors()
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl super::KernelReducer {
+    #[allow(clippy::too_many_arguments)]
+    pub fn project_raw_event_for_test(
+        &mut self,
+        id: &str,
+        pubkey: &str,
+        created_at: u64,
+        kind: u32,
+        tags: Vec<Vec<String>>,
+        content: &str,
+    ) {
+        self.kernel
+            .project_raw_event_for_test(id, pubkey, created_at, kind, tags, content);
+    }
 }

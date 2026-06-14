@@ -8,7 +8,7 @@ import {
   sendDmCommand,
   walletCommand,
 } from "./actions";
-import { createNmpClient, type RuntimeSnapshot } from "./client";
+import { createNmpClient, makeCorrelationId, type RuntimeSnapshot } from "./client";
 import { DegradedRuntime } from "./degradedRuntime";
 import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
@@ -86,6 +86,24 @@ describe("DegradedRuntime protocol flow", () => {
         message: "expected protocol 1, got 2",
       },
     ]);
+  });
+});
+
+describe("makeCorrelationId", () => {
+  it("produces distinct ids for consecutive sequence numbers (same-tick dispatch safety)", () => {
+    // Two dispatches fired in the same millisecond used to collide because
+    // Date.now() can return the same value.  The monotonic seq counter makes
+    // each id unique regardless of clock resolution.
+    const id0 = makeCorrelationId("web", 0);
+    const id1 = makeCorrelationId("web", 1);
+    expect(id0).not.toBe(id1);
+  });
+
+  it("encodes the prefix so signer ids cannot collide with dispatch ids", () => {
+    // Both use seq=0 but distinct prefixes must yield distinct strings.
+    const dispatch = makeCorrelationId("web", 0);
+    const signer = makeCorrelationId("web-signer", 0);
+    expect(dispatch).not.toBe(signer);
   });
 });
 
