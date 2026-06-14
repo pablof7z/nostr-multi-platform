@@ -36,6 +36,22 @@ use nmp_core::KernelEventObserver;
 use nmp_feed::AttributionPayload as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string, NmpApp};
 
+// ─── Test-isolation guard ────────────────────────────────────────────────────
+//
+// Each test that spins up a real `nmp_app_new()` drives a full app lifecycle:
+// `nmp_app_new` eagerly spawns the actor thread (which builds the relay `Pool`
+// and its worker / translator threads) and the update-listener thread before any
+// `nmp_app_start`, and `nmp_app_free` only drops the box without joining them, so
+// teardown races forward after the test body returns. Concurrent libtest threads
+// then overlap one app's leaked teardown with the next app's setup over shared
+// C-ABI listener machinery — intermittently perturbing the OP-feed wiring under
+// CI load (the same class of harness contention that surfaced as a flaky
+// `reposted_by == None` in the sibling `op_feed_repost_hydration_test.rs`).
+// Serialize the whole-lifecycle tests so exactly one `NmpApp` is live at a time.
+// Poison-tolerant so one failing test does not cascade into the siblings —
+// the established idiom across the `nmp_app_new`-based integration tests.
+static SERIAL: Mutex<()> = Mutex::new(());
+
 // Valid-looking 64-hex pubkeys (distinct), mirroring the rung-4/rung-5 idioms.
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 const BOB: &str = "bbbb000000000000000000000000000000000000000000000000000000000002";
@@ -125,6 +141,7 @@ fn read_projection(app: *mut NmpApp, key: &str) -> Option<serde_json::Value> {
 
 #[test]
 fn registers_op_feed_engine_under_home_key() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
@@ -163,6 +180,7 @@ fn registers_op_feed_engine_under_home_key() {
 
 #[test]
 fn followed_reply_surfaces_root_with_attribution() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null());
 
@@ -300,6 +318,7 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
     // The structural contract (no `push_interest`, no
     // `ActorCommand::Open*Subscription`, no `dispatch_action`) is enforced by
     // the function body — there is no such call in `op_feed_defaults.rs`.
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null());
 

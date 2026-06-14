@@ -47,6 +47,7 @@ import org.nmp.android.components.NostrAvatar
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
+import org.nmp.android.model.ProfileCard
 
 /**
  * NIP-17 direct-message conversations screen — Android peer of iOS `DmListView`.
@@ -61,8 +62,13 @@ import org.nmp.android.model.DmMessage
  */
 @Composable
 fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
+    // Single collection of the kernel snapshot for this screen subtree. Both the
+    // conversation list (`dmInbox`) and the claim-host (`resolvedProfiles`) read
+    // from this one snapshot generation, so conversations and author profiles can
+    // never reflect different frames (issue #1303 — was double-collected before).
     val s by model.state.collectAsStateWithLifecycle()
     val dmInbox = s.projections?.dmInbox ?: DmInboxSnapshot()
+    val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
 
     var selectedPeerPubkey by remember { mutableStateOf<String?>(null) }
 
@@ -77,6 +83,7 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
             DmConversationListScreen(
                 model = model,
                 dmInbox = dmInbox,
+                resolvedProfiles = resolvedProfiles,
                 onSelectConversation = { pubkey -> selectedPeerPubkey = pubkey }
             )
         }
@@ -90,6 +97,7 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
 private fun DmConversationListScreen(
     model: KernelModel,
     dmInbox: DmInboxSnapshot,
+    resolvedProfiles: Map<String, ProfileCard>,
     onSelectConversation: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -97,8 +105,6 @@ private fun DmConversationListScreen(
         if (claim) model.claimProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
-    val state by model.state.collectAsStateWithLifecycle()
-    val resolvedProfiles = state.projections?.resolvedProfiles ?: emptyMap()
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,

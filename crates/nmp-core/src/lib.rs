@@ -421,6 +421,7 @@ pub mod __ffi_internal {
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
     pub use crate::store::{RawEvent, VerifiedEvent};
+    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED}; // ADR-0055 churn
 
     /// NIP golden-tag conformance harness — drives the (crate-private) command
     /// handlers against a real `Kernel` + `IdentityRuntime` and returns the
@@ -428,8 +429,7 @@ pub mod testing {
     /// structure. See `tests/nip_tag_conformance.rs`.
     pub use crate::actor::ConformanceHarness;
 
-    use std::sync::mpsc;
-    use std::thread;
+    use std::{sync::mpsc, thread};
 
     /// Spawn the kernel actor on a dedicated thread.
     ///

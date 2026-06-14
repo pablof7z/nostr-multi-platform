@@ -202,6 +202,40 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
     true
 }
 
+/// ADR-0055 Rung 0 — read cumulative per-projection churn counters.
+///
+/// Returns the process-lifetime totals of typed projections serialized and
+/// changed (content differed from the prior tick) across ALL `make_update`
+/// ticks since process start. The caller takes a snapshot before and after a
+/// measurement window and computes the delta to get per-window figures.
+///
+/// Both counters start at 0 at process start and never decrease.
+/// Thread-safe (backed by `AtomicU64 + Relaxed` loads).
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Never part of the
+/// production FFI ABI.
+#[no_mangle]
+pub extern "C" fn nmp_app_read_projection_churn_stats(
+    out_serialized: *mut u64,
+    out_changed: *mut u64,
+) {
+    use std::sync::atomic::Ordering;
+    if !out_serialized.is_null() {
+        // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+        unsafe {
+            *out_serialized =
+                nmp_core::testing::PROCESS_PROJECTIONS_SERIALIZED.load(Ordering::Relaxed);
+        }
+    }
+    if !out_changed.is_null() {
+        // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+        unsafe {
+            *out_changed =
+                nmp_core::testing::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
+        }
+    }
+}
+
 /// Read a single snapshot-projection's JSON by key, returning a heap-owned
 /// C string the caller must free via [`crate::free::nmp_free_string`].
 ///

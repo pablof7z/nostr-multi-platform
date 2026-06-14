@@ -49,7 +49,17 @@ fun ThreadScreen(
     val resolvedProfiles = projections?.resolvedProfiles ?: emptyMap()
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
 
+    // Provide the on-demand claimer at the thread root so `RememberProfileClaim`
+    // calls in thread author rows are live (not no-ops) — mirrors TimelineScreen
+    // and DmConversationListScreen. Without it, thread author display names never
+    // trigger an on-demand kind:0 fetch (issue #1303).
+    val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
+        if (claim) model.claimProfile(pubkey, consumerId)
+        else model.releaseProfile(pubkey, consumerId)
+    }
+
     CompositionLocalProvider(
+        LocalProfileClaimer provides claimer,
         LocalResolvedProfiles provides resolvedProfiles,
         LocalNostrProfileHost provides profileHost,
     ) {

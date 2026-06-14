@@ -1673,10 +1673,20 @@ pub(super) fn dispatch_command(
             // `ProtocolCommand panicked` (the same observable surface as an
             // `Err` return) and the actor survives.
             //
-            // Borrow scoping: `kernel_cell.borrow_mut()` is taken INSIDE the
-            // closure, so on a panic the unwinding closure drops `kernel_ref`
-            // (releasing the `RefCell` borrow) before `catch_unwind` returns —
-            // the post-arm `emit_now` re-borrow is therefore always safe.
+            // Borrow scoping (#1364 / ADR-0052 §D5): NO long-lived
+            // `kernel_cell.borrow_mut()` is held across `cmd.run`. Every kernel
+            // touch a command makes — including the very first one, the
+            // `HostOpCommand`'s `record_action_stage_requested` write — goes
+            // through a per-call `try_borrow_mut` on the sibling adapters (see
+            // `ActionStageTrackerAdapter::record_requested`). Because no borrow
+            // outlives the call, that `try_borrow_mut` always succeeds, so a
+            // panic-guarded `HostOpCommand` records its `Requested` stage like
+            // every other action path (the #1356 regression — a held
+            // `with_kernel` exclusive borrow that made the `try_borrow_mut`
+            // return `Err` and silently drop the stage — was eliminated when
+            // that exclusive borrow was deleted). On a panic the unwinding
+            // closure has no outstanding `RefCell` borrow to drop, so the
+            // post-arm `emit_now` re-borrow is always safe.
             // `AssertUnwindSafe` is required because the closure captures `&mut`
             // state (`outbound`, the adapters' shared `RefCell`s) across the
             // unwind boundary; that is sound here because a panic abandons the
