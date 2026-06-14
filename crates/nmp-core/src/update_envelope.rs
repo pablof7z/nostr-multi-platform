@@ -23,6 +23,8 @@ use std::fmt;
 mod projection_state;
 mod relay_status;
 mod tier3_frame;
+mod typed_projection_decode;
+use typed_projection_decode::decode_typed_projections;
 pub use projection_state::WireProjectionState;
 pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};
 pub(crate) use tier3_frame::{encode_snapshot_with_envelope, FrameEpochStamp};
@@ -449,49 +451,6 @@ pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDe
         ))),
     }
 }
-
-fn decode_typed_projections(
-    snapshot: &fb::SnapshotFrame<'_>,
-) -> Result<Vec<TypedProjectionData>, UpdateFrameDecodeError> {
-    let Some(projections) = snapshot.typed_projections() else {
-        return Ok(Vec::new());
-    };
-    let mut out = Vec::with_capacity(projections.len());
-    for index in 0..projections.len() {
-        let projection = projections.get(index);
-        let key = projection
-            .key()
-            .ok_or_else(|| {
-                UpdateFrameDecodeError::InvalidValue(format!(
-                    "typed projection at index {index} missing key"
-                ))
-            })?
-            .to_string();
-        let typed = projection.payload().ok_or_else(|| {
-            UpdateFrameDecodeError::InvalidValue(format!(
-                "typed projection {key:?} missing payload"
-            ))
-        })?;
-        let payload = typed
-            .payload()
-            .map(|bytes| bytes.bytes().to_vec())
-            .unwrap_or_default();
-        out.push(TypedProjectionData {
-            key,
-            schema_id: typed.schema_id().unwrap_or_default().to_string(),
-            schema_version: typed.schema_version(),
-            file_identifier: typed.file_identifier().unwrap_or_default().to_string(),
-            payload,
-            // ADR-0055 Rung 2: decode rev + state. Old (pre-Rung-2) writers
-            // return 0 / Changed (FlatBuffers defaults) — correct: treat as
-            // a payload update at rev 0.
-            projection_rev: projection.projection_rev(),
-            state: projection.state().into(),
-        });
-    }
-    Ok(out)
-}
-
 
 /// Best-effort message extraction from a `catch_unwind` payload.
 pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
