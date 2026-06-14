@@ -139,14 +139,20 @@ impl Kernel {
             let exhausted = visited < visit_limit;
             if exhausted {
                 // Index has no more matches below the cursor — next query.
-                // K3 Stage B3: a cursor-less query that exhausted naturally
-                // covered its whole stored set this session, so clear any
-                // stale truncation mark (the floor is now safe for it).
-                if let Some(key) = super::cursor_less_query_key(&pending.queries[pending.query_idx])
-                {
+                // K3 Stage B3 / #1380: a cursor-less query that exhausted
+                // naturally covered its whole stored set this session, so clear
+                // THIS interest's truncation mark (the floor is now safe for it).
+                // Keyed by `completion_key` (SubKey-aware), so exhausting one
+                // interest never clears a different interest's still-active mark
+                // even when the two share the same Etag/Ptag shape.
+                let mut mark_changed = false;
+                if super::cursor_less_query_key(&pending.queries[pending.query_idx]).is_some() {
                     if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
-                        set.remove(&key);
+                        mark_changed = set.remove(&pending.completion_key);
                     }
+                }
+                if mark_changed {
+                    self.recompute_truncated_query_keys();
                 }
                 pending.query_idx += 1;
                 continue;
@@ -166,14 +172,19 @@ impl Kernel {
                 // suppress the relay re-send of the stranded tail. (When depth
                 // IS satisfied the cut is the intended `serve_depth_for_shape`
                 // limit, the documented ADR §9 over-serve, not a budget hole.)
-                if pending.remaining_depth > 0 {
-                    if let Some(key) =
-                        super::cursor_less_query_key(&pending.queries[pending.query_idx])
-                    {
-                        if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
-                            set.insert(key);
-                        }
+                // #1380: keyed by `completion_key` (SubKey-aware) so this
+                // interest's truncation mark is independent of any other
+                // interest that shares the same Etag/Ptag shape.
+                let mut mark_changed = false;
+                if pending.remaining_depth > 0
+                    && super::cursor_less_query_key(&pending.queries[pending.query_idx]).is_some()
+                {
+                    if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
+                        mark_changed = set.insert(pending.completion_key);
                     }
+                }
+                if mark_changed {
+                    self.recompute_truncated_query_keys();
                 }
                 pending.query_idx += 1;
                 continue;

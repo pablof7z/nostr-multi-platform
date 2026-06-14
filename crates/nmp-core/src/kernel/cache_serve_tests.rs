@@ -85,6 +85,42 @@ pub(super) fn seed_events(
     ids
 }
 
+/// Register a `LogicalInterest` (from `shape`) into the live interest registry
+/// under `sub_key`, WITHOUT enqueuing or draining a cache-serve.
+///
+/// #1380: the truncated-serve read view (`recompute_truncated_query_keys`)
+/// resolves completion-key marks back to query keys through the registry, so a
+/// truncated cursor-less interest must be present in the registry under the SAME
+/// `SubKey` its serve's `completion_key` is derived from. Production install
+/// paths register the interest before serving; tests that drive
+/// `enqueue_cache_serve` directly (to control budget orchestration) use this to
+/// install the matching registry slot without the synchronous drain
+/// `open_interest_sub` would perform.
+pub(super) fn register_interest_for_test(
+    kernel: &mut Kernel,
+    sub_key: crate::subs::SubKey,
+    shape: &crate::planner::InterestShape,
+) {
+    use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
+    use crate::subs::sub_key::{SubIdentity, SubOwnerKey, SubScope};
+
+    let interest = LogicalInterest {
+        scope: InterestScope::Global,
+        shape: shape.clone(),
+        lifecycle: InterestLifecycle::Tailing,
+        ..LogicalInterest::default()
+    };
+    let identity = SubIdentity::new(
+        SubOwnerKey::new("cache-serve-test-owner"),
+        sub_key,
+        SubScope::Global,
+    );
+    kernel
+        .lifecycle_mut()
+        .registry_mut()
+        .set_sub(identity, interest);
+}
+
 /// Clear `kernel.events` and `kernel.timeline` to simulate a cold second
 /// launch (store persisted, in-memory caches empty).
 pub(super) fn simulate_cold_restart(kernel: &mut Kernel) {

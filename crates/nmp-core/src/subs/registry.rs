@@ -154,6 +154,25 @@ impl InterestRegistry {
         self.slots.values().map(|s| s.interest.clone()).collect()
     }
 
+    /// Snapshot of `(SubKey, LogicalInterest)` pairs for every active slot,
+    /// deterministically ordered by `(scope, key)`.
+    ///
+    /// The `SubKey` is the slot's registration key — the SAME key the cache-serve
+    /// path used to derive the serve's `completion_key`
+    /// (`completion_key_for_interest(sub_key, shape)`). `iter_active` drops it
+    /// because most callers only need the interest; the K3 truncated-serve read
+    /// path (#1380) needs it to recover each interest's `completion_key` so it
+    /// can ask "is THIS interest's cursor-less serve currently truncated?"
+    /// without conflating two interests that share an Etag/Ptag shape but differ
+    /// only by `SubKey`.
+    #[must_use]
+    pub fn iter_active_with_keys(&self) -> Vec<(SubKey, LogicalInterest)> {
+        self.slots
+            .iter()
+            .map(|((_, key), slot)| (*key, slot.interest.clone()))
+            .collect()
+    }
+
     /// Count of registered `(scope, key)` slots.
     #[allow(dead_code)]
     #[must_use]

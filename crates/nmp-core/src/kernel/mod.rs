@@ -84,6 +84,8 @@ mod cache_serve_budget_tests;
 #[cfg(test)]
 mod cache_serve_tests;
 #[cfg(test)]
+mod cache_serve_truncation_tests;
+#[cfg(test)]
 mod cache_serve_universal_tests;
 #[cfg(test)]
 mod cache_serve_watermark_tests;
@@ -1282,21 +1284,17 @@ pub struct Kernel {
     /// of per-follow interests never bursts unbounded synchronous work on the
     /// actor thread (the #1085 lesson at the aggregate level).
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
-    /// K3 Stage B3 — session-scoped set of CURSOR-LESS (`Etag`/`Ptag`) store
-    /// queries whose cache-serve was budget-truncated mid-chunk, stranding the
-    /// stored tail within serve depth.
-    ///
-    /// Keyed by [`cache_serve::cursor_less_query_key`] (query content identity).
-    /// Written by `serve_chunk` (insert on budget-truncation, remove on natural
-    /// exhaustion) and read by the `watermark_fn` closure, which refuses to
-    /// floor a shape whose cursor-less query is present — otherwise the floor
-    /// would suppress the relay re-send of the stranded tail (the relay never
-    /// re-sends below-floor events that session). Shared with the closure via
-    /// `Arc<Mutex<…>>` because [`crate::subs::WatermarkFn`] is `Send + Sync`;
-    /// the kernel is single-threaded so the lock is uncontended. Cleared on
-    /// account-switch by [`Kernel::clear_served_interest_shapes`]. Not a
-    /// `Vec`-shaped relay cache, so out of D14's scope.
+    /// K3 Stage B3 / #1380 — WRITE surface of cursor-less (`Etag`/`Ptag`) serves
+    /// budget-truncated mid-chunk. Keyed by `PendingCacheServe::completion_key`
+    /// (SubKey-aware), NOT `cursor_less_query_key`, so one interest's exhaustion
+    /// cannot clear a sibling's mark (#1380 Bug 1). Written by `serve_chunk`, which
+    /// then refreshes the read view via [`Kernel::recompute_truncated_query_keys`].
     pub(in crate::kernel) etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>>,
+    /// K3 #1380 — READ view of [`Self::etag_ptag_truncated_serves`] keyed by
+    /// `cursor_less_query_key`: holds a query key iff ≥1 active interest mapping to
+    /// it is truncated; read by the shape-only `watermark_fn` / `shape_floor`. See
+    /// [`Kernel::recompute_truncated_query_keys`].
+    pub(in crate::kernel) etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -1819,12 +1817,12 @@ impl Kernel {
         // match on the `idx_author_kind` index per author (D8: no per-emit
         // allocation beyond one u64 per author in the shape).
         let watermark_store = Arc::clone(&store);
-        // K3 Stage B3 — the truncated-serve set is shared between `serve_chunk`
-        // (writer) and the watermark closure (reader). Constructed here so the
-        // closure can capture a clone; the kernel field below holds the other.
+        // K3 Stage B3 / #1380 — completion-key WRITE set + query-key READ view (field docs).
         let etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>> =
             Arc::new(std::sync::Mutex::new(HashSet::new()));
-        let watermark_truncated = Arc::clone(&etag_ptag_truncated_serves);
+        let etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>> =
+            Arc::new(std::sync::Mutex::new(HashSet::new()));
+        let watermark_truncated = Arc::clone(&etag_ptag_truncated_query_keys);
         let watermark_fn: crate::subs::WatermarkFn =
             Arc::new(move |shape: &crate::planner::InterestShape| {
                 // ADR-0045 §6 / #1119: the watermark floor is now derived from
@@ -1859,9 +1857,12 @@ impl Kernel {
                         });
                         ts
                     },
-                    // K3 Stage B3: refuse the floor for a cursor-less shape whose
-                    // serve was budget-truncated this session (stored tail
-                    // stranded within serve depth; the relay must re-send it).
+                    // K3 Stage B3 / #1380: refuse the floor for a cursor-less
+                    // shape whose serve was budget-truncated this session. `key`
+                    // is the query-content key; the captured read view holds it
+                    // iff AT LEAST ONE active interest mapping to that query is
+                    // truncated, so any contributing interest's truncation refuses
+                    // the shared merged-REQ floor (the conservative, correct merge).
                     |key| {
                         watermark_truncated
                             .lock()
@@ -2050,6 +2051,7 @@ impl Kernel {
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
             etag_ptag_truncated_serves,
+            etag_ptag_truncated_query_keys,
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
