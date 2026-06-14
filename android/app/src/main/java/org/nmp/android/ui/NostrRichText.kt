@@ -27,6 +27,7 @@ import org.nmp.android.model.ContentTreeWire
 import org.nmp.android.model.ContentWireNode
 import org.nmp.android.model.TimelineItem
 import org.nmp.android.model.WireNostrUri
+import org.nmp.android.ui.embed.EmbeddedEvent
 
 /**
  * Renders the Rust-produced `nmp_content::ContentTreeWire` arena. Android does
@@ -149,7 +150,17 @@ private fun EventRefBlock(
     embedDepth: Int,
 ) {
     val eventId = uri.primaryId
-    if (embedDepth < MaxEmbedDepth && (items.containsKey(eventId) || cards.containsKey(eventId))) {
+    // Beyond the recursion guard, never claim or recurse — show a static
+    // placeholder so a self-referential embed chain terminates (mirrors the
+    // iOS `EmbedChromeContainer` depth cap).
+    if (embedDepth >= MaxEmbedDepth) {
+        PendingEventRef(eventId.ifEmpty { uri.uri })
+        return
+    }
+    // In-feed fast path: the referenced event is already in the timeline maps,
+    // so render the rich NoteRow (avatar + content + action counts) directly —
+    // no embed claim is needed (the feed already carries it).
+    if (items.containsKey(eventId) || cards.containsKey(eventId)) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
@@ -165,7 +176,16 @@ private fun EventRefBlock(
         }
         return
     }
-    PendingEventRef(eventId.ifEmpty { uri.uri })
+    // Out-of-feed ref (#984): claim the URI so the kernel resolves it and ships
+    // the typed projection in the `NEMB` sidecar; `EmbeddedEvent` reads the
+    // resolved envelope from `LocalClaimedEventEmbeds` and dispatches it through
+    // `NostrKindRegistry`. Until resolution lands it shows a loading state, not
+    // a permanent placeholder.
+    EmbeddedEvent(
+        uri = uri.uri,
+        primaryId = eventId,
+        consumerId = "embed-ref-${eventId.ifEmpty { uri.uri }}",
+    )
 }
 
 @Composable

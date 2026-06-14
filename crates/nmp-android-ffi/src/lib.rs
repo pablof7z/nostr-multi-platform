@@ -24,6 +24,7 @@ use nmp_app_chirp::{
 
 mod action;
 mod capability;
+mod claims;
 mod external_signer;
 mod flat_feed;
 mod identity;
@@ -36,9 +37,8 @@ mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
-    nmp_app_encode_profile, nmp_app_new, nmp_app_release_profile, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_encode_profile, nmp_app_new,
+    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
     nmp_app_switch_active, nmp_free_string,
 };
 use session::{insert_session, remove_session};
@@ -207,58 +207,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     }
 }
 
-/// Demand-driven profile fetch claim. D6: bad handles/strings are no-ops.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    pubkey: JString,
-    consumer_id: JString,
-) {
-    let Some(s) = session_arc(handle) else {
-        return;
-    };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
-        return;
-    };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
-        return;
-    };
-    // F-TTL — the Android JNI claim is a background/auto-claim, so force = 0
-    // (the lazy, TTL-gated path). User-navigation force-refresh is a Swift-app
-    // feature; the Android bridge does not expose a `force` parameter (V-109:
-    // Android is largely unwired).
-    s.with_app(|app| {
-        nmp_app_claim_profile(app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
-    });
-}
-
-/// Demand-driven profile fetch release: the UI no longer needs `pubkey`
-/// under `consumer_id`. When the last consumer releases, the kernel
-/// reclaims the entry from `profile_claims`. Same contract as the iOS
-/// `nmp_app_release_profile` symbol.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    pubkey: JString,
-    consumer_id: JString,
-) {
-    let Some(s) = session_arc(handle) else {
-        return;
-    };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
-        return;
-    };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
-        return;
-    };
-    s.with_app(|app| {
-        nmp_app_release_profile(app, pubkey.as_ptr(), consumer_id.as_ptr());
-    });
-}
+// The demand-driven profile/event claim JNI wrappers
+// (`nativeClaimProfile`/`nativeReleaseProfile`/`nativeClaimEvent`/
+// `nativeReleaseEvent`) live in `claims.rs` to keep this file under the
+// AGENTS.md size cap (#984 split).
 
 /// Encode a hex pubkey as a NIP-19 display identifier (`nprofile1…` or
 /// `npub1…`). Wraps the existing `nmp_app_encode_profile` C-ABI symbol —

@@ -204,6 +204,21 @@ class KernelModel : ViewModel() {
         bridge.releaseProfile(pubkey, consumerId)
     }
 
+    /**
+     * Demand-driven embedded-event fetch claim (#984): the UI is rendering an
+     * out-of-feed `EventRef` [uri] under [consumerId]; the kernel resolves it
+     * and ships the typed projection in the next `NEMB` sidecar
+     * (`projections.claimedEventEmbeds`). Compose DisposableEffect → claim.
+     */
+    fun claimEvent(uri: String, consumerId: String) {
+        bridge.claimEvent(uri, consumerId)
+    }
+
+    /** Inverse of [claimEvent]; safe to call even if no matching claim is live. */
+    fun releaseEvent(uri: String, consumerId: String) {
+        bridge.releaseEvent(uri, consumerId)
+    }
+
     /** NIP-19 display identifier (nprofile1… or npub1…). ADR-0032 / V-115. */
     fun encodeProfile(pubkey: String): String? = bridge.encodeProfile(pubkey)
 
