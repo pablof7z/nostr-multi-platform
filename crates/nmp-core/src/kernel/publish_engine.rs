@@ -323,6 +323,10 @@ impl Kernel {
         payload: OkFramePayload<'_>,
         now_ms: u64,
     ) -> Vec<OutboundMessage> {
+        // ADR-0055 Rung 1 fix: snapshot the engine view rev before on_ack so we
+        // can detect non-terminal relay state transitions (InFlight→RelayError for
+        // retries) that change publish_outbox bytes without bumping publish_ver.
+        let rev_before = self.publish_engine.snapshot().rev;
         let ack = if payload.ok {
             RelayAck::ok(relay_url)
         } else {
@@ -339,6 +343,10 @@ impl Kernel {
         // the publish — apply the terminal verdict to the queue entry before
         // any retry frame drain so the iOS snapshot reflects the new status.
         self.apply_engine_completions();
+        // ADR-0055 Rung 1 fix: bump publish_ver if the engine view advanced
+        // for non-terminal relay state transitions (e.g. InFlight→RelayError)
+        // that are not caught by apply_engine_completions.
+        self.bump_publish_if_engine_view_advanced(rev_before);
         // Any retry the engine scheduled (transient backoff that is already
         // due) was pushed into the queue dispatcher; drain it. An auth-required
         // ack parks the relay instead (no synchronous frame here — the
@@ -357,6 +365,26 @@ impl Kernel {
             .collect()
     }
 
+    /// ADR-0055 Rung 1 fix (upstream): bump `publish_ver` when the
+    /// publish engine's view advances without going through
+    /// `push_publish_entry` / `set_publish_entry_terminal`. The engine's
+    /// internal view rev bumps on every `flush_view` call that finds dirty
+    /// rows (relay state transitions: Pending→InFlight, InFlight→TimedOut,
+    /// etc.). Those transitions change the `publish_outbox` FlatBuffer bytes
+    /// but are invisible to the `publish_ver` source counter, which only
+    /// advances at the three identity_state write chokepoints. The oracle
+    /// (cfg(any(test, feature = "test-support"))) fires when bytes change
+    /// without the source counter advancing — a StaleStamp violation that
+    /// would cause the delta projection to serve a stale outbox to production
+    /// shells. Fix: compare engine snapshot rev before/after each entrypoint
+    /// that can produce relay-state transitions and bump `publish_ver` if the
+    /// view advanced.
+    fn bump_publish_if_engine_view_advanced(&mut self, rev_before: u64) {
+        if self.publish_engine.snapshot().rev != rev_before {
+            self.projection_rev_tracker.source_versions.bump_publish();
+        }
+    }
+
     /// Wall-clock variant for the live ingest seam. Tests use the
     /// `tick_publish_engine(now_ms)` injection point directly.
     pub(crate) fn tick_publish_engine_for_now(&mut self) -> Vec<OutboundMessage> {
@@ -368,11 +396,18 @@ impl Kernel {
     /// relay text frame ticks the engine, so the live path bounds retry latency
     /// by inbound traffic). Tests inject `now_ms` directly.
     pub(crate) fn tick_publish_engine(&mut self, now_ms: u64) -> Vec<OutboundMessage> {
+        // ADR-0055 Rung 1 fix: snapshot the engine view rev before tick so we
+        // can detect relay-state transitions (Pending→InFlight etc.) that change
+        // publish_outbox bytes without going through a bump_publish chokepoint.
+        let rev_before = self.publish_engine.snapshot().rev;
         self.publish_engine.tick(now_ms);
         // T128: `tick` → `dispatch_pending` → synchronous `dispatch_due` may
         // return an OK / failure ack inline. Drain any settled verdicts so
         // the queue entry flips to `"ok"` / `"failed"` on the same tick.
         self.apply_engine_completions();
+        // ADR-0055 Rung 1 fix: bump publish_ver if the engine view advanced
+        // (relay-state transitions that apply_engine_completions does not cover).
+        self.bump_publish_if_engine_view_advanced(rev_before);
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;
@@ -392,6 +427,8 @@ impl Kernel {
     /// the engine; the actor will retry when a fresh Connected event arrives.
     pub(crate) fn mark_publish_relay_unavailable(&mut self, relay_url: &str) {
         let now_ms = now_epoch_ms();
+        // ADR-0055 Rung 1 fix: snapshot rev before so we can detect view changes.
+        let rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self
             .publish_engine
             .mark_relay_unavailable(relay_url, now_ms)
@@ -401,6 +438,9 @@ impl Kernel {
             let (toast, _, category) = describe_engine_error(&err);
             self.set_error_toast_with_category(toast, category);
         }
+        // ADR-0055 Rung 1 fix: relay demotion (InFlight→Pending) changes
+        // publish_outbox bytes; bump publish_ver if the view advanced.
+        self.bump_publish_if_engine_view_advanced(rev_before);
     }
 
     /// Notify the publish engine that a relay socket is available. Pending
@@ -409,14 +449,21 @@ impl Kernel {
     /// one place.
     pub(crate) fn mark_publish_relay_available(&mut self, relay_url: &str) -> Vec<OutboundMessage> {
         let now_ms = now_epoch_ms();
+        // ADR-0055 Rung 1 fix: snapshot rev before so we can detect view changes
+        // on both the error path (return Vec::new()) and the success path.
+        let rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.mark_relay_available(relay_url, now_ms) {
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
             let (toast, _, category) = describe_engine_error(&err);
             self.set_error_toast_with_category(toast, category);
+            self.bump_publish_if_engine_view_advanced(rev_before);
             return Vec::new();
         }
         self.apply_engine_completions();
+        // ADR-0055 Rung 1 fix: relay promotion (Pending→InFlight) changes
+        // publish_outbox bytes; bump publish_ver if the view advanced.
+        self.bump_publish_if_engine_view_advanced(rev_before);
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;
@@ -438,6 +485,9 @@ impl Kernel {
     /// `Pending` / due-`RelayError` state.
     pub(crate) fn resume_publish_engine(&mut self) -> Vec<OutboundMessage> {
         let now_ms = now_epoch_ms();
+        // ADR-0055 Rung 1 fix: snapshot rev before resume so we can detect
+        // Pending→InFlight transitions that change publish_outbox bytes.
+        let rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.resume_from_store(now_ms) {
             // D6: durable-resume failure surfaces as a snapshot failure row
             // plus a toast; never a panic, never a `Result` across FFI.
@@ -455,6 +505,9 @@ impl Kernel {
         // process — on a fresh kernel B in tests there is no entry to flip;
         // `set_publish_entry_terminal` is a no-op in that case.)
         self.apply_engine_completions();
+        // ADR-0055 Rung 1 fix: bump publish_ver if resume transitioned relays
+        // from Pending→InFlight (changing publish_outbox bytes).
+        self.bump_publish_if_engine_view_advanced(rev_before);
         let drained = self.publish_dispatcher.drain();
         drained
             .into_iter()
