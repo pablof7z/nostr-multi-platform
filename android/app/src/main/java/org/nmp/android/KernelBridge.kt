@@ -466,6 +466,11 @@ class KernelBridge {
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
     private external fun nativeAckActionStage(handle: Long, correlationId: String)
+    // Outbox control-plane (parity GAP 4). `internal` so the cohesive
+    // [retryPublish]/[cancelPublish] wrappers can live in the sibling
+    // KernelBridgeOutboxRelay.kt without inflating this file past the LOC ceiling.
+    internal external fun nativeRetryPublish(handle: Long, correlationId: String)
+    internal external fun nativeCancelPublish(handle: Long, correlationId: String)
     private external fun nativeLoadOlderFeed(handle: Long, feedKey: String)
     private external fun nativeBuildActionSpec(intentJson: String): String
     private external fun nativeOpenThread(handle: Long, noteId: String)

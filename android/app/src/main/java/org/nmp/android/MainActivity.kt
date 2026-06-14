@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Group
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import org.nmp.android.ui.DiagnosticsScreen
 import org.nmp.android.ui.DmScreen
 import org.nmp.android.ui.GroupsScreen
+import org.nmp.android.ui.OutboxScreen
 import org.nmp.android.ui.RelayScreen
 import org.nmp.android.ui.SignInAmberDelegate
 import org.nmp.android.ui.SignInScreen
@@ -160,6 +162,12 @@ private fun RootTabs(model: KernelModel, amberDelegate: SignInAmberDelegate? = n
                 NavigationBarItem(
                     selected = tab == 6,
                     onClick = { tab = 6 },
+                    icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
+                    label = { Text("Outbox") },
+                )
+                NavigationBarItem(
+                    selected = tab == 7,
+                    onClick = { tab = 7 },
                     icon = { Icon(Icons.Filled.Speed, contentDescription = null) },
                     label = { Text("Diagnostics") },
                 )
@@ -173,6 +181,7 @@ private fun RootTabs(model: KernelModel, amberDelegate: SignInAmberDelegate? = n
             3 -> RelayScreen(model, Modifier.padding(inner))
             4 -> SignInScreen(model, amberDelegate = amberDelegate, modifier = Modifier.padding(inner))
             5 -> WalletScreen(model, Modifier.padding(inner))
+            6 -> OutboxScreen(model, Modifier.padding(inner))
             else -> DiagnosticsScreen(model, Modifier.padding(inner))
         }
     }

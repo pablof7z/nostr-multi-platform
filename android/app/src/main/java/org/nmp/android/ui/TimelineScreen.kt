@@ -409,36 +409,8 @@ internal fun NoteRow(
             embedDepth = embedDepth,
         )
         Spacer(Modifier.size(8.dp))
-        NoteActionsSummary(card)
+        NoteActionsSummary(card, model)
     }
-}
-
-@Composable
-private fun NoteActionsSummary(card: ChirpEventCard?) {
-    val counts = card?.relationCounts ?: return
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        RelationCountLabel("Reply", counts.replies.value)
-        RelationCountLabel("React", counts.reactions.value)
-        RelationCountLabel("Repost", counts.reposts.value)
-        RelationCountLabel("Zap", counts.zaps.value, muted = true)
-    }
-}
-
-@Composable
-private fun RelationCountLabel(label: String, count: ULong?, muted: Boolean = false) {
-    Text(
-        "$label ${count?.toString() ?: "..."}",
-        style = MaterialTheme.typography.labelSmall,
-        color = if (muted) {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
-    )
 }
 
 @Composable
