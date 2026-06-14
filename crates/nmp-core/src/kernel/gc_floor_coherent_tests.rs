@@ -210,13 +210,10 @@ fn pin_scan_truncated_returns_truncated_outcome_and_stays_within_budget() {
 
     // Build an Etag-shape filter: {"kinds":[1],"#e":["<target>"]}
     // Use r##"..."## so the `"#` in `"#e"` does not terminate the raw string.
-    let filter_json = format!(
-        r##"{{"kinds":[1],"#e":["{}"]}}"##,
-        etag_target
-    );
+    let filter_json = format!(r##"{{"kinds":[1],"#e":["{}"]}}"##, etag_target);
     let shape = InterestShape::from_filter_json(&filter_json).expect("valid Etag filter");
 
-    let floor = shape_floor(&shape, kernel.store.as_ref())
+    let floor = shape_floor(&shape, kernel.store.as_ref(), &HashSet::new())
         .expect("floor must exist: events are stored");
 
     let mut pins: HashSet<crate::store::EventId> = HashSet::new();
