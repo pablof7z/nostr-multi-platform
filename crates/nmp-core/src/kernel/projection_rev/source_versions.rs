@@ -73,16 +73,21 @@ pub(crate) struct SourceVersions {
     pub(crate) open_views_ver: u64,
 
     // ── relay/settings cluster ────────────────────────────────────────────────
-    /// Bumped at `set_configured_relays` (the sole writer of
-    /// `Kernel::configured_relays` — D4, `identity_state.rs`). Also bumped
-    /// at the `Reset` path that clears configured_relays (kernel/mod.rs:2253).
+    /// Bumped at `set_configured_relays` (the sole PRODUCTION writer of
+    /// `Kernel::configured_relays` — D4, `identity_state.rs`). The test-only
+    /// `clear_configured_relays_for_test` does not bump (a fresh kernel / Reset
+    /// rebuild zeroes the tracker, so no explicit reset bump is needed).
     pub(crate) configured_relays_ver: u64,
 
     // ── publish cluster ───────────────────────────────────────────────────────
-    /// Bumped at every publish-queue write chokepoint:
-    /// - `push_publish_entry` (enqueue a new publish intent, `identity_state.rs`)
-    /// - `remove_publish_entry` / `set_publish_entry_terminal` (state transitions)
-    /// - `push_outbox_item` / `replace_outbox_item` (outbox mutations)
+    /// Bumped at every publish-queue write chokepoint (`identity_state.rs`):
+    /// - `push_publish_entry` (enqueue a new publish intent)
+    /// - `remove_publish_entry` (drop an entry)
+    /// - `set_publish_entry_terminal` (terminal `ok` / `failed` transition)
+    ///
+    /// The `publish_queue` is the single source of truth: `publish_outbox` and
+    /// `outbox_summary` are derived read-only views over it, so they ride
+    /// `publish_ver` and need no separate write chokepoint.
     pub(crate) publish_ver: u64,
 
     // ── diagnostics cluster (broad stamp, sub-fork A) ─────────────────────────
@@ -142,10 +147,10 @@ impl SourceVersions {
         }
     }
 
-    /// Bump `profiles_ver` (and `diagnostics_inputs_ver` which is a superset).
+    /// Bump `profiles_ver`. (relay_diagnostics is covered by the per-emit
+    /// fingerprint reconcile, F5 — no co-bump needed here.)
     pub(crate) fn bump_profiles(&mut self) {
         self.profiles_ver = self.profiles_ver.saturating_add(1);
-        self.diagnostics_inputs_ver = self.diagnostics_inputs_ver.saturating_add(1);
     }
 
     /// Bump `accounts_ver`.
@@ -153,16 +158,14 @@ impl SourceVersions {
         self.accounts_ver = self.accounts_ver.saturating_add(1);
     }
 
-    /// Bump `active_account_ver` (and `diagnostics_inputs_ver`).
+    /// Bump `active_account_ver`.
     pub(crate) fn bump_active_account(&mut self) {
         self.active_account_ver = self.active_account_ver.saturating_add(1);
-        self.diagnostics_inputs_ver = self.diagnostics_inputs_ver.saturating_add(1);
     }
 
-    /// Bump `profile_claims_ver` (and `diagnostics_inputs_ver`).
+    /// Bump `profile_claims_ver`.
     pub(crate) fn bump_profile_claims(&mut self) {
         self.profile_claims_ver = self.profile_claims_ver.saturating_add(1);
-        self.diagnostics_inputs_ver = self.diagnostics_inputs_ver.saturating_add(1);
     }
 
     /// Bump `claimed_event_content_ver`.
@@ -175,10 +178,9 @@ impl SourceVersions {
         self.open_views_ver = self.open_views_ver.saturating_add(1);
     }
 
-    /// Bump `configured_relays_ver` (and `diagnostics_inputs_ver`).
+    /// Bump `configured_relays_ver`.
     pub(crate) fn bump_configured_relays(&mut self) {
         self.configured_relays_ver = self.configured_relays_ver.saturating_add(1);
-        self.diagnostics_inputs_ver = self.diagnostics_inputs_ver.saturating_add(1);
     }
 
     /// Bump `publish_ver`.
@@ -186,8 +188,11 @@ impl SourceVersions {
         self.publish_ver = self.publish_ver.saturating_add(1);
     }
 
-    /// Bump `diagnostics_inputs_ver` directly (for relay/wire/lifecycle
-    /// transitions that are not already covered by another specific bump).
+    /// Bump `diagnostics_inputs_ver`. Sole caller is the per-emit
+    /// `reconcile_diagnostics_fingerprint` (F5): the broad `relay_diagnostics`
+    /// stamp is derived from a fingerprint of the projection's own encoded bytes,
+    /// so it advances iff any of its many inputs (relay status, wire subs,
+    /// interests) actually changed — no per-site stamping, no missed input.
     pub(crate) fn bump_diagnostics_inputs(&mut self) {
         self.diagnostics_inputs_ver = self.diagnostics_inputs_ver.saturating_add(1);
     }

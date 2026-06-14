@@ -277,6 +277,28 @@ impl Kernel {
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
+        // ADR-0055 Rung 1 (F5) — reconcile `diagnostics_inputs_ver` against a
+        // fingerprint of the EXACT `relay_diagnostics` payload bytes the host
+        // will cache this tick. `relay_diagnostics` aggregates too many
+        // high-frequency inputs across too many mutation sites to stamp each one
+        // (relay status transitions, per-event sub counters, the interest
+        // registry's push/withdraw/ensure/drop across discovery, cache-serve,
+        // contacts, startup, claim-expansion). Sub-fork A mandates ONE broad
+        // stamp that covers ALL inputs; deriving it from the projection's own
+        // encoded bytes is the only leak-proof way. Runs in production too so the
+        // manifest stays correct for Rung 2/3, not only the test oracle.
+        let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
+        self.projection_rev_tracker
+            .reconcile_diagnostics_fingerprint(diag_fp);
+        // ADR-0055 Rung 1 (F3) — biconditional completeness oracle. Runs AFTER
+        // the single production encode-shaping pass (`typed` here is the exact
+        // sidecar that `encode_snapshot_with_envelope` serializes below), so it
+        // reuses the real cache units with no double-encode. `test-support`-only:
+        // a production build neither holds `projection_oracle` nor calls this, so
+        // the emit path carries ZERO oracle/hash cost. A violation panics (a
+        // missed stamp = silent dark UI, which Rung 3 would trust — fail loud).
+        #[cfg(any(test, feature = "test-support"))]
+        self.run_projection_oracle(&typed);
         // ADR-0055 Rung 0 — measure per-tick projection churn BEFORE serializing.
         // The whole pass (payload hashing, per-key store, process counters) is
         // `test-support`-only: in a production build this binding does not exist

@@ -85,9 +85,6 @@ impl Kernel {
             }
             CloseReason::Duplicate => self.on_closed_duplicate(role, sub_id, raw),
         }
-        // ADR-0055 Rung 1: every CLOSED reason mutates relay state visible
-        // in relay_diagnostics — bump the broad diagnostics stamp.
-        self.projection_rev_tracker.source_versions.bump_diagnostics_inputs();
     }
 
     /// `auth-required:` — pause this relay via the lifecycle `AuthGate` and

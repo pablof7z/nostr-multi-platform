@@ -233,6 +233,11 @@ impl super::Kernel {
             self.projection_rev_tracker.source_versions.bump_accounts();
             if active_changed {
                 self.projection_rev_tracker.source_versions.bump_active_account();
+                // ADR-0055 Rung 1 (F6): an account switch invalidates every
+                // account-scoped projection cache on the host — bump the epoch so
+                // Rung 3's host re-baselines all projections (treats the next emit
+                // as a full snapshot, not a delta).
+                self.projection_rev_tracker.bump_epoch();
             }
         }
         if let Ok(mut guard) = self.active_account_handle.lock() {
@@ -255,10 +260,15 @@ impl super::Kernel {
     /// touch `self.accounts` (the typed account-list projection) — on the wasm
     /// path that projection stays empty and the host does not render it.
     pub(crate) fn set_active_account(&mut self, pubkey: String) {
+        let changed = self.active_account.as_deref() != Some(pubkey.as_str());
         self.active_account = Some(pubkey);
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump active_account_ver (wasm path — no full accounts vec).
-        self.projection_rev_tracker.source_versions.bump_active_account();
+        if changed {
+            // ADR-0055 Rung 1: bump active_account_ver (wasm path — no full accounts vec).
+            self.projection_rev_tracker.source_versions.bump_active_account();
+            // ADR-0055 Rung 1 (F6): account switch → epoch bump (host re-baseline).
+            self.projection_rev_tracker.bump_epoch();
+        }
         if let Ok(mut guard) = self.active_account_handle.lock() {
             *guard = self.active_account.clone();
         }

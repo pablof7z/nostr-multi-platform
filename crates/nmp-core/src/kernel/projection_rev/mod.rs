@@ -10,6 +10,18 @@
 //! does NOT consult the manifest yet. The manifest is the source of truth that
 //! Rung 2 stamps onto the wire and Rung 3 uses to omit Unchanged projections.
 //!
+//! ## Why `allow(dead_code)` on the manifest derivation
+//!
+//! In a PURE production build (no `test` / `test-support`) the manifest's only
+//! consumer — the biconditional oracle — is `cfg`-compiled out, so the rev
+//! derivation (`compute_rev`, `build_manifest`, the `SRC_*` names) reads as dead
+//! even though it is live under test AND is the Rung 2/3 deliverable that the
+//! wire encoder will consume next. The `SourceVersions::bump_*` write chokepoints
+//! ARE live in production (called from ingest / identity / publish / relay
+//! mutation sites). The allow is scoped to this module so a genuinely-unused new
+//! kernel symbol elsewhere is still caught.
+#![allow(dead_code)]
+//!
 //! ## Design (option C — source-version stamps + derived rev)
 //!
 //! Validated by opus+codex review. NOT per-mutation-site-per-projection bumping,
@@ -42,10 +54,22 @@
 //!   `Unchanged` while holding rows unchanged.
 
 pub(crate) mod source_versions;
+// ADR-0055 Rung 1: the `impl Kernel` manifest accessors live in a sibling file
+// so `kernel/mod.rs` stays at its file-size baseline.
+mod kernel_impl;
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod oracle;
+// ADR-0055 Rung 1 (F3): the `impl Kernel` oracle methods live in a sibling file
+// (test-support only) so `kernel/mod.rs` stays at its file-size baseline.
+#[cfg(any(test, feature = "test-support"))]
+mod kernel_oracle;
 #[cfg(test)]
 mod tests;
+// ADR-0055 Rung 1: scenario tests live in `tests.rs`; the dependency-table
+// completeness + arithmetic unit tests live here to keep each test file under
+// the 500-LOC hard ceiling (AGENTS.md). Both share the same crate-private API.
+#[cfg(test)]
+mod tests_unit;
 
 use crate::kernel::update::KERNEL_BUILTIN_PROJECTION_KEYS;
 pub(crate) use source_versions::SourceVersions;
@@ -179,12 +203,31 @@ pub(crate) struct ProjectionRevTracker {
     last_emitted: std::collections::HashMap<&'static str, u64>,
     /// Within-session monotonic epoch counter.
     pub(crate) epoch: u64,
+    /// Per-drain-key content state at the LAST emit (`true` = the drain carried
+    /// content). Used to compute the `Changed -> Cleared -> Unchanged` tristate
+    /// for the `action_results` / `signed_events` drain projections (codex #2,
+    /// F2). A key absent here is treated as "previously empty".
+    drain_prev_nonempty: std::collections::HashMap<&'static str, bool>,
+    /// This-tick presence OVERRIDE for keys whose presence cannot be derived from
+    /// the rev alone — the drain projections. `note_drain_emit` writes here during
+    /// the emit; `build_manifest` / `build_state` consult it before falling back
+    /// to the rev-vs-last-emit rule; `record_emitted` clears the entry once the
+    /// emit is recorded so the next tick starts fresh.
+    pending_presence: std::collections::HashMap<&'static str, ProjectionPresence>,
+    /// ADR-0055 Rung 1 (F5): fingerprint of the `relay_diagnostics` inputs at the
+    /// LAST reconcile. The kernel re-fingerprints them each emit and folds any
+    /// change into `diagnostics_inputs_ver` — see `reconcile_diagnostics_fingerprint`.
+    last_seen_diagnostics_fingerprint: u64,
 }
+
+/// The two drain projections whose presence is a `Changed -> Cleared ->
+/// Unchanged` tristate driven by `note_drain_emit`, not by the rev alone.
+pub(crate) const DRAIN_PROJECTION_KEYS: &[&str] = &["action_results", "signed_events"];
 
 impl ProjectionRevTracker {
     /// Return the current derived revision for `key`.
     ///
-    /// The derived rev is the maximum source-version among all of `key`'s
+    /// The derived rev is the SUM of source-versions across all of `key`'s
     /// declared dependencies. Returns 0 for an unknown key.
     pub(crate) fn projection_rev(&self, key: &str) -> u64 {
         self.compute_rev(key)
@@ -205,27 +248,86 @@ impl ProjectionRevTracker {
             .fold(0u64, |acc, v| acc.saturating_add(v))
     }
 
-    /// Record that `key` was emitted at the current derived rev.
-    /// Used by the test-support oracle (Rung 1) and Rung 3 producer logic.
-    pub(crate) fn record_emitted(&mut self, key: &str) {
-        // Map key str to a &'static str from KERNEL_BUILTIN_PROJECTION_KEYS for
-        // the HashMap key (avoids allocating a String key per call).
-        if let Some(static_key) = KERNEL_BUILTIN_PROJECTION_KEYS
-            .iter()
+    /// Record a drain-projection emit and return its presence for THIS tick
+    /// (F2 — the real tristate). Called from the drain chokepoint
+    /// (`take_action_results_projection` / `take_signed_events_projection`)
+    /// EXACTLY ONCE per emit per drain key, with `nonempty` = "the drain carried
+    /// content this tick".
+    ///
+    /// State machine (codex #2 — Cleared is emitted exactly once on the
+    /// non-empty -> empty transition so the host drops its prior copy without a
+    /// replay, and a stably-empty drain settles to Unchanged):
+    /// - `nonempty`                 -> bump `settlement_drain_ver`; `Changed`
+    /// - `!nonempty` & was nonempty -> bump `settlement_drain_ver`; `Cleared`
+    /// - `!nonempty` & was empty    -> NO bump; `Unchanged`
+    ///
+    /// The presence is parked in `pending_presence` for `build_manifest` to read
+    /// and the `drain_prev_nonempty` content state is updated for the next tick.
+    pub(crate) fn note_drain_emit(&mut self, key: &str, nonempty: bool) -> ProjectionPresence {
+        let Some(static_key) = static_key(key) else {
+            return ProjectionPresence::Unchanged;
+        };
+        let was_nonempty = self
+            .drain_prev_nonempty
+            .get(static_key)
             .copied()
-            .find(|k| *k == key)
-        {
+            .unwrap_or(false);
+        let presence = if nonempty {
+            self.source_versions.bump_settlement_drain();
+            ProjectionPresence::Changed
+        } else if was_nonempty {
+            // non-empty -> empty transition: advance the rev once so the Cleared
+            // frame is distinguishable, then settle.
+            self.source_versions.bump_settlement_drain();
+            ProjectionPresence::Cleared
+        } else {
+            // stably empty: no bump, no churn.
+            ProjectionPresence::Unchanged
+        };
+        self.drain_prev_nonempty.insert(static_key, nonempty);
+        self.pending_presence.insert(static_key, presence);
+        presence
+    }
+
+    /// Record that `key` was emitted at the current derived rev.
+    /// Clears any `pending_presence` override so the next tick starts fresh.
+    pub(crate) fn record_emitted(&mut self, key: &str) {
+        if let Some(static_key) = static_key(key) {
             let rev = self.compute_rev(static_key);
             self.last_emitted.insert(static_key, rev);
+            self.pending_presence.remove(static_key);
         }
     }
 
     /// Return `true` if the projection's derived rev advanced since the last
-    /// recorded emit.
+    /// recorded emit. For drain keys, this also returns true when an explicit
+    /// `Changed` / `Cleared` presence is pending this tick.
     pub(crate) fn changed_since_last_emit(&self, key: &str) -> bool {
+        // A pending explicit presence (drain keys) takes precedence.
+        if let Some(static_key) = static_key(key) {
+            if let Some(p) = self.pending_presence.get(static_key) {
+                return matches!(p, ProjectionPresence::Changed | ProjectionPresence::Cleared);
+            }
+        }
         let current = self.compute_rev(key);
         let last = self.last_emitted.get(key).copied().unwrap_or(0);
         current > last
+    }
+
+    /// Compute the presence for `key` this tick.
+    ///
+    /// Drain keys use the parked `pending_presence` (the `note_drain_emit` state
+    /// machine). All other keys use the rev-vs-last-emit rule: `Changed` when the
+    /// rev advanced, else `Unchanged`.
+    fn presence_for(&self, key: &'static str) -> ProjectionPresence {
+        if let Some(p) = self.pending_presence.get(key) {
+            return *p;
+        }
+        if self.changed_since_last_emit(key) {
+            ProjectionPresence::Changed
+        } else {
+            ProjectionPresence::Unchanged
+        }
     }
 
     /// Bump the epoch. Called on account-switch / schema-change / kernel rebuild.
@@ -233,6 +335,40 @@ impl ProjectionRevTracker {
     pub(crate) fn bump_epoch(&mut self) {
         self.epoch = self.epoch.saturating_add(1);
     }
+
+    /// ADR-0055 Rung 1 (F5): reconcile `diagnostics_inputs_ver` against a
+    /// per-emit fingerprint of the EXACT `relay_diagnostics` inputs (relay
+    /// statuses + wire subs + interests + transport rows). Called once per emit
+    /// before the manifest is built.
+    ///
+    /// `relay_diagnostics` aggregates so many high-frequency inputs across so
+    /// many mutation sites (relay status transitions, per-event sub counters,
+    /// the interest registry's push/withdraw/ensure/drop across discovery,
+    /// cache-serve, contacts, startup, claim-expansion, …) that enumerating every
+    /// write chokepoint is fragile and demonstrably leaky. Sub-fork A mandates
+    /// ONE broad stamp that covers ALL inputs; deriving that stamp from a
+    /// fingerprint of the projection's own inputs is the only way to guarantee
+    /// completeness with no missed site. This is a monotonic-stamp DERIVATION for
+    /// the single broad diagnostic surface — NOT the rejected "content-hash as the
+    /// Changed/Unchanged GATE for every projection" (the rev is still the
+    /// authority; this only advances it when the inputs truly differ).
+    ///
+    /// Idempotent when the fingerprint is unchanged (stable relay state → no
+    /// bump → `relay_diagnostics` settles to Unchanged, no churn).
+    pub(crate) fn reconcile_diagnostics_fingerprint(&mut self, fingerprint: u64) {
+        if fingerprint != self.last_seen_diagnostics_fingerprint {
+            self.last_seen_diagnostics_fingerprint = fingerprint;
+            self.source_versions.bump_diagnostics_inputs();
+        }
+    }
+}
+
+/// Resolve a string key to its `&'static str` from `KERNEL_BUILTIN_PROJECTION_KEYS`.
+fn static_key(key: &str) -> Option<&'static str> {
+    KERNEL_BUILTIN_PROJECTION_KEYS
+        .iter()
+        .copied()
+        .find(|k| *k == key)
 }
 
 // ── Free functions (helpers for `impl Kernel`) ────────────────────────────────
@@ -249,18 +385,10 @@ pub(crate) fn build_manifest(
 ) -> ProjectionManifest {
     let states: Vec<ProjectionState> = KERNEL_BUILTIN_PROJECTION_KEYS
         .iter()
-        .map(|key| {
-            let rev = tracker.projection_rev(key);
-            let presence = if tracker.changed_since_last_emit(key) {
-                ProjectionPresence::Changed
-            } else {
-                ProjectionPresence::Unchanged
-            };
-            ProjectionState {
-                key,
-                rev,
-                presence,
-            }
+        .map(|key| ProjectionState {
+            key,
+            rev: tracker.projection_rev(key),
+            presence: tracker.presence_for(key),
         })
         .collect();
     ProjectionManifest {
@@ -278,19 +406,11 @@ pub(crate) fn build_state(tracker: &ProjectionRevTracker, key: &str) -> Projecti
         .copied()
         .find(|k| *k == key);
     match found {
-        Some(static_key) => {
-            let rev = tracker.projection_rev(static_key);
-            let presence = if tracker.changed_since_last_emit(static_key) {
-                ProjectionPresence::Changed
-            } else {
-                ProjectionPresence::Unchanged
-            };
-            ProjectionState {
-                key: static_key,
-                rev,
-                presence,
-            }
-        }
+        Some(static_key) => ProjectionState {
+            key: static_key,
+            rev: tracker.projection_rev(static_key),
+            presence: tracker.presence_for(static_key),
+        },
         None => ProjectionState {
             key: "unknown",
             rev: 0,

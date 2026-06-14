@@ -1,429 +1,499 @@
-//! ADR-0055 Rung 1 — 8 driven scenario tests + completeness enforcement.
+//! ADR-0055 Rung 1 — REAL-driven scenario tests (review F3).
 //!
-//! These tests drive SPECIFIC scenarios against the revision manifest.
-//! The oracle only proves what you drive — hence 8 distinct scenarios.
-//!
-//! All tests run with `cargo test -p nmp-core`.
+//! These drive ACTUAL kernel entry points (ingest, claim, settle/drain a
+//! publish, RAM-evict, FixedClock TTL, account switch) and the REAL
+//! `make_update`, which in `cfg(test)` builds runs the biconditional oracle on
+//! every emit (`Kernel::run_projection_oracle`) — a missed stamp panics. Unit /
+//! arithmetic / F1-bite tests live in `tests_unit.rs`.
 
-use crate::kernel::clock::MonotonicSecondClock;
-use crate::kernel::projection_rev::{
-    build_manifest, build_state, ProjectionPresence, ProjectionRevTracker,
-    BUILTIN_PROJECTION_DEPENDENCIES,
-};
-use crate::kernel::update::KERNEL_BUILTIN_PROJECTION_KEYS;
+use crate::kernel::clock::FixedClock;
+use crate::kernel::projection_rev::ProjectionPresence;
+use crate::kernel::{Kernel, NostrEvent};
+use crate::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
+use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
-// ── Scenario 1: store-backed claimed-event arrival ────────────────────────────
+/// A fixed 64-hex pubkey for tests that only need an opaque active-account value
+/// (`set_active_account` does not verify the pubkey).
+const ACCOUNT_PK: &str = "abababababababababababababababababababababababababababababababab";
 
-/// Scenario 1: A kind:30023/9802 event is claimed and then persisted via the
-/// store (not `self.events`). The `claimed_events` rev MUST advance and the
-/// presence MUST be `Changed`.
-///
-/// This validates the `claimed_event_content_ver` bump at the store-ingest
-/// chokepoint (codex #1 condition 2).
+// ── Real-kernel helpers ───────────────────────────────────────────────────────
+//
+// Events are REALLY signed (`::nostr::Keys::generate()` + `EventBuilder`) so
+// they pass `verify_and_persist`'s signature gate — the store-ingest chokepoints
+// (F1) only fire on the genuine wire path, not on the `from_raw_unchecked` test
+// shortcut.
+
+/// A fresh kernel pinned to a deterministic `FixedClock` so TTL math and the
+/// oracle are reproducible. Returns the kernel and the base time.
+fn kernel_at(base_secs: u64) -> (Kernel, SystemTime) {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let base = SystemTime::UNIX_EPOCH + Duration::from_secs(base_secs);
+    kernel.set_clock(Arc::new(FixedClock(base)));
+    (kernel, base)
+}
+
+/// Convert a signed `::nostr::Event` to the kernel's `NostrEvent` shape.
+fn to_kernel_event(ev: &::nostr::Event) -> NostrEvent {
+    NostrEvent {
+        id: ev.id.to_hex(),
+        pubkey: ev.pubkey.to_hex(),
+        created_at: ev.created_at.as_secs(),
+        kind: ev.kind.as_u16() as u32,
+        tags: ev
+            .tags
+            .iter()
+            .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+            .collect(),
+        content: ev.content.clone(),
+        sig: ev.sig.to_string(),
+    }
+}
+
+/// Build a REAL signed kind:30023 longform article. Returns `(event, id)`.
+fn signed_article(keys: &::nostr::Keys, d_tag: &str, title: &str, ts: u64) -> (NostrEvent, String) {
+    use ::nostr::{EventBuilder, Kind, Tag, Timestamp};
+    let ev = EventBuilder::new(Kind::from_u16(30023), format!("body of {title}"))
+        .tags([
+            Tag::parse(["d", d_tag]).expect("valid d tag"),
+            Tag::parse(["title", title]).expect("valid title tag"),
+        ])
+        .custom_created_at(Timestamp::from(ts))
+        .sign_with_keys(keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    let ke = to_kernel_event(&ev);
+    let id = ke.id.clone();
+    (ke, id)
+}
+
+/// Build a REAL signed kind:1 note. Returns `(event, id)`.
+fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> (NostrEvent, String) {
+    use ::nostr::{EventBuilder, Timestamp};
+    let ev = EventBuilder::text_note(content)
+        .custom_created_at(Timestamp::from(ts))
+        .sign_with_keys(keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    let ke = to_kernel_event(&ev);
+    let id = ke.id.clone();
+    (ke, id)
+}
+
+/// Build a REAL signed kind:0 profile.
+fn signed_profile(keys: &::nostr::Keys, name: &str, ts: u64) -> NostrEvent {
+    use ::nostr::{EventBuilder, Kind, Timestamp};
+    let ev = EventBuilder::new(
+        Kind::from_u16(0),
+        serde_json::json!({ "name": name }).to_string(),
+    )
+    .custom_created_at(Timestamp::from(ts))
+    .sign_with_keys(keys)
+    .expect("sign_with_keys cannot fail with a generated keypair");
+    to_kernel_event(&ev)
+}
+
+/// Ingest a kernel event through the REAL wildcard ingest path
+/// (`handle_event` -> `verify_and_persist`). `NostrEvent` is not `Serialize`, so
+/// the EVENT-payload `Value` is assembled field-by-field (matching the wire
+/// shape `serde_json::from_value::<NostrEvent>` expects in `handle_event`).
+fn ingest(kernel: &mut Kernel, role: RelayRole, sub_id: &str, ev: &NostrEvent) {
+    let value = serde_json::json!({
+        "id": ev.id,
+        "pubkey": ev.pubkey,
+        "created_at": ev.created_at,
+        "kind": ev.kind,
+        "tags": ev.tags,
+        "content": ev.content,
+        "sig": ev.sig,
+    });
+    kernel.handle_event(role, "wss://relay.test/", sub_id, &value);
+}
+
+/// `nostr:naddr…` URI for a kind:30023 article.
+fn naddr_uri(kind: u32, author: &str, d_tag: &str) -> String {
+    let bech = encode_naddr(&NaddrData {
+        identifier: d_tag.to_string(),
+        pubkey: author.to_string(),
+        kind,
+        relays: vec![],
+    })
+    .expect("encode_naddr");
+    format!("nostr:{bech}")
+}
+
+/// `nostr:nevent…` URI for a note.
+fn nevent_uri(event_id: &str, kind: Option<u32>, author: Option<&str>) -> String {
+    let bech = encode_nevent(&NeventData {
+        event_id: event_id.to_string(),
+        relays: vec![],
+        author: author.map(str::to_string),
+        kind,
+    })
+    .expect("encode_nevent");
+    format!("nostr:{bech}")
+}
+
+/// Drive one real emit. In `cfg(test)` builds this runs the oracle and panics on
+/// any violation — so simply calling it is a completeness assertion.
+fn emit(kernel: &mut Kernel) {
+    let _ = kernel.make_update(true);
+}
+
+/// Read a projection's LIVE `(rev, presence)` from the current tracker (presence
+/// is rev-vs-last-emit here; use it for "did the rev advance after a mutation?"
+/// assertions that run BEFORE the next emit).
+fn live_state(kernel: &Kernel, key: &str) -> (u64, ProjectionPresence) {
+    let s = kernel.projection_state(key);
+    (s.rev, s.presence)
+}
+
+/// Read a projection's `(rev, presence)` AS THE LAST emit carried it (presence
+/// overrides applied). Use for tristate (`Changed`/`Cleared`/`Unchanged`)
+/// assertions after `emit`.
+fn emitted_state(kernel: &Kernel, key: &str) -> (u64, ProjectionPresence) {
+    let s = kernel
+        .last_emitted_projection_state(key)
+        .unwrap_or_else(|| panic!("no last-emit manifest state for key '{key}' — call emit() first"));
+    (s.rev, s.presence)
+}
+
+// ── Scenario 1: store-backed fresh-longform claim (F1) ────────────────────────
+
+/// S1: claim a kind:30023 by COORD, then ingest the article for the FIRST time
+/// (`InsertOutcome::Inserted`). The store-ingest chokepoint must bump
+/// `claimed_event_content_ver` even though the claim key is a coord, not the new
+/// event's hex id — F1. The `claimed_events` rev must advance and the projection
+/// be Changed. Driven through the REAL ingest + claim + emit path; the oracle
+/// guards completeness.
 #[test]
-fn s1_store_backed_claimed_event_arrival_bumps_rev() {
-    let mut tracker = ProjectionRevTracker::default();
-    // Baseline: no claims yet. Record emit so last_emitted is seeded.
-    tracker.record_emitted("claimed_events");
-    let rev_before = tracker.projection_rev("claimed_events");
+fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
+    let d_tag = "my-article";
 
-    // Simulate: event store insert matches a live claim (chokepoint bump).
-    tracker.source_versions.bump_claimed_event_content();
+    let (mut kernel, _) = kernel_at(1_000);
 
-    let rev_after = tracker.projection_rev("claimed_events");
+    // Claim by coord BEFORE the article exists (the common cold-claim case).
+    let uri = naddr_uri(30023, &author, d_tag);
+    let _ = kernel.claim_event(uri, "view-1".to_string(), true, false);
+
+    // Baseline emit so the manifest has a recorded last-emit for claimed_events.
+    emit(&mut kernel);
+    let (rev_before, _) = live_state(&kernel, "claimed_events");
+
+    // The article arrives for the FIRST time -> InsertOutcome::Inserted. Signed,
+    // so it passes verify_and_persist; matched to the live claim by COORD (the
+    // new event's hex id is NOT the claim key — that is the F1 case).
+    let (article, _id) = signed_article(&keys, d_tag, "Hello", 1_700_000_000);
+    ingest(&mut kernel, RelayRole::Content, "lf-sub", &article);
+
+    // The chokepoint bumps claimed_event_content_ver via the COORD fallback.
+    let (rev_after, _) = live_state(&kernel, "claimed_events");
     assert!(
         rev_after > rev_before,
-        "claimed_events rev must advance after claimed_event_content_ver bump; before={rev_before} after={rev_after}"
-    );
-    assert!(
-        tracker.changed_since_last_emit("claimed_events"),
-        "claimed_events must be Changed after store-backed event arrival"
+        "F1: fresh-longform Inserted matching a live coord claim must advance \
+         claimed_events rev; before={rev_before} after={rev_after}"
     );
 
-    // Presence check via build_state.
-    let state = build_state(&tracker, "claimed_events");
-    assert_eq!(state.presence, ProjectionPresence::Changed);
+    // The emit reflects Changed and the oracle (run inside make_update) passes.
+    emit(&mut kernel);
 }
 
 // ── Scenario 2: profile enrichment after claim ────────────────────────────────
 
-/// Scenario 2: A kind:0 profile arrives for an author of a live claimed event.
-/// The `claimed_events` rev MUST advance (enrichment dependency, codex #1
-/// condition 3: profiles_ver bumps AND event_claims is non-empty).
-///
-/// In Rung 1 we encode the enrichment dependency via
-/// `claimed_event_content_ver` being bumped by the chokepoint in
-/// `ingest_profile` when `event_claims` is non-empty. The test simulates that
-/// bump directly.
+/// S2: claim a note, then a kind:0 for its author arrives while the claim is
+/// live. `ingest_profile`'s enrichment chokepoint (profiles_ver + event_claims
+/// non-empty -> claimed_event_content_ver) must advance BOTH `profile` and
+/// `claimed_events`. Real ingest + claim + emit; oracle guards completeness.
 #[test]
-fn s2_profile_enrichment_after_claim_bumps_claimed_events_rev() {
-    let mut tracker = ProjectionRevTracker::default();
-    tracker.record_emitted("claimed_events");
-    tracker.record_emitted("profile");
-    let ce_before = tracker.projection_rev("claimed_events");
-    let prof_before = tracker.projection_rev("profile");
+fn s2_profile_enrichment_after_claim_bumps_both_revs() {
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
 
-    // Simulate: kind:0 arrives while event_claims is non-empty.
-    // The chokepoint bumps both profiles_ver AND claimed_event_content_ver.
-    tracker.source_versions.bump_profiles();
-    tracker.source_versions.bump_claimed_event_content();
-    // Also bumps active_account-derived profile.
-    tracker.source_versions.bump_active_account();
+    let (mut kernel, _) = kernel_at(2_000);
 
-    assert!(tracker.projection_rev("claimed_events") > ce_before,
-        "claimed_events must advance after enrichment");
-    assert!(tracker.projection_rev("profile") > prof_before,
-        "profile must advance after profiles_ver bump");
-    assert!(tracker.changed_since_last_emit("claimed_events"));
-    assert!(tracker.changed_since_last_emit("profile"));
+    // Ingest the note (real signed), then claim it by id (so event_claims is
+    // non-empty for this author).
+    let (note, note_id) = signed_note(&keys, "hi", 1_700_000_000);
+    ingest(&mut kernel, RelayRole::Content, "n-sub", &note);
+    let uri = nevent_uri(&note_id, Some(1), Some(&author));
+    let _ = kernel.claim_event(uri, "view-2".to_string(), true, false);
+
+    emit(&mut kernel);
+    let (ce_before, _) = live_state(&kernel, "claimed_events");
+    let (prof_before, _) = live_state(&kernel, "profile");
+
+    // kind:0 for the claimed note's author arrives (real signed).
+    let profile = signed_profile(&keys, "alice", 1_700_000_500);
+    ingest(&mut kernel, RelayRole::Indexer, "meta-sub", &profile);
+
+    let (ce_after, _) = live_state(&kernel, "claimed_events");
+    let (prof_after, _) = live_state(&kernel, "profile");
+    assert!(
+        ce_after > ce_before,
+        "claimed_events must advance on profile enrichment; {ce_before} -> {ce_after}"
+    );
+    assert!(
+        prof_after > prof_before,
+        "profile must advance on profiles_ver bump; {prof_before} -> {prof_after}"
+    );
+    emit(&mut kernel);
 }
 
-// ── Scenario 3: drain present→cleared ────────────────────────────────────────
+// ── Scenario 3: drain present -> cleared -> unchanged (F2) ─────────────────────
 
-/// Scenario 3: Settle an action_results entry (Changed), then emit again with
-/// no new settlements (Cleared). The test verifies that:
-/// - First emit: Changed (non-empty drain).
-/// - Second emit (empty drain): Cleared (explicit, NOT Unchanged).
-/// - No replay: `changed_since_last_emit` is false after a Cleared is recorded.
+/// S3: settle a `signed_events` entry (Changed), emit; then emit with an empty
+/// drain (Cleared, exactly once); then emit AGAIN while stably empty (Unchanged,
+/// no churn). Driven through the REAL `record_signed_event_return` + `make_update`
+/// drain path. The oracle guards every emit.
 #[test]
-fn s3_drain_present_then_cleared_no_replay() {
-    let mut tracker = ProjectionRevTracker::default();
+fn s3_drain_changed_then_cleared_then_unchanged() {
+    let (mut kernel, _) = kernel_at(3_000);
 
-    // --- tick 1: enqueue a settlement ---
-    tracker.source_versions.bump_settlement_enqueue();
-    // Mark drain as non-empty this tick.
-    tracker.source_versions.bump_settlement_drain();
-    // Record emit (Changed).
-    tracker.record_emitted("action_results");
-    assert!(!tracker.changed_since_last_emit("action_results"),
-        "after recording emit, must not be Changed");
-
-    // --- tick 2: drain is empty this tick ---
-    // The Cleared rule: settlement_drain_ver bumps again on empty drain
-    // to distinguish "nothing to drain" from "unchanged".
-    // In the actual implementation the empty-drain path calls bump_settlement_drain
-    // to signal Cleared. We simulate it here.
-    tracker.source_versions.bump_settlement_drain();
-    // Now changed_since_last_emit must be true because drain ver advanced.
-    assert!(
-        tracker.changed_since_last_emit("action_results"),
-        "empty drain must bump rev to signal Cleared"
+    // Tick 1: a signed-event result lands -> non-empty drain -> Changed.
+    kernel.record_signed_event_return("corr-1", Ok("{}".to_string()));
+    emit(&mut kernel);
+    let (_, p1) = emitted_state(&kernel, "signed_events");
+    assert_eq!(
+        p1,
+        ProjectionPresence::Changed,
+        "tick1: non-empty drain must be Changed"
     );
 
-    // After recording this Cleared emit, the next tick is stable.
-    tracker.record_emitted("action_results");
-    assert!(!tracker.changed_since_last_emit("action_results"),
-        "after Cleared recorded, must be stable (no replay)");
+    // Tick 2: nothing new -> empty drain after non-empty -> Cleared (exactly once).
+    emit(&mut kernel);
+    let (_, p2) = emitted_state(&kernel, "signed_events");
+    assert_eq!(
+        p2,
+        ProjectionPresence::Cleared,
+        "tick2: non-empty -> empty transition must be Cleared (F2)"
+    );
+
+    // Tick 3: still empty -> stably empty -> Unchanged (no idle churn).
+    emit(&mut kernel);
+    let (_, p3) = emitted_state(&kernel, "signed_events");
+    assert_eq!(
+        p3,
+        ProjectionPresence::Unchanged,
+        "tick3: stably-empty drain must settle to Unchanged (no replay, no churn)"
+    );
 }
 
-// ── Scenario 4: action_lifecycle TTL expiry via fixed clock ──────────────────
+/// S3-bite: prove the oracle and tristate would CATCH the old "bump every tick"
+/// behaviour. If a stably-empty drain advances its rev (the pre-F2 bug), the
+/// presence would be Changed forever — which is exactly the idle churn F2 fixes.
+/// Here we assert the REAL state machine does NOT churn: a third stably-empty
+/// emit's rev equals the second's.
+#[test]
+fn s3_bite_stably_empty_drain_does_not_advance_rev() {
+    let (mut kernel, _) = kernel_at(3_500);
+    kernel.record_signed_event_return("corr-x", Ok("{}".to_string()));
+    emit(&mut kernel); // Changed
+    emit(&mut kernel); // Cleared
+    let (rev_cleared, _) = live_state(&kernel, "signed_events");
+    emit(&mut kernel); // stably empty
+    let (rev_idle1, _) = live_state(&kernel, "signed_events");
+    emit(&mut kernel); // stably empty again
+    let (rev_idle2, _) = live_state(&kernel, "signed_events");
+    assert_eq!(
+        rev_cleared, rev_idle1,
+        "rev must not advance once the drain settles empty (F2 anti-churn)"
+    );
+    assert_eq!(
+        rev_idle1, rev_idle2,
+        "rev must stay stable across repeated stably-empty drains"
+    );
+}
 
-/// Scenario 4: A row crosses its TTL deadline (prune_expired returns true).
-/// The `ttl_expiry_ver` MUST bump (rev advances); idle ticks where no row
-/// expires MUST NOT bump (rev stable).
-///
-/// The test directly exercises the `ttl_expiry_ver` stamp discipline, mirroring
-/// the `prune_expired → removed_any → bump_ttl_expiry` pattern in
-/// `action_lifecycle.rs`.
+// ── Scenario 4: action_lifecycle TTL expiry via FixedClock (F3/codex #3) ───────
+
+/// S4: record a terminal stage, advance a `FixedClock` past
+/// `RECENT_TERMINAL_TTL_MS`, and emit. The TTL prune actually removes the row,
+/// so `ttl_expiry_ver` bumps and `action_lifecycle` rev advances. An idle emit
+/// before expiry must NOT advance the rev. Real lifecycle + clock + emit.
 #[test]
 fn s4_action_lifecycle_ttl_expiry_bumps_rev_only_on_expiry() {
-    let mut tracker = ProjectionRevTracker::default();
-    // Enqueue something so the lifecycle key has a non-zero rev baseline.
-    tracker.source_versions.bump_settlement_enqueue();
-    tracker.record_emitted("action_lifecycle");
-    let rev_before = tracker.projection_rev("action_lifecycle");
+    use crate::kernel::action_stages::ActionStage;
+    use crate::kernel::action_lifecycle::RECENT_TERMINAL_TTL_MS;
 
-    // Idle tick: no TTL expiry, no new settlements.
-    // Rev must remain stable.
+    let base_secs = 4_000u64;
+    let (mut kernel, base) = kernel_at(base_secs);
+
+    // Record a terminal stage (Accepted) -> enqueue bump.
+    kernel.record_action_stage("corr-ttl", ActionStage::Accepted, None);
+    emit(&mut kernel);
+    let (rev_after_enqueue, _) = live_state(&kernel, "action_lifecycle");
+
+    // Idle emit BEFORE the TTL elapses: no prune, rev stable.
+    emit(&mut kernel);
+    let (rev_idle, _) = live_state(&kernel, "action_lifecycle");
     assert_eq!(
-        tracker.projection_rev("action_lifecycle"),
-        rev_before,
-        "idle tick must not bump action_lifecycle rev"
+        rev_idle, rev_after_enqueue,
+        "idle emit before TTL must not advance action_lifecycle rev"
     );
+
+    // Advance the clock past the terminal TTL and emit -> real prune.
+    let past_ttl = base + Duration::from_millis(RECENT_TERMINAL_TTL_MS + 1_000);
+    kernel.set_clock(Arc::new(FixedClock(past_ttl)));
+    emit(&mut kernel);
+    let (rev_expired, _) = live_state(&kernel, "action_lifecycle");
     assert!(
-        !tracker.changed_since_last_emit("action_lifecycle"),
-        "idle tick must be Unchanged"
-    );
-
-    // TTL expiry edge: prune_expired removed a row.
-    tracker.source_versions.bump_ttl_expiry();
-    assert!(
-        tracker.projection_rev("action_lifecycle") > rev_before,
-        "TTL expiry must advance action_lifecycle rev"
-    );
-    assert!(
-        tracker.changed_since_last_emit("action_lifecycle"),
-        "TTL expiry must be Changed"
+        rev_expired > rev_idle,
+        "TTL expiry (real prune) must advance action_lifecycle rev; {rev_idle} -> {rev_expired}"
     );
 }
 
-// ── Scenario 5: host-declared narrowing × rev ─────────────────────────────────
+// ── Scenario 5: configured-relays change classification ───────────────────────
 
-/// Scenario 5: Undeclared keys must be absent from the manifest's Changed set.
-/// Declared+unchanged keys must be Unchanged. Declared+changed keys must be Changed.
-///
-/// In Rung 1 the manifest is internal-only (no wire filtering yet), but we can
-/// verify that the build_manifest helper correctly classifies keys by their rev
-/// state.
+/// S5: changing the configured relay set advances `configured_relays`,
+/// `relay_role_options`, `settings_hub` (via `configured_relays_ver`) and
+/// `relay_diagnostics` (via the per-emit fingerprint). `publish_queue` stays
+/// Unchanged. Real `set_configured_relays` + emit; oracle guards.
 #[test]
-fn s5_declared_narrowing_and_rev_classification() {
-    let mut tracker = ProjectionRevTracker::default();
-    // All keys start at rev 0, all unchanged.
-    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
-        tracker.record_emitted(key);
-    }
+fn s5_configured_relays_change_classification() {
+    use crate::kernel::AppRelay;
 
-    // Only bump configured_relays.
-    tracker.source_versions.bump_configured_relays();
+    let (mut kernel, _) = kernel_at(5_000);
+    emit(&mut kernel);
 
-    let manifest = build_manifest(&tracker, 0);
+    let (cr_before, _) = live_state(&kernel, "configured_relays");
+    let (pq_before, _) = live_state(&kernel, "publish_queue");
 
-    // configured_relays, relay_role_options, settings_hub depend on
-    // configured_relays_ver — all should be Changed.
-    // diagnostics_inputs_ver is also bumped by bump_configured_relays.
-    for state in &manifest.states {
-        if ["configured_relays", "relay_role_options", "settings_hub",
-            "relay_diagnostics"].contains(&state.key)
-        {
-            assert_eq!(
-                state.presence,
-                ProjectionPresence::Changed,
-                "key {} must be Changed after configured_relays_ver bump", state.key
-            );
-        }
-    }
+    kernel.set_configured_relays(vec![AppRelay::new(
+        "wss://relay.example/".to_string(),
+        "both".to_string(),
+    )]);
 
-    // Keys not dependent on configured_relays_ver must be Unchanged.
-    for state in &manifest.states {
-        if !["configured_relays", "relay_role_options", "settings_hub",
-             "relay_diagnostics"].contains(&state.key)
-        {
-            assert_eq!(
-                state.presence,
-                ProjectionPresence::Unchanged,
-                "key {} must be Unchanged — not a dep of configured_relays_ver", state.key
-            );
-        }
-    }
-}
+    // configured_relays / relay_role_options / settings_hub are stamped at the
+    // mutation site (`configured_relays_ver`), so they advance immediately.
+    let (cr_after, cr_presence) = live_state(&kernel, "configured_relays");
+    assert!(cr_after > cr_before, "configured_relays rev must advance");
+    assert_eq!(cr_presence, ProjectionPresence::Changed);
 
-// ── Scenario 6: Reset/epoch ───────────────────────────────────────────────────
-
-/// Scenario 6: Bumping the epoch resets the within-session counter.
-/// After a bump, the epoch in the manifest is incremented.
-/// Revisions are reset to 0 on a fresh `ProjectionRevTracker` (the Reset path
-/// constructs a new `Kernel`, giving a zeroed tracker).
-#[test]
-fn s6_epoch_bumps_and_fresh_tracker_resets_revs() {
-    let mut tracker = ProjectionRevTracker::default();
-    tracker.source_versions.bump_profiles();
-    tracker.source_versions.bump_active_account();
-    tracker.source_versions.bump_publish();
-    assert!(tracker.projection_rev("profile") > 0);
-
-    tracker.bump_epoch();
-    assert_eq!(tracker.epoch, 1, "epoch must be 1 after first bump");
-
-    let manifest = build_manifest(&tracker, 42);
-    assert_eq!(manifest.epoch, 1);
-    assert_eq!(manifest.session_id, 42);
-
-    // Fresh tracker simulates kernel Reset.
-    let fresh = ProjectionRevTracker::default();
-    assert_eq!(fresh.projection_rev("profile"), 0, "fresh tracker revs must be 0");
-    assert_eq!(fresh.epoch, 0);
-}
-
-// ── Scenario 7: relay_diagnostics breadth ────────────────────────────────────
-
-/// Scenario 7: A wire-sub open/close (diagnostics input) bumps
-/// `diagnostics_inputs_ver` -> `relay_diagnostics` rev advances.
-/// Idle tick with no relay-health change -> Unchanged.
-#[test]
-fn s7_relay_diagnostics_breadth_and_idle_stable() {
-    let mut tracker = ProjectionRevTracker::default();
-    tracker.record_emitted("relay_diagnostics");
-    let rev_before = tracker.projection_rev("relay_diagnostics");
-
-    // Idle tick: no diagnostics input change.
-    assert!(
-        !tracker.changed_since_last_emit("relay_diagnostics"),
-        "relay_diagnostics must be Unchanged on idle tick"
-    );
-
-    // Wire/lifecycle change (not a relay-health change).
-    tracker.source_versions.bump_diagnostics_inputs();
-
-    assert!(
-        tracker.projection_rev("relay_diagnostics") > rev_before,
-        "relay_diagnostics rev must advance after diagnostics_inputs_ver bump"
-    );
-    assert!(
-        tracker.changed_since_last_emit("relay_diagnostics"),
-        "relay_diagnostics must be Changed after wire/lifecycle change"
-    );
-}
-
-// ── Scenario 8: per-key table test ────────────────────────────────────────────
-
-/// Scenario 8: For EACH built-in key — mutate one of its declared source
-/// counters and assert rev++ + Changed. Then tick without mutating and assert
-/// Unchanged/stable.
-///
-/// This is the "dependency table correctness" gate: if a key is missing from
-/// `BUILTIN_PROJECTION_DEPENDENCIES` or its deps are wrong, this test fails.
-#[test]
-fn s8_per_key_mutate_dep_bumps_rev_no_op_tick_stable() {
-    // Map each key to the first source counter in its dependency list.
-    for (key, deps) in BUILTIN_PROJECTION_DEPENDENCIES {
-        let first_dep = match deps.first() {
-            Some(d) => *d,
-            None => continue, // no deps declared — skip (will fail s9 instead)
-        };
-
-        let mut tracker = ProjectionRevTracker::default();
-        tracker.record_emitted(key);
-        let rev_before = tracker.projection_rev(key);
-        assert!(
-            !tracker.changed_since_last_emit(key),
-            "key={key}: must be Unchanged at baseline"
-        );
-
-        // Bump the source.
-        match first_dep {
-            "profiles_ver" => tracker.source_versions.bump_profiles(),
-            "accounts_ver" => tracker.source_versions.bump_accounts(),
-            "active_account_ver" => tracker.source_versions.bump_active_account(),
-            "profile_claims_ver" => tracker.source_versions.bump_profile_claims(),
-            "claimed_event_content_ver" => tracker.source_versions.bump_claimed_event_content(),
-            "open_views_ver" => tracker.source_versions.bump_open_views(),
-            "configured_relays_ver" => tracker.source_versions.bump_configured_relays(),
-            "publish_ver" => tracker.source_versions.bump_publish(),
-            "diagnostics_inputs_ver" => tracker.source_versions.bump_diagnostics_inputs(),
-            "settlement_enqueue_ver" => tracker.source_versions.bump_settlement_enqueue(),
-            "settlement_drain_ver" => tracker.source_versions.bump_settlement_drain(),
-            "ttl_expiry_ver" => tracker.source_versions.bump_ttl_expiry(),
-            other => panic!("unknown source counter '{other}' in deps for key '{key}'"),
-        }
-
-        let rev_after = tracker.projection_rev(key);
-        assert!(
-            rev_after > rev_before,
-            "key={key}: rev must advance after bumping '{first_dep}'; before={rev_before} after={rev_after}"
-        );
-        assert!(
-            tracker.changed_since_last_emit(key),
-            "key={key}: must be Changed after bumping '{first_dep}'"
-        );
-
-        // No-op tick: record emit, then assert stable.
-        tracker.record_emitted(key);
-        assert!(
-            !tracker.changed_since_last_emit(key),
-            "key={key}: must be Unchanged on no-op tick after recording emit"
-        );
-    }
-}
-
-// ── Completeness enforcement ──────────────────────────────────────────────────
-
-/// Every key in `KERNEL_BUILTIN_PROJECTION_KEYS` MUST have an entry in
-/// `BUILTIN_PROJECTION_DEPENDENCIES`. A new key without a dependency entry
-/// fails this test at `cargo test -p nmp-core` time.
-#[test]
-fn all_builtin_keys_have_dependency_entries() {
-    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
-        let found = BUILTIN_PROJECTION_DEPENDENCIES
-            .iter()
-            .any(|(k, _)| k == key);
-        assert!(
-            found,
-            "projection key '{key}' is in KERNEL_BUILTIN_PROJECTION_KEYS but has no entry in \
-             BUILTIN_PROJECTION_DEPENDENCIES — add a dependency mapping to \
-             kernel/projection_rev/mod.rs"
-        );
-    }
-}
-
-/// Every key in `BUILTIN_PROJECTION_DEPENDENCIES` MUST be in
-/// `KERNEL_BUILTIN_PROJECTION_KEYS`. A stale entry in the dep table that no
-/// longer exists in the built-in key set fails this test.
-#[test]
-fn dependency_table_has_no_orphan_keys() {
-    for (key, _) in BUILTIN_PROJECTION_DEPENDENCIES {
-        let found = KERNEL_BUILTIN_PROJECTION_KEYS.contains(key);
-        assert!(
-            found,
-            "dependency entry for '{key}' exists in BUILTIN_PROJECTION_DEPENDENCIES but \
-             '{key}' is NOT in KERNEL_BUILTIN_PROJECTION_KEYS — remove or rename the entry"
-        );
-    }
-}
-
-/// `build_manifest` covers all built-in keys and returns one state per key.
-#[test]
-fn build_manifest_covers_all_builtin_keys() {
-    let tracker = ProjectionRevTracker::default();
-    let manifest = build_manifest(&tracker, 0);
-    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
-        let found = manifest.states.iter().any(|s| s.key == *key);
-        assert!(found, "manifest missing state for key '{key}'");
-    }
-    assert_eq!(
-        manifest.states.len(),
-        KERNEL_BUILTIN_PROJECTION_KEYS.len(),
-        "manifest must have exactly one state per built-in key"
-    );
-}
-
-/// `build_state` returns `Unchanged` at rev 0 for a fresh tracker (all
-/// sources at 0, no emissions recorded).
-#[test]
-fn build_state_fresh_tracker_all_unchanged() {
-    let tracker = ProjectionRevTracker::default();
-    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
-        let state = build_state(&tracker, key);
+    for key in ["relay_role_options", "settings_hub"] {
+        let (_, p) = live_state(&kernel, key);
         assert_eq!(
-            state.presence,
-            ProjectionPresence::Unchanged,
-            "fresh tracker: key '{key}' must be Unchanged"
+            p,
+            ProjectionPresence::Changed,
+            "{key} depends on configured_relays_ver -> must be Changed"
         );
-        assert_eq!(state.rev, 0, "fresh tracker: key '{key}' must have rev=0");
     }
+
+    // publish_queue does not depend on configured_relays_ver — unmoved.
+    let (pq_after, pq_presence) = live_state(&kernel, "publish_queue");
+    assert_eq!(pq_after, pq_before, "publish_queue rev must not move");
+    assert_eq!(pq_presence, ProjectionPresence::Unchanged);
+
+    // relay_diagnostics advances via the per-emit fingerprint reconcile (the
+    // configured relay set is in its snapshot) — assert on the emitted state.
+    emit(&mut kernel);
+    let (_, rd_presence) = emitted_state(&kernel, "relay_diagnostics");
+    assert_eq!(
+        rd_presence,
+        ProjectionPresence::Changed,
+        "relay_diagnostics must be Changed after the configured relay set changes"
+    );
 }
 
-/// All source counter names used in `BUILTIN_PROJECTION_DEPENDENCIES` must be
-/// recognized by `SourceVersions::get` (non-zero after a corresponding bump).
+// ── Scenario 6: account switch -> epoch bump (F6) ─────────────────────────────
+
+/// S6: switching the active account bumps the within-session epoch so Rung 3's
+/// host re-baselines all projections. Real `set_active_account` + emit.
 #[test]
-fn all_dep_source_names_are_recognized_by_get() {
-    use std::collections::HashSet;
-    let mut all_sources: HashSet<&str> = HashSet::new();
-    for (_, deps) in BUILTIN_PROJECTION_DEPENDENCIES {
-        for dep in *deps {
-            all_sources.insert(dep);
-        }
-    }
-    for source in all_sources {
-        let mut sv = super::SourceVersions::default();
-        // Bump via a known bump method.
-        match source {
-            "profiles_ver" => sv.bump_profiles(),
-            "accounts_ver" => sv.bump_accounts(),
-            "active_account_ver" => sv.bump_active_account(),
-            "profile_claims_ver" => sv.bump_profile_claims(),
-            "claimed_event_content_ver" => sv.bump_claimed_event_content(),
-            "open_views_ver" => sv.bump_open_views(),
-            "configured_relays_ver" => sv.bump_configured_relays(),
-            "publish_ver" => sv.bump_publish(),
-            "diagnostics_inputs_ver" => sv.bump_diagnostics_inputs(),
-            "settlement_enqueue_ver" => sv.bump_settlement_enqueue(),
-            "settlement_drain_ver" => sv.bump_settlement_drain(),
-            "ttl_expiry_ver" => sv.bump_ttl_expiry(),
-            other => panic!("unknown source name '{other}' — add a bump method"),
-        }
-        assert!(
-            sv.get(source) > 0,
-            "source '{source}' must be non-zero after bump"
+fn s6_account_switch_bumps_epoch() {
+    let (mut kernel, _) = kernel_at(6_000);
+    emit(&mut kernel);
+    let epoch_before = kernel.projection_manifest().epoch;
+
+    kernel.set_active_account(ACCOUNT_PK.to_string());
+    let epoch_after = kernel.projection_manifest().epoch;
+    assert_eq!(
+        epoch_after,
+        epoch_before + 1,
+        "account switch must bump the epoch (host re-baseline, F6)"
+    );
+
+    // Switching to the SAME account again must NOT bump (no real change).
+    kernel.set_active_account(ACCOUNT_PK.to_string());
+    assert_eq!(
+        kernel.projection_manifest().epoch,
+        epoch_after,
+        "re-setting the same active account must not bump the epoch"
+    );
+    emit(&mut kernel);
+}
+
+// ── Scenario 7: relay status transition advances relay_diagnostics (F5) ────────
+
+/// S7 (F5): a relay connection-state transition advances `relay_diagnostics` via
+/// the per-emit fingerprint reconcile (the rev advances on the NEXT emit, not at
+/// the mutation site; the oracle inside that emit would panic on a missed stamp).
+/// Assert against the EMITTED state after a post-mutation emit.
+#[test]
+fn s7_relay_status_transition_advances_relay_diagnostics() {
+    let (mut kernel, _) = kernel_at(7_000);
+    emit(&mut kernel);
+    let (rd_before, _) = emitted_state(&kernel, "relay_diagnostics");
+
+    // A pure relay connection-state transition, then emit (fingerprint reconcile
+    // + oracle run inside make_update).
+    kernel.relay_connecting_url(RelayRole::Content, "wss://relay.example/");
+    emit(&mut kernel);
+
+    let (rd_after, rd_presence) = emitted_state(&kernel, "relay_diagnostics");
+    assert!(
+        rd_after > rd_before,
+        "F5: a relay status transition must advance relay_diagnostics on the next \
+         emit; {rd_before} -> {rd_after}"
+    );
+    assert_eq!(rd_presence, ProjectionPresence::Changed);
+}
+
+// ── Scenario 9: RAM-eviction of profiles advances profile rev (F4) ────────────
+
+/// S9 (F4): RAM-tier eviction removes profile rows the `profile` / `accounts` /
+/// `claimed_events` projections derive from. `evict_profiles_cache` must bump
+/// `profiles_ver` when it removes ≥1 row, else the host serves a profile the
+/// kernel no longer holds. Driven through the REAL `inject_replaceable_event`
+/// (kind:0) population + `evict_ram_caches` path.
+#[test]
+fn s9_ram_eviction_of_profiles_advances_profile_rev() {
+    use crate::kernel::ram_eviction::PROFILES_RAM_HWM;
+
+    let (mut kernel, _) = kernel_at(9_000);
+
+    // Populate just over the HWM so eviction has rows to drop. None are pinned
+    // (no active account, no claims, no open views), so candidates exist.
+    let over = PROFILES_RAM_HWM + 32;
+    for i in 0..over {
+        let pubkey = format!("{:0>64x}", 0x20000usize + i);
+        let id = format!("{:0>64x}", 0x40000usize + i);
+        kernel.inject_replaceable_event(
+            &id,
+            &pubkey,
+            1_700_000_000 + i as u64,
+            0,
+            vec![],
+            "wss://relay.test/",
+            (1_700_000_000 + i as u64) * 1_000,
         );
     }
+
+    emit(&mut kernel);
+    let (rev_before, _) = live_state(&kernel, "profile");
+
+    let report = kernel.evict_ram_caches();
+    assert!(
+        report.profiles_evicted > 0,
+        "precondition: eviction must drop ≥1 profile row"
+    );
+
+    let (rev_after, _) = live_state(&kernel, "profile");
+    assert!(
+        rev_after > rev_before,
+        "F4: RAM-eviction that drops profile rows must advance profile rev; \
+         {rev_before} -> {rev_after}"
+    );
+    emit(&mut kernel);
 }
+

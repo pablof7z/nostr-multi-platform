@@ -197,8 +197,6 @@ impl Kernel {
         self.transport_relays
             .set_info(relay_url, doc, Instant::now());
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: relay-info doc is a relay_diagnostics input.
-        self.projection_rev_tracker.source_versions.bump_diagnostics_inputs();
     }
 
     /// ADR-0051 — whether a fresh (within `ttl`) relay-information document

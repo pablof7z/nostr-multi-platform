@@ -381,7 +381,5 @@ impl Kernel {
         // next actor tick. The actor's emit-interval throttle (≤60 Hz/view)
         // bounds throughput; per-tick coalescing handles burst scenarios.
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: auth state is a relay_diagnostics input.
-        self.projection_rev_tracker.source_versions.bump_diagnostics_inputs();
     }
 }

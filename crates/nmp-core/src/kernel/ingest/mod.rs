@@ -27,6 +27,7 @@
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
 
 mod auth_handlers;
+mod claimed_event_stamp; // ADR-0055 Rung 1 (F1) claimed-event stamp — sibling for size baseline
 mod closed;
 mod contacts;
 // EOSE frame handling (incl. K3 Stage D1 coverage write), split for the LOC cap.
@@ -277,7 +278,6 @@ impl Kernel {
             sub.events_rx = sub.events_rx.saturating_add(1);
             sub.last_event_at = Some(now);
         }
-
         let claim_match_author = self.claim_expansion_match_author(sub_id, &event);
 
         // D4: all events are persisted before kind-specific dispatch.
@@ -344,13 +344,11 @@ impl Kernel {
                 // kinds + group metadata, gift-wraps kind:1059, future
                 // NIP-51 lists — all fan through the IngestParser registry
                 // inside `verify_and_persist`) reaches `KernelEventObserver`s
-                // through this seam. Pre-fix the wildcard called only
-                // `verify_and_persist`, so projections like
-                // `GroupChatProjection`, `DiscoveredGroupsProjection`, and
-                // the NIP-57 zap-aggregate projection registered as
-                // observers were structurally deaf. Gate fan-out on the
-                // store outcome (`Inserted | Replaced` only — D4 dedup so
-                // duplicate sibling-relay deliveries do not double-notify).
+                // through this seam (e.g. `GroupChatProjection`,
+                // `DiscoveredGroupsProjection`, the NIP-57 zap-aggregate
+                // projection). Gate fan-out on the store outcome
+                // (`Inserted | Replaced` only — D4 dedup so duplicate
+                // sibling-relay deliveries do not double-notify).
                 //
                 // V-40 — the substrate `EventIngestDispatcher` runs inside
                 // `verify_and_persist` for every gated outcome, so per-NIP
@@ -542,48 +540,7 @@ impl Kernel {
                     }
                 }
 
-                // ADR-0055 Rung 1, codex #1 condition 2: when a store
-                // insert/replace lands an event whose id or addressable coord
-                // matches a live `event_claims` key, bump
-                // `claimed_event_content_ver` so the `claimed_events`
-                // projection rev advances without waiting for a profile bump.
-                //
-                // `event_claims` keys are String (hex or "kind:pubkey:d_tag");
-                // `InsertOutcome` ids are `[u8; 32]` bytes — convert to hex.
-                let should_bump_claimed = match &outcome {
-                    crate::store::InsertOutcome::Inserted { id, .. } => {
-                        let hex_id: String = id.iter().map(|b| format!("{b:02x}")).collect();
-                        self.event_claims.contains_key(&hex_id)
-                    }
-                    crate::store::InsertOutcome::Replaced { new_id, .. } => {
-                        // For replaceable events the addressable coord key
-                        // "kind:pubkey:d_tag" may be in `event_claims` even
-                        // though we only have the new event id here. Check
-                        // both the id and the addressable coord.
-                        let hex_id: String = new_id.iter().map(|b| format!("{b:02x}")).collect();
-                        if self.event_claims.contains_key(&hex_id) {
-                            true
-                        } else {
-                            // Build the coord key and check that too.
-                            let d = event
-                                .tags
-                                .iter()
-                                .find(|t| t.first().map(|s| *s == "d").unwrap_or(false))
-                                .and_then(|t| t.get(1))
-                                .map(|s| s.as_str())
-                                .unwrap_or("");
-                            let coord_key = format!("{}:{}:{}", event.kind, event.pubkey, d);
-                            self.event_claims.contains_key(&coord_key)
-                        }
-                    }
-                    _ => false,
-                };
-                if should_bump_claimed {
-                    self.projection_rev_tracker
-                        .source_versions
-                        .bump_claimed_event_content();
-                }
-
+                self.maybe_bump_claimed_event_content(&outcome, &event); // ADR-0055 (F1)
                 Some(outcome)
             }
             Err(e) => {

@@ -226,11 +226,14 @@ impl Kernel {
     /// resolver parses. The map is `clear()`ed here (drain-once), so the host
     /// reads each id exactly once.
     pub(in super::super) fn take_signed_events_projection(&mut self) -> serde_json::Value {
-        // ADR-0055 Rung 1: bump settlement_drain_ver on EVERY call (empty or
-        // not) — mirrors take_action_results_projection. Drain projections are
-        // never Unchanged; each tick is either Changed (non-empty) or Cleared.
-        self.projection_rev_tracker.source_versions.bump_settlement_drain();
-        if self.signed_events.is_empty() {
+        // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit
+        // (mirrors `take_action_results_projection`). Changed on non-empty,
+        // Cleared on the non-empty -> empty transition, Unchanged while stably
+        // empty.
+        let nonempty = !self.signed_events.is_empty();
+        self.projection_rev_tracker
+            .note_drain_emit("signed_events", nonempty);
+        if !nonempty {
             return serde_json::Value::Null;
         }
         let mut out = serde_json::Map::with_capacity(self.signed_events.len());
