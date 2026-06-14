@@ -31,60 +31,31 @@ const runtime = createGalleryRuntime();
 void runtime.start(SHOWCASE_RELAYS);
 
 export default function App(): JSX.Element {
-  // Resolve the showcase profile (and, as events arrive, their authors) with a
-  // release-reclaim retry. A profile claim's kind:0 REQ is dropped if its indexer
-  // relay (e.g. purplepag) isn't connected yet when the claim fires — and
-  // claim_profile then dedupes ("already requested"), so NO later claim ever
-  // re-fetches it (it stays poisoned by the dropped REQ). Releasing the sole
-  // consumer clears that requested state; re-claiming issues a fresh REQ once
-  // more indexers are connected. One consumer per pubkey keeps the release
-  // effective (avatar components add their own consumer only after resolution).
-  const profileConsumer = (pk: string) => `gallery-profile-${pk.slice(0, 8)}`;
-  const profileResolved = (pk: string) => {
-    const p = runtime.host.profile(pk);
-    return !!p && (!!p.displayName || !!p.pictureUrl);
-  };
-  let profileRetryStarted = false;
+  // Claim the showcase profile once an indexer relay is connected. The kernel
+  // auto-rebatches a pending kind:0 REQ when a relay reconnects (profile claims
+  // are deferred-reconnect-safe — profile.rs §"compiler handles deferred relay
+  // reconnect"), so a single claim self-heals if the profile's indexer wasn't
+  // the first relay to connect. No manual release-reclaim — that would cancel an
+  // in-flight kind:0 and is unnecessary for profiles (unlike event claims).
+  let claimed = false;
   createEffect(() => {
-    if (!runtime.anyIndexerConnected() || profileRetryStarted) return;
-    profileRetryStarted = true;
-    let attempt = 0;
-    // Per-pubkey attempt at which we last (re)claimed it. We only release-reclaim
-    // a pubkey after it has stayed unresolved for RECLAIM_AFTER ticks — claiming
-    // every tick would cancel an in-flight kind:0 resolution that takes longer
-    // than one interval (the cause of a late-entering author never resolving).
-    const lastClaimAt = new Map<string, number>();
-    const RECLAIM_AFTER = 3; // ticks (×4s ≈ 12s) before assuming the REQ dropped
-    const tick = () => {
-      const events = [noteRaw(), articleRaw(), highlightRaw()];
-      const desired = new Set<string>([SHOWCASE_PUBKEY]);
-      for (const ev of events) if (ev?.authorPubkey) desired.add(ev.authorPubkey);
-      let allResolved = true;
-      for (const pk of desired) {
-        if (profileResolved(pk)) continue;
-        allResolved = false;
-        const c = profileConsumer(pk);
-        const claimedAt = lastClaimAt.get(pk);
-        if (claimedAt === undefined) {
-          runtime.host.claimProfile(pk, c); // first claim
-          lastClaimAt.set(pk, attempt);
-        } else if (attempt - claimedAt >= RECLAIM_AFTER) {
-          runtime.host.releaseProfile(pk, c); // clear dropped-REQ dedupe state
-          runtime.host.claimProfile(pk, c); // fresh REQ
-          lastClaimAt.set(pk, attempt);
-        }
+    if (runtime.anyIndexerConnected() && !claimed) {
+      claimed = true;
+      runtime.host.claimProfile(SHOWCASE_PUBKEY, "gallery-root");
+    }
+  });
+
+  // Claim each resolved event's author so the embed cards show a real byline.
+  // One claim per author; the kernel's deferred-reconnect rebatch handles relays.
+  const claimedAuthors = new Set<string>();
+  createEffect(() => {
+    for (const ev of [noteRaw(), articleRaw(), highlightRaw()]) {
+      const pk = ev?.authorPubkey;
+      if (pk && !claimedAuthors.has(pk)) {
+        claimedAuthors.add(pk);
+        runtime.host.claimProfile(pk, `embed-author-${pk.slice(0, 8)}`);
       }
-      attempt += 1;
-      // Keep going until every event has resolved AND every author profile is
-      // resolved — otherwise we'd stop after the showcase resolves but before a
-      // late-arriving event adds its author to the desired set. The attempt
-      // budget bounds the loop if a relay never delivers.
-      const eventsAllResolved = events.every((ev) => ev !== undefined);
-      if ((allResolved && eventsAllResolved) || attempt >= 30) clearInterval(timer);
-    };
-    tick();
-    const timer = setInterval(tick, 4000);
-    onCleanup(() => clearInterval(timer));
+    }
   });
 
   // Claim the showcase events for the content-view component. Event-id fetches
