@@ -140,7 +140,17 @@ impl EventStore for MemEventStore {
         now_secs: u64,
         pins: &HashSet<EventId>,
     ) -> Result<GcReport, StoreError> {
-        gc::gc_step_with_pins(self, budget, now_secs, pins)
+        gc::gc_step_with_pins(self, budget, now_secs, pins, &[])
+    }
+
+    fn gc_step_with_pins_and_coverage(
+        &self,
+        budget: GcBudget,
+        now_secs: u64,
+        pins: &HashSet<EventId>,
+        guards: &[crate::types::CoverageGuard],
+    ) -> Result<GcReport, StoreError> {
+        gc::gc_step_with_pins(self, budget, now_secs, pins, guards)
     }
 
     fn domain_open(&self, namespace: &'static str) -> Result<DomainHandle, StoreError> {
@@ -201,5 +211,27 @@ impl EventStore for MemEventStore {
             .coverage
             .get(&(filter_hash.to_string(), relay.to_string()))
             .copied()
+    }
+
+    fn coverage_max_for_filter_hash(&self, filter_hash: &str) -> Option<u64> {
+        let state = self.lock().ok()?;
+        state
+            .coverage
+            .iter()
+            .filter(|((fh, _relay), _v)| fh == filter_hash)
+            .map(|(_k, v)| *v)
+            .max()
+    }
+
+    fn coverage_rows_for_filter_hash(&self, filter_hash: &str) -> Vec<(String, u64)> {
+        let Ok(state) = self.lock() else {
+            return Vec::new();
+        };
+        state
+            .coverage
+            .iter()
+            .filter(|((fh, _relay), _v)| fh == filter_hash)
+            .map(|((_fh, relay), v)| (relay.clone(), *v))
+            .collect()
     }
 }

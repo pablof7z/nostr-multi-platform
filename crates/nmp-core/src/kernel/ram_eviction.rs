@@ -97,6 +97,10 @@ use std::collections::HashSet;
 // tests, and the K3 Stage C (ADR-0056) floor⇄serve unification lock tests.
 #[path = "ram_eviction_floor.rs"]
 mod floor;
+// K3 Stage D3 (ADR-0056 §3.D3) — pin-below-ledger-floor + coverage-guard set;
+// also hosts the D3 kernel-layer tests (`gc_coverage_coherent_d3_tests`).
+#[path = "ram_eviction_coverage.rs"]
+mod coverage;
 #[cfg(test)]
 #[path = "gc_floor_coherent_tests.rs"]
 mod gc_floor_coherent_tests;
@@ -316,56 +320,8 @@ impl Kernel {
         (pins, budget)
     }
 
-    /// Extend `pins` with every stored event at or below each active floored
-    /// shape's `since`-floor (#1090 Stage 2).
-    ///
-    /// For each active `LogicalInterest`, [`shape_floor`](floor::shape_floor)
-    /// computes the same floor the `watermark_fn` would (the newest stored
-    /// matching event), then every stored event matching that shape with
-    /// `created_at <= floor` is added to the pin set. Shapes with no floor
-    /// (`None`) contribute nothing — they are not floored, so the relay
-    /// re-sends their history and no hole can form.
-    ///
-    /// Returns `true` when all shapes were fully scanned, `false` when any
-    /// shape's scan was truncated by the [`floor::PIN_SCAN_MAX_EVENTS`] budget.
-    /// Callers must treat `false` conservatively — see `derive_store_pin_set`.
-    fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) -> bool {
-        use floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
-
-        let active = self.lifecycle.registry().iter_active();
-        if active.is_empty() {
-            return true;
-        }
-        // #1380: read the QUERY-KEY view so this floor agrees with `watermark_fn`.
-        let truncated = floor::truncated_serve_snapshot(&self.etag_ptag_truncated_query_keys);
-        let mut complete = true;
-        for interest in &active {
-            let Some(floor) = shape_floor(&interest.shape, self.store.as_ref(), &truncated) else {
-                continue;
-            };
-            let outcome = pin_shape_events_below_floor(
-                &interest.shape,
-                floor,
-                self.store.as_ref(),
-                pins,
-                floor::PIN_SCAN_MAX_EVENTS,
-            );
-            if outcome == PinScanOutcome::Truncated {
-                tracing::warn!(
-                    "floor-coherent pin scan truncated at {} events for shape \
-                     (Etag/Ptag with many matches); LRU eviction deferred this tick. \
-                     See #1348.",
-                    floor::PIN_SCAN_MAX_EVENTS,
-                );
-                complete = false;
-                // Do not break: keep scanning remaining shapes so we pin as
-                // many events as possible within the overall budget. Each shape
-                // gets its own fresh PIN_SCAN_MAX_EVENTS allowance — truncation
-                // of one shape does not starve others.
-            }
-        }
-        complete
-    }
+    // `add_floor_coherent_pins` (#1090 Stage 2 + K3 Stage D3 leg 1) lives in the
+    // sibling `ram_eviction_coverage.rs` (this file is at the 500-LOC cap).
 
     // ─── events ────────────────────────────────────────────────────────────
 

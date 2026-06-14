@@ -2118,7 +2118,15 @@ impl Kernel {
         // matching budget (#1348 truncation→no-eviction decision lives in
         // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
         let (pins, gc_budget) = self.derive_store_gc_inputs();
-        match self.store.gc_step_with_pins(gc_budget, now_secs, &pins) {
+        // K3 Stage D3 leg 2 — the eviction⇄ledger coherence backstop guards
+        // (empty unless `coverage_ledger_enabled`). Passed alongside the pins so
+        // the store can lower an over-claimed `covered_through` in the SAME
+        // transaction as the below-floor delete that made it stale.
+        let coverage_guards = self.derive_coverage_guards();
+        match self
+            .store
+            .gc_step_with_pins_and_coverage(gc_budget, now_secs, &pins, &coverage_guards)
+        {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());

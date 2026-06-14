@@ -8,7 +8,7 @@ use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
 use super::types::{
-    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    CoverageGuard, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
 };
 use super::StoreError;
@@ -352,6 +352,57 @@ pub trait EventStore: Send + Sync {
     /// events. `now_secs` is the current kernel clock as Unix seconds (D7).
     fn gc_step(&self, budget: GcBudget, now_secs: u64) -> Result<GcReport, StoreError> {
         self.gc_step_with_pins(budget, now_secs, &HashSet::new())
+    }
+
+    /// K3 Stage D3 (ADR-0056 §3.D3) — one bounded GC pass with both an explicit
+    /// pin set AND the eviction⇄ledger coherence backstop.
+    ///
+    /// Identical to [`gc_step_with_pins`](Self::gc_step_with_pins), but if
+    /// Phase-2 LRU eviction deletes an event a `CoverageGuard` matches whose
+    /// `created_at <= covered_through`, the matching ledger row's
+    /// `covered_through` is lowered to just below the oldest evicted covered
+    /// event **in the same transaction as the delete** — so the ledger never
+    /// claims coverage of a range it no longer holds (the permanent backfill
+    /// hole the memory review flagged). See [`CoverageGuard`].
+    ///
+    /// `guards` is derived by the kernel on each GC pass from the live coverage
+    /// rows + active interest registry, gated on the off-by-default
+    /// `coverage_ledger_enabled` flag. With the flag off the slice is **empty**
+    /// and this method is byte-identical to `gc_step_with_pins`.
+    ///
+    /// Default impl ignores `guards` and delegates to `gc_step_with_pins`, so a
+    /// non-overriding backend compiles unchanged; both shipped backends
+    /// (`MemEventStore`, `LmdbEventStore`) override it with the atomic backstop.
+    fn gc_step_with_pins_and_coverage(
+        &self,
+        budget: GcBudget,
+        now_secs: u64,
+        pins: &HashSet<EventId>,
+        _guards: &[CoverageGuard],
+    ) -> Result<GcReport, StoreError> {
+        self.gc_step_with_pins(budget, now_secs, pins)
+    }
+
+    /// K3 Stage D3 — the highest `covered_through` recorded for `filter_hash`
+    /// across ALL relays, or `None` if no relay has a coverage row for it.
+    ///
+    /// The store is relay-agnostic (events are not tagged by which relay covered
+    /// them), but the ledger is per-`(filter_hash, relay)`. The floor-coherent
+    /// pin set must protect every event a REQ for this shape could floor away on
+    /// ANY relay, so it pins below the MAX coverage across the shape's relays
+    /// (over-pinning is always safe — it only defers eviction; under-pinning
+    /// punches a hole). Default `None` (non-overriding backends / no rows).
+    fn coverage_max_for_filter_hash(&self, _filter_hash: &str) -> Option<u64> {
+        None
+    }
+
+    /// K3 Stage D3 — every `(relay, covered_through)` row recorded for
+    /// `filter_hash`, in arbitrary order. Used by the kernel to build one
+    /// [`CoverageGuard`] per covered `(filter_hash, relay)` so the eviction
+    /// backstop can lower the right row. Default empty (non-overriding backends
+    /// / no rows).
+    fn coverage_rows_for_filter_hash(&self, _filter_hash: &str) -> Vec<(String, u64)> {
+        Vec::new()
     }
 
     // ─── Domain rows ─────────────────────────────────────────────────────────

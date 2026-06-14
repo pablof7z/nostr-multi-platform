@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use crate::time::Instant;
 
 use super::{access_remove, bytes_to_hex, relay_index_remove, MemEventStore, TOMBSTONE_MAX_AGE_SECS};
-use crate::types::{EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
+use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
 /// One bounded GC pass with an explicit derived pin set.
@@ -38,11 +38,19 @@ use crate::StoreError;
 /// 1. Reap NIP-40 expired events (up to `budget.max_events_per_step`).
 /// 2. LRU-evict un-pinned events when store size exceeds `budget.max_total_events`.
 /// 3. Purge tombstone rows older than `TOMBSTONE_MAX_AGE_SECS`.
+///
+/// `guards` (K3 Stage D3, ADR-0056 §3.D3) is the eviction⇄ledger coherence
+/// backstop: if a Phase-2 LRU eviction deletes an event a guard matches whose
+/// `created_at <= covered_through`, the matching coverage row is lowered to just
+/// below the oldest evicted covered event, **inside the same `st` lock** as the
+/// delete — so the ledger never over-claims a range it no longer holds. An empty
+/// slice (the flag-off path) makes the eviction byte-identical to before D3.
 pub(super) fn gc_step_with_pins(
     store: &MemEventStore,
     budget: GcBudget,
     now_secs: u64,
     pins: &HashSet<EventId>,
+    guards: &[CoverageGuard],
 ) -> Result<GcReport, StoreError> {
     let start = Instant::now();
     let mut st = store.lock()?;
@@ -110,17 +118,54 @@ pub(super) fn gc_step_with_pins(
         let overage = st.events.len().saturating_sub(budget.max_total_events);
         let to_evict = overage.min(budget.max_events_per_step);
 
+        // K3 Stage D3 backstop: per guard, the lowest `created_at` of an evicted
+        // event that the guard matches AND that sits at/below its
+        // `covered_through`. After eviction each such row is lowered to just
+        // below that timestamp so the ledger stops claiming the now-evicted
+        // range. `None` ⇒ no below-floor covered event was evicted for that
+        // guard (row untouched). Computed inside the same `st` lock as the
+        // deletes, so the lowering and the deletes are atomic together.
+        let mut min_evicted_covered: Vec<Option<u64>> = vec![None; guards.len()];
+
         for (_, id_hex) in candidates.into_iter().take(to_evict) {
+            // Capture the guard-relevant fields BEFORE removing the row.
+            let evicted_fields = if guards.is_empty() {
+                None
+            } else {
+                st.events.get(&id_hex).map(|ev| {
+                    (
+                        ev.raw.pubkey.clone(),
+                        ev.raw.kind,
+                        ev.raw.created_at,
+                        ev.raw.tags.clone(),
+                    )
+                })
+            };
             if st.events.remove(&id_hex).is_some() {
                 st.provenance.remove(&id_hex);
                 relay_index_remove(&mut *st, &id_hex);
                 access_remove(&mut *st, &id_hex);
                 report.lru_evicted += 1;
+                if let Some((author, kind, created_at, tags)) = evicted_fields {
+                    for (gi, guard) in guards.iter().enumerate() {
+                        if created_at <= guard.covered_through
+                            && (guard.matches)(&id_hex, &author, kind, created_at, &tags)
+                        {
+                            let slot = &mut min_evicted_covered[gi];
+                            *slot = Some(slot.map_or(created_at, |m| m.min(created_at)));
+                        }
+                    }
+                }
             }
             if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
+                lower_coverage_rows(&mut st, guards, &min_evicted_covered);
                 return finish(start, report);
             }
         }
+
+        // Atomic with the deletes (same `st` lock): lower every row whose
+        // covered range lost a below-floor event this pass.
+        lower_coverage_rows(&mut st, guards, &min_evicted_covered);
     }
 
     // ── Phase 3: Purge old tombstones ─────────────────────────────────────────
@@ -163,6 +208,41 @@ pub(super) fn gc_step_with_pins(
 fn finish(start: Instant, mut report: GcReport) -> Result<GcReport, StoreError> {
     report.duration_ms = start.elapsed().as_millis() as u32;
     Ok(report)
+}
+
+/// K3 Stage D3 backstop: lower each guard's coverage row to just below the
+/// oldest evicted covered event for it. `min_evicted_covered[gi]` is the lowest
+/// `created_at` of an evicted event the guard matched at/below its
+/// `covered_through`; the new bound is `that - 1` (the highest timestamp the
+/// ledger can still honestly claim, since the event AT that timestamp is now
+/// gone). `created_at == 0` lowers to `0` which `record_coverage` semantics
+/// treats as "no coverage", so the row is removed rather than left at a
+/// misleading `0`. Called inside the held `st` lock (same critical section as
+/// the deletes), so the lowering is atomic with the eviction.
+fn lower_coverage_rows(
+    st: &mut super::MemState,
+    guards: &[CoverageGuard],
+    min_evicted_covered: &[Option<u64>],
+) {
+    for (gi, guard) in guards.iter().enumerate() {
+        let Some(oldest_evicted) = min_evicted_covered[gi] else {
+            continue;
+        };
+        let key = (guard.filter_hash.clone(), guard.relay.clone());
+        let new_bound = oldest_evicted.saturating_sub(1);
+        match st.coverage.get(&key).copied() {
+            // Only lower (never raise) and never touch a row already at/below
+            // the honest bound — the lowering is downward-only.
+            Some(existing) if existing > new_bound => {
+                if new_bound == 0 {
+                    st.coverage.remove(&key);
+                } else {
+                    st.coverage.insert(key, new_bound);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -221,7 +301,7 @@ mod tests {
             max_total_events: usize::MAX,
         };
         let report =
-            gc_step_with_pins(&store, budget, now_secs, &HashSet::new()).unwrap();
+            gc_step_with_pins(&store, budget, now_secs, &HashSet::new(), &[]).unwrap();
 
         let st = store.lock().unwrap();
         assert!(
@@ -253,7 +333,7 @@ mod tests {
             max_total_events: usize::MAX,
         };
         let report =
-            gc_step_with_pins(&store, budget, now_secs, &HashSet::new()).unwrap();
+            gc_step_with_pins(&store, budget, now_secs, &HashSet::new(), &[]).unwrap();
 
         let st = store.lock().unwrap();
         assert!(
