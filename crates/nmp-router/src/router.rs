@@ -595,18 +595,18 @@ impl OutboxRouter for GenericOutboxRouter {
                 }
             }
 
-            // Lane 6 — Indexer (ALWAYS-ON for any discovery kind in the
-            // interest shape): kind:0 profile, kind:3 contacts, kind:
-            // 10000–19999 NIP-51 lists, INCLUDING kind:10002 relay-list
-            // itself. Per router spec §3.1 lane 6 the indexer set STACKS
-            // on top of lane 1 — it is the structural defeat of the
-            // kind:10002 self-sealing loop (a cached stale kind:10002
-            // would otherwise keep refreshing only against the stale
-            // relays; asking the operator's indexers in parallel lets a
-            // newer kind:10002 published elsewhere still arrive).
+            // Lane 6 — Indexer (kind:0/3/10000–19999, incl. kind:10002).
+            // Per spec §3.1 the indexer set STACKS on top of lane 1 to defeat
+            // the kind:10002 self-seal: a stale cached kind:10002 otherwise
+            // refreshes only against stale relays; the operator's indexers
+            // surface a newer kind:10002 published elsewhere.
             //
-            // An attempt is only emitted when the lane applies (discovery kinds).
-            if interest.shape.kinds.iter().any(|k| is_discovery_kind(*k)) {
+            // Bug 3 — fire ONLY when EVERY kind is discovery (is_empty guard
+            // excludes the `[]` wildcard). A mixed `[0,1]` interest would leak
+            // the content-kind REQ to discovery-only indexers; it routes lane 1.
+            if !interest.shape.kinds.is_empty()
+                && interest.shape.kinds.iter().all(|k| is_discovery_kind(*k))
+            {
                 let mut lane_count = 0usize;
                 for url in ctx.session_keys.indexer_relays.iter() {
                     if ctx.blocked_relays.contains(url) {

@@ -54,6 +54,8 @@ use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet, IngestParser};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 
+use crate::canonical::canonicalize_relay_url;
+
 // ─── InMemoryBlockedRelayCache ──────────────────────────────────────────────
 
 /// Per-account blocked-relay cache. Single writer is [`Kind10006Parser`];
@@ -82,7 +84,9 @@ impl InMemoryBlockedRelayCache {
     pub fn upsert(&self, account_pubkey: String, relays: Vec<String>) {
         // D15: silently drop the mutation on poison; next successful
         // writer will overwrite.
-        let Ok(mut guard) = self.inner.write() else { return };
+        let Ok(mut guard) = self.inner.write() else {
+            return;
+        };
         if relays.is_empty() {
             guard.remove(&account_pubkey);
         } else {
@@ -183,23 +187,6 @@ fn parse_blocked_relay_list(tags: &[Vec<String>]) -> Vec<String> {
     }
 
     relays
-}
-
-/// Canonicalise a `wss://` relay URL: lowercase scheme + host, strip the
-/// empty-path trailing slash. Identical shape to the helpers in
-/// `crate::ingest` (kind:10002) and `nmp_nip17::kind10050_parser` so
-/// cache keys across all three NIP-51-adjacent caches collide cleanly.
-fn canonicalize_relay_url(url: &str) -> String {
-    const PREFIX: &str = "wss://";
-    debug_assert!(url.starts_with(PREFIX));
-    let rest = &url[PREFIX.len()..];
-    let (host_port, path) = match rest.find('/') {
-        Some(idx) => (&rest[..idx], &rest[idx..]),
-        None => (rest, ""),
-    };
-    let canonical_host = host_port.to_lowercase();
-    let canonical_path = if path == "/" { "" } else { path };
-    format!("{PREFIX}{canonical_host}{canonical_path}")
 }
 
 #[cfg(test)]
@@ -350,8 +337,7 @@ mod tests {
     #[test]
     fn registers_as_ingest_parser_trait_object() {
         let cache = Arc::new(InMemoryBlockedRelayCache::new());
-        let parser: Arc<dyn IngestParser> =
-            Arc::new(Kind10006Parser::new(Arc::clone(&cache)));
+        let parser: Arc<dyn IngestParser> = Arc::new(Kind10006Parser::new(Arc::clone(&cache)));
 
         let mut dispatcher = EventIngestDispatcher::new();
         dispatcher.register_kind(10_006, parser);
@@ -396,6 +382,9 @@ mod tests {
     fn unknown_account_returns_empty_set() {
         let cache = InMemoryBlockedRelayCache::new();
         let set = cache.blocked_relays("never-published");
-        assert!(set.is_empty(), "fail-open default: unknown account = no blocks");
+        assert!(
+            set.is_empty(),
+            "fail-open default: unknown account = no blocks"
+        );
     }
 }

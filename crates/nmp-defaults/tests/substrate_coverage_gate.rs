@@ -42,9 +42,9 @@ use nmp_core::slots::{
 use nmp_core::store::EventStore;
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
-    ActionModule, ActionRegistrar, AppHost, DmInboxRelayLookup, IngestParser, MailboxCache,
-    OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayTextInterceptor,
-    ReqFrameInterceptor, RoutingTraceObserver,
+    ActionModule, ActionRegistrar, AppHost, BlockedRelayLookup, DmInboxRelayLookup, IngestParser,
+    MailboxCache, OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext,
+    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 use nmp_core::{
     ActorCommand, AppRelaySlot, ChangeGate, KernelEventObserver, KernelEventObserverId, KindFilter,
@@ -175,6 +175,7 @@ impl AppHost for GateSpy {
                 IndexerRelaysSlot,
                 LocalWriteRelaysSlot,
                 ActiveAccountSlot,
+                Arc<dyn BlockedRelayLookup>,
             ) -> Arc<dyn OutboxResolver>
             + Send
             + Sync

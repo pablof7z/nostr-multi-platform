@@ -129,14 +129,20 @@ mod tests {
         let cache = InMemoryMailboxCache::new();
         let alice: RoutingPubkey = "alice".into();
 
-        cache.upsert(alice.clone(), ParsedRelayList {
-            write: vec!["wss://old.example".into()],
-            ..ParsedRelayList::default()
-        });
-        cache.upsert(alice.clone(), ParsedRelayList {
-            write: vec!["wss://new.example".into()],
-            ..ParsedRelayList::default()
-        });
+        cache.upsert(
+            alice.clone(),
+            ParsedRelayList {
+                write: vec!["wss://old.example".into()],
+                ..ParsedRelayList::default()
+            },
+        );
+        cache.upsert(
+            alice.clone(),
+            ParsedRelayList {
+                write: vec!["wss://new.example".into()],
+                ..ParsedRelayList::default()
+            },
+        );
 
         assert_eq!(
             cache.write_relays(&alice),
@@ -150,10 +156,13 @@ mod tests {
         let alice: RoutingPubkey = "alice".into();
 
         assert!(!cache.known(&alice));
-        cache.upsert(alice.clone(), ParsedRelayList {
-            read: vec!["wss://r.example".into()],
-            ..ParsedRelayList::default()
-        });
+        cache.upsert(
+            alice.clone(),
+            ParsedRelayList {
+                read: vec!["wss://r.example".into()],
+                ..ParsedRelayList::default()
+            },
+        );
         assert!(cache.known(&alice));
     }
 

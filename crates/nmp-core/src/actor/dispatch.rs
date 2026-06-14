@@ -1505,6 +1505,7 @@ pub(super) fn dispatch_command(
                     ctx.kernel.indexer_relays_handle(),
                     ctx.kernel.local_write_relays_handle(),
                     ctx.kernel.active_account_handle(),
+                    ctx.kernel.blocked_relays_arc(),
                 );
                 ctx.kernel.set_publish_resolver(resolver);
             }

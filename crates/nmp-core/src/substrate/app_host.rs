@@ -23,9 +23,9 @@ use crate::{
 };
 
 use super::{
-    ActionRegistrar, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
-    RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook, RelayTextInterceptor,
-    ReqFrameInterceptor, RoutingTraceObserver,
+    ActionRegistrar, BlockedRelayLookup, DmInboxRelayLookup, IngestParser, MailboxCache,
+    OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook,
+    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 
 /// Host surface needed by reusable NMP composition crates.
@@ -216,6 +216,7 @@ pub trait AppHost: ActionRegistrar {
                 IndexerRelaysSlot,
                 LocalWriteRelaysSlot,
                 ActiveAccountSlot,
+                Arc<dyn BlockedRelayLookup>,
             ) -> Arc<dyn OutboxResolver>
             + Send
             + Sync

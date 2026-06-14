@@ -198,16 +198,21 @@ pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
 // kernel construction and applies the produced `Arc<dyn OutboxResolver>`
 // via `Kernel::set_publish_resolver`.
 //
-// The closure receives the four kernel-owned handles the router-side
+// The closure receives the five kernel-owned handles the router-side
 // `Nip65OutboxResolver` needs (`EventStore` + indexer / local-write /
-// active-account slots) so the resolver reads through the same shared
-// state the kernel actor writes to. `Fn` (not `FnOnce`) so the `Reset`
-// dispatch arm can re-invoke against the rebuilt kernel's fresh handles.
+// active-account slots + the `BlockedRelayLookup`) so the resolver reads
+// through the same shared state the kernel actor writes to. The blocked
+// lookup is the same `Arc<dyn BlockedRelayLookup>` the kernel's
+// subscribe-side `build_routing_context` reads, so the publish path
+// subtracts exactly the relays the subscribe path already filters (Bug 1).
+// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke against the
+// rebuilt kernel's fresh handles.
 pub type PublishResolverFactory = dyn Fn(
         Arc<dyn crate::store::EventStore>,
         IndexerRelaysSlot,
         LocalWriteRelaysSlot,
         ActiveAccountSlot,
+        Arc<dyn crate::substrate::BlockedRelayLookup>,
     ) -> Arc<dyn crate::publish::OutboxResolver>
     + Send
     + Sync;

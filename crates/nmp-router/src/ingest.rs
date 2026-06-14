@@ -31,6 +31,7 @@ use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, MailboxCache, ParsedRelayList};
 
+use crate::canonical::canonicalize_relay_url;
 use crate::InMemoryMailboxCache;
 
 /// The kind:10002 ingest parser. Constructed with a shared
@@ -88,8 +89,13 @@ fn parse_relay_list(tags: &[Vec<String>]) -> ParsedRelayList {
         // legacy kernel-side parser applied this gate; the substrate
         // parser must too so a misconfigured `r` tag (`https://…`,
         // `ws://…`, bare host, etc.) does not poison the routing cache.
+        // Canonicalise (lowercase host, strip empty-path trailing slash) so a
+        // relay listed here matches the same URL parsed into the blocked-relay
+        // cache and consumed by routing's subtractive blocked-relay post-pass.
+        // Without this, `wss://Blocked.Example/` here would never match
+        // `wss://blocked.example` in the blocked cache and the block would leak.
         let url = match tag.get(1) {
-            Some(u) if u.starts_with("wss://") => u.clone(),
+            Some(u) if u.starts_with("wss://") => canonicalize_relay_url(u),
             _ => continue,
         };
         match tag.get(2).map(String::as_str) {
@@ -136,9 +142,11 @@ mod tests {
     fn unmarked_r_tag_lands_in_both() {
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "wss://both.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![vec!["r".into(), "wss://both.example".into()]],
+        ));
 
         let r = cache.read_relays(&"alice".into()).unwrap();
         let w = cache.write_relays(&"alice".into()).unwrap();
@@ -150,11 +158,15 @@ mod tests {
     fn marked_read_and_write_separate() {
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "wss://r.example".into(), "read".into()],
-            vec!["r".into(), "wss://w.example".into(), "write".into()],
-            vec!["r".into(), "wss://b.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![
+                vec!["r".into(), "wss://r.example".into(), "read".into()],
+                vec!["r".into(), "wss://w.example".into(), "write".into()],
+                vec!["r".into(), "wss://b.example".into()],
+            ],
+        ));
 
         let r = cache.read_relays(&"alice".into()).unwrap();
         let w = cache.write_relays(&"alice".into()).unwrap();
@@ -172,9 +184,11 @@ mod tests {
     fn ignores_non_kind_10002() {
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 1, vec![
-            vec!["r".into(), "wss://x.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            1,
+            vec![vec!["r".into(), "wss://x.example".into()]],
+        ));
         assert!(cache.is_empty());
     }
 
@@ -182,10 +196,14 @@ mod tests {
     fn empty_url_dropped() {
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "".into()],
-            vec!["r".into(), "wss://ok.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![
+                vec!["r".into(), "".into()],
+                vec!["r".into(), "wss://ok.example".into()],
+            ],
+        ));
 
         let r = cache.read_relays(&"alice".into()).unwrap();
         assert_eq!(r, vec!["wss://ok.example".to_string()]);
@@ -195,10 +213,14 @@ mod tests {
     fn unknown_marker_ignored() {
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "wss://weird.example".into(), "sideways".into()],
-            vec!["r".into(), "wss://ok.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![
+                vec!["r".into(), "wss://weird.example".into(), "sideways".into()],
+                vec!["r".into(), "wss://ok.example".into()],
+            ],
+        ));
 
         let r = cache.read_relays(&"alice".into()).unwrap();
         assert!(!r.contains(&"wss://weird.example".to_string()));
@@ -212,11 +234,15 @@ mod tests {
         // an `r` tag are misconfiguration and must not enter the cache.
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "https://not-a-relay.example".into()],
-            vec!["r".into(), "ws://insecure.example".into()],
-            vec!["r".into(), "wss://ok.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![
+                vec!["r".into(), "https://not-a-relay.example".into()],
+                vec!["r".into(), "ws://insecure.example".into()],
+                vec!["r".into(), "wss://ok.example".into()],
+            ],
+        ));
 
         let r = cache.read_relays(&"alice".into()).unwrap();
         assert_eq!(r, vec!["wss://ok.example".to_string()]);
@@ -230,9 +256,11 @@ mod tests {
         // kernel `ingest_relay_list` behaviour.
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "wss://x.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![vec!["r".into(), "wss://x.example".into()]],
+        ));
         assert!(cache.read_relays(&"alice".into()).is_some());
 
         // Now an empty list (e.g. all tags filtered out, or no `r` tags
@@ -256,13 +284,46 @@ mod tests {
     fn duplicate_urls_within_event_deduped() {
         let cache = Arc::new(InMemoryMailboxCache::new());
         let parser = Kind10002Parser::new(cache.clone());
-        parser.parse_event(&evt("alice", 10_002, vec![
-            vec!["r".into(), "wss://x.example".into()],
-            vec!["r".into(), "wss://x.example".into()],
-        ]));
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![
+                vec!["r".into(), "wss://x.example".into()],
+                vec!["r".into(), "wss://x.example".into()],
+            ],
+        ));
 
         let r = cache.read_relays(&"alice".into()).unwrap();
         assert_eq!(r, vec!["wss://x.example".to_string()]);
+    }
+
+    #[test]
+    fn kind10002_url_is_canonicalized_to_match_blocked_cache() {
+        // Bug 2 regression — the kind:10002 parser previously stored URLs
+        // verbatim, so a relay listed as `wss://Blocked.Example/` (mixed case,
+        // trailing slash) never matched the canonicalised `wss://blocked.example`
+        // form the blocked-relay cache (and routing) key on. The parser MUST
+        // canonicalise: lowercase host + strip the empty-path trailing slash.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        let parser = Kind10002Parser::new(cache.clone());
+        parser.parse_event(&evt(
+            "alice",
+            10_002,
+            vec![
+                vec!["r".into(), "wss://Blocked.Example/".into(), "write".into()],
+                vec!["r".into(), "wss://Read.Example/".into(), "read".into()],
+            ],
+        ));
+
+        let w = cache.write_relays(&"alice".into()).unwrap();
+        assert_eq!(
+            w,
+            vec!["wss://blocked.example".to_string()],
+            "write relay must be canonicalised (lowercase, no trailing slash) so it \
+             matches the blocked-relay cache's canonical key form"
+        );
+        let r = cache.read_relays(&"alice".into()).unwrap();
+        assert_eq!(r, vec!["wss://read.example".to_string()]);
     }
 
     #[test]
@@ -274,9 +335,11 @@ mod tests {
 
         let mut dispatcher = nmp_core::substrate::EventIngestDispatcher::new();
         dispatcher.register_kind(10_002, parser);
-        dispatcher.dispatch(&evt("alice", 10_002, vec![
-            vec!["r".into(), "wss://via.dispatcher".into()],
-        ]));
+        dispatcher.dispatch(&evt(
+            "alice",
+            10_002,
+            vec![vec!["r".into(), "wss://via.dispatcher".into()]],
+        ));
 
         assert_eq!(
             cache.read_relays(&"alice".into()),

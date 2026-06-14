@@ -1698,6 +1698,20 @@ pub fn run_actor_with_observers(
     // silent no-op (the kernel keeps its `NoopOutboxResolver` default; every
     // publish then fails closed with `NoTargets`, exactly as the production
     // resolver would for an uncached author).
+    // Bind the blocked-relay lookup onto the kernel FIRST, so the
+    // publish-resolver factory below can hand the same `Arc<dyn
+    // BlockedRelayLookup>` to the router-side `Nip65OutboxResolver`. The
+    // publish path then subtracts exactly the relays the subscribe-side
+    // `build_routing_context` already filters (Bug 1). Ordering matters: the
+    // factory reads `kernel.blocked_relays_arc()`.
+    {
+        let lookup = blocked_relays_slot
+            .lock()
+            .ok()
+            .map(|g| Arc::clone(&*g))
+            .unwrap_or_else(crate::substrate::empty_blocked_relay_lookup);
+        kernel.set_blocked_relay_lookup(lookup);
+    }
     if let Some(factory) = publish_resolver_slot
         .lock()
         .ok()
@@ -1708,6 +1722,7 @@ pub fn run_actor_with_observers(
             kernel.indexer_relays_handle(),
             kernel.local_write_relays_handle(),
             kernel.active_account_handle(),
+            kernel.blocked_relays_arc(),
         );
         kernel.set_publish_resolver(resolver);
     }
@@ -1735,14 +1750,6 @@ pub fn run_actor_with_observers(
             .map(|g| Arc::clone(&*g))
             .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
         kernel.set_dm_inbox_relay_lookup(lookup);
-    }
-    {
-        let lookup = blocked_relays_slot
-            .lock()
-            .ok()
-            .map(|g| Arc::clone(&*g))
-            .unwrap_or_else(crate::substrate::empty_blocked_relay_lookup);
-        kernel.set_blocked_relay_lookup(lookup);
     }
     {
         // FFI override slot: u64 over the wire (matches Substrate FFI

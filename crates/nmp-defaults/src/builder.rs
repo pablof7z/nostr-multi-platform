@@ -563,6 +563,7 @@ impl<S> AppHost for NmpAppBuilder<S> {
                 nmp_core::slots::IndexerRelaysSlot,
                 nmp_core::slots::LocalWriteRelaysSlot,
                 nmp_core::slots::ActiveAccountSlot,
+                Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
             ) -> Arc<dyn nmp_core::publish::OutboxResolver>
             + Send
             + Sync

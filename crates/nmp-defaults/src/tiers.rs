@@ -245,13 +245,20 @@ pub fn register_substrate(app: &mut impl AppHost, gate: CoverageGate) {
         |store: Arc<dyn EventStore>,
          indexer_relays: IndexerRelaysSlot,
          local_write_relays: LocalWriteRelaysSlot,
-         active_account: ActiveAccountSlot|
+         active_account: ActiveAccountSlot,
+         blocked: Arc<dyn nmp_core::substrate::BlockedRelayLookup>|
          -> Arc<dyn OutboxResolver> {
+            // `blocked` is the same `Arc<dyn BlockedRelayLookup>` the kernel's
+            // subscribe-side `build_routing_context` reads (the shared
+            // `InMemoryBlockedRelayCache` fed by `Kind10006Parser`), so the
+            // publish path subtracts exactly the relays the subscribe path
+            // already filters (Bug 1 — blocked-relay leak on PUBLISH).
             Arc::new(Nip65OutboxResolver::with_local_relays(
                 store,
                 indexer_relays,
                 local_write_relays,
                 active_account,
+                blocked,
             ))
         },
     );

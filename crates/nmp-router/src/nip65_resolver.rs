@@ -52,6 +52,9 @@ use nmp_core::slots::{
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use nmp_core::store::{EventStore, PubKey, StoredEvent};
+use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet};
+
+use crate::canonical::canonicalize_relay_url;
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
@@ -85,6 +88,14 @@ pub struct Nip65OutboxResolver {
     /// pubkey so already-signed events from other authors never route through
     /// the viewer's relays.
     active_account: ActiveAccountSlot,
+    /// Per-author blocked-relay lookup (kind:10006). Auto-resolved relays that
+    /// the author has blocked are filtered out of the publish set — the same
+    /// `BlockedRelaySet` the subscribe-side `GenericOutboxRouter` already
+    /// applies in every lane. The publish path previously had no access to it,
+    /// so a blocked relay listed in the author's kind:10002 leaked onto the
+    /// publish set (Bug 1). Explicit targets are NOT filtered — the caller has
+    /// opted out of automatic outbox routing per D3.
+    blocked: Arc<dyn BlockedRelayLookup>,
 }
 
 /// Returns true for kinds that index relays exist to serve: kind:0 (profile),
@@ -99,12 +110,17 @@ impl Nip65OutboxResolver {
     /// relay config changes, so the resolver always sees current URLs.
     ///
     #[must_use]
-    pub fn new(store: Arc<dyn EventStore>, indexer_relays: IndexerRelaysSlot) -> Self {
+    pub fn new(
+        store: Arc<dyn EventStore>,
+        indexer_relays: IndexerRelaysSlot,
+        blocked: Arc<dyn BlockedRelayLookup>,
+    ) -> Self {
         Self::with_local_relays(
             store,
             indexer_relays,
             new_local_write_relays_slot(),
             new_active_account_slot(),
+            blocked,
         )
     }
 
@@ -119,12 +135,14 @@ impl Nip65OutboxResolver {
         indexer_relays: IndexerRelaysSlot,
         local_write_relays: LocalWriteRelaysSlot,
         active_account: ActiveAccountSlot,
+        blocked: Arc<dyn BlockedRelayLookup>,
     ) -> Self {
         Self {
             store,
             indexer_relays,
             local_write_relays,
             active_account,
+            blocked,
         }
     }
 
@@ -139,7 +157,11 @@ impl Nip65OutboxResolver {
     #[doc(hidden)]
     #[must_use]
     pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
-        Self::new(store, new_indexer_relays_slot())
+        Self::new(
+            store,
+            new_indexer_relays_slot(),
+            Arc::new(crate::InMemoryBlockedRelayCache::new()),
+        )
     }
 
     /// Look up the latest kind:10002 for `author_hex` and parse it into
@@ -244,13 +266,29 @@ impl OutboxResolver for Nip65OutboxResolver {
                     for url in reads {
                         out.push(ResolvedRelay {
                             url,
-                            reason: RelaySelectionReason::RecipientInbox {
-                                pubkey: p.clone(),
-                            },
+                            reason: RelaySelectionReason::RecipientInbox { pubkey: p.clone() },
                         });
                     }
                 }
             }
+        }
+
+        // 5. Blocked-relay post-pass — subtract any relay the author has
+        // blocked (kind:10006). This mirrors the subscribe-side
+        // `GenericOutboxRouter`, which already applies `ctx.blocked_relays` in
+        // every lane; the publish path had no access to the blocked set, so a
+        // blocked relay listed in the author's own kind:10002 write set (or a
+        // recipient's read set) leaked onto the publish targets (Bug 1).
+        //
+        // The block set is per-author and keyed on the *publishing* author —
+        // the author's blocked-relay preference governs every relay this
+        // publish would touch, including recipient inbox relays (from the
+        // author's perspective they are all relays the author is being asked to
+        // connect to). The `Explicit` branch above already returned, so this
+        // never touches caller-chosen targets (D3 — explicit targets win).
+        let blocked: BlockedRelaySet = self.blocked.blocked_relays(author_pubkey);
+        if !blocked.is_empty() {
+            out.retain(|resolved| !blocked.contains(&resolved.url));
         }
 
         out
@@ -279,27 +317,38 @@ fn parse_nip65_tags(stored: &StoredEvent) -> (Vec<RelayUrl>, Vec<RelayUrl>) {
         if tag.first().map(String::as_str) != Some("r") {
             continue;
         }
-        let Some(url) = tag.get(1) else {
+        let Some(raw_url) = tag.get(1) else {
             tracing::debug!(target: "nmp.router.nip65", reason = "missing url", "skipping malformed kind:10002 tag");
             continue;
         };
-        if !is_relay_url(url) {
-            tracing::debug!(target: "nmp.router.nip65", url = %url, reason = "non-wss scheme", "skipping malformed kind:10002 tag");
+        if !is_relay_url(raw_url) {
+            tracing::debug!(target: "nmp.router.nip65", url = %raw_url, reason = "non-wss scheme", "skipping malformed kind:10002 tag");
             continue;
         }
+        // Canonicalise (lowercase host, strip empty-path trailing slash) so the
+        // resolved write/read URLs match (a) the canonical blocked-relay cache
+        // keys subtracted in `resolve`'s blocked post-pass (Bug 1 + Bug 2) and
+        // (b) the wire-routing canonical form the subscribe-side mailbox cache
+        // uses. `is_relay_url` also admits `ws://`, which `canonicalize_relay_url`
+        // leaves unchanged (its debug-assert is `wss://`-only, so gate first).
+        let url = if raw_url.starts_with("wss://") {
+            canonicalize_relay_url(raw_url)
+        } else {
+            raw_url.clone()
+        };
         match tag.get(2).map(String::as_str) {
-            Some("write") => writes.push(url.clone()),
-            Some("read") => reads.push(url.clone()),
+            Some("write") => writes.push(url),
+            Some("read") => reads.push(url),
             None | Some("") => {
                 writes.push(url.clone());
-                reads.push(url.clone());
+                reads.push(url);
             }
             Some(_other) => {
                 // Unknown marker — most clients (Damus, Amethyst) treat
                 // unknown markers as "both", per NIP-65's tolerant parsing
                 // intent. Mirror that.
                 writes.push(url.clone());
-                reads.push(url.clone());
+                reads.push(url);
             }
         }
     }
@@ -339,3 +388,7 @@ fn is_relay_url(url: &str) -> bool {
 #[cfg(test)]
 #[path = "nip65_resolver/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "nip65_resolver/tests_reasons.rs"]
+mod tests_reasons;

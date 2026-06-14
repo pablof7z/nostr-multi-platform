@@ -22,9 +22,7 @@ use std::sync::Arc;
 use nmp_core::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, RelayHint,
 };
-use nmp_core::substrate::{
-    BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet,
-};
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet};
 
 use crate::InMemoryMailboxCache;
 
@@ -110,7 +108,11 @@ fn publish_lane2_lifts_relay_hints_from_e_p_a_q_tags() {
         tags: vec![
             vec!["e".into(), "id1".into(), "wss://e-hint.example".into()],
             vec!["p".into(), "pk1".into(), "wss://p-hint.example".into()],
-            vec!["a".into(), "30023:pk:d".into(), "wss://a-hint.example".into()],
+            vec![
+                "a".into(),
+                "30023:pk:d".into(),
+                "wss://a-hint.example".into(),
+            ],
             vec!["q".into(), "id2".into(), "wss://q-hint.example".into()],
         ],
         ..unsigned()
@@ -125,7 +127,10 @@ fn publish_lane2_lifts_relay_hints_from_e_p_a_q_tags() {
         "wss://q-hint.example",
     ] {
         let s = want.to_string();
-        assert!(urls.contains(&s), "lane 2 must include {want}; got {urls:?}");
+        assert!(
+            urls.contains(&s),
+            "lane 2 must include {want}; got {urls:?}"
+        );
         assert!(
             r.relays[&s].contains(&RoutingSource::Hint),
             "{want} must carry RoutingSource::Hint; got {:?}",
@@ -144,10 +149,13 @@ fn publish_lane2_stacks_with_lane1_for_same_url() {
     // A relay appearing in BOTH NIP-65 write set AND the e-tag hint slot
     // must carry both RoutingSource lanes in its inner set.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(pubkey(), ParsedRelayList {
-        write: vec!["wss://shared.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        pubkey(),
+        ParsedRelayList {
+            write: vec!["wss://shared.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
     let c = ctx(&*cache, &blocked, None, &app);
@@ -160,7 +168,9 @@ fn publish_lane2_stacks_with_lane1_for_same_url() {
     let url = "wss://shared.example".to_string();
     let sources = &r.relays[&url];
     assert!(sources.contains(&RoutingSource::Hint));
-    assert!(sources.contains(&RoutingSource::Nip65 { direction: Direction::Write }));
+    assert!(sources.contains(&RoutingSource::Nip65 {
+        direction: Direction::Write
+    }));
 }
 
 #[test]
@@ -234,7 +244,9 @@ fn subscribe_lane3_lifts_provenance_hints_from_interest() {
     let mut interest = interest_for(&["alice"]);
     interest.hints.push(RelayHint {
         url: "wss://prov.example".into(),
-        source: HintSource::Provenance { event_id: "seen-here".into() },
+        source: HintSource::Provenance {
+            event_id: "seen-here".into(),
+        },
     });
     let router = GenericOutboxRouter::new();
     let r = router.route_subscription(&interest, &c).unwrap();
@@ -262,14 +274,14 @@ fn subscribe_lane3_distinct_from_lane2_attribution() {
     });
     interest.hints.push(RelayHint {
         url: "wss://prov.example".into(),
-        source: HintSource::Provenance { event_id: "y".into() },
+        source: HintSource::Provenance {
+            event_id: "y".into(),
+        },
     });
     let router = GenericOutboxRouter::new();
     let r = router.route_subscription(&interest, &c).unwrap();
     assert!(r.relays[&"wss://tag.example".to_string()].contains(&RoutingSource::Hint));
-    assert!(
-        r.relays[&"wss://prov.example".to_string()].contains(&RoutingSource::Provenance)
-    );
+    assert!(r.relays[&"wss://prov.example".to_string()].contains(&RoutingSource::Provenance));
 }
 
 // ─── Lane 4 (UserConfigured) — active-account read/write ───────────────
@@ -300,7 +312,10 @@ fn publish_lane4_silent_when_evt_pubkey_differs_from_active() {
     let aw = vec!["wss://alice-write.example".to_string()];
     let c = ctx_with_active(&cache, &blocked, &active, &[], &aw);
     let router = GenericOutboxRouter::new();
-    let evt = UnsignedEvent { pubkey: "bob".into(), ..unsigned() };
+    let evt = UnsignedEvent {
+        pubkey: "bob".into(),
+        ..unsigned()
+    };
     // No other lane fires either; Unroutable.
     let err = router.route_publish(&evt, &c).unwrap_err();
     assert_eq!(err, RoutingError::Unroutable("bob".into()));
@@ -423,10 +438,15 @@ fn explicit_publish_lane5_falls_back_to_other_for_unclassified_kinds() {
     let r = router.route_publish(&unsigned(), &c).unwrap();
     let url = "wss://forced.example".to_string();
     let sources = &r.relays[&url];
-    let other = sources.iter().find(|s| matches!(
-        s,
-        RoutingSource::ClassRouted { via: ClassRoutingPath::Explicit, .. }
-    ));
+    let other = sources.iter().find(|s| {
+        matches!(
+            s,
+            RoutingSource::ClassRouted {
+                via: ClassRoutingPath::Explicit,
+                ..
+            }
+        )
+    });
     match other {
         Some(RoutingSource::ClassRouted { class, .. }) => match class {
             EventClass::Other(name) => assert_eq!(name, "explicit"),
@@ -448,7 +468,10 @@ fn explicit_publish_lane5_blocked_relay_post_filter_applies() {
     let app: Vec<String> = vec![];
     let c = ctx(&cache, &blocked, Some(&explicit), &app);
     let router = GenericOutboxRouter::new();
-    let evt = UnsignedEvent { kind: 30_818, ..unsigned() };
+    let evt = UnsignedEvent {
+        kind: 30_818,
+        ..unsigned()
+    };
     let r = router.route_publish(&evt, &c).unwrap();
     let urls: Vec<&String> = r.urls().collect();
     assert_eq!(urls, vec![&"wss://wiki-ok.example".to_string()]);

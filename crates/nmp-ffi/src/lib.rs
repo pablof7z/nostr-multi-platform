@@ -1986,6 +1986,7 @@ impl NmpApp {
                 nmp_core::slots::IndexerRelaysSlot,
                 nmp_core::slots::LocalWriteRelaysSlot,
                 nmp_core::slots::ActiveAccountSlot,
+                std::sync::Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
             ) -> std::sync::Arc<dyn nmp_core::publish::OutboxResolver>
             + Send
             + Sync
@@ -2667,6 +2668,7 @@ impl nmp_core::substrate::AppHost for NmpApp {
                 nmp_core::slots::IndexerRelaysSlot,
                 nmp_core::slots::LocalWriteRelaysSlot,
                 nmp_core::slots::ActiveAccountSlot,
+                Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
             ) -> Arc<dyn nmp_core::publish::OutboxResolver>
             + Send
             + Sync
