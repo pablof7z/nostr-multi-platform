@@ -337,6 +337,10 @@ impl AppRuntime {
         self.client.unfollow(pubkey)
     }
 
+    pub fn repost(&self, event_id: &str, author_pubkey: &str) -> Result<String, String> {
+        self.client.repost(event_id, author_pubkey)
+    }
+
     pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, String> {
         self.client.send_dm(recipient_pubkey, content)
     }
@@ -381,6 +385,13 @@ impl AppRuntime {
         if let Ok(url_c) = CString::new(url) {
             unsafe { nmp_app_remove_relay(self.app, url_c.as_ptr()) };
         }
+    }
+
+    /// Publish the user's NIP-65 relay list (kind:10002) via the existing
+    /// `nmp.nip65.publish_relay_list` action. `relays` is the configured-relay
+    /// set as `(url, role)` pairs read from the settings UI projection.
+    pub fn publish_relay_list(&self, relays: &[(&str, &str)]) -> Result<String, String> {
+        self.client.publish_relay_list(relays)
     }
 
     // ------------------------------------------------------------------

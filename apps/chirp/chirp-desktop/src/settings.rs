@@ -262,6 +262,21 @@ impl DesktopApp {
                 self.new_relay_url.clear();
             }
         });
+
+        // Publish the configured relay set as a NIP-65 kind:10002 event via the
+        // existing nmp.nip65.publish_relay_list action.
+        ui.add_space(8.0);
+        ui.add_enabled_ui(!rows.is_empty(), |ui| {
+            if ui.button("Publish Relay List").clicked() {
+                let relays: Vec<(&str, &str)> = rows
+                    .iter()
+                    .map(|r| (r.url.as_str(), r.role.as_str()))
+                    .collect();
+                if let Err(e) = self.bridge.publish_relay_list(&relays) {
+                    eprintln!("publish relay list error: {e}");
+                }
+            }
+        });
     }
 
     pub(crate) fn diagnostics_panel(&self, ui: &mut Ui, snap: &Snapshot) {

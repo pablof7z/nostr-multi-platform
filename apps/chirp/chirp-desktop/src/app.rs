@@ -442,6 +442,18 @@ impl DesktopApp {
         });
         ui.add_space(4.0);
 
+        // Follow / Unfollow — dispatches the existing nmp.follow / nmp.unfollow
+        // actions through the bridge (mirrors the TUI's `f`/`F` handlers).
+        ui.horizontal(|ui| {
+            if ui.button("Follow").clicked() {
+                let _ = self.bridge.follow(&pk);
+            }
+            if ui.button("Unfollow").clicked() {
+                let _ = self.bridge.unfollow(&pk);
+            }
+        });
+        ui.add_space(4.0);
+
         ui.separator();
         ui.add_space(4.0);
 
@@ -758,10 +770,13 @@ fn feed_card(
                             bridge.open_thread(&card.id);
                         }
                     }
-                    // Like / Zap row.
+                    // Like / Repost / Zap row.
                     ui.horizontal(|ui| {
                         if ui.small_button("❤ Like").clicked() {
                             let _ = bridge.react(&card.id, "+");
+                        }
+                        if ui.small_button("🔁 Repost").clicked() {
+                            let _ = bridge.repost(&card.id, &card.author_pubkey);
                         }
                         if ui.small_button("⚡ Zap").clicked() {
                             // Default amount: 21 sats = 21,000 msats.
