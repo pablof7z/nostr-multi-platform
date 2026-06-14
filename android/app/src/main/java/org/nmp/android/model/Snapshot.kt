@@ -83,6 +83,12 @@ data class SnapshotProjections(
     // protocol strings; `RelayScreen` prefers `connectionLabel`/`connectionTone`
     // here over the Tier-3 `relayStatuses` raw-string switch.
     @SerialName("relay_diagnostics") val relayDiagnostics: RelayDiagnosticsSnapshot? = null,
+    // #1283 / #1335 item 2: typed NEMB embed sidecar — decoded by
+    // [TypedEmbedSidecarDecoder] from the `claimed_event_embeds` typed projection.
+    // Empty map when the sidecar is absent (ADR-0037 Commitment 4 fail-closed).
+    // The map is keyed by `primary_id` (event-id hex or `kind:pubkey:d` coord).
+    // DECODE-ONLY: the kernel resolves embed projections; this shell is D0-clean.
+    @SerialName("claimed_event_embeds") val claimedEventEmbeds: Map<String, EmbedEnvelopeEntry> = emptyMap(),
 )
 
 /**
@@ -359,4 +365,113 @@ data class SignerState(
     @SerialName("status_label") val statusLabel: String = "",
     /** Rust-precomputed tone — "active"|"warning"|"error"|"inactive". */
     @SerialName("status_tone") val statusTone: String = "",
+)
+
+// ── Typed embed sidecar domain models (#1283 / #1335 item 2) ─────────────────
+//
+// Android peer of iOS `EmbeddedEventEnvelope` + `EmbedKindProjection`
+// (ios/Chirp/.../EmbedKindProjection.swift). Decoded ONLY from the typed
+// `claimed_event_embeds` (`NEMB`) sidecar by [TypedEmbedSidecarDecoder]. The
+// kernel resolves all embed projections on the Rust side (D0-clean: zero kind
+// dispatch, zero tag/JSON parsing in Kotlin). Plain-text `content` for
+// text-body variants is extracted from the NFCT sub-buffer by reusing the
+// existing [TypedHomeFeedDecoder.decodeContentTreeBytes] codec.
+
+/**
+ * Decoded typed envelope for one embedded event — the Kotlin peer of
+ * iOS `EmbeddedEventEnvelope` and the FFI sidecar's `EmbeddedEventEnvelope`.
+ * Keyed by `primaryId` in [SnapshotProjections.claimedEventEmbeds].
+ * Not a JSON projection — populated exclusively from the typed NEMB sidecar.
+ */
+@Serializable
+data class EmbedEnvelopeEntry(
+    val primaryId: String = "",
+    val uri: String = "",
+    val depth: Int = 0,
+    val maxDepth: Int = 4,
+    val collapsed: Boolean = false,
+    @SerialName("collapse_reason") val collapseReason: String? = null,
+    val projection: EmbedKindProjectionEntry? = null,
+)
+
+/**
+ * Kind-dispatched embed projection — exactly one variant is non-null, selected
+ * by the `kind` discriminant from the `NEMB` wire. Mirrors the iOS
+ * `EmbedKindProjection` enum. DECODE-ONLY: no resolution logic lives here.
+ */
+@Serializable
+data class EmbedKindProjectionEntry(
+    @SerialName("short_note") val shortNote: ShortNoteProjectionEntry? = null,
+    val article: ArticleProjectionEntry? = null,
+    val highlight: HighlightProjectionEntry? = null,
+    val profile: ProfileProjectionEntry? = null,
+    val unknown: UnknownProjectionEntry? = null,
+)
+
+/** kind:1 short text note projection (mirrors [nmp.embed.ShortNoteProjection]). */
+@Serializable
+data class ShortNoteProjectionEntry(
+    val id: String = "",
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+    @SerialName("created_at") val createdAt: Long = 0,
+    /** Plain-text from the NFCT sub-buffer; empty when tree is absent. */
+    val content: String = "",
+    @SerialName("media_urls") val mediaUrls: List<String> = emptyList(),
+)
+
+/** kind:30023 long-form article projection (mirrors [nmp.embed.ArticleProjection]). */
+@Serializable
+data class ArticleProjectionEntry(
+    val id: String = "",
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+    @SerialName("created_at") val createdAt: Long = 0,
+    val title: String? = null,
+    val summary: String? = null,
+    @SerialName("hero_image_url") val heroImageUrl: String? = null,
+    @SerialName("d_tag") val dTag: String = "",
+    /** Plain-text from the NFCT sub-buffer; empty when tree is absent. */
+    val content: String = "",
+)
+
+/** kind:9802 highlight projection (mirrors [nmp.embed.HighlightProjection]). */
+@Serializable
+data class HighlightProjectionEntry(
+    val id: String = "",
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("created_at") val createdAt: Long = 0,
+    @SerialName("highlighted_text") val highlightedText: String = "",
+    @SerialName("source_event_id") val sourceEventId: String? = null,
+    @SerialName("source_event_addr") val sourceEventAddr: String? = null,
+    @SerialName("source_url") val sourceUrl: String? = null,
+    val context: String? = null,
+)
+
+/** kind:0 profile metadata projection (mirrors [nmp.embed.ProfileProjection]). */
+@Serializable
+data class ProfileProjectionEntry(
+    val pubkey: String = "",
+    @SerialName("display_name") val displayName: String? = null,
+    @SerialName("picture_url") val pictureUrl: String? = null,
+    val about: String? = null,
+    val nip05: String? = null,
+    val lud16: String? = null,
+    @SerialName("banner_url") val bannerUrl: String? = null,
+)
+
+/** Fallback projection for unknown kinds (mirrors [nmp.embed.UnknownProjection]). */
+@Serializable
+data class UnknownProjectionEntry(
+    val kind: Int = 0,
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+    @SerialName("created_at") val createdAt: Long = 0,
+    val content: String = "",
+    val tags: List<List<String>> = emptyList(),
+    @SerialName("alt_text") val altText: String? = null,
 )
