@@ -29,6 +29,7 @@
 		28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */; };
 		2BE542A6C5F90059C3F4C997 /* NostrUserCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F891C53BC1CC1DCF9D849F99 /* NostrUserCard.swift */; };
 		2F40E77B3C6CC81D2E954470 /* ZapAmountSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E13DD3470872C440AFD77FD /* ZapAmountSheet.swift */; };
+		31851F55BEEF519A0B02D12B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CADE37EF3FB10E3334126047 /* Assets.xcassets */; };
 		3298E31ADE978B77D818ABD2 /* TypedProjectionDecoders.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFCE56EF6CC2D5CB4D646C2D /* TypedProjectionDecoders.generated.swift */; };
 		3361C89C87EB83EF794E5690 /* ProfileWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A015A4A241347592C09EC0B /* ProfileWire.swift */; };
 		34B88BBF9D4F23003A94F954 /* OpFeedTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB9B2FF7A694FB231B93B9D /* OpFeedTestFixtures.swift */; };
@@ -312,6 +313,7 @@
 		C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineBlock.swift; sourceTree = "<group>"; };
 		C726DE3D022225C5DCDF2A68 /* DmConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmConversationView.swift; sourceTree = "<group>"; };
 		C79DFA56568C01E3AE76955E /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		CADE37EF3FB10E3334126047 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotBridge.swift; sourceTree = "<group>"; };
 		D2B347F91E986054A79411F7 /* TypedProjectionGlue+GroupDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TypedProjectionGlue+GroupDefaults.swift"; sourceTree = "<group>"; };
@@ -536,6 +538,7 @@
 		715349A5CCFD688F835ADDB2 /* Chirp */ = {
 			isa = PBXGroup;
 			children = (
+				CADE37EF3FB10E3334126047 /* Assets.xcassets */,
 				D52EA69FCD9A7A54E93E6B94 /* Chirp.entitlements */,
 				6642DD3D8D6000AC2E047C03 /* Info.plist */,
 				935D67AACBA8594449383214 /* App */,
@@ -660,6 +663,7 @@
 			buildPhases = (
 				5BFE3F1D8AF4EBE98ED87C13 /* Generate BuildInfo */,
 				EE812C034A7568790A8F7328 /* Sources */,
+				F8FAC8D782219BFE09FE013B /* Resources */,
 				508C6B98B6722BD7B8DD3AD0 /* Frameworks */,
 			);
 			buildRules = (
@@ -757,6 +761,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F8FAC8D782219BFE09FE013B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				31851F55BEEF519A0B02D12B /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		5BFE3F1D8AF4EBE98ED87C13 /* Generate BuildInfo */ = {
@@ -979,6 +994,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Chirp/Chirp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_DEBUG_DYLIB = NO;
@@ -1171,6 +1187,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Chirp/Chirp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_DEBUG_DYLIB = NO;
