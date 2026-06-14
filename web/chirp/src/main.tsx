@@ -3,6 +3,7 @@ import App from "./App";
 import "./tokens.css";
 import "./connection.css";
 import "./styles.css";
+import "./embed-cards.css";
 
 const root = document.getElementById("root");
 

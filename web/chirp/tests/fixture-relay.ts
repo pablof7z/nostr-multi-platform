@@ -46,7 +46,7 @@ function startPngServer(): Promise<{ url: string; close: () => Promise<void> }> 
   });
 }
 import { generateSecretKey, getPublicKey, finalizeEvent } from "nostr-tools/pure";
-import { npubEncode } from "nostr-tools/nip19";
+import { npubEncode, neventEncode } from "nostr-tools/nip19";
 
 export type FixtureRelay = {
   /** WebSocket URL the browser can connect to, e.g. `ws://127.0.0.1:52341`. */
@@ -74,6 +74,11 @@ export type FeedFixtureRelay = FixtureRelay & {
   followPictureUrl: string;
   /** Display name of the second follow who replies (attribution badge). */
   replierDisplayName: string;
+  /** Content of the quoted note (rendered inside the `.nostr-quote-card` embed
+   *  once the kernel resolves the EventRef via claim_event → KCEV). */
+  quotedNoteContent: string;
+  /** Display name of the quoted note's author, resolved from its kind:0. */
+  quotedAuthorDisplayName: string;
 };
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -194,10 +199,13 @@ export async function startFixtureRelay(): Promise<FixtureRelay> {
  * Start a fixture relay pre-loaded with genuinely signed Nostr events:
  *
  *   viewer  → kind:3 contact list (follows = [followA, followB])
- *   followA → kind:1 note ("hello from fixture relay")
+ *   followA → kind:1 note ("hello from fixture relay") that ALSO inline-mentions
+ *             Bob (`nostr:npub1…`) and QUOTES Carol's note (`nostr:nevent1…`)
  *   followB → kind:1 reply to followA's note (NIP-10 e-tag)
  *   followA → kind:0 profile (name: "Alice Fixture")
  *   followB → kind:0 profile (name: "Bob Fixture")
+ *   Carol   → kind:1 quoted note + kind:0 profile ("Carol Quoted") — NOT a
+ *             follow; pulled in only via the quote's claim_event path.
  *
  * All events are signed with real secp256k1 keys via nostr-tools.  The
  * ingest path in nmp-core verifies signatures and will reject unsigned or
@@ -216,10 +224,20 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   const followBSk = generateSecretKey();
   const followBPubkey = getPublicKey(followBSk);
 
+  // Quoted-note author: NOT a follow. Their note is never in the contact feed —
+  // it is pulled in only because Alice's quoting note references it via a
+  // `nostr:nevent1…`, which the kernel resolves through claim_event → REQ-by-id
+  // → claimed_events (KCEV). This proves the embed card renders real resolved
+  // data, not a mock.
+  const quotedAuthorSk = generateSecretKey();
+  const quotedAuthorPubkey = getPublicKey(quotedAuthorSk);
+
   const now = Math.floor(Date.now() / 1000);
   const noteContent = "hello from fixture relay";
   const followADisplayName = "Alice Fixture";
   const followBDisplayName = "Bob Fixture";
+  const quotedAuthorDisplayName = "Carol Quoted";
+  const quotedNoteContent = "the genuinely quoted note body";
   // A real, self-contained 1×1 PNG so the avatar component genuinely loads an
   // image (naturalWidth > 0) without a network dependency — proving NostrAvatar
   // renders the resolved kind:0 `picture` in Chirp's feed card. (The deployed
@@ -248,18 +266,62 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followBSk,
   ) as NostrEvent;
 
-  // kind:1 — Alice's root note (the one that will appear in the feed). It
-  // mentions Bob via a `nostr:npub1…` URI + p-tag, so the kernel tokenizes a
-  // Mention node into the content tree and Chirp renders it as a resolved
-  // NostrMentionChip (avatar + "Bob Fixture") rather than a raw npub anchor.
+  // kind:0 — Carol's profile (the quoted note's author). Resolving this lets the
+  // quote card show a real author name. Carol is NOT a follow; her kind:0 is
+  // fetched only because Alice's note p-tags her (contact-feed discovery).
+  const quotedProfile = finalizeEvent(
+    {
+      kind: 0,
+      created_at: now - 200,
+      tags: [],
+      content: JSON.stringify({ name: quotedAuthorDisplayName }),
+    },
+    quotedAuthorSk,
+  ) as NostrEvent;
+
+  // kind:1 — Carol's note that will be QUOTED (resolved via claim_event by id).
+  const quotedNote = finalizeEvent(
+    {
+      kind: 1,
+      created_at: now - 200,
+      tags: [],
+      content: quotedNoteContent,
+    },
+    quotedAuthorSk,
+  ) as NostrEvent;
+
+  // `nostr:nevent1…` for Carol's note. No relay hint needed — the connected
+  // fixture relay serves the claim_event REQ-by-id (kernel requests/event.rs:
+  // a warm claim fans out to bootstrap lanes filtering by ids).
+  const quotedNevent = neventEncode({
+    id: quotedNote.id,
+    author: quotedAuthorPubkey,
+    kind: 1,
+  });
+
+  // kind:1 — Alice's root note (the one that appears in the feed). It carries
+  // TWO inline Nostr refs so one feed row exercises both component paths:
+  //   • a `nostr:npub1…` Mention of Bob (+ p-tag) → resolved NostrMentionChip;
+  //   • a `nostr:nevent1…` EventRef quoting Carol's note (+ q-tag + Carol p-tag)
+  //     → resolved `.nostr-quote-card` embed (claim_event → KCEV).
+  // The Carol p-tag drives contact-feed discovery to fetch her kind:0 into KRPR
+  // so the quote card resolves a real author name (Carol is not a follow).
+  // Folding both into the single existing Alice note (rather than adding a second
+  // Alice-authored note) keeps `post-author "Alice Fixture"` a single element so
+  // the strict-mode display-name assertion stays unambiguous.
   const npubBob = npubEncode(followBPubkey);
   const noteAMention = ` cc nostr:${npubBob}`;
+  const noteAQuote = ` quoting Carol → nostr:${quotedNevent}`;
   const noteA = finalizeEvent(
     {
       kind: 1,
       created_at: now - 50,
-      tags: [["p", followBPubkey]],
-      content: noteContent + noteAMention,
+      tags: [
+        ["p", followBPubkey],
+        ["q", quotedNote.id],
+        ["p", quotedAuthorPubkey],
+      ],
+      content: noteContent + noteAMention + noteAQuote,
     },
     followASk,
   ) as NostrEvent;
@@ -302,7 +364,15 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     viewerSk,
   ) as NostrEvent;
 
-  const seeded: NostrEvent[] = [contactList, profileA, profileB, noteA, noteB];
+  const seeded: NostrEvent[] = [
+    contactList,
+    profileA,
+    profileB,
+    noteA,
+    noteB,
+    quotedNote,
+    quotedProfile,
+  ];
 
   const base = await startServer(seeded);
   return {
@@ -317,5 +387,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followDisplayName: followADisplayName,
     followPictureUrl: followAPictureUrl,
     replierDisplayName: followBDisplayName,
+    quotedNoteContent,
+    quotedAuthorDisplayName,
   };
 }

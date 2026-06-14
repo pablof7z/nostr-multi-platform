@@ -15,6 +15,10 @@ import {
   useNostrProfileHost,
   type NostrProfileHost,
 } from "../components/user-avatar/NostrProfileHost";
+import {
+  NostrEventHostProvider,
+  type NostrEventHost,
+} from "../components/content-kind-registry/NostrEventHost";
 import { NostrAvatar } from "../components/user-avatar/NostrAvatar";
 import { NostrProfileName } from "../components/user-name/NostrProfileName";
 import { NostrContentView } from "../nmp/content/NostrContentView";
@@ -22,6 +26,9 @@ import { NostrContentView } from "../nmp/content/NostrContentView";
 export function HomePanel(props: {
   rows: TimelineItem[];
   profileHost: NostrProfileHost;
+  /** Host for quoted-event embed cards (content-view EventRef → card). When
+   *  absent, EventRef nodes degrade to the honest raw `nostr:…` anchor. */
+  eventHost?: NostrEventHost;
   revision?: number;
   onPublish: (content: string, replyToId: string | null) => Promise<void>;
   onCommand: (command: RuntimeCommand) => Promise<void>;
@@ -43,8 +50,7 @@ export function HomePanel(props: {
     setDraft("");
     setReplyToId(null);
   };
-  return (
-    <NostrProfileHostProvider host={props.profileHost}>
+  const section = () => (
     <section class="feed-panel" id="feed">
       <header class="topbar">
         <div>
@@ -88,6 +94,18 @@ export function HomePanel(props: {
         </For>
       </Show>
     </section>
+  );
+  // Wrap the feed in the event host (for quoted-event embed cards) when one is
+  // provided. A ternary (not <Show fallback>) so `section()` is evaluated
+  // exactly once — `fallback={section()}` would eagerly build a second detached
+  // copy of the whole feed. `props.eventHost` is stable (passed once by App).
+  return (
+    <NostrProfileHostProvider host={props.profileHost}>
+      {props.eventHost
+        ? (
+          <NostrEventHostProvider host={props.eventHost}>{section()}</NostrEventHostProvider>
+        )
+        : section()}
     </NostrProfileHostProvider>
   );
 }

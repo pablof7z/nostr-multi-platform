@@ -1,0 +1,86 @@
+/* ── Quoted-event embed cards (content-view EventRef → NostrEmbeddedEvent) ──
+ * Vendored from the gallery's proven cards; colours mapped to Chirp's light
+ * theme (gallery uses --border/--surface-2/--text-dim CSS vars; Chirp uses
+ * literal tokens). Class names are identical so the pure components render
+ * unchanged. Kept in its own stylesheet (imported from main.tsx) so styles.css
+ * stays under the file-size ceiling. */
+.nostr-event-ref {
+  color: #12685f;
+  overflow-wrap: anywhere;
+}
+
+.nostr-quote-card {
+  border: 1px solid #e2e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fbfcfd;
+  margin-top: 8px;
+}
+.nostr-quote-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nostr-quote-card__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+.nostr-quote-card__avatar--empty { background: #e2e7eb; }
+.nostr-quote-card__author { font-weight: 600; font-size: 14px; color: #172027; }
+.nostr-quote-card__time { margin-left: auto; color: #60707d; font-size: 12px; }
+.nostr-quote-card__content { margin: 8px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+
+.nostr-article-card {
+  border: 1px solid #e2e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fbfcfd;
+  margin-top: 8px;
+}
+.nostr-article-card__hero img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.nostr-article-card__body { padding: 14px 16px; }
+.nostr-article-card__title { margin: 0 0 6px; font-size: 17px; line-height: 1.3; color: #172027; }
+.nostr-article-card__summary {
+  margin: 0 0 12px;
+  color: #60707d;
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nostr-article-card__byline { display: flex; align-items: center; gap: 8px; }
+.nostr-article-card__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+.nostr-article-card__avatar--empty { background: #e2e7eb; }
+.nostr-article-card__author { font-weight: 600; font-size: 14px; color: #172027; }
+.nostr-article-card__kind {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #60707d;
+}
+
+.nostr-highlight-card {
+  margin: 8px 0 0;
+  border-left: 4px solid #e8a33d;
+  background: color-mix(in srgb, #e8a33d 12%, #fbfcfd);
+  border-radius: 0 10px 10px 0;
+  padding: 12px 16px;
+}
+.nostr-highlight-card__context { color: #60707d; font-size: 13px; margin-bottom: 6px; }
+.nostr-highlight-card__quote { margin: 0; font-style: italic; font-size: 15px; line-height: 1.5; }
+.nostr-highlight-card__source { margin-top: 8px; font-size: 12px; color: #60707d; overflow-wrap: anywhere; }

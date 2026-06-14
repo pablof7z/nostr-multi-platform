@@ -1,7 +1,7 @@
 import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "./degradedRuntime";
-import { decodeHomeFeed, decodeResolvedProfiles, decodeResolvedProfileCards, type FeedItem } from "./feedProjection";
+import { decodeHomeFeed, decodeResolvedProfiles, decodeResolvedProfileCards, decodeClaimedEvents, type FeedItem, type ClaimedEventWire } from "./feedProjection";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { decodeKrdgTones } from "./relayDiagnosticsProjection";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
@@ -59,6 +59,11 @@ export type RuntimeSnapshot = {
    *  ProfileWire (display name + picture + nip05 + …). Powers the registry
    *  user-* components (NostrAvatar needs the picture URL). */
   resolvedProfileCards?: Map<string, ProfileWire>;
+  /** Decoded claimed_events (KCEV) map: primary_id -> resolved+enriched event.
+   *  Powers quoted-event embed cards (NostrEmbeddedEvent). The key matches the
+   *  `WireNostrUri.primaryId()` on each feed note's content-tree EventRef node.
+   *  Keep-last-good: only replaced when a new successful decode arrives. */
+  claimedEvents?: Map<string, ClaimedEventWire>;
 };
 
 export type RuntimeConnection = {
@@ -141,6 +146,7 @@ abstract class BaseClient implements NmpClient {
   private latestFeedItems: FeedItem[] | undefined;
   private latestResolvedProfiles: Map<string, string> | undefined;
   private latestResolvedProfileCards: Map<string, ProfileWire> | undefined;
+  private latestClaimedEvents: Map<string, ClaimedEventWire> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -157,6 +163,7 @@ abstract class BaseClient implements NmpClient {
       feedItems: this.latestFeedItems,
       resolvedProfiles: this.latestResolvedProfiles,
       resolvedProfileCards: this.latestResolvedProfileCards,
+      claimedEvents: this.latestClaimedEvents,
     };
   }
 
@@ -228,6 +235,15 @@ abstract class BaseClient implements NmpClient {
                     const profileCardsResult = decodeResolvedProfileCards(snap);
                     if (profileCardsResult !== undefined) {
                       this.latestResolvedProfileCards = profileCardsResult;
+                    }
+                    // Decode claimed_events (KCEV) — quoted-event embed data.
+                    // Same keep-last-good semantics: a successful decode (even
+                    // an empty map) replaces the previous one; corrupt/missing
+                    // (`undefined`) keeps the last good map so embed cards never
+                    // blank-flash on a churn frame.
+                    const claimedEventsResult = decodeClaimedEvents(snap);
+                    if (claimedEventsResult !== undefined) {
+                      this.latestClaimedEvents = claimedEventsResult;
                     }
                     // Decode relay_diagnostics (KRDG) typed projection.
                     // skipDetails=true: only relay-level tones are decoded

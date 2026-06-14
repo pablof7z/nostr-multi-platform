@@ -6,6 +6,7 @@ import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profil
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
+import { ClaimedEventsSnapshot } from "./generated/nmp/kernel/claimed-events-snapshot";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 
@@ -17,6 +18,11 @@ const NOFS_PROJECTION_KEY = "nmp.feed.home";
 // `resolved_profiles` typed projection (KRPR) — kernel-owned profile map.
 const KRPR_FILE_IDENTIFIER = "KRPR";
 const KRPR_PROJECTION_KEY = "resolved_profiles";
+
+// `claimed_events` typed projection (KCEV) — kernel-owned resolved+enriched
+// event map (primary_id → event), the data source for quoted-event embed cards.
+const KCEV_FILE_IDENTIFIER = "KCEV";
+const KCEV_PROJECTION_KEY = "claimed_events";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -357,6 +363,119 @@ export function decodeResolvedProfileCards(
         if (card.hasLnurl()) {
           const v = card.lnurl();
           if (v) wire.lnurl = v;
+        }
+        out.set(key, wire);
+      }
+      return out;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+// ── claimed_events (KCEV) — quoted-event embed data ──────────────────────────
+
+/** One resolved+enriched event from the kernel's `claimed_events` projection.
+ *  Keyed in the map by `primaryId` — the hex event id for `nevent`/`note`
+ *  references, or the `"{kind}:{pubkey}:{d_tag}"` coordinate for `naddr`
+ *  references. This MUST match the `WireNostrUri.primaryId()` carried on the
+ *  feed note's content-tree EventRef node (the kernel derives both identically;
+ *  see `crates/nmp-content/src/wire/projection.rs` and
+ *  `crates/nmp-core/src/kernel/requests/event.rs`), so the embed renderer's
+ *  `claimedEvent(primaryId)` lookup hits without any alias map. */
+export type ClaimedEventWire = {
+  primaryId: string;
+  id: string;
+  kind: number;
+  content: string;
+  createdAt: number;
+  /** Author pubkey (hex). */
+  authorPubkey: string;
+  /** Author's resolved kind:0 display name, when the kernel enriched it. */
+  authorDisplayName?: string;
+  /** Author's resolved kind:0 picture URL, when the kernel enriched it. */
+  authorPictureUrl?: string;
+  /** Raw event tags (array of tag rows). Embed cards read `title`/`image`/
+   *  `summary`/`context`/source tags from here. */
+  tags: string[][];
+  /** Decoded NFCT tree, present iff the kernel emitted non-empty NFCT bytes. */
+  contentTree?: ContentTreeWire;
+};
+
+/** First value of the first tag row whose tag name (index 0) matches `name`. */
+export function tagValue(ev: ClaimedEventWire, name: string): string | undefined {
+  const row = ev.tags.find((t) => t[0] === name);
+  return row && row.length > 1 ? row[1] : undefined;
+}
+
+/**
+ * Decode the `claimed_events` (KCEV) typed projection from a `SnapshotFrame`
+ * into a `primaryId → ClaimedEventWire` map. Each event's `content_tree_bytes`
+ * (kernel-parsed NFCT) is decoded into a `ContentTreeWire` when present; empty
+ * bytes leave `contentTree` undefined (the view then renders raw `content`).
+ *
+ * Returns `undefined` on missing/corrupt projection so the caller keeps the
+ * last-good map (D6 — never blank-reset). Mirrors the KRPR decoder above and
+ * the gallery's proven `decodeClaimedEvents` (the gallery renders the same
+ * KCEV map into embed cards).
+ */
+export function decodeClaimedEvents(
+  snapshot: SnapshotFrame,
+): Map<string, ClaimedEventWire> | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== KCEV_PROJECTION_KEY) continue;
+    const payload = proj.payload();
+    if (!payload || payload.fileIdentifier() !== KCEV_FILE_IDENTIFIER) return undefined;
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) return undefined;
+    try {
+      const bb = new flatbuffers.ByteBuffer(payloadBytes);
+      if (!ClaimedEventsSnapshot.bufferHasIdentifier(bb)) return undefined;
+      const root = ClaimedEventsSnapshot.getRootAsClaimedEventsSnapshot(bb);
+      const out = new Map<string, ClaimedEventWire>();
+      for (let j = 0; j < root.entriesLength(); j += 1) {
+        const entry = root.entries(j);
+        if (!entry) continue;
+        const key = entry.key();
+        const ev = entry.value();
+        if (!key || !ev) continue;
+        const tags: string[][] = [];
+        for (let t = 0; t < ev.tagsLength(); t += 1) {
+          const row = ev.tags(t);
+          if (!row) continue;
+          const values: string[] = [];
+          for (let v = 0; v < row.valuesLength(); v += 1) {
+            values.push((row.values(v) as string) ?? "");
+          }
+          tags.push(values);
+        }
+        const wire: ClaimedEventWire = {
+          primaryId: key,
+          id: ev.id() ?? "",
+          kind: ev.kind(),
+          content: ev.content() ?? "",
+          createdAt: Number(ev.createdAt()),
+          authorPubkey: ev.authorPubkey() ?? "",
+          authorDisplayName: ev.hasAuthorDisplayName()
+            ? ev.authorDisplayName() ?? undefined
+            : undefined,
+          authorPictureUrl: ev.hasAuthorPictureUrl()
+            ? ev.authorPictureUrl() ?? undefined
+            : undefined,
+          tags,
+        };
+        const ctBytes = ev.contentTreeBytesArray();
+        if (ctBytes && ctBytes.length > 0) {
+          try {
+            const ctBb = new flatbuffers.ByteBuffer(ctBytes);
+            if (ContentTreeWire.bufferHasIdentifier(ctBb)) {
+              wire.contentTree = ContentTreeWire.getRootAsContentTreeWire(ctBb);
+            }
+          } catch {
+            // Corrupt NFCT bytes — leave contentTree undefined (raw fallback).
+          }
         }
         out.set(key, wire);
       }

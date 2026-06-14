@@ -1,7 +1,10 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, openContactFeedCommand, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
+import { publishNoteAction, openContactFeedCommand, claimProfileCommand, releaseProfileCommand, claimEventCommand, releaseEventCommand, type RuntimeCommand } from "./nmp/actions";
 import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
+import type { NostrEventHost } from "./components/content-kind-registry/NostrEventHost";
+import type { EmbeddedEventModel } from "./components/content-kind-registry/NostrKindRegistry";
 import type { ProfileWire } from "./components/user-avatar/ProfileWire";
+import type { ClaimedEventWire } from "./nmp/feedProjection";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import {
   featureSnapshotFromEnvelope,
@@ -23,6 +26,25 @@ declare global {
 }
 
 const client = createNmpClient();
+
+/** Project a resolved `claimed_events` (KCEV) wire entry into the pure
+ *  `EmbeddedEventModel` the embed cards render. Author identity prefers the
+ *  kernel's KCEV enrichment (display name / picture joined from kind:0) and
+ *  falls back to the resolved_profiles (KRPR) card map for the author pubkey. */
+function embeddedModelFromWire(
+  ev: ClaimedEventWire,
+  profileCards: Map<string, ProfileWire>,
+): EmbeddedEventModel {
+  const card = profileCards.get(ev.authorPubkey);
+  return {
+    kind: ev.kind,
+    content: ev.content,
+    createdAt: ev.createdAt,
+    tags: ev.tags,
+    authorName: ev.authorDisplayName ?? card?.displayName,
+    authorPicture: ev.authorPictureUrl ?? card?.pictureUrl,
+  };
+}
 
 export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
@@ -127,6 +149,25 @@ export default function App() {
     releaseProfile: (pubkey, consumerId) => dispatchQuiet(releaseProfileCommand(pubkey, consumerId)),
   };
 
+  // Event host for quoted-event embed cards (content-view EventRef → card).
+  // `claimedEvent(primaryId)` reads the kernel's claimed_events (KCEV) map and
+  // projects the wire entry into the pure embed model. claim/release ride the
+  // quiet dispatcher (same anti-churn discipline as profile claims) so embed
+  // claim bookkeeping never remounts feed rows. The KCEV map itself reaches the
+  // UI via the worker-pushed snapshot (client.record decodes it on each frame),
+  // so resolution updates reactively without a snapshot-mutating dispatch.
+  const claimedEvents = createMemo(
+    () => snapshot().claimedEvents ?? new Map<string, ClaimedEventWire>(),
+  );
+  const eventHost: NostrEventHost = {
+    claimedEvent: (primaryId) => {
+      const ev = claimedEvents().get(primaryId);
+      return ev ? embeddedModelFromWire(ev, profileCards()) : undefined;
+    },
+    claimEvent: (uri, consumerId) => dispatchQuiet(claimEventCommand(uri, consumerId)),
+    releaseEvent: (uri, consumerId) => dispatchQuiet(releaseEventCommand(uri, consumerId)),
+  };
+
   return (
     <main class="app-shell">
       <Sidebar active={tab()} onSelect={setTab} feature={feature()} />
@@ -136,6 +177,7 @@ export default function App() {
             <HomePanel
               rows={rows()}
               profileHost={profileHost}
+              eventHost={eventHost}
               onPublish={publish}
               onCommand={dispatch}
               onClaimCommand={dispatchQuiet}

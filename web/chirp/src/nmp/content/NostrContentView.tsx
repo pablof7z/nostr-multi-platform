@@ -4,7 +4,9 @@
  * Stage 0 deliverables (PR-F4):
  *   • Text, Paragraph, Heading, BlockQuote, CodeBlock, List, Rule nodes.
  *   • Inline formatting: Emphasis, Strong, InlineCode, Link, SoftBreak, HardBreak.
- *   • Mention / EventRef → `nostr:…` URI rendered as an anchor (no embed card).
+ *   • Mention → resolved avatar+name chip (via NostrProfileHost), else anchor.
+ *   • EventRef → resolved quoted-event embed card (via NostrEventHost / KCEV),
+ *     else the honest raw `nostr:…` anchor until the kernel resolves it.
  *   • Hashtag → `#tag` styled chip.
  *   • Url → plain anchor.
  *   • Emoji → shortcode text or <img> when emojiUrl is present.
@@ -24,6 +26,8 @@ import type { ListItem } from "../generated/nmp/content/list-item";
 import { WireNodeKind } from "../generated/nmp/content/wire-node-kind";
 import { useNostrProfileHost } from "../../components/user-avatar/NostrProfileHost";
 import { NostrMentionChip } from "../../components/content-mention-chip/NostrMentionChip";
+import { useNostrEventHost } from "../../components/content-kind-registry/NostrEventHost";
+import { NostrEmbeddedEvent } from "../../components/content-kind-registry/NostrKindRegistry";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -184,14 +188,45 @@ function MentionNode(p: { node: WireNode }): JSX.Element {
   );
 }
 
-/** Stage 0: renders the raw `nostr:nevent1…` / `nostr:naddr1…` URI as a link.
- *  Embed cards (resolved_embeds projection) are deferred to a later stage. */
+/** Renders a quoted/referenced event (`nostr:nevent1…` / `nostr:note1…` /
+ *  `nostr:naddr1…`) as an embed card. Mirrors `MentionNode`: claims the event
+ *  through the ambient `NostrEventHost` (same kernel claim path as the gallery's
+ *  showcase) and renders the resolved `NostrEmbeddedEvent` once the kernel emits
+ *  it in the `claimed_events` (KCEV) projection; until then — or when no event
+ *  host is mounted — it falls back to the honest raw `nostr:…` anchor (never a
+ *  placeholder card).
+ *
+ *  The lookup key is `nostrUri().primaryId()` — the SAME value the kernel keys
+ *  the KCEV map by (hex event id for nevent/note, "{kind}:{pubkey}:{d_tag}"
+ *  coordinate for naddr). The claim uses the full `nostr:` URI. */
 function EventRefNode(p: { node: WireNode }): JSX.Element {
   const uri = p.node.nostrUri()?.uri() ?? p.node.text() ?? "";
+  const primaryId = p.node.nostrUri()?.primaryId() ?? "";
+  const host = useNostrEventHost();
+  if (host && uri && primaryId) {
+    const consumerId = `nostr-embed.${createUniqueId()}`;
+    onMount(() => host.claimEvent(uri, consumerId));
+    onCleanup(() => host.releaseEvent(uri, consumerId));
+  }
+  // Captured once for the quote card's relative-time label (pure render input).
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const model = () => (host && primaryId ? host.claimedEvent(primaryId) : undefined);
+  // `event={model()!}` is a reactive prop getter (not a render-prop value
+  // captured once), so the card UPDATES across frames: the content resolves on
+  // the first claim frame, then author display name / picture fill in on a later
+  // resolved_profiles (KRPR) frame — the card must reflect that enrichment, not
+  // freeze on the first (author-less) value.
   return (
-    <a class="nostr-event-ref" href={uri} rel="noopener noreferrer">
-      {uri}
-    </a>
+    <Show
+      when={model()}
+      fallback={
+        <a class="nostr-event-ref" href={uri} rel="noopener noreferrer">
+          {uri}
+        </a>
+      }
+    >
+      <NostrEmbeddedEvent event={model()!} nowSeconds={nowSeconds} />
+    </Show>
   );
 }
 

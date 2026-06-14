@@ -13,6 +13,7 @@
 #   KRPR        — crates/nmp-core/schema/profile_card.fbs
 #              + crates/nmp-core/schema/resolved_profiles.fbs
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
+#   KCEV        — crates/nmp-core/schema/claimed_events.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
@@ -73,6 +74,13 @@ KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
 )
 KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
+# KCEV — claimed_events typed projection (nmp.kernel namespace, self-contained).
+# Generated INTO nmp/kernel/ alongside KRPR + KRDG. Emitted BEFORE the KRDG
+# invocation so the final nmp/kernel.ts namespace barrel stays = RelayDiagnostics*
+# (flatc overwrites the namespace barrel per invocation, last-write-wins; nothing
+# imports from the barrel — all imports use direct file paths). The
+# claimed-event*.ts + tag-row.ts type files persist regardless of barrel order.
+KCEV_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/claimed_events.fbs"
 CHECKED_IN_DIR="${REPO_ROOT}/web/chirp/src/nmp/generated/nmp"
 
 # ── flatc availability + version guard ──────────────────────────────────────
@@ -126,8 +134,16 @@ flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KERNEL_SCHEMAS[@]}"
 
+# ── KCEV schema (claimed_events → nmp/kernel/) ───────────────────────────────
+# Self-contained: no includes. Emitted before KRDG so KRDG wins the barrel.
+flatc --ts -o "${TMP_DIR}" \
+    -I "${KERNEL_SCHEMA_DIR}" \
+    "${KCEV_SCHEMA}"
+
 # ── KRDG schema (relay_diagnostics → nmp/kernel/) ────────────────────────────
 # Self-contained: no includes. Output lands in nmp/kernel/ alongside KRPR.
+# Listed LAST among the nmp.kernel-namespace schemas so the regenerated
+# nmp/kernel.ts barrel matches the checked-in one (RelayDiagnostics*).
 flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KRDG_SCHEMA}"
@@ -153,7 +169,11 @@ if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
     echo "      -I crates/nmp-core/schema \\" >&2
     echo "      crates/nmp-core/schema/profile_card.fbs \\" >&2
     echo "      crates/nmp-core/schema/resolved_profiles.fbs" >&2
-    echo "  # KRDG schema:" >&2
+    echo "  # KCEV schema (before KRDG — KRDG must win the kernel.ts barrel):" >&2
+    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
+    echo "      -I crates/nmp-core/schema \\" >&2
+    echo "      crates/nmp-core/schema/claimed_events.fbs" >&2
+    echo "  # KRDG schema (last among nmp.kernel schemas):" >&2
     echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
     echo "      -I crates/nmp-core/schema \\" >&2
     echo "      crates/nmp-core/schema/relay_diagnostics.fbs" >&2
