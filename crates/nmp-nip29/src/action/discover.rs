@@ -41,6 +41,7 @@ fn validate_relay_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Default)]
 pub struct DiscoverGroupsAction;
 impl ActionModule for DiscoverGroupsAction {
     const NAMESPACE: &'static str = "nmp.nip29.discover";

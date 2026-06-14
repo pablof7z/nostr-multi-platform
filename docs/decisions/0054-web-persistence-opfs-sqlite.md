@@ -1,4 +1,4 @@
-# ADR-0053 — Web persistence (OPFS-SQLite sync VFS) + offline-queue durability
+# ADR-0054 — Web persistence (OPFS-SQLite sync VFS) + offline-queue durability
 
 - **Status:** Accepted for Stage #5 (store-injection seam); Stages #6–#9
   Proposed with open implementation gates (see "Risks and implementation
@@ -12,11 +12,12 @@
   invariant doc `docs/design/lmdb/trait.md`
 - **Numbering note:** The originating mandate referred to this work as
   "ADR-0048". That number is already occupied by
-  `0048-nip55-external-signer-capability.md`. To avoid a deliberate collision
-  (the repo already carries one accidental `0041` duplicate — a ZERO TECH DEBT
-  violation we will not repeat), this decision is filed as **ADR-0053**, the
-  next free number after `0052`. References to "ADR-0048 persistence" in
-  upstream planning text should be retargeted to ADR-0053.
+  `0048-nip55-external-signer-capability.md`. This decision was originally
+  filed as `0053` (the next free number after `0052`), but `0053` was
+  simultaneously occupied by `0053-host-declared-projection-subscriptions.md`.
+  To resolve the collision it is now filed as **ADR-0054**. References to
+  "ADR-0053 web persistence" or "ADR-0048 persistence" in upstream planning
+  text should be retargeted to ADR-0054.
 
 ## Context
 

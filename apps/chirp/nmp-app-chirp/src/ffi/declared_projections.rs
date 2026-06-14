@@ -84,6 +84,9 @@ mod tests {
     /// built-in. A producer-side rename of a `KERNEL_BUILTIN_PROJECTION_KEYS`
     /// entry that ships without updating this list fails here (the renamed
     /// built-in would silently stop reaching Chirp once Chirp narrows).
+    ///
+    /// This is direction 1 of the bidirectional drift gate (ADR-0053 DEBT 1):
+    ///   declared ⊆ builtins — no stray non-builtin keys in the declared set.
     #[test]
     fn every_chirp_declared_key_is_a_kernel_builtin() {
         let builtins: std::collections::BTreeSet<&str> = nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS
@@ -100,6 +103,52 @@ mod tests {
             "Chirp declares projection keys that are NOT kernel built-ins (Tier-1 \
              keys self-gate by registration and must not be declared here; a \
              renamed built-in must be updated in both places): {stray:?}"
+        );
+    }
+
+    /// Bidirectional drift gate — direction 2 (ADR-0053 DEBT 1):
+    ///   codegen-decoded builtins ⊆ declared.
+    ///
+    /// Every Tier-2 kernel built-in key that has an entry in the `nmp-codegen`
+    /// `SNAPSHOT_PROJECTIONS` registry (i.e. Chirp generates a Swift decoder for
+    /// it) MUST be present in `CHIRP_CONSUMED_BUILTIN_PROJECTIONS`. A new Tier-2
+    /// built-in added to the codegen registry without updating the declared set
+    /// would compile and pass direction-1, but the key would silently go dark the
+    /// moment Chirp starts declaring its set — caught here at commit time.
+    ///
+    /// Keys that have Android-only decoders outside the codegen registry (e.g.
+    /// `mention_profiles`) are exempt from this check — they are covered by
+    /// direction 1 (they must still be in `KERNEL_BUILTIN_PROJECTION_KEYS`).
+    #[test]
+    fn every_codegen_decoded_builtin_is_declared() {
+        let builtins: std::collections::BTreeSet<&str> = nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS
+            .iter()
+            .copied()
+            .collect();
+        let declared: std::collections::BTreeSet<&str> = CHIRP_CONSUMED_BUILTIN_PROJECTIONS
+            .iter()
+            .copied()
+            .collect();
+        // The codegen registry keys that are ALSO Tier-2 kernel built-ins — the
+        // set of built-ins Chirp has a codegen-generated Swift decoder for.
+        let codegen_decoded_builtins: Vec<&str> =
+            nmp_codegen::swift_projections_registry::SNAPSHOT_PROJECTIONS
+                .iter()
+                .map(|e| e.json_key)
+                .filter(|k| builtins.contains(k))
+                .collect();
+        let missing: Vec<&str> = codegen_decoded_builtins
+            .iter()
+            .copied()
+            .filter(|k| !declared.contains(k))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "Tier-2 built-in projection key(s) present in the codegen registry \
+             (Chirp generates a Swift decoder for them) but MISSING from \
+             CHIRP_CONSUMED_BUILTIN_PROJECTIONS — they would silently go dark \
+             once Chirp declares its set (ADR-0053 drift gate, direction 2). \
+             Add them to CHIRP_CONSUMED_BUILTIN_PROJECTIONS: {missing:?}"
         );
     }
 
