@@ -16,21 +16,22 @@ struct SettingsHubView: View {
             }
 
             // ── Relays ────────────────────────────────────────────────────
-            Section {
+            // Native row to match every other section: a `Label` with the
+            // SF Symbol in the system tint plus a trailing status value, the
+            // way Apple's own Settings surfaces a detail string.
+            Section("Relays") {
                 NavigationLink(destination: RelaySettingsView()) {
-                    settingsRow(
-                        icon: "antenna.radiowaves.left.and.right",
-                        iconColor: ChirpColor.accent,
-                        title: "Relays",
+                    HStack {
+                        Label("Relays", systemImage: "antenna.radiowaves.left.and.right")
+                        Spacer()
                         // Projection-provided status subtitle
                         // (`projections.settings_hub.relays_subtitle`).
-                        subtitle: model.settingsHub.relaysSubtitle
-                    )
+                        Text(model.settingsHub.relaysSubtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                .listRowBackground(ChirpColor.transparent)
-                .listRowSeparator(.hidden)
-            } header: {
-                ChirpSectionHeader(title: "Relays")
             }
 
             Section("Encrypted Groups (Marmot)") {
@@ -61,41 +62,10 @@ struct SettingsHubView: View {
                 }
             }
         }
-        .scrollContentBackground(.hidden)
-        .chirpScreenBackground()
+        // Tighter inter-section rhythm — the default grouped spacing reads as
+        // inflated for a short settings list.
+        .listSectionSpacing(.compact)
         .navigationTitle("Settings")
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    @ViewBuilder
-    private func settingsRow(
-        icon: String,
-        iconColor: Color,
-        title: String,
-        subtitle: String
-    ) -> some View {
-        HStack(spacing: ChirpSpace.m) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(iconColor.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconColor)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(ChirpFont.callout.weight(.medium))
-                    .foregroundStyle(ChirpColor.textPrimary)
-                Text(subtitle)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.vertical, ChirpSpace.xs)
     }
 }
 
