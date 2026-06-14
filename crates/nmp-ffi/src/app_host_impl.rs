@@ -62,6 +62,15 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::incremental_apply_handle(self)
     }
 
+    fn frame_identity_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        NmpApp::frame_identity_handles(self)
+    }
+
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         NmpApp::set_coverage_hook(self, hook);
     }

@@ -281,4 +281,16 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.incremental_apply_handle()
     }
+
+    fn frame_identity_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        app.frame_identity_handles()
+    }
 }

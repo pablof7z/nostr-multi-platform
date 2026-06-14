@@ -43,7 +43,7 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::update_envelope::TypedProjectionData;
@@ -192,13 +192,14 @@ pub struct SnapshotRegistry {
     /// `true` means the host runtime owns the NMP cache-merge layer (D3-3) and
     /// the kernel is permitted to omit `Unchanged` projections from the frame.
     /// The host MUST set this before `nmp_app_start` (single-writer,
-    /// set-before-start) via [`declare_incremental_apply`] /
-    /// [`AppHost::declare_incremental_apply`] /
-    /// `nmp_app_declare_incremental_apply()`. This is durable architecture (the
-    /// per-attach baseline gate + the Rung-5 ADR-0053 compose seam), NOT a
-    /// compat shim — it is deleted only when every NMP host advertises it
-    /// unconditionally (a future cleanup once Tier-1 gating + Rung 4 land).
-    incremental_apply_enabled: bool,
+    /// set-before-start) via [`declare_incremental_apply`]. Durable architecture
+    /// (per-attach baseline gate + Rung-5 ADR-0053 compose seam), NOT a compat
+    /// shim — deleted only when every NMP host advertises it unconditionally.
+    ///
+    /// **Single source of truth (R6-S1).** This `Arc<AtomicBool>` is THE flag;
+    /// `make_update` reads it lock-free and a Tier-1 producer captures a clone
+    /// via [`Self::incremental_apply_handle`] — same atomic, no mirror anywhere.
+    incremental_apply_enabled: Arc<AtomicBool>,
     /// ADR-0055 Rung 3 (D3-5) — one-shot latch set by `declare_incremental_apply`.
     ///
     /// The kernel reads and clears this in `make_update` (via
@@ -206,6 +207,16 @@ pub struct SnapshotRegistry {
     /// `ProjectionRevTracker::reset_last_emitted` when `true`, guaranteeing
     /// the next frame is a full baseline for the newly-declared host.
     incremental_apply_baseline_pending: bool,
+    /// ADR-0055 R6-S1 — frame identity for Tier-1 producers that omit unchanged
+    /// frames. `session_id` = `started_unix_ms` (changes on `Reset`-rebuild);
+    /// `snapshot_epoch` = `tracker.epoch`. Written each tick by
+    /// `Kernel::publish_frame_identity` before the typed projections run; a
+    /// producer captures clones via [`Self::frame_identity_handles`] and
+    /// rebaselines when EITHER differs from the last tuple — the SAME signal the
+    /// host `ProjectionCache` resets on (the freeze fix). Lives here because the
+    /// registry survives `Reset`.
+    frame_session_id: Arc<AtomicU64>,
+    frame_snapshot_epoch: Arc<AtomicU64>,
 }
 
 impl SnapshotRegistry {

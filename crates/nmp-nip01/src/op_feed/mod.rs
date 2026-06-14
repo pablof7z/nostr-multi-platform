@@ -27,7 +27,7 @@ pub mod typed_wire;
 mod wiring;
 
 pub use attribution::Nip10ReplyAttribution;
-pub use emission_state::FeedEmissionState;
+pub use emission_state::{FeedEmissionState, FrameIdentity};
 pub use typed_wire::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER,
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,

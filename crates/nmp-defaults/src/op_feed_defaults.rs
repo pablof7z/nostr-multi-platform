@@ -138,7 +138,7 @@
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
@@ -147,7 +147,7 @@ use nmp_feed::FeedController;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{
-    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, FeedEmissionState,
+    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, FeedEmissionState, FrameIdentity,
 };
 use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
@@ -271,21 +271,20 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     // window materializations per 4 Hz tick). Not load-bearing for correctness;
     // a shared per-tick snapshot cache is a tracked follow-up.
     //
-    // R6-S1 emission state:
+    // R6-S1 emission state + frame-identity rebaseline (the freeze fix):
     //
-    // `emission_epoch` is an `Arc<AtomicU64>` bumped on identity switch (via the
-    // account-switch callback below) so the `FeedEmissionState` can force a full
-    // baseline re-emit after an identity reset. The epoch is separate from
-    // `snapshot_epoch` (the frame-level epoch carried by the outer
-    // `SnapshotFrame` wire envelope) because the typed closure signature has no
-    // parameters — it cannot receive the frame epoch. Using an internal
-    // epoch counter driven by the identity-change callback achieves the same
-    // correctness (the first post-reset tick always emits) without changing the
-    // `TypedProjectionFn` signature.
-    let emission_epoch: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-    let emission_epoch_for_typed = Arc::clone(&emission_epoch);
+    // The producer rebaselines on the EXACT signal the host's `ProjectionCache`
+    // resets on: the frame `(session_id, snapshot_epoch)` tuple. The kernel
+    // publishes this each tick (before any projection closure runs) into shared
+    // `Arc<AtomicU64>` handles; the closure reads them lock-free and forces a
+    // full baseline whenever either component changes. This covers account-switch
+    // AND `ActorCommand::Reset` AND any future epoch-class bump with ONE durable
+    // signal — there is no bespoke per-event epoch counter (the prior
+    // `emission_epoch` bumped from `follow_set.on_change` was blind to Reset and
+    // is deleted).
     let engine_for_typed = Arc::clone(&engine);
     let incremental_apply = app.incremental_apply_handle();
+    let (frame_session_id, frame_snapshot_epoch) = app.frame_identity_handles();
     // `FeedEmissionState` is NOT `Send` (it holds `Vec<u8>` and is owned by the
     // closure), but the closure itself must be `Send + Sync` as required by
     // `register_typed_snapshot_projection`. We wrap the state in a `Mutex` to
@@ -298,7 +297,12 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
         // typed emit is a follow-up tied to the staged-removal close.
         let snapshot = engine_for_typed.snapshot(&nmp_feed::FeedRequest::default());
         let payload = nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot);
-        let epoch = emission_epoch_for_typed.load(Ordering::Acquire);
+        // Read this tick's frame identity lock-free (the kernel published it at
+        // the top of `make_update`, before this closure runs).
+        let identity = FrameIdentity {
+            session_id: frame_session_id.load(Ordering::Acquire),
+            snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
+        };
 
         // R6-S1: consult emission state to decide whether to emit or omit.
         let Ok(mut state) = emission_state.lock() else {
@@ -316,7 +320,7 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
             });
         };
 
-        let emit_decision = state.should_emit(payload, epoch);
+        let emit_decision = state.should_emit(payload, identity);
         drop(state); // release the lock before constructing the return value
 
         match emit_decision {
@@ -347,16 +351,14 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     // registration-time active pubkey so the first kind:3 fire is not a false
     // positive. See the module docs for the full switch race analysis.
     //
-    // R6-S1: on an actual account switch we also bump `emission_epoch` so the
-    // `FeedEmissionState` forces a full baseline re-emit after the engine reset.
-    // This ensures the first post-switch tick always emits a fresh baseline even
-    // if the new account's feed happens to encode to the same bytes as the prior
-    // account's feed (a corner-case that cannot happen in practice since the
-    // engine resets to empty cards, but we guard it for correctness).
+    // R6-S1: this callback no longer touches the typed-projection emission state.
+    // An account switch bumps the kernel's `snapshot_epoch` (identity_state.rs
+    // → `bump_epoch`), which the kernel publishes into the frame-identity handles
+    // the typed closure reads — so the closure rebaselines automatically, in
+    // lockstep with the host cache reset, with no bespoke epoch bump here.
     let last_seen = Arc::new(Mutex::new(read_active(&active_account_slot)));
     let engine_for_cb = engine.clone();
     let slot_for_cb = active_account_slot.clone();
-    let emission_epoch_for_cb = Arc::clone(&emission_epoch);
     follow_set.on_change(Box::new(move || {
         let current = read_active(&slot_for_cb);
         let Ok(mut last) = last_seen.lock() else {
@@ -365,9 +367,6 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
         if *last != current {
             *last = current;
             engine_for_cb.reset_for_identity_change();
-            // R6-S1: bump the emission epoch so the typed closure forces a
-            // full baseline re-emit on the next tick after the identity reset.
-            emission_epoch_for_cb.fetch_add(1, Ordering::Release);
         }
     }));
 

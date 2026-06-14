@@ -10,9 +10,53 @@
 //! struct definition in the parent module; only the inherent methods that
 //! manipulate them live here.
 
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+
 use super::SnapshotRegistry;
 
 impl SnapshotRegistry {
+    /// ADR-0055 R6-S1 — a clone of the single-source-of-truth incremental-apply
+    /// flag, for a Tier-1 producer closure to read lock-free.
+    ///
+    /// The closure runs inside `run_typed()` while this registry's mutex is held,
+    /// so it MUST NOT re-lock the registry — it reads this captured
+    /// `Arc<AtomicBool>` directly. The atomic is the SAME one
+    /// [`Self::is_incremental_apply_enabled`] reads and
+    /// [`Self::declare_incremental_apply`] writes; capturing a clone introduces
+    /// no second flag.
+    #[must_use]
+    pub fn incremental_apply_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.incremental_apply_enabled)
+    }
+
+    /// ADR-0055 R6-S1 — clones of the frame-identity handles
+    /// `(session_id, snapshot_epoch)` the kernel publishes each tick.
+    ///
+    /// A Tier-1 producer closure that omits unchanged frames captures these and
+    /// forces a rebaseline whenever EITHER value changes — the same signal the
+    /// host cache resets on. Read lock-free (Acquire) inside the closure; never
+    /// re-locks the registry. See `SnapshotRegistry::frame_session_id`.
+    #[must_use]
+    pub fn frame_identity_handles(&self) -> (Arc<AtomicU64>, Arc<AtomicU64>) {
+        (
+            Arc::clone(&self.frame_session_id),
+            Arc::clone(&self.frame_snapshot_epoch),
+        )
+    }
+
+    /// ADR-0055 R6-S1 — publish the current frame identity into the shared
+    /// handles. Called by the kernel at the top of `make_update` (before the
+    /// typed projections run), so the producer closure reads THIS tick's values.
+    ///
+    /// Lock-free `Release` stores; the closure reads with `Acquire`. Writing on
+    /// every tick is idempotent and cheap (two atomic stores) — the values only
+    /// actually change on Reset (`session_id`) or epoch bump (`snapshot_epoch`).
+    pub fn publish_frame_identity(&self, session_id: u64, snapshot_epoch: u64) {
+        self.frame_session_id.store(session_id, Ordering::Release);
+        self.frame_snapshot_epoch
+            .store(snapshot_epoch, Ordering::Release);
+    }
     /// ADR-0055 Rung 3 — declare that this host's runtime owns the NMP
     /// cache-merge layer (D3-3) and can therefore receive frames with
     /// `Unchanged` projections omitted.
@@ -25,9 +69,15 @@ impl SnapshotRegistry {
     /// `ProjectionRevTracker::reset_last_emitted` (D3-5).
     ///
     /// Idempotent: calling more than once before start is a no-op.
+    ///
+    /// R6-S1: `incremental_apply_enabled` is an `Arc<AtomicBool>` (the single
+    /// source of truth shared with any Tier-1 producer closure that gates its
+    /// own omit). A `Release` store here is observed by the closure's `Acquire`
+    /// load. Single-writer (set-before-start), so the load-then-store is not a
+    /// contended RMW race.
     pub fn declare_incremental_apply(&mut self) {
-        if !self.incremental_apply_enabled {
-            self.incremental_apply_enabled = true;
+        if !self.incremental_apply_enabled.load(Ordering::Acquire) {
+            self.incremental_apply_enabled.store(true, Ordering::Release);
             // D3-5: signal that the kernel must reset its last-emitted baseline
             // so the next frame is a full baseline. The latch is consumed once
             // by `take_incremental_apply_baseline_pending` in `make_update`.
@@ -38,10 +88,12 @@ impl SnapshotRegistry {
     /// Read whether the host has declared incremental-apply capability.
     ///
     /// The kernel reads this once per tick (inside `make_update`) to decide
-    /// whether to pass `enabled = true` to `rung3_omit::omit_unchanged`.
+    /// whether to pass `enabled = true` to `rung3_omit::omit_unchanged`. Reads
+    /// the same `Arc<AtomicBool>` a producer closure captures via
+    /// [`SnapshotRegistry::incremental_apply_handle`] (single source of truth).
     #[must_use]
     pub fn is_incremental_apply_enabled(&self) -> bool {
-        self.incremental_apply_enabled
+        self.incremental_apply_enabled.load(Ordering::Acquire)
     }
 
     /// ADR-0055 Rung 3 (D3-5) — take the "baseline pending" latch.

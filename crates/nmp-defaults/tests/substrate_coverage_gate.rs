@@ -267,6 +267,15 @@ impl AppHost for GateSpy {
     fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         unreachable!("register_substrate does not read the incremental-apply handle");
     }
+
+    fn frame_identity_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        unreachable!("register_substrate does not read the frame-identity handles");
+    }
 }
 
 /// A `CompiledPlan` with `n` distinct per-relay entries (the hook only reads
