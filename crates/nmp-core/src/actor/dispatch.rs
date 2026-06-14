@@ -395,7 +395,8 @@ pub(super) struct ActorContext<'a> {
 mod substrate_adapters;
 use substrate_adapters::{
     ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter, KernelClockAdapter,
-    LocalSignerAccessAdapter, RecipientRelayLookupAdapter,
+    LocalSignerAccessAdapter, RecipientRelayLookupAdapter, WalletKernelAccessAdapter,
+    ZapProfileLookupAdapter,
 };
 
 /// M2 (ADR-0042) — thin shim delegating to the always-compiled
@@ -1609,14 +1610,14 @@ pub(super) fn dispatch_command(
             // single-threaded sync, so the inner `borrow`/`borrow_mut`
             // calls serialize naturally.
             //
-            // V-38: the typed capability adapters borrow `ctx.kernel` via
-            // `RefCell`; the V-38 `with_kernel` builder needs an exclusive
-            // `&mut Kernel` borrow. The adapters and the direct kernel
-            // borrow are mutually exclusive — the `with_kernel` borrow
-            // begins after the adapters drop at end-of-block. We capture
-            // the identity-runtime ref first (immutable) so it can outlive
-            // the adapter scope; the kernel borrow is rebuilt in the
-            // post-adapter block below.
+            // ADR-0052 §D5: ALL kernel-touching capability adapters — including
+            // the new `WalletKernelAccessAdapter` (mutating) and
+            // `ZapProfileLookupAdapter` (reading) — go through this one
+            // `kernel_cell` via per-call `try_borrow[_mut]`. The prior V-38
+            // `with_kernel` exclusive borrow (a long-lived `&mut Kernel` held
+            // for the whole `cmd.run`) is deleted: a wallet command's eight
+            // mutations now interleave with the sibling reads through the same
+            // `RefCell`, so no separate exclusive-borrow window is needed.
             let identity_cell = std::cell::RefCell::new(&*ctx.identity);
             let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
 
@@ -1642,6 +1643,19 @@ pub(super) fn dispatch_command(
             // borrow and is safe to read inside the whole-body catch_unwind.
             let host_op_handler = HostOpHandlerAccessAdapter {
                 slot: ctx.host_op_handler,
+            };
+            // ADR-0052 §D5 — narrow wallet kernel-mutation + zap-profile-read
+            // adapters replace the deleted `kernel_mut()` / `lnurl_for_pubkey`
+            // surfaces. Both borrow the SAME `kernel_cell` the read adapters
+            // use, via per-call `try_borrow_mut` / `try_borrow`, so the prior
+            // long-lived `with_kernel` exclusive borrow is gone and the wallet
+            // command's eight mutations interleave naturally with the other
+            // capability reads during `cmd.run`.
+            let wallet_kernel = WalletKernelAccessAdapter {
+                kernel: &kernel_cell,
+            };
+            let zap_profiles = ZapProfileLookupAdapter {
+                kernel: &kernel_cell,
             };
 
             // A second sender clone for the worker-thread surface. Cloning
@@ -1671,7 +1685,7 @@ pub(super) fn dispatch_command(
             // only carries whatever frames were pushed before the panic, which
             // is benign — same as an early `Err` return).
             let run_err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let pctx = crate::substrate::ProtocolCommandContext::new(
+                let mut pctx = crate::substrate::ProtocolCommandContext::new(
                     crate::substrate::ProtocolCommandContextParts {
                         send: &send,
                         command_sender: worker_tx,
@@ -1682,23 +1696,16 @@ pub(super) fn dispatch_command(
                         stages: &stages,
                         recipients: &recipients,
                         host_op_handler: &host_op_handler,
+                        // ADR-0052 §D5 — the narrow wallet kernel-mutation +
+                        // zap-profile-read capabilities. A wallet/zap command
+                        // reaches its needs through these; every other command
+                        // ignores them (it holds the noop singleton's surface).
+                        wallet_kernel: &wallet_kernel,
+                        zap_profiles: &zap_profiles,
                     },
                 )
                 .with_outbound(&mut outbound);
-                // V-38: attach the kernel handle so wallet `ProtocolCommand`
-                // bodies can drive kernel state (toast, persistent-sub
-                // register, action-terminal record) directly. The kernel
-                // borrow here is taken through the `RefCell` so the typed
-                // adapters above continue to function during `cmd.run`.
-                // Since `ProtocolCommand::run` is single-threaded sync, the
-                // adapters' `RefCell` borrows and the `with_kernel` borrow
-                // are sequenced naturally inside the command body.
-                let mut kernel_ref = kernel_cell.borrow_mut();
-                let mut pctx = pctx.with_kernel(&mut *kernel_ref);
-                let res = cmd.run(&mut pctx);
-                drop(pctx);
-                drop(kernel_ref);
-                res
+                cmd.run(&mut pctx)
             }))
             .unwrap_or_else(|_| {
                 // A panic in the command body is converted to the same
@@ -1722,6 +1729,12 @@ pub(super) fn dispatch_command(
             // released `ctx.kernel`. The `RefCell` owners themselves are
             // moved at function end (no explicit `drop` needed once the
             // adapters that borrowed them are dropped).
+            //
+            // ADR-0052 §D5: `wallet_kernel` / `zap_profiles` also borrow
+            // `kernel_cell`, so they too must drop before the `emit_now`
+            // re-borrow.
+            drop(zap_profiles);
+            drop(wallet_kernel);
             drop(recipients);
             drop(stages);
             drop(errors);

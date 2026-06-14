@@ -239,7 +239,7 @@ pub mod relay_score {
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
-pub use kernel::AuthSignerFn;
+pub use kernel::{wallet_access::KernelWalletAccess, AuthSignerFn}; // KernelWalletAccess: ADR-0052 §D5 wallet/zap adapter
 // V-51 phase 4 (validation harness) — the projection's three public types
 // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
 // is the bounded ring-buffer the kernel hands to production composition

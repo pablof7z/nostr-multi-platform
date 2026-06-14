@@ -11,7 +11,9 @@
 //! D6: a missing runtime (slot never installed) sets a `last_error_toast`
 //! and returns `Ok(())` — never panics.
 
-use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+use nmp_core::substrate::{
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, WalletKernelAccess,
+};
 
 use crate::runtime::{
     handle_nwc_text as runtime_handle_nwc_text, wallet_connect as runtime_wallet_connect,
@@ -45,27 +47,30 @@ pub struct WalletPayInvoiceCommand {
     pub runtime: WalletRuntimeHandle,
 }
 
-fn with_runtime_and_kernel<F: FnOnce(&mut crate::runtime::WalletRuntime, &mut nmp_core::Kernel) -> Vec<nmp_core::OutboundMessage>>(
+/// ADR-0052 §D5: the wallet command reaches the kernel through the narrow
+/// [`WalletKernelAccess`] capability (the eight methods the runtime mutates),
+/// NOT the deleted `ctx.kernel_mut()` whole-kernel handle. The capability is a
+/// shared `&dyn`, so it is read before the runtime mutex is locked and handed
+/// to the runtime helper alongside the `&mut WalletRuntime`.
+fn with_runtime_and_kernel<
+    F: FnOnce(&mut crate::runtime::WalletRuntime, &dyn WalletKernelAccess) -> Vec<nmp_core::OutboundMessage>,
+>(
     handle: &WalletRuntimeHandle,
     ctx: &mut ProtocolCommandContext<'_>,
     op_label: &'static str,
     f: F,
 ) -> Result<(), ProtocolCommandError> {
-    let Some(kernel) = ctx.kernel_mut() else {
-        return Err(ProtocolCommandError::new(format!(
-            "{op_label}: no kernel handle attached"
-        )));
-    };
+    let wk = ctx.wallet_kernel();
     let mut guard = handle.lock().map_err(|_| {
         ProtocolCommandError::new(format!("{op_label}: wallet runtime mutex poisoned"))
     })?;
     let Some(runtime) = guard.as_mut() else {
-        kernel.set_last_error_toast(Some(format!(
+        wk.set_last_error_toast(Some(format!(
             "{op_label}: wallet runtime not installed"
         )));
         return Ok(());
     };
-    let outbound = f(runtime, kernel);
+    let outbound = f(runtime, wk);
     drop(guard);
     ctx.push_outbound(outbound);
     Ok(())
@@ -121,7 +126,7 @@ impl ProtocolCommand for WalletPayInvoiceCommand {
 #[must_use]
 pub fn dispatch_nwc_relay_text(
     runtime: &WalletRuntimeHandle,
-    kernel: &mut nmp_core::Kernel,
+    kernel: &dyn WalletKernelAccess,
     relay_url: &str,
     text: &str,
 ) -> Vec<nmp_core::OutboundMessage> {

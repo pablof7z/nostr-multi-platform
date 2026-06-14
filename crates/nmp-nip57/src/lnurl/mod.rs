@@ -97,8 +97,8 @@ const LNURL_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// round-trip. Dispatched as `ActorCommand::Protocol(Box::new(...))` by
 /// `ZapAction::execute` (see `crate::action`). When `lnurl_or_address` is
 /// `None` the command resolves the recipient's lightning address from the
-/// kernel's cached kind:0 profile via
-/// [`ProtocolCommandContext::lnurl_for_pubkey`].
+/// kernel's cached kind:0 profile via the zap-only `ZapProfileLookup`
+/// capability (`ctx.zap_profiles().lnurl_for_pubkey(..)`; ADR-0052 §D5).
 ///
 /// The fields mirror the legacy `ActorCommand::FetchLnurlInvoice` variant
 /// payload one-for-one — every field is consumed inside [`Self::run`].
@@ -156,7 +156,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // it verbatim to allow overriding the on-profile address.
         let lnurl_or_address = match lnurl_or_address {
             Some(v) if !v.trim().is_empty() => v,
-            _ => match ctx.lnurl_for_pubkey(&recipient_pubkey) {
+            _ => match ctx.zap_profiles().lnurl_for_pubkey(&recipient_pubkey) {
                 Some(v) => v,
                 None => {
                     let reason = "this user has no lightning address in their profile";

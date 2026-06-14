@@ -188,6 +188,10 @@ mod tests {
         static ERRORS: NoopErrorSurface = NoopErrorSurface;
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+        static WALLET: crate::substrate::NoopWalletKernelAccess =
+            crate::substrate::NoopWalletKernelAccess;
+        static ZAP: crate::substrate::NoopZapProfileLookup =
+            crate::substrate::NoopZapProfileLookup;
         static DMS: crate::substrate::EmptyDmInboxRelayLookup =
             crate::substrate::EmptyDmInboxRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
@@ -206,6 +210,8 @@ mod tests {
             stages: &STAGES,
             recipients: &RECIPIENTS,
             host_op_handler: access,
+            wallet_kernel: &WALLET,
+            zap_profiles: &ZAP,
         })
     }
 

@@ -63,7 +63,7 @@ fn paysent_persist_failure_blocks_payment_enqueue() {
     let mut kernel = nmp_core::Kernel::testing_new(64);
     let msgs = wallet_pay_invoice(
         &mut rt,
-        &mut kernel,
+        &kernel.as_wallet_access(),
         "lnbc1test",
         Some(1_000),
         Some("cid-fail".to_string()),
@@ -109,7 +109,7 @@ fn sync_wallet_status_writes_slot_and_marks_dirty_on_success() {
     let rt = WalletRuntime::new(slot);
     // No connection — status becomes None; the slot write must still succeed.
     let mut kernel = nmp_core::Kernel::testing_new(64);
-    sync_wallet_status(&rt, &mut kernel);
+    sync_wallet_status(&rt, &kernel.as_wallet_access());
     // If we get here without panic the lock-recovery path did not regress.
     let val = rt.status_slot.lock().unwrap_or_else(|e| e.into_inner()).clone();
     assert!(val.is_none(), "no connection → slot must hold None");
