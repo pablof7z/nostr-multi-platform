@@ -478,9 +478,9 @@ class OpFeedDecoderTest {
             /* logsOffset = */ 0,
             /* lastErrorToastOffset = */ 0,
             /* lastErrorCategoryOffset = */ 0,
-            /* lastPlannerErrorOffset = */ 0,
-            /* storeOpenFailureOffset = */ 0,
+            /* lastPlannerErrorOffset = */ 0, /* storeOpenFailureOffset = */ 0,
             /* noConfiguredRelays = */ null, /* negentropySyncStatsOffset = */ 0,
+            /* snapshotEpoch = */ 0UL, /* sessionId = */ 0UL,
         )
         val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(builder, frame)

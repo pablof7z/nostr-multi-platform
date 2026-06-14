@@ -19,11 +19,11 @@ use crate::transport::wire as fb;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use std::fmt;
 
-// ADR-0044 — the typed Tier-3 dual-emit `SnapshotFrame` encoder lives in a
-// submodule so this file stays under the LOC ceiling. Re-exported so the
-// kernel's `make_update` calls `crate::update_envelope::encode_snapshot_with_envelope`.
+// Submodules keep this file under the LOC ceiling; re-exported below.
+mod projection_state;
 mod relay_status;
 mod tier3_frame;
+pub use projection_state::WireProjectionState;
 pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};
 pub(crate) use tier3_frame::{encode_snapshot_with_envelope, FrameEpochStamp};
 
@@ -203,48 +203,6 @@ pub enum UpdateEnvelope {
     Panic(PanicFrame),
 }
 
-/// ADR-0055 Rung 2: presence state for one emitted projection.
-///
-/// Mirrors the wire `ProjectionPresenceState` enum. Defined in Rust as a
-/// first-class type so callers do not need to import the generated FlatBuffers
-/// binding directly.
-///
-/// - `Changed`: rev advanced; payload present and authoritative.
-/// - `Cleared`: projection went absent this tick (drain empty, view closed);
-///   payload absent; host MUST drop its cached value.
-///
-/// The third logical state — `Unchanged` (rev did not advance; payload omitted;
-/// host reuses its prior decoded value) — is a Rung-3 concept. In Rung 2 every
-/// projection is still emitted each tick, so only `Changed` and `Cleared`
-/// appear on the wire. The enum is defined now so Rung 3 needs no wire change.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
-pub enum WireProjectionState {
-    /// Rev advanced; payload authoritative. Default for old (pre-Rung-2) frames.
-    #[default]
-    Changed,
-    /// Projection went absent; host drops its cached value.
-    Cleared,
-}
-
-impl From<fb::ProjectionPresenceState> for WireProjectionState {
-    fn from(v: fb::ProjectionPresenceState) -> Self {
-        if v == fb::ProjectionPresenceState::Cleared {
-            Self::Cleared
-        } else {
-            Self::Changed
-        }
-    }
-}
-
-impl From<WireProjectionState> for fb::ProjectionPresenceState {
-    fn from(v: WireProjectionState) -> Self {
-        match v {
-            WireProjectionState::Changed => fb::ProjectionPresenceState::Changed,
-            WireProjectionState::Cleared => fb::ProjectionPresenceState::Cleared,
-        }
-    }
-}
-
 /// Owned, decoded form of one `nmp.transport.TypedProjection` sidecar entry.
 ///
 /// The `payload` is opaque to `nmp-core`: it is a host-declared, framework-side
@@ -252,9 +210,9 @@ impl From<WireProjectionState> for fb::ProjectionPresenceState {
 /// `file_identifier`. The transport layer never interprets these bytes; it only
 /// carries them losslessly alongside the generic `Value` snapshot.
 ///
-/// ADR-0055 Rung 2: `projection_rev` and `state` fields added (tail-appended
-/// on the wire — old decoders read them as default 0 / Changed respectively,
-/// which is correct behavior: treat every emitted entry as a payload update).
+/// ADR-0055 Rung 2: `projection_rev` and `state` fields added (tail-appended on
+/// the wire — old decoders read them as default 0 / Changed, treating every entry
+/// as a payload update).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TypedProjectionData {
     /// Projection key (host-declared identity of this projection).

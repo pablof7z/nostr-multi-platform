@@ -13,8 +13,7 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::TypedProjectionData;
 
 /// Build a minimal opaque [`TypedProjectionData`] entry for the typed-sidecar
-/// tests (ADR-0037). The payload bytes are arbitrary — `nmp-core` never
-/// interprets them.
+/// tests (ADR-0037). Payload bytes are arbitrary — `nmp-core` never reads them.
 fn typed_entry(key: &str, payload: &[u8]) -> TypedProjectionData {
     TypedProjectionData {
         key: key.to_string(),

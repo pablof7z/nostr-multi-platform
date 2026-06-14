@@ -21,6 +21,7 @@ use crate::update_envelope::{encode_snapshot_with_envelope, UpdateFrameBytes};
 
 mod helpers;
 mod projections;
+mod rung2_stamp;
 mod views;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
@@ -291,47 +292,13 @@ impl Kernel {
         self.projection_rev_tracker
             .reconcile_diagnostics_fingerprint(diag_fp);
         // ADR-0055 Rung 2 — build the per-projection revision manifest and stamp
-        // each TypedProjectionData with its rev + presence from it. The
-        // diagnostics fingerprint MUST be reconciled before this call so that
-        // `diagnostics_inputs_ver` reflects any change in the relay_diagnostics
-        // payload bytes emitted this tick.
+        // each TypedProjectionData with its rev + presence from it (see
+        // `rung2_stamp`). The diagnostics fingerprint MUST be reconciled before
+        // this call so `diagnostics_inputs_ver` reflects any change in the
+        // relay_diagnostics payload bytes emitted this tick.
         let manifest = self.projection_manifest();
-        let epoch_stamp = crate::update_envelope::FrameEpochStamp {
-            snapshot_epoch: manifest.epoch,
-            session_id: manifest.session_id,
-        };
-        // Stamp each emitted projection with its rev and presence from the manifest.
-        // Every projection is still emitted every tick (no omission — that is
-        // Rung 3). For Rung 2 only `Changed` and `Cleared` appear: `Unchanged`
-        // is a Rung-3 concept (absence = Unchanged, never emitted). Host-registered
-        // projections (keys not in KERNEL_BUILTIN_PROJECTION_KEYS) get rev 0 /
-        // Changed because the manifest covers Tier-2 built-ins only; they are
-        // unconditionally Changed at every tick (no host-projection manifests yet).
-        //
-        // Note: `record_emitted` is NOT called here. In test/test-support builds it
-        // is called by `run_projection_oracle` (via `oracle.record_tick`) AFTER the
-        // oracle assertion, so the oracle sees the pre-emit tracker state. In
-        // production builds, `record_emitted` is called in the post-encode block
-        // below so the next tick's presence computation uses an up-to-date baseline.
-        let typed = typed
-            .into_iter()
-            .map(|mut entry| {
-                use crate::kernel::projection_rev::ProjectionPresence;
-                use crate::update_envelope::WireProjectionState;
-                if let Some(ps) = manifest.states.iter().find(|s| s.key == entry.key.as_str()) {
-                    entry.projection_rev = ps.rev;
-                    entry.state = match ps.presence {
-                        ProjectionPresence::Cleared => WireProjectionState::Cleared,
-                        // Both Changed and Unchanged map to Changed on the wire in Rung 2
-                        // because we emit all projections regardless (no omission yet).
-                        _ => WireProjectionState::Changed,
-                    };
-                }
-                // Host-registered projections (not in the manifest): leave rev=0,
-                // state=Changed (default).
-                entry
-            })
-            .collect::<Vec<_>>();
+        let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
         // ADR-0055 Rung 1 (F3) — biconditional completeness oracle. Runs AFTER
         // the single production encode-shaping pass (`typed` here is the exact
         // sidecar that `encode_snapshot_with_envelope` serializes below), so it
@@ -357,16 +324,11 @@ impl Kernel {
         // test helpers that still need a JSON view, use `make_update_value_for_test`
         // which serializes the struct directly (no wire roundtrip needed).
         let encoded = encode_snapshot_with_envelope(&typed, &update, &epoch_stamp);
-        // ADR-0055 Rung 2 (production path): advance the tracker's last-emitted
-        // baseline for all Tier-2 built-ins so the NEXT tick's presence computation
-        // is accurate. In test/test-support builds this is done by
-        // `run_projection_oracle` → `oracle.record_tick` AFTER the oracle check;
-        // the oracle MUST run before `record_emitted` so it sees the pre-emit
-        // tracker state. The cfg ensures no double-call in test builds.
+        // ADR-0055 Rung 2 (production path): advance the last-emitted baseline.
+        // Test builds do this in the oracle AFTER its check (see `rung2_stamp`);
+        // the cfg ensures no double-call.
         #[cfg(not(any(test, feature = "test-support")))]
-        for ps in &manifest.states {
-            self.projection_rev_tracker.record_emitted(ps.key);
-        }
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
@@ -452,31 +414,12 @@ impl Kernel {
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
         self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
         let manifest = self.projection_manifest();
-        let epoch_stamp = crate::update_envelope::FrameEpochStamp {
-            snapshot_epoch: manifest.epoch,
-            session_id: manifest.session_id,
-        };
-        let typed = typed
-            .into_iter()
-            .map(|mut entry| {
-                use crate::kernel::projection_rev::ProjectionPresence;
-                use crate::update_envelope::WireProjectionState;
-                if let Some(ps) = manifest.states.iter().find(|s| s.key == entry.key.as_str()) {
-                    entry.projection_rev = ps.rev;
-                    entry.state = match ps.presence {
-                        ProjectionPresence::Cleared => WireProjectionState::Cleared,
-                        _ => WireProjectionState::Changed,
-                    };
-                }
-                entry
-            })
-            .collect::<Vec<_>>();
+        let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
         let frame = encode_snapshot_with_envelope(&typed, &update, &epoch_stamp);
         // Advance the tracker's last-emitted baseline so the next tick's presence
         // computation is accurate (matches the production path).
-        for ps in &manifest.states {
-            self.projection_rev_tracker.record_emitted(ps.key);
-        }
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         let this_serialize_us = before_serialize.elapsed().as_micros();
         let this_make_update_us = emit_started.elapsed().as_micros();
         self.events_since_last_update = 0;
@@ -521,9 +464,7 @@ impl Kernel {
         let diag_fp = helpers::diagnostics_payload_fingerprint(&_typed_merged);
         self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
         let manifest = self.projection_manifest();
-        for ps in &manifest.states {
-            self.projection_rev_tracker.record_emitted(ps.key);
-        }
+        rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null)
     }
 

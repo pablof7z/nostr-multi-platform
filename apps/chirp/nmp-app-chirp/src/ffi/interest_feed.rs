@@ -115,9 +115,8 @@ fn thread_feed_key(event_id_hex: &str) -> String {
 /// for correctness; the feed is bounded by D5 retention.
 fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
     app.register_typed_snapshot_projection(key.clone(), move || {
-        // `FeedRequest::default()` is the SAME window `FlatFeed::snapshot_json`
-        // (the generic projection) uses, so the typed and JSON payloads are
-        // byte-for-byte the same feed — typed-first reads never diverge.
+        // `FeedRequest::default()` is the SAME window `FlatFeed::snapshot_json` uses,
+        // so the typed and JSON payloads are byte-for-byte the same feed.
         let snapshot = feed.snapshot(&nmp_feed::FeedRequest::default());
         Some(nmp_core::TypedProjectionData {
             key: key.clone(),
