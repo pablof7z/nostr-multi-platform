@@ -31,7 +31,7 @@ struct WalletView: View {
         Section {
             VStack(spacing: 16) {
                 Image(systemName: "bolt.circle")
-                    .font(.system(size: 52, weight: .light))
+                    .font(.system(size: 56, weight: .light))
                     .foregroundStyle(ChirpColor.accent)
                     .symbolRenderingMode(.hierarchical)
 
@@ -53,6 +53,7 @@ struct WalletView: View {
                 .buttonBorderShape(.roundedRectangle(radius: 12))
                 .controlSize(.large)
                 .tint(ChirpColor.accent)
+                .frame(maxWidth: 260)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)

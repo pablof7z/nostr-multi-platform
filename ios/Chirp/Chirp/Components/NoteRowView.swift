@@ -294,8 +294,8 @@ struct NoteActionsRow: View {
                 onZap(item.id, item.authorPubkey, lnurl)
                 UIImpactFeedbackGenerator(style: .soft).impactOccurred()
             } label: {
-                actionLabel(icon: "bolt.fill", count: relationCounts?.zaps.value)
-                    .foregroundStyle(ChirpColor.zap)
+                actionLabel(icon: "bolt", count: relationCounts?.zaps.value)
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Zap")
@@ -322,7 +322,7 @@ struct NoteActionsRow: View {
         } label: {
             actionLabel(icon: likeTapped ? "heart.fill" : "heart",
                         count: relationCounts?.reactions.value)
-                .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
+                .foregroundStyle(likeTapped ? ChirpColor.accent : .secondary)
                 .scaleEffect(likeTapped ? 1.15 : 1.0)
                 .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
         }
