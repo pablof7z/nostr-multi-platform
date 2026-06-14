@@ -157,6 +157,45 @@ pub trait AppHost: ActionRegistrar {
     /// Rung-5 ADR-0053 compose seam), NOT a compat shim.
     fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError>;
 
+    /// ADR-0055 Rung 6 S1 — return a shared handle to the incremental-apply
+    /// capability flag.
+    ///
+    /// The returned `Arc<std::sync::atomic::AtomicBool>` is `true` when
+    /// [`AppHost::declare_incremental_apply`] has been called, `false` otherwise.
+    /// Producer closures registered via
+    /// [`AppHost::register_typed_snapshot_projection`] capture this handle and
+    /// read it at tick time with `load(Acquire)` — the `Arc<AtomicBool>` is the
+    /// only safe way to read the capability flag from inside `run_typed()` without
+    /// re-locking the `SnapshotRegistry` mutex (which is already held by
+    /// `run_typed` and cannot be re-entered without deadlock).
+    ///
+    /// R6-S1: this is a clone of the SINGLE-source-of-truth flag in the
+    /// `SnapshotRegistry` — the same atomic `declare_incremental_apply` sets and
+    /// the kernel reads. There is no separate mirror.
+    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool>;
+
+    /// ADR-0055 R6-S1 — return clones of the frame-identity handles
+    /// `(session_id, snapshot_epoch)` the kernel publishes each tick.
+    ///
+    /// A Tier-1 producer closure that omits unchanged frames (the feed
+    /// change-signal) captures these once at registration and reads them
+    /// lock-free (`Acquire`) at tick time, forcing a full-baseline re-emit
+    /// whenever EITHER value changes — the SAME signal the host's
+    /// `ProjectionCache` resets on. This keeps the producer's omit memory and
+    /// the host cache in lockstep across account-switch AND `Reset` AND any
+    /// future epoch-class event, so the producer can never omit into a freshly
+    /// cleared host cache (the R6-S1 freeze fix).
+    ///
+    /// `session_id` = `TimingMilestones::started_unix_ms` (changes on every
+    /// kernel rebuild including `ActorCommand::Reset`); `snapshot_epoch` =
+    /// `ProjectionRevTracker::epoch` (account-switch / schema bump).
+    fn frame_identity_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+    );
+
     /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
     /// this host consumes (the union of every projection any of the app's screens
     /// can read, known at app build time).

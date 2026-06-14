@@ -262,6 +262,16 @@ impl Kernel {
         self.rev = self.rev.saturating_add(1);
         self.update_sequence = self.update_sequence.saturating_add(1);
 
+        // ADR-0055 R6-S1 — publish this tick's frame identity
+        // `(session_id, snapshot_epoch)` into the shared registry handles BEFORE
+        // any host projection closure runs (generic projections run inside
+        // `build_snapshot_struct`; typed projections run in
+        // `run_typed_projections`). A Tier-1 producer that omits unchanged
+        // frames (the feed change-signal) reads this and forces a rebaseline
+        // when EITHER value changes — the SAME signal the host cache resets on,
+        // keeping producer and host in lockstep across account-switch AND Reset.
+        self.publish_frame_identity();
+
         let batch_events = self.events_since_last_update;
         self.max_events_per_update = self.max_events_per_update.max(batch_events);
         let last_event_to_emit_ms = self
