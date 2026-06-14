@@ -119,6 +119,20 @@ pub trait AppHost: ActionRegistrar {
     where
         F: Fn() + Send + Sync + 'static;
 
+    /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+    /// cache-merge layer (D3-3) and is ready to receive frames with
+    /// `Unchanged` projections omitted.
+    ///
+    /// Single-writer, set before `nmp_app_start`. After this call the kernel
+    /// guarantees the NEXT `make_update` frame is a full baseline (all live
+    /// Tier-2 projections emitted as `Changed`). Until this is called the
+    /// kernel emits full rows on every tick (no behavior change for
+    /// non-advertising hosts). Idempotent — calling multiple times is safe.
+    ///
+    /// This is durable architecture (the per-attach baseline gate + the
+    /// Rung-5 ADR-0053 compose seam), NOT a compat shim.
+    fn declare_incremental_apply(&self);
+
     /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
     /// this host consumes (the union of every projection any of the app's screens
     /// can read, known at app build time).

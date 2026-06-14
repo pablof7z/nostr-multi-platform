@@ -184,6 +184,28 @@ pub struct SnapshotRegistry {
     /// projections are unaffected (they self-gate by registration). See
     /// [`DeclaredProjections`].
     declared_projections: DeclaredProjections,
+    /// ADR-0055 Rung 3 — the host-declared incremental-apply capability.
+    ///
+    /// `false` (the default) means "full rows every tick" — the kernel emits
+    /// the complete typed sidecar on every `make_update`, unchanged from Rung 2.
+    ///
+    /// `true` means the host runtime owns the NMP cache-merge layer (D3-3) and
+    /// the kernel is permitted to omit `Unchanged` projections from the frame.
+    /// The host MUST set this before `nmp_app_start` (single-writer,
+    /// set-before-start) via [`declare_incremental_apply`] /
+    /// [`AppHost::declare_incremental_apply`] /
+    /// `nmp_app_declare_incremental_apply()`. This is durable architecture (the
+    /// per-attach baseline gate + the Rung-5 ADR-0053 compose seam), NOT a
+    /// compat shim — it is deleted only when every NMP host advertises it
+    /// unconditionally (a future cleanup once Tier-1 gating + Rung 4 land).
+    incremental_apply_enabled: bool,
+    /// ADR-0055 Rung 3 (D3-5) — one-shot latch set by `declare_incremental_apply`.
+    ///
+    /// The kernel reads and clears this in `make_update` (via
+    /// `take_incremental_apply_baseline_pending`) and calls
+    /// `ProjectionRevTracker::reset_last_emitted` when `true`, guaranteeing
+    /// the next frame is a full baseline for the newly-declared host.
+    incremental_apply_baseline_pending: bool,
 }
 
 impl SnapshotRegistry {
@@ -458,3 +480,9 @@ pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
 // typed projections, run tick observers, ADR-0053 declared-set snapshot) live in
 // the `kernel_access` submodule to keep this file within its LOC ceiling.
 mod kernel_access;
+
+// ADR-0055 Rung 3 — the `declare_incremental_apply` / `is_incremental_apply_enabled`
+// / `take_incremental_apply_baseline_pending` inherent methods live in the
+// `incremental_apply` submodule to keep this file within its LOC ceiling. The
+// two backing fields remain on the struct definition above.
+mod incremental_apply;
