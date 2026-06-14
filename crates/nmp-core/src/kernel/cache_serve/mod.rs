@@ -87,11 +87,10 @@ pub(super) mod continuation;
 pub(super) mod queries;
 
 pub(in crate::kernel) use queries::{
-    completion_key_for_interest, cursor_less_query_key, query_since_mut, query_until_mut,
-    shape_needs_ingest_parser_dispatch, shape_to_store_queries, watermark_from_queries,
+    completion_key_for_interest, query_since_mut, query_until_mut,
+    shape_needs_ingest_parser_dispatch, shape_to_store_queries,
 };
 
-use std::collections::HashSet;
 
 use super::Kernel;
 use crate::planner::InterestShape;
@@ -374,63 +373,5 @@ impl Kernel {
     pub(in crate::kernel) fn clear_served_interest_shapes(&mut self) {
         self.served_interest_shapes.clear();
         self.pending_cache_serves.clear();
-        // K3 Stage B3 / #1380: the truncation state is session-scoped (it tracks
-        // which cursor-less serves stranded a tail this session). Account-switch
-        // resets the serve state, so clear BOTH the completion-key set and its
-        // query-key read view.
-        if let Ok(mut set) = self.etag_ptag_truncated_serves.lock() {
-            set.clear();
-        }
-        if let Ok(mut set) = self.etag_ptag_truncated_query_keys.lock() {
-            set.clear();
-        }
-    }
-
-    /// Rebuild the query-key read view ([`Kernel::etag_ptag_truncated_query_keys`])
-    /// from the completion-key truncation set + the live interest registry
-    /// (#1380 Bug 1).
-    ///
-    /// The completion-key set (`etag_ptag_truncated_serves`) is the SubKey-aware
-    /// write surface: `serve_chunk` inserts/removes by `pending.completion_key`,
-    /// so one interest's natural exhaustion never clears another's mark. But the
-    /// floor decision is made from a SHAPE (the shape-only `watermark_fn` closure
-    /// and the per-shape `shape_floor` probe cannot see `SubKey`), and two
-    /// interests that share an Etag/Ptag shape collapse to ONE wire REQ with ONE
-    /// `since` floor.
-    ///
-    /// So the floor for a cursor-less shape must be refused iff **at least one**
-    /// active interest whose shape maps to that query is currently truncated.
-    /// This method computes exactly that set: for every active interest, derive
-    /// its `completion_key`; if that key is in the truncation set, add the
-    /// `cursor_less_query_key` of the interest's cursor-less query to the read
-    /// view. Called after every insert/remove on the completion-key set so the
-    /// closure-visible view stays in lockstep.
-    ///
-    /// D6 graceful-degrade: a poisoned lock on either set leaves the view
-    /// unchanged (the prior view is the safe-conservative default — at worst it
-    /// refuses a floor that is no longer truncated, which only re-requests
-    /// already-held events; it never drops events).
-    pub(in crate::kernel) fn recompute_truncated_query_keys(&self) {
-        let Ok(completion_keys) = self.etag_ptag_truncated_serves.lock() else {
-            return;
-        };
-        let mut query_keys: HashSet<u64> = HashSet::new();
-        if !completion_keys.is_empty() {
-            for (sub_key, interest) in self.lifecycle.registry().iter_active_with_keys() {
-                let completion_key = completion_key_for_interest(&sub_key, &interest.shape);
-                if !completion_keys.contains(&completion_key) {
-                    continue;
-                }
-                for query in shape_to_store_queries(&interest.shape) {
-                    if let Some(qk) = cursor_less_query_key(&query) {
-                        query_keys.insert(qk);
-                    }
-                }
-            }
-        }
-        drop(completion_keys);
-        if let Ok(mut view) = self.etag_ptag_truncated_query_keys.lock() {
-            *view = query_keys;
-        }
     }
 }

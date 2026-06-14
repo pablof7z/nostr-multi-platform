@@ -63,12 +63,15 @@ fn counts_three_kinds_times_twenty_authors() {
 fn below_threshold_falls_back_to_raw_req() {
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());
     let mut kernel = Kernel::testing_new(50);
-    // The coverage ledger now defaults ON, and an un-synced shape (no coverage
-    // row) prefers a full-window negentropy reconciliation regardless of fanout
-    // (the K3 staleness gate, exercised in runtime_tests_k3). This test pins the
-    // pure fanout-gate path, so disable the ledger to keep the staleness gate
-    // inert (the flag-off path removed in K3 Stage E).
-    kernel.set_coverage_ledger_enabled(false);
+    // The coverage ledger governs the since-floor: an un-synced shape (no
+    // coverage row) prefers a full-window negentropy reconciliation regardless
+    // of fanout (the K3 staleness gate, exercised in runtime_tests_k3). This
+    // test exercises the pure fanout-gate boundary, so record completed coverage
+    // for ("large", relay) — the `ctx` sub_id — so the shape is COVERED and the
+    // staleness gate stays inert; only the fanout threshold decides.
+    kernel
+        .event_store_handle()
+        .record_coverage("large", "wss://relay.example", 1_700_000_000);
     assert!(runtime
         .intercept_req(&mut kernel, &ctx(24, &[3, 10_000]))
         .is_none());

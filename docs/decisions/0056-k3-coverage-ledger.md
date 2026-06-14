@@ -328,11 +328,31 @@ enablement re-verified (`GcBudget::production` keeps `HOT_EVENT_CEILING`).
   production `run_gc_step` pass. The flag stays default-off; the default-on flip
   is the deliberate Stage-E release-cut PR.
 
-### Stage E — delete the presence heuristic; correct the docs
+### Stage E — delete the presence heuristic; correct the docs (IMPLEMENTED)
 
-Once Stage D is proven in a release, delete `watermark_fn`'s presence computation
-and the fallback, leaving the ledger as the sole floor source. Correct any doc
-still claiming the ledger "[LANDED M4]".
+**Disposition (IMPLEMENTED).** The default-on flip landed as the K3 release-cut
+PR, then Stage E deleted the presence heuristic entirely:
+
+- `watermark_fn`'s presence-floor computation and the flag-off fallback are
+  gone; `coverage_ledger::coverage_floor` (ledger `covered_through`, or `None` ⇒
+  refuse the floor / full window) is the SOLE since-floor source.
+- The off-by-default `coverage_ledger_enabled` flag and all its plumbing are
+  removed (the ledger is unconditionally the floor authority).
+- The presence-only support machinery deleted with it: `shape_floor`
+  (`ram_eviction_floor.rs`), `watermark_from_queries` + `cursor_less_query_key`
+  (`cache_serve/queries.rs`), and the entire Stage-B3 truncated-serve tracking
+  (`etag_ptag_truncated_serves` / `etag_ptag_truncated_query_keys` /
+  `recompute_truncated_query_keys` / `truncated_serve_snapshot`), whose only
+  consumer was the presence-floor refusal.
+- `shape_to_store_queries` (the single serve/pin query mapping) is preserved —
+  cache-serve and the floor-coherent pin scan still ride on it.
+- The D3 pin floor (`pin_floor_for_shape`) and backstop guards
+  (`derive_coverage_guards`) read the ledger unconditionally.
+
+The H1 journey test (`coverage_ledger_d2_journey_tests.rs`) and the D3 coherence
+tests (`gc_coverage_coherent_d3_tests.rs`) pass with presence fully removed. The
+stale "[LANDED M4]" doc claims are corrected (the watermark was deleted in #1090
+and superseded by this ledger, not "landed").
 
 ## 4. Gate — Stage D must not land without a fixture-relay journey test
 

@@ -1,13 +1,12 @@
 //! K3 Stage D3 (ADR-0056 §3.D3) — eviction⇄ledger coherence, kernel layer.
 //!
-//! Two legs, both gated behind the off-by-default `coverage_ledger_enabled`:
+//! Two legs:
 //!
-//! 1. **Pin below the LEDGER floor.** After D2 the live since-floor for a
-//!    covered shape comes from the coverage ledger's `covered_through`, not the
-//!    presence watermark. So the floor-coherent pin set must pin events at/below
-//!    the LEDGER floor (not the presence floor) when the flag is on — using the
-//!    SAME `coverage_floor_with_fallback`/decision-table source D2 introduced
-//!    (single-source discipline from Stage C; no third floor computation).
+//! 1. **Pin below the LEDGER floor.** The live since-floor for a covered shape
+//!    comes from the coverage ledger's `covered_through`. So the floor-coherent
+//!    pin set must pin events at/below the LEDGER floor — using the SAME
+//!    `coverage_floor` source the floor read uses (single-source discipline; no
+//!    second floor computation).
 //!
 //! 2. **Backstop guard set.** `derive_store_gc_inputs` builds a `CoverageGuard`
 //!    per active covered `(filter_hash, relay)` so the store can lower
@@ -16,10 +15,10 @@
 //!    `nmp-testing/tests/store_coverage_eviction_backstop.rs`; here we prove the
 //!    kernel hands the store the right guards.)
 //!
-//! Flag-off ⇒ presence floor + empty guard set (byte-identical to pre-D3).
+//! No coverage row ⇒ no floor-coherent pin + empty guard set.
 //!
 //! RED-by-sabotage: see the module doc on each test for the line that must fail
-//! if leg 1 keeps reading the presence floor / leg 2 emits no guards.
+//! if leg 1 reads a presence floor / leg 2 emits no guards.
 
 use crate::kernel::ram_eviction_tests::{make_pubkey, pin_clock, T0_SECS};
 use crate::kernel::Kernel;
@@ -81,7 +80,6 @@ const RELAY: &str = "wss://relay.example/";
 fn pins_below_ledger_floor_when_flag_on() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    kernel.set_coverage_ledger_enabled(true);
 
     let author = make_pubkey(9_101);
     let e_old = format!("{:0>64x}", 0xD30001u64);
@@ -124,7 +122,6 @@ fn pins_below_ledger_floor_when_flag_on() {
 fn ledger_floor_governs_not_presence_when_flag_on() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    kernel.set_coverage_ledger_enabled(true);
 
     let author = make_pubkey(9_102);
     let e_below = format!("{:0>64x}", 0xD30101u64); // 100 ≤ 150 → pinned
@@ -169,7 +166,6 @@ fn ledger_floor_governs_not_presence_when_flag_on() {
 fn no_row_under_flag_pins_nothing_for_the_shape() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    kernel.set_coverage_ledger_enabled(true);
 
     let author = make_pubkey(9_103);
     let e_old = format!("{:0>64x}", 0xD30201u64);
@@ -194,45 +190,6 @@ fn no_row_under_flag_pins_nothing_for_the_shape() {
     );
 }
 
-/// Flag OFF regression: the pin set is byte-identical to the presence-floor
-/// behaviour regardless of any coverage rows. A coverage row at 150 must be
-/// IGNORED (the flag is off), so the presence floor (300) governs and ALL
-/// stored events (≤300) are pinned — exactly today's behaviour.
-#[test]
-fn flag_off_uses_presence_floor_ignoring_ledger() {
-    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
-    pin_clock(&mut kernel, T0_SECS + 10_000);
-    // The ledger defaults ON now; pin the flag-OFF presence-floor path explicitly.
-    kernel.set_coverage_ledger_enabled(false);
-
-    let author = make_pubkey(9_104);
-    let e_old = format!("{:0>64x}", 0xD30301u64);
-    let e_mid = format!("{:0>64x}", 0xD30302u64);
-    inject_note(&mut kernel, &e_old, &author, 100);
-    inject_note(&mut kernel, &e_mid, &author, 200);
-    inject_note(&mut kernel, &format!("{:0>64x}", 0xD30303u64), &author, 300);
-
-    let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);
-    open_interest(&mut kernel, &filter, "d3-flag-off");
-    let shape = crate::planner::InterestShape::from_filter_json(&filter).unwrap();
-    let fh = canonical_filter_hash(&shape);
-    kernel.store.record_coverage(&fh, RELAY, 150); // must be IGNORED (flag off)
-
-    kernel.events.clear();
-    let (pins, _complete) = kernel.derive_store_pin_set();
-
-    // Presence floor = 300; e_old(100) and e_mid(200) are below it and pinned.
-    assert!(
-        pins.contains(&id_bytes(&e_old)),
-        "flag off ⇒ presence floor (300) governs; e_old (100) is pinned"
-    );
-    assert!(
-        pins.contains(&id_bytes(&e_mid)),
-        "flag off ⇒ presence floor (300) governs; e_mid (200) is pinned — the \
-         ledger row at 150 must be ignored when the flag is off"
-    );
-}
-
 // ── Leg 2 — the kernel hands the store a guard per covered (filter_hash, relay)
 
 /// Flag ON + a coverage row ⇒ `derive_coverage_guards` yields one guard for the
@@ -245,7 +202,6 @@ fn flag_off_uses_presence_floor_ignoring_ledger() {
 fn derive_coverage_guards_emits_guard_for_covered_shape() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    kernel.set_coverage_ledger_enabled(true);
 
     let author = make_pubkey(9_201);
     let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);
@@ -268,24 +224,20 @@ fn derive_coverage_guards_emits_guard_for_covered_shape() {
     assert!(!(g.matches)("anyid", &author, 7, 200, &[])); // doctrine-allow: D15 — pure kernel predicate, test assertion
 }
 
-/// Flag OFF ⇒ no guards (the backstop is dormant), even with coverage rows.
+/// No active interest with a coverage row ⇒ no guards (nothing to back-stop).
 #[test]
-fn derive_coverage_guards_is_empty_when_flag_off() {
+fn derive_coverage_guards_is_empty_without_covered_interest() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    // The ledger defaults ON now; pin the flag-OFF (empty-guards) path explicitly.
-    kernel.set_coverage_ledger_enabled(false);
 
     let author = make_pubkey(9_202);
     let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);
-    open_interest(&mut kernel, &filter, "d3-guards-off");
-    let shape = crate::planner::InterestShape::from_filter_json(&filter).unwrap();
-    let fh = canonical_filter_hash(&shape);
-    kernel.store.record_coverage(&fh, RELAY, 400);
+    // Interest open but NO coverage row recorded → no guard to emit.
+    open_interest(&mut kernel, &filter, "d3-guards-none");
 
     assert!(
         kernel.derive_coverage_guards().is_empty(),
-        "flag off ⇒ no coverage guards (the D3 backstop is dormant)"
+        "no coverage row for the active interest ⇒ no coverage guards"
     );
 }
 
@@ -311,7 +263,6 @@ fn run_gc_step_pin_leg_protects_covered_event_and_ledger_stays_honest() {
 
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
-    kernel.set_coverage_ledger_enabled(true);
 
     let author = make_pubkey(9_301);
     let filter = format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#);

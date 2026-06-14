@@ -84,11 +84,7 @@ mod cache_serve_budget_tests;
 #[cfg(test)]
 mod cache_serve_tests;
 #[cfg(test)]
-mod cache_serve_truncation_tests;
-#[cfg(test)]
 mod cache_serve_universal_tests;
-#[cfg(test)]
-mod cache_serve_watermark_tests;
 pub(crate) mod closed_reason;
 // K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
 mod coverage_ledger;
@@ -230,8 +226,6 @@ mod replay_tests;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
-#[cfg(test)]
-mod watermark_author_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
 // seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
 // + slot helpers for the C-ABI registration entry point.
@@ -517,7 +511,7 @@ use crate::substrate::{
 };
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::AtomicU64;
 // ADR-0044 — re-exported crate-wide (not just `use`d into `kernel`) so the
 // transport layer (`crate::update_envelope::encode_snapshot_with_envelope`) can
 // name `&KernelSnapshot` to populate the typed Tier-3 `SnapshotFrame` fields.
@@ -937,23 +931,6 @@ pub struct Kernel {
     /// lifetime. #170: relay-scoped so a CLOSE for one relay never un-pins a
     /// sibling.
     wire: WireSubscriptionState,
-    /// K3 Stage D1 (ADR-0056 §3) — off-by-default flag gating the coverage-
-    /// ledger WRITE path. When `false` (the default) the kernel records NO
-    /// coverage at EOSE / NEG-DONE, so D1 is a pure no-op additive change and
-    /// nothing reads the ledger anyway (the since-floor stays presence-derived
-    /// until Stage D2). When `true` the ledger fills via
-    /// `EventStore::record_coverage`, but READ behaviour is still unchanged in
-    /// D1 — the floor is swapped to read the ledger only in Stage D2. The
-    /// eventual default-on rides a single release cut (ADR-0056 §3 Stage D) so
-    /// git-rev-pinning external consumers can pin across the change.
-    /// K3 Stage D2 (ADR-0056 §3.D2): shared with the installed `WatermarkFn`
-    /// closure so the read swap reads the LIVE flag value at recompile time, not
-    /// a capture-time snapshot. `Arc<AtomicBool>` (not a plain `bool`) because
-    /// the closure is installed once at construction but the flag is toggled
-    /// later via `set_coverage_ledger_enabled`; a lock-free `Relaxed` read keeps
-    /// the hot recompile path allocation- and contention-free (D8). Default
-    /// `false` — the read swap is dormant until a deliberate release-cut flip.
-    coverage_ledger_enabled: Arc<AtomicBool>,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
     /// `make_update` tick. The `Metrics::payload_bytes` diagnostic is sourced
@@ -1298,17 +1275,6 @@ pub struct Kernel {
     /// of per-follow interests never bursts unbounded synchronous work on the
     /// actor thread (the #1085 lesson at the aggregate level).
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
-    /// K3 Stage B3 / #1380 — WRITE surface of cursor-less (`Etag`/`Ptag`) serves
-    /// budget-truncated mid-chunk. Keyed by `PendingCacheServe::completion_key`
-    /// (SubKey-aware), NOT `cursor_less_query_key`, so one interest's exhaustion
-    /// cannot clear a sibling's mark (#1380 Bug 1). Written by `serve_chunk`, which
-    /// then refreshes the read view via [`Kernel::recompute_truncated_query_keys`].
-    pub(in crate::kernel) etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>>,
-    /// K3 #1380 — READ view of [`Self::etag_ptag_truncated_serves`] keyed by
-    /// `cursor_less_query_key`: holds a query key iff ≥1 active interest mapping to
-    /// it is truncated; read by the shape-only `watermark_fn` / `shape_floor`. See
-    /// [`Kernel::recompute_truncated_query_keys`].
-    pub(in crate::kernel) etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>>,
     snapshot_builder: flatbuffers::FlatBufferBuilder<'static>, // Rung 3 D3-6: reset+to_vec pattern
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
@@ -1808,28 +1774,12 @@ impl Kernel {
             Arc::clone(&publish_store),
         );
 
-        // T129 + K3 Stage D2 — install the store-backed since-floor resolver on
-        // the subscription lifecycle. The closure construction (presence-floor
-        // scan + the D2 coverage-ledger read swap) lives in
+        // T129 + K3 (ADR-0056) — install the coverage-ledger since-floor resolver
+        // on the subscription lifecycle. The closure (the ledger read) lives in
         // `coverage_ledger::build_watermark_fn` as the cohesive owner of the
-        // floor logic (the file-size cap forbids growing this constructor). The
-        // shared `Arc<AtomicBool>` flag is constructed here and cloned into the
-        // kernel field below so `set_coverage_ledger_enabled` toggles the LIVE
-        // value the closure reads — default `true` as of the K3 release-cut flip
-        // (ADR-0056 Stage D/E activation): the ledger now governs the since-floor
-        // in production. The flag remains in place this release as a reversible
-        // kill-switch; Stage E deletes it once the presence heuristic is gone.
-        let coverage_ledger_enabled: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
-        // K3 Stage B3 / #1380 — completion-key WRITE set + query-key READ view (field docs).
-        let etag_ptag_truncated_serves: Arc<std::sync::Mutex<HashSet<u64>>> =
-            Arc::new(std::sync::Mutex::new(HashSet::new()));
-        let etag_ptag_truncated_query_keys: Arc<std::sync::Mutex<HashSet<u64>>> =
-            Arc::new(std::sync::Mutex::new(HashSet::new()));
-        let watermark_fn: crate::subs::WatermarkFn = coverage_ledger::build_watermark_fn(
-            Arc::clone(&store),
-            Arc::clone(&coverage_ledger_enabled),
-            Arc::clone(&etag_ptag_truncated_query_keys),
-        );
+        // floor logic (the file-size cap forbids growing this constructor).
+        let watermark_fn: crate::subs::WatermarkFn =
+            coverage_ledger::build_watermark_fn(Arc::clone(&store));
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
 
@@ -1941,8 +1891,6 @@ impl Kernel {
             timeline_requested: false,
             contacts_deadline: None,
             wire: WireSubscriptionState::default(),
-            // K3 Stage D1: OFF by default — D1 ships the write path dormant.
-            coverage_ledger_enabled: Arc::clone(&coverage_ledger_enabled),
             update_sequence: 0,
             last_payload_bytes: 0,
             last_make_update_us: 0,
@@ -2007,8 +1955,6 @@ impl Kernel {
             last_gc_at_ms: None,
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
-            etag_ptag_truncated_serves,
-            etag_ptag_truncated_query_keys,
             snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
@@ -2122,9 +2068,9 @@ impl Kernel {
         // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
         let (pins, gc_budget) = self.derive_store_gc_inputs();
         // K3 Stage D3 leg 2 — the eviction⇄ledger coherence backstop guards
-        // (empty unless `coverage_ledger_enabled`). Passed alongside the pins so
-        // the store can lower an over-claimed `covered_through` in the SAME
-        // transaction as the below-floor delete that made it stale.
+        // (one per active covered `(filter_hash, relay)`). Passed alongside the
+        // pins so the store can lower an over-claimed `covered_through` in the
+        // SAME transaction as the below-floor delete that made it stale.
         let coverage_guards = self.derive_coverage_guards();
         match self
             .store
