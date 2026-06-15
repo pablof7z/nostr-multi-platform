@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::rules::{a5, d10, d12, d14, d15, d16, d17, d19, d20, d21, d9};
+use crate::rules::{a5, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d9};
 
 /// True iff D9 should scan `path` — either the file is inside a protocol/
 /// substrate crate (`d9::file_in_scope`), or the caller opted-in via
@@ -151,6 +151,45 @@ pub(crate) fn d20_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// `crates/nmp-*/src/` tree). Mirrors `d20_file_in_scope`.
 pub(crate) fn d21_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d21::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D23 should scan `path` — either the file is inside
+/// `crates/nmp-core/src/` (minus the accepted-event chokepoint file
+/// `kernel/ingest/mod.rs`) via `d23::file_in_scope`, or the caller opted-in via
+/// `--d23-extra-scope <fragment>` (the fixture smoke test stages a positive
+/// fixture under `target/` outside the nmp-core path tree). Mirrors
+/// `d21_file_in_scope`.
+pub(crate) fn d23_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d23::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D24 should scan `path` — either the file is inside
+/// `crates/nmp-core/src/` (minus the post-store fan-out seam files
+/// `kernel/ingest/mod.rs`, `kernel/event_observer.rs`, and the
+/// `kernel/cache_serve/` dir) via `d24::file_in_scope`, or the caller opted-in
+/// via `--d24-extra-scope <fragment>`. Mirrors `d23_file_in_scope`.
+pub(crate) fn d24_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d24::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D25 should scan `path` — either the file is inside
+/// `crates/nmp-core/src/` (minus the REQ-build owners `kernel/requests/` and
+/// `kernel/replay.rs`) via `d25::file_in_scope`, or the caller opted-in via
+/// `--d25-extra-scope <fragment>`. Mirrors `d23_file_in_scope`.
+pub(crate) fn d25_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d25::file_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");

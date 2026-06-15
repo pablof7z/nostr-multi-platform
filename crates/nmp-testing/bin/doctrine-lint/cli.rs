@@ -9,6 +9,8 @@ pub(crate) const USAGE: &str =
      [--d15-extra-scope <fragment>] [--d16-extra-scope <fragment>] \
      [--d17-extra-scope <fragment>] [--d19-extra-scope <fragment>] \
      [--d20-extra-scope <fragment>] [--d21-extra-scope <fragment>] \
+     [--d23-extra-scope <fragment>] [--d24-extra-scope <fragment>] \
+     [--d25-extra-scope <fragment>] \
      [--workspace-d8 [--workspace-d8-root <dir>]] \
      [--workspace-native [--workspace-native-root <dir>]]";
 
@@ -30,6 +32,9 @@ pub(crate) struct Config {
     pub(crate) d19_extra_scopes: Vec<String>,
     pub(crate) d20_extra_scopes: Vec<String>,
     pub(crate) d21_extra_scopes: Vec<String>,
+    pub(crate) d23_extra_scopes: Vec<String>,
+    pub(crate) d24_extra_scopes: Vec<String>,
+    pub(crate) d25_extra_scopes: Vec<String>,
     pub(crate) workspace_d8: bool,
     pub(crate) workspace_d8_root: Option<PathBuf>,
     pub(crate) workspace_native: bool,
@@ -131,6 +136,24 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
                 args,
                 &mut i,
                 "--d21-extra-scope requires a path fragment",
+            )?,
+            "--d23-extra-scope" => push_required(
+                &mut cfg.d23_extra_scopes,
+                args,
+                &mut i,
+                "--d23-extra-scope requires a path fragment",
+            )?,
+            "--d24-extra-scope" => push_required(
+                &mut cfg.d24_extra_scopes,
+                args,
+                &mut i,
+                "--d24-extra-scope requires a path fragment",
+            )?,
+            "--d25-extra-scope" => push_required(
+                &mut cfg.d25_extra_scopes,
+                args,
+                &mut i,
+                "--d25-extra-scope requires a path fragment",
             )?,
             "--workspace-d8" => cfg.workspace_d8 = true,
             "--workspace-d8-root" => {
