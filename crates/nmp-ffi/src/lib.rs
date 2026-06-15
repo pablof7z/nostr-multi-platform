@@ -1378,6 +1378,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // reads the actor-owned bunker-handshake slot, so every actor consumer
     // (FFI or test) gets the projection without a separate FFI step.
     snapshot::embed_sidecar::install_embed_sidecar_projection(&app, embed_sidecar); // #1283.
+
+    // Issue #1238: install the per-app NIP-55 restore hook before any host can
+    // send `Start`. The driver does not need the Android capability callback
+    // for pubkey-only restore; it reads that shared slot later when an op
+    // dispatches.
+    #[cfg(feature = "external-signer")]
+    external_signer::init_external_signer_driver(&app);
     Box::into_raw(Box::new(app))
 }
 

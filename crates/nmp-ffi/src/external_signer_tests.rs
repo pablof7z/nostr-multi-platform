@@ -53,10 +53,7 @@ impl CmdRx {
 /// in `capability.rs` uses the same pattern.)
 static DISPATCHED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-extern "C" fn ack_handler(
-    _ctx: *mut std::ffi::c_void,
-    request_json: *const c_char,
-) -> *mut c_char {
+extern "C" fn ack_handler(_ctx: *mut std::ffi::c_void, request_json: *const c_char) -> *mut c_char {
     let request = unsafe { std::ffi::CStr::from_ptr(request_json) }
         .to_string_lossy()
         .into_owned();
@@ -250,10 +247,7 @@ fn rejected_connect_reports_failed_state() {
         }
         other => panic!("expected failed state, got {other:?}"),
     }
-    assert!(
-        rx.try_recv().is_err(),
-        "no AddSigner on a rejected connect"
-    );
+    assert!(rx.try_recv().is_err(), "no AddSigner on a rejected connect");
 }
 
 #[test]
@@ -263,6 +257,25 @@ fn malformed_response_is_dropped_silently() {
     let driver = make_driver(tx);
     driver.deliver("not-json");
     assert!(rx.try_recv().is_err(), "malformed response sends nothing");
+}
+
+#[test]
+fn nmp_app_new_installs_restore_hook_before_explicit_init() {
+    let _g = SERIAL.lock().unwrap();
+    let app = crate::nmp_app_new();
+    assert!(!app.is_null(), "app handle must be allocated");
+    let app_ref = app_ref(app).expect("app_ref");
+
+    assert!(
+        app_ref.external_signer_driver().is_some(),
+        "nmp_app_new must install the NIP-55 driver before Start"
+    );
+    assert!(
+        app_ref.invoke_external_signer_restore_hook_for_test("not-json"),
+        "restore hook must be callable before an explicit nmp_external_signer_init"
+    );
+
+    crate::nmp_app_free(app);
 }
 
 #[test]
