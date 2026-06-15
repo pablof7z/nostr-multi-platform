@@ -42,17 +42,16 @@ jobs:
             BASELINE_REF="$TO_REF"
           fi
 
-          # Initial push events use an all-zero "before" SHA.
-          if [[ "$FROM_REF" == "0000000000000000000000000000000000000000" ]]; then
-            FROM_REF="$(git rev-list --max-parents=0 "$TO_REF")"
-          fi
-
-          # Force-push events can point github.event.before at an orphaned
-          # commit that is no longer fetchable. Keep the push lane useful by
-          # falling back to the branch's default-branch merge base; for default
-          # branch pushes, use the first parent if there is one.
-          if ! git cat-file -e "$FROM_REF^{commit}" 2>/dev/null; then
-            DEFAULT_BRANCH="origin/${{ github.event.repository.default_branch }}"
+          # Initial branch pushes use an all-zero "before" SHA. Rebased and
+          # force-pushed branches can point github.event.before at a commit that
+          # is orphaned or no longer an ancestor of the pushed commit. Keep the
+          # push lane useful by falling back to the branch's default-branch
+          # merge base; for default-branch pushes, use the first parent if
+          # there is one.
+          DEFAULT_BRANCH="origin/${{ github.event.repository.default_branch }}"
+          if [[ "$FROM_REF" == "0000000000000000000000000000000000000000" ]] \
+            || ! git cat-file -e "$FROM_REF^{commit}" 2>/dev/null \
+            || ! git merge-base --is-ancestor "$FROM_REF" "$TO_REF"; then
             if [[ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]] \
               && git rev-parse --verify "$DEFAULT_BRANCH" >/dev/null 2>&1; then
               FROM_REF="$(git merge-base "$TO_REF" "$DEFAULT_BRANCH")"
