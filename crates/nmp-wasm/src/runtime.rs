@@ -28,15 +28,15 @@ use crate::relay_pool;
 #[cfg(target_arch = "wasm32")]
 use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 
-use crate::dispatch_routing::{
-    browser_driver_missing_reason, claim_dispatch_from_action, execute_claim_dispatch,
-    execute_interest_dispatch, interest_dispatch_from_action, kernel_action_from_dispatch,
-    write_path_unavailable_reason,
-};
+use crate::dispatch_routing::browser_driver_missing_reason;
 use crate::protocol::{
-    ActionDispatch, AppAction, CapabilityFailure, RuntimeStatus, SetSigner, StartConfig,
-    WorkerEvent, WorkerRequest,
+    CapabilityFailure, RuntimeStatus, SetSigner, StartConfig, WorkerEvent, WorkerRequest,
 };
+// `AppAction` is only named as a type by the wasm32-only async-publish path
+// (`start_publish_app_action`); the native `WorkerRequest::AppAction(_)` arm
+// destructures the enum variant without naming the inner type.
+#[cfg(target_arch = "wasm32")]
+use crate::protocol::AppAction;
 use crate::signer_slot;
 use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
 
@@ -402,79 +402,10 @@ impl WasmRuntime {
         let _ = outbound;
     }
 
-    /// Build an `[ActionAccepted, UpdateBytes]` pair for a successful
-    /// synchronous dispatch. Used by every arm that fans outbound and then
-    /// returns the standard acknowledgement + snapshot.
-    fn accepted_with_snapshot(
-        &mut self,
-        action_type: String,
-        correlation_id: String,
-    ) -> Vec<WorkerEvent> {
-        vec![
-            WorkerEvent::ActionAccepted { action_type, correlation_id },
-            self.snapshot_event(),
-        ]
-    }
-
-    fn app_action(
-        &mut self,
-        action: AppAction,
-        correlation_id: String,
-    ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        let (action_type, _payload) = action.into_dispatch_parts();
-        Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action_type,
-            correlation_id,
-            reason: write_path_unavailable_reason(self.signer.as_ref()),
-        })])
-    }
-
-    fn dispatch(&mut self, action: ActionDispatch) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        // F-CR-00 claim arm: claim/release refcounts (see execute_claim_dispatch
-        // in dispatch_routing.rs for the full rationale / `can_send` contract).
-        if let Some(claim) = claim_dispatch_from_action(&action) {
-            let can_send = self.reducer.borrow().any_relay_connected();
-            let outbound = execute_claim_dispatch(&mut self.reducer.borrow_mut(), claim, can_send);
-            self.fan_outbound(outbound);
-            // Claim/release are refcount bookkeeping — they carry no new
-            // user-visible data of their own (the resolved kind:0 arrives later
-            // via the relay-pool ingest sink, which pushes its OWN snapshot).
-            // Pushing a snapshot here hands the reactive web host a fresh frame
-            // on every claim; the host's feed `<For>` rebuilds its rows, which
-            // remounts the avatar/name components, which release + re-claim —
-            // an unbounded claim → snapshot → re-render → claim loop that, on
-            // the single-threaded wasm worker, floods the main thread with
-            // snapshot frames and starves (or OOM-crashes) the UI so the feed
-            // never paints (feed.spec.ts toBeVisible timeout). Only ACK the
-            // action; let the data-bearing ingest frame drive the next render.
-            return Ok(vec![WorkerEvent::ActionAccepted {
-                action_type: action.action_type,
-                correlation_id: action.correlation_id,
-            }]);
-        }
-        // PR-3 feed-verb arm: open/close generic interests + contact-feed.
-        if let Some(interest) = interest_dispatch_from_action(&action) {
-            let outbound = execute_interest_dispatch(&mut self.reducer.borrow_mut(), interest);
-            self.fan_outbound(outbound);
-            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
-        }
-        // Kernel-namespace actions (`nmp.kernel.start`, `open_uri`, etc.) map
-        // to `KernelAction` variants and run through `KernelReducer::reduce`.
-        if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
-            let update = self.reducer.borrow_mut().reduce(kernel_action);
-            match update {
-                KernelUpdate::Started { .. } => { self.meta.borrow_mut().started = true; }
-                KernelUpdate::Stopped { .. } => { self.meta.borrow_mut().started = false; }
-                _ => {}
-            }
-            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
-        }
-        Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action.action_type,
-            correlation_id: action.correlation_id,
-            reason: write_path_unavailable_reason(self.signer.as_ref()),
-        })])
-    }
+    // `accepted_with_snapshot`, `app_action`, and `dispatch` — the
+    // action-namespace routing arm of `handle` — live in the sibling
+    // `runtime/dispatch.rs` module (LOC ceiling). They are still private
+    // methods of `WasmRuntime` (`impl WasmRuntime` in that file).
 
     /// Build a binary `WorkerEvent::UpdateBytes` from the current kernel +
     /// meta state. Delegates to `build_snapshot_bytes` which calls
@@ -556,6 +487,11 @@ impl WasmRuntime {
     }
 
 }
+
+// Action-dispatch routing arm of `handle` — split out for the LOC ceiling.
+// Production code (all targets); the methods are defined on `impl WasmRuntime`.
+#[path = "runtime/dispatch.rs"]
+mod dispatch;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "runtime/test_support.rs"]
