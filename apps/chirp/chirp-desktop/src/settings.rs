@@ -6,6 +6,7 @@
 //! `impl` blocks across files.
 
 use egui::{Color32, RichText, ScrollArea, TextEdit, Ui};
+use zeroize::Zeroize;
 
 use crate::app::{DesktopApp, relay_role_label};
 use crate::snapshot::{AppRelay, BunkerHandshakeStatus, SignerStatus, Snapshot};
@@ -48,8 +49,8 @@ impl DesktopApp {
                         .password(true),
                 );
                 if ui.button("Sign in").clicked() && !self.nsec_input.trim().is_empty() {
-                    self.bridge.sign_in_nsec(self.nsec_input.trim().to_string());
-                    self.nsec_input.clear();
+                    self.bridge.sign_in_nsec(self.nsec_input.trim());
+                    self.nsec_input.zeroize();
                     self.bridge.open_timeline();
                 }
             });
@@ -64,7 +65,9 @@ impl DesktopApp {
                         .hint_text("wss://relay.example.com")
                         .desired_width(260.0),
                 );
-                if ui.button("Connect with bunker").clicked() {
+                if ui.button("Connect with bunker").clicked()
+                    && !self.bunker_relay_input.trim().is_empty()
+                {
                     match self.bridge.connect_bunker(self.bunker_relay_input.trim()) {
                         Ok(uri) => self.bunker_uri = Some(uri),
                         Err(e) => eprintln!("bunker connect error: {e}"),
