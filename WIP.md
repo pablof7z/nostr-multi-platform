@@ -19,7 +19,7 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-16 02:31 EEST — **PR #1459 Chirp web substrate parser wiring**. Branch: `fix/chirp-web-substrate-parser-wiring`. Scope: wire wasm composition parser/cache substrate seams for issue #1458; PR opened ready for review after focused validation.
+- 2026-06-16 02:31 EEST — **PR #1459 Chirp web substrate parser wiring**. Worktree: `.codex-worktrees/pr1459-substrate-rebase`. Branch: `fix/chirp-web-substrate-parser-wiring`. Scope: wire wasm composition parser/cache substrate seams for issue #1458; PR opened ready for review after focused validation, then rebased onto the merged file-size workflow fix.
 
 - 2026-06-16 02:03 EEST — **Supervisor refresh/merge for PR #1429 Chirp web correlation IDs**. Worktree: `.codex-worktrees/supervisor-pr1429-refresh`. Branch: `supervisor/pr1429-refresh` pushing to `fix/chirp-web-correlation-id-collision`. Scope: rebase #1429 onto current master, rerun scoped gates, merge if clean.
 
