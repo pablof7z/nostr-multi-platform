@@ -135,6 +135,10 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::set_profile_lookup(self, lookup);
     }
 
+    fn set_contacts_lookup(&self, lookup: Arc<dyn nmp_core::substrate::ContactsLookup>) {
+        NmpApp::set_contacts_lookup(self, lookup);
+    }
+
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
         NmpApp::set_mailbox_cache_reader(self, cache);
     }

@@ -420,27 +420,34 @@ fn ingest_contacts_with_p_tags_updates_follow_graph() {
             vec!["e".to_string(), FOLLOW_A.to_string()],
         ],
     );
-    kernel.ingest_contacts(event);
+    // ADR-0057 PR 3 — kind:3 is now parser-fed: `inject_contacts` runs the
+    // chokepoint projection → the registered `TestKind3Parser` writes the
+    // capability-owned contacts cache (for ANY author), and the kernel reacts
+    // to a transition ONLY for the active account.
+    kernel.inject_contacts(event);
 
     let follows = kernel
-        .seed_contacts
-        .get(AUTHOR)
+        .contacts_lookup()
+        .follows(AUTHOR)
         .expect("a kind:3 must store a follow-graph entry under the author pubkey");
     assert_eq!(
         follows,
-        &vec![FOLLOW_A.to_string(), FOLLOW_B.to_string()],
+        vec![FOLLOW_A.to_string(), FOLLOW_B.to_string()],
         "only well-formed hex `p`-tag values are kept, in tag order",
     );
 
-    // A11: every kind:3 fans a `FollowListChanged` recompile trigger.
+    // Non-active author: the active-account contacts-transition signal does NOT
+    // fire, so NO `FollowListChanged` trigger is enqueued (D4 — arbitrary peers'
+    // kind:3 must not drive the kernel's follow-feed lifecycle) and
+    // `timeline_authors` stays empty. (Pre-PR-3 the old `ingest_contacts`
+    // enqueued an unconditional trigger even for non-active peers — a benign
+    // over-fire that drove a no-op recompile; PR 3 tightens it to the active
+    // account, matching the active-gate the effects always had.)
     assert_eq!(
         kernel.lifecycle.pending_trigger_count(),
-        1,
-        "a kind:3 ingest must enqueue exactly one FollowListChanged trigger",
+        0,
+        "a non-active author's kind:3 must NOT enqueue a follow-feed trigger",
     );
-
-    // Non-active author: the active-only follow-feed registry sync is skipped,
-    // so `timeline_authors` stays empty.
     assert!(
         kernel.timeline_authors_for_test().is_empty(),
         "a non-active author's kind:3 must NOT mutate the timeline_authors projection",
@@ -463,9 +470,9 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
         3,
         vec![p_tag(FOLLOW_A), p_tag(FOLLOW_B)],
     );
-    kernel.ingest_contacts(seed);
+    kernel.inject_contacts(seed);
     assert_eq!(
-        kernel.seed_contacts.get(AUTHOR).map(Vec::len),
+        kernel.contacts_lookup().follows(AUTHOR).map(|f| f.len()),
         Some(2),
         "precondition: the seed contact list holds two follows",
     );
@@ -478,13 +485,14 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
         3,
         Vec::new(),
     );
-    kernel.ingest_contacts(cleared);
+    kernel.inject_contacts(cleared);
 
-    // The entry is PRESENT but empty — `ingest_contacts` always inserts; an
-    // empty `p`-tag set yields `Some(&vec![])`, not `None`.
+    // The entry is PRESENT but empty — the kind:3 parser always upserts; an
+    // empty `p`-tag set yields `Some(vec![])`, NOT `None` (a cleared follow set
+    // is a distinct state from "no kind:3 cached"). See `ContactsLookup`.
     let follows = kernel
-        .seed_contacts
-        .get(AUTHOR)
+        .contacts_lookup()
+        .follows(AUTHOR)
         .expect("an empty kind:3 must still leave a (now-empty) follow-graph entry");
     assert!(
         follows.is_empty(),
@@ -512,7 +520,7 @@ fn ingest_contacts_for_active_account_syncs_follow_feed_projection() {
         3,
         vec![p_tag(FOLLOW_A), p_tag(FOLLOW_B)],
     );
-    kernel.ingest_contacts(event);
+    kernel.inject_contacts(event);
 
     // `timeline_authors` is rebuilt from the new follow set plus the active
     // account itself (so the user's own notes appear in the timeline).

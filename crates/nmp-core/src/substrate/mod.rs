@@ -44,6 +44,7 @@ mod blocked_relays;
 mod bounded;
 mod suppression;
 mod capability;
+mod contacts_lookup;
 mod dm_inbox_relays;
 mod empty_routing;
 mod host_op;
@@ -83,6 +84,11 @@ pub use profile_lookup::{
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use profile_lookup::{TestKind0Parser, TestProfileCache};
+pub use contacts_lookup::{
+    empty_contacts_lookup, ContactsLookup, ContactsView, EmptyContactsLookup,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 // Step 9: the `DomainMigration` / `MigrationTx` value types passed to
 // `EventStore::run_migrations` moved with the store (they are consumed only by

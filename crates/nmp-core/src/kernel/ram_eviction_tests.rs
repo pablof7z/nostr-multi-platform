@@ -183,16 +183,16 @@ fn seed_contacts_eviction_caps_at_hwm() {
     }
 
     assert!(
-        kernel.seed_contacts.len() > SEED_CONTACTS_RAM_HWM,
+        kernel.contacts_lookup().len() > SEED_CONTACTS_RAM_HWM,
         "precondition: seed_contacts must exceed HWM (len={})",
-        kernel.seed_contacts.len()
+        kernel.contacts_lookup().len()
     );
 
     let report = kernel.evict_ram_caches();
     assert!(
-        kernel.seed_contacts.len() <= SEED_CONTACTS_RAM_HWM,
+        kernel.contacts_lookup().len() <= SEED_CONTACTS_RAM_HWM,
         "after eviction seed_contacts.len() must be ≤ HWM={SEED_CONTACTS_RAM_HWM}, got {}",
-        kernel.seed_contacts.len()
+        kernel.contacts_lookup().len()
     );
     assert!(report.seed_contacts_evicted > 0);
 }
@@ -350,14 +350,14 @@ fn active_account_seed_contacts_are_never_evicted() {
     }
 
     assert!(
-        kernel.seed_contacts.len() > SEED_CONTACTS_RAM_HWM,
+        kernel.contacts_lookup().len() > SEED_CONTACTS_RAM_HWM,
         "precondition: must exceed HWM"
     );
 
     kernel.evict_ram_caches();
 
     assert!(
-        kernel.seed_contacts.contains_key(&active_pk),
+        kernel.contacts_lookup().follows(&active_pk).is_some(),
         "active account seed_contacts must survive eviction"
     );
 }

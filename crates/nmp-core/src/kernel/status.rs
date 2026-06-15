@@ -367,7 +367,10 @@ impl Kernel {
         // per-entry byte accounting for its own value type (`estimated_bytes`),
         // returning the same formula this term used before the migration.
         let profile_bytes: usize = self.profile_lookup().estimated_bytes();
-        event_bytes + profile_bytes + self.seed_contacts.values().map(Vec::len).sum::<usize>() * 64
+        // ADR-0057 PR 3 — the contacts cache is capability-owned; it owns the
+        // per-entry byte accounting (`estimated_bytes` = `total_follows() * 64`),
+        // returning the same formula this term used before the migration.
+        event_bytes + profile_bytes + self.contacts_lookup().estimated_bytes()
     }
 
     /// Get estimated store bytes, using a cached value if available.

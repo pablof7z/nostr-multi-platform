@@ -124,7 +124,7 @@ impl Kernel {
                 // calls, so the historical sum is preserved unchanged.
                 stored_events: self.metric_stored_events as usize
                     + self.profile_lookup().len()
-                    + self.seed_contacts.len(),
+                    + self.contacts_lookup().len(),
                 tombstones: 0,
                 // Step 3A (#920): feed cluster removed — constant `0` until the
                 // frozen `KernelMetrics` shape migrates.
@@ -163,7 +163,7 @@ impl Kernel {
                 closed_rx: counters.closed_rx,
                 bytes_rx: counters.bytes_rx,
                 bytes_tx: counters.bytes_tx,
-                contacts_authors: self.seed_contacts.values().map(Vec::len).sum(),
+                contacts_authors: self.contacts_lookup().total_follows(),
                 timeline_authors: self.timeline_authors.len(),
                 first_event_ms: self.elapsed_ms(self.timing.first_event_at),
                 target_profile_loaded_ms: self.elapsed_ms(self.timing.target_profile_loaded_at),

@@ -416,36 +416,18 @@ impl Kernel {
         removed
     }
 
-    // ─── seed_contacts ─────────────────────────────────────────────────────
+    // ─── contacts (kind:3) ───────────────────────────────────────────────────
 
     fn evict_seed_contacts_cache(&mut self) -> usize {
-        let len = self.seed_contacts.len();
-        if len <= SEED_CONTACTS_RAM_HWM {
-            return 0;
-        }
-
-        // Pin the active account's entry — all safety-critical reads are
-        // against this key only.  All other entries are speculative extras
-        // (peers' kind:3 events that happened to arrive during the session).
-        let active: Option<String> = self.active_account.clone();
-
-        // Collect as owned Strings to avoid the borrow-split issue.
-        let mut candidates: Vec<String> = self
-            .seed_contacts
-            .keys()
-            .filter(|k| Some(k.as_str()) != active.as_deref())
-            .cloned()
-            .collect();
-        // Sort by key for determinism (no created_at stored here).
-        candidates.sort_unstable();
-
-        let to_remove = len - SEED_CONTACTS_RAM_HWM;
-        let mut removed = 0usize;
-        for key in candidates.into_iter().take(to_remove) {
-            if self.seed_contacts.remove(&key).is_some() {
-                removed += 1;
-            }
-        }
-        removed
+        // ADR-0057 PR 3 — the contacts cache is capability-owned
+        // (`nmp_nip01::ContactsCache` behind `Arc<dyn ContactsLookup>`); the
+        // cache owns the eviction *mechanism* (oldest-`created_at`-first,
+        // lexicographic-pubkey tiebreak), the kernel owns the *policy* (the pin
+        // set + the HWM). Pin the active account's entry — all safety-critical
+        // reads are against this key only; every other entry is a speculative
+        // extra (a peer's kind:3 that happened to arrive during the session).
+        let pinned: HashSet<String> = self.active_account.clone().into_iter().collect();
+        self.contacts_lookup()
+            .evict_to(&pinned, SEED_CONTACTS_RAM_HWM)
     }
 }

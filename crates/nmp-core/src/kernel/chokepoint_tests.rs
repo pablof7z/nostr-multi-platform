@@ -100,25 +100,28 @@ fn local_kind3_publish_updates_contacts_set() {
     kernel.active_account = Some(author.clone());
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
-    // Before publishing kind:3, FOLLOWED is not in seed_contacts for this author.
+    // Before publishing kind:3, FOLLOWED is not in the contacts cache for this
+    // author. ADR-0057 PR 3 — read through the capability-owned `ContactsLookup`.
     assert!(
         kernel
-            .seed_contacts
-            .get(&author)
+            .contacts_lookup()
+            .follows(&author)
             .map_or(true, |follows| !follows.contains(&FOLLOWED.to_string())),
-        "precondition: FOLLOWED must not be in seed_contacts before publish"
+        "precondition: FOLLOWED must not be in the contacts cache before publish"
     );
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
 
     assert!(!outbound.is_empty(), "publish should have an outbox target");
-    // After publishing kind:3 with FOLLOWED in the p-tags, seed_contacts is updated.
+    // After publishing kind:3 with FOLLOWED in the p-tags, the local read-your-
+    // writes path (publish engine → `ingest_accepted_event(LocalPublish)` →
+    // chokepoint → registered kind:3 parser) wrote the contacts cache.
     assert!(
         kernel
-            .seed_contacts
-            .get(&author)
+            .contacts_lookup()
+            .follows(&author)
             .map_or(false, |follows| follows.contains(&FOLLOWED.to_string())),
-        "FOLLOWED must be in seed_contacts[author] after kind:3 publish"
+        "FOLLOWED must be in the contacts cache for author after kind:3 publish"
     );
 }
 

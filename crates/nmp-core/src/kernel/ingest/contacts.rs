@@ -1,6 +1,6 @@
 //! Kind:3 (contact list) ingest.
 
-use super::super::{short_hex, BTreeSet, Kernel, NostrEvent};
+use super::super::{short_hex, BTreeSet, Kernel};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -174,56 +174,61 @@ impl Kernel {
         }
     }
 
-    /// Ingest a kind:3 contact-list event into the local `seed_contacts` cache
-    /// and fan a `FollowListChanged` (A11) trigger into the subscription
-    /// lifecycle inbox.
+    /// ADR-0057 PR 3 — the kernel-owned follow-feed effects, driven by the
+    /// ACTIVE account's kind:3 contacts transition.
     ///
-    /// Only called after `verify_and_persist` returns `Inserted | Replaced` (D4).
-    /// Extracts "p"-tagged hex pubkeys, capping at `TIMELINE_AUTHOR_LIMIT`, via
-    /// the shared `crate::tags::capped_contact_follows` — the SAME pure function
-    /// the `nmp-nip02` follow-set observers call, so the router's
-    /// `timeline_authors` and the NIP-02 read models never diverge on the cap.
+    /// This is the PR 3 replacement for the deleted `ingest_contacts` arm. The
+    /// kind:3 PARSING + cache write now lives in `nmp_nip01::Kind3Parser` (an
+    /// `IngestParser` registered with the `EventIngestDispatcher`), which is
+    /// structurally side-effect-free against kernel state. The kernel-owned
+    /// planner/lifecycle effects an `IngestParser` cannot perform (they need
+    /// `&mut self` + the active-account + the lifecycle registry) are driven
+    /// HERE, on the kernel's own tick, by the contacts-transition SIGNAL that
+    /// `project_accepted_event` detects (before/after snapshot of the
+    /// capability-owned contacts cache for the author, exactly like the profile
+    /// / mailbox / DM-relay transitions).
     ///
-    /// T140: also calls `sync_follow_feed_interests` for the active account's
-    /// kind:3 to register M2 `LogicalInterest`s into the lifecycle registry.
-    /// The A11 trigger causes `drain_tick` (on the next tick boundary) to run
-    /// a recompile and emit REQ frames for each followed author's NIP-65 write
-    /// relays. The M1 hand-rolled `req()` path continues to run in parallel
-    /// during the T140 verification window (Step A). Step C will retire M1 once
-    /// M2 output is confirmed equivalent.
-    pub(in crate::kernel) fn ingest_contacts(&mut self, event: NostrEvent) {
-        // Single source of truth for the follow cap: the same pure function the
-        // `nmp-nip02` `ActiveFollowSet` / `FollowListProjection` observers call,
-        // so the router's `timeline_authors`, the follow predicate, and the
-        // `nmp.follow_list` snapshot can never diverge on which 500 follows
-        // count (first-500-valid-hex-p-tags in document order).
-        let follows = crate::tags::capped_contact_follows(&event.tags);
-
+    /// `follows` is the freshly-parsed capped follow set the parser wrote into
+    /// the cache (`capped_contact_follows` — the SAME pure function the
+    /// `nmp-nip02` follow-set observers use, so the router's `timeline_authors`,
+    /// the follow predicate, and the `nmp.follow_list` snapshot can never
+    /// diverge on which 500 follows count). An empty `follows` is a CLEARED
+    /// follow set (a kind:3 with no `p` tags), which correctly WITHDRAWS the
+    /// prior follow-feed interests via `sync_follow_feed_interests(&[])`.
+    ///
+    /// Effects (all preserved EXACTLY from the old `ingest_contacts`):
+    /// - **A11 `FollowListChanged` trigger** into the lifecycle inbox so the
+    ///   subscription compiler recompiles on the next tick (D8: multiple kind:3
+    ///   arrivals within one tick collapse to a single compile pass).
+    /// - **M2 `LogicalInterest` (re)registration + `timeline_authors` rebuild +
+    ///   cache-serve** via `sync_follow_feed_interests`.
+    pub(in crate::kernel) fn on_active_contacts_changed(
+        &mut self,
+        author: &str,
+        follows: Vec<String>,
+        _created_at: u64,
+    ) {
         self.log(format!(
             "contacts {} -> {} followees",
-            short_hex(&event.pubkey),
+            short_hex(author),
             follows.len()
         ));
 
         // A11: fan a FollowListChanged trigger into the lifecycle inbox so the
-        // subscription compiler recompiles on the next tick. Per D8, multiple
-        // kind:3 arrivals within one tick collapse to a single compile pass.
+        // subscription compiler recompiles on the next tick.
         self.lifecycle
             .enqueue_trigger(CompileTrigger::FollowListChanged {
-                account_id: AccountId(event.pubkey.clone()),
+                account_id: AccountId(author.to_string()),
                 new_follows: follows.clone(),
             });
 
         // T140: register M2 LogicalInterests for the active account's follow set.
-        // The FollowListChanged trigger above drives drain_lifecycle_tick to recompile
-        // and emit the REQ/CLOSE diff on the next actor idle tick. Active-account
-        // gated so arbitrary peers' kind:3 events don't pollute the registry (D4).
-        let is_active = self.active_account.as_deref() == Some(event.pubkey.as_str());
-        if is_active {
-            self.sync_follow_feed_interests(&follows);
-        }
+        // The FollowListChanged trigger above drives drain_lifecycle_tick to
+        // recompile and emit the REQ/CLOSE diff on the next actor idle tick. This
+        // is only ever reached for the active account (the caller gates on it),
+        // so arbitrary peers' kind:3 events never pollute the registry (D4).
+        self.sync_follow_feed_interests(&follows);
 
-        self.seed_contacts.insert(event.pubkey, follows);
         self.cached_estimated_store_bytes.set(None);
     }
 
@@ -265,10 +270,15 @@ impl Kernel {
         let Some(active_pk) = self.active_account.clone() else {
             return;
         };
+        // ADR-0057 PR 3 — read the active account's follow set from the
+        // capability-owned contacts cache (`nmp_nip01::ContactsCache` behind
+        // `Arc<dyn ContactsLookup>`) rather than the deleted kernel-owned
+        // `seed_contacts` HashMap. `None` (no kind:3 cached yet) and
+        // `Some(vec![])` (a cleared follow set) both correctly yield an empty
+        // `follows`, which WITHDRAWS any stale follow-feed interests.
         let follows = self
-            .seed_contacts
-            .get(&active_pk)
-            .cloned()
+            .contacts_lookup()
+            .follows(&active_pk)
             .unwrap_or_default();
         // Unconditional: empty `follows` CLEARs stale state (no-op was the bug).
         self.sync_follow_feed_interests(&follows);

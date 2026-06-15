@@ -242,6 +242,29 @@ pub fn register_substrate(app: &mut impl AppHost, gate: CoverageGate) {
         Arc::new(nmp_nip01::Kind0Parser::new(profile_cache));
     app.register_ingest_parser(0, kind0_parser);
 
+    // ── kind:3 contacts cache (ADR-0057 PR 3) ─────────────────────────
+    //
+    // Install the SAME `nmp_nip01::ContactsCache` on both ends so the kernel's
+    // contacts readers (follow-feed registration, the byte estimate, RAM
+    // eviction, the `contacts_authors` diagnostic) and the kind:3 ingest-parser
+    // writer see one source of truth:
+    //   1. As the kernel's `Arc<dyn ContactsLookup>` (reader).
+    //   2. As the `nmp_nip01::Kind3Parser`'s backing cache (writer), registered
+    //      with the `EventIngestDispatcher` so every accepted (D4
+    //      `Inserted | Replaced`) kind:3 upserts the parsed follow set.
+    // The kernel-owned follow-feed planner/lifecycle effects (re-register M2
+    // interests, rebuild `timeline_authors`, cache-serve) are NOT inlined into
+    // the parser — the kernel drives them itself on its own tick, via the
+    // active-account contacts-transition signal detected in
+    // `project_accepted_event` (the `IngestParser` stays side-effect-free).
+    let contacts_cache = Arc::new(nmp_nip01::ContactsCache::new());
+    app.set_contacts_lookup(
+        Arc::clone(&contacts_cache) as Arc<dyn nmp_core::substrate::ContactsLookup>
+    );
+    let kind3_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_nip01::Kind3Parser::new(contacts_cache));
+    app.register_ingest_parser(3, kind3_parser);
+
     // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
     //
     // Install the production substrate-publish-resolver factory. Without
