@@ -25,9 +25,8 @@ fn verify_event(ev: &nmp_content_fixtures::dto::SignedEventJson) {
         content: ev.content.clone(),
         sig: ev.sig.clone(),
     };
-    VerifiedEvent::try_from_raw(raw).unwrap_or_else(|e| {
-        panic!("fixture event {} failed Schnorr/id verify: {e:?}", ev.id)
-    });
+    VerifiedEvent::try_from_raw(raw)
+        .unwrap_or_else(|e| panic!("fixture event {} failed Schnorr/id verify: {e:?}", ev.id));
 }
 
 #[test]
@@ -38,8 +37,7 @@ fn bundle_has_expected_scenario_count() {
         EXPECTED_SCENARIOS,
         "scenario count drifted from the matrix spec"
     );
-    let mut ids: Vec<&str> =
-        bundle.scenarios.iter().map(|s| s.id.as_str()).collect();
+    let mut ids: Vec<&str> = bundle.scenarios.iter().map(|s| s.id.as_str()).collect();
     ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), EXPECTED_SCENARIOS, "duplicate scenario ids");
@@ -82,6 +80,19 @@ fn every_referenced_uri_has_an_embed_entry() {
     }
 }
 
+#[test]
+fn every_embed_entry_carries_a_rust_owned_cycle_key() {
+    for scenario in build_bundle().scenarios {
+        for (uri, entry) in scenario.embeds {
+            assert!(
+                !entry.cycle_key.is_empty(),
+                "scenario {} embed {uri} has an empty cycle_key",
+                scenario.id
+            );
+        }
+    }
+}
+
 /// Recursively check whether any segment in a tree is an `EventRef` whose
 /// `id` equals `coord` (descends into Markdown blocks/inlines).
 fn tree_refs_id(tree: &nmp_content_fixtures::dto::ContentTreeDto, coord: &str) -> bool {
@@ -96,9 +107,7 @@ fn seg_refs_id(seg: &SegmentDto, coord: &str) -> bool {
                 inlines.iter().any(|i| inl(i, c))
             }
             N::BlockQuote { blocks } => blocks.iter().any(|b| node(b, c)),
-            N::List { items, .. } => {
-                items.iter().any(|it| it.iter().any(|b| node(b, c)))
-            }
+            N::List { items, .. } => items.iter().any(|it| it.iter().any(|b| node(b, c))),
             N::CodeBlock { .. } | N::Rule => false,
         }
     }
@@ -107,9 +116,9 @@ fn seg_refs_id(seg: &SegmentDto, coord: &str) -> bool {
             I::Inline { segment } => seg_refs_id(segment, c),
             I::Emphasis { children }
             | I::Strong { children }
-            | I::Link { label: children, .. } => {
-                children.iter().any(|x| inl(x, c))
-            }
+            | I::Link {
+                label: children, ..
+            } => children.iter().any(|x| inl(x, c)),
             _ => false,
         }
     }
@@ -133,11 +142,7 @@ fn depth_chain_fully_resolves_all_five_levels() {
     let resolved_events = s
         .embeds
         .values()
-        .filter(|e| {
-            e.resolved_kind == 1
-                && !e.collapsed
-                && e.rendered.is_some()
-        })
+        .filter(|e| e.resolved_kind == 1 && !e.collapsed && e.rendered.is_some())
         .count();
     assert!(
         resolved_events >= 5,
@@ -163,30 +168,22 @@ fn cycle_pair_resolves_with_mutual_back_references() {
         .values()
         .filter(|e| e.resolved_kind == 30023 && e.rendered.is_some())
         .collect();
-    assert_eq!(
-        articles.len(),
-        2,
-        "S-M09 must resolve both cycle articles"
-    );
+    assert_eq!(articles.len(), 2, "S-M09 must resolve both cycle articles");
 
-    // Each article's naddr coord, derived from its own signed event.
     let coords: Vec<String> = articles
         .iter()
-        .filter_map(|e| e.event.as_ref())
-        .map(|ev| {
-            let d = ev
-                .tags
-                .iter()
-                .find(|t| t.first().map(String::as_str) == Some("d"))
-                .and_then(|t| t.get(1).cloned())
-                .unwrap_or_default();
-            format!("{}:{}:{}", ev.kind, ev.pubkey, d)
-        })
+        .map(|entry| entry.cycle_key.clone())
         .collect();
     assert_eq!(coords.len(), 2, "two distinct cycle coords");
+    assert!(
+        coords.iter().all(|coord| coord.starts_with("30023:")),
+        "article cycle keys must be opaque naddr coords: {coords:?}"
+    );
 
-    let bodies: Vec<&nmp_content_fixtures::dto::ContentTreeDto> =
-        articles.iter().filter_map(|e| e.rendered.as_ref()).collect();
+    let bodies: Vec<&nmp_content_fixtures::dto::ContentTreeDto> = articles
+        .iter()
+        .filter_map(|e| e.rendered.as_ref())
+        .collect();
     // Mutual back-reference: each coord is referenced by some body.
     assert!(
         bodies.iter().any(|b| tree_refs_id(b, &coords[0]))

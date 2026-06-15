@@ -161,6 +161,9 @@ pub struct SignedEventJson {
 /// A pre-resolved embed entry in the relay-free fixture store.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EmbedEntry {
+    /// Opaque renderer cycle key produced by Rust. Native renderers pass this
+    /// through their traversal guard; they must not re-derive it from kind/tags.
+    pub cycle_key: String,
     /// Resolved event kind (0 = profile metadata).
     pub resolved_kind: u32,
     /// kind:0 display name, when this entry is a profile.

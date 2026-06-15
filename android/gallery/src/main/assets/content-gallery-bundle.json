@@ -490,6 +490,7 @@
       },
       "embeds": {
         "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
+          "cycle_key": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
           "resolved_kind": 0,
           "profile_name": "bob",
           "profile_picture": "https://nmp.test/img/bob.png",
@@ -541,6 +542,7 @@
       },
       "embeds": {
         "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv": {
+          "cycle_key": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
           "resolved_kind": 0,
           "profile_name": "carol",
           "collapsed": false
@@ -589,6 +591,7 @@
       },
       "embeds": {
         "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
+          "cycle_key": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
           "resolved_kind": 0,
           "collapsed": true,
           "collapse_reason": "dangling"
@@ -646,6 +649,7 @@
       },
       "embeds": {
         "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8": {
+          "cycle_key": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
           "resolved_kind": 1,
           "event": {
             "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
@@ -725,6 +729,7 @@
       },
       "embeds": {
         "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82": {
+          "cycle_key": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
           "resolved_kind": 1,
           "event": {
             "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
@@ -802,6 +807,7 @@
       },
       "embeds": {
         "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7": {
+          "cycle_key": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
           "resolved_kind": 1,
           "event": {
             "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
@@ -844,6 +850,7 @@
           "collapsed": false
         },
         "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
+          "cycle_key": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
           "resolved_kind": 0,
           "profile_name": "bob",
           "profile_picture": "https://nmp.test/img/bob.png",
@@ -920,6 +927,7 @@
       },
       "embeds": {
         "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl": {
+          "cycle_key": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
           "resolved_kind": 1,
           "event": {
             "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
@@ -957,6 +965,7 @@
           "collapsed": false
         },
         "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu": {
+          "cycle_key": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
           "resolved_kind": 1,
           "event": {
             "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
@@ -982,6 +991,7 @@
           "collapsed": false
         },
         "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5": {
+          "cycle_key": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
           "resolved_kind": 1,
           "event": {
             "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
@@ -1107,6 +1117,7 @@
       },
       "embeds": {
         "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809": {
+          "cycle_key": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
           "resolved_kind": 1,
           "event": {
             "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
@@ -1144,6 +1155,7 @@
           "collapsed": false
         },
         "nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44": {
+          "cycle_key": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
           "resolved_kind": 1,
           "event": {
             "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
@@ -1181,6 +1193,7 @@
           "collapsed": false
         },
         "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx": {
+          "cycle_key": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
           "resolved_kind": 1,
           "event": {
             "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
@@ -1218,6 +1231,7 @@
           "collapsed": false
         },
         "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv": {
+          "cycle_key": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
           "resolved_kind": 1,
           "event": {
             "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
@@ -1255,6 +1269,7 @@
           "collapsed": false
         },
         "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc": {
+          "cycle_key": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
           "resolved_kind": 1,
           "event": {
             "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
@@ -1359,6 +1374,7 @@
       },
       "embeds": {
         "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd": {
+          "cycle_key": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a",
           "resolved_kind": 30023,
           "event": {
             "id": "8a711a07eac3bb621ec3e1e44a5a68a7f9e7adf53fada2bb206a56b0aae326a7",
@@ -1423,6 +1439,7 @@
           "collapsed": false
         },
         "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch": {
+          "cycle_key": "30023:2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4:cycle-b",
           "resolved_kind": 30023,
           "event": {
             "id": "2d957edb4c4e15f04ab7032ff16e45378c5255e52482a7f8cfae64bfb06a748d",
@@ -1556,6 +1573,7 @@
       },
       "embeds": {
         "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm": {
+          "cycle_key": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:nostr-core",
           "resolved_kind": 30000,
           "event": {
             "id": "36dc688a8b310db3e75aff1fc146057651e309be12e4eff9598431a48bcb928d",
@@ -1681,6 +1699,7 @@
       },
       "embeds": {
         "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg": {
+          "cycle_key": "30003:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reading",
           "resolved_kind": 30003,
           "event": {
             "id": "03909df1522498408282c1e4f3c86d2eb00db372a9255196de70c812e06fcb15",
@@ -1801,6 +1820,7 @@
       },
       "embeds": {
         "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn": {
+          "cycle_key": "10002:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:",
           "resolved_kind": 10002,
           "event": {
             "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
@@ -2414,6 +2434,7 @@
       },
       "embeds": {
         "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z": {
+          "cycle_key": "31337:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:song",
           "resolved_kind": 31337,
           "event": {
             "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
@@ -2478,6 +2499,7 @@
       },
       "embeds": {
         "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07": {
+          "cycle_key": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
           "resolved_kind": 0,
           "collapsed": true,
           "collapse_reason": "dangling"
@@ -2526,6 +2548,7 @@
       },
       "embeds": {
         "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
+          "cycle_key": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
           "resolved_kind": 0,
           "collapsed": true,
           "collapse_reason": "dangling"
@@ -2651,6 +2674,7 @@
       },
       "embeds": {
         "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4": {
+          "cycle_key": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:empty",
           "resolved_kind": 30000,
           "event": {
             "id": "c6d0ba54a906d84547babeeb585ba973b48abfbfbcc5d76204e836798971e11c",

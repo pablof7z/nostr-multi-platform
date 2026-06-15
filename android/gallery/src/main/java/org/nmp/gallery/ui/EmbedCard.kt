@@ -27,7 +27,6 @@ import org.nmp.gallery.model.ListDto
 import org.nmp.gallery.model.ListRowDto
 import org.nmp.gallery.model.RenderContext
 import org.nmp.gallery.model.WireNostrUri
-import org.nmp.gallery.model.visitedKey
 
 /**
  * Compose port of Swift `EmbedCard`. Embedded event card (quoted note /
@@ -79,8 +78,7 @@ fun EmbedCard(
     // Render-time PD-015 depth + cycle guard.
     val ev = entry.event
     if (ev != null) {
-        val key = visitedKey(ev)
-        val (collapse, reason) = ctx.shouldCollapse(key)
+        val (collapse, reason) = ctx.shouldCollapse(entry.cycleKey)
         if (collapse) {
             val label = if (reason == "cycle") {
                 "Already shown (cycle broken)"
@@ -134,7 +132,7 @@ private fun CardBody(
 
         val body = entry.rendered
         if (body != null && entry.article == null && entry.list == null) {
-            val childCtx = entry.event?.let { ctx.descend(visitedKey(it)) } ?: ctx
+            val childCtx = entry.event?.let { ctx.descend(entry.cycleKey) } ?: ctx
             WireNodeView(tree = body, embeds = embeds, ctx = childCtx)
         }
     }

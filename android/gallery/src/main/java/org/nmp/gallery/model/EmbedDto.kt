@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 @Serializable
 data class EmbedEntry(
+    @SerialName("cycle_key") val cycleKey: String,
     @SerialName("resolved_kind") val resolvedKind: Int = 0,
     @SerialName("profile_name") val profileName: String? = null,
     @SerialName("profile_picture") val profilePicture: String? = null,

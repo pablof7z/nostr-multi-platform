@@ -14,11 +14,10 @@
 use std::collections::BTreeMap;
 
 use nmp_content::{tokenize_with_kind, RenderMode};
+use nmp_core::kinds::is_parameterized_replaceable;
 use nmp_core::substrate::SignedEvent;
 
-use crate::dto::{
-    ArticleHeaderDto, ContentTreeDto, EmbedEntry, ListDto, SignedEventJson,
-};
+use crate::dto::{ArticleHeaderDto, ContentTreeDto, EmbedEntry, ListDto, SignedEventJson};
 use crate::project::project_tree;
 
 /// A target registered in the offline store, keyed by its `nostr:` URI.
@@ -66,6 +65,23 @@ fn to_json(ev: &SignedEvent) -> SignedEventJson {
     }
 }
 
+fn event_cycle_key(ev: &SignedEvent) -> String {
+    let kind = ev.unsigned.kind;
+    if is_parameterized_replaceable(kind) || kind == 10002 {
+        let d_tag = ev
+            .unsigned
+            .tags
+            .iter()
+            .find(|tag| tag.first().map(String::as_str) == Some("d"))
+            .and_then(|tag| tag.get(1))
+            .cloned()
+            .unwrap_or_default();
+        format!("{}:{}:{}", kind, ev.unsigned.pubkey, d_tag)
+    } else {
+        ev.id.clone()
+    }
+}
+
 impl EmbedStore {
     /// Register a target under its `nostr:` URI.
     pub fn add(&mut self, uri: impl Into<String>, target: Target) {
@@ -90,6 +106,7 @@ impl EmbedStore {
             // best-effort — collapsed stub, never a spinner. This IS a
             // context-independent fact (a property of the store).
             return EmbedEntry {
+                cycle_key: uri.to_string(),
                 resolved_kind: 0,
                 profile_name: None,
                 profile_picture: None,
@@ -104,6 +121,7 @@ impl EmbedStore {
 
         match target {
             Target::Profile { name, picture } => EmbedEntry {
+                cycle_key: uri.to_string(),
                 resolved_kind: 0,
                 profile_name: name.clone(),
                 profile_picture: picture.clone(),
@@ -118,9 +136,7 @@ impl EmbedStore {
             Target::Article { event, header } => {
                 self.event_entry(event, Some(header.clone()), None)
             }
-            Target::List { event, list } => {
-                self.event_entry(event, None, Some(list.clone()))
-            }
+            Target::List { event, list } => self.event_entry(event, None, Some(list.clone())),
         }
     }
 
@@ -143,6 +159,7 @@ impl EmbedStore {
             || kind == 10002;
         if !known {
             return EmbedEntry {
+                cycle_key: event_cycle_key(ev),
                 resolved_kind: kind,
                 profile_name: None,
                 profile_picture: None,
@@ -157,6 +174,7 @@ impl EmbedStore {
 
         let rendered = Self::render_event_body(ev);
         EmbedEntry {
+            cycle_key: event_cycle_key(ev),
             resolved_kind: kind,
             profile_name: None,
             profile_picture: None,
@@ -175,20 +193,13 @@ impl EmbedStore {
     /// facts. A cyclic reference terminates the transitive walk via the
     /// `out.contains_key` visited check (resolution-dedup, NOT a render
     /// cycle guard): the renderer re-derives PD-015 collapse at walk time.
-    pub fn resolve_all(
-        &self,
-        root: &ContentTreeDto,
-    ) -> BTreeMap<String, EmbedEntry> {
+    pub fn resolve_all(&self, root: &ContentTreeDto) -> BTreeMap<String, EmbedEntry> {
         let mut out = BTreeMap::new();
         self.walk(root, &mut out);
         out
     }
 
-    fn walk(
-        &self,
-        tree: &ContentTreeDto,
-        out: &mut BTreeMap<String, EmbedEntry>,
-    ) {
+    fn walk(&self, tree: &ContentTreeDto, out: &mut BTreeMap<String, EmbedEntry>) {
         let mut uris = Vec::new();
         for seg in &tree.segments {
             collect_uris(seg, &mut uris);
@@ -213,18 +224,13 @@ impl EmbedStore {
 fn collect_uris(seg: &crate::dto::SegmentDto, out: &mut Vec<String>) {
     use crate::dto::SegmentDto as S;
     match seg {
-        S::Mention { uri, .. } | S::EventRef { uri, .. } => {
-            out.push(uri.clone())
-        }
+        S::Mention { uri, .. } | S::EventRef { uri, .. } => out.push(uri.clone()),
         S::MarkdownBlock { node } => collect_node_uris(node, out),
         _ => {}
     }
 }
 
-fn collect_node_uris(
-    node: &crate::dto::MarkdownNodeDto,
-    out: &mut Vec<String>,
-) {
+fn collect_node_uris(node: &crate::dto::MarkdownNodeDto, out: &mut Vec<String>) {
     use crate::dto::MarkdownNodeDto as N;
     match node {
         N::Heading { inlines, .. } | N::Paragraph { inlines } => {
@@ -248,23 +254,19 @@ fn collect_node_uris(
     }
 }
 
-fn collect_inline_uris(
-    inline: &crate::dto::MarkdownInlineDto,
-    out: &mut Vec<String>,
-) {
+fn collect_inline_uris(inline: &crate::dto::MarkdownInlineDto, out: &mut Vec<String>) {
     use crate::dto::MarkdownInlineDto as I;
     match inline {
         I::Inline { segment } => collect_uris(segment, out),
         I::Emphasis { children }
         | I::Strong { children }
-        | I::Link { label: children, .. } => {
+        | I::Link {
+            label: children, ..
+        } => {
             for c in children {
                 collect_inline_uris(c, out);
             }
         }
-        I::Code { .. }
-        | I::Image { .. }
-        | I::SoftBreak
-        | I::HardBreak => {}
+        I::Code { .. } | I::Image { .. } | I::SoftBreak | I::HardBreak => {}
     }
 }
