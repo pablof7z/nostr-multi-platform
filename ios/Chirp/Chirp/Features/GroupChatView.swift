@@ -197,6 +197,7 @@ private struct GroupChatMessageRow: View {
                 colorHex: message.pubkey.pubkeyColorHex,
                 size: 36
             )
+            .equatable()
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {

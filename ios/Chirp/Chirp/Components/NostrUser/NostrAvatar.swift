@@ -20,7 +20,7 @@ import Foundation
 /// a duplicate public symbol. The color fallback therefore reuses Chirp's
 /// `ChirpColor.avatar(from:)` gradient keyed off the kernel-supplied
 /// `colorHex`, matching every other avatar surface in the app.
-struct NostrAvatar: View {
+struct NostrAvatar: View, Equatable {
     @Environment(\.nostrProfileHost) private var profileHost
 
     let pubkey: String
@@ -38,6 +38,20 @@ struct NostrAvatar: View {
 
     @State private var generatedConsumerID: String
     @State private var claimedPubkey: String?
+
+    /// Equatable conformance comparing only the rendered-value inputs.
+    ///
+    /// `@State` vars (`generatedConsumerID`, `claimedPubkey`) are internal
+    /// identity managed by SwiftUI across body re-evaluations and must NOT
+    /// participate in equality — including them would cause `.equatable()` to
+    /// wrongly suppress re-renders when those internal vars change.
+    static func == (lhs: NostrAvatar, rhs: NostrAvatar) -> Bool {
+        lhs.pubkey == rhs.pubkey
+            && lhs.url == rhs.url
+            && lhs.initials == rhs.initials
+            && lhs.colorHex == rhs.colorHex
+            && lhs.size == rhs.size
+    }
 
     init(
         pubkey: String,

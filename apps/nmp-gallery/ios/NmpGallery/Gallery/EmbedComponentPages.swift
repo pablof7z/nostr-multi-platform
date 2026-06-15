@@ -97,6 +97,7 @@ struct ProfileEmbedPage: View {
             // page is visible — mirrors the real-app pattern where a parent
             // note row or profile header would own the claim.
             NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .equatable()
                 .frame(width: 0, height: 0)
                 .clipped()
             EmbedPageFrame(caption: "Inline profile mention — kind:0 via mention chip") {

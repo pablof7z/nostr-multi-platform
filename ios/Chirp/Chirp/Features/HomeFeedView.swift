@@ -181,6 +181,7 @@ struct HomeFeedView: View {
                         colorHex: account.id.pubkeyColorHex,
                         size: 32
                     )
+                    .equatable()
                     .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)

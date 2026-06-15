@@ -36,16 +36,21 @@ struct UserAvatarPage: View {
         VStack(spacing: 16) {
             PageFrame(caption: "NostrAvatar(pubkey:)") {
                 NostrAvatar(pubkey: pubkey, size: 80)
+                    .equatable()
             }
             PageFrame(caption: "Smaller size") {
                 HStack(spacing: 12) {
                     NostrAvatar(pubkey: pubkey, size: 32)
+                        .equatable()
                     NostrAvatar(pubkey: pubkey, size: 48)
+                        .equatable()
                     NostrAvatar(pubkey: pubkey, size: 64)
+                        .equatable()
                 }
             }
             PageFrame(caption: "Identicon fallback (same pubkey, no picture URL)") {
                 NostrAvatar(pubkey: pubkey, pictureUrl: nil, size: 80)
+                    .equatable()
             }
         }
     }
@@ -74,6 +79,7 @@ struct UserProfileNamePage: View {
             PageFrame(caption: "Context: NostrAvatar owns the claim") {
                 HStack(spacing: 10) {
                     NostrAvatar(pubkey: pubkey, size: 32)
+                        .equatable()
                     NostrProfileName(profile: model.bestEffortProfile)
                 }
             }
@@ -99,6 +105,7 @@ struct UserNip05Page: View {
         VStack(spacing: 16) {
             // NostrAvatar owns the profile claim for this page.
             NostrAvatar(pubkey: pubkey, size: 0)
+                .equatable()
                 .frame(width: 0, height: 0)
                 .clipped()
             PageFrame(caption: "NostrNip05Badge(profile:)") {

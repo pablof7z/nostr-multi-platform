@@ -9,7 +9,7 @@ import Foundation
 /// if you already have one — the identicon fallback is self-contained.
 ///
 /// Depends on `swiftui/user-avatar` for `ProfileWire` and `NostrProfileHost`.
-public struct NostrAvatar: View {
+public struct NostrAvatar: View, Equatable {
     @Environment(\.nostrProfileHost) private var profileHost
 
     public let pubkey: String
@@ -18,6 +18,19 @@ public struct NostrAvatar: View {
     public let consumerID: String?
     @State private var generatedConsumerID: String
     @State private var claimedPubkey: String?
+
+    /// Equatable conformance comparing only the rendered-value inputs.
+    ///
+    /// `@State` vars (`generatedConsumerID`, `claimedPubkey`) are internal
+    /// identity managed by SwiftUI across body re-evaluations and must NOT
+    /// participate in equality — including them would cause `.equatable()` to
+    /// wrongly suppress re-renders when those internal vars change.
+    public static func == (lhs: NostrAvatar, rhs: NostrAvatar) -> Bool {
+        lhs.pubkey == rhs.pubkey
+            && lhs.pictureUrl == rhs.pictureUrl
+            && lhs.size == rhs.size
+            && lhs.consumerID == rhs.consumerID
+    }
 
     public init(
         pubkey: String,

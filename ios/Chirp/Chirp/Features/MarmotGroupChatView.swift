@@ -274,6 +274,7 @@ private struct MarmotMessageRow: View {
                 colorHex: message.senderPubkeyHex.pubkeyColorHex,
                 size: 36
             )
+            .equatable()
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {

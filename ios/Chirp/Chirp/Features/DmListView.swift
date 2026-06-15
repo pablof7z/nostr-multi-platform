@@ -141,6 +141,7 @@ private struct DmConversationRow: View {
                 colorHex: conversation.peerPubkey.pubkeyColorHex,
                 size: 40
             )
+            .equatable()
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -239,6 +240,7 @@ private struct DmComposeSheet: View {
                                         colorHex: follow.pubkey.pubkeyColorHex,
                                         size: 32
                                     )
+                                    .equatable()
                                     Text(follow.pubkey.shortHex)
                                         .font(.subheadline)
                                         .foregroundStyle(.primary)
