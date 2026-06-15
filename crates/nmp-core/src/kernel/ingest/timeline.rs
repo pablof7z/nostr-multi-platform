@@ -173,35 +173,48 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
+    /// ADR-0057 — TIMELINE-PROJECTION (read-time VIEW) predicate. "Does this
+    /// already-persisted event belong in MY timeline VIEW?".
+    ///
+    /// This has **no** power over persistence. Persistence is owned by the
+    /// chokepoint ([`Kernel::verify_and_persist`], the D4 single-writer) and is
+    /// gated only by a valid signature — kind-agnostically, relevance-blind. By
+    /// the time this predicate runs, the event is ALREADY in the authoritative
+    /// store. A `false` here means only "do not project this into the timeline
+    /// read-cache"; the event remains in the store and is surfaced later by
+    /// cache-serve if a follow / interest brings it into view. Do NOT
+    /// reintroduce a `store.insert` gate on this predicate — that was the #1442
+    /// relevance-shaped-holes bug ADR-0057 removed.
     pub(in crate::kernel) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {
         // V-112 (ADR-0042): author_view.selected_author clause + author-notes-/
         // thread-ids-/thread-replies- sub_id prefix clauses deleted. These were
-        // admission gates for the legacy author_view/thread_view state machine; the
+        // view predicates for the legacy author_view/thread_view state machine; the
         // FlatFeed seam uses open_interest which is covered by matches_active_open_interest.
         self.timeline_authors.contains(&event.pubkey)
             || sub_id.starts_with("diag-firehose-")
             // T82/T104: a discovered quoted-note / referenced event arrives on
-            // its oneshot sub — it must be stored so the missing reference is
-            // actually resolved (otherwise the next ingest re-discovers it).
-            // Uses typed OneshotKind dispatch (T104) rather than string-prefix.
+            // its oneshot sub — it belongs in the view that requested it so the
+            // missing reference resolves. (It is already persisted regardless;
+            // this clause only governs timeline-VIEW membership.) Uses typed
+            // OneshotKind dispatch (T104) rather than string-prefix.
             || self.is_discovery_oneshot(sub_id)
             || self.claim_expansion_match_author(sub_id, event).is_some()
-            // M2 (ADR-0042 §5.1): admit any event matching the wire filter of an
-            // active generic `open_interest`. This is the single generalised
-            // admission clause that makes a generic `open_interest` REQ
-            // functional end-to-end — a non-followed author's notes, an
-            // arbitrary thread, or a `#t` hashtag feed reach `self.events` (and
-            // thus the `notify_event_observers` feed-engine fan-out) without any
-            // bespoke per-view sub-id prefix. The wire sub_id is a *merged*
-            // compiler hash (the lattice coalesces many shapes into one REQ), so
-            // it cannot be reverse-mapped to one interest; matching the event
-            // against the registered shapes is the robust admission test.
+            // M2 (ADR-0042 §5.1): include any event matching the wire filter of
+            // an active generic `open_interest` in the timeline VIEW. This is the
+            // single generalised view clause that makes a generic `open_interest`
+            // REQ render end-to-end — a non-followed author's notes, an arbitrary
+            // thread, or a `#t` hashtag feed reach `self.events` (and thus the
+            // `notify_event_observers` feed-engine fan-out) without any bespoke
+            // per-view sub-id prefix. The wire sub_id is a *merged* compiler hash
+            // (the lattice coalesces many shapes into one REQ), so it cannot be
+            // reverse-mapped to one interest; matching the event against the
+            // registered shapes is the robust view test.
             //
             // D8 cost: this walks the active-interest set per inbound event. The
             // cheap `timeline_authors.contains` short-circuit above still fronts
             // the follow-feed hot path (the common case), so the walk only runs
             // for events the follow-set / view / oneshot clauses did not already
-            // admit.
+            // include.
             || self.matches_active_open_interest(event)
     }
 

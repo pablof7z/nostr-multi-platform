@@ -23,8 +23,10 @@
 //!   consumers that receive each event as a JSON-serialized C string.
 //!
 //! Both channels share one slot and fire on the same fan-out site
-//! (`Kernel::notify_event_observers`, called from `ingest/timeline.rs` after
-//! every `EventStore::insert` returning `Inserted | Replaced`).
+//! (`Kernel::notify_event_observers`), called from the single ingest chokepoint
+//! (`ingest/mod.rs::verify_and_persist`, ADR-0057) on the canonical accepted
+//! store outcome `Inserted | Replaced | Ephemeral` — exactly once per accepted
+//! event (`Duplicate | Superseded | Tombstoned | Rejected` are silent).
 //!
 //! ## Doctrine
 //!
@@ -210,11 +212,21 @@ pub fn new_event_observer_slot() -> KernelEventObserverSlot {
 /// their own interior mutability (typically a `Mutex<State>`) because the
 /// trait method takes `&self`.
 pub trait KernelEventObserver: Send + Sync {
-    /// Called once per event that has been accepted into the kernel's
-    /// in-memory store via `EventStore::insert` returning `Inserted` or
-    /// `Replaced`. Duplicates / supersessions / rejections do NOT fire the
-    /// observer (the event is not a "new fact" from the projection's
-    /// perspective).
+    /// Called **exactly once** per accepted event at the single ingest
+    /// chokepoint (ADR-0057), on the canonical accepted store outcome
+    /// `Inserted | Replaced | Ephemeral`. `Duplicate | Superseded | Tombstoned
+    /// | Rejected` do NOT fire the observer (the event is not a "new fact" from
+    /// the projection's perspective; a `Duplicate` — including the relay echo of
+    /// a locally-published event — preserves D4 single-fire / read-your-writes).
+    ///
+    /// Note **ephemerals** (kinds 20000–29999) DO fire the observer even though
+    /// they are NOT persisted (the store returns `Ephemeral` without writing) —
+    /// so an app can react to an ephemeral event it never stores.
+    ///
+    /// D9: the `KernelEvent.created_at` delivered here is clamped to the
+    /// kernel's `now` for a future-dated event (hostile-relay defense), so it
+    /// cannot pin to the top of feeds that order by `created_at`; the
+    /// authoritative store retains the original wire timestamp.
     ///
     /// Implementations must be cheap and must not panic — the call site is
     /// on the actor thread between relay frames.

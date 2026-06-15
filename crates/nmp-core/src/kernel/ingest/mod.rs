@@ -583,17 +583,27 @@ impl Kernel {
                     // fixes). Including `Ephemeral` here closes that: an app can
                     // react to an ephemeral event it never stores.
                     //
-                    // D9 clamp note: this emits the RAW `created_at` via
-                    // `kernel_event_from_nostr`; the future-date clamp (a
-                    // hostile-relay defense) is applied by the timeline
-                    // PROJECTION observer (`project_timeline_event`), not the
-                    // generic chokepoint, so non-timeline observers see the
-                    // true protocol timestamp.
+                    // D9 — clamp a future-dated `created_at` to `now` ON THE
+                    // OBSERVER-DELIVERED `KernelEvent`. The observer fan-out is
+                    // the input to every app feed (`nmp-feed` /
+                    // `nmp-nip01::FlatFeed` order by `KernelEvent.created_at`),
+                    // so a hostile/buggy relay's future-dated event would
+                    // otherwise pin to the TOP of every consumer's feed. This is
+                    // a universal hostile-relay invariant, so it lives once here
+                    // at the single chokepoint and protects ALL feed consumers.
+                    // The authoritative `EventStore` row (written above) retains
+                    // the original wire timestamp for protocol correctness
+                    // (NIP-01 replaceable/ephemeral handling); only the
+                    // observer-delivered shape is clamped. The timeline
+                    // read-cache projection (`project_timeline_event`) also
+                    // clamps independently — that is strictly stronger and fine.
                     //
                     // D4 — a `Duplicate` (incl. the relay echo of a locally-
                     // published event) is NOT in this gate, so it does not
                     // re-fire: the local publish already delivered once.
-                    let kernel_event = helpers::kernel_event_from_nostr(event);
+                    let now_secs = self.now_secs();
+                    let mut kernel_event = helpers::kernel_event_from_nostr(event);
+                    kernel_event.created_at = kernel_event.created_at.min(now_secs);
                     self.notify_event_observers(&kernel_event);
                 }
 

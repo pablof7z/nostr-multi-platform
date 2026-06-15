@@ -235,17 +235,26 @@ admission/persistence entanglement would otherwise have dropped; with admission
 ≠ persistence the parking is obsolete (a follow added later still surfaces prior
 events from the now-complete store).
 
-**D9 created_at clamp — keep it in the timeline observer, not the generic
-chokepoint.** Today the future-date clamp lives only in the timeline ingest path
-(`ingest/timeline.rs:229`, where the observer `KernelEvent` is built with a
-`created_at` clamped to `now`); the generic `kernel_event_from_nostr`
-(`ingest/helpers.rs:49`) does **not** clamp. Pulling `notify_event_observers`
-into the chokepoint must not silently drop the clamp. **PR 1 requirement:** the
-chokepoint emits the raw `KernelEvent` (the store retains the original timestamp
-for protocol correctness), and the **timeline observer** applies the D9 clamp as
-it projects — the clamp stays a property of the timeline projection path, not the
-generic chokepoint, so a hostile/future-dated event cannot pin to the top of the
-feed while non-timeline observers still see the true timestamp.
+**D9 created_at clamp — clamp the future date at the chokepoint observer
+fan-out (universal hostile-relay defense).** Pre-PR-1 the future-date clamp lived
+only in the timeline ingest path; the generic `kernel_event_from_nostr`
+(`ingest/helpers.rs`) does **not** clamp. The observer fan-out is the input to
+**every** app feed — `nmp-feed` and `nmp-nip01::FlatFeed` order their cursors by
+`KernelEvent.created_at` — so a future-dated `created_at` delivered raw would pin
+a hostile/buggy relay's event to the top of every consumer's feed. Clamping
+future → `now` is therefore a **universal** invariant, not a timeline-only
+concern. **PR 1 (as implemented):** the chokepoint clamps the future
+`created_at` to `now` on the observer-delivered `KernelEvent` (inside
+`verify_and_persist`, at the single `notify_event_observers` site), protecting
+ALL feed consumers once; the **timeline read-cache projection**
+(`project_timeline_event`) also clamps its `self.events` entry independently
+(strictly stronger — it protects the kernel's own timeline ordering too). The
+authoritative `EventStore` row retains the **original** wire timestamp for
+protocol correctness (NIP-01 replaceable/ephemeral handling) — only the
+observer-delivered / read-cache shapes are clamped. (Earlier PR-1 drafts emitted
+the raw timestamp on the observer and clamped only the timeline read-cache; that
+left non-timeline feed consumers exposed and was corrected to the
+chokepoint-observer clamp above.)
 
 ### Storage model: bounded local cache, bounded by pin-aware LRU only
 
@@ -345,9 +354,10 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
 - A relay echo of a locally-published event **dedups** (`Duplicate`) and does **NOT**
   double-notify observers (D4) — yet the kind:1/6 cached `relay_count` **still
   bumps** on that `Duplicate` (the diagnostic signal is preserved).
-- A future-dated (hostile-relay) event is **clamped to `now` in the timeline
-  observer's projected `KernelEvent`** (it cannot pin to the top of the feed) while
-  the stored event and non-timeline observers retain the original timestamp (D9).
+- A future-dated (hostile-relay) event is **clamped to `now` on the
+  observer-delivered `KernelEvent`** (so it cannot pin to the top of any app feed
+  that orders by `created_at`) and on the timeline read-cache projection; the
+  authoritative stored event retains the original timestamp (D9).
 - kind:0 / kind:3 still update profile / contact caches (no regression), and kind:3
   still rebuilds `timeline_authors` / interests.
 - An ephemeral event (20000–29999) does **NOT** persist (store-layer exclusion
@@ -375,8 +385,10 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
 - **D5 / #1090** — pin-aware LRU eviction is the only storage bound; admission is
   never relevance-gated.
 - **D8** — push observers, no polling.
-- **D9** — the created_at clamp (hostile-relay defense) stays, now in the timeline
-  observer.
+- **D9** — the created_at clamp (hostile-relay defense) stays, applied at the
+  chokepoint observer fan-out (universal — protects all feed consumers) and on
+  the timeline read-cache projection; the stored event keeps the original
+  timestamp.
 - **ADR-0045** — single always-on mechanism for event acquisition + post-store
   projection dispatch; replay feeds the seam, not `store.insert`. This ADR
   generalises that read-half precedent to all event sources.

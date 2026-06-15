@@ -143,18 +143,19 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
 }
 
 /// D9 (ADR-0057) — a relay-supplied event with a FUTURE `created_at` must be
-/// clamped to the kernel's `now` in the TIMELINE PROJECTION (`self.events`, the
-/// read-cache backing the timeline ordering), so a hostile/buggy relay cannot
-/// pin an event permanently at the top of the feed. ADR-0057 makes the clamp a
-/// property of the timeline projection path, NOT the generic chokepoint: the
-/// authoritative `EventStore` row retains the original wire timestamp for
-/// protocol correctness, and the generic app-observer fan-out (fired in the
-/// chokepoint) sees the RAW timestamp — only the timeline read-cache is clamped.
+/// clamped to the kernel's `now` on the OBSERVER-DELIVERED `KernelEvent`, so a
+/// hostile/buggy relay cannot pin an event to the top of app feeds (which order
+/// by `KernelEvent.created_at` — `nmp-feed` / `nmp-nip01::FlatFeed`). This is a
+/// universal hostile-relay invariant applied once at the single chokepoint
+/// observer fan-out, protecting ALL feed consumers. The timeline read-cache
+/// (`self.events`, which backs the kernel's own timeline ordering) is also
+/// clamped (strictly stronger). The authoritative `EventStore` row retains the
+/// original wire timestamp for protocol correctness.
 ///
 /// A past-dated event passes through unchanged — clamping is `min(wire, now)`,
 /// never an unconditional overwrite.
 #[test]
-fn future_dated_event_created_at_clamped_to_now_in_timeline_projection() {
+fn future_dated_event_created_at_clamped_to_now_on_observer_and_in_projection() {
     use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
     use crate::substrate::KernelEvent;
     use std::collections::HashMap;
@@ -214,14 +215,20 @@ fn future_dated_event_created_at_clamped_to_now_in_timeline_projection() {
         "past-dated created_at must pass through unchanged — clamp is min(wire, now)"
     );
 
-    // ADR-0057 — the generic app-observer fan-out (fired in the chokepoint) sees
-    // the RAW wire timestamp; the clamp is a timeline-projection property only,
-    // so non-timeline observers retain the true protocol timestamp.
+    // ADR-0057 (D9 blocker fix) — the app-observer fan-out (the input to every
+    // app feed) MUST also clamp the future-dated `created_at` to now, else a
+    // hostile event sorts to the top of `nmp-feed` / `FlatFeed`. The past-dated
+    // event passes through unchanged.
     let seen = observer.seen.lock().unwrap();
     assert_eq!(
         seen.get(&future_id).copied(),
-        Some(NOW_SECS + 9_999),
-        "the generic chokepoint observer fan-out must emit the RAW created_at (ADR-0057)"
+        Some(NOW_SECS),
+        "the chokepoint observer fan-out must clamp a future created_at to now (D9 — feeds order by it)"
+    );
+    assert_eq!(
+        seen.get(&past_id).copied(),
+        Some(NOW_SECS - 500_000),
+        "a past-dated event passes through the observer fan-out unchanged (clamp is min(wire, now))"
     );
 
     // The authoritative store row retains the ORIGINAL wire timestamp for
