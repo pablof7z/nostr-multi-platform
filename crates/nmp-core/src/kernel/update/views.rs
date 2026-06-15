@@ -1,7 +1,8 @@
 use super::super::{
-    truncate, AccountSummary, Kernel, MentionProfilePayload, Profile, ProfileCard, StoredEvent,
+    truncate, AccountSummary, Kernel, MentionProfilePayload, ProfileCard, StoredEvent,
     TimelineItem,
 };
+use crate::substrate::ProfileView;
 use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored, parse_repost_inner};
 
 impl Kernel {
@@ -69,6 +70,7 @@ impl Kernel {
         // placeholder is substituted in NMP; presentation layers choose
         // the missing-picture strategy.
         let author_picture_url = profile
+            .as_ref()
             .and_then(|p| p.picture_url.as_deref())
             .filter(|url| !url.is_empty())
             .map(str::to_owned);
@@ -99,12 +101,15 @@ impl Kernel {
             // it carried no lud16/lud06). Surfaced here so the shell zap
             // button toggles enabled/disabled without a separate profile
             // lookup. Rust decides zapability.
-            author_lnurl: profile.and_then(|p| p.lnurl.clone()),
+            author_lnurl: profile.as_ref().and_then(|p| p.lnurl.clone()),
             // Author display name baked into the snapshot item so the renderer
             // has it without depending on the `claimed_profiles` claim
             // lifecycle. Empty string → `None` at this projection boundary
             // (aim.md §2), mirroring `mention_profiles_from_items`.
-            author_display_name: profile.map(|p| p.display.clone()).filter(|d| !d.is_empty()),
+            author_display_name: profile
+                .as_ref()
+                .map(|p| p.display.clone())
+                .filter(|d| !d.is_empty()),
             kind: event.kind,
             content: truncate(&event.content, 1_200),
             // NIP-18 kind:6: outer `content` is the stringified inner-event
@@ -152,10 +157,12 @@ impl Kernel {
         // aim.md §2 — picture URL stays `Option<String>` (no identicon
         // placeholder substituted in NMP).
         let picture_url = profile
+            .as_ref()
             .and_then(|p| p.picture_url.as_deref())
             .filter(|url| !url.is_empty())
             .map(str::to_owned);
         let display_name = profile
+            .as_ref()
             .map(|profile| profile.display.clone())
             .filter(|display| !display.is_empty());
         ProfileCard {
@@ -163,26 +170,29 @@ impl Kernel {
             display_name,
             picture_url,
             nip05: profile
+                .as_ref()
                 .map(|profile| profile.nip05.clone())
                 .unwrap_or_default(),
-            about: profile.map_or_else(
+            about: profile.as_ref().map_or_else(
                 || placeholder_about.to_string(),
                 |profile| truncate(&profile.about.replace('\n', " "), 220),
             ),
             // NIP-57 — pre-extracted lightning address / LNURL from
             // kind:0 (lud16 preferred over lud06). `None` when no
             // kind:0 has arrived OR the metadata had no lnurl.
-            lnurl: profile.and_then(|p| p.lnurl.clone()),
+            lnurl: profile.as_ref().and_then(|p| p.lnurl.clone()),
         }
     }
 
-    pub(super) fn profile_for_pubkey(&self, pubkey: &str) -> Option<&Profile> {
-        // Single-mechanism (ADR-0045 Rev 2, #1193): the `local_profile_intents`
-        // overlay was retired. Locally-published kind:0 profiles now land in
-        // `self.profiles` via `verify_and_persist` + `ingest_profile` at publish
-        // time (identical to the relay ingest arm), so this read needs no
-        // overlay merge.
-        self.profiles.get(pubkey)
+    pub(super) fn profile_for_pubkey(&self, pubkey: &str) -> Option<ProfileView> {
+        // ADR-0057 PR 2 — profiles are capability-owned (`nmp_nip01::ProfileCache`
+        // behind `Arc<dyn ProfileLookup>`). The cache uses interior mutability so
+        // this read hands back an owned `ProfileView` (no borrow leaks out of the
+        // lock). Single-mechanism (ADR-0045 Rev 2, #1193): locally-published
+        // kind:0 profiles land in the same cache via the unified ingest chokepoint
+        // (`verify_and_persist` → `Kind0Parser`), identical to the relay path — so
+        // this read needs no overlay merge.
+        self.profile_lookup().profile(pubkey)
     }
 
     // V-112 (ADR-0042): profile_action_for() deleted — it was called only from
@@ -235,8 +245,12 @@ impl Kernel {
         for item in items {
             out.entry(item.author_pubkey.clone()).or_insert_with(|| {
                 let profile = self.profile_for_pubkey(&item.author_pubkey);
-                let display_name = profile.map(|p| p.display.clone()).filter(|d| !d.is_empty());
+                let display_name = profile
+                    .as_ref()
+                    .map(|p| p.display.clone())
+                    .filter(|d| !d.is_empty());
                 let picture_url = profile
+                    .as_ref()
                     .and_then(|p| p.picture_url.as_deref())
                     .filter(|url| !url.is_empty())
                     .map(str::to_owned);

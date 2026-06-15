@@ -513,6 +513,8 @@ pub mod testing {
                     crate::substrate::EventIngestDispatcher::new(),
                 )),
                 Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+                // ADR-0057 PR 2 — throwaway profile lookup slot.
+                Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
                 Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),

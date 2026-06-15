@@ -108,7 +108,7 @@ mod gc_floor_coherent_tests;
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;
 
-/// High-watermark for `self.profiles`.  2 × `TIMELINE_AUTHOR_LIMIT` (1 000).
+/// High-watermark for the profile cache. 2 × `TIMELINE_AUTHOR_LIMIT` (1 000).
 pub(super) const PROFILES_RAM_HWM: usize = 2_000;
 
 /// High-watermark for `self.seed_contacts`.  Small: this map keys on unique
@@ -121,7 +121,7 @@ pub(super) const SEED_CONTACTS_RAM_HWM: usize = 32;
 pub(crate) struct RamEvictionReport {
     /// Number of entries removed from `self.events`.
     pub events_evicted: usize,
-    /// Number of entries removed from `self.profiles`.
+    /// Number of entries removed from the profile cache.
     pub profiles_evicted: usize,
     /// Number of entries removed from `self.seed_contacts`.
     pub seed_contacts_evicted: usize,
@@ -391,13 +391,13 @@ impl Kernel {
     // ─── profiles ──────────────────────────────────────────────────────────
 
     fn evict_profiles_cache(&mut self, view_pins: &OpenViewPins) -> usize {
-        let len = self.profiles.len();
-        if len <= PROFILES_RAM_HWM {
-            return 0;
-        }
-
-        // Build the pin set: followed authors + claimed profiles + active
-        // account + open-interest authors.
+        // ADR-0057 PR 2 — the profile cache is capability-owned
+        // (`nmp_nip01::ProfileCache` behind `Arc<dyn ProfileLookup>`); the cache
+        // owns the eviction *mechanism* (oldest-first, lexicographic-pubkey
+        // tiebreak — byte-identical to the former kernel-owned logic), the
+        // kernel owns the *policy* (which pubkeys are pinned + the HWM). Build
+        // the pin set here — followed authors + claimed profiles + active
+        // account + open-interest authors — and hand it to the cache.
         let pinned: HashSet<String> = self
             .timeline_authors
             .iter()
@@ -407,28 +407,7 @@ impl Kernel {
             .chain(view_pins.profile_pubkeys.iter().cloned())
             .collect();
 
-        // Collect eviction candidates as owned Strings — same borrow-split
-        // rationale as `evict_events_cache`.
-        let mut candidates: Vec<(String, u64)> = self
-            .profiles
-            .iter()
-            .filter_map(|(k, v)| {
-                if pinned.contains(k) {
-                    None
-                } else {
-                    Some((k.clone(), v.created_at))
-                }
-            })
-            .collect();
-        candidates.sort_unstable_by(|(ka, a), (kb, b)| a.cmp(b).then_with(|| ka.cmp(kb)));
-
-        let to_remove = len - PROFILES_RAM_HWM;
-        let mut removed = 0usize;
-        for (key, _) in candidates.into_iter().take(to_remove) {
-            if self.profiles.remove(&key).is_some() {
-                removed += 1;
-            }
-        }
+        let removed = self.profile_lookup().evict_to(&pinned, PROFILES_RAM_HWM);
         if removed > 0 {
             // ADR-0055 Rung 1 (F4): stamp the removal so profile-derived
             // projections' rev stays coherent (else the host serves an evicted one).

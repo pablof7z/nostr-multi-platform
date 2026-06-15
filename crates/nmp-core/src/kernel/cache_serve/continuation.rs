@@ -19,7 +19,6 @@ use super::super::Kernel;
 use super::super::types::StoredEvent;
 use crate::store::RawEvent;
 use nmp_store::__nmp_core_internal;
-use crate::substrate::KernelEvent;
 
 /// One store-served event collected during the immutable-borrow phase of
 /// `serve_chunk`. Extended with `sig` (the Schnorr signature) so that
@@ -228,43 +227,43 @@ impl Kernel {
         self.events.insert(ev.id.clone(), cached);
         self.cached_estimated_store_bytes.set(None);
 
-        let kernel_event = KernelEvent {
+        // ADR-0057 — the SINGLE shared post-store projection fan-out. The
+        // cache-serve replay path runs EXACTLY the same
+        // `Kernel::project_accepted_event` the live ingest chokepoint
+        // (`ingest_accepted_event`) runs, so the two cannot diverge:
+        //   - NIP-parser dispatch (kind:0 profile, kind:10002 mailbox, kind:10050
+        //     DM-relay, kind:1059 gift-wraps, …) writes the capability caches,
+        //   - the transition sweep bumps `profiles_ver` / fires
+        //     `on_mailbox_changed` / `on_dm_relays_changed` so incremental
+        //     projections re-emit after a cold-restart cache-serve (without this,
+        //     a stored kind:0 served on restart left profile projections
+        //     `Unchanged` → stale UI), and
+        //   - the app-observer notify is D9-clamped (a future-dated event served
+        //     from the store on restart cannot pin to the top of the feed).
+        //
+        // ADR-0045 invariant: cache-serve does NOT call `store.insert` (the event
+        // is already on disk — this path read it from the store); only the
+        // POST-store projection fan-out is shared. The `VerifiedEvent` is
+        // reconstructed from the already-verified raw fields (trust boundary: the
+        // store only holds events that passed `try_from_raw`; re-verification
+        // would be prohibitively expensive on cache-serve). No raw-observer
+        // fan-out is emitted here — the verbatim-signed-event tap fires only on
+        // live relay ingest. The `needs_ingest_parser_dispatch` flag is retained
+        // on `CollectedEvent` (set at enqueue from `EventIngestDispatcher::is_interested`)
+        // but the projection helper now always runs: its dispatch is a no-op when
+        // no parser matches, and the transition sweep + notify must run for EVERY
+        // served event regardless of parser interest.
+        let raw = RawEvent {
             id: ev.id.clone(),
-            author: ev.author.clone(),
-            kind: ev.kind,
+            pubkey: ev.author.clone(),
             created_at: ev.created_at,
+            kind: ev.kind,
             tags: ev.tags.clone(),
             content: ev.content.clone(),
+            sig: ev.sig.clone(),
         };
-        self.notify_event_observers(&kernel_event);
-
-        // E2 — IngestParser dispatch for kinds that need it (kind:1059 DM
-        // gift-wraps). All former raw-tap consumers (NIP-17 DM inbox + Marmot)
-        // now ride `IngestParser` (PR-1 + PR-2). No raw-observer fan-out is
-        // emitted from this cache-serve path — the verbatim-signed-event tap
-        // fires only on live relay ingest. The `VerifiedEvent` is reconstructed
-        // from the already-verified raw fields (trust boundary: the store only
-        // holds events that passed `try_from_raw`; re-verification would be
-        // prohibitively expensive on cache-serve).
-        if ev.needs_ingest_parser_dispatch {
-            let raw = RawEvent {
-                id: ev.id.clone(),
-                pubkey: ev.author.clone(),
-                created_at: ev.created_at,
-                kind: ev.kind,
-                tags: ev.tags.clone(),
-                content: ev.content.clone(),
-                sig: ev.sig.clone(),
-            };
-
-            // `IngestParser` seam — reconstruct a `VerifiedEvent` from the
-            // already-verified raw fields. `from_store_verified_unchecked`
-            // documents this trust boundary explicitly.
-            let verified = __nmp_core_internal::from_store_verified_unchecked(raw);
-            if let Ok(d) = self.ingest_dispatcher.read() {
-                d.dispatch(&verified);
-            }
-        }
+        let verified = __nmp_core_internal::from_store_verified_unchecked(raw);
+        self.project_accepted_event(&verified);
 
         // Append to the timeline only when the author is in the follow set —
         // mirrors the post-insert branch of `ingest_timeline_event`.

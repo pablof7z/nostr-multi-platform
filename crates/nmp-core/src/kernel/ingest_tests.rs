@@ -557,11 +557,11 @@ fn ingest_profile_stores_metadata_under_pubkey() {
             .to_string(),
         ..event
     };
-    kernel.ingest_profile(event);
+    kernel.inject_profile(event);
 
     let stored = kernel
-        .profiles
-        .get(AUTHOR)
+        .profile_lookup()
+        .profile(AUTHOR)
         .expect("a kind:0 must store a profile entry under the author pubkey");
     assert_eq!(
         stored.display, "Test User",
@@ -595,10 +595,10 @@ fn ingest_profile_newer_event_supersedes_older() {
             Vec::new(),
         )
     };
-    kernel.ingest_profile(old);
+    kernel.inject_profile(old);
     assert_eq!(
-        kernel.profiles.get(AUTHOR).map(|p| p.display.as_str()),
-        Some("Old Name"),
+        kernel.profile_lookup().profile(AUTHOR).map(|p| p.display),
+        Some("Old Name".to_string()),
         "precondition: the older kind:0 is cached",
     );
 
@@ -612,11 +612,11 @@ fn ingest_profile_newer_event_supersedes_older() {
             Vec::new(),
         )
     };
-    kernel.ingest_profile(new);
+    kernel.inject_profile(new);
 
     assert_eq!(
-        kernel.profiles.get(AUTHOR).map(|p| p.display.as_str()),
-        Some("New Name"),
+        kernel.profile_lookup().profile(AUTHOR).map(|p| p.display),
+        Some("New Name".to_string()),
         "a kind:0 with a newer created_at must replace the cached profile",
     );
 
@@ -631,10 +631,10 @@ fn ingest_profile_newer_event_supersedes_older() {
             Vec::new(),
         )
     };
-    kernel.ingest_profile(stale);
+    kernel.inject_profile(stale);
     assert_eq!(
-        kernel.profiles.get(AUTHOR).map(|p| p.display.as_str()),
-        Some("New Name"),
+        kernel.profile_lookup().profile(AUTHOR).map(|p| p.display),
+        Some("New Name".to_string()),
         "an older kind:0 re-delivery must not supersede the newer cached profile",
     );
 }

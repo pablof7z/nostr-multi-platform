@@ -224,6 +224,24 @@ pub fn register_substrate(app: &mut impl AppHost, gate: CoverageGate) {
         Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
     app.register_ingest_parser(10_002, parser);
 
+    // ── kind:0 profile cache (ADR-0057 PR 2) ──────────────────────────
+    //
+    // Install the SAME `nmp_nip01::ProfileCache` on both ends so the kernel's
+    // profile readers (timeline enrichment, profile cards, claim-TTL gate,
+    // zap LNURL, RAM eviction) and the kind:0 ingest-parser writer see one
+    // source of truth:
+    //   1. As the kernel's `Arc<dyn ProfileLookup>` (reader).
+    //   2. As the `nmp_nip01::Kind0Parser`'s backing cache (writer), registered
+    //      with the `EventIngestDispatcher` so every accepted (D4
+    //      `Inserted | Replaced`) kind:0 upserts the parsed profile.
+    let profile_cache = Arc::new(nmp_nip01::ProfileCache::new());
+    app.set_profile_lookup(
+        Arc::clone(&profile_cache) as Arc<dyn nmp_core::substrate::ProfileLookup>
+    );
+    let kind0_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_nip01::Kind0Parser::new(profile_cache));
+    app.register_ingest_parser(0, kind0_parser);
+
     // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
     //
     // Install the production substrate-publish-resolver factory. Without

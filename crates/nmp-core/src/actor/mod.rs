@@ -1245,6 +1245,9 @@ pub fn run_actor_with_lifecycle_observer(
             crate::substrate::EventIngestDispatcher::new(),
         )),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // ADR-0057 PR 2 — throwaway profile lookup slot (same private-throwaway
+        // pattern as the dm-inbox slot above).
+        Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
         // Throwaway blocked-relay lookup slot — same private-throwaway
         // pattern as the dm-inbox slot above.
         Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
@@ -1393,6 +1396,12 @@ pub fn run_actor_with_observers(
     // current handle and binds it onto the kernel at construction time
     // (and re-binds on `Reset`).
     dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    // ADR-0057 PR 2 — substrate `ProfileLookup` slot. The `NmpApp` owns the
+    // setter (`set_profile_lookup`); this actor thread reads the current
+    // handle and binds it onto the kernel at construction time (and re-binds
+    // on `Reset`) so the kernel's profile readers consult the same `Arc` the
+    // kind:0 `Kind0Parser` writes into.
+    profile_lookup_slot: Arc<Mutex<Arc<dyn crate::substrate::ProfileLookup>>>,
     // Substrate `BlockedRelayLookup` slot. Mirrors `dm_inbox_relays_slot`:
     // the `NmpApp` owns the setter (`set_blocked_relay_lookup`); this
     // actor thread reads the current handle and binds it onto the kernel
@@ -1652,6 +1661,15 @@ pub fn run_actor_with_observers(
             .map(|g| Arc::clone(&*g))
             .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
         kernel.set_dm_inbox_relay_lookup(lookup);
+    }
+    {
+        // ADR-0057 PR 2 — bind the profile cache onto the kernel.
+        let lookup = profile_lookup_slot
+            .lock()
+            .ok()
+            .map(|g| Arc::clone(&*g))
+            .unwrap_or_else(crate::substrate::empty_profile_lookup);
+        kernel.set_profile_lookup(lookup);
     }
     {
         let lookup = blocked_relays_slot
@@ -2015,6 +2033,7 @@ pub fn run_actor_with_observers(
                         host_op_handler: &host_op_handler,
                         ingest_dispatcher_slot: &ingest_dispatcher_slot,
                         dm_inbox_relays_slot: &dm_inbox_relays_slot,
+                        profile_lookup_slot: &profile_lookup_slot,
                         blocked_relays_slot: &blocked_relays_slot,
                         bootstrap_self_kinds_slot: &bootstrap_self_kinds_slot,
                         routing_trace_slot: &routing_trace_slot,

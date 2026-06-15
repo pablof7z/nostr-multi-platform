@@ -178,7 +178,7 @@ impl Kernel {
         let target_pk = self.active_account.as_deref().unwrap_or("");
         interests.push(LogicalInterestStatus {
             key: format!("Profile({})", short_hex(target_pk)),
-            state: if self.profiles.contains_key(target_pk) {
+            state: if self.profile_lookup().contains(target_pk) {
                 "complete".to_string()
             } else if self.relay(RelayRole::Indexer).connection == "connected" {
                 "tailing".to_string()
@@ -217,7 +217,7 @@ impl Kernel {
                 .sum::<usize>();
             let loaded = claimed_authors
                 .iter()
-                .filter(|pubkey| self.profiles.contains_key(*pubkey))
+                .filter(|pubkey| self.profile_lookup().contains(pubkey))
                 .count();
             let missing = claimed_authors.len().saturating_sub(loaded);
             // M2 migration: profile claims are registry interests; there is no
@@ -363,18 +363,10 @@ impl Kernel {
                     + 72
             })
             .sum();
-        let profile_bytes: usize = self
-            .profiles
-            .values()
-            .map(|profile| {
-                profile.event_id.len()
-                    + profile.display.len()
-                    + profile.picture_url.as_ref().map_or(0, String::len)
-                    + profile.nip05.len()
-                    + profile.about.len()
-                    + 96
-            })
-            .sum();
+        // ADR-0057 PR 2 — the profile cache is capability-owned; it owns the
+        // per-entry byte accounting for its own value type (`estimated_bytes`),
+        // returning the same formula this term used before the migration.
+        let profile_bytes: usize = self.profile_lookup().estimated_bytes();
         event_bytes + profile_bytes + self.seed_contacts.values().map(Vec::len).sum::<usize>() * 64
     }
 

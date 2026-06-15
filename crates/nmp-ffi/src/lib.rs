@@ -746,6 +746,13 @@ pub struct NmpApp {
     /// and the planner-side `KernelMailboxes` adapter both see the same
     /// cache.
     dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
+    /// ADR-0057 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
+    /// Mirrors `dm_inbox_relays_slot`: the per-app crate writes a concrete
+    /// `nmp_nip01::ProfileCache` here via [`Self::set_profile_lookup`]; the
+    /// actor reads the current handle and binds it onto the kernel so the
+    /// kernel's profile readers (enrichment, claim-TTL, zap LNURL, RAM
+    /// eviction) read through the same `Arc` the kind:0 `Kind0Parser` writes.
+    profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>>,
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot. Mirrors
     /// `dm_inbox_relays_slot`: the per-app crate (today: any app that
     /// wires `nmp_router::Kind10006Parser`) writes a concrete
@@ -1047,6 +1054,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             nmp_core::substrate::empty_dm_inbox_relay_lookup(),
         ));
     let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
+    // ADR-0057 PR 2 — substrate `ProfileLookup` slot. The per-app crate
+    // (today: `nmp_defaults` register_substrate) installs the concrete
+    // `nmp_nip01::ProfileCache` here via [`NmpApp::set_profile_lookup`]; the
+    // actor's kernel construction reads the current handle and binds it onto
+    // the kernel. Default is `EmptyProfileLookup` (cold-start, every lookup None).
+    let profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>> =
+        Arc::new(Mutex::new(nmp_core::substrate::empty_profile_lookup()));
+    let actor_profile_lookup = Arc::clone(&profile_lookup_slot);
     // Mirror dm_inbox_relays_slot for the blocked-relay lookup: empty
     // default until an app crate wires `nmp_router::InMemoryBlockedRelayCache`
     // through `set_blocked_relay_lookup`.
@@ -1140,6 +1155,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the kernel at construction.
                 actor_ingest_dispatcher,
                 actor_dm_inbox_relays,
+                // ADR-0057 PR 2 — the actor's clone of the substrate
+                // `ProfileLookup` slot, bound onto the kernel at construction
+                // (and re-bound on `Reset`) so the kernel's profile readers
+                // consult the same `Arc` the kind:0 `Kind0Parser` writes into.
+                actor_profile_lookup,
                 // Mirrors `actor_dm_inbox_relays`: the actor's clone of the
                 // blocked-relay lookup slot, bound onto the kernel at
                 // construction so `build_routing_context` consults the same
@@ -1354,6 +1374,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // share one `Arc`.
         ingest_dispatcher_slot,
         dm_inbox_relays_slot,
+        // ADR-0057 PR 2 — the `NmpApp`'s clone of the substrate `ProfileLookup`
+        // slot. Mirrors the dm_inbox_relays_slot wiring.
+        profile_lookup_slot,
         // Blocked-relay lookup + reactive-bootstrap self-kinds override
         // slots. Mirrors the dm_inbox_relays_slot wiring above.
         blocked_relays_slot,
@@ -1988,6 +2011,25 @@ impl NmpApp {
         lookup: std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
     ) {
         if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
+            *slot = lookup;
+        }
+    }
+
+    /// ADR-0057 PR 2 — install the kernel's
+    /// [`nmp_core::substrate::ProfileLookup`] handle. The per-app crate
+    /// (today `nmp_defaults` register_substrate) hands in a concrete
+    /// `nmp_nip01::ProfileCache`; the same `Arc` is the writer side fed by the
+    /// kind:0 `Kind0Parser` registered above + the reader side the kernel
+    /// exposes through `profile_lookup()`.
+    ///
+    /// MUST be called before `nmp_app_start` AND before any kind:0 event is
+    /// ingested (the caches are independent stores; a late swap would lose
+    /// entries written into the old cache).
+    pub fn set_profile_lookup(
+        &self,
+        lookup: std::sync::Arc<dyn nmp_core::substrate::ProfileLookup>,
+    ) {
+        if let Ok(mut slot) = self.profile_lookup_slot.lock() {
             *slot = lookup;
         }
     }

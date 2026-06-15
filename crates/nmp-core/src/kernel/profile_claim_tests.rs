@@ -208,7 +208,7 @@ fn force_reverify_of_cached_profile_enqueues_reverify() {
         content: r#"{"display_name":"Alice"}"#.to_string(),
         sig: String::new(),
     };
-    kernel.ingest_profile(event);
+    kernel.inject_profile(event);
 
     let before = kernel.pending_reverify_len();
     // force = true → unconditional F-TTL re-verify enqueue.

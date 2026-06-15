@@ -162,6 +162,12 @@ impl AppHost for GateSpy {
         unreachable!("register_substrate does not set the DM inbox relay lookup");
     }
 
+    fn set_profile_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
+        // ADR-0057 PR 2 — register_substrate installs the kind:0 profile cache;
+        // this spy ignores it (the gate under test is the coverage hook, not
+        // the profile lookup).
+    }
+
     fn set_mailbox_cache_reader(&self, _cache: Arc<dyn MailboxCache>) {
         // Shared mailbox-cache reader — no-op; not under test here.
     }

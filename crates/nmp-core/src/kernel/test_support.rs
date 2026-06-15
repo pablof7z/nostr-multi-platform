@@ -111,7 +111,25 @@ impl Kernel {
                 sig: "a".repeat(128),
             };
             match kind {
-                0 => self.ingest_profile(event),
+                // ADR-0057 PR 2 — kind:0 flows through the GENUINE post-store
+                // projection path: reconstruct the `VerifiedEvent` (the store
+                // above already accepted it) and run the shared
+                // `project_accepted_event`, which dispatches to the registered
+                // kind:0 parser (`TestKind0Parser` in test builds, the real
+                // `nmp_nip01::Kind0Parser` in production) → writes the profile
+                // cache → bumps `profiles_ver`. No parallel fake writer.
+                0 => {
+                    let verified = VerifiedEvent::from_raw_unchecked(RawEvent {
+                        id: event.id.clone(),
+                        pubkey: event.pubkey.clone(),
+                        created_at: event.created_at,
+                        kind: event.kind,
+                        tags: event.tags.clone(),
+                        content: event.content.clone(),
+                        sig: "a".repeat(128),
+                    });
+                    self.project_accepted_event(&verified);
+                }
                 3 => self.ingest_contacts(event),
                 10002 => {
                     // The production kind:10002 writer is the substrate
@@ -384,6 +402,37 @@ impl Kernel {
             "wss://seed",
             1_700_000_000_000,
         );
+    }
+
+    /// Test seam for delivering a kind:0 profile through the GENUINE post-store
+    /// projection path (ADR-0057 PR 2) — NOT a parallel fake writer.
+    ///
+    /// Reconstructs a `VerifiedEvent` from `event` and runs the shared
+    /// [`Kernel::project_accepted_event`], which dispatches to the REGISTERED
+    /// kind:0 parser (`TestKind0Parser` in test builds, `nmp_nip01::Kind0Parser`
+    /// in production) → the parser writes the capability-owned profile cache →
+    /// the transition sweep bumps `profiles_ver` (and `claimed_event_content_ver`
+    /// when `event_claims` is non-empty). This is the SAME path a relay-delivered
+    /// or cache-served kind:0 takes; there is no separate cache writer. Callers
+    /// keep the convenient `NostrEvent`-taking signature.
+    ///
+    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    #[allow(dead_code)]
+    pub(in crate::kernel) fn inject_profile(&mut self, event: NostrEvent) {
+        let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
+            id: event.id.clone(),
+            pubkey: event.pubkey.clone(),
+            created_at: event.created_at,
+            kind: event.kind,
+            tags: event.tags.clone(),
+            content: event.content.clone(),
+            sig: if event.sig.is_empty() {
+                "a".repeat(128)
+            } else {
+                event.sig.clone()
+            },
+        });
+        self.project_accepted_event(&verified);
     }
 
     /// Lazily install (and return) the test-only

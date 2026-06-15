@@ -30,7 +30,7 @@ fn ingest_profile_with(
         "picture": "https://example.com/avatar.png",
     })
     .to_string();
-    kernel.ingest_profile(NostrEvent {
+    kernel.inject_profile(NostrEvent {
         id: "0".repeat(64),
         pubkey: pubkey.to_string(),
         created_at,

@@ -51,6 +51,7 @@ mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
+mod profile_lookup;
 pub mod content_parser;
 pub mod placeholder;
 mod protocol;
@@ -77,6 +78,11 @@ pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use dm_inbox_relays::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
 };
+pub use profile_lookup::{
+    empty_profile_lookup, EmptyProfileLookup, ProfileLookup, ProfileView,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use profile_lookup::{TestKind0Parser, TestProfileCache};
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 // Step 9: the `DomainMigration` / `MigrationTx` value types passed to
 // `EventStore::run_migrations` moved with the store (they are consumed only by

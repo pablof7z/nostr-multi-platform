@@ -241,12 +241,12 @@ fn open_author_interest_profile_survives_eviction() {
     kernel.evict_ram_caches();
 
     assert!(
-        kernel.profiles.len() <= PROFILES_RAM_HWM,
+        kernel.profile_lookup().len() <= PROFILES_RAM_HWM,
         "cap must hold (len={})",
-        kernel.profiles.len()
+        kernel.profile_lookup().len()
     );
     assert!(
-        kernel.profiles.contains_key(&viewed_author),
+        kernel.profile_lookup().contains(&viewed_author),
         "open author feed's profile must survive eviction"
     );
 }
@@ -291,16 +291,16 @@ fn open_thread_interest_participant_profiles_survive_eviction() {
     kernel.evict_ram_caches();
 
     assert!(
-        kernel.profiles.len() <= PROFILES_RAM_HWM,
+        kernel.profile_lookup().len() <= PROFILES_RAM_HWM,
         "cap must hold (len={})",
-        kernel.profiles.len()
+        kernel.profile_lookup().len()
     );
     assert!(
-        kernel.profiles.contains_key(&root_author),
+        kernel.profile_lookup().contains(&root_author),
         "thread root author's profile must survive eviction"
     );
     assert!(
-        kernel.profiles.contains_key(&reply_author),
+        kernel.profile_lookup().contains(&reply_author),
         "thread reply author's profile must survive eviction"
     );
 }

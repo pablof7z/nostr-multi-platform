@@ -587,10 +587,10 @@ fn v56_known_profile_not_re_added() {
     let pk = MENTIONED_PK;
     let npub = encode_npub(pk).expect("encode_npub must succeed");
 
-    // Pre-seed the profiles projection so the pubkey is "known".
+    // Pre-seed the profile cache so the pubkey is "known".
     kernel
-        .profiles
-        .insert(pk.to_string(), super::types::Profile::default());
+        .test_profile_cache
+        .upsert_view(pk, crate::substrate::ProfileView::default());
 
     let content = format!("Say hello to nostr:{npub}");
     kernel.collect_content_mention_pubkeys(&content);

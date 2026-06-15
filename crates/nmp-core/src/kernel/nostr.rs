@@ -8,7 +8,7 @@
 //! NMP API.
 
 use super::types::AuthorRelayList;
-use super::{Deserialize, HashSet, Profile};
+use super::{Deserialize, HashSet};
 // `DateTime`, `Local`, `SystemTime` are only consumed by `now_hms` below,
 // `#[cfg(feature = "native")]` — the import is gated to match so
 // `--no-default-features` (wasm32) compiles.
@@ -30,56 +30,11 @@ pub(super) struct NostrEvent {
     pub(super) sig: String,
 }
 
-#[derive(Default, Deserialize)]
-pub(super) struct ProfileContent {
-    pub(super) name: Option<String>,
-    pub(super) display_name: Option<String>,
-    #[serde(rename = "displayName")]
-    pub(super) display_name_camel: Option<String>,
-    pub(super) picture: Option<String>,
-    pub(super) nip05: Option<String>,
-    pub(super) about: Option<String>,
-    /// NIP-57 lightning address (`user@domain`). Preferred over `lud06` when
-    /// both are present (most modern wallets emit `lud16`). Surfaced into
-    /// `Profile::lnurl` so the zap UI can pre-populate `ZapInput.lnurl`
-    /// without Swift parsing raw kind:0 metadata (thin-shell rule).
-    pub(super) lud16: Option<String>,
-    /// NIP-57 LNURL-pay bech32 (`lnurl1…`). Legacy/alternate to `lud16`;
-    /// surfaced when `lud16` is absent. Both feed the same `Profile::lnurl`
-    /// optional field — the zap handler accepts either shape (see
-    /// `nmp_nip57::lnurl::lnurl_to_well_known_url`).
-    pub(super) lud06: Option<String>,
-}
-
-pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
-    let parsed = serde_json::from_str::<ProfileContent>(&event.content).unwrap_or_default();
-    // Verbatim display-name value from kind:0; empty string when the
-    // parsed metadata carries none of `display_name` / `displayName` /
-    // `name` (aim.md §2 — no `short_npub` fallback is substituted; the
-    // projection boundary converts `""` into `Option::None`).
-    let display = parsed
-        .display_name
-        .or(parsed.display_name_camel)
-        .or(parsed.name)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_default();
-    Profile {
-        event_id: event.id.clone(),
-        created_at: event.created_at,
-        display,
-        picture_url: parsed.picture.filter(|value| value.starts_with("http")),
-        nip05: parsed.nip05.unwrap_or_default(),
-        about: parsed.about.unwrap_or_default(),
-        // NIP-57 — prefer `lud16` (lightning address) over `lud06` (LNURL
-        // bech32). Both empty strings filter out so the zap button stays
-        // disabled when a kind:0 carries the key with an empty value.
-        lnurl: parsed
-            .lud16
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| parsed.lud06.filter(|s| !s.trim().is_empty())),
-    }
-}
+// ADR-0057 PR 2 — `parse_profile` + `ProfileContent` (the kind:0 metadata
+// decoder) moved out of the kernel to `nmp_nip01::Kind0Parser` (the registered
+// `IngestParser` that writes the capability-owned `nmp_nip01::ProfileCache`).
+// The kernel no longer parses kind:0; it reads `crate::substrate::ProfileView`
+// through `Kernel::profile_lookup()` (D0).
 
 pub(super) fn signed_event_to_nostr(event: &SignedEvent) -> NostrEvent {
     NostrEvent {

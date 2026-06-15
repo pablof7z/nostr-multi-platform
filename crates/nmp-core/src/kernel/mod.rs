@@ -352,7 +352,7 @@ pub use relay_frame::RelayFrame;
 /// doc for the return-type / scope rationale.
 pub mod public_typed_projections;
 
-use nostr::{parse_profile, parse_relay_list, ratio, short_hex, truncate, NostrEvent};
+use nostr::{parse_relay_list, ratio, short_hex, truncate, NostrEvent};
 // V-01 Phase 1c follow-up: `now_hms` is `#[cfg(feature = "native")]` in
 // `kernel/nostr.rs` (reads the OS wall clock via `chrono::Local`). Importing
 // it unconditionally breaks `--no-default-features` (wasm32) builds. The
@@ -510,10 +510,15 @@ use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
-    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
-    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
-    ParsedRelayList, MAX_PROJECTION_MESSAGES,
+    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup, DmInboxRelayLookup,
+    EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter, ParsedRelayList,
+    ProfileLookup, MAX_PROJECTION_MESSAGES,
 };
+// `empty_profile_lookup` is only the production cold-start default; the test /
+// test-support build defaults `profile_lookup` to a `TestProfileCache` instead,
+// so import it only where it is used to avoid an unused-import warning there.
+#[cfg(not(any(test, feature = "test-support")))]
+use crate::substrate::empty_profile_lookup;
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
 use std::sync::atomic::AtomicU64;
@@ -523,7 +528,7 @@ use std::sync::atomic::AtomicU64;
 pub(crate) use types::KernelSnapshot;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
-    MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile, ProfileCard, PublishOutboxItem,
+    MentionProfilePayload, Metrics, OutboxSummarySnapshot, ProfileCard, PublishOutboxItem,
     PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimelineItem, TimingMilestones,
     WireSub, WireSubscriptionState, WireSubscriptionStatus,
 };
@@ -639,7 +644,19 @@ pub struct Kernel {
     timing: TimingMilestones,
     relays: HashMap<RelayRole, RelayHealth>,
     transport_relays: RelayTransportMap,
-    profiles: HashMap<String, Profile>,
+    /// Substrate kind:0 profile lookup — ADR-0057 PR 2. The kernel reads
+    /// cached profile metadata (display / picture / nip05 / about / lnurl)
+    /// through this trait; the concrete cache (`nmp_nip01::ProfileCache`) lives
+    /// in the `nmp-nip01` crate behind it so the kernel never names the kind:0
+    /// noun (D0). Default: [`crate::substrate::EmptyProfileLookup`] (cold-start;
+    /// every lookup returns `None`, the "no kind:0 has arrived" branch the
+    /// projection builders expect). Apps inject `nmp_nip01::ProfileCache` via
+    /// [`Kernel::set_profile_lookup`] — the same `Arc` is simultaneously the
+    /// writer side fed by `nmp_nip01::Kind0Parser` (registered with
+    /// `ingest_dispatcher`). The kernel detects supersession transitions by
+    /// snapshotting the cache around `verify_and_persist` (the wildcard ingest
+    /// arm) and bumps `profiles_ver` so profile-derived projections re-emit.
+    profile_lookup: Arc<dyn ProfileLookup>,
     events: HashMap<String, StoredEvent>,
     /// Incrementally-maintained diagnostic counters for the `Metrics` snapshot
     /// fields `note_events` / `duplicate_events` / `stored_events`. Maintained
@@ -796,6 +813,14 @@ pub struct Kernel {
     /// (a downstream crate cycle the doctrine forbids).
     #[cfg(any(test, feature = "test-support"))]
     test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
+    /// Test-only typed handle to the [`crate::substrate::TestProfileCache`] that
+    /// backs `profile_lookup` in test / test-support builds. Production
+    /// composition installs `nmp_nip01::ProfileCache` via
+    /// [`Kernel::set_profile_lookup`]; in-crate tests use this handle to seed
+    /// kind:0 profiles (via [`Kernel::inject_profile`]) without depending on
+    /// `nmp-nip01` (a downstream crate cycle the doctrine forbids).
+    #[cfg(any(test, feature = "test-support"))]
+    test_profile_cache: Arc<crate::substrate::TestProfileCache>,
     /// `pub(crate)` so in-crate tests can assert close-contact-feed clears
     /// the follow author set without triggering the full follow-feed
     /// registration side-effect that `set_follow_feed_kinds` fires.
@@ -1803,6 +1828,12 @@ impl Kernel {
         #[cfg(any(test, feature = "test-support"))]
         publish_engine.set_outbox(test_publish_resolver);
 
+        // ADR-0057 PR 2 — test / test-support profile cache (shared between the
+        // `profile_lookup` reader default and the `test_profile_cache` writer
+        // handle so in-crate tests can seed + read profiles).
+        #[cfg(any(test, feature = "test-support"))]
+        let test_profile_cache = Arc::new(crate::substrate::TestProfileCache::new());
+
         let mut kernel = Self {
             store,
             clock: Arc::new(SystemClock),
@@ -1819,7 +1850,15 @@ impl Kernel {
                 .map(|role| (role, RelayHealth::default()))
                 .collect(),
             transport_relays: RelayTransportMap::default(),
-            profiles: HashMap::new(),
+            // ADR-0057 PR 2 — production starts cold (empty lookup); apps inject
+            // `nmp_nip01::ProfileCache` via `set_profile_lookup`. Test / test-support
+            // builds default to a `TestProfileCache` shared with `test_profile_cache`
+            // so in-crate tests can seed + read profiles without depending on
+            // `nmp-nip01` (mirrors the `mailbox_cache` test default).
+            #[cfg(not(any(test, feature = "test-support")))]
+            profile_lookup: empty_profile_lookup(),
+            #[cfg(any(test, feature = "test-support"))]
+            profile_lookup: Arc::clone(&test_profile_cache) as Arc<dyn ProfileLookup>,
             events: HashMap::new(),
             metric_note_events: 0,
             metric_duplicate_events: 0,
@@ -1843,6 +1882,8 @@ impl Kernel {
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,
+            #[cfg(any(test, feature = "test-support"))]
+            test_profile_cache,
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             follow_feed_kinds: BTreeSet::new(),
@@ -1927,6 +1968,21 @@ impl Kernel {
         };
         if let Some(store) = store_bundle.relay_score_store {
             kernel.set_relay_score_store(store);
+        }
+        // ADR-0057 PR 2 — in test / test-support builds, register a kind:0
+        // parser writing the shared `TestProfileCache` on the kernel's own
+        // dispatcher. This makes the real chokepoint path
+        // (`verify_and_persist` → `EventIngestDispatcher` → parser) write the
+        // profile cache exactly as production does (where
+        // `nmp_defaults::register_substrate` registers `nmp_nip01::Kind0Parser`),
+        // so read-your-writes for a locally published kind:0 works in-crate
+        // without depending on `nmp-nip01`.
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
+                crate::substrate::TestKind0Parser::new(Arc::clone(&kernel.test_profile_cache)),
+            );
+            kernel.register_ingest_parser(0, parser);
         }
         kernel
     }
@@ -2531,6 +2587,27 @@ impl Kernel {
     /// after ingest would lose cached entries.
     pub(crate) fn set_dm_inbox_relay_lookup(&mut self, lookup: Arc<dyn DmInboxRelayLookup>) {
         self.dm_inbox_relays = lookup;
+    }
+
+    /// Inject the kind:0 profile lookup (composition seam — ADR-0057 PR 2).
+    /// Apps that depend on `nmp-nip01` call this after `Kernel::new` to install
+    /// a shared `Arc<ProfileCache>` so the enrichment / claim-TTL / zap-LNURL /
+    /// RAM-eviction readers AND the kind:0 ingest-parser writer all see the
+    /// same cache. Default is [`crate::substrate::EmptyProfileLookup`] (every
+    /// lookup returns `None`, the cold-start "no kind:0 yet" contract).
+    ///
+    /// MUST be called BEFORE the first kind:0 event is ingested — the cache is
+    /// an independent store, not a write-through pair, so a swap after ingest
+    /// would lose cached entries.
+    pub(crate) fn set_profile_lookup(&mut self, lookup: Arc<dyn ProfileLookup>) {
+        self.profile_lookup = lookup;
+    }
+
+    /// Read accessor for the injected profile lookup. The kernel's profile
+    /// readers (`profile_for_pubkey`, claim-TTL gates, zap LNURL, RAM eviction)
+    /// consult this trait object; it never names the kind:0 wire format (D0).
+    pub(crate) fn profile_lookup(&self) -> &dyn ProfileLookup {
+        &*self.profile_lookup
     }
 
     /// Inject the blocked-relay lookup (composition seam). Apps that depend on

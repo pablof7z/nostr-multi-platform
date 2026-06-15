@@ -23,35 +23,14 @@ pub(super) struct StoredEvent {
     pub(super) relay_count: u32,
 }
 
-// ── Profile cache ─────────────────────────────────────────────────────────────
-
-#[derive(Clone, Debug, Default)]
-pub(in crate::kernel) struct Profile {
-    pub(super) event_id: String,
-    pub(in crate::kernel) created_at: u64,
-    /// The verbatim display-name value from kind:0
-    /// (`display_name` / `displayName` / `name`, first non-empty wins).
-    /// Empty string when the parsed metadata carries none of those fields
-    /// — NO `short_npub` fallback is substituted (aim.md §2 — projection
-    /// builders convert the empty string to `Option::None` at the
-    /// projection boundary).
-    pub(super) display: String,
-    /// Raw picture URL from kind:0. `None` when no kind:0 has arrived OR
-    /// the parsed metadata carries no `picture` field (or the value does
-    /// not begin with `http`). Surfaced as `Option<String>` to projection
-    /// builders verbatim — no identicon placeholder is substituted in the
-    /// cache (aim.md §2 — presentation layer chooses the missing-picture
-    /// strategy).
-    pub(super) picture_url: Option<String>,
-    pub(super) nip05: String,
-    pub(super) about: String,
-    /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`) from this
-    /// pubkey's kind:0 metadata. `None` when no kind:0 has arrived or the
-    /// metadata had no lnurl. Pre-extracted at parse time (see
-    /// `nostr::parse_profile`) so derived projections (`TimelineItem`,
-    /// `ProfileCard`) don't re-traverse raw event JSON.
-    pub(super) lnurl: Option<String>,
-}
+// ── Profile cache (ADR-0057 PR 2) ───────────────────────────────────────────────
+//
+// The kernel-owned `Profile` struct + the `profiles: HashMap<…>` field were
+// deleted in ADR-0057 PR 2: the kind:0 profile cache is now capability-owned
+// (`nmp_nip01::ProfileCache` behind `Arc<dyn ProfileLookup>`, the writer being
+// the registered `nmp_nip01::Kind0Parser`). The kernel reads cached profiles as
+// `crate::substrate::ProfileView` through `Kernel::profile_lookup()`; it no
+// longer names the kind:0 wire format (D0).
 
 // ── Timeline and view payloads ────────────────────────────────────────────────
 

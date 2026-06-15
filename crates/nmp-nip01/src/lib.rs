@@ -61,9 +61,11 @@ pub mod build;
 pub mod decode;
 pub mod flat_feed;
 pub mod kinds;
+pub mod kind0_parser;
 pub mod meta_timeline;
 mod note_relations;
 pub mod op_feed;
+pub mod profile_cache;
 mod profile_display;
 pub mod timeline_projection;
 pub mod typed_wire;
@@ -75,7 +77,9 @@ pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
 pub use flat_feed::{
     author_feed_predicate, thread_feed_predicate, FlatFeed, FlatFeedPredicate,
 };
+pub use kind0_parser::Kind0Parser;
 pub use kinds::KIND_SHORT_NOTE;
+pub use profile_cache::ProfileCache;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,

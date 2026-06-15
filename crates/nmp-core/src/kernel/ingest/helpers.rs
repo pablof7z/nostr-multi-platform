@@ -58,3 +58,25 @@ pub(in crate::kernel) fn kernel_event_from_nostr(
         content: event.content.clone(),
     }
 }
+
+/// Project a store [`crate::store::VerifiedEvent`] into the FFI-stable
+/// [`crate::substrate::KernelEvent`]. The sibling of
+/// [`kernel_event_from_nostr`] for callers that already hold a `VerifiedEvent`
+/// (the unified post-store projection helper
+/// [`crate::Kernel::project_accepted_event`], fed by BOTH the live chokepoint
+/// and the cache-serve replay path) rather than a wire-parsed `NostrEvent`.
+/// Produces a byte-identical observer payload to the `NostrEvent` builder so
+/// the live-ingest and cache-serve fan-outs cannot diverge.
+pub(in crate::kernel) fn kernel_event_from_verified(
+    verified: &crate::store::VerifiedEvent,
+) -> crate::substrate::KernelEvent {
+    let raw = verified.raw();
+    crate::substrate::KernelEvent {
+        id: raw.id.clone(),
+        author: raw.pubkey.clone(),
+        kind: raw.kind,
+        created_at: raw.created_at,
+        tags: raw.tags.clone(),
+        content: raw.content.clone(),
+    }
+}

@@ -338,6 +338,9 @@ pub(super) struct ActorContext<'a> {
     /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. Same
     /// `Reset`-survival contract as the ingest dispatcher slot.
     pub(super) dm_inbox_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    /// ADR-0057 PR 2 — shared [`crate::substrate::ProfileLookup`] slot. Same
+    /// `Reset`-survival contract as `dm_inbox_relays_slot`.
+    pub(super) profile_lookup_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::ProfileLookup>>>,
     /// Shared [`crate::substrate::BlockedRelayLookup`] slot. Same
     /// `Reset`-survival contract as `dm_inbox_relays_slot`.
     pub(super) blocked_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::BlockedRelayLookup>>>,
@@ -1363,6 +1366,16 @@ pub(super) fn dispatch_command(
                     .map(|g| Arc::clone(&*g))
                     .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
                 ctx.kernel.set_dm_inbox_relay_lookup(lookup);
+            }
+            {
+                // ADR-0057 PR 2 — re-bind the profile cache on the rebuilt kernel.
+                let lookup = ctx
+                    .profile_lookup_slot
+                    .lock()
+                    .ok()
+                    .map(|g| Arc::clone(&*g))
+                    .unwrap_or_else(crate::substrate::empty_profile_lookup);
+                ctx.kernel.set_profile_lookup(lookup);
             }
             {
                 let lookup = ctx

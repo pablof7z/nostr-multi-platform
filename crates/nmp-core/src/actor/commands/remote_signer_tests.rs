@@ -929,6 +929,10 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_dm_inbox_relay_lookup(),
             )),
+            // ADR-0057 PR 2 — test wiring: empty profile lookup slot.
+            Arc::new(std::sync::Mutex::new(
+                crate::substrate::empty_profile_lookup(),
+            )),
             // Test wiring — no blocked-relay cache installed; the kernel
             // defaults to the empty-lookup that returns an empty
             // `BlockedRelaySet` for every account.

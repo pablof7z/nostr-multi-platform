@@ -152,7 +152,7 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
             .to_string(),
         sig: String::new(),
     };
-    kernel.ingest_profile(event);
+    kernel.inject_profile(event);
 
     let after = snapshot(&mut kernel);
     let card = &after["projections"]["profile"];
@@ -553,7 +553,7 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
         content: r#"{"display_name":"Claimed Profile","picture":"https://example.com/claimed.png","nip05":"claimed@example.com","about":"profile from claim"}"#.to_string(),
         sig: String::new(),
     };
-    kernel.ingest_profile(event);
+    kernel.inject_profile(event);
 
     let after = snapshot(&mut kernel);
     let entry = &after["projections"]["claimed_profiles"][ACCOUNT];

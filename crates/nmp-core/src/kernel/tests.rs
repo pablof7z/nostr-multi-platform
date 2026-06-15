@@ -294,9 +294,9 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
     // Insert the profile directly into the kernel's profile cache.
     // (inject_replaceable_event always uses empty content and therefore
     //  produces a profile with no picture_url — insufficient for this test.)
-    kernel.profiles.insert(
-        C13_PK.to_string(),
-        Profile {
+    kernel.test_profile_cache.upsert_view(
+        C13_PK,
+        crate::substrate::ProfileView {
             event_id: C13_KIND0_ID.to_string(),
             created_at: 2_000,
             display: "c13".to_string(),
@@ -351,9 +351,9 @@ fn picture_url_is_none_when_profile_omits_picture() {
     kernel.sort_timeline_deferred();
 
     for picture in [None, Some(String::new())] {
-        kernel.profiles.insert(
-            C13_PK.to_string(),
-            Profile {
+        kernel.test_profile_cache.upsert_view(
+            C13_PK,
+            crate::substrate::ProfileView {
                 event_id: C13_KIND0_ID.to_string(),
                 created_at: 2_000,
                 display: "c13".to_string(),
@@ -670,9 +670,9 @@ fn accounts_enriched_populates_display_name_when_kind0_lands() {
 
     // Land a kind:0 with a real display name. The enrichment branch in
     // `accounts_enriched` populates `display_name` from the cache.
-    kernel.profiles.insert(
-        pubkey_hex.clone(),
-        Profile {
+    kernel.test_profile_cache.upsert_view(
+        &pubkey_hex,
+        crate::substrate::ProfileView {
             event_id: "kind0-event".to_string(),
             created_at: 2_000,
             display: "Alice Smith".to_string(),

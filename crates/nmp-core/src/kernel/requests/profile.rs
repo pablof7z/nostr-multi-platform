@@ -184,7 +184,7 @@ impl Kernel {
         // cached the TTL gate decides whether a lazy re-verification REQ is due
         // (`force == false`) or unconditionally enqueues one (`force == true`:
         // the user opened this author's profile screen or pulled to refresh).
-        let resident = self.profiles.contains_key(&pubkey);
+        let resident = self.profile_lookup().contains(&pubkey);
         if resident {
             if let Ok(pk) = nostr::PublicKey::from_hex(&pubkey) {
                 self.claim_replaceable(0, pk.to_bytes(), None, force);

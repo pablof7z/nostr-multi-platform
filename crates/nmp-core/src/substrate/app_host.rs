@@ -24,8 +24,8 @@ use crate::{
 
 use super::{
     ActionRegistrar, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
-    RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook, RelayTextInterceptor,
-    ReqFrameInterceptor, RoutingTraceObserver,
+    ProfileLookup, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook,
+    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 
 /// Error returned by [`AppHost::declare_incremental_apply`] when the
@@ -294,6 +294,14 @@ pub trait AppHost: ActionRegistrar {
     fn unregister_ingest_parser_range(&self, slot_key: &'static str);
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
+
+    /// ADR-0057 PR 2 — install the kind:0 profile cache as the kernel's
+    /// `Arc<dyn ProfileLookup>` (reader). The composition root passes the SAME
+    /// `Arc` it backs the kind:0 [`IngestParser`] (`nmp_nip01::Kind0Parser`,
+    /// the writer) with, so the kernel's enrichment / claim-TTL / zap-LNURL /
+    /// RAM-eviction readers see one source of truth. The kernel never names the
+    /// kind:0 wire format (D0).
+    fn set_profile_lookup(&self, lookup: Arc<dyn ProfileLookup>);
 
     /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19
     /// identity encoder (`nmp_app_encode_profile`) reads kind:10002 relay

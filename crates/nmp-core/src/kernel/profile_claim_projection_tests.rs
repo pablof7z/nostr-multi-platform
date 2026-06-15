@@ -59,7 +59,7 @@ fn ingest_kind0_name(kernel: &mut Kernel, pubkey: &str, display_name: &str) {
         content: format!(r#"{{"display_name":"{display_name}"}}"#),
         sig: String::new(),
     };
-    kernel.ingest_profile(event);
+    kernel.inject_profile(event);
 }
 
 /// Flagship Tier-0 gate: a re-claim of a resident kind:0 repopulates

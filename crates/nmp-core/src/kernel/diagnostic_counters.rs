@@ -80,7 +80,7 @@ impl Kernel {
     /// so `FetchLnurlInvoiceCommand` can resolve the destination without
     /// the shell having to carry or know about LNURL.
     pub(crate) fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
-        self.profiles.get(pubkey)?.lnurl.clone()
+        self.profile_lookup().profile(pubkey)?.lnurl
     }
 
     #[cfg(test)]

@@ -83,16 +83,20 @@ impl Kernel {
     /// `profiles` are borrowed `&` — disjoint fields, so the caller passes
     /// `&event.tags` (no clone) from the ingest path.
     pub(in crate::kernel) fn collect_unknown_refs(&mut self, tags: &[Vec<String>]) {
+        // ADR-0057 PR 2 — `profiles` is now the capability-owned cache behind
+        // `Arc<dyn ProfileLookup>` (interior-mutable, `&self`), so the old
+        // `&mut self` field split-borrow over `events` + `profiles` collapses
+        // to: clone the cheap `Arc` handle, then borrow `unknown_ids` / `events`
+        // `&mut`/`&` disjointly. The profile membership check reads through the
+        // cloned handle inside the closure.
+        let profile_lookup = std::sync::Arc::clone(&self.profile_lookup);
         let Self {
-            unknown_ids,
-            events,
-            profiles,
-            ..
+            unknown_ids, events, ..
         } = self;
         unknown_ids.visit_tags(
             tags,
             |id| events.contains_key(id),
-            |pk| profiles.contains_key(pk),
+            |pk| profile_lookup.contains(pk),
         );
     }
 
@@ -121,12 +125,11 @@ impl Kernel {
             return;
         }
 
-        // Split-borrow: `unknown_ids` is `&mut` while `profiles` is `&`.
-        let Self {
-            unknown_ids,
-            profiles,
-            ..
-        } = self;
+        // ADR-0057 PR 2 — clone the cheap capability-owned profile-cache `Arc`
+        // (interior-mutable, `&self`) so the membership check reads through it
+        // while `unknown_ids` is borrowed `&mut` below.
+        let profile_lookup = std::sync::Arc::clone(&self.profile_lookup);
+        let Self { unknown_ids, .. } = self;
 
         // Tokenise on whitespace and common delimiters that can surround a
         // `nostr:` URI in plain text (parentheses, commas, angle-brackets,
@@ -147,7 +150,7 @@ impl Kernel {
             let trimmed = raw.trim_end_matches(|c: char| !c.is_alphanumeric());
             match parse_nostr_uri(trimmed) {
                 Ok(NostrUri::Profile { pubkey, .. }) => {
-                    unknown_ids.note_pubkey(&pubkey, |pk| profiles.contains_key(pk));
+                    unknown_ids.note_pubkey(&pubkey, |pk| profile_lookup.contains(pk));
                 }
                 // Event / Address refs in content are already covered by
                 // collect_unknown_refs via `e`/`q` tags (Article VII: no

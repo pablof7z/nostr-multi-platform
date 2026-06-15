@@ -149,6 +149,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.set_dm_inbox_relay_lookup(lookup);
     }
 
+    fn set_profile_lookup(&self, lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.set_profile_lookup(lookup);
+    }
+
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_mailbox_cache_reader(cache);

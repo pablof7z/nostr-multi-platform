@@ -430,9 +430,10 @@ impl Kernel {
             if let Some(stored) = self.lookup_for_primary_id(key) {
                 let profile = self.profile_for_pubkey(&stored.author);
                 let display_name = profile
+                    .as_ref()
                     .map(|p| p.display.clone())
                     .filter(|d| !d.trim().is_empty());
-                let picture_url = profile.and_then(|p| p.picture_url.clone());
+                let picture_url = profile.as_ref().and_then(|p| p.picture_url.clone());
                 // Parse raw content → NFCT bytes via the injected content-parser
                 // seam (no-op by default; web composition installs an
                 // nmp-content-backed parser so claim_event renders the

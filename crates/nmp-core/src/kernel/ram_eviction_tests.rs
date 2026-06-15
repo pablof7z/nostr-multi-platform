@@ -153,16 +153,16 @@ fn profiles_eviction_caps_at_hwm() {
     inject_profiles(&mut kernel, over, T0_SECS);
 
     assert!(
-        kernel.profiles.len() > PROFILES_RAM_HWM,
+        kernel.profile_lookup().len() > PROFILES_RAM_HWM,
         "precondition: profiles must exceed HWM (len={})",
-        kernel.profiles.len()
+        kernel.profile_lookup().len()
     );
 
     let report = kernel.evict_ram_caches();
     assert!(
-        kernel.profiles.len() <= PROFILES_RAM_HWM,
+        kernel.profile_lookup().len() <= PROFILES_RAM_HWM,
         "after eviction profiles.len() must be ≤ HWM={PROFILES_RAM_HWM}, got {}",
-        kernel.profiles.len()
+        kernel.profile_lookup().len()
     );
     assert!(report.profiles_evicted > 0);
 }
@@ -281,7 +281,7 @@ fn claimed_profiles_are_never_evicted() {
 
     for pk in &claimed {
         assert!(
-            kernel.profiles.contains_key(pk),
+            kernel.profile_lookup().contains(pk),
             "claimed profile {pk} must survive eviction"
         );
     }
@@ -306,7 +306,7 @@ fn followed_profiles_are_never_evicted() {
 
     for pk in &followed {
         assert!(
-            kernel.profiles.contains_key(pk),
+            kernel.profile_lookup().contains(pk),
             "followed profile {pk} must survive eviction"
         );
     }
@@ -328,7 +328,7 @@ fn active_account_profile_is_never_evicted() {
     kernel.evict_ram_caches();
 
     assert!(
-        kernel.profiles.contains_key(&active_pk),
+        kernel.profile_lookup().contains(&active_pk),
         "active account profile must survive eviction"
     );
 }

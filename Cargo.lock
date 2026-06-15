@@ -4722,6 +4722,7 @@ dependencies = [
  "nmp-threading",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

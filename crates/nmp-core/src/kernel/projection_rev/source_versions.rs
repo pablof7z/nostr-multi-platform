@@ -35,9 +35,11 @@ use super::{
 #[derive(Default, Debug, Clone)]
 pub(crate) struct SourceVersions {
     // ── identity cluster ──────────────────────────────────────────────────────
-    /// Bumped at `ingest_profile` (the write chokepoint for kind:0 profile
-    /// metadata — called after `verify_and_persist` returns `Inserted|Replaced`
-    /// AND the new profile supersedes the cached one).
+    /// Bumped by the ingest chokepoint when an accepted kind:0 supersedes the
+    /// cached profile (ADR-0057 PR 2: the registered `nmp_nip01::Kind0Parser`
+    /// writes the capability-owned `ProfileCache` inside `verify_and_persist`;
+    /// the chokepoint detects the before/after cache transition and bumps this).
+    /// Also bumped when RAM eviction removes a cached profile.
     pub(crate) profiles_ver: u64,
 
     /// Bumped at `set_accounts` / `set_active_account` (the sole writers of

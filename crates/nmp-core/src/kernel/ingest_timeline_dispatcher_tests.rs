@@ -212,12 +212,19 @@ fn ingest_timeline_event_no_parser_registered_no_dispatch() {
     let author = keys.public_key().to_hex();
     kernel.timeline_authors.insert(author.clone());
 
-    // Dispatcher is empty — is_interested(1) == false, clone must be skipped.
-    assert_eq!(
-        kernel.ingest_dispatcher_slot().read().unwrap().registration_count(),
-        0,
-        "dispatcher must be empty before ingest",
+    // No kind:1 parser is registered — is_interested(1) == false, clone must be
+    // skipped. (ADR-0057 PR 2: the test kernel auto-registers a kind:0
+    // `TestKind0Parser` on its dispatcher, so the registry is not globally
+    // empty; the contract under test is that NO parser fires for kind:1.)
+    assert!(
+        !kernel.ingest_dispatcher_slot().read().unwrap().is_interested(1),
+        "no kind:1 parser must be registered before ingest",
     );
+    let baseline = kernel
+        .ingest_dispatcher_slot()
+        .read()
+        .unwrap()
+        .registration_count();
 
     let ev = signed_kind1(&keys, "no-parser path", 1_700_000_003);
     let accepted = kernel.ingest_timeline_event(
@@ -232,10 +239,10 @@ fn ingest_timeline_event_no_parser_registered_no_dispatch() {
         accepted,
         "ingest_timeline_event must return true on Inserted even with no registered parser",
     );
-    // Confirm dispatcher is still empty — no side-effects on the registry.
+    // Confirm the registry is unchanged — kind:1 ingest registers nothing.
     assert_eq!(
         kernel.ingest_dispatcher_slot().read().unwrap().registration_count(),
-        0,
-        "dispatcher must remain empty after ingest with no parser",
+        baseline,
+        "kind:1 ingest must not mutate the parser registry",
     );
 }
