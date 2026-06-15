@@ -77,8 +77,7 @@ impl SharedSnapshot {
 /// are flipped (this PR, closes #991/#979).
 fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
     // Tier-3 envelope — metrics and status fields live on SnapshotFrame directly.
-    let envelope = nmp_core::decode_snapshot_envelope(bytes)
-        .unwrap_or_default();
+    let envelope = nmp_core::decode_snapshot_envelope(bytes).unwrap_or_default();
     let metrics = RuntimeMetrics {
         events_rx: envelope.events_rx,
         visible_items: envelope.visible_items,
@@ -87,8 +86,7 @@ fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
     };
 
     // Typed sidecar — one entry per built-in projection key.
-    let typed_projections = nmp_core::decode_snapshot_typed_projections(bytes)
-        .unwrap_or_default();
+    let typed_projections = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
 
     let relays = typed_relay_rows(&typed_projections);
     let interests = typed_interest_rows(&typed_projections);
@@ -113,14 +111,11 @@ fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
 /// Decode the `relay_diagnostics` typed sidecar and map to chirp relay rows.
 ///
 /// Returns an empty vec if the sidecar is absent or fails to decode.
-fn typed_relay_rows(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Vec<RelayRow> {
-    let Some(entry) = projections
-        .iter()
-        .find(|p| p.key == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
-              && p.schema_id == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID)
-    else {
+fn typed_relay_rows(projections: &[nmp_core::TypedProjectionData]) -> Vec<RelayRow> {
+    let Some(entry) = projections.iter().find(|p| {
+        p.key == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
+            && p.schema_id == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
+    }) else {
         return Vec::new();
     };
     let Ok(model) = nmp_core::typed_projections::decode_relay_diagnostics(&entry.payload) else {
@@ -132,14 +127,11 @@ fn typed_relay_rows(
 /// Decode the `relay_diagnostics` typed sidecar and map to chirp interest rows.
 ///
 /// Returns an empty vec if the sidecar is absent or fails to decode.
-fn typed_interest_rows(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Vec<InterestRow> {
-    let Some(entry) = projections
-        .iter()
-        .find(|p| p.key == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
-              && p.schema_id == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID)
-    else {
+fn typed_interest_rows(projections: &[nmp_core::TypedProjectionData]) -> Vec<InterestRow> {
+    let Some(entry) = projections.iter().find(|p| {
+        p.key == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
+            && p.schema_id == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
+    }) else {
         return Vec::new();
     };
     let Ok(model) = nmp_core::typed_projections::decode_relay_diagnostics(&entry.payload) else {
@@ -155,14 +147,11 @@ fn typed_interest_rows(
 /// Decode the `action_results` typed sidecar and map to chirp action result rows.
 ///
 /// Returns an empty vec if the sidecar is absent or fails to decode.
-fn typed_action_results(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Vec<ActionResult> {
-    let Some(entry) = projections
-        .iter()
-        .find(|p| p.key == nmp_core::typed_projections::ACTION_RESULTS_SCHEMA_ID
-              && p.schema_id == nmp_core::typed_projections::ACTION_RESULTS_SCHEMA_ID)
-    else {
+fn typed_action_results(projections: &[nmp_core::TypedProjectionData]) -> Vec<ActionResult> {
+    let Some(entry) = projections.iter().find(|p| {
+        p.key == nmp_core::typed_projections::ACTION_RESULTS_SCHEMA_ID
+            && p.schema_id == nmp_core::typed_projections::ACTION_RESULTS_SCHEMA_ID
+    }) else {
         return Vec::new();
     };
     let Ok(model) = nmp_core::typed_projections::decode_action_results(&entry.payload) else {
@@ -180,14 +169,11 @@ fn typed_action_results(
 /// (last-stage-per-correlation-id).
 ///
 /// Returns an empty vec if the sidecar is absent or fails to decode.
-fn typed_action_stages(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Vec<ActionStageRow> {
-    let Some(entry) = projections
-        .iter()
-        .find(|p| p.key == nmp_core::typed_projections::ACTION_STAGES_SCHEMA_ID
-              && p.schema_id == nmp_core::typed_projections::ACTION_STAGES_SCHEMA_ID)
-    else {
+fn typed_action_stages(projections: &[nmp_core::TypedProjectionData]) -> Vec<ActionStageRow> {
+    let Some(entry) = projections.iter().find(|p| {
+        p.key == nmp_core::typed_projections::ACTION_STAGES_SCHEMA_ID
+            && p.schema_id == nmp_core::typed_projections::ACTION_STAGES_SCHEMA_ID
+    }) else {
         return Vec::new();
     };
     let Ok(model) = nmp_core::typed_projections::decode_action_stages(&entry.payload) else {
@@ -197,7 +183,10 @@ fn typed_action_stages(
         .entries
         .into_iter()
         .filter_map(
-            |(correlation_id, history): (String, Vec<nmp_core::typed_projections::ActionStageEntryRow>)| {
+            |(correlation_id, history): (
+                String,
+                Vec<nmp_core::typed_projections::ActionStageEntryRow>,
+            )| {
                 let last = history.into_iter().last()?;
                 Some(ActionStageRow {
                     correlation_id,
@@ -214,9 +203,7 @@ fn typed_action_stages(
 /// When the sidecar is absent, wrong schema, or fails to decode, returns
 /// `None` — preserving ADR-0037 Commitment 4.  After PR-B the generic
 /// `payload:Value` fallback is gone; `None` means "not yet available".
-fn typed_home_feed(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Option<Value> {
+fn typed_home_feed(projections: &[nmp_core::TypedProjectionData]) -> Option<Value> {
     let proj = projections
         .iter()
         .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
@@ -228,9 +215,7 @@ fn typed_home_feed(
 // Type-mapping helpers: nmp_core typed_projections DTOs → nmp_app_chirp types
 // ---------------------------------------------------------------------------
 
-fn relay_row_from_typed(
-    row: nmp_core::typed_projections::RelayRow,
-) -> RelayRow {
+fn relay_row_from_typed(row: nmp_core::typed_projections::RelayRow) -> RelayRow {
     RelayRow {
         relay_url: row.relay_url,
         short_url: row.short_url,
@@ -246,23 +231,18 @@ fn relay_row_from_typed(
         total_events_rx: row.total_events_rx,
         total_events_display: row.total_events_display,
         reconnect_count: row.reconnect_count as u64,
+        discovery_kinds_label: row.discovery_kinds_label,
         bytes_rx_display: row.bytes_rx_display,
         bytes_tx_display: row.bytes_tx_display,
         last_connected_ms: row.last_connected_ms,
         last_event_ms: row.last_event_ms,
         last_notice: row.last_notice,
         last_error: row.last_error,
-        wire_subs: row
-            .wire_subs
-            .into_iter()
-            .map(wire_sub_from_typed)
-            .collect(),
+        wire_subs: row.wire_subs.into_iter().map(wire_sub_from_typed).collect(),
     }
 }
 
-fn wire_sub_from_typed(
-    sub: nmp_core::typed_projections::WireSubRow,
-) -> RelayWireSubRow {
+fn wire_sub_from_typed(sub: nmp_core::typed_projections::WireSubRow) -> RelayWireSubRow {
     RelayWireSubRow {
         wire_id: sub.wire_id,
         short_wire_id: sub.short_wire_id,
@@ -280,9 +260,7 @@ fn wire_sub_from_typed(
     }
 }
 
-fn interest_row_from_typed(
-    row: nmp_core::typed_projections::InterestRow,
-) -> InterestRow {
+fn interest_row_from_typed(row: nmp_core::typed_projections::InterestRow) -> InterestRow {
     InterestRow {
         key: row.key,
         state: row.state,
@@ -291,9 +269,7 @@ fn interest_row_from_typed(
     }
 }
 
-fn action_result_from_typed(
-    row: nmp_core::typed_projections::ActionResultRow,
-) -> ActionResult {
+fn action_result_from_typed(row: nmp_core::typed_projections::ActionResultRow) -> ActionResult {
     ActionResult {
         correlation_id: row.correlation_id,
         status: row.status,
@@ -344,6 +320,7 @@ fn relays_from(projections: Option<&Value>) -> Vec<RelayRow> {
             total_events_rx: number_field(row, "total_events_rx"),
             total_events_display: string_field(row, "total_events_display"),
             reconnect_count: number_field(row, "reconnect_count"),
+            discovery_kinds_label: string_field(row, "discovery_kinds_label"),
             bytes_rx_display: optional_string(row, "bytes_rx_display"),
             bytes_tx_display: optional_string(row, "bytes_tx_display"),
             last_connected_ms: number_field(row, "last_connected_ms"),

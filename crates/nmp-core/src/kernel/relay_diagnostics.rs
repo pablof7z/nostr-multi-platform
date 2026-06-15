@@ -34,13 +34,17 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+mod discovery;
 mod format;
+mod info;
 
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
+use discovery::discovery_kinds_label_for_subs;
 use format::{
-    auth_label, auth_tone, compact_count, connection_tone, format_bytes,
-    interest_state_tone, role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
+    auth_label, auth_tone, compact_count, connection_tone, format_bytes, interest_state_tone,
+    role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
 };
+pub(in crate::kernel) use info::RelayDiagnosticsInfo;
 
 /// Snapshot-projection key under which the diagnostics roll-up is emitted.
 /// Keep in sync with the Swift `SnapshotProjections.relayDiagnostics`
@@ -111,60 +115,15 @@ pub(super) struct RelayDiagnosticsRow {
     /// Per-wire-subscription detail rows (newest by sort id last — the
     /// kernel already sorts deterministically by `wire_id`).
     pub(super) wire_subs: Vec<RelayDiagnosticsWireSub>,
+    /// Pre-classified discovery kinds currently served by open wire
+    /// subscriptions on this relay. Shells render this directly; they do not
+    /// parse REQ filter JSON or switch on Nostr kind numbers.
+    pub(super) discovery_kinds_label: String,
     /// ADR-0051 — the relay's NIP-11 information document, once `nmp-nip11`
     /// has fetched it. `None` until the fetch resolves (or the relay serves
     /// no document). Apps read `info.name` / `info.icon` / … directly — no
     /// HTTP, no JSON, no awareness of NIP-11.
     pub(super) info: Option<RelayDiagnosticsInfo>,
-}
-
-/// Relay-information document, projected for the diagnostics surface (ADR-0051).
-///
-/// A field-for-field surface of the substrate-generic
-/// [`crate::substrate::RelayInfoDoc`]. Carried on [`RelayDiagnosticsRow::info`]
-/// so the shell renders relay name / icon / capabilities directly.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(super) struct RelayDiagnosticsInfo {
-    /// Operator-chosen display name, when advertised.
-    pub(super) name: Option<String>,
-    /// Human-readable description / "about" text.
-    pub(super) description: Option<String>,
-    /// Relay icon URL.
-    pub(super) icon: Option<String>,
-    /// Operator administrative public key (hex).
-    pub(super) pubkey: Option<String>,
-    /// Operator contact (email / URL / nostr address).
-    pub(super) contact: Option<String>,
-    /// Relay software identifier.
-    pub(super) software: Option<String>,
-    /// Relay software version.
-    pub(super) version: Option<String>,
-    /// Protocol (NIP) numbers the relay advertises support for.
-    pub(super) supported_nips: Vec<u32>,
-    /// `limitation.payment_required`.
-    pub(super) payment_required: Option<bool>,
-    /// `limitation.auth_required`.
-    pub(super) auth_required: Option<bool>,
-    /// `limitation.restricted_writes`.
-    pub(super) restricted_writes: Option<bool>,
-}
-
-impl RelayDiagnosticsInfo {
-    fn from_doc(doc: &crate::substrate::RelayInfoDoc) -> Self {
-        Self {
-            name: doc.name.clone(),
-            description: doc.description.clone(),
-            icon: doc.icon.clone(),
-            pubkey: doc.pubkey.clone(),
-            contact: doc.contact.clone(),
-            software: doc.software.clone(),
-            version: doc.version.clone(),
-            supported_nips: doc.supported_nips.clone(),
-            payment_required: doc.limitation_payment_required,
-            auth_required: doc.limitation_auth_required,
-            restricted_writes: doc.limitation_restricted_writes,
-        }
-    }
 }
 
 /// Enriched per-subscription view for `WireSubscriptionDetailView` and the
@@ -415,6 +374,7 @@ fn finish_row(
     let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
     let eosed_sub_count = subs.iter().filter(|s| s.eose_at_ms.is_some()).count() as u32;
     let total_events_rx = events_rx;
+    let discovery_kinds_label = discovery_kinds_label_for_subs(&subs);
 
     let wire_subs = subs
         .into_iter()
@@ -446,13 +406,12 @@ fn finish_row(
         } else {
             None
         },
-        last_connected_ms: last_connected_raw
-            .and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
-        last_event_ms: last_event_raw
-            .and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
+        last_connected_ms: last_connected_raw.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
+        last_event_ms: last_event_raw.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_notice,
         last_error,
         wire_subs,
+        discovery_kinds_label,
         info,
     }
 }
@@ -476,8 +435,12 @@ fn build_wire_sub(s: WireSubscriptionStatus, started_unix_ms: u64) -> RelayDiagn
         events_rx_display,
         eose_observed: s.eose_at_ms.is_some(),
         opened_ms: event_to_unix_ms(started_unix_ms, s.opened_at_ms).unwrap_or(started_unix_ms),
-        last_event_ms: s.last_event_at_ms.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
-        eose_ms: s.eose_at_ms.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
+        last_event_ms: s
+            .last_event_at_ms
+            .and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
+        eose_ms: s
+            .eose_at_ms
+            .and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         close_reason: s.close_reason,
         wire_id: s.wire_id,
         relay_url: s.relay_url,

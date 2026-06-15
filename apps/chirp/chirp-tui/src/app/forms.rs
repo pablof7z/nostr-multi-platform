@@ -192,24 +192,24 @@ impl AppState {
         self.push_toast("canceled");
     }
 
-    pub fn open_raw_event_modal(&mut self, content: String) {
-        self.raw_event_content = content;
-        self.mode = Mode::RawEventModal { scroll: 0 };
+    pub fn open_note_details_modal(&mut self, content: String) {
+        self.note_details_content = content;
+        self.mode = Mode::NoteDetailsModal { scroll: 0 };
     }
 
-    pub fn close_raw_event_modal(&mut self) {
+    pub fn close_note_details_modal(&mut self) {
         self.mode = Mode::Normal;
-        self.raw_event_content.clear();
+        self.note_details_content.clear();
     }
 
-    pub fn scroll_raw_modal_down(&mut self) {
-        if let Mode::RawEventModal { ref mut scroll } = self.mode {
+    pub fn scroll_note_details_modal_down(&mut self) {
+        if let Mode::NoteDetailsModal { ref mut scroll } = self.mode {
             *scroll = scroll.saturating_add(1);
         }
     }
 
-    pub fn scroll_raw_modal_up(&mut self) {
-        if let Mode::RawEventModal { ref mut scroll } = self.mode {
+    pub fn scroll_note_details_modal_up(&mut self) {
+        if let Mode::NoteDetailsModal { ref mut scroll } = self.mode {
             *scroll = scroll.saturating_sub(1);
         }
     }

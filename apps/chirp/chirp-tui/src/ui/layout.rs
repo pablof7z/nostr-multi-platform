@@ -13,7 +13,7 @@ use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, RELAY_DOW
 use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::home;
-use crate::ui::raw_event_modal;
+use crate::ui::note_details_modal;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     render_with_context(frame, state, &RenderContext::empty());
@@ -65,8 +65,8 @@ pub fn render_with_context(frame: &mut Frame<'_>, state: &AppState, context: &Re
         render_modal_form(frame, area, state);
     }
 
-    if let Mode::RawEventModal { scroll } = state.mode {
-        raw_event_modal::render(frame, area, state, scroll);
+    if let Mode::NoteDetailsModal { scroll } = state.mode {
+        note_details_modal::render(frame, area, state, scroll);
     }
 }
 

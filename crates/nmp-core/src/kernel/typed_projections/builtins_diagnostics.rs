@@ -88,6 +88,7 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
         last_notice: row.last_notice.clone(),
         last_error: row.last_error.clone(),
         wire_subs: row.wire_subs.iter().map(wire_sub_row).collect(),
+        discovery_kinds_label: row.discovery_kinds_label.clone(),
         info: row.info.as_ref().map(info_row),
     }
 }

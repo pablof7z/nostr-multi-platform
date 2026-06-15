@@ -165,6 +165,9 @@ table RelayDiagnosticsRow {
   // ADR-0051 — the relay's NIP-11 information document; null until
   // `nmp-nip11` has fetched it (or the relay serves no document).
   info:RelayDiagnosticsInfo;
+  // Pre-classified discovery kinds served by open wire subscriptions. Shells
+  // render this directly instead of parsing REQ filter JSON.
+  discovery_kinds_label:string;
 }
 
 // Enriched logical-interest row (mirror of `RelayDiagnosticsInterest`).

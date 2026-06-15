@@ -46,6 +46,7 @@ fn sample() -> RelayDiagnosticsModel {
                 eose_ms: 1_700_000_008_000,
                 close_reason: None,
             }],
+            discovery_kinds_label: "profile (0)".to_string(),
             info: Some(InfoRow {
                 name: Some("Relay One".to_string()),
                 description: None,

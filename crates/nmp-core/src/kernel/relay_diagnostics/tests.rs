@@ -36,18 +36,14 @@ fn snapshot_is_byte_stable_without_intervening_event() {
     kernel.start();
     kernel.relay_connecting_url(RelayRole::Content, "wss://relay.example/");
     kernel.relay_connected_url(RelayRole::Content, "wss://relay.example/");
-    kernel.record_transport_event(
-        RelayRole::Content,
-        "wss://relay.example/",
-        Instant::now(),
-    );
+    kernel.record_transport_event(RelayRole::Content, "wss://relay.example/", Instant::now());
 
-    let first = serde_json::to_vec(&kernel.relay_diagnostics_snapshot())
-        .expect("snapshot serializes");
+    let first =
+        serde_json::to_vec(&kernel.relay_diagnostics_snapshot()).expect("snapshot serializes");
     // Burn a little wall-clock time to prove the output does NOT track "now".
     std::thread::sleep(std::time::Duration::from_millis(5));
-    let second = serde_json::to_vec(&kernel.relay_diagnostics_snapshot())
-        .expect("snapshot serializes");
+    let second =
+        serde_json::to_vec(&kernel.relay_diagnostics_snapshot()).expect("snapshot serializes");
 
     assert_eq!(
         first, second,
@@ -219,7 +215,10 @@ fn set_relay_info_surfaces_on_diagnostics_row() {
         .iter()
         .find(|r| r.relay_url == "wss://relay.example")
         .expect("connected URL must appear");
-    let info = row.info.as_ref().expect("info present after set_relay_info");
+    let info = row
+        .info
+        .as_ref()
+        .expect("info present after set_relay_info");
     assert_eq!(info.name.as_deref(), Some("Example"));
     assert_eq!(info.icon.as_deref(), Some("https://relay.example/icon.png"));
     assert_eq!(info.supported_nips, vec![1, 11, 42]);

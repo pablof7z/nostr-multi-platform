@@ -17,24 +17,6 @@ use format::{
     append_wrapped, empty_dash, format_ms_ago, label_line, short_relay_url, status_dot, truncate,
 };
 
-// ── Discovery-kind classification constants ────────────────────────────────
-
-/// Discovery kinds per the V-51 acceptance criterion: profile (0), follow-list
-/// (3), relay-list (10002), and the generic replaceable-list range (10000–19999).
-/// These are the kinds that should be fetched from Indexer relays.
-const DISCOVERY_KINDS: &[u64] = &[0, 3, 10002];
-const DISCOVERY_LIST_RANGE: std::ops::RangeInclusive<u64> = 10000..=19999;
-
-/// Human-readable name for a discovery kind, used in the indexer summary line.
-fn discovery_kind_label(kind: u64) -> &'static str {
-    match kind {
-        0 => "profile",
-        3 => "follows",
-        10002 => "relay-list",
-        _ => "list",
-    }
-}
-
 pub(super) fn render_relay_list(frame: &mut Frame, area: Rect, state: &AppState, active: bool) {
     let title = if state.relays.is_empty() {
         " All Relays ".to_string()
@@ -288,7 +270,11 @@ fn append_wire_sub(lines: &mut Vec<Line<'static>>, sub: &RelayWireSubRow, pane_w
         "    opened {} · last {} · eose {}",
         format_ms_ago(sub.opened_ms),
         format_ms_ago(sub.last_event_ms),
-        if sub.eose_ms > 0 { format_ms_ago(sub.eose_ms) } else { "not yet".to_string() }
+        if sub.eose_ms > 0 {
+            format_ms_ago(sub.eose_ms)
+        } else {
+            "not yet".to_string()
+        }
     );
     lines.push(Line::from(Span::styled(
         truncate(&timing, pane_width),
@@ -350,62 +336,11 @@ pub(crate) fn zero_count_label(relay: &RelayRow) -> Option<&'static str> {
     }
 }
 
-// ── V-51 Phase 3: indexer discovery-kind targeting ────────────────────────
-
-/// Check whether a kind is a discovery kind per the V-51 criterion.
-fn is_discovery_kind(kind: u64) -> bool {
-    DISCOVERY_KINDS.contains(&kind) || DISCOVERY_LIST_RANGE.contains(&kind)
-}
-
-/// Parse the kinds from a `filter_summary` JSON string.
-///
-/// The field is built by `wire::filter_json_for` using `serde_json::to_string`
-/// on a `nostr::Filter` struct, so it is always valid compact JSON. We parse it
-/// to extract the `kinds` array without pulling in a full JSON dependency in
-/// this render module — we use `serde_json` which is already a workspace dep.
-fn kinds_from_filter_summary(filter_summary: &str) -> Vec<u64> {
-    serde_json::from_str::<serde_json::Value>(filter_summary)
-        .ok()
-        .and_then(|v| v.get("kinds").cloned())
-        .and_then(|k| k.as_array().cloned())
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|k| k.as_u64())
-        .collect()
-}
-
-/// Build a summary line for which discovery kinds an Indexer relay is
-/// currently serving (has open/active wire subscriptions for).
-///
-/// Example output: `"profile (0), follows (3), relay-list (10002)"`
-/// When no discovery REQ is open: `"none"`
 pub(crate) fn indexer_discovery_kinds_label(relay: &RelayRow) -> String {
-    // Collect the union of all discovery kinds from active wire subscriptions.
-    // We include any subscription that is not closed (state not "closed" or
-    // "closing") so paused/opening subs are also reflected.
-    let mut found: Vec<u64> = relay
-        .wire_subs
-        .iter()
-        .filter(|sub| {
-            let state = sub.state_label.to_ascii_lowercase();
-            !state.contains("closed") && !state.contains("closing")
-        })
-        .flat_map(|sub| kinds_from_filter_summary(&sub.filter_summary))
-        .filter(|k| is_discovery_kind(*k))
-        .collect();
-
-    // Deduplicate and sort for deterministic output.
-    found.sort_unstable();
-    found.dedup();
-
-    if found.is_empty() {
+    if relay.discovery_kinds_label.is_empty() {
         "none".to_string()
     } else {
-        found
-            .into_iter()
-            .map(|k| format!("{} ({})", discovery_kind_label(k), k))
-            .collect::<Vec<_>>()
-            .join(", ")
+        relay.discovery_kinds_label.clone()
     }
 }
 
@@ -521,16 +456,8 @@ mod tests {
 
     // ── indexer_discovery_kinds_label ─────────────────────────────────────
 
-    fn make_wire_sub(filter_summary: &str, state_label: &str) -> RelayWireSubRow {
-        RelayWireSubRow {
-            filter_summary: filter_summary.to_string(),
-            state_label: state_label.to_string(),
-            ..RelayWireSubRow::default()
-        }
-    }
-
     #[test]
-    fn indexer_none_when_no_wire_subs() {
+    fn indexer_none_when_projection_label_empty() {
         let relay = RelayRow {
             role_label: "Indexer".to_string(),
             ..RelayRow::default()
@@ -539,17 +466,18 @@ mod tests {
     }
 
     #[test]
-    fn indexer_shows_discovery_kinds_from_open_subs() {
+    fn indexer_shows_projected_discovery_kinds_without_parsing_filters() {
         let relay = RelayRow {
             role_label: "Indexer".to_string(),
-            wire_subs: vec![
-                make_wire_sub(r#"{"kinds":[0,3],"authors":["ab"]}"#, "Open"),
-                make_wire_sub(r#"{"kinds":[10002],"authors":["cd"]}"#, "Open"),
-            ],
+            discovery_kinds_label: "profile (0), follows (3), relay-list (10002)".to_string(),
+            wire_subs: vec![RelayWireSubRow {
+                filter_summary: r#"{"kinds":[1,6]}"#.to_string(),
+                state_label: "Open".to_string(),
+                ..RelayWireSubRow::default()
+            }],
             ..RelayRow::default()
         };
         let label = indexer_discovery_kinds_label(&relay);
-        // Should list all three discovery kinds found across the active subs.
         assert!(
             label.contains("profile (0)"),
             "expected profile in '{label}'"
@@ -562,61 +490,5 @@ mod tests {
             label.contains("relay-list (10002)"),
             "expected relay-list in '{label}'"
         );
-    }
-
-    #[test]
-    fn indexer_excludes_closed_subs() {
-        let relay = RelayRow {
-            role_label: "Indexer".to_string(),
-            wire_subs: vec![
-                make_wire_sub(r#"{"kinds":[0],"authors":["ab"]}"#, "Closed"),
-                make_wire_sub(r#"{"kinds":[3],"authors":["cd"]}"#, "Open"),
-            ],
-            ..RelayRow::default()
-        };
-        let label = indexer_discovery_kinds_label(&relay);
-        assert!(!label.contains("profile"), "closed sub must be excluded");
-        assert!(label.contains("follows (3)"), "open sub must be included");
-    }
-
-    #[test]
-    fn indexer_non_discovery_kinds_not_shown() {
-        let relay = RelayRow {
-            role_label: "Indexer".to_string(),
-            wire_subs: vec![make_wire_sub(r#"{"kinds":[1,6]}"#, "Open")],
-            ..RelayRow::default()
-        };
-        let label = indexer_discovery_kinds_label(&relay);
-        // Kinds 1 (text-note) and 6 (repost) are not discovery kinds.
-        assert_eq!(label, "none");
-    }
-
-    #[test]
-    fn indexer_list_range_kinds_included() {
-        // Kinds 10003–19999 (generic replaceable lists) should be included.
-        let relay = RelayRow {
-            role_label: "Indexer".to_string(),
-            wire_subs: vec![make_wire_sub(r#"{"kinds":[10003]}"#, "Open")],
-            ..RelayRow::default()
-        };
-        let label = indexer_discovery_kinds_label(&relay);
-        assert!(
-            label.contains("10003"),
-            "list-range kind 10003 must appear in '{label}'"
-        );
-    }
-
-    // ── is_discovery_kind ─────────────────────────────────────────────────
-
-    #[test]
-    fn discovery_kind_boundaries() {
-        assert!(is_discovery_kind(0));
-        assert!(is_discovery_kind(3));
-        assert!(is_discovery_kind(10002));
-        assert!(is_discovery_kind(10000));
-        assert!(is_discovery_kind(19999));
-        assert!(!is_discovery_kind(1));
-        assert!(!is_discovery_kind(9999));
-        assert!(!is_discovery_kind(20000));
     }
 }

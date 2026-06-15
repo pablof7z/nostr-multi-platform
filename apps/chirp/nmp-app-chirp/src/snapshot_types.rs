@@ -55,6 +55,8 @@ pub struct RelayRow {
     #[serde(default)]
     pub reconnect_count: u64,
     #[serde(default)]
+    pub discovery_kinds_label: String,
+    #[serde(default)]
     pub bytes_rx_display: Option<String>,
     #[serde(default)]
     pub bytes_tx_display: Option<String>,
