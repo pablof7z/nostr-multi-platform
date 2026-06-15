@@ -36,39 +36,34 @@ impl Kernel {
     }
 
     pub(crate) fn relay_connected_url(&mut self, role: RelayRole, relay_url: &str) {
-        // Capture the prior per-URL transport state BEFORE `mark_transport_connected`
-        // overwrites it to "connected" — `relay_connected_url` is the only place
-        // that can tell a genuine reconnect-after-down from a redundant connect.
-        let was_down = role == RelayRole::Indexer && self.indexer_socket_was_down(relay_url);
-
         self.mark_lane_connected(role);
         self.mark_transport_connected(role, relay_url);
         self.log(format!("{} relay connected ({relay_url})", role.key()));
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
-        // F-TTL / M2 retry-on-miss: a GENUINE indexer reconnect — a socket that
-        // was previously `backing_off` (failed) or `closed` (torn down) and has
-        // now come back — is a fresh chance to resolve authors whose kind:10002
-        // we probed once and never got (empty EOSE, or the indexer was down
-        // when we probed). Re-arm the implicit-discovery probed set so the next
-        // recompile re-probes every STILL-uncached author. Resolved authors
-        // short-circuit on the mailbox-cache hit, so this is bounded by the
-        // genuinely-unresolved set, not a re-probe storm.
+        // B3 (Workstream B acquisition-one-door) — mailbox-probe re-arm on a
+        // GENUINE indexer-lane outage recovery.
         //
-        // CRITICAL (#1436 regression fix): this must NOT fire on the FIRST/normal
-        // connect of an indexer during startup, nor on a redundant duplicate
-        // connect of an already-live socket. Firing then clears the probe set and
-        // forces an `IndexerSetChanged` recompile mid-load — on every socket-up
-        // event — which churns the feed subscription and, under single-threaded
-        // wasm, can starve the UI so notes never paint. The genuinely-NEW-indexer
-        // case (a relay added to the configured set) is handled separately by the
-        // `IndexerSetChanged` trigger in `set_configured_relays`, which clears the
-        // probe set there `if changed`. Here we only handle reconnect-after-down.
-        if was_down {
-            self.lifecycle.clear_probed_mailboxes();
-            self.lifecycle
-                .enqueue_trigger(crate::subs::CompileTrigger::IndexerSetChanged { generation: 0 });
+        // F-TTL / M2 retry-on-miss: when the indexer lane recovers from a full
+        // outage, authors whose kind:10002 we probed once and never got (empty
+        // EOSE, or every indexer was down when we probed) deserve a fresh probe.
+        // `observe_indexer_lane_health` re-arms the implicit-discovery probed set
+        // and bumps the probe epoch — but ONLY on the lane-level `down → up`
+        // edge (every indexer socket was down, then one came back).
+        //
+        // Why lane-level, not the per-socket `was_down` gate this replaces
+        // (#1436 + its successor): the per-socket gate re-armed whenever THIS
+        // url's row had been `backing_off`/`closed`, so a single flapping
+        // indexer re-blasted the whole probe batch even while sibling indexers
+        // stayed live the entire time — exactly the per-reconnect churn that
+        // starves the wasm UI. The lane epoch fires the re-arm only on a real
+        // outage recovery; a reconnect with ≥1 sibling still connected is a
+        // no-op. The genuinely-NEW-indexer case (a relay added to the configured
+        // set) is still handled separately by `set_configured_relays`'s
+        // `IndexerSetChanged` trigger; here we only handle outage recovery.
+        if role == RelayRole::Indexer {
+            self.observe_indexer_lane_health();
         }
     }
 
@@ -128,6 +123,14 @@ impl Kernel {
         // that attempted the failed relay URL. Delegated to `relay_failed_claim_walk`
         // in `claim_expansion.rs` (D4: single writer of the score map).
         self.relay_failed_claim_walk(relay_url);
+
+        // B3 — record the indexer-lane outage edge. `mark_transport_failed`
+        // above flipped this URL's row to `backing_off`; if that took the last
+        // connected indexer down, the lane is now down and the NEXT recovery
+        // bumps the probe epoch (see `relay_connected_url`). No-op otherwise.
+        if role == RelayRole::Indexer {
+            self.observe_indexer_lane_health();
+        }
     }
 
     /// A transport socket for `role` was fully torn down (no retry).
@@ -159,13 +162,16 @@ impl Kernel {
         }
         // M2 migration: profile (kind:0) claims are registry interests now, so
         // the planner's reconnect-replay re-emits them automatically — the
-        // bespoke `profile_requests` requested→pending re-queue is gone. The
-        // retry-on-miss for kind:10002 discovery probes is handled on the
-        // re-CONNECT side (`relay_connected_url`, role == Indexer): this
-        // `relay_closed` marks the per-URL transport row `closed`, and the
-        // subsequent reconnect sees that down-state and clears the probed set so
-        // still-uncached authors are re-probed. A connect that is NOT preceded
-        // by a down-state (startup / duplicate) is correctly a no-op.
+        // bespoke `profile_requests` requested→pending re-queue is gone. B3:
+        // retry-on-miss for kind:10002 discovery probes is driven by the
+        // lane-level outage epoch. `mark_transport_closed` above flipped this
+        // URL's row to `closed`; observe the lane so a full indexer outage is
+        // recorded and the NEXT recovery re-arms the probe set
+        // (`relay_connected_url`). A connect not preceded by a full-lane outage
+        // is correctly a no-op (no churn on sibling-still-live reconnects).
+        if role == RelayRole::Indexer {
+            self.observe_indexer_lane_health();
+        }
     }
 
     /// Global socket teardown for `role` (Stop / Reset / Shutdown): unlike the
@@ -183,6 +189,13 @@ impl Kernel {
         self.changed_since_emit = true;
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
+        }
+        // B3 — a full role teardown takes the whole indexer lane down. Record
+        // the outage edge so a later reconnect (after a Start) re-arms the
+        // probe set. `mark_transport_role_closed` above marked every indexer
+        // row `closed`, so `any_indexer_connected` is now false.
+        if role == RelayRole::Indexer {
+            self.observe_indexer_lane_health();
         }
     }
 }

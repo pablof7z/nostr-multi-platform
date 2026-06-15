@@ -58,6 +58,8 @@ mod discovery_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod probe_epoch_tests;
+#[cfg(test)]
 mod since_rewrite_tests;
 
 use std::collections::BTreeSet;
@@ -285,6 +287,35 @@ pub struct SubscriptionLifecycle {
     /// the probed mark is then moot (the cache hit short-circuits the
     /// unknown-author check before this set is consulted).
     probed_mailboxes: BTreeSet<String>,
+    /// B3 (Workstream B acquisition-one-door) — monotonic mailbox-probe epoch.
+    ///
+    /// Bumped by [`Self::note_indexer_lane_recovered`] when the indexer lane
+    /// genuinely recovers from a full outage (every indexer socket was down,
+    /// then one came back). On a bump, `probed_mailboxes` is re-armed (cleared)
+    /// so authors whose kind:10002 probe returned an empty EOSE — or never
+    /// landed because every indexer was unreachable — are re-probed on the next
+    /// recompile.
+    ///
+    /// **Why an epoch, not a per-reconnect re-arm.** `probed_mailboxes` is
+    /// insert-only per session, so an indexer that was offline (or returned an
+    /// empty EOSE) marks an author probed FOREVER — a stranger whose relay-list
+    /// only exists on a relay that was briefly down never re-resolves. A naive
+    /// "clear on every reconnect" re-arm was reverted (a single socket flap
+    /// among healthy siblings re-blasted the whole probe batch → web-feed
+    /// regression). Gating on a 0→1 indexer-lane transition fires the re-arm
+    /// ONLY on a genuine outage recovery, never on routine per-socket churn:
+    /// while ≥1 indexer stays connected the epoch is stable and the live probe
+    /// set is untouched. D8: the re-arm rides the existing
+    /// `RelayHealthChanged`-class recompile path (no polling, no extra tick).
+    probe_epoch: u64,
+    /// B3 — `true` while the indexer lane is fully down (no indexer socket
+    /// connected). Tracks the outage edge so [`Self::note_indexer_lane_recovered`]
+    /// can distinguish a genuine 0→1 recovery (bump the epoch + re-arm) from a
+    /// reconnect that happened while a sibling indexer was still live (no bump).
+    /// Starts `true` (cold start: nothing connected yet) so the FIRST indexer
+    /// connection is NOT mistaken for an outage recovery — the cold-start probe
+    /// is driven by the normal first recompile, not by this edge.
+    indexer_lane_down: bool,
     /// T140 (D6 / codex finding #7): the most recent *genuine* planner error
     /// from [`Self::drain_tick`].
     ///

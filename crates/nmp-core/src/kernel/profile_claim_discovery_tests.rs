@@ -131,6 +131,74 @@ fn indexer_reconnect_reprobes_uncached_author() {
     );
 }
 
+// ─── (b''') B3: a single indexer flap among live siblings must NOT re-arm ─────
+
+/// B3 (Workstream B acquisition-one-door): the mailbox-probe re-arm is gated on
+/// a *full-lane* outage recovery, not a per-socket reconnect. With two indexers
+/// connected, one flapping (close → reconnect) while the other stays live must
+/// NOT clear the probed set — the lane never went down. This is the
+/// per-reconnect churn the old per-socket `indexer_socket_was_down` gate caused
+/// (and the reverted naive "clear on every reconnect" approach); the lane epoch
+/// fixes it. A subsequent FULL outage (both down) then recovery DOES re-arm.
+#[test]
+fn single_indexer_flap_among_live_siblings_does_not_rearm() {
+    const INDEXER_A: &str = "wss://indexer-a.example";
+    const INDEXER_B: &str = "wss://indexer-b.example";
+
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected_url(RelayRole::Content, crate::relay::FALLBACK_CONTENT_RELAY);
+    kernel.relay_connected_url(RelayRole::Indexer, INDEXER_A);
+    kernel.relay_connected_url(RelayRole::Indexer, INDEXER_B);
+
+    let stranger = hex64("5ed");
+    let _ = kernel.claim_profile(
+        stranger.clone(),
+        "view-0".to_string(),
+        true,
+        false,
+        ProfileLiveness::CacheOk,
+    );
+    let _ = kernel.drain_lifecycle_outbound();
+    assert!(
+        kernel.probed_mailboxes_for_test().contains(&stranger),
+        "stranger must be marked probed after the first drain"
+    );
+
+    // Indexer A flaps (closes then reconnects) while B stays connected the whole
+    // time. The lane never fully went down → no re-arm, no churn.
+    kernel.relay_closed(RelayRole::Indexer, INDEXER_A);
+    assert!(
+        kernel.probed_mailboxes_for_test().contains(&stranger),
+        "closing one of two indexers must NOT clear the probed set (lane still up via B)"
+    );
+    kernel.relay_connected_url(RelayRole::Indexer, INDEXER_A);
+    assert!(
+        kernel.probed_mailboxes_for_test().contains(&stranger),
+        "a sibling-still-live indexer reconnect must NOT re-arm the probed set (B3 anti-churn)"
+    );
+    let after = kernel.drain_lifecycle_outbound();
+    assert!(
+        !after.iter().any(|m| m.text.contains("10002")),
+        "a sibling-still-live reconnect must NOT re-emit a kind:10002 probe; got {after:?}"
+    );
+
+    // Now a GENUINE full outage: BOTH indexers down, then one recovers. The lane
+    // went down → up, so the recovery re-arms and re-probes the still-uncached
+    // stranger.
+    kernel.relay_closed(RelayRole::Indexer, INDEXER_A);
+    kernel.relay_closed(RelayRole::Indexer, INDEXER_B);
+    kernel.relay_connected_url(RelayRole::Indexer, INDEXER_A);
+    assert!(
+        !kernel.probed_mailboxes_for_test().contains(&stranger),
+        "a full-lane outage recovery (both down → one up) MUST re-arm the probed set"
+    );
+    let reqs = drain_reqs(&mut kernel);
+    assert!(
+        has_10002_probe_for(&reqs, &stranger),
+        "after a full-lane outage recovery the still-uncached stranger must be re-probed"
+    );
+}
+
 // ─── (b'') regression #1436: redundant/startup indexer connect must NOT churn ─
 
 /// The PR that introduced the registry chokepoint cleared the probed set and
