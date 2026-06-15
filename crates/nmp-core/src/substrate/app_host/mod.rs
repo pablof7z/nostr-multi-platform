@@ -1,0 +1,349 @@
+//! App-host registration seams.
+//!
+//! Reusable protocol and routing crates must not depend on the native C-ABI
+//! crate just to wire their modules into an application. These traits live at
+//! the substrate layer so crates can register actions, parsers, observers, and
+//! runtime projections against any host that implements the same Rust contract.
+//! `nmp-ffi::NmpApp` is one implementation, not the type every reusable crate
+//! has to name.
+//!
+//! # D6 — narrow registration/capability traits
+//!
+//! The host surface is split into small, single-concern traits so a protocol
+//! module receives ONLY the surface it actually uses (D0 capability honesty),
+//! never a ~30-method god-object. A crate that only registers a parser takes
+//! [`IngestParserRegistrar`]; a crate that only reacts to relay connects takes
+//! [`RelayConnectedHookRegistrar`]; and so on. This mirrors the K2 capability
+//! traits (`WalletKernelAccess`, `ProfileLookup`, …) — narrow contracts the
+//! kernel hands out by least privilege.
+//!
+//! [`AppHost`] survives only as a **composition super-trait**: the union of
+//! every narrow trait, implemented for free (blanket impl) by any type that
+//! implements all of them. The composition root (`nmp_defaults::register_defaults`
+//! and the `nmp-ffi` / builder wiring) is the one place that genuinely needs the
+//! whole surface and may name `AppHost`. Narrow consumers must NOT.
+
+use std::ops::Range;
+use std::sync::Arc;
+
+use crate::publish::OutboxResolver;
+use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
+use crate::store::EventStore;
+use crate::subs::PlanCoverageHook;
+use crate::{
+    AppRelaySlot, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
+    RawEventObserverId,
+};
+
+use super::{
+    ActionRegistrar, ContactsLookup, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
+    ProfileLookup, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook,
+    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
+};
+
+mod projection;
+pub use projection::{IncrementalApplyError, SnapshotProjectionRegistrar};
+
+/// Register ingest parsers (ADR-0057 / rule A5) — kind-keyed and range-keyed,
+/// with slot-keyed lifecycle replace/unregister.
+pub trait IngestParserRegistrar {
+    fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>);
+
+    /// Slot-keyed replace: evict the prior parser registered under `slot_key`
+    /// for `kind` (if any), then install `parser` under the same slot. Parsers
+    /// registered under **other** slot keys (or via [`Self::register_ingest_parser`]
+    /// with no slot key) are untouched.
+    ///
+    /// Used by lifecycle-managed singleton seams — each caller owns a unique
+    /// `slot_key` (e.g. `"nip17.dm_inbox"` or `"marmot"`) and re-registrations
+    /// only evict the caller's own prior entry. Multiple lifecycle-managed parsers
+    /// on the same kind (e.g. the NIP-17 DM inbox and Marmot on kind:1059)
+    /// coexist safely because they own distinct slots.
+    ///
+    /// Returns the previous parser for `(kind, slot_key)`, or `None` when this is
+    /// the first registration for that slot. D6 — a poisoned dispatcher lock is a
+    /// silent no-op returning `None` (the registration is dropped; existing parsers
+    /// are preserved).
+    ///
+    /// **Slot keys MUST be globally unique across crates.** A second component
+    /// reusing an existing slot name silently evicts the peer's parser. Choose a
+    /// fully-qualified reverse-domain key (e.g. `"nip17.dm_inbox"`, `"marmot"`)
+    /// that cannot collide with any other crate's registration.
+    fn replace_ingest_parser(
+        &self,
+        kind: u32,
+        slot_key: &'static str,
+        parser: Arc<dyn IngestParser>,
+    ) -> Option<Arc<dyn IngestParser>>;
+
+    /// Remove the parser registered under `slot_key` for `kind`, if any.
+    ///
+    /// Used by teardown paths (e.g. Marmot sign-out without re-register) to
+    /// clear a lifecycle-managed slot. D6 — a poisoned dispatcher lock is a
+    /// silent no-op.
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str);
+
+    /// Slot-keyed replace for a kind range: evict the prior range-parser
+    /// registered under `slot_key` (if any), then install `parser` covering
+    /// `range`. Parsers registered under other slot keys or via the slot-less
+    /// [`Self::register_ingest_parser`] are untouched.
+    ///
+    /// Used by parsers that need to receive every kind (e.g. an all-kinds
+    /// debug raw-event cache). Returns the previous parser for `slot_key`, or
+    /// `None` when this is the first registration for that slot. D6 — a
+    /// poisoned dispatcher lock is a silent no-op returning `None`.
+    ///
+    /// **Slot keys MUST be globally unique across crates.** Choose a
+    /// fully-qualified reverse-domain key (e.g. `"chirp-tui.raw-cache"`) that
+    /// cannot collide with any other crate's registration.
+    fn replace_ingest_parser_range(
+        &self,
+        range: Range<u32>,
+        slot_key: &'static str,
+        parser: Arc<dyn IngestParser>,
+    ) -> Option<Arc<dyn IngestParser>>;
+
+    /// Remove the range-parser registered under `slot_key`, if any. D6 — a
+    /// poisoned dispatcher lock is a silent no-op.
+    fn unregister_ingest_parser_range(&self, slot_key: &'static str);
+}
+
+/// Register / unregister kernel-event and raw-event observers (the v1 fan-out
+/// extension mechanism — [`KernelEventObserver`] and [`RawEventObserver`]).
+pub trait EventObserverRegistrar {
+    fn register_event_observer(
+        &self,
+        observer: Arc<dyn KernelEventObserver>,
+    ) -> KernelEventObserverId;
+
+    fn unregister_event_observer(&self, id: KernelEventObserverId);
+
+    fn swap_singleton_event_observer(
+        &self,
+        new: Option<KernelEventObserverId>,
+    ) -> Option<KernelEventObserverId>;
+
+    /// Register a raw signed-event observer for **verbatim forwarding only**.
+    ///
+    /// The tap delivers the exact signed NIP-01 frame (including `sig`) for
+    /// every accepted live-ingest event matching `kinds`. It fires on live
+    /// ingest (including `Duplicate` outcomes) but does **NOT** fire on
+    /// cache-served replay.
+    ///
+    /// **State derivation belongs on `register_ingest_parser` (rule A5),
+    /// not here.** The `IngestParser` seam fires on cache-served replay
+    /// (since PR-1/#1137 + PR-2/#1145) and supports slot-keyed replace for
+    /// lifecycle-managed singleton parsers. Use the raw tap exclusively when
+    /// the `sig` field must be forwarded verbatim to an external store or
+    /// relay bridge (e.g. the `hl` app's nostrdb mirror).
+    fn register_raw_event_observer(
+        &self,
+        kinds: KindFilter,
+        observer: Arc<dyn RawEventObserver>,
+    ) -> RawEventObserverId;
+
+    fn unregister_raw_event_observer(&self, id: RawEventObserverId);
+}
+
+/// Register a Rust-side callback for active-account changes (per-account
+/// lifecycle reset without polling).
+pub trait IdentityChangeRegistrar {
+    /// Register a Rust-side callback for active-account changes.
+    ///
+    /// The callback runs on the update-listener thread after the actor has
+    /// written the active-keys slot and emitted an update frame. It
+    /// fires only when the slot value changes (`Some(pubkey)` on sign-in /
+    /// switch, `None` on logout / reset), never on ordinary snapshot ticks.
+    /// This is the canonical composition seam for long-lived Rust objects that
+    /// need to reset per-account state without polling.
+    ///
+    /// The callback receives the new active pubkey (hex), or `None` on
+    /// logout / reset. No unregister is provided — current consumers are
+    /// app-lifetime registrations installed during host init.
+    ///
+    /// This method lives on the trait — not only on the concrete `NmpApp` — so
+    /// reusable protocol/runtime crates that register through `&impl
+    /// IdentityChangeRegistrar` can wire per-account lifecycle hooks without
+    /// depending on the C-ABI crate.
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static;
+}
+
+/// Install the host's `REQ`-frame interceptor (subscription-plan rewrite seam).
+pub trait ReqFrameInterceptorRegistrar {
+    fn set_req_frame_interceptor(&self, interceptor: Arc<dyn ReqFrameInterceptor>);
+}
+
+/// Install a relay-text interceptor (inbound relay message hook — e.g. the
+/// NIP-47 wallet response listener).
+pub trait RelayTextInterceptorRegistrar {
+    fn add_relay_text_interceptor(&self, interceptor: Arc<dyn RelayTextInterceptor>);
+}
+
+/// Install a [`RelayConnectedHook`] so a protocol crate reacts when a relay
+/// connects.
+pub trait RelayConnectedHookRegistrar {
+    /// ADR-0051 — install a [`RelayConnectedHook`] so a protocol crate (today
+    /// `nmp-nip11`) reacts when a relay connects (e.g. fetch its NIP-11
+    /// information document). Additive: multiple crates may react to the same
+    /// connect.
+    fn add_relay_connected_hook(&self, hook: Arc<dyn RelayConnectedHook>);
+}
+
+/// Install the subscription-plan coverage hook (planner diagnostics seam).
+pub trait CoverageHookRegistrar {
+    fn set_coverage_hook(&self, hook: PlanCoverageHook);
+}
+
+/// Install the kernel-owned enrichment readers (kind:0 profiles, kind:3
+/// contacts, kind:10002 mailbox hints) — the composition root passes the SAME
+/// `Arc` it backs the matching [`IngestParser`] with, so reader and writer see
+/// one source of truth (ADR-0057). The kernel never names the wire format (D0).
+pub trait KernelReaderRegistrar {
+    /// ADR-0057 PR 2 — install the kind:0 profile cache as the kernel's
+    /// `Arc<dyn ProfileLookup>` (reader). The composition root passes the SAME
+    /// `Arc` it backs the kind:0 [`IngestParser`] (`nmp_nip01::Kind0Parser`,
+    /// the writer) with, so the kernel's enrichment / claim-TTL / zap-LNURL /
+    /// RAM-eviction readers see one source of truth. The kernel never names the
+    /// kind:0 wire format (D0).
+    fn set_profile_lookup(&self, lookup: Arc<dyn ProfileLookup>);
+
+    /// ADR-0057 PR 3 — install the kind:3 contacts (follow-set) cache as the
+    /// kernel's `Arc<dyn ContactsLookup>` (reader). The composition root passes
+    /// the SAME `Arc` it backs the kind:3 [`IngestParser`]
+    /// (`nmp_nip01::Kind3Parser`, the writer) with, so the kernel's follow-feed
+    /// registration / byte-estimate / RAM-eviction readers AND the parser see
+    /// one source of truth. The kernel never names the kind:3 wire format (D0).
+    fn set_contacts_lookup(&self, lookup: Arc<dyn ContactsLookup>);
+
+    /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19
+    /// identity encoder (`nmp_app_encode_profile`) reads kind:10002 relay
+    /// hints from. The composition root passes the SAME `MailboxCache`
+    /// instance it hands [`RoutingFactoryRegistrar::set_routing_substrate`] and
+    /// the kind:10002 [`IngestParser`], so the encoder can prefer `nprofile`
+    /// over a bare `npub` using the hints the parser writes on ingest.
+    /// Read-only, synchronous — no network, no actor round-trip.
+    fn set_mailbox_cache_reader(&self, cache: Arc<dyn MailboxCache>);
+}
+
+/// Install the DM-inbox relay-list lookup (NIP-17 kind:10050) — separate from
+/// the other kernel readers because the DM protocol crate (`nmp-nip17`) is its
+/// narrow consumer.
+pub trait DmInboxRelayRegistrar {
+    fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
+}
+
+/// Install the outbound routing / publish / raw-forward factories and the
+/// NIP-46 bootstrap relay — the composition root's substrate-factory seam.
+pub trait RoutingFactoryRegistrar {
+    fn set_routing_substrate<F>(&self, factory: F)
+    where
+        F: Fn(Arc<dyn RoutingTraceObserver>) -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)
+            + Send
+            + Sync
+            + 'static;
+
+    fn set_publish_resolver_factory<F>(&self, factory: F)
+    where
+        F: Fn(
+                Arc<dyn EventStore>,
+                IndexerRelaysSlot,
+                LocalWriteRelaysSlot,
+                ActiveAccountSlot,
+            ) -> Arc<dyn OutboxResolver>
+            + Send
+            + Sync
+            + 'static;
+
+    fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
+    where
+        F: Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn RawEventForwardPolicy>>
+            + Send
+            + Sync
+            + 'static;
+
+    /// Register the host-supplied fallback relay URL for client-initiated
+    /// NIP-46 `nostrconnect://` handshakes.
+    ///
+    /// Must be called before `nmp_app_start`. The composition root
+    /// (`nmp_defaults::register_defaults`) supplies a sane default; a
+    /// per-app crate may override it. When no URL has been registered the
+    /// substrate surfaces a typed error rather than silently using a hardcoded
+    /// URL (V-65 / D0).
+    fn set_nostrconnect_bootstrap_relay(&self, url: String);
+}
+
+/// Read-only host capability accessors — the active account identity, the
+/// actor command channel, and the configured-relays slot.
+///
+/// D5 / D6: the raw `active_local_keys` accessor is intentionally NOT here.
+/// Secret key material is reached only through the signer-session port /
+/// `ProtocolCommandContext`, never the host registration surface — no host
+/// consumer reads `nostr::Keys` through this trait. Identity-only consumers
+/// (WOT bootstrap, DM relay-list runtime, zap-receipt / mute reconcilers) read
+/// [`Self::active_pubkey`], which is populated for every backend including
+/// remote-signer (NIP-46 bunker) accounts.
+pub trait HostCapabilities {
+    /// Pubkey-only identity accessor.
+    ///
+    /// Returns the shared [`ActiveAccountSlot`] (`Arc<Mutex<Option<String>>>`,
+    /// hex pubkey) the kernel actor writes on every identity mutation. Unlike
+    /// the raw-keys accessor — which is `None` for remote-signer (NIP-46
+    /// bunker) accounts whose secret material lives outside the kernel — this
+    /// slot is populated for **every** backend, including bunker. Identity-only
+    /// consumers (WOT bootstrap, the DM relay-list runtime, self-zap-receipt and
+    /// mute-list reconcilers) MUST read this so they activate for bunker
+    /// accounts.
+    ///
+    /// Single source of truth (D4): this is the exact slot the actor populates
+    /// in `kernel::identity_state` — it is not a second mirror of the active
+    /// account. `None` means no account is signed in.
+    fn active_pubkey(&self) -> ActiveAccountSlot;
+
+    fn actor_sender(&self) -> crate::actor::CommandSender;
+
+    fn configured_relays_handle(&self) -> AppRelaySlot;
+}
+
+/// Host surface needed by reusable NMP **composition roots**.
+///
+/// D6: this is the union super-trait of every narrow registration / capability
+/// trait above. It is implemented for free (blanket impl below) by any type
+/// that implements all of them — the composition root (`register_defaults`, the
+/// `nmp-ffi` / builder wiring) names it because it genuinely wires the whole
+/// surface. Narrow protocol modules MUST take the specific narrow trait(s) they
+/// use, never `AppHost`.
+pub trait AppHost:
+    ActionRegistrar
+    + SnapshotProjectionRegistrar
+    + IngestParserRegistrar
+    + EventObserverRegistrar
+    + IdentityChangeRegistrar
+    + ReqFrameInterceptorRegistrar
+    + RelayTextInterceptorRegistrar
+    + RelayConnectedHookRegistrar
+    + CoverageHookRegistrar
+    + KernelReaderRegistrar
+    + DmInboxRelayRegistrar
+    + RoutingFactoryRegistrar
+    + HostCapabilities
+{
+}
+
+impl<T> AppHost for T where
+    T: ActionRegistrar
+        + SnapshotProjectionRegistrar
+        + IngestParserRegistrar
+        + EventObserverRegistrar
+        + IdentityChangeRegistrar
+        + ReqFrameInterceptorRegistrar
+        + RelayTextInterceptorRegistrar
+        + RelayConnectedHookRegistrar
+        + CoverageHookRegistrar
+        + KernelReaderRegistrar
+        + DmInboxRelayRegistrar
+        + RoutingFactoryRegistrar
+        + HostCapabilities
+{
+}

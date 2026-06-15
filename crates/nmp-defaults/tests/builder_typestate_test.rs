@@ -184,11 +184,12 @@ fn builder_consume_all_builtin_projections_is_not_narrowing() {
 /// method. Both unions land; the result is narrowing.
 #[test]
 fn builder_declared_projections_union_across_trait_and_typestate_methods() {
-    use nmp_core::substrate::AppHost;
+    use nmp_core::substrate::SnapshotProjectionRegistrar;
     let builder = NmpAppBuilder::new();
-    // Simulate a protocol-crate additive declaration via the AppHost trait
-    // (&self receiver — does NOT advance the typestate).
-    AppHost::declare_consumed_projections(&builder, ["profile"]);
+    // Simulate a protocol-crate additive declaration via the narrow
+    // SnapshotProjectionRegistrar trait (&self receiver — does NOT advance the
+    // typestate).
+    SnapshotProjectionRegistrar::declare_consumed_projections(&builder, ["profile"]);
     // Composition root finalizes via the consuming typestate method.
     let app = builder
         .in_memory()

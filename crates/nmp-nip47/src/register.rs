@@ -18,7 +18,10 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{AppHost, RelayTextInterceptor};
+use nmp_core::substrate::{
+    ActionRegistrar, RelayTextInterceptor, RelayTextInterceptorRegistrar,
+    SnapshotProjectionRegistrar,
+};
 use nmp_core::{Kernel, OutboundMessage, TypedProjectionData};
 
 use crate::runtime::{new_wallet_runtime_handle, WalletRuntimeHandle};
@@ -148,7 +151,10 @@ impl RelayTextInterceptor for WalletInterceptor {
 /// the interceptor + action registry once, at kernel construction). The
 /// `NmpAppBuilder::with_wallet` step in `nmp-defaults` enforces this ordering
 /// at compile time for Rust callers.
-pub fn register_wallet(app: &mut impl AppHost, storage_path: Option<String>) -> WalletRuntimeHandle {
+pub fn register_wallet(
+    app: &mut (impl ActionRegistrar + RelayTextInterceptorRegistrar + SnapshotProjectionRegistrar),
+    storage_path: Option<String>,
+) -> WalletRuntimeHandle {
     // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
     //    writer, D4), the others are captured below by the `"wallet"`
     //    generic + typed snapshot projection closures.

@@ -66,7 +66,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionRegistrar, AppHost};
+use nmp_core::substrate::ActionRegistrar;
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 
 use crate::relay_config;

@@ -31,31 +31,28 @@
 //! deliberately assert the runtime's *presence* here, not its internal decision.
 
 use std::ops::Range;
-use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::{CompiledPlan, RelayPlan};
 use nmp_core::publish::OutboxResolver;
-use nmp_core::slots::{
-    ActiveAccountSlot, ActiveLocalKeysSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
-};
+use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
-    ActionModule, ActionRegistrar, AppHost, DmInboxRelayLookup, IngestParser, MailboxCache,
-    OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayTextInterceptor,
-    ReqFrameInterceptor, RoutingTraceObserver,
-};
-use nmp_core::{
-    ActorCommand, AppRelaySlot, ChangeGate, KernelEventObserver, KernelEventObserverId, KindFilter,
-    RawEventObserver, RawEventObserverId, TypedProjectionData,
+    ActionModule, ActionRegistrar, CoverageHookRegistrar, IngestParser, IngestParserRegistrar,
+    KernelReaderRegistrar, MailboxCache, OutboxRouter, RawEventForwardPolicy,
+    RawEventForwardPolicyContext, RelayConnectedHook, RelayConnectedHookRegistrar,
+    RelayTextInterceptor, RelayTextInterceptorRegistrar, ReqFrameInterceptor,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, RoutingTraceObserver,
 };
 use nmp_coverage_gate::CoverageGate;
 
-/// Minimal [`AppHost`] spy capturing only the two gate-fed seams. Every other
-/// substrate seam used by `register_substrate` is recorded as "happened" but
-/// otherwise ignored; seams `register_substrate` never touches are
-/// `unreachable!()` so an accidental new call surfaces loudly.
+/// Minimal spy capturing only the two gate-fed seams. D6: it implements ONLY
+/// the narrow registration traits `register_substrate` actually requires
+/// (coverage hook, req-frame / relay-text interceptors, ingest parser, kernel
+/// readers, routing factories) — NOT the broad host surface. Seams the spy
+/// holds but `register_substrate` never calls are `unreachable!()` so an
+/// accidental new call surfaces loudly.
 #[derive(Default)]
 struct GateSpy {
     coverage_hook: Mutex<Option<PlanCoverageHook>>,
@@ -70,64 +67,32 @@ impl ActionRegistrar for GateSpy {
     }
 }
 
-impl AppHost for GateSpy {
-    fn register_snapshot_projection<K, F>(&self, _key: K, _f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        unreachable!("register_substrate does not register snapshot projections");
-    }
-
-    fn register_snapshot_projection_gated<K, F>(&self, _key: K, _gate: Arc<dyn ChangeGate>, _f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        unreachable!("register_substrate does not register gated snapshot projections");
-    }
-
-    fn register_typed_snapshot_projection<K, F>(&self, _key: K, _f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
-    {
-        unreachable!("register_substrate does not register typed snapshot projections");
-    }
-
-    fn register_snapshot_tick_observer<F>(&self, _f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        unreachable!("register_substrate does not register tick observers");
-    }
-
-    fn declare_consumed_projections<I, K>(&self, _keys: I)
-    where
-        I: IntoIterator<Item = K>,
-        K: Into<String>,
-    {
-        unreachable!("register_substrate does not declare consumed projections");
-    }
-
+impl CoverageHookRegistrar for GateSpy {
     fn set_coverage_hook(&self, hook: PlanCoverageHook) {
         *self.coverage_hook.lock().unwrap() = Some(hook);
     }
+}
 
+impl ReqFrameInterceptorRegistrar for GateSpy {
     fn set_req_frame_interceptor(&self, interceptor: Arc<dyn ReqFrameInterceptor>) {
         *self.req_interceptor.lock().unwrap() = Some(interceptor);
     }
+}
 
+impl RelayTextInterceptorRegistrar for GateSpy {
     fn add_relay_text_interceptor(&self, _interceptor: Arc<dyn RelayTextInterceptor>) {
         *self.relay_interceptors.lock().unwrap() += 1;
     }
+}
 
-    fn add_relay_connected_hook(
-        &self,
-        _hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>,
-    ) {
+impl RelayConnectedHookRegistrar for GateSpy {
+    fn add_relay_connected_hook(&self, _hook: Arc<dyn RelayConnectedHook>) {
+        // NIP-11 relay-info fetch hook — register_substrate installs it; this
+        // spy ignores it (the gate under test is the coverage hook).
     }
+}
 
+impl IngestParserRegistrar for GateSpy {
     fn register_ingest_parser(&self, _kind: u32, _parser: Arc<dyn IngestParser>) {
         // kind:10002 parser — recorded as a no-op; not under test here.
     }
@@ -157,11 +122,9 @@ impl AppHost for GateSpy {
     fn unregister_ingest_parser_range(&self, _slot_key: &'static str) {
         unreachable!("register_substrate does not unregister ingest-parser ranges");
     }
+}
 
-    fn set_dm_inbox_relay_lookup(&self, _lookup: Arc<dyn DmInboxRelayLookup>) {
-        unreachable!("register_substrate does not set the DM inbox relay lookup");
-    }
-
+impl KernelReaderRegistrar for GateSpy {
     fn set_profile_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
         // ADR-0057 PR 2 — register_substrate installs the kind:0 profile cache;
         // this spy ignores it (the gate under test is the coverage hook, not
@@ -177,7 +140,9 @@ impl AppHost for GateSpy {
     fn set_mailbox_cache_reader(&self, _cache: Arc<dyn MailboxCache>) {
         // Shared mailbox-cache reader — no-op; not under test here.
     }
+}
 
+impl RoutingFactoryRegistrar for GateSpy {
     fn set_routing_substrate<F>(&self, _factory: F)
     where
         F: Fn(Arc<dyn RoutingTraceObserver>) -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)
@@ -213,80 +178,10 @@ impl AppHost for GateSpy {
         // Raw-event forward policy — no-op; not under test here.
     }
 
-    fn active_local_keys(&self) -> ActiveLocalKeysSlot {
-        unreachable!("register_substrate does not read active local keys");
-    }
-
-    fn active_pubkey(&self) -> ActiveAccountSlot {
-        unreachable!("register_substrate does not read the active pubkey");
-    }
-
-    fn actor_sender(&self) -> nmp_core::CommandSender {
-        unreachable!("register_substrate does not read the actor sender");
-    }
-
-    fn register_event_observer(
-        &self,
-        _observer: Arc<dyn KernelEventObserver>,
-    ) -> KernelEventObserverId {
-        unreachable!("register_substrate does not register event observers");
-    }
-
-    fn unregister_event_observer(&self, _id: KernelEventObserverId) {
-        unreachable!();
-    }
-
-    fn swap_singleton_event_observer(
-        &self,
-        _new: Option<KernelEventObserverId>,
-    ) -> Option<KernelEventObserverId> {
-        unreachable!();
-    }
-
-    fn register_raw_event_observer(
-        &self,
-        _kinds: KindFilter,
-        _observer: Arc<dyn RawEventObserver>,
-    ) -> RawEventObserverId {
-        unreachable!("register_substrate does not register raw event observers");
-    }
-
-    fn unregister_raw_event_observer(&self, _id: RawEventObserverId) {
-        unreachable!();
-    }
-
-    fn configured_relays_handle(&self) -> AppRelaySlot {
-        unreachable!("register_substrate does not read the configured relays handle");
-    }
-
     fn set_nostrconnect_bootstrap_relay(&self, _url: String) {
         unreachable!(
             "the bootstrap relay is wired by register_defaults_with, not register_substrate"
         );
-    }
-
-    fn register_identity_change_observer<F>(&self, _f: F)
-    where
-        F: Fn(Option<String>) + Send + Sync + 'static,
-    {
-        unreachable!("register_substrate does not register identity-change observers");
-    }
-
-    fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
-        unreachable!("register_substrate does not declare incremental apply");
-    }
-
-    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
-        unreachable!("register_substrate does not read the incremental-apply handle");
-    }
-
-    fn frame_identity_handles(
-        &self,
-    ) -> (
-        std::sync::Arc<std::sync::atomic::AtomicU64>,
-        std::sync::Arc<std::sync::atomic::AtomicU64>,
-    ) {
-        unreachable!("register_substrate does not read the frame-identity handles");
     }
 }
 
@@ -355,11 +250,4 @@ fn coverage_hook_honours_custom_cap_and_negentropy_runtime_is_installed() {
         "register_substrate must install exactly one relay-text interceptor (the same \
          negentropy runtime)"
     );
-}
-
-// Silence unused-import warnings for the slot/channel imports kept for the
-// `AppHost` impl signatures.
-#[allow(dead_code)]
-fn _assert_channel_types() {
-    let (_tx, _rx): (std::sync::mpsc::Sender<nmp_core::ActorMail>, _) = channel();
 }

@@ -50,7 +50,9 @@
 //! <https://github.com/nostr-protocol/nips/blob/master/17.md>
 
 use nmp_core::kinds::KIND_CHAT_MESSAGE;
-use nmp_core::substrate::{AppHost, UnsignedEvent};
+use nmp_core::substrate::{
+    ActionRegistrar, DmInboxRelayRegistrar, IngestParserRegistrar, UnsignedEvent,
+};
 
 pub mod action;
 pub mod dm_relay_cache;
@@ -161,7 +163,9 @@ pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
 /// swapped each call, so callers that need a stable handle should
 /// store the cache themselves and pass it explicitly. The default
 /// path (one composition, one cache) is the common case.
-pub fn register_actions(app: &mut impl AppHost) {
+pub fn register_actions(
+    app: &mut (impl ActionRegistrar + DmInboxRelayRegistrar + IngestParserRegistrar),
+) {
     // Yielding defaults (ADR-0049 Part 1): an app may pre-empt either DM action
     // module regardless of call order.
     app.register_default_action(SendDmAction);

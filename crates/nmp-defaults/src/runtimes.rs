@@ -41,7 +41,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::AppHost;
+use nmp_core::substrate::{
+    HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar, SnapshotProjectionRegistrar,
+};
 use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot};
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
@@ -66,7 +68,12 @@ use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the DM
 /// runtime by itself.
-pub fn register_dm_runtime(app: &impl AppHost) {
+pub fn register_dm_runtime(
+    app: &(impl HostCapabilities
+          + IdentityChangeRegistrar
+          + IngestParserRegistrar
+          + SnapshotProjectionRegistrar),
+) {
     register_inbox_projection(app);
 
     let controller = Arc::new(DmRuntimeController {
@@ -103,7 +110,12 @@ pub fn register_dm_runtime(app: &impl AppHost) {
     });
 }
 
-fn register_inbox_projection(app: &impl AppHost) {
+fn register_inbox_projection(
+    app: &(impl HostCapabilities
+          + IdentityChangeRegistrar
+          + IngestParserRegistrar
+          + SnapshotProjectionRegistrar),
+) {
     // Raw-tap retirement ladder complete (rules A5, PR-1 + PR-2): the DM inbox
     // projection rides the substrate `IngestParser` seam exclusively.
     //
@@ -371,7 +383,9 @@ impl DmRuntimeController {
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the zap
 /// subscription by itself.
-pub fn register_zap_receipts_runtime(app: &impl AppHost) {
+pub fn register_zap_receipts_runtime(
+    app: &(impl HostCapabilities + SnapshotProjectionRegistrar),
+) {
     let controller = Arc::new(ZapReceiptsRuntimeController {
         // Pubkey-only identity (Finding C): the self-zap-receipts reconciler
         // only needs the active pubkey for the kind:9735 `#p` subscription —
