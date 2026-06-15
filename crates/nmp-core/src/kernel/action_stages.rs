@@ -4,10 +4,10 @@
 //!
 //! `action_results` is a per-tick *drain*: every terminal verdict that
 //! settled since the last emit, with the entry dropped after one snapshot.
-//! `action_stages` is the *mirror* of an action's lifecycle WHILE it is
-//! in flight — the full history of non-terminal transitions an async action
-//! went through (`Requested` → `Publishing` → `Accepted`/`Failed`), kept on
-//! the snapshot until the host acknowledges it.
+//! `action_stages` is the legacy diagnostic mirror of an action's lifecycle:
+//! the full history of transitions an async action went through (`Requested` →
+//! `Publishing` → `Accepted`/`Failed`), retained while the action is in flight
+//! and for the same terminal TTL window as `action_lifecycle`.
 //!
 //! The two surfaces are complementary, not redundant:
 //!
@@ -15,19 +15,17 @@
 //!   tick. It is drained on emit because the host's spinner cleanup is a
 //!   single edge.
 //! * `action_stages` answers "what is this action doing right now?" on every
-//!   tick. It is NOT drained on emit because the host's progress indicator
-//!   needs the stable state across many ticks; it persists until the host
-//!   *acks* the `correlation_id` via `nmp_app_ack_action_stage`.
+//!   tick. It is NOT drained on emit because diagnostic consumers may need the
+//!   stable state across many ticks. Terminal rows are TTL-retained; host ack is
+//!   an early-dismiss path only.
 //!
-//! # Retention: ack-based (option B)
+//! # Retention: kernel-owned TTL, ack as early dismissal
 //!
-//! The host owns the entry's lifetime. After the host has reacted to the
-//! terminal stage (`Accepted` or `Failed`) and freed its UI state, it calls
-//! `nmp_app_ack_action_stage(correlation_id)`. The kernel drops the entry
-//! from `entries` at that moment, NOT on a TTL and NOT on terminal-stage
-//! emission. This is the only race-free option: any TTL or implicit drop
-//! risks a host that hasn't yet processed the terminal stage losing it on
-//! the next tick.
+//! The kernel owns retention. After the latest stage is terminal (`Accepted`
+//! or `Failed`), the entry remains visible until
+//! [`TERMINAL_STAGE_RETENTION_MS`] elapses, then drops on the next snapshot
+//! emit. If a host has already reacted, `nmp_app_ack_action_stage(correlation_id)`
+//! may dismiss it earlier; correctness does not depend on that host callback.
 //!
 //! # Caps (D8 — bounded retention)
 //!
@@ -79,6 +77,12 @@ pub(crate) const MAX_STAGES_PER_CORRELATION: usize = 64;
 /// 1024 in-flight tracked actions; the oldest is evicted whole when a new
 /// correlation pushes past this.
 pub(crate) const MAX_TRACKED_CORRELATIONS: usize = 1024;
+
+/// Terminal retention window shared by the legacy stage mirror and the
+/// display-level `action_lifecycle` projection. After this many milliseconds,
+/// a terminal action row drops on the next snapshot/update edge even if no
+/// host ack or relay ingest arrives.
+pub(crate) const TERMINAL_STAGE_RETENTION_MS: u64 = 3_000;
 
 /// One stage in an async action's lifecycle.
 ///
@@ -284,6 +288,40 @@ impl ActionStageTracker {
         removed
     }
 
+    /// Drop terminal entries whose retention window has elapsed.
+    ///
+    /// The latest stage is the authoritative lifecycle state. Non-terminal
+    /// rows remain tracked until a terminal arrives or the global cap evicts
+    /// them; terminal rows expire from the kernel-owned snapshot edge without
+    /// waiting for a host ack.
+    pub(crate) fn prune_expired(&mut self, now_ms: u64) -> usize {
+        let mut drop_ids: Vec<String> = Vec::new();
+        for (cid, history) in &self.entries {
+            let Some(latest) = history.last() else {
+                drop_ids.push(cid.clone());
+                continue;
+            };
+            if latest.stage.is_terminal()
+                && now_ms >= latest.at_ms.saturating_add(TERMINAL_STAGE_RETENTION_MS)
+            {
+                drop_ids.push(cid.clone());
+            }
+        }
+        if drop_ids.is_empty() {
+            return 0;
+        }
+        for cid in &drop_ids {
+            self.entries.remove(cid);
+        }
+        self.correlation_order.retain(|cid| !drop_ids.contains(cid));
+        drop_ids.len()
+    }
+
+    /// Current number of tracked correlation ids.
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
     /// Serialize every tracked `correlation_id`'s history into the JSON
     /// shape the snapshot mirror exposes:
     /// `{ "<correlation_id>": [ { "stage": ..., "at_ms": ..., ... }, ... ], ... }`.
@@ -292,9 +330,11 @@ impl ActionStageTracker {
     /// projection helper (`update.rs`) can omit the key in steady state
     /// — exactly the convention `action_results` uses for "no rows this
     /// tick". This is a *copy* (clone semantics, not move); the internal
-    /// map is unchanged by serialization — that is the point of the
-    /// mirror vs. drain split.
-    pub(crate) fn snapshot(&self) -> serde_json::Value {
+    /// Terminal entries are pruned first, using the caller-supplied kernel clock
+    /// timestamp. The map is otherwise unchanged by serialization — that is the
+    /// point of the mirror vs. drain split.
+    pub(crate) fn snapshot(&mut self, now_ms: u64) -> serde_json::Value {
+        self.prune_expired(now_ms);
         if self.entries.is_empty() {
             return serde_json::Value::Null;
         }

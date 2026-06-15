@@ -89,16 +89,16 @@ mod cache_serve_universal_tests;
 pub(crate) mod closed_reason;
 // K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
 mod coverage_ledger;
-mod diagnostic_counters;
-mod discovery;
-/// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
-pub mod wallet_access;
-#[cfg(test)]
-mod discovery_tests;
 #[cfg(test)]
 mod coverage_ledger_d1_tests;
 #[cfg(test)]
 mod coverage_ledger_d2_tests;
+mod diagnostic_counters;
+mod discovery;
+#[cfg(test)]
+mod discovery_tests;
+/// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
+pub mod wallet_access;
 // The D2 merge-gate journey test drives a real in-process WebSocket relay
 // (tungstenite), so it is gated on `native` like the other loopback-relay test
 // fixtures (`actor::relay_mgmt::tests`).
@@ -243,6 +243,10 @@ mod d1_offline_bootstrap_tests;
 mod dm_inbox_routing_tests;
 #[cfg(test)]
 mod perf_tests;
+/// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
+/// Source-version counters + `ProjectionRevTracker` owned by `Kernel`.
+/// Zero wire change in Rung 1 — pure infrastructure for Rung 2/3.
+pub(crate) mod projection_rev;
 pub(crate) mod snapshot_registry;
 #[cfg(test)]
 mod snapshot_registry_tests;
@@ -279,10 +283,6 @@ mod timeline_perf_tests;
 /// wiring. The Wave C counterpart to the host-registered Tier-1 typed
 /// projections (ADR-0037). See the module doc for the mechanism rationale.
 mod typed_projections;
-/// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
-/// Source-version counters + `ProjectionRevTracker` owned by `Kernel`.
-/// Zero wire change in Rung 1 — pure infrastructure for Rung 2/3.
-pub(crate) mod projection_rev;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
@@ -1083,8 +1083,9 @@ pub struct Kernel {
     /// `Kernel::handle_publish_ok` (called from `ingest::handle_text`).
     /// Actor-owned tracker for the snapshot-mirror `action_stages`
     /// projection. Records lifecycle transitions per dispatched `correlation_id`
-    /// and retains them until the host acks via `nmp_app_ack_action_stage`.
-    /// Caps and drop-oldest semantics live in [`action_stages`].
+    /// and retains terminal histories until TTL expiry or early host ack via
+    /// `nmp_app_ack_action_stage`. Caps and drop-oldest semantics live in
+    /// [`action_stages`].
     action_stages: action_stages::ActionStageTracker,
     /// Actor-owned tracker for the `action_lifecycle` display projection
     /// (V5 thin-shell fix). Mirrors every transition the substrate-level
@@ -2069,10 +2070,12 @@ impl Kernel {
         // pins so the store can lower an over-claimed `covered_through` in the
         // SAME transaction as the below-floor delete that made it stale.
         let coverage_guards = self.derive_coverage_guards();
-        match self
-            .store
-            .gc_step_with_pins_and_coverage(gc_budget, now_secs, &pins, &coverage_guards)
-        {
+        match self.store.gc_step_with_pins_and_coverage(
+            gc_budget,
+            now_secs,
+            &pins,
+            &coverage_guards,
+        ) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());

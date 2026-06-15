@@ -4,15 +4,14 @@
 //!
 //! 1. `record_action_stage` appends to the actor-owned tracker and flips
 //!    `changed_since_emit` so the next tick emits.
-//! 2. The snapshot mirror is a *copy*, not a drain — the same entry
-//!    appears on every tick until acked. This is the race-protection
-//!    guarantee codex insisted on.
-//! 3. `ack_action_stage` drops the entry, and the next tick's projection
-//!    omits it.
+//! 2. The snapshot mirror is a *copy*, not a drain — terminal entries
+//!    persist across ticks inside their retention window.
+//! 3. `ack_action_stage` drops the entry early, and terminal TTL expiry drops
+//!    it even if no host ack, action event, or ingest edge arrives.
 //! 4. The `at_ms` timestamp routes through the injected `Clock` so a
 //!    `FixedClock` makes the recorded history deterministic.
 
-use super::action_stages::ActionStage;
+use super::action_stages::{ActionStage, TERMINAL_STAGE_RETENTION_MS};
 use super::Kernel;
 
 /// Build a kernel for unit tests. Uses the same `new(visible_limit)`
@@ -46,9 +45,9 @@ fn record_action_stage_appears_in_snapshot() {
 
 #[test]
 fn snapshot_persists_across_multiple_ticks() {
-    // The load-bearing race-protection guarantee: an unacked entry survives
-    // every subsequent snapshot emit. Without this, a host that missed one
-    // tick could lose the terminal stage forever.
+    // An unacked entry survives repeated snapshot emits inside the retention
+    // window. Without this, a host that missed one tick could lose the terminal
+    // stage before the kernel-owned TTL expires.
     let mut k = kernel();
     k.record_action_stage("corr-persist", ActionStage::Requested, None);
     k.record_action_stage("corr-persist", ActionStage::Accepted, None);
@@ -59,6 +58,31 @@ fn snapshot_persists_across_multiple_ticks() {
     assert_eq!(snap_b, snap_c);
     let arr = snap_c["corr-persist"].as_array().unwrap();
     assert_eq!(arr.len(), 2, "both stages survive across ticks");
+}
+
+#[test]
+fn terminal_stage_expires_on_snapshot_edge_without_ack_or_action_event() {
+    use std::sync::Arc;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    let mut k = kernel();
+    k.set_clock(Arc::new(super::clock::FixedClock(UNIX_EPOCH)));
+    k.record_action_stage("corr-expire", ActionStage::Requested, None);
+    k.record_action_stage("corr-expire", ActionStage::Accepted, None);
+
+    assert!(
+        stages_proj(&mut k).is_some(),
+        "precondition: terminal stage is visible before TTL"
+    );
+
+    k.set_clock(Arc::new(super::clock::FixedClock(
+        UNIX_EPOCH + Duration::from_millis(TERMINAL_STAGE_RETENTION_MS),
+    )));
+    let after = stages_proj(&mut k);
+    assert!(
+        after.is_none(),
+        "terminal action_stages entry must expire from the snapshot edge without a host ack or new action"
+    );
 }
 
 #[test]
@@ -170,7 +194,7 @@ fn record_action_failure_records_failed_stage_in_mirror() {
 fn failed_stage_survives_action_results_drain() {
     // The two surfaces are independent retention models:
     // - `action_results` drains on emit (per-tick edge)
-    // - `action_stages` persists until ack (mirror)
+    // - `action_stages` persists until ack or terminal TTL (mirror)
     //
     // After `record_action_failure`, the FIRST tick emits both. The SECOND
     // tick omits `action_results` (drained) but still carries the `Failed`
@@ -191,7 +215,7 @@ fn failed_stage_survives_action_results_drain() {
         "action_stages still mirrors the failure"
     );
 
-    // Ack closes the lifecycle.
+    // Ack can still close the lifecycle before TTL.
     k.ack_action_stage("corr-x");
     let snap2: serde_json::Value =
         serde_json::from_str(&k.make_update_json_for_test(true)).unwrap();

@@ -15,10 +15,11 @@
 //!
 //! # Contrast with `action_stages`
 //!
-//! `action_stages` is the **full history** of an action's transitions, kept
-//! until the host acks. It is the substrate primitive — every stage
-//! transition lands there. `action_lifecycle` is a **derived view** over the
-//! same transitions, pruned to "what to show on the screen right now":
+//! `action_stages` is the legacy **full history** of an action's transitions,
+//! retained by the same terminal TTL with ack as early dismissal. It is the
+//! substrate primitive — every stage transition lands there. `action_lifecycle`
+//! is a **derived view** over the same transitions, pruned to "what to show on
+//! the screen right now":
 //!
 //! * No ack: terminal entries drop on TTL, not on host signal. The host
 //!   never needs to call back into the kernel.
@@ -55,7 +56,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::action_stages::ActionStage;
+use super::action_stages::{ActionStage, TERMINAL_STAGE_RETENTION_MS};
 
 /// Per-tracker map cardinality cap. Mirrors
 /// [`super::action_stages::MAX_TRACKED_CORRELATIONS`]: a pathological host
@@ -68,7 +69,7 @@ pub(crate) const MAX_TRACKED_CORRELATIONS: usize = 1024;
 /// tick. 3 s is the host's UX requirement: long enough for the user to
 /// register a success/failure toast, short enough that a quiet failure
 /// disappears without manual dismissal.
-pub(crate) const RECENT_TERMINAL_TTL_MS: u64 = 3_000;
+pub(crate) const RECENT_TERMINAL_TTL_MS: u64 = TERMINAL_STAGE_RETENTION_MS;
 
 /// One snapshot of an action's display state. The latest stage observed
 /// for a correlation_id collapses to this — no per-transition detail.
@@ -209,6 +210,25 @@ impl ActionLifecycleTracker {
         if is_new {
             self.correlation_order.push(correlation_id.to_string());
         }
+    }
+
+    /// Early-dismiss `correlation_id` from the display projection.
+    ///
+    /// Retention is still TTL-owned: a host ack is only an eager cleanup path
+    /// after the host has already reacted to a terminal. The method removes any
+    /// matching row to preserve the historical idempotent ack contract.
+    pub(crate) fn dismiss(&mut self, correlation_id: &str) -> bool {
+        let removed = self.entries.remove(correlation_id).is_some();
+        if removed {
+            if let Some(pos) = self
+                .correlation_order
+                .iter()
+                .position(|id| id == correlation_id)
+            {
+                self.correlation_order.remove(pos);
+            }
+        }
+        removed
     }
 
     /// Return the current number of tracked entries.

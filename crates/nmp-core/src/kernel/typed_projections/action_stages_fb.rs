@@ -11,13 +11,14 @@
 //!
 //! ## Why this codec parses a `serde_json::Value` (deviation from #1031)
 //!
+//! `action_stages_projection()` prunes terminal TTL expiries and
 //! `take_action_results_projection()` records terminals into this mirror earlier
-//! in the same tick, so its contents change across the tick; to read the EXACT
-//! value the JSON key carries (and stay uniform with the four drained built-ins),
-//! the JSON path captures this projection's `Value` once into a per-tick `Kernel`
-//! field and this codec's [`ActionStagesModel`] is built by PARSING that captured
-//! `Value`. The two wire forms read the SAME captured object, so they cannot
-//! diverge.
+//! in the same tick, so its contents can change across the tick; to read the
+//! EXACT value the JSON key carries (and stay uniform with the four drained
+//! built-ins), the JSON path captures this projection's `Value` once into a
+//! per-tick `Kernel` field and this codec's [`ActionStagesModel`] is built by
+//! PARSING that captured `Value`. The two wire forms read the SAME captured
+//! object, so they cannot diverge.
 //!
 //! FlatBuffers has no map type, so the `correlation_id -> [stage]` map is
 //! flattened to a key-sorted vector of `{key, stages}` entries — the serde JSON

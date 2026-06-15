@@ -298,6 +298,25 @@ fn accepted_stage_moves_entry_to_recent_terminal() {
 }
 
 #[test]
+fn ack_early_dismisses_lifecycle_before_ttl() {
+    let mut k = kernel();
+    k.record_action_stage("corr-dismiss", ActionStage::Requested, None);
+    k.record_action_stage("corr-dismiss", ActionStage::Accepted, None);
+
+    let before = lifecycle_proj(&mut k).expect("terminal lifecycle emitted");
+    assert_eq!(
+        before["recent_terminal"][0]["correlation_id"],
+        "corr-dismiss"
+    );
+
+    k.ack_action_stage("corr-dismiss");
+    assert!(
+        lifecycle_proj(&mut k).is_none(),
+        "ack is an early-dismiss cleanup path for action_lifecycle, not the only retention mechanism"
+    );
+}
+
+#[test]
 fn failed_stage_carries_reason_in_recent_terminal() {
     let mut k = kernel();
     k.record_action_stage(
