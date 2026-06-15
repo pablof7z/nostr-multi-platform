@@ -15,7 +15,7 @@ pub const CHIRP_INDEXER_RELAY_URL: &str = "wss://purplepag.es";
 pub const CHIRP_RELAY_BOOTSTRAP: &[ChirpRelayBootstrapEntry] = &[
     ChirpRelayBootstrapEntry {
         url: CHIRP_CONTENT_RELAY_URL,
-        role: "both,indexer",
+        role: "both",
     },
     ChirpRelayBootstrapEntry {
         url: CHIRP_INDEXER_RELAY_URL,
