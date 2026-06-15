@@ -4989,6 +4989,7 @@ version = "0.8.0"
 dependencies = [
  "nmp-core",
  "nmp-ffi",
+ "nmp-nip01",
  "nmp-nip59",
  "nostr",
  "serde_json",

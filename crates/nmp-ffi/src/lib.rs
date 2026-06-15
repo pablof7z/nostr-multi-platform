@@ -2252,6 +2252,54 @@ impl NmpApp {
         }
     }
 
+    /// Test-support — run ONE bounded GC pass to a custom LRU `ceiling` and
+    /// block for the resulting [`nmp_core::store::GcReport`].
+    ///
+    /// Drives the REAL production GC machinery on the actor thread (the kernel's
+    /// exclusive owner): the floor-coherent store pin set, the eviction⇄ledger
+    /// coverage guards, and `EventStore::gc_step_with_pins_and_coverage`. Only
+    /// the LRU ceiling (a `GcBudget` field) is overridden so a small harness can
+    /// observe eviction without ingesting 10 000 events.
+    ///
+    /// D0: gated on `cfg(any(test, feature = "test-support"))`, so it is NEVER
+    /// part of the production C-ABI surface — there is no `nmp_app_*` C symbol.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn run_gc_step_for_test(&self, ceiling: usize) -> Option<nmp_core::store::GcReport> {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        self.send_cmd(ActorCommand::TestGcStep { ceiling, ack: tx });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .ok()
+            .flatten()
+    }
+
+    /// Test-support — read-only kernel snapshot: store-tier LRU pin set (hex
+    /// ids), durable store event count, and active follow-set `timeline_authors`.
+    /// Blocks on the actor (the kernel's exclusive owner). Gated out of
+    /// production (D0).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn kernel_inspect_for_test(&self) -> nmp_core::TestKernelInspect {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        self.send_cmd(ActorCommand::TestKernelInspect { ack: tx });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .ok()
+            .unwrap_or_default()
+    }
+
+    /// Test-support — relay URLs recorded in the durable store's provenance for
+    /// `id` (the codex-#11 provenance-transition lens). Gated out of
+    /// production (D0).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn store_provenance_relays_for_test(&self, id: &str) -> Vec<String> {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        self.send_cmd(ActorCommand::TestStoreProvenance {
+            id: id.to_string(),
+            ack: tx,
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .ok()
+            .unwrap_or_default()
+    }
+
     /// Install the raw signed-event forwarding policy factory.
     ///
     /// The actor owns the generic observer + `Pool` send path. Production

@@ -265,6 +265,8 @@ mod t171_planner_error_projection_tests;
 mod test_router;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+mod test_support_gc;
 #[cfg(test)]
 mod tests;
 mod tier3_encode;

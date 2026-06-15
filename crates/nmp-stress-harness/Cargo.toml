@@ -29,6 +29,11 @@ nmp-ffi = { path = "../nmp-ffi", features = ["test-support", "native"] }
 nmp-core = { path = "../nmp-core", features = ["test-support", "lmdb-backend"] }
 # Real NIP-59 gift-wrap (kind:1059) construction for the DM-ingest scenarios.
 nmp-nip59 = { path = "../nmp-nip59" }
+# Real kind:3 contacts parser + cache (ADR-0057 PR3). The harness registers
+# `Kind3Parser` + `ContactsCache` exactly as `nmp-defaults` does in production,
+# so the contacts-backfill / timeline_authors-rebuild scenarios (A9.*) drive the
+# REAL parser→effect-signal path, not a stand-in.
+nmp-nip01 = { path = "../nmp-nip01" }
 
 # Real crypto: key generation, EventBuilder, Schnorr signing, gift wrap.
 nostr = { workspace = true, features = ["nip44", "nip59"] }

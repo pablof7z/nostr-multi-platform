@@ -273,6 +273,12 @@ impl Harness {
             Arc::clone(&raw) as Arc<dyn RawEventObserver>,
         );
 
+        // Register the REAL kind:3 contacts parser + cache (ADR-0057 PR3),
+        // exactly as `nmp-defaults` does — the kind:3 effect-signal path
+        // (`timeline_authors` rebuild, follow-feed cache-serve) only fires when
+        // the parser writes the contacts cache the kernel diffs.
+        register_contacts_parser(app_ref);
+
         // Point the app at the fixture relay (read + write role) before start.
         app_ref.set_initial_relays_for_start(vec![
             (relay.url().to_string(), "both".to_string()),
@@ -438,6 +444,44 @@ impl Harness {
         self.event_by_id(id).is_some()
     }
 
+    /// Declare the host follow-feed kinds and open the contact feed (the real
+    /// `nmp_app_open_contact_feed` C-ABI verb). Sets `follow_feed_kinds` so a
+    /// later kind:3 ingest rebuilds `timeline_authors` and registers per-follow
+    /// `LogicalInterest`s (A9.*).
+    pub fn open_contact_feed(&self, kinds: &[u32]) {
+        let json = serde_json::to_string(kinds).expect("kinds json");
+        let c = CString::new(json).expect("kinds cstr");
+        nmp_ffi::nmp_app_open_contact_feed(self.app, c.as_ptr());
+    }
+
+    /// Run ONE bounded GC pass to a custom LRU `ceiling` via the test-support
+    /// seam — drives the REAL pin-derivation + LRU eviction on the actor thread.
+    pub fn run_gc(&self, ceiling: usize) -> Option<nmp_core::store::GcReport> {
+        self.app().run_gc_step_for_test(ceiling)
+    }
+
+    /// The store-tier LRU pin set as lowercase-hex event ids (test-support).
+    /// An event in this set is protected from GC eviction.
+    pub fn pin_set(&self) -> Vec<String> {
+        self.app().kernel_inspect_for_test().pin_set_hex
+    }
+
+    /// The active follow-set `timeline_authors` (test-support).
+    pub fn timeline_authors(&self) -> Vec<String> {
+        self.app().kernel_inspect_for_test().timeline_authors
+    }
+
+    /// The durable-store event count (test-support store-size read).
+    pub fn store_count(&self) -> usize {
+        self.app().kernel_inspect_for_test().store_event_count
+    }
+
+    /// Relay URLs recorded in the durable store's provenance for `id`
+    /// (test-support — the codex-#11 provenance-transition lens).
+    pub fn provenance_relays(&self, id: &str) -> Vec<String> {
+        self.app().store_provenance_relays_for_test(id)
+    }
+
     /// Read a registered snapshot-projection's JSON by key (test-support seam).
     pub fn projection_json(&self, key: &str) -> Option<serde_json::Value> {
         let c = CString::new(key).ok()?;
@@ -501,6 +545,7 @@ impl Harness {
             KindFilter::from_kinds(std::iter::empty::<u32>()),
             Arc::clone(&raw) as Arc<dyn RawEventObserver>,
         );
+        register_contacts_parser(app_ref);
         app_ref.set_initial_relays_for_start(vec![(relay.url().to_string(), "both".to_string())]);
         if let Some(ref path) = storage_path {
             set_storage_path(app_ptr, path);
@@ -527,6 +572,22 @@ impl Drop for Harness {
             self.app = std::ptr::null_mut();
         }
     }
+}
+
+/// Register the production kind:3 contacts parser + shared cache on `app`
+/// (ADR-0057 PR3), mirroring `nmp_defaults::register_defaults`. The kernel's
+/// `ContactsLookup` reader and the `Kind3Parser` writer share ONE
+/// `nmp_nip01::ContactsCache`, so an ingested kind:3 transitions the cache and
+/// the kernel fires the follow-feed effects (timeline_authors rebuild +
+/// follow-feed cache-serve). Must be called BEFORE `nmp_app_start`.
+fn register_contacts_parser(app: &nmp_ffi::NmpApp) {
+    let contacts_cache = Arc::new(nmp_nip01::ContactsCache::new());
+    app.set_contacts_lookup(
+        Arc::clone(&contacts_cache) as Arc<dyn nmp_core::substrate::ContactsLookup>,
+    );
+    let kind3_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_nip01::Kind3Parser::new(contacts_cache));
+    app.register_ingest_parser(3, kind3_parser);
 }
 
 /// Set the persistent storage path via the real C-ABI setter (read at actor

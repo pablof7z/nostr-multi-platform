@@ -311,6 +311,11 @@ pub mod typed_projections {
 // `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
 // command) can name it — chiefly in tests that drive the continuation directly.
 pub use actor::{ActorCommand, CipherContinuation, SignContinuation, SignerSource};
+// Test-support — the read-only kernel inspection snapshot returned by
+// `ActorCommand::TestKernelInspect`. Re-exported so the `nmp-stress-harness`
+// (built with `test-support`) can name the struct. Never on production builds.
+#[cfg(any(test, feature = "test-support"))]
+pub use actor::TestKernelInspect;
 // ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
 // the single command-send handle (replaces the bare `mpsc::Sender<ActorCommand>`
 // once handed to host code / workers); `ActorMail` is the inbox item;

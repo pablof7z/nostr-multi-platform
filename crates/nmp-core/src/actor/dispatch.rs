@@ -1594,6 +1594,30 @@ pub(super) fn dispatch_command(
             let _ = ack.send(());
             Some(Vec::new())
         }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::TestGcStep { ceiling, ack } => {
+            // Drive the real GC pin-derivation + LRU eviction at a custom
+            // ceiling on the actor thread (the kernel's exclusive owner).
+            let report = ctx.kernel.run_gc_step_to_ceiling_for_test(ceiling);
+            let _ = ack.send(report);
+            Some(Vec::new())
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::TestKernelInspect { ack } => {
+            let inspect = crate::actor::TestKernelInspect {
+                pin_set_hex: ctx.kernel.store_pin_set_hex_for_test(),
+                store_event_count: ctx.kernel.store_event_count_for_test(),
+                timeline_authors: ctx.kernel.active_timeline_authors(),
+            };
+            let _ = ack.send(inspect);
+            Some(Vec::new())
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::TestStoreProvenance { id, ack } => {
+            let relays = ctx.kernel.store_provenance_relays_for_test(&id);
+            let _ = ack.send(relays);
+            Some(Vec::new())
+        }
         ActorCommand::Shutdown => {
             close_relays(
                 ctx.relay_controls,

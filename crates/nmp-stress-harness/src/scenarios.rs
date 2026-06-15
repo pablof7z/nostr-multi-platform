@@ -87,12 +87,27 @@ pub fn run_all() -> Vec<ScenarioResult> {
     // ── NIP-40 (codex 5) — expired-on-arrival silent ─────────────────────
     out.push(guard("CX5", "fixture-relay", "NIP-40 expired-on-arrival event is silent (no observer fire)", cx5_nip40_expired));
 
-    // ── NOT-YET-LANDED stubs (honest coverage) ───────────────────────────
-    out.push(skip("A9.1", "n/a", "contacts backfill (follow new author backfills prior stored events)", "pending PR3 (contacts→parser)"));
-    out.push(skip("A9.2", "n/a", "kind:3 rebuilds timeline_authors via parser", "pending PR3 (contacts→parser)"));
-    out.push(skip("B.1", "n/a", "acquisition one-door: store-first-then-network uniform serve", "pending Workstream B (acquisition one-door)"));
-    out.push(skip("F.1", "n/a", "doctrine gate: store.insert banned outside ingest module", "pending Workstream F (runtime via doctrine_lint_smoke, not this harness)"));
-    out.push(skip("F.2", "n/a", "doctrine gate: notify_event_observers banned outside chokepoint", "pending Workstream F"));
+    // ── Area 9 / PR3 — contacts backfill + timeline_authors rebuild ──────
+    out.push(guard("A9.1", "fixture-relay", "contacts backfill: kind:3 follow re-serves a new author's already-stored notes", a9_contacts_backfill));
+    out.push(guard("A9.2", "fixture-relay", "kind:3 ingest rebuilds timeline_authors via the contacts parser", a9_kind3_rebuilds_authors));
+
+    // ── Workstream B — acquisition one-door / store-first-then-network ───
+    out.push(guard("B.1", "store+local", "acquisition: an interest opened against stored events serves store-first (no relay had it)", b1_store_first_serve));
+
+    // ── Area 6 / codex 12 — GC pin / in-flight publish (test-support GC) ──
+    out.push(guard("A6.1", "test-gc", "in-flight publish is pinned (open-view) and survives GC pressure", a6_inflight_publish_pinned));
+    out.push(guard("A6.2", "test-gc", "cold non-followed event is reaped under GC pressure to the ceiling", a6_cold_reaped));
+    out.push(guard("CX12", "test-gc", "no pin-leak: an unreferenced published event is GC-evictable", cx12_no_pin_leak));
+
+    // ── codex 11 — cache-serve provenance transition / no double-notify ──
+    out.push(guard("CX11", "fixture-relay", "cache-served event: live relay dup does not double-notify; provenance transitions", cx11_provenance_transition));
+
+    // ── codex 16 — multi-account two-instance isolation ──────────────────
+    out.push(guard("CX16", "two-instance", "two NmpApp instances: A's read-your-write stays in A's store, absent from B", cx16_multi_account_isolation));
+
+    // ── STILL not driven through this harness (honest coverage) ──────────
+    out.push(skip("F.1", "n/a", "doctrine gate: store.insert banned outside ingest module", "Workstream F is a compile-time doctrine gate — covered by `cargo test -p nmp-testing --test doctrine_lint_smoke`, not a runtime harness"));
+    out.push(skip("F.2", "n/a", "doctrine gate: notify_event_observers banned outside chokepoint", "Workstream F is a compile-time doctrine gate — covered by doctrine_lint_smoke, not a runtime harness"));
 
     out
 }
@@ -658,6 +673,447 @@ fn cx5_nip40_expired() -> Outcome {
         ));
     }
     ok()
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Area 9 / PR3 — contacts backfill + timeline_authors rebuild
+// ─────────────────────────────────────────────────────────────────────────
+
+// MUTATION: if `ingest_contacts` stopped calling `sync_follow_feed_interests`
+// (the parser→effect-signal path), the kind:3 would not enqueue the follow-feed
+// cache-serve and the new author's PRIOR stored notes would never re-surface —
+// A9.1 goes red (fire_count never increases after the follow).
+//
+// Backfill mechanism under test: a non-followed author's notes are admitted to
+// the store via an open interest (persistence != relevance). When the active
+// account then follows that author (kind:3), `sync_follow_feed_interests`
+// registers a follow-feed `LogicalInterest` AND enqueues a store-cache serve for
+// it (ADR-0045 E1) — re-delivering the prior stored notes through
+// `feed_served_event` → `notify_event_observers`. This is the durable-store
+// backfill that replaced the bounded pre-kind:3 buffer for already-stored events.
+fn a9_contacts_backfill() -> Outcome {
+    // Persistent + cold restart so X's prior notes live in the durable STORE but
+    // NOT in the kernel RAM read-cache (`events`) — the cache-serve live→serve
+    // dedup (`!events_cache.contains_key`) means a genuine backfill only fires
+    // for events not already reflected in projections, which is exactly the
+    // "surface prior STORED events on follow" case.
+    let dir = unique_tmp_dir("nmp-stress-a9-backfill");
+    let path = dir.to_string_lossy().to_string();
+    let h = Harness::persistent(&path);
+    h.open_contact_feed(&[1]);
+    let x = Keys::generate();
+    let x_pk = x.public_key().to_hex();
+    let now = h.now();
+    let n1 = build_signed_event(&x, 1, "x prior note 1", vec![], now - 2);
+    let n2 = build_signed_event(&x, 1, "x prior note 2", vec![], now - 1);
+    let id1 = n1.id.to_hex();
+    let id2 = n2.id.to_hex();
+    // Session 1: persist X's notes as a NON-followed author via an open interest.
+    h.relay.stage_event(&event_to_value(&n1));
+    h.relay.stage_event(&event_to_value(&n2));
+    h.open_interest(relay_pinned_interest(h.relay.url(), 9101, vec![1], vec![x_pk.clone()], vec![]));
+    if !h.collector.wait_for(&id1, WAIT) || !h.collector.wait_for(&id2, WAIT) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("X's prior notes never reached the store via the open interest");
+    }
+    if !h.store_has(&id1) || !h.store_has(&id2) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("X's prior notes are not in the store before restart");
+    }
+    let me = h.keys.public_key().to_hex();
+
+    // Cold restart: RAM read-cache is empty, X's notes remain in the durable
+    // store, the follow set is empty (no kind:3 was published in session 1).
+    let h2 = h.restart();
+    h2.open_contact_feed(&[1]);
+    h2.barrier();
+    if h2.timeline_authors().contains(&x_pk) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("X already followed after restart (no kind:3 was published)");
+    }
+    // Fresh collector → X's notes have not been observed in this session yet.
+    if h2.collector.fire_count(&id1) != 0 || h2.collector.fire_count(&id2) != 0 {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("X's notes were delivered before the follow (unexpected)");
+    }
+
+    // Follow X by ingesting the active account's own kind:3 through the REAL
+    // relay path → `Kind3Parser` writes the contacts cache → the kernel's
+    // active-account contacts-transition signal fires
+    // `sync_follow_feed_interests` → follow-feed cache-serve backfills X's
+    // store-resident notes.
+    let k3 = build_signed_event(
+        &h2.keys,
+        3,
+        "",
+        vec![Tag::parse(["p", &x_pk]).expect("p tag")],
+        h2.now(),
+    );
+    let k3_id = k3.id.to_hex();
+    h2.relay.stage_event(&event_to_value(&k3));
+    h2.open_interest(relay_pinned_interest(h2.relay.url(), 9102, vec![3], vec![me], vec![]));
+    if !h2.collector.wait_for(&k3_id, WAIT) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("active-account kind:3 never ingested via relay");
+    }
+    h2.barrier();
+    h2.barrier();
+
+    let followed = h2.timeline_authors().contains(&x_pk);
+    let f1 = h2.collector.fire_count(&id1);
+    let f2 = h2.collector.fire_count(&id2);
+    let _ = std::fs::remove_dir_all(&dir);
+    check(
+        followed && f1 > 0 && f2 > 0,
+        format!(
+            "contacts backfill: followed={followed} (want true), X's prior notes \
+             surfaced after the follow with fire counts n1={f1}, n2={f2} (want >0 each) \
+             — the kind:3 should backfill the store-resident notes into the timeline"
+        ),
+    )
+}
+
+// MUTATION: if the kind:3 parser stopped rebuilding the `timeline_authors`
+// projection (the M2 `sync_follow_feed_interests` derived cache), a follow would
+// not be reflected and A9.2 goes red. Distinct from A9.1: this asserts the
+// projection rebuild directly (ContactsLookup + effect-signal), independent of
+// the backfill re-serve.
+fn a9_kind3_rebuilds_authors() -> Outcome {
+    let h = Harness::in_memory();
+    h.open_contact_feed(&[1]);
+    let me = h.keys.public_key().to_hex();
+    let a = Keys::generate();
+    let b = Keys::generate();
+    let a_pk = a.public_key().to_hex();
+    let b_pk = b.public_key().to_hex();
+    let k3 = build_signed_event(
+        &h.keys,
+        3,
+        "",
+        vec![
+            Tag::parse(["p", &a_pk]).expect("p tag a"),
+            Tag::parse(["p", &b_pk]).expect("p tag b"),
+        ],
+        h.now(),
+    );
+    let k3_id = k3.id.to_hex();
+    h.relay.stage_event(&event_to_value(&k3));
+    h.open_interest(relay_pinned_interest(h.relay.url(), 9111, vec![3], vec![me.clone()], vec![]));
+    if !h.collector.wait_for(&k3_id, WAIT) {
+        return fail("kind:3 never ingested via relay");
+    }
+    h.barrier();
+    let authors = h.timeline_authors();
+    check(
+        authors.contains(&a_pk) && authors.contains(&b_pk) && authors.contains(&me),
+        format!(
+            "timeline_authors not rebuilt from kind:3: have {authors:?}; \
+             expected to contain followed {a_pk}, {b_pk} and self {me}"
+        ),
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Workstream B — acquisition one-door / store-first-then-network
+// ─────────────────────────────────────────────────────────────────────────
+
+// MUTATION: if `push_interest_and_serve` dropped its store-cache serve hook
+// (ADR-0045 E1), opening an interest against an event ONLY in the store (no
+// relay holds it) would deliver nothing — B.1 goes red. This proves the
+// uniform store-first serve on interest open, decoupled from the network: the
+// fixture relay is never staged with the seeded event, so the post-open
+// observer fire can only have come from the store.
+fn b1_store_first_serve() -> Outcome {
+    // Persistent + cold restart: after restart the durable store holds the
+    // event but the RAM read-cache is empty AND the (fresh) fixture relay has
+    // ZERO copies. Opening an interest must serve the event from the store
+    // BEFORE any network delivery — the literal "store-first, network second"
+    // acquisition door, proven by the relay never having held the event.
+    let dir = unique_tmp_dir("nmp-stress-b1-storefirst");
+    let path = dir.to_string_lossy().to_string();
+    let h = Harness::persistent(&path);
+    let x = Keys::generate();
+    let x_pk = x.public_key().to_hex();
+    let n = build_signed_event(&x, 1, "store-first served note", vec![], h.now());
+    let id = n.id.to_hex();
+    // Session 1: persist via an open interest off the relay.
+    h.relay.stage_event(&event_to_value(&n));
+    h.open_interest(relay_pinned_interest(h.relay.url(), 9201, vec![1], vec![x_pk.clone()], vec![]));
+    if !h.collector.wait_for(&id, WAIT) || !h.store_has(&id) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("seeded note did not land in the store in session 1");
+    }
+    // Cold restart: store retains the note; RAM cache + relay are fresh/empty.
+    let h2 = h.restart();
+    h2.barrier();
+    if !h2.store_has(&id) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("note did not survive restart (durability)");
+    }
+    if h2.collector.fire_count(&id) != 0 {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("note observed before any interest opened post-restart");
+    }
+    // Open an interest matching the note. The fresh relay has NOTHING, so the
+    // only delivery path is the store-cache serve.
+    h2.open_interest(relay_pinned_interest(h2.relay.url(), 9202, vec![1], vec![x_pk], vec![]));
+    h2.barrier();
+    h2.barrier();
+    let served = h2.collector.fire_count(&id) > 0;
+    let relay_had_it = h2.relay.has_event(&id);
+    let _ = std::fs::remove_dir_all(&dir);
+    check(
+        served && !relay_had_it,
+        format!(
+            "store-first serve: served_from_store={served} (want true), \
+             relay_held_it={relay_had_it} (want false) — opening an interest \
+             against a store-resident event must serve it before the network"
+        ),
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Area 6 / codex 12 — GC pin set + in-flight publish (test-support GC seam)
+// ─────────────────────────────────────────────────────────────────────────
+
+// MUTATION: drop the active-account self-interest from `open_view_pins` (or
+// remove the published event from `derive_store_pin_set`) and a just-published
+// note would be evicted under GC pressure — A6.1 goes red. A published note
+// that matches the active home-feed interest is in the pin set and survives an
+// aggressive GC pass (ceiling 0), i.e. it is NOT evicted before relay
+// confirmation.
+fn a6_inflight_publish_pinned() -> Outcome {
+    let h = Harness::in_memory();
+    // Activate the home feed so the active account's own notes are a live view.
+    h.open_contact_feed(&[1]);
+    let me = h.keys.public_key().to_hex();
+    let ret = h.publish_raw(1, "in-flight pinned note", vec![]);
+    if ret.contains("\"error\"") {
+        return fail(format!("publish dispatch errored: {ret}"));
+    }
+    let me2 = me.clone();
+    let observed = h.collector.wait_for_match(WAIT, move |e| {
+        e.kind == 1 && e.author == me2 && e.content == "in-flight pinned note"
+    });
+    let id = match observed {
+        Some(e) => e.id,
+        None => return fail("published note never reached the observer (RYW)"),
+    };
+    if !h.store_has(&id) {
+        return fail(format!("published note {id} not in store"));
+    }
+    h.barrier();
+    let pinned = h.pin_set().contains(&id);
+    // Aggressive GC: evict every un-pinned event down to ceiling 0.
+    let _ = h.run_gc(0);
+    let survived = h.store_has(&id);
+    check(
+        pinned && survived,
+        format!(
+            "in-flight publish pin: pinned={pinned}, survived_gc={survived} for {id} \
+             (expected the just-published note to be pinned by the active home-feed \
+             view and to survive an aggressive GC pass)"
+        ),
+    )
+}
+
+// MUTATION: if `derive_store_pin_set` over-pinned (e.g. pinned every stored
+// event), a cold non-followed note would never be reaped — A6.2 goes red. A
+// non-followed note that is no longer referenced by any open view (achieved via
+// a cold restart that re-opens no interests) IS reaped by GC down to the
+// ceiling.
+fn a6_cold_reaped() -> Outcome {
+    let dir = unique_tmp_dir("nmp-stress-gc-cold");
+    let path = dir.to_string_lossy().to_string();
+    let h = Harness::persistent(&path);
+    let x = Keys::generate();
+    let x_pk = x.public_key().to_hex();
+    let n = build_signed_event(&x, 1, "cold non-followed note", vec![], h.now());
+    let id = n.id.to_hex();
+    h.relay.stage_event(&event_to_value(&n));
+    h.open_interest(relay_pinned_interest(h.relay.url(), 9301, vec![1], vec![x_pk], vec![]));
+    if !h.collector.wait_for(&id, WAIT) || !h.store_has(&id) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("cold note never reached the store before restart");
+    }
+    // Cold restart: fresh kernel, NO interests re-opened → the note is now an
+    // unreferenced store leftover (not in timeline, not matched by any view).
+    let h2 = h.restart();
+    h2.barrier();
+    if !h2.store_has(&id) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail(format!("cold note {id} did not survive the restart (durability)"));
+    }
+    let pinned = h2.pin_set().contains(&id);
+    let report = h2.run_gc(0);
+    let reaped = !h2.store_has(&id);
+    let evicted = report.as_ref().map(|r| r.lru_evicted).unwrap_or(0);
+    let _ = std::fs::remove_dir_all(&dir);
+    check(
+        !pinned && reaped && evicted >= 1,
+        format!(
+            "cold reaping: pinned={pinned} (want false), reaped={reaped} (want true), \
+             lru_evicted={evicted} (want >=1) for {id}"
+        ),
+    )
+}
+
+// MUTATION: if a publish installed a permanent GC pin on the published event
+// (a pin leak) it would survive an aggressive GC pass even when unreferenced —
+// CX12 goes red. There is NO publish-in-flight GC pin distinct from the
+// open-view / timeline / claim pins (A6.1): a published note that no open view
+// references is NOT in the pin set and IS evictable. This is the "pin releases
+// after settlement" contract in its faithful master form — the pin was never
+// taken, so there is nothing to leak.
+fn cx12_no_pin_leak() -> Outcome {
+    let h = Harness::in_memory();
+    // Deliberately NO open_contact_feed: the active account has no home-feed
+    // view, so a published note matches no open interest.
+    let me = h.keys.public_key().to_hex();
+    let ret = h.publish_raw(1, "unreferenced publish", vec![]);
+    if ret.contains("\"error\"") {
+        return fail(format!("publish dispatch errored: {ret}"));
+    }
+    let me2 = me.clone();
+    let observed = h.collector.wait_for_match(WAIT, move |e| {
+        e.kind == 1 && e.author == me2 && e.content == "unreferenced publish"
+    });
+    let id = match observed {
+        Some(e) => e.id,
+        None => return fail("published note never reached the observer (RYW)"),
+    };
+    if !h.store_has(&id) {
+        return fail(format!("published note {id} not in store"));
+    }
+    h.barrier();
+    let pinned = h.pin_set().contains(&id);
+    let _ = h.run_gc(0);
+    let evicted = !h.store_has(&id);
+    check(
+        !pinned && evicted,
+        format!(
+            "pin-leak check: pinned={pinned} (want false), evicted_by_gc={evicted} \
+             (want true) for unreferenced published note {id}"
+        ),
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// codex 11 — cache-serve provenance transition / no double-notify on live dup
+// ─────────────────────────────────────────────────────────────────────────
+
+// MUTATION: if the live-ingest path re-fired the observer on a `Duplicate`
+// (removing D4 single-fire), the live relay delivery of a previously
+// cache-served event would double-notify — CX11 goes red on the fire count.
+// Conversely, if the live `Duplicate` did not record provenance, the relay
+// transition would be invisible. Flow: cold-serve an event from the store
+// (relay_count:0 LocalStore marker), then deliver it LIVE from a relay — the
+// observer must NOT fire again, and the store provenance must gain the relay.
+fn cx11_provenance_transition() -> Outcome {
+    let dir = unique_tmp_dir("nmp-stress-prov");
+    let path = dir.to_string_lossy().to_string();
+    let h = Harness::persistent(&path);
+    let x = Keys::generate();
+    let x_pk = x.public_key().to_hex();
+    let n = build_signed_event(&x, 1, "provenance note", vec![], h.now());
+    let id = n.id.to_hex();
+    // Session 1: deliver live so the durable store holds it.
+    h.relay.stage_event(&event_to_value(&n));
+    h.open_interest(relay_pinned_interest(h.relay.url(), 9401, vec![1], vec![x_pk.clone()], vec![]));
+    if !h.collector.wait_for(&id, WAIT) || !h.store_has(&id) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("note never stored in session 1");
+    }
+    // Cold restart: store has the note, observers are fresh (fire count 0), and
+    // the fixture relay is brand-new (does NOT hold the note).
+    let h2 = h.restart();
+    h2.barrier();
+    if !h2.store_has(&id) {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("note did not survive restart");
+    }
+    // Open an interest → store-cache COLD serve (relay_count:0). This is the
+    // single observer fire for this event in session 2.
+    h2.open_interest(relay_pinned_interest(h2.relay.url(), 9402, vec![1], vec![x_pk], vec![]));
+    h2.barrier();
+    h2.barrier();
+    let fire_after_serve = h2.collector.fire_count(&id);
+    if fire_after_serve == 0 {
+        let _ = std::fs::remove_dir_all(&dir);
+        return fail("cache-serve did not deliver the cold-stored event in session 2");
+    }
+    let prov_before = h2.provenance_relays(&id).len();
+    // Now deliver the SAME event LIVE from the (new) fixture relay. The open
+    // sub fans it in → `verify_and_persist` → Duplicate → provenance bump, but
+    // NO observer re-fire (D4).
+    h2.relay.stage_event(&event_to_value(&n));
+    h2.barrier();
+    h2.barrier();
+    let fire_after_live = h2.collector.fire_count(&id);
+    let prov_after = h2.provenance_relays(&id).len();
+    let _ = std::fs::remove_dir_all(&dir);
+    check(
+        fire_after_live == fire_after_serve && prov_after > prov_before,
+        format!(
+            "provenance transition: fire {fire_after_serve}→{fire_after_live} \
+             (want equal — no double-notify on live Duplicate), provenance \
+             {prov_before}→{prov_after} (want growth — relay confirmed the \
+             cache-served event)"
+        ),
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// codex 16 — multi-account two-instance isolation
+// ─────────────────────────────────────────────────────────────────────────
+
+// MUTATION: if any kernel/store state were process-global (a shared static
+// store, a leaked singleton) instead of per-`NmpApp`, B would observe A's
+// read-your-write — CX16 goes red. Two independent app instances with separate
+// signers and separate stores must not cross-talk.
+fn cx16_multi_account_isolation() -> Outcome {
+    let a = Harness::in_memory();
+    let b = Harness::in_memory();
+    let a_pk = a.keys.public_key().to_hex();
+    // A publishes a note (read-your-write into A's store).
+    let ret = a.publish_raw(1, "A private note", vec![]);
+    if ret.contains("\"error\"") {
+        return fail(format!("A publish errored: {ret}"));
+    }
+    let a_pk2 = a_pk.clone();
+    let observed = a.collector.wait_for_match(WAIT, move |e| {
+        e.kind == 1 && e.author == a_pk2 && e.content == "A private note"
+    });
+    let a_id = match observed {
+        Some(e) => e.id,
+        None => return fail("A's note never reached A's observer (RYW)"),
+    };
+    // Let B settle (a barrier proves B's actor processed everything to date).
+    b.barrier();
+    let in_a = a.store_has(&a_id);
+    let in_b = b.store_has(&a_id);
+    let b_observed_a = b.collector.fire_count(&a_id) > 0;
+    check(
+        in_a && !in_b && !b_observed_a,
+        format!(
+            "two-instance isolation: A.store_has={in_a} (want true), \
+             B.store_has={in_b} (want false), B.observed_A={b_observed_a} (want false) \
+             for {a_id}"
+        ),
+    )
+}
+
+/// A unique tempdir path for a persistent-store scenario (cold-restart / GC).
+fn unique_tmp_dir(prefix: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "{prefix}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 // (No local poll/sleep helpers — all waits are push-signal based: the observer

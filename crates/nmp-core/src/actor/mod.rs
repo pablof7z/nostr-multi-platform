@@ -1101,6 +1101,45 @@ pub enum ActorCommand {
         /// borrow on the channel after the `send` call).
         ack: std::sync::mpsc::SyncSender<()>,
     },
+    /// Test-support — run ONE bounded GC pass to a custom LRU `ceiling` and
+    /// return the [`crate::store::GcReport`]. Drives the production
+    /// pin-derivation + eviction machinery (see
+    /// `Kernel::run_gc_step_to_ceiling_for_test`). Never compiled into
+    /// production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    TestGcStep {
+        ceiling: usize,
+        ack: std::sync::mpsc::SyncSender<Option<crate::store::GcReport>>,
+    },
+    /// Test-support — read-only kernel snapshot: the store-tier LRU pin set
+    /// (hex ids), the durable store event count, and the active follow-set
+    /// `timeline_authors`. Lets the harness assert pin / eviction / contacts
+    /// state without an FFI snapshot round-trip. Never compiled into production.
+    #[cfg(any(test, feature = "test-support"))]
+    TestKernelInspect {
+        ack: std::sync::mpsc::SyncSender<TestKernelInspect>,
+    },
+    /// Test-support — relay URLs recorded in the durable store's provenance for
+    /// an event id. The codex-#11 provenance-transition lens. Never compiled
+    /// into production.
+    #[cfg(any(test, feature = "test-support"))]
+    TestStoreProvenance {
+        id: String,
+        ack: std::sync::mpsc::SyncSender<Vec<String>>,
+    },
+}
+
+/// Read-only kernel inspection snapshot returned by
+/// [`ActorCommand::TestKernelInspect`] (test-support only).
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Debug, Default, Clone)]
+pub struct TestKernelInspect {
+    /// Store-tier LRU pin set as lowercase-hex event ids.
+    pub pin_set_hex: Vec<String>,
+    /// Number of events in the durable store.
+    pub store_event_count: usize,
+    /// Active follow-set `timeline_authors` (raw pubkeys).
+    pub timeline_authors: Vec<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
