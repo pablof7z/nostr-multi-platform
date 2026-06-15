@@ -7,4 +7,8 @@ fn rogue_fanout(&self) {
     self.notify_event_observers(&kernel_event);
     // (2) bareword call.
     notify_event_observers(event);
+    // (3) rustfmt-SPLIT chained call — receiver on the line above; the method
+    // token + `(` stays atomic so the split form is caught too.
+    self.kernel()
+        .notify_event_observers(&kernel_event);
 }

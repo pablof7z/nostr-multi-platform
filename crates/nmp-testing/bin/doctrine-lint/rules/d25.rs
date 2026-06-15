@@ -137,6 +137,15 @@ mod tests {
     }
 
     #[test]
+    fn flags_split_chained_call() {
+        // rustfmt-split chained call: receiver on the previous line, so this
+        // line is just `.req_for_relay(...)`. The token + `(` is atomic and the
+        // leading `.` is a non-identifier left boundary, so it fires.
+        let hits = check("            .req_for_relay(role, url, id);", false, false);
+        assert_eq!(hits.len(), 1, "split chained req_for_relay must fire");
+    }
+
+    #[test]
     fn does_not_flag_longer_identifier() {
         let hits = check("    build_req_for_relay(role);", false, false);
         assert!(hits.is_empty(), "longer identifier must NOT fire");

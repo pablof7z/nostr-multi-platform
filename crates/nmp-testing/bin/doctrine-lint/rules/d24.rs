@@ -25,24 +25,36 @@
 //! `force_notify_event_observers(`) does NOT false-positive. (The `un`-prefixed
 //! `unregister_raw_event_observer` substring class the prior reviews flagged is
 //! a different token and never matches this needle.)
+//! Because the method-name token + `(` is atomic on its own line, a
+//! rustfmt-split chained call (`self\n    .notify_event_observers(&ev)`) is
+//! caught with no extra state: the `.notify_event_observers(` line still
+//! carries the whole token (the `.` before it is a non-identifier left bound).
 //!
 //! ## Scope (`file_in_scope`)
 //!
 //! `crates/nmp-core/src/` only — `notify_event_observers` is `pub(in
 //! crate::kernel)`, so only kernel code can call it. The allowlisted seam
-//! files (excluded from scope) are:
+//! files (excluded from scope) are EXACTLY two:
 //! - `kernel/ingest/mod.rs` — the `project_accepted_event` post-store fan-out,
-//! - `kernel/event_observer.rs` — the `notify_event_observers` definition,
-//! - `kernel/cache_serve/**` — the single-mechanism cache-serve replay seam.
+//! - `kernel/event_observer.rs` — the `notify_event_observers` definition.
+//!
+//! The cache-serve replay seam (`kernel/cache_serve/`) is deliberately NOT
+//! exempted: post-PR2/PR3 it routes observers through `project_accepted_event`
+//! (`cache_serve/continuation.rs`) and has ZERO direct `notify_event_observers`
+//! call. A blanket directory exemption would let a future direct notify regrow
+//! there unnoticed, so cache-serve is held to the same one-door rule. (If a
+//! cache-serve line ever legitimately needs the call, narrow the allow to that
+//! exact line with `// doctrine-allow: D24 — reason`, not the whole dir.)
 //!
 //! ## Exemptions
 //!
-//! - The three allowlisted seam paths above.
+//! - The two allowlisted seam files above.
 //! - Doc/line comments (`is_comment`) — skipped.
 //! - `#[cfg(test)]` bodies (`in_test_cfg`) and test-only files (`d6_test_file`,
 //!   handled in the driver) — e.g. `test_support.rs` fires the seam directly to
 //!   stage observer state.
-//! - Per-line `// doctrine-allow: D24 — reason` opt-out (standard mechanism).
+//! - Per-line `// doctrine-allow: D24 — reason` opt-out, REASON-REQUIRED (the
+//!   D10/D21 tightened idiom; a bare `// doctrine-allow: D24` does not silence).
 //! - The doctrine-lint binary's own source tree (string constants contain the
 //!   banned token — meta-false-positives on broad sweeps).
 
@@ -51,29 +63,22 @@ use std::path::Path;
 pub const ID: &str = "D24";
 
 /// Seam files where `notify_event_observers` is legal: the post-store fan-out
-/// (`project_accepted_event`), the call's own definition, and the cache-serve
-/// replay seam. Matched as path suffixes / fragments.
+/// (`project_accepted_event`) and the call's own definition. Matched as path
+/// suffixes / fragments. The cache-serve dir is intentionally NOT here.
 const SEAM_FILES: &[&str] = &[
     "crates/nmp-core/src/kernel/ingest/mod.rs",
     "crates/nmp-core/src/kernel/event_observer.rs",
 ];
 
-/// Path fragment for the cache-serve replay seam directory (every file under
-/// it reaches observers through `project_accepted_event` and may name the seam).
-const CACHE_SERVE_DIR: &str = "crates/nmp-core/src/kernel/cache_serve/";
-
 /// True iff D24 should scan `path`: it lives inside `crates/nmp-core/src/`, is
-/// not one of the allowlisted seam files / cache-serve dir, and is not the
-/// doctrine-lint binary itself.
+/// not one of the two allowlisted seam files, and is not the doctrine-lint
+/// binary itself.
 pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     if s.contains("/bin/doctrine-lint/") {
         return false;
     }
     if SEAM_FILES.iter().any(|f| s.ends_with(f) || s == *f) {
-        return false;
-    }
-    if s.contains(CACHE_SERVE_DIR) {
         return false;
     }
     s.contains("crates/nmp-core/src/")
@@ -145,6 +150,16 @@ mod tests {
     }
 
     #[test]
+    fn flags_split_chained_call() {
+        // rustfmt-split chained call: the receiver is on the previous line, so
+        // this line is just `.notify_event_observers(&ev)`. The token + `(`
+        // stays atomic, and the leading `.` is a non-identifier left boundary,
+        // so it fires with no cross-line state.
+        let hits = check("            .notify_event_observers(&ev);", false, false);
+        assert_eq!(hits.len(), 1, "split chained notify must fire");
+    }
+
+    #[test]
     fn does_not_flag_longer_identifier() {
         // A longer identifier ending in the token must not false-positive.
         let hits = check("    force_notify_event_observers(e);", false, false);
@@ -179,10 +194,17 @@ mod tests {
         assert!(!file_in_scope(Path::new(
             "crates/nmp-core/src/kernel/event_observer.rs"
         )));
-        assert!(!file_in_scope(Path::new(
+    }
+
+    #[test]
+    fn cache_serve_is_in_scope() {
+        // cache-serve is NOT exempted — it routes through project_accepted_event
+        // and must stay free of direct notify calls (the blanket exemption was
+        // removed so a future direct notify there is caught).
+        assert!(file_in_scope(Path::new(
             "crates/nmp-core/src/kernel/cache_serve/queries.rs"
         )));
-        assert!(!file_in_scope(Path::new(
+        assert!(file_in_scope(Path::new(
             "/abs/crates/nmp-core/src/kernel/cache_serve/mod.rs"
         )));
     }
