@@ -107,7 +107,10 @@ struct NostrAvatar: View {
                         consumerID: generatedConsumerID)
                 }
                 claimedPubkey = pubkey
-                profileHost?.claimProfile(pubkey: pubkey, consumerID: generatedConsumerID)
+                // Feed/list avatar → `.cacheOk` (cache + OneShot fill, no live
+                // sub). The profile screen is the only `.live` claimer.
+                profileHost?.claimProfile(
+                    pubkey: pubkey, consumerID: generatedConsumerID, liveness: .cacheOk)
             }
         }
         .onDisappear {

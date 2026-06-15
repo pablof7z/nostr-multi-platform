@@ -297,14 +297,44 @@ private struct TimelineListView: View, Equatable {
     }
 
     /// "↳ <name> replied in thread" — surfaces the follow whose reply caused
-    /// this root to appear (or who replied to it). `authorDisplayName` falls
-    /// back to the abbreviated raw pubkey when no kind:0 has arrived yet
-    /// (ADR-0032 display separation).
+    /// this root to appear (or who replied to it).
     private func attributionLine(_ attribution: ChirpReplyAttribution) -> some View {
-        let name = attribution.authorDisplayName?.isEmpty == false
-            ? attribution.authorDisplayName!
-            : attribution.authorPubkey.shortHex
-        return HStack(spacing: 4) {
+        ReplyAttributionLine(attribution: attribution)
+    }
+}
+
+/// One reply-attribution line ("↳ <name> replied in thread").
+///
+/// F-CR-00 claim-only invariant: the attributed replier is an author-displaying
+/// surface, so this view self-claims that pubkey's kind:0 and releases on
+/// disappear — mirroring `NostrAvatar`'s lifecycle exactly. The kernel owns all
+/// resolution (10002 → author relays → kind:0 REQ) off the claim alone; this
+/// view only triggers it and reads the resolved name back reactively.
+///
+/// The displayed name prefers the live host projection, then the snapshot-baked
+/// `authorDisplayName`, then the Rust-formatted `shortHex` — never blank while
+/// the claim is in flight (ADR-0032 display separation).
+private struct ReplyAttributionLine: View {
+    @Environment(\.nostrProfileHost) private var profileHost
+
+    let attribution: ChirpReplyAttribution
+
+    @State private var consumerID = "home-feed.reply-attribution.\(UUID().uuidString)"
+    @State private var claimedPubkey: String?
+
+    private var name: String {
+        if let live = profileHost?.profile(forPubkey: attribution.authorPubkey)?.displayName,
+            !live.isEmpty {
+            return live
+        }
+        if let baked = attribution.authorDisplayName, !baked.isEmpty {
+            return baked
+        }
+        return attribution.authorPubkey.shortHex
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
             Image(systemName: "arrow.turn.down.right")
                 .font(.caption2)
                 .foregroundStyle(ChirpColor.link)
@@ -316,5 +346,24 @@ private struct TimelineListView: View, Equatable {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .accessibilityIdentifier("thread-attribution-\(attribution.replyEventId.prefix(8))")
+        .task(id: attribution.authorPubkey) {
+            await MainActor.run {
+                if let claimedPubkey, claimedPubkey != attribution.authorPubkey {
+                    profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: consumerID)
+                }
+                claimedPubkey = attribution.authorPubkey
+                // Attribution line is a feed/list context → `.cacheOk`.
+                profileHost?.claimProfile(
+                    pubkey: attribution.authorPubkey,
+                    consumerID: consumerID,
+                    liveness: .cacheOk)
+            }
+        }
+        .onDisappear {
+            if let claimedPubkey {
+                profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: consumerID)
+                self.claimedPubkey = nil
+            }
+        }
     }
 }
