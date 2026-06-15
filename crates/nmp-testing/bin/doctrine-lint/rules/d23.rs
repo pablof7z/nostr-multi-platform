@@ -60,6 +60,15 @@
 //!   D10/D21 tightened idiom; a bare `// doctrine-allow: D23` does not silence).
 //! - The doctrine-lint binary's own source tree (string constants contain the
 //!   banned token — meta-false-positives on broad sweeps).
+//!
+//! ## Heuristic scope (regression backstop, NOT a formal proof)
+//!
+//! D23 is a formatting-heuristic regression BACKSTOP, not a soundness proof. It
+//! catches the normal, rustfmt-split (`.store` / `.insert(`), and
+//! trailing-comment (`.store // …` / `.insert(`) forms of a store insert. A
+//! deliberately-obfuscated write — built through a macro, aliased through a
+//! re-export, or assigned to an intermediate binding — is OUT OF SCOPE and is a
+//! code-review concern, not something a line-based lint chases.
 
 use std::path::Path;
 
@@ -99,11 +108,17 @@ fn preceded_by_ident_char(bytes: &[u8], idx: usize) -> bool {
     }
 }
 
-/// True iff `line`'s trimmed tail is the `store` token — i.e. it ends with
-/// `store` and the char before that `store` is not an identifier char (so
-/// `.store` / bareword `store` match, but `keystore` / `event_store` do not).
+/// True iff `line`'s code tail is the `store` token — i.e. after stripping any
+/// trailing `//` line comment and whitespace it ends with `store`, and the char
+/// before that `store` is not an identifier char (so `.store` / bareword
+/// `store` match, but `keystore` / `event_store` do not). Stripping the comment
+/// first closes the `.store // foo`\n`.insert(` trailing-comment evasion.
 fn line_ends_with_store_token(line: &str) -> bool {
-    let t = line.trim_end();
+    let code = match line.find("//") {
+        Some(i) => &line[..i],
+        None => line,
+    };
+    let t = code.trim_end();
     if !t.ends_with("store") {
         return false;
     }
@@ -223,6 +238,17 @@ mod tests {
     fn flags_two_line_split_chain() {
         let n = run(&["        self.store", "            .insert(v, &r, 0);"]);
         assert_eq!(n, 1, "two-line self.store / .insert( split must fire");
+    }
+
+    #[test]
+    fn flags_split_chain_with_trailing_comment_on_store_line() {
+        // `.store // comment` then `.insert(` — the trailing-comment evasion.
+        // The comment must be stripped before the suffix check.
+        let n = run(&[
+            "        self.store // fetch the event store",
+            "            .insert(v, &r, 0);",
+        ]);
+        assert_eq!(n, 1, "trailing comment on the .store line must not evade D23");
     }
 
     #[test]

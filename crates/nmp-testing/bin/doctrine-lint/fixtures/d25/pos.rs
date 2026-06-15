@@ -12,4 +12,9 @@ fn rogue_request_helper(&self) {
     let _s = self
         .kernel()
         .req_for_relay(role, url, id, summary, filter);
+    // (4) METHOD/PAREN SPLIT — the method NAME on one line, the `(` on the next.
+    let _t = self
+        .kernel()
+        .req_for_relay
+        (role, url, id, summary, filter);
 }

@@ -47,14 +47,15 @@ fn d23_positive_fixture_fires() {
         "d23 finding must name the chokepoint; stdout:\n{}",
         stdout
     );
-    // The fixture plants 4 store-insert sites: 3 contiguous (self / kernel /
-    // bareword) + 1 rustfmt-SPLIT `.store` / `.insert(` chain. The 4th proves
-    // the split-call evasion hole is closed (a single-line matcher misses it).
+    // The fixture plants 5 store-insert sites: 3 contiguous (self / kernel /
+    // bareword) + 1 rustfmt-SPLIT `.store` / `.insert(` chain + 1 with a
+    // TRAILING COMMENT on the `.store` line. The last two prove the split-call
+    // and trailing-comment evasion holes are closed.
     let n = stdout.matches("error[D23]").count();
     assert!(
-        n >= 4,
-        "d23 must flag all 4 planted store-insert sites incl. the split chain; \
-         got {}; stdout:\n{}",
+        n >= 5,
+        "d23 must flag all 5 planted store-insert sites incl. the split chain \
+         and the trailing-comment shape; got {}; stdout:\n{}",
         n, stdout
     );
 }
@@ -96,12 +97,12 @@ fn d24_positive_fixture_fires() {
         "d24 finding must name the post-store fan-out seam; stdout:\n{}",
         stdout
     );
-    // 2 single-line notify sites + 1 rustfmt-split chained call.
+    // 2 single-line notify sites + 1 chained call + 1 method/paren split.
     let n = stdout.matches("error[D24]").count();
     assert!(
-        n >= 3,
-        "d24 must flag all 3 planted notify sites incl. the split chain; \
-         got {}; stdout:\n{}",
+        n >= 4,
+        "d24 must flag all 4 planted notify sites incl. the chained and \
+         method/paren-split shapes; got {}; stdout:\n{}",
         n, stdout
     );
 }
@@ -143,12 +144,12 @@ fn d25_positive_fixture_fires() {
         "d25 finding must point at the LogicalInterest one-door; stdout:\n{}",
         stdout
     );
-    // 2 single-line req_for_relay sites + 1 rustfmt-split chained call.
+    // 2 single-line req_for_relay sites + 1 chained call + 1 method/paren split.
     let n = stdout.matches("error[D25]").count();
     assert!(
-        n >= 3,
-        "d25 must flag all 3 planted req_for_relay sites incl. the split chain; \
-         got {}; stdout:\n{}",
+        n >= 4,
+        "d25 must flag all 4 planted req_for_relay sites incl. the chained and \
+         method/paren-split shapes; got {}; stdout:\n{}",
         n, stdout
     );
 }

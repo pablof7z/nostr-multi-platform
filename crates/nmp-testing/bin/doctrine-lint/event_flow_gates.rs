@@ -46,10 +46,13 @@ impl FileScope {
     }
 }
 
-/// Cross-line scan state (D23 split-chain detection). Reset per file.
+/// Cross-line scan state for the three gates (D23 receiver-split chain; D24/D25
+/// method/paren split). Reset per file.
 #[derive(Default)]
 pub(crate) struct ScanState {
     d23: d23::State,
+    d24: d24::State,
+    d25: d25::State,
 }
 
 /// Scan one source line for D23/D24/D25, appending findings. Called once per
@@ -78,7 +81,9 @@ pub(crate) fn scan_line(
         }
     }
     if scope.d24 {
-        for (col, msg, suggested) in d24::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+        for (col, msg, suggested) in
+            d24::check(&mut state.d24, sl.text, sl.is_comment, sl.in_test_cfg)
+        {
             if allow::line_allows_with_reason(sl.text, d24::ID) {
                 continue;
             }
@@ -86,7 +91,9 @@ pub(crate) fn scan_line(
         }
     }
     if scope.d25 {
-        for (col, msg, suggested) in d25::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+        for (col, msg, suggested) in
+            d25::check(&mut state.d25, sl.text, sl.is_comment, sl.in_test_cfg)
+        {
             if allow::line_allows_with_reason(sl.text, d25::ID) {
                 continue;
             }

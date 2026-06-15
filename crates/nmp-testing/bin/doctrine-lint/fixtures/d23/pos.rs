@@ -18,4 +18,8 @@ fn rogue_ingest_ladder(&mut self) {
         Ok(_) => {}
         Err(_) => {}
     }
+    // (5) TRAILING COMMENT on the `.store` line then `.insert(` — the comment
+    // must be stripped before the suffix check or this would evade.
+    let _ = self.store // grab the event store
+        .insert(verified, &provenance, ts);
 }
