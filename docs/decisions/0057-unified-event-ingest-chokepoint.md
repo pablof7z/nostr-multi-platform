@@ -1,0 +1,440 @@
+# ADR-0057 — Unified kind-agnostic accepted-event ingest chokepoint: persistence ≠ admission ≠ projection
+
+- **Status:** Proposed (2026-06-15)
+- **Date:** 2026-06-15
+- **Issues:** #1440 (ghost-post — no optimistic local echo for non-replaceable
+  kinds), #1442 (persistence entangled with relevance — the authoritative store
+  has relevance-shaped holes), #1443 (follow-up — research an unbounded /
+  disk-bounded durable cache; out of scope here).
+- **Decision record:** this ADR is the durable, self-contained authority for the
+  ingest-chokepoint architecture. Durable "why" lives here and in the issues above;
+  `docs/plans/arch-fixes.md` (Workstream A) is only the **temporal tactical
+  PR-sequencing tracker** for landing it (this ADR is its "PR 0") and is deleted
+  when the work merges — it is not an authority for any decision.
+- **Amends / supersedes:**
+  - **Amends ADR-0042** — its §5.1 "Remaining kernel work" and §6 frame
+    `should_store_event` as a **store-admission** gate (generalised so an event is
+    *stored* when it matches an active interest). This ADR demotes
+    `should_store_event` to a **read-time projection predicate** with no power over
+    persistence; the ADR-0042 admission framing is withdrawn.
+  - **Supersedes the dual-ladder ingest design** — the two hand-maintained
+    per-kind, per-source ingest ladders (`handle_event`'s relay `match event.kind`
+    arms and `record_local_publish_intent`'s mirror arms) are replaced by one
+    kind-agnostic chokepoint. #1440's narrow "add a 4th local-publish arm" framing
+    is superseded by this architecture.
+  - **Extends ADR-0045** — the single always-on cache-serve mechanism. ADR-0045's
+    "one mechanism, replay feeds the post-store seam not `store.insert`" principle
+    is the read-half precedent this ADR generalises to *all* event sources.
+- **Related:** ADR-0053 (host-declared projections — observers self-gate by
+  registration), crate-boundaries.md §4.2 (the `IngestParser` migration this
+  finishes), `docs/plans/arch-authority-lifecycle.md` (sibling plan: signer
+  authority & action/projection lifecycle — a **separate problem domain**, out of
+  scope).
+
+---
+
+## Context
+
+### The problem: ingest is split by source AND by kind, and three concerns are fused
+
+Event ingestion is split **by source** (relay vs local publish vs cache-replay)
+**and by kind** (per-kind `match` arms), and within each arm three distinct
+concerns — **persistence**, **admission/relevance**, and **projection mutation**
+— are fused. The fused logic is then duplicated across two hand-maintained
+per-kind ladders that drift:
+
+- **Relay ladder:** `Kernel::handle_event` (`crates/nmp-core/src/kernel/ingest/mod.rs:245`)
+  does relay bookkeeping (`:257-280`) then a `match event.kind` (`:296-425`) with
+  bespoke arms for kind:0 (`ingest_profile`), kind:3 (`ingest_contacts`), kind:1|6
+  (`ingest_timeline_event`), and a wildcard arm for everything else.
+- **Local ladder:** `Kernel::record_local_publish_intent`
+  (`crates/nmp-core/src/kernel/local_publish_intent.rs:9`), reached from
+  `publish_engine.rs:169`, mirrors those arms (`record_local_profile_intent`,
+  `record_local_contacts_intent`, `record_local_replaceable_intent`) — a parallel
+  ladder that exists only to give locally-published replaceables read-your-writes.
+
+### Confirmed code facts (verified in source, 2026-06-15)
+
+- `verify_and_persist` (`ingest/mod.rs:436`) **already** does, kind-agnostically:
+  sig-verify → `store.insert` → raw-tap fan-out → `EventIngestDispatcher.dispatch`
+  to the NIP `IngestParser`s (gated `Inserted | Replaced | Ephemeral`, `:486-499`)
+  → replaceable TTL stamping. **But it does NOT fire `notify_event_observers`** —
+  every caller does that per-arm.
+- **kind:1 / kind:6 bypass `verify_and_persist` entirely** and run a self-contained
+  `ingest_timeline_event` (`ingest/timeline.rs:18`), which independently does sig-
+  verify + `store.insert`, the admission gate, pre-kind:3 parking, the timeline
+  read-cache append, and the created_at clamp.
+- **The clearest layering bug:** `should_store_event` (`ingest/timeline.rs:25`, def
+  `:299`) is a *timeline-relevance* predicate — its primary clause is
+  `timeline_authors.contains(author)` (the follow set) — and it runs **before**
+  `store.insert`, so it gates **persistence**. A self-authored note fails it (you
+  are not in your own follow set); a non-followed author's reply is dropped unless
+  an escape-hatch clause (`matches_active_open_interest`, `:328`) matches.
+- **The asymmetry (the #1442 core):** kind:1/6 are the **only** kinds whose
+  *persistence* is relevance-gated. Every other kind (0, 3, 7, 10002, …) persists
+  on valid-signature alone via `verify_and_persist`.
+- **Ephemeral (20000–29999) is already correctly excluded from PERSISTENCE at the
+  store layer** (`nmp-store` `is_ephemeral()`, returning `InsertOutcome::Ephemeral`).
+  This stays at the store layer; no ingest-layer persistence check is added.
+- **LATENT BUG (this ADR fixes it):** ephemeral events do **not** reach app
+  observers today. `verify_and_persist` dispatches to NIP parsers on
+  `Inserted | Replaced | Ephemeral` (`ingest/mod.rs:486-490`), but the wildcard
+  arm's `notify_event_observers` fires only on `Inserted | Replaced`
+  (`ingest/mod.rs:389-404`). So an ephemeral reaches the NIP parser registry but
+  **not** the app-facing `KernelEventObserver` seam — apps cannot react to
+  ephemeral events they never store.
+- Two stores exist: the authoritative `EventStore` (`self.store`) vs the in-memory
+  read-caches (`self.profiles`, `self.events`, `self.timeline`). The volatile
+  cache's *follow-set relevance policy* is punching holes in the durable store —
+  inverted authority. Because the NIP parsers' derived caches are **rebuilt from
+  the store on restart**, a relevance-shaped hole in the store becomes a permanent
+  hole in every projection (the mechanism behind past "missing DMs/replies"
+  findings).
+
+### Why this is the same bug as #1440 and #1442
+
+#1440 (ghost post: a locally-published note shows no optimistic echo) and #1442
+(authoritative store has relevance-shaped holes) are the **same root cause** —
+persistence, admission, and projection fused per-kind per-source — and share **one
+fix**: separate the three concerns into three layers behind one chokepoint.
+
+---
+
+## Decision
+
+Replace the two per-kind ingest ladders with **one kind-agnostic, source-agnostic
+accepted-event chokepoint**. The three fused concerns become three distinct
+layers:
+
+### 1. Admission to the chokepoint = valid signature. Nothing else.
+
+**Admission** is what is allowed to reach `store.insert`: **a valid signature,
+full stop** — not acquisition-matched, not relevance-gated, not kind-gated. The
+acquisition-match concept is **deleted, not generalised** (owner decision
+2026-06-15, plan Q5):
+
+- Signatures already prevent forgery.
+- Projections filter at **read time**, so an unsolicited event is invisible to the
+  UI anyway.
+- The check is incoherent today: only kind:1/6 carry it; kind:0/3/7/10002 already
+  persist on valid-sig alone.
+- The only thing acquisition-match could buy is DoS / write-amplification defense
+  against a hostile relay signing garbage under throwaway keys. That is a
+  **transport-layer concern** (a per-relay rate-limit / quota), **not** an ingest
+  gate, and GC + pinning already bound the damage (spam is cold/unpinned → evicted
+  first; live events are pinned). If DoS ever becomes real, add a transport quota
+  at that layer.
+
+All three sources collapse to the same admission rule: **relay** — sig-verified at
+the chokepoint; **local publish** — the publish engine already accepted it;
+**replay** — already in the store.
+
+> **Ephemeral-ness is NOT an admission criterion.** Every validly-signed event,
+> ephemeral or not, is admitted to the chokepoint. Ephemeral-ness is resolved by
+> the *store outcome* (below), not by an admission check.
+
+### 2. Delivery vs persistence — gated by the store OUTCOME, not just the signature
+
+Admission gets an event *to* `store.insert`. What happens next is gated by the
+**`InsertOutcome`** the store returns — the signature is necessary but not
+sufficient. The canonical outcome enum (the by-kind table at
+`docs/builder-guide/08-eventstore.md:51`, "What happens on insert, by kind"; enum
+def `crates/nmp-store/src/types/outcomes.rs:11-33`) is
+`Inserted | Replaced | Superseded | Duplicate | Tombstoned | Rejected | Ephemeral`.
+
+- **Persistence** = the non-ephemeral canonical subset, `Inserted | Replaced`.
+  An ephemeral (20000–29999) is dropped at the **store layer** and returns
+  `InsertOutcome::Ephemeral` — it is never written. `Superseded | Duplicate |
+  Tombstoned | Rejected` are likewise not new canonical writes. Persistence stays
+  exactly where it is, at the store layer.
+- **Delivery** = both `EventIngestDispatcher.dispatch` (to the NIP `IngestParser`s)
+  **and** `notify_event_observers` (the app-facing `KernelEventObserver` seam),
+  fired on the **canonical accepted store outcome `Inserted | Replaced |
+  Ephemeral`** — NOT on `Duplicate | Superseded | Tombstoned | Rejected`. The
+  dispatcher already uses exactly this gate (`ingest/mod.rs:486`); the fix is to
+  move `notify_event_observers` inside the chokepoint under the **same** gate. That
+  gate including `Ephemeral` **closes the latent bug**: an ephemeral reaches both
+  the parsers and the app observers, so apps can react to ephemeral events they
+  never store.
+
+The store outcome — not just a valid signature — is what gates delivery. A
+validly-signed event whose outcome is `Duplicate` (or `Superseded` / `Tombstoned`
+/ `Rejected`) is **not** delivered.
+
+> **Invariant:** delivery (*dispatch + notify*) fires exactly once, kind- and
+> source-agnostically, on the canonical accepted outcome `Inserted | Replaced |
+> Ephemeral`. Persistence is the `Inserted | Replaced` subset (ephemerals return
+> `InsertOutcome::Ephemeral` and are not written).
+
+> **Duplicate is projection-silent (D4 single-fire).** A `Duplicate` relay echo —
+> including the relay echo of a locally-published event — does **NOT** notify
+> observers; this is precisely what preserves D4 single-fire for read-your-writes
+> (the local publish already fired delivery; the echo must not re-fire it).
+> **BUT** kind:1/6 today still bump the cached `relay_count` on `Duplicate`
+> (`ingest/timeline.rs:143-154`) — a diagnostic signal, not a projection mutation.
+> **PR 1 requirement:** the chokepoint / timeline observer MUST preserve that
+> `relay_count` bump on `Duplicate` even though it does not re-notify.
+
+### 3. Projection / relevance = read-time only
+
+`should_store_event` is demoted from a persistence gate to the **timeline-cache
+observer's read-time predicate** — "does this event belong in MY timeline VIEW?".
+It no longer gates `store.insert` and has no power over persistence. Relevance is a
+read-time projection concern for every projection (timeline, profile, contacts,
+mailbox, feeds). **This ADR amends ADR-0042**, which currently frames
+`should_store_event` as store admission; that framing is withdrawn.
+
+### The chokepoint
+
+`verify_and_persist` becomes the single chokepoint, with `notify_event_observers`
+pulled **inside** it (gated `Inserted | Replaced | Ephemeral`). It already does
+sig-verify → `store.insert` → raw-tap → `EventIngestDispatcher` fan-out → TTL
+stamping kind-agnostically; the only addition is the observer notify. The working
+name for the seam is `ingest_accepted_event(source, event)`.
+
+- **Relay** events enter the chokepoint **after** `handle_event`'s relay-only
+  bookkeeping. The clean seam is `ingest/mod.rs:281→282` (plan Q1): frame decode,
+  event counters/timing, transport provenance, wire-sub diagnostics, and
+  `claim_expansion_match_author` stay relay-only in `handle_event`; the shared
+  body is the `match event.kind` region (`:296-425`) minus the kind arms, centered
+  on `verify_and_persist`. Relay claim-hit scoring stays a relay wrapper after the
+  helper returns.
+- **Local publishes** enter the chokepoint **directly** with provenance
+  `local://publish` (the entry point is `publish_engine.rs:169`).
+  `record_local_publish_intent` and `local_publish_intent.rs` are **deleted** —
+  they existed only to mirror the per-kind arms for read-your-writes, which the
+  chokepoint now provides for **all** kinds uniformly.
+- **Cache-replay** keeps feeding the same post-store projection seam
+  (`feed_served_event`, `cache_serve/continuation.rs:210`) per ADR-0045 — replay
+  **skips** `store.insert` (the event is already on disk; re-insert returns
+  `Duplicate`, a no-op).
+
+**Source / provenance — three existing encodings, preserved.** The chokepoint
+takes a `source` discriminator (relay vs local-publish vs cache-serve). Each
+source already carries a distinct provenance encoding that PR 1 preserves
+verbatim:
+
+| Source        | Provenance encoding (preserved)                                              |
+| ------------- | ---------------------------------------------------------------------------- |
+| Relay insert  | the delivering relay URL as store provenance (`ingest/mod.rs:464` → `store.insert(.., &provenance, ..)`) |
+| Local publish | the literal string `local://publish` (`local_publish_intent.rs:20`, fed into the chokepoint at the publish-engine entry) |
+| Cache-serve   | `relay_count: 0` — the de-facto `Provenance::LocalStore` marker (`cache_serve/mod.rs:59-64`); no relay confirmed the event this session |
+
+The `relay_count == 0 ⇔ local-store-served` convention is a **de-facto marker
+pending a proper `Provenance::LocalStore` enum variant** (named but not yet
+introduced — `cache_serve/mod.rs:63` and ADR-0045 R2.4(b)). **This ADR preserves
+the three existing encodings; it does NOT introduce the `Provenance` enum.**
+Promoting the `relay_count: 0` convention to a typed `Provenance::LocalStore`
+variant is left to the ADR-0045 amendment that names it — flagged here so it is
+not silently conflated with the chokepoint's `source` discriminator.
+
+The timeline read-cache, like `profiles` and `seed_contacts`, becomes an
+observer/parser fed by the chokepoint, not a `match kind` arm.
+`pre_kind3_buffer` is **deleted** — it existed only to park events the
+admission/persistence entanglement would otherwise have dropped; with admission
+≠ persistence the parking is obsolete (a follow added later still surfaces prior
+events from the now-complete store).
+
+**D9 created_at clamp — keep it in the timeline observer, not the generic
+chokepoint.** Today the future-date clamp lives only in the timeline ingest path
+(`ingest/timeline.rs:229`, where the observer `KernelEvent` is built with a
+`created_at` clamped to `now`); the generic `kernel_event_from_nostr`
+(`ingest/helpers.rs:49`) does **not** clamp. Pulling `notify_event_observers`
+into the chokepoint must not silently drop the clamp. **PR 1 requirement:** the
+chokepoint emits the raw `KernelEvent` (the store retains the original timestamp
+for protocol correctness), and the **timeline observer** applies the D9 clamp as
+it projects — the clamp stays a property of the timeline projection path, not the
+generic chokepoint, so a hostile/future-dated event cannot pin to the top of the
+feed while non-timeline observers still see the true timestamp.
+
+### Storage model: bounded local cache, bounded by pin-aware LRU only
+
+The on-device `EventStore` is **today** a **bounded local cache (~10k hot events),
+not an infinite log** — the durable log of nostr lives on relays. "Persist
+everything" means **admission is not relevance-gated** (every validly-signed event
+is admitted kind-agnostically, and the canonical non-ephemeral subset
+`Inserted | Replaced` is written); the **single** storage bound is **pin-aware LRU
+GC**, which **replaces** the ad-hoc relevance gate:
+
+- `Kernel::run_gc_step` (wired in production on the 60s actor idle tick) evicts
+  least-recently-accessed **un-pinned** events down to
+  `HOT_EVENT_CEILING = 10_000` (`nmp-store/src/types/gc.rs:16`).
+- `derive_store_pin_set` (#1090 Stage 2, `ram_eviction.rs:221`) pins every stored
+  event whose hex id is in `self.timeline`, is an `event_claims` key, matches an
+  active open-interest shape, or sits at/below a floored shape's `since`-floor — so
+  LRU cannot punch a hole the floored self-healing REQ will never re-request. The
+  real safety property is therefore **pin-set correctness**, not store size.
+  Newly-stored non-followed notes are exactly the unpinned class evicted first.
+- **Read-your-writes pinning is a NEW pin source PR 1 must add.** There is **no**
+  publish-in-flight pin source in `derive_store_pin_set` today — a locally accepted
+  publish that has not yet appeared in `self.timeline` (e.g. a non-followed-author
+  or not-yet-rendered kind) could be LRU-evicted before its relay echo arrives.
+  **PR 1 requirement:** locally accepted publish events are pinned while in the
+  publish queue / until first relay confirmation or terminal settlement, so they
+  cannot be evicted before the echo dedups against them. (A read-your-writes event
+  that *is* in the visible timeline is already pinned by the `self.timeline` clause;
+  this requirement covers the events that are not.)
+
+> **Follow-up (#1443), out of scope here:** the owner wants the local cache to
+> never lose fetched events (full local history). That means reconsidering the 10k
+> LRU ceiling itself — likely disk-bounded (LMDB is mmap'd) rather than RAM-bound,
+> so the durable store could be unbounded while only the RAM read-caches stay
+> bounded. This ADR keeps the current pin-aware-LRU bound; #1443 researches making
+> the durable store unbounded.
+
+### What falls out for free
+
+- **Read-your-writes for ALL kinds** — local events are admitted and pass the same
+  notify step → **#1440 closed**, with no per-kind local arm.
+- **Complete store (no relevance holes)** — cache-serve / offline becomes sound,
+  every projection is rebuildable from the store, the cross-session dedup floor is
+  restored → **#1442 closed**.
+- **No drift** — one ingest path; a relay echo of a local publish dedups to
+  `Duplicate`, so observers fire exactly once (D4).
+- **Persistence stops assuming "social" (partial D0)** — removing the follow-set
+  *relevance persistence gate* means third-party non-follow interests get stored,
+  kind-agnostically. This is the persistence-layer D0 fix only. kind:0/kind:3
+  remain in kernel-owned ingest paths (with their own kind literals) until PR 2 /
+  PR 3, so **full ingest-path D0 — zero kind literals in dispatch — lands only
+  after PR 3**, not in PR 1.
+
+---
+
+## Scope and sequencing (one plan, no deferred debt)
+
+This ADR establishes the architecture. The code lands as an ordered PR sequence,
+tracked tactically in `docs/plans/arch-fixes.md` §5 (temporal — see header); the
+endpoint work is split into follow-on PRs **within the same sequence**, not dropped
+into a someday-issue.
+
+- **PR 1 — core fix (atomic; closes #1442 + #1440).** Move `notify_event_observers`
+  inside `verify_and_persist` gated `Inserted | Replaced | Ephemeral`; introduce
+  the `ingest_accepted_event(source, event)` chokepoint at `ingest/mod.rs:281→282`;
+  route kind:1|6 through `verify_and_persist` and demote `should_store_event` to the
+  timeline observer's read-time predicate; demote the timeline read-cache to a
+  chokepoint-fed observer; route the relay path and publish-engine success through
+  the chokepoint and delete `record_local_publish_intent` / `local_publish_intent.rs`;
+  keep the ADR-0045 replay rule; delete `pre_kind3_buffer`; add the GC/pin stress
+  tests; upgrade the NMP consumer apps and cut a new NMP version. **profile and
+  contacts caches stay kernel-owned for now** but are CALLED BY the chokepoint
+  post-`verify_and_persist` (no scattered ladder).
+- **PR 2 — `profiles` → capability-owned cache.** Add a `ProfileLookup`-style read
+  trait, migrate the ~10 synchronous profile readers, move kind:0 parsing to a
+  registered `IngestParser`; drop the kernel arm.
+- **PR 3 — `contacts` → parser + kernel-owned effect seam (the D0 finish-line).**
+  A kind:3 parser writes the cache and emits a typed "contacts changed" signal the
+  kernel reacts to on its tick (keeping `sync_follow_feed_interests` /
+  `timeline_authors` / cache-serve kernel-owned, driven by the signal not inlined).
+  After PR 3 the ingest path has **zero kind literals** — full D0 purity.
+
+The sibling plan `docs/plans/arch-authority-lifecycle.md` (signer / capability
+authority and action/projection-lifecycle ownership) is a separate problem domain
+and is **out of scope** for this ADR.
+
+---
+
+## How we'll know it's correct (verification oracles)
+
+Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
+
+- A non-followed kind:1/6 **persists** to the store but does **NOT** timeline-project
+  (persistence ≠ projection — the event IS stored; it just is not projected into
+  the timeline view).
+- A local kind:1 / kind:6 / kind:7 **read-your-writes** works — visible immediately,
+  before any relay ACK.
+- A relay echo of a locally-published event **dedups** (`Duplicate`) and does **NOT**
+  double-notify observers (D4) — yet the kind:1/6 cached `relay_count` **still
+  bumps** on that `Duplicate` (the diagnostic signal is preserved).
+- A future-dated (hostile-relay) event is **clamped to `now` in the timeline
+  observer's projected `KernelEvent`** (it cannot pin to the top of the feed) while
+  the stored event and non-timeline observers retain the original timestamp (D9).
+- kind:0 / kind:3 still update profile / contact caches (no regression), and kind:3
+  still rebuilds `timeline_authors` / interests.
+- An ephemeral event (20000–29999) does **NOT** persist (store-layer exclusion
+  intact) **BUT still reaches NIP parsers AND app `KernelEventObserver`s** — the
+  latent-bug fix: an app can react to an ephemeral event it never stores.
+- `pre_kind3_buffer` deletion does **NOT** lose later timeline visibility — a follow
+  added later still surfaces prior events from the store.
+- GC/pin stress (Q4): read-your-writes events are pinned and survive; non-followed
+  cold notes are reaped to the ceiling; the truncation → LRU-skip path
+  (`ram_eviction.rs:309-318`) stays bounded.
+
+---
+
+## Doctrine
+
+- **D0** — no NIP kind literals in the kernel ingest dispatch; gate by behavioral
+  predicates (`is_replaceable`, `is_parameterized_replaceable`,
+  `follow_feed_kinds.contains`, parser `is_interested`). kind:1059 gift-wrap stays
+  excluded via the parser registry, not a literal. Full D0 purity (zero kind
+  literals in the ingest path) is reached at the end of PR 3, when profile and
+  contacts also become parser/observer-fed.
+- **D4** — `store.insert` stays the single writer; observers/parsers fire once per
+  accepted event, on the outcome gate. A relay echo of a local publish dedups to
+  `Duplicate` and does not double-notify.
+- **D5 / #1090** — pin-aware LRU eviction is the only storage bound; admission is
+  never relevance-gated.
+- **D8** — push observers, no polling.
+- **D9** — the created_at clamp (hostile-relay defense) stays, now in the timeline
+  observer.
+- **ADR-0045** — single always-on mechanism for event acquisition + post-store
+  projection dispatch; replay feeds the seam, not `store.insert`. This ADR
+  generalises that read-half precedent to all event sources.
+
+---
+
+## Consequences
+
+- **Tradeoff — shape-matching cost moves off the table for admission.** Deleting
+  acquisition-match removes the `matches_active_open_interest` per-event walk
+  (`timeline.rs:334`) from the persist path; the relevance walk moves to read-time
+  where it belongs and only runs for projections that actually read it.
+- **One ingest path, two source wrappers.** Relay bookkeeping and local provenance
+  become thin wrappers around one chokepoint; the dual ladder and its drift are
+  gone.
+- **The store becomes complete.** Canonical non-ephemeral outcomes
+  (`Inserted | Replaced`) are persisted regardless of relevance (ephemeral delivers
+  but is not stored; `Duplicate | Superseded | Tombstoned | Rejected` are not new
+  canonical writes), so every derived projection (NIP-parser caches, feeds,
+  timeline) is rebuildable on restart with no relevance-shaped holes.
+- **Deletions:** `record_local_publish_intent`, `local_publish_intent.rs`,
+  `pre_kind3_buffer`, and `should_store_event`'s persistence authority.
+- **Doctrine gates (Workstream F, plan §8):** a lint banning `store.insert` outside
+  the single accepted-event ingest module, and a lint banning
+  `notify_event_observers` outside the chokepoint / cache-replay seam, will lock
+  this architecture in (tracked in the plan, not this ADR).
+- **Docs to amend** (PR 0 / PR 1): ADR-0042 (above), plus the durable docs that
+  echo the `should_store_event`-as-admission framing —
+  `docs/product-spec/subsystems.md`, `docs/builder-guide/08-eventstore.md`,
+  `docs/builder-guide/12-publish-and-ledger.md`.
+
+---
+
+## References
+
+- Issues #1440, #1442, #1443 — the durable "why" / tracking for this decision.
+- ADR-0042 (`docs/decisions/0042-m2-open-interest.md`) — amended.
+- ADR-0045 (`docs/decisions/0045-store-projection-replay.md`) — extended.
+- ADR-0053 (`docs/decisions/0053-host-declared-projection-subscriptions.md`).
+- `docs/architecture/crate-boundaries.md` §4.2 — the `IngestParser` migration.
+- Code: `crates/nmp-core/src/kernel/ingest/mod.rs` (`handle_event:245`,
+  store provenance `:464`, `verify_and_persist:436`, wildcard observer gate
+  `:389-404`, dispatcher/delivery gate `:486`),
+  `crates/nmp-core/src/kernel/ingest/timeline.rs` (`ingest_timeline_event:18`,
+  `Duplicate` relay_count bump `:143-154`, D9 created_at clamp `:229`,
+  `should_store_event:299`),
+  `crates/nmp-core/src/kernel/ingest/helpers.rs` (`kernel_event_from_nostr:49` —
+  no clamp), `crates/nmp-core/src/kernel/local_publish_intent.rs`
+  (`local://publish` provenance `:20`),
+  `crates/nmp-core/src/kernel/publish_engine.rs:169`,
+  `crates/nmp-core/src/kernel/cache_serve/continuation.rs:210` (`feed_served_event`),
+  `crates/nmp-core/src/kernel/cache_serve/mod.rs:59-64` (`relay_count:0`
+  de-facto `Provenance::LocalStore` marker),
+  `crates/nmp-core/src/kernel/ram_eviction.rs:221` (`derive_store_pin_set`),
+  `crates/nmp-core/src/substrate/ingest.rs` (`IngestParser` / `EventIngestDispatcher`),
+  `crates/nmp-store/src/types/gc.rs` (`HOT_EVENT_CEILING:16`),
+  `crates/nmp-store/src/types/outcomes.rs:11-33` (`InsertOutcome` enum).
+- Docs: `docs/builder-guide/08-eventstore.md:51` (outcome-by-kind table).
+- See also (tactical, temporal — not an authority): `docs/plans/arch-fixes.md`
+  Workstream A — the PR-sequencing tracker for landing this decision; deleted when
+  the work merges.

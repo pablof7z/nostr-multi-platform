@@ -1,6 +1,6 @@
 # ADR-0042 — M2 migration: replace `open_author`/`open_thread`/`open_firehose_tag` with generic `open_interest`
 
-- Status: Accepted (mechanism); Proposed (read-path projection — see §5)
+- Status: Accepted (mechanism). Read-path admission/projection finalized by ADR-0057.
 - Date: 2026-06-03
 - Supersedes the bespoke per-verb feed primitives scheduled for removal in
   `crates/nmp-core/src/kernel/requests/profile.rs` (module doc) and
@@ -139,23 +139,17 @@ composition**:
 
 The one piece app composition cannot synthesise from existing projections is
 **"the store events matching a registered interest"** for a *non-followed*
-author or an arbitrary thread/hashtag. The coupling is two-layer, and deeper
-than "the read projection vanishes":
+author or an arbitrary thread/hashtag. The gap is **exposure**, not storage:
 
-1. **Store admission.** `Kernel::should_store_event`
-   (`kernel/ingest/timeline.rs`) gates whether an inbound event enters
-   `self.events` at all. Its admit clauses are bespoke to the deleted
-   machinery: `timeline_authors` (follow set), `author_view.selected_author`,
-   and the `author-notes-` / `thread-ids-` / `thread-replies-` /
-   `diag-firehose-` sub-id prefixes produced by the deleted request builders.
-   A generic `open_interest` registers a planner `sub-<hash>` interest; inbound
-   events on that sub for a non-followed author match **none** of the admit
-   clauses, so they are never stored.
-2. **Exposure.** The home-feed `timeline` / `inserted` / `updated` / `removed`
-   delta is computed over `visible_items()`, which iterates the curated
-   `self.timeline` id list (follow-feed only), so even a stored
-   non-followed-author event never reaches the shell through that cluster, and
-   the deleted `author_view`/`thread_view` were its only other exposure path.
+Every validly-signed non-ephemeral event is persisted unconditionally (ADR-0057),
+so `Kernel::should_store_event` (`kernel/ingest/timeline.rs`) is purely a read-time
+timeline-*view* predicate — it selects what enters the in-memory `self.timeline`
+curated list, never what is durably stored. A non-followed author's events for a
+generic `open_interest` are therefore already in the store. The only gap is that
+the home-feed `timeline` / `inserted` / `updated` / `removed` delta is computed over
+`visible_items()`, which iterates `self.timeline` (follow-feed only), so a stored
+non-followed-author event never reaches the shell through that cluster, and the
+deleted `author_view`/`thread_view` were its only other exposure path.
 
 **Decision (reuse, not reinvent).** Do NOT add a bespoke `interest_feeds`
 kernel projection. A generic, reusable feed-registration seam already exists
@@ -181,17 +175,12 @@ filter-feed instance in `nmp-nip01`/`nmp-feed` parameterised by the
 the architecturally-right home.
 
 **Remaining kernel work (the part this ADR mandates beyond the −3 surface).**
-`should_store_event` must be generalised so an event is admitted when it
-matches any active registered interest (not only the bespoke follow-set / view
-/ sub-id-prefix clauses). This puts shape-matching on the hot ingest path that
-the cheap `timeline_authors.contains` short-circuit avoided — a real D8 cost
-that argues further for reusing the feed engine's own event gate
-(`register_op_feed` already installs an `EventGate` /
-`ParentResolver`-driven filter on the observer path) rather than re-deriving
-admission in the kernel. The exact gate placement (kernel `should_store_event`
-generalisation vs. feed-engine-side gating with a store-retain hook) is the
-open sub-decision for the author/thread half; it is recorded in GitHub Issues
-as the next-sprint task and does not block the additive PR1 mechanism below.
+Events are persisted unconditionally (ADR-0057) — there is no store-admission gate
+to generalise and no shape-matching on the ingest hot path. A non-followed author's
+events for a generic `open_interest` are already in the store; the feed engine
+(`nmp-feed` / `RootIndexedFeed`) surfaces them at read time via the
+`KernelEventObserver` fan-out, gated by its own `EventGate` / `ParentResolver`
+filter. `should_store_event` is retained only as the timeline-*view* predicate.
 
 ### 5.2 Why the original task framing under-counted the scope
 
@@ -201,7 +190,7 @@ has zero projection / Swift coupling — a clean mechanical delete). It is **not
 true for the author/thread verbs: their `author_view` / `thread_view`
 projections are the sole read path for Chirp's `ProfileView` / `ThreadScreen`
 (verified: `ProfileView.swift` derives its note list from `authorView.items`),
-and deleting them forces the store-admission + feed-registration work above.
+and deleting them forces the feed-registration read-path work above.
 The author/thread read-path migration is the architecture-significant half and
 is sequenced as a follow-up sprint (see GitHub Issues).
 
