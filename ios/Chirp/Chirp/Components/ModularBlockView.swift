@@ -202,6 +202,7 @@ struct ModularBlockView: View {
             colorHex: pubkey.pubkeyColorHex,
             size: ModuleLayout.avatarSize
         )
+        .equatable()
         .overlay(alignment: .bottom) {
             if !isLast {
                 // Connecting line runs from avatar bottom into the next

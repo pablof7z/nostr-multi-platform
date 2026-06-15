@@ -78,6 +78,7 @@ struct ComposeView: View {
                 colorHex: account.id.pubkeyColorHex,
                 size: 42
             )
+            .equatable()
         } else {
             Image(systemName: "person.crop.circle.fill")
                 .font(.system(size: 42))

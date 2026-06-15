@@ -63,6 +63,7 @@ public struct ArticleEmbed: KindRenderer {
                         pictureUrl: article.authorPictureUrl.flatMap(URL.init(string:)),
                         size: 24
                     )
+                    .equatable()
                     // Self-claiming byline: avatar + name each own claiming the
                     // author's kind:0 — the kernel never fetches it.
                     NostrProfileName(

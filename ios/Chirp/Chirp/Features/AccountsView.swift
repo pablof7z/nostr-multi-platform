@@ -76,6 +76,7 @@ private struct AccountRowView: View {
                     colorHex: account.id.pubkeyColorHex,
                     size: 48
                 )
+                .equatable()
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.displayName?.isEmpty == false ? account.displayName! : "Identity")

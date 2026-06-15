@@ -46,6 +46,7 @@ struct ProfileNoteRow: View {
                         colorHex: card.authorPubkey.pubkeyColorHex,
                         size: 40
                     )
+                    .equatable()
                 }
                 .buttonStyle(.plain)
 

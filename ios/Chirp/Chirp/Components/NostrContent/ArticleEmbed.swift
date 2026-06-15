@@ -65,6 +65,7 @@ struct ArticleEmbed: KindRenderer {
                         colorHex: article.authorPubkey.pubkeyColorHex,
                         size: 24
                     )
+                    .equatable()
                     Text(article.authorDisplayName ?? shortHex(article.authorPubkey))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)

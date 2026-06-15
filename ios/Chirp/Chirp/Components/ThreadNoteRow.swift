@@ -50,6 +50,7 @@ struct ThreadNoteRow: View {
                         colorHex: card.authorPubkey.pubkeyColorHex,
                         size: isFocused ? 46 : 38
                     )
+                    .equatable()
                 }
                 .buttonStyle(.plain)
 

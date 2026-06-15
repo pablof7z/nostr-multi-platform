@@ -154,6 +154,7 @@ struct NoteRowView: View {
                 colorHex: authorAvatarColorHex,
                 size: 44
             )
+            .equatable()
         }
         .buttonStyle(.borderless)
         .accessibilityIdentifier("timeline-author-link")

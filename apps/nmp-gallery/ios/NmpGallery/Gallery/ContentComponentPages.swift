@@ -110,6 +110,7 @@ struct ContentViewPage: View {
             // `model.profile(forPubkey:)` resolves to the display name instead
             // of the truncated hex fallback.
             NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .equatable()
                 .frame(width: 0, height: 0)
                 .clipped()
             RawToggle(rawMode: $rawMode)
@@ -172,6 +173,7 @@ struct ContentMentionChipPage: View {
             // page is visible — same mechanism as `ProfileEmbedPage`, so the
             // mention chip resolves the display name instead of the hex fallback.
             NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .equatable()
                 .frame(width: 0, height: 0)
                 .clipped()
             RawToggle(rawMode: $rawMode)
@@ -226,6 +228,7 @@ struct ContentMinimalPage: View {
             // page is visible — same mechanism as `ProfileEmbedPage`, so the
             // minimal-run mention resolves the display name, not the hex fallback.
             NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .equatable()
                 .frame(width: 0, height: 0)
                 .clipped()
             RawToggle(rawMode: $rawMode)
@@ -294,6 +297,7 @@ struct ContentQuoteCardPage: View {
             // pubkey is statically `SHOWCASE_PUBKEY_HEX`; we claim it directly
             // rather than waiting on the resolved `note.authorPubkey`.
             NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .equatable()
                 .frame(width: 0, height: 0)
                 .clipped()
             ContentPageFrame(caption: "NostrQuoteCard — rich") {
