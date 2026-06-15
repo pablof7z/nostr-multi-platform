@@ -4984,6 +4984,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-stress-harness"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-ffi",
+ "nmp-nip59",
+ "nostr",
+ "serde_json",
+ "tungstenite",
+ "zeroize",
+]
+
+[[package]]
 name = "nmp-testing"
 version = "0.8.0"
 dependencies = [

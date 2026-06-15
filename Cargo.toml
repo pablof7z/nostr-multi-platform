@@ -7,6 +7,7 @@ members = [
     "apps/nmp-gallery/tui",
     "apps/nmp-gallery/desktop",
     "crates/nmp-cli",
+    "crates/nmp-stress-harness",
     "crates/nmp-blossom",
     "crates/nmp-codegen",
     "crates/nmp-content",
