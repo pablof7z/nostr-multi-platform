@@ -2,8 +2,9 @@
 //!
 //! Split from `tests.rs` to keep that file under the 500-LOC hard ceiling.
 //!
-//! B1 — Calling `set_active_account` twice with the same pubkey must NOT
-//!      clear the `pre_kind3_buffer` (V-59 rung 1 idempotence invariant).
+//! B1 — Calling `set_active_account` twice with the same pubkey must be a
+//!      no-op (idempotence gate) — it must not re-run the follow-feed
+//!      reconcile / cache-serve teardown on an unchanged account.
 //!
 //! B3 — After `set_active_account` + `set_follow_feed_kinds` + kind:3 ingest,
 //!      `tick()` must emit a contact-feed REQ whose filter carries both the
@@ -16,23 +17,16 @@ const RELAY: &str = "wss://relay.example";
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
 #[test]
-fn set_active_account_twice_same_pubkey_does_not_clear_pre_kind3_buffer() {
-    // B1 — Without the idempotence gate, the second `set_active_account` calls
-    // `reconcile_follow_feed_after_identity_change` which resets
-    // `pre_kind3_buffer` to empty. With the gate the buffer is preserved.
+fn set_active_account_twice_same_pubkey_is_a_noop() {
+    // B1 — The idempotence gate: a redundant same-account call must
+    // early-return `Vec::new()` and NOT re-run
+    // `reconcile_follow_feed_after_identity_change`. (ADR-0057: the
+    // `pre_kind3_buffer` this test previously guarded is deleted; the
+    // surviving invariant is the no-op gate itself.)
     let mut r = KernelReducer::new();
 
     // First call: active_account was None → account changes → reconcile runs.
     let _ = r.set_active_account(PK.to_string());
-
-    // Park a sentinel in the buffer after the first reconcile so we can
-    // detect whether the second call wipes it.
-    r.kernel.seed_pre_kind3_buffer_for_test("sentinel-event-b1");
-    assert_eq!(
-        r.kernel.pre_kind3_buffer_len_for_test(),
-        1,
-        "precondition: sentinel must be in the buffer"
-    );
 
     // Second call with the SAME pubkey — must be a no-op.
     let out = r.set_active_account(PK.to_string());
@@ -41,10 +35,9 @@ fn set_active_account_twice_same_pubkey_does_not_clear_pre_kind3_buffer() {
         "same-account set_active_account must return Vec::new() (idempotence gate)"
     );
     assert_eq!(
-        r.kernel.pre_kind3_buffer_len_for_test(),
-        1,
-        "same-account set_active_account must NOT clear the pre_kind3_buffer \
-         (V-59 rung 1 idempotence invariant)"
+        r.kernel.active_account_pubkey(),
+        Some(PK),
+        "the active account must be unchanged after the redundant call"
     );
 }
 

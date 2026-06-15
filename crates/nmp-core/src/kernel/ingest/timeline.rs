@@ -1,197 +1,119 @@
-//! Host-declared follow-feed timeline ingest.
+//! Host-declared follow-feed timeline projection.
 //!
-//! Covers event storage, deduplication, timeline ordering, and the
-//! seed-timeline open gate. (V-112: thread hydration queue management moved
+//! ADR-0057 — the timeline read-cache (`self.events` / `self.timeline`) is a
+//! **chokepoint-fed projection observer**, not a per-kind ingest arm. Admission
+//! + persistence are owned by the single accepted-event chokepoint
+//! ([`Kernel::ingest_accepted_event`] → [`Kernel::verify_and_persist`], the D4
+//! single-writer); this module only decides whether an already-persisted event
+//! belongs in the timeline VIEW (the read-time relevance predicate
+//! [`Kernel::should_store_event`]) and, if so, projects it into the read-cache
+//! with the D9 created_at clamp. (V-112: thread hydration queue management moved
 //! app-side with the legacy thread view stack.)
 
-use super::super::{Instant, Kernel, NostrEvent, OutboundMessage, RelayRole, StoredEvent};
-use super::helpers::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
+use super::super::{Instant, Kernel, NostrEvent, OutboundMessage, StoredEvent};
 
 impl Kernel {
-    /// Ingest a host-declared follow-feed event into the local read-cache and timeline.
+    /// TEST-SUPPORT ONLY — historical kind:1|6 timeline-ingest entry point.
     ///
-    /// Routes through `EventStore::insert` (D4 single-writer).  On `Inserted |
-    /// Replaced`, populates the lightweight `events` read-cache and appends to
-    /// `timeline`.  On `Duplicate`, updates `relay_count` from the authoritative
-    /// provenance count in the store.  All other outcomes (Superseded, Tombstoned,
-    /// Rejected, Ephemeral) are dropped.
+    /// ADR-0057 deleted the production per-kind timeline ingest arm; production
+    /// timeline events flow through the single accepted-event chokepoint
+    /// ([`Kernel::ingest_accepted_event`]) reached from `handle_event`. This
+    /// driver preserves the `(role, relay_url, sub_id, event) -> bool` signature
+    /// the existing `nmp-core` test suite drives directly, routing through the
+    /// SAME production chokepoint so the tests exercise the real path (no
+    /// shadow ingest logic). It declares the event's kind as a follow-feed kind
+    /// first — exactly what a host does via `OpenContactFeed { kinds }` — so the
+    /// timeline projection fires; production never calls this method.
+    ///
+    /// Returns `true` iff the store accepted the event as canonical
+    /// (`Inserted | Replaced`), mirroring the old method's "stored?" boolean.
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::kernel) fn ingest_timeline_event(
         &mut self,
-        _role: RelayRole,
+        _role: super::super::RelayRole,
         relay_url: &str,
         sub_id: &str,
         event: NostrEvent,
     ) -> bool {
-        if !self.should_store_event(sub_id, &event) {
-            // V-59 rung 1 (Q7) — pre-kind:3 buffer. A host-declared
-            // follow-feed event whose author is not (yet) in the active
-            // account's follow set would otherwise be dropped here. Park it
-            // instead: a later contact-list sync (`sync_follow_feed_interests`)
-            // that adds the author replays it.
-            //
-            // `should_store_event`'s FIRST clause is
-            // `timeline_authors.contains(author)`, so reaching this branch
-            // already implies `!timeline_authors.contains(author)`; the
-            // explicit re-check below is kept for self-documenting intent and
-            // to stay correct if that clause is ever reordered. We only buffer
-            // only buffer host-declared follow-feed kinds; other kinds dropped
-            // here have their own ingest arms and never depend on the follow set.
-            if self.follow_feed_kinds.contains(&event.kind)
-                && !self.timeline_authors.contains(&event.pubkey)
-            {
-                self.pre_kind3_buffer
-                    .insert(event.id.clone(), (event, relay_url.to_string()));
+        self.follow_feed_kinds.insert(event.kind);
+        let outcome =
+            self.ingest_accepted_event(super::IngestSource::Relay { relay_url, sub_id }, event);
+        matches!(
+            outcome,
+            Some(
+                crate::store::InsertOutcome::Inserted { .. }
+                    | crate::store::InsertOutcome::Replaced { .. }
+            )
+        )
+    }
+
+    /// ADR-0057 — project an already-persisted host-declared follow-feed event
+    /// into the timeline read-cache (`self.events` + `self.timeline`).
+    ///
+    /// Called by the chokepoint ([`Kernel::ingest_accepted_event`]) for
+    /// `follow_feed_kinds` events AFTER `verify_and_persist` has run the
+    /// authoritative `store.insert` (D4 single-writer), the NIP-parser dispatch,
+    /// and the app-observer notify. This method does **no** sig-verify and **no**
+    /// `store.insert` — persistence already happened, gated only by valid
+    /// signature, kind-agnostically.
+    ///
+    /// - On `Duplicate` (a sibling-relay re-delivery, incl. the relay echo of a
+    ///   locally-published event): bump the cached `relay_count` from the
+    ///   authoritative store count — a diagnostic signal, NOT a projection
+    ///   mutation (D4: observers already fired exactly once in the chokepoint).
+    ///   Then return; projection-silent.
+    /// - On `Inserted | Replaced`: if the read-time relevance predicate
+    ///   [`Kernel::should_store_event`] admits the event into the timeline VIEW,
+    ///   populate the `events` read-cache (with the D9 clamp) and append to
+    ///   `timeline`. A non-relevant (e.g. non-followed) event is still persisted
+    ///   in the store — it just does not enter the timeline projection.
+    /// - All other outcomes (and sig-verify failure / `None`) are no-ops here.
+    pub(in crate::kernel) fn project_timeline_event(
+        &mut self,
+        sub_id: &str,
+        event: &NostrEvent,
+        outcome: Option<&crate::store::InsertOutcome>,
+    ) {
+        use crate::store::InsertOutcome;
+
+        match outcome {
+            Some(InsertOutcome::Duplicate { sources_after, .. }) => {
+                // ADR-0057 — the `relay_count` bump on `Duplicate` is preserved
+                // (a diagnostic signal). It stays projection-silent: the
+                // observers already fired once on the original `Inserted`.
+                if let Some(cached) = self.events.get_mut(&event.id) {
+                    if cached.relay_count == 1 && *sources_after > 1 {
+                        self.metric_duplicate_events =
+                            self.metric_duplicate_events.saturating_add(1);
+                    }
+                    cached.relay_count = *sources_after;
+                }
+                return;
             }
-            return false;
+            Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }) => {}
+            // Superseded / Tombstoned / Rejected / Ephemeral / sig-verify
+            // failure (None): no timeline projection.
+            _ => return,
         }
 
-        let mut accepted_for_score = false;
-
-        // D4: route through EventStore for ALL deliveries, including duplicates.
-        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(&event))
-        {
-            Ok(v) => v,
-            Err(e) => {
-                self.log(format!(
-                    "sig verify failed for {}: {e}",
-                    event_short_id(&event.id)
-                ));
-                return false;
-            }
-        };
-        let raw_for_observer = if self.raw_event_observers_idle_for_kind(event.kind) {
-            None
-        } else {
-            Some(verified.raw().clone())
-        };
-        // Capture the raw event for the `IngestParser` dispatcher fan-out below
-        // (after `store.insert` consumes `verified`). The sig is preserved here
-        // so `from_store_verified_unchecked` can reconstruct a correct
-        // `VerifiedEvent` without re-running Schnorr verification — trust
-        // boundary: `try_from_raw` above already verified the signature.
-        //
-        // D8: clone ONLY when at least one parser is registered for this kind.
-        // We read the dispatcher lock once here — a cheap O(parsers) check —
-        // and skip the clone entirely when the dispatcher is idle or has no
-        // match for this kind. The `Option` is consumed at the dispatch site
-        // below (after `Inserted | Replaced` is confirmed).
-        let raw_for_dispatch = if self
-            .ingest_dispatcher_slot()
-            .read()
-            .map_or(false, |d| d.is_interested(verified.raw().kind))
-        {
-            Some(crate::store::RawEvent {
-                id: verified.raw().id.clone(),
-                pubkey: verified.raw().pubkey.clone(),
-                created_at: verified.raw().created_at,
-                kind: verified.raw().kind,
-                tags: verified.raw().tags.clone(),
-                content: verified.raw().content.clone(),
-                sig: verified.raw().sig.clone(),
-            })
-        } else {
-            None
-        };
-        // T105: provenance is the resolved per-author write relay the EVENT
-        // actually arrived on, not the lane's bootstrap URL.
-        let provenance = relay_url.to_string();
-        // Clock seam: `received_at_ms` reads the injected `Clock` via the
-        // shared `ingest_received_at_ms` helper (D9 — kernel owns time).
-        let received_at_ms = self.ingest_received_at_ms();
-
-        let proceed = match self.store.insert(verified, &provenance, received_at_ms) {
-            Ok(outcome) => {
-                use crate::store::InsertOutcome;
-                if raw_for_observer
-                    .as_ref()
-                    .is_some_and(|_| raw_tap_should_fire(&outcome))
-                {
-                    if let Some(raw) = raw_for_observer.as_ref() {
-                        self.notify_raw_event_observers(raw, &provenance);
-                    }
-                }
-                // T131 — bump per-URL `RelayUsefulness` counters in the
-                // same match arms (design doc §3 line 188: 0 per-event
-                // alloc on the hot path; the `provenance` URL is already
-                // in scope at line 62 above).
-                match &outcome {
-                    InsertOutcome::Inserted { .. } => {
-                        self.event_provenance
-                            .record_first_source(&event.id, &provenance);
-                    }
-                    InsertOutcome::Replaced { .. } => {
-                        self.event_provenance.record_replaced(&provenance);
-                    }
-                    InsertOutcome::Duplicate { .. } => {
-                        self.event_provenance.record_duplicate(&provenance);
-                    }
-                    InsertOutcome::Rejected { .. } => {
-                        self.event_provenance.record_rejected(&provenance);
-                    }
-                    // Superseded / Tombstoned / Ephemeral are not relay-
-                    // usefulness signals — neither novel nor a redundant
-                    // copy, they're protocol-state transitions.
-                    InsertOutcome::Superseded { .. }
-                    | InsertOutcome::Tombstoned { .. }
-                    | InsertOutcome::Ephemeral { .. } => {}
-                }
-                match outcome {
-                    InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => {
-                        accepted_for_score = true;
-                        true
-                    }
-                    InsertOutcome::Duplicate { sources_after, .. } => {
-                        if let Some(cached) = self.events.get_mut(&event.id) {
-                            // Diagnostic counter: a cached event becomes a
-                            // "duplicate" the first time its relay_count
-                            // crosses 1 → >1. Subsequent bumps (2→3, …) do
-                            // not add a new duplicate event to the count.
-                            if cached.relay_count == 1 && sources_after > 1 {
-                                self.metric_duplicate_events =
-                                    self.metric_duplicate_events.saturating_add(1);
-                            }
-                            cached.relay_count = sources_after;
-                        }
-                        return false;
-                    }
-                    InsertOutcome::Superseded { .. } => return false,
-                    InsertOutcome::Tombstoned { .. }
-                    | InsertOutcome::Rejected { .. }
-                    | InsertOutcome::Ephemeral { .. } => return false,
-                }
-            }
-            Err(e) => {
-                self.log(format!("store insert error: {e}"));
-                if self.events.contains_key(&event.id) {
-                    if let Some(cached) = self.events.get_mut(&event.id) {
-                        // Diagnostic counter: count the 1 → >1 transition only
-                        // (mirrors the `InsertOutcome::Duplicate` arm above).
-                        if cached.relay_count == 1 {
-                            self.metric_duplicate_events =
-                                self.metric_duplicate_events.saturating_add(1);
-                        }
-                        cached.relay_count = cached.relay_count.saturating_add(1);
-                    }
-                    return false;
-                }
-                true
-            }
-        };
-
-        if !proceed {
-            return false;
+        // Read-time relevance predicate (ADR-0057): "does this event belong in
+        // MY timeline VIEW?". It NO LONGER gates persistence — the event is
+        // already in the authoritative store. A non-relevant event is simply
+        // absent from the timeline read-cache; a later follow (kind:3) that adds
+        // the author surfaces the event from the store on the next cache-serve
+        // (the deleted `pre_kind3_buffer` is obsolete now admission ≠
+        // persistence — there is no event to "park", it is already persisted).
+        if !self.should_store_event(sub_id, event) {
+            return;
         }
 
         // T82 discovery seam (notedeck §3.10): collect referenced-but-missing
-        // pubkeys/event ids (p/e/q tags) into UnknownIds *before* `event.tags`
-        // is moved into the cache — borrowed visitor, no clone, zero alloc
-        // when every reference is already cached (D8). The actor turns the
+        // pubkeys/event ids (p/e/q tags) into UnknownIds. The actor turns the
         // deduped set into OneshotApi fetches via `drain_unknown_oneshots`.
         self.collect_unknown_refs(&event.tags);
         // V-56: extend discovery to profile mentions that appear ONLY in
         // event.content (nostr:npub1…/nostr:nprofile1… URIs with no matching
-        // p-tag). Must happen before `event.content` is moved into StoredEvent
-        // below. D8-clean: the `nostr:` substring guard in
+        // p-tag). D8-clean: the `nostr:` substring guard in
         // `collect_content_mention_pubkeys` short-circuits before any alloc on
         // the common (no-mention) path.
         self.collect_content_mention_pubkeys(&event.content);
@@ -210,36 +132,24 @@ impl Kernel {
         // The `claimed_events` / `resolved_profiles` enrichment reads
         // `self.profiles` which the claim path populates unchanged.
 
+        // D9: kernel owns time — clamp relay-supplied created_at to now so a
+        // future-dated event from a hostile/buggy relay cannot pin permanently
+        // at the top of the timeline VIEW. ADR-0057 keeps this clamp a property
+        // of the timeline PROJECTION path (here), not the generic chokepoint:
+        // the authoritative `EventStore` row retains the original timestamp for
+        // protocol correctness (NIP-01 replaceable/ephemeral handling) and
+        // non-timeline observers — fired raw in the chokepoint — see the true
+        // timestamp. Only this read-cache projection (which backs the timeline
+        // ordering in `timeline_order.rs`) is clamped.
+        let now_secs = self.now_secs();
         let cached = StoredEvent {
             id: event.id.clone(),
             author: event.pubkey.clone(),
             kind: event.kind,
-            created_at: event.created_at,
-            tags: event.tags,
-            content: event.content,
+            created_at: event.created_at.min(now_secs),
+            tags: event.tags.clone(),
+            content: event.content.clone(),
             relay_count: 1,
-        };
-        // D0 — kernel emits, per-app crates compose. ADR-0009. Build the
-        // FFI-stable `KernelEvent` from the freshly-cached `StoredEvent`
-        // before either is moved into `self.events` so the fan-out has
-        // exactly the same fields the projection would see on snapshot.
-        // T146 — observer fan-out fires for every event that reaches the
-        // in-memory read-cache; duplicates / supersessions return earlier
-        // in this function and never call `notify_event_observers`.
-        let now_secs = self.now_secs();
-        let kernel_event = crate::substrate::KernelEvent {
-            id: cached.id.clone(),
-            author: cached.author.clone(),
-            kind: cached.kind,
-            // D9: kernel owns time — clamp relay-supplied created_at to now so a
-            // future-dated event from a hostile/buggy relay cannot pin
-            // permanently at the top of every consumer's feed. The StoredEvent
-            // retains the original timestamp for protocol correctness (NIP-01
-            // replaceable/ephemeral handling); only the observer-fan-out shape
-            // is clamped.
-            created_at: cached.created_at.min(now_secs),
-            tags: cached.tags.clone(),
-            content: cached.content.clone(),
         };
         // Diagnostic counters maintained incrementally so `make_update` never
         // walks the whole `events` HashMap to recompute them (60 Hz hot path).
@@ -249,51 +159,18 @@ impl Kernel {
         }
         self.events.insert(event.id.clone(), cached);
         self.cached_estimated_store_bytes.set(None);
-        self.notify_event_observers(&kernel_event);
-        // V-40 / raw-tap retirement ladder: fan to the substrate
-        // `EventIngestDispatcher` so all registered `IngestParser`s receive
-        // timeline events (kind:1 notes, kind:6 reposts, and any other
-        // host-declared follow-feed kind).
-        //
-        // Gap closed: before this fix, parsers registered for all-kinds ranges
-        // (e.g. `chirp-tui`'s `RawCacheIngestParser`, `0..u32::MAX`) silently
-        // missed every timeline event because this call was absent here while
-        // being present in `verify_and_persist` (the wildcard ingest arm) and
-        // `ingest_pre_verified_event` (the test-support inject path).
-        //
-        // Gating: Inserted|Replaced only — `Duplicate` returns earlier in this
-        // function and never reaches here; `proceed = true` at this point
-        // guarantees an Inserted or Replaced outcome. No Ephemeral gate needed:
-        // timeline events (kind:1 / kind:6) are never ephemeral.
-        //
-        // Clone gate: `raw_for_dispatch` is `Some` only when `is_interested`
-        // returned `true` above (at least one registered parser covers this
-        // kind). When the dispatcher is idle or has no match, both the clone
-        // and this second lock acquisition are skipped entirely (D8).
-        //
-        // D6 — a poisoned dispatcher lock degrades to "no parser fired"; the
-        // store insert and observer fan-out already succeeded, so this is the
-        // safe graceful-degrade.
-        if let Some(raw) = raw_for_dispatch {
-            use nmp_store::__nmp_core_internal;
-            let verified_for_dispatch = __nmp_core_internal::from_store_verified_unchecked(raw);
-            if let Ok(d) = self.ingest_dispatcher_slot().read() {
-                d.dispatch(&verified_for_dispatch);
-            }
-        }
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);
         }
         // V-112 (ADR-0042): enqueue_thread_hydration_from_event call deleted —
         // thread hydration is now handled by the per-app FlatFeed.
         if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
-            self.insert_timeline_id_sorted(event.id);
+            self.insert_timeline_id_sorted(event.id.clone());
             self.timing
                 .timeline_first_item_at
                 .get_or_insert_with(Instant::now);
         }
         self.changed_since_emit = true;
-        accepted_for_score
     }
 
     pub(in crate::kernel) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {

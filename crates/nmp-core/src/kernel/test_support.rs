@@ -496,31 +496,26 @@ impl Kernel {
         &self.timeline_authors
     }
 
-    /// Count of events currently parked in the V-59 pre-kind:3 buffer.
-    #[cfg(test)]
-    pub(crate) fn pre_kind3_buffer_len_for_test(&self) -> usize {
-        self.pre_kind3_buffer.len()
-    }
-
-    /// Whether the pre-kind:3 buffer holds an event with `event_id`.
-    #[cfg(test)]
-    pub(crate) fn pre_kind3_buffer_contains_for_test(&self, event_id: &str) -> bool {
-        self.pre_kind3_buffer.contains_key(event_id)
-    }
-
     /// True iff a kind:0 claim interest is registered for `pubkey` (M2).
     #[cfg(test)]
     pub(crate) fn profile_claim_interest_registered_for_test(&self, pubkey: &str) -> bool {
-        self.profile_claim_interest_lifecycle_for_test(pubkey).is_some()
+        self.profile_claim_interest_lifecycle_for_test(pubkey)
+            .is_some()
     }
 
     /// `Some(true)`=Tailing, `Some(false)`=OneShot, `None`=unregistered.
     #[cfg(test)]
     pub(crate) fn profile_claim_interest_lifecycle_for_test(&self, pubkey: &str) -> Option<bool> {
-        self.lifecycle.registry().iter_active().into_iter().find_map(|i| {
-            (i.shape.kinds.len() == 1 && i.shape.kinds.contains(&0) && i.shape.authors.contains(pubkey))
+        self.lifecycle
+            .registry()
+            .iter_active()
+            .into_iter()
+            .find_map(|i| {
+                (i.shape.kinds.len() == 1
+                    && i.shape.kinds.contains(&0)
+                    && i.shape.authors.contains(pubkey))
                 .then(|| matches!(i.lifecycle, crate::planner::InterestLifecycle::Tailing))
-        })
+            })
     }
 
     /// Read-only snapshot of the implicit-discovery probed-mailbox set.

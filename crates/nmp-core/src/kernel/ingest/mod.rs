@@ -1,30 +1,40 @@
-//! Relay-frame parsing and event-kind dispatch.
+//! Relay-frame parsing and the single accepted-event ingest chokepoint.
 //!
-//! `handle_message` → `handle_text` → `handle_event` → kind-specific ingest:
-//! - kind:0  → `profile.rs` (`ingest_profile`)
-//! - kind:3  → `contacts.rs` (`ingest_contacts`)
-//! - kind:1|6 → `timeline.rs` (`ingest_timeline_event`)
+//! ADR-0057 — `handle_message` → `handle_text` → `handle_event` does the
+//! relay-only bookkeeping (relay counters, transport provenance, wire-sub
+//! diagnostics, claim-expansion match) then hands the parsed event to the ONE
+//! kind-agnostic, source-agnostic chokepoint [`Kernel::ingest_accepted_event`].
+//! The chokepoint replaces the two hand-maintained per-kind ingest ladders
+//! (the old relay `match event.kind` arms here and the deleted
+//! `record_local_publish_intent` mirror in `local_publish_intent.rs`).
 //!
-//! Every other kind (kind:10002 NIP-65 mailbox lists, kind:10050 NIP-17
-//! DM-relay lists, future NIP-51 lists, …) routes through the substrate
-//! [`crate::substrate::EventIngestDispatcher`] — the wildcard arm fans
-//! the [`crate::store::VerifiedEvent`] to every registered
-//! [`crate::substrate::IngestParser`] before the `KernelEventObserver`s
-//! fire. Per-NIP crates register their parsers at composition time; the
-//! kernel never names the NIP kind directly.
+//! The chokepoint separates three concerns into three layers:
+//! - **Admission** = valid signature only (inside [`Kernel::verify_and_persist`]).
+//! - **Delivery vs persistence** = gated by the store [`crate::store::InsertOutcome`].
+//!   `verify_and_persist` persists the non-ephemeral canonical subset
+//!   (`Inserted | Replaced`) and fires BOTH the NIP-parser
+//!   [`crate::substrate::EventIngestDispatcher`] dispatch AND the app-facing
+//!   `KernelEventObserver` notify on the canonical accepted outcome
+//!   (`Inserted | Replaced | Ephemeral`) — so an ephemeral reaches both the
+//!   parsers and the app observers (ADR-0057 §1 latent-bug fix), and a
+//!   `Duplicate` (incl. the relay echo of a local publish) is projection-silent
+//!   (D4 single-fire / read-your-writes).
+//! - **Projection / relevance** = read-time only. The kernel-owned post-store
+//!   caches (profile kind:0, contacts kind:3, the timeline read-cache
+//!   projection) are CALLED BY the chokepoint, not scattered per-kind arms. The
+//!   timeline projection is gated by the behavioral `follow_feed_kinds`
+//!   predicate (D0). Substrate `MailboxCache` / `DmInboxRelayLookup`
+//!   transitions are detected kind-agnostically by bracketing the chokepoint
+//!   with before/after snapshots (the kernel only knows "this author's mailbox
+//!   changed", never "a kind:10002 arrived" — `docs/architecture/crate-boundaries.md` §0).
 //!
-//! For parsers that mutate the substrate
-//! [`crate::substrate::MailboxCache`], the wildcard arm also observes the
-//! cache state for the event author before/after dispatch — when the cache
-//! transitioned the kernel fires the `route_subscription_relays` trace
-//! observer and enqueues the `Nip65Arrived` recompile trigger, both
-//! kind-agnostically (the kernel only knows "the mailbox cache changed
-//! for this author", not "a kind:10002 arrived"). This replaces the
-//! pre-2026-05-25 `match event.kind { 10002 => ... }` arm + the deleted
-//! `relay_list.rs` impl, which both named NIP-65 explicitly and were a
-//! D0 violation (`docs/architecture/crate-boundaries.md` §0).
+//! Local publishes enter the chokepoint at `publish_engine.rs` with
+//! `local://publish` provenance ([`IngestSource::LocalPublish`]); cache-replay
+//! keeps its ADR-0045 path (`cache_serve/continuation.rs::feed_served_event`).
 //!
-//! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
+//! profile (kind:0) and contacts (kind:3) remain kernel-owned (two kind
+//! literals) until ADR-0057 PR 2 / PR 3 move them to parsers / capability
+//! caches — that is the full D0 finish-line.
 
 mod auth_handlers;
 mod claimed_event_stamp; // ADR-0055 Rung 1 (F1) claimed-event stamp — sibling for size baseline
@@ -42,6 +52,46 @@ use super::{
     truncate, CanonicalRelayUrl, Instant, Kernel, NostrEvent, OutboundMessage, RelayFrame,
     RelayRole, Value,
 };
+
+/// ADR-0057 — provenance discriminator for the single accepted-event
+/// chokepoint ([`Kernel::ingest_accepted_event`]).
+///
+/// The chokepoint is source-agnostic for persistence + delivery, but each
+/// source carries a distinct provenance encoding that ADR-0057 preserves
+/// verbatim (it does NOT introduce the typed `Provenance` enum — that is left
+/// to the ADR-0045 amendment that names `Provenance::LocalStore`). `Relay`
+/// additionally carries the wire `sub_id` so the timeline projection's
+/// read-time relevance predicate can consult oneshot / firehose / open-interest
+/// sub schemes. Cache-replay keeps its own ADR-0045 path
+/// (`feed_served_event`) and does not flow through this enum.
+pub(in crate::kernel) enum IngestSource<'a> {
+    /// A relay-delivered event. Provenance = the delivering relay URL; the
+    /// wire `sub_id` feeds the timeline read-time relevance predicate.
+    Relay { relay_url: &'a str, sub_id: &'a str },
+    /// A locally-published event accepted by the publish engine. Provenance =
+    /// the literal `local://publish`; there is no wire sub.
+    LocalPublish,
+}
+
+impl IngestSource<'_> {
+    /// The store-insert provenance string for this source.
+    fn provenance(&self) -> &str {
+        match self {
+            IngestSource::Relay { relay_url, .. } => relay_url,
+            IngestSource::LocalPublish => "local://publish",
+        }
+    }
+
+    /// The wire `sub_id` for relay deliveries; empty for local publishes
+    /// (a local publish has no wire sub, and an empty id cannot collide with
+    /// the prefix-matched sub schemes consulted by `should_store_event`).
+    fn sub_id(&self) -> &str {
+        match self {
+            IngestSource::Relay { sub_id, .. } => sub_id,
+            IngestSource::LocalPublish => "",
+        }
+    }
+}
 
 impl Kernel {
     /// Ingest a single inbound relay frame on the named role/url.
@@ -278,151 +328,149 @@ impl Kernel {
             sub.events_rx = sub.events_rx.saturating_add(1);
             sub.last_event_at = Some(now);
         }
+        // ADR-0057 — relay-only bookkeeping above this line stays in
+        // `handle_event` (relay counters, transport provenance, wire-sub
+        // diagnostics). The claim-expansion *match* is computed here (it needs
+        // the wire `sub_id`), but the claim-hit *scoring* is a relay-only
+        // wrapper applied AFTER the shared chokepoint returns — see below.
         let claim_match_author = self.claim_expansion_match_author(sub_id, &event);
+        // Captured before the chokepoint consumes `event` (claim-hit scoring
+        // below needs the id).
+        let event_id_for_score = event.id.clone();
 
-        // D4: all events are persisted before kind-specific dispatch.
-        // Kinds 1|6 handle their own store.insert inside ingest_timeline_event.
-        // For replaceable kinds (0, 3) we gate local cache mutations on the
-        // store outcome: only Inserted | Replaced means this event is now
-        // canonical (D4), and the same accepted event is fanned to
-        // KernelEventObservers so app projections can react to kind:0/3
-        // metadata without polling or app-local fetch logic. Every other
-        // kind — including the former kind:10002 arm (deleted 2026-05-25
-        // alongside `kernel/ingest/relay_list.rs` when the substrate parser
-        // was wired in `nmp-defaults`) — routes through the wildcard arm,
-        // which fans through the `EventIngestDispatcher` inside
-        // `verify_and_persist` and then observes any substrate mailbox-cache
-        // mutation kind-agnostically.
-        match event.kind {
-            1 | 6 => {
-                // W8b: capture event_id before ingest_timeline_event consumes `event`.
-                let event_id = event.id.clone();
-                if self.ingest_timeline_event(role, relay_url, sub_id, event) {
-                    if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author, &event_id);
-                    }
-                }
-            }
-            0 => {
-                use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(relay_url, &event);
-                let accepted = matches!(
-                    outcome,
-                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                );
-                if accepted {
-                    if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author, &event.id);
-                    }
-                    let kernel_event = helpers::kernel_event_from_nostr(&event);
-                    self.ingest_profile(event);
-                    self.notify_event_observers(&kernel_event);
-                }
-                self.changed_since_emit = true;
-            }
-            3 => {
-                use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(relay_url, &event);
-                let accepted = matches!(
-                    outcome,
-                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                );
-                if accepted {
-                    if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author, &event.id);
-                    }
-                    let kernel_event = helpers::kernel_event_from_nostr(&event);
-                    self.ingest_contacts(event);
-                    self.notify_event_observers(&kernel_event);
-                }
-                self.changed_since_emit = true;
-            }
-            _ => {
-                // Wildcard arm: every kind not handled by an explicit match
-                // arm above (NIP-65 kind:10002 mailbox lists, NIP-17
-                // kind:10050 DM-relay lists, zap receipts, NIP-29 chat
-                // kinds + group metadata, gift-wraps kind:1059, future
-                // NIP-51 lists — all fan through the IngestParser registry
-                // inside `verify_and_persist`) reaches `KernelEventObserver`s
-                // through this seam (e.g. `GroupChatProjection`,
-                // `DiscoveredGroupsProjection`, the NIP-57 zap-aggregate
-                // projection). Gate fan-out on the store outcome
-                // (`Inserted | Replaced` only — D4 dedup so duplicate
-                // sibling-relay deliveries do not double-notify).
-                //
-                // V-40 — the substrate `EventIngestDispatcher` runs inside
-                // `verify_and_persist` for every gated outcome, so per-NIP
-                // parsers (today: `nmp_router::Kind10002Parser` and
-                // `nmp_nip17::Kind10050Parser`) fire on EVERY arm (not just
-                // wildcard); the kernel deliberately does not name any NIP
-                // kind for dispatch purposes (D0).
-                //
-                // Mailbox-cache observer (replaces the deleted `10002 =>`
-                // arm + `ingest::relay_list::ingest_relay_list`, 2026-05-25):
-                // snapshot the substrate `MailboxCache` for `event.pubkey`
-                // before dispatch, run `verify_and_persist`, then snapshot
-                // again. If the cache transitioned (entry added / removed /
-                // replaced) the parser populated routing state — fire the
-                // `route_subscription_relays` trace observer (Debt A) and
-                // enqueue the `Nip65Arrived` recompile trigger (A1) so M2
-                // re-plans the author. Both calls are kind-agnostic: the
-                // kernel only knows "this author's mailbox changed".
-                //
-                // F-02 — symmetric snapshot for the substrate
-                // `DmInboxRelayLookup` (NIP-17 kind:10050 DM-relay list).
-                // The `Kind10050Parser` writes this cache inside
-                // `verify_and_persist`; without detecting the transition the
-                // kernel would never enqueue the `DmRelayListChanged` recompile
-                // trigger, so a cold-start gift-wrap inbox interest
-                // (kind:1059 `#p`, `PTagRouting::Nip17DmRelays`) pushed before
-                // the kind:10050 round-trip closed would stay compiled to
-                // "no subscription" forever (fail-closed routing in
-                // `active_giftwrap_inbox_interest`). Kind-agnostic: the kernel
-                // only knows "this author's DM-relay list may have changed".
-                use crate::store::InsertOutcome;
-                let author = event.pubkey.clone();
-                let event_id_for_trace = event.id.clone();
-                let created_at_for_trigger = event.created_at;
-                let before = self.mailbox_cache().snapshot(&author);
-                let dm_before = self.recipient_dm_relays(&author);
-                let outcome = self.verify_and_persist(relay_url, &event);
-                if matches!(
-                    outcome,
-                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                ) {
-                    if let Some(author) = claim_match_author.as_deref() {
-                        // W8b: `event_id_for_trace` holds the event id captured
-                        // before `verify_and_persist` consumed the event borrow.
-                        self.record_claim_expansion_hit(
-                            sub_id,
-                            relay_url,
-                            author,
-                            &event_id_for_trace,
-                        );
-                    }
-                    let kernel_event = helpers::kernel_event_from_nostr(&event);
-                    self.notify_event_observers(&kernel_event);
-                    let after = self.mailbox_cache().snapshot(&author);
-                    if before != after {
-                        self.on_mailbox_changed(
-                            &author,
-                            &event_id_for_trace,
-                            created_at_for_trigger,
-                        );
-                    }
-                    // F-02 — DM-relay-list transition: enqueue the
-                    // `DmRelayListChanged` recompile trigger so the planner
-                    // re-routes `PTagRouting::Nip17DmRelays` interests against
-                    // the freshly-populated cache on the next
-                    // `drain_lifecycle_tick`.
-                    let dm_after = self.recipient_dm_relays(&author);
-                    if dm_before != dm_after {
-                        self.on_dm_relays_changed(&author, created_at_for_trigger);
-                    }
-                }
-                self.changed_since_emit = true;
+        // The shared, kind-agnostic, source-agnostic accepted-event chokepoint
+        // (ADR-0057). It owns sig-verify → `store.insert` → NIP-parser dispatch
+        // → app-observer notify → the kernel-owned post-store cache routing
+        // (profile / contacts / timeline projection / mailbox + DM-relay
+        // transition observers). The relay path passes the delivering URL as
+        // provenance; `IngestSource::Relay` carries the wire `sub_id` so the
+        // timeline projection's read-time relevance predicate
+        // (`should_store_event`) can consult oneshot / firehose / open-interest
+        // sub schemes.
+        let outcome = self.ingest_accepted_event(IngestSource::Relay { relay_url, sub_id }, event);
+
+        // Relay claim-hit scoring stays a relay-only wrapper after the helper
+        // returns (ADR-0057): a canonical accept (`Inserted | Replaced`) on a
+        // sub that matched a claim-expansion shape records the hit.
+        if let Some(author) = claim_match_author.as_deref() {
+            if matches!(
+                outcome,
+                Some(
+                    crate::store::InsertOutcome::Inserted { .. }
+                        | crate::store::InsertOutcome::Replaced { .. }
+                )
+            ) {
+                self.record_claim_expansion_hit(sub_id, relay_url, author, &event_id_for_score);
             }
         }
+        self.changed_since_emit = true;
+    }
+
+    /// ADR-0057 — the single kind-agnostic, source-agnostic accepted-event
+    /// chokepoint. Replaces the two hand-maintained per-kind ingest ladders
+    /// (`handle_event`'s relay `match event.kind` arms and the deleted
+    /// `record_local_publish_intent` mirror arms).
+    ///
+    /// Three concerns are now three layers:
+    ///
+    /// 1. **Admission** = valid signature only — enforced inside
+    ///    [`Self::verify_and_persist`] (`try_from_raw`). No relevance gate, no
+    ///    acquisition-match, no kind gate.
+    /// 2. **Delivery vs persistence** = gated by the store [`InsertOutcome`].
+    ///    `verify_and_persist` persists the non-ephemeral canonical subset
+    ///    (`Inserted | Replaced`; ephemerals return `Ephemeral` un-stored) and
+    ///    fires the NIP-parser dispatch + the app-facing
+    ///    [`Kernel::notify_event_observers`] seam on the canonical accepted
+    ///    outcome (`Inserted | Replaced | Ephemeral`). `Duplicate` (incl. a
+    ///    relay echo of a locally-published event) is projection-silent —
+    ///    preserving D4 single-fire for read-your-writes.
+    /// 3. **Projection / relevance** = read-time only. The kernel-owned caches
+    ///    below (profile, contacts, timeline projection) are CALLED BY this one
+    ///    chokepoint post-`verify_and_persist`, gated on the same outcome — not
+    ///    a scattered per-kind/per-source ladder. The timeline read-cache is a
+    ///    chokepoint-fed observer ([`Self::project_timeline_event`]) whose
+    ///    read-time relevance predicate is `should_store_event` (which no longer
+    ///    has any power over persistence).
+    ///
+    /// Profile (kind:0) and contacts (kind:3) remain kernel-owned for PR 1 (they
+    /// move to parsers / capability caches in PR 2 / PR 3, the D0 finish-line),
+    /// so their two kind literals are intentionally retained here. The timeline
+    /// projection is gated by the behavioral `follow_feed_kinds` predicate (D0),
+    /// not a kind literal.
+    ///
+    /// Returns the store outcome so a source wrapper can apply source-specific
+    /// post-processing (e.g. the relay path's claim-hit scoring).
+    pub(in crate::kernel) fn ingest_accepted_event(
+        &mut self,
+        source: IngestSource<'_>,
+        event: NostrEvent,
+    ) -> Option<crate::store::InsertOutcome> {
+        use crate::store::InsertOutcome;
+
+        let provenance = source.provenance();
+        let sub_id = source.sub_id();
+
+        // Substrate mailbox / DM-relay transition detection brackets the
+        // chokepoint kind-agnostically (the parsers that write these caches run
+        // inside `verify_and_persist`). Snapshot before, compare after.
+        let author = event.pubkey.clone();
+        let event_id_for_trace = event.id.clone();
+        let created_at_for_trigger = event.created_at;
+        let before = self.mailbox_cache().snapshot(&author);
+        let dm_before = self.recipient_dm_relays(&author);
+
+        // The chokepoint: sig-verify → store.insert → NIP-parser dispatch →
+        // app-observer notify (all inside `verify_and_persist`, ADR-0057).
+        let outcome = self.verify_and_persist(provenance, &event);
+
+        let accepted = matches!(
+            outcome,
+            Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
+        );
+
+        // Timeline projection observer — fed by the chokepoint, gated by the
+        // behavioral `follow_feed_kinds` predicate (D0, no kind literal). The
+        // `diag-firehose-` clause recognizes the kernel's content-firehose
+        // diagnostic sub scheme (the same scheme `should_store_event` already
+        // special-cases) so a firehose stress sub projects regardless of the
+        // host-declared follow-feed kinds; it is a sub-scheme recognition, not a
+        // NIP kind literal. The `Duplicate` `relay_count` bump (a diagnostic
+        // signal, NOT a projection mutation) is preserved inside
+        // `project_timeline_event` even though a `Duplicate` is projection-silent
+        // for observers.
+        if self.follow_feed_kinds.contains(&event.kind) || sub_id.starts_with("diag-firehose-") {
+            self.project_timeline_event(sub_id, &event, outcome.as_ref());
+        }
+
+        if accepted {
+            // Kernel-owned replaceable caches (PR 1: profile + contacts stay
+            // kernel-owned; CALLED BY the chokepoint, not a scattered ladder).
+            // kind:0 → profile cache; kind:3 → contacts cache + timeline_authors
+            // rebuild + sync_follow_feed_interests (all inside `ingest_contacts`).
+            if event.kind == 0 {
+                self.ingest_profile(event);
+            } else if event.kind == 3 {
+                self.ingest_contacts(event);
+            }
+
+            // Substrate mailbox-cache transition (replaces the deleted `10002 =>`
+            // arm): if a parser inside `verify_and_persist` mutated the mailbox
+            // cache for this author, fire the routing trace + `Nip65Arrived`
+            // recompile trigger kind-agnostically.
+            let after = self.mailbox_cache().snapshot(&author);
+            if before != after {
+                self.on_mailbox_changed(&author, &event_id_for_trace, created_at_for_trigger);
+            }
+            // F-02 — DM-relay-list (kind:10050) transition: enqueue the
+            // `DmRelayListChanged` recompile trigger so the planner re-routes
+            // `PTagRouting::Nip17DmRelays` interests against the fresh cache.
+            let dm_after = self.recipient_dm_relays(&author);
+            if dm_before != dm_after {
+                self.on_dm_relays_changed(&author, created_at_for_trigger);
+            }
+        }
+
+        outcome
     }
 
     /// Verify and persist an event to the `EventStore`.
@@ -438,17 +486,17 @@ impl Kernel {
         relay_url: &str,
         event: &NostrEvent,
     ) -> Option<crate::store::InsertOutcome> {
-        let verified = match crate::store::VerifiedEvent::try_from_raw(helpers::raw_event_from_nostr(event))
-        {
-            Ok(v) => v,
-            Err(e) => {
-                self.log(format!(
-                    "sig verify failed for {}: {e}",
-                    helpers::event_short_id(&event.id)
-                ));
-                return None;
-            }
-        };
+        let verified =
+            match crate::store::VerifiedEvent::try_from_raw(helpers::raw_event_from_nostr(event)) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.log(format!(
+                        "sig verify failed for {}: {e}",
+                        helpers::event_short_id(&event.id)
+                    ));
+                    return None;
+                }
+            };
         let raw_for_observer = if self.raw_event_observers_idle_for_kind(event.kind) {
             None
         } else {
@@ -478,6 +526,34 @@ impl Kernel {
                         self.notify_raw_event_observers(raw, &provenance);
                     }
                 }
+                // T131 — per-URL `RelayUsefulness` provenance accounting.
+                // ADR-0057: this moved out of `ingest_timeline_event` (which is
+                // deleted) into the chokepoint, so it now runs uniformly for
+                // EVERY event/kind on the single ingest path, not just
+                // kind:1/6 timeline events. The outcome → counter mapping is
+                // unchanged: a novel `Inserted` credits the first source URL, a
+                // `Replaced` / `Duplicate` / `Rejected` records the redundant
+                // or rejected delivery; protocol-state transitions
+                // (`Superseded` / `Tombstoned` / `Ephemeral`) are not
+                // relay-usefulness signals.
+                match &outcome {
+                    crate::store::InsertOutcome::Inserted { .. } => {
+                        self.event_provenance
+                            .record_first_source(&event.id, &provenance);
+                    }
+                    crate::store::InsertOutcome::Replaced { .. } => {
+                        self.event_provenance.record_replaced(&provenance);
+                    }
+                    crate::store::InsertOutcome::Duplicate { .. } => {
+                        self.event_provenance.record_duplicate(&provenance);
+                    }
+                    crate::store::InsertOutcome::Rejected { .. } => {
+                        self.event_provenance.record_rejected(&provenance);
+                    }
+                    crate::store::InsertOutcome::Superseded { .. }
+                    | crate::store::InsertOutcome::Tombstoned { .. }
+                    | crate::store::InsertOutcome::Ephemeral { .. } => {}
+                }
                 // V-40 — fan to substrate parsers only when the store
                 // accepted this event as canonical (`Inserted | Replaced`)
                 // OR when it was an ephemeral that bypassed the store. A
@@ -496,6 +572,29 @@ impl Kernel {
                     if let Ok(d) = self.ingest_dispatcher_slot().read() {
                         d.dispatch(&verified_for_dispatch);
                     }
+                    // ADR-0057 — the app-facing `KernelEventObserver` seam
+                    // fires inside the chokepoint under the SAME canonical
+                    // accepted-outcome gate as the NIP parser dispatch above
+                    // (`Inserted | Replaced | Ephemeral`). Pre-ADR-0057 each
+                    // per-kind ingest arm fired this itself, on a narrower
+                    // `Inserted | Replaced` gate — which silently DROPPED
+                    // ephemerals (20000–29999) from app observers even though
+                    // they reached the NIP parsers (the latent bug ADR-0057 §1
+                    // fixes). Including `Ephemeral` here closes that: an app can
+                    // react to an ephemeral event it never stores.
+                    //
+                    // D9 clamp note: this emits the RAW `created_at` via
+                    // `kernel_event_from_nostr`; the future-date clamp (a
+                    // hostile-relay defense) is applied by the timeline
+                    // PROJECTION observer (`project_timeline_event`), not the
+                    // generic chokepoint, so non-timeline observers see the
+                    // true protocol timestamp.
+                    //
+                    // D4 — a `Duplicate` (incl. the relay echo of a locally-
+                    // published event) is NOT in this gate, so it does not
+                    // re-fire: the local publish already delivered once.
+                    let kernel_event = helpers::kernel_event_from_nostr(event);
+                    self.notify_event_observers(&kernel_event);
                 }
 
                 // F-TTL — replaceable/addressable event freshness hook.
@@ -511,9 +610,7 @@ impl Kernel {
                 let is_regular = crate::store::is_replaceable(event.kind);
                 let is_addressable = crate::store::is_parameterized_replaceable(event.kind);
                 if is_regular || is_addressable {
-                    if let Some(pubkey_bytes) =
-                        crate::kernel::hex_to_pubkey_bytes(&event.pubkey)
-                    {
+                    if let Some(pubkey_bytes) = crate::kernel::hex_to_pubkey_bytes(&event.pubkey) {
                         let key = if is_addressable {
                             let d_tag = event
                                 .tags

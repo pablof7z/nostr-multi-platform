@@ -142,16 +142,19 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
     );
 }
 
-/// D9 — a relay-supplied event with a FUTURE `created_at` must be clamped to
-/// the kernel's `now` in the observer fan-out, so a hostile/buggy relay cannot
-/// pin an event permanently at the top of every consumer's feed. The
-/// `StoredEvent` retains the original wire timestamp for protocol correctness;
-/// only the `KernelEvent` emitted to observers is clamped.
+/// D9 (ADR-0057) — a relay-supplied event with a FUTURE `created_at` must be
+/// clamped to the kernel's `now` in the TIMELINE PROJECTION (`self.events`, the
+/// read-cache backing the timeline ordering), so a hostile/buggy relay cannot
+/// pin an event permanently at the top of the feed. ADR-0057 makes the clamp a
+/// property of the timeline projection path, NOT the generic chokepoint: the
+/// authoritative `EventStore` row retains the original wire timestamp for
+/// protocol correctness, and the generic app-observer fan-out (fired in the
+/// chokepoint) sees the RAW timestamp — only the timeline read-cache is clamped.
 ///
 /// A past-dated event passes through unchanged — clamping is `min(wire, now)`,
 /// never an unconditional overwrite.
 #[test]
-fn future_dated_event_created_at_clamped_to_now_in_fan_out() {
+fn future_dated_event_created_at_clamped_to_now_in_timeline_projection() {
     use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
     use crate::substrate::KernelEvent;
     use std::collections::HashMap;
@@ -197,21 +200,32 @@ fn future_dated_event_created_at_clamped_to_now_in_fan_out() {
     kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", future);
     kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", past);
 
-    let seen = observer.seen.lock().unwrap();
-
+    // ADR-0057 — the timeline READ-CACHE projection (`self.events`, which backs
+    // the timeline ordering) is clamped to `now` for the future-dated event so
+    // it cannot pin to the top of the feed; the past-dated event passes through.
     assert_eq!(
-        seen.get(&future_id).copied(),
+        kernel.events.get(&future_id).map(|e| e.created_at),
         Some(NOW_SECS),
-        "future-dated created_at must be clamped to now in the observer fan-out (D9)"
+        "future-dated created_at must be clamped to now in the timeline read-cache projection (D9)"
     );
     assert_eq!(
-        seen.get(&past_id).copied(),
+        kernel.events.get(&past_id).map(|e| e.created_at),
         Some(NOW_SECS - 500_000),
         "past-dated created_at must pass through unchanged — clamp is min(wire, now)"
     );
 
-    // The StoredEvent retains the ORIGINAL wire timestamp for protocol
-    // correctness; only the fan-out shape is clamped.
+    // ADR-0057 — the generic app-observer fan-out (fired in the chokepoint) sees
+    // the RAW wire timestamp; the clamp is a timeline-projection property only,
+    // so non-timeline observers retain the true protocol timestamp.
+    let seen = observer.seen.lock().unwrap();
+    assert_eq!(
+        seen.get(&future_id).copied(),
+        Some(NOW_SECS + 9_999),
+        "the generic chokepoint observer fan-out must emit the RAW created_at (ADR-0057)"
+    );
+
+    // The authoritative store row retains the ORIGINAL wire timestamp for
+    // protocol correctness; only the timeline read-cache projection is clamped.
     let future_bytes =
         crate::kernel::hex_to_pubkey_bytes(&future_id).expect("event id is 64-char hex");
     let stored = kernel

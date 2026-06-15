@@ -88,13 +88,13 @@ impl super::KernelReducer {
     /// Idempotence gate: a redundant call with the same pubkey is a no-op
     /// and returns `Vec::new()`. This mirrors native `switch_active`'s
     /// early-return (`identity.active.as_deref() == Some(identity_id)`)
-    /// and prevents a duplicate `SetSigner` from clearing the
-    /// `pre_kind3_buffer` (V-59 rung 1 invariant).
+    /// and prevents a duplicate `SetSigner` from re-running the
+    /// follow-feed reconcile / cache-serve teardown on an unchanged account.
     ///
     /// D6 — total: an empty or malformed pubkey is stored as-is (the kernel
     /// makes no validity assertion on `active_account`). No panic.
     pub fn set_active_account(&mut self, pubkey_hex: String) -> Vec<OutboundMessage> {
-        // Same-account guard — must not clear pre_kind3_buffer on redundant call.
+        // Same-account guard — must not re-reconcile on a redundant call.
         if self.kernel.active_account_pubkey() == Some(pubkey_hex.as_str()) {
             return Vec::new();
         }

@@ -166,7 +166,20 @@ impl Kernel {
                         Some(serde_json::json!({ "event_id": event_id })),
                     );
                 }
-                self.record_local_publish_intent(signed);
+                // ADR-0057 — route the locally-published event through the
+                // single accepted-event chokepoint with `local://publish`
+                // provenance, exactly as a relay-delivered event flows through
+                // it. This gives read-your-writes for ALL kinds (incl. kind:1
+                // notes / kind:6 reposts / kind:7 reactions — #1440), not just
+                // the replaceables the deleted `record_local_publish_intent`
+                // mirror ladder covered: the chokepoint persists the event
+                // (valid-sig admission) and fires the app-observer + NIP-parser
+                // delivery + the timeline projection immediately. The relay echo
+                // later dedups to `Duplicate` and is projection-silent (D4), so
+                // observers fire exactly once.
+                let local_event = super::nostr::signed_event_to_nostr(signed);
+                let _ = self
+                    .ingest_accepted_event(super::ingest::IngestSource::LocalPublish, local_event);
                 let frames = self.drain_publish_engine_frames(signed, target);
                 // Synchronous dispatchers (e.g. some test fixtures) can settle
                 // a publish inside `start_publish` itself by returning OK acks

@@ -167,8 +167,17 @@ fn raw_tap_filters_out_non_matching_kind() {
     assert_eq!(seen[0].2.as_deref(), Some("wss://relay.test"));
 }
 
+/// ADR-0057 — admission is valid-signature only; persistence is no longer
+/// relevance-gated. A validly-signed kind:1 from a non-followed author on an
+/// untracked sub is now ACCEPTED by the canonical store (closing #1442's
+/// relevance-shaped holes), so the raw tap — which fires for every event the
+/// store accepts (`Inserted | Replaced`) — DOES fire. (Pre-ADR-0057 the
+/// relevance gate dropped the store insert, so the tap stayed silent; that was
+/// the bug.) The raw tap still only fires AFTER store acceptance — a bad-sig
+/// event is rejected before the store and never taps (see
+/// `raw_tap_drops_unverifiable_event`).
 #[test]
-fn raw_tap_waits_for_store_acceptance() {
+fn raw_tap_fires_once_store_accepts_unsolicited_event() {
     let slot = new_raw_event_observer_slot();
     let observer = CapturingRawObserver::new();
     register_rust_raw_observer(&slot, KindFilter::from_kinds([1u32]), observer.clone());
@@ -176,7 +185,7 @@ fn raw_tap_waits_for_store_acceptance() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_raw_event_observers_handle(slot);
 
-    let value = signed_event_value(1, "not in canonical store");
+    let value = signed_event_value(1, "unsolicited but valid");
     kernel.handle_event(
         RelayRole::Content,
         "wss://relay.test",
@@ -184,9 +193,11 @@ fn raw_tap_waits_for_store_acceptance() {
         &value,
     );
 
-    assert!(
-        observer.seen.lock().unwrap().is_empty(),
-        "raw tap must not fire before the store accepts the event"
+    assert_eq!(
+        observer.seen.lock().unwrap().len(),
+        1,
+        "ADR-0057: a validly-signed event is persisted (admission = valid-sig), \
+         so the raw tap fires for it even from a non-followed author / untracked sub"
     );
 }
 

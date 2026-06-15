@@ -4,10 +4,8 @@ use super::super::{short_hex, BTreeSet, Kernel, NostrEvent};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use crate::relay::RelayRole;
 use crate::stable_hash::stable_hash64;
 use crate::subs::{AccountId, CompileTrigger};
-use crate::substrate::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 use std::collections::BTreeSet as BTreeSetInner;
 
 /// Deterministic `InterestId` for a contact-list-authors interest keyed by
@@ -130,11 +128,13 @@ impl Kernel {
         }
         self.timeline_authors = authors;
 
-        // V-59 rung 1 (Q7) — the follow set just grew (or was rebuilt). Replay
-        // any parked host-declared follow-feed events whose author is now in
-        // `timeline_authors`; drop the rest. Must run AFTER `timeline_authors`
-        // is rebuilt above so the re-ingest's `should_store_event` gate passes.
-        self.flush_pre_kind3_buffer();
+        // ADR-0057 — the `pre_kind3_buffer` (V-59 rung 1) is DELETED. Admission
+        // is now separated from persistence: a not-yet-followed author's
+        // follow-feed event is already persisted in the store (kind-agnostically,
+        // on valid signature), so there is nothing to "park". The follow added
+        // here surfaces the author's prior events from the store via the
+        // cache-serve enqueued below — `feed_served_event` re-projects them into
+        // the timeline read-cache. No buffer / no replay needed.
 
         // ADR-0045 E1 — store-cache serve for follow-feed interests.
         //
@@ -171,40 +171,6 @@ impl Kernel {
                 self.enqueue_interest_cache_serve_deferred(&sub_key, &interest.shape);
             }
             self.run_cache_serve_step();
-        }
-    }
-
-    /// Replay parked pre-kind:3 events whose author is now in
-    /// `timeline_authors`, dropping the rest. (V-59 rung 1, Q7.)
-    ///
-    /// Takes the buffer out (replacing it with a fresh bounded map) so the
-    /// replay's `&mut self` re-borrow does not alias the buffer iteration.
-    /// Each matching entry is re-fed through `ingest_timeline_event` with its
-    /// recorded provenance relay; a now-followed author makes the
-    /// `should_store_event` gate's first clause (`timeline_authors.contains`)
-    /// pass, so the event is finally stored. Non-matching entries are dropped
-    /// — an author who is still not followed has no home-feed claim, and the
-    /// next follow-set change will re-park fresh arrivals anyway.
-    ///
-    /// `sub_id` is empty on replay: the author now being in `timeline_authors`
-    /// satisfies `should_store_event` regardless of sub_id, and an empty id
-    /// cannot collide with the prefix-matched sub schemes
-    /// (`seed-timeline-`, `thread-…`, …). `RelayRole::Content` is inert —
-    /// `ingest_timeline_event` ignores `_role`.
-    fn flush_pre_kind3_buffer(&mut self) {
-        if self.pre_kind3_buffer.is_empty() {
-            return;
-        }
-        let parked = std::mem::replace(
-            &mut self.pre_kind3_buffer,
-            BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
-        );
-        for (_id, (event, provenance)) in parked.iter() {
-            if self.timeline_authors.contains(&event.pubkey) {
-                let _ =
-                    self.ingest_timeline_event(RelayRole::Content, provenance, "", event.clone());
-            }
-            // else: author still not followed → drop (do not re-park).
         }
     }
 
@@ -334,14 +300,10 @@ impl Kernel {
     ///   diff that tears down the prior account's follow-feed subs (privacy
     ///   leak + stale-feed fix).
     pub(crate) fn reconcile_follow_feed_after_identity_change(&mut self) {
-        // V-59 rung 1 (Q7) — drop the prior identity's parked pre-kind:3
-        // events BEFORE the follow-set sync below. Replaying them against the
-        // NEW account's follow set could surface the previous account's
-        // unfollowed-author notes (privacy + stale-feed leak), and the new
-        // account will re-park fresh arrivals anyway. Clearing here, ahead of
-        // `sync_follow_feed_interests` (which flushes the buffer), guarantees
-        // the flush sees an empty buffer on the switch.
-        self.pre_kind3_buffer = BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
+        // ADR-0057 — the `pre_kind3_buffer` is deleted; no per-identity parked
+        // events to clear on a switch. The timeline read-cache itself is reset
+        // elsewhere on identity change, and the new identity's follow set
+        // re-projects its own events from the store via cache-serve below.
         // ADR-0045 E1 — clear the served-interest completion set AND the
         // pending serve queue so the new identity's interests get a fresh
         // store-cache serve and the prior identity's queued serves stop.

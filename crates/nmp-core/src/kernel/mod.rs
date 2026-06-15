@@ -88,6 +88,8 @@ mod cache_serve_tests;
 mod cache_serve_universal_tests;
 pub(crate) mod closed_reason;
 // K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
+#[cfg(test)]
+mod chokepoint_tests;
 mod coverage_ledger;
 #[cfg(test)]
 mod coverage_ledger_d1_tests;
@@ -133,9 +135,6 @@ mod ingest_tests;
 mod ingest_timeline_dispatcher_tests;
 mod lifecycle;
 mod lifecycle_drain;
-mod local_publish_intent;
-#[cfg(test)]
-mod local_publish_intent_tests;
 mod mailboxes;
 #[cfg(any(test, feature = "test-support"))]
 mod negentropy_test_support;
@@ -143,8 +142,6 @@ mod negentropy_types;
 mod nostr;
 #[cfg(test)]
 mod outbox_tests;
-#[cfg(test)]
-mod pre_kind3_buffer_tests;
 #[cfg(test)]
 mod proactive_profile_fetch_tests;
 #[cfg(test)]
@@ -513,7 +510,7 @@ use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
-    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup, BoundedMessageMap,
+    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
     DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
     ParsedRelayList, MAX_PROJECTION_MESSAGES,
 };
@@ -526,10 +523,9 @@ use std::sync::atomic::AtomicU64;
 pub(crate) use types::KernelSnapshot;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
-    MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile, ProfileCard,
-    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus,
-    StoredEvent, TimelineItem, TimingMilestones, WireSub, WireSubscriptionState,
-    WireSubscriptionStatus,
+    MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile, ProfileCard, PublishOutboxItem,
+    PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimelineItem, TimingMilestones,
+    WireSub, WireSubscriptionState, WireSubscriptionStatus,
 };
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
@@ -804,32 +800,6 @@ pub struct Kernel {
     /// the follow author set without triggering the full follow-feed
     /// registration side-effect that `set_follow_feed_kinds` fires.
     pub(crate) timeline_authors: BTreeSet<String>,
-    /// V-59 rung 1 (Q7) — pre-kind:3 ingest buffer. Holds host-declared
-    /// follow-feed events that arrived BEFORE the active account's follow set
-    /// named their author — i.e. `should_store_event` returned `false` solely
-    /// because `!timeline_authors.contains(author)`. Instead of dropping such
-    /// an event (which is the historical behavior), `ingest_timeline_event`
-    /// parks it here keyed by event id.
-    ///
-    /// `sync_follow_feed_interests` walks the buffer after rebuilding
-    /// `timeline_authors`: any entry whose author is now followed is re-fed
-    /// through `ingest_timeline_event` (and thus stored); the rest are dropped.
-    /// Cleared on identity change so a switched-out account's parked events
-    /// never leak into the new account's stream.
-    ///
-    /// Bounded by [`MAX_PROJECTION_MESSAGES`] (D5): a burst of events for
-    /// authors that never become followed evicts oldest-first rather than
-    /// growing without bound. No consumer reads this buffer outside the kernel
-    /// ingest path — it is purely an internal staging area.
-    ///
-    /// The value pairs the parked `NostrEvent` with the delivering relay URL
-    /// (its provenance) so the replay through `ingest_timeline_event`
-    /// re-records the SAME first-source provenance the event would have had if
-    /// the follow set had named its author on first arrival. (The V-59 §5
-    /// sketch typed this `BoundedMessageMap<EventId, NostrEvent>`; the tuple
-    /// preserves provenance for the replay — the buffer has no external
-    /// consumer, so the value shape is an internal detail.)
-    pre_kind3_buffer: BoundedMessageMap<String, (NostrEvent, String)>,
     /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
     /// stale entries before re-registering on kind:3 change. Derived from the
@@ -1874,7 +1844,6 @@ impl Kernel {
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,
             timeline_authors: BTreeSet::new(),
-            pre_kind3_buffer: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
             follow_feed_interest_ids: BTreeSet::new(),
             follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
@@ -2540,22 +2509,6 @@ impl Kernel {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
         self.active_account = Some(pubkey.into());
-    }
-
-    /// Seed a sentinel in the pre-kind:3 buffer (test-only).
-    #[cfg(test)]
-    pub(crate) fn seed_pre_kind3_buffer_for_test(&mut self, event_id: impl Into<String>) {
-        let id = event_id.into();
-        let e = NostrEvent {
-            id: id.clone(),
-            pubkey: "d".repeat(64),
-            created_at: 0,
-            kind: 1,
-            tags: vec![],
-            content: String::new(),
-            sig: "s".repeat(128),
-        };
-        self.pre_kind3_buffer.insert(id, (e, String::new()));
     }
 
     /// Read-only access to the injected [`OutboxRouter`].

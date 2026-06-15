@@ -56,7 +56,11 @@ pub(super) fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> Nostr
         pubkey: ev.pubkey.to_hex(),
         created_at: ev.created_at.as_secs(),
         kind: ev.kind.as_u16() as u32,
-        tags: ev.tags.iter().map(|t: &::nostr::Tag| t.as_slice().to_vec()).collect(),
+        tags: ev
+            .tags
+            .iter()
+            .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+            .collect(),
         content: ev.content.clone(),
         sig: ev.sig.to_string(),
     }
@@ -179,12 +183,22 @@ fn e1_stored_events_reappear_after_cold_restart_without_relay() {
 
     // Phase 1: seed 3 events into the live kernel (store + in-memory caches).
     let ids = seed_events(&mut kernel, &keys, 3, base_ts);
-    assert_eq!(kernel.events.len(), 3, "all seeded events must be in events cache");
+    assert_eq!(
+        kernel.events.len(),
+        3,
+        "all seeded events must be in events cache"
+    );
 
     // Phase 2: cold restart — clear in-memory caches, keep the store warm.
     simulate_cold_restart(&mut kernel);
-    assert!(kernel.events.is_empty(), "events cache must be empty after restart");
-    assert!(kernel.timeline.is_empty(), "timeline must be empty after restart");
+    assert!(
+        kernel.events.is_empty(),
+        "events cache must be empty after restart"
+    );
+    assert!(
+        kernel.timeline.is_empty(),
+        "timeline must be empty after restart"
+    );
 
     // Phase 3: re-open the follow-feed interest (enqueues serves + drains one
     // aggregate-budget chunk; 3 events fit in one chunk).
@@ -302,7 +316,8 @@ fn e1_events_already_in_cache_are_not_double_served() {
     assert!(
         cache_size_after <= cache_size_before + 1,
         "E1 dedup: events cache grew from {cache_size_before} to {cache_size_after}, \
-         expected at most {}", cache_size_before + 1
+         expected at most {}",
+        cache_size_before + 1
     );
     assert!(
         kernel.events.contains_key(kept_id.as_str()),
@@ -396,7 +411,9 @@ fn e1_account_switch_triggers_fresh_serve() {
     kernel.metric_stored_events = 0;
     kernel.metric_note_events = 0;
     kernel.active_account = Some(author_b.clone());
-    kernel.seed_contacts.insert(author_b.clone(), vec![author_a.clone()]);
+    kernel
+        .seed_contacts
+        .insert(author_b.clone(), vec![author_a.clone()]);
     kernel.reconcile_follow_feed_after_identity_change();
     drain_cache_serves(&mut kernel, 4);
 
@@ -414,5 +431,84 @@ fn e1_account_switch_triggers_fresh_serve() {
          (B follows A); an uncleared completion set would gate the serve. \
          events in cache: {:?}",
         kernel.events.keys().collect::<Vec<_>>()
+    );
+}
+
+/// ADR-0057 oracle — `pre_kind3_buffer` deletion does NOT lose later timeline
+/// visibility. The buffer existed to "park" a not-yet-followed author's
+/// follow-feed events so a later kind:3 could replay them. With admission ≠
+/// persistence, those events are ALREADY persisted in the store on arrival
+/// (valid-sig admission), so when a follow is added later the cache-serve
+/// surfaces them from the store — no parking / replay needed.
+///
+/// Scenario: events arrive from an author who is NOT yet followed (so they are
+/// persisted but absent from the timeline VIEW), then the user follows that
+/// author; the follow's cache-serve must surface the prior events.
+#[test]
+fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
+    use crate::relay::RelayRole;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(hex_pk("aa"));
+    // Host declares kind:1 as a follow-feed kind, but the author is NOT yet in
+    // the follow set — their events are persisted on arrival, not timeline-
+    // projected.
+    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
+
+    let stranger_keys = ::nostr::Keys::generate();
+    let stranger = stranger_keys.public_key().to_hex();
+    let base_ts: u64 = 1_700_000_000;
+
+    // Ingest 3 notes from the not-yet-followed author via the production
+    // chokepoint (handle_event). The chokepoint persists them (admission =
+    // valid-sig) but the timeline projection's read-time predicate drops them
+    // (author not in timeline_authors).
+    let mut ids = Vec::new();
+    for i in 0..3 {
+        let ev = signed_note(&stranger_keys, &format!("stranger note {i}"), base_ts + i);
+        ids.push(ev.id.clone());
+        let value = serde_json::json!({
+            "id": ev.id,
+            "pubkey": ev.pubkey,
+            "created_at": ev.created_at,
+            "kind": ev.kind,
+            "tags": ev.tags,
+            "content": ev.content,
+            "sig": ev.sig,
+        });
+        kernel.handle_event(
+            RelayRole::Content,
+            "wss://relay.test/",
+            "open-firehose",
+            &value,
+        );
+    }
+
+    // Pre-condition: persisted in the store, but NOT in the timeline read-cache
+    // (the deleted buffer would have parked these — now they are simply on disk).
+    assert!(
+        kernel.events.is_empty() && kernel.timeline.is_empty(),
+        "a not-yet-followed author's events must NOT be in the timeline projection \
+         (they are persisted in the store, not parked)"
+    );
+
+    // Now FOLLOW the author. `sync_follow_feed_interests` rebuilds
+    // `timeline_authors` and enqueues a cache-serve for the new follow.
+    kernel.timeline_authors.insert(stranger.clone());
+    kernel.sync_follow_feed_interests(&[stranger.clone()]);
+    drain_cache_serves(&mut kernel, 4);
+
+    // The prior events surface from the store — no parking buffer needed.
+    for id in &ids {
+        assert!(
+            kernel.events.contains_key(id.as_str()),
+            "ADR-0057: a follow added later must surface the author's PRIOR \
+             events from the store (pre_kind3_buffer deletion regression guard); \
+             missing {id}"
+        );
+    }
+    assert!(
+        kernel.timeline.iter().any(|id| ids.contains(id)),
+        "the surfaced prior events must enter the timeline ordering after the follow"
     );
 }

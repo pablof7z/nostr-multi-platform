@@ -271,12 +271,32 @@ impl Kernel {
             Some(bytes)
         }
 
+        // ADR-0057 — read-your-writes pin source. A locally-published event is
+        // routed through the accepted-event chokepoint with `local://publish`
+        // provenance and persisted immediately, but it is NOT in `self.timeline`
+        // unless the author is followed AND it is a rendered timeline kind (a
+        // self-authored kind:1 from a user who does not follow themselves, a
+        // kind:7 reaction, a kind:0/3 edit, …). Without a publish-in-flight pin
+        // source it could be LRU-evicted before its relay echo arrives — the
+        // echo would then re-insert it (no longer a `Duplicate` dedup) and a
+        // race could drop the user's own just-published event from the store.
+        // Pin every event still in the publish engine's `in_flight` set: an
+        // event leaves `in_flight` only on relay confirmation or terminal
+        // settlement, which is exactly the window the ADR requires it pinned.
+        let in_flight_publish_ids = self
+            .publish_engine
+            .snapshot()
+            .in_flight
+            .iter()
+            .map(|row| row.event_id.as_str());
+
         let mut pins: HashSet<crate::store::EventId> = self
             .timeline
             .iter()
             .map(String::as_str)
             .chain(self.event_claims.keys().map(String::as_str))
             .chain(view_pins.event_ids.iter().map(String::as_str))
+            .chain(in_flight_publish_ids)
             .filter_map(hex_to_id)
             .collect();
 
