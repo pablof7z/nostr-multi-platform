@@ -8,12 +8,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:019eca68-85c6-77e0-b237-e58f6c894f72
 ---
 
 # Keystone Overview
@@ -21,6 +22,8 @@ sources:
 ## Keystones
 
 The three keystones that discharge most of the six patterns are: K1 (signer-session port covering sign/encrypt/decrypt with mailbox-completion delivery), K2 (instance-scoped registration eliminating OnceLock globals and kernel_mut), and K3 (coverage ledger replacing the presence heuristic). The three keystones K1, K2, K3 are executed sequentially (K1 first, then K2, then K3), with each fully landed on master before the next begins. All three keystones are complete and active on master: K1 signer-session port (ADR-0050), K2 instance-scoped registration (ADR-0052), K3 coverage ledger (ADR-0056). K1 completed via ADR-0050 (#1198), waking actor inbox (#1221), three-verb port + unified park/drain (#1242), gift-wrap chained through port + SignerForSeal deleted (#1255), gift-unwrap through port + raw-Keys slot deleted (#1258), bounded bunker decrypt queue + decrypt_state projection (#1322). K2 completed via ADR-0052 (#1323), register-by-value + ACTIVE_WALLET_RUNTIME deleted (#1326), per-app bunker/NIP-55 ports with all four hook/driver globals deleted (#1344), DispatchHostOp merged into Protocol (#1356), kernel_mut deleted (#1363), D21 no-ambient-authority lint (#1369). Of 11 needs-decision issues, 10 were determined by documented product direction; only #1281 required a genuine owner product-contract choice. The two-instance interop test (two NmpApp instances with separate wallets, separate bunker sessions, separate everything, no crosstalk) passes and was the oracle for K2 rung 5.2.
+
+The arch-fixes plan is an umbrella architecture-fix program for all deep NMP boundary violations, not a single PR for #1440/#1442; #1440/#1442 are only the first keystone. The umbrella plan must be delivered as atomic keystone PRs per boundary, not one mega-PR; each PR must remove the old path it replaces and add the doctrine/test gate that prevents reintroduction. <!-- [^019ec-51] -->
 
 <!-- citations: [^2e544-412] [^2e544-61] [^02745-131] [^2e544-372] [^2e544-393] [^2e544-411] [^2e544-432] -->
 ## 30-Day Call

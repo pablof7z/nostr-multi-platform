@@ -8,24 +8,26 @@
 //!
 //! * `in_flight` — every correlation_id whose latest recorded stage is
 //!   non-terminal (`Requested` / `AwaitingCapability` / `Publishing`). A
-//!   host renders a spinner per entry.
+//!   host renders a spinner per entry until the pending-action retention window
+//!   expires.
 //! * `recent_terminal` — every correlation_id that settled (`Accepted` /
 //!   `Failed`) within the TTL window. A host renders a success/failure
 //!   toast per entry; once the TTL expires the entry drops on its own.
 //!
 //! # Contrast with `action_stages`
 //!
-//! `action_stages` is the legacy **full history** of an action's transitions,
-//! retained by the same terminal TTL with ack as early dismissal. It is the
-//! substrate primitive — every stage transition lands there. `action_lifecycle`
-//! is a **derived view** over the same transitions, pruned to "what to show on
-//! the screen right now":
+//! `action_stages` is the bounded **full history** of an action's transitions,
+//! retained by the same terminal and pending TTLs with ack as early dismissal.
+//! It is the substrate primitive — every stage transition lands there.
+//! `action_lifecycle` is a **derived view** over the same transitions, pruned to
+//! "what to show on the screen right now":
 //!
-//! * No ack: terminal entries drop on TTL, not on host signal. The host
-//!   never needs to call back into the kernel.
+//! * No ack dependency: terminal entries drop on their short display TTL, and
+//!   non-terminal entries drop on the longer pending-action TTL. The host may
+//!   call back to dismiss early, but retained state is not correctness-critical.
 //! * Latest-stage-wins per correlation_id: the history vector collapses to
 //!   one `LifecycleStage`.
-//! * Bounded retention by wall-clock TTL, not by entry count.
+//! * Bounded retention by wall-clock TTL plus the global entry cap.
 //!
 //! Both surfaces are additive — `action_stages` keeps the per-stage detail
 //! for diagnostic views, `action_lifecycle` carries the host display shape.
@@ -46,7 +48,7 @@
 //!   failure of the snapshot value collapses to `Null`.
 //! * **D8** — bounded. `MAX_TRACKED_CORRELATIONS` (1024) caps the map size;
 //!   drop-oldest by first-record order on overflow. `RECENT_TERMINAL_TTL_MS`
-//!   bounds the retention window for settled actions.
+//!   bounds settled rows and `PENDING_STAGE_RETENTION_MS` bounds in-flight rows.
 //! * **D9** — wall-clock reads route through [`Kernel::now_ms`] so
 //!   `FixedClock` makes the TTL sweep deterministic in tests.
 //! * **D10 (thin-shell)** — every display string Swift used to compute from
@@ -56,7 +58,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::action_stages::{ActionStage, TERMINAL_STAGE_RETENTION_MS};
+use super::action_stages::{ActionStage, PENDING_STAGE_RETENTION_MS, TERMINAL_STAGE_RETENTION_MS};
 
 /// Per-tracker map cardinality cap. Mirrors
 /// [`super::action_stages::MAX_TRACKED_CORRELATIONS`]: a pathological host
@@ -92,6 +94,14 @@ impl LifecycleStage {
     /// `in_flight` to `recent_terminal`.
     fn is_terminal(&self) -> bool {
         matches!(self, Self::Accepted | Self::Failed { .. })
+    }
+
+    fn retention_ttl_ms(&self) -> u64 {
+        if self.is_terminal() {
+            RECENT_TERMINAL_TTL_MS
+        } else {
+            PENDING_STAGE_RETENTION_MS
+        }
     }
 
     /// Map the substrate-level [`ActionStage`] into the display-level
@@ -144,10 +154,8 @@ pub struct LifecycleSnapshot {
 #[derive(Clone, Debug)]
 struct Tracked {
     stage: LifecycleStage,
-    /// Wall-clock millis of the *latest* recorded transition. For
-    /// non-terminal rows this is purely diagnostic. For terminals it is
-    /// the TTL anchor — the row evicts when
-    /// `now_ms >= latest_at_ms + RECENT_TERMINAL_TTL_MS`.
+    /// Wall-clock millis of the *latest* recorded transition. This is the
+    /// retention anchor for terminal and non-terminal rows.
     latest_at_ms: u64,
 }
 
@@ -160,7 +168,7 @@ pub(crate) struct ActionLifecycleTracker {
     /// correlation_id → latest collapsed stage + record time.
     entries: HashMap<String, Tracked>,
     /// First-recorded order, parallel to `entries`. Front-popped on global
-    /// cap overflow; lazy-pruned on terminal TTL sweep.
+    /// cap overflow; lazy-pruned on retention TTL sweep.
     correlation_order: Vec<String>,
     /// D8 visibility: count of evictions caused by the global cardinality
     /// cap. Test-only inspector via the dedicated accessor.
@@ -184,9 +192,8 @@ impl ActionLifecycleTracker {
     /// * On global cap overflow the front of `correlation_order` is
     ///   evicted whole and `global_cap_evictions` increments.
     ///
-    /// `at_ms` is the kernel clock at record time. Terminal rows use this
-    /// as the TTL anchor; non-terminal rows carry it for diagnostic
-    /// inspectors only.
+    /// `at_ms` is the kernel clock at record time and is the retention anchor
+    /// for both terminal and non-terminal rows.
     pub(crate) fn record(&mut self, correlation_id: &str, stage: ActionStage, at_ms: u64) {
         let display_stage = LifecycleStage::from_action_stage(stage);
         let is_new = !self.entries.contains_key(correlation_id);
@@ -239,18 +246,14 @@ impl ActionLifecycleTracker {
         self.entries.len()
     }
 
-    /// Drop terminal rows whose TTL has expired. Called from
-    /// [`Self::snapshot`] so a quiet kernel still prunes on the next
-    /// emit. Non-terminal rows are untouched — only the host's progression
-    /// of stages can move them, and a host that never settles an action
-    /// (deliberate cancel, signer-stalled DM, etc.) will eventually hit
-    /// the global cap, which is the safety net.
+    /// Drop rows whose retention TTL has expired. Called from [`Self::snapshot`]
+    /// so a quiet kernel still prunes on the next emit. Terminal rows use the
+    /// short toast/display TTL; non-terminal rows use the longer pending-action
+    /// TTL. No ingest edge or host ack is required for cleanup.
     fn prune_expired(&mut self, now_ms: u64) {
         let mut drop_ids: Vec<String> = Vec::new();
         for (cid, t) in &self.entries {
-            if t.stage.is_terminal()
-                && now_ms >= t.latest_at_ms.saturating_add(RECENT_TERMINAL_TTL_MS)
-            {
+            if now_ms >= t.latest_at_ms.saturating_add(t.stage.retention_ttl_ms()) {
                 drop_ids.push(cid.clone());
             }
         }

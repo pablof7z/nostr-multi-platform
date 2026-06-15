@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
@@ -17,6 +17,8 @@ sources:
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:bf035812-6f7a-46ec-a11d-30fc7369342f
+  - session:ab8061fc-b277-4ba4-bf55-1532bcb1aa90
+  - session:78b50727-bccd-4088-8493-a07624a4fa83
 ---
 
 # NMP FFI Surface
@@ -94,10 +96,17 @@ The WASM spec (ADR-0047, wasm-surface.md) belongs at the framework level, not un
 
 ## Incremental Apply Declaration
 
-Omission is gated on a per-instance nmp_app_declare_incremental_apply() capability. The function returns an i32 error code (0=ok, 1=AlreadyStarted after nmp_app_start, 2=RegistryUnavailable, -1=null app) rather than using a debug_assert, ensuring fail-closed behavior on the Android FFI path. On Android, a nonzero return aborts initialization (the dead-handle sentinel causes all subsequent JNI calls to no-op). When nmp_app_declare_incremental_apply returns nonzero on Android, the app pointer allocated at line 53 is freed via nmp_app_free(app) on the error path before the early return to avoid a memory leak, since Session (which owns the free) is never constructed.
+Omission is gated on a per-instance nmp_app_declare_incremental_apply() capability. The function returns an i32 error code (0=ok, 1=AlreadyStarted after nmp_app_start—a repeat declare before start is idempotent and returns 0, 2=RegistryUnavailable, -1=null app) rather than using a debug_assert, ensuring fail-closed behavior on the Android FFI path; all callers including NmpCore.h are updated. On Android, a nonzero return aborts initialization (the dead-handle sentinel causes all subsequent JNI calls to no-op). When nmp_app_declare_incremental_apply returns nonzero on Android, the app pointer allocated at line 53 is freed via nmp_app_free(app) on the error path before the early return to avoid a memory leak, since Session (which owns the free) is never constructed.
 
-<!-- citations: [^78c8e-456] [^78c8e-472] -->
-
+<!-- citations: [^78c8e-456] [^78c8e-472] [^78c8e-505] -->
 ## Gallery Kotlin Regeneration
 
 The gallery's curated minimal nmp/transport Kotlin subset (SnapshotFrame.kt, Value.kt) must not be force-regenerated; only android/app/src/main/java/nmp/ gets the full regen. <!-- [^78c8e-473] -->
+
+## v0.8.0 Breaking Changes
+
+The v0.8.0 release cuts version 0.8.0 for a breaking C-ABI change: the `nmp_app_claim_profile` FFI signature expanded from 4 to 5 arguments by adding `liveness: c_int` (0=CacheOk for feed avatars, non-zero=Live for profile screens). All in-repo callers (nmp-ffi, nmp-android-ffi, nmp-wasm, apps, ffi-stress) were updated to pass the 5th argument. Kernel PR #1436 merged to master, followed by iOS PR #1437, making the 5-arg FFI consistent across Rust and iOS. The release also ships the full profile-resolution overhaul and adds nmp-blossom to the release manifest, fixing the long-standing release-manifest CI red.
+
+A runnable throwaway stress-harness binary drives the real NMP public/FFI surface against a real fixture relay and real Schnorr signing; it is not part of the test suite and is not landed to master permanently. <!-- [^78b50-249] -->
+
+<!-- citations: [^ab806-159] [^ab806-172] [^ab806-214] -->

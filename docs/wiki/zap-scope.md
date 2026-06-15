@@ -8,13 +8,14 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:da6b1d73-e1c8-4765-8ac7-056aa90fc154
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:ab8061fc-b277-4ba4-bf55-1532bcb1aa90
 ---
 
 # Zap Scope
@@ -45,4 +46,6 @@ The zap-receipt forgery fix replaces all three `?` operators inside the `for t i
 
 The `description_hash` DoS fix adds an early-return size guard: if `trimmed.len() > 8192`, return `None` immediately before allocating.
 
-<!-- citations: [^da6b1-40] [^2e544-39] [^2e544-40] [^2e544-41] [^2e544-42] [^2e544-43] [^2e544-44] [^02745-20] [^02745-49] [^2e544-71] [^02745-94] -->
+NIP-17 DM and NIP-57 zap subsystems use registered LogicalInterests exclusively with no bespoke REQ-building; NIP-60 wallet has a hardcoded purplepag.es fallback for kind:10002 that is a minor follow-up but does not block framework invariants. NIP-17 is fail-closed (emits no subscription if kind:10050 isn't cached). No migration needed.
+
+<!-- citations: [^da6b1-40] [^2e544-39] [^2e544-40] [^2e544-41] [^2e544-42] [^2e544-43] [^2e544-44] [^02745-20] [^02745-49] [^2e544-71] [^02745-94] [^ab806-72] [^ab806-194] [^ab806-251] -->

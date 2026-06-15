@@ -104,7 +104,7 @@ fn terminal_snapshot_is_a_copy_until_ttl() {
 }
 
 /// Non-terminal rows are not TTL-expired by the stage-retention window. They
-/// remain in the mirror until they settle or the global cap evicts them.
+/// remain in the mirror through the shorter terminal TTL.
 #[test]
 fn non_terminal_snapshot_survives_terminal_ttl_window() {
     let mut t = ActionStageTracker::new();
@@ -113,6 +113,16 @@ fn non_terminal_snapshot_survives_terminal_ttl_window() {
     let snap = t.snapshot(1 + TERMINAL_STAGE_RETENTION_MS * 10);
     assert!(snap.get(cid).is_some(), "non-terminal remains visible");
     assert!(t.history(cid).is_some());
+}
+
+#[test]
+fn non_terminal_snapshot_expires_at_pending_ttl() {
+    let mut t = ActionStageTracker::new();
+    let cid = "corr-pending";
+    t.record(cid, ActionStage::Requested, None, 1);
+    let snap = t.snapshot(1 + PENDING_STAGE_RETENTION_MS);
+    assert!(snap.is_null(), "pending entry expired at the TTL edge");
+    assert!(t.history(cid).is_none());
 }
 
 /// `snapshot()` returns `Null` when empty so the projection helper

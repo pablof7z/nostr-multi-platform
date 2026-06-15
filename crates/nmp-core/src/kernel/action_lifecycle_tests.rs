@@ -13,7 +13,7 @@ use super::action_lifecycle::{
     ActionLifecycleTracker, LifecycleSnapshot, LifecycleStage, MAX_TRACKED_CORRELATIONS,
     RECENT_TERMINAL_TTL_MS,
 };
-use super::action_stages::ActionStage;
+use super::action_stages::{ActionStage, PENDING_STAGE_RETENTION_MS};
 use super::Kernel;
 
 // ─── ActionLifecycleTracker unit tests ───────────────────────────────────
@@ -106,9 +106,8 @@ fn tracker_terminal_drops_on_ttl_expiry() {
     assert_eq!(t.len(), 0, "entry was actually evicted, not just hidden");
 }
 
-/// A non-terminal row is *not* dropped by TTL — only terminals are.
-/// A long-running publish that never settles stays in `in_flight`
-/// until a terminal stage transitions it (or the global cap evicts).
+/// A non-terminal row is not dropped by the short terminal TTL. The longer
+/// pending retention window owns eventual cleanup.
 #[test]
 fn tracker_non_terminal_survives_ttl_window() {
     let mut t = ActionLifecycleTracker::new();
@@ -119,6 +118,19 @@ fn tracker_non_terminal_survives_ttl_window() {
     let payload: LifecycleSnapshot = serde_json::from_value(snap).unwrap();
     assert_eq!(payload.in_flight.len(), 1);
     assert_eq!(payload.in_flight[0].stage, LifecycleStage::Publishing);
+}
+
+#[test]
+fn tracker_non_terminal_drops_on_pending_ttl_expiry() {
+    let mut t = ActionLifecycleTracker::new();
+    t.record("corr-1", ActionStage::Publishing, 0);
+
+    let snap = t.snapshot(PENDING_STAGE_RETENTION_MS);
+    assert!(
+        snap.is_null(),
+        "snapshot is Null once pending retention expires"
+    );
+    assert_eq!(t.len(), 0, "pending entry was actually evicted");
 }
 
 /// Steady state — no records — produces a `Null` snapshot so the

@@ -8,12 +8,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:da6b1d73-e1c8-4765-8ac7-056aa90fc154
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
+  - session:019eca68-85c6-77e0-b237-e58f6c894f72
 ---
 
 # NIP-55 External Signer
@@ -35,9 +36,9 @@ The Android login-block (gallery canonical, Chirp vendored) flips registry compo
 <!-- citations: [^da6b1-20] [^da6b1-49] [^da6b1-72] [^da6b1-85] -->
 ## Android Bridge & Intent Contract
 
-Android apps support NIP-55 signing via an ExternalSignerCapabilityBridge that dispatches Intent-based requests to Amber; the bridge is gallery-canonical and vendored identically across consuming apps (Chirp with only the package declaration changed, etc.) enforced by a VendorDriftGateTest. The vendored Kotlin bridge files (ExternalSignerWire.kt, AmberIntentCodec.kt, ExternalSignerCapabilityBridge.kt) must remain byte-identical across gallery canonical and Chirp/web/CLI vendor copies (modulo the package declaration), enforced by a VendorDriftGateTest. The NIP-55 Intent uses a bare nostrsigner: URI with the payload sent in the data URI (encoded with Uri.encode) and type/permissions passed as Intent extras (not URI query params), matching the NIP-55 spec and Amber v6.x's parsing behavior. The NIP-55 `selectAmberResultValue` prefers the `event` extra for sign_event responses (since Rust verifies the complete event) while also handling `result` (signature hex) and `rejected:true`, with regression tests calling the production function in both app suites. Android manifests must include a `<queries>` block with `nostrsigner:` scheme and `com.greenart7c3.nostrsigner` package for API 30+ package visibility; without it, the signer cannot be opened. The gallery Android app registers ExternalSignerCapabilityBridge in MainActivity.onCreate and starts a nip55-drain daemon thread that loops on a blocking timed recv (250ms tick, the exact nmp-android-ffi contract), not polling.
+Android apps support NIP-55 signing via an ExternalSignerCapabilityBridge that dispatches Intent-based requests to Amber; the bridge is gallery-canonical and vendored identically across consuming apps (Chirp with only the package declaration changed, etc.) enforced by a VendorDriftGateTest. The vendored Kotlin bridge files (ExternalSignerWire.kt, AmberIntentCodec.kt, ExternalSignerCapabilityBridge.kt) must remain byte-identical across gallery canonical and Chirp/web/CLI vendor copies (modulo the package declaration), enforced by a VendorDriftGateTest. The NIP-55 Intent uses a bare nostrsigner: URI with the payload sent in the data URI (encoded with Uri.encode) and type/permissions passed as Intent extras (not URI query params), matching the NIP-55 spec and Amber v6.x's parsing behavior. The NIP-55 `selectAmberResultValue` prefers the `event` extra for sign_event responses (since Rust verifies the complete event) while also handling `result` (signature hex) and `rejected:true`, with regression tests calling the production function in both app suites. Android manifests must include a `<queries>` block with `nostrsigner:` scheme and `com.greenart7c3.nostrsigner` package for API 30+ package visibility; without it, the signer cannot be opened. The gallery Android app registers ExternalSignerCapabilityBridge in MainActivity.onCreate and starts a nip55-drain daemon thread that loops on a blocking timed recv (250ms tick, the exact nmp-android-ffi contract), not polling. The NIP-55 signer capability bridge must handle concurrent Intent approvals safely, replacing the single pendingCorrelationId field with a concurrent-safe tracking model; additionally, workstream D mandates that actor-facing cancel be signal-only with joins off the actor path, active_local_keys must be removed from ProtocolCommandContext, and AppHost must be split into narrow registration/capability traits.
 
-<!-- citations: [^da6b1-21] [^da6b1-50] [^da6b1-73] [^da6b1-86] -->
+<!-- citations: [^da6b1-21] [^da6b1-50] [^da6b1-73] [^da6b1-86] [^019ec-18] [^019ec-37] -->
 ## DM Handling
 
 DM send through NIP-55 requires zero production code changes because `active_signer_for_seal()` routes any RemoteSignerHandle impl (NIP-46 or NIP-55) through the same nip44 seal seam; DM receive-side decrypt wiring is deferred to V-08/#961 to avoid creating a NIP-55-specific receive path that must later be unified. The bulk-decrypt policy for bunker accounts surfaces errors-as-state (decrypt_state: ok|limited|unavailable + undecrypted_count), never silent no-op.

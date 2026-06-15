@@ -2,67 +2,40 @@
 title: Event Acquisition
 slug: event-acquisition
 topic: event-acquisition
-summary: "There is a single event-acquisition mechanism: serving from the local store is its first half, the planner's wire REQ is its refinement half, running through th"
+summary: "The event-flow architecture plan (docs/plans/arch-fixes.md) covers Workstreams A (ingest: PR0â3), B (acquisition one-door), C (publish one-door), and F (doctr"
 tags:
   - capture
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:da6b1d73-e1c8-4765-8ac7-056aa90fc154
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
+  - session:ab8061fc-b277-4ba4-bf55-1532bcb1aa90
+  - session:78b50727-bccd-4088-8493-a07624a4fa83
+  - session:c9a794f6-6ad7-4ee9-a620-fc342fd495c3
 ---
 
 # Event Acquisition
 
 ## Mechanism
 
-There is a single event-acquisition mechanism: serving from the local store is its first half, the planner's wire REQ is its refinement half, running through the same seam with no domain-specific stages.
+The event-flow architecture plan (docs/plans/arch-fixes.md) covers Workstreams A (ingest: PR0–3), B (acquisition one-door), C (publish one-door), and F (doctrine gates); Workstreams D (signer/capability authority) and E (action/projection lifecycle) are split into a separate sibling plan (docs/plans/arch-authority-lifecycle.md). The plan is delivered as one atomic PR per workstream with no technical debt, no migrations, and no shims. ADR-0057 is the self-contained durable authority for the event-flow ingest decision; plan files are temporal coordination artifacts marked for deletion on merge, not sources of authority, while GitHub Issues #1440/#1442/#1443 carry the durable 'why' and tracking. Workstream D items 4 (BunkerBroker::cancel detach) and 6 (AppHost god-trait split) remain as clear PRs; items 2 and 5 are done via K2/ADR-0050; items 1, 3, and 7 are partial gaps. Workstream B (acquisition one-door) is NOT done: profile-claims and replaceable-reverify still build direct REQs via req_for_relay (not LogicalInterests on the InterestRegistry), and mailbox-discovery probes are permanent per session with no epoch/TTL lifecycle.
 
-Persisted WatermarkRow.synced_up_to has zero production writers; the live since-floor is derived from store content (newest matching event via query_visit), making the issue's conservative-floor premise false. (Previously: sync.md claimed WatermarkRow '[LANDED M4]', but it was deleted and replaced by the presence heuristic without re-deciding the soundness question; then the heuristic itself was superseded by direct store-content derivation.)
+PublishBehavior is the single declared policy table for publish classification; raw kind==N literal guards in publish routing are banned and enforced by a source-scan doctrine gate. The publish policy one-door (Workstream C) classifies publish behavior via a typed PublishBehavior enum (ReservedBuilderOnly, PrivateFailClosed, DiscoveryIndexable, PublicRoutable) — the only function permitted to compare a publish kind to a named constant. PrivateFailClosed kinds (gift-wrap 1059, sealed 14) are enforced at the universal dispatch-emit site (dispatch_due) — a private event may emit only to a relay whose relay_reasons includes Explicit; all other selected relays are refused, the frame dropped, and the relay settled FailedAfterRetries. When the publish gate refuses a resumed private row, the publish row is terminal-finalized so it does not linger pending in the durable store and re-refuse on restart. The publish-policy reintroduction gate scans the full routing surface (action.rs, publish.rs, publish_cmd.rs, publish_engine.rs, engine/helpers.rs, engine/dispatch.rs) for any kind==/!= int or kind==/!= KIND_* guard outside policy.rs, including evasion shapes (match arms, matches!, .contains).
 
-The `shape_to_store_queries` mapping is the single source for both the floor computation and the serve decision (ADR-0045 §6); no second shape→query mapping exists.
+There is a single event-acquisition mechanism: serving from the local store is its first half, the planner's wire REQ is its refinement half, running through the same seam with no domain-specific stages. NIP-17 DM and NIP-57 zap subsystems use registered LogicalInterests exclusively with zero bespoke REQ construction.
 
-Locally published events route through the same `ingest_…` + `notify_event_observers` fan-out the relay arm uses, providing read-your-writes for follows and giving local echo to kind:0 and DM self-copies. Follow/unfollow local publish feeds this same observer fan-out, restoring read-your-writes (Previously: locally published follow/unfollow events skipped observer fan-out, so the follow-list projection and ActiveFollowSet never updated until app restart, account switch, or a different kind:3 arrived; then PR #1199 landed the read-your-writes fix). (Previously: routing was described without the read-your-writes-on-exact-surface rationale and the PR #1199 landing.)
+The NMP transport pool dials arbitrary relay URLs on demand via send_outbound → ensure_relay_worker_with_kind, spawning a worker for any URL including third-party author relays, with RelayConnectionKind::Temporary and 60s idle teardown, requiring zero new transport capability for connecting to third-party author relays.
 
-The ActiveFollowSet/FollowListProjection producer is merged into one fold with two views, and the 500-cap divergence between kernel and observer is fixed.
+Greedy weighted max-coverage set-cover relay minimization exists in nmp-planner selection.rs and runs on every recompile before wire emission, reducing relay sets bounded by select_max_connections and select_max_per_user.
 
-Un-floored NEG-OPEN reconciles the full un-watermarked window so set reconciliation can repair gaps below the heuristic floor.
+The single generic chokepoint for all authors-filtered interests is SubscriptionLifecycle::recompile_and_diff_with_lookup in subs/recompile.rs, which compiles every LogicalInterest on each drain_tick. This chokepoint provides three intrinsic behaviors for any authors-filtered interest: (a) immediate fallback REQ to app_relays for uncached authors, (b) batched kind:10002 fetch to indexers for uncached/unprobed authors (the D3 probe), and (c) progressive re-route to the author's own relays when their kind:10002 arrives via Nip65Arrived trigger. The follows feed and profile claim must not call any relay-list helper; they inherit 10002 acquisition and per-author routing as an intrinsic property of this underlying subscription/routing infrastructure that processes any authors-filtered interest.
 
-The address-pointer watermark branch aligns with the V-118 min/abort rule instead of taking max over coords and ignoring coords with zero stored events.
+`recompile_and_diff` must use plan-input memoization at the compile seam: hash the full input tuple (`iter_active()` shapes + mailbox-cache generation + `dead_relays` + `app_relays` + bootstrap sets + score-map generation + watermark store generation) and return an empty diff without invoking the compiler when the fingerprint is unchanged from the last compile. The memoization key must include the watermark store generation; omitting it will serve a stale `since` value and cause silent under-fetch. Plan-input memoization is the high-leverage architectural fix that neutralizes every spurious trigger at one chokepoint. Inbox-level dedup is the wrong layer for solving the trigger storm because `TriggerInbox` is a dumb FIFO that only coalesces multiple triggers within one tick, not across ticks; a single trigger per tick still forces a full compile. Gating `push_interest_and_serve` on shape change is a correct cleanup of the lone unconditional producer and should ship alongside plan-input memoization.
 
-Every EVENT arriving on ingest records a delivery Hit (sampled or saturating) to feed the relay score map, activating the W4 warm filter.
-
-Permanent relay errors (401/403) enter a Denied{until} long-backoff state instead of killing the worker thread, and ensure_open respawns exited slots.
-
-Publishing to AUTH-requiring relays parks the publish via the existing availability-gate seam and re-dispatches on `Authenticated`, instead of failing after one-shot reauth within a 250ms tick.
-
-NEG-OPEN liveness has a wall-clock deadline via the existing actor tick infrastructure, preventing silent starvation when a relay ignores the frame.
-
-Eviction below an active coverage floor lowers that floor in the same transaction, preventing permanent holes under the watermark.
-
-A switching-cost term computed against the prior plan damps greedy relay-selection churn during incremental NIP-65 arrivals.
-
-Coverage_dropped_authors appears on CompiledPlan symmetrically with unroutable_authors, surfacing authors dropped at budget exhaustion.
-
-ingest_repost uses max(existing_slot_ts, wrapper_ts) so an older repost wrapper cannot pull a root downward.
-
-load_older grows one page at a time, clamps to a ceiling (window_limit: AtomicUsize initialized to 80, max 500), and returns false at the limit.
-
-Timeline fan-out clamps created_at to cached.created_at.min(now_secs), while StoredEvent retains the wire timestamp for protocol correctness.
-
-The cold-start route now calls request_probe for every tagged pubkey, closing the probe→cache→recompile loop so DM-inbox discovery fires (the Case C bootstrap-inbox probe fix).
-
-Greedy-merge determinism uses a total canonical sort key (not just the spec's tuple key) to break ties consistently for REQ output, making it input-order-independent.
-
-Rule 1 wildcard-kinds × concrete-kinds merges are refused (mirroring Rule 9) to close an all-kinds privacy/bandwidth leak.
-
-The planner PR was split to keep only the two genuinely-safe fixes (DM-inbox-discovery bug and merge determinism); Defect 2 (T129 watermark rewrite) and Defect 4 (wildcard absorption) were reverted as documented, tested features, and escalated as owner decisions #1281/#1282.
-
-The `gc_step` budgeting uses a resumable Phase-1 cursor, O(1) Phase-2 count, and hourly Phase-3 tombstone gate, with the LRU event-count ceiling (`HOT_EVENT_CEILING`) disabled until store-claims are wired.
-
-<!-- citations: [^da6b1-82] [^da6b1-15] [^2e544-8] [^2e544-9] [^2e544-10] [^4277-4280] [^3720-3721] [^2e544-11] [^2e544-12] [^2e544-13] [^2e544-14] [^2e544-15] [^2e544-16] [^2e544-17] [^2e544-18] [^2e544-19] [^1278-2238-2267] [^1278-2249-2255] [^1278-2253-2254] [^1280-2386-2436] [^1280-2396-2436] [^02745-7] [^2e544-55] [^02745-55] [^02745-99] [^2e544-349] [^2e544-369] [^2e544-463] -->
+<!-- citations: [^da6b1-82] [^da6b1-15] [^2e544-8] [^2e544-9] [^2e544-10] [^4277-4280] [^3720-3721] [^2e544-11] [^2e544-12] [^2e544-13] [^2e544-14] [^2e544-15] [^2e544-16] [^2e544-17] [^2e544-18] [^2e544-19] [^1278-2238-2267] [^1278-2249-2255] [^1278-2253-2254] [^1280-2386-2436] [^1280-2396-2436] [^02745-7] [^2e544-55] [^02745-55] [^02745-99] [^2e544-349] [^2e544-369] [^2e544-463] [^2e544-480] [^ab806-28] [^ab806-37] [^78b50-8] [^c9a79-24] [^78b50-21] [^c9a79-28] [^ab806-203] [^78b50-126] [^78b50-138] [^78b50-151] [^78b50-160] [^78b50-170] [^78b50-180] [^78b50-198] [^78b50-203] [^78b50-214] [^78b50-238] -->

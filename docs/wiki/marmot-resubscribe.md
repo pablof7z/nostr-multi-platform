@@ -8,11 +8,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
+  - session:c9a794f6-6ad7-4ee9-a620-fc342fd495c3
 ---
 
 # Marmot Resubscribe
@@ -30,3 +31,12 @@ Marmot (MLS) key-package autopublish fires on all local-key sign-in paths, not j
 ## Interest Withdrawal
 
 Interest withdrawal for per-group kind:445 subscriptions on sign-out/account-switch has no seam yet (NmpApp has push_interest but not remove_interest); de-duplication makes the receive fix correct without it, but stale interests linger until process exit. <!-- [^78c8e-87] -->
+
+## Snapshot Query Overhead
+
+MarmotProjection::messages_since performs a live SQLite query on every snapshot cycle even when no MLS events arrived, with 26ms spent on a pread kernel syscall from SQLite WAL shared-lock. MlsGroup::load also calls SQLite on every snapshot cycle, loading the entire MLS group state from disk each time rather than keeping it in memory.
+
+<!-- citations: [^c9a79-2] [^c9a79-13] -->
+## Snapshot Query Optimization
+
+MarmotProjection::messages_since must use a watermark and dirty-flag to skip the SQLite query on snapshot cycles with no new MLS events. <!-- [^c9a79-3] -->

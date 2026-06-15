@@ -4,7 +4,7 @@ date: 2026-06-14
 session: 2e5449b9-15e0-4d80-98a7-5281bda701d6
 transcript: /Users/pablofernandez/.claude/projects/-Users-pablofernandez-Work-nostr-multi-platform/2e5449b9-15e0-4d80-98a7-5281bda701d6.jsonl
 salience: root-cause
-status: active
+status: superseded
 subjects:
   - parked-crates
   - nmp-nip60

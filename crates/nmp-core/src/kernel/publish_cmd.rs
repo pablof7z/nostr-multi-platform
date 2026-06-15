@@ -256,8 +256,8 @@ impl Kernel {
     }
 
     /// Append a lifecycle stage for `correlation_id` to the
-    /// `action_stages` projection. Non-terminals persist until they settle or
-    /// hit the global cap; terminal histories are retained by kernel-owned TTL.
+    /// `action_stages` projection. Histories persist until the host acks or the
+    /// kernel-owned retention window expires.
     ///
     /// `at_ms` is sourced from the kernel clock (`now_ms`) so a test
     /// `FixedClock` makes the recorded timestamps deterministic. `detail`
@@ -369,11 +369,10 @@ impl Kernel {
     }
 
     /// Read accessor for [`update`]'s projection emit site. Returns
-    /// the full JSON mirror as a copy (NOT a drain): non-terminal entries stay
-    /// in the snapshot across ticks until they settle or hit the global cap, and
-    /// terminal entries stay until TTL expiry or early ack. Returns
-    /// `serde_json::Value::Null` when nothing is tracked so the helper can omit
-    /// the projection key in steady state.
+    /// the full JSON mirror as a copy (NOT a drain): entries stay in the
+    /// snapshot across ticks until the host acks or the retention window
+    /// expires. Returns `serde_json::Value::Null` when nothing is tracked so the
+    /// helper can omit the projection key in steady state.
     ///
     /// ADR-0055 Rung 3 S1b (§10.4): also drives the `note_copy_emit`
     /// Cleared-edge machine for `action_stages`. Takes `&mut self` to write

@@ -8,12 +8,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:2e5449b9-15e0-4d80-98a7-5281bda701d6
+  - session:78b50727-bccd-4088-8493-a07624a4fa83
 ---
 
 # Capability Socket
@@ -42,6 +43,6 @@ CapabilityCredentialStore error mapping ensures no transport/handler failure pat
 
 ## Capability Boundary
 
-ProtocolCommandContext::kernel_mut() is deleted; it previously granted full ambient authority over the Kernel to any boxed Protocol. The nine kernel methods the wallet runtime actually mutates are now exposed via a WalletKernelAccess capability trait. DispatchHostOp is merged into the Protocol seam, preserving its panic-isolation and persistent-handler semantics via a narrow HostOpHandlerAccess capability.
+ProtocolCommandContext::kernel_mut() must be deleted; it provides ambient authority over the entire Kernel, defeating the carefully-narrowed capability traits. It must be replaced by narrow capability traits (e.g. WalletKernelAccess, ZapProfileLookup). DispatchHostOp and Protocol are two open write seams doing one job; DispatchHostOp must be merged into Protocol, preserving DispatchHostOp's whole-body catch_unwind panic isolation and its persistent-handler semantics. The AppHost trait (substrate/app_host.rs:53) is still a broad single trait with ~30+ methods spanning registration, capability slots, and snapshot/typed projections; splitting it into narrow registration and capability traits is Workstream D6.
 
-<!-- citations: [^2e544-362] [^2e544-407] -->
+<!-- citations: [^2e544-362] [^2e544-407] [^2e544-477] [^78b50-229] [^78b50-246] -->

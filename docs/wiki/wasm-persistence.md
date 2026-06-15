@@ -8,11 +8,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-14
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-14
 compiled-from: conversation
 sources:
   - session:bf035812-6f7a-46ec-a11d-30fc7369342f
+  - session:78b50727-bccd-4088-8493-a07624a4fa83
 ---
 
 # WASM Persistence
@@ -27,6 +28,8 @@ The offline action queue must be durable in OPFS-SQLite, not held in in-memory a
 
 Unsafe Send+Sync on the WASM store wrapper is sound because the Worker is single-threaded, and this must not be done by cfg-relaxing the bound in the core crate. <!-- [^bf035-175] -->
 
+
+Setting a storage_path without enabling the lmdb-backend feature flag silently falls back to MemEventStore, losing data on restart; production builds must explicitly enable lmdb-backend. <!-- [^78b50-253] -->
 ## Actor Model on WASM
 
 The Worker's event loop IS the actor on WASM — direct synchronous KernelReducer calls are the actor loop, with async capabilities re-entering via spawn_local/callbacks, not a ported OS-thread+flume+tokio actor. <!-- [^bf035-176] -->

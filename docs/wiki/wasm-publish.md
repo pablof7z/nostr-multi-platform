@@ -8,12 +8,14 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:027459be-7102-4e1a-b6d4-02e8e7863642
   - session:bf035812-6f7a-46ec-a11d-30fc7369342f
+  - session:ab8061fc-b277-4ba4-bf55-1532bcb1aa90
+  - session:78b50727-bccd-4088-8493-a07624a4fa83
 ---
 
 # WASM Publish
@@ -24,9 +26,13 @@ Issue #1202 (wasm silent publish failure) is resolved by replacing the silent No
 
 The deployed Chirp Web app must build and serve the real current wasm per deploy (not a stale pre-built artifact). Chirp Web deploys to chirp-nmp.f7z.io on Vercel, with the real wasm built per deploy.
 
-The TypeScript FlatBuffers bindings for the snapshot must be regenerated when the FlatBuffers schema changes, and a drift guard must exist to catch stale bindings (the web was blind to real data because bindings had drifted). <!-- [^bf035-183] -->
+The wasm dispatch claim/release arm must ACK with ActionAccepted and push no snapshot, because pushing a snapshot on every claim/release creates an infinite UI loop on the single-threaded wasm worker (SolidJS For rebuilds rows → remounts avatar components → re-dispatches claim/release → another snapshot).
 
-<!-- citations: [^02745-93] [^02745-133] [^bf035-182] -->
+Refused private-event publish rows are terminally finalized (deleted from the durable store exactly once) so they are never left Pending or re-refused on resume.
+
+The TypeScript FlatBuffers bindings for the snapshot must be regenerated when the FlatBuffers schema changes, and a drift guard must exist to catch stale bindings (the web was blind to real data because bindings had drifted).
+
+<!-- citations: [^bf035-183] [^02745-93] [^02745-133] [^bf035-182] [^ab806-139] [^ab806-174] [^78b50-226] -->
 ## Park Dead Islands
 
 Issue #1250 (park dead islands) is resolved by excluding nmp-blossom and nmp-nip60 from the workspace and removing them from the release manifest. <!-- [^02745-134] -->

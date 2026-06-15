@@ -4,7 +4,7 @@ date: 2026-06-14
 session: 78c8ec3a-f558-4738-98af-1f3af4978ec4
 transcript: /Users/pablofernandez/.claude/projects/-Users-pablofernandez-Work-nostr-multi-platform/78c8ec3a-f558-4738-98af-1f3af4978ec4.jsonl
 salience: root-cause
-status: active
+status: superseded
 subjects:
   - android-marmot
   - mls-support

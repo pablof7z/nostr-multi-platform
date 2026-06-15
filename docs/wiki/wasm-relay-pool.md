@@ -2,17 +2,19 @@
 title: WASM Relay Pool
 slug: wasm-relay-pool
 topic: relay-routing
-summary: The WASM relay pool opens one WebSocket per distinct relay URL (native parity), reports inbound frames under a single first-role-wins role, and spawns drivers on demand for kernel-targeted URLs so the kernel owns socket lifecycle on web.
+summary: "The nmp-wasm relay pool opens **one** physical `web_sys::WebSocket` per distinct relay URL, keyed by `CanonicalRelayUrl` alone, matching the native pool's `ensu"
 tags:
   - capture
 volatility: warm
 confidence: high
 created: 2026-06-14
-updated: 2026-06-14
+updated: 2026-06-15
 verified: 2026-06-14
 compiled-from: conversation
 sources:
   - session:ac3ebc43-5320-419f-994e-b37d436010c9
+  - session:ab8061fc-b277-4ba4-bf55-1532bcb1aa90
+  - session:78b50727-bccd-4088-8493-a07624a4fa83
 ---
 
 # WASM Relay Pool
@@ -33,7 +35,9 @@ Socket lifecycle decisions — which and how many sockets to open — belong to 
 
 The transport does **not** re-check admission: the router (`nmp-router`) already applies `RelayAdmissionPolicy` on the untrusted lanes (NIP-65 mailbox, hints, provenance) and filters per-account blocked relays before an `OutboundMessage` exists, so every URL reaching the transport is already admissible — and native's `send_outbound` carries no admission check either. Spawning requires the kernel-handler bag (`handlers_slot`, an `Rc`-based cloneable handle threaded through `runtime.rs`, `tick.rs`, `publish_path.rs`, and the relay_pool closures to resolve the spawn-time borrow cycle for on-demand driver creation); when it is empty (pool not started) or a URL fails to dial, the frame is dropped.
 
-<!-- citations: [^ac3eb-5] -->
+However, DoS mitigation for hostile relays sending unsolicited events **does** belong at the transport layer (per-relay quotas), not in the ingest admission gate — a malicious relay can flood the client independently of kernel routing decisions, and the transport is the right place to throttle or disconnect before events reach ingest.
+
+<!-- citations: [^ac3eb-5] [^78b50-112] -->
 ### Pre-connect send buffer (why on-demand relays carry traffic)
 
 A spawned driver is still `CONNECTING` when the REQ that triggered it is sent, and `handle_relay_connected` does **not** replay subscriptions on the first connect (`is_reconnect == false` only emits `startup_requests` + `pending_view_requests`; subscription replay is the reconnect path). So the driver must not drop that REQ. `BrowserRelayDriver::send_text` therefore gates on `ready_state() == OPEN` (not on the presence of `current_socket`, because `dial()` sets `current_socket = Some(socket)` immediately during the CONNECTING state, which would otherwise cause `InvalidStateError`), and buffers frames sent while the socket is not `OPEN` into a per-driver `pending` queue (bounded by `MAX_PENDING_FRAMES`) and flushes them in `build_on_open` on connect — mirroring the native `relay_worker`'s `pending` VecDeque + flush-on-connect. Bootstrap relays never needed this (their REQs are emitted *by* the connect event, when the socket is already open); on-demand relays do, because their REQ is emitted *before* connect. Without the buffer an on-demand relay would connect but stay idle — the original duplicate-socket complaint in a new form.
@@ -41,9 +45,12 @@ A spawned driver is still `CONNECTING` when the REQ that triggered it is sent, a
 <!-- citations: [^ac3eb-6] -->
 ### Not yet covered
 
-Idle-close of on-demand sockets. Native sweeps idle temporary relays
-(`sweep_temporary_idle_relays` + `relay_socket_is_persistent`); the WASM pool
-does not yet, so on-demand-dialed relays accumulate for the session's lifetime.
-A follow-up should port the persistent/temporary classification + idle sweep.
+Transient relay connections — the transport pool dials arbitrary relay URLs on demand via `send_outbound` → `ensure_relay_worker_with_kind` → `pool.ensure_open_with_role`, with transient author sockets managed as `RelayConnectionKind::Temporary` with a 60-second idle teardown grace; no new transport capability is needed.
 
-<!-- citations: [^ac3eb-1] [^ac3eb-2] -->
+<!-- citations: [^ac3eb-1] [^ac3eb-2] [^ab806-71] [^ab806-78] [^ab806-175] -->
+
+## Not yet covered
+
+NMP's transport pool dials arbitrary relay URLs on demand and spawns a worker for any new URL, not just pre-configured relays, using RelayConnectionKind::Temporary with a 60-second idle teardown grace; no new transport capability is needed for connecting to third-party author relays.
+
+<!-- citations: [^ab806-193] [^ab806-213] [^ab806-223] [^ab806-235] [^ab806-240] [^ab806-274] [^ab806-281] -->

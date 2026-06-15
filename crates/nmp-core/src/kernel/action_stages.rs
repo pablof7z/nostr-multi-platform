@@ -4,10 +4,10 @@
 //!
 //! `action_results` is a per-tick *drain*: every terminal verdict that
 //! settled since the last emit, with the entry dropped after one snapshot.
-//! `action_stages` is the legacy diagnostic mirror of an action's lifecycle:
+//! `action_stages` is the bounded diagnostic mirror of an action's lifecycle:
 //! the full history of transitions an async action went through (`Requested` →
-//! `Publishing` → `Accepted`/`Failed`), retained while the action is in flight
-//! and for the same terminal TTL window as `action_lifecycle`.
+//! `Publishing` → `Accepted`/`Failed`), retained until host ack or kernel-owned
+//! expiry.
 //!
 //! The two surfaces are complementary, not redundant:
 //!
@@ -16,16 +16,17 @@
 //!   single edge.
 //! * `action_stages` answers "what is this action doing right now?" on every
 //!   tick. It is NOT drained on emit because diagnostic consumers may need the
-//!   stable state across many ticks. Terminal rows are TTL-retained; host ack is
-//!   an early-dismiss path only.
+//!   stable state across many ticks. Terminal and pending rows are TTL-retained;
+//!   host ack is an early-dismiss path only.
 //!
 //! # Retention: kernel-owned TTL, ack as early dismissal
 //!
-//! The kernel owns retention. After the latest stage is terminal (`Accepted`
-//! or `Failed`), the entry remains visible until
-//! [`TERMINAL_STAGE_RETENTION_MS`] elapses, then drops on the next snapshot
-//! emit. If a host has already reacted, `nmp_app_ack_action_stage(correlation_id)`
-//! may dismiss it earlier; correctness does not depend on that host callback.
+//! The kernel owns retention. Terminal rows remain visible until
+//! [`TERMINAL_STAGE_RETENTION_MS`] elapses. Pending rows remain visible for
+//! [`PENDING_STAGE_RETENTION_MS`], which exceeds the longest signer approval
+//! budget. Both drop on the next snapshot emit after expiry. If a host has
+//! already reacted, `nmp_app_ack_action_stage(correlation_id)` may dismiss the
+//! row earlier; correctness does not depend on that host callback.
 //!
 //! # Caps (D8 — bounded retention)
 //!
@@ -84,6 +85,13 @@ pub(crate) const MAX_TRACKED_CORRELATIONS: usize = 1024;
 /// host ack or relay ingest arrives.
 pub(crate) const TERMINAL_STAGE_RETENTION_MS: u64 = 3_000;
 
+/// Retention window for pending stage histories. This intentionally exceeds the
+/// longest signer approval budget documented in `RemoteSignerHandle::op_timeout`
+/// (NIP-55 = 90 s), so projection cleanup does not preempt a legitimate
+/// terminal while still bounding a lost `Requested` / `Publishing` /
+/// `AwaitingCapability` row.
+pub(crate) const PENDING_STAGE_RETENTION_MS: u64 = 120_000;
+
 /// One stage in an async action's lifecycle.
 ///
 /// `Requested` fires at dispatch entry (the host called
@@ -118,6 +126,14 @@ impl ActionStage {
     #[allow(dead_code)]
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Accepted | Self::Failed { .. })
+    }
+
+    fn retention_ttl_ms(&self) -> u64 {
+        if self.is_terminal() {
+            TERMINAL_STAGE_RETENTION_MS
+        } else {
+            PENDING_STAGE_RETENTION_MS
+        }
     }
 }
 
@@ -288,12 +304,12 @@ impl ActionStageTracker {
         removed
     }
 
-    /// Drop terminal entries whose retention window has elapsed.
+    /// Drop entries whose retention window has elapsed.
     ///
-    /// The latest stage is the authoritative lifecycle state. Non-terminal
-    /// rows remain tracked until a terminal arrives or the global cap evicts
-    /// them; terminal rows expire from the kernel-owned snapshot edge without
-    /// waiting for a host ack.
+    /// The latest stage is the authoritative lifecycle state. Terminal rows use
+    /// the short display TTL; pending rows use the longer pending-action TTL.
+    /// Both expire from the kernel-owned snapshot edge without waiting for a
+    /// host ack.
     pub(crate) fn prune_expired(&mut self, now_ms: u64) -> usize {
         let mut drop_ids: Vec<String> = Vec::new();
         for (cid, history) in &self.entries {
@@ -301,9 +317,7 @@ impl ActionStageTracker {
                 drop_ids.push(cid.clone());
                 continue;
             };
-            if latest.stage.is_terminal()
-                && now_ms >= latest.at_ms.saturating_add(TERMINAL_STAGE_RETENTION_MS)
-            {
+            if now_ms >= latest.at_ms.saturating_add(latest.stage.retention_ttl_ms()) {
                 drop_ids.push(cid.clone());
             }
         }
@@ -329,10 +343,9 @@ impl ActionStageTracker {
     /// Returns `serde_json::Value::Null` when nothing is tracked, so the
     /// projection helper (`update.rs`) can omit the key in steady state
     /// — exactly the convention `action_results` uses for "no rows this
-    /// tick". This is a *copy* (clone semantics, not move); the internal
-    /// Terminal entries are pruned first, using the caller-supplied kernel clock
-    /// timestamp. The map is otherwise unchanged by serialization — that is the
-    /// point of the mirror vs. drain split.
+    /// tick". Expired entries are pruned first, using the caller-supplied kernel
+    /// clock timestamp. This is otherwise a *copy* (clone semantics, not move);
+    /// the map is not drained by serialization.
     pub(crate) fn snapshot(&mut self, now_ms: u64) -> serde_json::Value {
         self.prune_expired(now_ms);
         if self.entries.is_empty() {

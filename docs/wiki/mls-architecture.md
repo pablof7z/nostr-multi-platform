@@ -8,21 +8,22 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-13
-updated: 2026-06-13
+updated: 2026-06-15
 verified: 2026-06-13
 compiled-from: conversation
 sources:
   - session:78c8ec3a-f558-4738-98af-1f3af4978ec4
   - session:da6b1d73-e1c8-4765-8ac7-056aa90fc154
+  - session:019eca68-85c6-77e0-b237-e58f6c894f72
 ---
 
 # MLS Architecture
 
 ## Architecture
 
-Chirp MLS logic is owned by Rust; iOS and Android shells contain zero protocol/crypto/ratchet logic (only ADR-0032 display formatting). MLS cross-platform is conditionally operational on current master: both iOS and Android have complete create/invite/send/receive wired in UI, real durable key storage (Keychain/Keystore), and the marmot feature compiled into shipping builds; the only operational requirements are building iOS for device with --features marmot if not using simulator, and pointing both apps at common relays. MLS group messages are published under ephemeral per-message keys (a metadata-privacy property of MLS-over-Nostr), so sender attribution is decrypted from inside the MLS payload, not visible on the wire. The iOS justfile only has simulator build targets; building for a physical iPhone device requires passing --features marmot to the aarch64-apple-ios target and setting IPHONEOS_DEPLOYMENT_TARGET=17.0 (to resolve ___chkstk_darwin linkage against the Xcode 26 SDK). The Android APK unconditionally includes --features marmot in the cargo ndk build (build.gradle.kts:79), so the shipping APK always includes MLS.
+Chirp MLS logic is owned by Rust; iOS and Android shells contain zero protocol/crypto/ratchet logic (only ADR-0032 display formatting). Shell code (e.g. Chirp TUI) must not keep raw all-kinds event caches or construct protocol filters; raw event caching and hashtag filter construction belong in Rust projections, not the UI shell. MLS cross-platform is conditionally operational on current master: both iOS and Android have complete create/invite/send/receive wired in UI, real durable key storage (Keychain/Keystore), and the marmot feature compiled into shipping builds; the only operational requirements are building iOS for device with --features marmot if not using simulator, and pointing both apps at common relays. MLS group messages are published under ephemeral per-message keys (a metadata-privacy property of MLS-over-Nostr), so sender attribution is decrypted from inside the MLS payload, not visible on the wire. The iOS justfile only has simulator build targets; building for a physical iPhone device requires passing --features marmot to the aarch64-apple-ios target and setting IPHONEOS_DEPLOYMENT_TARGET=17.0 (to resolve ___chkstk_darwin linkage against the Xcode 26 SDK). The Android APK unconditionally includes --features marmot in the cargo ndk build (build.gradle.kts:79), so the shipping APK always includes MLS.
 
-<!-- citations: [^78c8e-1] [^da6b1-16] [^78c8e-24] [^78c8e-53] [^78c8e-69] [^da6b1-69] -->
+<!-- citations: [^78c8e-1] [^da6b1-16] [^78c8e-24] [^78c8e-53] [^78c8e-69] [^da6b1-69] [^019ec-17] -->
 ## Proven Integration
 
 Bidirectional cross-platform MLS messaging was proven live on real devices (iOS simulator ↔ Android emulator over relay.primal.net): iOS creates a group, Android receives the welcome invite and joins, both send and receive encrypted messages with correct sender attribution, and history persists across force-restart. Post-restart, live group messages arrive without a nudge.
