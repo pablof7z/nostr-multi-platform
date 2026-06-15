@@ -328,4 +328,44 @@ pub struct SubscriptionLifecycle {
     /// diagnostic surface can observe them. `None` until the first genuine
     /// error; never auto-cleared (latest-error-wins).
     last_planner_error: Option<String>,
+    /// Monotonic counter for NIP-65 mailbox cache mutations.
+    ///
+    /// Bumped by [`Self::enqueue_trigger`] each time the kernel queues a
+    /// kind:10002 or kind:10050 mailbox-change trigger after mutating cached
+    /// mailbox data. Included in the compile-input fingerprint so the memo
+    /// guard in [`Self::recompile_and_diff_with_lookup`] re-runs the compiler
+    /// when NIP-65 data arrives — even if the interest set and relay lists did
+    /// not change.
+    ///
+    /// Background: `KernelMailboxes::generation()` always returns `0` (see
+    /// `kernel/mailboxes.rs`) because the substrate cache exposes no per-write
+    /// counter; the kernel triggers a recompile via `Nip65Arrived` /
+    /// `DmRelayListChanged` instead. The memo guard must see a changed
+    /// fingerprint on that same tick, so the trigger enqueue path maintains
+    /// this counter here.
+    mailbox_generation: u64,
+    /// Monotonic counter for coverage-ledger writes (K3 ADR-0056).
+    ///
+    /// Bumped by [`Self::bump_watermark_generation`] each time the kernel
+    /// records an EOSE or NEG-DONE coverage completion. Included in the
+    /// compile-input fingerprint so the memo guard in
+    /// [`Self::recompile_and_diff_with_lookup`] re-runs the compiler when
+    /// the watermark store changes — even if no other input changed.
+    ///
+    /// CRITICAL correctness requirement: if this counter is stale, the `since`
+    /// values produced by `apply_watermark_rewrite` will be stale too, causing
+    /// silent under-fetch (subscriptions miss events older than the stale
+    /// watermark). The kernel MUST call `bump_watermark_generation()` after
+    /// every `record_eose_coverage` / `record_neg_done_coverage` write.
+    watermark_generation: u64,
+    /// FNV-1a fingerprint of the last compile's full input set.
+    ///
+    /// `None` until the first compile. On subsequent calls to
+    /// `recompile_and_diff_with_lookup`, if the new fingerprint matches this
+    /// value the compiler is skipped and an empty diff is returned — the
+    /// plan is unchanged.
+    ///
+    /// The fingerprint covers: active interests, mailbox-cache generation,
+    /// dead-relay set, all relay URL lists, and `watermark_generation`.
+    last_compile_fingerprint: Option<u64>,
 }

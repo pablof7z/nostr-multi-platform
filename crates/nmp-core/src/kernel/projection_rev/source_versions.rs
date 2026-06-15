@@ -25,7 +25,7 @@
 use super::{
     SRC_ACCOUNTS, SRC_ACTIVE_ACCOUNT, SRC_CLAIMED_EVENT_CONTENT, SRC_CONFIGURED_RELAYS,
     SRC_DIAGNOSTICS_INPUTS, SRC_OPEN_VIEWS, SRC_PROFILES, SRC_PROFILE_CLAIMS, SRC_PUBLISH,
-    SRC_SETTLEMENT_DRAIN, SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
+    SRC_PUBLISH_ENGINE, SRC_SETTLEMENT_DRAIN, SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
 };
 
 /// Typed source-version counters for the Tier-2 built-in projections.
@@ -86,11 +86,12 @@ pub(crate) struct SourceVersions {
     /// - `push_publish_entry` (enqueue a new publish intent)
     /// - `remove_publish_entry` (drop an entry)
     /// - `set_publish_entry_terminal` (terminal `ok` / `failed` transition)
-    ///
-    /// The `publish_queue` is the single source of truth: `publish_outbox` and
-    /// `outbox_summary` are derived read-only views over it, so they ride
-    /// `publish_ver` and need no separate write chokepoint.
     pub(crate) publish_ver: u64,
+
+    /// Bumped when the embedded `PublishEngine`'s in-flight snapshot changes.
+    /// `publish_outbox` and `outbox_summary` derive from this engine state, not
+    /// from `Kernel::publish_queue`, so they need a separate source stamp.
+    pub(crate) publish_engine_ver: u64,
 
     // ── diagnostics cluster (broad stamp, sub-fork A) ─────────────────────────
     /// Bumped at the write chokepoint of EVERY input that feeds
@@ -142,6 +143,7 @@ impl SourceVersions {
             SRC_OPEN_VIEWS => self.open_views_ver,
             SRC_CONFIGURED_RELAYS => self.configured_relays_ver,
             SRC_PUBLISH => self.publish_ver,
+            SRC_PUBLISH_ENGINE => self.publish_engine_ver,
             SRC_DIAGNOSTICS_INPUTS => self.diagnostics_inputs_ver,
             SRC_SETTLEMENT_ENQUEUE => self.settlement_enqueue_ver,
             SRC_SETTLEMENT_DRAIN => self.settlement_drain_ver,
@@ -189,6 +191,11 @@ impl SourceVersions {
     /// Bump `publish_ver`.
     pub(crate) fn bump_publish(&mut self) {
         self.publish_ver = self.publish_ver.saturating_add(1);
+    }
+
+    /// Bump `publish_engine_ver`.
+    pub(crate) fn bump_publish_engine(&mut self) {
+        self.publish_engine_ver = self.publish_engine_ver.saturating_add(1);
     }
 
     /// Bump `diagnostics_inputs_ver`. Sole caller is the per-emit

@@ -252,6 +252,27 @@ pub(super) fn diagnostics_payload_fingerprint(
     h.finish()
 }
 
+/// Fingerprint the publish engine-backed outbox payloads.
+///
+/// `publish_outbox` and `outbox_summary` read `PublishEngine::snapshot()`;
+/// `publish_queue` reads `Kernel::publish_queue`. Keep those source stamps
+/// separate so a relay ack that drains the engine's in-flight row cannot leave
+/// the outbox projections marked Unchanged.
+pub(super) fn publish_engine_payload_fingerprint(
+    typed: &[crate::update_envelope::TypedProjectionData],
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for key in ["publish_outbox", "outbox_summary"] {
+        key.hash(&mut h);
+        match typed.iter().find(|t| t.key == key) {
+            Some(t) => t.payload.hash(&mut h),
+            None => 0u8.hash(&mut h),
+        }
+    }
+    h.finish()
+}
+
 #[cfg(test)]
 mod repost_inner_tests {
     use super::parse_repost_inner;

@@ -22,6 +22,7 @@ fn bump_named(tracker: &mut ProjectionRevTracker, source: &str, key: &str) {
         "open_views_ver" => tracker.source_versions.bump_open_views(),
         "configured_relays_ver" => tracker.source_versions.bump_configured_relays(),
         "publish_ver" => tracker.source_versions.bump_publish(),
+        "publish_engine_ver" => tracker.source_versions.bump_publish_engine(),
         "diagnostics_inputs_ver" => tracker.source_versions.bump_diagnostics_inputs(),
         "settlement_enqueue_ver" => tracker.source_versions.bump_settlement_enqueue(),
         "settlement_drain_ver" => tracker.source_versions.bump_settlement_drain(),
@@ -252,4 +253,3 @@ fn s1_bite_oracle_catches_stale_claimed_events() {
          does not advance (the F1 regression); got {violations:?}"
     );
 }
-

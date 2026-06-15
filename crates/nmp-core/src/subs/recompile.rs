@@ -59,6 +59,68 @@ impl SubscriptionLifecycle {
         score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
+
+        // ── Compile-input memoization ───────────────────────────────────────
+        //
+        // Computing the O(authors × relays) plan is expensive. If every
+        // compile input is identical to the last run, the output plan is
+        // deterministic and the wire diff is empty — skip the compiler.
+        //
+        // Fingerprint covers:
+        //  • active interest set (shapes + ids)            — LogicalInterest: Hash
+        //  • mailbox_generation                            — bumped with mailbox triggers
+        //    (NOTE: mailbox_cache.generation() is NOT used here because
+        //    KernelMailboxes::generation() always returns 0; enqueue_trigger()
+        //    bumps this lifecycle counter for NIP-65 mailbox triggers instead)
+        //  • dead-relay set                                — BTreeSet<String>
+        //  • all relay URL lists (indexer, account-read,
+        //    app, bootstrap-content, bootstrap-indexer)    — Vec<String>
+        //  • selection budget (max_connections, max_per_user)
+        //  • watermark_generation                          — bumped at EOSE/NEG-DONE
+        //    (CRITICAL: missing this causes stale `since` → silent under-fetch)
+        //
+        // Score-lookup (W4) is intentionally excluded: the score map only
+        // influences `apply_selection`, not `compile()`, and score cells
+        // change on live claim activity — including them would defeat the
+        // optimisation on every claim tick. A stale score selection is at
+        // worst sub-optimal routing for one tick, not a correctness issue.
+        //
+        // The coverage hook (`coverage_hook`) is excluded and the memo is
+        // DISABLED when a hook is installed, because a hook may carry
+        // interior mutability (`Arc<Mutex<bool>>`) that changes its behaviour
+        // without any observable state change on this struct. Only pure hooks
+        // are safe to memo — and we cannot verify purity here. The production
+        // hook (negentropy coverage filter) is installed at startup and then
+        // left constant, so the guard below conservatively skips the memo for
+        // any hook-installed lifecycle.
+        let skip_memo = self.coverage_hook.is_some();
+
+        let fingerprint = if skip_memo {
+            // Sentinel: no fingerprint caching when a coverage hook is present.
+            0u64
+        } else {
+            use std::hash::Hash;
+            let mut h = crate::stable_hash::StableHasher::new();
+            interests.hash(&mut h);
+            self.mailbox_generation.hash(&mut h);
+            self.dead_relays.hash(&mut h);
+            self.indexer_relays.hash(&mut h);
+            self.active_account_read_relays.hash(&mut h);
+            self.app_relays.hash(&mut h);
+            self.bootstrap_content_relays.hash(&mut h);
+            self.bootstrap_indexer_relays.hash(&mut h);
+            self.select_max_connections.hash(&mut h);
+            self.select_max_per_user.hash(&mut h);
+            self.watermark_generation.hash(&mut h);
+            h.finish64()
+        };
+
+        if !skip_memo && self.last_compile_fingerprint == Some(fingerprint) {
+            // Inputs unchanged — the plan is identical to last compile; the
+            // wire diff is empty. Return without invoking the compiler.
+            return Ok(Vec::new());
+        }
+
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
             mailbox_cache,
             &self.indexer_relays,
@@ -135,6 +197,7 @@ impl SubscriptionLifecycle {
         let raw_frames = plan_diff(prior, Some(&plan), &interests);
 
         self.current_plan = Some(plan);
+        self.last_compile_fingerprint = Some(fingerprint);
 
         let mut frames = self.auth_gate.partition(raw_frames);
 

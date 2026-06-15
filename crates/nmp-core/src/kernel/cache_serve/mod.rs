@@ -91,7 +91,6 @@ pub(in crate::kernel) use queries::{
     shape_needs_ingest_parser_dispatch, shape_to_store_queries,
 };
 
-
 use super::Kernel;
 use crate::planner::InterestShape;
 use crate::store::StoreQuery;
@@ -180,22 +179,32 @@ impl Kernel {
     /// Legacy-surface install recipe (the `ActorCommand::PushInterest` arm and
     /// the follow-feed sync's per-author path resolve to this shape of work).
     ///
-    /// `push` uses `set_sub` (always-upsert): the shape may be newly installed
-    /// or may have changed, so we always (a) enqueue the recompile trigger and
-    /// (b) serve. Completion-key idempotency inside
-    /// [`Kernel::enqueue_interest_cache_serve`] makes an unchanged shape a no-op.
+    /// Calls `push_if_changed` on the registry: if the incoming shape equals
+    /// the already-registered shape (same-interest re-push with no filter
+    /// change) neither the recompile trigger nor the cache-serve are enqueued —
+    /// the existing plan is still current and the completion-key idempotency
+    /// inside [`Kernel::enqueue_interest_cache_serve`] would no-op the serve
+    /// anyway. This avoids the O(authors × relays) compile that was previously
+    /// fired on every follow-feed heartbeat tick.
+    ///
+    /// When the shape IS new or changed, behaviour is identical to before:
+    /// (a) enqueue `InvalidateCompile` so the lifecycle recompiles, and
+    /// (b) enqueue a cache-serve so the first snapshot after the change
+    /// carries store-resident events.
     ///
     /// Centralised here (not inlined in the dispatch arm) so dispatch.rs stays
     /// under its file-size cap and the install recipe lives in one place.
     pub(crate) fn push_interest_and_serve(&mut self, interest: crate::planner::LogicalInterest) {
         let serve_key = crate::subs::InterestRegistry::legacy_key(&interest.id);
         let serve_shape = interest.shape.clone();
-        self.lifecycle.registry_mut().push(interest);
-        self.lifecycle
-            .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
-                reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
-            });
-        self.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+        let shape_changed = self.lifecycle.registry_mut().push_if_changed(interest);
+        if shape_changed {
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
+                });
+            self.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+        }
     }
 
     /// `ensure_sub` install recipe — register-if-absent, then enqueue a recompile

@@ -97,11 +97,7 @@ impl Kernel {
     /// Test-only: production reads the floor through the installed `WatermarkFn`
     /// closure, which calls the free function directly.
     #[cfg(test)]
-    pub(crate) fn coverage_floor_for(
-        &self,
-        shape: &InterestShape,
-        relay_url: &str,
-    ) -> Option<u64> {
+    pub(crate) fn coverage_floor_for(&self, shape: &InterestShape, relay_url: &str) -> Option<u64> {
         coverage_floor(&self.store, shape, relay_url)
     }
 
@@ -118,8 +114,18 @@ impl Kernel {
     /// `now_secs` is threaded in by the caller (the NIP-77 runtime already reads
     /// `kernel.now_secs()` for its liveness deadline) so this method does not
     /// re-read the clock — a single clock read per terminal event.
-    pub fn record_neg_done_coverage(&self, sub_id: &str, relay_url: &str, now_secs: u64) {
+    ///
+    /// Also bumps the lifecycle's `watermark_generation` so the compile-input
+    /// fingerprint in `recompile_and_diff_with_lookup` reflects the new coverage
+    /// floor on the next triggered recompile (CRITICAL: prevents stale `since`
+    /// values from causing silent under-fetch after negentropy reconciliation).
+    pub fn record_neg_done_coverage(&mut self, sub_id: &str, relay_url: &str, now_secs: u64) {
         self.record_coverage_complete(sub_id, relay_url, now_secs);
+        // Only planner `sub-<hash>` ids advance the ledger (see
+        // `record_coverage_complete`). Only bump when the ledger actually changes.
+        if sub_id.starts_with("sub-") {
+            self.lifecycle.bump_watermark_generation();
+        }
     }
 
     /// Record completed coverage at EOSE for a plain REQ.
@@ -130,8 +136,13 @@ impl Kernel {
     /// `[0, now]`; a `since`-floored REQ proves only `[floor, now]`, so it
     /// records NO coverage rather than over-claim `[0, floor)` (the over-claim
     /// ADR-0056 §1 says makes presence unsound).
+    ///
+    /// Also bumps the lifecycle's `watermark_generation` when coverage advances
+    /// (un-floored planner sub) so the compile-input fingerprint in
+    /// `recompile_and_diff_with_lookup` reflects the new floor on the next
+    /// triggered recompile (CRITICAL: prevents stale `since` → silent under-fetch).
     pub(crate) fn record_eose_coverage(
-        &self,
+        &mut self,
         sub_id: &str,
         relay_url: &str,
         since_floor: Option<u64>,
@@ -142,6 +153,10 @@ impl Kernel {
             Some(_floor) => 0,
         };
         self.record_coverage_complete(sub_id, relay_url, covered_through);
+        // Only un-floored EOSEs on planner sub ids advance the ledger.
+        if covered_through > 0 && sub_id.starts_with("sub-") {
+            self.lifecycle.bump_watermark_generation();
+        }
     }
 
     /// Record completed coverage for a wire sub, keyed by the canonical filter

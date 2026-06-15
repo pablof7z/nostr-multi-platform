@@ -70,6 +70,9 @@ impl SubscriptionLifecycle {
             // indexer socket gone, and the next recovery bumps the epoch.
             indexer_lane_down: false,
             last_planner_error: None,
+            mailbox_generation: 0,
+            watermark_generation: 0,
+            last_compile_fingerprint: None,
         }
     }
 
@@ -85,8 +88,15 @@ impl SubscriptionLifecycle {
     /// re-probes every still-unknown author's kind:10002. The `refresh`
     /// escape hatch — e.g. after the indexer set changes or the operator
     /// wants to retry authors whose mailbox never arrived.
+    ///
+    /// Also clears the compile-input fingerprint so the memo guard in
+    /// `recompile_and_diff_with_lookup` does not skip the next compile —
+    /// the probed set is consumed by the post-compile probe-REQ emission
+    /// path and must be visible to the next compile even when no other
+    /// input changed.
     pub fn clear_probed_mailboxes(&mut self) {
         self.probed_mailboxes.clear();
+        self.last_compile_fingerprint = None;
     }
 
     /// B3 — observe an indexer-lane connectivity edge and, on a genuine outage
@@ -124,7 +134,7 @@ impl SubscriptionLifecycle {
             if was_down {
                 // Genuine 0→1 recovery (or cold-start first connect): re-arm.
                 self.probe_epoch = self.probe_epoch.saturating_add(1);
-                self.probed_mailboxes.clear();
+                self.clear_probed_mailboxes();
                 self.inbox.enqueue(CompileTrigger::IndexerSetChanged {
                     generation: self.probe_epoch,
                 });
@@ -280,6 +290,38 @@ impl SubscriptionLifecycle {
             .map(std::sync::Arc::clone)
     }
 
+    /// Advance the mailbox-cache generation counter by one.
+    ///
+    /// Called from [`Self::enqueue_trigger`] when a successful NIP-65
+    /// (kind:10002 / kind:10050) ingest queues the corresponding mailbox
+    /// trigger. That keeps mailbox-cache invalidation attached to the
+    /// subscription lifecycle trigger rather than spread across kernel ingest
+    /// call sites.
+    ///
+    /// Background: `KernelMailboxes::generation()` always returns `0` (the
+    /// substrate cache has no built-in write counter), so this lifecycle-owned
+    /// counter is the canonical signal for "mailbox data changed, recompile
+    /// needed even if other inputs are stable".
+    fn bump_mailbox_generation(&mut self) {
+        self.mailbox_generation = self.mailbox_generation.saturating_add(1);
+        self.last_compile_fingerprint = None;
+    }
+
+    /// Advance the watermark generation counter by one.
+    ///
+    /// The kernel calls this after every `record_eose_coverage` /
+    /// `record_neg_done_coverage` write so the compile-input fingerprint
+    /// (see `recompile_and_diff_with_lookup`) captures coverage-ledger changes.
+    /// Without this call, a compile triggered after an EOSE might be skipped by
+    /// the memo guard even though `apply_watermark_rewrite` would now produce
+    /// different `since` values — causing silent under-fetch.
+    pub fn bump_watermark_generation(&mut self) {
+        self.watermark_generation = self.watermark_generation.saturating_add(1);
+        // Clear the cached fingerprint so the next `recompile_and_diff` re-hashes
+        // and re-runs regardless of any other input being unchanged.
+        self.last_compile_fingerprint = None;
+    }
+
     /// T129 — install (or replace) the watermark resolver used by
     /// `addSinceFromCache`-style rewrites. The kernel constructs the closure
     /// at startup by capturing the `EventStore` handle and translating each
@@ -352,6 +394,12 @@ impl SubscriptionLifecycle {
 
     /// Enqueue a trigger. Coalesced with siblings until the next `drain_tick`.
     pub fn enqueue_trigger(&mut self, trigger: CompileTrigger) {
+        if matches!(
+            trigger,
+            CompileTrigger::Nip65Arrived { .. } | CompileTrigger::DmRelayListChanged { .. }
+        ) {
+            self.bump_mailbox_generation();
+        }
         self.inbox.enqueue(trigger);
     }
 

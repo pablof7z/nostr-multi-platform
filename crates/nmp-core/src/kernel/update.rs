@@ -327,6 +327,9 @@ impl Kernel {
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
         self.projection_rev_tracker
             .reconcile_diagnostics_fingerprint(diag_fp);
+        let publish_engine_fp = helpers::publish_engine_payload_fingerprint(&typed);
+        self.projection_rev_tracker
+            .reconcile_publish_engine_fingerprint(publish_engine_fp);
         // ADR-0055 Rung 3 (D3-5) — drain the one-shot baseline-pending latch
         // BEFORE building the manifest. If `declare_incremental_apply` was
         // called before start, the registry sets this latch; we reset the

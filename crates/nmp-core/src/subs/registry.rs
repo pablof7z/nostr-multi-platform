@@ -137,6 +137,28 @@ impl InterestRegistry {
         self.set_sub(identity, interest);
     }
 
+    /// Push an interest only if the registered shape differs from the
+    /// incoming one. Returns `true` iff the slot was absent or the shape
+    /// changed (the caller should enqueue a recompile trigger and serve in
+    /// that case). Returns `false` iff the slot already held the same shape
+    /// (no mutation, no trigger needed).
+    ///
+    /// Used by [`crate::kernel::Kernel::push_interest_and_serve`] to avoid
+    /// unconditional `InvalidateCompile` triggers when a view re-pushes an
+    /// identical interest on every tick.
+    pub(crate) fn push_if_changed(&mut self, interest: LogicalInterest) -> bool {
+        let identity = Self::legacy_identity(&interest);
+        let shared = identity.shared();
+        let changed = match self.slots.get(&shared) {
+            Some(slot) => slot.interest.shape != interest.shape,
+            None => true,
+        };
+        if changed {
+            self.set_sub(identity, interest);
+        }
+        changed
+    }
+
     /// Withdraw an interest by id (legacy surface). No-op if absent.
     pub fn withdraw(&mut self, id: &InterestId) {
         let key = Self::legacy_key(id);
