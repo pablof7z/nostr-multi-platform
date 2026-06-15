@@ -45,8 +45,15 @@ test or doctrine gate preventing reintroduction. No compat shims, no "later" TOD
       signing/encryption through signer-session ports or a named non-protocol capability.
 - [ ] Split broad `AppHost` authority into narrow registration/capability traits so protocol modules receive only the
       surfaces they actually use.
-- [ ] Doctrine gate: protocol/command code cannot reference `active_local_keys` or the broad `AppHost`; signing goes
-      through the signer-session port only.
+- [x] Doctrine gate: protocol/command code cannot reference `active_local_keys` or the broad `AppHost`; signing goes
+      through the signer-session port only. **Landed as doctrine-lint rule D26** (D21-adjacent). `AppHost` is banned
+      across the protocol-command surface (reusable protocol crates + `nmp-core` `substrate/protocol*` /
+      `actor/commands/`, minus the `AppHost` definition and the `nmp-defaults`/`nmp-ffi` composition root).
+      `active_local_keys` is banned in the protocol-command IMPLEMENTATION crates (NIP crates + marmot/blossom/nwc).
+      Both halves are green on master and non-vacuous (pos/neg fixtures + per-crate clean guards). NOTE: item 5 above
+      (remove the `active_local_keys` accessor FROM `ProtocolCommandContext` / `LocalSignerAccess` in `nmp-core`) is
+      still open — the gate locks the implementation surface so no command can re-grow a reach once item 5 lands; it
+      does not (and must not) fire on the legitimate port definition that item 5 removes.
 
 ## Workstream E — action/projection lifecycle ownership
 - [ ] Action feedback has one kernel-owned lifecycle. If `action_stages`, `action_results`, and `action_lifecycle`

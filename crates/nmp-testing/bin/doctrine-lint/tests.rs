@@ -12,6 +12,7 @@ use std::process::Command;
 
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
+mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling module.
 
 const FIXTURE_ROOT: &str = "crates/nmp-testing/bin/doctrine-lint/fixtures";
 

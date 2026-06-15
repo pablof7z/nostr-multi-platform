@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::rules::{a5, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d9};
+use crate::rules::{a5, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d9};
 
 /// True iff D9 should scan `path` — either the file is inside a protocol/
 /// substrate crate (`d9::file_in_scope`), or the caller opted-in via
@@ -190,6 +190,34 @@ pub(crate) fn d24_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// `--d25-extra-scope <fragment>`. Mirrors `d23_file_in_scope`.
 pub(crate) fn d25_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d25::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff the D26 `AppHost` ban should scan `path` — either the file is in the
+/// protocol-command surface (`d26::app_host_in_scope`: reusable protocol crates +
+/// `nmp-core` protocol-command modules, minus the `AppHost` definition and
+/// composition root), or the caller opted-in via `--d26-extra-scope <fragment>`
+/// (the fixture smoke test stages a positive fixture under `target/`). Mirrors
+/// `d21_file_in_scope`.
+pub(crate) fn d26_app_host_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d26::app_host_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff the D26 `active_local_keys` ban should scan `path` — either the file
+/// is in the protocol-command IMPLEMENTATION crates (`d26::active_local_keys_in_scope`;
+/// `nmp-core` is excluded — it hosts the legitimate capability port), or the
+/// caller opted-in via `--d26-extra-scope <fragment>`. Shares the one
+/// `--d26-extra-scope` flag with the `AppHost` half so a staged fixture exercises
+/// BOTH bans.
+pub(crate) fn d26_active_local_keys_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d26::active_local_keys_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");

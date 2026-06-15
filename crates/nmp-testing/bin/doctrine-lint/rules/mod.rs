@@ -19,6 +19,7 @@ pub mod d21;
 pub mod d23;
 pub mod d24;
 pub mod d25;
+pub mod d26;
 pub mod d6;
 pub mod d7;
 pub mod d8;
