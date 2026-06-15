@@ -32,4 +32,19 @@ class GalleryBundleDecodeTest {
         assertNotNull(embeddedTree)
         assertTrue(embeddedTree!!.nodes.isNotEmpty() || embeddedTree.roots.isEmpty())
     }
+
+    @Test
+    fun contentGalleryBundleCarriesOpaqueCycleKeys() {
+        val bundleFile = File("src/main/assets/content-gallery-bundle.json")
+        val bundle = json.decodeFromString(GalleryBundle.serializer(), bundleFile.readText())
+
+        val entries = bundle.scenarios.flatMap { it.embeds.values }
+        assertTrue(entries.isNotEmpty())
+        assertTrue(entries.all { it.cycleKey.isNotBlank() })
+
+        val cycle = bundle.scenarios.first { it.id == "S-M09" }
+        val cycleKeys = cycle.embeds.values.map { it.cycleKey }.toSet()
+        assertEquals(2, cycleKeys.size)
+        assertTrue(cycleKeys.all { it.startsWith("30023:") })
+    }
 }

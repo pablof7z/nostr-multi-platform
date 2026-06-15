@@ -37,6 +37,7 @@ struct WireScenario {
 
 #[derive(Serialize)]
 struct WireEmbedEntry {
+    cycle_key: String,
     resolved_kind: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     profile_name: Option<String>,
@@ -129,6 +130,7 @@ fn convert_embed(uri: &str, entry: EmbedEntry) -> Result<WireEmbedEntry, String>
         None
     };
     Ok(WireEmbedEntry {
+        cycle_key: entry.cycle_key,
         resolved_kind: entry.resolved_kind,
         profile_name: entry.profile_name,
         profile_picture: entry.profile_picture,
