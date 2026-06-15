@@ -69,6 +69,8 @@ pub(crate) mod oracle;
 mod kernel_oracle;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_publish;
 // ADR-0055 Rung 1: scenario tests live in `tests.rs`; the dependency-table
 // completeness + arithmetic unit tests live here to keep each test file under
 // the 500-LOC hard ceiling (AGENTS.md). Both share the same crate-private API.

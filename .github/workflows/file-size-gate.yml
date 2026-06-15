@@ -47,6 +47,23 @@ jobs:
             FROM_REF="$(git rev-list --max-parents=0 "$TO_REF")"
           fi
 
+          # Force-push events can point github.event.before at an orphaned
+          # commit that is no longer fetchable. Keep the push lane useful by
+          # falling back to the branch's default-branch merge base; for default
+          # branch pushes, use the first parent if there is one.
+          if ! git cat-file -e "$FROM_REF^{commit}" 2>/dev/null; then
+            DEFAULT_BRANCH="origin/${{ github.event.repository.default_branch }}"
+            if [[ "${{ github.ref_name }}" != "${{ github.event.repository.default_branch }}" ]] \
+              && git rev-parse --verify "$DEFAULT_BRANCH" >/dev/null 2>&1; then
+              FROM_REF="$(git merge-base "$TO_REF" "$DEFAULT_BRANCH")"
+            else
+              FROM_REF="$(git rev-list --parents -n 1 "$TO_REF" | awk '{print $2}')"
+              if [[ -z "$FROM_REF" ]]; then
+                FROM_REF="$(git rev-list --max-parents=0 "$TO_REF")"
+              fi
+            fi
+          fi
+
           bash .githooks/check-file-size.sh \
             --from-ref "$FROM_REF" --to-ref "$TO_REF" \
             --baseline-ref "$BASELINE_REF"

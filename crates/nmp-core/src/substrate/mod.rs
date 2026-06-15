@@ -94,6 +94,45 @@ pub use contacts_lookup::{
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
+
+pub(crate) type ProfileContactsIngestSlots = (
+    std::sync::Arc<std::sync::RwLock<EventIngestDispatcher>>,
+    std::sync::Arc<std::sync::Mutex<std::sync::Arc<dyn ProfileLookup>>>,
+    std::sync::Arc<std::sync::Mutex<std::sync::Arc<dyn ContactsLookup>>>,
+);
+
+#[must_use]
+pub(crate) fn new_profile_contacts_ingest_slots() -> ProfileContactsIngestSlots {
+    #[cfg(any(test, feature = "test-support"))]
+    {
+        let profile_cache = std::sync::Arc::new(TestProfileCache::new());
+        let contacts_cache = std::sync::Arc::new(TestContactsCache::new());
+        let mut dispatcher = EventIngestDispatcher::new();
+        dispatcher.register_kind(
+            0,
+            std::sync::Arc::new(TestKind0Parser::new(std::sync::Arc::clone(&profile_cache))),
+        );
+        dispatcher.register_kind(
+            3,
+            std::sync::Arc::new(TestKind3Parser::new(std::sync::Arc::clone(&contacts_cache))),
+        );
+        let profile_lookup: std::sync::Arc<dyn ProfileLookup> = profile_cache;
+        let contacts_lookup: std::sync::Arc<dyn ContactsLookup> = contacts_cache;
+        (
+            std::sync::Arc::new(std::sync::RwLock::new(dispatcher)),
+            std::sync::Arc::new(std::sync::Mutex::new(profile_lookup)),
+            std::sync::Arc::new(std::sync::Mutex::new(contacts_lookup)),
+        )
+    }
+    #[cfg(not(any(test, feature = "test-support")))]
+    {
+        (
+            std::sync::Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
+            std::sync::Arc::new(std::sync::Mutex::new(empty_profile_lookup())),
+            std::sync::Arc::new(std::sync::Mutex::new(empty_contacts_lookup())),
+        )
+    }
+}
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 // Step 9: the `DomainMigration` / `MigrationTx` value types passed to
 // `EventStore::run_migrations` moved with the store (they are consumed only by
