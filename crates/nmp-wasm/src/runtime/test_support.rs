@@ -109,3 +109,75 @@ mod set_signer_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod claim_no_snapshot_tests {
+    //! #1436 web-feed regression guard: a `claim_profile` / `release_profile`
+    //! dispatch must acknowledge with `ActionAccepted` ONLY — it must NOT push a
+    //! snapshot frame. Claim/release are refcount bookkeeping and carry no new
+    //! user-visible data (the resolved kind:0 arrives via the relay-pool ingest
+    //! sink). On the reactive web host, a snapshot per claim rebuilds the feed
+    //! rows → remounts the avatar/name components → release + re-claim → another
+    //! snapshot — an unbounded claim → snapshot → re-render → claim loop that
+    //! floods the single-threaded wasm worker and starves the UI so the feed
+    //! never paints (feed.spec.ts toBeVisible timeout).
+    use super::super::WasmRuntime;
+    use crate::protocol::{ActionDispatch, WorkerEvent, WorkerRequest};
+
+    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+
+    fn dispatch(action_type: &str) -> WorkerRequest {
+        WorkerRequest::Dispatch(ActionDispatch {
+            action_type: action_type.to_string(),
+            payload: serde_json::json!({ "pubkey": PK, "consumer_id": "test-consumer" }),
+            correlation_id: "claim-no-snap".to_string(),
+        })
+    }
+
+    fn has_update_bytes(events: &[WorkerEvent]) -> bool {
+        events
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::UpdateBytes { .. }))
+    }
+
+    fn has_accepted(events: &[WorkerEvent]) -> bool {
+        events
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::ActionAccepted { .. }))
+    }
+
+    #[test]
+    fn claim_profile_dispatch_emits_no_snapshot() {
+        let mut runtime = WasmRuntime::new();
+        let events = runtime
+            .handle(dispatch("nmp.kernel.claim_profile"))
+            .expect("claim_profile dispatch must succeed");
+        assert!(
+            has_accepted(&events),
+            "claim_profile must ACK with ActionAccepted; got {events:?}"
+        );
+        assert!(
+            !has_update_bytes(&events),
+            "claim_profile must NOT push a snapshot frame (regression #1436); got {events:?}"
+        );
+    }
+
+    #[test]
+    fn release_profile_dispatch_emits_no_snapshot() {
+        let mut runtime = WasmRuntime::new();
+        // Claim first so the release has something to drop (irrelevant to the
+        // no-snapshot contract, but mirrors the real lifecycle).
+        let _ = runtime.handle(dispatch("nmp.kernel.claim_profile"));
+        let events = runtime
+            .handle(dispatch("nmp.kernel.release_profile"))
+            .expect("release_profile dispatch must succeed");
+        assert!(
+            has_accepted(&events),
+            "release_profile must ACK with ActionAccepted; got {events:?}"
+        );
+        assert!(
+            !has_update_bytes(&events),
+            "release_profile must NOT push a snapshot frame (regression #1436); got {events:?}"
+        );
+    }
+}

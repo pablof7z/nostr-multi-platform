@@ -436,7 +436,21 @@ impl WasmRuntime {
             let can_send = self.reducer.borrow().any_relay_connected();
             let outbound = execute_claim_dispatch(&mut self.reducer.borrow_mut(), claim, can_send);
             self.fan_outbound(outbound);
-            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
+            // Claim/release are refcount bookkeeping — they carry no new
+            // user-visible data of their own (the resolved kind:0 arrives later
+            // via the relay-pool ingest sink, which pushes its OWN snapshot).
+            // Pushing a snapshot here hands the reactive web host a fresh frame
+            // on every claim; the host's feed `<For>` rebuilds its rows, which
+            // remounts the avatar/name components, which release + re-claim —
+            // an unbounded claim → snapshot → re-render → claim loop that, on
+            // the single-threaded wasm worker, floods the main thread with
+            // snapshot frames and starves (or OOM-crashes) the UI so the feed
+            // never paints (feed.spec.ts toBeVisible timeout). Only ACK the
+            // action; let the data-bearing ingest frame drive the next render.
+            return Ok(vec![WorkerEvent::ActionAccepted {
+                action_type: action.action_type,
+                correlation_id: action.correlation_id,
+            }]);
         }
         // PR-3 feed-verb arm: open/close generic interests + contact-feed.
         if let Some(interest) = interest_dispatch_from_action(&action) {
