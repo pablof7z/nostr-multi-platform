@@ -64,11 +64,15 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
-use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d6, d7, d8, d9};
+use rules::{
+    a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d23, d24, d25, d6, d7, d8,
+    d9,
+};
 use scope::{
     a5_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
-    d20_file_in_scope, d21_file_in_scope, d9_file_in_scope, is_doctrine_lint_source,
+    d20_file_in_scope, d21_file_in_scope, d23_file_in_scope, d24_file_in_scope, d25_file_in_scope,
+    d9_file_in_scope, is_doctrine_lint_source,
 };
 
 fn main() -> ExitCode {
@@ -140,6 +144,9 @@ fn main() -> ExitCode {
                 &cfg.d19_extra_scopes,
                 &cfg.d20_extra_scopes,
                 &cfg.d21_extra_scopes,
+                &cfg.d23_extra_scopes,
+                &cfg.d24_extra_scopes,
+                &cfg.d25_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -152,7 +159,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21"
+        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -217,6 +224,9 @@ fn scan_one_file(
     d19_extra_scopes: &[String],
     d20_extra_scopes: &[String],
     d21_extra_scopes: &[String],
+    d23_extra_scopes: &[String],
+    d24_extra_scopes: &[String],
+    d25_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -264,6 +274,11 @@ fn scan_one_file(
     // Scope is the K2 blast-radius crates (where the five deleted process-
     // globals + two read-once-config residuals lived).
     let d21_in_scope = d21_file_in_scope(path, d21_extra_scopes);
+    // D23/D24/D25 — event-flow spine locks (see each rule's module doc). Scoped
+    // to `nmp-core/src/` minus the chokepoint / fan-out-seam / REQ-builder files.
+    let d23_in_scope = d23_file_in_scope(path, d23_extra_scopes);
+    let d24_in_scope = d24_file_in_scope(path, d24_extra_scopes);
+    let d25_in_scope = d25_file_in_scope(path, d25_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
@@ -658,6 +673,60 @@ fn scan_one_file(
                 }
                 findings.push(report::Finding {
                     rule: d21::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D23 — single accepted-event store-insert chokepoint (event-flow PR1
+        // lock; see rules/d23.rs). Test-only files + #[cfg(test)] bodies exempt;
+        // skipped in --workspace-d8.
+        if !workspace_d8 && d23_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d23::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d23::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d23::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D24 — single post-store observer fan-out seam (event-flow lock; see
+        // rules/d24.rs). Test-only files + #[cfg(test)] bodies exempt; skipped
+        // in --workspace-d8.
+        if !workspace_d8 && d24_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d24::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d24::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d24::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D25 — single REQ-build door / acquisition one-door (Workstream B4;
+        // see rules/d25.rs). Test-only files + #[cfg(test)] bodies exempt;
+        // skipped in --workspace-d8.
+        if !workspace_d8 && d25_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d25::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d25::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d25::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,
