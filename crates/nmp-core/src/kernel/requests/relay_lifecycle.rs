@@ -36,23 +36,36 @@ impl Kernel {
     }
 
     pub(crate) fn relay_connected_url(&mut self, role: RelayRole, relay_url: &str) {
+        // Capture the prior per-URL transport state BEFORE `mark_transport_connected`
+        // overwrites it to "connected" — `relay_connected_url` is the only place
+        // that can tell a genuine reconnect-after-down from a redundant connect.
+        let was_down = role == RelayRole::Indexer && self.indexer_socket_was_down(relay_url);
+
         self.mark_lane_connected(role);
         self.mark_transport_connected(role, relay_url);
         self.log(format!("{} relay connected ({relay_url})", role.key()));
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
-        // F-TTL / M2 retry-on-miss: an indexer socket coming up — a reconnect
-        // of an existing indexer OR a freshly-added one — is a new chance to
-        // resolve authors whose kind:10002 we probed once and never got
-        // (empty EOSE, or the indexer was down when we probed). Clear the
-        // implicit-discovery probed set so the next recompile re-probes every
-        // STILL-uncached author (resolved authors short-circuit on the cache
-        // hit, so this is bounded by the genuinely-unresolved set, not a
-        // re-probe storm). Replaces the deleted bespoke `profile_requests`
-        // requested→pending re-queue, and now covers feed authors + migrated
-        // claims uniformly through the one registry chokepoint.
-        if role == RelayRole::Indexer {
+        // F-TTL / M2 retry-on-miss: a GENUINE indexer reconnect — a socket that
+        // was previously `backing_off` (failed) or `closed` (torn down) and has
+        // now come back — is a fresh chance to resolve authors whose kind:10002
+        // we probed once and never got (empty EOSE, or the indexer was down
+        // when we probed). Re-arm the implicit-discovery probed set so the next
+        // recompile re-probes every STILL-uncached author. Resolved authors
+        // short-circuit on the mailbox-cache hit, so this is bounded by the
+        // genuinely-unresolved set, not a re-probe storm.
+        //
+        // CRITICAL (#1436 regression fix): this must NOT fire on the FIRST/normal
+        // connect of an indexer during startup, nor on a redundant duplicate
+        // connect of an already-live socket. Firing then clears the probe set and
+        // forces an `IndexerSetChanged` recompile mid-load — on every socket-up
+        // event — which churns the feed subscription and, under single-threaded
+        // wasm, can starve the UI so notes never paint. The genuinely-NEW-indexer
+        // case (a relay added to the configured set) is handled separately by the
+        // `IndexerSetChanged` trigger in `set_configured_relays`, which clears the
+        // probe set there `if changed`. Here we only handle reconnect-after-down.
+        if was_down {
             self.lifecycle.clear_probed_mailboxes();
             self.lifecycle
                 .enqueue_trigger(crate::subs::CompileTrigger::IndexerSetChanged { generation: 0 });
@@ -148,8 +161,11 @@ impl Kernel {
         // the planner's reconnect-replay re-emits them automatically — the
         // bespoke `profile_requests` requested→pending re-queue is gone. The
         // retry-on-miss for kind:10002 discovery probes is handled on the
-        // re-CONNECT side (`relay_connected_url`, role == Indexer), which clears
-        // the probed set so still-uncached authors are re-probed.
+        // re-CONNECT side (`relay_connected_url`, role == Indexer): this
+        // `relay_closed` marks the per-URL transport row `closed`, and the
+        // subsequent reconnect sees that down-state and clears the probed set so
+        // still-uncached authors are re-probed. A connect that is NOT preceded
+        // by a down-state (startup / duplicate) is correctly a no-op.
     }
 
     /// Global socket teardown for `role` (Stop / Reset / Shutdown): unlike the

@@ -148,9 +148,13 @@ mod pre_kind3_buffer_tests;
 #[cfg(test)]
 mod proactive_profile_fetch_tests;
 #[cfg(test)]
-mod profile_claim_tests;
+mod profile_claim_discovery_tests;
 #[cfg(test)]
 mod profile_claim_projection_tests;
+#[cfg(test)]
+mod profile_claim_test_support;
+#[cfg(test)]
+mod profile_claim_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;

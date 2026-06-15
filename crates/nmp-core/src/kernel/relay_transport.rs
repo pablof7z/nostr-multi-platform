@@ -132,6 +132,15 @@ impl RelayTransportMap {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.info.get(&key).map(|e| &e.doc)
     }
+
+    /// The per-URL transport `connection` state recorded for `relay_url`, or
+    /// `None` if no row exists yet (the URL has never dialed this session).
+    /// Read by `relay_connected_url` to distinguish a genuine
+    /// reconnect-after-down from a redundant connect of an already-live socket.
+    fn connection_state(&self, relay_url: &str) -> Option<&str> {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.rows.get(&key).map(|row| row.connection.as_str())
+    }
 }
 
 impl Kernel {
@@ -225,6 +234,24 @@ impl Kernel {
         entry.connection = "connecting".to_string();
         entry.last_error = None;
         entry.error_category = None;
+    }
+
+    /// Whether the per-URL transport row for `relay_url` is currently in a
+    /// *down* state — i.e. the socket was previously failed (`backing_off`) or
+    /// torn down (`closed`). Used by `relay_connected_url` to recognise a
+    /// genuine reconnect-after-down (worth re-arming the kind:10002 discovery
+    /// probes) versus a redundant/duplicate connect of an already-live or
+    /// freshly-dialing socket (startup churn — must NOT churn the plan).
+    ///
+    /// Returns `false` for a URL with no row yet (never dialed) and for
+    /// `connecting` / `connected` rows. A genuinely *new* indexer is handled by
+    /// the `IndexerSetChanged` path in `set_configured_relays`, not here.
+    #[must_use]
+    pub(super) fn indexer_socket_was_down(&self, relay_url: &str) -> bool {
+        matches!(
+            self.transport_relays.connection_state(relay_url),
+            Some("backing_off") | Some("closed")
+        )
     }
 
     pub(super) fn mark_transport_connected(&mut self, role: RelayRole, relay_url: &str) {
