@@ -413,9 +413,9 @@ fn e1_account_switch_triggers_fresh_serve() {
     kernel.active_account = Some(author_b.clone());
     // ADR-0057 PR 3 — seed B's follow set through the capability-owned contacts
     // cache (no kernel-owned `seed_contacts` HashMap any more).
-    // `prepopulate_seed_contacts` routes through the chokepoint projection → the
+    // `prepopulate_contacts` routes through the chokepoint projection → the
     // registered kind:3 parser writes the cache.
-    kernel.prepopulate_seed_contacts(author_b.clone(), vec![author_a.clone()]);
+    kernel.prepopulate_contacts(author_b.clone(), vec![author_a.clone()]);
     kernel.reconcile_follow_feed_after_identity_change();
     drain_cache_serves(&mut kernel, 4);
 

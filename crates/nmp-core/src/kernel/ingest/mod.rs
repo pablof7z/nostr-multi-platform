@@ -684,20 +684,13 @@ impl Kernel {
         let mailbox_before = self.mailbox_cache().snapshot(&author);
         let dm_before = self.recipient_dm_relays(&author);
         let profile_before = self.profile_lookup().profile(&author);
-        // ADR-0057 PR 3 — contacts transition is detected ONLY for the active
-        // account: the kernel-owned follow-feed effects (`timeline_authors`
-        // rebuild, `sync_follow_feed_interests`, `FollowListChanged`,
-        // cache-serve) are active-account-scoped (D4 — arbitrary peers' kind:3
-        // must not pollute the registry), exactly as the old `ingest_contacts`
-        // active-account gate was. Snapshotting only the active author keeps the
-        // common case (a non-active peer's kind:3, or any non-kind:3 event)
-        // free of an extra cache read.
-        let active_author = self.active_account.as_deref() == Some(author.as_str());
-        let contacts_before = if active_author {
-            self.contacts_lookup().follows(&author)
-        } else {
-            None
-        };
+        // ADR-0057 PR 3 — snapshot the contacts cache for the author (ANY author,
+        // like the profile snapshot above). The follow-feed EFFECTS are
+        // active-account-scoped (D4 — arbitrary peers' kind:3 must not pollute
+        // the registry), but the byte-estimate memo invalidation must fire on
+        // ANY author's contacts write (the parser writes the cache for every
+        // author; the old `ingest_contacts` invalidated after every insert).
+        let contacts_before = self.contacts_lookup().follows(&author);
 
         // (1) NIP-parser dispatch. D6 — a poisoned dispatcher lock degrades to
         // "no parser fired" (graceful, the store insert already succeeded on the
@@ -728,19 +721,25 @@ impl Kernel {
         if dm_before != dm_after {
             self.on_dm_relays_changed(&author, created_at_for_trigger);
         }
-        // Contacts (kind:3) transition for the ACTIVE account → the kernel-owned
-        // follow-feed effects. The PARSER (`Kind3Parser`) wrote the capability
-        // cache between the before/after snapshots above; the KERNEL owns the
-        // planner/lifecycle effects, driven here by the transition signal — NOT
-        // inlined into the parser (the `IngestParser` contract: parsers are
+        // Contacts (kind:3) transition. The PARSER (`Kind3Parser`) wrote the
+        // capability cache between the before/after snapshots above; the KERNEL
+        // owns the effects, driven here by the transition signal — NOT inlined
+        // into the parser (the `IngestParser` contract: parsers are
         // side-effect-free against kernel state). This is the PR 3 replacement
         // for the deleted `ingest_contacts` arm. `Some(vec![]) != None` matters:
         // a freshly-cleared follow set (a kind:3 with no `p` tags) is a real
-        // transition the active account must react to (it WITHDRAWS the prior
-        // follow-feed interests).
-        if active_author {
-            let contacts_after = self.contacts_lookup().follows(&author);
-            if contacts_before != contacts_after {
+        // transition.
+        let contacts_after = self.contacts_lookup().follows(&author);
+        if contacts_before != contacts_after {
+            // Byte-estimate memo invalidation fires for ANY author's contacts
+            // write (the parser writes the cache for every author).
+            self.cached_estimated_store_bytes.set(None);
+            // The follow-feed planner/lifecycle effects (`timeline_authors`
+            // rebuild, `sync_follow_feed_interests`, `FollowListChanged`,
+            // cache-serve) are ACTIVE-account-scoped (D4 — arbitrary peers'
+            // kind:3 must not pollute the registry), exactly as the old
+            // `ingest_contacts` active-account gate was.
+            if self.active_account.as_deref() == Some(author.as_str()) {
                 let follows = contacts_after.unwrap_or_default();
                 self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
             }

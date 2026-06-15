@@ -225,15 +225,19 @@ impl Kernel {
         // T140: register M2 LogicalInterests for the active account's follow set.
         // The FollowListChanged trigger above drives drain_lifecycle_tick to
         // recompile and emit the REQ/CLOSE diff on the next actor idle tick. This
-        // is only ever reached for the active account (the caller gates on it),
+        // is only ever reached for the active account (every caller gates on it),
         // so arbitrary peers' kind:3 events never pollute the registry (D4).
+        //
+        // Byte-estimate memo invalidation is the cache-WRITE site's job (the
+        // `project_accepted_event` transition block / `prepopulate_contacts`),
+        // not this effect body — so it fires for ANY author's contacts write, not
+        // just the active-account transition that reaches here.
         self.sync_follow_feed_interests(&follows);
-
-        self.cached_estimated_store_bytes.set(None);
     }
 
-    /// T140 — Re-register M2 follow-feed interests from the current
-    /// `seed_contacts` of the active account.
+    /// T140 — Re-register M2 follow-feed interests from the active account's
+    /// current follow set in the capability-owned contacts cache
+    /// (`Arc<dyn ContactsLookup>`).
     ///
     /// Called by `open_contact_feed()` (the `ActorCommand::OpenContactFeed`
     /// handler) so that switching screens back to the home feed re-confirms

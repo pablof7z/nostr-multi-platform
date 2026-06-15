@@ -684,7 +684,8 @@ pub struct Kernel {
     /// Cached `estimated_store_bytes` value. Memoized on first call after
     /// cache invalidation (set to `None`) at every store-mutation site. The
     /// cache is correct (bit-identical to a fresh full-scan) because
-    /// invalidation happens after EVERY insert (events, profiles, seed_contacts).
+    /// invalidation happens after EVERY insert (events, the profile cache, the
+    /// contacts cache).
     /// Cell<Option<usize>> allows `estimated_store_bytes()` to take `&self` and
     /// memoize without &mut. See `status.rs` for the getter logic.
     cached_estimated_store_bytes: std::cell::Cell<Option<usize>>,
@@ -2138,13 +2139,13 @@ impl Kernel {
         let ram_report = self.evict_ram_caches();
         if ram_report.events_evicted
             + ram_report.profiles_evicted
-            + ram_report.seed_contacts_evicted
+            + ram_report.contacts_evicted
             > 0
         {
             tracing::debug!(
                 events_evicted = ram_report.events_evicted,
                 profiles_evicted = ram_report.profiles_evicted,
-                seed_contacts_evicted = ram_report.seed_contacts_evicted,
+                contacts_evicted = ram_report.contacts_evicted,
                 "ram cache eviction pass",
             );
         }
@@ -2549,51 +2550,45 @@ impl Kernel {
     ///
     /// ADR-0057 PR 3 — the contacts cache is capability-owned
     /// (`nmp_nip01::ContactsCache` behind `Arc<dyn ContactsLookup>`); there is
-    /// no kernel-owned `seed_contacts` HashMap to write any more, and there is
-    /// NO parallel cache writer (PR 2's lesson). So this routes a SYNTHESIZED
-    /// kind:3 (the follows rendered as `p`-tags) through the SAME shared
-    /// post-store projection helper [`Self::project_accepted_event`] a relay /
-    /// local-publish / cache-served kind:3 takes: the REGISTERED kind:3 parser
-    /// (`nmp_nip01::Kind3Parser` in production, `TestKind3Parser` in tests)
-    /// writes the cache, and the contacts-transition signal in
-    /// `project_accepted_event` drives the kernel-owned follow-feed effects for
-    /// the active account. The follows are seeded at `now_secs()`; the real
-    /// signed cold-start kind:3 published shortly after carries the same content
-    /// and supersedes-or-ties this synthetic seed harmlessly (the cache's
-    /// newest-wins rule with a lexicographic event-id tiebreak).
-    pub(crate) fn prepopulate_seed_contacts(&mut self, pubkey: String, follows: Vec<String>) {
+    /// no kernel-owned `seed_contacts` HashMap to write any more.
+    ///
+    /// This restores KNOWN contacts at sign-in — it is **NOT** a newly-ingested
+    /// event, so it MUST NOT reach app `KernelEventObserver`s and MUST NOT
+    /// fabricate a kind:3 id/sig. It therefore (1) writes the contacts cache
+    /// directly through the `ContactsLookup` non-ingest writer seam and (2)
+    /// drives the kernel-owned follow-feed EFFECTS directly via
+    /// [`Self::on_active_contacts_changed`] — the SAME effect body the chokepoint
+    /// contacts transition fires — WITHOUT the observer fan-out
+    /// `project_accepted_event` would add. This mirrors
+    /// [`Self::prepopulate_author_relay_list`], the analogous kind:10002 sign-in
+    /// seed: write the capability cache + enqueue the recompile trigger directly,
+    /// no fabricated event, no observer notify.
+    ///
+    /// The follows are seeded at `now_secs()` with a maximal sentinel event-id so
+    /// the real signed cold-start kind:3 published shortly after (any real hex
+    /// id, lexicographically `< "f"*64`) supersedes-or-ties this seed harmlessly
+    /// via the cache's newest-wins rule.
+    pub(crate) fn prepopulate_contacts(&mut self, pubkey: String, follows: Vec<String>) {
         let created_at = self.now_secs();
-        let mut tags: Vec<Vec<String>> = Vec::with_capacity(follows.len());
-        for f in &follows {
-            tags.push(vec!["p".to_string(), f.clone()]);
-        }
-        // Synthetic event id derived from the seed so the cache supersession /
-        // eviction ordering is deterministic. Not persisted to the store — this
-        // is a local pre-publish seed only.
-        let event_id = format!(
-            "{:016x}",
-            crate::stable_hash::stable_hash64(("prepopulate-contacts", pubkey.as_str(), created_at))
-        );
-        // The seed is locally-generated bootstrap data for the user's OWN
-        // account (not externally-sourced), so it does not need Schnorr
-        // verification — reconstruct it through the same trusted
-        // `from_store_verified_unchecked` seam the cache-serve replay path uses
-        // (`feed_served_event`). The real signed cold-start kind:3 published
-        // shortly after carries the same content and supersedes-or-ties this
-        // seed harmlessly via the cache's newest-wins rule.
-        let verified = nmp_store::__nmp_core_internal::from_store_verified_unchecked(
-            crate::store::RawEvent {
-                id: event_id,
-                pubkey,
+        // (1) Write the contacts cache directly — non-ingest writer seam, NO
+        // fabricated event through the dispatcher / observer fan-out.
+        self.contacts_lookup().upsert(
+            pubkey.clone(),
+            crate::substrate::ContactsView {
+                // Maximal sentinel id: a real signed kind:3 (a 64-hex id, always
+                // `< "f"*64`) supersedes this seed on a `created_at` tie.
+                event_id: "f".repeat(64),
                 created_at,
-                kind: 3,
-                tags,
-                content: String::new(),
-                sig: "0".repeat(128),
+                follows: follows.clone(),
             },
         );
-        self.project_accepted_event(&verified);
         self.cached_estimated_store_bytes.set(None);
+        // (2) Drive the kernel-owned follow-feed effects directly (active-account
+        // scoped, like the chokepoint transition that calls the same body) —
+        // WITHOUT `notify_event_observers`.
+        if self.active_account.as_deref() == Some(pubkey.as_str()) {
+            self.on_active_contacts_changed(&pubkey, follows, created_at);
+        }
     }
 
     /// Pre-populate the local NIP-65 mailbox cache from an event this kernel just

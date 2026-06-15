@@ -375,7 +375,7 @@ impl Kernel {
 
     /// Get estimated store bytes, using a cached value if available.
     /// The cache is invalidated (set to None) at every store-mutation site
-    /// (events, profiles, seed_contacts inserts). Subsequent calls to this
+    /// (events, profile-cache, contacts-cache writes). Subsequent calls to this
     /// function recompute the value once and cache it until the next mutation.
     pub(super) fn estimated_store_bytes(&self) -> usize {
         if let Some(v) = self.cached_estimated_store_bytes.get() {

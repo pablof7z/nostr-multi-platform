@@ -127,6 +127,13 @@ impl ContactsLookup for ContactsCache {
         }
     }
 
+    fn upsert(&self, pubkey: String, view: ContactsView) -> bool {
+        // Delegate to the inherent writer (single supersession code path); the
+        // non-ingest sign-in seed (`Kernel::prepopulate_contacts`) reaches
+        // this through the `ContactsLookup` trait object.
+        self.upsert_view(pubkey, view)
+    }
+
     fn len(&self) -> usize {
         self.inner.read().map(|g| g.len()).unwrap_or(0)
     }
