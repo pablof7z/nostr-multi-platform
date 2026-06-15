@@ -11,4 +11,8 @@ fn rogue_fanout(&self) {
     // token + `(` stays atomic so the split form is caught too.
     self.kernel()
         .notify_event_observers(&kernel_event);
+    // (4) METHOD/PAREN SPLIT — the method NAME on one line, the `(` on the next.
+    self.kernel()
+        .notify_event_observers
+        (&kernel_event);
 }

@@ -38,9 +38,19 @@
 //!   handled in the driver) — kernel unit tests (`*_tests.rs`, inline
 //!   `#[cfg(test)]` blocks in `actor/relay_idle.rs`) drive `req_for_relay`
 //!   directly to assemble fixtures.
-//! - Per-line `// doctrine-allow: D25 — reason` opt-out (standard mechanism).
+//! - Per-line `// doctrine-allow: D25 — reason` opt-out, REASON-REQUIRED (the
+//!   D10/D21 tightened idiom; a bare `// doctrine-allow: D25` does not silence).
 //! - The doctrine-lint binary's own source tree (string constants contain the
 //!   banned token — meta-false-positives on broad sweeps).
+//!
+//! ## Heuristic scope (regression backstop, NOT a formal proof)
+//!
+//! D25 is a formatting-heuristic regression BACKSTOP, not a soundness proof. Via
+//! the shared [`crate::rules::split_call`] matcher it catches the normal,
+//! whitespace-before-paren, trailing-comment, and rustfmt method/paren-split
+//! (`…req_for_relay` / `(`) forms of the call. A deliberately-obfuscated
+//! invocation — built through a macro or aliased through a re-export — is OUT OF
+//! SCOPE and is a code-review concern, not something a line-based lint chases.
 
 use std::path::Path;
 
@@ -72,58 +82,67 @@ pub fn file_in_scope(path: &Path) -> bool {
     s.contains("crates/nmp-core/src/")
 }
 
-/// True iff the byte at `idx-1` in `bytes` is an identifier char (`[A-Za-z0-9_]`).
-fn preceded_by_ident_char(bytes: &[u8], idx: usize) -> bool {
-    idx > 0 && {
-        let p = bytes[idx - 1];
-        p.is_ascii_alphanumeric() || p == b'_'
-    }
+/// The banned call name. The matcher ([`crate::rules::split_call`]) appends the
+/// `(` tolerance, so this is just the method identifier.
+const CALL_NAME: &str = "req_for_relay";
+
+/// Cross-line tracker (method/paren split detection) — re-export of the shared
+/// [`crate::rules::split_call::State`].
+pub type State = crate::rules::split_call::State;
+
+fn message() -> String {
+    "req_for_relay call outside the subscription compiler / lifecycle violates \
+     D25 (acquisition one-door, Workstream B4). Event acquisition has ONE door: \
+     register a `LogicalInterest` and let the planner-owned subscription \
+     compiler / `SubscriptionLifecycle` build the relay REQ (kernel/requests/). \
+     A direct REQ build from a feature helper bypasses LogicalInterest dedup, \
+     watermark, and lifecycle accounting"
+        .to_string()
 }
 
-/// Returns `(col, message, suggested)` for each banned `req_for_relay(` on
-/// `line`. `is_comment` and `in_test_cfg` suppress the scan.
-pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, String, String)> {
-    if is_comment || in_test_cfg {
-        return Vec::new();
-    }
-    let needle = "req_for_relay(";
-    let bytes = line.as_bytes();
-    let mut hits = Vec::new();
-    let mut start = 0;
-    while let Some(rel) = line[start..].find(needle) {
-        let abs = start + rel;
-        start = abs + needle.len();
-        // Left-boundary: skip when the token is the tail of a longer identifier.
-        if preceded_by_ident_char(bytes, abs) {
-            continue;
-        }
-        let col = abs + 1; // 1-indexed at the `req_for_relay` token.
-        hits.push((
-            col,
-            "`req_for_relay(` outside the subscription compiler / lifecycle \
-             violates D25 (acquisition one-door, Workstream B4). Event \
-             acquisition has ONE door: register a `LogicalInterest` and let the \
-             planner-owned subscription compiler / `SubscriptionLifecycle` build \
-             the relay REQ (kernel/requests/). A direct REQ build from a feature \
-             helper bypasses LogicalInterest dedup, watermark, and lifecycle \
-             accounting"
-                .to_string(),
-            "register a `LogicalInterest` (claim/reverify are LogicalInterests, \
-             not direct REQ calls) and let the subscription compiler emit the \
-             wire frame; the REQ builder lives in `kernel/requests/`"
-                .to_string(),
-        ));
-    }
-    hits
+fn suggested() -> String {
+    "register a `LogicalInterest` (claim/reverify are LogicalInterests, not \
+     direct REQ calls) and let the subscription compiler emit the wire frame; \
+     the REQ builder lives in `kernel/requests/`"
+        .to_string()
+}
+
+/// Returns `(col, message, suggested)` for each banned `req_for_relay` call on
+/// `line` — contiguous, whitespace-before-paren, trailing-comment, and rustfmt
+/// method/paren-split forms (via the shared matcher). `state` carries the
+/// cross-line tracker; `is_comment` / `in_test_cfg` suppress the scan.
+pub fn check(
+    state: &mut State,
+    line: &str,
+    is_comment: bool,
+    in_test_cfg: bool,
+) -> Vec<(usize, String, String)> {
+    crate::rules::split_call::columns(state, CALL_NAME, line, is_comment, in_test_cfg)
+        .into_iter()
+        .map(|col| (col, message(), suggested()))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn one(line: &str) -> Vec<(usize, String, String)> {
+        check(&mut State::default(), line, false, false)
+    }
+
+    fn run(lines: &[&str]) -> usize {
+        let mut s = State::default();
+        let mut n = 0;
+        for l in lines {
+            n += check(&mut s, l, false, false).len();
+        }
+        n
+    }
+
     #[test]
     fn flags_direct_req_for_relay() {
-        let hits = check("        let r = kernel.req_for_relay(role, url, id);", false, false);
+        let hits = one("        let r = kernel.req_for_relay(role, url, id);");
         assert_eq!(hits.len(), 1, "direct req_for_relay must fire");
         assert!(hits[0].1.contains("D25"));
         assert!(hits[0].1.contains("LogicalInterest"));
@@ -131,7 +150,7 @@ mod tests {
 
     #[test]
     fn flags_bareword_req_for_relay() {
-        let hits = check("    req_for_relay(a, b, c);", false, false);
+        let hits = one("    req_for_relay(a, b, c);");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, 5, "column 1-indexed at the token");
     }
@@ -139,27 +158,43 @@ mod tests {
     #[test]
     fn flags_split_chained_call() {
         // rustfmt-split chained call: receiver on the previous line, so this
-        // line is just `.req_for_relay(...)`. The token + `(` is atomic and the
-        // leading `.` is a non-identifier left boundary, so it fires.
-        let hits = check("            .req_for_relay(role, url, id);", false, false);
+        // line is just `.req_for_relay(...)` — token + `(` atomic.
+        let hits = one("            .req_for_relay(role, url, id);");
         assert_eq!(hits.len(), 1, "split chained req_for_relay must fire");
     }
 
     #[test]
+    fn flags_method_paren_split() {
+        // The residual evasion: method NAME on one line, `(` on the next.
+        let n = run(&["            .req_for_relay", "            (role, url, id);"]);
+        assert_eq!(n, 1, "method/paren split must fire");
+    }
+
+    #[test]
+    fn flags_trailing_comment_then_split_paren() {
+        let n = run(&["        kernel.req_for_relay // build req", "            (role, url);"]);
+        assert_eq!(n, 1, "trailing comment + split paren must fire");
+    }
+
+    #[test]
     fn does_not_flag_longer_identifier() {
-        let hits = check("    build_req_for_relay(role);", false, false);
-        assert!(hits.is_empty(), "longer identifier must NOT fire");
+        assert!(one("    build_req_for_relay(role);").is_empty());
     }
 
     #[test]
     fn does_not_flag_comment() {
-        let hits = check("// calls req_for_relay() only in the compiler", true, false);
+        let hits = check(
+            &mut State::default(),
+            "// calls req_for_relay() only in the compiler",
+            true,
+            false,
+        );
         assert!(hits.is_empty(), "comment lines must not fire");
     }
 
     #[test]
     fn does_not_flag_in_test_cfg() {
-        let hits = check("kernel.req_for_relay(role, url, id);", false, true);
+        let hits = check(&mut State::default(), "kernel.req_for_relay(role, url, id);", false, true);
         assert!(hits.is_empty(), "#[cfg(test)] bodies must not fire");
     }
 

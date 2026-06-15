@@ -57,6 +57,16 @@
 //!   D10/D21 tightened idiom; a bare `// doctrine-allow: D24` does not silence).
 //! - The doctrine-lint binary's own source tree (string constants contain the
 //!   banned token — meta-false-positives on broad sweeps).
+//!
+//! ## Heuristic scope (regression backstop, NOT a formal proof)
+//!
+//! D24 is a formatting-heuristic regression BACKSTOP, not a soundness proof. Via
+//! the shared [`crate::rules::split_call`] matcher it catches the normal,
+//! whitespace-before-paren, trailing-comment, and rustfmt method/paren-split
+//! (`…notify_event_observers` / `(`) forms of the call. A deliberately-
+//! obfuscated invocation — built through a macro or aliased through a re-export
+//! — is OUT OF SCOPE and is a code-review concern, not something a line-based
+//! lint chases.
 
 use std::path::Path;
 
@@ -84,59 +94,67 @@ pub fn file_in_scope(path: &Path) -> bool {
     s.contains("crates/nmp-core/src/")
 }
 
-/// True iff the byte at `idx-1` in `bytes` is an identifier char (`[A-Za-z0-9_]`).
-fn preceded_by_ident_char(bytes: &[u8], idx: usize) -> bool {
-    idx > 0 && {
-        let p = bytes[idx - 1];
-        p.is_ascii_alphanumeric() || p == b'_'
-    }
+/// The banned call name. The matcher ([`crate::rules::split_call`]) appends the
+/// `(` tolerance, so this is just the method identifier.
+const CALL_NAME: &str = "notify_event_observers";
+
+/// Cross-line tracker (method/paren split detection) — re-export of the shared
+/// [`crate::rules::split_call::State`].
+pub type State = crate::rules::split_call::State;
+
+fn message() -> String {
+    "notify_event_observers call outside the post-store fan-out seam violates \
+     D24 (event-flow lock). The kernel fans out to app-facing observers from \
+     ONE place — `project_accepted_event` (kernel/ingest/mod.rs) — and every \
+     other path (incl. cache-serve replay) reaches observers through that same \
+     door (ADR-0045 single-mechanism cache-serve). A scattered observer notify \
+     fires the host twice and breaks the once-per-accepted-event invariant"
+        .to_string()
 }
 
-/// Returns `(col, message, suggested)` for each banned `notify_event_observers(`
-/// on `line`. `is_comment` and `in_test_cfg` suppress the scan.
-pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, String, String)> {
-    if is_comment || in_test_cfg {
-        return Vec::new();
-    }
-    let needle = "notify_event_observers(";
-    let bytes = line.as_bytes();
-    let mut hits = Vec::new();
-    let mut start = 0;
-    while let Some(rel) = line[start..].find(needle) {
-        let abs = start + rel;
-        start = abs + needle.len();
-        // Left-boundary: skip when the token is the tail of a longer identifier.
-        if preceded_by_ident_char(bytes, abs) {
-            continue;
-        }
-        let col = abs + 1; // 1-indexed at the `notify_event_observers` token.
-        hits.push((
-            col,
-            "`notify_event_observers(` outside the post-store fan-out seam \
-             violates D24 (event-flow lock). The kernel fans out to app-facing \
-             observers from ONE place — `project_accepted_event` \
-             (kernel/ingest/mod.rs) — and the cache-serve replay seam \
-             (kernel/cache_serve/) reaches observers through that same door \
-             (ADR-0045 single-mechanism cache-serve). A scattered observer \
-             notify fires the host twice and breaks the once-per-accepted-event \
-             invariant"
-                .to_string(),
-            "let the event reach observers through `project_accepted_event` \
-             (the single post-store fan-out), or through the cache-serve replay \
-             seam — do not call `notify_event_observers` from a feature path"
-                .to_string(),
-        ));
-    }
-    hits
+fn suggested() -> String {
+    "let the event reach observers through `project_accepted_event` (the single \
+     post-store fan-out) — do not call `notify_event_observers` from a feature \
+     path or the cache-serve replay seam directly"
+        .to_string()
+}
+
+/// Returns `(col, message, suggested)` for each banned `notify_event_observers`
+/// call on `line` — contiguous, whitespace-before-paren, trailing-comment, and
+/// rustfmt method/paren-split forms (via the shared matcher). `state` carries
+/// the cross-line tracker; `is_comment` / `in_test_cfg` suppress the scan.
+pub fn check(
+    state: &mut State,
+    line: &str,
+    is_comment: bool,
+    in_test_cfg: bool,
+) -> Vec<(usize, String, String)> {
+    crate::rules::split_call::columns(state, CALL_NAME, line, is_comment, in_test_cfg)
+        .into_iter()
+        .map(|col| (col, message(), suggested()))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn one(line: &str) -> Vec<(usize, String, String)> {
+        check(&mut State::default(), line, false, false)
+    }
+
+    fn run(lines: &[&str]) -> usize {
+        let mut s = State::default();
+        let mut n = 0;
+        for l in lines {
+            n += check(&mut s, l, false, false).len();
+        }
+        n
+    }
+
     #[test]
     fn flags_scattered_notify() {
-        let hits = check("        self.notify_event_observers(&ev);", false, false);
+        let hits = one("        self.notify_event_observers(&ev);");
         assert_eq!(hits.len(), 1, "scattered notify must fire");
         assert!(hits[0].1.contains("D24"));
         assert!(hits[0].1.contains("project_accepted_event"));
@@ -144,45 +162,59 @@ mod tests {
 
     #[test]
     fn flags_bareword_notify() {
-        let hits = check("    notify_event_observers(e);", false, false);
+        let hits = one("    notify_event_observers(e);");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, 5, "column 1-indexed at the token");
     }
 
     #[test]
     fn flags_split_chained_call() {
-        // rustfmt-split chained call: the receiver is on the previous line, so
-        // this line is just `.notify_event_observers(&ev)`. The token + `(`
-        // stays atomic, and the leading `.` is a non-identifier left boundary,
-        // so it fires with no cross-line state.
-        let hits = check("            .notify_event_observers(&ev);", false, false);
+        // rustfmt-split chained call: receiver on the previous line, so this
+        // line is just `.notify_event_observers(&ev)` — token + `(` atomic.
+        let hits = one("            .notify_event_observers(&ev);");
         assert_eq!(hits.len(), 1, "split chained notify must fire");
+    }
+
+    #[test]
+    fn flags_method_paren_split() {
+        // The residual evasion: method NAME on one line, `(` on the next.
+        let n = run(&["            .notify_event_observers", "            (&ev);"]);
+        assert_eq!(n, 1, "method/paren split must fire");
+    }
+
+    #[test]
+    fn flags_trailing_comment_then_split_paren() {
+        let n = run(&["        self.notify_event_observers // fan out", "            (&ev);"]);
+        assert_eq!(n, 1, "trailing comment + split paren must fire");
     }
 
     #[test]
     fn does_not_flag_longer_identifier() {
         // A longer identifier ending in the token must not false-positive.
-        let hits = check("    force_notify_event_observers(e);", false, false);
-        assert!(hits.is_empty(), "longer identifier must NOT fire");
+        assert!(one("    force_notify_event_observers(e);").is_empty());
     }
 
     #[test]
     fn does_not_flag_unregister_observer_class() {
         // The substring-false-positive class prior reviews flagged: a different
         // observer token must never match this needle.
-        let hits = check("    self.unregister_raw_event_observer(id);", false, false);
-        assert!(hits.is_empty(), "unregister_raw_event_observer must NOT fire");
+        assert!(one("    self.unregister_raw_event_observer(id);").is_empty());
     }
 
     #[test]
     fn does_not_flag_comment() {
-        let hits = check("// calls notify_event_observers(&ev) once", true, false);
+        let hits = check(
+            &mut State::default(),
+            "// calls notify_event_observers(&ev) once",
+            true,
+            false,
+        );
         assert!(hits.is_empty(), "comment lines must not fire");
     }
 
     #[test]
     fn does_not_flag_in_test_cfg() {
-        let hits = check("self.notify_event_observers(&ev);", false, true);
+        let hits = check(&mut State::default(), "self.notify_event_observers(&ev);", false, true);
         assert!(hits.is_empty(), "#[cfg(test)] bodies must not fire");
     }
 
