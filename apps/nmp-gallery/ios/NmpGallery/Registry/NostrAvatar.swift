@@ -25,7 +25,7 @@ public struct NostrAvatar: View, Equatable {
     /// identity managed by SwiftUI across body re-evaluations and must NOT
     /// participate in equality — including them would cause `.equatable()` to
     /// wrongly suppress re-renders when those internal vars change.
-    public static func == (lhs: NostrAvatar, rhs: NostrAvatar) -> Bool {
+    public nonisolated static func == (lhs: NostrAvatar, rhs: NostrAvatar) -> Bool {
         lhs.pubkey == rhs.pubkey
             && lhs.pictureUrl == rhs.pictureUrl
             && lhs.size == rhs.size
