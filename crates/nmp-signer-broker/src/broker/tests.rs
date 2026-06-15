@@ -115,10 +115,10 @@ fn start_nostrconnect_handshake_returns_well_formed_uri() {
 ///     they are provably still alive when `cancel()` returns. An inline join
 ///     (pre-D4) would hang `cancel()` on that barrier and fail the timing bound.
 ///   - After releasing the barrier we confirm BOTH threads ran to completion
-///     (no leak) AND that the reaper itself terminated having joined them
-///     (a `joined`-side-channel the reaper-joined threads share with a watcher
-///     that blocks on the reaper's own exit), so a handle that was merely
-///     dropped (detached) rather than joined would not satisfy the assertion.
+///     (no leak) AND that the REAPER itself signalled its `reaper_observer`
+///     AFTER its `.join()` calls returned — so a handle that was merely dropped
+///     (detached) rather than joined would NOT fire the observer and the test
+///     would fail. This is the item-3 proof the reaper actually joined.
 #[test]
 fn cancel_is_signal_only_does_not_block_on_join() {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -157,6 +157,12 @@ fn cancel_is_signal_only_does_not_block_on_join() {
     }
 
     let (broker, _rx) = test_broker();
+
+    // Install the reaper observer: the reaper fires this AFTER all its joins
+    // return, proving it reclaimed (joined) the handles rather than dropping
+    // them.
+    let (reaper_done_tx, reaper_done_rx) = mpsc::channel::<()>();
+    *broker.reaper_observer.lock().unwrap() = Some(reaper_done_tx);
 
     let (inbound_tx, inbound_rx) = mpsc::channel::<serde_json::Value>();
     // Counts how many of the two worker threads have run to completion.
@@ -199,6 +205,7 @@ fn cancel_is_signal_only_does_not_block_on_join() {
     {
         let mut guard = broker.active.lock().expect("active lock");
         *guard = Some(ActiveSession {
+            generation: 0,
             relay: Arc::clone(&relay),
             cancel: Arc::new(AtomicBool::new(false)),
             handshake_thread: None,
@@ -235,38 +242,145 @@ fn cancel_is_signal_only_does_not_block_on_join() {
         "both worker threads should still be winding down: cancel() detached them, did not join"
     );
 
-    // Release the barrier so both threads complete. Then prove the REAPER (not
-    // just the threads) finished its joins: spawn a watcher that holds the
-    // barrier-free condition and signals once both exits are observed. We block
-    // (no poll) on that watcher's completion channel.
+    // The reaper must still be blocked on its joins (the threads are parked on
+    // the barrier we hold), so the observer must not have fired yet.
+    assert!(
+        reaper_done_rx.try_recv().is_err(),
+        "reaper must still be blocked joining the parked worker threads"
+    );
+
+    // Release the barrier so both threads complete.
     drop(barrier_held);
 
-    let (reaped_tx, reaped_rx) = mpsc::channel::<usize>();
-    let exits_for_watch = Arc::clone(&exits);
-    let barrier_for_watch = Arc::clone(&barrier);
-    std::thread::Builder::new()
-        .name("test-reap-watcher".to_string())
-        .spawn(move || {
-            // Acquiring the (now-free) barrier orders this watcher strictly
-            // after both worker threads have released it on their way out —
-            // i.e. after both have run their exit-count increment. No polling.
-            let _g = barrier_for_watch.lock().expect("watcher barrier acquire");
-            // Both increments happen-before the barrier release each performs,
-            // so by the time we hold the barrier uncontended both are visible.
-            reaped_tx
-                .send(exits_for_watch.load(Ordering::Acquire))
-                .ok();
-        })
-        .expect("spawn reap watcher");
-
-    let observed = reaped_rx
+    // Block (no poll) on the reaper's observer. It fires ONLY after the reaper's
+    // `.join()` calls returned — i.e. after it actually reclaimed both handles.
+    // A reaper that merely dropped the handles (detached them) would let the
+    // threads exit but would NOT fire this, so this is the join-not-drop proof.
+    reaper_done_rx
         .recv_timeout(Duration::from_secs(5))
-        .expect("both threads must self-exit after the signal; reaper reclaims them (no leak)");
+        .expect("reaper must JOIN (reclaim) both handles and then fire its observer — no leak");
 
+    // Both worker threads ran to completion (no leak).
     assert_eq!(
-        observed, 2,
-        "both the broker dispatcher AND the relay dispatcher must exit on their own \
-         once the barrier frees; the detached reaper joins (reclaims) both — no leak"
+        exits.load(Ordering::Acquire),
+        2,
+        "both the broker dispatcher AND the relay dispatcher must have exited; the \
+         reaper joined (reclaimed) both"
+    );
+}
+
+/// Item 1 (the critical D4 regression guard): with `cancel()` now detached, an
+/// OLD worker can still be mid-flight and later call `install_session()`,
+/// overwriting the session a subsequent `start_handshake()` staged. The session
+/// generation must make that late install a NO-OP.
+///
+/// We reproduce the exact lifecycle without a live bunker by driving the broker
+/// state machine directly:
+///   1. Stage session A (generation gA) with a marker relay A.
+///   2. `cancel()` — detached; bumps the generation; A's worker (carrying gA)
+///      is conceptually still alive.
+///   3. Stage session B (generation gB > gA) with a distinct marker relay B.
+///   4. The old A-worker now calls `install_session(gA, relayA, ..)` — as it
+///      would after finally connecting. It MUST be rejected (returns false) and
+///      MUST NOT replace B's relay.
+/// Assert B's relay is still installed and the late call returned false.
+#[test]
+fn stale_worker_install_is_rejected_by_generation_guard() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+
+    use crate::relay_client::{RelayClient, RelayError};
+    use crate::transport::BrokerTransport;
+    use nostr::Keys;
+
+    // Marker relay: `send()` returns a per-instance tag so we can tell which
+    // relay is installed. `signal_shutdown` is a no-op (no background thread).
+    #[derive(Debug)]
+    struct MarkerRelay {
+        tag: &'static str,
+    }
+    impl RelayClient for MarkerRelay {
+        fn send(&self, _frame: String) -> Result<(), RelayError> {
+            Err(RelayError::Write(self.tag.to_string()))
+        }
+        fn shutdown(&self) {}
+    }
+    fn relay_tag(relay: &Arc<dyn RelayClient>) -> String {
+        match relay.send(String::new()) {
+            Err(RelayError::Write(tag)) => tag,
+            other => panic!("unexpected marker relay result: {other:?}"),
+        }
+    }
+
+    let (broker, _rx) = test_broker();
+
+    // ── 1. Stage session A at generation gA. ──
+    let g_a = broker.generation.fetch_add(1, Ordering::AcqRel) + 1;
+    let relay_a: Arc<dyn RelayClient> = Arc::new(MarkerRelay { tag: "A" });
+    {
+        let mut guard = broker.active.lock().expect("active lock");
+        *guard = Some(ActiveSession {
+            generation: g_a,
+            relay: Arc::clone(&relay_a),
+            cancel: Arc::new(AtomicBool::new(false)),
+            handshake_thread: None,
+            dispatcher_thread: None,
+            transport: BrokerTransport::new(relay_a, Keys::generate(), Keys::generate().public_key()),
+            signer: Mutex::new(None),
+        });
+    }
+
+    // ── 2. cancel() — detached; takes A's session and bumps the generation. ──
+    broker.cancel();
+    assert!(
+        broker.active.lock().unwrap().is_none(),
+        "cancel() must clear the active session"
+    );
+
+    // ── 3. Stage session B at generation gB (> gA). ──
+    let g_b = broker.generation.fetch_add(1, Ordering::AcqRel) + 1;
+    assert!(g_b > g_a, "each staged session must get a strictly newer generation");
+    let relay_b: Arc<dyn RelayClient> = Arc::new(MarkerRelay { tag: "B" });
+    let transport_b = BrokerTransport::new(
+        Arc::clone(&relay_b),
+        Keys::generate(),
+        Keys::generate().public_key(),
+    );
+    {
+        let mut guard = broker.active.lock().expect("active lock");
+        *guard = Some(ActiveSession {
+            generation: g_b,
+            relay: Arc::clone(&relay_b),
+            cancel: Arc::new(AtomicBool::new(false)),
+            handshake_thread: None,
+            dispatcher_thread: None,
+            transport: transport_b,
+            signer: Mutex::new(None),
+        });
+    }
+
+    // ── 4. The OLD A-worker installs late, carrying its stale generation gA. ──
+    let late_relay_a: Arc<dyn RelayClient> = Arc::new(MarkerRelay { tag: "A-late" });
+    let late_transport_a = BrokerTransport::new(
+        Arc::clone(&late_relay_a),
+        Keys::generate(),
+        Keys::generate().public_key(),
+    );
+    let applied = broker.install_session(g_a, late_relay_a, late_transport_a);
+
+    assert!(
+        !applied,
+        "a stale-generation install_session must be rejected (return false), not overwrite session B"
+    );
+    let active_tag = {
+        let guard = broker.active.lock().expect("active lock");
+        let session = guard.as_ref().expect("session B must still be active");
+        assert_eq!(session.generation, g_b, "session B's generation must be intact");
+        relay_tag(&session.relay)
+    };
+    assert_eq!(
+        active_tag, "B",
+        "session B's relay must survive: the stale A-worker install must be a no-op"
     );
 }
 

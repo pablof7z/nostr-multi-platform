@@ -16,6 +16,10 @@ impl BunkerBroker {
     pub fn restore_session(self: &Arc<Self>, payload_json: String) {
         self.cancel();
 
+        // Fresh generation for this session — strictly newer than anything the
+        // just-cancelled (detached) worker carries. See `broker.rs::generation`.
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+
         let me = Arc::clone(self);
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
@@ -24,9 +28,11 @@ impl BunkerBroker {
         // before the placeholder is staged. See `broker.rs::start_handshake`
         // for the full ordering argument.
         if let Ok(mut guard) = self.active.lock() {
-            let thread =
-                std::thread::spawn(move || me.run_restore_thread(payload_json, cancel_for_thread));
+            let thread = std::thread::spawn(move || {
+                me.run_restore_thread(payload_json, cancel_for_thread, generation)
+            });
             *guard = Some(ActiveSession {
+                generation,
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
                 handshake_thread: Some(thread),
@@ -41,7 +47,12 @@ impl BunkerBroker {
         }
     }
 
-    fn run_restore_thread(self: Arc<Self>, payload_json: String, cancel: Arc<AtomicBool>) {
+    fn run_restore_thread(
+        self: Arc<Self>,
+        payload_json: String,
+        cancel: Arc<AtomicBool>,
+        generation: u64,
+    ) {
         let payload = match serde_json::from_str::<SignerPayload>(&payload_json) {
             Ok(SignerPayload::Nip46(payload)) => payload,
             Ok(_) => {
@@ -72,7 +83,13 @@ impl BunkerBroker {
             return;
         };
         let transport = BrokerTransport::new(Arc::clone(&relay), local_keys, remote_pubkey);
-        self.install_session(Arc::clone(&relay), Arc::clone(&transport));
+        // No-op if superseded (detached cancel + newer session staged while we
+        // dialed). Tear our own relay down off-path and stop.
+        if !self.install_session(generation, Arc::clone(&relay), Arc::clone(&transport)) {
+            let relay_dispatcher = relay.signal_shutdown();
+            self.spawn_reaper(None, None, relay_dispatcher);
+            return;
+        }
 
         let signer = match Nip46Signer::from_payload(&payload, Arc::clone(&transport)) {
             Ok(signer) => Arc::new(signer),
@@ -81,7 +98,7 @@ impl BunkerBroker {
                 return;
             }
         };
-        self.install_completed_signer(signer, transport, inbound_rx);
+        self.install_completed_signer(signer, transport, inbound_rx, generation);
     }
 
     fn connect_session(

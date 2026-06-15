@@ -80,6 +80,18 @@ pub(super) fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> 
     // into steady state: `RelayPoller::new` unconditionally puts the socket into
     // non-blocking mode (`set_nonblocking(true)`) before the readiness loop, so
     // the steady-state path stays readiness-driven (no polling).
+    //
+    // KNOWN BOUNDED RESIDUAL: these are per-syscall inactivity timeouts, not a
+    // total-handshake deadline. A maliciously slow-trickling peer that sends a
+    // byte just under `TCP_CONNECT_TIMEOUT` of inactivity, repeatedly, never
+    // completes the upgrade yet never trips the timeout — so the worker (and its
+    // detached reaper join) can outlive a cancel for as long as the peer keeps
+    // trickling. This is rare, requires an adversarial relay, leaks at most ONE
+    // such worker thread per affected cancel, and NEVER blocks the actor/caller
+    // (cancel is detached). Closing it fully needs a total-deadline /
+    // interruptible-socket rewrite (out of D4 scope); the per-syscall bound here
+    // plus the bounded DNS resolve (`resolve_with_deadline`) cover the common
+    // stuck-connect cases.
     stream
         .set_read_timeout(Some(TCP_CONNECT_TIMEOUT))
         .map_err(|error| format!("set handshake read timeout: {error}"))?;
@@ -101,12 +113,27 @@ pub(super) fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> 
     Ok(socket)
 }
 
-/// Resolve `host:port` and `TcpStream::connect_timeout` to the first address
-/// that connects within `timeout`. The timeout applies per resolved address,
-/// matching `TcpStream::connect_timeout`'s contract; we try addresses in turn
-/// so a host with both a stuck and a live address still connects.
+/// Resolve `host:port` (DNS) within `timeout`, then `TcpStream::connect_timeout`
+/// to the first address that connects within `timeout`. The connect timeout
+/// applies per resolved address, matching `TcpStream::connect_timeout`'s
+/// contract; we try addresses in turn so a host with both a stuck and a live
+/// address still connects.
+///
+/// DNS resolution (`to_socket_addrs` → blocking `getaddrinfo`) is itself
+/// unbounded and can wedge the worker for the OS resolver's default — during
+/// which the worker cannot observe `WorkerCmd::Shutdown`, stalling
+/// `shutdown()`/`cancel()` teardown. We bound the COMMON stuck-DNS case by
+/// resolving on a helper thread and waiting only `timeout` for it: on timeout
+/// we abandon that one helper and fail the connect, so the worker returns to
+/// its control poll and exits on Shutdown. The abandoned resolver thread is
+/// parked in `getaddrinfo` (not spinning) and self-completes when the OS
+/// resolver eventually returns, so it does not leak unboundedly — at most one
+/// such thread per stuck dial, and it never blocks the caller.
+///
+/// Note: a fully-interruptible `getaddrinfo` is a separate, large effort (out
+/// of scope here); this deadline bound is the tractable mitigation.
 fn connect_with_timeout(host: &str, port: u16, timeout: Duration) -> std::io::Result<TcpStream> {
-    let addrs = (host, port).to_socket_addrs()?;
+    let addrs = resolve_with_deadline(host, port, timeout)?;
     let mut last_err: Option<std::io::Error> = None;
     for addr in addrs {
         match TcpStream::connect_timeout(&addr, timeout) {
@@ -120,6 +147,43 @@ fn connect_with_timeout(host: &str, port: u16, timeout: Duration) -> std::io::Re
             "no addresses resolved for host",
         )
     }))
+}
+
+/// Resolve `host:port` to socket addresses, bounded by `deadline`. Runs the
+/// blocking `to_socket_addrs` on a detached helper thread and waits at most
+/// `deadline` for the result; on timeout returns a `TimedOut` error and the
+/// helper is abandoned (it self-completes when the OS resolver returns — parked
+/// in `getaddrinfo`, not spinning, so no unbounded leak).
+fn resolve_with_deadline(
+    host: &str,
+    port: u16,
+    deadline: Duration,
+) -> std::io::Result<std::vec::IntoIter<std::net::SocketAddr>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let host_owned = host.to_string();
+    // Detached helper owns the blocking getaddrinfo. On timeout we drop `rx`;
+    // the helper's `send` then fails silently and it exits when the OS resolver
+    // returns — no spin, no unbounded leak, never blocks the caller.
+    let _ = std::thread::Builder::new()
+        .name("nmp-relay-dns".to_string())
+        .spawn(move || {
+            let result = (host_owned.as_str(), port)
+                .to_socket_addrs()
+                .map(|addrs| addrs.collect::<Vec<_>>());
+            let _ = tx.send(result);
+        });
+    match rx.recv_timeout(deadline) {
+        Ok(Ok(addrs)) => Ok(addrs.into_iter()),
+        Ok(Err(error)) => Err(error),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("dns resolution for {host}:{port} exceeded {deadline:?}"),
+        )),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "dns resolver thread terminated unexpectedly",
+        )),
+    }
 }
 
 fn install_rustls_provider() {
@@ -150,6 +214,49 @@ mod tests {
             elapsed < Duration::from_secs(10),
             "connect took {elapsed:?}; the timeout bound is not in effect \
              (regressed toward the OS default ~75s)"
+        );
+    }
+
+    /// `resolve_with_deadline` must return inside its deadline when DNS hangs.
+    /// We can't force a real `getaddrinfo` to hang deterministically, so we
+    /// drive the deadline path with a near-zero deadline against a resolvable
+    /// host: the helper's `to_socket_addrs` cannot complete within the deadline,
+    /// so the function must return a `TimedOut` error promptly rather than
+    /// blocking on the OS resolver. Pins the DNS-bounding fix — a stuck resolver
+    /// can no longer wedge the worker past the deadline (the common stuck-DNS
+    /// case from the cancel-teardown rework).
+    #[test]
+    fn resolve_with_deadline_is_bounded_on_slow_dns() {
+        let started = Instant::now();
+        // Sub-millisecond deadline: the spawned resolver cannot finish
+        // getaddrinfo (even a cached localhost lookup needs > 1µs of thread
+        // spawn + send), so the recv_timeout fires first.
+        let result = resolve_with_deadline("example.com", 443, Duration::from_nanos(1));
+        let elapsed = started.elapsed();
+        assert!(
+            result.is_err(),
+            "a sub-deadline resolve must time out, not block on the OS resolver"
+        );
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::TimedOut,
+            "deadline overrun must surface as TimedOut so the worker fails the connect fast"
+        );
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "resolve returned in {elapsed:?}; the deadline bound is not in effect"
+        );
+    }
+
+    /// A resolvable host with a generous deadline still resolves successfully —
+    /// the deadline wrapper must not break the happy path.
+    #[test]
+    fn resolve_with_deadline_resolves_localhost() {
+        let addrs = resolve_with_deadline("127.0.0.1", 443, Duration::from_secs(5))
+            .expect("loopback literal must resolve within the deadline");
+        assert!(
+            addrs.count() >= 1,
+            "127.0.0.1 must resolve to at least one socket address"
         );
     }
 }
