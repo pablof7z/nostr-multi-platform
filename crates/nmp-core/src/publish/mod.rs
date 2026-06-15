@@ -53,6 +53,12 @@ mod view;
 // Validation helpers called only from native actor command handlers.
 #[cfg(feature = "native")]
 pub(crate) use action::{validate_explicit_relays, validate_publish_target};
+// Workstream C publish-policy one-door: the typed routing/builder gate every
+// publish path consults. `validate_publish_routing` enforces the D10
+// private-envelope invariant (private kinds require Explicit non-empty relays);
+// `target_is_explicit_nonempty` is the shared structural predicate; the
+// `classify_publish_behavior` table is the single home for kind→policy.
+pub(crate) use policy::{target_is_explicit_nonempty, validate_publish_routing};
 pub use action::{
     PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishTarget, RelayUrl,
 };

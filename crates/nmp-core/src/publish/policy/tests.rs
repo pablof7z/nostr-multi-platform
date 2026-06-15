@@ -47,17 +47,17 @@ fn reserved_builder_kinds_are_classified_reserved() {
 /// downstream shells surface them, so the strings are a behaviour contract.
 #[test]
 fn reserved_kind_rejection_messages_are_preserved() {
-    assert!(
-        ReservedKind::Profile
-            .raw_publish_rejection()
-            .contains("PublishProfile"),
-        "profile rejection must name PublishProfile (preserves the old guard wording)"
+    // Exact-match the verbatim wording the old `action.rs` literal guards
+    // produced — downstream shells surface these strings and the action tests
+    // assert on them, so they are a behaviour contract, not a substring hint.
+    assert_eq!(
+        ReservedKind::Profile.raw_publish_rejection(),
+        "use PublishProfile (not PublishRaw) for kind:0 profile updates",
     );
-    assert!(
-        ReservedKind::Contacts
-            .raw_publish_rejection()
-            .contains("kind:3"),
-        "contacts rejection must name kind:3 (preserves the old guard wording)"
+    assert_eq!(
+        ReservedKind::Contacts.raw_publish_rejection(),
+        "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+         not PublishRaw (the actor owns the follow-list state)",
     );
 }
 
@@ -149,39 +149,183 @@ fn only_two_kinds_are_reserved_across_full_sweep() {
     );
 }
 
-/// REGRESSION GATE — Workstream C "removes the old path + adds a gate that
-/// prevents reintroduction." Publish behaviour must be driven by
-/// `classify_publish_behavior`, NOT by a raw kind literal re-introduced into
-/// `publish/action.rs`. Scan the action source for the banned literal-compare
-/// shapes (`kind == 0`, `kind == 3`, …) outside this policy module.
-///
-/// The check is a coarse source scan (the same technique the doctrine-lint
-/// fixtures use) — it is intentionally strict: any `== <int>` / `!= <int>`
-/// comparison against a publish `kind` in `action.rs` is a reintroduction of
-/// the scattered-literal anti-pattern and must instead go through the table.
+// ─── Enforcement of the PrivateFailClosed routing invariant ─────────────────
+
+/// `validate_publish_routing` is the typed one-door routing gate. A private
+/// envelope (gift-wrap kind:1059, sealed kind:14) with `Auto` / empty
+/// `Explicit` (`is_explicit_nonempty == false`) is REJECTED; with an explicit
+/// non-empty relay set it is ALLOWED. Public/reserved kinds pass routing
+/// regardless of target (their relay selection is the resolver's concern).
 #[test]
-fn action_source_has_no_raw_kind_literal_guards() {
-    let src = include_str!("../action.rs");
-    // Banned shapes: a kind literal-compare. We look for `kind ==`/`kind !=`
-    // followed by a digit — the exact pattern the old guards used. The policy
-    // table is the only legal home for that comparison, and it lives in
-    // policy.rs (not action.rs), so action.rs must contain none.
-    for (lineno, line) in src.lines().enumerate() {
-        let code = line.split("//").next().unwrap_or(line); // strip line comments
-        let normalized = code.replace(' ', "");
+fn private_kinds_require_explicit_relays_for_routing() {
+    // Private + Auto/empty → rejected.
+    for kind in [KIND_GIFT_WRAP, KIND_CHAT_MESSAGE] {
+        let err = validate_publish_routing(kind, false)
+            .expect_err("private kind with Auto/empty target must be rejected");
         assert!(
-            !(normalized.contains("kind==0")
-                || normalized.contains("kind==3")
-                || normalized.contains("kind!=0")
-                || normalized.contains("kind!=3")
-                || normalized.contains("kind==1059")
-                || normalized.contains("kind==14")),
-            "publish/action.rs:{} reintroduces a raw kind literal guard \
-             (`{}`). Route the decision through \
-             `publish::policy::classify_publish_behavior` instead — the \
-             classification table is the one door for kind→publish-policy.",
-            lineno + 1,
-            line.trim()
+            err.contains(&format!("kind:{kind}")) && err.contains("D10"),
+            "rejection must name the kind and cite D10; got: {err}"
         );
+        // Private + explicit non-empty → allowed.
+        validate_publish_routing(kind, true)
+            .expect("private kind WITH an explicit non-empty relay set must be allowed");
     }
+}
+
+/// Non-private kinds (notes, profile, contacts, relay lists) pass routing
+/// validation with EITHER target — the D10 gate only constrains private kinds.
+#[test]
+fn non_private_kinds_route_with_any_target() {
+    for kind in [
+        KIND_SHORT_TEXT_NOTE,
+        KIND_REACTION,
+        KIND_PROFILE_METADATA,
+        KIND_CONTACT_LIST,
+        KIND_RELAY_LIST,
+        30_023,
+    ] {
+        validate_publish_routing(kind, false)
+            .unwrap_or_else(|e| panic!("kind:{kind} must route with Auto; got: {e}"));
+        validate_publish_routing(kind, true)
+            .unwrap_or_else(|e| panic!("kind:{kind} must route with Explicit; got: {e}"));
+    }
+}
+
+/// The shared structural predicate over `PublishTarget` used at every
+/// enforcement site, so the "has an explicit relay pin" fact is derived one
+/// way everywhere.
+#[test]
+fn explicit_nonempty_predicate_matches_target_shape() {
+    use crate::publish::PublishTarget;
+    assert!(!target_is_explicit_nonempty(&PublishTarget::Auto));
+    assert!(!target_is_explicit_nonempty(&PublishTarget::Explicit {
+        relays: Vec::new()
+    }));
+    assert!(target_is_explicit_nonempty(&PublishTarget::Explicit {
+        relays: vec!["wss://relay.example".to_string()]
+    }));
+}
+
+// ─── REGRESSION GATE — the one-door is enforced, not just declared ──────────
+
+/// The publish routing surface that must NOT contain a raw kind-policy
+/// comparison. The classification table (`policy.rs`) is the only legal home
+/// for a `kind == <literal>` / `kind == KIND_<reserved|private>` guard; every
+/// other file on the publish path must consult the table instead.
+const PUBLISH_ROUTING_SURFACE: &[(&str, &str)] = &[
+    ("publish/action.rs", include_str!("../action.rs")),
+    (
+        "actor/commands/publish.rs",
+        include_str!("../../actor/commands/publish.rs"),
+    ),
+    (
+        "kernel/publish_cmd.rs",
+        include_str!("../../kernel/publish_cmd.rs"),
+    ),
+    (
+        "kernel/publish_engine.rs",
+        include_str!("../../kernel/publish_engine.rs"),
+    ),
+];
+
+/// Kind-policy constants that, used as a `==`/`!=` routing guard, are the
+/// scattered-literal anti-pattern this gate bans (reserved-builder + private
+/// envelope kinds — the policy-bearing ones). A guard like
+/// `raw.kind == KIND_GIFT_WRAP` re-introduces the bug blocker #2 had.
+const BANNED_GUARD_CONSTANTS: &[&str] = &[
+    "KIND_GIFT_WRAP",
+    "KIND_CHAT_MESSAGE",
+    "KIND_PROFILE_METADATA",
+    "KIND_CONTACT_LIST",
+];
+
+/// Returns the offending snippet if a code line compares a `kind` expression
+/// against a raw integer or a banned policy constant — the scattered
+/// kind-policy guard shape. Shared by the live gate and its non-vacuity proof.
+fn kind_policy_guard_violation(code_line: &str) -> Option<String> {
+    let normalized = code_line.replace(' ', "");
+    // Shape A: a `kind` expression compared to a numeric literal, e.g.
+    // `kind==0`, `raw.kind==3`, `.kind==1059`, `kind!=14`. We look for the
+    // comparison operator immediately preceded by `kind` and followed by a
+    // digit.
+    for op in ["kind==", "kind!="] {
+        if let Some(idx) = normalized.find(op) {
+            let rest = &normalized[idx + op.len()..];
+            if rest.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                return Some(format!("{op}<int> in `{}`", code_line.trim()));
+            }
+            // Shape B: a `kind` expression compared to a banned policy
+            // constant, e.g. `kind==KIND_GIFT_WRAP`.
+            for c in BANNED_GUARD_CONSTANTS {
+                if rest.starts_with(c) {
+                    return Some(format!("{op}{c} in `{}`", code_line.trim()));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// THE GATE. Every file on the publish routing surface must be free of
+/// scattered kind-policy guards — the only place a publish kind may be
+/// compared to a literal/policy constant is `policy.rs` (the classification
+/// table). This catches blocker #2 (the old `raw.kind == KIND_GIFT_WRAP`
+/// guard) and any future reintroduction on ANY publish path, not just
+/// `action.rs`.
+#[test]
+fn publish_routing_surface_has_no_scattered_kind_policy_guards() {
+    for (file, src) in PUBLISH_ROUTING_SURFACE {
+        for (lineno, line) in src.lines().enumerate() {
+            let code = strip_comment(line);
+            if let Some(violation) = kind_policy_guard_violation(code) {
+                panic!(
+                    "{file}:{} reintroduces a scattered kind-policy guard ({violation}). \
+                     Route the decision through \
+                     `publish::policy::classify_publish_behavior` / \
+                     `validate_publish_routing` instead — the classification table is \
+                     the ONE door for kind→publish-policy (Workstream C).",
+                    lineno + 1
+                );
+            }
+        }
+    }
+}
+
+/// NON-VACUITY PROOF for the gate above. The detector MUST fire on the exact
+/// shapes blocker #2 / the old guards used — if a future edit weakens
+/// `kind_policy_guard_violation` into a no-op, this test fails, so the live
+/// gate can never silently pass on a real violation.
+#[test]
+fn gate_detector_fires_on_known_violation_shapes() {
+    // The literal guards this PR removed:
+    assert!(kind_policy_guard_violation("if kind == 0 {").is_some());
+    assert!(kind_policy_guard_violation("if kind == 3 {").is_some());
+    // Blocker #2's exact shape:
+    assert!(
+        kind_policy_guard_violation("if raw.kind == KIND_GIFT_WRAP && matches!(target, ..) {")
+            .is_some(),
+        "the gate MUST catch the `raw.kind == KIND_GIFT_WRAP` guard (blocker #2)"
+    );
+    assert!(kind_policy_guard_violation("signed.unsigned.kind == 1059").is_some());
+    assert!(kind_policy_guard_violation("kind != 14").is_some());
+    // And it must NOT fire on the legal shapes the routing files DO use:
+    assert!(
+        kind_policy_guard_violation("validate_publish_routing(kind, explicit)").is_none(),
+        "consulting the policy table is not a violation"
+    );
+    assert!(
+        kind_policy_guard_violation("classify_publish_behavior(raw.kind)").is_none(),
+        "consulting the policy table is not a violation"
+    );
+    assert!(
+        kind_policy_guard_violation("let kind = signed.unsigned.kind;").is_none(),
+        "binding a kind value is not a comparison guard"
+    );
+}
+
+/// Strip a trailing line comment so the gate scans code, not prose. A `//`
+/// inside a string literal is rare on a guard line and would only ever cause a
+/// false *negative* on the comment tail, never a false positive on code.
+fn strip_comment(line: &str) -> &str {
+    line.split("//").next().unwrap_or(line)
 }

@@ -132,6 +132,38 @@ impl Kernel {
         correlation_id_override: Option<String>,
         now_ms: u64,
     ) -> Vec<OutboundMessage> {
+        // Workstream C publish-policy one-door (D10 structural gate). EVERY
+        // signed publish — dispatched or internal, signed-event or
+        // unsigned-then-signed — funnels through this engine entry, so it is
+        // the single structural chokepoint where the private-envelope
+        // fail-closed invariant is enforced. A private/encrypted kind
+        // (gift-wrap kind:1059, sealed kind:14) with `Auto` or an empty
+        // `Explicit` target is REFUSED here before any outbound frame or queue
+        // entry is produced, so a private event can never leak to the author's
+        // public relays — regardless of which path reached the engine. The
+        // (kind, target) → allow/reject decision is the publish-policy table's;
+        // this site only consults it (no raw kind literal here).
+        if let Err(reason) = crate::publish::validate_publish_routing(
+            signed.unsigned.kind,
+            crate::publish::target_is_explicit_nonempty(&target),
+        ) {
+            tracing::warn!(
+                kind = signed.unsigned.kind,
+                "run_publish_engine refused: private/encrypted envelope without an \
+                 explicit relay pin would route through the author's public-relay \
+                 outbox (D10 violation). Caller must supply PublishTarget::Explicit \
+                 with a non-empty recipient-inbox relay set."
+            );
+            self.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a dispatched action carries a correlation_id
+            // and the host is waiting on `action_results`; record the terminal
+            // failure so its spinner clears. No-op for `None` (internal /
+            // conformance callers have nothing waiting on an id).
+            if let Some(id) = correlation_id_override {
+                self.record_action_failure(id, reason);
+            }
+            return Vec::new();
+        }
         let handle = signed.id.clone();
         let action = PublishAction::Publish {
             handle: handle.clone(),

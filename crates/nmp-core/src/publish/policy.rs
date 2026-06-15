@@ -169,6 +169,60 @@ impl PublishBehavior {
             _ => None,
         }
     }
+
+    /// `true` when this kind is a private / encrypted envelope that must never
+    /// be routed to public relays — it requires an `Explicit` non-empty
+    /// recipient-inbox relay set, never `Auto` (D10).
+    pub(crate) fn is_private_fail_closed(self) -> bool {
+        matches!(self, Self::PrivateFailClosed)
+    }
+}
+
+/// The D6 toast / rejection message surfaced when a private (gift-wrap /
+/// sealed) kind is published without an explicit relay pin. Single source of
+/// truth for the wording so the kernel-level guard, the action-layer guard,
+/// and the engine chokepoint all speak with one voice.
+pub(crate) fn private_fail_closed_rejection(kind: u32) -> String {
+    format!(
+        "cannot publish kind:{kind} private/encrypted envelope with automatic routing: \
+         it requires an explicit non-empty recipient-inbox relay set (PublishTarget::Explicit). \
+         Auto / empty routing would leak the encrypted envelope to the author's public relays (D10)."
+    )
+}
+
+/// Validate a `(kind, target)` pair against the typed publish-routing policy.
+/// **The single door** every publish path consults before an event reaches the
+/// publish engine — signed AND unsigned, dispatched AND internal.
+///
+/// The only structural rule the policy table enforces on routing today is the
+/// D10 private-envelope invariant: a [`PublishBehavior::PrivateFailClosed`]
+/// kind may ONLY use `PublishTarget::Explicit` with a non-empty relay set;
+/// `Auto` (or an empty `Explicit`) is rejected so a private event can never be
+/// Auto-routed to public relays. All other kinds pass routing validation here
+/// (relay selection itself is the `OutboxResolver`'s concern, Layer 2).
+///
+/// `is_explicit_nonempty` is the structural fact the caller already knows from
+/// the typed `PublishTarget` (`Explicit { relays }` with `!relays.is_empty()`);
+/// passing it as a bool keeps this function free of the `PublishTarget` import
+/// cycle and lets every caller — action layer, kernel command, engine — share
+/// the exact same predicate.
+pub(crate) fn validate_publish_routing(
+    kind: u32,
+    is_explicit_nonempty: bool,
+) -> Result<(), String> {
+    if classify_publish_behavior(kind).is_private_fail_closed() && !is_explicit_nonempty {
+        return Err(private_fail_closed_rejection(kind));
+    }
+    Ok(())
+}
+
+/// Structural predicate over a [`PublishTarget`]: `true` for
+/// `Explicit { relays }` with a non-empty relay set. Lives in the policy module
+/// so every enforcement site derives the "has an explicit relay pin" fact the
+/// same way (and so the D10 routing gate can be applied without re-importing
+/// `PublishTarget` matching logic at each call site).
+pub(crate) fn target_is_explicit_nonempty(target: &super::PublishTarget) -> bool {
+    matches!(target, super::PublishTarget::Explicit { relays } if !relays.is_empty())
 }
 
 #[cfg(test)]

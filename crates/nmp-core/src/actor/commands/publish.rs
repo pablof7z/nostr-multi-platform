@@ -11,17 +11,15 @@ use crate::actor::commands::identity::{
 };
 use crate::actor::pending_sign::ParkedOp;
 use crate::kernel::Kernel;
-use crate::kinds::KIND_GIFT_WRAP;
 use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
 use crate::relay::OutboundMessage;
 use crate::substrate::UnsignedEvent;
 
-// V-57 P2 (2026-05-27) — the gift-wrap kind constant lives in the
-// workspace-canonical [`crate::kinds`] registry. The D10 guard predicate
-// below still keys off the integer; centralising it removes the
-// duplication between this file and `nmp-nip59::kinds::KIND_GIFT_WRAP`
-// (and the other private duplicates in `nmp-nip17` / `nmp-marmot`) so the
-// wire integer is declared once across the workspace.
+// Workstream C (2026-06-15) — the private-envelope D10 guard no longer keys off
+// a raw `kind == KIND_GIFT_WRAP` literal here; the gift-wrap (kind:1059) AND
+// sealed-chat (kind:14) policy lives in the publish-policy table
+// (`crate::publish::policy`), consulted via `validate_publish_routing`. The
+// workspace-canonical kind integers remain declared once in [`crate::kinds`].
 
 /// Set a "no active account" toast and — when a dispatched action is waiting
 /// on a `correlation_id` — record the matching `Failed` terminal so the host
@@ -367,46 +365,34 @@ pub(crate) fn publish_signed_event(
         }
     };
     let raw = verified.into_raw();
-    // ── D10 defensive guard ─────────────────────────────────────────────────
+    // ── D10 publish-policy gate (Workstream C one-door) ──────────────────────
     //
-    // Belt-and-suspenders for kind:1059 gift-wraps: refuse to publish the
-    // envelope when the caller did not supply an explicit relay pin. The
-    // per-protocol call-site guards close their own send paths; this is the
-    // kernel-level twin that closes EVERY path that reaches
-    // `publish_signed_event`. In particular:
+    // Refuse to publish a private/encrypted envelope (gift-wrap kind:1059,
+    // sealed kind:14) when the caller did not supply an explicit non-empty
+    // relay pin. The allow/reject decision is the publish-policy table's
+    // (`validate_publish_routing` → `classify_publish_behavior`), NOT a raw
+    // `kind == KIND_GIFT_WRAP` literal — the old literal guard missed kind:14
+    // and meant `policy.rs` was not the single door. This kernel-level guard
+    // closes EVERY path that reaches `publish_signed_event` at dispatch time;
+    // the publish-engine entry (`run_publish_engine_at`) applies the SAME
+    // policy gate as the deeper structural chokepoint for every other path.
     //
-    //   1. The generic `dispatch_action("nmp.publish")` → `PublishAction::Publish`
-    //      arm: a `PublishTarget::Auto` carries no relays and is routed
-    //      verbatim into `ActorCommand::PublishSignedEvent { target: Auto }`,
-    //      which lands here. Without this guard a host that dispatches a
-    //      kind:1059 envelope with `target: Auto` would silently leak through
-    //      the Auto branch below.
-    //
-    //   2. Workspace-internal seams that always build
-    //      `PublishTarget::Explicit { relays }` (with `validate_publish_target`
-    //      rejecting an empty `Explicit` relay set at the top of this
-    //      function) do not hit this Auto leg today — the guard is the
-    //      defence in depth that keeps the invariant when a future caller is
-    //      added.
-    //
-    // Structural invariant: kind:1059 + `Auto` is NEVER routed to the
-    // author's public-relay outbox. The refusal sets a D6 toast, drops the
-    // event before any outbound frames or publish-queue entries are
-    // produced, and emits a `tracing::warn!` so the leak attempt is visible
-    // in logs. This is policy, not malformed data — `set_last_error_toast`
-    // (the legacy uncategorized path) is the right surface (a routing-leak
-    // policy refusal is not in the closed `error_category` key set defined
-    // by `kernel::closed_reason`).
-    if raw.kind == KIND_GIFT_WRAP && matches!(target, PublishTarget::Auto) {
-        let reason = "cannot publish kind:1059 gift-wrap: no explicit relay pin \
-             (D10 would leak the encrypted envelope to the author's public relays)"
-            .to_string();
+    // The refusal sets a D6 toast, drops the event before any outbound frame
+    // or publish-queue entry is produced, and logs the leak attempt. This is
+    // policy, not malformed data — `set_last_error_toast` (the legacy
+    // uncategorized path) is the right surface (a routing-leak policy refusal
+    // is not in the closed `error_category` key set defined by
+    // `kernel::closed_reason`).
+    if let Err(reason) = crate::publish::validate_publish_routing(
+        raw.kind,
+        crate::publish::target_is_explicit_nonempty(&target),
+    ) {
         tracing::warn!(
             kind = raw.kind,
-            "publish_signed_event refused: kind:1059 envelope with PublishTarget::Auto \
-             would route through the author's public-relay outbox, leaking the \
-             existence of the encrypted gift-wrap (D10 violation). Caller must \
-             supply an explicit relay pin.",
+            "publish_signed_event refused: private/encrypted envelope without an \
+             explicit relay pin would route through the author's public-relay \
+             outbox, leaking the encrypted envelope (D10 violation). Caller must \
+             supply PublishTarget::Explicit with a non-empty relay set.",
         );
         kernel.set_last_error_toast(Some(reason.clone()));
         // Broken-promise fix: if this publish came in via `dispatch_action`'s

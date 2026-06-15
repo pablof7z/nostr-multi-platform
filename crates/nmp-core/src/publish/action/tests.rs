@@ -112,6 +112,103 @@ fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
 }
 
 #[test]
+fn publish_raw_rejects_gift_wrap_with_auto_target() {
+    // BLOCKER #1 regression: a kind:1059 gift-wrap published raw with `Auto`
+    // would Auto-route the encrypted envelope to the author's PUBLIC relays
+    // (D10 privacy leak). The Workstream C one-door gate rejects it at the
+    // action boundary — private kinds require an explicit relay pin.
+    let action = PublishAction::PublishRaw {
+        kind: 1059,
+        tags: Vec::new(),
+        content: "encrypted".to_string(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("PublishRaw kind:1059 + Auto must fail closed");
+    assert!(
+        matches!(&err, ActionRejection::Invalid(msg) if msg.contains("D10") && msg.contains("kind:1059")),
+        "rejection must cite D10 + name kind:1059; got: {err:?}"
+    );
+}
+
+#[test]
+fn publish_raw_rejects_sealed_chat_with_auto_target() {
+    // The old literal guard missed kind:14 entirely (blocker #2). The policy
+    // table covers it: a sealed NIP-17 chat message with `Auto` is refused.
+    let action = PublishAction::PublishRaw {
+        kind: 14,
+        tags: Vec::new(),
+        content: "sealed".to_string(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("PublishRaw kind:14 + Auto must fail closed");
+    assert!(
+        matches!(&err, ActionRejection::Invalid(msg) if msg.contains("D10") && msg.contains("kind:14")),
+        "rejection must cite D10 + name kind:14; got: {err:?}"
+    );
+}
+
+#[test]
+fn publish_raw_allows_gift_wrap_with_explicit_nonempty_relays() {
+    // The legitimate DM path: a kind:1059 envelope pinned to an explicit
+    // non-empty recipient-inbox relay set is ALLOWED — fail-closed means
+    // "no Auto", not "no publish".
+    let action = PublishAction::PublishRaw {
+        kind: 1059,
+        tags: Vec::new(),
+        content: "encrypted".to_string(),
+        target: PublishTarget::Explicit {
+            relays: vec!["wss://inbox.example".to_string()],
+        },
+        signer_pubkey: None,
+    };
+    PublishModule
+        .start(&mut ctx(), action)
+        .expect("kind:1059 with an explicit non-empty relay set must be allowed");
+}
+
+#[test]
+fn publish_signed_rejects_gift_wrap_with_auto_target() {
+    // The same D10 gate applies to the pre-signed `Publish` variant (the
+    // `PublishAction::Publish` dispatch path), not only `PublishRaw`.
+    let mut event = signed_event();
+    event.unsigned.kind = 1059;
+    let action = PublishAction::Publish {
+        handle: "h".to_string(),
+        event,
+        target: PublishTarget::Auto,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("Publish of a signed kind:1059 + Auto must fail closed");
+    assert!(
+        matches!(&err, ActionRejection::Invalid(msg) if msg.contains("D10")),
+        "rejection must cite D10; got: {err:?}"
+    );
+}
+
+#[test]
+fn publish_signed_allows_gift_wrap_with_explicit_nonempty_relays() {
+    let mut event = signed_event();
+    event.unsigned.kind = 1059;
+    let action = PublishAction::Publish {
+        handle: "h".to_string(),
+        event,
+        target: PublishTarget::Explicit {
+            relays: vec!["wss://inbox.example".to_string()],
+        },
+    };
+    PublishModule
+        .start(&mut ctx(), action)
+        .expect("signed kind:1059 with an explicit non-empty relay set must be allowed");
+}
+
+#[test]
 fn publish_raw_propagates_explicit_target_validation_failure() {
     // The kind guard runs first, but past it the existing
     // `validate_publish_target` must still apply — an explicit empty

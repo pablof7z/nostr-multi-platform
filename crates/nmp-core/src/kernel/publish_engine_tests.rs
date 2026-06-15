@@ -850,3 +850,63 @@ fn now_ms_after_resume(_signed: &SignedEvent) -> u64 {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
 }
+
+/// Workstream C structural chokepoint (BLOCKER #1). The publish engine entry
+/// `run_publish_engine_at` is the single door EVERY signed publish funnels
+/// through — so the D10 private-envelope gate enforced there closes the leak on
+/// every path. A kind:1059 gift-wrap with `Auto` (even with the author's
+/// kind:10002 write relays seeded, which WOULD route a public kind) must emit
+/// ZERO outbound frames and set a D10 toast: the encrypted envelope never
+/// reaches the public outbox.
+#[test]
+fn chokepoint_refuses_gift_wrap_with_auto_target() {
+    let author = "33".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Seed write relays so the ONLY reason for zero frames is the D10 gate
+    // (a public kind:1 with this seed routes to two relays — see bullet 1).
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+    let signed = fake_signed("44".repeat(32).as_str(), &author, 1059, "encrypted-envelope");
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        None,
+        1_000,
+    );
+    assert!(
+        outbound.is_empty(),
+        "gift-wrap + Auto must produce NO outbound frames (D10); got {outbound:?}"
+    );
+    let toast = kernel
+        .last_error_toast_snapshot()
+        .cloned()
+        .expect("a D10 refusal must set an error toast");
+    assert!(
+        toast.contains("D10") && toast.contains("1059"),
+        "toast must cite D10 + the kind; got: {toast}"
+    );
+}
+
+/// The same chokepoint ALLOWS a gift-wrap pinned to an explicit non-empty
+/// recipient-inbox relay set — fail-closed means "no Auto", not "no publish".
+#[test]
+fn chokepoint_allows_gift_wrap_with_explicit_relays() {
+    let author = "55".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let signed = fake_signed("66".repeat(32).as_str(), &author, 1059, "encrypted-envelope");
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Explicit {
+            relays: vec![WRITE_R1.to_string()],
+        },
+        None,
+        1_000,
+    );
+    assert_eq!(
+        outbound.len(),
+        1,
+        "gift-wrap with an explicit relay pin must route to exactly that relay"
+    );
+    assert_eq!(outbound[0].relay_url, WRITE_R1);
+}

@@ -9,7 +9,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::actor::ActorCommand;
-use crate::publish::policy::classify_publish_behavior;
+use crate::publish::policy::{
+    classify_publish_behavior, target_is_explicit_nonempty, validate_publish_routing,
+};
 use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
 
@@ -230,6 +232,16 @@ impl ActionModule for PublishModule {
                     ));
                 }
                 validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
+                // Workstream C one-door (D10): a private/encrypted envelope
+                // (gift-wrap / sealed) may not be dispatched with `Auto` or an
+                // empty `Explicit` target — that would Auto-route it to public
+                // relays. Reject at dispatch time so the host gets a clean
+                // error; the engine chokepoint is the deeper structural twin.
+                validate_publish_routing(
+                    event.unsigned.kind,
+                    target_is_explicit_nonempty(&target),
+                )
+                .map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             PublishAction::PublishProfile { fields } => {
@@ -257,6 +269,13 @@ impl ActionModule for PublishModule {
                     return Err(ActionRejection::Invalid(reserved.raw_publish_rejection()));
                 }
                 validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
+                // Workstream C one-door (D10): a private/encrypted envelope
+                // (gift-wrap kind:1059, sealed kind:14) published raw with
+                // `Auto` or an empty `Explicit` target is refused — it must
+                // carry an explicit non-empty recipient-inbox relay set, never
+                // Auto-route to public relays.
+                validate_publish_routing(kind, target_is_explicit_nonempty(&target))
+                    .map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             // Cancel is engine-internal — it is constructed by
