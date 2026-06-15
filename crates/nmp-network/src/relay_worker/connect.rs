@@ -68,6 +68,25 @@ pub(super) fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> 
         .set_nodelay(true)
         .map_err(|error| format!("set_nodelay: {error}"))?;
 
+    // Bound the TLS + HTTP-upgrade handshake. A relay that completes the TCP
+    // handshake but then stalls the TLS/HTTP upgrade (slow or black-holed after
+    // SYN-ACK) would otherwise wedge `client_tls_with_config`'s blocking reads
+    // indefinitely — outside `TCP_CONNECT_TIMEOUT`, which only covers the TCP
+    // connect. While wedged the worker cannot observe `WorkerCmd::Shutdown`, so
+    // `shutdown()`/`cancel()` teardown (and the cancel reaper) would hang on it.
+    // Setting per-syscall read/write timeouts caps each blocking handshake
+    // read/write at `TCP_CONNECT_TIMEOUT`, so the upgrade fails fast and the
+    // worker returns to its control-channel poll. This timeout does NOT leak
+    // into steady state: `RelayPoller::new` unconditionally puts the socket into
+    // non-blocking mode (`set_nonblocking(true)`) before the readiness loop, so
+    // the steady-state path stays readiness-driven (no polling).
+    stream
+        .set_read_timeout(Some(TCP_CONNECT_TIMEOUT))
+        .map_err(|error| format!("set handshake read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(TCP_CONNECT_TIMEOUT))
+        .map_err(|error| format!("set handshake write timeout: {error}"))?;
+
     // Upgrade the already-connected stream to a WebSocket (TLS via the rustls
     // feature). On HTTP rejection the error carries the status code, so
     // `is_permanent_error` keeps classifying 401/403 as permanent.

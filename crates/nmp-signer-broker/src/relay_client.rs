@@ -109,8 +109,36 @@ pub trait RelayClient: Send + Sync {
         self.send(frame)
     }
 
-    /// Cancel the worker, close the socket. Idempotent.
-    fn shutdown(&self);
+    /// Cancel the worker, close the socket, AND block until the client's own
+    /// background thread (if any) is joined. Idempotent. Convenience for
+    /// callers that are NOT on a latency-sensitive path (e.g. `Drop`).
+    ///
+    /// On the actor / capability call path use [`Self::signal_shutdown`]
+    /// instead — `shutdown` may block on a join, which freezes the actor when a
+    /// relay worker is stuck mid-connect.
+    fn shutdown(&self) {
+        // Default: signal, then join the surrendered handle inline. Stubs that
+        // have no background thread return `None` and this is a pure signal.
+        if let Some(handle) = self.signal_shutdown() {
+            let _ = handle.join();
+        }
+    }
+
+    /// **Signal-only shutdown.** Cancel the worker and close the socket WITHOUT
+    /// blocking, and surrender the client's own background-thread join handle
+    /// (if any) to the caller so a detached reaper can join it off the
+    /// latency-sensitive path. Idempotent: a second call returns `None`.
+    ///
+    /// This is the D4 contract for `BunkerBroker::cancel()`: the relay teardown
+    /// signal (drop senders / send `WorkerCmd::Shutdown`) happens here on the
+    /// caller path (it is non-blocking), and the join the signal eventually
+    /// unblocks is performed by the reaper, never the actor.
+    ///
+    /// Default impl (test stubs with no background thread): signal via
+    /// [`Self::shutdown`]-equivalent is a no-op and we return `None`.
+    fn signal_shutdown(&self) -> Option<JoinHandle<()>> {
+        None
+    }
 }
 
 /// Pool-backed relay client. Owns one [`Pool`] (with one [`RelayHandle`])
@@ -286,22 +314,26 @@ impl RelayClient for PoolRelayClient {
         Ok(())
     }
 
-    fn shutdown(&self) {
-        // Pool::shutdown signals every worker AND swaps the public
-        // events sender for a dead channel. The dead-channel swap is
-        // load-bearing: we still own `self.pool` while joining the
-        // dispatcher below, so the original `PoolInner.events` sender
-        // would otherwise stay alive (held by the inner `Arc<Mutex<_>>`)
-        // and the dispatcher's `pool_events_rx.recv()` would block
-        // indefinitely. With the swap, the original sender drops at
-        // shutdown time and `recv()` resolves naturally — no parallel
-        // shutdown signal, no polling.
+    fn signal_shutdown(&self) -> Option<JoinHandle<()>> {
+        // Pool::shutdown is itself non-blocking: it signals every worker
+        // (`RelayCommand::Shutdown` + shutdown flag) AND swaps the public
+        // events sender for a dead channel. It does NOT join the worker /
+        // translator threads. The dead-channel swap is load-bearing: we still
+        // own `self.pool` while the dispatcher is joined (by the caller's
+        // reaper), so the original `PoolInner.events` sender would otherwise
+        // stay alive (held by the inner `Arc<Mutex<_>>`) and the dispatcher's
+        // `pool_events_rx.recv()` would block indefinitely. With the swap, the
+        // original sender drops at shutdown time and `recv()` resolves once the
+        // translator finishes draining — no parallel shutdown signal, no
+        // polling.
+        //
+        // D4: we surrender the dispatcher join handle to the caller rather than
+        // joining it here. `cancel()` runs on the actor path; the dispatcher's
+        // `recv()` only resolves after the relay worker exits (which can take
+        // until a stuck connect bounds out), so joining it here would freeze
+        // the actor. The reaper joins it off-path instead.
         self.pool.shutdown();
-        if let Ok(mut guard) = self.dispatcher.lock() {
-            if let Some(handle) = guard.take() {
-                let _ = handle.join();
-            }
-        }
+        self.dispatcher.lock().ok().and_then(|mut g| g.take())
     }
 }
 
