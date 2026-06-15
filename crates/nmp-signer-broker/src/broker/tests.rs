@@ -92,33 +92,36 @@ fn start_nostrconnect_handshake_returns_well_formed_uri() {
     );
 }
 
-// ─── Defect 3 — the inbound dispatcher thread must be joined on cancel ───────
+// ─── Workstream D4 — cancel is signal-only / detached, never a join on-path ──
 
-/// `cancel()` must JOIN the steady-state inbound-dispatcher thread, not leak it.
+/// `cancel()` must be **signal-only / detached**: it returns promptly even
+/// while a worker thread is still winding down, and it MUST NOT join inline on
+/// the actor / capability call path. The thread later self-exits on the signal
+/// and the background reaper reclaims it — no leak.
 ///
-/// Before the fix, `install_completed_signer` spawned the dispatcher with no
-/// join handle stored on `ActiveSession`; `cancel()` joined only the handshake
-/// thread, so the dispatcher thread was detached and leaked — one stuck thread
-/// per session teardown under rapid reconnects.
+/// Pre-D4 the contract was the inverse (and this test enshrined it): `cancel()`
+/// joined the dispatcher (and handshake) handle inline, so a worker stuck mid
+/// operation froze the actor for up to the relay connect timeout — the 10s
+/// freeze ADR-0050's signer-session port set out to kill.
 ///
-/// We reproduce the exact lifecycle shape without a live bunker: a relay stub
-/// whose `shutdown()` drops the `inbound_tx` sender (mirroring the real relay
-/// client dropping its event-callback clone), a dispatcher thread blocked on
-/// `inbound_rx.recv()` that flips an exit flag when it returns, and a session
-/// with that handle stored in `dispatcher_thread`. After `cancel()` the thread
-/// MUST have exited; the join inside `cancel()` guarantees it.
+/// Shape (no live bunker): a relay stub whose `shutdown()` drops the inbound
+/// `inbound_tx` (mirroring the real relay dropping its event-callback clone —
+/// the cancel signal), and a dispatcher thread that, *after* observing that
+/// signal (recv → Err), blocks on a barrier `Mutex` the test holds. So the
+/// thread is provably still alive when `cancel()` returns. If `cancel()` joined
+/// inline it would block on that barrier and the timing assertion would fail.
+/// Then we release the barrier and block (no poll) on a completion channel the
+/// thread sends right before exit, proving it self-exits and is reclaimed.
 #[test]
-fn cancel_joins_inbound_dispatcher_thread_no_leak() {
+fn cancel_is_signal_only_does_not_block_on_join() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
+    use std::time::Instant;
 
     use crate::relay_client::{RelayClient, RelayError};
     use crate::transport::BrokerTransport;
     use nostr::Keys;
 
-    // Relay stub: `shutdown()` drops the inbound sender it was handed, exactly
-    // as the production relay client drops its event-callback `inbound_tx`
-    // clone once `Pool::shutdown` joins the relay's own dispatcher.
     struct SenderDroppingRelay {
         inbound_tx: Mutex<Option<mpsc::Sender<serde_json::Value>>>,
     }
@@ -132,7 +135,8 @@ fn cancel_joins_inbound_dispatcher_thread_no_leak() {
             Ok(())
         }
         fn shutdown(&self) {
-            // Drop the sender → the dispatcher's blocking recv() returns Err.
+            // Drop the sender → the dispatcher's blocking recv() returns Err
+            // (the cancel signal the thread observes).
             if let Ok(mut slot) = self.inbound_tx.lock() {
                 *slot = None;
             }
@@ -145,12 +149,26 @@ fn cancel_joins_inbound_dispatcher_thread_no_leak() {
     let exited = Arc::new(AtomicBool::new(false));
     let exited_for_thread = Arc::clone(&exited);
 
-    // Dispatcher thread blocked on recv — the exact production shape.
+    // Barrier the dispatcher must acquire on its way out. The test holds it,
+    // so the thread stays parked even after the cancel signal — modelling a
+    // worker still winding down a slow operation. Blocking lock, no poll (D8).
+    let barrier = Arc::new(Mutex::new(()));
+    let barrier_held = barrier.lock().expect("hold barrier");
+    let barrier_for_thread = Arc::clone(&barrier);
+
+    // Completion channel: the thread sends `()` as its final act so the test
+    // can block (recv) on its exit without polling.
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+
     let dispatcher = std::thread::Builder::new()
         .name("test-inbound-dispatch".to_string())
         .spawn(move || {
             while inbound_rx.recv().is_ok() {}
+            // Signal observed (recv → Err). Still winding down: block on the
+            // barrier the test holds. This blocks (parks) — no busy-wait.
+            let _g = barrier_for_thread.lock().expect("barrier acquire");
             exited_for_thread.store(true, Ordering::Release);
+            let _ = done_tx.send(());
         })
         .expect("spawn dispatcher");
 
@@ -158,7 +176,6 @@ fn cancel_joins_inbound_dispatcher_thread_no_leak() {
         inbound_tx: Mutex::new(Some(inbound_tx)),
     });
 
-    // Install a fully-formed session whose dispatcher_thread carries the handle.
     {
         let mut guard = broker.active.lock().expect("active lock");
         *guard = Some(ActiveSession {
@@ -175,14 +192,39 @@ fn cancel_joins_inbound_dispatcher_thread_no_leak() {
         });
     }
 
-    // cancel() calls relay.shutdown() (drops the sender) then joins the
-    // dispatcher. If the handle were leaked (pre-fix), the thread would still
-    // be parked on recv() and `exited` would remain false.
+    // cancel() signals (relay.shutdown drops the sender) and detaches the
+    // handle to the reaper. It MUST return promptly while the dispatcher is
+    // still parked on the barrier we hold. A join-on-path (pre-D4) would block
+    // here until we release `barrier_held` below — which we have not done yet.
+    let start = Instant::now();
     broker.cancel();
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "cancel() must be signal-only and not block on a join; it returned in \
+         {elapsed:?} while a dispatcher was still winding down (an inline join \
+         would have hung on the held barrier)"
+    );
+
+    // The thread must still be alive (parked on the barrier) — proof cancel did
+    // NOT wait for it.
+    assert!(
+        !exited.load(Ordering::Acquire),
+        "dispatcher should still be winding down: cancel() detached it, did not join it"
+    );
+
+    // Release the barrier; the dispatcher proceeds, sets `exited`, sends on the
+    // completion channel, and returns. The reaper joins it (no leak). Block on
+    // the completion channel (no poll) to observe the self-exit.
+    drop(barrier_held);
+    done_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("dispatcher must self-exit after the signal; reaper reclaims it (no leak)");
 
     assert!(
         exited.load(Ordering::Acquire),
-        "cancel() must join the inbound dispatcher thread; it leaked (still parked on recv)"
+        "dispatcher must exit on its own once the barrier frees; the reaper reclaims it"
     );
 }
 
