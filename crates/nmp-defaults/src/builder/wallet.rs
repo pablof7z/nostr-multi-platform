@@ -45,8 +45,9 @@ impl NmpAppBuilder<Unstarted> {
         // `self.app` is non-null (builder invariant) and not yet started, so a
         // shared borrow is sound.
         let storage_path = unsafe { &*self.app }.storage_path_for_start();
-        // `register_wallet` takes `&mut impl AppHost`; the builder implements
-        // `AppHost`, so it wires every registration against this builder's app.
+        // `register_wallet` takes only the narrow registrar traits it uses; the
+        // builder implements `AppHost` (the composition supertrait over them), so
+        // it satisfies those bounds and wires every registration against its app.
         // It returns the per-app `WalletRuntimeHandle` (ADR-0052 rung 5.2).
         let wallet_runtime = nmp_nip47::register_wallet(&mut self, storage_path);
         // Thread the handle into the NIP-57 zap auto-chain: the app-path

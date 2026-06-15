@@ -10,9 +10,10 @@
 //! (`.with_wallet()`), so a Rust caller cannot reach `start()` without the
 //! runtime installed.
 //!
-//! The function depends only on the substrate-generic [`AppHost`] trait — it
-//! names no `NmpApp` and no FFI type, so it is layer-clean (Layer-4 NIP crate
-//! wiring against the Layer-3 `nmp-core` host trait). The one host-specific
+//! The function depends only on the narrow substrate registrar traits it uses
+//! (`ActionRegistrar + RelayTextInterceptorRegistrar + SnapshotProjectionRegistrar`),
+//! not the full `AppHost` — it names no `NmpApp` and no FFI type, so it is
+//! layer-clean (Layer-4 NIP crate wiring against the Layer-3 `nmp-core` host traits). The one host-specific
 //! input — the durable storage path — is passed in by the caller (the builder
 //! reads it from the un-started app and hands it here).
 

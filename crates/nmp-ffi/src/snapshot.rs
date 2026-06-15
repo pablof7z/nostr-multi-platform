@@ -418,9 +418,10 @@ mod tests {
     }
 
     /// ADR-0037 — the typed-projection registration seam is reachable through
-    /// the `AppHost` **trait** (was concrete-only on `NmpApp`), so a reusable
-    /// protocol/feed crate that wires through `register_runtime(app: &impl
-    /// AppHost)` can register a typed FlatBuffers projection. This mirrors
+    /// the narrow `SnapshotProjectionRegistrar` **trait** (was concrete-only on
+    /// `NmpApp`), so a reusable protocol/feed crate that wires through
+    /// `register_runtime(app: &mut impl SnapshotProjectionRegistrar)` can
+    /// register a typed FlatBuffers projection. This mirrors
     /// `registered_typed_projection_surfaces_through_run_typed`
     /// (`nmp-core/src/kernel/snapshot_registry_tests.rs`) but drives the
     /// registration through `&impl AppHost` — the exact path protocol crates

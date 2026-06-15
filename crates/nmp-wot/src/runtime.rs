@@ -43,7 +43,8 @@ pub fn register_runtime(
     // un-updated host falls back to the generic subtree. Purely additive. The
     // trait→sidecar surface is proven generically by
     // `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`;
-    // this crate only depends on the `AppHost` trait, never on the C-ABI crate.
+    // this crate only depends on the narrow typed-snapshot-projection registrar
+    // trait (not the full `AppHost`), never on the C-ABI crate.
     app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
         typed_runtime.snapshot_typed()
     });
