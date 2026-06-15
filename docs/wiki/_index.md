@@ -126,6 +126,12 @@ Last updated: 2026-06-14
 | [ios-ffi-safety](ios-ffi-safety.md) | iOS FFI Safety | iOS KernelBridge.listen() uses passUnretained(sink) creating a fragile ARC teardown contract; passRetained(sink) with takeRetainedValue in the callback is safer | capture | warm | 2026-06-13 | nmp-ffi-surface |
 | [nmp-ffi-surface](nmp-ffi-surface.md) | NMP FFI Surface | The legacy author/thread C-ABI open surfaces (nmp_app_open_author, nmp_app_close_author, nmp_app_open_thread, nmp_app_close_thread) are removed; consumers must | capture | warm | 2026-06-13 | nmp-ffi-surface |
 
+## profile-resolution (1 guide)
+
+| Slug | Title | Summary | Tags | Volatility | Verified | Topic |
+|------|-------|---------|------|------------|----------|-------|
+| [profile-resolution](profile-resolution.md) | Profile Resolution | kind:0 (profile) resolution is 100% claim-driven; a claim registers a LogicalInterest through the single recompile chokepoint and inherits outbox routing, implicit kind:10002 discovery, set-cover, and progressive re-route. | reference | warm | 2026-06-15 | profile-resolution |
+
 ## projection-registry (2 guides)
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
