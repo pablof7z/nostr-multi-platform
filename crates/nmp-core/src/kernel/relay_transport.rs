@@ -76,6 +76,21 @@ impl RelayTransportMap {
             .or_insert_with(|| RelayTransportStatus::new(role))
     }
 
+    /// B3 — is any indexer-role socket currently connected?
+    ///
+    /// Scans the per-URL transport rows for an `RelayRole::Indexer` row in the
+    /// `"connected"` state. The kernel feeds the answer to
+    /// [`crate::subs::SubscriptionLifecycle::note_indexer_lane_recovered`] after
+    /// every indexer connect / fail / close so the mailbox-probe epoch advances
+    /// on a genuine outage recovery (and only then). A URL whose role rotates
+    /// is keyed by its latest role, which is sufficient here — the indexer lane
+    /// is "up" iff ≥1 of these rows reports connected.
+    fn any_indexer_connected(&self) -> bool {
+        self.rows
+            .values()
+            .any(|row| row.role == RelayRole::Indexer && row.connection == "connected")
+    }
+
     fn statuses(&self, kernel: &Kernel) -> BTreeMap<String, RelayStatus> {
         self.rows
             .iter()
@@ -133,14 +148,6 @@ impl RelayTransportMap {
         self.info.get(&key).map(|e| &e.doc)
     }
 
-    /// The per-URL transport `connection` state recorded for `relay_url`, or
-    /// `None` if no row exists yet (the URL has never dialed this session).
-    /// Read by `relay_connected_url` to distinguish a genuine
-    /// reconnect-after-down from a redundant connect of an already-live socket.
-    fn connection_state(&self, relay_url: &str) -> Option<&str> {
-        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
-        self.rows.get(&key).map(|row| row.connection.as_str())
-    }
 }
 
 impl Kernel {
@@ -236,24 +243,6 @@ impl Kernel {
         entry.error_category = None;
     }
 
-    /// Whether the per-URL transport row for `relay_url` is currently in a
-    /// *down* state — i.e. the socket was previously failed (`backing_off`) or
-    /// torn down (`closed`). Used by `relay_connected_url` to recognise a
-    /// genuine reconnect-after-down (worth re-arming the kind:10002 discovery
-    /// probes) versus a redundant/duplicate connect of an already-live or
-    /// freshly-dialing socket (startup churn — must NOT churn the plan).
-    ///
-    /// Returns `false` for a URL with no row yet (never dialed) and for
-    /// `connecting` / `connected` rows. A genuinely *new* indexer is handled by
-    /// the `IndexerSetChanged` path in `set_configured_relays`, not here.
-    #[must_use]
-    pub(super) fn indexer_socket_was_down(&self, relay_url: &str) -> bool {
-        matches!(
-            self.transport_relays.connection_state(relay_url),
-            Some("backing_off") | Some("closed")
-        )
-    }
-
     pub(super) fn mark_transport_connected(&mut self, role: RelayRole, relay_url: &str) {
         let entry = self.transport_relays.entry(role, relay_url);
         entry.connection = "connected".to_string();
@@ -294,6 +283,26 @@ impl Kernel {
             row.connection = "closed".to_string();
             row.auth = "not_required".to_string();
         }
+    }
+
+    /// B3 — feed the current indexer-lane connectivity to the subscription
+    /// lifecycle so it can advance the mailbox-probe epoch on a genuine outage
+    /// recovery (and re-arm `probed_mailboxes`).
+    ///
+    /// Called from the per-URL indexer transition sites (`relay_connected_url`,
+    /// `relay_failed`, `relay_closed`, `relay_closed_all`) AFTER the transport
+    /// row's `connection` state is updated. Cheap (`any_indexer_connected` is an
+    /// O(rows) scan and the lifecycle gate is a single bool edge), so calling it
+    /// on every indexer transition is fine; it is a no-op while the lane stays
+    /// up. No-op for non-indexer transitions (the lane truth is unchanged).
+    ///
+    /// D4: the lifecycle remains the single owner of the probed set / epoch —
+    /// the kernel only reports the OS-level connectivity edge (D7).
+    pub(super) fn observe_indexer_lane_health(&mut self) {
+        let any_indexer_connected = self.transport_relays.any_indexer_connected();
+        let _re_armed = self
+            .lifecycle
+            .note_indexer_lane_recovered(any_indexer_connected);
     }
 
     pub(super) fn record_transport_rx(&mut self, role: RelayRole, relay_url: &str, bytes: usize) {

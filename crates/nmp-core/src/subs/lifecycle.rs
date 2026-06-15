@@ -61,6 +61,14 @@ impl SubscriptionLifecycle {
             select_max_per_user: DEFAULT_SELECT_MAX_PER_USER,
             dead_relays: BTreeSet::new(),
             probed_mailboxes: BTreeSet::new(),
+            probe_epoch: 0,
+            // Start `false` (NOT down) so the first indexer connect is treated
+            // as an `up → up` no-op, not an outage recovery. The cold-start
+            // probe is driven by the normal first recompile; the epoch must
+            // count only genuine outages survived. The lane flips to `true`
+            // only after `note_indexer_lane_recovered(false)` observes every
+            // indexer socket gone, and the next recovery bumps the epoch.
+            indexer_lane_down: false,
             last_planner_error: None,
         }
     }
@@ -79,6 +87,65 @@ impl SubscriptionLifecycle {
     /// wants to retry authors whose mailbox never arrived.
     pub fn clear_probed_mailboxes(&mut self) {
         self.probed_mailboxes.clear();
+    }
+
+    /// B3 — observe an indexer-lane connectivity edge and, on a genuine outage
+    /// recovery, re-arm the mailbox-probe set.
+    ///
+    /// `any_indexer_connected` is the kernel's current truth: is *any* indexer
+    /// socket connected right now? The kernel computes it from its per-URL
+    /// transport rows (`relay_transport.rs`) on every indexer connect / fail /
+    /// close and calls this method with the result.
+    ///
+    /// State machine (the edge gate that avoids the reverted per-reconnect churn):
+    /// - `down → up` (`indexer_lane_down == true && any_indexer_connected`):
+    ///   a genuine recovery. Bump [`Self::probe_epoch`], clear
+    ///   `probed_mailboxes`, and enqueue an [`CompileTrigger::IndexerSetChanged`]
+    ///   carrying the new epoch so the next `drain_tick` re-probes every
+    ///   still-unknown author. Returns `true`.
+    /// - `up → down` (`!any_indexer_connected`): record the outage edge so the
+    ///   NEXT recovery is detected. No re-arm, no trigger. Returns `false`.
+    /// - `up → up` (a reconnect while a sibling indexer stayed live, or the
+    ///   cold-start first connect): no-op. This is exactly the routine-churn
+    ///   case the naive re-arm regressed on — the epoch is stable and the live
+    ///   probe set is untouched. Returns `false`.
+    ///
+    /// `indexer_lane_down` starts `false`, so the cold-start first connect is an
+    /// `up → up` no-op and does NOT bump the epoch (the cold-start probe is the
+    /// normal first recompile's job). The epoch therefore counts exactly the
+    /// number of genuine indexer outages survived.
+    ///
+    /// D8: enqueues at most one trigger per genuine edge; no polling. D4: the
+    /// lifecycle remains the single owner of `probed_mailboxes` / `probe_epoch`.
+    pub fn note_indexer_lane_recovered(&mut self, any_indexer_connected: bool) -> bool {
+        if any_indexer_connected {
+            let was_down = self.indexer_lane_down;
+            self.indexer_lane_down = false;
+            if was_down {
+                // Genuine 0→1 recovery (or cold-start first connect): re-arm.
+                self.probe_epoch = self.probe_epoch.saturating_add(1);
+                self.probed_mailboxes.clear();
+                self.inbox.enqueue(CompileTrigger::IndexerSetChanged {
+                    generation: self.probe_epoch,
+                });
+                return true;
+            }
+            false
+        } else {
+            // Lane went fully down — record the outage edge. No re-arm here:
+            // re-probing while no indexer is reachable would only land
+            // unroutable frames; the re-arm fires on the recovery edge.
+            self.indexer_lane_down = true;
+            false
+        }
+    }
+
+    /// B3 — current mailbox-probe epoch (diagnostics / tests). Advances by one
+    /// on each genuine indexer-lane outage recovery
+    /// (see [`Self::note_indexer_lane_recovered`]).
+    #[must_use]
+    pub fn probe_epoch(&self) -> u64 {
+        self.probe_epoch
     }
 
     /// Read-only view of the probed set (diagnostics / tests).
