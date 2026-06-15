@@ -7,4 +7,9 @@ fn rogue_request_helper(&self) {
     let _r = kernel.req_for_relay(role, relay_url, sub_id, summary, filter);
     // (2) bareword call.
     req_for_relay(role, url, id, summary, filter);
+    // (3) rustfmt-SPLIT chained call — receiver on the line above; the method
+    // token + `(` stays atomic so the split form is caught too.
+    let _s = self
+        .kernel()
+        .req_for_relay(role, url, id, summary, filter);
 }

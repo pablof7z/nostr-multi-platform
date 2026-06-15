@@ -47,11 +47,14 @@ fn d23_positive_fixture_fires() {
         "d23 finding must name the chokepoint; stdout:\n{}",
         stdout
     );
-    // The fixture plants 3 store-insert sites (self / kernel / bareword).
+    // The fixture plants 4 store-insert sites: 3 contiguous (self / kernel /
+    // bareword) + 1 rustfmt-SPLIT `.store` / `.insert(` chain. The 4th proves
+    // the split-call evasion hole is closed (a single-line matcher misses it).
     let n = stdout.matches("error[D23]").count();
     assert!(
-        n >= 3,
-        "d23 must flag all 3 planted store-insert sites; got {}; stdout:\n{}",
+        n >= 4,
+        "d23 must flag all 4 planted store-insert sites incl. the split chain; \
+         got {}; stdout:\n{}",
         n, stdout
     );
 }
@@ -93,10 +96,12 @@ fn d24_positive_fixture_fires() {
         "d24 finding must name the post-store fan-out seam; stdout:\n{}",
         stdout
     );
+    // 2 single-line notify sites + 1 rustfmt-split chained call.
     let n = stdout.matches("error[D24]").count();
     assert!(
-        n >= 2,
-        "d24 must flag both planted notify sites; got {}; stdout:\n{}",
+        n >= 3,
+        "d24 must flag all 3 planted notify sites incl. the split chain; \
+         got {}; stdout:\n{}",
         n, stdout
     );
 }
@@ -138,10 +143,12 @@ fn d25_positive_fixture_fires() {
         "d25 finding must point at the LogicalInterest one-door; stdout:\n{}",
         stdout
     );
+    // 2 single-line req_for_relay sites + 1 rustfmt-split chained call.
     let n = stdout.matches("error[D25]").count();
     assert!(
-        n >= 2,
-        "d25 must flag both planted req_for_relay sites; got {}; stdout:\n{}",
+        n >= 3,
+        "d25 must flag all 3 planted req_for_relay sites incl. the split chain; \
+         got {}; stdout:\n{}",
         n, stdout
     );
 }
