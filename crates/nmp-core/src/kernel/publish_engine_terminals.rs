@@ -2,11 +2,13 @@
 //!
 //! Extracted from `publish_engine.rs` to keep that file under the 500-LOC
 //! hand-authored ceiling (AGENTS.md / V-12). This module owns the two
-//! per-tick drains the kernel runs against the engine:
+//! per-tick drains and projection-source sync the kernel runs against the engine:
 //!   - `take_action_results_projection` — the `action_results` projection
 //!     edge the host reads to clear per-action spinners.
 //!   - `apply_engine_completions` — flips `PublishQueueEntry` rows from
 //!     `accepted_locally` to their terminal `"ok"` / `"failed"` status.
+//!   - `bump_publish_if_engine_view_changed` — keeps ADR-0055's `publish_engine_ver`
+//!     aligned with the engine-owned in-flight view used by `publish_outbox`.
 //!
 //! Plus the free-standing `classify_terminal_outcome` helper that maps a
 //! `TerminalOutcome` into the wire-level `(status, outcomes)` pair.
@@ -16,6 +18,18 @@ use crate::publish::TerminalOutcome;
 use super::super::Kernel;
 
 impl Kernel {
+    /// ADR-0055 / #1412: `publish_outbox` and `outbox_summary` derive from
+    /// `publish_engine.snapshot().in_flight`, not just `publish_queue`. Whenever
+    /// an engine entrypoint advances its view rev, the publish-engine source
+    /// counter must advance too or Rung 3 can omit a changed outbox payload.
+    pub(in super::super) fn bump_publish_if_engine_view_changed(&mut self, before_rev: u64) {
+        if self.publish_engine.snapshot().rev != before_rev {
+            self.projection_rev_tracker
+                .source_versions
+                .bump_publish_engine();
+        }
+    }
+
     /// Direction review #29: drain ALL terminals that settled since the last
     /// emit, returning them as a JSON array for the `action_results` snapshot
     /// projection. Each tick surfaces every result that arrived, not just the

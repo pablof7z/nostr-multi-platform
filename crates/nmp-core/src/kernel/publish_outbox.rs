@@ -113,6 +113,7 @@ impl Kernel {
     pub(crate) fn retry_publish_now(&mut self, handle: &str) -> Vec<OutboundMessage> {
         let now_ms = now_epoch_ms();
         let handle = handle.to_string();
+        let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.retry_now(&handle, now_ms) {
             if matches!(&err, PublishEngineError::Store(PublishStoreError::NotFound)) {
                 if let Some((signed, target)) = self.retry_payload_for_publish(&handle) {
@@ -124,6 +125,7 @@ impl Kernel {
                 .record_engine_error(&err, &handle, "", now_ms);
             let (toast, _, _) = describe_engine_error(&err);
             self.set_last_error_toast(Some(toast));
+            self.bump_publish_if_engine_view_changed(engine_rev_before);
             return Vec::new();
         }
         self.apply_engine_completions();
@@ -131,6 +133,7 @@ impl Kernel {
         if !drained.is_empty() {
             self.changed_since_emit = true;
         }
+        self.bump_publish_if_engine_view_changed(engine_rev_before);
         drained
             .into_iter()
             .map(|(relay_url, text)| OutboundMessage {
@@ -153,20 +156,24 @@ impl Kernel {
         };
         // Cancel reports `handle` as the correlation_id directly (it is what
         // the host received from dispatch), so no override is needed here.
+        let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.start_publish(action, now_ms, None) {
             if matches!(&err, PublishEngineError::Store(PublishStoreError::NotFound))
                 && self.remove_publish_entry(&handle)
             {
                 self.set_last_error_toast(None);
+                self.bump_publish_if_engine_view_changed(engine_rev_before);
                 return;
             }
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
             let (toast, _, _) = describe_engine_error(&err);
             self.set_last_error_toast(Some(toast));
+            self.bump_publish_if_engine_view_changed(engine_rev_before);
             return;
         }
         self.set_publish_entry_terminal(&handle, "cancelled", Vec::new());
+        self.bump_publish_if_engine_view_changed(engine_rev_before);
         self.changed_since_emit = true;
     }
 }
