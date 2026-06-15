@@ -17,16 +17,17 @@ namespace nmp.kernel;
 //
 // ## Capture-once ownership
 //
-// `action_stages_projection()` is a `&self` COPY (not a drain), but
-// `take_action_results_projection()` RECORDS terminals into this same mirror
-// earlier in the tick, so its contents change across the tick. To stay strictly
-// uniform with the four genuinely-drained built-ins — and to read the EXACT
-// value the JSON key carries — the JSON path captures this projection's `Value`
-// ONCE into a per-tick `Kernel` field; the typed path reads that captured
-// `Value` and builds this buffer by PARSING it. The typed entry is pushed
-// EXACTLY when the JSON key is present, and is ABSENT in steady state (no id
-// tracked -> nothing captured). Necessary deviation from the #1031 DTO->Model
-// convention: the accessor exposes only `serde_json::Value`.
+// `action_stages_projection()` is a COPY (not a drain), but it mutates by
+// pruning terminal rows whose kernel-clock TTL expired. `take_action_results_
+// projection()` also RECORDS terminals into this same mirror earlier in the
+// tick, so its contents can change across the tick. To stay strictly uniform
+// with the four genuinely-drained built-ins — and to read the EXACT value the
+// JSON key carries — the JSON path captures this projection's `Value` ONCE into
+// a per-tick `Kernel` field; the typed path reads that captured `Value` and
+// builds this buffer by PARSING it. The typed entry is pushed EXACTLY when the
+// JSON key is present, and is ABSENT in steady state (no id tracked -> nothing
+// captured). Necessary deviation from the #1031 DTO->Model convention: the
+// accessor exposes only `serde_json::Value`.
 //
 // FlatBuffers has no map type, so the `correlation_id -> [stage]` map is
 // flattened to a vector of `{key, stages}` entries SORTED BY KEY. The serde JSON

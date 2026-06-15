@@ -213,7 +213,9 @@ impl Kernel {
             .insert(correlation_id.to_string(), result);
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump settlement_enqueue_ver (signed_events drain).
-        self.projection_rev_tracker.source_versions.bump_settlement_enqueue();
+        self.projection_rev_tracker
+            .source_versions
+            .bump_settlement_enqueue();
     }
 
     /// Drain every `SignEventForReturn` result that landed since the last emit
@@ -254,8 +256,8 @@ impl Kernel {
     }
 
     /// Append a lifecycle stage for `correlation_id` to the
-    /// `action_stages` projection. Persists until the host acks via
-    /// [`Kernel::ack_action_stage`].
+    /// `action_stages` projection. Non-terminals persist until they settle or
+    /// hit the global cap; terminal histories are retained by kernel-owned TTL.
     ///
     /// `at_ms` is sourced from the kernel clock (`now_ms`) so a test
     /// `FixedClock` makes the recorded timestamps deterministic. `detail`
@@ -287,7 +289,9 @@ impl Kernel {
             .record(correlation_id, stage, detail, at_ms);
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump settlement_enqueue_ver for action_stages/lifecycle.
-        self.projection_rev_tracker.source_versions.bump_settlement_enqueue();
+        self.projection_rev_tracker
+            .source_versions
+            .bump_settlement_enqueue();
     }
 
     /// Read accessor for the `action_lifecycle` display projection
@@ -315,7 +319,9 @@ impl Kernel {
         // actually removed a row. Wall-clock gated — called from the existing
         // emit/ingest edge (D8 compliant, no separate timer).
         if len_after < len_before {
-            self.projection_rev_tracker.source_versions.bump_ttl_expiry();
+            self.projection_rev_tracker
+                .source_versions
+                .bump_ttl_expiry();
         }
         // ADR-0055 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
         // emit. `note_copy_emit` parks `Cleared` in `pending_presence` on the
@@ -323,32 +329,35 @@ impl Kernel {
         // the synthesis in `omit_unchanged` emits the host-facing Cleared row.
         // Must be called AFTER the TTL bump above (the bump may advance the rev,
         // which is the Cleared frame's distinguishing rev increment).
-        self.projection_rev_tracker.note_copy_emit("action_lifecycle", !result.is_null());
+        self.projection_rev_tracker
+            .note_copy_emit("action_lifecycle", !result.is_null());
         result
     }
 
-    /// Drop the entry for `correlation_id` from the `action_stages`
-    /// mirror. Idempotent — an unknown id is a silent no-op (D6).
+    /// Early-dismiss `correlation_id` from the retained action feedback
+    /// trackers. Idempotent — an unknown id is a silent no-op (D6).
     ///
-    /// An ack is a genuine content change to the `action_stages` projection: the
-    /// reduced mirror serialises to different bytes. So besides flipping
-    /// `changed_since_emit` (so the actor ticks) we MUST advance the projection
-    /// rev — otherwise the StaleStamp oracle fires (content changed, rev didn't)
-    /// and, with Rung 3 omit-Unchanged live, the host would serve the stale
-    /// (un-acked) row forever. We bump `settlement_enqueue_ver` — the same
-    /// source version `record_action_stage` bumps on enqueue; both
-    /// `action_stages` and `action_lifecycle` depend on it (see PROJECTION_DEPS
-    /// in `projection_rev/mod.rs`), and an ack is the symmetric content edit to
-    /// an enqueue.
+    /// An ack is a genuine content change to one or both retained projections:
+    /// the reduced mirror/lifecycle serialises to different bytes. So besides
+    /// flipping `changed_since_emit` (so the actor ticks) we MUST advance the
+    /// projection rev — otherwise the StaleStamp oracle fires (content changed,
+    /// rev didn't) and, with Rung 3 omit-Unchanged live, the host would serve
+    /// stale retained rows. We bump `settlement_enqueue_ver` — the same source
+    /// version `record_action_stage` bumps on enqueue; both `action_stages` and
+    /// `action_lifecycle` depend on it (see PROJECTION_DEPS in
+    /// `projection_rev/mod.rs`), and an ack is the symmetric content edit to an
+    /// enqueue.
     ///
     /// NOTE: this is distinct from the `note_copy_emit` Cleared edge. The Cleared
-    /// edge (bumps `ttl_expiry_ver`) fires only on ack-of-the-LAST entry
+    /// edge (bumps `ttl_expiry_ver`) fires only on ack/expiry of the LAST entry
     /// (non-empty → empty). A PARTIAL ack (entries remain) keeps the projection
     /// non-empty and is governed entirely by this `settlement_enqueue_ver` bump
     /// → delivered as `Changed` exactly once. Both mechanisms are required
     /// (#1390 review FIX 2).
     pub(crate) fn ack_action_stage(&mut self, correlation_id: &str) {
-        if self.action_stages.ack(correlation_id) {
+        let removed_stage = self.action_stages.ack(correlation_id);
+        let removed_lifecycle = self.action_lifecycle.dismiss(correlation_id);
+        if removed_stage || removed_lifecycle {
             self.changed_since_emit = true;
             // Advance the rev so a partial ack is delivered as Changed exactly
             // once and the oracle stays sharp without relying on a presence
@@ -360,10 +369,11 @@ impl Kernel {
     }
 
     /// Read accessor for [`update`]'s projection emit site. Returns
-    /// the full JSON mirror as a copy (NOT a drain): the same `correlation_id`
-    /// stays in the snapshot across every tick until the host acks. Returns
-    /// `serde_json::Value::Null` when nothing is tracked so the helper can
-    /// omit the projection key in steady state.
+    /// the full JSON mirror as a copy (NOT a drain): non-terminal entries stay
+    /// in the snapshot across ticks until they settle or hit the global cap, and
+    /// terminal entries stay until TTL expiry or early ack. Returns
+    /// `serde_json::Value::Null` when nothing is tracked so the helper can omit
+    /// the projection key in steady state.
     ///
     /// ADR-0055 Rung 3 S1b (§10.4): also drives the `note_copy_emit`
     /// Cleared-edge machine for `action_stages`. Takes `&mut self` to write
@@ -372,12 +382,21 @@ impl Kernel {
     /// within the same tick; this accessor runs after that, so it observes the
     /// final post-drain state.
     pub(crate) fn action_stages_projection(&mut self) -> serde_json::Value {
-        let result = self.action_stages.snapshot();
+        let now = self.now_ms();
+        let len_before = self.action_stages.entry_count();
+        let result = self.action_stages.snapshot(now);
+        let len_after = self.action_stages.entry_count();
+        if len_after < len_before {
+            self.projection_rev_tracker
+                .source_versions
+                .bump_ttl_expiry();
+        }
         // ADR-0055 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
-        // emit. On ack-of-last-entry the snapshot is Null; was_nonempty=true →
-        // note_copy_emit parks Cleared → manifest Cleared → synthesis emits the
-        // Cleared row → host drops the stale stage entry.
-        self.projection_rev_tracker.note_copy_emit("action_stages", !result.is_null());
+        // emit. On ack/expiry-of-last-entry the snapshot is Null;
+        // was_nonempty=true → note_copy_emit parks Cleared → manifest Cleared
+        // → synthesis emits the Cleared row → host drops the stale stage entry.
+        self.projection_rev_tracker
+            .note_copy_emit("action_stages", !result.is_null());
         result
     }
 

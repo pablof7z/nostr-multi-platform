@@ -6,7 +6,7 @@
 //!
 //! - `action_results`   (drain key)   — via `record_action_success`
 //! - `signed_events`    (drain key)   — via `record_signed_event_return`
-//! - `action_stages`    (copy-with-TTL) — via `record_action_stage` + `ack_action_stage`
+//! - `action_stages`    (copy-with-TTL) — via `record_action_stage` + `ack_action_stage` or TTL expiry
 //! - `action_lifecycle` (copy-with-TTL) — via TTL expiry (`FixedClock`)
 //!
 //! For each key the test asserts:
@@ -37,12 +37,17 @@ use super::super::Kernel;
 use crate::kernel::action_lifecycle::RECENT_TERMINAL_TTL_MS;
 use crate::kernel::action_stages::ActionStage;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::update_envelope::{decode_snapshot_typed_projections, TypedProjectionData, WireProjectionState};
+use crate::update_envelope::{
+    decode_snapshot_typed_projections, TypedProjectionData, WireProjectionState,
+};
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
 /// Construct a fresh kernel with incremental-apply declared.
-fn kernel_incremental() -> (Kernel, super::super::snapshot_registry::SnapshotProjectionSlot) {
+fn kernel_incremental() -> (
+    Kernel,
+    super::super::snapshot_registry::SnapshotProjectionSlot,
+) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let slot = new_snapshot_projection_slot();
     kernel.set_snapshot_projection_handle(Arc::clone(&slot));
@@ -61,10 +66,7 @@ fn emit(kernel: &mut Kernel) -> Vec<TypedProjectionData> {
 
 /// A minimal in-test host cache stand-in (same algorithm as §3 D3-3).
 /// `Changed` → insert/overwrite; `Cleared` → remove; absent/Unchanged → keep.
-fn apply_to_cache(
-    cache: &mut HashMap<String, Vec<u8>>,
-    rows: &[TypedProjectionData],
-) {
+fn apply_to_cache(cache: &mut HashMap<String, Vec<u8>>, rows: &[TypedProjectionData]) {
     for row in rows {
         match row.state {
             WireProjectionState::Changed => {
@@ -164,8 +166,8 @@ fn signed_events_cleared_on_drain_empty() {
     // Seed a signed_event return.
     kernel.record_signed_event_return("corr-2", Ok(r#"{"id":"abc"}"#.to_string()));
     let frame_a = emit(&mut kernel);
-    let row_a = find_row(&frame_a, "signed_events")
-        .expect("signed_events must be Changed in frame A");
+    let row_a =
+        find_row(&frame_a, "signed_events").expect("signed_events must be Changed in frame A");
     assert_eq!(row_a.state, WireProjectionState::Changed);
     assert!(!row_a.payload.is_empty());
 
@@ -228,9 +230,10 @@ fn action_stages_cleared_after_ack_of_last_entry() {
     // Frame B: S1b §10.4 Cleared-edge machine (note_copy_emit) must park
     // Cleared → synthesis emits the Cleared row.
     let frame_b = emit(&mut kernel);
-    let row_b = find_row(&frame_b, "action_stages")
-        .expect("action_stages Cleared row MUST appear in frame B after ack-of-last-entry \
-                 (S1b / finding 7 regression)");
+    let row_b = find_row(&frame_b, "action_stages").expect(
+        "action_stages Cleared row MUST appear in frame B after ack-of-last-entry \
+                 (S1b / finding 7 regression)",
+    );
     assert_eq!(
         row_b.state,
         WireProjectionState::Cleared,
@@ -253,6 +256,43 @@ fn action_stages_cleared_after_ack_of_last_entry() {
         find_row(&frame_c, "action_stages").is_none(),
         "action_stages must be ABSENT in frame C (Unchanged after Cleared)"
     );
+}
+
+/// `action_stages`: terminal retention expiry must also synthesize a Cleared
+/// row. This is the no-host-ack path: the only event after the terminal emit is
+/// advancing the injected kernel clock and producing another snapshot.
+#[test]
+fn action_stages_cleared_after_ttl_expiry_without_ack() {
+    let epoch = SystemTime::UNIX_EPOCH;
+    let (mut kernel, _slot) = kernel_incremental();
+    kernel.set_clock(Arc::new(FixedClock(epoch)));
+    let _ = emit(&mut kernel); // baseline
+
+    kernel.record_action_stage("c-stage-ttl", ActionStage::Accepted, None);
+    let frame_a = emit(&mut kernel);
+    let row_a = find_row(&frame_a, "action_stages")
+        .expect("action_stages must be Changed in frame A (terminal retained)");
+    assert_eq!(row_a.state, WireProjectionState::Changed);
+    assert!(!row_a.payload.is_empty());
+
+    let mut host_cache: HashMap<String, Vec<u8>> = HashMap::new();
+    apply_to_cache(&mut host_cache, &frame_a);
+    assert!(host_cache.contains_key("action_stages"));
+
+    let past_ttl = epoch + Duration::from_millis(RECENT_TERMINAL_TTL_MS);
+    kernel.set_clock(Arc::new(FixedClock(past_ttl)));
+
+    let frame_b = emit(&mut kernel);
+    let row_b = find_row(&frame_b, "action_stages")
+        .expect("action_stages Cleared row must appear after terminal TTL expiry");
+    assert_eq!(row_b.state, WireProjectionState::Cleared);
+    assert!(row_b.payload.is_empty());
+
+    apply_to_cache(&mut host_cache, &frame_b);
+    assert!(!host_cache.contains_key("action_stages"));
+
+    let frame_c = emit(&mut kernel);
+    assert!(find_row(&frame_c, "action_stages").is_none());
 }
 
 // ── Copy-with-TTL key: action_lifecycle (TTL expiry path) ────────────────────
@@ -294,9 +334,10 @@ fn action_lifecycle_cleared_after_ttl_expiry() {
     // Frame B: snapshot prunes the expired terminal → tracker empty → note_copy_emit
     // parks Cleared → synthesis emits the Cleared row.
     let frame_b = emit(&mut kernel);
-    let row_b = find_row(&frame_b, "action_lifecycle")
-        .expect("action_lifecycle Cleared row MUST appear in frame B after TTL expiry \
-                 (S1b / finding 7 regression for action_lifecycle)");
+    let row_b = find_row(&frame_b, "action_lifecycle").expect(
+        "action_lifecycle Cleared row MUST appear in frame B after TTL expiry \
+                 (S1b / finding 7 regression for action_lifecycle)",
+    );
     assert_eq!(
         row_b.state,
         WireProjectionState::Cleared,
@@ -336,7 +377,12 @@ fn always_empty_key_never_produces_cleared_row() {
     // Emit several frames with no settlements.
     for _ in 0..5 {
         let frame = emit(&mut kernel);
-        for key in &["action_results", "signed_events", "action_stages", "action_lifecycle"] {
+        for key in &[
+            "action_results",
+            "signed_events",
+            "action_stages",
+            "action_lifecycle",
+        ] {
             if let Some(row) = find_row(&frame, key) {
                 // If the row appears at all, it must NOT be Cleared (it was never populated).
                 assert_ne!(

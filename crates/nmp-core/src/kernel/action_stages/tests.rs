@@ -59,9 +59,8 @@ fn is_terminal_matches_only_terminal_variants() {
     .is_terminal());
 }
 
-/// `ack` drops the entry; subsequent `history` returns `None`. This
-/// is the load-bearing retention guarantee — stages persist *until*
-/// ack, never on a TTL.
+/// `ack` drops the entry; subsequent `history` returns `None`. Ack is an early
+/// cleanup path; terminal entries also expire on snapshot TTL without it.
 #[test]
 fn ack_drops_entry() {
     let mut t = ActionStageTracker::new();
@@ -86,22 +85,33 @@ fn ack_unknown_is_noop() {
     assert!(t.entries.is_empty());
 }
 
-/// THE LOAD-BEARING TEST: a Publishing-then-Accepted sequence is
-/// preserved across many `snapshot()` calls — the snapshot is a
-/// copy, not a drain, so the host can observe the same state
-/// multiple ticks in a row until it acks.
+/// A Publishing-then-Accepted sequence is preserved across snapshot calls inside
+/// the terminal retention window — the snapshot is a copy, not a drain.
 #[test]
-fn snapshot_is_a_copy_not_a_drain() {
+fn terminal_snapshot_is_a_copy_until_ttl() {
     let mut t = ActionStageTracker::new();
     let cid = "corr-persist";
     t.record(cid, ActionStage::Requested, None, 1);
     t.record(cid, ActionStage::Accepted, None, 2);
-    let snap_a = t.snapshot();
-    let snap_b = t.snapshot();
-    let snap_c = t.snapshot();
+    let snap_a = t.snapshot(2);
+    let snap_b = t.snapshot(2 + TERMINAL_STAGE_RETENTION_MS - 1);
     assert_eq!(snap_a, snap_b);
-    assert_eq!(snap_b, snap_c);
-    // Entry is still there; only ack drops it.
+    assert!(t.history(cid).is_some());
+
+    let snap_c = t.snapshot(2 + TERMINAL_STAGE_RETENTION_MS);
+    assert!(snap_c.is_null(), "terminal entry expired at the TTL edge");
+    assert!(t.history(cid).is_none());
+}
+
+/// Non-terminal rows are not TTL-expired by the stage-retention window. They
+/// remain in the mirror until they settle or the global cap evicts them.
+#[test]
+fn non_terminal_snapshot_survives_terminal_ttl_window() {
+    let mut t = ActionStageTracker::new();
+    let cid = "corr-pending";
+    t.record(cid, ActionStage::Requested, None, 1);
+    let snap = t.snapshot(1 + TERMINAL_STAGE_RETENTION_MS * 10);
+    assert!(snap.get(cid).is_some(), "non-terminal remains visible");
     assert!(t.history(cid).is_some());
 }
 
@@ -109,8 +119,8 @@ fn snapshot_is_a_copy_not_a_drain() {
 /// can omit the key (parallels `action_results`'s convention).
 #[test]
 fn snapshot_is_null_when_empty() {
-    let t = ActionStageTracker::new();
-    assert!(t.snapshot().is_null());
+    let mut t = ActionStageTracker::new();
+    assert!(t.snapshot(0).is_null());
 }
 
 /// Snapshot shape: each correlation_id maps to an array of stage
@@ -127,7 +137,7 @@ fn snapshot_shape_matches_host_expectations() {
         110,
     );
 
-    let snap = t.snapshot();
+    let snap = t.snapshot(110);
     let obj = snap.as_object().expect("snapshot is a JSON object");
     let history = obj["c1"].as_array().expect("history is an array");
     assert_eq!(history.len(), 2);
@@ -157,7 +167,7 @@ fn failed_stage_serialises_with_reason() {
         None,
         7,
     );
-    let snap = t.snapshot();
+    let snap = t.snapshot(7);
     let stage_obj = &snap["c-fail"][0];
     assert_eq!(stage_obj["stage"], "failed");
     assert_eq!(stage_obj["reason"], "no relays settled");

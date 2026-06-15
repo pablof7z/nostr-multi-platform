@@ -24,7 +24,7 @@
 
 use super::{
     SRC_ACCOUNTS, SRC_ACTIVE_ACCOUNT, SRC_CLAIMED_EVENT_CONTENT, SRC_CONFIGURED_RELAYS,
-    SRC_DIAGNOSTICS_INPUTS, SRC_OPEN_VIEWS, SRC_PROFILE_CLAIMS, SRC_PROFILES, SRC_PUBLISH,
+    SRC_DIAGNOSTICS_INPUTS, SRC_OPEN_VIEWS, SRC_PROFILES, SRC_PROFILE_CLAIMS, SRC_PUBLISH,
     SRC_SETTLEMENT_DRAIN, SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
 };
 
@@ -119,10 +119,11 @@ pub(crate) struct SourceVersions {
     /// distinguish Changed (non-empty drain) from Cleared (empty drain).
     pub(crate) settlement_drain_ver: u64,
 
-    /// Bumped when `action_lifecycle.prune_expired` actually removes a row
-    /// (codex #3 — wall-clock TTL-expiry edge, D8-compliant: no separate timer,
-    /// called from the existing emit/ingest edge). Stable on idle ticks where
-    /// no row crosses its deadline.
+    /// Bumped when action feedback TTL pruning actually removes a row
+    /// (`action_lifecycle` or the legacy `action_stages` mirror). This is the
+    /// wall-clock TTL-expiry edge: D8-compliant, no separate timer, called from
+    /// the existing emit/snapshot edge. Stable on idle ticks where no row
+    /// crosses its deadline.
     pub(crate) ttl_expiry_ver: u64,
 }
 
