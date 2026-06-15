@@ -270,7 +270,7 @@ pub extern "C" fn nmp_app_declare_consumed_projections(
 mod tests {
     use super::super::{nmp_app_free, nmp_app_new};
     use super::*;
-    use nmp_core::substrate::AppHost;
+    use nmp_core::substrate::SnapshotProjectionRegistrar;
     use nmp_core::TypedProjectionData;
     use std::ffi::CString;
 
@@ -427,9 +427,10 @@ mod tests {
     /// use — and asserts the typed projection surfaces in the typed sidecar.
     #[test]
     fn typed_projection_registered_through_trait_surfaces_in_sidecar() {
-        // Register through `&impl AppHost`, NOT the inherent `NmpApp` method —
-        // this is the seam protocol crates reach via `register_runtime`.
-        fn register_via_trait(host: &impl AppHost) {
+        // Register through `&impl SnapshotProjectionRegistrar`, NOT the inherent
+        // `NmpApp` method — this is the seam protocol crates reach via
+        // `register_runtime`.
+        fn register_via_trait(host: &impl SnapshotProjectionRegistrar) {
             host.register_typed_snapshot_projection("nmp.feed.home", || {
                 Some(TypedProjectionData {
                     key: "nmp.feed.home".to_string(),
@@ -449,7 +450,8 @@ mod tests {
 
         let typed = app_ref.run_typed_snapshot_projections_for_test();
         let entry = typed.iter().find(|d| d.key == "nmp.feed.home").expect(
-            "a typed projection registered through the AppHost trait must surface in run_typed",
+            "a typed projection registered through the SnapshotProjectionRegistrar trait must \
+             surface in run_typed",
         );
         assert_eq!(entry.schema_id, "nmp.nip01.timeline");
         assert_eq!(entry.schema_version, 1);

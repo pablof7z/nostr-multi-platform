@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::AppHost;
+use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
 use nmp_core::KernelEventObserver;
 use nmp_nip51::MuteListProjection;
 
@@ -67,7 +67,9 @@ use nmp_nip51::MuteListProjection;
 ///
 /// Like [`crate::register_defaults`], call before `nmp_app_start`. The
 /// `KernelEventObserver` must be registered before the first event arrives.
-pub fn register_mute_runtime(app: &impl AppHost) -> Arc<MuteListProjection> {
+pub fn register_mute_runtime(
+    app: &(impl EventObserverRegistrar + HostCapabilities + SnapshotProjectionRegistrar),
+) -> Arc<MuteListProjection> {
     // ── 1. Active-pubkey slot (Finding C) ────────────────────────────────
     //
     // `MuteListProjection` takes `Arc<Mutex<Option<String>>>` (hex pubkey) —

@@ -1,16 +1,28 @@
-//! `impl AppHost for NmpApp` — the substrate-trait delegation surface.
+//! Narrow host-trait delegation surface for `NmpApp`.
 //!
 //! Extracted from `lib.rs` (ADR-0053 work) to keep that file within its size
 //! baseline. Every method delegates to the inherent `NmpApp` method of the same
-//! name; the trait exists so reusable protocol/composition crates can wire
-//! against `&impl AppHost` without naming the concrete C-ABI `NmpApp` type.
+//! name; the traits exist so reusable protocol/composition crates can wire
+//! against `&impl <NarrowTrait>` without naming the concrete C-ABI `NmpApp`
+//! type.
+//!
+//! D6: `NmpApp` implements each narrow registration/capability trait
+//! individually and gets [`nmp_core::substrate::AppHost`] for free via the
+//! blanket super-trait impl.
 
 use std::ops::Range;
 use std::sync::Arc;
 
+use nmp_core::substrate::{
+    CoverageHookRegistrar, DmInboxRelayRegistrar, EventObserverRegistrar, HostCapabilities,
+    IdentityChangeRegistrar, IngestParserRegistrar, KernelReaderRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+};
+
 use super::*;
 
-impl nmp_core::substrate::AppHost for NmpApp {
+impl SnapshotProjectionRegistrar for NmpApp {
     fn register_snapshot_projection<K, F>(&self, key: K, f: F)
     where
         K: Into<String>,
@@ -70,29 +82,39 @@ impl nmp_core::substrate::AppHost for NmpApp {
     ) {
         NmpApp::frame_identity_handles(self)
     }
+}
 
+impl CoverageHookRegistrar for NmpApp {
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         NmpApp::set_coverage_hook(self, hook);
     }
+}
 
+impl ReqFrameInterceptorRegistrar for NmpApp {
     fn set_req_frame_interceptor(
         &self,
         interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
     ) {
         NmpApp::set_req_frame_interceptor(self, interceptor);
     }
+}
 
+impl RelayTextInterceptorRegistrar for NmpApp {
     fn add_relay_text_interceptor(
         &self,
         interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
     ) {
         NmpApp::add_relay_text_interceptor(self, interceptor);
     }
+}
 
+impl RelayConnectedHookRegistrar for NmpApp {
     fn add_relay_connected_hook(&self, hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>) {
         NmpApp::add_relay_connected_hook(self, hook);
     }
+}
 
+impl IngestParserRegistrar for NmpApp {
     fn register_ingest_parser(
         &self,
         kind: u32,
@@ -116,7 +138,7 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn replace_ingest_parser_range(
         &self,
-        range: std::ops::Range<u32>,
+        range: Range<u32>,
         slot_key: &'static str,
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
@@ -126,11 +148,15 @@ impl nmp_core::substrate::AppHost for NmpApp {
     fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
         NmpApp::unregister_ingest_parser_range(self, slot_key);
     }
+}
 
+impl DmInboxRelayRegistrar for NmpApp {
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         NmpApp::set_dm_inbox_relay_lookup(self, lookup);
     }
+}
 
+impl KernelReaderRegistrar for NmpApp {
     fn set_profile_lookup(&self, lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
         NmpApp::set_profile_lookup(self, lookup);
     }
@@ -142,7 +168,9 @@ impl nmp_core::substrate::AppHost for NmpApp {
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
         NmpApp::set_mailbox_cache_reader(self, cache);
     }
+}
 
+impl RoutingFactoryRegistrar for NmpApp {
     fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(
@@ -184,10 +212,12 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::set_raw_event_forward_policy_factory(self, factory);
     }
 
-    fn active_local_keys(&self) -> nmp_core::slots::ActiveLocalKeysSlot {
-        NmpApp::active_local_keys(self)
+    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
+        NmpApp::set_nostrconnect_bootstrap_relay(self, url)
     }
+}
 
+impl HostCapabilities for NmpApp {
     fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
         NmpApp::active_account_handle(self)
     }
@@ -196,6 +226,12 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::actor_sender(self)
     }
 
+    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
+        NmpApp::configured_relays_handle(self)
+    }
+}
+
+impl EventObserverRegistrar for NmpApp {
     fn register_event_observer(
         &self,
         observer: Arc<dyn KernelEventObserver>,
@@ -225,15 +261,9 @@ impl nmp_core::substrate::AppHost for NmpApp {
     fn unregister_raw_event_observer(&self, id: RawEventObserverId) {
         NmpApp::unregister_raw_event_observer(self, id);
     }
+}
 
-    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
-        NmpApp::configured_relays_handle(self)
-    }
-
-    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        NmpApp::set_nostrconnect_bootstrap_relay(self, url)
-    }
-
+impl IdentityChangeRegistrar for NmpApp {
     fn register_identity_change_observer<F>(&self, f: F)
     where
         F: Fn(Option<String>) + Send + Sync + 'static,

@@ -2901,7 +2901,7 @@ pub extern "C" fn nmp_app_start(
              will serialize all {} Tier-2 built-in projections on every tick \
              (including relay_diagnostics). Call \
              `nmp_app_declare_consumed_projections` / \
-             `AppHost::declare_consumed_projections` before start to opt into \
+             `SnapshotProjectionRegistrar::declare_consumed_projections` before start to opt into \
              the ADR-0053 optimization (ADR-0053 DEBT 2).",
             nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS.len(),
         );

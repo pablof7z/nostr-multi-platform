@@ -100,7 +100,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::AppHost;
+use nmp_core::substrate::{AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar};
 
 pub mod builder;
 pub mod op_feed_defaults;
@@ -293,7 +293,9 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
 ///
 /// Called by [`register_defaults`]; `pub` so an app opting out of the wholesale
 /// defaults can still wire just this projection.
-pub fn register_longform_projection(app: &impl AppHost) {
+pub fn register_longform_projection(
+    app: &(impl EventObserverRegistrar + SnapshotProjectionRegistrar),
+) {
     use nmp_content::LongformProjection;
     use nmp_core::KernelEventObserver;
 

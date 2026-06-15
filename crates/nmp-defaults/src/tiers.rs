@@ -46,7 +46,10 @@ use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
 use nmp_core::substrate::{
-    AppHost, MailboxCache, OutboxRouter, RawEventForwardPolicy, RoutingTraceObserver,
+    ActionRegistrar, CoverageHookRegistrar, IngestParserRegistrar, KernelReaderRegistrar,
+    MailboxCache, OutboxRouter, RawEventForwardPolicy, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    RoutingTraceObserver,
 };
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
@@ -159,7 +162,17 @@ impl Default for NmpDefaults {
 /// **without** swallowing the social bundle — and without hand-copying the
 /// un-copyable shared-`Arc<InMemoryMailboxCache>` block (the V-48 failure mode
 /// this crate exists to prevent).
-pub fn register_substrate(app: &mut impl AppHost, gate: CoverageGate) {
+pub fn register_substrate(
+    app: &mut (impl ActionRegistrar
+          + CoverageHookRegistrar
+          + IngestParserRegistrar
+          + KernelReaderRegistrar
+          + RelayConnectedHookRegistrar
+          + RelayTextInterceptorRegistrar
+          + ReqFrameInterceptorRegistrar
+          + RoutingFactoryRegistrar),
+    gate: CoverageGate,
+) {
     // NIP-65: kind:10002 relay-list publish. The `nmp-router` crate owns
     // both routing AND the kind:10002 publish path (step 3 absorbed the
     // former `nmp-nip65` crate into `nmp-router`). This is the routing

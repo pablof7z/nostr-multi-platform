@@ -41,11 +41,13 @@ pub use url::http_url_for_relay;
 /// through the `relay_diagnostics` projection automatically — no further app
 /// involvement (ADR-0051 path 1).
 ///
-/// `app` is any [`nmp_core::substrate::AppHost`] — `nmp_ffi::NmpApp` in
-/// production, wired by the `nmp-defaults` composition crate. This crate stays
-/// decoupled from the FFI surface by depending on the `AppHost` trait, not the
-/// concrete app.
-pub fn register(app: &impl nmp_core::substrate::AppHost) {
+/// `app` is any [`nmp_core::substrate::RelayConnectedHookRegistrar`] —
+/// `nmp_ffi::NmpApp` in production, wired by the `nmp-defaults` composition
+/// crate. This crate stays decoupled from the FFI surface by depending on the
+/// narrow relay-connected-hook registration trait, not the concrete app and not
+/// the broad `AppHost` (D6 capability honesty: this crate only reacts to relay
+/// connects).
+pub fn register(app: &impl nmp_core::substrate::RelayConnectedHookRegistrar) {
     app.add_relay_connected_hook(Arc::new(Nip11FetchHook::new()));
 }
 

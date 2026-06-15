@@ -1,26 +1,35 @@
-//! `impl<S> AppHost for NmpAppBuilder<S>` — the substrate-trait delegation
-//! surface for the builder.
+//! Narrow host-trait delegation surface for `NmpAppBuilder<S>`.
 //!
 //! Extracted as a cohesive child submodule of `builder` (ADR-0053 work) so the
 //! composition-root file stays under the 500-LOC hard ceiling / its size
 //! baseline (AGENTS.md file-size rule). Every method borrows the builder's
 //! `NmpApp` and delegates to the inherent method of the same name.
+//!
+//! D6: the builder implements each narrow registration/capability trait
+//! individually and gets [`nmp_core::substrate::AppHost`] for free via the
+//! blanket super-trait impl.
 
 use std::ops::Range;
 use std::sync::Arc;
 
+use nmp_core::substrate::{
+    CoverageHookRegistrar, DmInboxRelayRegistrar, EventObserverRegistrar, HostCapabilities,
+    IdentityChangeRegistrar, IngestParserRegistrar, KernelReaderRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+};
 use nmp_ffi::NmpApp;
 
 use super::*;
 
-impl<S> AppHost for NmpAppBuilder<S> {
+impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
     fn register_snapshot_projection<K, F>(&self, key: K, f: F)
     where
         K: Into<String>,
         F: Fn() -> serde_json::Value + Send + Sync + 'static,
     {
         // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
+        // `&self` is safe — all host-trait methods take `&self`.
         let app: &NmpApp = unsafe { &*self.app };
         app.register_snapshot_projection(key, f);
     }
@@ -34,8 +43,6 @@ impl<S> AppHost for NmpAppBuilder<S> {
         K: Into<String>,
         F: Fn() -> serde_json::Value + Send + Sync + 'static,
     {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
         let app: &NmpApp = unsafe { &*self.app };
         app.register_snapshot_projection_gated(key, gate, f);
     }
@@ -45,8 +52,6 @@ impl<S> AppHost for NmpAppBuilder<S> {
         K: Into<String>,
         F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
         let app: &NmpApp = unsafe { &*self.app };
         // Forward into the same shared registry the generic projection seam
         // writes to (ADR-0037 Commitment 4: typed + generic share the key
@@ -58,8 +63,6 @@ impl<S> AppHost for NmpAppBuilder<S> {
     where
         F: Fn() + Send + Sync + 'static,
     {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
         let app: &NmpApp = unsafe { &*self.app };
         // Forwards into the same shared registry the projection seams write to;
         // tick observers live alongside the projection closures (one slot, bound
@@ -73,17 +76,39 @@ impl<S> AppHost for NmpAppBuilder<S> {
         I: IntoIterator<Item = K>,
         K: Into<String>,
     {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
         let app: &NmpApp = unsafe { &*self.app };
         NmpApp::declare_consumed_projections(app, keys);
     }
 
+    fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
+        let app: &NmpApp = unsafe { &*self.app };
+        NmpApp::declare_incremental_apply(app)
+    }
+
+    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.incremental_apply_handle()
+    }
+
+    fn frame_identity_handles(
+        &self,
+    ) -> (
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+        std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.frame_identity_handles()
+    }
+}
+
+impl<S> CoverageHookRegistrar for NmpAppBuilder<S> {
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_coverage_hook(hook);
     }
+}
 
+impl<S> ReqFrameInterceptorRegistrar for NmpAppBuilder<S> {
     fn set_req_frame_interceptor(
         &self,
         interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
@@ -91,7 +116,9 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_req_frame_interceptor(interceptor);
     }
+}
 
+impl<S> RelayTextInterceptorRegistrar for NmpAppBuilder<S> {
     fn add_relay_text_interceptor(
         &self,
         interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
@@ -99,12 +126,16 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.add_relay_text_interceptor(interceptor);
     }
+}
 
+impl<S> RelayConnectedHookRegistrar for NmpAppBuilder<S> {
     fn add_relay_connected_hook(&self, hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.add_relay_connected_hook(hook);
     }
+}
 
+impl<S> IngestParserRegistrar for NmpAppBuilder<S> {
     fn register_ingest_parser(
         &self,
         kind: u32,
@@ -131,7 +162,7 @@ impl<S> AppHost for NmpAppBuilder<S> {
 
     fn replace_ingest_parser_range(
         &self,
-        range: std::ops::Range<u32>,
+        range: Range<u32>,
         slot_key: &'static str,
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
@@ -143,12 +174,16 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.unregister_ingest_parser_range(slot_key);
     }
+}
 
+impl<S> DmInboxRelayRegistrar for NmpAppBuilder<S> {
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_dm_inbox_relay_lookup(lookup);
     }
+}
 
+impl<S> KernelReaderRegistrar for NmpAppBuilder<S> {
     fn set_profile_lookup(&self, lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_profile_lookup(lookup);
@@ -163,7 +198,9 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_mailbox_cache_reader(cache);
     }
+}
 
+impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {
     fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(
@@ -208,11 +245,13 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.set_raw_event_forward_policy_factory(factory);
     }
 
-    fn active_local_keys(&self) -> nmp_core::slots::ActiveLocalKeysSlot {
+    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         let app: &NmpApp = unsafe { &*self.app };
-        app.active_local_keys()
+        app.set_nostrconnect_bootstrap_relay(url);
     }
+}
 
+impl<S> HostCapabilities for NmpAppBuilder<S> {
     fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
         let app: &NmpApp = unsafe { &*self.app };
         app.active_account_handle()
@@ -223,6 +262,13 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.actor_sender()
     }
 
+    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.configured_relays_handle()
+    }
+}
+
+impl<S> EventObserverRegistrar for NmpAppBuilder<S> {
     fn register_event_observer(
         &self,
         observer: Arc<dyn nmp_core::KernelEventObserver>,
@@ -257,50 +303,14 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.unregister_raw_event_observer(id);
     }
+}
 
-    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.configured_relays_handle()
-    }
-
-    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_nostrconnect_bootstrap_relay(url);
-    }
-
+impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {
     fn register_identity_change_observer<F>(&self, f: F)
     where
         F: Fn(Option<String>) + Send + Sync + 'static,
     {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
         let app: &NmpApp = unsafe { &*self.app };
         app.register_identity_change_observer(f);
-    }
-
-    fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        NmpApp::declare_incremental_apply(app)
-    }
-
-    fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        app.incremental_apply_handle()
-    }
-
-    fn frame_identity_handles(
-        &self,
-    ) -> (
-        std::sync::Arc<std::sync::atomic::AtomicU64>,
-        std::sync::Arc<std::sync::atomic::AtomicU64>,
-    ) {
-        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
-        // `&self` is safe — all AppHost methods take `&self`.
-        let app: &NmpApp = unsafe { &*self.app };
-        app.frame_identity_handles()
     }
 }
