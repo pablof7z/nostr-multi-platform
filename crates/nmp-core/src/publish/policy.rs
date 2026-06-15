@@ -225,6 +225,36 @@ pub(crate) fn target_is_explicit_nonempty(target: &super::PublishTarget) -> bool
     matches!(target, super::PublishTarget::Explicit { relays } if !relays.is_empty())
 }
 
+/// **The universal per-relay emit gate** (D10 fail-closed). Returns `true` when
+/// it is safe to emit an `["EVENT", …]` frame for a `kind` event to a single
+/// relay that was selected for the reasons in `relay_reasons`.
+///
+/// Every publish emit path — initial publish, resume-from-store on restart, and
+/// manual/availability retry — converges on the engine's `dispatch_due` loop,
+/// so calling this immediately before `dispatcher.dispatch(relay, frame)` makes
+/// the private-envelope fail-closed invariant **truly universal**: it cannot be
+/// bypassed by a persisted row replayed on resume or a re-dispatched retry.
+///
+/// Rule: a [`PublishBehavior::PrivateFailClosed`] kind (gift-wrap kind:1059,
+/// sealed kind:14) may ONLY be emitted to a relay the caller explicitly pinned
+/// (`RelaySelectionReason::Explicit` present in its reason set). A private event
+/// targeted at a write-relay / discovery-indexer / recipient-inbox-derived /
+/// reason-less relay is REFUSED — that is exactly the public-relay leak D10
+/// forbids. Every other (public/reserved/discovery) kind may emit to any
+/// selected relay; their relay selection is the resolver's concern (Layer 2).
+pub(crate) fn relay_emit_is_sanctioned(
+    kind: u32,
+    relay_reasons: &[super::RelaySelectionReason],
+) -> bool {
+    if !classify_publish_behavior(kind).is_private_fail_closed() {
+        return true;
+    }
+    // Private kind: emit only to an explicitly-pinned relay.
+    relay_reasons
+        .iter()
+        .any(|r| matches!(r, super::RelaySelectionReason::Explicit))
+}
+
 #[cfg(test)]
 #[path = "policy/tests.rs"]
 mod tests;

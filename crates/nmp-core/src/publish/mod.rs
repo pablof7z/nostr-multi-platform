@@ -55,10 +55,15 @@ mod view;
 pub(crate) use action::{validate_explicit_relays, validate_publish_target};
 // Workstream C publish-policy one-door: the typed routing/builder gate every
 // publish path consults. `validate_publish_routing` enforces the D10
-// private-envelope invariant (private kinds require Explicit non-empty relays);
+// private-envelope invariant at the typed-target boundary (private kinds require
+// Explicit non-empty relays); `relay_emit_is_sanctioned` is the UNIVERSAL
+// per-relay emit gate the engine's `dispatch_due` consults so the same
+// invariant holds for resume-from-store and retry, not just initial publish;
 // `target_is_explicit_nonempty` is the shared structural predicate; the
 // `classify_publish_behavior` table is the single home for kind→policy.
-pub(crate) use policy::{target_is_explicit_nonempty, validate_publish_routing};
+pub(crate) use policy::{
+    relay_emit_is_sanctioned, target_is_explicit_nonempty, validate_publish_routing,
+};
 pub use action::{
     PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishTarget, RelayUrl,
 };

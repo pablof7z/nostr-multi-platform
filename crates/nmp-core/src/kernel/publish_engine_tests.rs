@@ -910,3 +910,107 @@ fn chokepoint_allows_gift_wrap_with_explicit_relays() {
     );
     assert_eq!(outbound[0].relay_url, WRITE_R1);
 }
+
+// ── BLOCKER #1 (residual) — fail-closed at the UNIVERSAL dispatch-emit site ──
+//
+// The entry gate (`run_publish_engine_at`) only covers INITIAL publish. The
+// engine's `dispatch_due` loop is the single point ALL emit paths converge on
+// — initial publish, resume-from-store on restart, and manual/availability
+// retry — so the D10 fail-closed enforcement lives there. These tests prove a
+// PERSISTED private row targeting a public/non-explicit relay is dropped on
+// BOTH resume and retry, while a legitimately-Explicit private row still flows.
+
+/// Build a persisted publish record directly in the store — simulating a row
+/// written before the fix (or by a hostile/legacy path) that bypassed the
+/// entry gate. `reasons` controls whether each relay was an explicit pin.
+fn persist_pending_record(
+    store: &Arc<dyn PublishStore>,
+    signed: &SignedEvent,
+    relay: &str,
+    reason: crate::publish::RelaySelectionReason,
+) {
+    use crate::publish::{PerRelayState, PublishRecord};
+    let record = PublishRecord {
+        handle: signed.id.clone(),
+        event: signed.clone(),
+        per_relay: vec![(relay.to_string(), PerRelayState::Pending)],
+        pending_retries: Vec::new(),
+        relay_reasons: vec![(relay.to_string(), vec![reason])],
+    };
+    store.upsert(&record).expect("seed persisted publish row");
+}
+
+#[test]
+fn resume_from_store_drops_persisted_gift_wrap_to_public_relay() {
+    // TEST (a): a persisted kind:1059 row targeting a PUBLIC (AuthorWriteRelay)
+    // relay must NOT emit on cold-restart replay — the universal dispatch gate
+    // fails closed even though the row never went through the entry gate.
+    let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+    let author = "a1".repeat(32);
+    let signed = fake_signed("b1".repeat(32).as_str(), &author, 1059, "leaked-envelope");
+    persist_pending_record(
+        &publish_store,
+        &signed,
+        WRITE_R1,
+        crate::publish::RelaySelectionReason::AuthorWriteRelay,
+    );
+
+    let mut kernel = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+    let resumed = kernel.resume_publish_engine();
+    assert!(
+        resumed.is_empty(),
+        "resume must NOT emit a private envelope to a non-explicit relay (D10); got {resumed:?}"
+    );
+}
+
+#[test]
+fn manual_retry_drops_persisted_gift_wrap_to_public_relay() {
+    // TEST (b): manual retry of a persisted private row targeting a public
+    // relay must not emit either. Resume loads the row into the engine; the
+    // user-driven retry path (`retry_publish_now` → engine `retry_now` →
+    // `dispatch_pending`) re-runs the same gate and still fails closed.
+    let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+    let author = "a2".repeat(32);
+    let signed = fake_signed("b2".repeat(32).as_str(), &author, 1059, "leaked-envelope");
+    persist_pending_record(
+        &publish_store,
+        &signed,
+        WRITE_R1,
+        crate::publish::RelaySelectionReason::AuthorWriteRelay,
+    );
+
+    let mut kernel = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+    // Resume settles the relay FailedAfterRetries (the gate's drop verdict).
+    let _ = kernel.resume_publish_engine();
+    let retried = kernel.retry_publish_now(&signed.id);
+    assert!(
+        retried.is_empty(),
+        "manual retry must NOT emit a private envelope to a non-explicit relay (D10); got {retried:?}"
+    );
+}
+
+#[test]
+fn resume_and_retry_allow_persisted_gift_wrap_to_explicit_relay() {
+    // TEST (c): NO false positive. A persisted kind:1059 row whose relay was an
+    // explicit pin (`RelaySelectionReason::Explicit`) DOES resume to its DM-inbox
+    // relay — fail-closed means "no public/Auto", not "no private publish".
+    let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+    let author = "a3".repeat(32);
+    let signed = fake_signed("b3".repeat(32).as_str(), &author, 1059, "legit-dm-envelope");
+    persist_pending_record(
+        &publish_store,
+        &signed,
+        WRITE_R1,
+        crate::publish::RelaySelectionReason::Explicit,
+    );
+
+    let mut kernel = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+    let resumed = kernel.resume_publish_engine();
+    assert_eq!(
+        resumed.len(),
+        1,
+        "an explicitly-pinned private row MUST resume to its DM-inbox relay (no false positive)"
+    );
+    assert_eq!(resumed[0].relay_url, WRITE_R1);
+    assert!(resumed[0].text.contains("EVENT"));
+}

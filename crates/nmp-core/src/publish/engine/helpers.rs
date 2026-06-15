@@ -30,6 +30,16 @@ pub(super) fn dispatch_due(
     unavailable_relays: &BTreeSet<RelayUrl>,
 ) -> Vec<RelayAck> {
     let mut acks = Vec::new();
+    // Workstream C — THE universal D10 fail-closed emit gate. Every publish
+    // emit path (initial publish, resume-from-store on restart, manual/
+    // availability retry) converges on this loop, so enforcing the
+    // private-envelope invariant HERE — immediately before
+    // `dispatcher.dispatch` — makes it impossible to bypass via a persisted
+    // row replayed on resume or a re-dispatched retry. A private kind
+    // (gift-wrap kind:1059, sealed kind:14) is emitted ONLY to a relay the
+    // caller explicitly pinned; any other selected relay (write / discovery /
+    // recipient-inbox / reason-less) is the public-relay leak D10 forbids.
+    let kind = in_flight.event.unsigned.kind;
     for (relay_url, state) in &mut in_flight.per_relay {
         if let Some(filter) = relay_filter {
             if relay_url != filter {
@@ -52,6 +62,33 @@ pub(super) fn dispatch_due(
             _ => false,
         };
         if !ready {
+            continue;
+        }
+        // Fail-closed: refuse to emit a private envelope to a relay that was
+        // not explicitly pinned. Drop the frame and settle this relay
+        // `FailedAfterRetries` so the publish does not loop the refusal on
+        // every retry/tick (D8: no busy re-evaluation), and a `tracing::warn`
+        // makes the blocked leak attempt visible.
+        let reasons = in_flight
+            .relay_reasons
+            .get(relay_url)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        if !crate::publish::relay_emit_is_sanctioned(kind, reasons) {
+            tracing::warn!(
+                kind,
+                relay = %relay_url,
+                "publish-engine dispatch refused: private/encrypted envelope (kind:1059 / \
+                 kind:14) would emit to a relay that was not explicitly pinned, leaking \
+                 the encrypted envelope to a public relay (D10). Dropping the frame."
+            );
+            *state = PerRelayState::FailedAfterRetries {
+                reason: "refused: private envelope not routable to a non-explicit relay (D10)"
+                    .to_string(),
+                last_at_ms: now_ms,
+            };
+            in_flight.pending_retries.remove(relay_url);
+            in_flight.dirty = true;
             continue;
         }
         let attempt = state.attempt().saturating_add(1).max(1);
