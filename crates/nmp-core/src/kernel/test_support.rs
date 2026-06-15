@@ -167,7 +167,6 @@ impl Kernel {
                     let mailbox_mutated = if empty {
                         if had_entry {
                             self.mailbox_cache.remove(&event.pubkey);
-                            self.lifecycle.bump_mailbox_generation();
                             self.lifecycle.enqueue_trigger(
                                 crate::subs::CompileTrigger::Nip65Arrived {
                                     pubkey: event.pubkey.clone(),
@@ -180,7 +179,6 @@ impl Kernel {
                         }
                     } else {
                         self.mailbox_cache.upsert(event.pubkey.clone(), parsed);
-                        self.lifecycle.bump_mailbox_generation();
                         self.lifecycle
                             .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
                                 pubkey: event.pubkey.clone(),
@@ -304,22 +302,28 @@ impl Kernel {
         // Fan to the substrate `EventIngestDispatcher` — keeps TEST-SUPPORT
         // injection consistent with the production fan-out in `verify_and_persist`
         // (the wildcard ingest arm) and `ingest_timeline_event` (the follow-feed
-        // path). IMPORTANT: `ingest_pre_verified_event` is TEST-SUPPORT ONLY. The
-        // FFI symbol `nmp_app_inject_signed_event_json`, the
+        // path).
+        //
+        // IMPORTANT: `ingest_pre_verified_event` is TEST-SUPPORT ONLY. The FFI
+        // symbol `nmp_app_inject_signed_event_json`, the
         // `ActorCommand::IngestPreVerifiedEvents` dispatch arm, and this function
         // are all gated on `#[cfg(any(test, feature = "test-support"))]`. Production
         // ingest flows through `verify_and_persist` and `ingest_timeline_event`,
         // which each call the dispatcher directly. This call mirrors those paths
         // so that tests exercising the inject path see the same IngestParser
-        // fan-out as production ingest paths. Gating matches `verify_and_persist`:
-        // only fire on Inserted|Replaced (i.e. when `proceed` is true). Duplicate
-        // re-deliveries do not re-fire the parser (D4 dedup); the `proceed` check
-        // above enforces this. Ephemeral gate divergence: pre-verified injection
-        // never carries ephemeral kinds (ephemeral events expire at the relay
-        // boundary and are not stored). `verify_and_persist` fires the dispatcher
-        // for Ephemeral outcomes; this path does not (the `proceed` gate above
+        // fan-out as production ingest paths.
+        //
+        // Gating matches `verify_and_persist`: only fire on Inserted|Replaced
+        // (i.e. when `proceed` is true). Duplicate re-deliveries do not re-fire
+        // the parser (D4 dedup); the `proceed` check above enforces this.
+        //
+        // Ephemeral gate divergence: pre-verified injection never carries
+        // ephemeral kinds (ephemeral events expire at the relay boundary and
+        // are not stored). `verify_and_persist` fires the dispatcher for
+        // Ephemeral outcomes; this path does not (the `proceed` gate above
         // already ensures Inserted|Replaced only). If ephemeral pre-verified
         // injection is ever added, the gate here must be re-evaluated.
+        //
         // D6 — a poisoned dispatcher lock degrades to "no parser fired"; the
         // store insert already succeeded so this is the safe graceful-degrade.
         {

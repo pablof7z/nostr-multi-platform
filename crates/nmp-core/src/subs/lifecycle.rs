@@ -134,7 +134,7 @@ impl SubscriptionLifecycle {
             if was_down {
                 // Genuine 0→1 recovery (or cold-start first connect): re-arm.
                 self.probe_epoch = self.probe_epoch.saturating_add(1);
-                self.probed_mailboxes.clear();
+                self.clear_probed_mailboxes();
                 self.inbox.enqueue(CompileTrigger::IndexerSetChanged {
                     generation: self.probe_epoch,
                 });
@@ -292,17 +292,17 @@ impl SubscriptionLifecycle {
 
     /// Advance the mailbox-cache generation counter by one.
     ///
-    /// The kernel calls this after every successful NIP-65 (kind:10002 /
-    /// kind:10050) ingest that mutates the cached mailbox data, so the
-    /// compile-input fingerprint (see `recompile_and_diff_with_lookup`)
-    /// reflects the new routing data even when the interest set and relay lists
-    /// are unchanged.
+    /// Called from [`Self::enqueue_trigger`] when a successful NIP-65
+    /// (kind:10002 / kind:10050) ingest queues the corresponding mailbox
+    /// trigger. That keeps mailbox-cache invalidation attached to the
+    /// subscription lifecycle trigger rather than spread across kernel ingest
+    /// call sites.
     ///
     /// Background: `KernelMailboxes::generation()` always returns `0` (the
     /// substrate cache has no built-in write counter), so this lifecycle-owned
     /// counter is the canonical signal for "mailbox data changed, recompile
     /// needed even if other inputs are stable".
-    pub fn bump_mailbox_generation(&mut self) {
+    fn bump_mailbox_generation(&mut self) {
         self.mailbox_generation = self.mailbox_generation.saturating_add(1);
         self.last_compile_fingerprint = None;
     }
@@ -394,6 +394,12 @@ impl SubscriptionLifecycle {
 
     /// Enqueue a trigger. Coalesced with siblings until the next `drain_tick`.
     pub fn enqueue_trigger(&mut self, trigger: CompileTrigger) {
+        if matches!(
+            trigger,
+            CompileTrigger::Nip65Arrived { .. } | CompileTrigger::DmRelayListChanged { .. }
+        ) {
+            self.bump_mailbox_generation();
+        }
         self.inbox.enqueue(trigger);
     }
 

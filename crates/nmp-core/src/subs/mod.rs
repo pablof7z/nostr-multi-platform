@@ -330,18 +330,19 @@ pub struct SubscriptionLifecycle {
     last_planner_error: Option<String>,
     /// Monotonic counter for NIP-65 mailbox cache mutations.
     ///
-    /// Bumped by [`Self::bump_mailbox_generation`] each time the kernel
-    /// ingests a kind:10002 or kind:10050 that changes the cached mailbox
-    /// data. Included in the compile-input fingerprint so the memo guard in
-    /// [`Self::recompile_and_diff_with_lookup`] re-runs the compiler when
-    /// NIP-65 data arrives — even if the interest set and relay lists did not
-    /// change.
+    /// Bumped by [`Self::enqueue_trigger`] each time the kernel queues a
+    /// kind:10002 or kind:10050 mailbox-change trigger after mutating cached
+    /// mailbox data. Included in the compile-input fingerprint so the memo
+    /// guard in [`Self::recompile_and_diff_with_lookup`] re-runs the compiler
+    /// when NIP-65 data arrives — even if the interest set and relay lists did
+    /// not change.
     ///
     /// Background: `KernelMailboxes::generation()` always returns `0` (see
     /// `kernel/mailboxes.rs`) because the substrate cache exposes no per-write
-    /// counter; the kernel triggers a recompile via `Nip65Arrived` instead.
-    /// The memo guard must see a changed fingerprint on that same tick, so we
-    /// maintain this counter here and rely on the kernel to bump it.
+    /// counter; the kernel triggers a recompile via `Nip65Arrived` /
+    /// `DmRelayListChanged` instead. The memo guard must see a changed
+    /// fingerprint on that same tick, so the trigger enqueue path maintains
+    /// this counter here.
     mailbox_generation: u64,
     /// Monotonic counter for coverage-ledger writes (K3 ADR-0056).
     ///

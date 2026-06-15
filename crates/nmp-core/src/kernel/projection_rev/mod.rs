@@ -140,6 +140,7 @@ pub(crate) const SRC_CLAIMED_EVENT_CONTENT: &str = "claimed_event_content_ver";
 pub(crate) const SRC_OPEN_VIEWS: &str = "open_views_ver";
 pub(crate) const SRC_CONFIGURED_RELAYS: &str = "configured_relays_ver";
 pub(crate) const SRC_PUBLISH: &str = "publish_ver";
+pub(crate) const SRC_PUBLISH_ENGINE: &str = "publish_engine_ver";
 pub(crate) const SRC_DIAGNOSTICS_INPUTS: &str = "diagnostics_inputs_ver";
 pub(crate) const SRC_SETTLEMENT_ENQUEUE: &str = "settlement_enqueue_ver";
 pub(crate) const SRC_SETTLEMENT_DRAIN: &str = "settlement_drain_ver";
@@ -171,8 +172,8 @@ pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[
     ("settings_hub",     &[SRC_CONFIGURED_RELAYS]),
     // publish cluster
     ("publish_queue",    &[SRC_PUBLISH]),
-    ("publish_outbox",   &[SRC_PUBLISH]),
-    ("outbox_summary",   &[SRC_PUBLISH]),
+    ("publish_outbox",   &[SRC_PUBLISH_ENGINE]),
+    ("outbox_summary",   &[SRC_PUBLISH_ENGINE]),
     // drain projections: settlement-enqueue + DRAIN presence rule (codex #2).
     // settlement_drain_ver bumped when a drain returns non-empty (Changed) or
     // empty (Cleared). The rev still advances on enqueue.
@@ -229,6 +230,10 @@ pub(crate) struct ProjectionRevTracker {
     /// LAST reconcile. The kernel re-fingerprints them each emit and folds any
     /// change into `diagnostics_inputs_ver` — see `reconcile_diagnostics_fingerprint`.
     last_seen_diagnostics_fingerprint: u64,
+    /// Fingerprint of the publish engine's in-flight projection payloads at the
+    /// last reconcile. `publish_outbox` / `outbox_summary` are derived from the
+    /// embedded engine snapshot, not the queue rows.
+    last_seen_publish_engine_fingerprint: u64,
 }
 
 /// The two drain projections whose presence is a `Changed -> Cleared ->
@@ -358,6 +363,19 @@ impl ProjectionRevTracker {
         if fingerprint != self.last_seen_diagnostics_fingerprint {
             self.last_seen_diagnostics_fingerprint = fingerprint;
             self.source_versions.bump_diagnostics_inputs();
+        }
+    }
+
+    /// Reconcile the `PublishEngine` in-flight projection source stamp.
+    ///
+    /// The engine owns its per-relay in-flight FSM internally; the kernel-owned
+    /// typed outbox projections are the read side of that FSM. Reconcile once per
+    /// emit, before manifest construction, so the projection rev advances exactly
+    /// when the host cache unit for the engine-backed outbox changes.
+    pub(crate) fn reconcile_publish_engine_fingerprint(&mut self, fingerprint: u64) {
+        if fingerprint != self.last_seen_publish_engine_fingerprint {
+            self.last_seen_publish_engine_fingerprint = fingerprint;
+            self.source_versions.bump_publish_engine();
         }
     }
 }

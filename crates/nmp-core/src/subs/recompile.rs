@@ -68,10 +68,10 @@ impl SubscriptionLifecycle {
         //
         // Fingerprint covers:
         //  • active interest set (shapes + ids)            — LogicalInterest: Hash
-        //  • mailbox_generation                            — bumped by kernel on NIP-65 ingest
+        //  • mailbox_generation                            — bumped with mailbox triggers
         //    (NOTE: mailbox_cache.generation() is NOT used here because
-        //    KernelMailboxes::generation() always returns 0; the kernel
-        //    calls bump_mailbox_generation() after each NIP-65 ingest instead)
+        //    KernelMailboxes::generation() always returns 0; enqueue_trigger()
+        //    bumps this lifecycle counter for NIP-65 mailbox triggers instead)
         //  • dead-relay set                                — BTreeSet<String>
         //  • all relay URL lists (indexer, account-read,
         //    app, bootstrap-content, bootstrap-indexer)    — Vec<String>
@@ -99,7 +99,7 @@ impl SubscriptionLifecycle {
             // Sentinel: no fingerprint caching when a coverage hook is present.
             0u64
         } else {
-            use std::hash::{Hash, Hasher};
+            use std::hash::Hash;
             let mut h = crate::stable_hash::StableHasher::new();
             interests.hash(&mut h);
             self.mailbox_generation.hash(&mut h);

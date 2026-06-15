@@ -97,11 +97,7 @@ impl Kernel {
     /// Test-only: production reads the floor through the installed `WatermarkFn`
     /// closure, which calls the free function directly.
     #[cfg(test)]
-    pub(crate) fn coverage_floor_for(
-        &self,
-        shape: &InterestShape,
-        relay_url: &str,
-    ) -> Option<u64> {
+    pub(crate) fn coverage_floor_for(&self, shape: &InterestShape, relay_url: &str) -> Option<u64> {
         coverage_floor(&self.store, shape, relay_url)
     }
 

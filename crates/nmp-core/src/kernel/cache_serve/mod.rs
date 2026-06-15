@@ -91,7 +91,6 @@ pub(in crate::kernel) use queries::{
     shape_needs_ingest_parser_dispatch, shape_to_store_queries,
 };
 
-
 use super::Kernel;
 use crate::planner::InterestShape;
 use crate::store::StoreQuery;

@@ -39,6 +39,8 @@ mod auth_sign;
 #[cfg(feature = "native")]
 mod capability_worker;
 #[cfg(feature = "native")]
+mod compat;
+#[cfg(feature = "native")]
 mod dispatch;
 // ADR-0050 §D1/§D3b signer-port dispatch helpers (cipher verbs + completion
 // delivery), split out to keep `dispatch.rs` within budget. Native-only (uses
@@ -1152,128 +1154,11 @@ pub(super) enum RelayConnectionKind {
 #[cfg(feature = "native")]
 use outbound::wire_frames_to_outbound;
 
-/// Backwards-compatible entry point: spawn the actor without a lifecycle
-/// observer. Existing tests and the `nmp-core::testing` facade call this
-/// shape. The FFI surface uses [`run_actor_with_observers`] instead so the
-/// shell can register a phase-transition callback + kernel event
-/// observers.
-///
-/// `#[allow(dead_code)]` because callers live behind the
-/// `cfg(any(test, feature = "test-support"))` gate (the `testing` facade in
-/// `lib.rs` and `actor::tick`'s test module). A plain `cargo build` without
-/// `--tests` or the `test-support` feature would otherwise warn.
 #[cfg(feature = "native")]
-#[allow(dead_code)]
-pub fn run_actor(
-    inbox_rx: Receiver<ActorMail>,
-    // Self-feedback sender — see `run_actor_with_observers` for the
-    // contract. The backwards-compat shim threads it through unchanged.
-    // Callers (tests + `lib.rs::spawn_actor`) hand in a clone of the
-    // [`CommandSender`] over the same inbox.
-    command_tx_self: CommandSender,
-    update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
-) {
-    // This shim is exactly [`run_actor_with_lifecycle_observer`] with a
-    // throwaway lifecycle slot — delegate so the long throwaway-slot argument
-    // list lives in exactly one place (no duplicated ~30-arg call).
-    run_actor_with_lifecycle_observer(
-        inbox_rx,
-        command_tx_self,
-        update_tx,
-        new_lifecycle_observer_slot(),
-    );
-}
-
-/// T118 / G3 backwards-compatible entry point. Spawns the actor with a
-/// lifecycle observer but no kernel event observer slot — the latter
-/// defaults to an empty slot (nothing fans out, zero overhead). New
-/// integrations should prefer [`run_actor_with_observers`] so kernel-event
-/// fan-out is wired.
+pub use compat::run_actor;
 #[cfg(feature = "native")]
-#[allow(dead_code)]
-pub fn run_actor_with_lifecycle_observer(
-    inbox_rx: Receiver<ActorMail>,
-    // Self-feedback sender — see `run_actor_with_observers`.
-    command_tx_self: CommandSender,
-    update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
-    lifecycle_observer: LifecycleObserverSlot,
-) {
-    run_actor_with_observers(
-        inbox_rx,
-        command_tx_self,
-        update_tx,
-        lifecycle_observer,
-        new_event_observer_slot(),
-        new_raw_event_observer_slot(),
-        crate::kernel::new_snapshot_projection_slot(),
-        // V-38: wallet moved to `nmp-nip47`; backwards-compat shim threads a
-        // throwaway substrate relay-text interceptor slot.
-        crate::substrate::new_relay_text_interceptor_slot(),
-        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
-        crate::substrate::new_relay_connected_hook_slot(),
-        // D0: NIP-46 remote signing is an app noun — private throwaway
-        // bunker-handshake slot (no FFI surface here).
-        new_bunker_handshake_slot(),
-        // V-14 step b: throwaway connection-state slot (no FFI surface here).
-        new_signer_state_slot(),
-        // ADR-0052 §D3: throwaway bunker + NIP-55 hook slots (no FFI surface
-        // here to install a broker/driver; an invocation degrades to a toast).
-        crate::bunker_hook::new_bunker_hook_slot(),
-        crate::external_signer_hook::new_external_signer_hook_slot(),
-        // Typed slot constructor; private throwaway here.
-        crate::kernel::new_app_relay_slot(),
-        Arc::new(Mutex::new(None)),
-        // Active-account local-keys slot — private throwaway: no FFI
-        // surface here for a non-substrate reader to consume it.
-        Arc::new(Mutex::new(None)),
-        new_capability_callback_slot(),
-        Arc::new(Mutex::new(None)),
-        // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the queue-depth counter is a private throwaway.
-        Arc::new(AtomicU64::new(0)),
-        // D2 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the coverage-gate hook slot is a private throwaway
-        // (`None`); the lifecycle keeps its default `coverage_hook: None`.
-        Arc::new(Mutex::new(None)),
-        crate::substrate::new_req_frame_interceptor_slot(),
-        // Host-op handler slot — private throwaway here (no FFI surface). A
-        // `DispatchHostOp` reaching the actor on this path would record a
-        // `Failed { reason: "no host op handler installed" }` terminal.
-        crate::substrate::new_host_op_handler_slot(),
-        // V-40 — same private-throwaway pattern as the other slots above.
-        Arc::new(std::sync::RwLock::new(
-            crate::substrate::EventIngestDispatcher::new(),
-        )),
-        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
-        // ADR-0057 PR 2 — throwaway profile lookup slot (same private-throwaway
-        // pattern as the dm-inbox slot above).
-        Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
-        // ADR-0057 PR 3 — throwaway contacts lookup slot (same private-throwaway
-        // pattern as the dm-inbox slot above).
-        Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup())),
-        // Throwaway blocked-relay lookup slot — same private-throwaway
-        // pattern as the dm-inbox slot above.
-        Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
-        // Throwaway bootstrap self-kinds override slot.
-        Arc::new(Mutex::new(None)),
-        // V-51 phase 4 — same private-throwaway pattern.
-        Arc::new(Mutex::new(None)),
-        // V-51 phase 5 — same private-throwaway pattern (no factory installed).
-        Arc::new(Mutex::new(None)),
-        // Spec §271 (2026-05-25) — same private-throwaway pattern for the
-        // substrate-publish-resolver factory slot (no factory installed).
-        Arc::new(Mutex::new(None)),
-        // Same private-throwaway pattern for raw-event forwarding policies.
-        crate::slots::new_raw_event_forward_policy_slot(),
-        // V-82 — same private-throwaway pattern for the active-account slot
-        // (no FFI surface reads it on this backwards-compatible entry point).
-        crate::slots::new_active_account_slot(),
-        // V-83 — same private-throwaway pattern for the event-store slot.
-        crate::slots::new_event_store_slot(),
-        // Test-support kernel-clock slot — private throwaway here.
-        crate::slots::new_kernel_clock_slot(),
-    );
-}
+#[allow(unused_imports)]
+pub use compat::run_actor_with_lifecycle_observer;
 
 /// T118 / G3 + T146 — actor entry point that accepts BOTH the lifecycle
 /// observer slot and the kernel event observer slot. The FFI
