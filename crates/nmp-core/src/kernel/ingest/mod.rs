@@ -11,14 +11,18 @@
 //! The chokepoint separates three concerns into three layers:
 //! - **Admission** = valid signature only (inside [`Kernel::verify_and_persist`]).
 //! - **Delivery vs persistence** = gated by the store [`crate::store::InsertOutcome`].
-//!   `verify_and_persist` persists the non-ephemeral canonical subset
-//!   (`Inserted | Replaced`) and fires BOTH the NIP-parser
+//!   `verify_and_persist` does PERSISTENCE ONLY (sig-verify → `store.insert` →
+//!   raw-tap → provenance → TTL) and returns the `(InsertOutcome, VerifiedEvent)`.
+//!   The shared [`Kernel::project_accepted_event`] then fires BOTH the NIP-parser
 //!   [`crate::substrate::EventIngestDispatcher`] dispatch AND the app-facing
 //!   `KernelEventObserver` notify on the canonical accepted outcome
 //!   (`Inserted | Replaced | Ephemeral`) — so an ephemeral reaches both the
 //!   parsers and the app observers (ADR-0057 §1 latent-bug fix), and a
 //!   `Duplicate` (incl. the relay echo of a local publish) is projection-silent
-//!   (D4 single-fire / read-your-writes).
+//!   (D4 single-fire / read-your-writes). `project_accepted_event` is the ONE
+//!   post-store fan-out, called by both the live chokepoint
+//!   ([`Kernel::ingest_accepted_event`]) and cache-serve replay
+//!   ([`Kernel::feed_served_event`]), so the two paths cannot diverge.
 //! - **Projection / relevance** = read-time only. The kernel-owned post-store
 //!   caches (contacts kind:3, the timeline read-cache projection) are CALLED BY
 //!   the chokepoint, not scattered per-kind arms. Profiles (kind:0) moved out to
@@ -381,11 +385,12 @@ impl Kernel {
     ///    [`Self::verify_and_persist`] (`try_from_raw`). No relevance gate, no
     ///    acquisition-match, no kind gate.
     /// 2. **Delivery vs persistence** = gated by the store [`InsertOutcome`].
-    ///    `verify_and_persist` persists the non-ephemeral canonical subset
-    ///    (`Inserted | Replaced`; ephemerals return `Ephemeral` un-stored) and
-    ///    fires the NIP-parser dispatch + the app-facing
-    ///    [`Kernel::notify_event_observers`] seam on the canonical accepted
-    ///    outcome (`Inserted | Replaced | Ephemeral`). `Duplicate` (incl. a
+    ///    `verify_and_persist` does persistence ONLY (`Inserted | Replaced`;
+    ///    ephemerals return `Ephemeral` un-stored) and returns the
+    ///    `(InsertOutcome, VerifiedEvent)`. The shared
+    ///    [`Self::project_accepted_event`] then fires the NIP-parser dispatch +
+    ///    the app-facing [`Kernel::notify_event_observers`] seam on the canonical
+    ///    accepted outcome (`Inserted | Replaced | Ephemeral`). `Duplicate` (incl. a
     ///    relay echo of a locally-published event) is projection-silent —
     ///    preserving D4 single-fire for read-your-writes.
     /// 3. **Projection / relevance** = read-time only. The kernel-owned caches

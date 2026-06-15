@@ -186,11 +186,22 @@ mailbox, feeds). **This ADR amends ADR-0042**, which currently frames
 
 ### The chokepoint
 
-`verify_and_persist` becomes the single chokepoint, with `notify_event_observers`
-pulled **inside** it (gated `Inserted | Replaced | Ephemeral`). It already does
-sig-verify → `store.insert` → raw-tap → `EventIngestDispatcher` fan-out → TTL
-stamping kind-agnostically; the only addition is the observer notify. The working
-name for the seam is `ingest_accepted_event(source, event)`.
+The chokepoint splits into two kind-agnostic halves:
+
+- `verify_and_persist` does **persistence only** — sig-verify → `store.insert` →
+  raw-tap → provenance → TTL stamping — and returns `(InsertOutcome, VerifiedEvent)`.
+- `project_accepted_event` is the **single post-store fan-out**, gated on the
+  canonical accepted outcome (`Inserted | Replaced | Ephemeral`): NIP-parser
+  `EventIngestDispatcher` dispatch + the per-cache transition sweep
+  (mailbox / dm-relay / profile projection-rev bumps) + the D9 future-`created_at`
+  clamp on the observer payload + `notify_event_observers`.
+
+`project_accepted_event` is called by **both** the live chokepoint
+(`ingest_accepted_event`, after `verify_and_persist`) **and** the cache-serve
+replay path (`feed_served_event`, which per ADR-0045 never calls `store.insert`).
+Routing both through the one helper is what guarantees the live and replay paths
+cannot diverge (the bug that PR 2 review caught: cache-serve had been missing the
+D9 clamp and the projection-rev bumps).
 
 - **Relay** events enter the chokepoint **after** `handle_event`'s relay-only
   bookkeeping. The clean seam is `ingest/mod.rs:281→282` (plan Q1): frame decode,
