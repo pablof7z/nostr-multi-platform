@@ -410,7 +410,7 @@ Per-relay detail rows look like:
   Your NIP-65 write relay
   Relay accepted the event
 
-◌ relay.nostr.band                     Pending
+◌ nos.lol                              Pending
   Inbox relay for npub1abc…
   Waiting for relay connection
 ```

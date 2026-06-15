@@ -33,7 +33,7 @@ use nmp_core::{
 };
 use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
 
-const RELAY_URL_A: &str = "wss://relay.nostr.band";
+const RELAY_URL_A: &str = "wss://nos.lol";
 const RELAY_URL_B: &str = "wss://relay.damus.io";
 
 #[test]

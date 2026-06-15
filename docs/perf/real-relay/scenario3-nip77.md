@@ -2,7 +2,7 @@
 scenario: 3-nip77-negentropy-req-fallback
 verdict: PASS
 generated_at: 1779089139
-relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.band", "wss://relay.primal.net"]
+relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"]
 ---
 
 # Scenario 3 — NIP-77 negentropy + graceful REQ fallback

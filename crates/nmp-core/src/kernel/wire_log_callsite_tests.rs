@@ -185,7 +185,7 @@ mod tests {
     fn eose_no_match_emits_eose_rx_line() {
         let event = WireLogEvent::EoseRx {
             sub_id: "sub-claim-eose-test",
-            relay_url: "wss://relay.nostr.band",
+            relay_url: "wss://relay.damus.io",
             matched: false,
         };
 

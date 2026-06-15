@@ -45,7 +45,7 @@ const CANDIDATES: &[&str] = &[
     "wss://relay.snort.social",
     "wss://auth.nostr1.com",
     "wss://nostr.land",
-    "wss://relay.nostr.band",
+    "wss://relay.damus.io",
 ];
 
 /// Time spent draining for an `["AUTH", …]` challenge after sending REQ.

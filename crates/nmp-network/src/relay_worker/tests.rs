@@ -611,7 +611,7 @@ fn t116c_jitter_bounded_within_5s() {
     let base = Duration::from_secs(3);
     let urls = [
         "wss://relay.damus.io",
-        "wss://relay.nostr.band",
+        "wss://purplepag.es",
         "wss://nos.lol",
         "wss://relay.snort.social",
         "wss://relay.primal.net",

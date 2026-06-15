@@ -339,9 +339,11 @@ fn run_smoke(
         }
         println!();
         println!("  Most likely cause: the target event isn't on the seeded relays.");
-        println!("  The seeded relays are purplepag.es (indexer), nos.lol, relay.damus.io,");
-        println!("  relay.nostr.band. Architecture is validated by the resolved targets above.");
-        println!();
+        print!("  The seeded relays are:");
+        for r in &nmp_app_gallery::showcase::references().relays {
+            print!(" {} ({})", r.url, r.role);
+        }
+        println!(". Architecture is validated by the resolved targets above.");
         println!(
             "Host envelope map ({} entries):",
             host.current_envelopes().len()
@@ -694,10 +696,7 @@ fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver
     thread::spawn(move || {
         for frame_bytes in rx {
             let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
-            if tx
-                .send(GalleryEvent::Snapshot(Box::new(snap)))
-                .is_err()
-            {
+            if tx.send(GalleryEvent::Snapshot(Box::new(snap))).is_err() {
                 break;
             }
         }

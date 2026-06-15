@@ -115,7 +115,7 @@ mod tests {
     fn public_domain_admitted() {
         assert!(admit("wss://relay.damus.io"));
         assert!(admit("wss://nos.lol"));
-        assert!(admit("wss://relay.nostr.band/path"));
+        assert!(admit("wss://relay.damus.io/path"));
         assert!(admit("wss://relay.example:443"));
     }
 

@@ -97,7 +97,7 @@ are tokens beginning with `$`. Comma is the in-value list separator.
 > req kinds=1 authors=$follows since=2026-01-01 limit=200
 > req kinds=1 authors=$follows #t=bitcoin,nostr
 > set-budget max_connections=50 max_per_user=3 wall=30s
-> set-indexer wss://purplepag.es,wss://relay.nostr.band
+> set-indexer wss://purplepag.es,wss://nos.lol
 > refresh mailboxes
 > show relays
 > expand $follows
@@ -363,7 +363,7 @@ keep reading). All connect failures surface tungstenite's real reason
 
 The kind:3 follows fetch dials EVERY configured indexer in listed order
 (`indexer_relays` defaults to `["wss://purplepag.es",
-"wss://relay.nostr.band", "wss://relay.damus.io"]`) and falls through on
+"wss://nos.lol", "wss://relay.damus.io"]`) and falls through on
 CLOSED / AUTH / error / timeout, so one rate-limited indexer does not zero
 out discovery.
 
