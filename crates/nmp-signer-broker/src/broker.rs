@@ -30,7 +30,7 @@ mod restore;
 #[cfg(test)]
 mod tests;
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -64,15 +64,37 @@ const REAP_JOIN_BUDGET: std::time::Duration = std::time::Duration::from_secs(30)
 pub struct BunkerBroker {
     events: Arc<BrokerEventHandler>,
     active: Mutex<Option<ActiveSession>>,
+    /// Monotonic session generation. Bumped on every `start_handshake` and
+    /// every `cancel`. Each handshake worker is stamped with the generation it
+    /// was spawned under; `install_session` / `install_completed_signer` no-op
+    /// if their stamp no longer matches the active session's generation.
+    ///
+    /// Load-bearing since D4 made `cancel()` detached: a cancelled (old) worker
+    /// is no longer drained before a new session is staged, so without this
+    /// guard a late `install_*` from the old worker would silently overwrite the
+    /// freshly-staged session's relay/transport/signer. The generation makes
+    /// every late write from a superseded worker a no-op.
+    generation: AtomicU64,
     /// ADR-0050 §D3b completion sink, installed once by the host adapter via
     /// [`BunkerBroker::set_completion_sink`] and bound onto each session's
     /// transport in `install_completed_signer`. `None` until the host installs
     /// it (the host always does at broker init). The broker never names
     /// `ActorCommand` (D0) — it sees only the opaque `Fn(String)`.
     completion_sink: Mutex<Option<crate::CompletionSink>>,
+    /// Test-only observer fired by the reaper AFTER all of its `.join()` calls
+    /// return. Lets a test prove the reaper actually JOINED (reclaimed) the
+    /// handles — distinguishing a real join from a handle that was merely
+    /// dropped (which would also let the worker thread exit). Not present in
+    /// production builds.
+    #[cfg(test)]
+    reaper_observer: Mutex<Option<mpsc::Sender<()>>>,
 }
 
 struct ActiveSession {
+    /// Generation this session was staged under (see [`BunkerBroker::generation`]).
+    /// A worker may only mutate this session if its spawn-time stamp equals
+    /// this value.
+    generation: u64,
     relay: Arc<dyn RelayClient>,
     cancel: Arc<AtomicBool>,
     handshake_thread: Option<JoinHandle<()>>,
@@ -99,7 +121,10 @@ impl BunkerBroker {
         Arc::new(Self {
             events,
             active: Mutex::new(None),
+            generation: AtomicU64::new(0),
             completion_sink: Mutex::new(None),
+            #[cfg(test)]
+            reaper_observer: Mutex::new(None),
         })
     }
 
@@ -118,8 +143,17 @@ impl BunkerBroker {
     /// actual work runs on a worker thread. Cancels any prior in-flight
     /// session first (MVP — single-session).
     pub fn start_handshake(self: &Arc<Self>, uri: String) {
-        // Cancel any prior session so a re-submit replaces cleanly.
+        // Cancel any prior session so a re-submit replaces cleanly. `cancel()`
+        // is now detached (D4): the old worker may still be mid-flight after
+        // this returns, so we MUST stamp this new session with a fresh
+        // generation that the old worker can never match (see `generation`).
         self.cancel();
+
+        // New generation for this session. `cancel()` above already bumped the
+        // generation (invalidating any prior worker); bump again so this
+        // session's stamp is strictly newer than anything the just-cancelled
+        // worker carries.
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
 
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
@@ -133,9 +167,11 @@ impl BunkerBroker {
         // its real relay/transport silently dropped (since `install_session`
         // is a mutate-if-Some no-op).
         if let Ok(mut guard) = self.active.lock() {
-            let thread =
-                std::thread::spawn(move || me.run_handshake_thread(uri, cancel_for_thread));
+            let thread = std::thread::spawn(move || {
+                me.run_handshake_thread(uri, cancel_for_thread, generation)
+            });
             *guard = Some(ActiveSession {
+                generation,
                 // Placeholder relay reference until the worker swaps it in.
                 // We use an `Arc<NoopRelay>` so the field type stays simple.
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
@@ -164,6 +200,13 @@ impl BunkerBroker {
     /// this path used to cause (ADR-0050: "bunker cancel is detach, not join").
     /// No thread leaks: the reaper owns and joins every handle.
     pub fn cancel(&self) {
+        // Bump the generation so any worker stamped with the session we are
+        // about to tear down can no longer install into a future session. This
+        // is the correctness guard for the detached teardown: the old worker
+        // outlives this call, so a generation it can never match is what stops
+        // its late `install_*` from clobbering a subsequently-staged session.
+        self.generation.fetch_add(1, Ordering::AcqRel);
+
         let session = if let Ok(mut guard) = self.active.lock() {
             guard.take()
         } else {
@@ -214,7 +257,7 @@ impl BunkerBroker {
             //     exits.
             // The reaper joins all of them (bounded — see `spawn_reaper`) so no
             // thread/fd leaks, while the actor call path never blocks.
-            Self::spawn_reaper(
+            self.spawn_reaper(
                 session.handshake_thread,
                 session.dispatcher_thread,
                 relay_dispatcher,
@@ -239,6 +282,7 @@ impl BunkerBroker {
     /// outliving the reaper while parked in a connect syscall — never an
     /// unbounded busy thread and never a blocked actor.
     fn spawn_reaper(
+        &self,
         handshake_thread: Option<JoinHandle<()>>,
         dispatcher_thread: Option<JoinHandle<()>>,
         relay_dispatcher: Option<JoinHandle<()>>,
@@ -249,6 +293,14 @@ impl BunkerBroker {
         {
             return;
         }
+        // Test-only: clone the observer so the reaper can signal once it has
+        // JOINED all handles. Production builds carry no observer.
+        #[cfg(test)]
+        let observer = self
+            .reaper_observer
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
         // Detached: we never join the reaper itself. Naming it aids leak
         // diagnosis in a thread dump.
         let _ = std::thread::Builder::new()
@@ -265,6 +317,12 @@ impl BunkerBroker {
                 // `inbound_tx` sender is dropped, so its `recv()` has returned
                 // `Err` and this join is immediate.
                 Self::reap_join(dispatcher_thread);
+                // Signal AFTER every join returned — proves the reaper reclaimed
+                // (joined) the handles, not merely dropped them.
+                #[cfg(test)]
+                if let Some(tx) = observer {
+                    let _ = tx.send(());
+                }
             });
     }
 
@@ -298,7 +356,12 @@ impl BunkerBroker {
     /// 4. Drive the connect → get_public_key state machine.
     /// 5. Construct `Nip46Signer`, emit `SignerReady`, and emit the terminal
     ///    `"ready"` progress snapshot.
-    fn run_handshake_thread(self: Arc<Self>, uri_str: String, cancel: Arc<AtomicBool>) {
+    fn run_handshake_thread(
+        self: Arc<Self>,
+        uri_str: String,
+        cancel: Arc<AtomicBool>,
+        generation: u64,
+    ) {
         let bunker_uri = match parse_bunker_uri(&uri_str) {
             Ok(u) => u,
             Err(e) => {
@@ -394,8 +457,18 @@ impl BunkerBroker {
         // which we'll bind once we construct the signer.
         let transport = BrokerTransport::new(Arc::clone(&relay), local_keys.clone(), remote_pubkey);
 
-        // Install the live session entry (replacing the placeholder).
-        self.install_session(Arc::clone(&relay), Arc::clone(&transport));
+        // Install the live session entry (replacing the placeholder). No-ops
+        // if this worker has been superseded (its generation no longer matches
+        // the active session) — e.g. a detached `cancel()` + a new
+        // `start_handshake()` ran while we were dialing.
+        if !self.install_session(generation, Arc::clone(&relay), Arc::clone(&transport)) {
+            // Superseded: our relay/transport must not leak. Tear our own relay
+            // down (signal + detached reap), drop everything, and stop — a
+            // newer session owns `active` now.
+            let relay_dispatcher = relay.signal_shutdown();
+            self.spawn_reaper(None, None, relay_dispatcher);
+            return;
+        }
 
         // Run the handshake.
         let mut progress_emitter = |stage: &str, msg: Option<&str>| {
@@ -418,17 +491,33 @@ impl BunkerBroker {
             }
         };
 
-        self.complete_handshake(handle, transport, inbound_rx, outcome);
+        self.complete_handshake(handle, transport, inbound_rx, outcome, generation);
     }
 
     /// Replace the placeholder session entry with the real relay/transport.
-    fn install_session(&self, relay: Arc<dyn RelayClient>, transport: Arc<BrokerTransport>) {
+    ///
+    /// Returns `true` iff the install applied. No-ops and returns `false` if
+    /// the worker has been superseded — there is no active session, or the
+    /// active session's generation differs from `generation` (a detached
+    /// `cancel()` and/or a newer `start_handshake()` ran while this worker was
+    /// dialing). This is the D4 generation guard: a late write from an old
+    /// worker can never overwrite a newer session's relay/transport.
+    fn install_session(
+        &self,
+        generation: u64,
+        relay: Arc<dyn RelayClient>,
+        transport: Arc<BrokerTransport>,
+    ) -> bool {
         if let Ok(mut guard) = self.active.lock() {
             if let Some(session) = guard.as_mut() {
-                session.relay = relay;
-                session.transport = transport;
+                if session.generation == generation {
+                    session.relay = relay;
+                    session.transport = transport;
+                    return true;
+                }
             }
         }
+        false
     }
 
     /// Construct the `Nip46Signer`, emit it to the host, drain inbound
@@ -439,6 +528,7 @@ impl BunkerBroker {
         transport: Arc<BrokerTransport>,
         inbound_rx: mpsc::Receiver<Value>,
         outcome: HandshakeOutcome,
+        generation: u64,
     ) {
         let user_pubkey = match PublicKey::from_hex(&outcome.user_pubkey_hex) {
             Ok(pk) => pk,
@@ -452,7 +542,7 @@ impl BunkerBroker {
         // `Arc<BrokerTransport>` directly. The signer will erase the type
         // internally as `Arc<dyn Nip46Transport>`.
         let signer = Arc::new(handle.complete(Arc::clone(&transport), user_pubkey));
-        self.install_completed_signer(signer, transport, inbound_rx);
+        self.install_completed_signer(signer, transport, inbound_rx, generation);
     }
 
     fn install_completed_signer(
@@ -460,6 +550,7 @@ impl BunkerBroker {
         signer: Arc<Nip46Signer>,
         transport: Arc<BrokerTransport>,
         inbound_rx: mpsc::Receiver<Value>,
+        generation: u64,
     ) {
         transport.bind_signer(&signer);
 
@@ -493,27 +584,38 @@ impl BunkerBroker {
             })
             .ok();
 
-        // Stash the signer AND the dispatcher join handle on the active
-        // session so cancel() can tear both down deterministically even after
-        // the host adapter receives its own strong reference to the signer.
+        // Stash the signer AND the dispatcher join handle on the active session
+        // — but ONLY if this worker still owns `active` (its generation matches
+        // the staged session). A detached `cancel()` and/or a newer
+        // `start_handshake()` may have run while we completed the handshake; in
+        // that case we are superseded and must NOT install our signer (it would
+        // clobber the newer session / emit a stale `SignerReady`).
         let mut orphaned_dispatcher = dispatcher_thread;
+        let mut installed = false;
         if let Ok(mut guard) = self.active.lock() {
             if let Some(session) = guard.as_mut() {
-                if let Ok(mut slot) = session.signer.lock() {
-                    *slot = Some(Arc::clone(&signer));
+                if session.generation == generation {
+                    if let Ok(mut slot) = session.signer.lock() {
+                        *slot = Some(Arc::clone(&signer));
+                    }
+                    session.dispatcher_thread = orphaned_dispatcher.take();
+                    installed = true;
                 }
-                session.dispatcher_thread = orphaned_dispatcher.take();
             }
         }
-        // Race guard: if the session was already taken by a concurrent
-        // `cancel()` (so the stash above found no session), hand the dispatcher
-        // to the background reaper rather than detaching it or joining it here.
-        // By this point `cancel()` has dropped the relay's event callback, so
-        // the dispatcher's `inbound_rx.recv()` has already (or will shortly)
-        // return `Err`; the reaper joins it off-path — never a hang, never a
-        // leaked thread. This keeps every join uniformly off the call path.
-        if orphaned_dispatcher.is_some() {
-            Self::spawn_reaper(None, orphaned_dispatcher, None);
+        if !installed {
+            // Superseded (or already cancelled). The relay this worker created
+            // was installed into the session by `install_session` (generation
+            // matched then); whoever bumped the generation since took that
+            // session and already `signal_shutdown()`-ed the relay — so we must
+            // NOT touch the relay here (no double teardown, no leak). We only
+            // own the just-spawned inbound dispatcher: hand it to the reaper.
+            // Drain any pending signs the signer accumulated and do NOT emit
+            // `SignerReady` / `"ready"` — a newer session (or none) owns the
+            // active slot.
+            signer.drain_pending_with_error("bunker session superseded");
+            self.spawn_reaper(None, orphaned_dispatcher.take(), None);
+            return;
         }
 
         self.emit(BrokerEvent::SignerReady {

@@ -38,6 +38,10 @@ impl BunkerBroker {
             "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name={name}&perms=sign_event%3A1%2Csign_event%3A7"
         );
 
+        // Fresh generation for this session — strictly newer than anything the
+        // just-cancelled (detached) worker carries. See `broker.rs::generation`.
+        let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+
         let me = Arc::clone(self);
         let secret_for_thread = secret.clone();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -53,9 +57,11 @@ impl BunkerBroker {
                     local_keys,
                     secret_for_thread,
                     cancel_for_thread,
+                    generation,
                 );
             });
             *guard = Some(ActiveSession {
+                generation,
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
                 handshake_thread: Some(thread),
@@ -78,6 +84,7 @@ impl BunkerBroker {
         local_keys: Keys,
         expected_secret: String,
         cancel: Arc<AtomicBool>,
+        generation: u64,
     ) {
         let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
         let inbound_tx_for_cb = inbound_tx.clone();
@@ -121,7 +128,13 @@ impl BunkerBroker {
             local_keys.clone(),
             local_keys.public_key(),
         );
-        self.install_session(Arc::clone(&relay), Arc::clone(&placeholder_transport));
+        // No-op if superseded; tear our own relay down off-path and stop.
+        if !self.install_session(generation, Arc::clone(&relay), Arc::clone(&placeholder_transport))
+        {
+            let relay_dispatcher = relay.signal_shutdown();
+            self.spawn_reaper(None, None, relay_dispatcher);
+            return;
+        }
 
         let mut progress_emitter = |stage: &str, msg: Option<&str>| {
             self.emit_progress(stage, msg);
@@ -149,7 +162,13 @@ impl BunkerBroker {
             }
         };
         let transport = BrokerTransport::new(Arc::clone(&relay), local_keys.clone(), signer_pk);
-        self.install_session(Arc::clone(&relay), Arc::clone(&transport));
+        // No-op if superseded between the placeholder install and now. The relay
+        // installed by the placeholder install was already torn down by whoever
+        // bumped the generation (they took that session and `signal_shutdown()`-ed
+        // it), so we must not touch it here — just stop.
+        if !self.install_session(generation, Arc::clone(&relay), Arc::clone(&transport)) {
+            return;
+        }
 
         let synthetic_bunker_uri =
             format!("bunker://{}?relay={}", outcome.signer_pubkey_hex, relay_url);
@@ -171,6 +190,7 @@ impl BunkerBroker {
             HandshakeOutcome {
                 user_pubkey_hex: outcome.user_pubkey_hex,
             },
+            generation,
         );
     }
 }
