@@ -389,13 +389,13 @@ fn on_dm_relays_changed_two_calls_enqueue_two_triggers() {
     );
 }
 
-// ─── ingest_contacts (kind:3) ────────────────────────────────────────────────
+// ─── contacts (kind:3) ────────────────────────────────────────────────────────
 
-/// A kind:3 contact list with `p` tags updates the `seed_contacts` follow
+/// A kind:3 contact list with `p` tags updates the contacts-cache follow
 /// graph: the followed hex pubkeys are stored under the author's key.
 ///
 /// The author here is NOT the active account, so this isolates the
-/// `seed_contacts` insert from the active-account-only
+/// contacts-cache write from the active-account-only
 /// `sync_follow_feed_interests` side-effects (registry + `timeline_authors`).
 #[test]
 fn ingest_contacts_with_p_tags_updates_follow_graph() {
@@ -454,8 +454,8 @@ fn ingest_contacts_with_p_tags_updates_follow_graph() {
     );
 }
 
-/// An empty kind:3 (no `p` tags) does NOT remove the `seed_contacts` entry —
-/// `ingest_contacts` has no empty-list early return (unlike `ingest_relay_list`).
+/// An empty kind:3 (no `p` tags) does NOT remove the contacts-cache entry —
+/// the kind:3 parser has no empty-list early return (unlike the DM-relay cache).
 /// It unconditionally stores an empty follow vector, which is the correct
 /// "cleared follow set" representation.
 #[test]

@@ -232,3 +232,76 @@ fn follow_new_author_backfills_prior_stored_note_from_store() {
          store via cache-serve (the pre_kind3_buffer-deletion replacement)"
     );
 }
+
+/// (4) Sign-in seed — `prepopulate_contacts` restores KNOWN contacts. It is NOT
+/// a newly-ingested event, so it must NOT emit a phantom kind:3 to app
+/// `KernelEventObserver`s (which would double up with the real signed kind:3
+/// that arrives later, and surface a fake, non-persisted event). It must still
+/// drive the kernel-owned follow-feed effects directly.
+///
+/// This is the BLOCKER fix: prepopulate writes the cache + fires effects via the
+/// `ContactsLookup` writer + `on_active_contacts_changed` — WITHOUT the
+/// `project_accepted_event` observer fan-out and WITHOUT a fabricated id/sig.
+#[test]
+fn prepopulate_contacts_seeds_effects_without_emitting_a_phantom_event() {
+    use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+    use crate::substrate::KernelEvent;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Mutex;
+
+    struct CapturingObserver {
+        count: AtomicU32,
+        last_kind: Mutex<Option<u32>>,
+    }
+    impl KernelEventObserver for CapturingObserver {
+        fn on_kernel_event(&self, event: &KernelEvent) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            if let Ok(mut g) = self.last_kind.lock() {
+                *g = Some(event.kind);
+            }
+        }
+    }
+
+    let slot = new_event_observer_slot();
+    let observer = Arc::new(CapturingObserver {
+        count: AtomicU32::new(0),
+        last_kind: Mutex::new(None),
+    });
+    register_rust_observer(&slot, observer.clone());
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot);
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    kernel.active_account = Some(ALICE.to_string());
+
+    // Sign-in seed: restore the account's known follows (BOB, CAROL).
+    kernel.prepopulate_contacts(ALICE.to_string(), vec![BOB.to_string(), CAROL.to_string()]);
+
+    // NO phantom event: prepopulate must NOT reach the observer fan-out.
+    assert_eq!(
+        observer.count.load(Ordering::SeqCst),
+        0,
+        "prepopulate_contacts must NOT emit a (fake, non-persisted) kind:3 to \
+         KernelEventObservers — it is a sign-in cache seed, not an ingested event \
+         (last observed kind = {:?})",
+        observer.last_kind.lock().unwrap()
+    );
+
+    // But the kernel-owned effects ARE driven directly: the cache is populated,
+    // `timeline_authors` is rebuilt, and the follow-feed interests are registered.
+    assert_eq!(
+        kernel.contacts_lookup().follows(ALICE),
+        Some(vec![BOB.to_string(), CAROL.to_string()]),
+        "prepopulate must write the contacts cache via the ContactsLookup writer"
+    );
+    let authors = kernel.timeline_authors_for_test();
+    assert!(
+        authors.contains(BOB) && authors.contains(CAROL) && authors.contains(ALICE),
+        "prepopulate must rebuild timeline_authors via on_active_contacts_changed"
+    );
+    assert_eq!(
+        kernel.follow_feed_interest_ids_for_test().len(),
+        3,
+        "prepopulate must register the follow-feed interests (2 follows + the active account)"
+    );
+}

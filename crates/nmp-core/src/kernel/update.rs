@@ -120,8 +120,8 @@ impl Kernel {
                 duplicate_events: self.metric_duplicate_events,
                 delete_events: 0,
                 // `metric_stored_events` tracks `events.len()` (an O(1) read on
-                // its own); the profiles + seed_contacts terms are O(1) `len()`
-                // calls, so the historical sum is preserved unchanged.
+                // its own); the profile-cache + contacts-cache terms are O(1)
+                // `len()` calls, so the historical sum is preserved unchanged.
                 stored_events: self.metric_stored_events as usize
                     + self.profile_lookup().len()
                     + self.contacts_lookup().len(),

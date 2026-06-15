@@ -73,6 +73,21 @@ pub trait ContactsLookup: Send + Sync {
     /// `pubkey` is lowercase hex.
     fn follows(&self, pubkey: &str) -> Option<Vec<String>>;
 
+    /// Direct cache writer — upsert `pubkey`'s follow set, applying the kind:3
+    /// supersession rule (newest `created_at` wins; lexicographically-smaller
+    /// event-id wins on a tie). Returns `true` iff the candidate replaced the
+    /// cached entry.
+    ///
+    /// The PRODUCTION ingest writer is `nmp_nip01::Kind3Parser` (via the
+    /// `EventIngestDispatcher`); this trait method is the **non-ingest** writer
+    /// seam the kernel's sign-in seed (`Kernel::prepopulate_contacts`) uses
+    /// to restore KNOWN contacts directly into the cache — WITHOUT fabricating a
+    /// kind:3 event through the observer fan-out. It mirrors
+    /// [`crate::substrate::MailboxCache`]'s writer, the analogous capability
+    /// whose sign-in seed (`Kernel::prepopulate_author_relay_list`) writes the
+    /// cache directly too. The kernel never names the kind:3 wire format (D0).
+    fn upsert(&self, pubkey: String, view: ContactsView) -> bool;
+
     /// Number of cached contact lists (distinct authors). Mirrors the kernel's
     /// former `seed_contacts.len()` — feeds the `stored_events` diagnostic and
     /// the RAM-eviction watermark check.
@@ -118,6 +133,12 @@ pub struct EmptyContactsLookup;
 impl ContactsLookup for EmptyContactsLookup {
     fn follows(&self, _pubkey: &str) -> Option<Vec<String>> {
         None
+    }
+    fn upsert(&self, _pubkey: String, _view: ContactsView) -> bool {
+        // Cold-start no-op backing: there is nothing to write into. Production
+        // composition installs `nmp_nip01::ContactsCache` before any sign-in
+        // seed runs (`set_contacts_lookup`).
+        false
     }
     fn len(&self) -> usize {
         0
@@ -221,6 +242,9 @@ impl ContactsLookup for TestContactsCache {
             .read()
             .ok()
             .and_then(|g| g.get(pubkey).map(|v| v.follows.clone()))
+    }
+    fn upsert(&self, pubkey: String, view: ContactsView) -> bool {
+        self.upsert_view(&pubkey, view)
     }
     fn len(&self) -> usize {
         self.inner.read().map(|g| g.len()).unwrap_or(0)

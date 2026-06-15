@@ -122,8 +122,8 @@ const RELAY: &str = "wss://test.relay/";
 
 /// D4 — kind:3 regression: deliver v2 then re-deliver stale v1.
 ///
-/// The store must supersede v1 (older created_at) and the kernel's
-/// `seed_contacts` cache must stay at the v2 content.
+/// The store must supersede v1 (older created_at) and the contacts cache
+/// must stay at the v2 content.
 #[test]
 fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

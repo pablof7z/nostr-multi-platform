@@ -1023,13 +1023,14 @@ pub(crate) fn create_account(
         kernel.set_configured_relays(relay_rows.clone());
     }
 
-    // Pre-populate seed_contacts so the follow-feed can be set up immediately
-    // without waiting for the published kind:3 to round-trip from relays.
+    // Pre-populate the contacts cache so the follow-feed can be set up
+    // immediately without waiting for the published kind:3 to round-trip from
+    // relays.
     let follows = DEFAULT_FOLLOWS
         .iter()
         .map(std::string::ToString::to_string)
         .collect::<Vec<_>>();
-    kernel.prepopulate_seed_contacts(id.clone(), follows);
+    kernel.prepopulate_contacts(id.clone(), follows);
 
     let mut publish_outbound = Vec::new();
 
@@ -1293,7 +1294,7 @@ fn publish_initial_follows(
             if target_relays.is_empty() {
                 // D6: no usable cold-start relay — surface a toast, never
                 // panic. The follow set is already pre-populated locally
-                // (`prepopulate_seed_contacts`); the user can re-publish
+                // (`prepopulate_contacts`); the user can re-publish
                 // their contacts once relays are configured.
                 kernel.set_last_error_toast(Some(
                     "could not publish contacts — no cold-start relays available".to_string(),
