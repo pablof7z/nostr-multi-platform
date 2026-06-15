@@ -24,26 +24,19 @@ use super::super::{ClaimedEventDto, Kernel, MentionProfilePayload, ProfileCard};
 /// `action_lifecycle` — drain-on-emit, present only on ticks where something
 /// settled) are listed too: the gate asks "can the kernel produce this key",
 /// not "is it present this tick".
-pub const KERNEL_BUILTIN_PROJECTION_KEYS: &[&str] = &[
-    "publish_queue",
-    "publish_outbox",
-    "outbox_summary",
-    "configured_relays",
-    "relay_role_options",
-    "settings_hub",
-    "action_results",
-    "signed_events",
-    "action_stages",
-    "action_lifecycle",
-    "accounts",
-    "active_account",
-    "profile",
-    "relay_diagnostics",
-    "mention_profiles",
-    "claimed_profiles",
-    "claimed_events",
-    "resolved_profiles",
-];
+///
+/// ## Codegen-derived (ADR-0053 / Workstream-E4) — not hand-maintained
+///
+/// This const is **generated** from the `nmp-codegen` projection registry
+/// (`swift_projections_registry::kernel_builtin_projection_keys`) by
+/// `nmp gen builtin-keys`, so the kernel built-in key set is the single source
+/// of truth the codegen decoders also derive from — it cannot drift from what
+/// the shells decode. Regenerate with `cargo run -p nmp-codegen -- gen
+/// builtin-keys`; the `.github/workflows/codegen-drift.yml` gate fails any PR
+/// whose checked-in file is stale, and `builtin_projection_keys_const_matches_runtime`
+/// pins it against the kernel's actual `make_update` emission. DO NOT hand-edit
+/// the generated file.
+include!("builtin_projection_keys.generated.rs");
 
 impl Kernel {
     /// Collect the snapshot `projections` map: every host-registered

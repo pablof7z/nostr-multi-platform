@@ -353,6 +353,14 @@ void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapsho
 // skipped (D6).
 void nmp_app_declare_consumed_projections(void *app, const char *const *keys, uintptr_t len);
 
+// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+// built-in projection" intent (the ONE non-footgun way to receive the full
+// set). A full client calls this instead of leaving the consumption intent
+// undeclared (which `nmp_app_start` treats as a loud forgotten-wiring bug, not a
+// silent firehose). Idempotent; call before `nmp_app_start`. A null `app` is a
+// silent no-op (D6).
+void nmp_app_consume_all_builtin_projections(void *app);
+
 // ADR-0055 Rung 3 — declare that this host's runtime owns the NMP cache-merge
 // layer (D3-3) so the kernel may omit `Unchanged` projections from the frame.
 // Single-writer, call before `nmp_app_start`. After this call the next snapshot

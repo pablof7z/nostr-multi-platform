@@ -6,7 +6,8 @@ use std::sync::mpsc::Receiver;
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
     follow_spec, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_identity_restore, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_identity_restore,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
     nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
     ChirpHandle, MarmotHandle, NmpRegisterStatus,
@@ -79,6 +80,12 @@ impl AppRuntime {
             }
         });
         let initial_marmot = marmot.unwrap_or(ptr::null_mut());
+
+        // ADR-0053 / Workstream-E4 — declare projection-consumption intent
+        // BEFORE start. chirp-tui is a full client (reads every kernel built-in),
+        // so it consumes all explicitly; an undeclared start is a loud
+        // forgotten-wiring bug, not a silent firehose.
+        nmp_app_chirp_declare_consumed_projections(app);
 
         nmp_app_start(app, 0, 200, 10);
         nmp_app_chirp_open_home_feed(app);

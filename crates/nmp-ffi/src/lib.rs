@@ -28,6 +28,7 @@ mod active_account_handle_tests;
 mod action;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
+mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
 #[cfg(test)]
@@ -174,6 +175,7 @@ pub use signer_broker::{
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use snapshot::{
+    nmp_app_consume_all_builtin_projections,
     nmp_app_declare_consumed_projections,
     nmp_app_declare_incremental_apply,
     nmp_app_register_snapshot_projection,
@@ -1573,69 +1575,10 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0053 — declare (union into) the static set of Tier-2 built-in
-    /// projection keys this host consumes.
-    ///
-    /// The output-side sibling of relay `push_interest`: the kernel serializes a
-    /// kernel-owned built-in into each snapshot only if its key is declared. An
-    /// empty declared set emits every built-in (no narrowing); a non-empty set
-    /// narrows to its members, skipping the producer work (notably the
-    /// `relay_diagnostics` roll-up) for everything else. Additive, `&self`
-    /// (lock-and-extend), intended as a host-init call before `nmp_app_start`.
-    /// A poisoned registry mutex is a silent no-op (D6).
-    ///
-    /// # Init-only invariant (ADR-0053 Decision 5)
-    ///
-    /// The declared set MUST be written before the first real frame is emitted
-    /// (i.e. before `nmp_app_start`). Calling this method after `start` is
-    /// additive today (not a bug), but the ADR's D1-preservation argument
-    /// depends on the set being fixed for the process lifetime. A
-    /// `debug_assert!` enforces the invariant in debug builds; if you ever
-    /// need to remove the assert and allow post-start mutation, document
-    /// exactly why the additive-only semantics still preserve D1.
-    pub fn declare_consumed_projections<I, K>(&self, keys: I)
-    where
-        I: IntoIterator<Item = K>,
-        K: Into<String>,
-    {
-        // ADR-0053 DEBT 3 — init-only invariant enforcement. The declaration
-        // must happen before `nmp_app_start` so the kernel sees the complete
-        // set from its first real frame. Additive-only semantics preserve D1
-        // (the set only grows, never shrinks), but the full set must be stable
-        // by start time. Panics in debug builds; silently allowed in release
-        // (additive semantics keep it safe as-is, the assert is a developer
-        // early-warning).
-        debug_assert!(
-            !self.started.load(Ordering::SeqCst),
-            "declare_consumed_projections called after nmp_app_start — \
-             the declared set must be complete before the kernel emits its \
-             first real frame (ADR-0053 Decision 5 / init-only invariant)"
-        );
-        if let Ok(mut registry) = self.snapshot_projections.lock() {
-            registry.declare_consumed_projections(keys);
-        }
-    }
-
-    /// ADR-0053 — whether the host has declared at least one consumed Tier-2
-    /// built-in projection key (i.e. narrowing is in effect).
-    ///
-    /// Returns `false` when no keys have been declared (the "no opinion / no
-    /// narrowing" state — every Tier-2 built-in is emitted). Returns `true`
-    /// once any key has been declared. Two consumers read it: the one-time
-    /// `tracing::warn!` in `nmp_app_start` (the C-ABI-path backstop), and the
-    /// `nmp-defaults` builder tests that assert the typestate methods
-    /// (`declare_consumed_projections` vs `consume_all_builtin_projections`)
-    /// produce the expected narrowing state. (The app-facing builder enforces
-    /// the *decision* at compile time via its typestate — there is no runtime
-    /// `debug_assert!` on the builder path.) A poisoned registry mutex returns
-    /// `false` (D6).
-    #[must_use]
-    pub fn consumed_projections_are_narrowing(&self) -> bool {
-        self.snapshot_projections
-            .lock()
-            .map(|r| r.declared_projections().is_narrowing())
-            .unwrap_or(false)
-    }
+    // ADR-0053 / Workstream-E4 — the `NmpApp` projection-consumption-intent
+    // methods (`declare_consumed_projections`, `consume_all_builtin_projections`,
+    // `consumed_projections_are_undeclared`, `consumed_projections_are_narrowing`)
+    // live in `crate::declared_projections` (god-file relief).
 
     /// Register a **change-gated** snapshot projection — the perf-aware
     /// counterpart to [`Self::register_snapshot_projection`].
@@ -2879,31 +2822,33 @@ pub extern "C" fn nmp_app_start(
         .map(|g| g.clone())
         .unwrap_or_default();
 
-    // ADR-0053 DEBT 2 — one-time warn when a production app starts without
-    // declaring any consumed projections. An empty declared set means "no
-    // narrowing": the kernel will serialize every Tier-2 built-in
-    // (including the expensive `relay_diagnostics` roll-up) into every
-    // snapshot at full 4Hz, even though many of those keys are never read
-    // by any screen. This is expensive and defeats the ADR-0053 optimization.
-    //
-    // Chirp and other NMP apps call `declare_consumed_projections` (or the
-    // shell-side `nmp_app_declare_consumed_projections` / the Rust builder's
-    // `AppHost::declare_consumed_projections`) before `nmp_app_start`. An
-    // empty set at start time means the wiring step was omitted.
-    //
-    // The kernel primitive's empty=permissive semantic is intentional (test
-    // helpers, chirp-tui, chirp-desktop legitimately have no opinion — see
-    // ADR-0053 Decision 4). This warn fires only at the FFI boundary (the
-    // production-app entry path) where a non-narrowing set is an omission.
-    if !app.consumed_projections_are_narrowing() {
+    // ADR-0053 / Workstream-E4 — LOUD forgotten-declaration check. Intent is
+    // mandatory: an app must call `declare_consumed_projections` (narrow) or
+    // `consume_all_builtin_projections` (explicit full set) before start. An
+    // *undeclared* app is the forgotten-wiring footgun, NOT a silent
+    // emit-everything opinion. The `debug_assert!` panics dev/prod debug builds;
+    // release stays behaviour-preserving (`Undeclared` still permits every
+    // built-in — never crashes, never goes dark) and surfaces a `tracing::warn!`.
+    // The assert is compiled out under test harnesses (`test` / `test-support`):
+    // those legitimately start undeclared and get the release behaviour. An
+    // explicit `consume_all` (`All`) is NOT undeclared and never warns.
+    if app.consumed_projections_are_undeclared() {
         tracing::warn!(
-            "nmp_app_start: host declared no consumed projections — the kernel \
-             will serialize all {} Tier-2 built-in projections on every tick \
-             (including relay_diagnostics). Call \
-             `nmp_app_declare_consumed_projections` / \
-             `SnapshotProjectionRegistrar::declare_consumed_projections` before start to opt into \
-             the ADR-0053 optimization (ADR-0053 DEBT 2).",
+            "nmp_app_start: host expressed no projection-consumption intent — the \
+             kernel will serialize all {} Tier-2 built-in projections on every tick \
+             (including relay_diagnostics). This is a FORGOTTEN declaration, not an \
+             opt-in: call `nmp_app_declare_consumed_projections` (narrow) or \
+             `nmp_app_consume_all_builtin_projections` (explicit full set) before \
+             start (ADR-0053 / Workstream-E4).",
             nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS.len(),
+        );
+        #[cfg(not(any(test, feature = "test-support")))]
+        debug_assert!(
+            false,
+            "nmp_app_start: projection-consumption intent is undeclared — call \
+             nmp_app_declare_consumed_projections (narrow) or \
+             nmp_app_consume_all_builtin_projections (explicit everything) before \
+             start. No silent emit-everything default (ADR-0053 / Workstream-E4)."
         );
     }
 

@@ -22,6 +22,7 @@ use nmp_app_chirp::ffi::{
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_close_author_feed,
     nmp_app_chirp_close_home_feed, nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_declare_consumed_projections,
     nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
     nmp_app_nostrconnect_uri, nmp_marmot_unregister,
@@ -141,6 +142,10 @@ impl AppRuntime {
 
         let marmot = None;
         let initial_marmot = marmot.unwrap_or(ptr::null_mut());
+
+        // ADR-0053/E4 — declare projection-consumption intent BEFORE start
+        // (chirp-desktop is a full client; undeclared start is a loud bug).
+        nmp_app_chirp_declare_consumed_projections(app);
 
         // SAFETY: `app` is valid.
         unsafe {

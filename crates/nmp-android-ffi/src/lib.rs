@@ -54,11 +54,11 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
         return 0;
     }
     nmp_signer_broker_init(app);
-    // ADR-0053 — declare Chirp's static Tier-2 built-in projection consumption
-    // set so the kernel narrows snapshot output to what this shell reads (the
-    // single source of truth is `CHIRP_CONSUMED_BUILTIN_PROJECTIONS` in
-    // nmp-app-chirp). Must run before `nmp_app_start`. Thin: one static call, no
-    // logic in the shell.
+    // ADR-0053 / Workstream-E4 — declare Chirp's projection-consumption intent.
+    // Chirp is a full client, so this is the explicit `consume_all` (Chirp reads
+    // every kernel built-in); see `nmp_app_chirp_declare_consumed_projections` in
+    // nmp-app-chirp. Must run before `nmp_app_start` — an undeclared start is a
+    // loud forgotten-wiring bug, not a silent firehose. Thin: one static call.
     nmp_app_chirp_declare_consumed_projections(app);
     // ADR-0055 R3-S4 — declare that this host implements the incremental-apply
     // contract (D3-3/D3-4/D3-5). The kernel switches from full-snapshot mode to

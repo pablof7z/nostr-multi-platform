@@ -1,4 +1,4 @@
-//! Host-declared **consumed-projection set** (ADR-0053).
+//! Host-declared **consumed-projection set** (ADR-0053 / Workstream-E4).
 //!
 //! The output-side sibling of the relay `push_interest` lattice: a host declares,
 //! once at app init, the static set of snapshot **projection keys it consumes**.
@@ -14,15 +14,22 @@
 //! no new actor parameter, and no new Reset-survival contract — the kernel reads the
 //! set on the same lock it already takes once per tick.
 //!
-//! ## Semantics (ADR-0053 Decision 4) — empty = no narrowing
+//! ## Semantics — explicit intent is MANDATORY (Workstream-E4)
 //!
-//! An **empty** declared set means the host expressed *no opinion*: every Tier-2
-//! built-in is emitted (the pre-ADR-0053 behaviour). This is the relay interest-set
-//! semantic — an empty filter set does not subscribe to nothing; narrowing is
-//! additive. A **non-empty** set narrows: only its members are emitted; every other
-//! Tier-2 built-in is skipped (its producer is never run). This keeps the kernel's
-//! own Rust consumers (chirp-tui, chirp-desktop) and the test helpers working with no
-//! declaration, while every app that declares a set opts into the optimization.
+//! Projection-consumption intent is **explicit**. There is exactly one way to mean
+//! "everything" — [`DeclaredProjections::All`] (set via
+//! `consume_all_builtin_projections`) — and one way to narrow —
+//! [`DeclaredProjections::Narrow`] (via `declare_consumed_projections`). The third
+//! state, [`DeclaredProjections::Undeclared`], is the **forgotten-declaration
+//! footgun**: it is NOT a silent "emit everything" opinion. To stay
+//! behaviour-preserving in release it still permits every built-in (so production
+//! never crashes and never goes dark), but it is **loud** — `nmp_app_start` trips a
+//! `debug_assert!` (panic in dev/test) and emits a non-fatal `tracing::warn!` in
+//! release. Internal Rust consumers (chirp-tui / chirp-desktop) and the test path
+//! make their intent explicit (`consume_all_builtin_projections`); the
+//! `#[cfg(any(test, feature = "test-support"))]` default is `All` so existing tests
+//! need no per-site declaration. **Production has no implicit `All` default** — an
+//! undeclared production app is the loud forgotten-wiring case, never silent.
 //!
 //! Tier-1 host/protocol projections (`SnapshotRegistry::register*`) are **not** gated
 //! here — they already self-gate by registration (registration *is* the declaration),
@@ -30,54 +37,97 @@
 
 use std::collections::BTreeSet;
 
-/// The host-declared set of consumed Tier-2 built-in projection keys.
+/// The host-declared projection-consumption intent — a tri-state that makes
+/// "consume everything" an explicit choice and "no declaration" a loud bug
+/// rather than a silent firehose (ADR-0053 / Workstream-E4).
 ///
-/// `BTreeSet` for deterministic iteration and cheap membership; the set is tiny
-/// (≤ the count of [`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS),
+/// `Narrow` carries a `BTreeSet` for deterministic iteration and cheap
+/// membership; the set is tiny (≤ the count of
+/// [`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS),
 /// today 18). Declarations are **additive** (union) — a host may call the declare
 /// seam more than once (e.g. a base set from `nmp-defaults` plus an app-specific
 /// extension) and the sets union.
-#[derive(Debug, Default, Clone)]
-pub struct DeclaredProjections {
-    keys: BTreeSet<String>,
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum DeclaredProjections {
+    /// No projection-consumption intent was ever expressed — the
+    /// forgotten-declaration state (and the default). `permits()` still emits
+    /// everything (release behaviour-preserving — and so a kernel-tick under
+    /// any consumer that never declared still produces the full set, never
+    /// drops it), but this is NOT a silent opinion: `nmp_app_start` makes it
+    /// loud (`debug_assert!` + `tracing::warn!`).
+    #[default]
+    Undeclared,
+    /// Narrow to exactly these keys — emit a Tier-2 built-in only if it is a
+    /// declared member. Always non-empty (an empty declaration never produces
+    /// this variant; it would mean "emit nothing", which is never the intent).
+    Narrow(BTreeSet<String>),
+    /// The explicit "I consume every Tier-2 built-in" choice — the ONLY
+    /// non-footgun way to receive the full set.
+    All,
 }
 
 impl DeclaredProjections {
-    /// Construct an empty declared set — the "no opinion / no narrowing" state.
+    /// Construct the `Undeclared` state — the explicit "no intent yet" value
+    /// (independent of the `cfg`-gated [`Default`]).
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        DeclaredProjections::Undeclared
     }
 
-    /// Union `keys` into the declared set (additive; idempotent per key).
+    /// Union `keys` into the declared (narrowing) set (additive; idempotent per
+    /// key). An empty `keys` is a no-op (never produces an emit-nothing
+    /// `Narrow(∅)`); `All` stays `All` (declaring a subset of "everything" is a
+    /// no-op); `Undeclared` advances to `Narrow` once a non-empty set arrives.
     pub fn declare<I, K>(&mut self, keys: I)
     where
         I: IntoIterator<Item = K>,
         K: Into<String>,
     {
-        self.keys.extend(keys.into_iter().map(Into::into));
+        let incoming: BTreeSet<String> = keys.into_iter().map(Into::into).collect();
+        if incoming.is_empty() {
+            return;
+        }
+        match self {
+            DeclaredProjections::All => {}
+            DeclaredProjections::Narrow(set) => set.extend(incoming),
+            DeclaredProjections::Undeclared => *self = DeclaredProjections::Narrow(incoming),
+        }
     }
 
-    /// `true` when the host has declared at least one key (i.e. narrowing is in
-    /// effect). An empty set returns `false` — the "no narrowing" state.
+    /// Declare the explicit "consume every Tier-2 built-in" intent — the only
+    /// non-footgun way to get the full set (ADR-0053 / Workstream-E4).
+    pub fn consume_all(&mut self) {
+        *self = DeclaredProjections::All;
+    }
+
+    /// `true` when the host narrowed to an explicit subset of built-ins. `All`
+    /// and `Undeclared` are NOT narrowing (both permit everything). Two
+    /// consumers read it: the `nmp-defaults` builder tests, and any host
+    /// introspection that wants "am I in narrowing mode".
     #[must_use]
     pub fn is_narrowing(&self) -> bool {
-        !self.keys.is_empty()
+        matches!(self, DeclaredProjections::Narrow(set) if !set.is_empty())
+    }
+
+    /// `true` when no projection-consumption intent was expressed — the loud
+    /// forgotten-declaration state. Read by `nmp_app_start` to fire the
+    /// `debug_assert!` + release `tracing::warn!`.
+    #[must_use]
+    pub fn is_undeclared(&self) -> bool {
+        matches!(self, DeclaredProjections::Undeclared)
     }
 
     /// Whether the Tier-2 built-in `key` should be emitted this frame.
     ///
-    /// ADR-0053 Decision 4: an empty declared set emits everything (no narrowing);
-    /// a non-empty set emits `key` iff it is a declared member.
+    /// `Undeclared` and `All` both permit everything (release
+    /// behaviour-preserving — `Undeclared` is the loud-but-non-fatal footgun);
+    /// `Narrow` permits `key` iff it is a declared member.
     #[must_use]
     pub fn permits(&self, key: &str) -> bool {
-        self.keys.is_empty() || self.keys.contains(key)
-    }
-
-    /// Read-only view of the declared keys (test/introspection).
-    #[must_use]
-    pub fn keys(&self) -> &BTreeSet<String> {
-        &self.keys
+        match self {
+            DeclaredProjections::Undeclared | DeclaredProjections::All => true,
+            DeclaredProjections::Narrow(set) => set.contains(key),
+        }
     }
 
     /// **Workstream-E3 / ADR-0053 drift gate** — the declared keys that are
@@ -88,43 +138,45 @@ impl DeclaredProjections {
     /// A non-empty result is **drift**: the host declared a key the kernel never
     /// emits — a typo, a name left stale after a producer-side rename, or a
     /// Tier-1 host/protocol key that must NOT be declared here (Tier-1 self-gates
-    /// by registration). A stray key has no gating effect of its own, but its
-    /// mere presence flips the set into narrowing mode ([`Self::is_narrowing`]),
-    /// so a *renamed* built-in declared under its old name silently drops the
-    /// real key from every emitted frame. This is the mechanical
-    /// "declared ⊆ decodable" check: a host cannot declare a key the framework
-    /// does not emit/decode.
+    /// by registration). A stray key has no gating effect of its own, but a
+    /// *renamed* built-in declared under its old name silently drops the real key
+    /// from every emitted frame. This is the mechanical "declared ⊆ decodable"
+    /// check: a host cannot declare a key the framework does not emit/decode.
     ///
-    /// Results are in deterministic (`BTreeSet`) order. An empty declared set
-    /// declares nothing and therefore yields no strays — the "no opinion /
-    /// no narrowing" state (ADR-0053 Decision 4) is untouched by this check.
+    /// Only the [`DeclaredProjections::Narrow`] state has declared keys to check;
+    /// `Undeclared` and `All` declare no narrow set and therefore yield no
+    /// strays. Results are in deterministic (`BTreeSet`) order.
     #[must_use]
     pub fn stray_keys<'a, I>(&self, decodable: I) -> Vec<String>
     where
         I: IntoIterator<Item = &'a str>,
     {
-        let decodable: BTreeSet<&str> = decodable.into_iter().collect();
-        self.keys
-            .iter()
-            .filter(|k| !decodable.contains(k.as_str()))
-            .cloned()
-            .collect()
+        match self {
+            DeclaredProjections::Narrow(keys) => {
+                let decodable: BTreeSet<&str> = decodable.into_iter().collect();
+                keys.iter()
+                    .filter(|k| !decodable.contains(k.as_str()))
+                    .cloned()
+                    .collect()
+            }
+            DeclaredProjections::Undeclared | DeclaredProjections::All => Vec::new(),
+        }
     }
 
     /// **Workstream-E3 / ADR-0053 drift gate enforcement.** Assert the declared
-    /// set is a subset of the framework's authoritative emittable/decodable set
+    /// (narrow) set is a subset of the framework's authoritative
+    /// emittable/decodable set
     /// ([`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS),
     /// pinned to the real `make_update` insertion sites by
     /// `builtin_projection_keys_const_matches_runtime`).
     ///
-    /// Any [`stray_keys`](Self::stray_keys) member is drift and is ALWAYS a bug
-    /// (never the empty=permissive case, which declares nothing): a `debug_assert!`
-    /// fails the offending host's debug/test build, while release builds stay
-    /// behaviour-preserving and surface it through a non-fatal `tracing::warn!`.
-    /// Called from the single registry declaration chokepoint, so every host —
-    /// via the C-ABI, the `AppHost`/`NmpAppBuilder` seams, or the Chirp shell
-    /// helper — is checked. Leaves the empty-set "no narrowing" semantic
-    /// (ADR-0053 Decision 4 / Workstream-E4) untouched.
+    /// Any [`stray_keys`](Self::stray_keys) member is drift and is ALWAYS a bug:
+    /// a `debug_assert!` fails the offending host's debug/test build, while
+    /// release builds stay behaviour-preserving and surface it through a
+    /// non-fatal `tracing::warn!`. Called from the single registry declaration
+    /// chokepoint, so every host — via the C-ABI, the `AppHost`/`NmpAppBuilder`
+    /// seams, or the Chirp shell helper — is checked. `All` / `Undeclared`
+    /// declare no narrow set, so they are untouched by this check.
     pub(crate) fn enforce_no_drift(&self) {
         let stray = self.stray_keys(crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied());
         if !stray.is_empty() {
@@ -149,16 +201,15 @@ impl DeclaredProjections {
 
 impl super::SnapshotRegistry {
     /// ADR-0053 — declare (union into) the set of Tier-2 built-in projection
-    /// keys this host consumes.
+    /// keys this host consumes (the narrowing path).
     ///
     /// Additive: call more than once and the sets union (e.g. a base set from
     /// `nmp-defaults` plus an app-specific extension). Intended as a host-init
-    /// call, before `nmp_app_start`. An empty declared set leaves the kernel
-    /// emitting every Tier-2 built-in (no narrowing); a non-empty set narrows
-    /// the kernel-owned built-ins to the declared members. Tier-1 host/protocol
-    /// projections are unaffected — they self-gate by registration.
+    /// call, before `nmp_app_start`. A non-empty set narrows the kernel-owned
+    /// built-ins to the declared members; Tier-1 host/protocol projections are
+    /// unaffected — they self-gate by registration.
     ///
-    /// **Workstream-E3 single chokepoint.** Every declaration path funnels
+    /// **Workstream-E3 single chokepoint.** Every narrowing declaration funnels
     /// through here (the C-ABI `nmp_app_declare_consumed_projections`, the
     /// `AppHost`/`NmpAppBuilder` Rust seams, and the Chirp shell helper), so it
     /// enforces declared ⊆ decodable via [`DeclaredProjections::enforce_no_drift`].
@@ -169,6 +220,17 @@ impl super::SnapshotRegistry {
     {
         self.declared_projections.declare(keys);
         self.declared_projections.enforce_no_drift();
+    }
+
+    /// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+    /// built-in" intent ([`DeclaredProjections::All`]).
+    ///
+    /// This is the ONE non-footgun way to receive the full set. Full Rust
+    /// clients (chirp-tui / chirp-desktop) and the Chirp shells call it; it
+    /// overrides any prior narrowing (you cannot narrow after asking for
+    /// everything). Intended as a host-init call before `nmp_app_start`.
+    pub fn consume_all_builtin_projections(&mut self) {
+        self.declared_projections.consume_all();
     }
 
     /// Read the host-declared consumed-projection set — the gate the kernel
@@ -184,8 +246,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_set_permits_everything() {
+    fn undeclared_permits_everything_but_is_not_narrowing() {
         let d = DeclaredProjections::new();
+        assert!(d.is_undeclared());
+        assert!(!d.is_narrowing());
+        assert!(d.permits("relay_diagnostics"));
+        assert!(d.permits("anything_at_all"));
+    }
+
+    #[test]
+    fn consume_all_permits_everything_and_is_not_narrowing_or_undeclared() {
+        let mut d = DeclaredProjections::new();
+        d.consume_all();
+        assert_eq!(d, DeclaredProjections::All);
+        assert!(!d.is_undeclared());
         assert!(!d.is_narrowing());
         assert!(d.permits("relay_diagnostics"));
         assert!(d.permits("anything_at_all"));
@@ -196,6 +270,7 @@ mod tests {
         let mut d = DeclaredProjections::new();
         d.declare(["profile", "accounts"]);
         assert!(d.is_narrowing());
+        assert!(!d.is_undeclared());
         assert!(d.permits("profile"));
         assert!(d.permits("accounts"));
         assert!(!d.permits("relay_diagnostics"));
@@ -206,22 +281,41 @@ mod tests {
         let mut d = DeclaredProjections::new();
         d.declare(["profile"]);
         d.declare(["accounts", "profile"]);
-        assert_eq!(d.keys().len(), 2);
         assert!(d.permits("profile"));
         assert!(d.permits("accounts"));
+        assert!(!d.permits("relay_diagnostics"));
+    }
+
+    #[test]
+    fn empty_declare_is_a_noop_and_never_narrows_to_nothing() {
+        let mut d = DeclaredProjections::new();
+        d.declare(Vec::<String>::new());
+        // Stays Undeclared (permits everything) — never Narrow(∅) (emit nothing).
+        assert!(d.is_undeclared());
+        assert!(d.permits("profile"));
+    }
+
+    #[test]
+    fn consume_all_then_declare_stays_all() {
+        let mut d = DeclaredProjections::new();
+        d.consume_all();
+        d.declare(["profile"]);
+        assert_eq!(d, DeclaredProjections::All);
+        assert!(d.permits("relay_diagnostics"));
     }
 
     // ── Workstream-E3 — declared ⊆ decodable drift gate (`stray_keys`) ──
 
-    /// An empty declared set declares nothing, so it never reports a stray —
-    /// the "no opinion / no narrowing" semantic (ADR-0053 Decision 4) is
-    /// untouched by the drift gate.
+    /// `Undeclared` and `All` declare no narrow set, so they never report a
+    /// stray — the explicit-everything / no-intent states are untouched by the
+    /// drift gate.
     #[test]
-    fn empty_set_has_no_strays() {
-        let d = DeclaredProjections::new();
-        assert!(d
-            .stray_keys(crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied())
+    fn undeclared_and_all_have_no_strays() {
+        let decodable = || crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied();
+        assert!(DeclaredProjections::Undeclared
+            .stray_keys(decodable())
             .is_empty());
+        assert!(DeclaredProjections::All.stray_keys(decodable()).is_empty());
     }
 
     /// A declaration drawn entirely from the framework's emittable set has no
