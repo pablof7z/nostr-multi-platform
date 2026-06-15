@@ -187,8 +187,15 @@ info(obj?:RelayDiagnosticsInfo):RelayDiagnosticsInfo|null {
   return offset ? (obj || new RelayDiagnosticsInfo()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+discoveryKindsLabel():string|null
+discoveryKindsLabel(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+discoveryKindsLabel(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 56);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
 static startRelayDiagnosticsRow(builder:flatbuffers.Builder) {
-  builder.startObject(26);
+  builder.startObject(27);
 }
 
 static addRelayUrl(builder:flatbuffers.Builder, relayUrlOffset:flatbuffers.Offset) {
@@ -305,6 +312,10 @@ static startWireSubsVector(builder:flatbuffers.Builder, numElems:number) {
 
 static addInfo(builder:flatbuffers.Builder, infoOffset:flatbuffers.Offset) {
   builder.addFieldOffset(25, infoOffset, 0);
+}
+
+static addDiscoveryKindsLabel(builder:flatbuffers.Builder, discoveryKindsLabelOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(26, discoveryKindsLabelOffset, 0);
 }
 
 static endRelayDiagnosticsRow(builder:flatbuffers.Builder):flatbuffers.Offset {

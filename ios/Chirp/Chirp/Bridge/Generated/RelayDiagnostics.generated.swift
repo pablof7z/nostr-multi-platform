@@ -357,6 +357,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     case lastError = 50
     case wireSubs = 52
     case info = 54
+    case discoveryKindsLabel = 56
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -400,7 +401,9 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var lastErrorSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastError.v) }
   public var wireSubs: FlatbufferVector<nmp_kernel_RelayDiagnosticsWireSub> { return _accessor.vector(at: VTOFFSET.wireSubs.v, byteSize: 4) }
   public var info: nmp_kernel_RelayDiagnosticsInfo? { let o = _accessor.offset(VTOFFSET.info.v); return o == 0 ? nil : nmp_kernel_RelayDiagnosticsInfo(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 26) }
+  public var discoveryKindsLabel: String? { let o = _accessor.offset(VTOFFSET.discoveryKindsLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var discoveryKindsLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.discoveryKindsLabel.v) }
+  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 27) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(shortUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortUrl, at: VTOFFSET.shortUrl.p) }
   public static func add(roleLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: roleLabel, at: VTOFFSET.roleLabel.p) }
@@ -431,6 +434,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public static func add(lastError: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastError, at: VTOFFSET.lastError.p) }
   public static func addVectorOf(wireSubs: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: wireSubs, at: VTOFFSET.wireSubs.p) }
   public static func add(info: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: info, at: VTOFFSET.info.p) }
+  public static func add(discoveryKindsLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: discoveryKindsLabel, at: VTOFFSET.discoveryKindsLabel.p) }
   public static func endRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createRelayDiagnosticsRow(
     _ fbb: inout FlatBufferBuilder,
@@ -459,7 +463,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     hasLastError: Bool = false,
     lastErrorOffset lastError: Offset = Offset(),
     wireSubsVectorOffset wireSubs: Offset = Offset(),
-    infoOffset info: Offset = Offset()
+    infoOffset info: Offset = Offset(),
+    discoveryKindsLabelOffset discoveryKindsLabel: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_RelayDiagnosticsRow.startRelayDiagnosticsRow(&fbb)
     nmp_kernel_RelayDiagnosticsRow.add(relayUrl: relayUrl, &fbb)
@@ -488,6 +493,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     nmp_kernel_RelayDiagnosticsRow.add(lastError: lastError, &fbb)
     nmp_kernel_RelayDiagnosticsRow.addVectorOf(wireSubs: wireSubs, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(info: info, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(discoveryKindsLabel: discoveryKindsLabel, &fbb)
     return nmp_kernel_RelayDiagnosticsRow.endRelayDiagnosticsRow(&fbb, start: __start)
   }
 
@@ -519,6 +525,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     try _v.visit(field: VTOFFSET.lastError.p, fieldName: "lastError", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.wireSubs.p, fieldName: "wireSubs", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_RelayDiagnosticsWireSub>, nmp_kernel_RelayDiagnosticsWireSub>>.self)
     try _v.visit(field: VTOFFSET.info.p, fieldName: "info", required: false, type: ForwardOffset<nmp_kernel_RelayDiagnosticsInfo>.self)
+    try _v.visit(field: VTOFFSET.discoveryKindsLabel.p, fieldName: "discoveryKindsLabel", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }
