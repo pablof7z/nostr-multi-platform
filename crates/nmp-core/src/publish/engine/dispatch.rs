@@ -64,6 +64,14 @@ impl PublishEngine {
             };
             self.in_flight.insert(record.handle.clone(), in_flight);
             self.dispatch_pending(&record.handle, now_ms);
+            // A resumed row whose every relay is settled terminal by the
+            // dispatch (e.g. the D10 emit gate refused a persisted private
+            // envelope targeting public relays, settling each FailedAfterRetries
+            // without an `on_ack`) MUST be terminally finalized + deleted from
+            // the durable store here — otherwise it lingers Pending and is
+            // re-refused on every subsequent resume (lingering debt). Reuses the
+            // single complete-row finalization path `tick` uses.
+            self.finalize_completed_rows(std::slice::from_ref(&record.handle), now_ms);
         }
         self.flush_view();
         Ok(())
@@ -109,9 +117,13 @@ impl PublishEngine {
         let relay_url = helpers::canonical_relay_identity(relay_url);
         self.unavailable_relays.remove(&relay_url);
         let handles: Vec<PublishHandle> = self.in_flight.keys().cloned().collect();
-        for handle in handles {
-            self.dispatch_pending_for_relay(&handle, &relay_url, now_ms);
+        for handle in &handles {
+            self.dispatch_pending_for_relay(handle, &relay_url, now_ms);
         }
+        // Finalize any row the dispatch left fully terminal (D10 refusal of a
+        // private envelope on this relay) so it is settled + removed, not left
+        // pending. Same path `tick` / resume use.
+        self.finalize_completed_rows(&handles, now_ms);
         self.flush_view();
         Ok(())
     }
@@ -136,6 +148,10 @@ impl PublishEngine {
         row.dirty = true;
         self.persist(handle)?;
         self.dispatch_pending(handle, now_ms);
+        // Finalize if the dispatch left the row fully terminal (D10 refusal of a
+        // private envelope), so a manual retry settles + removes it rather than
+        // leaving it pending to be re-refused. Same path `tick` / resume use.
+        self.finalize_completed_rows(std::slice::from_ref(handle), now_ms);
         self.flush_view();
         Ok(())
     }

@@ -279,6 +279,13 @@ impl PublishEngine {
         );
         self.persist(&handle)?;
         self.dispatch_pending(&handle, now_ms);
+        // Finalize if the dispatch left the row fully terminal — e.g. the D10
+        // emit gate refused every relay for a private envelope that reached the
+        // engine. (The entry gate blocks private+Auto before the engine, so
+        // this is defense-in-depth, but it keeps the "a refused row is settled
+        // + removed exactly once, never left pending" invariant uniform across
+        // ALL dispatch paths.) Same finalization `tick` / resume / retry use.
+        self.finalize_completed_rows(std::slice::from_ref(&handle), now_ms);
         self.flush_view();
         Ok(())
     }
@@ -333,30 +340,45 @@ impl PublishEngine {
         // Evict handles that became fully terminal during the sweep but were
         // not dispatched (dispatch_due skips terminal states, so on_ack never
         // fires for them). This mirrors the on_ack completion path.
+        self.finalize_completed_rows(&handles, now_ms);
+        self.flush_view();
+    }
+
+    /// Terminal-finalize every handle in `handles` that is now fully complete
+    /// (all per-relay states terminal) but was NOT settled through `on_ack`.
+    ///
+    /// This is the SINGLE complete-row finalization path — extracted from the
+    /// `tick` eviction loop and reused by the resume / retry / availability
+    /// dispatch paths so a row those paths leave fully terminal (notably a
+    /// `dispatch_due` D10 refusal that settles every relay `FailedAfterRetries`
+    /// without ever calling `on_ack`) is settled and removed from the durable
+    /// store EXACTLY ONCE — never left pending to be re-refused on the next
+    /// resume. Mirrors the `on_ack` completion path verbatim (terminal verdict
+    /// → `recently_completed` → `store.delete` → evict).
+    fn finalize_completed_rows(&mut self, handles: &[PublishHandle], now_ms: u64) {
         for handle in handles {
-            let Some(in_flight) = self.in_flight.get(&handle) else {
-                continue; // already evicted by on_ack during dispatch_pending
+            let Some(in_flight) = self.in_flight.get(handle) else {
+                continue; // already evicted by on_ack during dispatch
             };
             if !helpers::is_complete(in_flight) {
                 continue;
             }
-            helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
+            helpers::for_each_terminal(in_flight, handle, &mut self.view, now_ms);
             let outcome = helpers::terminal_outcome_of(in_flight);
             // Build the verdict into a local before `record_terminal` (a
             // `&mut self` method) so it does not reborrow `*self` while the
             // `in_flight` immutable borrow above is still live.
             let terminal = LastTerminal::from_outcome(
-                &handle,
+                handle,
                 in_flight.correlation_id_override.as_deref(),
                 &outcome,
             );
             self.record_terminal(terminal);
             self.recently_completed.insert(handle.clone(), outcome);
-            let _ = self.store.delete(&handle);
-            self.in_flight.remove(&handle);
+            let _ = self.store.delete(handle);
+            self.in_flight.remove(handle);
             self.needs_in_flight_rebuild = true;
         }
-        self.flush_view();
     }
 
     /// Fold a relay ack into the state machine for the given handle.

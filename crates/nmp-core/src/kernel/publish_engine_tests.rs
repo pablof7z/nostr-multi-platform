@@ -961,14 +961,36 @@ fn resume_from_store_drops_persisted_gift_wrap_to_public_relay() {
         resumed.is_empty(),
         "resume must NOT emit a private envelope to a non-explicit relay (D10); got {resumed:?}"
     );
+
+    // SHOULD-FIX (no-debt): the refused row must be terminally finalized and
+    // REMOVED from the durable store on this resume — not left Pending. If it
+    // lingered, every restart-before-tick would re-refuse it forever.
+    assert!(
+        publish_store
+            .load_pending()
+            .expect("load_pending")
+            .is_empty(),
+        "a refused private row must be settled + deleted from the store, not left pending"
+    );
+
+    // And a SECOND resume (fresh kernel, same store) must have nothing to
+    // re-attempt — proving the row was settled exactly once, not re-refused.
+    let mut kernel_b =
+        Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+    let resumed_again = kernel_b.resume_publish_engine();
+    assert!(
+        resumed_again.is_empty(),
+        "second resume must find no lingering row to re-refuse; got {resumed_again:?}"
+    );
 }
 
 #[test]
-fn manual_retry_drops_persisted_gift_wrap_to_public_relay() {
-    // TEST (b): manual retry of a persisted private row targeting a public
-    // relay must not emit either. Resume loads the row into the engine; the
-    // user-driven retry path (`retry_publish_now` → engine `retry_now` →
-    // `dispatch_pending`) re-runs the same gate and still fails closed.
+fn manual_retry_does_not_resurrect_refused_gift_wrap_to_public_relay() {
+    // TEST (b): the user-driven retry path must never emit a private envelope to
+    // a non-explicit relay. Resume both refuses the public-targeted kind:1059
+    // row (D10 gate) AND finalizes it, so a subsequent manual retry has nothing
+    // to resurrect — it emits nothing. (The retry DISPATCH gate itself is also
+    // exercised positively in test (c)'s `_and_retry_` assertion.)
     let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let author = "a2".repeat(32);
     let signed = fake_signed("b2".repeat(32).as_str(), &author, 1059, "leaked-envelope");
@@ -980,7 +1002,7 @@ fn manual_retry_drops_persisted_gift_wrap_to_public_relay() {
     );
 
     let mut kernel = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
-    // Resume settles the relay FailedAfterRetries (the gate's drop verdict).
+    // Resume refuses the relay (D10) and finalizes + deletes the row.
     let _ = kernel.resume_publish_engine();
     let retried = kernel.retry_publish_now(&signed.id);
     assert!(
@@ -1013,4 +1035,19 @@ fn resume_and_retry_allow_persisted_gift_wrap_to_explicit_relay() {
     );
     assert_eq!(resumed[0].relay_url, WRITE_R1);
     assert!(resumed[0].text.contains("EVENT"));
+
+    // NIT #2 — also exercise the manual-RETRY path for the sanctioned relay, so
+    // the test name's "_and_retry_" is earned. Drive the explicit relay to a
+    // retryable state (transient OK-false → scheduled backoff), then a
+    // user-driven retry MUST re-emit the private envelope to the SAME explicit
+    // DM-inbox relay (the emit gate allows it because the relay is Explicit).
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: down"), 10);
+    let retried = kernel.retry_publish_now(&signed.id);
+    assert_eq!(
+        retried.len(),
+        1,
+        "manual retry of an explicitly-pinned private row MUST re-emit to its DM-inbox relay"
+    );
+    assert_eq!(retried[0].relay_url, WRITE_R1);
+    assert!(retried[0].text.contains("EVENT"));
 }
