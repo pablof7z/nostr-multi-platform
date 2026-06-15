@@ -814,6 +814,7 @@ impl Kernel {
             &[], // V-68/D0: no substrate social default; trace lane is kind-independent.
             super::mailboxes::BootstrapSeed::Discovery,
         );
+        self.lifecycle.bump_mailbox_generation();
         self.lifecycle
             .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
                 pubkey: author.to_string(),
@@ -845,6 +846,7 @@ impl Kernel {
     /// fetch closed — never recompiled, so the kind:1059 `#p` REQ never went
     /// out and the DM inbox stayed empty.
     pub(super) fn on_dm_relays_changed(&mut self, author: &str, created_at: u64) {
+        self.lifecycle.bump_mailbox_generation();
         self.lifecycle
             .enqueue_trigger(crate::subs::CompileTrigger::DmRelayListChanged {
                 pubkey: author.to_string(),

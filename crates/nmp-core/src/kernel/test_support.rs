@@ -167,6 +167,7 @@ impl Kernel {
                     let mailbox_mutated = if empty {
                         if had_entry {
                             self.mailbox_cache.remove(&event.pubkey);
+                            self.lifecycle.bump_mailbox_generation();
                             self.lifecycle.enqueue_trigger(
                                 crate::subs::CompileTrigger::Nip65Arrived {
                                     pubkey: event.pubkey.clone(),
@@ -179,6 +180,7 @@ impl Kernel {
                         }
                     } else {
                         self.mailbox_cache.upsert(event.pubkey.clone(), parsed);
+                        self.lifecycle.bump_mailbox_generation();
                         self.lifecycle
                             .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
                                 pubkey: event.pubkey.clone(),

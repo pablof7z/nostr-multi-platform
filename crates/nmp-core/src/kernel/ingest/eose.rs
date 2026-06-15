@@ -47,6 +47,9 @@ impl Kernel {
             sub.since_floor
         });
         // K3 Stage D1 (ADR-0056 §3) — record completed coverage at EOSE.
+        // `record_eose_coverage` also bumps `lifecycle.watermark_generation`
+        // for un-floored planner subs so the compile-input fingerprint reflects
+        // the new since-floor on the next triggered recompile.
         if let Some(since_floor) = eose_row_floor {
             self.record_eose_coverage(sub_id, relay_url, since_floor, self.now_secs());
         }

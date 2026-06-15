@@ -2608,6 +2608,7 @@ impl Kernel {
         } else {
             self.mailbox_cache.upsert(pubkey.clone(), parsed);
         }
+        self.lifecycle.bump_mailbox_generation();
         self.lifecycle
             .enqueue_trigger(CompileTrigger::Nip65Arrived { pubkey, created_at });
     }
