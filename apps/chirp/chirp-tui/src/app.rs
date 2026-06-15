@@ -36,8 +36,8 @@ pub enum Mode {
     ModalForm,
     /// Account list overlay invoked from the `a` key.
     AccountSwitcher,
-    /// Read-only overlay showing the raw JSON card for the selected event.
-    RawEventModal {
+    /// Read-only overlay showing typed diagnostics for the selected note row.
+    NoteDetailsModal {
         scroll: u16,
     },
 }
@@ -137,8 +137,8 @@ pub struct AppState {
     /// Settings tab's j/k continues to navigate the accounts column.
     pub outbox_selected: Option<OutboxSelection>,
 
-    /// Raw card JSON shown in the `RawEventModal` overlay.
-    pub raw_event_content: String,
+    /// Typed note diagnostics shown in the `NoteDetailsModal` overlay.
+    pub note_details_content: String,
 
     /// Recipient pubkey carried across the palette → input-bar → dispatch
     /// boundary for the `"zap-amount"` input bar action.
@@ -197,7 +197,7 @@ impl Default for AppState {
             outbox_selected: None,
             pending_zap_pubkey: None,
             pending_zap_event_id: None,
-            raw_event_content: String::new(),
+            note_details_content: String::new(),
         }
     }
 }

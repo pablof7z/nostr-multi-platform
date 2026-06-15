@@ -60,6 +60,7 @@ mod interest_feed;
 mod register;
 mod relay_seeding;
 mod snapshot;
+mod tag_feed;
 mod typed_actions;
 
 #[cfg(test)]
@@ -76,15 +77,14 @@ pub use identity::{
 };
 pub use interest_feed::{
     nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
-    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed,
-    nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
-};
-pub use relay_seeding::{
-    nmp_app_chirp_seed_default_relays, nmp_app_chirp_seed_relays_from_json,
+    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_open_thread_feed,
 };
 pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery, NmpRegisterStatus,
 };
+pub use relay_seeding::{nmp_app_chirp_seed_default_relays, nmp_app_chirp_seed_relays_from_json};
 pub use snapshot::nmp_app_chirp_unregister;
+pub use tag_feed::nmp_app_chirp_open_tag_feed;
 pub use typed_actions::nmp_app_chirp_action_spec;

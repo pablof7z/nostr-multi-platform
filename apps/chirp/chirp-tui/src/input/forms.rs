@@ -140,11 +140,11 @@ fn dispatch_modal_action(
     }
 }
 
-pub(super) fn handle_raw_event_modal_key(state: &mut AppState, key: KeyEvent) {
+pub(super) fn handle_note_details_modal_key(state: &mut AppState, key: KeyEvent) {
     match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => state.close_raw_event_modal(),
-        KeyCode::Char('j') | KeyCode::Down => state.scroll_raw_modal_down(),
-        KeyCode::Char('k') | KeyCode::Up => state.scroll_raw_modal_up(),
+        KeyCode::Esc | KeyCode::Char('q') => state.close_note_details_modal(),
+        KeyCode::Char('j') | KeyCode::Down => state.scroll_note_details_modal_down(),
+        KeyCode::Char('k') | KeyCode::Up => state.scroll_note_details_modal_up(),
         _ => {}
     }
 }

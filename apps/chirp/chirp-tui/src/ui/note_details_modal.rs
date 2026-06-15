@@ -19,17 +19,17 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState, scroll: u16) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Raw Event — j/k scroll  Esc close ")
+        .title(" Note Details - j/k scroll  Esc close ")
         .border_style(Style::default().fg(ACCENT_CYAN))
         .style(Style::default().bg(DETAIL_BG));
 
     let inner = block.inner(popup);
     f.render_widget(block, popup);
 
-    let text = if state.raw_event_content.is_empty() {
-        "no event data".to_string()
+    let text = if state.note_details_content.is_empty() {
+        "no note details".to_string()
     } else {
-        state.raw_event_content.clone()
+        state.note_details_content.clone()
     };
 
     f.render_widget(

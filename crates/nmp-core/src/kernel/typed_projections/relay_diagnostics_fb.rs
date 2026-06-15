@@ -98,6 +98,7 @@ pub struct RelayRow {
     pub last_notice: Option<String>,
     pub last_error: Option<String>,
     pub wire_subs: Vec<WireSubRow>,
+    pub discovery_kinds_label: String,
     /// ADR-0051 — the relay's NIP-11 information document; `None` until fetched.
     pub info: Option<InfoRow>,
 }
@@ -237,6 +238,7 @@ fn create_relay_row<'a>(
     let bytes_tx_display = row.bytes_tx_display.as_ref().map(|v| fbb.create_string(v));
     let last_notice = row.last_notice.as_ref().map(|v| fbb.create_string(v));
     let last_error = row.last_error.as_ref().map(|v| fbb.create_string(v));
+    let discovery_kinds_label = fbb.create_string(&row.discovery_kinds_label);
     fb::RelayDiagnosticsRow::create(
         fbb,
         &fb::RelayDiagnosticsRowArgs {
@@ -266,6 +268,7 @@ fn create_relay_row<'a>(
             last_error,
             wire_subs: Some(wire_subs),
             info,
+            discovery_kinds_label: Some(discovery_kinds_label),
         },
     )
 }
@@ -403,6 +406,7 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         last_notice: row.has_last_notice().then(|| opt(row.last_notice())).flatten(),
         last_error: row.has_last_error().then(|| opt(row.last_error())).flatten(),
         wire_subs,
+        discovery_kinds_label: row.discovery_kinds_label().unwrap_or_default().to_string(),
         info: row.info().map(info_from_fb),
     }
 }

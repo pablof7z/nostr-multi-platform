@@ -41,9 +41,7 @@ pub mod typed_api;
 #[cfg(feature = "wallet")]
 mod wallet_runtime;
 
-pub use ffi::{
-    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
-};
+pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus};
 // ADR-0053 — Chirp's host-declared Tier-2 built-in projection consumption set +
 // the single C-ABI call both shells use to declare it.
 pub use ffi::{nmp_app_chirp_declare_consumed_projections, CHIRP_CONSUMED_BUILTIN_PROJECTIONS};
@@ -56,8 +54,8 @@ pub use action_specs::{
 };
 pub use ffi::{
     nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
-    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed,
-    nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_open_tag_feed, nmp_app_chirp_open_thread_feed,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,

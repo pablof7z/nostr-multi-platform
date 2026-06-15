@@ -37,8 +37,6 @@ pub struct TimelineRow {
     /// `author_*` fields above name the original note's author; this struct
     /// names the reposter so the UI can show "↻ reposted by @<reposter>".
     pub repost: Option<RowRepost>,
-    /// Pretty-printed JSON of the raw card object from the NMP snapshot.
-    pub raw_card: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,45 +144,46 @@ impl TimelineRow {
             content_render,
             mention_pubkeys,
             repost,
-            // Canonicalize key order before pretty-printing. The generic
-            // `nmp.feed.home` projection rides through `nmp-core`'s snapshot
-            // codec, whose `encode_value` sorts every object's keys
-            // alphabetically (deterministic wire form), whereas the typed
-            // `NOFS` sidecar is decoded and re-serialized via
-            // `serde_json::to_value(OpFeedSnapshot)` in struct-field order
-            // (serde_json's `preserve_order` is on workspace-wide). The two
-            // render to semantically identical rows, but this debug echo would
-            // otherwise differ by key order alone. Sorting here (same rule as
-            // `encode_value`) keeps `raw_card` transport-independent, which is
-            // the Stage T2 render-parity contract (ADR-0038).
-            raw_card: canonical_pretty(card),
         }
     }
-}
 
-/// Pretty-print `value` with every object's keys sorted lexicographically,
-/// recursively. Mirrors `nmp_core::update_envelope::encode_value`'s canonical
-/// ordering so a card's `raw_card` echo is identical whether it arrived via the
-/// generic (codec-sorted) projection or the typed `NOFS` (struct-order) sidecar.
-fn canonical_pretty(value: &Value) -> String {
-    serde_json::to_string_pretty(&sorted_keys(value)).unwrap_or_default()
-}
-
-/// Recursively rebuild `value` with object keys in lexicographic order.
-fn sorted_keys(value: &Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            let mut entries: Vec<(&String, &Value)> = map.iter().collect();
-            entries.sort_by_key(|(left, _)| *left);
-            Value::Object(
-                entries
-                    .into_iter()
-                    .map(|(key, val)| (key.clone(), sorted_keys(val)))
-                    .collect(),
-            )
+    #[must_use]
+    pub fn note_details_text(&self) -> String {
+        let mut lines = vec![
+            format!("id {}", self.id),
+            format!("author {}", self.author_label()),
+            format!("pubkey {}", self.author_pubkey),
+            format!("created_at {}", self.created_at),
+            self.relation_counts.summary(),
+        ];
+        if let Some(repost) = &self.repost {
+            lines.push(format!(
+                "reposted_by {} at {}",
+                repost.author_profile.display(),
+                repost.repost_created_at
+            ));
         }
-        Value::Array(items) => Value::Array(items.iter().map(sorted_keys).collect()),
-        other => other.clone(),
+        if !self.thread_attribution.is_empty() {
+            lines.push(format!(
+                "reply_attribution {} follow replies",
+                self.thread_attribution.len()
+            ));
+        }
+        if !self.mention_pubkeys.is_empty() {
+            lines.push(format!("mentions {} profiles", self.mention_pubkeys.len()));
+        }
+        let media_count = self.media_urls().len();
+        if media_count > 0 {
+            lines.push(format!("media {} urls", media_count));
+        }
+        lines.push(String::new());
+        lines.push("content".to_string());
+        if self.content.is_empty() {
+            lines.push("(empty)".to_string());
+        } else {
+            lines.push(self.content.clone());
+        }
+        lines.join("\n")
     }
 }
 

@@ -224,7 +224,6 @@ mod tests {
             content_render: ContentRenderData::default(),
             mention_pubkeys: Vec::new(),
             repost: None,
-            raw_card: String::new(),
         }
     }
 

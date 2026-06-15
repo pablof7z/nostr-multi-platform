@@ -822,6 +822,7 @@ impl<'a> RelayDiagnosticsRow<'a> {
   pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 50;
   pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 52;
   pub const VT_INFO: ::flatbuffers::VOffsetT = 54;
+  pub const VT_DISCOVERY_KINDS_LABEL: ::flatbuffers::VOffsetT = 56;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -837,6 +838,7 @@ impl<'a> RelayDiagnosticsRow<'a> {
     builder.add_last_connected_ms(args.last_connected_ms);
     builder.add_total_events_rx(args.total_events_rx);
     if let Some(x) = args.info { builder.add_info(x); }
+    if let Some(x) = args.discovery_kinds_label { builder.add_discovery_kinds_label(x); }
     if let Some(x) = args.wire_subs { builder.add_wire_subs(x); }
     if let Some(x) = args.last_error { builder.add_last_error(x); }
     if let Some(x) = args.last_notice { builder.add_last_notice(x); }
@@ -1045,6 +1047,13 @@ impl<'a> RelayDiagnosticsRow<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelayDiagnosticsInfo>>(RelayDiagnosticsRow::VT_INFO, None)}
   }
+  #[inline]
+  pub fn discovery_kinds_label(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS_LABEL, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
@@ -1079,6 +1088,7 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_error", Self::VT_LAST_ERROR, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayDiagnosticsWireSub>>>>("wire_subs", Self::VT_WIRE_SUBS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<RelayDiagnosticsInfo>>("info", Self::VT_INFO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("discovery_kinds_label", Self::VT_DISCOVERY_KINDS_LABEL, false)?
      .finish();
     Ok(())
   }
@@ -1110,6 +1120,7 @@ pub struct RelayDiagnosticsRowArgs<'a> {
     pub last_error: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub wire_subs: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayDiagnosticsWireSub<'a>>>>>,
     pub info: Option<::flatbuffers::WIPOffset<RelayDiagnosticsInfo<'a>>>,
+    pub discovery_kinds_label: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
   #[inline]
@@ -1141,6 +1152,7 @@ impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
       last_error: None,
       wire_subs: None,
       info: None,
+      discovery_kinds_label: None,
     }
   }
 }
@@ -1255,6 +1267,10 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsRowBuilder<'a
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelayDiagnosticsInfo>>(RelayDiagnosticsRow::VT_INFO, info);
   }
   #[inline]
+  pub fn add_discovery_kinds_label(&mut self, discovery_kinds_label: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS_LABEL, discovery_kinds_label);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelayDiagnosticsRowBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     RelayDiagnosticsRowBuilder {
@@ -1298,6 +1314,7 @@ impl ::core::fmt::Debug for RelayDiagnosticsRow<'_> {
       ds.field("last_error", &self.last_error());
       ds.field("wire_subs", &self.wire_subs());
       ds.field("info", &self.info());
+      ds.field("discovery_kinds_label", &self.discovery_kinds_label());
       ds.finish()
   }
 }

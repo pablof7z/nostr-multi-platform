@@ -51,8 +51,8 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             forms::handle_account_switcher_key(state, runtime, key);
             return InputFlow::Continue;
         }
-        Mode::RawEventModal { .. } => {
-            forms::handle_raw_event_modal_key(state, key);
+        Mode::NoteDetailsModal { .. } => {
+            forms::handle_note_details_modal_key(state, key);
             return InputFlow::Continue;
         }
         Mode::Normal => {}
@@ -335,18 +335,20 @@ fn handle_palette_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent)
 }
 
 fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRuntime) {
-    let (note_id, author_pubkey) = if state.focused == Pane::Detail && state.detail_cursor > 0 {
+    let row = if state.focused == Pane::Detail && state.detail_cursor > 0 {
         let reply_idx = state.selected.saturating_add(state.detail_cursor);
         if let Some(row) = state.rows.get(reply_idx) {
-            (row.id.clone(), row.author_pubkey.clone())
+            row.clone()
         } else {
             return;
         }
     } else if let Some(row) = state.selected_row().cloned() {
-        (row.id.clone(), row.author_pubkey.clone())
+        row
     } else {
         return;
     };
+    let note_id = row.id.clone();
+    let author_pubkey = row.author_pubkey.clone();
 
     match action {
         "View profile" => {
@@ -370,15 +372,7 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
         },
         "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
         "Reply" => state.start_reply(),
-        "View raw event" => match runtime.raw_event_json(&note_id) {
-            Some(content) => state.open_raw_event_modal(content),
-            None => {
-                state.status = format!(
-                    "wire event {} not cached (arrived before observer?)",
-                    &note_id[..8.min(note_id.len())]
-                )
-            }
-        },
+        "View note details" => state.open_note_details_modal(row.note_details_text()),
         "Zap" => {
             state.pending_zap_pubkey = Some(author_pubkey);
             state.pending_zap_event_id = Some(note_id);
