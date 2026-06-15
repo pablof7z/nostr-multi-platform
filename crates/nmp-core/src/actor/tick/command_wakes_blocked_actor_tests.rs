@@ -90,6 +90,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
             pubkey: pk.clone(),
             consumer_id: "wake-test".to_string(),
             force: false,
+            liveness: crate::kernel::ProfileLiveness::CacheOk,
         })
         .expect("inbox open");
 

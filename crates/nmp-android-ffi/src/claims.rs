@@ -42,7 +42,11 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
         return;
     };
     s.with_app(|app| {
-        nmp_app_claim_profile(app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
+        // force=0 (lazy F-TTL), liveness=0 (CacheOk — OneShot fetch on miss,
+        // no tailing sub). The Android bridge does not yet surface either hint
+        // to the Java layer; a future JNI param can opt list rows vs. the
+        // profile screen into `Live` the same way iOS does.
+        nmp_app_claim_profile(app, pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
     });
 }
 

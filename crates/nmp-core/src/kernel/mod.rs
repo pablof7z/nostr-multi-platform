@@ -148,6 +148,12 @@ mod pre_kind3_buffer_tests;
 #[cfg(test)]
 mod proactive_profile_fetch_tests;
 #[cfg(test)]
+mod profile_claim_discovery_tests;
+#[cfg(test)]
+mod profile_claim_projection_tests;
+#[cfg(test)]
+mod profile_claim_test_support;
+#[cfg(test)]
 mod profile_claim_tests;
 mod provenance;
 #[cfg(test)]
@@ -225,6 +231,7 @@ mod replay;
 #[cfg(test)]
 mod replay_tests;
 mod requests;
+pub use requests::ProfileLiveness;
 #[cfg(test)]
 mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
@@ -520,7 +527,7 @@ pub(crate) use types::KernelSnapshot;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
     MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile, ProfileCard,
-    ProfileRequestState, PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus,
+    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus,
     StoredEvent, TimelineItem, TimingMilestones, WireSub, WireSubscriptionState,
     WireSubscriptionStatus,
 };
@@ -842,6 +849,11 @@ pub struct Kernel {
     /// side-effect that `set_follow_feed_kinds` fires.
     pub(crate) follow_feed_kinds: BTreeSet<u32>,
     profile_claims: HashMap<String, BTreeSet<String>>,
+    /// Pubkeys with at least one `ProfileLiveness::Live` claim outstanding.
+    /// Drives the "Tailing wins" liveness upgrade in `register_profile_claim_interest`
+    /// (a `Live` claim keeps the kind:0 slot `Tailing` even if a later `CacheOk`
+    /// claim arrives); cleared when the last consumer of a pubkey releases.
+    live_profile_claims: BTreeSet<String>,
     /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
     /// keyed by the same `primary_id` the snapshot's `claimed_events`
     /// projection uses (hex64 event id for nevent/note URIs;
@@ -899,7 +911,6 @@ pub struct Kernel {
     /// simply registers the OneshotApi interest that the cold-start
     /// path skipped.
     ///
-    /// Symmetric with [`ProfileRequestState`]`.pending` and likewise
     /// NOT preserved across `Kernel::Reset` (claims are view-derived;
     /// views re-claim on re-open).
     pub(super) pending_event_claims: Vec<(String, String)>,
@@ -910,9 +921,6 @@ pub struct Kernel {
     /// FFI projection seam will add it alongside the existing
     /// `claim_drops_total` in a follow-up (V-???).
     event_claim_drops_total: u64,
-    /// Profile-fetch request tracking (D0 app-domain state). See
-    /// [`ProfileRequestState`].
-    profile_requests: ProfileRequestState,
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
     /// Wire (WebSocket) subscription bookkeeping (D0 app-domain state). See
@@ -1230,6 +1238,18 @@ pub struct Kernel {
     /// with fresh TTL on completion. Entries are removed when their sub_id
     /// receives EOSE.
     reverify_subs: HashMap<String, Vec<crate::store::ReplaceableKey>>,
+    /// F-TTL reverify-oneshot bridge: `InterestId` → the `ReplaceableKey`s that
+    /// REQ re-verifies, populated by [`Kernel::drain_pending_reverify`] for each
+    /// due key and consumed by [`Kernel::register_planner_wire_frames`] when the
+    /// planner emits the `WireFrame::Req`. The consume step moves the keys into
+    /// `reverify_subs` keyed by the planner-assigned `sub_id` so the EOSE handler
+    /// re-stamps `check_again_after` against the actual wire sub-id. Mirrors
+    /// `pending_discovery_oneshots`: registering the reverify as a registry
+    /// `OneShot` interest (not a bespoke `req_for_relay`) is what lets it inherit
+    /// the D3 kind:10002 probe + outbox re-route for an author whose mailbox is
+    /// not yet cached.
+    pending_reverify_oneshots:
+        HashMap<crate::planner::InterestId, Vec<crate::store::ReplaceableKey>>,
     /// V-67: set when a persistent storage path was supplied but the LMDB
     /// store failed to open. `None` in the healthy case AND when no path was
     /// given (in-memory is the legitimate default for tests/CI — not a
@@ -1857,13 +1877,13 @@ impl Kernel {
             follow_feed_interest_ids: BTreeSet::new(),
             follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
+            live_profile_claims: BTreeSet::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
             event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),
             event_claim_released_observers: Vec::new(),
             pending_event_claims: Vec::new(),
             event_claim_drops_total: 0,
-            profile_requests: ProfileRequestState::default(),
             timeline_requested: false,
             contacts_deadline: None,
             wire: WireSubscriptionState::default(),
@@ -1925,6 +1945,7 @@ impl Kernel {
             replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig::default(),
             pending_reverify: VecDeque::new(),
             reverify_subs: HashMap::new(),
+            pending_reverify_oneshots: HashMap::new(),
             store_open_failure,
             negentropy_sync_stats: types::NegentropySyncStats::default(),
             last_gc: None,

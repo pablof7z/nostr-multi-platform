@@ -15,6 +15,8 @@ mod relay_lifecycle;
 mod startup;
 mod thread;
 
+pub use profile::ProfileLiveness;
+
 use super::{
     discovery, json, wire_log, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value,
 };
@@ -66,13 +68,16 @@ impl Kernel {
         // V-68 / V-112 (ADR-0042): author_view.request_pending / author_requests(),
         // thread_view.request_pending / prepare_thread_requests(), and
         // maybe_open_thread_hydration() deleted — per-app FlatFeed handles these.
-        requests.extend(self.pending_profile_claim_requests());
+        // M2 migration: profile (kind:0) claims are registry interests now
+        // (`claim_profile` → `InterestRegistry`); there is no bespoke
+        // `pending_profile_claim_requests` drain — the planner compiles them.
         requests.extend(self.pending_event_claim_requests());
-        // F-TTL — drain pending re-verification REQs for replaceable events
-        // whose freshness has expired. Each key becomes a REQ filter; the sub_id
-        // is mapped to the key set so the EOSE handler can update check_again_after
-        // with a fresh TTL when the REQ completes.
-        requests.extend(self.drain_pending_reverify());
+        // F-TTL — register pending replaceable re-verification interests through
+        // the registry chokepoint (no bespoke REQ build). The planner compiles
+        // them on the next drain, so a reverify of a stale replaceable for an
+        // author whose kind:10002 is uncached inherits the D3 probe + outbox
+        // re-route. Returns no `OutboundMessage`s (the planner emits frames).
+        self.drain_pending_reverify();
         // T82: turn referenced-but-missing ids collected during ingest into
         // oneshot fetches (idempotent — no-op when the set is empty).
         requests.extend(self.drain_unknown_oneshots());
@@ -248,6 +253,20 @@ impl Kernel {
                         self.oneshot_subs
                             .insert(sub_id.clone(), (token, discovery::OneshotKind::Discovery));
                     }
+                    // F-TTL reverify-oneshot bridge (mirrors the discovery bridge
+                    // above): move the reverify keys onto the planner-assigned
+                    // `sub_id` so the EOSE handler re-stamps `check_again_after`
+                    // against the actual wire sub-id. The planner reuses one
+                    // `sub_id` across the relay URLs of a single interest (#170),
+                    // so `remove` on the first frame transfers the keys once; the
+                    // sibling relay frames find the entry already gone (their EOSE
+                    // hits the same `reverify_subs[sub_id]` row).
+                    if let Some(keys) = self.pending_reverify_oneshots.remove(interest_id) {
+                        self.reverify_subs
+                            .entry(sub_id.clone())
+                            .or_default()
+                            .extend(keys);
+                    }
                     // Claim-expansion reverse-index bridge.
                     // If this frame's `interest_id` belongs to a pending claim,
                     // map the planner-assigned `sub_id` → `interest_id` so the
@@ -317,22 +336,32 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
-    /// F-TTL — drain the pending replaceable re-verification queue and issue
-    /// REQs via the outbox router.
+    /// F-TTL — register pending replaceable re-verification interests through
+    /// the registry chokepoint (M2 migration).
     ///
-    /// Each queued key becomes a filter: regular replaceable keys filter by
-    /// (kind, author); parameterized keys add a `#d` tag filter. The returned
-    /// sub_ids are mapped to the key set in `reverify_subs` so the EOSE handler
-    /// can update their `check_again_after` timestamps with fresh TTL.
-    pub(crate) fn drain_pending_reverify(&mut self) -> Vec<OutboundMessage> {
-        let mut requests = Vec::new();
+    /// Each due [`crate::store::ReplaceableKey`] becomes a `OneShot + Global`
+    /// `LogicalInterest { kinds:[k], authors:[pk], #d?, limit:None }` registered
+    /// via [`crate::subs::OneshotApi::request`] — the SAME single-registration
+    /// path `claim_event` / `claim_profile` use. This is what the pre-migration
+    /// bespoke `req_for_relay` build could not give a reverify: by flowing
+    /// through `recompile_and_diff`, a reverify of a stale replaceable for an
+    /// author whose kind:10002 is uncached now triggers the D3 kind:10002 probe
+    /// and re-routes onto the author's own relays when their relay-list arrives,
+    /// instead of landing on the indexers only and never re-routing.
+    ///
+    /// The planner-assigned `sub_id` is bridged back to the reverify key set via
+    /// `pending_reverify_oneshots` → `reverify_subs` in
+    /// [`Kernel::register_planner_wire_frames`], so the EOSE handler re-stamps
+    /// `check_again_after` against the actual wire sub-id (same bridge shape as
+    /// `pending_discovery_oneshots`). Emits no `OutboundMessage`s; the planner
+    /// emits the wire frames on its next drain.
+    pub(crate) fn drain_pending_reverify(&mut self) {
+        use crate::planner::{InterestScope, InterestShape};
 
+        let mut registered_any = false;
         while let Some(key) = self.pending_reverify.pop_front() {
-            // Build the reverify filter from the key.
             let (kind, pubkey, d_tag_opt) = match &key {
-                crate::store::ReplaceableKey::Regular { kind, pubkey } => {
-                    (*kind, *pubkey, None)
-                }
+                crate::store::ReplaceableKey::Regular { kind, pubkey } => (*kind, *pubkey, None),
                 crate::store::ReplaceableKey::Parameterized {
                     kind,
                     pubkey,
@@ -340,74 +369,48 @@ impl Kernel {
                 } => (*kind, *pubkey, Some(d_tag.clone())),
             };
 
-            // Convert pubkey bytes to hex string.
+            // Hex-encode the author pubkey (router + filter key on hex strings).
             let mut pubkey_hex = String::with_capacity(64);
             for byte in pubkey.iter() {
-                pubkey_hex.push_str(&format!("{:02x}", byte));
+                pubkey_hex.push_str(&format!("{byte:02x}"));
             }
 
-            // Route the filter via the outbox router to get relay URLs.
-            let relay_urls = self.route_outbox_subscription_relays(
-                crate::stable_hash::stable_hash64((
-                    "reverify",
-                    kind,
-                    &pubkey_hex,
-                    d_tag_opt.as_deref().unwrap_or(""),
-                )),
-                &pubkey_hex,
-                kind,
-                super::mailboxes::BootstrapSeed::Discovery,
-            );
-
-            // For each relay, issue a REQ and track the sub_id.
-            for relay_url in relay_urls {
-                // Build the filter for this key.
-                let filter_value = if let Some(d_tag) = &d_tag_opt {
-                    // Parameterized replaceable: add d-tag constraint.
-                    // NIP-01 filter: {"kinds":[k],"authors":[pk],"#d":["d_tag"],"limit":1}
-                    json!({
-                        "kinds": [kind],
-                        "authors": [pubkey_hex],
-                        "#d": [d_tag],
-                        "limit": 1
-                    })
-                } else {
-                    // Regular replaceable: just kind + author.
-                    // NIP-01 filter: {"kinds":[k],"authors":[pk],"limit":1}
-                    json!({
-                        "kinds": [kind],
-                        "authors": [pubkey_hex],
-                        "limit": 1
-                    })
-                };
-
-                // Generate a stable sub_id from the key components.
-                let d_tag_suffix = d_tag_opt.as_deref().unwrap_or("");
-                let d_tag_short = &d_tag_suffix[..d_tag_suffix.len().min(8)];
-                let sub_id = format!(
-                    "reverify-{}-{}-{}",
-                    kind,
-                    &pubkey_hex[..pubkey_hex.len().min(16)],
-                    d_tag_short
-                );
-
-                // Issue the REQ.
-                requests.push(self.req_for_relay(
-                    RelayRole::Indexer,
-                    relay_url.clone(),
-                    &sub_id,
-                    "reverify replaceable",
-                    filter_value,
-                ));
-
-                // Map the sub_id to the key so the EOSE handler can find it.
-                self.reverify_subs
-                    .entry(sub_id)
-                    .or_insert_with(Vec::new)
-                    .push(key.clone());
+            let mut tags: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+                std::collections::BTreeMap::new();
+            if let Some(d_tag) = &d_tag_opt {
+                tags.insert("d".to_string(), std::iter::once(d_tag.clone()).collect());
             }
+            let shape = InterestShape {
+                kinds: std::iter::once(kind).collect(),
+                authors: std::iter::once(pubkey_hex).collect(),
+                tags,
+                // `limit: None` so same-shape reverifies coalesce; the kinds
+                // here are replaceable, so one event per (author, kind[, d]).
+                limit: None,
+                ..Default::default()
+            };
+
+            let interest_id = {
+                let registry = self.lifecycle.registry_mut();
+                let (_token, interest_id) =
+                    self.oneshot
+                        .request(registry, InterestScope::Global, shape, Vec::new());
+                interest_id
+            };
+            // Bridge: planner emits the REQ for this interest_id; the bridge in
+            // `register_planner_wire_frames` moves these keys into `reverify_subs`
+            // under the planner sub_id so EOSE re-stamps the TTL.
+            self.pending_reverify_oneshots
+                .entry(interest_id)
+                .or_default()
+                .push(key.clone());
+            registered_any = true;
         }
 
-        requests
+        if registered_any {
+            self.lifecycle.enqueue_trigger(crate::subs::CompileTrigger::ViewOpened {
+                interest_ids: Vec::new(),
+            });
+        }
     }
 }

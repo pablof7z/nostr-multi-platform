@@ -305,6 +305,7 @@ mod tests {
                     pubkey: pk.clone(),
                     consumer_id: format!("test-consumer-{i}"),
                     force: false,
+                    liveness: crate::kernel::ProfileLiveness::CacheOk,
                 })
                 .unwrap();
             cmd_tx
@@ -361,7 +362,7 @@ mod tests {
         let mut last_emit = Instant::now();
 
         let pk = "0".repeat(64);
-        let _ = kernel.claim_profile(pk, "test-consumer".into(), false, false);
+        let _ = kernel.claim_profile(pk, "test-consumer".into(), false, false, crate::kernel::ProfileLiveness::CacheOk);
         super::maybe_emit_after_dispatch(&mut kernel, true, &upd_tx, &mut last_emit);
 
         let frame = upd_rx

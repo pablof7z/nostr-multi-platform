@@ -252,7 +252,7 @@ fn fire_cycle(app: *mut NmpApp, pubkeys: &[std::ffi::CString], consumers: &[CStr
     // that is not representative of production memory pressure.
     let pk = &pubkeys[cycle as usize % pubkeys.len()];
     let consumer = &consumers[cycle as usize % consumers.len()];
-    nmp_app_claim_profile(app, pk.as_ptr(), consumer.as_ptr(), 0);
+    nmp_app_claim_profile(app, pk.as_ptr(), consumer.as_ptr(), 0, 0);
     // 1 ms between claim and release per spec.
     std::thread::sleep(Duration::from_millis(1));
     nmp_app_release_profile(app, pk.as_ptr(), consumer.as_ptr());

@@ -252,7 +252,7 @@ impl AppRuntime {
         self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
             // F-TTL — claiming a visible author profile is a background /
             // on-render claim, so force = 0 (the lazy, TTL-gated path).
-            nmp_app_claim_profile(self.app, pubkey.as_ptr(), consumer.as_ptr(), 0);
+            nmp_app_claim_profile(self.app, pubkey.as_ptr(), consumer.as_ptr(), 0, 0);
         })
     }
 

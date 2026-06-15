@@ -90,31 +90,24 @@ fn kind1_ingest_does_not_queue_profile_fetch() {
         event,
     );
 
-    // Neither pending nor requested must contain the author's pubkey.
-    // The proactive fetch at timeline.rs:172 would have moved the author into
-    // `profile_requests.pending`; its removal leaves both sets empty.
+    // No kind:0 claim interest must be registered for the author. The
+    // proactive fetch at timeline.rs:172 would have registered/queued a kind:0
+    // fetch; its removal leaves no claim interest (kind:0 is claim-driven only).
     assert!(
-        !kernel
-            .profile_requests_pending_for_test()
-            .contains(&author),
-        "kind:1 ingest must NOT queue a kind:0 profile fetch for the author (pending set); \
-         F-CR-00 proactive fetch was not removed"
-    );
-    assert!(
-        !kernel
-            .profile_requests_requested_for_test()
-            .contains(&author),
-        "kind:1 ingest must NOT move the author into the inflight profile set (requested); \
+        !kernel.profile_claim_interest_registered_for_test(&author),
+        "kind:1 ingest must NOT register a kind:0 claim interest for the author; \
          F-CR-00 proactive fetch was not removed"
     );
 }
 
-/// F-CR-00 invariant 2: `claim_profile` after ingest DOES emit a kind:0 REQ.
+/// F-CR-00 invariant 2: `claim_profile` after ingest DOES fetch kind:0.
 ///
 /// After the proactive fetch is removed the claim-driven path must still
-/// trigger a kind:0 fetch — otherwise author names would blank out. This test
-/// drives `claim_profile` after ingest and asserts that a kind:0 REQ targeting
-/// the indexer relay is emitted.
+/// trigger a kind:0 fetch — otherwise author names would blank out. M2
+/// migration: `claim_profile` registers a kind:0 `LogicalInterest`; the planner
+/// emits the REQ on the next `drain_lifecycle_outbound`. This test drives the
+/// claim, then the drain, and asserts a kind:0 REQ mentioning the author is
+/// emitted to the cold-start indexer relay.
 #[test]
 fn claim_profile_after_ingest_queues_fetch() {
     let keys = ::nostr::Keys::generate();
@@ -125,34 +118,47 @@ fn claim_profile_after_ingest_queues_fetch() {
     kernel.relay_connected(RelayRole::Content);
     kernel.relay_connected(RelayRole::Indexer);
 
-    // Ingest the kind:1 first (no profile fetch should be queued after removal).
+    // Ingest the kind:1 first (no claim interest should be registered).
     kernel.ingest_timeline_event(
         RelayRole::Content,
         "wss://test.relay",
         "diag-firehose-fcr00-claim-test",
         event,
     );
+    assert!(
+        !kernel.profile_claim_interest_registered_for_test(&author),
+        "ingest alone must not register a kind:0 claim interest"
+    );
 
-    // Now a component claims the author. With can_send=true the kernel must
-    // immediately emit a kind:0 REQ to the indexer relay (cold-start path).
-    let msgs = kernel.claim_profile(author.clone(), "test-consumer-id".to_string(), true, false);
+    // Now a component claims the author (CacheOk → OneShot kind:0 fetch).
+    let _ = kernel.claim_profile(
+        author.clone(),
+        "test-consumer-id".to_string(),
+        true,
+        false,
+        crate::kernel::ProfileLiveness::CacheOk,
+    );
+    assert!(
+        kernel.profile_claim_interest_registered_for_test(&author),
+        "claim_profile must register a kind:0 claim interest for the author"
+    );
 
+    // The planner emits the wire REQ on the next drain.
+    let msgs = kernel.drain_lifecycle_outbound();
     let req_msgs: Vec<&OutboundMessage> = msgs
         .iter()
         .filter(|m| m.text.starts_with("[\"REQ\""))
         .collect();
-
     assert!(
         !req_msgs.is_empty(),
-        "claim_profile must emit a kind:0 REQ after ingest; got no REQs — \
-         the claim-driven path is broken"
+        "the planner must emit a kind:0 REQ after a claim; got no REQs"
     );
 
-    // The REQ must target the indexer relay (cold-start outbox routing, IndexerOnly seed).
+    // The cold-start (uncached mailbox) REQ reaches the indexer relay.
     let targets_indexer = req_msgs.iter().any(|m| m.relay_url == INDEXER_RELAY_URL);
     assert!(
         targets_indexer,
-        "claim_profile kind:0 REQ must target the indexer relay ({INDEXER_RELAY_URL}); \
+        "kind:0 claim REQ must reach the indexer relay ({INDEXER_RELAY_URL}) at cold start; \
          got relay URLs: {:?}",
         req_msgs.iter().map(|m| &m.relay_url).collect::<Vec<_>>()
     );
@@ -161,7 +167,6 @@ fn claim_profile_after_ingest_queues_fetch() {
     let all_req_text: String = req_msgs.iter().map(|m| m.text.as_str()).collect();
     assert!(
         all_req_text.contains(&author),
-        "kind:0 REQ must include the author's pubkey in the filter; \
-         req texts: {all_req_text}"
+        "kind:0 REQ must include the author's pubkey in the filter; req texts: {all_req_text}"
     );
 }

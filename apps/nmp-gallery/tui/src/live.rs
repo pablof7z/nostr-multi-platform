@@ -161,7 +161,7 @@ impl LiveKernelSink {
             return;
         };
         // F-TTL — component-owned profile self-claim on render → force = 0.
-        nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr(), 0);
+        nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr(), 0, 0);
     }
 
     pub fn release_profile(&self, pubkey: &str, consumer_id: &str) {

@@ -76,7 +76,7 @@ fn claimed_profiles_fills_resolved_profiles() {
         "Claimed User",
         "claimed@nip05.example",
     );
-    let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true, false);
+    let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true, false, crate::kernel::ProfileLiveness::CacheOk);
 
     let snapshot = kernel.make_update_value_for_test(true);
 
@@ -138,8 +138,8 @@ fn multiple_claimed_profiles_all_appear_in_resolved_profiles() {
 
     ingest_profile_with(&mut kernel, &pk_a, 1_000, "User A", "a@example.com");
     ingest_profile_with(&mut kernel, &pk_b, 1_001, "User B", "b@example.com");
-    let _ = kernel.claim_profile(pk_a.clone(), "view-a".to_string(), true, false);
-    let _ = kernel.claim_profile(pk_b.clone(), "view-b".to_string(), true, false);
+    let _ = kernel.claim_profile(pk_a.clone(), "view-a".to_string(), true, false, crate::kernel::ProfileLiveness::CacheOk);
+    let _ = kernel.claim_profile(pk_b.clone(), "view-b".to_string(), true, false, crate::kernel::ProfileLiveness::CacheOk);
 
     let snapshot = kernel.make_update_value_for_test(true);
 

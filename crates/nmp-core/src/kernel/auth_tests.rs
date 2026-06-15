@@ -506,31 +506,25 @@ fn nip42_kernel_claim_reqs_routed_through_auth_gate() {
     );
     assert!(kernel.relay_auth_paused(RelayRole::Indexer));
 
-    // Claim a profile. claim_profile() emits a kind:0 REQ to the Indexer;
-    // the Indexer-bound REQs should be deferred because the Indexer relay is
-    // AUTH-paused.
-    let outbound = kernel.claim_profile(
+    // Claim a profile (M2: registers a kind:0 interest; the planner emits the
+    // REQ on drain). The Indexer-bound kind:0 REQ must NOT reach the wire while
+    // the Indexer relay is AUTH-paused.
+    let _ = kernel.claim_profile(
         "1234567812345678123456781234567812345678123456781234567812345678".to_string(),
         "auth-gate-test".to_string(),
         true,
         false,
+        crate::kernel::ProfileLiveness::CacheOk,
     );
-    let post_partition = kernel.partition_auth_paused(outbound);
+    let drained = kernel.drain_lifecycle_outbound();
+    let post_partition = kernel.partition_auth_paused(drained);
 
-    // No Indexer-targeted frames make it through.
+    // No Indexer-targeted REQ makes it through while AUTH-paused.
     assert!(
         !post_partition
             .iter()
             .any(|m| m.role == RelayRole::Indexer && m.text.starts_with("[\"REQ\"")),
         "Indexer REQs must be diverted while AUTH-paused: {post_partition:?}"
-    );
-    // Indexer REQs are now in the defer queue.
-    assert!(
-        kernel
-            .deferred_outbound
-            .iter()
-            .any(|m| m.role == RelayRole::Indexer),
-        "deferred queue holds the AUTH-paused Indexer REQ"
     );
 }
 

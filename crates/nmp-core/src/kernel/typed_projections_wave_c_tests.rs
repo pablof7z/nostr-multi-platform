@@ -144,7 +144,7 @@ fn profile_cluster_builtins_emit_typed_sidecars_alongside_json() {
     // carries a placeholder card — exercises the populated map path. No kind:0 is
     // ingested, so every ProfileCard Option is `null`/`None` (placeholder).
     let claimed_pubkey = "ab".repeat(32);
-    let _ = kernel.claim_profile(claimed_pubkey.clone(), "view-0".to_string(), true, false);
+    let _ = kernel.claim_profile(claimed_pubkey.clone(), "view-0".to_string(), true, false, crate::kernel::ProfileLiveness::CacheOk);
 
     let (value, typed) = kernel.make_update_typed_for_test(true);
     let projections = value

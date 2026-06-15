@@ -814,10 +814,16 @@ pub enum ActorCommand {
     /// freshness gate so a user-initiated navigation / pull-to-refresh always
     /// re-verifies the cached profile; `force == false` is the lazy, gated
     /// path used by background claims and `.onAppear` list rows.
+    ///
+    /// `liveness` is the client freshness hint: `CacheOk` (a feed avatar —
+    /// serve from cache, OneShot fetch on miss, no live sub) vs `Live` (an
+    /// open profile screen — a Tailing kind:0 sub so profile edits arrive
+    /// reactively). Mixed claims on one pubkey resolve to Tailing.
     ClaimProfile {
         pubkey: String,
         consumer_id: String,
         force: bool,
+        liveness: crate::kernel::ProfileLiveness,
     },
     ReleaseProfile {
         pubkey: String,

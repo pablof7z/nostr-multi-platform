@@ -4,7 +4,7 @@
 //! Profile, `TimelineItem`, `ProfileCard`, view payloads, relay health/status, wire
 //! subscription state, counters, and the `AuthorRelayList` cache entry.
 
-use super::{BTreeSet, CanonicalRelayUrl, HashMap, HashSet, Instant, RelayRole, Serialize};
+use super::{CanonicalRelayUrl, HashMap, HashSet, Instant, Serialize};
 
 // ── Event read-cache ──────────────────────────────────────────────────────────
 
@@ -501,26 +501,6 @@ pub(super) struct DiagnosticFirehoseState {
 // These continue the mechanical grouping started by `DiagnosticFirehoseState`:
 // cohesive Kernel field clusters collapsed into named locatable units.
 // Pure data — no behaviour of their own.
-
-/// Profile-fetch request tracking: the in-flight / queued sets plus the
-/// monotonic REQ-id sequence. Grouped because the three fields are always
-/// mutated together by the `requests/profile.rs` claim request paths
-/// (`claim_profile`, `pending_profile_claim_requests`, `profile_claim_request`,
-/// `author_requests`) and read together by the `status.rs` profile diagnostics.
-/// F-CR-00: `request_profile_for_rendered_note` (proactive ingest-time fetch)
-/// was removed; kind:0 is now fetched only on component `claim_profile`.
-#[derive(Default)]
-pub(super) struct ProfileRequestState {
-    /// Pubkeys whose kind:0 has been REQ'd (inflight or completed). A pubkey in
-    /// this set is never re-requested.
-    pub(super) requested: HashSet<String>,
-    /// Pubkeys queued for kind:0 fetch because a profile claim or rendered note
-    /// arrived before an outbound profile request was emitted. Drained by
-    /// `pending_profile_claim_requests`.
-    pub(super) pending: BTreeSet<String>,
-    /// Monotonic counter feeding unique `profile-*` REQ sub-ids.
-    pub(super) req_seq: u64,
-}
 
 /// FFI diagnostic timing milestones — `Option<Instant>` markers stamped once at
 /// the first occurrence of each lifecycle event. Read as a unit by the

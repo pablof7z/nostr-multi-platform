@@ -114,22 +114,13 @@ impl Kernel {
                 0 => self.ingest_profile(event),
                 3 => self.ingest_contacts(event),
                 10002 => {
-                    // 2026-05-25: the kernel-side `ingest_relay_list` impl
-                    // was deleted alongside the production `10002 =>` arm
-                    // (the substrate parser `nmp_router::Kind10002Parser`
-                    // is the production writer). Tests cannot wire the
-                    // production parser through this helper (which bypasses
-                    // `verify_and_persist` and therefore the dispatcher),
-                    // so substitute the parser's effect inline:
-                    //   1. parse `r` tags into a `ParsedRelayList` (the
-                    //      legacy adapter; identical shape to what the
-                    //      parser produces);
-                    //   2. upsert (or remove on empty) into the substrate
-                    //      `MailboxCache` the test kernel owns;
-                    //   3. enqueue the `Nip65Arrived` recompile trigger —
-                    //      what the kernel's substrate-honest mailbox-change
-                    //      observer (`Kernel::on_mailbox_changed`) does in
-                    //      production.
+                    // The production kind:10002 writer is the substrate
+                    // `nmp_router::Kind10002Parser`, which this helper bypasses
+                    // (it skips `verify_and_persist`/the dispatcher). Substitute
+                    // its effect inline: parse `r` tags into a `ParsedRelayList`,
+                    // upsert (or remove on empty) into the substrate `MailboxCache`,
+                    // and enqueue the `Nip65Arrived` recompile trigger — exactly
+                    // what `Kernel::on_mailbox_changed` does in production.
                     let parsed =
                         parse_relay_list_to_substrate(&event.id, event.created_at, &event.tags);
                     let empty =
@@ -157,16 +148,11 @@ impl Kernel {
                             });
                         true
                     };
-                    // Mirror the production `Kernel::on_mailbox_changed`
-                    // profile re-fetch (production: ingest/mod.rs wildcard
-                    // arm). This helper bypasses `verify_and_persist` and
-                    // therefore skips the production observer — without the
-                    // explicit call here every test driven through
-                    // `inject_replaceable_event(.., 10002, ..)` would
-                    // silently miss the Gap-2 re-fetch.
-                    if mailbox_mutated {
-                        self.refresh_profile_after_mailbox(&event.pubkey);
-                    }
+                    // M2: the `Nip65Arrived` trigger enqueued above is the whole
+                    // re-route mechanism now (the next recompile routes the
+                    // registered kind:0 claim onto the author's new write relays);
+                    // `refresh_profile_after_mailbox` is deleted.
+                    let _ = mailbox_mutated;
                     self.changed_since_emit = true;
                 }
                 // V-40: kind:10050 no longer has a kernel-side ingest arm —
@@ -522,17 +508,24 @@ impl Kernel {
         self.pre_kind3_buffer.contains_key(event_id)
     }
 
-    /// Read-only snapshot of `profile_requests.pending` (the queued kind:0
-    /// fetch set).
+    /// True iff a kind:0 claim interest is registered for `pubkey` (M2).
     #[cfg(test)]
-    pub(crate) fn profile_requests_pending_for_test(&self) -> &std::collections::BTreeSet<String> {
-        &self.profile_requests.pending
+    pub(crate) fn profile_claim_interest_registered_for_test(&self, pubkey: &str) -> bool {
+        self.profile_claim_interest_lifecycle_for_test(pubkey).is_some()
     }
 
-    /// Read-only snapshot of `profile_requests.requested` (the inflight /
-    /// completed kind:0 fetch set).
+    /// `Some(true)`=Tailing, `Some(false)`=OneShot, `None`=unregistered.
     #[cfg(test)]
-    pub(crate) fn profile_requests_requested_for_test(&self) -> &std::collections::HashSet<String> {
-        &self.profile_requests.requested
+    pub(crate) fn profile_claim_interest_lifecycle_for_test(&self, pubkey: &str) -> Option<bool> {
+        self.lifecycle.registry().iter_active().into_iter().find_map(|i| {
+            (i.shape.kinds.len() == 1 && i.shape.kinds.contains(&0) && i.shape.authors.contains(pubkey))
+                .then(|| matches!(i.lifecycle, crate::planner::InterestLifecycle::Tailing))
+        })
+    }
+
+    /// Read-only snapshot of the implicit-discovery probed-mailbox set.
+    #[cfg(test)]
+    pub(crate) fn probed_mailboxes_for_test(&self) -> &std::collections::BTreeSet<String> {
+        self.lifecycle.probed_mailboxes()
     }
 }

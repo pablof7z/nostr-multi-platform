@@ -36,11 +36,39 @@ impl Kernel {
     }
 
     pub(crate) fn relay_connected_url(&mut self, role: RelayRole, relay_url: &str) {
+        // Capture the prior per-URL transport state BEFORE `mark_transport_connected`
+        // overwrites it to "connected" — `relay_connected_url` is the only place
+        // that can tell a genuine reconnect-after-down from a redundant connect.
+        let was_down = role == RelayRole::Indexer && self.indexer_socket_was_down(relay_url);
+
         self.mark_lane_connected(role);
         self.mark_transport_connected(role, relay_url);
         self.log(format!("{} relay connected ({relay_url})", role.key()));
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
+        }
+        // F-TTL / M2 retry-on-miss: a GENUINE indexer reconnect — a socket that
+        // was previously `backing_off` (failed) or `closed` (torn down) and has
+        // now come back — is a fresh chance to resolve authors whose kind:10002
+        // we probed once and never got (empty EOSE, or the indexer was down
+        // when we probed). Re-arm the implicit-discovery probed set so the next
+        // recompile re-probes every STILL-uncached author. Resolved authors
+        // short-circuit on the mailbox-cache hit, so this is bounded by the
+        // genuinely-unresolved set, not a re-probe storm.
+        //
+        // CRITICAL (#1436 regression fix): this must NOT fire on the FIRST/normal
+        // connect of an indexer during startup, nor on a redundant duplicate
+        // connect of an already-live socket. Firing then clears the probe set and
+        // forces an `IndexerSetChanged` recompile mid-load — on every socket-up
+        // event — which churns the feed subscription and, under single-threaded
+        // wasm, can starve the UI so notes never paint. The genuinely-NEW-indexer
+        // case (a relay added to the configured set) is handled separately by the
+        // `IndexerSetChanged` trigger in `set_configured_relays`, which clears the
+        // probe set there `if changed`. Here we only handle reconnect-after-down.
+        if was_down {
+            self.lifecycle.clear_probed_mailboxes();
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::IndexerSetChanged { generation: 0 });
         }
     }
 
@@ -129,24 +157,15 @@ impl Kernel {
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
-        // Profile batch REQs for the legacy profile-requests pipeline are NOT
-        // tracked by the M2 SubscriptionLifecycle replay system, so they are
-        // NOT replayed on reconnect. Move `requested` pubkeys back to `pending`
-        // so `pending_profile_claim_requests` re-batches them on the next
-        // relay_connected → pending_view_requests call.
-        if role == RelayRole::Indexer {
-            let to_re_queue: Vec<String> = self
-                .profile_requests
-                .requested
-                .iter()
-                .filter(|pk| !self.profiles.contains_key(*pk))
-                .cloned()
-                .collect();
-            for pk in to_re_queue {
-                self.profile_requests.requested.remove(&pk);
-                self.profile_requests.pending.insert(pk);
-            }
-        }
+        // M2 migration: profile (kind:0) claims are registry interests now, so
+        // the planner's reconnect-replay re-emits them automatically — the
+        // bespoke `profile_requests` requested→pending re-queue is gone. The
+        // retry-on-miss for kind:10002 discovery probes is handled on the
+        // re-CONNECT side (`relay_connected_url`, role == Indexer): this
+        // `relay_closed` marks the per-URL transport row `closed`, and the
+        // subsequent reconnect sees that down-state and clears the probed set so
+        // still-uncached authors are re-probed. A connect that is NOT preceded
+        // by a down-state (startup / duplicate) is correctly a no-op.
     }
 
     /// Global socket teardown for `role` (Stop / Reset / Shutdown): unlike the

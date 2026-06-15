@@ -138,7 +138,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                         0..=5 => {
                             let consumer =
                                 CString::new(format!("t{thread_idx}-{seq}")).expect("no nuls");
-                            nmp_app_claim_profile(app_ptr, pk.as_ptr(), consumer.as_ptr(), 0);
+                            nmp_app_claim_profile(app_ptr, pk.as_ptr(), consumer.as_ptr(), 0, 0);
                         }
                         _ => {
                             let consumer =
