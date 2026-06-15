@@ -1,5 +1,40 @@
 # Changelog
 
+## nmp-v0.8.0 — 2026-06-15
+
+**BREAKING release — profile-resolution overhaul.** Git-rev-pinning consumers
+must adapt the one C-ABI signature change below before bumping their pinned rev.
+
+### Breaking — C-ABI
+
+- **`nmp_app_claim_profile` gains a 5th `liveness` parameter (`c_int`), going
+  from 4 to 5 arguments.** It is the client freshness hint mapped onto the
+  registered kind:0 interest lifecycle: `0` = **CacheOk** (serve from cache; on a
+  miss a OneShot fetch; no live sub — use for feed-row avatars), non-zero =
+  **Live** (a Tailing kind:0 sub stays open while claimed, so profile edits arrive
+  reactively — use for an open profile screen). Mixed claims on one pubkey resolve
+  to Tailing (Live wins). Existing 4-arg call sites must pass the new argument;
+  pass `0` for background/list-row claims and non-zero for explicit profile views.
+
+### Changed
+
+- **Profile resolution moved onto the registry/recompile chokepoint.**
+  `claim_profile` and F-TTL re-verification now flow through the same
+  registration → recompile chain as every other interest, so third-party authors
+  (mentions, attributions, standalone names) get their kind:0 resolved via
+  **outbox (kind:10002) relay discovery** instead of being silently dropped, with
+  **retry-on-miss** when the first fetch returns nothing. Drives the unresolved-
+  pubkey rate down substantially for mention/attribution-heavy feeds.
+- Web-feed snapshot-loop fix — the web client no longer re-runs the feed
+  snapshot loop spuriously.
+
+### Release plumbing
+
+- `nmp-blossom` (un-parked in #1428 as a v1 workspace member) is now classified
+  as a public crate in `release/nmp-release.toml`, clearing the pre-existing
+  release-manifest CI red ("workspace packages missing from release manifest:
+  nmp-blossom"). `nmp-nip60` / `nmp-wallet-poc` remain parked and excluded.
+
 ## nmp-v0.7.1
 
 - fix: parked crates (`nmp-blossom`, `nmp-nip60`) are now standalone-buildable — de-inherited the workspace `version`/`edition`/`license`/`repository` fields (and blossom's `nostr` dep) that are unresolvable for `[workspace].exclude`d crates. Restores the documented `cargo build --manifest-path crates/<crate>/Cargo.toml` escape hatch and unblocks external consumers (hl path-dep, podcast-player `[patch]`) that depend on `nmp-blossom`. No code change.
