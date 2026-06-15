@@ -130,7 +130,27 @@ impl Kernel {
                     });
                     self.project_accepted_event(&verified);
                 }
-                3 => self.ingest_contacts(event),
+                // ADR-0057 PR 3 — kind:3 flows through the GENUINE post-store
+                // projection path (like kind:0 above): reconstruct the
+                // `VerifiedEvent` (the store above already accepted it) and run
+                // the shared `project_accepted_event`, which dispatches to the
+                // registered kind:3 parser (`TestKind3Parser` in test builds,
+                // the real `nmp_nip01::Kind3Parser` in production) → writes the
+                // contacts cache → the active-account contacts-transition signal
+                // drives the kernel-owned follow-feed effects. No parallel fake
+                // writer.
+                3 => {
+                    let verified = VerifiedEvent::from_raw_unchecked(RawEvent {
+                        id: event.id.clone(),
+                        pubkey: event.pubkey.clone(),
+                        created_at: event.created_at,
+                        kind: event.kind,
+                        tags: event.tags.clone(),
+                        content: event.content.clone(),
+                        sig: "a".repeat(128),
+                    });
+                    self.project_accepted_event(&verified);
+                }
                 10002 => {
                     // The production kind:10002 writer is the substrate
                     // `nmp_router::Kind10002Parser`, which this helper bypasses
@@ -433,6 +453,53 @@ impl Kernel {
             },
         });
         self.project_accepted_event(&verified);
+    }
+
+    /// Test seam for delivering a kind:3 contact list through the GENUINE
+    /// post-store projection path (ADR-0057 PR 3) — NOT a parallel fake writer.
+    ///
+    /// Reconstructs a `VerifiedEvent` from `event` and runs the shared
+    /// [`Kernel::project_accepted_event`], which dispatches to the REGISTERED
+    /// kind:3 parser (`TestKind3Parser` in test builds, `nmp_nip01::Kind3Parser`
+    /// in production) → the parser writes the capability-owned contacts cache →
+    /// the contacts-transition signal for the ACTIVE account drives the
+    /// kernel-owned follow-feed effects (`on_active_contacts_changed`:
+    /// `FollowListChanged` trigger + `sync_follow_feed_interests` →
+    /// `timeline_authors` rebuild + cache-serve). This is the SAME path a
+    /// relay-delivered, locally-published, or cache-served kind:3 takes; there
+    /// is no separate cache writer. Callers keep the convenient
+    /// `NostrEvent`-taking signature.
+    ///
+    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    #[allow(dead_code)]
+    pub(in crate::kernel) fn inject_contacts(&mut self, event: NostrEvent) {
+        let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
+            id: event.id.clone(),
+            pubkey: event.pubkey.clone(),
+            created_at: event.created_at,
+            kind: event.kind,
+            tags: event.tags.clone(),
+            content: event.content.clone(),
+            sig: if event.sig.is_empty() {
+                "a".repeat(128)
+            } else {
+                event.sig.clone()
+            },
+        });
+        self.project_accepted_event(&verified);
+    }
+
+    /// Test seam: install a FRESH empty `TestContactsCache` behind the kernel's
+    /// `contacts_lookup` slot — the in-crate equivalent of a cold restart losing
+    /// the in-memory contacts cache (which production rebuilds from the store via
+    /// cache-serve). Used by the ADR-0057 PR 3 cold-restart cache-serve test.
+    #[cfg(test)]
+    pub(crate) fn clear_test_contacts_cache(&mut self) {
+        // Clear the CONTENTS in place (not swap the `Arc`) so the registered
+        // `TestKind3Parser` (which holds the same `Arc`) keeps writing the cache
+        // the kernel's `contacts_lookup` reader reads — the parser→cache→reader
+        // identity that the contacts-transition detection depends on.
+        self.test_contacts_cache.clear();
     }
 
     /// Lazily install (and return) the test-only

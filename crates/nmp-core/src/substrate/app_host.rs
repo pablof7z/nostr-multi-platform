@@ -23,7 +23,7 @@ use crate::{
 };
 
 use super::{
-    ActionRegistrar, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
+    ActionRegistrar, ContactsLookup, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
     ProfileLookup, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook,
     RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
@@ -302,6 +302,14 @@ pub trait AppHost: ActionRegistrar {
     /// RAM-eviction readers see one source of truth. The kernel never names the
     /// kind:0 wire format (D0).
     fn set_profile_lookup(&self, lookup: Arc<dyn ProfileLookup>);
+
+    /// ADR-0057 PR 3 — install the kind:3 contacts (follow-set) cache as the
+    /// kernel's `Arc<dyn ContactsLookup>` (reader). The composition root passes
+    /// the SAME `Arc` it backs the kind:3 [`IngestParser`]
+    /// (`nmp_nip01::Kind3Parser`, the writer) with, so the kernel's follow-feed
+    /// registration / byte-estimate / RAM-eviction readers AND the parser see
+    /// one source of truth. The kernel never names the kind:3 wire format (D0).
+    fn set_contacts_lookup(&self, lookup: Arc<dyn ContactsLookup>);
 
     /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19
     /// identity encoder (`nmp_app_encode_profile`) reads kind:10002 relay

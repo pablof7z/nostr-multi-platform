@@ -273,8 +273,22 @@ fn empty_follows_clears_timeline_authors_and_interests() {
         "precondition: BOB is a follow-derived timeline author"
     );
 
-    // Now the active account switches to one with NO cached follows.
-    kernel.seed_contacts.remove(ALICE);
+    // Now ALICE clears her follow set (a newer kind:3 with no `p` tags). The
+    // contacts cache is capability-owned (no kernel `seed_contacts` HashMap to
+    // `remove` from); a cleared follow set (`Some(vec![])`) is the real
+    // "no follows" state `register_follow_feed_for_active_account` reads as empty
+    // and CLEARs from.
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000005",
+            ALICE,
+            3_000,
+            3,
+            Vec::new(),
+            "wss://alice-t140.relay/",
+            3_000_000,
+        )
+        .expect("inject cleared kind:3");
     kernel.register_follow_feed_for_active_account();
 
     assert_eq!(

@@ -24,26 +24,33 @@
 //!   ([`Kernel::ingest_accepted_event`]) and cache-serve replay
 //!   ([`Kernel::feed_served_event`]), so the two paths cannot diverge.
 //! - **Projection / relevance** = read-time only. The kernel-owned post-store
-//!   caches (contacts kind:3, the timeline read-cache projection) are CALLED BY
-//!   the chokepoint, not scattered per-kind arms. Profiles (kind:0) moved out to
-//!   the registered `nmp_nip01::Kind0Parser` writing the capability-owned
-//!   `ProfileCache` (ADR-0057 PR 2) — detected via a before/after cache snapshot
-//!   exactly like the mailbox / DM-relay observers. The
-//!   timeline projection is gated by the behavioral `follow_feed_kinds`
-//!   predicate (D0). Substrate `MailboxCache` / `DmInboxRelayLookup`
-//!   transitions are detected kind-agnostically by bracketing the chokepoint
-//!   with before/after snapshots (the kernel only knows "this author's mailbox
-//!   changed", never "a kind:10002 arrived" — `docs/architecture/crate-boundaries.md` §0).
+//!   read-cache (the timeline read-cache projection) is CALLED BY the chokepoint,
+//!   gated by the behavioral `follow_feed_kinds` predicate (D0, no kind literal).
+//!   Profiles (kind:0, ADR-0057 PR 2) AND contacts (kind:3, ADR-0057 PR 3) moved
+//!   out to registered `nmp_nip01::Kind0Parser` / `Kind3Parser` writing the
+//!   capability-owned `ProfileCache` / `ContactsCache` — both detected via a
+//!   before/after cache snapshot exactly like the mailbox / DM-relay observers.
+//!   For contacts the kernel additionally reacts to the ACTIVE account's
+//!   transition by driving the kernel-owned follow-feed effects
+//!   (`on_active_contacts_changed`: `timeline_authors` rebuild,
+//!   `sync_follow_feed_interests`, `FollowListChanged`, cache-serve) — the
+//!   PARSER stays side-effect-free against kernel state; the KERNEL owns the
+//!   effects, driven by the transition SIGNAL (never inlined in the parser).
+//!   Substrate `MailboxCache` / `DmInboxRelayLookup` transitions are likewise
+//!   detected kind-agnostically by bracketing the chokepoint with before/after
+//!   snapshots (the kernel only knows "this author's mailbox / contacts
+//!   changed", never "a kind:10002 / kind:3 arrived" —
+//!   `docs/architecture/crate-boundaries.md` §0).
 //!
 //! Local publishes enter the chokepoint at `publish_engine.rs` with
 //! `local://publish` provenance ([`IngestSource::LocalPublish`]); cache-replay
 //! keeps its ADR-0045 path (`cache_serve/continuation.rs::feed_served_event`).
 //!
-//! contacts (kind:3) remains kernel-owned (one kind literal) until ADR-0057
-//! PR 3 moves it to a parser + kernel-owned effect seam — that is the full D0
-//! finish-line. Profiles (kind:0) already moved to `nmp_nip01::Kind0Parser` +
-//! the capability-owned `ProfileCache` (PR 2): the kernel ingest path no longer
-//! names kind:0.
+//! ADR-0057 PR 3 is the full D0 finish-line: the kernel ingest path now names
+//! ZERO NIP kind literals. kind:0 (profiles) moved in PR 2, kind:3 (contacts)
+//! moves here; the 1/6 timeline gate is the behavioral `follow_feed_kinds`
+//! predicate, and kind:1059 gift-wrap stays excluded via the parser registry,
+//! not a literal.
 
 mod auth_handlers;
 mod claimed_event_stamp; // ADR-0055 Rung 1 (F1) claimed-event stamp — sibling for size baseline
@@ -393,21 +400,21 @@ impl Kernel {
     ///    accepted outcome (`Inserted | Replaced | Ephemeral`). `Duplicate` (incl. a
     ///    relay echo of a locally-published event) is projection-silent —
     ///    preserving D4 single-fire for read-your-writes.
-    /// 3. **Projection / relevance** = read-time only. The kernel-owned caches
-    ///    below (profile, contacts, timeline projection) are CALLED BY this one
-    ///    chokepoint post-`verify_and_persist`, gated on the same outcome — not
-    ///    a scattered per-kind/per-source ladder. The timeline read-cache is a
-    ///    chokepoint-fed observer ([`Self::project_timeline_event`]) whose
-    ///    read-time relevance predicate is `should_store_event` (which no longer
-    ///    has any power over persistence).
+    /// 3. **Projection / relevance** = read-time only. The kernel-owned timeline
+    ///    read-cache is CALLED BY this one chokepoint post-`verify_and_persist`,
+    ///    gated on the behavioral `follow_feed_kinds` predicate — not a scattered
+    ///    per-kind/per-source ladder. The timeline read-cache is a chokepoint-fed
+    ///    observer ([`Self::project_timeline_event`]) whose read-time relevance
+    ///    predicate is `should_store_event` (which no longer has any power over
+    ///    persistence).
     ///
-    /// Contacts (kind:3) remains kernel-owned until PR 3 (the D0 finish-line),
-    /// so its one kind literal is intentionally retained here. Profiles (kind:0)
-    /// moved to the registered `nmp_nip01::Kind0Parser` + capability-owned
-    /// `ProfileCache` (PR 2) and are detected via a before/after cache snapshot,
-    /// so the ingest path no longer names kind:0. The timeline projection is
-    /// gated by the behavioral `follow_feed_kinds` predicate (D0), not a kind
-    /// literal.
+    /// ADR-0057 PR 3 finishes D0: profiles (kind:0) AND contacts (kind:3) are
+    /// both parser-fed (`nmp_nip01::Kind0Parser` / `Kind3Parser` writing the
+    /// capability-owned `ProfileCache` / `ContactsCache`), detected via a
+    /// before/after cache snapshot in [`Self::project_accepted_event`]. The
+    /// ingest path now names ZERO NIP kind literals — the timeline projection is
+    /// gated by the behavioral `follow_feed_kinds` predicate, and gift-wrap is
+    /// excluded via the parser registry, not a literal.
     ///
     /// Returns the store outcome so a source wrapper can apply source-specific
     /// post-processing (e.g. the relay path's claim-hit scoring).
@@ -458,19 +465,15 @@ impl Kernel {
             self.project_timeline_event(sub_id, &event, Some(&outcome));
         }
 
-        // Kernel-owned replaceable cache (PR 3: contacts stays kernel-owned;
-        // CALLED BY the chokepoint, not a scattered ladder). kind:3 → contacts
-        // cache + timeline_authors rebuild + sync_follow_feed_interests (all
-        // inside `ingest_contacts`). kind:0 moved out to the registered
-        // `Kind0Parser` (PR 2). Gated on the accepted (`Inserted | Replaced`)
-        // subset — an ephemeral never carries contacts.
-        if matches!(
-            outcome,
-            InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
-        ) && event.kind == 3
-        {
-            self.ingest_contacts(event);
-        }
+        // ADR-0057 PR 3 — the kind:3 arm is DELETED. Contacts are now
+        // parser-fed: `nmp_nip01::Kind3Parser` writes the capability-owned
+        // `ContactsCache` from the `EventIngestDispatcher` fan-out inside
+        // `project_accepted_event` above, and the active-account contacts
+        // transition detected there drives the kernel-owned follow-feed effects
+        // (`on_active_contacts_changed`). The ingest path no longer names
+        // kind:3 (or any NIP kind literal — D0 finish-line). kind:0 went in
+        // PR 2; the timeline 1/6 gate is the behavioral `follow_feed_kinds`
+        // predicate, not a literal.
 
         Some(outcome)
     }
@@ -681,6 +684,20 @@ impl Kernel {
         let mailbox_before = self.mailbox_cache().snapshot(&author);
         let dm_before = self.recipient_dm_relays(&author);
         let profile_before = self.profile_lookup().profile(&author);
+        // ADR-0057 PR 3 — contacts transition is detected ONLY for the active
+        // account: the kernel-owned follow-feed effects (`timeline_authors`
+        // rebuild, `sync_follow_feed_interests`, `FollowListChanged`,
+        // cache-serve) are active-account-scoped (D4 — arbitrary peers' kind:3
+        // must not pollute the registry), exactly as the old `ingest_contacts`
+        // active-account gate was. Snapshotting only the active author keeps the
+        // common case (a non-active peer's kind:3, or any non-kind:3 event)
+        // free of an extra cache read.
+        let active_author = self.active_account.as_deref() == Some(author.as_str());
+        let contacts_before = if active_author {
+            self.contacts_lookup().follows(&author)
+        } else {
+            None
+        };
 
         // (1) NIP-parser dispatch. D6 — a poisoned dispatcher lock degrades to
         // "no parser fired" (graceful, the store insert already succeeded on the
@@ -710,6 +727,23 @@ impl Kernel {
         let dm_after = self.recipient_dm_relays(&author);
         if dm_before != dm_after {
             self.on_dm_relays_changed(&author, created_at_for_trigger);
+        }
+        // Contacts (kind:3) transition for the ACTIVE account → the kernel-owned
+        // follow-feed effects. The PARSER (`Kind3Parser`) wrote the capability
+        // cache between the before/after snapshots above; the KERNEL owns the
+        // planner/lifecycle effects, driven here by the transition signal — NOT
+        // inlined into the parser (the `IngestParser` contract: parsers are
+        // side-effect-free against kernel state). This is the PR 3 replacement
+        // for the deleted `ingest_contacts` arm. `Some(vec![]) != None` matters:
+        // a freshly-cleared follow set (a kind:3 with no `p` tags) is a real
+        // transition the active account must react to (it WITHDRAWS the prior
+        // follow-feed interests).
+        if active_author {
+            let contacts_after = self.contacts_lookup().follows(&author);
+            if contacts_before != contacts_after {
+                let follows = contacts_after.unwrap_or_default();
+                self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
+            }
         }
 
         // (3) D9-clamped app-observer notify.

@@ -2050,7 +2050,9 @@ fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
     kernel.seed_kind10002_for_test(ALICE, &["wss://alice-t140.relay/"]);
 
     // Inject kind:3 for the active account listing ALICE as a follow.
-    // This populates `seed_contacts` via `ingest_contacts`.
+    // This populates the capability-owned contacts cache via the registered
+    // kind:3 parser, and the active-account contacts-transition signal drives
+    // the kernel-owned follow-feed effects (ADR-0057 PR 3).
     let follow_tags = vec![vec!["p".to_string(), ALICE.to_string()]];
     kernel.inject_replaceable_event(
         "0000000000000000000000000000000000000000000000000000000000000001",

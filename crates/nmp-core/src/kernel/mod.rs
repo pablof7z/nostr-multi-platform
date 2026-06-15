@@ -313,6 +313,8 @@ mod auth_tests;
 mod auth_url_threading_tests;
 #[cfg(test)]
 mod contacts_fanout_tests;
+#[cfg(test)]
+mod contacts_chokepoint_pr3_tests;
 
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ};
 // `chrono::Local` reads the OS-local wall clock; the `clock` feature it lives
@@ -510,13 +512,16 @@ use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
-    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup, DmInboxRelayLookup,
-    EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter, ParsedRelayList,
-    ProfileLookup, MAX_PROJECTION_MESSAGES,
+    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup, ContactsLookup,
+    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
+    ParsedRelayList, ProfileLookup, MAX_PROJECTION_MESSAGES,
 };
-// `empty_profile_lookup` is only the production cold-start default; the test /
-// test-support build defaults `profile_lookup` to a `TestProfileCache` instead,
-// so import it only where it is used to avoid an unused-import warning there.
+// `empty_profile_lookup` / `empty_contacts_lookup` are only the production
+// cold-start defaults; the test / test-support build defaults `profile_lookup`
+// / `contacts_lookup` to their `Test*Cache` instead, so import them only where
+// used to avoid an unused-import warning there.
+#[cfg(not(any(test, feature = "test-support")))]
+use crate::substrate::empty_contacts_lookup;
 #[cfg(not(any(test, feature = "test-support")))]
 use crate::substrate::empty_profile_lookup;
 use crate::util::sort_dedup;
@@ -702,7 +707,25 @@ pub struct Kernel {
     /// works). Using the URL avoids a new handle-lookup API on Kernel and
     /// keeps the field substrate-generic (no `RelayHandle` dependency).
     pending_backoff_hints: Vec<(String, BackoffHint)>,
-    seed_contacts: HashMap<String, Vec<String>>,
+    /// Substrate kind:3 contact-list (follow-set) lookup — ADR-0057 PR 3. The
+    /// kernel reads cached follow sets through this trait when it
+    /// (re)registers the active account's follow-feed M2 interests, accounts
+    /// for the contacts cache in the RAM byte/eviction budget, and reports the
+    /// `contacts_authors` diagnostic. The concrete cache
+    /// (`nmp_nip01::ContactsCache`) lives in the `nmp-nip01` crate behind it so
+    /// the kernel never names the kind:3 noun (D0). Default:
+    /// [`crate::substrate::EmptyContactsLookup`] (cold-start; every lookup
+    /// returns `None`). Apps inject `nmp_nip01::ContactsCache` via
+    /// [`Kernel::set_contacts_lookup`] — the same `Arc` is simultaneously the
+    /// writer side fed by `nmp_nip01::Kind3Parser` (registered with
+    /// `ingest_dispatcher`). The kernel detects a contacts transition for the
+    /// ACTIVE account by snapshotting the cache around the parser dispatch in
+    /// [`Kernel::project_accepted_event`] (exactly like the profile / mailbox /
+    /// DM-relay transitions) and drives the kernel-owned follow-feed effects
+    /// ([`Kernel::on_active_contacts_changed`]) on that signal — the PARSER
+    /// stays side-effect-free against kernel state (the `IngestParser`
+    /// contract), the KERNEL owns the planner/lifecycle effects.
+    contacts_lookup: Arc<dyn ContactsLookup>,
     /// Substrate NIP-65 (kind:10002) cache — step 3 of
     /// `docs/architecture/crate-boundaries.md` (V-50). Replaces the
     /// pre-step-3 `HashMap<String, AuthorRelayList>` so the kernel and
@@ -821,6 +844,14 @@ pub struct Kernel {
     /// `nmp-nip01` (a downstream crate cycle the doctrine forbids).
     #[cfg(any(test, feature = "test-support"))]
     test_profile_cache: Arc<crate::substrate::TestProfileCache>,
+    /// Test-only typed handle to the [`crate::substrate::TestContactsCache`] that
+    /// backs `contacts_lookup` in test / test-support builds. Production
+    /// composition installs `nmp_nip01::ContactsCache` via
+    /// [`Kernel::set_contacts_lookup`]; in-crate tests use this handle to seed
+    /// kind:3 contact lists (via [`Kernel::inject_contacts`]) without depending
+    /// on `nmp-nip01` (a downstream crate cycle the doctrine forbids).
+    #[cfg(any(test, feature = "test-support"))]
+    test_contacts_cache: Arc<crate::substrate::TestContactsCache>,
     /// `pub(crate)` so in-crate tests can assert close-contact-feed clears
     /// the follow author set without triggering the full follow-feed
     /// registration side-effect that `set_follow_feed_kinds` fires.
@@ -1834,6 +1865,12 @@ impl Kernel {
         #[cfg(any(test, feature = "test-support"))]
         let test_profile_cache = Arc::new(crate::substrate::TestProfileCache::new());
 
+        // ADR-0057 PR 3 — test / test-support contacts cache (shared between the
+        // `contacts_lookup` reader default and the `test_contacts_cache` writer
+        // handle so in-crate tests can seed + read contact lists).
+        #[cfg(any(test, feature = "test-support"))]
+        let test_contacts_cache = Arc::new(crate::substrate::TestContactsCache::new());
+
         let mut kernel = Self {
             store,
             clock: Arc::new(SystemClock),
@@ -1868,7 +1905,15 @@ impl Kernel {
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             pending_backoff_hints: Vec::new(),
-            seed_contacts: HashMap::new(),
+            // ADR-0057 PR 3 — production starts cold (empty lookup); apps inject
+            // `nmp_nip01::ContactsCache` via `set_contacts_lookup`. Test /
+            // test-support builds default to a `TestContactsCache` shared with
+            // `test_contacts_cache` so in-crate tests can seed + read contact
+            // lists without depending on `nmp-nip01`.
+            #[cfg(not(any(test, feature = "test-support")))]
+            contacts_lookup: empty_contacts_lookup(),
+            #[cfg(any(test, feature = "test-support"))]
+            contacts_lookup: Arc::clone(&test_contacts_cache) as Arc<dyn ContactsLookup>,
             #[cfg(any(test, feature = "test-support"))]
             mailbox_cache: Arc::new(TestInMemoryMailboxCache::new()),
             #[cfg(not(any(test, feature = "test-support")))]
@@ -1884,6 +1929,8 @@ impl Kernel {
             test_dm_inbox_cache: None,
             #[cfg(any(test, feature = "test-support"))]
             test_profile_cache,
+            #[cfg(any(test, feature = "test-support"))]
+            test_contacts_cache,
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             follow_feed_kinds: BTreeSet::new(),
@@ -1983,6 +2030,21 @@ impl Kernel {
                 crate::substrate::TestKind0Parser::new(Arc::clone(&kernel.test_profile_cache)),
             );
             kernel.register_ingest_parser(0, parser);
+        }
+        // ADR-0057 PR 3 — in test / test-support builds, register a kind:3
+        // parser writing the shared `TestContactsCache` on the kernel's own
+        // dispatcher. This makes the real chokepoint path (`verify_and_persist`
+        // → `EventIngestDispatcher` → parser → the kernel's contacts-transition
+        // effect signal) write the contacts cache exactly as production does
+        // (where `nmp_defaults::register_substrate` registers
+        // `nmp_nip01::Kind3Parser`), so read-your-writes for a locally published
+        // kind:3 works in-crate without depending on `nmp-nip01`.
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
+                crate::substrate::TestKind3Parser::new(Arc::clone(&kernel.test_contacts_cache)),
+            );
+            kernel.register_ingest_parser(3, parser);
         }
         kernel
     }
@@ -2480,11 +2542,57 @@ impl Kernel {
         removed
     }
 
-    /// Pre-populate `seed_contacts` for a given pubkey with the specified follows.
-    /// Used during account creation so the follow-feed can be set up immediately
-    /// without waiting for the kind:3 event to round-trip from relays.
+    /// Pre-populate the contacts cache for a given pubkey with the specified
+    /// follows. Used during account creation so the follow-feed can be set up
+    /// immediately without waiting for the published kind:3 to round-trip from
+    /// relays.
+    ///
+    /// ADR-0057 PR 3 — the contacts cache is capability-owned
+    /// (`nmp_nip01::ContactsCache` behind `Arc<dyn ContactsLookup>`); there is
+    /// no kernel-owned `seed_contacts` HashMap to write any more, and there is
+    /// NO parallel cache writer (PR 2's lesson). So this routes a SYNTHESIZED
+    /// kind:3 (the follows rendered as `p`-tags) through the SAME shared
+    /// post-store projection helper [`Self::project_accepted_event`] a relay /
+    /// local-publish / cache-served kind:3 takes: the REGISTERED kind:3 parser
+    /// (`nmp_nip01::Kind3Parser` in production, `TestKind3Parser` in tests)
+    /// writes the cache, and the contacts-transition signal in
+    /// `project_accepted_event` drives the kernel-owned follow-feed effects for
+    /// the active account. The follows are seeded at `now_secs()`; the real
+    /// signed cold-start kind:3 published shortly after carries the same content
+    /// and supersedes-or-ties this synthetic seed harmlessly (the cache's
+    /// newest-wins rule with a lexicographic event-id tiebreak).
     pub(crate) fn prepopulate_seed_contacts(&mut self, pubkey: String, follows: Vec<String>) {
-        self.seed_contacts.insert(pubkey, follows);
+        let created_at = self.now_secs();
+        let mut tags: Vec<Vec<String>> = Vec::with_capacity(follows.len());
+        for f in &follows {
+            tags.push(vec!["p".to_string(), f.clone()]);
+        }
+        // Synthetic event id derived from the seed so the cache supersession /
+        // eviction ordering is deterministic. Not persisted to the store — this
+        // is a local pre-publish seed only.
+        let event_id = format!(
+            "{:016x}",
+            crate::stable_hash::stable_hash64(("prepopulate-contacts", pubkey.as_str(), created_at))
+        );
+        // The seed is locally-generated bootstrap data for the user's OWN
+        // account (not externally-sourced), so it does not need Schnorr
+        // verification — reconstruct it through the same trusted
+        // `from_store_verified_unchecked` seam the cache-serve replay path uses
+        // (`feed_served_event`). The real signed cold-start kind:3 published
+        // shortly after carries the same content and supersedes-or-ties this
+        // seed harmlessly via the cache's newest-wins rule.
+        let verified = nmp_store::__nmp_core_internal::from_store_verified_unchecked(
+            crate::store::RawEvent {
+                id: event_id,
+                pubkey,
+                created_at,
+                kind: 3,
+                tags,
+                content: String::new(),
+                sig: "0".repeat(128),
+            },
+        );
+        self.project_accepted_event(&verified);
         self.cached_estimated_store_bytes.set(None);
     }
 
@@ -2608,6 +2716,29 @@ impl Kernel {
     /// consult this trait object; it never names the kind:0 wire format (D0).
     pub(crate) fn profile_lookup(&self) -> &dyn ProfileLookup {
         &*self.profile_lookup
+    }
+
+    /// Inject the kind:3 contacts (follow-set) lookup (composition seam —
+    /// ADR-0057 PR 3). Apps that depend on `nmp-nip01` call this after
+    /// `Kernel::new` to install a shared `Arc<ContactsCache>` so the
+    /// follow-feed registration / byte-estimate / RAM-eviction readers AND the
+    /// kind:3 ingest-parser writer all see the same cache. Default is
+    /// [`crate::substrate::EmptyContactsLookup`] (every lookup returns `None`,
+    /// the cold-start "no kind:3 yet" contract).
+    ///
+    /// MUST be called BEFORE the first kind:3 event is ingested — the cache is
+    /// an independent store, not a write-through pair, so a swap after ingest
+    /// would lose cached entries.
+    pub(crate) fn set_contacts_lookup(&mut self, lookup: Arc<dyn ContactsLookup>) {
+        self.contacts_lookup = lookup;
+    }
+
+    /// Read accessor for the injected contacts lookup. The kernel's contacts
+    /// readers (`register_follow_feed_for_active_account`, the byte estimate,
+    /// RAM eviction, the `contacts_authors` diagnostic) consult this trait
+    /// object; it never names the kind:3 wire format (D0).
+    pub(crate) fn contacts_lookup(&self) -> &dyn ContactsLookup {
+        &*self.contacts_lookup
     }
 
     /// Inject the blocked-relay lookup (composition seam). Apps that depend on

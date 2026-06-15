@@ -141,9 +141,8 @@ fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
         "v2 must be freshly inserted, got {o2:?}"
     );
     let contacts_after_v2 = kernel
-        .seed_contacts
-        .get(PK_A)
-        .cloned()
+        .contacts_lookup()
+        .follows(PK_A)
         .expect("contacts must be populated after v2");
     assert_eq!(
         contacts_after_v2.len(),
@@ -163,9 +162,8 @@ fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
 
     // Cache must still reflect v2 — the stale v1 must not have overwritten it.
     let contacts_after_v1 = kernel
-        .seed_contacts
-        .get(PK_A)
-        .cloned()
+        .contacts_lookup()
+        .follows(PK_A)
         .expect("contacts must still be populated");
     assert_eq!(
         contacts_after_v1.len(),

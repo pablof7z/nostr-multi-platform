@@ -168,6 +168,12 @@ impl AppHost for GateSpy {
         // the profile lookup).
     }
 
+    fn set_contacts_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ContactsLookup>) {
+        // ADR-0057 PR 3 — register_substrate installs the kind:3 contacts cache;
+        // this spy ignores it (the gate under test is the coverage hook, not
+        // the contacts lookup).
+    }
+
     fn set_mailbox_cache_reader(&self, _cache: Arc<dyn MailboxCache>) {
         // Shared mailbox-cache reader — no-op; not under test here.
     }

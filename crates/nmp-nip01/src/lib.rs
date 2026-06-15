@@ -59,9 +59,11 @@ mod op_feed_generated;
 
 pub mod build;
 pub mod decode;
+pub mod contacts_cache;
 pub mod flat_feed;
 pub mod kinds;
 pub mod kind0_parser;
+pub mod kind3_parser;
 pub mod meta_timeline;
 mod note_relations;
 pub mod op_feed;
@@ -77,7 +79,9 @@ pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
 pub use flat_feed::{
     author_feed_predicate, thread_feed_predicate, FlatFeed, FlatFeedPredicate,
 };
+pub use contacts_cache::ContactsCache;
 pub use kind0_parser::Kind0Parser;
+pub use kind3_parser::Kind3Parser;
 pub use kinds::KIND_SHORT_NOTE;
 pub use profile_cache::ProfileCache;
 pub use meta_timeline::{

@@ -614,7 +614,7 @@ fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
         content: String::new(),
         sig: String::new(),
     };
-    kernel.ingest_contacts(event);
+    kernel.inject_contacts(event);
 
     let after = snapshot(&mut kernel);
     assert_eq!(
