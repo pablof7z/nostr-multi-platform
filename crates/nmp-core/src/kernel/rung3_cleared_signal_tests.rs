@@ -1,31 +1,7 @@
-//! ADR-0055 Rung 3 S1b — Cleared-signal completeness regression tests.
+//! ADR-0055 Rung 3 S1b cleared-signal regression tests.
 //!
-//! **Issue #1390 regression gate.** This test suite drives the FULL
-//! incremental-apply path (declare → emit) with genuine non-empty→empty
-//! transitions on all four conditional keys:
-//!
-//! - `action_results`   (drain key)   — via `record_action_success`
-//! - `signed_events`    (drain key)   — via `record_signed_event_return`
-//! - `action_stages`    (copy-with-TTL) — via `record_action_stage` + `ack_action_stage` or TTL expiry
-//! - `action_lifecycle` (copy-with-TTL) — via TTL expiry (`FixedClock`)
-//!
-//! For each key the test asserts:
-//! - Frame A: key present as `Changed` (non-empty payload; host caches it).
-//! - Frame B: key present as `Cleared` with empty payload (exactly once).
-//! - Frame C: key absent (`Unchanged` — fires exactly once).
-//!
-//! A simulated in-test host cache stand-in (same algorithm as §3 D3-3)
-//! verifies the Cleared row actually removes the key from the host cache,
-//! proving end-to-end self-healing.
-//!
-//! Additionally includes a spurious-clear NEGATIVE test: a key that was
-//! always empty must NEVER produce a `Cleared` row.
-//!
-//! **These tests MUST FAIL on master @ c6f3486f5 and PASS after S1b-b + S1b-d.**
-//!
-//! This file is `#[path]`-included from `kernel::update` (so the
-//! `kernel/mod.rs` god-module stays at its size baseline). `super` here is
-//! `kernel::update`. The kernel root is `super::super`.
+//! Drives the full incremental-apply path for drain and copy-with-TTL keys:
+//! `Changed` non-empty, exactly one empty `Cleared`, then absent/unchanged.
 
 use std::collections::HashMap;
 use std::sync::Arc;
