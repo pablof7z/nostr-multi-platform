@@ -128,7 +128,4 @@ ios/Chirp/ChirpTests/OpFeedDecoderTests.swift	552
 ios/Chirp/ChirpUITests/ChirpUITests.swift	611
 web/chirp/docs/ux-design.md	975
 web/chirp/docs/wasm-mvp-build-plan.md	590
-web/chirp/src/nmp/runtime.test.ts	512
-web/chirp/src/nmp/runtime.test.ts	533
-web/registry/src/registry/content.ts	521
 web/registry/src/registry/content.ts	521
