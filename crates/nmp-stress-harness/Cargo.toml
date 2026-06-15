@@ -1,0 +1,44 @@
+[package]
+name = "nmp-stress-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Throwaway, manually-run stress harness that validates the NMP event-flow architecture (ADR-0057 unified ingest chokepoint, Workstream C publish policy, PR2 profiles capability) against REAL infrastructure: real generated keys + Schnorr signing through the publish engine, an embedded in-process fixture relay, persistent storage for cold-restart, and an injected deterministic clock. Run with `cargo run -p nmp-stress-harness` — it is a [[bin]], NOT a #[test] suite, so CI never runs it."
+
+# Manual harness binary. NOT a test target — `cargo test`/CI must never run it.
+# The orchestrator runs it via `cargo run -p nmp-stress-harness`.
+[[bin]]
+name = "nmp-stress-harness"
+path = "src/main.rs"
+
+[dependencies]
+# The real NMP public driver surface. `test-support` unlocks the deterministic
+# clock-injection seam (`set_kernel_clock_for_test` / `MonotonicSecondClock`)
+# and the kernel-injection seam (`nmp_app_inject_signed_event_json`). `native`
+# is the C-ABI / actor build (default).
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support", "native"] }
+# `test-support` for `MonotonicSecondClock`, `RawEvent`, etc.
+# `lmdb-backend` is REQUIRED for the cold-restart durability scenario (A7): the
+# kernel's `build_event_store` only opens the persistent LMDB `EventStore` when
+# the *nmp-core* `lmdb-backend` cfg flag is on. The FFI `native` feature pulls
+# `nmp-store/lmdb-backend` (so the code compiles) but does NOT set nmp-core's
+# own `lmdb-backend` flag — so without this line, a `storage_path` silently
+# falls back to `MemEventStore` and cold-restart loses data. Cargo feature
+# unification turns the flag on for the single shared nmp-core in the graph.
+nmp-core = { path = "../nmp-core", features = ["test-support", "lmdb-backend"] }
+# Real NIP-59 gift-wrap (kind:1059) construction for the DM-ingest scenarios.
+nmp-nip59 = { path = "../nmp-nip59" }
+
+# Real crypto: key generation, EventBuilder, Schnorr signing, gift wrap.
+nostr = { workspace = true, features = ["nip44", "nip59"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+
+# Embedded fixture relay — a minimal in-process `ws://` WebSocket server that
+# stores EVENTs and echoes them on matching REQs. The catalog notes no
+# in-process mock relay exists in nmp-testing, so we build a minimal one here.
+# `handshake` gives us `tungstenite::accept`; `rustls-tls-webpki-roots` is NOT
+# needed (we serve plain `ws://`, never `wss://`).
+tungstenite = { workspace = true, default-features = false, features = ["handshake"] }
+# `SignerSource::LocalNsec` wraps the secret in `zeroize::Zeroizing`.
+zeroize = { workspace = true }
