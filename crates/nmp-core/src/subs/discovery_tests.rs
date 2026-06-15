@@ -235,12 +235,14 @@ fn current_plan_frames_materialises_full_content_plan() {
     assert!(relays.contains("wss://cp-b.example"));
 }
 
-/// With no indexer configured, discovery is silently skipped (the
-/// operator opted out of indexer discovery).
+/// With NO indexer AND NO app relays configured, discovery is silently
+/// skipped (the operator opted out of indexer discovery and there is no
+/// app-relay lane to fall back to).
 #[test]
-fn no_indexer_means_no_probe() {
+fn no_indexer_no_app_relay_means_no_probe() {
     let mut l = SubscriptionLifecycle::new();
     l.set_indexer_relays(vec![]);
+    l.set_app_relays(vec![]); // explicit: default is already empty
     let empty = InMemoryMailboxCache::new();
     l.registry_mut().push(follow(1, "aa99"));
     let frames = l.recompile_and_diff(&empty).expect("compile");
@@ -248,6 +250,74 @@ fn no_indexer_means_no_probe() {
     assert!(
         l.probed_mailboxes().is_empty(),
         "no probe emitted → nothing marked probed"
+    );
+}
+
+/// The kind:10002 discovery probe is ADDITIVE to app relays: when the only
+/// indexer-role relay is dropped (or AUTH-walled), an author with no cached
+/// mailbox is still probed via the configured app relay. This is the
+/// regression guard for the Chirp config flip that makes relay.primal.net an
+/// app relay rather than a dedicated indexer — without the app-relay union the
+/// outbox model could never fetch third-party NIP-65 lists.
+#[test]
+fn app_relay_only_still_emits_mailbox_probe() {
+    let mut l = SubscriptionLifecycle::new();
+    l.set_indexer_relays(vec![]); // no dedicated indexer at all
+    l.set_app_relays(vec!["wss://relay.primal.net".to_string()]);
+    let empty = InMemoryMailboxCache::new(); // nothing cached
+    l.registry_mut().push(follow(1, "ab01"));
+
+    let frames = l.recompile_and_diff(&empty).expect("compile");
+    let probes = probe_reqs(&frames);
+    assert_eq!(
+        probes.len(),
+        1,
+        "the kind:10002 probe must reach the app relay when no indexer exists"
+    );
+    if let WireFrame::Req {
+        relay_url,
+        filter_json,
+        lifecycle,
+        ..
+    } = probes[0]
+    {
+        assert_eq!(relay_url, "wss://relay.primal.net");
+        assert!(filter_json.contains("10002"));
+        assert!(filter_json.contains(&pubkey("ab01")));
+        assert!(matches!(lifecycle, InterestLifecycle::OneShot));
+    } else {
+        panic!("expected a Req frame");
+    }
+    assert!(l.probed_mailboxes().contains(&pubkey("ab01")));
+}
+
+/// Probe target is the UNION of indexer ∪ app relays (deduplicated). When both
+/// a dedicated indexer and an app relay are configured, the same author's
+/// kind:10002 probe is emitted to BOTH, so discovery survives either relay
+/// being AUTH-walled or dead.
+#[test]
+fn probe_unions_indexer_and_app_relays() {
+    let mut l = SubscriptionLifecycle::new(); // indexer = [purplepag.es]
+    l.set_app_relays(vec!["wss://relay.primal.net".to_string()]);
+    let empty = InMemoryMailboxCache::new();
+    l.registry_mut().push(follow(1, "cd02"));
+
+    let frames = l.recompile_and_diff(&empty).expect("compile");
+    let probes = probe_reqs(&frames);
+    let targets: std::collections::BTreeSet<&str> = probes
+        .iter()
+        .filter_map(|f| match f {
+            WireFrame::Req { relay_url, .. } => Some(relay_url.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        targets.contains("wss://purplepag.es"),
+        "probe must still reach the dedicated indexer; saw {targets:?}"
+    );
+    assert!(
+        targets.contains("wss://relay.primal.net"),
+        "probe must also reach the app relay; saw {targets:?}"
     );
 }
 

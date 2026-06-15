@@ -140,19 +140,38 @@ impl SubscriptionLifecycle {
 
         // Implicit kind:10002 discovery (D3). Any author this REQ targets
         // whose mailbox is neither cached NOR previously probed gets an
-        // auto-emitted `kinds:[10002]` REQ to the indexer set. The relay's
-        // answer lands in the kernel's mailbox cache via `ingest_relay_list`,
-        // which fires `Nip65Arrived` → the next recompile routes the author
-        // through their declared write relays. Authors who never published a
-        // kind:10002 are probed exactly once (the empty EOSE still marks them
-        // probed) so we don't re-REQ every recompile.
+        // auto-emitted `kinds:[10002]` REQ. The relay's answer lands in the
+        // kernel's mailbox cache via `ingest_relay_list`, which fires
+        // `Nip65Arrived` → the next recompile routes the author through their
+        // declared write relays. Authors who never published a kind:10002 are
+        // probed exactly once (the empty EOSE still marks them probed) so we
+        // don't re-REQ every recompile.
         //
-        // These frames are auxiliary: they are NOT part of `CompiledPlan`,
-        // do NOT affect `plan_id`, and are appended AFTER the auth partition
-        // (the indexer is not an auth-paused relay). v1 scope: `shape.authors`
-        // only — `#p` tag values and address-pointer pubkeys are a
-        // documented follow-up.
-        if !self.indexer_relays.is_empty() {
+        // Probe target = `indexer_relays ∪ app_relays`. The probe is additive
+        // to app relays for the same reason the Case A kind:0/discovery lane is
+        // (`case_a_authors.rs:145-156`; `docs/wiki/profile-resolution.md`;
+        // `docs/design/subscription-compilation/outbox.md:153-158`): kind:10002
+        // is a plain replaceable event that any general relay serves, and the
+        // dedicated-indexer set can be empty (operator opted out) or AUTH-walled
+        // (e.g. purplepag.es rejects anonymous REQs). Without the app-relay
+        // union, a Chirp install whose only indexer-role relay is AUTH-walled
+        // could never fetch third-party NIP-65 lists → the outbox model would
+        // silently stall. Unioning app relays (e.g. relay.primal.net, which
+        // serves kind:10002 anonymously) keeps discovery working.
+        //
+        // These frames are auxiliary: they are NOT part of `CompiledPlan` and
+        // do NOT affect `plan_id`. They ARE routed through the auth gate (see
+        // below): now that the probe can target an app relay (which, unlike the
+        // dedicated indexer, may be AUTH-walled), a probe REQ to a paused relay
+        // must be buffered and flushed on `Authenticated` exactly like a content
+        // REQ — never sent blind to a relay that will reject it.
+        //
+        // v1 scope: `shape.authors` only — `#p` tag values and address-pointer
+        // pubkeys are a documented follow-up.
+        let mut probe_relays: BTreeSet<String> = BTreeSet::new();
+        probe_relays.extend(self.indexer_relays.iter().cloned());
+        probe_relays.extend(self.app_relays.iter().cloned());
+        if !probe_relays.is_empty() {
             let mut to_probe: BTreeSet<String> = BTreeSet::new();
             for interest in &interests {
                 for author in &interest.shape.authors {
@@ -167,6 +186,7 @@ impl SubscriptionLifecycle {
             }
             if !to_probe.is_empty() {
                 let batch: Vec<String> = to_probe.iter().cloned().collect();
+                let mut probe_frames: Vec<WireFrame> = Vec::new();
                 for chunk in batch.chunks(MAILBOX_PROBE_BATCH) {
                     let sub_id = format!(
                         "mailbox-probe-{:08x}",
@@ -178,9 +198,9 @@ impl SubscriptionLifecycle {
                         "limit": chunk.len(),
                     })
                     .to_string();
-                    for indexer in &self.indexer_relays {
-                        frames.push(WireFrame::Req {
-                            relay_url: indexer.clone(),
+                    for relay in &probe_relays {
+                        probe_frames.push(WireFrame::Req {
+                            relay_url: relay.clone(),
                             sub_id: sub_id.clone(),
                             filter_json: filter_json.clone(),
                             interest_id: InterestId(u64::MAX),
@@ -188,6 +208,10 @@ impl SubscriptionLifecycle {
                         });
                     }
                 }
+                // Auth-gate the probes: paused-relay probes are buffered (and
+                // flushed on `Authenticated`), failed-relay probes are dropped
+                // fail-closed, live-relay probes pass through.
+                frames.extend(self.auth_gate.partition(probe_frames));
                 self.probed_mailboxes.extend(to_probe);
             }
         }
