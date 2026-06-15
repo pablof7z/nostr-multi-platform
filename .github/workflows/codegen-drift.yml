@@ -64,6 +64,16 @@ jobs:
       - name: Check typed-decoder codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen typed-decoders --check
 
+      # ADR-0053 / Workstream-E4 — the kernel built-in projection key const
+      # (crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs)
+      # is DERIVED from the SAME projection registry. Fails any PR whose
+      # checked-in const differs from a fresh run, so the kernel built-in key
+      # set cannot drift from what codegen decodes (nmp-core's
+      # `builtin_projection_keys_const_matches_runtime` separately pins it
+      # against the kernel's actual make_update emission).
+      - name: Check kernel built-in key codegen is up to date
+        run: cargo run --quiet -p nmp-codegen -- gen builtin-keys --check
+
   # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
   # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs
   # must be byte-identical to a fresh `flatc --rust` run (rustfmt'd) over

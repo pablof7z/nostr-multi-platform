@@ -154,32 +154,48 @@ for the life of the app, with no opt-out.
      touches. (This is also why prefix/wildcard declaration is unnecessary: dynamic
      feeds are Tier-1, gated by registration, never Tier-2.)
 
-4. **The empty declared set means "no narrowing" (emit all Tier-2 built-ins); a
-   non-empty set narrows to its members.** This is the resolved design fork (see
-   "Alternatives" for the rejected "empty = omit-all" variant) and it is the correct
-   *interest-set* semantic, not a compatibility shim:
+4. **Projection-consumption intent is explicit and mandatory — a tri-state, NOT a
+   silent empty=everything default (AMENDED by Workstream-E4, 2026-06-16).**
 
-   - **Empty set (host expressed no opinion):** every Tier-2 built-in is emitted, as
-     today. This is exactly the relay interest-lattice semantic — an empty filter set
-     does not mean "subscribe to nothing"; narrowing is *additive*. It is also what
-     makes the kernel's own Rust consumers (chirp-tui, chirp-desktop, the test
-     helpers) and any app that has not yet declared keep working unchanged: they have
-     "no opinion," so they get the full set. No shim, no transitional flag — a sound
-     permanent semantic.
-   - **Non-empty set (host declared its consumption):** only the declared Tier-2 keys
-     are emitted; every other Tier-2 built-in is skipped entirely (producer not run).
-     This is where the win lands: an app that declares its narrow set (every real app
-     does, to opt into narrowing) stops paying for built-ins it never reads.
+   > **History.** The original Decision 4 (2026-06-13) made an *empty* declared set
+   > mean "no narrowing / emit everything," by analogy with the relay interest
+   > lattice. In practice that silent default was a footgun: an app (or an internal
+   > consumer) that simply *forgot* to declare got the full 4Hz firehose with no
+   > signal, indistinguishable from a deliberate "I consume everything." Workstream-E4
+   > retires the implicit path. There is now exactly **one** way to mean "everything"
+   > and **one** way to narrow; "undeclared" is a loud bug, not a silent opinion.
+
+   [`DeclaredProjections`](../../crates/nmp-core/src/kernel/snapshot_registry/declared.rs)
+   is a tri-state:
+
+   - **`Undeclared` (the forgotten-declaration footgun).** No intent was expressed.
+     To stay behaviour-preserving in release it still `permits()` everything (so a
+     production app never crashes and never goes dark, and a kernel tick under any
+     not-yet-declared consumer still emits the full set rather than dropping it), but
+     it is **loud**: `nmp_app_start` trips a `debug_assert!` (panic in dev/prod debug
+     builds) and emits a non-fatal `tracing::warn!` in release. It is NOT a silent
+     "emit everything" opinion. (The `debug_assert!` is compiled out under test
+     harnesses — `cfg(test)` / the `test-support` feature — so the ~24 existing test
+     call sites and the kernel unit tests need no per-site declaration; the kernel
+     primitive's `Undeclared` default still permits everything, so their behaviour is
+     unchanged. There is **no implicit `All` default in production**.)
+   - **`Narrow(set)` (the narrowing path, via `declare_consumed_projections`).** Only
+     the declared Tier-2 keys are emitted; every other Tier-2 built-in is skipped
+     entirely (producer not run). An empty declaration is a no-op (it never produces
+     an emit-nothing `Narrow(∅)`).
+   - **`All` (the explicit firehose, via `consume_all_builtin_projections`).** The ONE
+     non-footgun way to receive every Tier-2 built-in. Full clients (chirp-tui,
+     chirp-desktop, the Chirp iOS/Android shells, the gallery) call it; the
+     `nmp-defaults` builder typestate forces every app to choose `Narrow` or `All`
+     before `start()` compiles.
 
    **Why this still delivers the headline win.** Both Chirp shells *do* consume
-   `relay_diagnostics` (they ship diagnostics screens), so they declare it. The apps
-   that benefit are the non-diagnostics consumers (gallery, podcast-player, hl,
-   win-the-day): they declare their smaller set, which excludes `relay_diagnostics`,
-   and the kernel stops serializing it for them. The acceptance criterion —
-   "`relay_diagnostics` is no longer serialized unless declared" — holds for **every
-   host that declares a non-empty set**, which is every host that wants the
-   optimization. A host that declares nothing has, by definition, asked for nothing to
-   be narrowed.
+   `relay_diagnostics` (they ship diagnostics screens), so Chirp is a full client and
+   uses `consume_all`. The apps that benefit from narrowing are the non-diagnostics
+   consumers (podcast-player, hl, win-the-day): they declare their smaller set, which
+   excludes `relay_diagnostics`, and the kernel stops serializing it for them. The
+   acceptance criterion — "`relay_diagnostics` is no longer serialized unless
+   declared" — holds for **every host that declares a `Narrow` set**.
 
    **No present-vs-absent ambiguity.** The host authored the declared set, so it knows
    exactly which keys it asked for. A declared key with no data this tick follows each
@@ -228,9 +244,10 @@ for the life of the app, with no opt-out.
   diagnostics screen declares `"relay_diagnostics"`; a host that declares a non-empty
   set excluding it pays zero serialize/encode/decode for it, ever. This is the
   headline win and the acceptance criterion for this work. (A host that declares
-  nothing is, by the Decision-4 interest-set semantic, asking for no narrowing and
-  still receives it — the optimization is opt-in by declaring, exactly like a relay
-  filter.)
+  nothing is `Undeclared` — the loud forgotten-wiring case (Decision 4, amended): it
+  still receives everything in release so it never goes dark, but `nmp_app_start`
+  warns + `debug_assert!`s. The optimization is opt-in by declaring a `Narrow` set;
+  consuming everything is the explicit `consume_all`.)
 - The Tier-2 built-in producers (`relay_diagnostics_snapshot()`, `accounts_enriched()`,
   `resolved_profiles()`, …) are only invoked for declared keys — the most expensive
   roll-ups become pay-for-what-you-use.
@@ -295,23 +312,26 @@ for the life of the app, with no opt-out.
 
 ## Alternatives considered
 
+- **Empty declared set = silent "emit everything" (the original Decision 4).**
+  Superseded by Workstream-E4 (see Decision 4, amended). The silent empty=permissive
+  default was a footgun: a forgotten declaration was indistinguishable from a
+  deliberate "consume everything," and shipped the full 4Hz firehose with no signal.
+  The replacement keeps the *release behaviour* (an `Undeclared` consumer still
+  `permits()` everything, so nothing ever goes dark and there is no clean-break window
+  on master) but makes the forgotten case **loud** (`nmp_app_start` `debug_assert!` +
+  `tracing::warn!`) and provides exactly one explicit way to mean everything
+  (`consume_all_builtin_projections` → `All`) and one to narrow
+  (`declare_consumed_projections` → `Narrow`). The internal full clients (chirp-tui,
+  chirp-desktop, the Chirp shells, the gallery) now call `consume_all` explicitly
+  rather than relying on a silent default, and the test path keeps working without
+  per-site declarations (the `debug_assert!` is compiled out under `cfg(test)` /
+  `test-support`; `Undeclared` still permits everything). This is the doctrine-correct
+  end state: one way to do things, no silent footgun.
 - **Empty declared set = omit ALL Tier-2 built-ins (the task's literal default).**
-  Rejected in favour of "empty = no narrowing" (Decision 4). The omit-all default
-  forces a true clean break: every kernel Rust consumer (chirp-tui, chirp-desktop,
-  nmp-gallery), every external app, and ~24 test call sites would have to declare a
-  set in the same change or lose all built-ins, leaving a large window for a red
-  master and offering no behavioural benefit over the interest-set semantic (a
-  declaring host gets identical narrowing either way). The interest-set semantic
-  ("empty = no opinion = no narrowing") is the established pattern for the relay
-  interest lattice and profile/event claims, is not a shim (it is a sound permanent
-  rule), and still delivers the full win to every host that declares. The production
-  enforcement layer is now built: a one-time `tracing::warn!` in `nmp_app_start`
-  (`crates/nmp-ffi/src/lib.rs`) fires in ALL configurations (production, test, TUI/desktop
-  C-ABI callers) when a host starts without declaring any consumed projections. Because
-  `tracing::warn!` does not fail tests, it correctly covers test consumers that legitimately
-  have no opinion (ADR-0053 Decision 4 / empty=permissive semantic). The kernel-primitive
-  empty=permissive semantic is preserved at every consumer that bypasses the production
-  builder (chirp-tui, chirp-desktop, tests).
+  Also rejected: forcing `Undeclared` to emit *nothing* would make a forgotten
+  declaration silently blank every screen (and break behaviour-preservation on
+  master). The loud-but-permissive `Undeclared` above is strictly safer: it never goes
+  dark, and the `debug_assert!` catches the omission in dev/test immediately.
 - **Gate ALL projections (Tier-1 + Tier-2) on the declared set.** Rejected as
   redundant and risk-additive: Tier-1 already self-gates by registration, and the
   dynamic feeds need *lifecycle* gating (add/remove), not a static declared set.

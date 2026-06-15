@@ -32,6 +32,11 @@ fn run() -> Result<(), String> {
         // `ProjectionCache.generated.swift` from the same registry as
         // `typed-decoders`; implements the D3-3 merge algorithm.
         "projection-cache" => run_gen_projection_cache(args),
+        // ADR-0053 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
+        // Rust const for `nmp-core`. Writes
+        // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
+        // from the SAME projection registry as `typed-decoders`; no stdin.
+        "builtin-keys" => run_gen_builtin_keys(args),
         // NOTE (ADR-0046): `gen modules` was deleted. Composition is a library
         // (`nmp-defaults::register_defaults`), not a generated FFI crate.
         other => Err(format!("unknown subcommand `gen {other}`\n{}", help())),
@@ -277,6 +282,62 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
     }
 }
 
+/// `nmp gen builtin-keys [--out <path>] [--check]`.
+///
+/// Generates `KERNEL_BUILTIN_PROJECTION_KEYS` — the Tier-2 kernel-owned built-in
+/// projection key const `nmp-core` `include!`s. Driven entirely by the projection
+/// registry (`swift_projections_registry::kernel_builtin_projection_keys`); takes
+/// no schema stdin.
+///
+/// `--out` defaults to
+/// `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`.
+///
+/// `--check` diffs against the file on disk and exits non-zero on drift. The CI
+/// gate at `.github/workflows/codegen-drift.yml` uses this mode.
+fn run_gen_builtin_keys(args: Vec<String>) -> Result<(), String> {
+    let mut out =
+        PathBuf::from("crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs");
+    let mut check = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" => {
+                index += 1;
+                out = args
+                    .get(index)
+                    .map(PathBuf::from)
+                    .ok_or_else(|| "--out requires a path".to_string())?;
+            }
+            "--check" => check = true,
+            other => return Err(format!("unknown argument {other}\n{}", help())),
+        }
+        index += 1;
+    }
+
+    if check {
+        let outcome = nmp_codegen::check_builtin_keys(&out).map_err(|e| e.to_string())?;
+        if outcome.up_to_date {
+            println!("nmp gen builtin-keys --check: ok ({})", out.display());
+            Ok(())
+        } else {
+            let where_diff = outcome
+                .first_diff_line
+                .map(|n| format!(" (first differing line {n})"))
+                .unwrap_or_else(|| " (file missing)".to_string());
+            Err(format!(
+                "builtin-keys codegen stale at {}{where_diff}.\n\
+                 Regenerate with:\n  \
+                 cargo run -p nmp-codegen -- gen builtin-keys",
+                out.display()
+            ))
+        }
+    } else {
+        nmp_codegen::generate_builtin_keys(&out).map_err(|e| e.to_string())?;
+        println!("wrote {}", out.display());
+        Ok(())
+    }
+}
+
 /// Read the schema JSON from `path` (or stdin if `path == "-"`).
 fn read_schemas(path: &std::path::Path) -> Result<String, String> {
     if path == std::path::Path::new("-") {
@@ -301,6 +362,7 @@ fn help() -> String {
     "usage:\n  \
      nmp gen swift             [--schemas - | <path>] [--out <path>] [--check]\n  \
      nmp gen typed-decoders    [--out <path>] [--check]\n  \
-     nmp gen projection-cache  [--platform swift|kotlin] [--out <path>] [--check]"
+     nmp gen projection-cache  [--platform swift|kotlin] [--out <path>] [--check]\n  \
+     nmp gen builtin-keys      [--out <path>] [--check]"
         .to_string()
 }

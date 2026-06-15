@@ -47,8 +47,23 @@ pub mod swift_projection_cache;
 // is byte-for-byte semantically identical to the iOS implementation. Generates
 // `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
 pub mod kotlin_projection_cache;
+// ADR-0053 / Workstream-E4 — projection-tier classification + the codegen-derived
+// kernel built-in projection key set (derived from `swift_projections_registry`).
+pub mod projection_tier;
+// ADR-0053 / Workstream-E4 — generator for `nmp-core`'s
+// `KERNEL_BUILTIN_PROJECTION_KEYS` const. Renders `projection_tier`'s derived
+// list so the kernel built-in key set is not hand-maintained and cannot drift
+// from what codegen decodes / the kernel emits.
+pub mod rust_builtin_keys;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
+pub use projection_tier::{
+    kernel_builtin_projection_keys, projection_tier, ProjectionTier,
+    KERNEL_BUILTINS_WITHOUT_SHELL_DECODER,
+};
+pub use rust_builtin_keys::{
+    check_builtin_keys, generate_builtin_keys, render_builtin_keys, BuiltinKeysCheckOutcome,
+};
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
 pub use swift_projection_cache::{
     check_projection_cache, generate_projection_cache, render_projection_cache,

@@ -42,9 +42,10 @@ pub mod typed_api;
 mod wallet_runtime;
 
 pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus};
-// ADR-0053 — Chirp's host-declared Tier-2 built-in projection consumption set +
-// the single C-ABI call both shells use to declare it.
-pub use ffi::{nmp_app_chirp_declare_consumed_projections, CHIRP_CONSUMED_BUILTIN_PROJECTIONS};
+// ADR-0053 / Workstream-E4 — Chirp's projection-consumption intent: the single
+// C-ABI call every Chirp shell (iOS, Android, tui, desktop) uses to declare it
+// (`consume_all` — Chirp is a full client). No hand-maintained key list.
+pub use ffi::nmp_app_chirp_declare_consumed_projections;
 // M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
 // `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
 pub use action_specs::{

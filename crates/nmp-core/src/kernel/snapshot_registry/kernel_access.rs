@@ -92,9 +92,12 @@ impl Kernel {
     /// Cloned ONCE at the top of `snapshot_projections_with_publish_cluster` so
     /// the per-key `permits()` checks don't re-lock the registry mutex for every
     /// Tier-2 built-in. When no slot is bound or the mutex is poisoned the result
-    /// is an empty `DeclaredProjections` — which `permits()` everything (D6: a
-    /// gate-read failure degrades to "no narrowing", never to "drop all
-    /// built-ins", and never a panic at the boundary).
+    /// is `DeclaredProjections::default()` — which `permits()` everything in
+    /// production (`Undeclared`) (D6: a gate-read failure degrades to "emit all",
+    /// never to "drop all built-ins", and never a panic at the boundary). The
+    /// loud forgotten-declaration check is at `nmp_app_start`, against the host's
+    /// *actual* declared state — never against this degraded fallback, so a
+    /// poisoned-mutex/no-slot read never false-fires the assert.
     pub(in crate::kernel) fn declared_projections_snapshot(&self) -> DeclaredProjections {
         match &self.snapshot_projections {
             Some(slot) => slot

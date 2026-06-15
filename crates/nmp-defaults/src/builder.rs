@@ -405,21 +405,25 @@ impl NmpAppBuilder<StorageSet> {
     /// (the full firehose — no narrowing), and advance to `ProjectionsDeclared`
     /// (unlocking `start()`).
     ///
-    /// This is the **visible, greppable** "I want everything" choice. It leaves
-    /// the kernel's declared set empty, which the kernel treats as permissive
-    /// (ADR-0053 Decision 4: empty = no narrowing = emit all built-ins). Use it
-    /// only when the host genuinely consumes the full set (diagnostics shells,
-    /// TUIs, tests). Production app shells should prefer
-    /// [`Self::declare_consumed_projections`] to avoid serializing built-ins no
-    /// screen reads (e.g. `relay_diagnostics`).
+    /// This is the **visible, greppable** "I want everything" choice. It sets
+    /// the kernel's declared set to the explicit `DeclaredProjections::All`
+    /// state (ADR-0053 / Workstream-E4: `All` is the ONE non-footgun way to mean
+    /// "every Tier-2 built-in"). Use it only when the host genuinely consumes
+    /// the full set (diagnostics shells, TUIs, tests). Production app shells
+    /// should prefer [`Self::declare_consumed_projections`] to avoid serializing
+    /// built-ins no screen reads (e.g. `relay_diagnostics`).
     ///
     /// The distinction from the old silent default is the whole point: omission
-    /// no longer compiles, so shipping the firehose is now an explicit act.
+    /// no longer compiles (the typestate), and "everything" is now an explicit
+    /// `All`, not a silent empty/undeclared set.
     #[must_use]
     pub fn consume_all_builtin_projections(self) -> NmpAppBuilder<ProjectionsDeclared> {
-        // Intentionally declare nothing → the kernel's empty=permissive
-        // semantic emits every Tier-2 built-in. The typestate advance is the
-        // record that this was a deliberate choice.
+        // SAFETY: `self.app` non-null (builder invariant); not yet started.
+        let app: &NmpApp = unsafe { &*self.app };
+        // Explicit `All` — NOT a silent empty set. An undeclared app is the loud
+        // forgotten-wiring footgun at `nmp_app_start`; this records the
+        // deliberate "I consume everything" intent.
+        app.consume_all_builtin_projections();
         self.into_projections_declared()
     }
 

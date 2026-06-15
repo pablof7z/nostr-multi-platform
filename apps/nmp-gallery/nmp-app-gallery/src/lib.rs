@@ -105,6 +105,12 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     // pointer they got back from `nmp_app_new`.
     let app = unsafe { &mut *(app as *mut nmp_ffi::NmpApp) };
     nmp_defaults::register_defaults(app);
+    // ADR-0053 / Workstream-E4 — the gallery is a full client (it showcases
+    // every component, so it reads the full built-in set). Declare that intent
+    // explicitly here: an undeclared start is the loud forgotten-wiring footgun,
+    // not a silent firehose. Both gallery shells (tui, android) route through
+    // this register helper, so one call covers them.
+    app.consume_all_builtin_projections();
 }
 
 #[cfg(test)]

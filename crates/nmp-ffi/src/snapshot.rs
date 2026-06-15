@@ -266,6 +266,29 @@ pub extern "C" fn nmp_app_declare_consumed_projections(
     app.declare_consumed_projections(declared);
 }
 
+/// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+/// built-in projection" intent (`DeclaredProjections::All`).
+///
+/// This is the ONE non-footgun way to receive the full built-in set: a host
+/// that genuinely reads everything (a full client like chirp-tui / chirp-desktop,
+/// or the Chirp shells) calls this instead of leaving the consumption intent
+/// undeclared (which `nmp_app_start` treats as a loud forgotten-wiring bug, not
+/// a silent firehose).
+///
+/// Idempotent; intended as a host-init call before `nmp_app_start`. A null `app`
+/// is a silent no-op (D6).
+///
+/// # Safety
+/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_consume_all_builtin_projections(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    app.consume_all_builtin_projections();
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{nmp_app_free, nmp_app_new};
