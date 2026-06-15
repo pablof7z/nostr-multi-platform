@@ -128,13 +128,18 @@ path = "crates/nmp-nip51"
 name = "nmp-nip57"
 path = "crates/nmp-nip57"
 
-# nmp-blossom and nmp-nip60 are PARKED — excluded from the default workspace
-# (see top-level Cargo.toml [workspace] exclude, issue #1250). They are not
-# workspace members, so they must NOT appear here: this manifest is the
-# release-readiness source of truth and the dry-run runs `cargo package -p`
-# over every public_crate. Re-add when the milestones enter scope:
-#   nmp-blossom → Blossom M10 (#998)
-#   nmp-nip60   → Cashu / nutzaps (#1001)
+# nmp-blossom (BUD-02 blob uploads) was un-parked in #1428 and is now a v1
+# workspace member, so it is classified here as a public crate.
+[[public_crates]]
+name = "nmp-blossom"
+path = "crates/nmp-blossom"
+
+# nmp-nip60 is PARKED — excluded from the default workspace (see top-level
+# Cargo.toml [workspace] exclude, issue #1250). It is not a workspace member,
+# so it must NOT appear here: this manifest is the release-readiness source of
+# truth and the dry-run runs `cargo package -p` over every public_crate. Re-add
+# when the milestone enters scope:
+#   nmp-nip60 → Cashu / nutzaps (#1001)
 
 [[public_crates]]
 name = "nmp-nip59"
