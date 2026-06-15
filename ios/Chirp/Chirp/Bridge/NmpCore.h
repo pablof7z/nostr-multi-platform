@@ -505,12 +505,11 @@ uint32_t nmp_app_chirp_register(void *app,
                                 void **handle_out);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
-// ADR-0053 — declare Chirp's static Tier-2 built-in projection consumption set
-// (the union of every kernel-owned built-in the iOS + Android shells decode).
-// The kernel then serializes only those built-ins. Call once at app
-// construction, before `nmp_app_start`. The key list is owned by nmp-app-chirp
-// (`CHIRP_CONSUMED_BUILTIN_PROJECTIONS`); the shell makes only this one static
-// call. A null `app` is a silent no-op (D6).
+// ADR-0053 — declare Chirp's built-in projection consumption. Chirp's screens
+// (incl. the diagnostics view) read every kernel-owned built-in, so this routes
+// to `consume_all_builtin_projections` (the codegen-derived built-in key set —
+// the single source of truth, no hand-maintained list). Call once at app
+// construction, before `nmp_app_start`. A null `app` is a silent no-op (D6).
 void nmp_app_chirp_declare_consumed_projections(void *app);
 // Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.
 // Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with

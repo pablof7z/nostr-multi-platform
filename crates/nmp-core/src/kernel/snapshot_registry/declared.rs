@@ -25,11 +25,13 @@
 //! behaviour-preserving in release it still permits every built-in (so production
 //! never crashes and never goes dark), but it is **loud** — `nmp_app_start` trips a
 //! `debug_assert!` (panic in dev/test) and emits a non-fatal `tracing::warn!` in
-//! release. Internal Rust consumers (chirp-tui / chirp-desktop) and the test path
-//! make their intent explicit (`consume_all_builtin_projections`); the
-//! `#[cfg(any(test, feature = "test-support"))]` default is `All` so existing tests
-//! need no per-site declaration. **Production has no implicit `All` default** — an
-//! undeclared production app is the loud forgotten-wiring case, never silent.
+//! release. Internal Rust consumers (chirp-tui / chirp-desktop) make their intent
+//! explicit (`consume_all_builtin_projections`). The `Default` is `Undeclared`
+//! (which permits-all in release), and the loud `debug_assert!` is compiled out
+//! under `#[cfg(any(test, feature = "test-support"))]`, so existing tests rely on
+//! `Undeclared`-permits-all and need no per-site declaration without tripping the
+//! assert. **Production has no implicit `All` default** — an undeclared production
+//! app is the loud forgotten-wiring case (warn + debug-assert), never silent.
 //!
 //! Tier-1 host/protocol projections (`SnapshotRegistry::register*`) are **not** gated
 //! here — they already self-gate by registration (registration *is* the declaration),
