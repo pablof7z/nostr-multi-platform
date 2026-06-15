@@ -58,7 +58,7 @@ restarts.
 
 ```rust
 let app = NmpAppBuilder::new()
-    .with_relay("wss://relay.nostr.band", "both")
+    .with_relay("wss://nos.lol", "both")
     .in_memory()
     .start(RunConfig::default());
 ```

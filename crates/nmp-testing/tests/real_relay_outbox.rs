@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{
-    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, NOSTR_BAND, NOS_LOL,
+    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, PURPLEPAG_ES, NOS_LOL,
     PRIMAL_RELAY,
 };
 use nmp_core::publish::{OutboxResolver, PublishTarget};
@@ -57,7 +57,7 @@ const AUTHORS: &[(&str, &str)] = &[
 ];
 
 /// Relays to try, in order, for the kind:10002 REQ.
-const RELAYS: &[&str] = &[DAMUS_RELAY, PRIMAL_RELAY, NOSTR_BAND, NOS_LOL];
+const RELAYS: &[&str] = &[DAMUS_RELAY, PRIMAL_RELAY, PURPLEPAG_ES, NOS_LOL];
 
 /// A live kind:10002 captured from a real relay, plus its parsed write-set.
 struct LiveListing {

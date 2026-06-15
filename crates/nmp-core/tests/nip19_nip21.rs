@@ -234,7 +234,7 @@ fn naddr_with_relays() {
         identifier: "hello-world".into(),
         pubkey: FF_HEX.into(),
         kind: 30023,
-        relays: vec!["wss://relay.nostr.band".into()],
+        relays: vec!["wss://relay.damus.io".into()],
     };
     assert_eq!(decode_naddr(&encode_naddr(&data).unwrap()).unwrap(), data);
 }
@@ -469,7 +469,7 @@ fn nip21_naddr_uri_round_trip() {
         identifier: "test-article".into(),
         pubkey: ZERO_HEX.into(),
         kind: 30023,
-        relays: vec!["wss://relay.nostr.band".into()],
+        relays: vec!["wss://relay.damus.io".into()],
     };
     let uri = format!("nostr:{}", encode_naddr(&data).unwrap());
     let target = parse_nostr_uri(&uri).unwrap();

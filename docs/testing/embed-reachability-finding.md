@@ -25,5 +25,5 @@ TUI smoke (`./target/release/nmp-gallery-tui --smoke`): **✅ ALL 2 embed target
 ## Cold-start timing note (not a bug)
 iOS cold kernel needs ~20-30s to connect → claim → fetch from nos.lol before an embed resolves. The "loading" placeholder during that window is correct. Screenshot capture for the verification PDF must wait that long per embed.
 
-## Secondary cleanup (independent, low priority)
-`apps/nmp-gallery/tui/src/main.rs:344-346` prints a false "seeded relays are purplepag.es, nos.lol, relay.damus.io, relay.nostr.band" message — the actual seed is `showcase::references().relays` (purplepag.es + relay.primal.net). Fix the message to read the real list.
+## Secondary cleanup (FIXED)
+`apps/nmp-gallery/tui/src/main.rs` previously printed a false hardcoded "seeded relays" message listing four relays — the actual seed is `showcase::references().relays` (purplepag.es + relay.primal.net). The hardcoded list (which included a now-removed dead AUTH-walled relay) was replaced by printing the real `showcase::references().relays` at runtime.

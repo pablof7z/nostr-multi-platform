@@ -37,7 +37,7 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use common::{
-    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, NOSTR_BAND, PRIMAL_RELAY,
+    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, PURPLEPAG_ES, PRIMAL_RELAY,
 };
 use nmp_core::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
@@ -192,7 +192,7 @@ fn skip(attempted_relays: &[&str], detail: &str) {
 #[test]
 #[ignore = "real-relay (run with --ignored)"]
 fn kind3_change_forces_subscription_replan() {
-    let relays = [DAMUS_RELAY, PRIMAL_RELAY, NOSTR_BAND];
+    let relays = [DAMUS_RELAY, PRIMAL_RELAY, PURPLEPAG_ES];
     let mut attempted: Vec<&str> = Vec::new();
 
     // ── Stage 1: fetch a REAL kind:3 + extract followees ─────────────────────

@@ -50,7 +50,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, NOSTR_BAND, NOS_LOL};
+use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, PURPLEPAG_ES, NOS_LOL};
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -73,7 +73,7 @@ const PABLO_HEX: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5a
 const RELAYS: &[&str] = &[
     DAMUS_RELAY,
     NOS_LOL,
-    NOSTR_BAND,
+    PURPLEPAG_ES,
     "wss://relay.snort.social",
     "wss://relay.primal.net",
 ];

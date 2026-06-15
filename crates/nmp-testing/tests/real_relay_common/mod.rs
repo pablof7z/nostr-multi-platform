@@ -46,7 +46,7 @@ pub type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 pub const DAMUS_RELAY: &str = "wss://relay.damus.io";
 pub const NOS_LOL: &str = "wss://nos.lol";
 pub const PRIMAL_RELAY: &str = "wss://relay.primal.net";
-pub const NOSTR_BAND: &str = "wss://relay.nostr.band";
+pub const PURPLEPAG_ES: &str = "wss://purplepag.es";
 
 /// Per-`read()` socket timeout. Short so drain loops stay responsive to a
 /// wall-clock deadline.
