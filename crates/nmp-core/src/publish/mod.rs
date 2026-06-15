@@ -33,6 +33,11 @@
 mod action;
 mod engine;
 mod fs_store;
+// Workstream C — the publish-policy one-door: the single declared table that
+// maps a kind to its `PublishBehavior`. The reserved-builder / private /
+// discovery / public classification lives here, not as scattered kind literals
+// in `action.rs`.
+mod policy;
 mod state;
 mod store;
 // Spec §271 (2026-05-25) test-only NIP-65 resolver — see module docs for
