@@ -11,13 +11,19 @@
 //! - `start_handshake(uri)` validates the URI, opens a relay client,
 //!   subscribes to inbound responses, spawns a worker thread that drives the
 //!   handshake state machine, and reports progress to the host callback.
-//! - `cancel()` flips the active session's `AtomicBool` cancel flag and
-//!   tears down the relay client. Idempotent.
+//! - `cancel()` flips the active session's `AtomicBool` cancel flag, tears
+//!   down the relay client, and **detaches** the session's worker threads onto
+//!   a background reaper (it never joins them on the caller's path). Idempotent.
 //!
-//! Threading: every method here is non-blocking from the caller's POV. The
-//! actual relay I/O and handshake protocol runs on a dedicated worker thread
-//! per call; the broker keeps the join handle so it can be cleanly torn
-//! down.
+//! Threading: every method here is non-blocking from the caller's POV — and
+//! `cancel()` in particular must never block, because it runs on the actor /
+//! capability call path. A blocking join there froze the actor for up to the
+//! relay connect timeout — the bug ADR-0050's signer-session port set out to
+//! kill ("bunker cancel is detach — signal and drop — not join"). The actual
+//! relay I/O and handshake protocol runs on a dedicated worker thread per call;
+//! the broker keeps the join handles only so a detached reaper can reclaim them
+//! after the signal makes them self-exit. No thread is leaked: the reaper owns
+//! and joins every handle off the caller's path.
 
 mod nostrconnect;
 mod restore;
@@ -60,10 +66,11 @@ struct ActiveSession {
     handshake_thread: Option<JoinHandle<()>>,
     /// Inbound-dispatcher thread spawned by `install_completed_signer` (routes
     /// steady-state kind:24133 replies to the transport). Stored so `cancel()`
-    /// can join it after the handshake thread — without this handle the
-    /// dispatcher thread leaked on every session teardown, accumulating one
-    /// stuck thread per rapid reconnect. `None` until the handshake completes
-    /// and the signer is installed.
+    /// can hand it to the background reaper after signalling shutdown — without
+    /// this handle the dispatcher thread leaked on every session teardown,
+    /// accumulating one stuck thread per rapid reconnect. The reaper, not the
+    /// caller, joins it. `None` until the handshake completes and the signer is
+    /// installed.
     dispatcher_thread: Option<JoinHandle<()>>,
     /// Strong ref to the transport so the relay-event callback can reach it.
     /// Kept here so we can drop it on `cancel`.
@@ -134,6 +141,16 @@ impl BunkerBroker {
     }
 
     /// Cancel the active session if any. Idempotent.
+    ///
+    /// **Signal-only / detached.** This runs on the actor / capability call
+    /// path, so it MUST NOT block. It signals shutdown (set the cancel flag,
+    /// drain pending signs, shut down the relay client) and then hands the
+    /// session's worker handles to a detached background **reaper** thread that
+    /// joins them off this path. The caller returns immediately, even while a
+    /// dispatcher thread is still winding down or a relay worker is stuck mid
+    /// connect — eliminating the up-to-connect-timeout actor freeze a join on
+    /// this path used to cause (ADR-0050: "bunker cancel is detach, not join").
+    /// No thread leaks: the reaper owns and joins every handle.
     pub fn cancel(&self) {
         let session = if let Ok(mut guard) = self.active.lock() {
             guard.take()
@@ -158,35 +175,62 @@ impl BunkerBroker {
             session
                 .cancel
                 .store(true, std::sync::atomic::Ordering::Release);
+            // Signal shutdown to the relay worker. This drops the event
+            // callback's `inbound_tx` clone (closing the dispatcher's channel)
+            // and tells the relay worker to exit — both observe the signal and
+            // self-terminate; no join is needed here for correctness.
             session.relay.shutdown();
-            if let Some(handle) = session.handshake_thread {
-                // Best-effort join. Two distinct threads need to exit:
-                //   - The handshake thread observes `cancel` via the
-                //     `await_response` recv_timeout loop in handshake.rs;
-                //     wakes within ~200ms.
-                //   - The relay worker thread observes the
-                //     `WorkerCmd::Shutdown` we just sent via
-                //     `session.relay.shutdown()`. It exits promptly when
-                //     idle or mid-backoff (the readiness poll wakes via the
-                //     control-channel mio::Waker; the backoff wait blocks on
-                //     a control recv_timeout that drops out on Shutdown).
-                //     A worker stuck inside the TCP+TLS+WS dial now returns
-                //     within the bounded `TCP_CONNECT_TIMEOUT` (10 s) in
-                //     `nmp-network::relay_worker::open_relay_socket`, so this
-                //     join is no longer exposed to the full OS connect timeout.
-                let _ = handle.join();
-            }
-            // Join the steady-state inbound dispatcher AFTER the handshake
-            // thread. By now the relay client is shut down (dropping the
-            // event-callback's `inbound_tx` clone) and the handshake thread has
-            // returned (dropping its original `inbound_tx`), so the dispatcher's
-            // blocking `inbound_rx.recv()` has returned `Err` and this join
-            // resolves promptly. Without this join the dispatcher thread leaked
-            // on every teardown (defect 3).
-            if let Some(handle) = session.dispatcher_thread {
-                let _ = handle.join();
-            }
+
+            // Detach the worker handles onto a background reaper rather than
+            // joining them inline. The two threads self-exit on the signals we
+            // just raised:
+            //   - The handshake thread observes `cancel` via the
+            //     `await_response` recv_timeout loop in handshake.rs (wakes
+            //     within ~200ms), or the relay worker it drives exits on the
+            //     `WorkerCmd::Shutdown` from `relay.shutdown()` — a worker stuck
+            //     mid dial returns within `TCP_CONNECT_TIMEOUT` (10s). Either
+            //     way it terminates without our intervention.
+            //   - The inbound dispatcher's blocking `inbound_rx.recv()` returns
+            //     `Err` once every `inbound_tx` sender is dropped: the relay's
+            //     event-callback clone (dropped as `relay.shutdown()` joins the
+            //     relay's own dispatcher) and the handshake thread's original
+            //     sender (dropped when that thread returns).
+            // The reaper joins them so no thread/fd leaks, but the actor call
+            // path never blocks on that join.
+            Self::spawn_reaper(session.handshake_thread, session.dispatcher_thread);
         }
+    }
+
+    /// Background reaper: joins a cancelled session's worker handles off the
+    /// actor / capability call path. Spawned detached by [`cancel`]; it blocks
+    /// on the joins (the threads self-exit promptly on the cancel/shutdown
+    /// signals already raised) so the threads are reclaimed without leaking,
+    /// while the caller of `cancel()` returns immediately. A no-op (no thread
+    /// spawned) when there is nothing to reap.
+    fn spawn_reaper(
+        handshake_thread: Option<JoinHandle<()>>,
+        dispatcher_thread: Option<JoinHandle<()>>,
+    ) {
+        if handshake_thread.is_none() && dispatcher_thread.is_none() {
+            return;
+        }
+        // Detached: we never join the reaper itself. It joins the session
+        // threads, which terminate on their own after the cancel signal, then
+        // returns. Naming it aids leak diagnosis in a thread dump.
+        let _ = std::thread::Builder::new()
+            .name("nmp-broker-cancel-reaper".to_string())
+            .spawn(move || {
+                if let Some(handle) = handshake_thread {
+                    let _ = handle.join();
+                }
+                // Join the dispatcher AFTER the handshake thread: by then the
+                // handshake thread has dropped its `inbound_tx`, so the
+                // dispatcher's `recv()` has returned `Err` and this join is
+                // immediate.
+                if let Some(handle) = dispatcher_thread {
+                    let _ = handle.join();
+                }
+            });
     }
 
     /// Body of the per-handshake worker thread. Outline:
@@ -378,9 +422,10 @@ impl BunkerBroker {
         // on its own when every `inbound_tx` sender drops — the handshake
         // thread's original sender (dropped when that thread returns) and the
         // relay client's event-callback clone (dropped when `relay.shutdown()`
-        // joins the relay's own dispatcher). `cancel()` does both, then joins
-        // the handle we stash below, so the thread can never outlive the
-        // session (defect: leaked dispatcher thread under rapid reconnects).
+        // joins the relay's own dispatcher). `cancel()` does both (the signal),
+        // then hands the handle we stash below to the background reaper, so the
+        // thread can never outlive the session yet never blocks the caller
+        // (defect: leaked dispatcher thread under rapid reconnects).
         let transport_for_dispatch = Arc::clone(&transport);
         let dispatcher_thread = std::thread::Builder::new()
             .name("nmp-broker-inbound-dispatch".to_string())
@@ -404,13 +449,14 @@ impl BunkerBroker {
             }
         }
         // Race guard: if the session was already taken by a concurrent
-        // `cancel()` (so the stash above found no session), join the dispatcher
-        // here rather than detaching it. By this point `cancel()` has dropped
-        // the relay's event callback, so the dispatcher's `inbound_rx.recv()`
-        // has already (or will shortly) return `Err` and the join returns
-        // promptly — never a hang, never a leaked thread.
-        if let Some(handle) = orphaned_dispatcher {
-            let _ = handle.join();
+        // `cancel()` (so the stash above found no session), hand the dispatcher
+        // to the background reaper rather than detaching it or joining it here.
+        // By this point `cancel()` has dropped the relay's event callback, so
+        // the dispatcher's `inbound_rx.recv()` has already (or will shortly)
+        // return `Err`; the reaper joins it off-path — never a hang, never a
+        // leaked thread. This keeps every join uniformly off the call path.
+        if orphaned_dispatcher.is_some() {
+            Self::spawn_reaper(None, orphaned_dispatcher);
         }
 
         self.emit(BrokerEvent::SignerReady {
