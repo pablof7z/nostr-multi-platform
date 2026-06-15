@@ -26,6 +26,7 @@ data class ExternalSignerRequest(
     @SerialName("current_user") val currentUser: String? = null,
     val counterparty: String? = null,
     val permissions: List<Nip55Permission> = emptyList(),
+    @SerialName("granted_permissions") val grantedPermissions: List<Nip55Permission> = emptyList(),
     @SerialName("signer_package") val signerPackage: String? = null,
     @SerialName("force_interactive") val forceInteractive: Boolean = false,
 )

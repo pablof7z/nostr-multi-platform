@@ -37,11 +37,11 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use nostr::PublicKey;
 use nmp_signer_iface::{
     ExternalSignerMethod, ExternalSignerOutcome, ExternalSignerRequest, ExternalSignerResponse,
     ExternalSignerTransport, Nip55Permission, SignerError, SignerOp,
 };
+use nostr::PublicKey;
 use serde_json;
 
 use crate::signers::payload::{Nip55Payload, SignerPayload};
@@ -53,8 +53,13 @@ pub(crate) mod mapper;
 
 pub use connect::Nip55Connect;
 
-/// Pending request correlation table: correlation_id → one-shot sender.
-type PendingMap = HashMap<String, Sender<Result<String, SignerError>>>;
+/// Pending request correlation table: correlation_id → parked request state.
+type PendingMap = HashMap<String, PendingRequest>;
+
+struct PendingRequest {
+    request: ExternalSignerRequest,
+    sender: Sender<Result<String, SignerError>>,
+}
 
 /// Fully-initialised NIP-55 signer.
 ///
@@ -85,6 +90,10 @@ struct Nip55State {
     granted_permissions: Vec<Nip55Permission>,
     /// In-flight correlation_id → response channel.
     pending: PendingMap,
+    /// Correlation id currently occupying Android's single interactive Intent
+    /// result slot. ContentResolver requests may run concurrently; Intent
+    /// approvals are serialized by policy before native dispatch.
+    interactive_in_flight: Option<String>,
 }
 
 /// Default permission batch requested on first connect.
@@ -141,6 +150,7 @@ impl Nip55Signer {
                 signer_package,
                 granted_permissions,
                 pending: HashMap::new(),
+                interactive_in_flight: None,
             })),
             transport,
         }
@@ -177,38 +187,107 @@ impl Nip55Signer {
     /// Deliver a host response by correlation id.
     ///
     /// Deserialises `response_json` as `ExternalSignerResponse`, looks up the
-    /// pending `Sender` by `correlation_id`, and resolves it. Unknown
-    /// correlation ids are silently dropped (D6 — bad frames degrade to
-    /// timeout).
+    /// pending request by `correlation_id`, and either resolves it or retries a
+    /// revoked ContentResolver fast-path once via a forced interactive Intent.
+    /// Unknown correlation ids are silently dropped (D6 — bad frames degrade
+    /// to timeout).
     pub fn deliver_external_response(&self, response_json: &str) {
         let resp: ExternalSignerResponse = match serde_json::from_str(response_json) {
             Ok(r) => r,
             Err(_) => return, // malformed — degrade to timeout
         };
 
-        let (result, new_package) = match resp.outcome {
-            ExternalSignerOutcome::Ok { result } => (Ok(result), resp.signer_package),
-            ExternalSignerOutcome::Rejected { reason } => {
-                (Err(SignerError::Rejected(reason)), None)
-            }
-            ExternalSignerOutcome::Unavailable { reason } => {
-                (Err(SignerError::Unavailable(reason)), None)
-            }
-            ExternalSignerOutcome::SignerError { reason } => {
-                (Err(SignerError::Backend(reason)), None)
-            }
-        };
+        let correlation_id = resp.correlation_id.clone();
+        let mut retry_request = None;
+        let mut completed = None;
 
         if let Ok(mut state) = self.state.lock() {
             // Update the cached signer_package on a successful get_public_key
             // reply (the host reports it in the response).
-            if let Some(pkg) = new_package {
-                state.signer_package = Some(pkg);
+            if let ExternalSignerOutcome::Ok { .. } = &resp.outcome {
+                if let Some(pkg) = resp.signer_package.clone() {
+                    state.signer_package = Some(pkg);
+                }
             }
-            if let Some(sender) = state.pending.remove(&resp.correlation_id) {
-                let _ = sender.send(result);
+
+            let Some(mut pending) = state.pending.remove(&correlation_id) else {
+                return;
+            };
+            if state.interactive_in_flight.as_deref() == Some(correlation_id.as_str()) {
+                state.interactive_in_flight = None;
+            }
+
+            match resp.outcome {
+                ExternalSignerOutcome::Ok { result } => {
+                    completed = Some((pending.sender, Ok(result)));
+                }
+                ExternalSignerOutcome::Rejected { reason } => {
+                    completed = Some((pending.sender, Err(SignerError::Rejected(reason))));
+                }
+                ExternalSignerOutcome::SignerError { reason } => {
+                    completed = Some((pending.sender, Err(SignerError::Backend(reason))));
+                }
+                ExternalSignerOutcome::Unavailable { reason } => {
+                    if pending.request.uses_content_resolver_fast_path() {
+                        if state.interactive_in_flight.is_none() {
+                            pending.request.force_interactive = true;
+                            state.interactive_in_flight = Some(correlation_id.clone());
+                            retry_request = Some(pending.request.clone());
+                            state.pending.insert(correlation_id.clone(), pending);
+                        } else {
+                            completed = Some((
+                                pending.sender,
+                                Err(SignerError::Unavailable(format!(
+                                    "external signer approval already pending; resolver retry blocked: {reason}"
+                                ))),
+                            ));
+                        }
+                    } else {
+                        completed = Some((pending.sender, Err(SignerError::Unavailable(reason))));
+                    }
+                }
             }
         }
+
+        if let Some(request) = retry_request {
+            if let Err(e) = self.transport.send_request(request) {
+                if let Ok(mut state) = self.state.lock() {
+                    if state.interactive_in_flight.as_deref() == Some(correlation_id.as_str()) {
+                        state.interactive_in_flight = None;
+                    }
+                    if let Some(pending) = state.pending.remove(&correlation_id) {
+                        completed = Some((pending.sender, Err(e)));
+                    }
+                }
+            }
+        }
+
+        if let Some((sender, result)) = completed {
+            let _ = sender.send(result);
+        }
+    }
+
+    fn drain_pending_with_error_locked(state: &mut Nip55State, msg: &str) {
+        state.interactive_in_flight = None;
+        for (_id, pending) in state.pending.drain() {
+            let _ = pending
+                .sender
+                .send(Err(SignerError::Rejected(msg.to_string())));
+        }
+    }
+
+    fn clear_pending_after_send_error(
+        &self,
+        correlation_id: &str,
+        err: SignerError,
+    ) -> SignerOp<String> {
+        if let Ok(mut state) = self.state.lock() {
+            if state.interactive_in_flight.as_deref() == Some(correlation_id) {
+                state.interactive_in_flight = None;
+            }
+            state.pending.remove(correlation_id);
+        }
+        SignerOp::err(err)
     }
 
     /// Drain every pending op with an error. Called on disconnect/account
@@ -216,9 +295,7 @@ impl Nip55Signer {
     /// deadline to elapse.
     pub fn drain_pending_with_error(&self, msg: &str) {
         if let Ok(mut state) = self.state.lock() {
-            for (_id, sender) in state.pending.drain() {
-                let _ = sender.send(Err(SignerError::Rejected(msg.to_string())));
-            }
+            Self::drain_pending_with_error_locked(&mut state, msg);
         }
     }
 
@@ -230,16 +307,16 @@ impl Nip55Signer {
     /// Number of in-flight ops awaiting a response. Test-only.
     #[cfg(test)]
     pub(crate) fn pending_len(&self) -> usize {
-        self.state
-            .lock()
-            .map(|s| s.pending.len())
-            .unwrap_or(0)
+        self.state.lock().map(|s| s.pending.len()).unwrap_or(0)
     }
 
     /// Current signer package (test helper).
     #[cfg(test)]
     pub(crate) fn signer_package(&self) -> Option<String> {
-        self.state.lock().ok().and_then(|s| s.signer_package.clone())
+        self.state
+            .lock()
+            .ok()
+            .and_then(|s| s.signer_package.clone())
     }
 
     /// Enqueue an outbound request and park a one-shot receiver.
@@ -258,7 +335,7 @@ impl Nip55Signer {
         include_permissions: bool,
     ) -> SignerOp<String> {
         let correlation_id = generate_correlation_id();
-        let (state_pkg, state_perms) = {
+        let (state_pkg, requested_permissions, granted_permissions) = {
             match self.state.lock() {
                 Ok(s) => (
                     s.signer_package.clone(),
@@ -267,6 +344,7 @@ impl Nip55Signer {
                     } else {
                         Vec::new()
                     },
+                    s.granted_permissions.clone(),
                 ),
                 Err(_) => return SignerOp::err(SignerError::Backend("state poisoned".to_string())),
             }
@@ -278,7 +356,8 @@ impl Nip55Signer {
             payload,
             current_user: Some(self.user_pubkey.to_hex()),
             counterparty,
-            permissions: state_perms,
+            permissions: requested_permissions,
+            granted_permissions,
             signer_package: state_pkg,
             force_interactive: false,
         };
@@ -286,16 +365,27 @@ impl Nip55Signer {
         let (tx, rx) = mpsc::channel();
 
         if let Ok(mut state) = self.state.lock() {
-            state.pending.insert(correlation_id.clone(), tx);
+            if request.requires_interactive_intent() {
+                if state.interactive_in_flight.is_some() {
+                    return SignerOp::err(SignerError::Unavailable(
+                        "external signer approval already pending".to_string(),
+                    ));
+                }
+                state.interactive_in_flight = Some(correlation_id.clone());
+            }
+            state.pending.insert(
+                correlation_id.clone(),
+                PendingRequest {
+                    request: request.clone(),
+                    sender: tx,
+                },
+            );
         } else {
             return SignerOp::err(SignerError::Backend("state poisoned".to_string()));
         }
 
         if let Err(e) = self.transport.send_request(request) {
-            if let Ok(mut state) = self.state.lock() {
-                state.pending.remove(&correlation_id);
-            }
-            return SignerOp::err(e);
+            return self.clear_pending_after_send_error(&correlation_id, e);
         }
 
         SignerOp::Pending(rx)
@@ -326,7 +416,10 @@ impl Signer for Nip55Signer {
         self.user_pubkey
     }
 
-    fn sign(&self, unsigned: nmp_core::substrate::UnsignedEvent) -> SignerOp<nmp_core::substrate::SignedEvent> {
+    fn sign(
+        &self,
+        unsigned: nmp_core::substrate::UnsignedEvent,
+    ) -> SignerOp<nmp_core::substrate::SignedEvent> {
         let payload = match serde_json::to_string(&unsigned) {
             Ok(s) => s,
             Err(e) => {
@@ -365,11 +458,7 @@ impl Signer for Nip55Signer {
 }
 
 impl Nip44 for Nip55Signer {
-    fn encrypt(
-        &self,
-        recipient: &PublicKey,
-        plaintext: &str,
-    ) -> SignerOp<String> {
+    fn encrypt(&self, recipient: &PublicKey, plaintext: &str) -> SignerOp<String> {
         self.enqueue(
             ExternalSignerMethod::Nip44Encrypt,
             plaintext.to_string(),
@@ -378,11 +467,7 @@ impl Nip44 for Nip55Signer {
         )
     }
 
-    fn decrypt(
-        &self,
-        sender: &PublicKey,
-        ciphertext: &str,
-    ) -> SignerOp<String> {
+    fn decrypt(&self, sender: &PublicKey, ciphertext: &str) -> SignerOp<String> {
         self.enqueue(
             ExternalSignerMethod::Nip44Decrypt,
             ciphertext.to_string(),

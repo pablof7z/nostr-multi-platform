@@ -84,6 +84,24 @@ pub enum ExternalSignerMethod {
     Nip04Decrypt,
 }
 
+impl ExternalSignerMethod {
+    /// Permission-kind prefix used for ContentResolver fast-path admission.
+    ///
+    /// `get_public_key` is intentionally excluded: first-connect is always an
+    /// interactive permission request, not a background resolver operation.
+    #[must_use]
+    pub fn granted_permission_prefix(&self) -> Option<&'static str> {
+        match self {
+            Self::GetPublicKey => None,
+            Self::SignEvent => Some("sign_event:"),
+            Self::Nip44Encrypt => Some("nip44_encrypt"),
+            Self::Nip44Decrypt => Some("nip44_decrypt"),
+            Self::Nip04Encrypt => Some("nip04_encrypt"),
+            Self::Nip04Decrypt => Some("nip04_decrypt"),
+        }
+    }
+}
+
 /// A permission token for the NIP-55 first-connect batch request.
 ///
 /// Amber grants the listed permissions permanently so subsequent calls can
@@ -163,6 +181,14 @@ pub struct ExternalSignerRequest {
     /// Non-empty **only** on the first `get_public_key` request (the
     /// permission batch). Empty on all subsequent calls.
     pub permissions: Vec<Nip55Permission>,
+    /// Persisted permissions the signer app has already granted.
+    ///
+    /// Distinct from [`Self::permissions`]: this field is a capability fact
+    /// used to select the `ContentResolver` fast-path, while `permissions` is
+    /// the requested permission batch sent to Amber only on interactive
+    /// permission requests.
+    #[serde(default)]
+    pub granted_permissions: Vec<Nip55Permission>,
     /// Package name of the signer app (e.g. `"com.greenart7c3.nostrsigner"`).
     /// `None` on the very first `get_public_key` (host resolves which app);
     /// `Some` on all subsequent calls once the package is known.
@@ -173,6 +199,34 @@ pub struct ExternalSignerRequest {
     /// The host checks this flag; it never retries on its own (D7).
     #[serde(default)]
     pub force_interactive: bool,
+}
+
+impl ExternalSignerRequest {
+    /// Whether this request is eligible for the NIP-55 ContentResolver path.
+    ///
+    /// This is the Rust-owned mirror of the Android bridge's mechanical
+    /// transport selection. Rust needs it to reject overlapping interactive
+    /// approvals and to decide when an `Unavailable` result may be retried via
+    /// Intent. Native still performs the OS dispatch and reports raw results.
+    #[must_use]
+    pub fn uses_content_resolver_fast_path(&self) -> bool {
+        !self.force_interactive
+            && self.signer_package.is_some()
+            && self
+                .method
+                .granted_permission_prefix()
+                .is_some_and(|prefix| {
+                    self.granted_permissions
+                        .iter()
+                        .any(|p| p.kind.starts_with(prefix))
+                })
+    }
+
+    /// Whether dispatching this request will require an interactive Intent.
+    #[must_use]
+    pub fn requires_interactive_intent(&self) -> bool {
+        !self.uses_content_resolver_fast_path()
+    }
 }
 
 /// Outcome of an external-signer request reported by the host.

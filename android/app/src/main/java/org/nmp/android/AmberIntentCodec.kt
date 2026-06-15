@@ -21,13 +21,13 @@ import android.net.Uri
  * | Condition | Mechanism |
  * |---|---|
  * | `forceInteractive == true` | Intent |
- * | `signerPackage` known AND method's permission in the request batch | ContentResolver |
+ * | `signerPackage` known AND method's permission in `grantedPermissions` | ContentResolver |
  * | otherwise | Intent |
  */
 internal fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean =
     !request.forceInteractive &&
         request.signerPackage != null &&
-        request.permissions.any { p -> p.kind.startsWith(request.method.toPermissionKind()) }
+        request.grantedPermissions.any { p -> p.kind.startsWith(request.method.toPermissionKind()) }
 
 /**
  * Select the reply value from an Amber `RESULT_OK` Intent (Stage-4 emulator

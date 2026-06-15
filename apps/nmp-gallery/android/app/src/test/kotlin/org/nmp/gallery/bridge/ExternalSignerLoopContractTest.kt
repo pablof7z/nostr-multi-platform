@@ -117,7 +117,8 @@ class ExternalSignerLoopContractTest {
                 "method": "sign_event",
                 "payload": "{\"kind\":1,\"content\":\"hi\"}",
                 "current_user": "deadbeef",
-                "permissions": [{"kind": "sign_event:1"}],
+                "permissions": [],
+                "granted_permissions": [{"kind": "sign_event:1"}],
                 "signer_package": "com.greenart7c3.nostrsigner",
                 "force_interactive": true
             }

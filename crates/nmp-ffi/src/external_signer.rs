@@ -116,7 +116,10 @@ pub(crate) struct Nip55Driver {
 }
 
 impl Nip55Driver {
-    pub(crate) fn new(tx: nmp_core::CommandSender, transport: Arc<CapabilitySignerTransport>) -> Self {
+    pub(crate) fn new(
+        tx: nmp_core::CommandSender,
+        transport: Arc<CapabilitySignerTransport>,
+    ) -> Self {
         Self {
             tx,
             transport,
@@ -137,7 +140,20 @@ impl Nip55Driver {
         let connect = Nip55Connect::new(signer_package);
         let request = connect.request().clone();
         if let Ok(mut guard) = self.pending_connect.lock() {
+            if guard.is_some() {
+                self.set_signer_state(
+                    "awaiting_approval",
+                    Some("external signer approval already pending".to_string()),
+                );
+                return;
+            }
             *guard = Some(connect);
+        } else {
+            self.set_signer_state(
+                "failed",
+                Some("external signer pending state poisoned".to_string()),
+            );
+            return;
         }
         self.set_signer_state("awaiting_approval", None);
         if let Err(e) = self.transport.send_request(request) {
@@ -194,9 +210,7 @@ impl Nip55Driver {
                     signers.push(Arc::clone(&signer));
                 }
                 let _ = self.tx.send(ActorCommand::AddSigner {
-                    source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(
-                        signer,
-                    ))),
+                    source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
                     make_active: true,
                 });
                 self.set_signer_state("ready", None);
@@ -239,9 +253,7 @@ impl Nip55Driver {
                     signers.push(Arc::clone(&signer));
                 }
                 let _ = self.tx.send(ActorCommand::AddSigner {
-                    source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(
-                        signer,
-                    ))),
+                    source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
                     make_active: true,
                 });
                 self.set_signer_state("ready", None);
@@ -306,19 +318,13 @@ impl RemoteSignerHandle for ArcNip55Signer {
 /// apps have independent drivers and a freed-then-recreated app re-initialises
 /// cleanly.
 ///
-/// Called by the Android JNI shims at `nativeNew`, after the capability
-/// callback trampoline is registered.
-///
-/// # Safety
-///
-/// `app` must be a valid pointer returned by `nmp_app_new()` and not yet
-/// freed. Passing null is a safe no-op.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_external_signer_init(app: *mut NmpApp) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
+/// `nmp_app_new` calls this before the actor can run `Start`, which fixes the
+/// restore-order bug where a persisted NIP-55 account degraded because the hook
+/// was installed only after host-specific Android setup. Android JNI shims may
+/// still call the public symbol after registering their capability trampoline;
+/// the same per-app driver is reused and reads the shared callback slot at
+/// dispatch time.
+pub(crate) fn init_external_signer_driver(app: &NmpApp) {
     let tx = app.actor_sender();
     let callback = Arc::clone(&app.capability_callback);
     let driver = app.external_signer_driver_get_or_init(|| {
@@ -335,6 +341,23 @@ pub extern "C" fn nmp_external_signer_init(app: *mut NmpApp) {
             driver_for_hook.restore(&payload_json);
         }
     }));
+}
+
+/// Public idempotent initializer for hosts that want to make the lifecycle
+/// explicit. `nmp_app_new` already installs the driver before `Start`; calling
+/// this later is safe and refreshes the hook closure against the same driver.
+///
+/// # Safety
+///
+/// `app` must be a valid pointer returned by `nmp_app_new()` and not yet
+/// freed. Passing null is a safe no-op.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_external_signer_init(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    init_external_signer_driver(app);
 }
 
 /// Begin a NIP-55 sign-in (`get_public_key` + permission batch) routed to

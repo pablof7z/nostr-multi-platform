@@ -34,7 +34,7 @@ private val bridgeJson = Json {
  * | Condition | Mechanism |
  * |---|---|
  * | `forceInteractive == true` | Intent |
- * | method is in `permissions` (pre-granted) and `signerPackage` known | ContentResolver |
+ * | method is in `grantedPermissions` and `signerPackage` known | ContentResolver |
  * | otherwise | Intent |
  *
  * A ContentResolver returning `null` is reported as `Unavailable`; Rust
@@ -167,7 +167,7 @@ class ExternalSignerCapabilityBridge(
      * Handle an `ExternalSignerRequest` built by Rust.
      *
      * Selects the transport path mechanically from `forceInteractive` +
-     * `permissions`, then dispatches. D7: no policy decisions here.
+     * `grantedPermissions`, then dispatches. D7: no policy decisions here.
      *
      * For the gallery showcase this is called with a stateless callback
      * wired to `onResult`. For Chirp it is wired into the kernel via
@@ -201,6 +201,15 @@ class ExternalSignerCapabilityBridge(
 
     private fun dispatchIntent(request: ExternalSignerRequest) {
         val intent = buildAmberSignerIntent(request)
+
+        val existing = pendingCorrelationId
+        if (existing != null) {
+            reportUnavailable(
+                request.correlationId,
+                "external signer Intent already pending for correlation $existing",
+            )
+            return
+        }
 
         pendingCorrelationId = request.correlationId
         pendingMethod = request.method

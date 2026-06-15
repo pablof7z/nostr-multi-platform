@@ -49,6 +49,9 @@ class ExternalSignerCapabilityBridgeTest {
                 "current_user": "deadbeef",
                 "counterparty": null,
                 "permissions": [],
+                "granted_permissions": [
+                    {"kind": "sign_event:1"}
+                ],
                 "signer_package": "com.greenart7c3.nostrsigner",
                 "force_interactive": false
             }
@@ -61,6 +64,7 @@ class ExternalSignerCapabilityBridgeTest {
         assertNull(req.counterparty)
         assertEquals("com.greenart7c3.nostrsigner", req.signerPackage)
         assertTrue(req.permissions.isEmpty())
+        assertEquals(1, req.grantedPermissions.size)
     }
 
     @Test
@@ -161,7 +165,7 @@ class ExternalSignerCapabilityBridgeTest {
             payload = "plaintext",
             currentUser = "pubkeyhex",
             signerPackage = "com.greenart7c3.nostrsigner",
-            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            grantedPermissions = listOf(Nip55Permission("nip44_encrypt")),
             forceInteractive = false,
         )
         assertTrue(shouldUseContentResolver(req))
@@ -174,7 +178,7 @@ class ExternalSignerCapabilityBridgeTest {
             method = "nip44_encrypt",
             payload = "plaintext",
             signerPackage = "com.greenart7c3.nostrsigner",
-            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            grantedPermissions = listOf(Nip55Permission("nip44_encrypt")),
             forceInteractive = true,
         )
         assertTrue(!shouldUseContentResolver(req))
@@ -187,7 +191,7 @@ class ExternalSignerCapabilityBridgeTest {
             method = "nip44_encrypt",
             payload = "plaintext",
             signerPackage = null, // unknown
-            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            grantedPermissions = listOf(Nip55Permission("nip44_encrypt")),
             forceInteractive = false,
         )
         assertTrue(!shouldUseContentResolver(req))
@@ -200,7 +204,21 @@ class ExternalSignerCapabilityBridgeTest {
             method = "nip44_decrypt",
             payload = "ciphertext",
             signerPackage = "com.greenart7c3.nostrsigner",
-            permissions = emptyList(), // no permissions granted
+            grantedPermissions = emptyList(), // no permissions granted
+            forceInteractive = false,
+        )
+        assertTrue(!shouldUseContentResolver(req))
+    }
+
+    @Test
+    fun intentSelectedWhenPermissionOnlyRequestedButNotGranted() {
+        val req = ExternalSignerRequest(
+            correlationId = "intent-requested-only",
+            method = "nip44_encrypt",
+            payload = "plaintext",
+            signerPackage = "com.greenart7c3.nostrsigner",
+            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            grantedPermissions = emptyList(),
             forceInteractive = false,
         )
         assertTrue(!shouldUseContentResolver(req))
@@ -216,7 +234,7 @@ class ExternalSignerCapabilityBridgeTest {
             payload = "{\"kind\":1}",
             currentUser = "pubkeyhex",
             signerPackage = "com.greenart7c3.nostrsigner",
-            permissions = listOf(Nip55Permission("sign_event:1")),
+            grantedPermissions = listOf(Nip55Permission("sign_event:1")),
             forceInteractive = false,
         )
         assertTrue(shouldUseContentResolver(req))

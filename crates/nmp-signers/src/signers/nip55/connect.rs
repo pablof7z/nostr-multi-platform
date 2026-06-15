@@ -51,6 +51,7 @@ impl Nip55Connect {
                 current_user: None,
                 counterparty: None,
                 permissions: default_permissions(),
+                granted_permissions: Vec::new(),
                 signer_package,
                 force_interactive: false,
             },

@@ -72,12 +72,7 @@ impl FakeExternalSignerTransport {
     /// Drain and return all captured requests (oldest first).
     #[allow(dead_code)]
     pub fn drain_requests(&self) -> Vec<ExternalSignerRequest> {
-        self.inner
-            .lock()
-            .unwrap()
-            .requests
-            .drain(..)
-            .collect()
+        self.inner.lock().unwrap().requests.drain(..).collect()
     }
 
     /// Return the most recently captured request without removing it.
@@ -262,7 +257,12 @@ fn sign_round_trip_via_fake_transport() {
 
     // Inject a valid signed-event JSON response.
     let signed_json = make_signed_event_json(&pubkey, &local);
-    transport.respond_to_last(&signer, ExternalSignerOutcome::Ok { result: signed_json });
+    transport.respond_to_last(
+        &signer,
+        ExternalSignerOutcome::Ok {
+            result: signed_json,
+        },
+    );
 
     let signed = op.wait(Duration::from_secs(5)).expect("sign must succeed");
     // The mapper trusts the response's own fields (codex review #3 trust model).
@@ -300,9 +300,93 @@ fn sign_request_shape() {
         req.payload.contains("shape check"),
         "payload must contain the unsigned content"
     );
+    assert!(!req.correlation_id.is_empty(), "correlation_id must be set");
     assert!(
-        !req.correlation_id.is_empty(),
-        "correlation_id must be set"
+        req.permissions.is_empty(),
+        "live sign requests must not re-request the permission batch"
+    );
+    assert!(
+        req.granted_permissions
+            .iter()
+            .any(|p| p.kind == "sign_event:1"),
+        "live sign requests must carry persisted grant facts for the resolver fast-path"
+    );
+    assert!(
+        req.uses_content_resolver_fast_path(),
+        "restored/live signer requests with grants should avoid a Connect dialog"
+    );
+}
+
+/// A restored NIP-55 payload is immediately usable without a fresh permission
+/// request: live ops carry `granted_permissions`, while `permissions` remains
+/// empty so Amber is not asked to reapprove the batch.
+#[test]
+fn restored_payload_sign_request_uses_granted_fast_path_without_reapproval() {
+    let local = LocalKeySigner::generate();
+    let payload = Nip55Payload {
+        user_pubkey_hex: local.pubkey().to_hex(),
+        signer_package: Some("com.greenart7c3.nostrsigner".to_string()),
+        granted_permissions: vec!["sign_event:1".to_string()],
+    };
+    let transport = FakeExternalSignerTransport::new();
+    let signer = Nip55Signer::from_payload(
+        &payload,
+        Arc::clone(&transport) as Arc<dyn ExternalSignerTransport>,
+    )
+    .expect("restore from payload");
+
+    let unsigned = UnsignedEvent {
+        pubkey: local.pubkey().to_hex(),
+        kind: 1,
+        tags: vec![],
+        content: "restored fast path".to_string(),
+        created_at: 1,
+    };
+    let _op = <Nip55Signer as Signer>::sign(&signer, unsigned);
+    let req = transport.last_request().expect("request captured");
+
+    assert!(req.permissions.is_empty());
+    assert_eq!(
+        req.granted_permissions,
+        vec![Nip55Permission::sign_event(1)]
+    );
+    assert!(req.uses_content_resolver_fast_path());
+}
+
+/// Android has one Activity Result slot for interactive signer Intents. Rust
+/// rejects a second interactive request before native can overwrite the first
+/// pending correlation id.
+#[test]
+fn overlapping_interactive_sign_requests_are_rejected() {
+    let local = LocalKeySigner::generate();
+    let transport = FakeExternalSignerTransport::new();
+    let signer = Nip55Signer::new(
+        local.pubkey(),
+        Some("com.greenart7c3.nostrsigner".to_string()),
+        vec![],
+        Arc::clone(&transport) as Arc<dyn ExternalSignerTransport>,
+    );
+    let unsigned = UnsignedEvent {
+        pubkey: local.pubkey().to_hex(),
+        kind: 1,
+        tags: vec![],
+        content: "interactive".to_string(),
+        created_at: 1,
+    };
+
+    let mut op1 = <Nip55Signer as Signer>::sign(&signer, unsigned.clone());
+    assert!(op1.poll().is_none());
+    let op2 = <Nip55Signer as Signer>::sign(&signer, unsigned);
+
+    match op2.wait(Duration::from_secs(1)) {
+        Err(SignerError::Unavailable(m)) => assert!(m.contains("approval already pending")),
+        other => panic!("expected overlapping approval rejection, got {other:?}"),
+    }
+    assert_eq!(signer.pending_len(), 1);
+    assert_eq!(
+        transport.drain_requests().len(),
+        1,
+        "second interactive request must not reach native"
     );
 }
 
@@ -336,7 +420,13 @@ fn rejected_response_resolves_with_rejected_error() {
 #[test]
 fn unavailable_response_resolves_with_unavailable_error() {
     let local = LocalKeySigner::generate();
-    let (signer, transport) = make_signer_with_pubkey(local.pubkey());
+    let transport = FakeExternalSignerTransport::new();
+    let signer = Nip55Signer::new(
+        local.pubkey(),
+        Some("com.greenart7c3.nostrsigner".to_string()),
+        vec![],
+        Arc::clone(&transport) as Arc<dyn ExternalSignerTransport>,
+    );
 
     let unsigned = UnsignedEvent {
         pubkey: local.pubkey().to_hex(),
@@ -356,6 +446,54 @@ fn unavailable_response_resolves_with_unavailable_error() {
         Err(SignerError::Unavailable(m)) => assert_eq!(m, "signer not installed"),
         other => panic!("expected Unavailable, got {other:?}"),
     }
+}
+
+/// A resolver-path `Unavailable` means a granted permission was silently
+/// revoked or unavailable. Rust owns the retry policy: keep the same pending
+/// op open and re-issue the request once with `force_interactive = true`.
+#[test]
+fn content_resolver_unavailable_retries_as_forced_interactive() {
+    let local = LocalKeySigner::generate();
+    let pubkey = local.pubkey();
+    let (signer, transport) = make_signer_with_pubkey(pubkey);
+    let unsigned = UnsignedEvent {
+        pubkey: pubkey.to_hex(),
+        kind: 1,
+        tags: vec![],
+        content: "resolver retry".to_string(),
+        created_at: 1,
+    };
+
+    let mut op = <Nip55Signer as Signer>::sign(&signer, unsigned);
+    let first = transport.last_request().expect("first request");
+    assert!(first.uses_content_resolver_fast_path());
+    transport.respond_to_last(
+        &signer,
+        ExternalSignerOutcome::Unavailable {
+            reason: "ContentResolver returned null result".to_string(),
+        },
+    );
+
+    assert!(
+        op.poll().is_none(),
+        "retry must keep the original op pending"
+    );
+    let retry = transport.last_request().expect("retry request");
+    assert_eq!(retry.correlation_id, first.correlation_id);
+    assert!(retry.force_interactive);
+    assert!(!retry.uses_content_resolver_fast_path());
+    assert_eq!(signer.pending_len(), 1);
+
+    let signed_json = make_signed_event_json(&pubkey, &local);
+    transport.respond_to_last(
+        &signer,
+        ExternalSignerOutcome::Ok {
+            result: signed_json,
+        },
+    );
+    let signed = op.wait(Duration::from_secs(1)).expect("retry resolves");
+    assert_eq!(signed.unsigned.pubkey, pubkey.to_hex());
+    assert_eq!(signer.pending_len(), 0);
 }
 
 /// An unknown correlation id in a `deliver_response` call is silently dropped
@@ -465,7 +603,11 @@ fn transport_send_failure_cleans_up_pending() {
         created_at: 1,
     };
     let op = <Nip55Signer as Signer>::sign(&signer, unsigned.clone());
-    assert_eq!(signer.pending_len(), 0, "failed send must not leak pending entry");
+    assert_eq!(
+        signer.pending_len(),
+        0,
+        "failed send must not leak pending entry"
+    );
     match op.wait(Duration::from_secs(1)) {
         Err(SignerError::Backend(m)) => assert_eq!(m, "no route"),
         other => panic!("expected Backend, got {other:?}"),
@@ -480,7 +622,10 @@ fn nip44_encrypt_round_trip() {
     let recipient = LocalKeySigner::generate().pubkey();
 
     let op = signer.nip44_encrypt(&recipient.to_hex(), "hello");
-    assert!(matches!(op, SignerOp::Pending(_)), "nip44_encrypt must be Pending");
+    assert!(
+        matches!(op, SignerOp::Pending(_)),
+        "nip44_encrypt must be Pending"
+    );
 
     transport.respond_to_last(
         &signer,
@@ -489,7 +634,9 @@ fn nip44_encrypt_round_trip() {
         },
     );
 
-    let ct = op.wait(Duration::from_secs(1)).expect("encrypt must succeed");
+    let ct = op
+        .wait(Duration::from_secs(1))
+        .expect("encrypt must succeed");
     assert_eq!(ct, "fake-ciphertext");
 }
 
@@ -501,7 +648,10 @@ fn nip44_decrypt_round_trip() {
     let sender = LocalKeySigner::generate().pubkey();
 
     let op = signer.nip44_decrypt(&sender.to_hex(), "fake-ciphertext");
-    assert!(matches!(op, SignerOp::Pending(_)), "nip44_decrypt must be Pending");
+    assert!(
+        matches!(op, SignerOp::Pending(_)),
+        "nip44_decrypt must be Pending"
+    );
 
     transport.respond_to_last(
         &signer,
@@ -510,7 +660,9 @@ fn nip44_decrypt_round_trip() {
         },
     );
 
-    let pt = op.wait(Duration::from_secs(1)).expect("decrypt must succeed");
+    let pt = op
+        .wait(Duration::from_secs(1))
+        .expect("decrypt must succeed");
     assert_eq!(pt, "hello");
 }
 
@@ -717,8 +869,8 @@ fn debug_impl_does_not_panic() {
 /// implemented, this test can be upgraded to an end-to-end receive test.
 #[test]
 fn nip55_nip44_decrypt_capability_exists_but_receive_path_is_deferred() {
-    use nmp_signer_iface::{ExternalSignerOutcome, SignerOp};
     use nmp_core::RemoteSignerHandle;
+    use nmp_signer_iface::{ExternalSignerOutcome, SignerOp};
     use std::time::Duration;
 
     let local = LocalKeySigner::generate();
