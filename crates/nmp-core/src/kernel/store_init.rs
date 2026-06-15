@@ -75,16 +75,34 @@ pub(super) fn build_event_store(storage_path: Option<&str>) -> (EventStoreBundle
             }
         }
     }
-    // `storage_path` is unused when the `lmdb-backend` feature is off.
+    // Fail-LOUD on a silent misconfiguration: a host that supplies a
+    // `storage_path` but compiles WITHOUT the `lmdb-backend` feature would
+    // otherwise silently get an in-memory store and lose every event on cold
+    // restart (no persistence, no cache-serve, no rebuildable projections).
+    // Surface it through the same V-67 diagnostic channel (the returned
+    // `Option<String>` → `Kernel::store_open_failure` → snapshot; D6: no stderr)
+    // so the consumer sees it instead of silently losing data. When the feature
+    // IS on, reaching here means no path was supplied — in-memory is the
+    // legitimate default (web/tests), no warning.
     #[cfg(not(feature = "lmdb-backend"))]
-    let _ = storage_path;
-    // No path or feature — in-memory is the legitimate default; no failure.
+    let store_warning: Option<String> = storage_path.map(|p| {
+        format!(
+            "storage_path ({p:?}) was supplied but the `lmdb-backend` feature is \
+             not compiled in — falling back to an in-memory store. Durable \
+             persistence is DISABLED and all events are lost on restart. Enable \
+             the `lmdb-backend` feature (production app crates set it via their \
+             default features)."
+        )
+    });
+    #[cfg(feature = "lmdb-backend")]
+    let store_warning: Option<String> = None;
+
     (
         EventStoreBundle {
             store: Arc::new(MemEventStore::new()),
             relay_score_store: None,
         },
-        None,
+        store_warning,
     )
 }
 
