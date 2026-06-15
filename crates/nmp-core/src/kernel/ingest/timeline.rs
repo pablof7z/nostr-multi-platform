@@ -134,13 +134,13 @@ impl Kernel {
 
         // D9: kernel owns time — clamp relay-supplied created_at to now so a
         // future-dated event from a hostile/buggy relay cannot pin permanently
-        // at the top of the timeline VIEW. ADR-0057 keeps this clamp a property
-        // of the timeline PROJECTION path (here), not the generic chokepoint:
-        // the authoritative `EventStore` row retains the original timestamp for
-        // protocol correctness (NIP-01 replaceable/ephemeral handling) and
-        // non-timeline observers — fired raw in the chokepoint — see the true
-        // timestamp. Only this read-cache projection (which backs the timeline
-        // ordering in `timeline_order.rs`) is clamped.
+        // at the top of the timeline VIEW. ADR-0057: the clamp is applied to the
+        // observer-delivered `KernelEvent` at the chokepoint (so ALL feed
+        // consumers are protected), and this read-cache projection clamps
+        // independently as well — strictly stronger, since it also clamps the
+        // kernel's own timeline ordering in `timeline_order.rs`. The
+        // authoritative `EventStore` row retains the original wire timestamp for
+        // protocol correctness (NIP-01 replaceable/ephemeral handling).
         let now_secs = self.now_secs();
         let cached = StoredEvent {
             id: event.id.clone(),
@@ -203,9 +203,12 @@ impl Kernel {
             // an active generic `open_interest` in the timeline VIEW. This is the
             // single generalised view clause that makes a generic `open_interest`
             // REQ render end-to-end — a non-followed author's notes, an arbitrary
-            // thread, or a `#t` hashtag feed reach `self.events` (and thus the
-            // `notify_event_observers` feed-engine fan-out) without any bespoke
-            // per-view sub-id prefix. The wire sub_id is a *merged* compiler hash
+            // thread, or a `#t` hashtag feed reach the timeline read-cache
+            // (`self.events`) without any bespoke per-view sub-id prefix.
+            // (`notify_event_observers` is NOT gated by this clause — the
+            // chokepoint fires observers unconditionally on Inserted|Replaced|
+            // Ephemeral per ADR-0057; this clause governs timeline-VIEW
+            // membership only.) The wire sub_id is a *merged* compiler hash
             // (the lattice coalesces many shapes into one REQ), so it cannot be
             // reverse-mapped to one interest; matching the event against the
             // registered shapes is the robust view test.
