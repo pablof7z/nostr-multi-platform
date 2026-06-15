@@ -426,29 +426,10 @@ impl SnapshotRegistry {
         self.tick_observers.push(Box::new(f));
     }
 
-    /// ADR-0053 — declare (union into) the set of Tier-2 built-in projection
-    /// keys this host consumes.
-    ///
-    /// Additive: call more than once and the sets union (e.g. a base set from
-    /// `nmp-defaults` plus an app-specific extension). Intended as a host-init
-    /// call, before `nmp_app_start`. An empty declared set leaves the kernel
-    /// emitting every Tier-2 built-in (no narrowing); a non-empty set narrows
-    /// the kernel-owned built-ins to the declared members. Tier-1 host/protocol
-    /// projections are unaffected — they self-gate by registration.
-    pub fn declare_consumed_projections<I, K>(&mut self, keys: I)
-    where
-        I: IntoIterator<Item = K>,
-        K: Into<String>,
-    {
-        self.declared_projections.declare(keys);
-    }
-
-    /// Read the host-declared consumed-projection set — the gate the kernel
-    /// consults per Tier-2 built-in key in `make_update`.
-    #[must_use]
-    pub fn declared_projections(&self) -> &DeclaredProjections {
-        &self.declared_projections
-    }
+    // ADR-0053 host-declared consumed-projection methods
+    // (`declare_consumed_projections`, `declared_projections`) and the
+    // Workstream-E3 declared ⊆ decodable drift gate live in the `declared`
+    // submodule alongside `DeclaredProjections`.
 
     /// Run every registered per-tick observer.
     ///

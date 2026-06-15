@@ -245,3 +245,39 @@ fn declared_drain_on_emit_key_surfaces_when_settled() {
         "drain happened despite undeclared — no carryover into the next tick"
     );
 }
+
+// ── Workstream-E3 — declared ⊆ decodable drift gate (chokepoint enforcement) ──
+
+/// **Green on master.** Declaring real kernel built-ins through the registry
+/// chokepoint does not trip the drift gate (no panic). This is the shape every
+/// real host declaration takes — Chirp declares only `KERNEL_BUILTIN_PROJECTION_KEYS`
+/// members — so the gate must be silent for them.
+#[test]
+fn declaring_only_builtins_does_not_trip_the_drift_gate() {
+    use crate::kernel::snapshot_registry::SnapshotRegistry;
+    let mut registry = SnapshotRegistry::new();
+    // Declare the full built-in set — the most a host could legitimately consume.
+    registry.declare_consumed_projections(
+        crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS
+            .iter()
+            .map(|k| k.to_string()),
+    );
+    assert!(registry.declared_projections().is_narrowing());
+}
+
+/// **Non-vacuity.** A declaration through the registry chokepoint that names a
+/// key the framework never emits (here a typo of `relay_diagnostics`) trips the
+/// `debug_assert!` drift gate. Gated on `debug_assertions` because the
+/// behaviour-preserving release path replaces the assert with a non-fatal
+/// `tracing::warn!` (the runtime is never failed in release).
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "declared consumed-projection key(s) not in")]
+fn declaring_a_non_builtin_trips_the_drift_gate_in_debug() {
+    use crate::kernel::snapshot_registry::SnapshotRegistry;
+    let mut registry = SnapshotRegistry::new();
+    // `relay_diagnstics` is a typo of the real `relay_diagnostics` — exactly the
+    // silent-drift hazard E3 closes: a non-decodable key that flips the set into
+    // narrowing mode and drops the real key from every frame.
+    registry.declare_consumed_projections(["profile", "relay_diagnstics"]);
+}
