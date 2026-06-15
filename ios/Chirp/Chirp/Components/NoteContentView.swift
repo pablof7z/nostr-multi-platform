@@ -12,7 +12,17 @@ struct NoteContentView: View {
     var font: Font = .body
 
     @EnvironmentObject private var router: ChirpRouter
+    @Environment(\.nostrProfileHost) private var profileHost
     @State private var tappedImage: TappedImage?
+
+    /// Stable consumer-id for this content view's mention claims. Lives in
+    /// `@State` so it survives re-renders; every claim made under it is matched
+    /// by a release in `releaseAllMentions` (refcount discipline — mirror of
+    /// `NostrAvatar`).
+    @State private var mentionConsumerID = "note-content.mentions.\(UUID().uuidString)"
+    /// Pubkeys currently claimed under `mentionConsumerID`, so a tree change or
+    /// disappear releases exactly what was claimed.
+    @State private var claimedMentions: [String] = []
 
     init(
         content: String,
@@ -44,6 +54,50 @@ struct NoteContentView: View {
         .fullScreenCover(item: $tappedImage) { item in
             FullScreenImageViewer(url: item.url)
         }
+        // F-CR-00 claim-only invariant: claim the kind:0 of every profile
+        // mention this note renders, mirroring `NostrAvatar`'s lifecycle. The
+        // mention labels render as inline `Text` runs (no per-mention view), so
+        // the claim is hoisted here, keyed off the mention pubkey set so a tree
+        // change re-claims and `onDisappear` releases. The kernel owns all
+        // resolution (10002 → author relays → kind:0 REQ) off the claim alone.
+        .task(id: mentionPubkeys) {
+            await MainActor.run { syncMentionClaims(to: mentionPubkeys) }
+        }
+        .onDisappear {
+            releaseAllMentions()
+        }
+    }
+
+    /// Profile mentions in the currently-rendered tree (empty for plain text).
+    private var mentionPubkeys: [String] {
+        contentTree?.mentionPubkeys ?? []
+    }
+
+    /// Reconcile the live claim set to `target`: release pubkeys no longer
+    /// present, claim newly-present ones. Idempotent re-claims are cheap
+    /// (kernel dedups by consumer-id).
+    private func syncMentionClaims(to target: [String]) {
+        guard let profileHost else { return }
+        let targetSet = Set(target)
+        let currentSet = Set(claimedMentions)
+        for pk in currentSet.subtracting(targetSet) {
+            profileHost.releaseProfile(pubkey: pk, consumerID: mentionConsumerID)
+        }
+        for pk in targetSet.subtracting(currentSet) {
+            // Inline mentions are a list/reading context → `.cacheOk` (no live
+            // sub; cache + OneShot fill is sufficient).
+            profileHost.claimProfile(
+                pubkey: pk, consumerID: mentionConsumerID, liveness: .cacheOk)
+        }
+        claimedMentions = target
+    }
+
+    private func releaseAllMentions() {
+        guard let profileHost else { return }
+        for pk in claimedMentions {
+            profileHost.releaseProfile(pubkey: pk, consumerID: mentionConsumerID)
+        }
+        claimedMentions = []
     }
 
     @ViewBuilder

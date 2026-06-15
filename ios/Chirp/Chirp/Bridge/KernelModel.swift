@@ -433,8 +433,25 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func threadFeed(eventID: String) -> ChirpTimelineSnapshot? {
         flatFeeds["nmp.feed.thread.\(eventID)"]
     }
-    func claimProfile(pubkey: String, consumerID: String) {
-        kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
+    /// `NostrProfileHost` conformance. `liveness` declares the subscription
+    /// shape (`.cacheOk` for list/inline contexts, `.live` for the profile
+    /// screen). This is the lazy, TTL-gated path (`force == false`); use
+    /// `claimProfile(pubkey:consumerID:force:liveness:)` for pull-to-refresh.
+    func claimProfile(pubkey: String, consumerID: String, liveness: ProfileLiveness) {
+        kernel.claimProfile(
+            pubkey: pubkey, consumerID: consumerID, force: false, liveness: liveness)
+    }
+
+    /// F-TTL force-refresh variant — pass `force: true` when the user pulled to
+    /// refresh or explicitly opened this author. `liveness` is independent.
+    func claimProfile(
+        pubkey: String,
+        consumerID: String,
+        force: Bool,
+        liveness: ProfileLiveness = .cacheOk
+    ) {
+        kernel.claimProfile(
+            pubkey: pubkey, consumerID: consumerID, force: force, liveness: liveness)
     }
     func releaseProfile(pubkey: String, consumerID: String) {
         kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)

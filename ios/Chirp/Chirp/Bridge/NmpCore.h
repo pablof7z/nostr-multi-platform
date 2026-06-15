@@ -43,7 +43,17 @@ void nmp_app_close_interest(void *app, const char *filter_json,
 // this author's profile screen or pulled to refresh; pass `0` for background /
 // `.onAppear` list-row claims. Replaces the removed `nmp_app_refresh_replaceable`
 // symbol (force-refresh is now an argument; no new C-ABI symbol).
-void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id, int force);
+//
+// `liveness` (treated as the discrete values 0 / 1) declares the consumer's
+// desired subscription shape:
+//   * 0 = CacheOk — serve from cache; a OneShot kind:0 fetch fills a miss;
+//     NO live subscription. Use for feed avatars / inline list contexts.
+//   * 1 = Live — register a Tailing kind:0 interest so reactive profile-edit
+//     updates flow in. Use for the profile screen.
+// Mixed claims on one pubkey resolve Tailing-wins in the kernel, deduped to a
+// single REQ; the shell only passes its intent.
+void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id,
+                           int force, int liveness);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 // Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
 // `consumer_id`; the kernel fetches the event over the OneshotApi (single-

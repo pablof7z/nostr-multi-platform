@@ -4,6 +4,18 @@ import os.log
 
 let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 
+/// Desired subscription shape for a kind:0 profile claim — the 5th
+/// `liveness` argument to `nmp_app_claim_profile`. Mirrors the kernel's
+/// CacheOk / Live intents (the kernel resolves mixed claims Tailing-wins).
+enum ProfileLiveness: Int32 {
+    /// Serve from cache; a OneShot kind:0 fetch fills a miss; no live
+    /// subscription. Use for feed avatars and inline list contexts.
+    case cacheOk = 0
+    /// Register a Tailing kind:0 interest so reactive profile-edit updates
+    /// flow in. Use for the profile screen.
+    case live = 1
+}
+
 /// Mirror of `KERNEL_SCHEMA_VERSION` (Rust: `crates/nmp-core/src/update_envelope.rs`).
 /// Must be bumped in lock-step when the Rust constant changes. A mismatch causes
 /// `KernelBridge.decode()` to reject the snapshot rather than silently misparse
@@ -222,10 +234,21 @@ final class KernelHandle {
     /// kind:0 profile. Pass `true` only when the user explicitly opened this
     /// author's profile screen or pulled to refresh; default `false` is the
     /// lazy, TTL-gated path for background / `.onAppear` component self-claims.
-    func claimProfile(pubkey: String, consumerID: String, force: Bool = false) {
+    ///
+    /// `liveness` declares the desired subscription shape (see `ProfileLiveness`):
+    /// `.cacheOk` (cache + OneShot fill, no live sub) for feed avatars and inline
+    /// list contexts; `.live` (Tailing kind:0 interest, reactive profile-edit
+    /// updates) for the profile screen. Defaults to `.cacheOk` so the common
+    /// list path never opens an unnecessary live subscription.
+    func claimProfile(
+        pubkey: String,
+        consumerID: String,
+        force: Bool = false,
+        liveness: ProfileLiveness = .cacheOk
+    ) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0)
+                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0, liveness.rawValue)
             }
         }
     }

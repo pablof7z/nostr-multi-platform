@@ -105,7 +105,10 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             model.openAuthor(pubkey: pubkey)
-            model.claimProfile(pubkey: pubkey, consumerID: profileConsumerID)
+            // Profile screen → `.live`: open a Tailing kind:0 interest so a
+            // profile edit by this author updates the screen reactively.
+            model.claimProfile(
+                pubkey: pubkey, consumerID: profileConsumerID, liveness: .live)
         }
         .onDisappear {
             // T152: release the author sub on nav-away (wire_subs baseline).
