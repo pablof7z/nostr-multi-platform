@@ -247,8 +247,8 @@ impl AppRuntime {
         let _ = self.client.create_account(name, about, picture, &relay_pairs);
     }
 
-    pub fn sign_in_nsec(&self, secret: String) {
-        let _ = self.client.sign_in_nsec(&secret);
+    pub fn sign_in_nsec(&self, secret: &str) {
+        let _ = self.client.sign_in_nsec(secret);
     }
 
     pub fn connect_bunker(&self, relay_url: &str) -> Result<String, String> {

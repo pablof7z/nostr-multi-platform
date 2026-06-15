@@ -93,7 +93,7 @@ impl DesktopApp {
             selected_dm_pubkey: None,
             dm_compose: String::new(),
             nsec_input: String::new(),
-            bunker_relay_input: "wss://relay.primal.net".to_string(),
+            bunker_relay_input: String::new(),
             bunker_uri: None,
             new_relay_url: String::new(),
             new_relay_role: "both".to_string(),
