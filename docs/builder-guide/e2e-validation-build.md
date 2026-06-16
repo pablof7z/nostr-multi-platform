@@ -29,8 +29,8 @@ For each new function:
 ```c
 // Constructor variant — REPLACES nmp_app_new for Pulse. nmp_app_new stays for
 // NmpStress / harness compatibility (defaults to MemEventStore + tmp paths).
-// Storage path is fixed at construction time: the kernel spawns the actor
-// and constructs Kernel with the right store backend inside nmp_app_new_with_config.
+// Storage path is fixed before actor start: the kernel constructs itself
+// with the right store backend when the app is started.
 void *nmp_app_new_with_config(const char *storage_abs_path);
 
 // Identity / multi-session

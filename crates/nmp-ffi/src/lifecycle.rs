@@ -8,9 +8,8 @@
 //!   wants to react with (e.g. a sync-trigger engine). Mirrors the
 //!   `capability_callback` registration pattern in `ffi/capability.rs`.
 //! * [`nmp_app_is_alive`] — the actor-liveness probe. Returns `1` when the
-//!   actor thread is still running, `0` when it has terminated (panic, drop,
-//!   or pre-`nmp_app_start`-but-handle-already-finished — all collapse to
-//!   "dead from the host's perspective"). Pairs with the
+//!   actor thread is still running, `0` before `nmp_app_start` or after the
+//!   actor has terminated (panic/drop). Pairs with the
 //!   [`nmp_core::UpdateEnvelope::Panic`] frame (D7): the panic
 //!   frame is the *push* death signal on the update channel; this probe is
 //!   the *pull* sibling, queryable on demand (e.g. on
@@ -32,10 +31,10 @@
 //!   surfaces it to the host.
 
 use super::{app_ref, NmpApp};
-use nmp_core::ActorCommand;
 use nmp_core::__ffi_internal::{
     LifecycleObserverFn, LifecycleObserverRegistration, LifecyclePhase,
 };
+use nmp_core::ActorCommand;
 use std::ffi::c_void;
 
 /// Report iOS `scenePhase == .active` (or platform equivalent). Fire-and-
@@ -103,7 +102,7 @@ pub extern "C" fn nmp_app_set_lifecycle_callback(
 /// Returns `1` when the actor `JoinHandle` is still running, `0` otherwise:
 /// * `app == NULL` → `0` (no kernel to be alive)
 /// * `actor` mutex poisoned → `0` (kernel state is irrecoverable, treat as dead)
-/// * `actor` slot is `None` (already joined by [`Drop`]) → `0`
+/// * `actor` slot is `None` (not started yet or already joined by [`Drop`]) → `0`
 /// * `JoinHandle::is_finished()` returns `true` → `0`
 /// * otherwise → `1`
 ///
@@ -135,7 +134,7 @@ pub extern "C" fn nmp_app_is_alive(app: *mut NmpApp) -> u8 {
     };
     match guard.as_ref() {
         Some(handle) if !handle.is_finished() => 1,
-        // `None` is the post-`Drop` (or never-started) state; `Some` with
+        // `None` is the pre-start / post-`Drop` state; `Some` with
         // `is_finished()` is the post-panic / post-`Shutdown` state. Both are
         // "the actor will no longer service commands" — the host must surface
         // a fatal error.
@@ -152,7 +151,7 @@ mod tests {
     //! thread.
 
     use super::*;
-    use crate::nmp_app_new;
+    use crate::{nmp_app_new, nmp_app_start};
     use nmp_core::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
     use std::sync::mpsc::{channel, Sender};
     use std::sync::{Mutex, OnceLock};
@@ -194,6 +193,7 @@ mod tests {
         let rx = install_recorder();
         let app = nmp_app_new();
         nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
+        nmp_app_start(app, 0, 256, 4);
 
         nmp_app_lifecycle_foreground(app);
 
@@ -209,11 +209,36 @@ mod tests {
     }
 
     #[test]
+    fn foreground_before_start_queues_until_start() {
+        let _g = SERIAL.lock().unwrap();
+        let rx = install_recorder();
+        let app = nmp_app_new();
+        nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
+
+        nmp_app_lifecycle_foreground(app);
+        assert!(
+            rx.recv_timeout(Duration::from_millis(100)).is_err(),
+            "passive handle must not run lifecycle callbacks before start",
+        );
+
+        nmp_app_start(app, 0, 256, 4);
+        let phase = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("queued foreground callback fired after start");
+        assert_eq!(phase, LIFECYCLE_PHASE_FOREGROUND);
+
+        nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), None);
+        super::super::nmp_app_free(app);
+        uninstall_recorder();
+    }
+
+    #[test]
     fn rapid_double_foreground_invokes_callback_once() {
         let _g = SERIAL.lock().unwrap();
         let rx = install_recorder();
         let app = nmp_app_new();
         nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
+        nmp_app_start(app, 0, 256, 4);
 
         nmp_app_lifecycle_foreground(app);
         nmp_app_lifecycle_foreground(app);
@@ -241,6 +266,7 @@ mod tests {
         let rx = install_recorder();
         let app = nmp_app_new();
         nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
+        nmp_app_start(app, 0, 256, 4);
 
         nmp_app_lifecycle_foreground(app);
         nmp_app_lifecycle_background(app);
@@ -269,16 +295,23 @@ mod tests {
         assert_eq!(super::nmp_app_is_alive(std::ptr::null_mut()), 0);
     }
 
-    /// A freshly-allocated `NmpApp` whose actor thread has been spawned (by
-    /// `nmp_app_new`) reports alive. The actor parks on the command channel
-    /// `recv()` until a `Start` arrives, so this exercises the
-    /// "spawned but idle" path — exactly the state the iOS app sits in
-    /// between `nmp_app_new` and the first `nmp_app_start` call.
+    /// A freshly-allocated `NmpApp` is passive: the command channel exists,
+    /// but the actor thread is not spawned until `nmp_app_start`.
     #[test]
-    fn is_alive_after_new_returns_one() {
+    fn is_alive_after_new_returns_zero_before_start() {
         let _g = SERIAL.lock().unwrap();
         let app = nmp_app_new();
-        assert_eq!(super::nmp_app_is_alive(app), 1, "actor should be alive");
+        assert_eq!(
+            super::nmp_app_is_alive(app),
+            0,
+            "actor is passive before start"
+        );
+        nmp_app_start(app, 0, 256, 4);
+        assert_eq!(
+            super::nmp_app_is_alive(app),
+            1,
+            "actor should be alive after start"
+        );
         super::super::nmp_app_free(app);
     }
 
@@ -298,6 +331,7 @@ mod tests {
         use nmp_core::ActorCommand;
         let _g = SERIAL.lock().unwrap();
         let app = nmp_app_new();
+        nmp_app_start(app, 0, 256, 4);
         // Push `Shutdown` straight onto the actor's command channel
         // (mirrors what `Drop` does, but without joining yet).
         // SAFETY: `app` is a live pointer from `nmp_app_new` above.

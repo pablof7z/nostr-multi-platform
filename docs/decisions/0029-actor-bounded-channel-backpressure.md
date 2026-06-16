@@ -130,7 +130,7 @@ Action executors run on the actor thread (per `ActionRegistry::execute`'s docs).
 
 ## Validation
 
-A new `bounded_channel_floods_shed` test in `crates/nmp-core` floods `2 * BOUNDED_ACTOR_CMD_CAPACITY` commands at a paused actor (held at the `command_rx.recv()` boundary in `run_actor_with_observers`) and asserts `dispatch_drops_total >= BOUNDED_ACTOR_CMD_CAPACITY`. This is the load test demanded by the PR-G deliverable.
+A new `bounded_channel_floods_shed` test in `crates/nmp-core` floods `2 * BOUNDED_ACTOR_CMD_CAPACITY` commands at a paused actor command-receive boundary and asserts `dispatch_drops_total >= BOUNDED_ACTOR_CMD_CAPACITY`. This is the load test demanded by the PR-G deliverable.
 
 Doctrine-lint stays green: no new banned tokens, no new polling sites, no D0 violations (`ActorCommandSink` lives in `nmp-core` alongside `ActorCommand`).
 

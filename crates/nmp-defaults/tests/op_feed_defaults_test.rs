@@ -38,15 +38,13 @@ use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
 //
-// Each test that spins up a real `nmp_app_new()` drives a full app lifecycle:
-// `nmp_app_new` eagerly spawns the actor thread (which builds the relay `Pool`
-// and its worker / translator threads) and the update-listener thread before any
-// `nmp_app_start`, and `nmp_app_free` only drops the box without joining them, so
-// teardown races forward after the test body returns. Concurrent libtest threads
-// then overlap one app's leaked teardown with the next app's setup over shared
-// C-ABI listener machinery — intermittently perturbing the OP-feed wiring under
-// CI load (the same class of harness contention that surfaced as a flaky
-// `reposted_by == None` in the sibling `op_feed_repost_hydration_test.rs`).
+// Each test that spins up a real `NmpApp` drives a full app lifecycle:
+// `nmp_app_new` starts the update-listener thread and `nmp_app_start` spawns
+// the actor thread (which builds the relay `Pool` and its worker / translator
+// threads). Concurrent libtest threads then overlap app setup/teardown over
+// shared C-ABI listener machinery — intermittently perturbing the OP-feed
+// wiring under CI load (the same class of harness contention that surfaced as
+// a flaky `reposted_by == None` in the sibling `op_feed_repost_hydration_test.rs`).
 // Serialize the whole-lifecycle tests so exactly one `NmpApp` is live at a time.
 // Poison-tolerant so one failing test does not cascade into the siblings —
 // the established idiom across the `nmp_app_new`-based integration tests.

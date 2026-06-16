@@ -1392,70 +1392,15 @@ pub fn run_actor_with_observers(
     // the FFI surface and diagnostic snapshot don't change.
     let dispatch_drops = Arc::new(AtomicU64::new(0));
 
-    // D1 / offline-first §3 — emit one empty-but-valid snapshot BEFORE the
-    // host has sent any command. A host that waits for the first snapshot
-    // before sending `Start` must not deadlock (offline-first.md §3: "the
-    // first snapshot is unconditional … even if the working set is empty").
-    //
-    // We cannot construct the real kernel yet — the LMDB storage path is
-    // resolved only after the first command arrives (the init-order comment
-    // below explains why). A temporary bare kernel with default settings is
-    // constructed here solely to produce a well-formed `running=false`
-    // snapshot and then dropped.  This frame unblocks any host that observes
-    // the update channel before sending its first command; the real kernel
-    // (with the correct storage path) is still built below, after `recv()`.
-    //
-    // tick.rs `emit_now` is intentionally used here rather than an inline
-    // `encode_snapshot_frame` so the frame travels the same code path as
-    // every other snapshot (FlatBuffers envelope, `SNAPSHOT_SCHEMA_VERSION`,
-    // `running=false` field).  The `last_emit` instant is not available yet
-    // (it is initialised after kernel construction below); we pass the
-    // channel sender directly without updating `last_emit` — that field is
-    // re-initialised below anyway.
-    // #601 rev-collision fix: capture the pre-flight kernel's rev after its
-    // single `make_update(false)` call.  The real kernel is initialised at
-    // rev=0; we will advance it to `preflight_rev` below (before its own
-    // first `make_update`), so the real kernel's first frame carries
-    // `preflight_rev + 1`.  The iOS host's `guard update.rev > rev` guard
-    // only accepts strictly increasing revs, so this guarantees the
-    // `running=true` Start frame is never silently dropped even when a
-    // snapshot-first host has already consumed the pre-flight frame (rev=1).
-    let preflight_rev: u64;
-    {
-        let mut pre_kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-        let _ = update_tx.send(pre_kernel.make_update(false));
-        preflight_rev = pre_kernel.current_rev();
-    }
-    // Wait for the first command before constructing the real kernel.
-    // `nmp_app_new` starts this actor thread immediately, while the host sets
-    // the LMDB path through `nmp_app_set_storage_path` right after creating
-    // the handle and before `Start`. Blocking here removes that init-order
-    // race without polling; the first command is replayed through the normal
-    // dispatch path below after the kernel has been built with the latest path.
     // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
-    // relay mail seen before the first command (see the bootstrap recv below)
-    // — or stashed while draining the command lane each iteration — is
-    // replayed in order. Constructed before the bootstrap recv so pre-kernel
-    // relay mail has somewhere to go.
+    // relay mail stashed while draining the command lane each iteration is
+    // replayed in order.
     let mut scheduler = MailScheduler::new();
 
-    // Wait for the first command before constructing the real kernel.
-    // Relay mail cannot precede the first command in practice — no relays are
-    // open until a command (`Start` / `Configure`) drives `ensure_relay_worker`
-    // — but the merged inbox means relay mail *could* in principle arrive
-    // first, so we handle it soundly: stash any pre-first-command relay mail in
-    // the scheduler's backlog and replay it after kernel construction.
-    let first_command = loop {
-        match inbox.recv() {
-            None | Some(ActorMail::Command(ActorCommand::Shutdown)) => return,
-            Some(ActorMail::Command(command)) => break command,
-            Some(ActorMail::Relay(event)) => scheduler.stash_relay(event),
-        }
-    };
-
-    // Resolve the FFI-supplied storage path once, after at least one host
-    // command has reached the actor. If the slot is still empty — or the lock
-    // is poisoned — the kernel falls back to the in-memory store. The
+    // Resolve the FFI-supplied storage path once when the actor starts. FFI
+    // handles are passive until `nmp_app_start`, so host configuration has
+    // completed before this thread exists. If the slot is still empty — or the
+    // lock is poisoned — the kernel falls back to the in-memory store. The
     // `lmdb-backend` feature gate lives inside `build_event_store`; this path
     // is plumbed unconditionally.
     let initial_storage_path: Option<String> =
@@ -1474,12 +1419,6 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
-    // #601 rev-collision fix: advance the real kernel's rev counter to
-    // `preflight_rev` so its first `make_update` emits `preflight_rev + 1`.
-    // This must happen AFTER kernel construction and BEFORE the dispatch loop
-    // replays `first_command` — the construction order (real kernel built
-    // post-recv()) is unaffected. The storage-path race fix is preserved.
-    kernel.resume_rev_after_preflight(preflight_rev);
     // V-51 phase 4 — publish the kernel's routing-trace projection clone
     // into the shared slot so `NmpApp::routing_trace` can read it. The
     // kernel default is `EmptyOutboxRouter` (substrate-honest debt B), so
@@ -1816,6 +1755,18 @@ pub fn run_actor_with_observers(
     // owns it; the substrate relay-text interceptor slot
     // (`relay_text_interceptor`) is the only seam the actor calls for NIP-47
     // NWC behavior.
+    let mut running = false;
+    let mut emit_hz = DEFAULT_EMIT_HZ;
+    let mut last_emit = Instant::now()
+        .checked_sub(Duration::from_secs(1))
+        .unwrap_or_else(Instant::now);
+    // D1 / offline-first §3 — emit one empty-but-valid snapshot from the real
+    // kernel before the actor processes any command. Because the same kernel
+    // later handles `Start`, a snapshot-first host sees strict rev monotonicity
+    // naturally: the initial `running=false` frame is rev=1 and the first
+    // `running=true` Start frame is rev=2.
+    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+
     // T105: URL-keyed transport pool. One socket per resolved relay URL;
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
     // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is
@@ -1832,11 +1783,6 @@ pub fn run_actor_with_observers(
     let mut connected_relays = HashSet::new();
     let mut connected_urls: HashSet<CanonicalRelayUrl> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
     let mut next_relay_generation = 1;
-    let mut running = false;
-    let mut emit_hz = DEFAULT_EMIT_HZ;
-    let mut last_emit = Instant::now()
-        .checked_sub(Duration::from_secs(1))
-        .unwrap_or_else(Instant::now);
     // #1069 — wall-clock gate for the bounded GC pass. Initialised to "now" so
     // the first pass fires one `GC_TICK_INTERVAL` after the actor starts, not
     // on the cold-start burst (the store is empty then anyway). An `Instant`
@@ -1850,7 +1796,7 @@ pub fn run_actor_with_observers(
     // Lives outside the loop so parked ops survive across ticks.
     let mut parked_ops: Vec<ParkedOp> = Vec::new();
     let mut queued_publish_outbound = Vec::new();
-    let mut first_command = Some(first_command);
+    let mut first_command = None;
 
     // ADR-0040 §3 — spawn the serialized capability-worker thread (V-90 Site 2).
     // The worker owns the Receiver; the actor holds `capability_work_tx` and
@@ -1869,15 +1815,15 @@ pub fn run_actor_with_observers(
         // Single drain (issue #1231 follow-up #3): `MailScheduler::
         // drain_command_lane` is now the *only* implementation of the
         // command-priority + fairness + relay-backlog contract. It replays the
-        // held `first_command`, drains up to `COMMAND_DRAIN_BUDGET` commands,
-        // stashes any relay mail it sees (honoring the #1264 RELAY_BACKLOG_CAP
-        // backpressure: once the backlog is full it STOPS pulling relay mail
-        // forward, leaving it in the bounded mpsc channel so pressure builds at
-        // the pool translator rather than silently dropping the oldest staged
-        // event), and returns the commands as a `Vec` so the `&mut kernel` /
-        // `&mut identity` per-command dispatch (which a closure boundary cannot
-        // express, hence the prior inline copy) runs here, after the drain
-        // returns.
+        // command held from the prior blocking wait, drains up to
+        // `COMMAND_DRAIN_BUDGET` commands, stashes any relay mail it sees
+        // (honoring the #1264 RELAY_BACKLOG_CAP backpressure: once the backlog
+        // is full it STOPS pulling relay mail forward, leaving it in the
+        // bounded mpsc channel so pressure builds at the pool translator
+        // rather than silently dropping the oldest staged event), and returns
+        // the commands as a `Vec` so the `&mut kernel` / `&mut identity`
+        // per-command dispatch (which a closure boundary cannot express,
+        // hence the prior inline copy) runs here, after the drain returns.
         let CommandLaneDrain {
             commands,
             drain: command_drain,
@@ -1887,13 +1833,12 @@ pub fn run_actor_with_observers(
             {
                 {
                     // G-S4 — straddle counter: one command has left the channel
-                    // (either the replayed `first_command`, which `command_rx
-                    // .recv()` already dequeued, or a fresh `try_recv`). Mirror
-                    // `NmpApp::send_cmd`'s `fetch_add(1)` so the depth tracks
-                    // occupancy. `saturating_sub` guards the (benign) race where
-                    // the actor drains a command sent through `actor_sender`,
-                    // which bypasses the increment. `Relaxed` — observability,
-                    // not synchronization.
+                    // through `drain_command_lane`. Mirror `NmpApp::send_cmd`'s
+                    // `fetch_add(1)` so the depth tracks occupancy.
+                    // `saturating_sub` guards the (benign) race where the actor
+                    // drains a command sent through `actor_sender`, which
+                    // bypasses the increment. `Relaxed` — observability, not
+                    // synchronization.
                     queue_depth
                         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |d| {
                             Some(d.saturating_sub(1))
@@ -2008,9 +1953,9 @@ pub fn run_actor_with_observers(
         // ── Relay event lane ─────────────────────────────────────────────
         // Block up to compute_wait so emit-hz is respected without busy-spin.
         // This `recv_timeout` is the loop's SINGLE blocking point (D8): a
-        // backlog relay event (stashed while draining commands, or pre-kernel
-        // bootstrap mail) is served first with zero wait; otherwise we block on
-        // the unified inbox, so a command send wakes us here too. A command
+        // backlog relay event (stashed while draining commands) is served
+        // first with zero wait; otherwise we block on the unified inbox, so a
+        // command send wakes us here too. A command
         // received during the wait is replayed as `first_command` so the next
         // iteration dispatches it on the priority lane (no added latency).
         //

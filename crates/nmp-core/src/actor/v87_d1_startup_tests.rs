@@ -14,9 +14,8 @@
 //!    `running=true` frame MUST carry a `rev` strictly greater than the
 //!    pre-flight frame's `rev`, so the iOS host's
 //!    `guard update.rev > rev` (KernelModel.swift:643) never silently drops
-//!    it.  Without the `resume_rev_after_preflight` fix both frames carry
-//!    `rev=1` and the host drops the `running=true` frame, leaving the UI
-//!    stuck on the `running=false` pre-flight state indefinitely.
+//!    it. The same real kernel now emits both frames: pre-start `rev=1`,
+//!    first `running=true` frame `rev=2`.
 //!
 //! 4. **Seeded-store offline render** (`#628`) — an actor whose local store is
 //!    seeded with a known event BEFORE `Start` (with zero relays) must render
@@ -179,13 +178,13 @@ mod tests {
     /// (KernelModel.swift:643).  Frames are only "accepted" if their `rev` is
     /// strictly greater than the last-accepted rev, exactly as the host does.
     ///
-    /// Without the `resume_rev_after_preflight` fix:
+    /// Without a shared real kernel for both startup frames:
     /// - Pre-flight frame: `rev=1` → accepted (host had `rev=0`).
     /// - Start frame:      `rev=1` → REJECTED (`1 > 1` is false) → test fails.
     /// - Subsequent idle ticks: `changed_since_emit=false` → no further frames
     ///   → the host stays stuck on the `running=false` state indefinitely.
     ///
-    /// With the fix:
+    /// With the current real-kernel startup path:
     /// - Pre-flight frame: `rev=1` → accepted.
     /// - Start frame:      `rev=2` → accepted (`2 > 1`) → `running=true` → passes.
     #[test]
@@ -233,8 +232,8 @@ mod tests {
         // receive no further frames (changed_since_emit=false, no relay activity
         // to flip it back true), leaving the UI stuck on running=false forever.
         //
-        // Without the fix: pre-flight=rev 1, Start frame=rev 1 → guard drops it.
-        // With    the fix: pre-flight=rev 1, Start frame=rev 2 → guard accepts it.
+        // Broken shape: pre-flight=rev 1, Start frame=rev 1 → guard drops it.
+        // Current shape: pre-flight=rev 1, Start frame=rev 2 → guard accepts it.
         let first_post_start = post_snapshots
             .first()
             .expect("V-87 #601-rev: no post-Start frames received at all within 500 ms");
@@ -248,9 +247,8 @@ mod tests {
              silently drop this frame. In an offline scenario with no relay activity, \
              changed_since_emit stays false after the dropped Start emit and no \
              further frames are sent — the host is stuck on running=false indefinitely. \
-             Fix: call kernel.resume_rev_after_preflight(preflight_rev) before the \
-             dispatch loop so the real kernel's first make_update produces \
-             rev = preflight_rev + 1."
+             The same real kernel must emit the pre-start and Start frames so \
+             the Start frame naturally advances to rev = preflight_rev + 1."
         );
 
         // Belt-and-suspenders: also verify the first accepted frame carries running=true.

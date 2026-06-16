@@ -28,7 +28,7 @@ final class KernelHandle {
     private let raw: UnsafeMutableRawPointer          // opaque *mut NmpApp
     private var updateSink: KernelUpdateSink?          // retains the closure box
 
-    init()  { raw = nmp_app_new() }                    // spawns the Rust actor
+    init()  { raw = nmp_app_new() }                    // allocates a passive handle
     deinit  {                                          // ordered teardown:
         nmp_app_set_update_callback(raw, nil, nil)     //  1. detach callback
         nmp_app_free(raw)                              //  2. free → actor shutdown

@@ -18,7 +18,7 @@ pub struct FfiApp { /* opaque */ }
 
 #[uniffi::export]
 impl FfiApp {
-    /// Construct the app. Spawns the actor thread. Loads persisted sessions.
+    /// Construct the app handle. Start spawns the actor and loads persisted sessions.
     /// `config` carries data directory, default relays, storage backend choice,
     /// feature flags. Infallible at the FFI boundary; catastrophic failure panics.
     #[uniffi::constructor]

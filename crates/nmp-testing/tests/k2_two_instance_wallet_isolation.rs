@@ -39,7 +39,9 @@ use std::time::{Duration, Instant};
 use nmp_app_chirp::{
     nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
 };
-use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_app_wallet_connect, NmpApp};
+use nmp_ffi::{
+    nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_app_start, nmp_app_wallet_connect, NmpApp,
+};
 use nostr::{Keys, SecretKey, ToBech32};
 
 use zap_e2e_common::{install_emit_signal, nwc_uri, wait_for_projection};
@@ -108,6 +110,8 @@ fn two_apps_two_wallets_no_crosstalk() {
     let (app_b, handle_b) = build_chirp_app();
     let rx_a = install_emit_signal(app_a);
     let rx_b = install_emit_signal(app_b);
+    nmp_app_start(app_a, 0, 256, 4);
+    nmp_app_start(app_b, 0, 256, 4);
 
     // Each app connects to its OWN wallet.
     connect_wallet(app_a, &wallet_a);
