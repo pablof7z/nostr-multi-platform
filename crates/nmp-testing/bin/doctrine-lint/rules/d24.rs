@@ -2,7 +2,7 @@
 //!
 //! After an event is accepted and persisted, the kernel notifies app-facing
 //! event observers from ONE place: the shared `project_accepted_event`
-//! (`crates/nmp-core/src/kernel/ingest/mod.rs`), which calls
+//! (`crates/nmp-core/src/kernel/ingest/projection.rs`), which calls
 //! `notify_event_observers` exactly once per accepted event. The cache-serve
 //! replay seam (`crates/nmp-core/src/kernel/cache_serve/`) reaches observers
 //! through that same `project_accepted_event` door, so store-first and
@@ -35,7 +35,7 @@
 //! `crates/nmp-core/src/` only — `notify_event_observers` is `pub(in
 //! crate::kernel)`, so only kernel code can call it. The allowlisted seam
 //! files (excluded from scope) are EXACTLY two:
-//! - `kernel/ingest/mod.rs` — the `project_accepted_event` post-store fan-out,
+//! - `kernel/ingest/projection.rs` — the `project_accepted_event` post-store fan-out,
 //! - `kernel/event_observer.rs` — the `notify_event_observers` definition.
 //!
 //! The cache-serve replay seam (`kernel/cache_serve/`) is deliberately NOT
@@ -76,7 +76,7 @@ pub const ID: &str = "D24";
 /// (`project_accepted_event`) and the call's own definition. Matched as path
 /// suffixes / fragments. The cache-serve dir is intentionally NOT here.
 const SEAM_FILES: &[&str] = &[
-    "crates/nmp-core/src/kernel/ingest/mod.rs",
+    "crates/nmp-core/src/kernel/ingest/projection.rs",
     "crates/nmp-core/src/kernel/event_observer.rs",
 ];
 
@@ -105,7 +105,7 @@ pub type State = crate::rules::split_call::State;
 fn message() -> String {
     "notify_event_observers call outside the post-store fan-out seam violates \
      D24 (event-flow lock). The kernel fans out to app-facing observers from \
-     ONE place — `project_accepted_event` (kernel/ingest/mod.rs) — and every \
+     ONE place — `project_accepted_event` (kernel/ingest/projection.rs) — and every \
      other path (incl. cache-serve replay) reaches observers through that same \
      door (ADR-0045 single-mechanism cache-serve). A scattered observer notify \
      fires the host twice and breaks the once-per-accepted-event invariant"
@@ -184,7 +184,10 @@ mod tests {
 
     #[test]
     fn flags_trailing_comment_then_split_paren() {
-        let n = run(&["        self.notify_event_observers // fan out", "            (&ev);"]);
+        let n = run(&[
+            "        self.notify_event_observers // fan out",
+            "            (&ev);",
+        ]);
         assert_eq!(n, 1, "trailing comment + split paren must fire");
     }
 
@@ -214,14 +217,19 @@ mod tests {
 
     #[test]
     fn does_not_flag_in_test_cfg() {
-        let hits = check(&mut State::default(), "self.notify_event_observers(&ev);", false, true);
+        let hits = check(
+            &mut State::default(),
+            "self.notify_event_observers(&ev);",
+            false,
+            true,
+        );
         assert!(hits.is_empty(), "#[cfg(test)] bodies must not fire");
     }
 
     #[test]
     fn seam_files_out_of_scope() {
         assert!(!file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/ingest/mod.rs"
+            "crates/nmp-core/src/kernel/ingest/projection.rs"
         )));
         assert!(!file_in_scope(Path::new(
             "crates/nmp-core/src/kernel/event_observer.rs"

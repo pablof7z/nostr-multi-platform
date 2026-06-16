@@ -1,9 +1,9 @@
 //! D23 — single accepted-event store-insert chokepoint (event-flow PR1 lock).
 //!
 //! The event-flow spine landed a SINGLE accepted-event persistence path: the
-//! kernel's `verify_and_persist` (`crates/nmp-core/src/kernel/ingest/mod.rs`)
-//! owns the `sig-verify → store.insert → NIP-parser dispatch → observer
-//! fan-out` sequence (ADR-0057). Every event that enters the store does so
+//! kernel's `verify_and_persist` (`crates/nmp-core/src/kernel/ingest/persistence.rs`)
+//! owns the `sig-verify → store.insert → raw-tap → provenance → TTL` sequence
+//! (ADR-0057). Every event that enters the store does so
 //! through that one door. A NEW ingest ladder — a second function that writes
 //! to the `EventStore` directly — would re-fragment the spine: it would bypass
 //! provenance accounting, the raw-tap, TTL stamping, and the dispatcher, and
@@ -17,7 +17,7 @@
 //! ## What this bans (two shapes — the matcher is newline-tolerant)
 //!
 //! The production chokepoint writes the call rustfmt-SPLIT across lines —
-//! `match self` / `.store` / `.insert(...)` (kernel/ingest/mod.rs:526-528). A
+//! `match self` / `.store` / `.insert(...)` (kernel/ingest/persistence.rs). A
 //! second store-write would be written the same way, so a single-line
 //! contiguous match would leave an evasion hole. D23 catches BOTH:
 //!
@@ -40,7 +40,7 @@
 //!
 //! `crates/nmp-core/src/` only — the crate that hosts the kernel ingest spine.
 //! The store implementations live in `crates/nmp-store/` (a different crate,
-//! naturally out of scope). The chokepoint file `kernel/ingest/mod.rs` is
+//! naturally out of scope). The chokepoint file `kernel/ingest/persistence.rs` is
 //! excluded from scope (allowlisted).
 //!
 //! ## State (split-chain detection)
@@ -52,7 +52,7 @@
 //!
 //! ## Exemptions
 //!
-//! - The chokepoint file `crates/nmp-core/src/kernel/ingest/mod.rs`.
+//! - The chokepoint file `crates/nmp-core/src/kernel/ingest/persistence.rs`.
 //! - Doc/line comments (`is_comment`) — skipped (do not fire, do not advance).
 //! - `#[cfg(test)]` bodies (`in_test_cfg`) and test-only files (`d6_test_file`,
 //!   handled in the driver) — fixtures freely seed the store.
@@ -76,7 +76,7 @@ pub const ID: &str = "D23";
 
 /// The chokepoint file: the single accepted-event persistence path
 /// (`verify_and_persist`). The only legal `store.insert` site in `nmp-core`.
-const CHOKEPOINT_FILE: &str = "crates/nmp-core/src/kernel/ingest/mod.rs";
+const CHOKEPOINT_FILE: &str = "crates/nmp-core/src/kernel/ingest/persistence.rs";
 
 /// Cross-line tracker for split-chain detection: did the previous CODE line end
 /// with the `store` token?
@@ -129,8 +129,8 @@ fn line_ends_with_store_token(line: &str) -> bool {
 fn message() -> String {
     "store insert outside the accepted-event chokepoint violates D23 \
      (event-flow PR1 lock). The kernel's `verify_and_persist` \
-     (kernel/ingest/mod.rs) is the SINGLE accepted-event persistence path \
-     (sig-verify → store.insert → parser dispatch → observer fan-out, \
+     (kernel/ingest/persistence.rs) is the SINGLE accepted-event persistence path \
+     (sig-verify → store.insert → raw-tap → provenance → TTL, \
      ADR-0057). A second store-insert site is a new ingest ladder that bypasses \
      provenance accounting, the raw-tap, TTL stamping, and the dispatcher"
         .to_string()
@@ -208,7 +208,12 @@ mod tests {
     #[test]
     fn flags_self_store_insert_contiguous() {
         let mut s = State::default();
-        let hits = check(&mut s, "        self.store.insert(verified, &p, ts);", false, false);
+        let hits = check(
+            &mut s,
+            "        self.store.insert(verified, &p, ts);",
+            false,
+            false,
+        );
         assert_eq!(hits.len(), 1, "contiguous self.store.insert( must fire");
         assert!(hits[0].1.contains("D23"));
         assert!(hits[0].1.contains("verify_and_persist"));
@@ -248,7 +253,10 @@ mod tests {
             "        self.store // fetch the event store",
             "            .insert(v, &r, 0);",
         ]);
-        assert_eq!(n, 1, "trailing comment on the .store line must not evade D23");
+        assert_eq!(
+            n, 1,
+            "trailing comment on the .store line must not evade D23"
+        );
     }
 
     #[test]
@@ -284,7 +292,10 @@ mod tests {
     #[test]
     fn blank_line_breaks_the_chain() {
         let n = run(&["    self.store", "", "        .insert(v);"]);
-        assert_eq!(n, 0, "a blank line between .store and .insert( breaks the chain");
+        assert_eq!(
+            n, 0,
+            "a blank line between .store and .insert( breaks the chain"
+        );
     }
 
     #[test]
@@ -302,7 +313,13 @@ mod tests {
     #[test]
     fn does_not_flag_comment() {
         let mut s = State::default();
-        assert!(check(&mut s, "// self.store.insert(...) is the chokepoint", true, false).is_empty());
+        assert!(check(
+            &mut s,
+            "// self.store.insert(...) is the chokepoint",
+            true,
+            false
+        )
+        .is_empty());
     }
 
     #[test]
@@ -313,14 +330,22 @@ mod tests {
 
     #[test]
     fn chokepoint_file_out_of_scope() {
-        assert!(!file_in_scope(Path::new("crates/nmp-core/src/kernel/ingest/mod.rs")));
-        assert!(!file_in_scope(Path::new("/abs/crates/nmp-core/src/kernel/ingest/mod.rs")));
+        assert!(!file_in_scope(Path::new(
+            "crates/nmp-core/src/kernel/ingest/persistence.rs"
+        )));
+        assert!(!file_in_scope(Path::new(
+            "/abs/crates/nmp-core/src/kernel/ingest/persistence.rs"
+        )));
     }
 
     #[test]
     fn other_nmp_core_files_in_scope() {
-        assert!(file_in_scope(Path::new("crates/nmp-core/src/kernel/cache_serve/mod.rs")));
-        assert!(file_in_scope(Path::new("crates/nmp-core/src/actor/commands/identity.rs")));
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-core/src/kernel/cache_serve/mod.rs"
+        )));
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-core/src/actor/commands/identity.rs"
+        )));
     }
 
     #[test]
