@@ -147,9 +147,11 @@ genuinely need raw local keys (and those are the ones V-78 retires for zaps).
 `signer_pubkey: Option<String>` matches the in-flight publish-path field
 (`PublishUnsignedEvent` / `PublishUnsignedEventToRelays` in
 `crates/nmp-core/src/actor/mod.rs`) byte-for-byte: `None` = active account,
-`Some(pubkey)` = the named roster key (e.g. a per-podcast NIP-F4 key registered
-via `nmp_app_signin_nsec(make_active=0)`). Local-vs-bunker is transparent for
-named keys too, because `sign_with_account_nonblocking` already handles both.
+`Some(pubkey)` = the named roster key. Per-podcast NIP-F4 keys use
+`nmp_app_register_agent_nsec`: they are persisted, app-managed local signer
+slots that can sign by pubkey but are hidden from account projections and
+cannot become active. Local-vs-bunker remains transparent for named keys
+because `sign_with_account_nonblocking` handles both.
 
 ### Decision 3 — Blob-server list source: payload-supplied for v1; kind:10063 ingest is the Phase-2 idiomatic answer
 

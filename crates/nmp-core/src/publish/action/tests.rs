@@ -305,7 +305,7 @@ fn execute_publish_raw_threads_signer_pubkey_onto_actor_command() {
     // The signer selector must survive `execute`: a `PublishRaw` carrying
     // `signer_pubkey: Some(agent_pk)` lands on the `ActorCommand::PublishRawEvent`
     // the actor dispatches, so the agent / per-podcast key signs instead of the
-    // active account (app-signer-slot.md §"Publishing with an agent key").
+    // active account.
     let agent_pk = "f".repeat(64);
     let action = PublishAction::PublishRaw {
         kind: 30023,

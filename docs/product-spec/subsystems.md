@@ -135,6 +135,14 @@ Signers are managed entirely in `nmp-core`. The initial product signer catalog i
 
 The signer abstraction inside `nmp-core` is a Rust trait with `sign(unsigned_event) -> Future<signed_event>`. Adding a signer kind is an internal task; external developers do not implement signers.
 
+The session roster distinguishes user-visible accounts from app-managed signer
+slots. User-visible accounts appear in `SessionState.accounts` and may become
+`active`. App-managed signer slots are registered and persisted by the kernel
+so actions can name them with `signer_pubkey`, but they never appear in account
+projections and `SwitchActive` must reject them. Per-podcast NIP-F4 keys,
+device automation keys, and similar app-owned identities use this hidden
+signer-slot path, not `HumanAccount`.
+
 ### 7.5 Actions catalog
 
 Actions live in `nmp-actions`. Each action is a Rust async fn taking an action context (`event_store`, `signer`, `publisher`, `active_account`) and producing zero or more signed events. The actor runs actions on its tokio runtime; results route through `InternalEvent` back to the actor for atomic state update.

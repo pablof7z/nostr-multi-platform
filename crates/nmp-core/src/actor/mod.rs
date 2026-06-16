@@ -64,6 +64,8 @@ mod continuations;
 // Generic raw signed-event forwarding dispatch. Native-only: depends on
 // `nmp_network::pool::Pool` for outbound `["EVENT", ...]` frames. Policy
 // crates provide target selection through a substrate trait object.
+#[cfg(all(test, feature = "native"))]
+mod app_managed_signer_tests;
 #[cfg(feature = "native")]
 mod outbound;
 #[cfg(feature = "native")]
@@ -334,6 +336,11 @@ pub enum SignerSource {
     /// secret is wiped from memory the instant the command is dropped — the
     /// in-flight window between FFI ingest and key parsing is minimized.
     LocalNsec(zeroize::Zeroizing<String>),
+    /// Local secret key for an app-managed signer slot. The actor registers it
+    /// in the signer roster, persists it as app-managed local material, and
+    /// keeps it hidden from user account projections and active-account
+    /// switching.
+    AppManagedLocalNsec(zeroize::Zeroizing<String>),
     /// NIP-46 `bunker://` URI. Triggers an asynchronous broker handshake: the
     /// actor seeds the `bunker_handshake` projection, stashes `make_active`, and
     /// delegates the connect/get_public_key dance to the registered broker. The
@@ -354,6 +361,7 @@ impl std::fmt::Debug for SignerSource {
         // discriminant + the handle's pubkey.
         match self {
             SignerSource::LocalNsec(_) => f.write_str("LocalNsec(<redacted>)"),
+            SignerSource::AppManagedLocalNsec(_) => f.write_str("AppManagedLocalNsec(<redacted>)"),
             SignerSource::BunkerUri(uri) => f.debug_tuple("BunkerUri").field(uri).finish(),
             SignerSource::RemoteHandle(handle) => f
                 .debug_tuple("RemoteHandle")

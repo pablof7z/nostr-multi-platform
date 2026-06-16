@@ -12,9 +12,9 @@
 //! shared `NmpApp` handle; the symbols stay `#[no_mangle] extern "C"` so the
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
-use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
+use super::{NmpApp, app_ref, c_optional_string_argument, c_string_argument};
 use nmp_core::ActorCommand;
-use std::ffi::{c_char, CString};
+use std::ffi::{CString, c_char};
 
 /// Mint a unique correlation id for a `SignEventForReturn` round-trip.
 ///
@@ -85,7 +85,6 @@ pub extern "C" fn nmp_app_sign_event_for_return(
         .into_raw()
 }
 
-
 /// Sign in with a local nsec and optionally make it the active account.
 ///
 /// `make_active = 1` (the common path): registers the signer AND makes it the
@@ -94,12 +93,8 @@ pub extern "C" fn nmp_app_sign_event_for_return(
 /// automatically publishes a key package; accounts signed in this way are
 /// immediately MLS-capable without the user visiting Settings.
 ///
-/// `make_active = 0`: registers the signer in the kernel's identity roster
-/// WITHOUT activating it. The key can then sign events via
-/// `nmp_app_sign_event_for_return` by naming its pubkey explicitly. Use this
-/// for agent / secondary keys that must sign (e.g. Blossom auth events) without
-/// disturbing the user's active account. Does NOT set the autopublish flag
-/// (secondary keys are not registered with Marmot).
+/// `make_active = 0`: registers a visible secondary signer without activating
+/// it. For hidden app-managed keys, use `nmp_app_register_agent_nsec`.
 ///
 /// D13: the nsec is wrapped in `Zeroizing` the instant it is copied out of the
 /// C string; no raw key bytes are retained past the command dispatch.
@@ -119,6 +114,25 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char, m
     // Route through `add_signer` so the "active local key ⇒ arm MLS
     // autopublish" rule lives in exactly one place (D4); see `NmpApp::add_signer`.
     app.add_signer(nmp_core::SignerSource::LocalNsec(secret), make_active != 0);
+}
+
+/// Register a persisted app-managed local signer.
+///
+/// The key is signable by explicit pubkey through publish/upload/sign-return
+/// paths, but it is hidden from account projections and can never become the
+/// active user account.
+#[no_mangle]
+pub extern "C" fn nmp_app_register_agent_nsec(app: *mut NmpApp, secret: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
+        return;
+    };
+    app.send_cmd(ActorCommand::AddSigner {
+        source: nmp_core::SignerSource::AppManagedLocalNsec(secret),
+        make_active: false,
+    });
 }
 
 /// Connect a NIP-46 bunker signer.
@@ -268,8 +282,7 @@ mod autopublish_flag_tests {
     use std::ffi::CString;
 
     /// A stable, valid nsec used across sign-in flag tests.
-    const TEST_NSEC: &str =
-        "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+    const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
     fn nsec_c() -> CString {
         CString::new(TEST_NSEC).unwrap()
@@ -282,7 +295,10 @@ mod autopublish_flag_tests {
         let app = nmp_app_new();
         let app_ref = unsafe { &*app };
         // Precondition: flag starts false.
-        assert!(!app_ref.take_pending_mls_autopublish(), "flag must start false");
+        assert!(
+            !app_ref.take_pending_mls_autopublish(),
+            "flag must start false"
+        );
 
         // Set it back; sign in as active.
         nmp_app_signin_nsec(app, nsec_c().as_ptr(), 1);
@@ -299,9 +315,9 @@ mod autopublish_flag_tests {
         nmp_app_free(app);
     }
 
-    /// `nmp_app_signin_nsec(make_active=0)` registers a secondary / agent key
-    /// and must NOT set the autopublish flag (those keys are never registered
-    /// with Marmot).
+    /// `nmp_app_signin_nsec(make_active=0)` registers a visible secondary key
+    /// and must NOT set the autopublish flag (secondary keys are never
+    /// registered with Marmot).
     #[test]
     fn signin_nsec_secondary_does_not_set_autopublish_flag() {
         let app = nmp_app_new();
@@ -311,6 +327,19 @@ mod autopublish_flag_tests {
         assert!(
             !app_ref.take_pending_mls_autopublish(),
             "make_active=0 sign-in must NOT set pending_mls_autopublish"
+        );
+        nmp_app_free(app);
+    }
+
+    #[test]
+    fn register_agent_nsec_does_not_set_autopublish_flag() {
+        let app = nmp_app_new();
+        let app_ref = unsafe { &*app };
+
+        nmp_app_register_agent_nsec(app, nsec_c().as_ptr());
+        assert!(
+            !app_ref.take_pending_mls_autopublish(),
+            "app-managed local signers are hidden agent keys, not MLS accounts"
         );
         nmp_app_free(app);
     }

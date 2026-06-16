@@ -663,12 +663,8 @@ pub(super) fn dispatch_command(
             make_active,
         } => {
             use crate::actor::SignerSource;
-            // A `BunkerUri` source kicks off an async handshake and stores no
-            // signer yet — no keyring persistence runs until the resolved
-            // `RemoteHandle` arrives. A `RemoteHandle` source must persist the
-            // remote-signer payload off-actor; capture its persistence metadata
-            // BEFORE `add_signer` consumes the `source`.
             let is_bunker_handshake = matches!(source, SignerSource::BunkerUri(_));
+            let is_app_managed_local = matches!(source, SignerSource::AppManagedLocalNsec(_));
             let remote_persistence = match &source {
                 SignerSource::RemoteHandle(handle) => {
                     Some((handle.pubkey_hex(), handle.persistence_payload_json()))
@@ -682,15 +678,17 @@ pub(super) fn dispatch_command(
                 make_active,
                 ctx.relays_ready,
             );
-            // ADR-0040 §3 — enqueue all Keychain writes off-actor (D8). The
-            // bunker-handshake-initiation path has nothing to persist yet (the
-            // signer arrives later as a `RemoteHandle`); skip persistence so we
-            // don't write a session for an account that doesn't exist yet.
             if !is_bunker_handshake {
                 if let Some((remote_identity_id, Some(payload_json))) = &remote_persistence {
                     session_persistence::enqueue_persist_remote_signer_payload(
                         remote_identity_id,
                         payload_json,
+                        ctx.capability_work_tx,
+                    );
+                }
+                if is_app_managed_local {
+                    session_persistence::enqueue_persist_app_managed_local_signers(
+                        ctx.identity,
                         ctx.capability_work_tx,
                     );
                 }
@@ -747,6 +745,10 @@ pub(super) fn dispatch_command(
             // executes before any subsequent persist for the new active
             // account — the single worker drains in enqueue order.
             session_persistence::enqueue_forget_account(&identity_id, ctx.capability_work_tx);
+            session_persistence::enqueue_persist_app_managed_local_signers(
+                ctx.identity,
+                ctx.capability_work_tx,
+            );
             session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
                 ctx.capability_work_tx,
@@ -817,7 +819,7 @@ pub(super) fn dispatch_command(
                     correlation_id,
                     // Honour the `PublishRaw` signer selector: `None` signs with
                     // the active account; `Some(pubkey)` signs with that
-                    // registered agent / per-podcast key (app-signer-slot.md).
+                    // registered app-managed signer slot.
                     signer_pubkey,
                     ctx.parked_ops,
                 ),
@@ -830,7 +832,7 @@ pub(super) fn dispatch_command(
                         correlation_id,
                         // Honour the `PublishRaw` signer selector: `None` signs
                         // with the active account; `Some(pubkey)` signs with that
-                        // registered agent / per-podcast key (app-signer-slot.md).
+                        // registered app-managed signer slot.
                         signer_pubkey,
                         ctx.parked_ops,
                     )
@@ -1182,34 +1184,12 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        // ADR-0052 §D4 (K2 rung 5.4): the `DispatchHostOp` arm was DELETED —
-        // its host-op dispatch now flows through the single `Protocol` write
-        // seam above as `crate::substrate::HostOpCommand`. Both guarantees the
-        // old arm carried are preserved there: whole-body `catch_unwind` (the
-        // `Protocol` arm now wraps `cmd.run`) and the persistent app-installed
-        // handler (still in the per-app `HostOpHandlerSlot`, reached at run
-        // time through the narrow `HostOpHandlerAccess` capability).
         #[cfg(feature = "native")]
         ActorCommand::CapabilityResultReady {
             account_id,
             result_json,
         } => {
-            // ADR-0040 §3 — re-entry from the serialized capability-worker.
-            //
-            // The worker ran `dispatch_capability` off the actor thread and
-            // posted this command. We apply the result here, inside a normal
-            // actor tick (D4 — actor sole writer).
-            //
-            // Account-switch safety: if the account was removed or switched
-            // away between enqueue and now, drop the result with a D6 trace
-            // (never cross-apply to the now-active account). This is the
-            // architectural guarantee that makes the single FIFO worker
-            // correct: forget(A) followed by a switch cannot misapply a
-            // stale persist(A) result to account B.
             if !ctx.identity.contains_account(&account_id) {
-                // D6 — removed-account result is data (a trace), not an error.
-                // No toast: the account was deliberately removed; the user
-                // doesn't need to know the Keychain write was pre-empted.
                 tracing::trace!(
                     "CapabilityResultReady: dropped result for removed account {account_id}"
                 );

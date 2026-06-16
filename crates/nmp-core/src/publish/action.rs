@@ -132,8 +132,8 @@ pub enum PublishAction {
     /// `signer_pubkey` selects which registered signer signs the event:
     /// `None` (the default) signs with the active account; `Some(hex_pubkey)`
     /// signs with the registered signer whose pubkey matches — e.g. an agent /
-    /// per-podcast key added via `AddSigner { make_active: false }` (see
-    /// `app-signer-slot.md`). The active account is never changed. Whether the
+    /// per-podcast key added via `nmp_app_register_agent_nsec` and named here
+    /// by pubkey. The active account is never changed. Whether the
     /// selected key is local (nsec, signs inline) or remote (NIP-46 bunker,
     /// parks on the kernel's `ParkedOp` path) is transparent to the caller.
     /// An unknown pubkey is **not** validated at dispatch time — it surfaces as

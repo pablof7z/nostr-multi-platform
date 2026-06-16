@@ -130,8 +130,9 @@ pub use feed::nmp_app_load_older_feed;
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_remove_account, nmp_app_remove_relay,
-    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_register_agent_nsec,
+    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec,
+    nmp_app_switch_active,
 };
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline DELETED.
 // Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic
@@ -2314,12 +2315,9 @@ impl NmpApp {
     /// | `nmp-marmot::identity::restore_identity_with_keyring_account` | `LocalNsec` | Recalls secret from keyring, then calls here |
     /// | `nmp_app_signin_nip55` (C-ABI) | `RemoteHandle` | NIP-55 external signer; resolves via `Nip55Connect` |
     ///
-    /// **Keyring split:** keyring operations (persist / recall / forget) are an
-    /// app-layer concern owned by `nmp-marmot`. Shells that do not embed Marmot
-    /// use `nmp_app_signin_nsec` and manage keyring storage themselves (or skip
-    /// it). `add_signer` itself is keyring-agnostic — it only enqueues the
-    /// `ActorCommand::AddSigner` command and arms the MLS autopublish flag for
-    /// active local-key sign-ins.
+    /// Session persistence is actor-owned for active signers and app-managed
+    /// local signer slots. `add_signer` only enqueues `ActorCommand::AddSigner`
+    /// and arms the MLS autopublish flag for active local-key sign-ins.
     ///
     /// `make_active` activates the resulting account once it resolves (for a
     /// `BunkerUri` source the flag is stashed across the async handshake

@@ -1,10 +1,11 @@
 use super::commands::{self, IdentityRuntime};
 use super::session_persistence::{
-    enqueue_persist_active_pointer, enqueue_persist_current_active_session,
-    enqueue_persist_remote_signer_payload, restore_active_session,
+    enqueue_persist_active_pointer, enqueue_persist_app_managed_local_signers,
+    enqueue_persist_current_active_session, enqueue_persist_remote_signer_payload,
+    restore_active_session,
 };
 use crate::actor::capability_worker::spawn_capability_worker;
-use crate::actor::{ActorCommand, ActorMail, CommandSender};
+use crate::actor::{ActorMail, CommandSender};
 use crate::bunker_hook::BunkerHookRequest;
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
 use crate::external_signer_hook::ExternalSignerHookRequest;
@@ -12,8 +13,8 @@ use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr, CString};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -104,10 +105,7 @@ fn fresh() -> (IdentityRuntime, Kernel) {
 /// helper blocks until `count` `CapabilityResultReady` commands arrive
 /// on the actor command channel, confirming every enqueued write has
 /// been executed by the worker.
-fn drain_worker_results(
-    cmd_rx: &Receiver<ActorMail>,
-    count: usize,
-) {
+fn drain_worker_results(cmd_rx: &Receiver<ActorMail>, count: usize) {
     for _ in 0..count {
         cmd_rx
             .recv_timeout(Duration::from_secs(5))
@@ -140,7 +138,7 @@ fn restores_imported_nsec_without_swift_cache() {
 
     let (mut restored_identity, mut restored_kernel) = fresh();
     // restore_active_session is synchronous (cold-start read chain).
-    let (restore_work_tx, _restore_cmd_rx) = {
+    let (restore_work_tx, restore_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
@@ -152,6 +150,7 @@ fn restores_imported_nsec_without_swift_cache() {
         &restore_work_tx,
         false,
     );
+    drain_worker_results(&restore_cmd_rx, 3);
 
     assert_eq!(restored_identity.active_pubkey(), Some(expected.clone()));
     let (accounts, active) = restored_kernel.account_snapshot();
@@ -184,7 +183,7 @@ fn persists_generated_account_for_next_launch() {
     drain_worker_results(&cmd_rx, 3);
 
     let (mut restored_identity, mut restored_kernel) = fresh();
-    let (restore_work_tx, _restore_cmd_rx) = {
+    let (restore_work_tx, restore_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
@@ -196,9 +195,68 @@ fn persists_generated_account_for_next_launch() {
         &restore_work_tx,
         false,
     );
+    drain_worker_results(&restore_cmd_rx, 3);
 
     assert_eq!(restored_identity.active_pubkey(), Some(expected.clone()));
     assert_eq!(restored_kernel.account_snapshot().1, Some(&expected));
+}
+
+#[test]
+fn restores_app_managed_local_signer_without_projecting_account() {
+    let _g = SERIAL.lock().unwrap();
+    *STORE.lock().unwrap() = Some(HashMap::new());
+    let slot = registered_slot();
+    let (inbox_tx, cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
+
+    let (mut identity, mut kernel) = fresh();
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::AppManagedLocalNsec(zeroize::Zeroizing::new(
+            TEST_NSEC.to_string(),
+        )),
+        false,
+        false,
+    );
+    let expected = identity.app_managed_local_secrets()[0].0.clone();
+    assert!(identity.active_pubkey().is_none());
+    assert!(kernel.account_snapshot().0.is_empty());
+
+    enqueue_persist_app_managed_local_signers(&identity, &work_tx);
+    drain_worker_results(&cmd_rx, 2);
+
+    let (mut restored_identity, mut restored_kernel) = fresh();
+    let (restore_work_tx, restore_cmd_rx) = {
+        let (tx, rx) = channel::<ActorMail>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
+        (wtx, rx)
+    };
+    restore_active_session(
+        &mut restored_identity,
+        &mut restored_kernel,
+        &slot,
+        &restore_work_tx,
+        false,
+    );
+    drain_worker_results(&restore_cmd_rx, 2);
+
+    assert!(restored_identity.contains_account(&expected));
+    assert!(restored_identity.active_pubkey().is_none());
+    assert!(restored_kernel.account_snapshot().0.is_empty());
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: Vec::new(),
+        content: "restored hidden signer".to_string(),
+        created_at: 1_700_000_000,
+    };
+    let signed = commands::sign_with_account_nonblocking(&restored_identity, &expected, &unsigned)
+        .expect("restored hidden signer resolves")
+        .poll()
+        .expect("restored hidden signer resolves inline")
+        .expect("restored hidden signer signs");
+    assert_eq!(signed.unsigned.pubkey, expected);
 }
 
 #[test]
@@ -237,13 +295,8 @@ fn restores_nip46_from_persisted_remote_payload() {
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
     };
-    let _outbound = restore_active_session(
-        &mut identity,
-        &mut kernel,
-        &slot,
-        &restore_work_tx,
-        false,
-    );
+    let _outbound =
+        restore_active_session(&mut identity, &mut kernel, &slot, &restore_work_tx, false);
 
     assert_eq!(
         calls.lock().unwrap().as_slice(),
@@ -300,13 +353,8 @@ fn restores_nip55_from_persisted_remote_payload() {
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
     };
-    let _outbound = restore_active_session(
-        &mut identity,
-        &mut kernel,
-        &slot,
-        &restore_work_tx,
-        false,
-    );
+    let _outbound =
+        restore_active_session(&mut identity, &mut kernel, &slot, &restore_work_tx, false);
 
     assert_eq!(
         calls.lock().unwrap().as_slice(),
@@ -348,13 +396,8 @@ fn restore_nip55_without_hook_surfaces_unavailable_and_toast() {
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
     };
-    let _outbound = restore_active_session(
-        &mut identity,
-        &mut kernel,
-        &slot,
-        &restore_work_tx,
-        false,
-    );
+    let _outbound =
+        restore_active_session(&mut identity, &mut kernel, &slot, &restore_work_tx, false);
 
     let signer_state = identity
         .signer_state_for_test()

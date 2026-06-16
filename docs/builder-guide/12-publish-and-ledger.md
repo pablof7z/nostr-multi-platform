@@ -52,11 +52,9 @@ signer_pubkey: Option<String>
 - `Some(pubkey)` — sign with the **specific registered signer** whose
   pubkey matches, regardless of which account is active. This is how an
   app-managed agent key publishes: register it with
-  `AddSigner { make_active: false }` (see
-  [11 — sessions/signers](11-sessions-signers.md) and
-  [app-signer-slot](../wiki/app-signer-slot.md)), then pass its pubkey
-  here so the kernel signs with it without ever making it the active
-  account.
+  `nmp_app_register_agent_nsec` (see
+  [11 — sessions/signers](11-sessions-signers.md)), then pass its pubkey
+  here so the kernel signs with it without projecting or activating it.
 
 The kernel resolves the selector against the roster and signs through
 `sign_with_account_nonblocking`; whether that signer's key is local
