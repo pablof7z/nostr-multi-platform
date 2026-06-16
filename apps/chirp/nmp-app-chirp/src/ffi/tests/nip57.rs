@@ -5,8 +5,8 @@
 
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
-use super::super::register::zaps_typed_projection;
 use super::super::nmp_app_chirp_unregister;
+use super::super::register::zaps_typed_projection;
 use super::helpers::{dispatch, register_app};
 
 /// `nmp.nip57.zap` action — `ZapAction`, an `ActionModule` living in the
@@ -107,6 +107,7 @@ fn zaps_typed_projection_lands_in_the_sidecar_and_round_trips() {
             vec!["bolt11".to_string(), "lnbc210n1pvj...".to_string()],
         ],
         content: String::new(),
+        relay_provenance: Vec::new(),
     });
 
     let entry = zaps_typed_projection(&proj).expect("zaps projection must always emit");
@@ -124,7 +125,8 @@ fn zaps_typed_projection_lands_in_the_sidecar_and_round_trips() {
 
     // The bytes in the sidecar decode back to the same snapshot the projection
     // reports — not only the generic `payload:Value` tree.
-    let decoded = decode_zaps_snapshot(&entry.payload).expect("sidecar payload must decode as NZAP");
+    let decoded =
+        decode_zaps_snapshot(&entry.payload).expect("sidecar payload must decode as NZAP");
     assert_eq!(decoded, proj.snapshot());
     assert!(
         decoded.totals.contains_key(&target),

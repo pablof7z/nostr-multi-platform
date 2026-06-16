@@ -71,6 +71,7 @@ fn repost_card() -> TimelineEventCard {
             author_pubkey: event_id(0x42),
             note_created_at: 1_699_000_000,
         }),
+        relay_provenance: Vec::new(),
     }
 }
 

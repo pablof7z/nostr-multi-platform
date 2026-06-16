@@ -32,9 +32,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
-use nmp_feed::{
-    FeedController, FeedCursor, FeedPage, FeedRequest, RootCard, RootFeedSnapshot,
-};
+use nmp_feed::{FeedController, FeedCursor, FeedPage, FeedRequest, RootCard, RootFeedSnapshot};
 
 use crate::{Nip10ReplyAttribution, TimelineEventCard};
 
@@ -202,9 +200,7 @@ impl FeedController for FlatFeed {
 /// the raw hex pubkey.
 #[must_use]
 pub fn author_feed_predicate(author: String, kinds: Vec<u32>) -> FlatFeedPredicate {
-    Arc::new(move |event: &KernelEvent| {
-        event.author == author && kinds.contains(&event.kind)
-    })
+    Arc::new(move |event: &KernelEvent| event.author == author && kinds.contains(&event.kind))
 }
 
 /// Build a **thread-feed** predicate: the root note itself plus every event of
@@ -234,7 +230,13 @@ pub fn thread_feed_predicate(root_id: String, kinds: Vec<u32>) -> FlatFeedPredic
 mod tests {
     use super::*;
 
-    fn ev(id: &str, author: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
+    fn ev(
+        id: &str,
+        author: &str,
+        kind: u32,
+        created_at: u64,
+        tags: Vec<Vec<String>>,
+    ) -> KernelEvent {
         KernelEvent {
             id: id.to_string(),
             author: author.to_string(),
@@ -242,6 +244,7 @@ mod tests {
             created_at,
             tags,
             content: format!("note {id}"),
+            relay_provenance: Vec::new(),
         }
     }
 
@@ -273,7 +276,10 @@ mod tests {
         let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
         feed.ingest(&ev("reply", "alice", 1, 200, vec![etag("bobs_root")]));
         assert_eq!(feed.len(), 1);
-        assert_eq!(feed.snapshot(&FeedRequest::default()).cards[0].card.id, "reply");
+        assert_eq!(
+            feed.snapshot(&FeedRequest::default()).cards[0].card.id,
+            "reply"
+        );
     }
 
     #[test]

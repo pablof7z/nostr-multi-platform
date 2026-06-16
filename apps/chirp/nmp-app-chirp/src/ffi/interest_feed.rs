@@ -378,7 +378,7 @@ fn seed_query(feed: &FlatFeed, store: &dyn EventStore, query: StoreQuery) {
         return;
     };
     for stored in events {
-        KernelEventObserver::on_kernel_event(feed, &kernel_event_from_stored(&stored));
+        KernelEventObserver::on_kernel_event(feed, &kernel_event_from_stored(&stored, store));
     }
 }
 
@@ -386,7 +386,7 @@ fn event_store(app: &NmpApp) -> Option<Arc<dyn EventStore>> {
     app.event_store_handle().lock().ok()?.clone()
 }
 
-fn kernel_event_from_stored(stored: &StoredEvent) -> KernelEvent {
+fn kernel_event_from_stored(stored: &StoredEvent, store: &dyn EventStore) -> KernelEvent {
     KernelEvent {
         id: stored.raw.id.clone(),
         author: stored.raw.pubkey.clone(),
@@ -394,6 +394,7 @@ fn kernel_event_from_stored(stored: &StoredEvent) -> KernelEvent {
         kind: stored.raw.kind,
         tags: stored.raw.tags.clone(),
         content: stored.raw.content.clone(),
+        relay_provenance: nmp_core::slots::relay_provenance_for_event(store, &stored.raw.id),
     }
 }
 

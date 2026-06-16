@@ -96,6 +96,7 @@ fn left_column() -> Vec<Line<'static>> {
     binding(&mut lines, "+", "react to selected note");
     binding(&mut lines, "R", "repost selected note");
     binding(&mut lines, "z", "zap selected note");
+    binding(&mut lines, "i", "inspect selected note");
     binding(&mut lines, "f", "follow author");
     binding(&mut lines, "o", "open author profile");
     binding(&mut lines, "F", "filter feed");

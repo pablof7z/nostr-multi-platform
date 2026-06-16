@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // ─────────────────────────────────────────────────────────────────────────
 // NoteRowView — polished timeline cell for the Home feed.
@@ -35,6 +36,7 @@ struct NoteRowView: View {
 
     /// Controls the inline reply sheet for this row.
     @State private var showReply = false
+    @State private var showRelayProvenance = false
     /// Transient like-animation state.
     @State private var likeTapped = false
 
@@ -124,6 +126,9 @@ struct NoteRowView: View {
         .buttonStyle(.plain)
         .sheet(isPresented: $showReply) {
             ComposeView(replyTo: ChirpReplyTarget(item: item))
+        }
+        .sheet(isPresented: $showRelayProvenance) {
+            RelayProvenanceSheet(relays: item.relayProvenance)
         }
         .onAppear { model.claimVisibleNoteRelations(eventID: item.id) }
         .onDisappear { model.releaseVisibleNoteRelations(eventID: item.id) }
@@ -218,17 +223,56 @@ struct NoteRowView: View {
     @ViewBuilder
     private var relayChip: some View {
         if item.relayCount > 0 {
-            HStack(spacing: 3) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 10, weight: .medium))
-                Text("\(item.relayCount)")
-                    .font(.caption)
+            Button {
+                showRelayProvenance = true
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("\(item.relayCount)")
+                        .font(.caption)
+                }
             }
+            .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
             .padding(.top, 4)
+            .accessibilityLabel("Received from \(item.relayCount) relays")
         }
     }
 
+}
+
+private struct RelayProvenanceSheet: View {
+    let relays: [String]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if relays.isEmpty {
+                    Text("No relay provenance")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(relays, id: \.self) { relay in
+                        Button {
+                            UIPasteboard.general.string = relay
+                        } label: {
+                            Text(relay)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("Received from")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────

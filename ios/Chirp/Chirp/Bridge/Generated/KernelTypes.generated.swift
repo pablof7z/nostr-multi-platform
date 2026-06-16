@@ -170,6 +170,7 @@ public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiab
     public let kind: UInt32
     public let navTargetId: String
     public let relayCount: UInt32
+    public let relayProvenance: [String]
     public let repostInnerContent: String
 
     public func rendersIdentically(_ other: Self) -> Bool {
@@ -186,6 +187,7 @@ public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiab
             && self.navTargetId == other.navTargetId
             && self.repostInnerContent == other.repostInnerContent
             && self.relayCount == other.relayCount
+            && self.relayProvenance == other.relayProvenance
     }
 }
 

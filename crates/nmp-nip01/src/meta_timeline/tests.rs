@@ -12,6 +12,7 @@ fn note(id: &str, ts: u64, tags: Vec<Vec<String>>) -> KernelEvent {
         created_at: ts,
         tags,
         content: id.into(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -23,6 +24,7 @@ fn repost(id: &str, ts: u64, target: &str) -> KernelEvent {
         created_at: ts,
         tags: vec![vec!["e".into(), target.into()]],
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

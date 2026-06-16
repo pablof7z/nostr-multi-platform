@@ -103,6 +103,7 @@ fn note_event() -> Result<KernelEvent, serde_json::Error> {
             })
             .collect(),
         content: string(&value, "content"),
+        relay_provenance: Vec::new(),
     })
 }
 
@@ -114,6 +115,7 @@ fn profile_event(id: &str, pubkey: &str, display_name: &str) -> KernelEvent {
         created_at: 1_779_301_973,
         tags: Vec::new(),
         content: json!({ "display_name": display_name }).to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 

@@ -71,6 +71,7 @@ fn op_event(id: &str, author: &str, created_at: u64, body: &str) -> KernelEvent 
         created_at,
         tags: Vec::new(),
         content: body.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -95,6 +96,7 @@ fn reply_event(id: &str, author: &str, created_at: u64, root_id: &str) -> Kernel
             ],
         ],
         content: "a reply".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -111,6 +113,7 @@ fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
             .map(|pk| vec!["p".to_string(), (*pk).to_string()])
             .collect(),
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

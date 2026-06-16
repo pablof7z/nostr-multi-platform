@@ -26,6 +26,7 @@ fn note_by(id: &str, author: &str, ts: u64, tags: Vec<Vec<String>>) -> KernelEve
         created_at: ts,
         tags,
         content: id.into(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -48,6 +49,7 @@ fn profile_event(author: &str, display: &str) -> KernelEvent {
         created_at: 3,
         tags: vec![],
         content: format!(r#"{{"display_name":"{display}"}}"#),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -138,6 +140,7 @@ fn relation_counts_include_reactions_reposts_and_zaps() {
         created_at: 2,
         tags: vec![vec!["e".into(), target.into()]],
         content: "+".into(),
+        relay_provenance: Vec::new(),
     });
     proj.on_kernel_event(&KernelEvent {
         id: "repost".into(),
@@ -146,6 +149,7 @@ fn relation_counts_include_reactions_reposts_and_zaps() {
         created_at: 3,
         tags: vec![vec!["e".into(), target.into()]],
         content: String::new(),
+        relay_provenance: Vec::new(),
     });
     proj.on_kernel_event(&KernelEvent {
         id: "zap".into(),
@@ -157,6 +161,7 @@ fn relation_counts_include_reactions_reposts_and_zaps() {
             vec!["e".into(), target.into()],
         ],
         content: String::new(),
+        relay_provenance: Vec::new(),
     });
 
     let snap = proj.snapshot();

@@ -742,6 +742,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     case authorPictureUrl = 28
     case contentPreview = 30
     case repostedBy = 32
+    case relayProvenance = 34
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -768,7 +769,8 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
   public var contentPreview: String? { let o = _accessor.offset(VTOFFSET.contentPreview.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var contentPreviewSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.contentPreview.v) }
   public var repostedBy: nmp_nip01_RepostAttribution? { let o = _accessor.offset(VTOFFSET.repostedBy.v); return o == 0 ? nil : nmp_nip01_RepostAttribution(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startTimelineEventCard(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 15) }
+  public var relayProvenance: FlatbufferVector<String?> { return _accessor.vector(at: VTOFFSET.relayProvenance.v, byteSize: 4) }
+  public static func startTimelineEventCard(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 16) }
   public static func add(id: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: id, at: VTOFFSET.id.p) }
   public static func add(authorPubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkey, at: VTOFFSET.authorPubkey.p) }
   public static func add(authorDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorDisplay, at: VTOFFSET.authorDisplay.p) }
@@ -786,6 +788,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
   public static func add(authorPictureUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPictureUrl, at: VTOFFSET.authorPictureUrl.p) }
   public static func add(contentPreview: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentPreview, at: VTOFFSET.contentPreview.p) }
   public static func add(repostedBy: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: repostedBy, at: VTOFFSET.repostedBy.p) }
+  public static func addVectorOf(relayProvenance: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayProvenance, at: VTOFFSET.relayProvenance.p) }
   public static func endTimelineEventCard(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createTimelineEventCard(
     _ fbb: inout FlatBufferBuilder,
@@ -803,7 +806,8 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     hasAuthorPictureUrl: Bool = false,
     authorPictureUrlOffset authorPictureUrl: Offset = Offset(),
     contentPreviewOffset contentPreview: Offset = Offset(),
-    repostedByOffset repostedBy: Offset = Offset()
+    repostedByOffset repostedBy: Offset = Offset(),
+    relayProvenanceVectorOffset relayProvenance: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip01_TimelineEventCard.startTimelineEventCard(&fbb)
     nmp_nip01_TimelineEventCard.add(id: id, &fbb)
@@ -821,6 +825,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     nmp_nip01_TimelineEventCard.add(authorPictureUrl: authorPictureUrl, &fbb)
     nmp_nip01_TimelineEventCard.add(contentPreview: contentPreview, &fbb)
     nmp_nip01_TimelineEventCard.add(repostedBy: repostedBy, &fbb)
+    nmp_nip01_TimelineEventCard.addVectorOf(relayProvenance: relayProvenance, &fbb)
     return nmp_nip01_TimelineEventCard.endTimelineEventCard(&fbb, start: __start)
   }
 
@@ -841,6 +846,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     try _v.visit(field: VTOFFSET.authorPictureUrl.p, fieldName: "authorPictureUrl", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.contentPreview.p, fieldName: "contentPreview", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.repostedBy.p, fieldName: "repostedBy", required: false, type: ForwardOffset<nmp_nip01_RepostAttribution>.self)
+    try _v.visit(field: VTOFFSET.relayProvenance.p, fieldName: "relayProvenance", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
     _v.finish()
   }
 }

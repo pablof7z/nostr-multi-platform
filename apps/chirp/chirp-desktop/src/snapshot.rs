@@ -250,6 +250,8 @@ pub struct TimelineEventCard {
     /// compatibility, defaults to 0 (the relay-multiplier badge never shows).
     #[serde(default)]
     pub relay_count: u32,
+    #[serde(default)]
+    pub relay_provenance: Vec<String>,
     /// `Some` when this card surfaced because a NIP-18 repost superseded the
     /// original note. `author_pubkey` / `content` name the *original* note;
     /// this names the reposter.

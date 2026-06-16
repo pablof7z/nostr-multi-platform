@@ -240,6 +240,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
                 "nav_target_id",
                 "repost_inner_content",
                 "relay_count",
+                "relay_provenance",
             ],
             schema: schema_value::<TimelineItem>(),
         },

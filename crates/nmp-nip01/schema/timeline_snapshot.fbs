@@ -206,6 +206,7 @@ table TimelineEventCard {
   content_preview:string;
   // Null unless this card was surfaced by a NIP-18 repost.
   reposted_by:RepostAttribution;
+  relay_provenance:[string];
 }
 
 // ---------------------------------------------------------------------------

@@ -146,6 +146,7 @@ fn kernel_event_from_row(row: &ClaimedEventRow) -> Option<KernelEvent> {
         created_at: row.created_at,
         tags: row.tags.clone(),
         content: row.content.clone(),
+        relay_provenance: Vec::new(),
     })
 }
 

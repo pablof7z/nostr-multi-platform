@@ -35,6 +35,7 @@ fn article_event(
             vec!["image".to_string(), image.to_string()],
         ],
         content: body.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -157,6 +158,7 @@ fn ignores_non_article_kinds() {
         created_at: 1_000,
         tags: vec![],
         content: "just a note".to_string(),
+        relay_provenance: Vec::new(),
     };
     projection.on_kernel_event(&note);
 
@@ -188,6 +190,7 @@ fn missing_tags_become_placeholders_in_feed_and_none_in_document() {
         created_at: 1_000,
         tags: vec![vec!["d".to_string(), "bare".to_string()]],
         content: "body only".to_string(),
+        relay_provenance: Vec::new(),
     };
     projection.on_kernel_event(&bare);
 

@@ -47,6 +47,7 @@ fn kernel_event_from_stored(stored: &nmp_core::store::StoredEvent) -> KernelEven
         created_at: stored.raw.created_at,
         tags: stored.raw.tags.clone(),
         content: stored.raw.content.clone(),
+        relay_provenance: Vec::new(),
     }
 }
 

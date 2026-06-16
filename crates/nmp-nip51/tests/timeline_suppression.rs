@@ -43,6 +43,7 @@ fn kind1_event(author: &str, event_id: &str, created_at: u64) -> KernelEvent {
         created_at,
         tags: vec![],
         content: "hello".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -61,6 +62,7 @@ fn mute_event(active: &str, muted_pubkeys: &[&str], muted_event_ids: &[&str]) ->
         created_at: 9999,
         tags,
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

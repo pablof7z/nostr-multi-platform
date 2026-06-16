@@ -141,7 +141,6 @@ struct ModularBlockView: View {
         let card = cards[id]
         // ADR-0032: presentation layer derives the secondary monospaced
         // pubkey label from the raw hex pubkey it already has on hand.
-        let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
         // Resolve the display name through the same lookup the rest of the
         // view uses (resolved_profiles → card name → shortHex). Previously
         // hardcoded `pubkey.shortHex`, which ignored every known profile.
@@ -300,12 +299,13 @@ struct ModularBlockView: View {
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
+        let relayProvenance = item?.relayProvenance ?? card.relayProvenance
         // ADR-0032: `TimelineItem` now carries raw protocol data only —
         // display formatting is the presentation layer's responsibility.
         // `isRepost` / `navTargetId` / `repostInnerContent` keep their
         // neutral kind:1 defaults; synthetic-from-card rows are not
         // surfaced through the repost rendering path.
-        TimelineItem(
+        return TimelineItem(
             // Inherit the snapshot-baked display name from the backing item
             // when present; fall back to the card's own kind:0 name. `nil`
             // when neither has a name yet — the row formats the pubkey as
@@ -325,7 +325,8 @@ struct ModularBlockView: View {
             isRepost: false,
             kind: card.kind,
             navTargetId: card.id,
-            relayCount: 0,
+            relayCount: item?.relayCount ?? UInt32(relayProvenance.count),
+            relayProvenance: relayProvenance,
             repostInnerContent: ""
         )
     }

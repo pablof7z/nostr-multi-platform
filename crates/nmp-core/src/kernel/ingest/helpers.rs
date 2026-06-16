@@ -56,6 +56,7 @@ pub(in crate::kernel) fn kernel_event_from_nostr(
         created_at: event.created_at,
         tags: event.tags.clone(),
         content: event.content.clone(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -78,5 +79,6 @@ pub(in crate::kernel) fn kernel_event_from_verified(
         created_at: raw.created_at,
         tags: raw.tags.clone(),
         content: raw.content.clone(),
+        relay_provenance: Vec::new(),
     }
 }

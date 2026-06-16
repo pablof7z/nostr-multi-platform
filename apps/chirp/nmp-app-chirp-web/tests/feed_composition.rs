@@ -27,6 +27,7 @@ fn make_kind1(id: &str, author: &str, content: &str) -> KernelEvent {
         created_at: 1_700_000_000,
         tags: vec![],
         content: content.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -43,6 +44,7 @@ fn make_reply(id: &str, author: &str, root_id: &str) -> KernelEvent {
             "root".to_string(),
         ]],
         content: "reply".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 

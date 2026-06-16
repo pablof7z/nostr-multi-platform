@@ -64,6 +64,7 @@ fn root_card() -> TimelineEventCard {
             },
         },
         reposted_by: None,
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -88,6 +89,7 @@ fn repost_card() -> TimelineEventCard {
             author_pubkey: hex32(0x42),
             note_created_at: 1_699_000_000,
         }),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -173,7 +175,10 @@ fn op_feed_empty_golden_fixture_is_stable() {
     if wire != expected {
         eprintln!("actual op_feed_empty_v1 hex:\n{}", encode_hex(&wire));
     }
-    assert_eq!(wire, expected, "OpFeedSnapshot empty v1 golden fixture drifted");
+    assert_eq!(
+        wire, expected,
+        "OpFeedSnapshot empty v1 golden fixture drifted"
+    );
 }
 
 #[test]

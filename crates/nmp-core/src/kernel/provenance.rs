@@ -164,6 +164,32 @@ pub(in crate::kernel) fn first_source_for(
     Ok(primary_url(&entries))
 }
 
+/// Read the bounded per-event relay provenance sidecar as raw relay URLs.
+///
+/// The store remains the single source of truth for `(relay_url, first_seen,
+/// last_seen, primary)` provenance. Timeline projections only need the raw URL
+/// list for "Received from" presentation, so this helper intentionally drops
+/// timestamps and primary flags at the projection boundary.
+pub(in crate::kernel) fn relay_urls_for_event(
+    store: &dyn EventStore,
+    event_id: &str,
+) -> Vec<String> {
+    let Some(event_id_bytes) = event_id_bytes(event_id) else {
+        return Vec::new();
+    };
+    store
+        .provenance_for(&event_id_bytes)
+        .map(|entries| entries.into_iter().map(|entry| entry.relay_url).collect())
+        .unwrap_or_default()
+}
+
+fn event_id_bytes(event_id: &str) -> Option<[u8; 32]> {
+    let parsed = nostr::EventId::from_hex(event_id).ok()?;
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(parsed.as_bytes());
+    Some(bytes)
+}
+
 #[allow(dead_code)] // internal helper for `first_source_for`; tested directly.
 fn primary_url(entries: &[ProvenanceEntry]) -> Option<RelayUrl> {
     entries
@@ -303,5 +329,28 @@ mod tests {
     #[test]
     fn primary_url_none_when_no_entries() {
         assert_eq!(primary_url(&[]), None);
+    }
+
+    #[test]
+    fn relay_urls_for_event_returns_store_ordered_urls() {
+        let store = nmp_store::MemEventStore::default();
+        let id = "11".repeat(32);
+        let raw = nmp_store::RawEvent {
+            id: id.clone(),
+            pubkey: "22".repeat(32),
+            created_at: 1_700_000_000,
+            kind: 1,
+            tags: Vec::new(),
+            content: "hello".to_string(),
+            sig: "33".repeat(64),
+        };
+        let verified = nmp_store::VerifiedEvent::from_raw_unchecked(raw);
+        let _ = store.insert(verified.clone(), &"wss://b.example".to_string(), 2);
+        let _ = store.insert(verified, &"wss://a.example".to_string(), 1);
+
+        assert_eq!(
+            relay_urls_for_event(&store, &id),
+            vec!["wss://a.example".to_string(), "wss://b.example".to_string()]
+        );
     }
 }

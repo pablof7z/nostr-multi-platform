@@ -31,7 +31,7 @@ fn ev(id: &str, created_at: u64, parent: Option<&str>, root: Option<&str>) -> Ke
         kind: 1,
         created_at,
         tags,
-        content: id.into(),
+        content: id.into(), relay_provenance: Vec::new(),
     }
 }
 
@@ -47,7 +47,7 @@ fn ev_addr_root(id: &str, created_at: u64, parent: Option<&str>, coord: &str) ->
         kind: 1,
         created_at,
         tags,
-        content: id.into(),
+        content: id.into(), relay_provenance: Vec::new(),
     }
 }
 
@@ -63,7 +63,7 @@ fn ev_uri_root(id: &str, created_at: u64, parent: Option<&str>, uri: &str) -> Ke
         kind: 1,
         created_at,
         tags,
-        content: id.into(),
+        content: id.into(), relay_provenance: Vec::new(),
     }
 }
 
@@ -112,7 +112,7 @@ fn ev_supersedes(id: &str, created_at: u64, target: &str) -> KernelEvent {
         kind: 1,
         created_at,
         tags: vec![tag("e_supersedes", target)],
-        content: id.into(),
+        content: id.into(), relay_provenance: Vec::new(),
     }
 }
 

@@ -46,6 +46,7 @@ final class IdleReRenderTests: XCTestCase {
         kind: UInt32 = 1,
         navTargetId: String = "event1",
         relayCount: UInt32 = 1,
+        relayProvenance: [String] = ["wss://relay.example"],
         repostInnerContent: String = ""
     ) -> TimelineItem {
         TimelineItem(
@@ -61,6 +62,7 @@ final class IdleReRenderTests: XCTestCase {
             kind: kind,
             navTargetId: navTargetId,
             relayCount: relayCount,
+            relayProvenance: relayProvenance,
             repostInnerContent: repostInnerContent
         )
     }
@@ -84,6 +86,14 @@ final class IdleReRenderTests: XCTestCase {
         let b = makeItem(relayCount: 3)
         XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in relayCount should NOT render identically — relayChip displays the count")
+    }
+
+    func test_relayProvenanceAffectsRenderIdentity() {
+        let a = makeItem(relayProvenance: ["wss://a.example"])
+        let b = makeItem(relayProvenance: ["wss://b.example"])
+
+        XCTAssertFalse(a.rendersIdentically(b),
+            "Items differing in relayProvenance should NOT render identically — the provenance sheet reads it")
     }
 
     /// `content` is the primary note body — a change must cause a re-render.

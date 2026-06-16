@@ -79,6 +79,7 @@ mod tests {
             has_gap: false,
             thread_attribution: Vec::new(),
             relation_counts: Default::default(),
+            relay_provenance: Vec::new(),
             content_tree: None,
             content_render: Default::default(),
             mention_pubkeys,

@@ -179,6 +179,7 @@ mod tests {
             created_at: 1,
             tags,
             content: String::new(),
+            relay_provenance: Vec::new(),
         }
     }
 
@@ -270,6 +271,7 @@ mod tests {
                 vec!["e".into(), "NOTE".into()],
             ],
             content: String::new(),
+            relay_provenance: Vec::new(),
         };
         ZapsView::on_event_inserted(&ctx(), &mut state, &no_amount);
         let snap = ZapsView::snapshot(&ctx(), &state);

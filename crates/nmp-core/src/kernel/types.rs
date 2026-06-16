@@ -87,6 +87,7 @@ pub(crate) struct TimelineItem {
     /// display (aim.md §2).
     pub(super) created_at: u64,
     pub(super) relay_count: u32,
+    pub(super) relay_provenance: Vec<String>,
     /// `true` when `kind == 6` (NIP-18 repost). Thin-shell: the view layer
     /// flips the "Repost" badge and re-routes thread navigation on this bool;
     /// it MUST NOT switch on `kind` itself (re-parsing protocol semantics in
@@ -178,7 +179,6 @@ pub(super) struct MentionProfilePayload {
     /// or the metadata carries no `picture` field.
     pub(super) picture_url: Option<String>,
 }
-
 
 // ── Relay health and wire subscription state ──────────────────────────────────
 // V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` so the

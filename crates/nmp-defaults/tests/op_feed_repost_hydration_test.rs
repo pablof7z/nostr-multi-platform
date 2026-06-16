@@ -84,6 +84,7 @@ fn op_event(id: &str, author: &str, created_at: u64, body: &str) -> KernelEvent 
         created_at,
         tags: Vec::new(),
         content: body.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -103,6 +104,7 @@ fn reply_to_parent(id: &str, author: &str, created_at: u64, parent_id: &str) -> 
             "reply".to_string(),
         ]],
         content: "reply to a repost".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -130,6 +132,7 @@ fn repost_kernel_event(id: &str, author: &str, created_at: u64, target: &str) ->
         created_at,
         tags: vec![vec!["e".to_string(), target.to_string()]],
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

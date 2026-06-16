@@ -27,6 +27,8 @@ pub struct KernelEvent {
     pub created_at: u64,
     pub tags: Vec<Vec<String>>,
     pub content: String,
+    #[serde(default)]
+    pub relay_provenance: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

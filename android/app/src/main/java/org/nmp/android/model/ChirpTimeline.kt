@@ -48,6 +48,7 @@ data class ChirpEventCard(
     @SerialName("author_display_name") val authorDisplayName: String? = null,
     @SerialName("author_picture_url") val authorPictureUrl: String? = null,
     @SerialName("content_preview") val contentPreview: String = "",
+    @SerialName("relay_provenance") val relayProvenance: List<String> = emptyList(),
 )
 
 @Serializable(with = TimelineBlockSerializer::class)

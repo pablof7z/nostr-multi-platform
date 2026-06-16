@@ -24,6 +24,7 @@ fn event() -> KernelEvent {
         created_at: 1,
         tags: vec![],
         content: "hi".into(),
+        relay_provenance: Vec::new(),
     }
 }
 
