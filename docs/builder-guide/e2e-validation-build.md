@@ -209,7 +209,7 @@ Land both BEFORE the SwiftUI screens that depend on them.
 
 ## 3. Bridge layer — Path A (raw C FFI extension)
 
-**Chosen path: A.** Path B (`nmp gen modules`) is the M14 UniFFI deliverable; doing it now blows scope.
+**Chosen path: A.** Path B (host binding codegen via `nmp-codegen gen swift` / `gen typed-decoders`) is the M14 UniFFI deliverable; doing it now blows scope. The old `nmp gen modules` per-app FFI generator was deleted by ADR-0046.
 
 Path A means: extend `ios/NmpStress/NmpStress/Bridge/NmpCore.h` shape into `ios/NmpPulse/NmpPulse/Bridge/NmpCore.h`. Swift uses the same `KernelBridge.swift` pattern (already in NmpStress) — `nmp_app_new()`, register callback that re-dispatches to main thread, decode `state` JSON into a `KernelModel` `@Observable` class.
 
@@ -478,7 +478,7 @@ Post-merge codex review after EACH push per memory protocol; FIX-IN-PLACE for ty
 
 ## 11. Definitely-deferred (do NOT add scope)
 
-- UniFFI / `nmp gen modules` codegen — M14 work.
+- UniFFI / host binding codegen — M14 work. `nmp gen modules` was deleted.
 - LMDB on iOS — if `cargo build --target aarch64-apple-ios` fails on the `heed` crate, drop to MemEventStore (the default). Document in commit message. M11 will revisit. The `nmp_app_new_with_config(storage_abs_path)` API still takes the path so the kernel can persist there once the LMDB backend is wired; until then the storage_abs_path is honored for the publish-queue durability file only.
 - Bunker — if NIP-46 wiring in L3 takes more than 90 minutes, ship L3 with nsec-only multi-account and file a follow-up issue. (The two-account demo still passes with two nsecs.)
 - Push notifications, NSE, deep-linking, App Store assets — productionization.

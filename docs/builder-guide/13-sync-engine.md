@@ -111,7 +111,7 @@ orchestration shell that surfaces `busy`/`toast` per D6.
 ```rust
 use nmp_nip77::{RunSync, RunSyncAction};
 
-// Dispatched as an AppAction; the actor expands an empty `targets`
+// Dispatched via `nmp_app_dispatch_action`; the actor expands an empty `targets`
 // list to "every open pair the trigger engine knows about".
 let action = RunSyncAction {
     targets: vec![

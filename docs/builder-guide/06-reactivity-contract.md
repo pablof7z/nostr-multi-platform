@@ -25,7 +25,7 @@ relay/sync ─▶ CoreMsg::EventInserted(event)        [on the one actor thread]
                 │
                 ── on tick (≤60Hz) ──
                 ▼  DeltaBuffer::flush()             coalesce by view id (ADR-0002)
-                ▼  AppUpdate::ViewBatch ─▶ update_tx.send()
+                ▼  `UpdateFrame` carrying `view_batch` ─▶ update_tx.send()
                 │
                 ▼  Reconciler (background) ─▶ Platform UI thread
 ```
@@ -83,7 +83,7 @@ growth (kinds × authors), bounded by the working-set budget (ADR-0001).
 | Lookup p99 / recompute p99 gate | ≤ 100 µs | `loop-and-reverse-index.md:165` |
 
 Within-view coalescing at flush is mandatory: the buffer sorts by view id and
-applies per-view-kind merge rules before emitting one `AppUpdate::ViewBatch`
+applies per-view-kind merge rules before emitting one `view_batch` `UpdateFrame`
 (`scheduling-and-data-model.md:31-53`, ADR-0002). Shared facts (author
 display, reaction counts) live in **store projections**, not view-on-view
 subscriptions, so a kind:0 arrival does a targeted O(items-by-that-author)

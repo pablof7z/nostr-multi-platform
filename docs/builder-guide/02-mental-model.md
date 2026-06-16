@@ -18,22 +18,23 @@ Four layers, strict ownership. Built from the bottom up:
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │ PLATFORM SHELL          ios/Chirp + Android Chirp/gallery shells       │
-│  owns: rendering, OS handle execution, generated wrappers              │
-│  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns   │
+│  owns: rendering, OS handle execution, generated binding wrappers      │
+│  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns     │
 └────────────────────────────────▲───────────────────────────────────────┘
                                   │ FlatBuffers payload; UniFFI = lifecycle/bindings
 ┌────────────────────────────────┴───────────────────────────────────────┐
-│ GENERATED FFI CRATE     nmp-codegen output (per-app `nmp-app-<name>`)   │
-│  owns: concrete AppAction / AppUpdate / ViewSpec enums + FfiApp wrapper  │
-│  D6 ► no Result<T,E> crosses here; envelopes only                      │
+│ C-ABI + COMPOSITION     nmp-ffi (shared `nmp_app_*` C-ABI surface)        │
+│                         nmp-defaults (canonical composition: one call)  │
+│  owns: lifecycle / action / capability FFI + `register_defaults` glue    │
+│  D6 ► no Result<T,E> crosses here; envelopes only                        │
 └────────────────────────────────▲───────────────────────────────────────┘
-                                  │ codegen convention exports + NmpApp seams
+                                  │ `NmpApp` seams + `AppHost` traits
         ┌─────────────────────────┼──────────────────────────┐
 ┌───────┴──────────┐  ┌───────────┴───────────┐  ┌────────────┴─────────┐
 │ APP CORE CRATES   │  │ NMP PROTOCOL MODULES   │  │  (more app cores)    │
-│ apps/chirp/        │  │ nmp-nip29 (groups)     │  │ fixture-todo-core    │
-│  nmp-app-chirp     │  │ nmp-nip42 (auth)       │  │  (non-Nostr proof)   │
-│                    │  │ nmp-nip77 (sync)       │  │                      │
+│ apps/chirp/        │  │ nmp-nip29 (groups)     │  │ microblog-core       │
+│  microblog-core    │  │ nmp-nip42 (auth)       │  │  (walkthrough app)   │
+│  nmp-app-chirp     │  │ nmp-nip77 (sync)       │  │                      │
 │ D0 ► MAY hold app  │  │ nmp-signers (identity) │  │ D0 ► app nouns OK    │
 │      nouns         │  │ D0 ► protocol nouns ONLY│  │                     │
 └───────┬──────────┘  └───────────┬───────────┘  └────────────┬─────────┘
@@ -48,9 +49,11 @@ Four layers, strict ownership. Built from the bottom up:
 
 Representative shipped crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
-(protocol modules), `apps/chirp/nmp-app-chirp` + `fixture-todo-core` (app
-cores). `nmp-codegen` produces the generated FFI crate; Chirp is the active
-product shell.
+(protocol modules), `apps/chirp/nmp-app-chirp` + `microblog-core` (app cores),
+`nmp-defaults` (canonical composition root), and `nmp-ffi` (shared C-ABI).
+`nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
+it no longer generates per-app composition crates (ADR-0046). Chirp is the
+active product shell.
 
 ### Doctrine callouts on the diagram
 
@@ -160,40 +163,49 @@ pub trait CapabilityModule: Send + Sync + 'static {
 > correct patterns are the three seams above. See
 > [27 — discrepancies](27-discrepancies.md) rows 11–15.
 
-### The codegen convention
+### The app-core convention
 
-`nmp-codegen` generates a per-app FFI crate from each app module. Every app
-module crate **must** export these names — codegen reads them by convention
-(`crates/nmp-codegen/src/generate.rs`):
+Every app-core crate follows a small naming convention so the thin staticlib
+shell can call it uniformly. `nmp-codegen` does **not** generate this crate
+(ADR-0046 deleted the per-app FFI generator). The convention is simply what
+your `register()` function expects from `nmp-defaults` and what the shell
+expects back:
 
 | Export | Type | Purpose |
 |---|---|---|
 | `ACTION_NAMESPACE` | `&'static str` | must equal `MyActionModule::NAMESPACE` |
 | `Store` | type alias | app-owned state (`Arc<Mutex<T>>`) |
-| `register(app: &mut NmpApp) -> Store` | fn | wires seams, returns store |
+| `register(app: &mut impl AppHost) -> Store` | fn | wires seams, returns store |
 | `accepted() -> Update` | fn | success variant for dispatch result |
 | `ViewSpec` | enum | host-driven view specs (empty if none) |
 | `Update` | enum | update variants (at minimum `ActionAccepted`) |
 
-`register()` is the composition root. From the canonical reference
-`apps/fixture/fixture-todo-core/src/lib.rs:122-146`:
+`register()` is the composition root. From the microblog walkthrough
+([19a](19a-walkthrough-microblog.md)):
 
 ```rust
-pub fn register(app: &mut NmpApp) -> TodoStore {
-    let store = TODO_STORE.get_or_init(|| Arc::new(Mutex::new(Vec::new()))).clone();
-    // Seam 1: wire the write path.
-    app.register_action::<TodoActionModule>();
-    // Seam 2: wire the read path.
-    let s = Arc::clone(&store);
-    app.register_snapshot_projection(TODO_SNAPSHOT_KEY, move || {
-        match s.lock() {
-            Ok(g) => project_todo_items(&g),
+pub fn register(app: &mut impl AppHost) -> FeedStore {
+    let store = FEED_STORE.get_or_init(|| Arc::new(Mutex::new(Vec::new()))).clone();
+    // Inherit canonical NMP composition (routing, outbox, DMs, zaps, WOT).
+    nmp_defaults::register_defaults(app);
+    // App-specific seams.
+    app.register_action::<NoteActionModule>();
+    app.register_event_observer(Arc::new(FeedObserver { store: Arc::clone(&store) }));
+    let projector = Arc::clone(&store);
+    app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+        match projector.lock() {
+            Ok(g) => project_feed(&g),
             Err(_) => serde_json::Value::Null,   // D6: no panic on poison
         }
     });
     store
 }
 ```
+
+A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` then calls
+`nmp_defaults::register_defaults(app)` followed by `<app>_core::register(app)`.
+`nmp-codegen` still exists for host bindings (`gen swift`, `gen typed-decoders`),
+but it does not generate composition wiring.
 
 ## The no-app-nouns-in-kernel rule
 
@@ -202,17 +214,17 @@ This is D0 restated operationally. Before adding a type to `nmp-core`, ask:
 app cares about?* `VerifiedEvent`, `CompiledPlan`, `InsertOutcome` are
 infrastructure. `Episode`, `Highlight`, `Project`, `Group` are nouns —
 protocol nouns go in `nmp-nip*` crates, app nouns in app-core crates. The live
-proof that the boundary holds: `fixture-todo-core` exercises all three seams
-with zero Nostr concepts, and `nmp-nip29` adds actions + projections for group
-machinery while `nmp-core` gains exactly *one* generic seam (the relay-pin
-routing lane) and zero group nouns.
+proof that the boundary holds: `microblog-core` exercises all three seams
+while remaining a Nostr-shaped app crate, and `nmp-nip29` adds actions +
+projections for group machinery while `nmp-core` gains exactly *one* generic
+seam (the relay-pin routing lane) and zero group nouns.
 
 ## What crosses FFI (and what does not)
 
 | Crosses FFI | Stays in Rust |
 |---|---|
 | One FlatBuffers update frame per emit (D5) | The EventStore + every `VerifiedEvent` |
-| Dispatched `AppAction` variants | Action ledger, ActorCommand queue |
+| Dispatched action namespaces | Action ledger, ActorCommand queue |
 | `CapabilityRequest` / `CapabilityEnvelope` | Planner, subscription pool, signer keys |
 | `rev: u64` monotonic guard | All policy / retry / routing decisions |
 | Typed projection sidecars | Kernel-internal view state |
@@ -232,7 +244,7 @@ capabilities, but it no longer carries JSON runtime snapshots (see
 | `Signer`, keyring access | `nmp-signers` | identity is a protocol module (D0) |
 | NIP-29 `GroupId`, group actions | `nmp-nip29` | protocol noun |
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
-| `TodoRecord`, todo store | `fixture-todo-core` | app noun (non-Nostr proof) |
+| `NoteRecord`, feed store | `microblog-core` | app noun (walkthrough app) |
 | App-owned store (`Arc<Mutex<T>>`) | app-core crate | D4: app owns its state |
 | SwiftUI list cell, OS audio handle | `ios/Chirp` / shell | rendering / OS execution |
 
@@ -262,5 +274,5 @@ answer the "why" column before merging.
 
 See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
 [05a — Kernel substrate — the 2 traits + 3 seams](05a-substrate-traits.md) ·
-[15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) ·
+[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·
 [20 — Adding a new protocol module (`nmp-nip29` as reference)](20-new-protocol-module.md)

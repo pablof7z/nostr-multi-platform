@@ -45,7 +45,8 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 `crates/nmp-nip29/src/register.rs`:
 
 ```rust
-// Called by the host's FfiApp::new (or equivalent) during init.
+// Called from the app core's `register()` (or a thin staticlib shell's
+// registration symbol) during init.
 pub fn register_actions(app: &mut NmpApp) {
     app.register_action::<PostChatMessageAction>();
     app.register_action::<ReactInGroupAction>();
@@ -153,6 +154,6 @@ consumer among many.*
 
 See also: [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [07 — Subscription planner](07-subscription-planner.md) ·
-[15 — Codegen — `nmp gen modules`](15-codegen-and-ffi.md) ·
+[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·
 [18 — Testing](18-testing.md) ·
 [22 — Doctrine compliance checklist](22-doctrine-checklist.md)

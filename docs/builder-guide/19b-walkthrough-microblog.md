@@ -1,9 +1,13 @@
 # 19b — Walkthrough: build a microblog app (wire & run)
 
 **Status: SHIPS · audience: builders.** Part 2 of 2. Continues
-[19a](19a-walkthrough-microblog.md) (scaffold). This part runs codegen, wires
-the publish path through a real signer, runs on the iOS simulator, and gives
-the "what ships today vs tomorrow" milestone matrix.
+[19a](19a-walkthrough-microblog.md) (scaffold). This part creates the thin
+staticlib shell, wires the publish path through a real signer, runs on the iOS
+simulator, and gives the "what ships today vs tomorrow" milestone matrix.
+
+There is **no codegen step**. Composition is a library call
+(`nmp_defaults::register_defaults`), not a generated per-app FFI crate
+(ADR-0046). The shell you create here is a handful of lines of glue.
 
 ## Build / run cheatsheet
 
@@ -14,40 +18,81 @@ cargo build -p microblog-core
 cargo test  -p microblog-core      # exercises register(), ActionModule, observer
 ```
 
-### 2. Regenerate the per-app FFI crate
+### 2. Create the thin staticlib shell
 
-Two ways to run codegen. The `nmp` CLI (`crates/nmp-cli`, the user-facing
-binary) and the `nmp-codegen` crate binary both support `gen modules`. Inside
-the monorepo, use `cargo run -p nmp-codegen` directly:
+`apps/microblog/nmp-app-microblog/Cargo.toml`:
 
-```sh
-cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml
-# verify nothing drifted (CI uses this):
-cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml --check
+```toml
+[package]
+name = "nmp-app-microblog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "nmp_app_microblog"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
+nmp-defaults = { path = "../../../crates/nmp-defaults" }
+microblog-core = { path = "../../../crates/microblog-core" }
 ```
 
-Or, with the CLI installed (`cargo install --path crates/nmp-cli`):
+`apps/microblog/nmp-app-microblog/src/lib.rs`:
 
-```sh
-nmp gen modules --manifest apps/microblog/nmp.toml
+```rust
+//! Thin staticlib shell. No app logic here; everything lives in microblog-core.
+use nmp_ffi::NmpApp;
+use nmp_defaults::register_defaults;
+
+/// Register the microblog app on top of the canonical NMP defaults.
+/// The iOS shell calls this after `nmp_app_new()` and before `nmp_app_start()`.
+#[no_mangle]
+pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new()`.
+    // No other reference aliases it here — the exclusive borrow is released
+    // before any shared-borrow registration calls below.
+    nmp_defaults::register_defaults(unsafe { &mut *app });
+    microblog_core::register(unsafe { &mut *app });
+}
 ```
 
-> **Honest framing.** This is exactly the command that regenerates the
-> existing fixture (`apps/fixture/`). `nmp init` exists today but creates a
-> **standalone** project workspace — a separate repo that depends on NMP as a
-> path dependency. When adding an app to the NMP monorepo (as this walkthrough
-> does), you hand-create `apps/microblog/nmp.toml` and `crates/microblog-core/`
-> (as in [19a](19a-walkthrough-microblog.md)), then run `gen modules` to produce
-> the FFI crate. The `--out` directory defaults to
-> `apps/{name}/{app_crate_name}` per `nmp-codegen/src/main.rs:57-63`.
+If you are building a headless example rather than an iOS shell, the same
+composition fits in `examples/shell.rs` using `NmpAppBuilder`:
 
-### 3. Build the FFI library + run on the iOS simulator
+```rust
+use nmp_defaults::{NmpAppBuilder, RunConfig};
+
+fn main() {
+    let app = NmpAppBuilder::new()
+        .storage_path("/tmp/microblog-data")
+        .declare_consumed_projections(["microblog.items"])
+        .start(RunConfig::default());
+    // Drive the app via `nmp_ffi` symbols (set update callback, dispatch
+    // actions, etc.), then `nmp_ffi::nmp_app_free(app)`.
+}
+```
+
+### 3. Build the static lib + run on the iOS simulator
 
 The reference shell is **Chirp** (`ios/Chirp/`, the active live iOS app).
 It links the Rust static lib and decodes the snapshot via
-`ios/Chirp/Chirp/Bridge/KernelBridge.swift`. You point a shell at your FFI
-crate's static lib; you do not write a new Swift app from scratch for this
-walkthrough.
+`ios/Chirp/Chirp/Bridge/KernelBridge.swift`. For this walkthrough, point a
+shell at your static lib and call `nmp_app_microblog_register` instead of
+`nmp_app_chirp_register`.
+
+```swift
+raw = nmp_app_new()
+nmp_signer_broker_init(raw)
+nmp_app_microblog_register(raw)   // your registration symbol
+nmp_app_set_update_callback(raw, ..., nmpUpdateCallback)
+nmp_app_start(raw, 0, 80, 4)
+```
 
 ```sh
 # 1. build the Rust staticlib for the sim target
@@ -69,7 +114,7 @@ The actual signing and routing is entirely the kernel's job:
 
 ```
 app dispatch(PostNote { text })
-  → nmp_app_dispatch_action(NAMESPACE, json)
+  → nmp_app_dispatch_action("microblog.action", json)
   → ActionModule::start() validates (non-empty text)
   → ActionModule::execute() calls send(ActorCommand::PublishNote { … })
   → actor thread receives PublishNote
@@ -100,13 +145,14 @@ map keyed by that id.
 | `KernelEventObserver` + `register_event_observer` | ✅ DONE | — |
 | `register_snapshot_projection` | ✅ DONE | — |
 | Raw C/JNI lifecycle/action FFI + FlatBuffers update frames | ✅ today | UniFFI binding/lifecycle bridge = **M14, PLANNED** |
-| `nmp init` (Rust workspace scaffold) | ✅ ships | Creates a Rust workspace only; full multi-platform starter is M16. This walkthrough hand-scaffolds inside the monorepo. |
+| `nmp init` (thin Rust shell scaffold) | ✅ ships | Creates a `<name>-core` crate + `examples/shell.rs`; full multi-platform starter is M16. |
 | iOS shell (Chirp, active) | ✅ DONE | Additional app shells deferred until Chirp is complete |
 
 The publish substrate, the local signer, multi-account, event observer, and
 snapshot projection all ship today. What is *not* shipped: the typed UniFFI
-bridge (M14) and a one-command multi-platform scaffolder (M16). The example
-above is hand-assembled — that is expected and honest, not a defect.
+bridge (M14), a one-command multi-platform scaffolder (M16), and the old
+`nmp gen modules` generator (deleted by ADR-0046). The example above is hand-
+assembled — that is expected and honest, not a defect.
 
 ## Anti-patterns (wire & run phase)
 
@@ -122,6 +168,9 @@ above is hand-assembled — that is expected and honest, not a defect.
 - **Per-platform SwiftData/Room cache parallel to `AppState`.** The decoded
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
+- **Expecting a generated per-app FFI crate today.** `gen modules` is gone.
+  The staticlib shell is hand-written glue that calls `register_defaults`; see
+  [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
 - **Expecting UniFFI typed payload delivery today.** UniFFI is the planned
   binding/lifecycle bridge (M14); it is not the hot update payload format.
   Code that imports a typed UniFFI `AppUpdate` will not compile against master.
@@ -129,7 +178,7 @@ above is hand-assembled — that is expected and honest, not a defect.
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [12 — Publishing + the publish engine](12-publish-and-ledger.md) ·
-[15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) ·
+[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·
 [17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md) ·
 [19a — Walkthrough: build a microblog app (scaffold)](19a-walkthrough-microblog.md) ·
 [20 — Adding a new protocol module](20-new-protocol-module.md) ·

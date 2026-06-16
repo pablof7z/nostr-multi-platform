@@ -1,68 +1,80 @@
-# 05b — Kernel substrate: fixture walkthrough + nip29 + composition
+# 05b — Kernel substrate: microblog walkthrough + nip29 + composition
 
 *Status: SHIPS · Audience: both · Read after [05a](05a-substrate-traits.md).*
 
 [05a](05a-substrate-traits.md) gave you the seam signatures and the "which
-seam?" tree. This half is the proof the boundary works: an annotated non-Nostr
-fixture that uses all three seams, a sidebar showing how a real Nostr protocol
-crate uses them, and how modules compose at `FfiApp::new`.
+seam?" tree. This half is the proof the boundary works: an annotated walkthrough
+of the `microblog-core` app crate (from [19a](19a-walkthrough-microblog.md)), a
+sidebar showing how a real Nostr protocol crate uses the same seams, and how
+modules compose through `nmp-defaults`.
 
-## Annotated walkthrough: `fixture-todo-core`
+> **Historical note.** The old non-Nostr `fixture-todo-core` / `apps/fixture`
+> walkthrough and the `nmp gen modules` per-app FFI generator were deleted by
+> ADR-0046. A generated `FfiApp` never called `register_defaults` and produced a
+> non-functional Nostr app. The microblog walkthrough replaces it as the
+> canonical app-core example.
 
-`apps/fixture/fixture-todo-core/src/lib.rs` is ADR-0009 acceptance criterion
-1 made real: a module exercising the extension seams **with zero Nostr
-concepts**. It is the canonical template — read it before writing any module.
+## Annotated walkthrough: `microblog-core`
+
+`crates/microblog-core/src/lib.rs` (worked out in
+[19a](19a-walkthrough-microblog.md)) is ADR-0009 in practice: an app module
+exercising all three extension seams **with app nouns that stay out of
+`nmp-core`**. It is the canonical template — read it before writing any module.
 
 ### The record type
 
 ```rust
-// lib.rs:161-165 — plain app record; not a Nostr event.
+// crates/microblog-core/src/lib.rs
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct TodoRecord {
+pub struct NoteRecord {
     pub id: String,
-    pub title: String,
-    pub completed: bool,
+    pub author: String,   // hex pubkey — no display formatting (aim.md §2)
+    pub content: String,
+    pub created_at: u64,
 }
 ```
 
-The kernel never sees `TodoRecord`. It is an app noun that lives entirely in
+The kernel never sees `NoteRecord`. It is an app noun that lives entirely in
 this crate (D0). The kernel sees only the JSON it receives from
 `nmp_app_dispatch_action` and produces as a `projections[key]` slice.
 
 ### The action enum and ActionModule
 
 ```rust
-// lib.rs:167-172
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Action {
-    Add { id: String, title: String },
-    Toggle { id: String },
-    ClearCompleted,
-}
+pub enum Action { PostNote { text: String } }
 
-// lib.rs:176-215
-impl ActionModule for TodoActionModule {
-    const NAMESPACE: &'static str = "fixture.todo.action";
+pub struct NoteActionModule;
+
+impl ActionModule for NoteActionModule {
+    const NAMESPACE: &'static str = "microblog.action";
     type Action = Action;
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action)
+    fn start(_ctx: &mut ActionContext, a: Self::Action)
         -> Result<(), ActionRejection> {
-        // Reject bad input synchronously — before any state is touched.
-        if matches!(&action, Action::Add { title, .. } if title.trim().is_empty()) {
-            return Err(ActionRejection::Invalid("todo title is empty".to_string()));
+        let Action::PostNote { text } = &a;
+        if text.trim().is_empty() {
+            return Err(ActionRejection::Invalid("empty note".into()));
         }
         Ok(())
     }
 
+    fn is_async_completing() -> bool { true }  // relay ack arrives later
+
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        correlation_id: &str,
+        send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
-        // Reach the app-owned store via the process-wide OnceLock.
-        let store = TODO_STORE.get()
-            .ok_or_else(|| "register() not called before execute()".to_string())?;
-        apply_todo_action(&mut store.lock().map_err(|_| "mutex poisoned")?, action);
+        let Action::PostNote { text } = action;
+        // Hand the content to the actor. The actor fills pubkey, timestamp,
+        // signs, and routes via NIP-65 outbox (D3). App never picks relays.
+        send(nmp_core::ActorCommand::PublishNote {
+            content: text,
+            reply_to_id: None,
+            target: nmp_core::publish::PublishTarget::Auto,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -70,32 +82,54 @@ impl ActionModule for TodoActionModule {
 
 Key teaching points:
 - `start` rejects bad input *synchronously*. The executor never runs.
-- `execute` dispatches **no** `ActorCommand` here — the todo flow is
-  app-local. `_send` is unused. A Nostr-publishing action would call
-  `send(ActorCommand::PublishUnsignedEvent { .. })` instead.
-- App state (`TODO_STORE`) is a `static OnceLock<Arc<Mutex<Vec<TodoRecord>>>>`.
+- `execute` dispatches an `ActorCommand` for Nostr-shaped work. A purely local
+  action would use `_send` and mutate its own store instead.
+- `is_async_completing() = true` because the terminal outcome (relay ACK)
+  arrives later through `projections["action_stages"]`.
+- App state (`FEED_STORE`) is a `static OnceLock<Arc<Mutex<Vec<NoteRecord>>>>`.
   The `execute` body is a static method (no `&self`), so it reads the store
   from the process-wide slot that `register()` initializes.
+
+### The event observer
+
+```rust
+pub struct FeedObserver {
+    store: FeedStore,
+}
+
+impl KernelEventObserver for FeedObserver {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        if event.kind != 1 { return; }
+        let record = NoteRecord {
+            id:         event.id.clone(),
+            author:     event.author.clone(),
+            content:    event.content.clone(),
+            created_at: event.created_at,
+        };
+        if let Ok(mut guard) = self.store.lock() {
+            guard.push(record);
+        }
+    }
+}
+```
+
+The observer fires on every accepted kind:1 ingest and appends to the feed
+store. This is the same seam `nmp-app-chirp` uses to drive the live timeline
+projection.
 
 ### The snapshot projection
 
 ```rust
-// lib.rs:74-80 — pure fn; no FFI, no actor.
-pub fn project_todo_items(items: &[TodoRecord]) -> serde_json::Value {
-    let open_count = items.iter().filter(|r| !r.completed).count();
-    serde_json::json!({ "items": items, "open_count": open_count })
+pub fn project_feed(items: &[NoteRecord]) -> serde_json::Value {
+    serde_json::json!({ "notes": items })
 }
-```
 
-The closure registered in `register()` delegates here:
-
-```rust
-// lib.rs:135-143
-let projector_store = Arc::clone(&store);
-app.register_snapshot_projection(TODO_SNAPSHOT_KEY, move || {
-    match projector_store.lock() {
-        Ok(guard) => project_todo_items(&guard),
-        Err(_)    => serde_json::Value::Null,   // D6: no panic on poison
+// In register():
+let projector = Arc::clone(&store);
+app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+    match projector.lock() {
+        Ok(g)  => project_feed(&g),
+        Err(_) => serde_json::Value::Null,   // D6: no panic on poison
     }
 });
 ```
@@ -104,58 +138,36 @@ This is D8 + D6 in one line: the closure is cheap (one lock + JSON), and
 panic-safe (returns `null` on mutex poison rather than aborting the snapshot
 tick).
 
-### The CapabilityModule
-
-```rust
-// lib.rs:218-238
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum CapabilityCall  { CountOpenTodos }
-pub struct CapabilityResult { pub count: usize }
-
-impl CapabilityModule for TodoCapabilityModule {
-    const NAMESPACE: &'static str = "fixture.todo.capability";
-    type Request = CapabilityCall;
-    type Result  = CapabilityResult;
-    fn callback_interface_name() -> &'static str { "FixtureTodoCapability" }
-}
-```
-
-This defines the typed envelope shape a native bridge would implement. Native
-*reports* the count (a fact); the kernel decides what to do with it (policy).
-The trait is not registered with `register_action` — it is wired by the native
-side through C-ABI callbacks.
-
 ### The codegen convention exports
 
 ```rust
-// lib.rs:7-33 — the codegen contract
-pub const ACTION_NAMESPACE: &str = TodoActionModule::NAMESPACE;
-pub const TODO_SNAPSHOT_KEY: &str = "fixture.todo.items";
-pub type TodoStore = Arc<Mutex<Vec<TodoRecord>>>;
-pub type Store = TodoStore;   // codegen reads this exact alias name
+pub const ACTION_NAMESPACE: &str = NoteActionModule::NAMESPACE;
+pub const FEED_SNAPSHOT_KEY: &str = "microblog.items";
+pub type FeedStore = Arc<Mutex<Vec<NoteRecord>>>;
+pub type Store = FeedStore;   // app-core convention alias
 
-pub fn register(app: &mut NmpApp) -> TodoStore { /* seam wiring */ }
+pub fn register(app: &mut impl AppHost) -> FeedStore { /* seam wiring */ }
 pub fn accepted() -> Update { Update::ActionAccepted }
 
 pub enum ViewSpec {}          // empty — no host-driven view specs
 pub enum Update { ActionAccepted }
 ```
 
-`nmp-codegen` generates a `FfiApp` that calls `fixture_todo_core::register(&mut *app)`
-in `FfiApp::new`, stores the returned `Store`, and routes
-`AppAction::FixtureTodoCore(action)` through `dispatch_app_action(ACTION_NAMESPACE, …)`.
-**Never hand-edit the generated crate** — `generate_modules` wipes the `src/`
-directory on every run.
+There is no generated `FfiApp`. A thin staticlib shell
+(`apps/microblog/nmp-app-microblog/src/lib.rs`) calls
+`nmp_defaults::register_defaults(app)` and then `microblog_core::register(app)`.
+See [19b](19b-walkthrough-microblog.md) for the shell.
 
-### What `fixture-todo-core` proves
+### What `microblog-core` proves
 
-1. A complete app module with writes (ActionModule), reads
-   (register_snapshot_projection), and a capability shape
-   (CapabilityModule) — **without touching `nmp-core`**.
-2. App state is app-owned (`Arc<Mutex<Vec<TodoRecord>>>`). The kernel never
-   stores, migrates, or indexes `TodoRecord`. The module owns its data.
-3. Validation is synchronous (`start`). Execution is synchronous for
-   local-only work; async-completing actions use `is_async_completing()`.
+1. A complete app module with writes (`ActionModule`), event-driven view
+   (`KernelEventObserver`), and read output (`register_snapshot_projection`)
+   — **without touching `nmp-core`**.
+2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
+   stores, migrates, or indexes `NoteRecord`. The module owns its data.
+3. Validation is synchronous (`start`). Nostr-publishing actions are
+   async-completing (`is_async_completing()`); local-only work would be
+   synchronous.
 
 ## Sidebar: how `nmp-nip29` uses the seams
 
@@ -174,7 +186,7 @@ nmp-nip29/src/
 └── lib.rs           D0 boundary statement + register() public surface
 ```
 
-Registration (`crates/nmp-nip29/src/register.rs:105`):
+Registration (`crates/nmp-nip29/src/register.rs`):
 
 ```rust
 pub fn register_actions(app: &mut NmpApp) {
@@ -190,7 +202,6 @@ pub fn register_actions(app: &mut NmpApp) {
 And the snapshot projector:
 
 ```rust
-// register.rs:66 — register the group-chat aggregate read model
 app.register_snapshot_projection("nmp.nip29.group_chat", move || {
     projection.snapshot_json()  // non-blocking read-model snapshot
 });
@@ -208,68 +219,82 @@ composition happens at the app layer; the only generic surface added to
 > read model. The protocol noun count (~35 named types) is similar — the
 > *composition mechanism* changed, not the scope.
 
-## Module composition in `FfiApp::new`
+## Module composition: `register_defaults` + app `register()`
 
-Every module's `register()` fn is called once at host init. Generated
-`FfiApp::new` (`nmp-app-fixture/src/ffi.rs:54-66`) chains them:
+Every module's `register()` fn is called once at host init. Under ADR-0046 the
+host first inherits the canonical NMP composition through one library call,
+then adds app-specific seams on top. The microblog staticlib shell:
 
 ```rust
-pub fn new() -> Self {
-    let app = nmp_app_new();
-    // Each module wires its own seams; store handles returned for the fields below.
-    let fixture_todo_core_store = fixture_todo_core::register(unsafe { &mut *app });
-    Self { app, kernel: KernelReducer::new(), rev: 0, fixture_todo_core_store }
+// apps/microblog/nmp-app-microblog/src/lib.rs
+#[no_mangle]
+pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
+    if app.is_null() { return; }
+    nmp_defaults::register_defaults(unsafe { &mut *app });
+    microblog_core::register(unsafe { &mut *app });
 }
 ```
 
-For a multi-module app with protocol + app crates:
+For a headless example, the same composition fits in `examples/shell.rs`
+using `NmpAppBuilder`:
 
 ```rust
-// generated FfiApp::new (conceptual; actual output depends on nmp.toml)
-pub fn new() -> Self {
-    let app = nmp_app_new();
-    let raw = unsafe { &mut *app };
-    nmp_nip29::register_actions(raw);          // protocol module
-    let store = my_app_core::register(raw);    // app module
-    Self { app, kernel: KernelReducer::new(), rev: 0, my_app_core_store: store }
-}
+use nmp_defaults::{NmpAppBuilder, RunConfig};
+
+let app = NmpAppBuilder::new()
+    .in_memory()
+    .declare_consumed_projections(["microblog.items"])
+    .start(RunConfig::default());
+// Drive the app via `nmp_ffi` symbols, then `nmp_ffi::nmp_app_free(app)`.
 ```
 
-Registration order is deterministic — `ordered_modules()` in
-`nmp-codegen/src/manifest.rs:67` chains `protocol` entries before `app`
-entries in manifest order. Two modules registering the same `ACTION_NAMESPACE`
-would collide at dispatch time; NAMESPACE values must be globally unique
-across all registered modules.
+`nmp_defaults::register_defaults` installs the production routing substrate,
+outbox resolver, NIP-02/17/57/65 action modules, DM-inbox + zap-receipts
+runtimes, WOT bootstrap, and the NIP-23 long-form typed projection. The app
+shell adds only app-specific projections and actions (here, the microblog
+feed).
+
+Registration order matters for last-writer-wins slots, but ADR-0049 made the
+canonical defaults *yield* to app registrations: an app registering under a
+default namespace before or after `register_defaults` wins. App-over-app
+namespace collisions remain a bug and are recorded in the composition ledger
+(`nmp_app_composition_report`).
 
 ## Anti-patterns
 
-1. **App state inside the kernel.** The todo store is an `Arc<Mutex<Vec<…>>>`
-   owned by `fixture-todo-core`, not by `nmp-core`. Pushing app records into
-   the kernel event store or a kernel-owned map is a D0 violation.
-2. **Business policy in a `CapabilityModule` (D7 violation).** The fixture's
-   `CountOpenTodos` returns a count fact. It must not decide retry, routing,
+1. **App state inside the kernel.** The feed store is an `Arc<Mutex<Vec<…>>>`
+   owned by `microblog-core`, not by `nmp-core`. Pushing app records into the
+   kernel event store or a kernel-owned map is a D0 violation.
+2. **Business policy in a `CapabilityModule` (D7 violation).** A capability
+   returns a fact (e.g. keychain has a key). It must not decide retry, routing,
    or "should we publish." Policy lives in the `ActionModule::execute` body.
 3. **Blocking inside `register_snapshot_projection`.** The closure runs on the
    actor thread inside every snapshot tick. Any blocking I/O or long-held lock
    stalls all relay ingest behind it (D8 violation). Delegate to a precomputed
    value; the snapshot projector should read, never compute.
 4. **Registering the same NAMESPACE twice.** `register_action` accepts the
-   second registration silently (idempotent by `(namespace)` key), but two
+   second registration silently (last-writer-wins by `namespace` key), but two
    modules sharing a NAMESPACE will race for dispatch. Pick unique dotted
    namespaces per module.
-5. **Reaching for the removed v2 traits.** `DomainModule`, `ViewModule`,
+5. **Hand-copying substrate wiring instead of calling `register_defaults`.**
+   The shared `Arc<InMemoryMailboxCache>` and coverage gate must reach multiple
+   collaborators with the same instance; copying the block by hand desyncs
+   them (V-48).
+6. **Reaching for the removed v2 traits.** `DomainModule`, `ViewModule`,
    `IdentityModule`, and `ModuleRegistry` are not on master. See
    [05a](05a-substrate-traits.md) §Removed v2 traits.
 
 ## Deliverables (this half)
 
-- **Annotated `fixture-todo-core` walkthrough** (above) — the copyable
-  two-seam template: ActionModule + snapshot projection.
+- **Annotated `microblog-core` walkthrough** (above) — the copyable three-seam
+  template: ActionModule + event observer + snapshot projection.
 - **`nmp-nip29` sidebar** (above) — how the same seams scale to a real
-  protocol with zero kernel nouns; plus the composition pattern.
+  protocol with zero kernel nouns; plus the ADR-0046 composition pattern.
 
 See also: [02 — Mental model](02-mental-model.md) ·
 [05a — Substrate traits: signatures + decision tree](05a-substrate-traits.md) ·
 [06 — Reactivity contract (D8)](06-reactivity-contract.md) ·
 [16 — Capabilities (D7)](16-capabilities.md) ·
+[19a — Walkthrough: build a microblog app (scaffold)](19a-walkthrough-microblog.md) ·
+[19b — Walkthrough: build a microblog app (wire & run)](19b-walkthrough-microblog.md) ·
 [20 — Adding a new protocol module (`nmp-nip29` as reference)](20-new-protocol-module.md)

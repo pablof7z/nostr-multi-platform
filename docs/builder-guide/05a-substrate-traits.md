@@ -5,7 +5,7 @@
 [02](02-mental-model.md) gave you the overview. This pair of sections is the
 working reference. **05a** = each trait's real signature, associated types,
 lifecycle, and a "which seam?" decision tree. **05b** = the annotated
-`fixture-todo-core` walkthrough and `nmp-nip29` sidebar.
+`microblog-core` walkthrough and `nmp-nip29` sidebar.
 
 These are the exact traits and seams in `crates/nmp-core/src/substrate/` and
 `crates/nmp-ffi/src/lib.rs`. The kernel runtime is generic over the action
@@ -57,8 +57,9 @@ pub trait ActionModule: Send + Sync + 'static {
   exception across FFI).
 - **State:** none on the trait. App state lives in an `Arc<Mutex<T>>` owned
   by the app module, reached from `execute` via a `static OnceLock` or
-  equivalent process-wide slot. See `fixture-todo-core`'s `TODO_STORE` pattern
-  in [05b](05b-substrate-traits.md).
+  equivalent process-wide slot. See `microblog-core`'s `FEED_STORE` pattern
+  in [05b](05b-substrate-traits.md) and the full walkthrough in
+  [19a](19a-walkthrough-microblog.md).
 - **Use it when** any user or app intent dispatches an action. Every published
   event, every follow/unfollow, every settings write goes through `execute`.
 
@@ -166,10 +167,10 @@ I want to ...
       (in-memory store, no relay traffic)          no kernel seam needed
 ```
 
-A real app typically combines several: `fixture-todo-core` uses
-`register_action` + `register_snapshot_projection`; `nmp-app-chirp` adds
-`register_event_observer` for the live timeline feed. Walkthroughs are in
-[05b](05b-substrate-traits.md).
+A real app typically combines several: `microblog-core` uses
+`register_action` + `register_event_observer` + `register_snapshot_projection`;
+`nmp-app-chirp` uses all three for the live timeline feed. Walkthroughs are in
+[05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
 
 ## Removed v2 traits (reference)
 
@@ -186,7 +187,7 @@ output, treat them as stale. The correct replacements:
 | `ViewModule` (typed reactive projection) | `register_event_observer` + `register_snapshot_projection` |
 | `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
-| `ModuleRegistry` (composition root) | `register()` fn in each module crate, called in `FfiApp::new` |
+| `ModuleRegistry` (composition root) | `register()` fn in each module crate, called from a thin staticlib shell or `examples/shell.rs` after `nmp_defaults::register_defaults` |
 | `ActionPlan` / `ActionTransition` / `reduce()` | `execute()` dispatching `ActorCommand` |
 
 See [27 — discrepancies](27-discrepancies.md) rows 11–15 for the triage
@@ -200,7 +201,7 @@ record.
   PR that adds a module.
 
 See also: [02 — Mental model](02-mental-model.md) ·
-[05b — Substrate traits: fixture walkthrough + nip29 + composition](05b-substrate-traits.md) ·
+[05b — Substrate traits: microblog walkthrough + nip29 + composition](05b-substrate-traits.md) ·
 [06 — Reactivity contract (D8)](06-reactivity-contract.md) ·
 [16 — Capabilities (D7)](16-capabilities.md) ·
 [20 — Adding a new protocol module (`nmp-nip29` as reference)](20-new-protocol-module.md)

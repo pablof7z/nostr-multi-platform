@@ -1,134 +1,111 @@
-# 15 — Codegen: `nmp gen modules` + per-app FFI crate
+# 15 — Codegen: bindings + FFI surface
 
-**Status: SHIPS** (codegen + raw C/JNI FFI + FlatBuffers update transport) ·
-UniFFI M14 PLANNED · `nmp init` basic scaffold ships ·
-full starter M16 PLANNED · Audience: both
+**Status:** raw C/JNI lifecycle/action FFI + FlatBuffers update transport SHIPS ·
+UniFFI M14 PLANNED · `nmp init` thin-shell scaffold SHIPS ·
+full multi-platform starter M16 PLANNED · Audience: both
 
-A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. Each
-layer contributes typed `Action`/`Update`/`ViewSpec` variants. The FFI boundary
-needs **concrete closed enums** (ADR-0010 rejected a type-erased registry). You
-do not hand-write that aggregation — `nmp-codegen` generates it from a manifest.
+A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. The
+canonical composition is delivered as a **library call**, not as generated wiring
+in your source tree (ADR-0046 — see [19a](19a-walkthrough-microblog.md) and
+[19b](19b-walkthrough-microblog.md) for how a new app uses it).
 
-This section covers the manifest format, the generated outputs, and — critically
-— the current boundary split: raw C/JNI owns lifecycle/action/capability calls
-today, binary FlatBuffers owns the hot update stream today, UniFFI is still the
-planned binding/lifecycle target for M14, and the full starter remains M16.
+This section covers the generated *bindings* and the *FFI boundary*. The boundary
+split is: raw C/JNI owns lifecycle/action/capability calls today, binary
+FlatBuffers owns the hot update stream today, UniFFI is still the planned
+binding/lifecycle target for M14, and the full starter remains M16.
 
-## The manifest: `nmp.toml`
+> **Historical note.** Older docs referred to `nmp gen modules`, a per-app FFI-crate
+> generator, and `apps/fixture/`. ADR-0046 deleted both: a generated `FfiApp` never
+> called `register_defaults` and produced a non-functional Nostr app. Composition now
+> lives in the `nmp-defaults` crate; codegen for host bindings is limited to the still-
+> live `gen swift` / `gen typed-decoders` emitters (gated by
+> `.github/workflows/codegen-drift.yml`).
 
-`crates/nmp-codegen/src/manifest.rs:23-65` is a deliberately tiny line parser
-(not a full TOML lib). It recognises exactly two sections and five keys:
+## The `nmp.toml` manifest
+
+The manifest parser in `crates/nmp-codegen/src/manifest.rs` survives only for
+`nmp doctor` / `nmp upgrade` (dependency-policy commands). It is no longer used
+to generate a per-app FFI crate. The parser recognises `[app]` and `[modules]`
+sections; `[platforms]` keys are accepted but ignored.
 
 ```toml
-# apps/fixture/nmp.toml — the canonical reference manifest
+# Example manifest — used today for `nmp doctor` / `nmp upgrade`
 [app]
-name         = "fixture"          # → crate nmp-app-fixture (manifest.rs:46)
-display_name = "NMP Fixture"      # optional; defaults to name (manifest.rs:57)
+name         = "microblog"
+display_name = "Microblog"
 
 [modules]
-kernel   = "nmp-core"             # defaults to "nmp-core" if omitted
-protocol = []                     # ordered: protocol crates emitted first
-app      = ["fixture-todo-core"]  # then app crates (ordered_modules, :67-74)
-
-[platforms]                       # PRESENT IN FIXTURE BUT IGNORED by the parser
-desktop = true                    # manifest.rs matches only [app]/[modules];
-ios     = false                   # [platforms] keys are silently dropped today
+kernel   = "nmp-core"
+protocol = ["nmp-nip01"]
+app      = ["microblog-core"]
 ```
 
-Module order is deterministic: `ordered_modules()` chains `protocol` then `app`
-(`manifest.rs:67-74`). That ordering is load-bearing — it fixes enum-variant
-order, which is why the determinism test passes.
+## Composition: depend on `nmp-defaults`, call `register_defaults`
 
-## What `generate_modules` emits
-
-`crates/nmp-codegen/src/generate.rs:12-42` wipes `out_dir`, recreates `src/`,
-and writes exactly nine files:
-
-| File | Content | Source fn |
-|---|---|---|
-| `Cargo.toml` | deps on `nmp-core` + each module by path | `cargo_toml` :44 |
-| `src/lib.rs` | `pub mod` + re-exports of the four enums | `lib_rs` :60 |
-| `src/action.rs` | `AppAction` enum + `namespace()` | `action_rs` :78 |
-| `src/update.rs` | `AppUpdate` enum + `namespace()` | `update_rs` :88 |
-| `src/envelope.rs` | `pub use` re-exports of FlatBuffers decode helpers | `envelope_rs` :161 |
-| `src/view_spec.rs` | `ViewSpec` enum + `namespace()` | `view_spec_rs` :172 |
-| `src/capability.rs` | `CAPABILITY_MODULE_CRATES: &[&str]` | `capability_rs` |
-| `src/domain.rs` | `DOMAIN_MODULE_CRATES: &[&str]` | `domain_rs` |
-| `src/ffi.rs` | `FfiApp` struct routing `AppAction` through live seams | `ffi_rs` |
-
-### Before vs after generate — `AppAction`
-
-You write **nothing** in `action.rs`. Given the manifest above, `enum_file`
-(`generate.rs:108-138`) emits:
+The canonical way to compose an app is a library call. In your app-core crate:
 
 ```rust
-// GENERATED by `nmp gen modules` from nmp.toml — do not hand-edit.
-#[derive(Clone, Debug, PartialEq)]
-pub enum AppAction {
-    Kernel(nmp_core::KernelAction),
-    FixtureTodoCore(fixture_todo_core::Action),   // one arm per ordered module
-}
+// microblog-core/src/lib.rs
+use nmp_defaults::register_defaults;
+use nmp_core::substrate::AppHost;
 
-impl AppAction {
-    pub fn namespace(&self) -> &'static str {
-        match self {
-            Self::Kernel(_)          => "kernel",
-            Self::FixtureTodoCore(_) => "fixture-todo-core",
-        }
-    }
+pub fn register(app: &mut impl AppHost) {
+    // Inherit the canonical NMP composition (routing, outbox, DMs, zaps, WOT, ...).
+    register_defaults(app);
+
+    // Register app-specific modules / projections on top.
+    // microblog_core::register_actions(app);
 }
 ```
 
-Add `nmp-nip29` to `[modules].protocol`, re-run codegen, and a
-`Nip29(nmp_nip29::Action)` arm appears with `namespace() == "nip29"` —
-**without you touching the file**. Variant name = PascalCase of the crate
-(`variant_name`, `lib.rs:33-45`); namespace string = the raw crate name.
+For a non-social app that only needs the routable substrate, call
+`nmp_defaults::register_substrate(app, gate)` directly. For fine-grained feature
+toggles or policy overrides, use `nmp_defaults::register_defaults_with(app,
+NmpDefaults { social: false, ..NmpDefaults::default() })`. See
+`crates/nmp-defaults/src/lib.rs` and `crates/nmp-defaults/src/tiers.rs` for the
+full API.
 
-> Reference output lives at `apps/fixture/nmp-app-fixture/src/`. Note its
-> `action.rs` is **hand-augmented** with a `Nip29PublishPlan` variant + doc
-> comments (it is a build-verification fixture, not byte-identical generator
-> output). Treat `generate.rs` as the source of truth for what codegen emits.
+## What still gets generated
 
-## The determinism contract
+`nmp-codegen` retains the emitters that gate live CI:
 
-`crates/nmp-codegen/tests/determinism.rs:4-34` generates the same manifest into
-two directories and asserts byte-equality of every file. This is the gate ADR-
-0010 §Validation and `docs/plan/m14-uniffi.md` "Exit gate" depend on: repeated
-runs must be byte-identical so binding drift in CI is a real signal, not noise.
-`check_modules` (`lib.rs:9-27`) regenerates into a scratch dir and diffs against
-checked-in output — that is the `nmp gen modules --check` CI gate primitive.
+- **`gen swift`** — Swift bindings for the C-ABI surface (`nmp_app_*`).
+- **`gen typed-decoders`** — native decoders for the typed FlatBuffers projection
+  sidecars carried in `SnapshotFrame.typed_projections`.
+
+These are *bindings* (projections of a typed surface), not *composition wiring*.
+Deleting the old `gen modules` scaffolder did not touch them.
 
 ## Current vs future FFI — read this box carefully
 
 ```
 ┌─ TODAY (SHIPS) ─────────────────────────────────────────────────────┐
 │ Raw C/JNI lifecycle/action/capability ABI in crates/nmp-ffi. It      │
-│ exports the `nmp_app_*` surface (`new`, `start`, `dispatch_action`,  │
-│ capability callbacks, projection/observer registration, etc.).       │
+│ exports the `nmp_app_*` surface (`new`, `start`, `dispatch_action`,    │
+│ capability callbacks, projection/observer registration, etc.).         │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
-│ The GENERATED FfiApp (nmp-app-fixture/src/ffi.rs) is the live per-   │
-│ app Rust entry-point: it allocates NmpApp, calls each module's       │
-│ register(), and routes AppAction variants through dispatch_action.   │
-│ ios/Chirp consumes NmpCore.h backed by nmp-ffi plus Chirp wrappers.  │
+│ There is NO generated per-app FFI crate; the app core calls          │
+│ `nmp_defaults::register_defaults` and the raw C-ABI surface is shared. │
+│ ios/Chirp consumes NmpCore.h backed by nmp-ffi plus Chirp wrappers.    │
 ├─ FlatBuffers runtime transport (SHIPS) ─────────────────────────────┤
 │ One canonical transport frame carries typed SnapshotEnvelope fields  │
-│ and typed projection sidecars from Rust to frontend shells. JSON is  │
-│ allowed for Nostr relay frames, capability envelopes, diagnostics,   │
+│ and typed projection sidecars from Rust to frontend shells. JSON is    │
+│ allowed for Nostr relay frames, capability envelopes, diagnostics,     │
 │ goldens, or tests. It is not a second production update transport.   │
 ├─ M14 — UniFFI (PLANNED, docs/plan/m14-uniffi.md) ───────────────────┤
-│ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +       │
-│ lifecycle/binding wrappers (see ADR-0010 §Codegen output). iOS stops │
-│ importing NmpCore.h; imports the generated Swift module. UniFFI owns │
-│ object lifetime, callbacks, and capability interfaces; it is not the │
-│ hot update payload format. NOT built.                               │
+│ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +        │
+│ lifecycle/binding wrappers (see ADR-0010 §Codegen output). iOS stops    │
+│ importing NmpCore.h; imports the generated Swift module. UniFFI owns   │
+│ object lifetime, callbacks, and capability interfaces; it is not the   │
+│ hot update payload format. NOT built.                                  │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
-│ `nmp init <app>` scaffolds a Rust workspace (nmp.toml + app-core    │
-│ crate skeleton; compiles immediately). `nmp gen modules` invokes     │
-│ nmp-codegen. `nmp add/update component` manages native source        │
-│ components. Full multi-platform starter (iOS/Android shell           │
-│ scaffolding) is a future milestone, not in scope today.             │
+│ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
+│ that calls `register_defaults`, plus a headless `examples/shell.rs`   │
+│ that drives it through `NmpAppBuilder`. No `gen modules` step and no   │
+│ generated `apps/` tree. Full multi-platform starter is a future       │
+│ milestone.                                                            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -197,117 +174,3 @@ wire; add a typed sidecar instead.
 > Each closure is panic-isolated (`catch_unwind` per closure, D6:
 > `crates/nmp-core/src/kernel/snapshot_registry.rs:125`), so a panic in one
 > projector never aborts the snapshot.
-
-> **One thing to avoid.** Do **not** mint a bespoke `nmp_app_<app>_snapshot`
-> pull symbol that returns a JSON C string (the deprecated anti-pattern —
-> `nmp_app_chirp_snapshot`, retired per ADR-0037; bespoke-FFI sprawl per the
-> deprecation calendar). A pull symbol forces the shell to call on a timer to
-> stay current — a polling loop, which violates D8 and defeats the rev guard.
-> The projection registry **is** the replacement: register once, ride the push
-> frame, read the typed sidecar.
-
-### Post-0.3.0 snapshot consumption rules
-
-**`payload:Value` no longer exists.** As of nmp-v0.3.0, `SnapshotFrame` carries no
-generic JSON blob. Every byte that crosses into production hosts is either a
-typed `SnapshotEnvelope` field or a typed FlatBuffers projection sidecar. The
-deleted functions `decode_snapshot_payload`, `decode_snapshot_with_typed`, and
-`encode_snapshot_value` have no replacement — migrate callers as described
-below.
-
-**Rule A — never read a generic payload tree.**  It no longer exists. If your code
-once accessed `payload[...]` from a decoded frame, it must switch to one of the
-supported paths.
-
-**Rule B — per-key typed sidecars are the primary path.** Use the generated per-
-platform decoders:
-- *iOS/Swift*: `TypedProjectionDecoders.generated.swift`, generated by `nmp gen
-  typed-decoders`. For each projection key, call `decode_<key>(typedProjections)`.
-  All 31 registered keys have Swift decode stubs as of 0.3.0.
-- *Android/Kotlin*: per-key Kotlin decoder classes under `android/nmp/typed/`.
-- *Rust consumers*: `nmp_core::typed_projections::decode_<key>(&bytes)` — per-key
-  functions are `pub` and paired with `decode_snapshot_typed_projections` to extract
-  the raw sidecar bytes.
-
-**Rule C — Tier-3 envelope fields via `decode_snapshot_envelope`.** The fields
-`rev`, `running`, `metrics`, `relay_statuses`, and `toasts` travel in the typed
-`SnapshotEnvelope` (formerly the inner `Snapshot` variant of `UpdateEnvelope`). Read
-them via:
-```rust
-use nmp_core::{decode_snapshot_envelope, decode_update_frame, UpdateEnvelope};
-
-// If you have the raw frame bytes:
-let envelope = decode_snapshot_envelope(&frame_bytes)?;
-let rev = envelope.rev();
-
-// If you already decoded the full update:
-if let UpdateEnvelope::Snapshot(env) = decode_update_frame(&frame_bytes)? {
-    let running = env.running();
-}
-```
-
-**Rule D — gate expensive projection encodes.** Apps with expensive projection
-serialization should maintain a change/revision gate so the closure can skip work
-when the underlying data has not changed since the last emit. For legacy JSON
-projections, `register_snapshot_projection_gated` provides that gate:
-```rust
-use std::sync::{Arc, atomic::AtomicU64};
-use nmp_core::ChangeGate;
-
-let rev: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-// Increment `rev` whenever the projection data changes.
-app.register_snapshot_projection_gated("nmp.my.projection", Arc::clone(&rev), move || {
-    my_projection.snapshot_json()
-});
-```
-`ChangeGate` is re-exported as `nmp_core::ChangeGate`; `Arc<AtomicU64>` implements it.
-
-**Rule E — GC health signals.** As of 0.3.0, `gc_step` runs in production on a
-60-second actor idle tick (`GcBudget::production()`, `HOT_EVENT_CEILING` = 10,000
-events). The kernel snapshot now exposes `last_gc` and `last_gc_at_ms` as
-observability fields. Apps that surface diagnostic views should read these two fields
-to confirm GC is running (a `None` / zero value means the kernel has not yet completed
-a GC pass, which is normal during the first 60 seconds of runtime).
-
-## Why generated enums, not a registry (ADR-0010)
-
-The type-erased alternative (`Vec<u8>` actions, string-keyed runtime dispatch)
-was considered and rejected: it reproduces JavaScript-shaped fragility in three
-statically-typed languages and converts compile-time errors into runtime ones.
-Generated concrete enums give end-to-end type safety, tree-shaking (unused
-modules don't compile in), and reviewable binding diffs. Apps never load modules
-dynamically, so the registry's only theoretical benefit doesn't apply.
-
-## Anti-patterns
-
-1. **Hand-editing generated files.** `generate_modules` calls
-   `fs::remove_dir_all(out_dir)` (`generate.rs:14-16`) on every run — your edits
-   are deleted. Add a real module crate and a manifest entry instead.
-2. **Expecting UniFFI to carry hot update payloads.** UniFFI is the planned
-   generated binding/lifecycle surface. Runtime updates are FlatBuffers.
-3. **Adding a JSON runtime fallback.** JSON may exist in capability envelopes,
-   relay protocol frames, fixtures, and diagnostics. It must not be a second
-   production update transport.
-4. **Expecting `nmp init` to scaffold an iOS/Android project.** `nmp init`
-   ships today and scaffolds a Rust workspace (`Cargo.toml`, `nmp.toml`,
-   starter app-core crate). It does **not** create an Xcode project or
-   Compose module — that's M16's full multi-platform starter. For now, wire
-   the Rust core into your platform shell manually (see
-   [17 — iOS shell](17-ios-shell.md)).
-5. **Putting domain types in `nmp-core` to "simplify codegen."** Module variant
-   types belong in protocol/app crates; `nmp-core` stays noun-free (D0). Codegen
-   composes — it never hosts app types.
-6. **Relying on `[platforms]` in `nmp.toml`.** The parser ignores it today;
-   gating builds on those keys silently no-ops.
-
-## Concrete deliverables recap
-
-- Annotated `nmp.toml` (above) — the five keys the parser actually reads.
-- Before/after `AppAction` diff — what one `[modules]` line adds, hands-free.
-- Current-vs-future FFI box — raw C/JNI calls today, FlatBuffers runtime
-  transport today, UniFFI M14, `nmp init` CLI ships.
-
-See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
-[05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
-[06 — Reactivity contract — the push frame carries typed projections](06-reactivity-contract.md) ·
-[17 — iOS shell — reading typed projections in `apply()`](17-ios-shell.md)

@@ -1,9 +1,9 @@
 # 19a — Walkthrough: build a microblog app (scaffold)
 
-**Status: SHIPS · audience: builders.** Part 1 of 2. This part scaffolds a
-kind:1 microblog app-core crate and its per-app FFI crate.
-[19b](19b-walkthrough-microblog.md) wires codegen, the publish path, and the
-iOS shell.
+**Status: SHIPS · audience: builders.** Part 1 of 2. This part scaffolds the
+hand-written `microblog-core` app crate. [19b](19b-walkthrough-microblog.md)
+creates a thin staticlib shell around it, wires the publish path, and runs it
+on the iOS simulator.
 
 You are building **a Nostr-shaped app, not a Twitter clone.** The kernel never
 learns the word "tweet". kind:1 is the wire; your app projects it into an
@@ -15,16 +15,25 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 > If you find yourself adding `enum Tweet` to `nmp-core`, stop — that is the
 > exact D0 violation this walkthrough exists to prevent.
 
+> **Composition model.** This walkthrough uses ADR-0046: a downstream app
+> depends on `nmp-defaults` and calls `register_defaults`. There is no
+> generated per-app FFI crate. The old `nmp gen modules` scaffolder and
+> `apps/fixture` were deleted because the generated `FfiApp` never called
+> `register_defaults` and produced a non-functional Nostr app. See
+> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) for the full
+> rationale.
+
 ## The structural model
 
-This walkthrough mirrors `apps/fixture/fixture-todo-core/src/lib.rs` (the
-canonical reference) in structure. Two seams are wired in `register()`:
-`register_action` for the write path and `register_snapshot_projection` for
-the read path. A `KernelEventObserver` feeds raw kind:1 events into an
-app-owned feed store.
+Two seams are wired in `register()`: `register_action` for the write path and
+`register_snapshot_projection` for the read path. A `KernelEventObserver` feeds
+raw kind:1 events into an app-owned feed store. The difference from the old
+fixture model is that `register()` **first inherits the canonical NMP
+composition** through `nmp_defaults::register_defaults(app)`, then adds the
+app-specific seams on top.
 
-The real "non-fixture" app crate you create for your product should open
-with the D0 boundary comment verbatim:
+The app crate you create for your product should open with the D0 boundary
+comment verbatim:
 
 ```rust
 // D0: app nouns live in app modules, never in nmp-core.
@@ -35,31 +44,26 @@ with the D0 boundary comment verbatim:
 
 ```
 apps/microblog/
-├── nmp.toml                         # AppManifest (5 lines)
-└── nmp-app-microblog/               # generated per-app FFI crate
+├── nmp.toml                         # AppManifest (used by nmp doctor / upgrade)
+└── nmp-app-microblog/               # thin staticlib shell (created in 19b)
     ├── Cargo.toml
     └── src/
-        ├── lib.rs
-        ├── action.rs                # AppAction enum
-        ├── update.rs                # AppUpdate enum
-        ├── envelope.rs              # envelope helpers
-        ├── view_spec.rs             # ViewSpec enum
-        ├── ffi.rs                   # FfiApp dispatch shell
-        ├── domain.rs
-        └── capability.rs
-crates/microblog-core/              # hand-written app-core crate (you write this)
+        └── lib.rs                   # re-export + register defaults + app register
+crates/microblog-core/               # hand-written app-core crate (you write this)
 ├── Cargo.toml
 └── src/
     └── lib.rs                       # records + ActionModule + observer + register()
 ```
 
 Only `crates/microblog-core/src/lib.rs` and `apps/microblog/nmp.toml` are
-hand-written. Everything under `nmp-app-microblog/src/` is codegen output —
-never hand-edit it.
+hand-written here. The staticlib shell in `apps/microblog/nmp-app-microblog/`
+is a few lines of glue (see [19b](19b-walkthrough-microblog.md)).
 
 ## `apps/microblog/nmp.toml`
 
-Mirrors `apps/fixture/nmp.toml` field for field:
+The manifest parser is still read by `nmp doctor` / `nmp upgrade`, so a
+minimal `nmp.toml` is useful. It is no longer used to generate a per-app FFI
+crate.
 
 ```toml
 [app]
@@ -86,15 +90,14 @@ ios = true
 // crates/microblog-core/src/lib.rs
 // D0: microblog nouns live in this app module, never in nmp-core.
 use std::sync::{Arc, Mutex, OnceLock};
-use nmp_core::substrate::*;
-use nmp_ffi::NmpApp;
+use nmp_core::substrate::{AppHost, *};
 use serde::{Deserialize, Serialize};
 
 pub const ACTION_NAMESPACE: &str = "microblog.action";
 pub const FEED_SNAPSHOT_KEY: &str = "microblog.items";
 
 pub type FeedStore = Arc<Mutex<Vec<NoteRecord>>>;
-pub type Store = FeedStore;   // codegen convention name
+pub type Store = FeedStore;   // app-core convention name
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct NoteRecord {
@@ -164,7 +167,7 @@ impl ActionModule for NoteActionModule {
 ## KernelEventObserver — building the feed
 
 The app builds its feed by implementing `KernelEventObserver`. Every accepted
-kind:1 event fires `on_event_inserted`; the observer appends it to the store.
+kind:1 event fires `on_kernel_event`; the observer appends it to the store.
 
 ```rust
 use nmp_core::{KernelEventObserver, KernelEvent};
@@ -201,19 +204,22 @@ pub fn accepted() -> Update { Update::ActionAccepted }
 pub enum ViewSpec {}
 pub enum Update { ActionAccepted }
 
-pub fn register(app: &mut NmpApp) -> FeedStore {
+pub fn register(app: &mut impl AppHost) -> FeedStore {
     // Initialize the process-wide store once.
     let store: FeedStore = FEED_STORE
         .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
         .clone();
 
-    // Seam 1: write path.
+    // 1. Inherit the canonical NMP composition (routing, outbox, DMs, zaps, WOT).
+    nmp_defaults::register_defaults(app);
+
+    // 2. Write path.
     app.register_action::<NoteActionModule>();
 
-    // Seam 2: event-driven view — populates the feed store on every ingest.
+    // 3. Event-driven view — populates the feed store on every ingest.
     app.register_event_observer(Arc::new(FeedObserver { store: Arc::clone(&store) }));
 
-    // Seam 3: read output — projects the feed into the snapshot.
+    // 4. Read output — projects the feed into the snapshot.
     let projector = Arc::clone(&store);
     app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
         match projector.lock() {
@@ -237,30 +243,27 @@ license.workspace = true
 
 [dependencies]
 nmp-core = { path = "../../crates/nmp-core" }
-nmp-ffi  = { path = "../../crates/nmp-ffi" }
+nmp-defaults = { path = "../../crates/nmp-defaults" }
 serde      = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 ```
 
-## Per-app FFI crate skeleton
+`nmp-ffi` is **not** a dependency of the app-core crate. The core writes to
+`AppHost` traits; the thin staticlib shell (created in
+[19b](19b-walkthrough-microblog.md)) owns the `NmpApp` handle and the C-ABI
+surface.
 
-`nmp-app-microblog/src/{lib,action,update,view_spec,ffi}.rs` are codegen
-output. `action.rs` will look like:
+## Next step: the thin staticlib shell
 
-```rust
-// GENERATED by `nmp gen modules` — do not hand-edit.
-#[derive(Clone, Debug, PartialEq)]
-pub enum AppAction {
-    Kernel(nmp_core::KernelAction),
-    MicroblogCore(microblog_core::Action),
-}
-```
+This crate contains the app logic. It has no `#[no_mangle]` symbols and no
+iOS-specific code. [19b](19b-walkthrough-microblog.md) wraps it in a
+staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 
-And `ffi.rs` calls `microblog_core::register(unsafe { &mut *app })` in
-`FfiApp::new`, stores the returned `Store`, and routes
-`AppAction::MicroblogCore(a)` through `dispatch_app_action(ACTION_NAMESPACE, …)`.
-These files are regenerated; edits are lost. See
-[19b](19b-walkthrough-microblog.md) for how to run codegen.
+1. Link `nmp-defaults`, `nmp-ffi`, and `microblog-core`.
+2. Export one registration symbol the iOS shell calls after `nmp_app_new()`.
+3. Call `nmp_defaults::register_defaults(app)` and then `microblog_core::register(app)`.
+
+That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/nmp-app-chirp`.
 
 ## Anti-patterns (scaffold phase)
 
@@ -269,17 +272,23 @@ These files are regenerated; edits are lost. See
 - **Making the example Twitter-shaped.** `Tweet`/`Retweet`/`Like` enums
   defeat the entire D0 demonstration. kind:1 is the wire format; the app
   noun is the only place an app concept appears.
-- **Hand-editing the per-app FFI crate.** `nmp-app-microblog/src/*` is
-  regenerated; edits are lost and break the codegen determinism test.
+- **Hand-copying substrate wiring instead of calling `register_defaults` or
+  `register_substrate`.** The shared `Arc<InMemoryMailboxCache>` and coverage
+  gate must reach multiple collaborators with the same instance; copying the
+  block by hand desyncs them (V-48).
 - **Skipping `register_event_observer` and rendering raw events in Swift.**
   The feed store is the source of truth; the snapshot projection carries it.
   Raw event arrays across FFI violate D5.
 - **Using the removed `ViewModule` / `DomainModule` traits.** They are not on
   master — see [05a](05a-substrate-traits.md) §Removed v2 traits.
+- **Expecting a generated per-app FFI crate.** `gen modules` and `apps/fixture`
+  were deleted by ADR-0046. The staticlib shell is hand-written glue, not
+  generator output.
 
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
-[15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) ·
+[12 — Publishing + the publish engine](12-publish-and-ledger.md) ·
+[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·
 [19b — Walkthrough: build a microblog app (wire & run)](19b-walkthrough-microblog.md) ·
 [20 — Adding a new protocol module](20-new-protocol-module.md) ·
 [22 — Doctrine compliance checklist](22-doctrine-checklist.md)

@@ -86,8 +86,10 @@ backfill, replaceable-event supersession, multi-account sessions, and the
 reactive snapshot loop are all live. iOS Keychain is the production signer
 path. The Highlighter and NIP-29 modules prove the kernel/extension
 boundary holds for a second protocol surface. `nmp init` scaffolds a
-ready-to-build Rust workspace; `nmp gen modules` generates the per-app
-FFI crate from a manifest.
+ready-to-build Rust workspace — a thin `<name>-core` crate that calls
+`nmp_defaults::register_defaults`, plus a headless `examples/shell.rs`. The
+per-app FFI crate generator (`nmp gen modules`) was deleted (ADR-0046); the
+C-ABI surface is shared through `nmp-ffi`, and composition is a library call.
 
 Coming next: Blossom blob storage, an Android shell on the same kernel,
 WASM write path + IndexedDB (browser relay driver already landed; write

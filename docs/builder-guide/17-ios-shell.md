@@ -12,7 +12,7 @@ that keep it doctrine-clean.
 ## The bridge — raw C calls, FlatBuffers updates
 
 There is no UniFFI on master (that is M14; see
-[15 — Codegen and FFI](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
+[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
 surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
 `nmp_app_dispatch_action`, Chirp feed wrappers, capability callbacks, etc.).
 One C callback delivers binary `nmp.transport.UpdateFrame` bytes with file
@@ -121,7 +121,7 @@ guard** and never derive UI truth from anything but the latest applied snapshot.
 > **Disambiguation.** "Snapshot projection" here means an app/module-owned slice
 > delivered under its key in `SnapshotFrame.typed_projections` (registered
 > Rust-side via `register_typed_snapshot_projection`; see
-> [15 — Codegen and FFI](15-codegen-and-ffi.md)). It is **not** the ViewModule
+> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). It is **not** the ViewModule
 > view-delta system, and it is **not** the SwiftUI `authorViewCache` projection
 > cache mentioned at the rev-guard nuance above.
 
@@ -212,5 +212,5 @@ of the iOS path is drift; see [27 — Doc/code discrepancies](27-discrepancies.m
 - FlatBuffers update shape + rev-guard code; per-iOS-app status box.
 
 See also: [04 — Actor model (TEA on one thread) (TEA on one thread)](04-actor-and-tea.md) ·
-[15 — Codegen and FFI](15-codegen-and-ffi.md) ·
+[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·
 [16 — Capabilities (D7)](16-capabilities.md)

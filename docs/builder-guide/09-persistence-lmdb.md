@@ -41,7 +41,7 @@ implementation lands (`store/mod.rs:10-15`).
 (`NostrLMDB::with_env`, upstream PR or pinned fork). Rationale: every
 `insert` must commit event + provenance + all NMP secondaries in **one
 `RwTxn`** — two independent `Environment` handles cannot roll back each
-other, and a partial write would surface as a corrupt `AppUpdate`
+other, and a partial write would surface as a corrupt `UpdateFrame`
 (D6 violation, ADR-0011 §Context). Layout: `path/nostr/` owned by
 `nostr-lmdb`, `path/nmp/` owned by NMP (watermarks, provenance, claims,
 domain rows, tombstones — `lmdb.rs:22-27`).

@@ -99,7 +99,7 @@ subset:
 | A3 | view registry | `ViewClosed` | warmth grace expired; interests dropped | M2 |
 | A4 | session | `ActiveAccountChanged` | account switch | M8 |
 | A5 | relay worker | `RelayReconnected` | socket re-established (replay only) | M2 |
-| A6 | operator | `InvalidateCompile` | external force-recompile (the one public `AppAction`) | M2 |
+| A6 | operator | `InvalidateCompile` | external force-recompile (the one public action dispatch) | M2 |
 | — | ingest | `FollowListChanged` | active account's kind:3 changed (symmetric to A1) | M2 |
 
 Non-triggers (do **not** recompile): an EVENT arriving on an existing REQ; an

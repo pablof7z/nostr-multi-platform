@@ -8,86 +8,82 @@ before you touch Swift.** Almost every "it doesn't work" is visible in the snaps
 ## FAQ (~15 items)
 
 **Q1. `cargo build` fails with a workspace path / version mismatch.**
-The app-core and per-app FFI crates use `version.workspace = true`. Build
+App-core and thin staticlib crates use `version.workspace = true`. Build
 from the workspace root, not the crate directory. Add new crates to the root
 `Cargo.toml` `members` list before `cargo build -p <crate>`.
 
-**Q2. `nmp gen modules --check` says "generated module crate is stale".**
-The hand-written app-core changed but the FFI crate was not regenerated. Run
-`cargo run -p nmp-codegen -- gen modules --manifest apps/<app>/nmp.toml`
-(no `--check`) and commit the regenerated `nmp-app-*/src/*`. Never hand-fix
-the symptom by editing generated files.
+**Q2. What does `nmp init` scaffold?**
+`nmp init my-app` creates a thin Rust workspace: a `<name>-core` crate that
+calls `nmp_defaults::register_defaults` and registers app-specific seams, an
+`nmp.toml` manifest (used by `nmp doctor` / `nmp upgrade`), a starter
+domain/view/action module, and a headless `examples/shell.rs` using
+`NmpAppBuilder`. It does **not** produce an Xcode project or Android Compose
+module — that's the platform shell layer you wire yourself. See
+[17 — iOS shell](17-ios-shell.md) for the Swift wiring and `apps/chirp/android/`
+as the Android reference.
 
-**Q3. Codegen drift in CI but the build is green locally.**
-CI runs `gen modules --check`. Your local tree has uncommitted regenerated
-output, or you edited a generated file. Regenerate, diff, commit.
+> **Note.** The old `nmp gen modules` per-app FFI generator and `apps/fixture`
+> were deleted by ADR-0046. There is no generated FFI crate to drift.
 
-**Q4. What does `nmp init` scaffold?**
-`nmp init my-app` creates a Rust workspace with an app-core crate, an `nmp.toml`
-manifest, a starter domain/view/action module, and a headless shell example. It does
-**not** produce an Xcode project or Android Compose module — that's the platform shell
-layer you wire yourself. See [17 — iOS shell](17-ios-shell.md) for the Swift wiring and
-`apps/chirp/android/` as the Android reference.
-
-**Q5. Where is UniFFI / the typed `AppUpdate` enum?**
+**Q3. Where is UniFFI / the typed `AppUpdate` enum?**
 **M14, PLANNED.** UniFFI is the binding/lifecycle/capability surface, not the
 hot payload format. The runtime update transport target is FlatBuffers-only;
 master still has historical raw-C JSON callback code while the migration is
 incomplete. Code expecting typed UniFFI payload delivery will not compile
 against master. See [27](27-discrepancies.md).
 
-**Q6. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
+**Q4. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
 The static lib was not built for the simulator triple. Run
 `cargo build -p nmp-app-<app> --target aarch64-apple-ios-sim` and confirm the
 Xcode link path points at that `target/aarch64-apple-ios-sim/` output.
 
-**Q7. `--features lmdb-backend` won't compile.**
+**Q5. `--features lmdb-backend` won't compile.**
 `LmdbEventStore` is a feature-gated skeleton (LANDED, not SHIPS). For a
 microblog you do not need it — the default `MemEventStore` is the supported
 path. See [09](09-persistence-lmdb.md).
 
-**Q8. No events ever arrive (empty feed).**
+**Q6. No events ever arrive (empty feed).**
 Snapshot first. Check `relay_statuses[].connection`. If it is not
 `"connected"`, it is a relay problem (see the 3-step flow below). If it *is*
 connected, check `logical_interests[].state` — `opening`/`backfilling` means
 the data is still in flight, not missing.
 
-**Q9. The feed shows old data and won't update.**
+**Q7. The feed shows old data and won't update.**
 Stale `rev`. The Swift side guards on `rev` monotonicity. If `rev` is not
 advancing in the `NMP_CORE` stdout logs, the kernel is not emitting — the
 relay or interest is stuck, not the UI. Do **not** disable the rev guard.
 
-**Q10. Avatars / display names are blank.**
+**Q8. Avatars / display names are blank.**
 That is correct behavior, not a bug. Display fields are non-`Option` with
 deterministic placeholders (D1 — `kernel/types.rs:79-113`). A blank-looking
 avatar with `author_avatar_source: "placeholder"` means kind:0 has not
 arrived yet; the feed still renders. Never gate the feed on "profile loaded".
 
-**Q11. A subscription seems to leak (REQ count climbs).**
+**Q9. A subscription seems to leak (REQ count climbs).**
 Interests are refcounted. Every `open*` needs a matching `close*` /
 `releaseProfile`. Check `wire_subscriptions[]` length and
 `logical_interests[].refcount`. A refcount that only grows means a missing
 release on view teardown.
 
-**Q12. NIP-42 relay rejects my subscription.**
+**Q10. NIP-42 relay rejects my subscription.**
 Check `relay_statuses[].auth`. Values: `not_required`, `challenge_received`,
 `authenticating`, `authenticated`, `failed` (`kernel/types.rs:209-213`). The
 kernel drives the challenge/response; the app does not. `failed` with a
 `last_error` means the signer could not satisfy the challenge.
 
-**Q13. How do I read relay health programmatically?**
+**Q11. How do I read relay health programmatically?**
 Decode the snapshot and read `relay_statuses` (per-role: `connection`,
 `auth`, `bytes_rx/tx`, `reconnect_count`, `last_error`) — the Swift mirror is
 `KernelBridge.swift:183-197`.
 
-**Q14. How do I enable debug diagnostics?**
+**Q12. How do I enable debug diagnostics?**
 The guardrail checker runs only under `cfg(debug_assertions)` (debug builds):
 bech32-where-hex, `limit` on replaceable filters, empty `authors`, cache miss
 with no fallback loader, etc. Violations produce a `DebugDiagnostics` entry
 plus an `eprintln!` with a doc URL. Release cost is zero
 (`subsystems.md:323-336`). Build in debug to see them.
 
-**Q15. Where do I file a doc/code discrepancy?**
+**Q13. Where do I file a doc/code discrepancy?**
 [27 — Doc/code discrepancies](27-discrepancies.md). Most "the doc says X but
 the code does Y" cases are *milestone not landed yet* (e.g. UniFFI M14), not
 bugs. Don't change the spec to match incomplete code; file it.
@@ -165,8 +161,11 @@ Debug order: `relay_statuses` → `logical_interests` → `wire_subscriptions` �
 - **Debugging in Swift instead of the decoded snapshot.** The snapshot is the
   source of truth across FFI. Decode and inspect it first; Swift only
   renders what the snapshot already decided.
-- **Editing generated code to fix a symptom.** Stale FFI crate → regenerate,
-  don't patch. Patches are erased on the next `gen modules`.
+- **Editing generated binding code to fix a symptom.** The `gen swift` / `gen
+  typed-decoders` emitters produce host bindings from the live C-ABI / schema
+  surface. If they drift, regenerate from source (`cargo run -p nmp-codegen --
+  gen swift ...`), don't patch the output. There is no `gen modules` step; the
+  per-app composition crate is hand-written glue.
 - **Disabling the rev guard to "make the UI update".** The guard is correct;
   a non-advancing `rev` is a real upstream stall. Disabling it hides the bug
   and shows torn state.

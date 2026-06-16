@@ -14,7 +14,7 @@ This section translates that into the vocabulary you will actually see in
 | `AppAction` | `KernelAction` (`Start`/`OpenView`/`OpenUri`/…) | `app.rs:21-36` |
 | message in | `ActorCommand` (internal) | `actor/mod.rs:26-51` |
 | `handle_message` | `dispatch_command(...)` | `actor/mod.rs:162-` |
-| state emission | `AppUpdate` frame via `update_tx`; canonical runtime payload is FlatBuffers | `app.rs:38-48`, `tick.rs:53-62` |
+| state emission | `UpdateFrame` via `update_tx`; canonical runtime payload is FlatBuffers | `app.rs:38-48`, `tick.rs:53-62` |
 
 Data flow is **strictly unidirectional**: user interaction →
 action dispatch → actor processes synchronously → state emission → platform
@@ -87,7 +87,7 @@ There is **one** writer (the actor). Everything else is a courier.
    `app.rs:183`), never a panic across the seam.
 4. **Snapshot-default emit.** State crosses the runtime bridge as a full
    snapshot frame by default (`emit_now`, `tick.rs:53-62`); granular
-   `ViewBatch` deltas are an optimization layered on top (see [06]), not the
+   `view_batch` deltas are an optimization layered on top (see [06]), not the
    default. The canonical hot payload format is FlatBuffers, not JSON and not
    UniFFI records.
 
