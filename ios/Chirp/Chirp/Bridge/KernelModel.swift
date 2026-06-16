@@ -635,6 +635,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         track(kernel.unfollow(pubkey: pubkey))
     }
 
+    @discardableResult
+    func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
+        track(kernel.dispatchChirpIntent(intent))
+    }
+
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
     /// The recipient's `lnurl` is sourced from `TimelineItem.authorLnurl`
     /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).
@@ -665,13 +670,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 comment: comment
             )
         )
-    }
-
-    /// Fire a write action authored by Rust through the namespace-keyed
-    /// dispatch seam. Rust composes both `namespace` and `bodyJson` (aim.md §4.4).
-    @discardableResult
-    func dispatchProfileAction(_ spec: ProfileDispatchSpec) -> DispatchResult {
-        track(kernel.dispatchRawAction(namespace: spec.namespace, bodyJson: spec.bodyJson))
     }
 
     @discardableResult

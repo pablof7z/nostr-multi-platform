@@ -46,36 +46,31 @@ struct ProfileView: View {
     }
 
     /// The single primary button rendered over the profile header. Own profile
-    /// ⇒ the local `edit_profile` intent (opens the edit sheet, `dispatch ==
-    /// nil`); another account ⇒ Follow / Unfollow, whose `perform()` routes
-    /// through the existing typed `KernelModel.follow(_:)` / `unfollow(_:)`
-    /// helpers (the `nmp-app-chirp` ActionModule seam). The shell authors only
-    /// the label/icon for presentation; it never builds namespaces or bodies.
+    /// ⇒ local edit chrome (no Rust write intent); another account ⇒ Follow /
+    /// Unfollow, carrying the typed Rust action intent that
+    /// `nmp_app_chirp_action_spec` turns into the exact dispatch namespace/body.
+    /// The shell authors only the label/icon for presentation; it never builds
+    /// namespaces or bodies, and it never switches over an action kind to choose
+    /// a write route.
     private var primaryAction: ProfileAction? {
         if isOwnProfile {
             return ProfileAction(
-                kind: "edit_profile",
                 label: "Edit Profile",
-                targetPubkey: pubkey,
                 iconName: "pencil",
-                dispatch: nil
+                intent: nil
             )
         }
         if isFollowing {
             return ProfileAction(
-                kind: "unfollow",
                 label: "Following",
-                targetPubkey: pubkey,
                 iconName: "checkmark",
-                dispatch: nil
+                intent: .unfollow(pubkey: pubkey)
             )
         }
         return ProfileAction(
-            kind: "follow",
             label: "Follow",
-            targetPubkey: pubkey,
             iconName: "person.badge.plus",
-            dispatch: nil
+            intent: .follow(pubkey: pubkey)
         )
     }
 
@@ -165,8 +160,8 @@ struct ProfileView: View {
                 Button {
                     perform(primaryAction)
                 } label: {
-                    // label + iconName both authored by Rust — no Swift
-                    // `switch action.kind` over SF Symbol names.
+                    // label + iconName are presentation only; writes are
+                    // carried by the typed Rust action intent.
                     Label(primaryAction.label, systemImage: primaryAction.iconName)
                         .font(.subheadline.weight(.semibold))
                         .labelStyle(.titleAndIcon)
@@ -277,25 +272,15 @@ struct ProfileView: View {
 
     // MARK: – Helpers
 
-    /// Routes the primary action to the existing typed write helpers.
-    ///
-    /// V-112 (ADR-0042) deleted the Rust `profile_action_for` authoring, so
-    /// follow/unfollow now flow through the `nmp-app-chirp` ActionModule seam
-    /// directly via `KernelModel.follow(_:)` / `unfollow(_:)` — Rust still
-    /// authors the namespace + body inside `nmp_app_chirp_action_spec`; the
-    /// shell only forwards the raw pubkey, exactly like the React / Repost row
-    /// buttons. `edit_profile` is a local UI intent (no write).
+    /// Dispatches the Rust-authored action intent carried by the button.
+    /// `edit_profile` is local UI chrome and carries no write intent.
     private func perform(_ action: ProfileAction) {
-        switch action.kind {
-        case "follow":
-            model.follow(action.targetPubkey)
+        if let intent = action.intent {
+            model.dispatchChirpIntent(intent)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        case "unfollow":
-            model.unfollow(action.targetPubkey)
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        default:
-            isEditingProfile = true
+            return
         }
+        isEditingProfile = true
     }
 
     private func copyNpub() {

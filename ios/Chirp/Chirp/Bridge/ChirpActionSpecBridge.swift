@@ -37,7 +37,7 @@ struct ChirpReplyTarget: Codable, Equatable, Identifiable {
     }
 }
 
-struct ChirpActionIntent: Encodable {
+struct ChirpActionIntent: Encodable, Equatable {
     let type: String
     let content: String?
     let replyTo: ChirpReplyTarget?

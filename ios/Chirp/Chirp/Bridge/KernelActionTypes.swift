@@ -387,41 +387,24 @@ extension ProfileCard {
     var displayLabel: String { displayName ?? pubkey.shortHex }
 }
 
-/// Generic dispatch spec carrying a Rust-authored `namespace` + `bodyJson`
-/// pair, fired verbatim through `nmp_app_dispatch_action`. Still used by the
-/// generic `KernelModel.dispatchProfileAction` seam (e.g. MarmotBridge); the
-/// `ProfileView` follow/unfollow buttons now route through the typed
-/// `KernelModel.follow(_:)` / `unfollow(_:)` helpers instead (see below).
-struct ProfileDispatchSpec: Decodable, Equatable {
-    let namespace: String
-    let bodyJson: String
-}
-
-/// A primary profile button. Post-V112 (ADR-0042) the Rust-side
-/// `profile_action_for` authoring was deleted, so `ProfileView` now builds
-/// this value host-side from the follow-set snapshot. `kind` selects the
-/// existing typed write helper (`follow` / `unfollow`) or the local
-/// `edit_profile` intent — the helper, not the shell, still authors the
-/// dispatch namespace + body inside `nmp_app_chirp_action_spec`, so no
-/// business logic leaks into Swift.
-struct ProfileAction: Decodable, Equatable {
-    /// Selects the typed write helper or the local edit intent.
-    let kind: String
+/// A primary profile button. The shell owns only presentation labels/icons.
+/// Follow/unfollow writes carry a typed `ChirpActionIntent` that Rust turns
+/// into the dispatch namespace + body inside `nmp_app_chirp_action_spec`.
+/// A `nil` intent is local chrome only (currently the edit-profile sheet).
+struct ProfileAction: Equatable {
     let label: String
-    let targetPubkey: String
     /// SF Symbol name the shell renders without further mapping.
     let iconName: String
-    /// Retained for the generic dispatch seam; `nil` for the host-built
-    /// follow/unfollow/edit actions, which route through typed helpers.
-    let dispatch: ProfileDispatchSpec?
+    /// Rust-owned write intent to dispatch verbatim, or nil for local UI.
+    let intent: ChirpActionIntent?
 }
 
 // V-112 (ADR-0042): `AuthorProfileSnapshot` Decodable deleted — the
 // `author_view` projection (and its `authorView` field on the generated
 // `SnapshotProjections`) was removed with the kernel author/thread view
 // stack. Author rendering reads the per-app FlatFeed
-// (`nmp_app_chirp_open_author_feed`); `ProfileAction` /
-// `ProfileDispatchSpec` above stay (used by `ProfileView`).
+// (`nmp_app_chirp_open_author_feed`); `ProfileAction` above stays as
+// presentation chrome for `ProfileView`.
 
 // `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 3 partial, plan §6d — F-05). Rust source:
