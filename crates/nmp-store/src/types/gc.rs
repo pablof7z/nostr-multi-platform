@@ -5,15 +5,17 @@
 
 // ─── GcBudget / GcReport ─────────────────────────────────────────────────────
 
-/// Production hot-set event ceiling (`docs/design/lmdb/gc.md` §2: default 10,000).
+/// Default explicit durable-retention ceiling (`docs/design/lmdb/gc.md` §3).
 ///
-/// [`GcBudget::production`] sets `max_total_events = HOT_EVENT_CEILING` so the
-/// on-device GC pass evicts least-recently-accessed un-pinned events down to
-/// this ceiling (#1090 Stage 3). Floor-coherence is guaranteed by
-/// `Kernel::derive_store_pin_set`, which pins every stored event at or below
-/// each active floored shape's `since`-floor (#1090 Stage 2) so LRU eviction
-/// cannot punch a hole the floored self-healing REQ will never re-request.
-pub const HOT_EVENT_CEILING: usize = 10_000;
+/// This is no longer used by [`GcBudget::production`]. Production GC bounds RAM
+/// working-set caches separately and leaves durable event rows unbounded unless
+/// a caller deliberately opts into finite durable retention with
+/// [`GcBudget::with_durable_event_ceiling`]. The retained constant keeps the
+/// historical 10,000-event policy available for explicit tests/configuration.
+pub const DEFAULT_DURABLE_EVENT_CEILING: usize = 10_000;
+
+/// Backward-compatible alias for the old durable row ceiling name.
+pub const HOT_EVENT_CEILING: usize = DEFAULT_DURABLE_EVENT_CEILING;
 
 /// Production per-step event budget (`docs/design/lmdb/gc.md` §3).
 pub const GC_MAX_EVENTS_PER_STEP: usize = 2_000;
@@ -29,25 +31,24 @@ pub const GC_MAX_DURATION_MS: u32 = 50;
 ///
 /// [`GcBudget::default`] uses the design-doc schedule values
 /// (`max_events_per_step = 2000`, `max_duration_ms = 50`) with
-/// `max_total_events = usize::MAX` (LRU eviction disabled — used by tests that
-/// want only expiry/tombstone reaping, never on-device).
-/// [`GcBudget::production`] is the on-device call-site budget: identical scan
-/// bounds, but `max_total_events = HOT_EVENT_CEILING` so the LRU ceiling is
-/// enforced (#1090 Stage 3).
+/// `max_total_events = usize::MAX` (durable LRU deletion disabled).
+/// [`GcBudget::production`] is intentionally identical: on-device GC reaps
+/// correctness deletes and tombstones, while RAM working-set eviction is handled
+/// by the kernel's RAM-cache pass. A finite durable row ceiling must be explicit.
 /// See `docs/design/lmdb/gc.md` §3.
 #[derive(Clone, Copy, Debug)]
 pub struct GcBudget {
     pub max_events_per_step: usize,
     pub max_duration_ms: u32,
-    /// LRU eviction ceiling: if the store holds more events than this,
+    /// Durable LRU eviction ceiling: if the store holds more events than this,
     /// `gc_step` evicts least-recently-accessed events (by access-sequence counter)
-    /// down to this ceiling.  Only un-pinned (unclaimed) events are eligible.
+    /// down to this ceiling. Only un-pinned events are eligible.
     ///
-    /// [`GcBudget::default()`] leaves this `usize::MAX` (eviction disabled) for
-    /// tests; [`GcBudget::production`] sets it to [`HOT_EVENT_CEILING`]. The
-    /// kernel-derived pin set passed to [`EventStore::gc_step_with_pins`]
-    /// (#1090 Stage 1) plus floor-coherent pinning (#1090 Stage 2) guarantee no
-    /// live working-set or floored-shape event is eligible for eviction.
+    /// [`GcBudget::default()`] and [`GcBudget::production`] leave this
+    /// `usize::MAX`. Use [`GcBudget::with_durable_event_ceiling`] to opt into a
+    /// finite durable-retention policy. The kernel-derived pin set passed to
+    /// [`EventStore::gc_step_with_pins`] plus floor-coherent pinning keep any
+    /// explicit durable deletion from punching holes in active covered ranges.
     pub max_total_events: usize,
 }
 
@@ -55,8 +56,8 @@ impl Default for GcBudget {
     /// Design-doc schedule values (`gc.md` §3) with LRU eviction left disabled.
     ///
     /// This is the single source of truth for the `2000 / 50ms` scan bounds the
-    /// doc quotes. The production call site uses [`GcBudget::production`], which
-    /// keeps these scan bounds but enables the finite LRU ceiling.
+    /// doc quotes. Production uses the same budget shape and leaves durable LRU
+    /// deletion disabled.
     fn default() -> Self {
         Self {
             max_events_per_step: GC_MAX_EVENTS_PER_STEP,
@@ -67,15 +68,23 @@ impl Default for GcBudget {
 }
 
 impl GcBudget {
-    /// The on-device production budget used by the actor's 60-second idle-tick gc pass.
+    /// The on-device production budget used by the actor's 60-second idle-tick GC pass.
     ///
-    /// Same scan bounds as [`GcBudget::default`], with the LRU ceiling enabled
-    /// (`max_total_events = HOT_EVENT_CEILING`). Floor-coherence is guaranteed by
-    /// `Kernel::derive_store_pin_set` (#1090 Stage 2), so eviction never punches a
-    /// hole below an active floored shape's `since`-floor.
+    /// Same scan bounds as [`GcBudget::default`], with durable LRU deletion
+    /// disabled. RAM working-set pressure is handled by `Kernel::evict_ram_caches`;
+    /// durable event retention must be an explicit disk/user policy.
     pub fn production() -> Self {
+        Self::default()
+    }
+
+    /// Budget for an explicit finite durable-retention policy.
+    ///
+    /// This preserves the existing guarded durable-LRU machinery for tests and
+    /// future user/disk quota policy without making valid fetched events expire
+    /// from the default production store.
+    pub fn with_durable_event_ceiling(max_total_events: usize) -> Self {
         Self {
-            max_total_events: HOT_EVENT_CEILING,
+            max_total_events,
             ..Self::default()
         }
     }

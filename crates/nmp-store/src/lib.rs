@@ -48,7 +48,8 @@ pub use types::{
     coverage_key, coverage_key_parts, CoverageGuard, CoverageMatchFn, CoverageRow, DeleteFilter,
     DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey,
     RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, TombstoneOrigin, TombstoneRow,
-    VerifiedEvent, COVERAGE_KEY_SEP, GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
+    VerifiedEvent, COVERAGE_KEY_SEP, DEFAULT_DURABLE_EVENT_CEILING, GC_MAX_DURATION_MS,
+    GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).

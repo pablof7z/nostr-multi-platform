@@ -1,13 +1,10 @@
-//! #1090 Stage 3 — production GC budget re-enables the finite LRU ceiling.
+//! #1480 — production GC keeps durable rows; finite retention is explicit.
 //!
-//! Stage 1 (#1090) wired the kernel-derived pin set into
-//! [`EventStore::gc_step_with_pins`] but kept `GcBudget::production()` at
-//! `max_total_events = usize::MAX` (eviction disabled) pending the Stage-2
-//! watermark-coherence decision. Stage 2 added floor-coherent pinning
-//! (`Kernel::derive_store_pin_set` pins every stored event at or below each
-//! active floored shape's `since`-floor), so a finite ceiling can no longer
-//! punch a hole the floored self-healing REQ would never re-request. Stage 3
-//! flips `production()` to `max_total_events = HOT_EVENT_CEILING`.
+//! Stage 3 (#1090) made the durable LRU deletion path safe when a caller opts
+//! into a finite row ceiling. #1480 changes the production default back to
+//! `usize::MAX`: the on-device GC pass reaps correctness deletes/tombstones, but
+//! it does not drop valid fetched events just because they are cold. Future
+//! disk/user retention policy must call an explicit finite-ceiling budget.
 //!
 //! These tests live in their own file (not appended to the already-baselined
 //! `tests_gc.rs`, which is at the 500-LOC hard cap) per the AGENTS.md file-size
@@ -17,7 +14,7 @@
 
 use std::collections::HashSet;
 
-use crate::types::{EventId, GcBudget, InsertOutcome, HOT_EVENT_CEILING};
+use crate::types::{EventId, GcBudget, InsertOutcome, DEFAULT_DURABLE_EVENT_CEILING};
 use crate::EventStore;
 
 use super::test_fixtures::{open_tmp, signed_event, verified};
@@ -36,39 +33,67 @@ fn insert_n(store: &impl EventStore, n: usize, base_ts: u64) {
     }
 }
 
-/// #1090 Stage 3 — `GcBudget::production()` enables the finite LRU ceiling
-/// (`max_total_events == HOT_EVENT_CEILING`), reversing the Stage-1 temporary
-/// `usize::MAX` disable. The on-device 60s GC pass relies on this contract;
-/// floor-coherence (Stage 2, `Kernel::derive_store_pin_set`) is what makes the
-/// finite ceiling safe.
+/// #1480 — `GcBudget::production()` leaves durable LRU deletion disabled.
+/// The on-device 60s GC pass must not delete valid fetched events by default;
+/// RAM working-set pressure is handled by the kernel RAM-cache pass instead.
 #[test]
-fn gc_production_budget_ceiling_is_hot_event_ceiling() {
+fn gc_production_budget_keeps_durable_lru_disabled() {
     assert_eq!(
         GcBudget::production().max_total_events,
-        HOT_EVENT_CEILING,
-        "production() must enable the finite ceiling (#1090 Stage 3)",
+        usize::MAX,
+        "production() must not delete valid durable rows by default (#1480)",
     );
 
-    // Scan bounds are unchanged from default() — only the ceiling differs.
+    // Production keeps the same scan bounds as default().
     let prod = GcBudget::production();
     let def = GcBudget::default();
     assert_eq!(prod.max_events_per_step, def.max_events_per_step);
     assert_eq!(prod.max_duration_ms, def.max_duration_ms);
-    assert_eq!(
-        def.max_total_events,
-        usize::MAX,
-        "default() keeps eviction disabled (tests opt into a finite ceiling)",
-    );
+    assert_eq!(prod.max_total_events, def.max_total_events);
+
+    let explicit = GcBudget::with_durable_event_ceiling(DEFAULT_DURABLE_EVENT_CEILING);
+    assert_eq!(explicit.max_total_events, DEFAULT_DURABLE_EVENT_CEILING);
 }
 
-/// #1090 Stage 3 — an over-ceiling store with NO active floored shapes (empty
-/// pin set) evicts least-recently-accessed events down to the ceiling via
-/// `gc_step_with_pins`. This mirrors the production call shape
-/// (`gc_step_with_pins(production(), now, &pins)`) when the kernel holds no
-/// live working set; we use a small synthetic ceiling so the test need not
-/// Schnorr-sign `HOT_EVENT_CEILING` events.
+/// The production budget itself must not LRU-delete valid rows, even with an
+/// empty pin set. Correctness deletes (expiry/tombstones) still run elsewhere;
+/// this test only guards against reintroducing the implicit durable row cap.
 #[test]
-fn gc_over_ceiling_no_floor_evicts_to_ceiling_with_empty_pins() {
+fn production_budget_does_not_lru_delete_valid_rows() {
+    let (store, _dir) = open_tmp();
+
+    let mut ids = Vec::new();
+    for i in 0..60usize {
+        let raw = signed_event(1, 1_700_000_000 + i as u64, &format!("event-{i}"), None);
+        let id = raw.id_bytes().expect("fixture event id");
+        let outcome = store
+            .insert(verified(raw), &"wss://r/".into(), 1_000_000)
+            .unwrap_or_else(|e| panic!("insert #{i} failed: {e}"));
+        assert!(matches!(outcome, InsertOutcome::Inserted { .. }));
+        ids.push(id);
+    }
+
+    let report = store
+        .gc_step_with_pins(GcBudget::production(), 1_700_100_000, &HashSet::new())
+        .expect("production gc_step_with_pins");
+
+    assert_eq!(
+        report.lru_evicted, 0,
+        "production budget must not LRU-delete valid durable rows"
+    );
+    for id in ids {
+        assert!(
+            store.get_by_id(&id).expect("get_by_id").is_some(),
+            "valid row must remain queryable after production GC"
+        );
+    }
+}
+
+/// Explicit finite durable retention still evicts least-recently-accessed rows
+/// down to the requested ceiling. This keeps the old guarded deletion machinery
+/// covered without making it the production default.
+#[test]
+fn explicit_durable_ceiling_evicts_to_ceiling_with_empty_pins() {
     let (store, _dir) = open_tmp();
 
     const N: usize = 60;
@@ -78,12 +103,12 @@ fn gc_over_ceiling_no_floor_evicts_to_ceiling_with_empty_pins() {
     let budget = GcBudget {
         max_events_per_step: 1000,
         max_duration_ms: 60_000,
-        max_total_events: CEILING,
+        ..GcBudget::with_durable_event_ceiling(CEILING)
     };
     let now_secs = 1_700_100_000u64;
 
-    // Empty pin set: nothing protected. With the production ceiling enabled and
-    // no floored shape active, Phase-2 LRU eviction trims the overage.
+    // Empty pin set: nothing protected. The explicit finite durable-retention
+    // ceiling trims the overage.
     let pins: HashSet<EventId> = HashSet::new();
     let report = store
         .gc_step_with_pins(budget, now_secs, &pins)

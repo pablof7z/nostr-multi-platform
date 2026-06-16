@@ -21,9 +21,9 @@
 //!     work).
 //!   - `gc_tick_interval_is_60_seconds` — pins the `gc.md` §3 "every 60 s"
 //!     schedule against accidental drift.
-//!   - `production_budget_enables_lru_eviction` — pins that the production
-//!     budget carries the finite `HOT_EVENT_CEILING`, the load-bearing piece
-//!     that makes Phase-2 LRU eviction non-vacuous.
+//!   - `production_budget_disables_durable_lru_by_default` — pins that the
+//!     production budget does not delete valid durable rows by default; RAM
+//!     pressure is handled by the kernel RAM-cache pass.
 
 use super::clock::FixedClock;
 use super::nostr::NostrEvent;
@@ -183,30 +183,32 @@ fn gc_tick_interval_is_60_seconds() {
     );
 }
 
-/// The production budget carries the finite hot-event ceiling — without it,
-/// Phase-2 LRU eviction is a permanent no-op even once gc runs (the load-bearing
-/// piece of #1069).
-///
-/// #1090 Stage 3: the production budget now ENABLES the LRU ceiling
-/// (`max_total_events = HOT_EVENT_CEILING`). Stage 2 (`derive_store_pin_set`
-/// floor-coherent pins) is what makes the finite ceiling safe — eviction can no
-/// longer punch a hole below an active floored shape's `since`-floor.
+/// The production budget leaves durable LRU deletion disabled. Actor-scheduled
+/// GC still runs for NIP-40 expiry and tombstone maintenance, but keeping valid
+/// fetched events is the default durable-store policy (#1480).
 #[test]
-fn production_budget_documents_ceiling_state() {
+fn production_budget_disables_durable_lru_by_default() {
     let budget = crate::store::GcBudget::production();
 
-    // #1090 Stage 3: production gc enforces the finite hot-event ceiling.
     assert_eq!(
         budget.max_total_events,
-        crate::store::HOT_EVENT_CEILING,
-        "#1090 Stage 3: production gc must enable LRU eviction at HOT_EVENT_CEILING \
-         (floor-coherence from Stage 2 makes it safe). See types/gc.rs.",
+        usize::MAX,
+        "production gc must not delete valid durable rows by default (#1480)",
     );
     assert_eq!(
         budget.max_events_per_step,
         crate::store::GC_MAX_EVENTS_PER_STEP
     );
     assert_eq!(budget.max_duration_ms, crate::store::GC_MAX_DURATION_MS);
+
+    assert_eq!(
+        crate::store::GcBudget::with_durable_event_ceiling(
+            crate::store::DEFAULT_DURABLE_EVENT_CEILING
+        )
+        .max_total_events,
+        crate::store::DEFAULT_DURABLE_EVENT_CEILING,
+        "finite durable retention stays available only as an explicit policy",
+    );
 }
 
 /// The GcReport from a gc pass must include a populated `duration_ms` so the

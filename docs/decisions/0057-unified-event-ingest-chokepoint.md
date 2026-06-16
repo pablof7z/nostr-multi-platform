@@ -4,8 +4,8 @@
 - **Date:** 2026-06-15
 - **Issues:** #1440 (ghost-post — no optimistic local echo for non-replaceable
   kinds), #1442 (persistence entangled with relevance — the authoritative store
-  has relevance-shaped holes), #1443 (follow-up — research an unbounded /
-  disk-bounded durable cache; out of scope here).
+  has relevance-shaped holes), #1443/#1480 (production durable retention keeps
+  valid fetched events by default; finite durable LRU is explicit policy only).
 - **Decision record:** this ADR is the durable, self-contained authority for the
   ingest-chokepoint architecture. Durable "why" lives here and in the issues above;
   `docs/plans/arch-fixes.md` (Workstream A) is only the **temporal tactical
@@ -267,40 +267,29 @@ the raw timestamp on the observer and clamped only the timeline read-cache; that
 left non-timeline feed consumers exposed and was corrected to the
 chokepoint-observer clamp above.)
 
-### Storage model: bounded local cache, bounded by pin-aware LRU only
+### Storage model: complete durable store, bounded RAM working set
 
-The on-device `EventStore` is **today** a **bounded local cache (~10k hot events),
-not an infinite log** — the durable log of nostr lives on relays. "Persist
+The on-device `EventStore` keeps every valid fetched event by default. "Persist
 everything" means **admission is not relevance-gated** (every validly-signed event
 is admitted kind-agnostically, and the canonical non-ephemeral subset
-`Inserted | Replaced` is written); the **single** storage bound is **pin-aware LRU
-GC**, which **replaces** the ad-hoc relevance gate:
+`Inserted | Replaced` is written), and production GC does not age out valid
+durable rows:
 
-- `Kernel::run_gc_step` (wired in production on the 60s actor idle tick) evicts
-  least-recently-accessed **un-pinned** events down to
-  `HOT_EVENT_CEILING = 10_000` (`nmp-store/src/types/gc.rs:16`).
-- `derive_store_pin_set` (#1090 Stage 2, `ram_eviction.rs:221`) pins every stored
-  event whose hex id is in `self.timeline`, is an `event_claims` key, matches an
-  active open-interest shape, or sits at/below a floored shape's `since`-floor — so
-  LRU cannot punch a hole the floored self-healing REQ will never re-request. The
-  real safety property is therefore **pin-set correctness**, not store size.
-  Newly-stored non-followed notes are exactly the unpinned class evicted first.
-- **Read-your-writes pinning is a NEW pin source PR 1 must add.** There is **no**
-  publish-in-flight pin source in `derive_store_pin_set` today — a locally accepted
-  publish that has not yet appeared in `self.timeline` (e.g. a non-followed-author
-  or not-yet-rendered kind) could be LRU-evicted before its relay echo arrives.
-  **PR 1 requirement:** locally accepted publish events are pinned while in the
-  publish queue / until first relay confirmation or terminal settlement, so they
-  cannot be evicted before the echo dedups against them. (A read-your-writes event
-  that *is* in the visible timeline is already pinned by the `self.timeline` clause;
-  this requirement covers the events that are not.)
-
-> **Follow-up (#1443), out of scope here:** the owner wants the local cache to
-> never lose fetched events (full local history). That means reconsidering the 10k
-> LRU ceiling itself — likely disk-bounded (LMDB is mmap'd) rather than RAM-bound,
-> so the durable store could be unbounded while only the RAM read-caches stay
-> bounded. This ADR keeps the current pin-aware-LRU bound; #1443 researches making
-> the durable store unbounded.
+- `Kernel::run_gc_step` (wired in production on the 60s actor idle tick) uses
+  `GcBudget::production()`, which leaves durable LRU deletion disabled
+  (`max_total_events = usize::MAX`, #1480). It still reaps correctness deletes
+  and tombstones. RAM working-set pressure is handled by kernel RAM-cache
+  eviction, not durable LMDB row deletion.
+- The pin-aware durable LRU path remains available only for an explicit finite
+  disk/user quota policy via `GcBudget::with_durable_event_ceiling(n)`.
+  `derive_store_pin_set` (#1090 Stage 2) and the coverage-ledger backstop (#0056
+  Stage D3) remain the safety machinery for that explicit path, so a future quota
+  cannot punch a hole below an active floored self-healing REQ.
+- If a future app enables explicit finite durable retention, it must treat
+  locally accepted but not-yet-confirmed publishes as protected until first relay
+  confirmation or terminal settlement, or make that quota policy explicitly
+  ineligible for publish-in-flight rows. The production default does not need a
+  publish-in-flight durable pin because valid durable rows are not LRU-deleted.
 
 ### What falls out for free
 
@@ -435,7 +424,8 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
 
 ## References
 
-- Issues #1440, #1442, #1443 — the durable "why" / tracking for this decision.
+- Issues #1440, #1442, #1443, #1480 — the durable "why" / tracking for this
+  decision.
 - ADR-0042 (`docs/decisions/0042-m2-open-interest.md`) — amended.
 - ADR-0045 (`docs/decisions/0045-store-projection-replay.md`) — extended.
 - ADR-0053 (`docs/decisions/0053-host-declared-projection-subscriptions.md`).
@@ -455,7 +445,8 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
   de-facto `Provenance::LocalStore` marker),
   `crates/nmp-core/src/kernel/ram_eviction.rs:221` (`derive_store_pin_set`),
   `crates/nmp-core/src/substrate/ingest.rs` (`IngestParser` / `EventIngestDispatcher`),
-  `crates/nmp-store/src/types/gc.rs` (`HOT_EVENT_CEILING:16`),
+  `crates/nmp-store/src/types/gc.rs` (`GcBudget::production`,
+  `GcBudget::with_durable_event_ceiling`),
   `crates/nmp-store/src/types/outcomes.rs:11-33` (`InsertOutcome` enum).
 - Docs: `docs/builder-guide/08-eventstore.md:51` (outcome-by-kind table).
 - See also (tactical, temporal — not an authority): `docs/plans/arch-fixes.md`

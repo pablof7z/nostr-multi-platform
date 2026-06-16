@@ -153,27 +153,25 @@ single verified `insert` path (subsystems.md:54).
 
 ---
 
-## Claim-based GC
+## GC And Retention
 
-GC is claim-driven, not time-driven. An open view registers a budget and
-pins its cover; closing the view releases every pin in one call. The
-collector only reaps things nothing claims.
+There are two separate bounds:
 
-- `register_view_cover(claimer, cover_budget)` then
-  `claim(claimer, &ids)` / `release(claimer)` — `store/events.rs:265-271`.
-  Re-claiming a known id is idempotent (BTreeSet,
-  `store/mem/mod.rs:79-81`).
-- Ceilings (D8): per-view default **1 000**
-  (`DEFAULT_VIEW_CEILING`, `store/mem/mod.rs:36`), global hard cap
-  **20 000** (`MAX_PINNED_TOTAL`, `store/mem/mod.rs:39`). Over-budget
-  `claim` returns `StoreError::OverPinned`; the actor surfaces
-  `Effect::ViewOverPinned` and releases (gc.md:138-139).
-- `gc_step(GcBudget) -> GcReport` (`store/events.rs:277`) does one
-  bounded pass: NIP-40 reap, LRU trim, purge tombstones older than
-  `TOMBSTONE_MAX_AGE_SECS` (90 days, `store/mem/mod.rs:45`). Budget
-  defaults `max_events_per_step = 2000`, `max_duration_ms = 50`
-  (`store/types/gc.rs:18-22`). Never called from an FFI path —
-  actor-scheduled only (gc.md:181).
+- **RAM working set.** `Kernel::evict_ram_caches()` bounds the in-memory
+  `events` map, profile cache, and contacts cache on the actor's GC tick. This
+  loses no durable data; LMDB remains the authoritative event store.
+- **Durable store retention.** `gc_step(GcBudget) -> GcReport` does one bounded
+  durable maintenance pass: NIP-40 reap, optional explicit finite-retention LRU
+  deletion, and tombstone purge. `GcBudget::production()` keeps durable LRU
+  deletion disabled (`max_total_events = usize::MAX`) so valid fetched events
+  stay queryable offline by default. A finite durable row ceiling must be an
+  explicit disk/user policy via `GcBudget::with_durable_event_ceiling`.
+
+When explicit durable retention is enabled, the kernel derives a transient pin
+set from live views, component claims, in-flight publishes, and floor-coherent
+coverage. The store receives those pins for that one pass; there is no persisted
+claim database. `gc_step` is never called from an FFI path — actor-scheduled
+only (`gc.md` §3).
 
 ---
 

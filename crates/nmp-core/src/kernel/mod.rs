@@ -2119,10 +2119,10 @@ impl Kernel {
     /// purge) was dead on every device (audit Finding 1).
     ///
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
-    ///   bounds, LRU ceiling at [`crate::store::HOT_EVENT_CEILING`] (10 000
-    ///   events, enabled by #1090 Stage 3 / #1327). When the floor-coherent
-    ///   pin scan is truncated by its D8 budget, [`Self::derive_store_gc_inputs`]
-    ///   returns a no-eviction budget so LRU is skipped this tick (#1348).
+    ///   bounds, with durable LRU deletion disabled by default (#1480). Explicit
+    ///   finite durable-retention budgets still use the floor-coherent pin scan;
+    ///   if that scan truncates, [`Self::derive_store_gc_inputs`] returns a
+    ///   no-eviction budget so LRU deletion is skipped this tick (#1348).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
@@ -2148,15 +2148,20 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        // #1090 Stage 1 — derive the ephemeral store-tier pin set and the
-        // matching budget (#1348 truncation→no-eviction decision lives in
-        // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
+        // #1090 Stage 1 / #1480 — derive the ephemeral store-tier pin set only
+        // when a finite durable-retention budget needs it. With production's
+        // default unbounded durable retention this returns empty pins and avoids
+        // the store scan entirely.
         let (pins, gc_budget) = self.derive_store_gc_inputs();
         // K3 Stage D3 leg 2 — the eviction⇄ledger coherence backstop guards
         // (one per active covered `(filter_hash, relay)`). Passed alongside the
         // pins so the store can lower an over-claimed `covered_through` in the
         // SAME transaction as the below-floor delete that made it stale.
-        let coverage_guards = self.derive_coverage_guards();
+        let coverage_guards = if gc_budget.max_total_events < usize::MAX {
+            self.derive_coverage_guards()
+        } else {
+            Vec::new()
+        };
         match self.store.gc_step_with_pins_and_coverage(
             gc_budget,
             now_secs,

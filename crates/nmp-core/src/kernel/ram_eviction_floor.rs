@@ -6,11 +6,10 @@
 //! The live `since`-floor for a subscription comes from the coverage ledger: the
 //! kernel's `watermark_fn` (`kernel/mod.rs`) floors each REQ's `since` to the
 //! relay's `covered_through` + 1, so the relay does not re-emit events already
-//! covered. LRU eviction (the Stage-3 `HOT_EVENT_CEILING`) is free to delete a
-//! *middle* event below `covered_through` — the floor stays at
-//! `covered_through + 1`, so the self-healing REQ never re-requests the evicted
-//! middle event: a permanent hole (unless eviction lowers the ledger; see
-//! Stage D3 leg 2).
+//! covered. An explicit finite durable-retention policy can delete a *middle*
+//! event below `covered_through` — the floor stays at `covered_through + 1`, so
+//! the self-healing REQ never re-requests the evicted middle event: a permanent
+//! hole (unless eviction lowers the ledger; see Stage D3 leg 2).
 //!
 //! [`pin_shape_events_below_floor`] enumerates every stored event matching the
 //! shape at or below the floor a REQ will carry (the coverage-ledger floor; see
@@ -59,10 +58,10 @@ use crate::store::{EventStore, StoreQuery};
 /// `AuthorKind`/`KindDtag` the index `until` bound naturally limits results;
 /// for `Etag`/`Ptag` (no index bound) this cap is the sole early-exit.
 ///
-/// The value is deliberately conservative: a production store with
-/// `HOT_EVENT_CEILING` (10 000) total events will rarely have more than a few
-/// hundred events per Etag/Ptag shape, so in the common case the cap is never
-/// reached. When it IS reached the tick safely defers LRU eviction.
+/// The value is deliberately conservative. Typical active Etag/Ptag shapes
+/// should have far fewer than 2,000 matching events, so in the common case the
+/// cap is never reached. When it IS reached the tick safely defers durable LRU
+/// eviction.
 pub(super) const PIN_SCAN_MAX_EVENTS: usize = 2_000;
 
 /// Result of a single [`pin_shape_events_below_floor`] call.
@@ -74,7 +73,6 @@ pub(super) enum PinScanOutcome {
     /// treat this conservatively (skip LRU eviction this tick).
     Truncated,
 }
-
 
 /// Add to `pins` the store id of every event matching `shape` with
 /// `created_at <= floor` (#1090 Stage 2 floor-coherence).
