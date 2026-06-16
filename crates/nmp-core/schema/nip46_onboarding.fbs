@@ -10,12 +10,10 @@ namespace nmp.kernel;
 // (`crates/nmp-core/src/actor/commands/identity.rs`). UNLIKE `bunker_handshake`,
 // this projection is ALWAYS present (never JSON `null`): the static signer-app
 // probe table is emitted even when no handshake is in flight, so the typed
-// closure always returns `Some`. That generic `Value` projection stays the
-// source of truth (registered unchanged); this buffer is emitted ALONGSIDE it
-// in the `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the
-// SAME key. A host with a `KN46` decoder prefers this typed payload; an
-// un-updated host falls back to the generic `Value` subtree. Purely additive
-// (Tier-2 completion).
+// closure always returns `Some`. This typed buffer is the host-visible update-frame representation and is emitted
+// in the `SnapshotFrame`'s `typed_projections` sidecar under the SAME key.
+// A host with a `KN46` decoder reads this payload; absent or invalid bytes fail
+// closed at the typed decoder boundary.
 //
 // Field-for-field mirror of the SERIALISED `Nip46OnboardingDto`. Two fields are
 // `Option<_>` and carry NO serde `skip_serializing_if`, so they serialise as

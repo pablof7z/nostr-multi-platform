@@ -19,9 +19,8 @@ private const val TAG = "TypedRelayRoleOptionsDecoder"
  * preserving producer (picker render) order. No `has_*` companion bools — all
  * three strings are always present.
  *
- * ADR-0037 Commitment 4: typed-FIRST with permanent generic fallback. Returns
- * `null` when the `KRRO` sidecar is absent / wrong schema / unverifiable, so the
- * caller keeps the generic `payload:Value` `relay_role_options` subtree. Fail
+ * Returns `null` when the `KRRO` sidecar is absent / wrong schema /
+ * unverifiable, so the typed-only host uses the empty projection default. Fail
  * closed (D1/D6) on a malformed buffer.
  */
 object TypedRelayRoleOptionsDecoder {

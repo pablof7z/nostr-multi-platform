@@ -1,8 +1,10 @@
 # ADR-0038 — Typed FlatBuffers sidecar for the OP-centric home feed
 
 > Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
-> renamed to `nmp-defaults`; as of 2026-06-13 the `payload:Value` fallback below
-> is historical and production OP-feed consumers read the typed sidecar path.
+> renamed to `nmp-defaults`. Current status (2026-06-16): `payload:Value`
+> fallback text below is historical; production OP-feed consumers read the typed
+> sidecar path and the update transport schema no longer carries a generic
+> payload tree.
 
 - **Status:** Proposed (2026-05-29)
 - **Relates to:** ADR-0037 (typed FlatBuffers runtime projections — the
@@ -22,9 +24,8 @@
   `.fbs` schema and checked-in bindings; the typed-projection registration call
   in `nmp-app-template::register_op_feed_defaults`; the three platform decoders
   that read `nmp.feed.home` (chirp-tui `snapshot.rs`, iOS `TypedHomeFeedDecoder`,
-  Android `TypedHomeFeedDecoder`); the NFTS-for-feed test surface that this ADR
-  retires; and the rung-7 generic-`Value` emission (PR #747), which this ADR
-  keeps as the permanent fallback layer.
+  Android `TypedHomeFeedDecoder`); and the NFTS-for-feed test surface that this
+  ADR retires. The former rung-7 generic-`Value` fallback text is historical.
 - **Does NOT change:** the `nmp_update.fbs` transport schema, the `"NMPU"`
   envelope, the `TypedProjection` / `TypedPayload` sidecar tables, the
   `TypedProjectionFn` registry, or any `nmp-core` binding. This ADR adds a
@@ -391,8 +392,8 @@ file_identifier "NOFS";
   delivered on the new shape (the original pilot's whole motivation).
 - iOS and Android stop rendering the new shape through a stale generic-`Value`
   decoder — T3/T4 add typed decoders that match the producer.
-- A clean, opt-in, per-host rollout: an un-updated host sees an unrecognized
-  descriptor and falls back, never mis-decodes.
+- A typed OP-feed sidecar that fails closed at the descriptor/decoder boundary
+  instead of relying on a generic `Value` fallback.
 
 ### What this retires (NFTS-for-feed)
 
@@ -503,18 +504,17 @@ Each stage is independently mergeable and leaves master green. Stages are named
 | `apps/chirp/nmp-app-chirp/tests/typed_feed_parity.rs` | **RESHAPE** — replace the NFTS-at-`nmp.feed.home` assertions with the `NOFS` round-trip through `encode_snapshot_with_typed` / `decode_snapshot_with_typed`. |
 | `ci/check-flatbuffers-version-pins.sh` | No change (Rust pin is shared; the new schema regenerates against the same `Cargo.toml` pin). Add a `require_line` only if a platform decoder lands outside the existing globbed trees (T3/T4). |
 
-Master after T1: the kernel emits **both** the `NOFS` typed sidecar and the
-generic `Value` `RootFeedSnapshot` for `nmp.feed.home`. No host reads `NOFS`
-yet (all three still fall back to generic `Value`), so behavior is unchanged
-from post-#747 master — except chirp-tui, which is already correct on the
-generic path, stays correct.
+Current state after transport cleanup: `NOFS` is the load-bearing OP-feed
+projection representation. The update frame no longer carries a generic
+`payload:Value` tree, so absence of the typed sidecar means the projection is
+unavailable for that tick rather than recoverable through a compatibility path.
 
 ### Stage T2 — chirp-tui typed decoder
 
 | File | Change |
 |---|---|
 | `apps/chirp/chirp-tui/src/snapshot.rs` | Rebind `typed_home_feed_from_projections` from NFTS (`nmp_nip01::typed_wire::SCHEMA_ID`, `decode_modular_timeline_snapshot`) to NOFS (`nmp_nip01::op_feed::OP_FEED_SCHEMA_ID`, `decode_op_feed_snapshot`). `merge_home_feed_projection` re-serializes the decoded `RootFeedSnapshot` into `projections["nmp.feed.home"]` — same parity-by-construction round-trip the NFTS path used (the generic projection is itself `serde_json::to_value(RootFeedSnapshot)`, so the typed-derived value is byte-identical). The rung-7 render in `timeline.rs` consumes it unchanged. |
-| `apps/chirp/chirp-tui/src/snapshot/tests.rs` | Update fixtures: typed `NOFS` sidecar present → preferred; absent → generic fallback. |
+| `apps/chirp/chirp-tui/src/snapshot/tests.rs` | Update fixtures: typed `NOFS` sidecar present → decoded; absent → projection unavailable for that tick. |
 
 The rung-7 render changes (`timeline.rs`, `ui/post_list.rs`) are **already on
 master** (PR #747). T2 only changes which descriptor the typed-read prefers; it
@@ -587,7 +587,7 @@ schema") is precisely the follow-up this ADR specifies.
 | **ADR-0037 Commitment 1** (descriptor, not union) | `NOFS` is opaque bytes + a `(schema_id, schema_version, file_identifier)` descriptor carried in the existing `TypedProjection`. `nmp-core` gains no `OpFeed` noun, regenerates no binding. ✅ |
 | **ADR-0037 Commitment 2** (app/protocol crate owns its schema) | Schema + bindings live in `nmp-nip01` (owner of `TimelineEventCard` + `Nip10ReplyAttribution`); cursor/window stay in `nmp-feed` (`NFWM`), content trees in `nmp-content` (`NFCT`). ✅ |
 | **ADR-0037 Commitment 3** (raw data) | Same as ADR-0032 row. ✅ |
-| **ADR-0037 Commitment 4** (preference/fallback) | Instantiated for `NOFS`; un-updated hosts see an unrecognized descriptor and fall back to generic `Value`. Dual emission during rollout; per-key staged removal. ✅ |
+| **ADR-0037 Commitment 4** (preference/fallback) | Historical during rollout. Current transport is typed-only: `NOFS` decoders validate the descriptor and fail closed on absence/mismatch; there is no generic `Value` fallback in the update frame. ✅ |
 | **FB pin discipline** | Rust shares the workspace `25.12.19` pin (no new pin). Swift `25.12.19`, web `25.9.23`, Android `25.2.10` unchanged; new decoders observe them; `ci/check-flatbuffers-version-pins.sh` covers Android via its existing glob. New `include` directive verified to generate against the pinned `flatc`. ✅ |
 | **D0** (`nmp-core` learns no NIP/app noun) | The descriptor strings are opaque to `nmp-core`; the encoder lives in `nmp-nip01`; the registration lives in `nmp-app-template`. `nmp-core` is untouched. ✅ |
 | **D5** (bounded projections) | `OpFeedSnapshot.cards` is the engine's visible window (bounded); `RootCard.attribution` is bounded at encode time by `MAX_ATTRIBUTION_PER_ROOT`. ✅ |

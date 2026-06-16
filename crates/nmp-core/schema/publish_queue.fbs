@@ -6,12 +6,7 @@ namespace nmp.kernel;
 // The producer is `Kernel::snapshot_projections_with_publish_cluster` in
 // `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
 // `serde_json` serialisation of `publish_queue_snapshot()` (a slice of
-// `PublishQueueEntry`) under the JSON key `"publish_queue"`. That generic
-// `Value` projection stays the source of truth (inserted unchanged); this
-// buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections`
-// sidecar (ADR-0037) under the SAME key. A host with a `KPBQ` decoder prefers
-// this typed payload; an un-updated host falls back to the generic `Value`
-// subtree. Purely additive (Wave C).
+// `PublishQueueEntry`) under the JSON key `"publish_queue"`. This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
 // Field-for-field mirror of the SERIALISED `PublishQueueEntry` shape (the two
 // `#[serde(skip)]` fields — `signed_event`, `target` — never cross the wire and

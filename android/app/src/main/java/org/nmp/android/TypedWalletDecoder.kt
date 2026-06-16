@@ -34,15 +34,13 @@ data class TypedWalletStrings(
  * `TypedPayload.schema_id` is `nmp.nip47.wallet` (the producer registers it that
  * way — see `wallet_runtime.rs`). The decoder matches on BOTH.
  *
- * The generic path produced `walletStatus = m["status"]` and
- * `walletBalance = m["balanceSatsDisplay"]`; this maps the wire `status`
- * (required, always present) and `has_balance_sats_display ? balance_sats_display
- * : null` byte-faithfully (ADR-0032 `null`-when-absent).
+ * Maps the wire `status` (required, always present) and
+ * `has_balance_sats_display ? balance_sats_display : null` byte-faithfully
+ * (ADR-0032 `null`-when-absent).
  *
- * ADR-0037 Commitment 4: typed-FIRST with permanent generic fallback. Returns
- * `null` when the `NWST` sidecar is absent / wrong schema / unverifiable, so the
- * caller keeps the generic `payload:Value` `wallet` subtree. Fail closed
- * (D1/D6) on a malformed buffer.
+ * Returns `null` when the `NWST` sidecar is absent / wrong schema /
+ * unverifiable, so the typed-only host uses the empty wallet defaults. Fail
+ * closed (D1/D6) on a malformed buffer.
  */
 object TypedWalletDecoder {
 

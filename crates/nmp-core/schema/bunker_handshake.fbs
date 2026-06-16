@@ -9,13 +9,10 @@ namespace nmp.kernel;
 // `BunkerHandshakeSlot` (an `Arc<Mutex<Option<BunkerHandshakeDto>>>`). When the
 // slot holds `None` (no handshake in flight) the closure contributes JSON
 // `null`; when it holds `Some(dto)` it serialises the `BunkerHandshakeDto`.
-// That generic `Value` projection stays the source of truth (registered
-// unchanged); this buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s
-// `typed_projections` sidecar (ADR-0037) under the SAME key, and ONLY when the
-// JSON closure produces a non-null value (the typed closure returns `None`
-// while the slot is `None`, so no sidecar entry is emitted while idle). A host
-// with a `KBHS` decoder prefers this typed payload; an un-updated host falls
-// back to the generic `Value` subtree. Purely additive (Tier-2 completion).
+// This typed buffer is the host-visible update-frame representation and is emitted
+// in the `SnapshotFrame`'s `typed_projections` sidecar under the SAME key,
+// only when the slot contains a value. A host with a `KBHS` decoder reads this
+// payload; absent or invalid bytes fail closed at the typed decoder boundary.
 //
 // Field-for-field mirror of the SERIALISED `BunkerHandshakeDto`
 // (`crates/nmp-core/src/actor/commands/identity.rs`). `message` is the only
@@ -27,8 +24,7 @@ namespace nmp.kernel;
 //
 // D0: NIP-46 remote signing is an app noun; handshake state is NOT a typed
 // `KernelSnapshot` field — it is projected under `projections["bunker_handshake"]`
-// exactly like a host-registered namespace, and typed here ALONGSIDE the
-// generic `Value`. D6: the decoder returns `Err(String)` on malformed input,
+// exactly like a host-registered namespace, and typed here as the host-visible update-frame representation. D6: the decoder returns `Err(String)` on malformed input,
 // never panics.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers

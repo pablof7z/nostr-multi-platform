@@ -160,7 +160,9 @@ in `crates/nmp-ffi/src/snapshot.rs`). The closure returns
 `nmp-core` treats those bytes as opaque. The host chooses the decoder by key and
 descriptor and reads the generated native model from the `typed_projections`
 vector. This is the production path for Swift/Kotlin/TS render inputs because it
-does not rely on a dynamic `payload:Value` tree.
+does not rely on a dynamic `payload:Value` tree. The update transport schema does
+not retain a compatibility payload slot; unknown host-visible state must get a
+typed sidecar rather than a native JSON walker.
 
 Idle or empty projections must still encode an empty snapshot payload when the
 key is registered. Do not use `None` or sidecar absence to mean "empty wallet",

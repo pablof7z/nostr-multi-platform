@@ -16,9 +16,8 @@
    --target wasm32-unknown-unknown` (with `CC_wasm32_unknown_unknown: clang`)
    — a type-check, not an execution. `npm run test` is vitest with
    `environment: "node"` (`web/chirp/vite.config.ts`) and exercises only the
-   `DegradedRuntime` + frame decoders against a checked-in fixture hex
-   (`web/chirp/src/nmp/runtime.test.ts:2` imports
-   `crates/nmp-core/tests/fixtures/update_frame_snapshot_v1.fb.hex`). No
+   `DegradedRuntime` + frame decoders against synthetic Tier-3 FlatBuffers
+   frames built in the test. No
    Playwright config exists anywhere in the repo (only prose mentions under
    `web/registry/docs/wiki/`).
 

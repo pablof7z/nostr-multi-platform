@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import goldenSnapshotV1Hex from "../../../../crates/nmp-core/tests/fixtures/update_frame_snapshot_v1.fb.hex?raw";
 import {
   discoverGroupsCommand,
   publishNoteAction,
@@ -162,28 +161,6 @@ describe("shared Chirp web semantics", () => {
       schemaVersion: 1,
       running: false,
       relayStatuses: [],
-    });
-  });
-
-  it("matches the Rust golden snapshot v1 fixture (pre-Tier3: relay_statuses absent, defaults)", () => {
-    // The v1 golden fixture was built before Tier-3 fields were added (PR-B).
-    // FlatBuffers vtable lookup returns defaults for absent fields, so decoding
-    // this old wire format must succeed and report zero relay rows.
-    const hex = goldenSnapshotV1Hex.replace(/\s+/g, "");
-    if (hex.length % 2 !== 0) {
-      throw new Error("hex fixture must contain full bytes");
-    }
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i += 1) {
-      bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-    }
-
-    const decoded = decodeUpdateFrameBytes(bytes);
-    expect(decoded).toMatchObject({
-      type: "snapshot",
-      schemaVersion: 1,
-      running: false, // Tier-3 `running` field absent in v1 fixture → default false
-      relayStatuses: [], // Tier-3 `relay_statuses` absent in v1 fixture → empty
     });
   });
 

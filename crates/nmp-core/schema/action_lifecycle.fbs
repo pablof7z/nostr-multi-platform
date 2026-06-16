@@ -9,12 +9,10 @@ namespace nmp.kernel;
 // `{ in_flight: [LifecycleEntry], recent_terminal: [LifecycleEntry] }` — the
 // V5 thin-shell collapse of the per-stage history into the host's
 // spinner/toast shape) and inserts it under the JSON key `"action_lifecycle"`
-// ONLY when the accessor returned a non-null value. That generic `Value`
-// projection stays the source of truth (inserted unchanged); this buffer is
-// emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
-// (ADR-0037) under the SAME key. A host with a `KALC` decoder prefers this typed
-// payload; an un-updated host falls back to the generic `Value` subtree. Purely
-// additive (Wave C).
+// ONLY when the accessor returned a non-null value. This typed buffer is the
+// host-visible update-frame representation and is emitted in
+// `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes
+// fail closed at the typed decoder boundary.
 //
 // ## Capture-once / mutate-on-read ownership (the hard part)
 //
@@ -22,10 +20,11 @@ namespace nmp.kernel;
 // wall-clock TTL sweep on every emit (a quiet kernel still prunes expired
 // terminals). It MUST NOT be called twice per tick — a second sweep against a
 // later clock reading could evict a terminal the JSON form still carries. So the
-// JSON path captures the produced `Value` ONCE into a per-tick `Kernel` field;
+// source accessor captures the produced `Value` ONCE into a per-tick `Kernel`
+// field;
 // the typed path reads that captured `Value` and builds this buffer by PARSING
 // it (never re-invoking the mutating accessor). The typed entry is pushed
-// EXACTLY when the JSON key is present, and is ABSENT in steady state (nothing
+// EXACTLY when the captured value is present, and is ABSENT in steady state (nothing
 // tracked -> nothing captured). Necessary deviation from the #1031 DTO->Model
 // convention.
 //

@@ -20,16 +20,15 @@ private const val TAG = "TypedProfilesDecoder"
  *
  * Both wires flatten the producer `BTreeMap<String, ProfileCard>` to a
  * `[{key, value}]` vector (FlatBuffers has no map type); each entry is rebuilt
- * into the `Map<String, ProfileCard>` the generic `payload:Value` path yields.
+ * into the Android `Map<String, ProfileCard>` domain shape.
  * The shared [FbProfileCard] row type is `include`d from `profile_card.fbs`,
  * so a single [mapProfileCard] handles both clusters.
  *
- * ADR-0037 Commitment 4: this is typed-FIRST with a permanent generic fallback.
  * [decodeResolved] / [decodeClaimed] return `null` when the matching sidecar is
  * absent, carries the wrong schema id / version, or is an un-verifiable buffer;
- * the caller ([KernelUpdateFrameDecoder.decodeProjections]) then keeps the
- * generic `Value` map for that key. A malformed sidecar yields `null` (fail
- * closed, D1/D6 — never a partial or stale map).
+ * the caller ([KernelUpdateFrameDecoder.decodeProjections]) then uses the
+ * typed-only empty map default. A malformed sidecar yields `null` (fail closed,
+ * D1/D6 — never a partial or stale map).
  */
 object TypedProfilesDecoder {
 
@@ -61,7 +60,7 @@ object TypedProfilesDecoder {
         return decodeClaimedBytes(payload)
     }
 
-    /** Locate the matching envelope's payload bytes, or `null` to fall back. */
+    /** Locate the matching envelope's payload bytes, or `null` when unusable. */
     private fun selectPayload(
         projections: List<TypedProjectionEnvelope>,
         key: String,

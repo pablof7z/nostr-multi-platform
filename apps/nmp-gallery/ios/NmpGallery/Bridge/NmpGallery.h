@@ -106,6 +106,10 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 // poisoned mutexes, or serialization failure (D6).
 void nmp_app_gallery_register(void *app);
 const char *nmp_app_gallery_showcase_references_json(void);
+// Decode borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes into the
+// Gallery snapshot JSON shape. Returns a heap string that MUST be released via
+// `nmp_free_string`; returns NULL for malformed frames or decode failures.
+char *nmp_app_gallery_snapshot_json_from_update_frame(const uint8_t *bytes, uintptr_t len);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 

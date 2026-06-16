@@ -32,149 +32,6 @@ public enum nmp_transport_ProjectionPresenceState: UInt8, FlatbuffersVectorIniti
 }
 
 
-public enum nmp_transport_ValueKind: UInt8, FlatbuffersVectorInitializable, Enum, Verifiable {
-  public typealias T = UInt8
-  public static var byteSize: Int { return MemoryLayout<UInt8>.size }
-  public var value: UInt8 { return self.rawValue }
-  case null = 0
-  case bool = 1
-  case int = 2
-  case uint = 3
-  case float = 4
-  case string = 5
-  case list = 6
-  case map = 7
-
-  public static var max: nmp_transport_ValueKind { return .map }
-  public static var min: nmp_transport_ValueKind { return .null }
-}
-
-
-public struct nmp_transport_Pair: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
-
-  static func validateVersion() { FlatBuffersVersion_25_12_19() }
-  public var __buffer: ByteBuffer! { return _accessor.bb }
-  private var _accessor: Table
-
-  public static var id: String { "NMPU" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_Pair.id, addPrefix: prefix) }
-  private init(_ t: Table) { _accessor = t }
-  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
-
-  private enum VTOFFSET: VOffset {
-    case key = 4
-    case value = 6
-    var v: Int32 { Int32(self.rawValue) }
-    var p: VOffset { self.rawValue }
-  }
-
-  public var key: String! { let o = _accessor.offset(VTOFFSET.key.v); return _accessor.string(at: o) }
-  public var keySegmentArray: [UInt8]! { return _accessor.getVector(at: VTOFFSET.key.v) }
-  public var value: nmp_transport_Value? { let o = _accessor.offset(VTOFFSET.value.v); return o == 0 ? nil : nmp_transport_Value(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startPair(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
-  public static func add(key: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: key, at: VTOFFSET.key.p) }
-  public static func add(value: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: value, at: VTOFFSET.value.p) }
-  public static func endPair(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); fbb.require(table: end, fields: [4]); return end }
-  public static func createPair(
-    _ fbb: inout FlatBufferBuilder,
-    keyOffset key: Offset,
-    valueOffset value: Offset = Offset()
-  ) -> Offset {
-    let __start = nmp_transport_Pair.startPair(&fbb)
-    nmp_transport_Pair.add(key: key, &fbb)
-    nmp_transport_Pair.add(value: value, &fbb)
-    return nmp_transport_Pair.endPair(&fbb, start: __start)
-  }
-
-  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
-    var _v = try verifier.visitTable(at: position)
-    try _v.visit(field: VTOFFSET.key.p, fieldName: "key", required: true, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.value.p, fieldName: "value", required: false, type: ForwardOffset<nmp_transport_Value>.self)
-    _v.finish()
-  }
-}
-
-public struct nmp_transport_Value: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
-
-  static func validateVersion() { FlatBuffersVersion_25_12_19() }
-  public var __buffer: ByteBuffer! { return _accessor.bb }
-  private var _accessor: Table
-
-  public static var id: String { "NMPU" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_Value.id, addPrefix: prefix) }
-  private init(_ t: Table) { _accessor = t }
-  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
-
-  private enum VTOFFSET: VOffset {
-    case kind = 4
-    case boolValue = 6
-    case intValue = 8
-    case uintValue = 10
-    case floatValue = 12
-    case stringValue = 14
-    case list = 16
-    case map = 18
-    var v: Int32 { Int32(self.rawValue) }
-    var p: VOffset { self.rawValue }
-  }
-
-  public var kind: nmp_transport_ValueKind { let o = _accessor.offset(VTOFFSET.kind.v); return o == 0 ? .null : nmp_transport_ValueKind(rawValue: _accessor.readBuffer(of: UInt8.self, at: o)) ?? .null }
-  public var boolValue: Bool { let o = _accessor.offset(VTOFFSET.boolValue.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var intValue: Int64 { let o = _accessor.offset(VTOFFSET.intValue.v); return o == 0 ? 0 : _accessor.readBuffer(of: Int64.self, at: o) }
-  public var uintValue: UInt64 { let o = _accessor.offset(VTOFFSET.uintValue.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var floatValue: Double { let o = _accessor.offset(VTOFFSET.floatValue.v); return o == 0 ? 0.0 : _accessor.readBuffer(of: Double.self, at: o) }
-  public var stringValue: String? { let o = _accessor.offset(VTOFFSET.stringValue.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var stringValueSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.stringValue.v) }
-  public var list: FlatbufferVector<nmp_transport_Value> { return _accessor.vector(at: VTOFFSET.list.v, byteSize: 4) }
-  public var map: FlatbufferVector<nmp_transport_Pair> { return _accessor.vector(at: VTOFFSET.map.v, byteSize: 4) }
-  public static func startValue(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
-  public static func add(kind: nmp_transport_ValueKind, _ fbb: inout FlatBufferBuilder) { fbb.add(element: kind.rawValue, def: 0, at: VTOFFSET.kind.p) }
-  public static func add(boolValue: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: boolValue, def: false,
-   at: VTOFFSET.boolValue.p) }
-  public static func add(intValue: Int64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: intValue, def: 0, at: VTOFFSET.intValue.p) }
-  public static func add(uintValue: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: uintValue, def: 0, at: VTOFFSET.uintValue.p) }
-  public static func add(floatValue: Double, _ fbb: inout FlatBufferBuilder) { fbb.add(element: floatValue, def: 0.0, at: VTOFFSET.floatValue.p) }
-  public static func add(stringValue: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stringValue, at: VTOFFSET.stringValue.p) }
-  public static func addVectorOf(list: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: list, at: VTOFFSET.list.p) }
-  public static func addVectorOf(map: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: map, at: VTOFFSET.map.p) }
-  public static func endValue(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createValue(
-    _ fbb: inout FlatBufferBuilder,
-    kind: nmp_transport_ValueKind = .null,
-    boolValue: Bool = false,
-    intValue: Int64 = 0,
-    uintValue: UInt64 = 0,
-    floatValue: Double = 0.0,
-    stringValueOffset stringValue: Offset = Offset(),
-    listVectorOffset list: Offset = Offset(),
-    mapVectorOffset map: Offset = Offset()
-  ) -> Offset {
-    let __start = nmp_transport_Value.startValue(&fbb)
-    nmp_transport_Value.add(kind: kind, &fbb)
-    nmp_transport_Value.add(boolValue: boolValue, &fbb)
-    nmp_transport_Value.add(intValue: intValue, &fbb)
-    nmp_transport_Value.add(uintValue: uintValue, &fbb)
-    nmp_transport_Value.add(floatValue: floatValue, &fbb)
-    nmp_transport_Value.add(stringValue: stringValue, &fbb)
-    nmp_transport_Value.addVectorOf(list: list, &fbb)
-    nmp_transport_Value.addVectorOf(map: map, &fbb)
-    return nmp_transport_Value.endValue(&fbb, start: __start)
-  }
-
-  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
-    var _v = try verifier.visitTable(at: position)
-    try _v.visit(field: VTOFFSET.kind.p, fieldName: "kind", required: false, type: nmp_transport_ValueKind.self)
-    try _v.visit(field: VTOFFSET.boolValue.p, fieldName: "boolValue", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.intValue.p, fieldName: "intValue", required: false, type: Int64.self)
-    try _v.visit(field: VTOFFSET.uintValue.p, fieldName: "uintValue", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.floatValue.p, fieldName: "floatValue", required: false, type: Double.self)
-    try _v.visit(field: VTOFFSET.stringValue.p, fieldName: "stringValue", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.list.p, fieldName: "list", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_transport_Value>, nmp_transport_Value>>.self)
-    try _v.visit(field: VTOFFSET.map.p, fieldName: "map", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_transport_Pair>, nmp_transport_Pair>>.self)
-    _v.finish()
-  }
-}
-
 public struct nmp_transport_TypedPayload: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
@@ -912,26 +769,26 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
 
   private enum VTOFFSET: VOffset {
     case schemaVersion = 4
-    case typedProjections = 8
-    case rev = 10
-    case kernelSchemaVersion = 12
-    case lastTickMs = 14
-    case updateKind = 16
-    case running = 18
-    case metrics = 20
-    case relayStatus = 22
-    case relayStatuses = 24
-    case logicalInterests = 26
-    case wireSubscriptions = 28
-    case logs = 30
-    case lastErrorToast = 32
-    case lastErrorCategory = 34
-    case lastPlannerError = 36
-    case storeOpenFailure = 38
-    case noConfiguredRelays = 40
-    case negentropySyncStats = 42
-    case snapshotEpoch = 44
-    case sessionId = 46
+    case typedProjections = 6
+    case rev = 8
+    case kernelSchemaVersion = 10
+    case lastTickMs = 12
+    case updateKind = 14
+    case running = 16
+    case metrics = 18
+    case relayStatus = 20
+    case relayStatuses = 22
+    case logicalInterests = 24
+    case wireSubscriptions = 26
+    case logs = 28
+    case lastErrorToast = 30
+    case lastErrorCategory = 32
+    case lastPlannerError = 34
+    case storeOpenFailure = 36
+    case noConfiguredRelays = 38
+    case negentropySyncStats = 40
+    case snapshotEpoch = 42
+    case sessionId = 44
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -962,7 +819,7 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
   public var negentropySyncStats: nmp_transport_NegentropySyncStats? { let o = _accessor.offset(VTOFFSET.negentropySyncStats.v); return o == 0 ? nil : nmp_transport_NegentropySyncStats(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
   public var snapshotEpoch: UInt64 { let o = _accessor.offset(VTOFFSET.snapshotEpoch.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var sessionId: UInt64 { let o = _accessor.offset(VTOFFSET.sessionId.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startSnapshotFrame(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 22) }
+  public static func startSnapshotFrame(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 21) }
   public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
   public static func addVectorOf(typedProjections: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: typedProjections, at: VTOFFSET.typedProjections.p) }
   public static func add(rev: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: rev, def: 0, at: VTOFFSET.rev.p) }

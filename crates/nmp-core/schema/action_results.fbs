@@ -8,23 +8,22 @@ namespace nmp.kernel;
 // `take_action_results_projection()` (a `serde_json::Value` array of
 // `{correlation_id, status, error, result?}` rows — every action terminal that
 // settled since the last emit) and inserts it under the JSON key
-// `"action_results"` ONLY when the drain returned a non-null value. That generic
-// `Value` projection stays the source of truth (inserted unchanged); this buffer
-// is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
-// (ADR-0037) under the SAME key. A host with a `KARS` decoder prefers this typed
-// payload; an un-updated host falls back to the generic `Value` subtree. Purely
-// additive (Wave C).
+// `"action_results"` ONLY when the drain returned a non-null value. This typed
+// buffer is the host-visible update-frame representation and is emitted in
+// `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes
+// fail closed at the typed decoder boundary.
 //
 // ## Drain-on-emit ownership (the hard part)
 //
 // `take_action_results_projection()` is a DRAIN with side effects (it records
 // each terminal into the `action_stages` mirror) — it MUST NOT be called twice
-// per tick. So the JSON path captures the drained `Value` ONCE into a per-tick
-// `Kernel` field; the typed path reads that captured `Value` and builds this
-// buffer by PARSING it (not by re-invoking the draining accessor, and not from a
-// DTO — the rows exist only as serde JSON after the drain). The typed entry is
-// pushed EXACTLY when the JSON key is present (same tick, same captured value),
-// and is ABSENT in steady state (no terminal settled → nothing captured → no key).
+// per tick. So the source accessor captures the drained `Value` ONCE into a
+// per-tick `Kernel` field; the typed path reads that captured `Value` and builds
+// this buffer by PARSING it (not by re-invoking the draining accessor, and not
+// from a DTO — the rows exist only as serde JSON after the drain). The typed
+// entry is pushed EXACTLY when the captured value is present (same tick, same
+// captured value), and is ABSENT in steady state (no terminal settled → nothing
+// captured → no key).
 // This is the necessary deviation from the #1031 DTO->Model convention: there is
 // no surviving DTO to map.
 //

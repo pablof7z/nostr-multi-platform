@@ -1,14 +1,16 @@
 # ADR-0044 — Typing the Tier-3 top-level snapshot envelope fields
 
-> Current status (2026-06-13): implemented. PR-B/F-05/F-10 completed the
-> `payload:Value` removal that this ADR prepared: production `SnapshotFrame`
-> no longer emits or decodes the generic payload tree, and consumers read typed
-> `SnapshotEnvelope` fields plus typed projection sidecars.
+> Current status (2026-06-16): implemented and schema-clean. PR-B/F-05/F-10
+> moved production reads to typed `SnapshotEnvelope` fields plus typed projection
+> sidecars; the follow-up cleanup removed `SnapshotFrame.payload` and the
+> `Value`/`Pair` variant tree from `nmp_update.fbs`. There is no schema-level
+> compatibility slot or generic JSON escape hatch in the update frame.
 
 - **Status:** Accepted / implemented (proposed 2026-06-10; PR-B completed 2026-06-13)
 - **Relates to:** ADR-0037 (typed FlatBuffers sidecar for runtime projections —
-  defines `TypedProjection` / `TypedPayload` and the `payload:Value` compatibility
-  field), ADR-0038 (typed op-feed projection — first sidecar payload after the
+  defines `TypedProjection` / `TypedPayload`; its `payload:Value` permanence and
+  compatibility text is superseded by the current status above), ADR-0038 (typed
+  op-feed projection — first sidecar payload after the
   `nmp.feed.home` pilot), ADR-0032 (raw-data projection doctrine), ADR-0033
   (`nmp-feed` viewport FFI). **Partially reverses** one specific commitment of
   ADR-0037 — see *The reversal* below.
@@ -24,6 +26,10 @@
   separately-reviewed step.
 
 ## Context
+
+The body below is the historical decision record that prepared the migration.
+References to dual-emission, fallback, or a staged removal window describe the
+pre-2026-06-16 rollout path, not the current transport contract.
 
 NMP is migrating the kernel snapshot off the dynamic `payload:Value` JSON-equivalent
 tree onto strongly-typed FlatBuffers. The migration has three tiers:
@@ -321,7 +327,8 @@ table WireSubscriptionStatus {
 // SnapshotFrame — existing fields UNCHANGED and IN ORDER; new fields APPENDED.
 table SnapshotFrame {
   schema_version:uint = 1;                 // existing (transport schema version)
-  payload:Value;                           // existing — see §"The reversal"
+  // Historical note: this slot existed when the ADR was written. The current
+  // transport schema has no generic payload field.
   typed_projections:[TypedProjection];     // existing (ADR-0037)
 
   // ── Tier-3 envelope fields (new, all appended at the tail) ──
@@ -390,56 +397,43 @@ deletion — the deletion is a later, separate decision that can only land after
 
 ## 4. Consumer impact and migration sequencing
 
-### Emitter (`nmp-core`)
+### Current emitter (`nmp-core`)
 
-`make_update` (`update.rs`) stops relying on `serde_json::to_value(&update)` to
-carry the Tier-3 fields and instead populates the new typed `SnapshotFrame`
-fields directly during frame encoding. During migration it emits **both** (the
-typed fields *and* the existing `payload` tree) so un-migrated hosts keep working
-— identical dual-emit discipline to ADR-0037 Commitment 4.
+`make_update` / `encode_snapshot_with_envelope` populates the typed
+`SnapshotFrame` fields and `typed_projections` sidecars directly. It does not
+serialize a `KernelSnapshot` JSON tree into the transport frame, and the schema no
+longer has a `payload:Value` field for an emitter to fill.
 
-### Consumers
+### Current consumers
 
-- **iOS Chirp** — today `KernelUpdateFrameDecoder.swift:56` decodes the whole
-  `KernelUpdate` from `snapshot.payload` via the generic `FlatBufferValueDecoder`.
-  It switches to reading the typed `SnapshotFrame` fields directly
-  (`frame.snapshot.metrics`, `.relayStatuses`, `.running`, …). The generic-tree
-  path is retained as fallback until the staged-removal window closes, per the
-  rule below. (Note: FlatBuffers Swift bindings camelCase field names — see the
-  `convertFromSnakeCase` logic at `KernelUpdateFrameDecoder.swift:208`; typed
-  accessors are camelCase by construction, so the snake_case CodingKey hazard
-  disappears for these fields.)
-- **chirp-tui** — same Rust-side runtime; reads the typed fields off the
-  generated bindings.
-- **web / TypeScript** and **Android / Kotlin** — read the typed fields off their
-  generated bindings; ship last per the ADR-0037 rollout order
-  (iOS → TUI → web → Android), because they run the older FlatBuffers runtime
-  pins.
+- **iOS Chirp**, **chirp-tui**, **web / TypeScript**, and **Android / Kotlin**
+  read the typed envelope fields and typed projection sidecars from generated
+  bindings.
+- **Gallery Android/iOS** receives the same production `UpdateFrame` bytes but
+  asks the Rust `nmp-app-gallery` helper to decode the typed envelope/sidecars
+  into the gallery's existing JSON model. The native shells no longer carry a
+  local generic `Value` decoder.
 
-### Host preference / fallback rule (per ADR-0037 Commitment 4, applied to Tier-3)
-
-A host prefers the typed `SnapshotFrame` fields when the frame's transport
-`schema_version` indicates they are present; otherwise it falls back to walking
-`payload:Value`. An unrecognized/older schema is treated as "typed envelope not
-available." No flag day.
+There is no host fallback to `payload:Value`; unknown future projection schemas
+fail closed at the per-sidecar decoder boundary rather than falling back to a
+schema-level JSON tree.
 
 ### Where this sits in the program
 
 ```
 Tier-1 sidecar (ADR-0037/0038)  ──┐
   feed/wallet/dm/wot/zaps/…       │  (done / in wave)
-                                  ├──►  payload:Value can be DELETED
-Tier-2 projections map  ──────────┤      (separate later ADR)
+                                  ├──►  payload:Value DELETED (2026-06-16)
+Tier-2 projections map  ──────────┤      (typed sidecars own host-visible data)
   publish_queue/accounts/timeline │      iff BOTH Tier-2 and Tier-3 done
   /claimed_events/… (in progress) │
                                   │
 Tier-3 envelope fields  ──────────┘
-  THIS ADR (decision) → impl → dual-emit → host adoption → drop generic tree
+  THIS ADR (decision) → impl → host adoption → schema cleanup
 ```
 
-This ADR unblocks **one of the two** remaining blockers on the `payload:Value`
-deletion. The deletion itself is gated on Tier-2 completing as well, and on all
-four hosts shipping the typed-envelope read.
+This ADR was the Tier-3 decision that made the final schema cleanup possible. The
+current transport contract is typed-only.
 
 ## 5. Open risks
 
@@ -463,13 +457,11 @@ four hosts shipping the typed-envelope read.
   *open-view* payloads — `author_view` / `thread_view` — which are present-only
   entries in the **Tier-2 projections map**, not Tier-3 fields, and are out of
   scope here.)
-- **The generic-Value escape hatch disappears on deletion.** ADR-0037 argued the
-  long tail of low-frequency projections "never needs typing" because the generic
-  tree is always available. Deleting `payload:Value` removes that escape hatch.
-  That is a **Tier-2 problem, not this ADR's to solve** — but it is a hard
-  dependency of the eventual deletion and must not be elided: the deletion ADR
-  cannot land until every remaining `projections`-map consumer has a typed home.
-  Flagged here so the sequencing in §4 is honest.
+- **No generic-Value escape hatch.** ADR-0037 argued the long tail of low-frequency
+  projections "never needs typing" because the generic tree is always available.
+  That is no longer true for host-visible update frames. Any host-visible
+  projection must have a typed envelope/sidecar home; internal Rust-only
+  `serde_json::Value` projections do not cross the update transport boundary.
 - **Two version axes.** Introducing `kernel_schema_version` alongside the existing
   transport `schema_version` on the same table risks confusion. The decision keeps
   both as first-class scalars (they answer different questions: transport-frame

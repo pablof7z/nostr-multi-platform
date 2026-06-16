@@ -2,10 +2,9 @@
 //!
 //! Sibling of `nmp-app-chirp` and `nmp-app-notes`, distinguished by what it
 //! does NOT carry: no `ModularTimelineProjection`, no Marmot, no wallet
-//! runtime. The gallery is a pure framework showcase — its single value
-//! is showing that an NMP-based Nostr app can be assembled from the
-//! substrate primitives alone, via the canonical
-//! [`nmp_defaults::register_defaults`] one-shot.
+//! runtime. The gallery is a pure framework showcase: it is assembled from the
+//! canonical [`nmp_defaults::register_defaults`] one-shot and exposes only the
+//! app-shell adapters needed to render that framework state.
 //!
 //! # Surface
 //!
@@ -23,13 +22,16 @@
 //!   `nmp_app_new` and BEFORE `nmp_app_start`.
 //! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
 //!   pointer for the shared gallery references used by every host shell.
+//! * [`nmp_app_gallery_snapshot_json_from_update_frame`] — owned JSON snapshot
+//!   string decoded from the typed FlatBuffers update frame for the Gallery
+//!   native shells.
 //!
 //! # Snapshot delivery — push only
 //!
-//! `nmp-core` delivers the full kernel snapshot via the **push** callback
+//! `nmp-core` delivers the full typed update frame via the **push** callback
 //! installed through [`nmp_ffi::nmp_app_set_update_callback`]: the actor
-//! serializes a `KernelSnapshot` on every emit tick and hands the JSON to
-//! the host. There is no kernel-side **pull** accessor — the snapshot
+//! serializes an `nmp.transport.UpdateFrame` on every emit tick and hands the
+//! bytes to the host. There is no kernel-side **pull** accessor — the snapshot
 //! state lives on the actor thread and is not safely reachable through a
 //! synchronous FFI call without breaking D8. Hosts that want bespoke
 //! pull-side state register a host-side projection through
@@ -50,6 +52,7 @@
 mod android;
 #[cfg(feature = "android-ffi")]
 mod android_push;
+mod snapshot_json;
 
 pub mod registry;
 pub mod showcase;
@@ -67,7 +70,7 @@ pub mod showcase;
 #[allow(unused_imports)]
 pub use nmp_ffi::*;
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void, CString};
 
 /// Install the canonical NMP composition into `app`.
 ///
@@ -111,6 +114,30 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     // not a silent firehose. Both gallery shells (tui, android) route through
     // this register helper, so one call covers them.
     app.consume_all_builtin_projections();
+}
+
+/// Decode one canonical typed `nmp.transport.UpdateFrame` into the Gallery
+/// snapshot JSON shape consumed by the iOS and Android model layers.
+///
+/// Returns a heap-allocated UTF-8 JSON string on success; callers must release
+/// it with [`nmp_ffi::nmp_free_string`]. Returns NULL for NULL/empty input,
+/// malformed frames, or malformed typed sidecars (D6).
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_gallery_snapshot_json_from_update_frame(
+    bytes: *const u8,
+    len: usize,
+) -> *mut c_char {
+    if bytes.is_null() || len == 0 {
+        return std::ptr::null_mut();
+    }
+    let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let Ok(json) = snapshot_json::snapshot_json_from_update_frame(frame) else {
+        return std::ptr::null_mut();
+    };
+    CString::new(json)
+        .unwrap_or_else(|_| c"{}".to_owned())
+        .into_raw()
 }
 
 #[cfg(test)]

@@ -4,10 +4,7 @@ import com.google.flatbuffers.FlatBufferBuilder
 import nmp.transport.FrameKind
 import nmp.transport.Metrics
 import nmp.transport.SnapshotFrame
-import nmp.transport.Pair as TransportPair
 import nmp.transport.UpdateFrame
-import nmp.transport.Value
-import nmp.transport.ValueKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -501,30 +498,6 @@ class OpFeedDecoderTest {
             builder, keyOffset, typedPayload,
             /* projectionRev = */ 0UL, /* state = */ nmp.transport.ProjectionPresenceState.Changed,
         )
-    }
-
-    private fun valueString(builder: FlatBufferBuilder, value: String): Int {
-        val stringOffset = builder.createString(value)
-        return Value.createValue(builder, ValueKind.String, false, 0L, 0UL, 0.0, stringOffset, 0, 0)
-    }
-
-    private fun valueInt(builder: FlatBufferBuilder, value: Long): Int =
-        Value.createValue(builder, ValueKind.Int, false, value, 0UL, 0.0, 0, 0, 0)
-
-    private fun valueBool(builder: FlatBufferBuilder, value: Boolean): Int =
-        Value.createValue(builder, ValueKind.Bool, value, 0L, 0UL, 0.0, 0, 0, 0)
-
-    private fun valueList(builder: FlatBufferBuilder, vararg values: Int): Int {
-        val list = Value.createListVector(builder, values)
-        return Value.createValue(builder, ValueKind.List, false, 0L, 0UL, 0.0, 0, list, 0)
-    }
-
-    private fun valueMap(builder: FlatBufferBuilder, vararg entries: Pair<String, Int>): Int {
-        val pairs = entries.map { (key, value) ->
-            TransportPair.createPair(builder, builder.createString(key), value)
-        }.toIntArray()
-        val map = Value.createMapVector(builder, pairs)
-        return Value.createValue(builder, ValueKind.Map, false, 0L, 0UL, 0.0, 0, 0, map)
     }
 
     companion object {

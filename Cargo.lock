@@ -4418,6 +4418,7 @@ name = "nmp-app-gallery"
 version = "0.8.0"
 dependencies = [
  "jni 0.21.1",
+ "nmp-content",
  "nmp-core",
  "nmp-defaults",
  "nmp-ffi",

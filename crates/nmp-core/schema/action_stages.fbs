@@ -9,11 +9,7 @@ namespace nmp.kernel;
 // `correlation_id`: each value is an ARRAY of stage rows
 // `{stage, reason?, at_ms, detail?}` — the per-id lifecycle history) and inserts
 // it under the JSON key `"action_stages"` ONLY when the accessor returned a
-// non-null value. That generic `Value` projection stays the source of truth
-// (inserted unchanged); this buffer is emitted ALONGSIDE it in the
-// `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the SAME key. A
-// host with a `KAST` decoder prefers this typed payload; an un-updated host
-// falls back to the generic `Value` subtree. Purely additive (Wave C).
+// non-null value. This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
 // ## Capture-once ownership
 //

@@ -10,11 +10,7 @@ namespace nmp.kernel;
 // success or `{ "ok": false, "error": "…" }` on failure — every
 // `SignEventForReturn` result that landed since the last emit) and inserts it
 // under the JSON key `"signed_events"` ONLY when the drain returned a non-null
-// value. That generic `Value` projection stays the source of truth (inserted
-// unchanged); this buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s
-// `typed_projections` sidecar (ADR-0037) under the SAME key. A host with a
-// `KSEV` decoder prefers this typed payload; an un-updated host falls back to
-// the generic `Value` subtree. Purely additive (Wave C).
+// value. This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
 // ## Drain-on-emit ownership (the hard part)
 //
