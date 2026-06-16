@@ -27,9 +27,44 @@
 //! so `last_emitted[cleared_key]` advances on the Cleared tick — the next
 //! tick's rev-vs-last-emit check sees Unchanged and no synthesis occurs.
 
+use crate::kernel::snapshot_registry::DeclaredProjections;
+use crate::kernel::update::KERNEL_BUILTIN_PROJECTION_KEYS;
+
 use super::{static_key, ProjectionPresence, ProjectionRevTracker};
 
 impl ProjectionRevTracker {
+    /// Reconcile the host-declared consumed-projection gate with the per-key
+    /// presence machine for this tick.
+    ///
+    /// A key that is filtered out by the declaration gate must not be classified
+    /// as manifest-`Changed` just because it has never been emitted; it is absent
+    /// by policy, not because the producer missed a row. Conversely, a key that
+    /// was previously filtered out and is newly permitted must emit a baseline
+    /// row even when its logical payload is empty and no source-version counter
+    /// changed. Otherwise the host cache observes an absent->present cache-unit
+    /// transition while the manifest says `Unchanged`, which is the #1430 oracle
+    /// failure and would be omitted under incremental apply.
+    pub(crate) fn reconcile_declared_permits(&mut self, declared: &DeclaredProjections) {
+        for &key in KERNEL_BUILTIN_PROJECTION_KEYS {
+            let permitted = declared.permits(key);
+            match self.last_declared_permits.insert(key, permitted) {
+                Some(false) if permitted => {
+                    self.pending_presence
+                        .insert(key, ProjectionPresence::Changed);
+                }
+                Some(true) if !permitted => {
+                    self.pending_presence
+                        .insert(key, ProjectionPresence::Cleared);
+                }
+                _ if !permitted => {
+                    self.pending_presence
+                        .insert(key, ProjectionPresence::Unchanged);
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Record a drain-projection emit and return its presence for THIS tick
     /// (the `Changed → Cleared → Unchanged` tristate). Called from the drain
     /// chokepoint (`take_action_results_projection` /

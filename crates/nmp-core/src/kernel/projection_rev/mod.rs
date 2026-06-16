@@ -228,6 +228,10 @@ pub(crate) struct ProjectionRevTracker {
     /// rule; `record_emitted` clears the entry once the emit is recorded so
     /// the next tick starts fresh.
     pub(super) pending_presence: std::collections::HashMap<&'static str, ProjectionPresence>,
+    /// Last observed host declaration permit state per built-in projection key.
+    /// A false->true transition is a host-cache baseline edge even when the
+    /// projection payload is logically empty and no source-version counter moved.
+    pub(super) last_declared_permits: std::collections::HashMap<&'static str, bool>,
     /// ADR-0055 Rung 1 (F5): fingerprint of the `relay_diagnostics` inputs at the
     /// LAST reconcile. The kernel re-fingerprints them each emit and folds any
     /// change into `diagnostics_inputs_ver` — see `reconcile_diagnostics_fingerprint`.

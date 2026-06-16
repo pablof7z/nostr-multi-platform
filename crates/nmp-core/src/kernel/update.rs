@@ -314,6 +314,9 @@ impl Kernel {
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
+        let declared = self.declared_projections_snapshot();
+        self.projection_rev_tracker
+            .reconcile_declared_permits(&declared);
         // ADR-0055 Rung 1 (F5) — reconcile `diagnostics_inputs_ver` against a
         // fingerprint of the EXACT `relay_diagnostics` payload bytes the host
         // will cache this tick. `relay_diagnostics` aggregates too many

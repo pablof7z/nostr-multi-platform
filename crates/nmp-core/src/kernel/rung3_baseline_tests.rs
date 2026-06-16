@@ -183,6 +183,56 @@ fn second_incremental_frame_omits_unchanged_keys() {
     );
 }
 
+/// A projection newly admitted by the host's consumed-projection declaration
+/// must emit a baseline row even when its logical payload is empty. This is the
+/// #1430 absent->present-empty edge for `claimed_events`: without a declaration
+/// transition signal, the oracle sees payload bytes change from absent to the
+/// encoded empty map while the manifest still says `Unchanged`.
+#[test]
+fn newly_declared_claimed_events_emits_changed_empty_baseline() {
+    let (mut kernel, slot) = kernel_with_slot();
+
+    {
+        let mut registry = slot.lock().expect("registry lock");
+        registry.declare_incremental_apply();
+        registry.declare_consumed_projections(["profile"]);
+    }
+
+    let frame1 = emit_frame(&mut kernel);
+    assert!(
+        frame1.iter().all(|row| row.key != "claimed_events"),
+        "claimed_events must be filtered out before the host declares it"
+    );
+
+    {
+        let mut registry = slot.lock().expect("registry lock");
+        registry.declare_consumed_projections(["claimed_events"]);
+    }
+
+    let frame2 = emit_frame(&mut kernel);
+    let row = frame2
+        .iter()
+        .find(|row| row.key == "claimed_events")
+        .expect("newly declared claimed_events must emit a baseline row");
+    assert_eq!(
+        row.state,
+        WireProjectionState::Changed,
+        "newly declared claimed_events must be stamped Changed"
+    );
+    assert!(
+        !row.payload.is_empty(),
+        "baseline row carries the encoded empty claimed_events map"
+    );
+    let state = kernel
+        .last_emitted_projection_state("claimed_events")
+        .expect("claimed_events state captured by oracle");
+    assert_eq!(
+        state.presence,
+        super::super::projection_rev::ProjectionPresence::Changed,
+        "manifest presence must advance for the declaration transition"
+    );
+}
+
 // ── Baseline after bump_epoch ─────────────────────────────────────────────────
 
 /// After `bump_epoch`, the next frame must be a full baseline (all Tier-2 keys
