@@ -8,7 +8,8 @@
 //! `session.rs` copies it into owned bytes and pushes them straight to a
 //! registered Kotlin listener via JNI (`nativeSetUpdateListener`, issue #614 —
 //! D8 no-polling). This mirrors the iOS push model: Kotlin no longer drains a
-//! 250 ms-timed channel on a blocked thread.
+//! 250 ms-timed channel on a blocked thread. Init-only configuration calls
+//! may return explicit status codes so late wiring is visible to the host.
 
 use std::ffi::CString;
 use std::sync::Arc;
@@ -37,6 +38,7 @@ mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
+    NmpConfigStatus,
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_declare_incremental_apply,
     nmp_app_encode_profile, nmp_app_free, nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, nmp_free_string,
@@ -53,7 +55,14 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     if app.is_null() {
         return 0;
     }
-    nmp_signer_broker_init(app);
+    let broker_rc = nmp_signer_broker_init(app);
+    if broker_rc != NmpConfigStatus::Ok as u32 {
+        eprintln!(
+            "nmp_signer_broker_init failed: rc={broker_rc} (1=NullApp, 2=AlreadyStarted, 3=Unavailable)"
+        );
+        nmp_app_free(app);
+        return 0;
+    }
     // ADR-0053 / Workstream-E4 — declare Chirp's projection-consumption intent.
     // Chirp is a full client, so this is the explicit `consume_all` (Chirp reads
     // every kernel built-in); see `nmp_app_chirp_declare_consumed_projections` in

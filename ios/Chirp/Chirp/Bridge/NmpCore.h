@@ -12,14 +12,21 @@
 
 void *nmp_app_new(void);
 void nmp_app_free(void *app);
+typedef enum NmpConfigStatus {
+    NmpConfigStatus_Ok             = 0,
+    NmpConfigStatus_NullApp        = 1,
+    NmpConfigStatus_AlreadyStarted = 2,
+    NmpConfigStatus_Unavailable    = 3,
+} NmpConfigStatus;
 // Borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes. The pointer is valid
 // only for the callback duration; Swift copies before decoding.
 typedef void (*NmpUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);
 void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);
 // Persistent storage directory for the LMDB EventStore backend. Must be
 // called before `nmp_app_start`; a NULL or empty `path` clears it. Inert
-// unless nmp-core is built with the `lmdb-backend` feature.
-void nmp_app_set_storage_path(void *app, const char *path);
+// unless nmp-core is built with the `lmdb-backend` feature. Returns
+// NmpConfigStatus_AlreadyStarted if called after nmp_app_start.
+uint32_t nmp_app_set_storage_path(void *app, const char *path);
 void nmp_app_start(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_configure(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
@@ -445,14 +452,16 @@ void nmp_app_open_uri(void *app, const char *uri);
 // in nmp-ffi and is linked through the aggregate `libnmp_app_chirp.a` archive.
 // That keeps process-global Rust state, including the bunker hook, single-copy.
 //
-// Call `nmp_signer_broker_init(app)` exactly once, right after `nmp_app_new()`.
+// Call `nmp_signer_broker_init(app)` exactly once, right after `nmp_app_new()`,
+// before `nmp_app_start()`. Returns NmpConfigStatus_AlreadyStarted when called
+// too late.
 // It registers a `bunker://` handler that drives the NIP-46 connect /
 // get_public_key dance on a worker thread; subsequent
 // `nmp_app_signin_bunker(app, uri)` calls flow through the broker.
 //
 // `nmp_app_cancel_bunker_handshake(app)` aborts any in-flight handshake.
 // Idempotent / safe when nothing is in flight.
-void nmp_signer_broker_init(void *app);
+uint32_t nmp_signer_broker_init(void *app);
 void nmp_app_cancel_bunker_handshake(void *app);
 // Generate a nostrconnect:// URI for the QR-code NIP-46 sign-in flow.
 // The returned string must be freed via nmp_free_string.

@@ -32,7 +32,7 @@ use nmp_nip01::NoteRecord;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_dispatch_action, nmp_app_free,
     nmp_app_load_older_feed, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
 };
 use serde_json::Value;
 use std::ffi::c_void;
@@ -99,9 +99,7 @@ pub struct AppRuntime {
     client: ChirpClient,
     chirp: *mut ChirpHandle,
     marmot: Cell<*mut MarmotHandle>,
-    /// Keep the update bridge alive — the FFI callback stores a raw pointer
-    /// to this box, so dropping it would cause a use-after-free / SIGSEGV
-    /// when the actor thread fires `on_update`.
+    /// Owns the FFI callback box registered with the actor thread.
     update_bridge: Option<Box<NmpUpdateBridge>>,
 }
 
@@ -112,9 +110,11 @@ impl AppRuntime {
         if app.is_null() {
             return None;
         }
-        // SAFETY: `app` is a valid, non-null pointer from `nmp_app_new`.
         unsafe {
-            nmp_signer_broker_init(app);
+            if nmp_signer_broker_init(app) != NmpConfigStatus::Ok as u32 {
+                nmp_app_free(app);
+                return None;
+            }
             nmp_app_set_capability_callback(
                 app,
                 ptr::null_mut(),

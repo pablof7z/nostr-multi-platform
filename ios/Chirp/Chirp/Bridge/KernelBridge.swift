@@ -61,7 +61,11 @@ final class KernelHandle {
         // get_public_key handshake on a worker thread, then translates the
         // broker's signer-ready event into
         // `AddSigner(source: RemoteHandle, make_active:)`.
-        nmp_signer_broker_init(raw)
+        let brokerResult = nmp_signer_broker_init(raw)
+        if brokerResult != 0 {
+            kbLog.fault("nmp_signer_broker_init returned \(brokerResult) — bunker broker NOT active; init logic error")
+            assertionFailure("nmp_signer_broker_init failed with code \(brokerResult)")
+        }
         // ADR-0053 — declare Chirp's static Tier-2 built-in projection
         // consumption set so the kernel narrows snapshot output to what this
         // shell decodes (the single source of truth is
@@ -95,7 +99,11 @@ final class KernelHandle {
         let directory = base.appendingPathComponent("NMP", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+            let status = directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+            if status != 0 {
+                kbLog.fault("nmp_app_set_storage_path returned \(status) — persistent storage NOT configured; init logic error")
+                assertionFailure("nmp_app_set_storage_path failed with code \(status)")
+            }
         } catch {
             kbLog.error("failed to create NMP storage directory: \(error.localizedDescription, privacy: .public)")
         }

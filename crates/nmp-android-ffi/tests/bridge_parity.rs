@@ -58,7 +58,8 @@ fn android_bridge_declares_parity_jni_symbols() {
 
 #[test]
 fn rust_path_reexports_cover_android_parity_surface() {
-    let _ = nmp_ffi::nmp_app_set_storage_path as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char);
+    let _ =
+        nmp_ffi::nmp_app_set_storage_path as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char) -> u32;
     let _ = nmp_ffi::nmp_app_lifecycle_foreground as extern "C" fn(*mut nmp_ffi::NmpApp);
     let _ = nmp_ffi::nmp_app_lifecycle_background as extern "C" fn(*mut nmp_ffi::NmpApp);
     let _ = nmp_ffi::nmp_app_is_alive as extern "C" fn(*mut nmp_ffi::NmpApp) -> u8;
@@ -66,7 +67,7 @@ fn rust_path_reexports_cover_android_parity_surface() {
     let _ = nmp_ffi::nmp_app_load_older_feed as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char);
     let _ =
         nmp_ffi::nmp_app_signin_bunker as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char, u8);
-    let _ = nmp_app_chirp::nmp_signer_broker_init as extern "C" fn(*mut nmp_ffi::NmpApp);
+    let _ = nmp_app_chirp::nmp_signer_broker_init as extern "C" fn(*mut nmp_ffi::NmpApp) -> u32;
     let _ = nmp_app_chirp::nmp_app_cancel_bunker_handshake as extern "C" fn(*mut nmp_ffi::NmpApp);
     let _ = nmp_app_chirp::nmp_app_nostrconnect_uri
         as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char, *const c_char) -> *mut c_char;

@@ -15,7 +15,7 @@ use nmp_signer_broker::{percent_encode_query_value, BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
 use nmp_signers::Nip46Signer;
 
-use super::{app_ref, NmpApp};
+use super::{app_ref, NmpApp, NmpConfigStatus};
 
 /// Initialise the NIP-46 broker for `app`. After this call, any
 /// `nmp_app_signin_bunker` dispatch routes through the broker's handshake state
@@ -28,13 +28,19 @@ use super::{app_ref, NmpApp};
 /// # Safety
 ///
 /// `app` must be a valid pointer returned by `nmp_app_new()` and not yet
-/// freed via `nmp_app_free`. Passing null is safe: the function is a no-op.
+/// freed via `nmp_app_free`. Passing null is safe: returns
+/// [`NmpConfigStatus::NullApp`].
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
+pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) -> u32 {
     let Some(app) = app_ref(app) else {
-        return;
+        return NmpConfigStatus::NullApp.code();
     };
+    if let Err(status) =
+        app.ensure_prestart_config("signer_broker", "bunker_hook", "nmp_signer_broker_init")
+    {
+        return status.code();
+    }
     let tx = app.actor_sender();
     let broker = app.signer_broker_get_or_init(|| {
         let event_tx = tx.clone();
@@ -64,6 +70,7 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
             broker_for_hook.restore_session(payload_json);
         }
     }));
+    NmpConfigStatus::Ok.code()
 }
 
 fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {

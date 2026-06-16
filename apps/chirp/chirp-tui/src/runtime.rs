@@ -18,7 +18,7 @@ use nmp_nip01::NoteRecord;
 use crate::app::ReplyTarget;
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed,
-    nmp_app_release_profile, nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_release_profile, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
 };
 use serde_json::{json, Value};
 
@@ -42,7 +42,13 @@ impl AppRuntime {
         if app.is_null() {
             return Err("nmp_app_new returned null".to_string());
         }
-        nmp_signer_broker_init(app);
+        let broker_rc = nmp_signer_broker_init(app);
+        if broker_rc != NmpConfigStatus::Ok as u32 {
+            nmp_app_free(app);
+            return Err(format!(
+                "nmp_signer_broker_init failed with NmpConfigStatus={broker_rc}"
+            ));
+        }
 
         nmp_ffi::nmp_app_set_capability_callback(
             app,

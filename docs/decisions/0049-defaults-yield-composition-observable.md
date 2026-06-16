@@ -108,9 +108,11 @@ Recorded at the AppHost registration paths in `nmp-core`/`nmp-ffi`:
   (additive seam; keyed by `kind`).
 - **snapshot projections** — `Installed` pre-start, `DroppedLateWiring`
   post-start (keyed by projection key).
-- **last-writer-wins wiring slots** — `set_routing_substrate`,
-  `set_coverage_hook`, `set_nostrconnect_bootstrap_relay`: `Installed` on first
-  write, `ReplacedPrevious` on overwrite, `DroppedLateWiring` after
+- **read-once wiring slots** — `set_routing_substrate`,
+  `set_publish_resolver_factory`, `set_coverage_hook`, `set_host_op_handler`,
+  `set_nostrconnect_bootstrap_relay`, storage-path/signing-broker init, and the
+  other AppHost/config slots: `Installed` on first write, `ReplacedPrevious` on
+  overwrite where the slot has a prior value, `DroppedLateWiring` after
   `nmp_app_start`.
 - **dropped late wiring** — a `started: AtomicBool` on `NmpApp` flips when
   `nmp_app_start` sends `ActorCommand::Start`. From that point the actor has

@@ -65,7 +65,11 @@ final class GalleryKernelHandle {
             try FileManager.default.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true)
-            directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+            let status = directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+            if status != 0 {
+                kbLog.fault("nmp_app_set_storage_path returned \(status) — persistent storage NOT configured; init logic error")
+                assertionFailure("nmp_app_set_storage_path failed with code \(status)")
+            }
         } catch {
             kbLog.error("failed to create NmpGallery storage dir: \(error.localizedDescription, privacy: .public)")
         }

@@ -12,8 +12,9 @@
 //! `nmp-ffi`, the NIP-46 broker adapter, and the Chirp projection in one Rust
 //! archive gives the process exactly one copy of the native C-ABI state.
 //!
-//! The shell calls [`nmp_signer_broker_init`] once after `nmp_app_new`, then
-//! calls [`ffi::nmp_app_chirp_register`]. The projection registration:
+//! The shell calls [`nmp_signer_broker_init`] once after `nmp_app_new` and
+//! checks for `NmpConfigStatus::Ok`, then calls [`ffi::nmp_app_chirp_register`].
+//! The projection registration:
 //!
 //! 1. Builds a reusable `nmp_nip01::ModularTimelineProjection` with the
 //!    viewer's pubkey and the default `ModulePolicy`.
@@ -31,8 +32,9 @@
 //!
 //! * **D0** — kernel emits, this crate composes. No business logic in
 //!   Swift; the grouping algorithm is in `nmp-threading`.
-//! * **D6** — every FFI symbol degrades silently on null pointers, lock
-//!   poisoning, or serialization failure.
+//! * **D6** — runtime FFI symbols degrade silently on null pointers, lock
+//!   poisoning, or serialization failure; init-only config symbols return
+//!   explicit status codes for ordering errors.
 
 pub mod action_specs;
 pub mod ffi;
