@@ -94,9 +94,12 @@ void nmp_app_close_contact_feed(void *app);
 // `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` namespaces, which
 // `nmp-app-template` registers from `nmp_app_chirp_register`.
 // make_active=1: sign in and set as the active account (normal sign-in).
-// make_active=0: register without activating — for agent/secondary keys that
-//   sign via nmp_app_sign_event_for_return without becoming the active account.
+// make_active=0: register a visible secondary signer without activating it.
+// Hidden app-managed keys use nmp_app_register_agent_nsec.
 void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
+// Register a persisted app-managed local signer. It signs only when named by
+// pubkey and never appears in account projections or becomes active.
+void nmp_app_register_agent_nsec(void *app, const char *secret);
 void nmp_app_signin_bunker(void *app, const char *uri, uint8_t make_active);
 // ADR-0048 Stage 2 — NIP-55 external signer (Android-only at runtime; the
 // symbols exist behind nmp-ffi's `external-signer` feature, which the iOS

@@ -693,7 +693,7 @@ fn monotonic_rev_under_concurrent_dispatch() {
 // ---------------------------------------------------------------------------
 //
 // Pin the v0.2.5 `PublishRaw` `signer_pubkey` selector end-to-end through the
-// actor dispatch arm (app-signer-slot.md §"Publishing with an agent key").
+// actor dispatch arm: `signer_pubkey` names an app-managed signer slot.
 //
 // The kernel snapshot does not surface the *author* of a freshly-signed
 // arbitrary-kind event (the `in_flight` / publish_queue projection carries
@@ -792,14 +792,12 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
 
 // Test 8 — a REGISTERED agent key signs even with NO active account.
 //
-// Discriminates the `Explicit` dispatch branch: bob is registered with
-// `make_active: false`, and there is NO active account. Under the pre-v0.2.5
+// Discriminates the `Explicit` dispatch branch: bob is registered as an
+// app-managed signer slot, and there is NO active account. Under the pre-v0.2.5
 // hardcoded `None`, `signer_pubkey.is_none() && active.is_none()` is true →
 // `toast_no_account` raises "no active account — sign in first". Honouring
-// `Some(bob)` instead skips that guard and signs with bob — NO such toast. The
-// ABSENCE of the "no active account" toast is therefore a fix-vs-bug
-// discriminator (it would fire under the bug). `Explicit { relays }` exercises
-// the second of the two changed dispatch call sites.
+// `Some(bob)` instead skips that guard and signs with bob — NO such toast.
+// `Explicit { relays }` exercises the second of the two dispatch call sites.
 #[test]
 fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_account() {
     use nmp_core::publish::PublishTarget;
@@ -807,7 +805,7 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
     use nostr::nips::nip19::ToBech32;
     use nostr::Keys;
 
-    // Bob is the agent / per-podcast key — registered but NEVER the active
+    // Bob is the agent / per-podcast key: a hidden signer slot, never the active
     // account, and the ONLY signer in the roster (no active account at all).
     let bob_keys = Keys::generate();
     let bob_nsec = bob_keys
@@ -824,11 +822,11 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
     })
     .expect("send Start");
 
-    // Agent key only: bob (make_active: false). Crucially, no `make_active: true`
-    // sign-in follows — there is no active account, so the legacy `None` path
-    // would fail closed with "no active account".
+    // Agent key only: bob. Crucially, no active sign-in follows — there is no
+    // active account, so the legacy `None` path would fail closed with
+    // "no active account".
     tx.send(ActorCommand::AddSigner {
-        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(bob_nsec)),
+        source: nmp_core::SignerSource::AppManagedLocalNsec(zeroize::Zeroizing::new(bob_nsec)),
         make_active: false,
     })
     .expect("send AddSigner bob");
@@ -855,7 +853,7 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
     // `None` this toast WOULD appear — so its absence discriminates the fix.)
     assert!(
         !wait_for_error_toast(&rx, "no active account", 2),
-        "a registered agent key (AddSigner make_active: false) must sign a PublishRaw \
+        "a registered app-managed agent key must sign a PublishRaw \
          even with no active account — the 'no active account' guard must not fire when \
          signer_pubkey selects that key"
     );

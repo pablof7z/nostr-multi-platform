@@ -27,18 +27,19 @@
 //! also calls `persist_current_active_session` after restore — that call now
 //! goes through the enqueue path, so the tail-write is also off-actor.
 
-use crate::capability_socket::{dispatch_capability, CapabilityCallbackSlot};
+use crate::capability_socket::{CapabilityCallbackSlot, dispatch_capability};
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 use crate::substrate::{
     CapabilityEnvelope, KeyringIdentityWiring, KeyringResult, KeyringStatus, MALFORMED_RESULT,
 };
 
-use super::capability_worker::{make_work_item, CapabilityWorkSender};
+use super::capability_worker::{CapabilityWorkSender, make_work_item};
 use super::commands::{self, IdentityRuntime};
 
 const ACTIVE_ACCOUNT_ID: &str = "nmp.identity.active.id";
 const ACTIVE_SIGNER_KIND_ID: &str = "nmp.identity.active.kind";
+const APP_MANAGED_LOCAL_IDS: &str = "nmp.identity.app_managed.local_ids";
 const LOCAL_SECRET_PREFIX: &str = "nmp.identity.local_nsec.";
 const REMOTE_SIGNER_PAYLOAD_PREFIX: &str = "nmp.identity.remote_payload.";
 
@@ -56,6 +57,7 @@ pub(super) fn restore_active_session(
     capability_work_tx: &CapabilityWorkSender,
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
+    restore_app_managed_local_signers(identity, kernel, capability_callback, capability_work_tx);
     if identity.active_pubkey().is_some() {
         return Vec::new();
     }
@@ -155,6 +157,66 @@ fn restore_local(
     outbound
 }
 
+fn restore_app_managed_local_signers(
+    identity: &mut IdentityRuntime,
+    kernel: &mut Kernel,
+    capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
+) {
+    let roster = run_keyring(
+        capability_callback,
+        KeyringIdentityWiring::recall_secret(
+            "identity.restore.app_managed_local_ids",
+            APP_MANAGED_LOCAL_IDS,
+        ),
+    );
+    let KeyringResult {
+        status: KeyringStatus::Ok,
+        secret: Some(roster_json),
+        ..
+    } = roster
+    else {
+        return;
+    };
+    let Ok(ids) = serde_json::from_str::<Vec<String>>(&roster_json) else {
+        enqueue_write(
+            capability_work_tx,
+            APP_MANAGED_LOCAL_IDS,
+            KeyringIdentityWiring::forget_secret(
+                "identity.forget.app_managed_local_ids",
+                APP_MANAGED_LOCAL_IDS,
+            ),
+        );
+        return;
+    };
+    for identity_id in ids {
+        let secret = run_keyring(
+            capability_callback,
+            KeyringIdentityWiring::recall_secret(
+                "identity.restore.app_managed_local_nsec",
+                local_secret_account_id(&identity_id),
+            ),
+        );
+        let KeyringResult {
+            status: KeyringStatus::Ok,
+            secret: Some(secret),
+            ..
+        } = secret
+        else {
+            enqueue_forget_account(&identity_id, capability_work_tx);
+            continue;
+        };
+        commands::add_signer(
+            identity,
+            kernel,
+            crate::actor::SignerSource::AppManagedLocalNsec(zeroize::Zeroizing::new(secret)),
+            false,
+            false,
+        );
+    }
+    enqueue_persist_app_managed_local_signers(identity, capability_work_tx);
+}
+
 fn restore_remote_signer(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
@@ -241,6 +303,43 @@ fn enqueue_persist_active_local(
     enqueue_persist_active_pointer(capability_work_tx, identity_id, "local");
 }
 
+pub(super) fn enqueue_persist_app_managed_local_signers(
+    identity: &IdentityRuntime,
+    capability_work_tx: &CapabilityWorkSender,
+) {
+    let entries = identity.app_managed_local_secrets();
+    let owner_id = entries
+        .first()
+        .map(|(id, _)| id.clone())
+        .or_else(|| identity.active_pubkey())
+        .unwrap_or_else(|| APP_MANAGED_LOCAL_IDS.to_string());
+    for (identity_id, secret) in &entries {
+        enqueue_write(
+            capability_work_tx,
+            identity_id,
+            KeyringIdentityWiring::persist_secret(
+                "identity.persist.app_managed_local_nsec",
+                local_secret_account_id(identity_id),
+                secret.clone(),
+            ),
+        );
+    }
+    let ids = entries
+        .iter()
+        .map(|(identity_id, _)| identity_id.clone())
+        .collect::<Vec<_>>();
+    let roster_json = serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string());
+    enqueue_write(
+        capability_work_tx,
+        &owner_id,
+        KeyringIdentityWiring::persist_secret(
+            "identity.persist.app_managed_local_ids",
+            APP_MANAGED_LOCAL_IDS,
+            roster_json,
+        ),
+    );
+}
+
 pub(super) fn enqueue_persist_remote_signer_payload(
     identity_id: &str,
     payload_json: &str,
@@ -282,10 +381,7 @@ pub(super) fn enqueue_persist_active_pointer(
     );
 }
 
-pub(super) fn enqueue_forget_account(
-    identity_id: &str,
-    capability_work_tx: &CapabilityWorkSender,
-) {
+pub(super) fn enqueue_forget_account(identity_id: &str, capability_work_tx: &CapabilityWorkSender) {
     enqueue_write(
         capability_work_tx,
         identity_id,
@@ -304,10 +400,7 @@ pub(super) fn enqueue_forget_account(
     );
 }
 
-fn enqueue_forget_active_pointer(
-    capability_work_tx: &CapabilityWorkSender,
-    account_id: &str,
-) {
+fn enqueue_forget_active_pointer(capability_work_tx: &CapabilityWorkSender, account_id: &str) {
     enqueue_write(
         capability_work_tx,
         account_id,
