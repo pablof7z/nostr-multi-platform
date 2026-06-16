@@ -92,9 +92,13 @@ pub fn wrap_signed_seal(receiver: &PublicKey, seal_event: &Event) -> Result<Even
     // (NOT the sender's). This is what gives the outer envelope its
     // "anyone could have sent this" property.
     let seal_json = seal_event.as_json();
-    let outer_content =
-        nip44::encrypt(ephemeral.secret_key(), receiver, &seal_json, Nip44Version::V2)
-            .map_err(|e| Nip59Error::Nostr(format!("outer wrap nip44_encrypt: {e}")))?;
+    let outer_content = nip44::encrypt(
+        ephemeral.secret_key(),
+        receiver,
+        &seal_json,
+        Nip44Version::V2,
+    )
+    .map_err(|e| Nip59Error::Nostr(format!("outer wrap nip44_encrypt: {e}")))?;
 
     // Build + sign the kind:1059 envelope with the ephemeral key.
     let event = EventBuilder::new(Kind::GiftWrap, outer_content)

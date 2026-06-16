@@ -109,8 +109,9 @@ fn wrap_and_seal_timestamps_are_independently_randomized() {
         assert_eq!(gift_wrap.kind, Kind::GiftWrap);
 
         // Decrypt the outer wrap (receiver key + ephemeral pubkey on envelope).
-        let seal_json = nip44::decrypt(receiver.secret_key(), &gift_wrap.pubkey, &gift_wrap.content)
-            .expect("outer wrap must decrypt");
+        let seal_json =
+            nip44::decrypt(receiver.secret_key(), &gift_wrap.pubkey, &gift_wrap.content)
+                .expect("outer wrap must decrypt");
         let seal_event = Event::from_json(&seal_json).expect("seal JSON");
         assert_eq!(seal_event.kind, Kind::Seal);
 

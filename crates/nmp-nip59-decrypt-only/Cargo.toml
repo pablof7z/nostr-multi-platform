@@ -1,0 +1,18 @@
+[package]
+name = "nmp-nip59-decrypt-only"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Minimal NIP-59 gift-wrap unwrap crate for notification-service targets. No actor, storage, relay, or nmp-core linkage."
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+nmp-nip59 = { path = "../nmp-nip59", default-features = false, features = ["std"] }
+nostr = { version = "0.44", default-features = false, features = ["std", "nip44", "nip59"] }
+
+[dev-dependencies]
+nmp-nip59 = { path = "../nmp-nip59", features = ["std", "wrap"] }
+nostr = { version = "0.44", default-features = false, features = ["std", "nip44", "nip59"] }
