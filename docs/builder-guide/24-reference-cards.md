@@ -28,13 +28,13 @@ monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 
 | Seam / trait | Owns | One-liner | Source |
 |---|---|---|---|
-| `register_action<M>()` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
+| `register_action(module)` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
 | `register_snapshot_projection(key, fn)` | read output | JSON slice pushed under `projections[key]` on every tick | `nmp-ffi/src/lib.rs:1109` |
 | `register_event_observer(arc)` | event-driven views | `on_kernel_event` fires per `Inserted\|Replaced` on actor thread | `event_observer.rs:189` |
 | **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
 | **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
 
-Module composition: each module crate exports `pub fn register(app: &mut impl AppHost) -> Store`; the host calls `nmp_defaults::register_defaults(app)`, then app-specific `register()` fns, from a thin staticlib shell or `examples/shell.rs`.
+Module composition: the app-core crate exports `pub fn register(app: &mut impl AppHost) -> Store`; that function calls `nmp_defaults::register_defaults(app)` once, then app-specific `register()` fns. Thin staticlib shells and `examples/shell.rs` call only the app-core `register()`.
 
 > **Removed:** `DomainModule`, `ViewModule`, `IdentityModule`, `ModuleRegistry` — never shipped. See [05a](05a-substrate-traits.md) §Removed v2 traits.
 

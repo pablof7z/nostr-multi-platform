@@ -78,10 +78,10 @@ Extension crates plug into a vanilla `NmpApp` through exactly three seams
 (`crates/nmp-ffi/src/lib.rs:1087-1599`). A crate uses one, two, or all three;
 it never reaches into kernel internals.
 
-### Seam 1 — `register_action<M>()`
+### Seam 1 — `register_action(module)`
 
 ```rust
-app.register_action::<MyActionModule>();
+app.register_action(MyActionModule);
 ```
 
 Registers an `ActionModule`: its `start()` validates dispatched actions;
@@ -135,6 +135,7 @@ pub trait ActionModule: Send + Sync + 'static {
 
     // Enqueue the ActorCommand(s) that carry out the validated action.
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -189,7 +190,7 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     // Inherit canonical NMP composition (routing, outbox, DMs, zaps, WOT).
     nmp_defaults::register_defaults(app);
     // App-specific seams.
-    app.register_action::<NoteActionModule>();
+    app.register_action(NoteActionModule);
     app.register_event_observer(Arc::new(FeedObserver { store: Arc::clone(&store) }));
     let projector = Arc::clone(&store);
     app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
@@ -203,7 +204,8 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
 ```
 
 A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` then calls
-`nmp_defaults::register_defaults(app)` followed by `<app>_core::register(app)`.
+only `<app>_core::register(app)`. The `register_defaults` call lives inside the
+app-core composition root, so the canonical defaults are installed exactly once.
 `nmp-codegen` still exists for host bindings (`gen swift`, `gen typed-decoders`),
 but it does not generate composition wiring.
 

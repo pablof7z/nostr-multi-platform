@@ -62,6 +62,7 @@ impl ActionModule for TopicArticlesModule {
     type Action = TopicArticlesAction;
 
     fn execute(
+        &self,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -260,29 +261,30 @@ actor's `changed_since_emit` flag whenever an event lands. See
 ## Registration order
 
 ```rust
-// App init (before nmp_app_start):
-let state = Arc::new(Mutex::new(DiscoveryState::default()));
+pub fn register(app: &mut impl AppHost) {
+    let state = Arc::new(Mutex::new(DiscoveryState::default()));
 
-// 1. Observer always first — must be live before any event arrives.
-app.register_event_observer(Arc::new(ArticleObserver { state: state.clone() }));
+    // 1. Standard NIP stack first if this app wants the social defaults.
+    nmp_defaults::register_defaults(app);
 
-// 2. Projection — reads the observer's state.
-app.register_snapshot_projection("myapp.discover_results", {
-    let s = state.clone();
-    move || serde_json::to_value(&*s.lock().unwrap()).unwrap_or_default()
-});
+    // 2. Observer before any app action can trigger ingest.
+    app.register_event_observer(Arc::new(ArticleObserver { state: state.clone() }));
 
-// 3. Action module — the shell can now dispatch Claim/Release.
-app.register_action::<TopicArticlesModule>();
+    // 3. Projection — reads the observer's state.
+    app.register_snapshot_projection("myapp.discover_results", {
+        let s = state.clone();
+        move || serde_json::to_value(&*s.lock().unwrap()).unwrap_or_default()
+    });
 
-// 4. (optional) Call register_defaults if you want the standard NIP stack.
-nmp_defaults::register_defaults(&mut app);
+    // 4. Action module — the shell can now dispatch Claim/Release.
+    app.register_action(TopicArticlesModule);
+}
 ```
 
 The observer registration does not need to happen before the action
 registration — both are consulted only when the actor processes a command or
-an event, which is after `nmp_app_start`. The constraint is simply that all
-registrations run before `nmp_app_start`.
+an event, which is after `nmp_app_start`. The constraint is simply that the
+shell calls this app-core `register()` once before `nmp_app_start`.
 
 ## Multi-owner refcounting in practice
 

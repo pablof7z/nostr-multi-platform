@@ -88,7 +88,7 @@ impl nmp_core::substrate::ActionModule for AppActionModule {
     fn start(_: &mut nmp_core::substrate::ActionContext, _: Self::Action)
         -> Result<(), nmp_core::substrate::ActionRejection> { Ok(()) }
 
-    fn execute(_: Self::Action, _: &str,
+    fn execute(&self, _: Self::Action, _: &str,
         _: &dyn Fn(nmp_core::ActorCommand)) -> Result<(), String> { Ok(()) }
 }
 ```
@@ -142,18 +142,19 @@ filled; subsequent `PostNote` dispatches will use this key.
 
 ## Standard NIP wiring (`register_defaults`)
 
-For a full Nostr social app (NIP-02 follows, NIP-17 DMs, NIP-57 zaps, NIP-65
-relay lists) call `register_defaults` before `start`:
+For a full Nostr social app scaffolded by `nmp init`, call your app-core
+composition root before `start`. That root calls `register_defaults` exactly
+once, then wires app-specific seams:
 
 ```rust
 let mut builder = NmpAppBuilder::new();
-nmp_defaults::register_defaults(&mut builder);
-// … then register your own projections/observers …
+my_app_core::register(&mut builder);
 let app = builder.in_memory().start(RunConfig::default());
 ```
 
-`register_defaults` is the one function that wires the standard NMP protocol
-suite. New apps should call it unless they need a stripped-down kernel.
+`register_defaults` is the function the app-core composition root uses to wire
+the standard NMP protocol suite. Shells should not call it separately; doing so
+creates a second composition path and risks duplicate default registration.
 
 ## Lifecycle summary
 
@@ -161,7 +162,7 @@ suite. New apps should call it unless they need a stripped-down kernel.
 NmpAppBuilder::new()
   │  register_snapshot_projection(...)   ┐ wire before
   │  register_event_observer(...)        │ start — both states
-  │  register_action::<M>()             ┘ accept them
+  │  register_action(M)                  ┘ accept them
   │
   ├─ .in_memory()  or  .storage_path(p)
   │     ↓ NmpAppBuilder<StorageSet>

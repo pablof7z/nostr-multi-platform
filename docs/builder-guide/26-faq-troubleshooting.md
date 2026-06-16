@@ -28,9 +28,9 @@ as the Android reference.
 **Q3. Where is UniFFI / the typed `AppUpdate` enum?**
 **M14, PLANNED.** UniFFI is the binding/lifecycle/capability surface, not the
 hot payload format. The runtime update transport target is FlatBuffers-only;
-master still has historical raw-C JSON callback code while the migration is
-incomplete. Code expecting typed UniFFI payload delivery will not compile
-against master. See [27](27-discrepancies.md).
+master pushes binary `nmp.transport.UpdateFrame` bytes through the raw C/JNI
+callback surface. Code expecting typed UniFFI payload delivery will not compile
+against master. See [15](15-codegen-and-ffi.md).
 
 **Q4. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
 The static lib was not built for the simulator triple. Run
@@ -38,9 +38,12 @@ The static lib was not built for the simulator triple. Run
 Xcode link path points at that `target/aarch64-apple-ios-sim/` output.
 
 **Q5. `--features lmdb-backend` won't compile.**
-`LmdbEventStore` is a feature-gated skeleton (LANDED, not SHIPS). For a
-microblog you do not need it — the default `MemEventStore` is the supported
-path. See [09](09-persistence-lmdb.md).
+`LmdbEventStore` is real but feature-gated. The type exists in default builds,
+but durable operation requires compiling the relevant crate with
+`--features lmdb-backend`; otherwise `open()` returns an explicit feature-off
+error. For throwaway examples, use the default `MemEventStore`. For native
+durable apps, enable the feature and surface any open failure as diagnostics.
+See [09](09-persistence-lmdb.md).
 
 **Q6. No events ever arrive (empty feed).**
 Snapshot first. Check `relay_statuses[].connection`. If it is not
@@ -121,37 +124,36 @@ bugs. Don't change the spec to match incomplete code; file it.
 
 ## Snapshot — top-level field reference
 
-The canonical shape is the `KernelUpdate` struct
-([`crates/nmp-core/src/kernel/types.rs:306-326`](../../crates/nmp-core/src/kernel/types.rs));
-the Swift shadow mirror is `KernelBridge.swift:119-138`. On master this shape
-is still decoded from the legacy JSON callback; the FlatBuffers migration makes
-the same logical fields arrive through generated FlatBuffers readers. 18
-top-level fields:
+The canonical runtime frame is `nmp.transport.UpdateFrame`
+([`crates/nmp-core/schema/nmp_update.fbs`](../../crates/nmp-core/schema/nmp_update.fbs)).
+For normal state updates, `kind = Snapshot` and the `snapshot` table carries
+typed envelope fields plus `typed_projections`. `kind = Panic` is the terminal
+actor-thread failure frame. Hosts decode the frame with generated FlatBuffers
+readers; there is no production JSON snapshot fallback.
 
 | Field | Type | Use |
 |---|---|---|
+| `typed_projections` | [TypedProjection] | per-key typed sidecars; host view models decode from these |
 | `rev` | u64 | monotonic emit counter; the staleness guard |
-| `update_kind` | string | why this emit fired (snapshot vs delta) |
+| `kernel_schema_version` | u32 | kernel snapshot schema version |
+| `last_tick_ms` | u64 | actor liveness/timing stamp |
+| `update_kind` | string | run-state label (`ViewBatch` today) |
 | `running` | bool | actor loop alive |
-| `relay_url` | string | primary content relay (legacy single field) |
-| `test_npub` | string | seed identity for the demo shell |
-| `profile` | ProfileCard | active/target profile card (D1 placeholders) |
-| `items` | [TimelineItem] | current bounded feed window |
-| `author_view` | AuthorViewPayload? | populated only if an author view is open |
-| `thread_view` | ThreadViewPayload? | populated only if a thread is open |
-| `inserted` | [TimelineItem] | delta: items added this emit |
-| `updated` | [TimelineItem] | delta: items changed this emit |
-| `removed` | [string] | delta: item ids dropped this emit |
-| `metrics` | Metrics | counters (events_rx, payload_bytes, queue depth, …) |
-| `relay_status` | RelayStatus | primary content relay health |
-| `relay_statuses` | [RelayStatus] | **per-role** relay health (start here) |
+| `metrics` | Metrics | counters (`events_rx`, payload bytes, queue depth, etc.) |
+| `relay_status` | RelayStatus | aggregate connection summary |
+| `relay_statuses` | [RelayStatus] | **per-relay** health (start here) |
 | `logical_interests` | [LogicalInterestStatus] | one row per open interest + state |
-| `wire_subscriptions` | [WireSubscriptionStatus] | live wire REQs + close_reason |
-| `logs` | [string] | last ≤80 `NMP_CORE` log lines |
+| `wire_subscriptions` | [WireSubscriptionStatus] | live wire REQs + close reason |
+| `logs` | [string] | last bounded `NMP_CORE` log lines |
+| `last_error_toast` / `last_error_category` / `last_planner_error` / `store_open_failure` | string? | user-visible and diagnostic failure state |
+| `no_configured_relays` | bool? | startup/configuration diagnostic |
+| `negentropy_sync_stats` | NegentropySyncStats? | NIP-77 sync counters |
+| `snapshot_epoch` / `session_id` | u64 | ADR-0055 frame-level cache identity |
 
 Debug order: `relay_statuses` → `logical_interests` → `wire_subscriptions` →
-`logs`. The `inserted`/`updated`/`removed` deltas are bounded by what is open
-(D5); `metrics` is for perf, not correctness.
+`logs`. Product view state comes from typed projection sidecars; add a typed
+sidecar for new Swift/Kotlin UI state instead of relying on generic JSON.
+`metrics` is for perf, not correctness.
 
 ## Anti-patterns
 

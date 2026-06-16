@@ -58,10 +58,12 @@ pub fn register(app: &mut impl AppHost) {
 }
 ```
 
-For a non-social app that only needs the routable substrate, call
-`nmp_defaults::register_substrate(app, gate)` directly. For fine-grained feature
-toggles or policy overrides, use `nmp_defaults::register_defaults_with(app,
-NmpDefaults { social: false, ..NmpDefaults::default() })`. See
+For a non-social app, make that choice inside the same app-core composition
+root: call `nmp_defaults::register_substrate(app, gate)` instead of
+`register_defaults(app)` when the app only needs the routable substrate. For
+fine-grained feature toggles or policy overrides, use
+`nmp_defaults::register_defaults_with(app, NmpDefaults { social: false,
+..NmpDefaults::default() })`. See
 `crates/nmp-defaults/src/lib.rs` and `crates/nmp-defaults/src/tiers.rs` for the
 full API.
 
@@ -111,10 +113,13 @@ Deleting the old `gen modules` scaffolder did not touch them.
 
 ADR-0010 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
 `bindings/{swift,kotlin,typescript}/` tree. **That is the M14 target shape, not
-master.** Master emits plain `#[derive(Clone, Debug, PartialEq)]` and no
-bindings dir. Any doc or agent claiming UniFFI ships today, or claiming JSON
-remains a runtime fallback for the update stream, is drift — file it
-into [27 — Doc/code discrepancies](27-discrepancies.md).
+master.** The deleted `gen modules` path no longer emits a generated Rust enum
+or per-app FFI crate at all. Live `nmp-codegen` emits only maintained host and
+runtime artifacts (`gen swift`, `gen typed-decoders`, `gen projection-cache`,
+and `gen builtin-keys`). Any doc or agent claiming UniFFI ships today, claiming
+a generated per-app Rust module exists, or claiming JSON remains a runtime
+fallback for the update stream is drift — file it into
+[27 — Doc/code discrepancies](27-discrepancies.md).
 
 ## How to add a snapshot projection to your app
 

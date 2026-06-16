@@ -13,7 +13,7 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
   `crates/nmp-signers/src/identity/manager.rs:68`.
 - **ActionModule** — the write-seam trait: `NAMESPACE`, `type Action`,
   `start()` (validate), `execute()` (enqueue `ActorCommand`). Registered via
-  `NmpApp::register_action<M>()`. *defined in:*
+  `NmpApp::register_action(module)`. *defined in:*
   `crates/nmp-core/src/substrate/action.rs:56`.
 - **AppState** — the kernel projection that crosses FFI: a monotonic `rev`
   plus only the data behind currently-open views (D5). Generic kernel form is
@@ -90,9 +90,9 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
 - **ModuleRegistry** — **[removed]** proposed v2 composition root that
   collected `(namespace, family, type_name)` strings. Never read back by
   any kernel runtime. Removed. The replacement is the `register()` convention
-  plus the `nmp-defaults` composition root: each module crate exports a
-  `pub fn register(app: &mut impl AppHost)` fn, and the host calls
-  `nmp_defaults::register_defaults(app)` before app-specific registrations.
+  plus the `nmp-defaults` composition root: an app-core crate exports a
+  `pub fn register(app: &mut impl AppHost)` fn that calls
+  `nmp_defaults::register_defaults(app)` once, then app-specific registrations.
 - **plan-id (`plan_id`)** — content-addressed hash over
   `(sorted_interests, mailbox_snapshot, lattice_version)`; stable across
   no-op recompiles. *defined in:* `crates/nmp-core/src/planner/plan.rs:171`.

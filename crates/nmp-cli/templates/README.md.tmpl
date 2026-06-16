@@ -23,7 +23,7 @@ framework's default composition, you do not generate it.
 ```sh
 cargo check                              # the {{pkg}} shell compiles as-is
 cargo test -p {{pkg}}                    # shell tests pass
-cargo run --example shell -p {{pkg}}     # build → register_defaults → start
+cargo run --example shell -p {{pkg}}     # build → app-core register → start
 ```
 
 ## NMP dependency modes
