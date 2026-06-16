@@ -8,6 +8,7 @@
 
 mod app;
 mod bridge;
+mod dm_panel;
 mod keyring;
 mod render;
 mod settings;
