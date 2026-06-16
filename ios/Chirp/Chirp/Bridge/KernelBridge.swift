@@ -764,85 +764,59 @@ final class KernelHandle {
             if needsResync {
                 kbLog.error("ProjectionMergeCache needsResync=true — one or more projection decode-before-commit failures; will be repaired on next genuine rev bump")
             }
-            // ADR-0038 typed path: prefer the typed home-feed decode when the
-            // NOFS sidecar is present and fully decodable (NFCT bytes filled).
-            // Returns nil when absent or malformed → generic path stays active
-            // (ADR-0037 Commitment 4 graceful fallback).
+            // ADR-0038 typed path: decode the home-feed sidecar when present and
+            // fully decodable. A nil result collapses through the typed-only
+            // model accessor.
             // NOTE: flat feeds are extracted BEFORE the cache merge re-filters
             // the envelope set, so dynamic per-view feeds (author/thread) still
             // route correctly. They are Tier-1 always-Changed so the cache
             // pass-through is a no-op for them.
             let typedHomeFeed = TypedHomeFeedDecoder.decode(from: envelopes)
-            // V6 Stage 4 (Wave B): prefer the typed `accounts` / `active_account`
-            // sidecars when present and well-formed. Each returns nil when the
-            // sidecar is absent or malformed → the generic `projections.<field>`
-            // JSON path stays active (ADR-0037 Commitment 4 graceful fallback),
-            // exactly mirroring `typedHomeFeed` above.
+            // V6 Stage 4 (Wave B): typed `accounts` / `active_account` sidecars.
             let typedAccounts = TypedAccountsDecoder.decode(from: envelopes)
             let typedActiveAccount = TypedActiveAccountDecoder.decode(from: envelopes)
             // V6 Stage 4 (Wave B batch #2): the relay-settings + publish-cluster
-            // thin-glue keys. Each returns nil when its sidecar is absent or
-            // malformed → the generic `projections.<field>` JSON path stays
-            // active (ADR-0037 Commitment 4), mirroring `typedAccounts` above.
+            // thin-glue keys.
             let typedConfiguredRelays = TypedConfiguredRelaysDecoder.decode(from: envelopes)
             let typedRelayRoleOptions = TypedRelayRoleOptionsDecoder.decode(from: envelopes)
             let typedOutboxSummary = TypedOutboxSummaryDecoder.decode(from: envelopes)
             let typedPublishOutbox = TypedPublishOutboxDecoder.decode(from: envelopes)
             let typedPublishQueue = TypedPublishQueueDecoder.decode(from: envelopes)
             // V6 Stage 4 (Wave B batch #3): the diagnostics + action-lifecycle
-            // keys. Each returns nil when its sidecar is absent or malformed →
-            // the generic `projections.<field>` JSON path stays active
-            // (ADR-0037 Commitment 4), mirroring `typedAccounts` above.
+            // keys.
             let typedRelayDiagnostics = TypedRelayDiagnosticsDecoder.decode(from: envelopes)
             let typedActionLifecycle = TypedActionLifecycleDecoder.decode(from: envelopes)
             // V6 Stage 4 (Wave B Tier-1 #4): the app-projection keys
             // (`nmp.follow_list` / `nmp.nip57.zaps` / `nmp.nip29.group_chat` /
-            // `nmp.nip29.discovered_groups`). Each returns nil when its sidecar is
-            // absent or malformed → the generic `projections.<field>` JSON path
-            // stays active (ADR-0037 Commitment 4), mirroring `typedAccounts`
-            // above. `nmp.follow_list`'s envelope KEY (`nmp.follow_list`) differs
-            // from its payload SCHEMA_ID (`nmp.nip02.follow_list`); the generated
-            // decoder matches on both.
+            // `nmp.nip29.discovered_groups`). `nmp.follow_list`'s envelope KEY
+            // differs from its payload SCHEMA_ID; the generated decoder matches
+            // on both.
             let typedFollowList = TypedFollowListDecoder.decode(from: envelopes)
             let typedZaps = TypedZapsDecoder.decode(from: envelopes)
             let typedGroupChat = TypedGroupChatDecoder.decode(from: envelopes)
             let typedDiscoveredGroups = TypedDiscoveredGroupsDecoder.decode(from: envelopes)
             // #626: NIP-29 group-create defaults (NGDF). The crate-owned
             // suggested public-group relay URL. Output-only projection; the
-            // producer registers it once at app init, so the sidecar is present
-            // on every tick. Nil only on an older kernel build → the generic
-            // `projections["nmp.nip29.group_defaults"]` JSON path applies.
+            // producer registers it once at app init.
             let typedGroupDefaults = TypedGroupDefaultsDecoder.decode(from: envelopes)
             // Profile-cluster typed sidecars (`profile` / `claimed_profiles` /
             // `resolved_profiles`). All three share the `nmp_kernel_ProfileCard`
-            // reader (defined once in `ProfileCard.generated.swift`). Each returns
-            // nil when its sidecar is absent/malformed → the generic
-            // `projections.<field>` JSON path stays active (ADR-0037 Commitment 4),
-            // mirroring `typedAccounts` above.
+            // reader (defined once in `ProfileCard.generated.swift`).
             let typedProfile = TypedProfileDecoder.decode(from: envelopes)
             let typedClaimedProfiles = TypedClaimedProfilesDecoder.decode(from: envelopes)
             let typedResolvedProfiles = TypedResolvedProfilesDecoder.decode(from: envelopes)
             // NIP-17 DM cluster + claimed-event map (`nmp.nip17.dm_inbox` /
-            // `nmp.nip17.dm_relay_list` / `claimed_events`). Each returns nil when
-            // its sidecar is absent/malformed → the generic `projections.<field>`
-            // JSON path stays active (ADR-0037 Commitment 4), mirroring
-            // `typedAccounts` above. `dm_relay_list` has no Swift read consumer
-            // yet — the decode is wired for parity and unit-tested.
+            // `nmp.nip17.dm_relay_list` / `claimed_events`). `dm_relay_list` has
+            // no Swift read consumer yet; the decode is wired for parity.
             let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
             let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
             let typedClaimedEvents = TypedClaimedEventsDecoder.decode(from: envelopes)
-            // Issue #1283 Phase 1: the kernel-resolved embed map (`NEMB`). Returns
-            // nil when the sidecar is absent/malformed → the generic
-            // `projections.claimedEventEmbeds` JSON path stays active (ADR-0037
-            // Commitment 4). This is what feeds `EmbedHost` after the in-Swift
-            // resolver was deleted.
+            // Issue #1283 Phase 1: the kernel-resolved embed map (`NEMB`). This
+            // is what feeds `EmbedHost` after the in-Swift resolver was deleted.
             let typedClaimedEventEmbeds = TypedClaimedEventEmbedsDecoder.decode(from: envelopes)
-            // NIP-46 cluster (`bunker_handshake` / `nip46_onboarding`). Each
-            // returns nil when its sidecar is absent/malformed → the generic
-            // `projections.<field>` JSON path stays active (ADR-0037 Commitment
-            // 4), mirroring `typedAccounts` above. `bunker_handshake`'s typed
-            // closure emits NO sidecar while idle (slot is `None`), so nil there
-            // is the steady-state — the generic JSON `null` is the fallback.
+            // NIP-46 cluster (`bunker_handshake` / `nip46_onboarding`).
+            // `bunker_handshake` emits no sidecar while idle, so nil is steady
+            // state.
             let typedBunkerHandshake = TypedBunkerHandshakeDecoder.decode(from: envelopes)
             let typedNip46Onboarding = TypedNip46OnboardingDecoder.decode(from: envelopes)
             // ADR-0048 D6: unified remote-signer health (`signer_state`, KSST —
@@ -850,25 +824,17 @@ final class KernelHandle {
             // no remote-signer session is active (slot is `None`) — the steady
             // state for local-key accounts. `isReady`/`isAwaitingApproval`/
             // `isReconnecting`/`isUnavailable`/`isFailed` drive status badges
-            // for BOTH NIP-46 and NIP-55 backends; no generic JSON fallback
-            // needed because iOS has always needed the sidecar (ADR-0037 §4).
+            // for BOTH NIP-46 and NIP-55 backends.
             let typedSignerState = TypedSignerStateDecoder.decode(from: envelopes)
             // Marmot push-projection cluster (`nmp.marmot.snapshot` /
-            // `nmp.marmot.messages`, V-107 / ADR-0039). Each returns nil when its
-            // sidecar is absent/malformed → the generic `projections.<field>` JSON
-            // path stays active (ADR-0037 Commitment 4), mirroring `typedAccounts`
-            // above. The typed closures emit NO sidecar while signed-out (slot is
-            // `None`), so nil there is the steady-state — the generic JSON
-            // empty-object fallback applies and `MarmotStore.apply` maps it to
-            // `.empty` / `[:]`.
+            // `nmp.marmot.messages`, V-107 / ADR-0039). The typed closures emit
+            // no sidecar while signed-out, so nil is steady state and
+            // `MarmotStore.apply` maps it to `.empty` / `[:]`.
             let typedMarmotSnapshot = TypedMarmotSnapshotDecoder.decode(from: envelopes)
             let typedMarmotMessages = TypedMarmotMessagesDecoder.decode(from: envelopes)
             // `wallet` (NWST, producer field-add) + `settings_hub` (KSHB, kernel
-            // built-in). Each returns nil when its sidecar is absent/malformed →
-            // the generic `projections.<field>` JSON path stays active (ADR-0037
-            // Commitment 4), mirroring `typedAccounts` above. The wallet typed
-            // closure emits NO sidecar while disconnected (slot is `None`), so nil
-            // there is the steady-state — the generic JSON `null` fallback applies.
+            // built-in). The wallet typed closure emits no sidecar while
+            // disconnected, so nil is steady state.
             let typedWallet = TypedWalletDecoder.decode(from: envelopes)
             let typedSettingsHub = TypedSettingsHubDecoder.decode(from: envelopes)
             // Wave C: action_results, action_stages.

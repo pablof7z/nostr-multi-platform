@@ -146,20 +146,13 @@ final class OpFeedDecoderTests: XCTestCase {
         XCTAssertEqual(feed.cards[0].attribution.first?.replyEventId, hex32(0x90))
     }
 
-    // ── Typed-first dynamic feed overlay (author/thread sidecars) ────────────
+    // ── Typed dynamic feed decode (author/thread sidecars) ───────────────────
 
-    /// A typed `nmp.feed.author.<id>` NOFS sidecar is preferred over the JSON
-    /// projection for that key: the overlay decodes the golden bytes and
-    /// replaces the JSON entry. Keys present only in JSON are preserved.
-    func testTypedAuthorFeedSidecarOverlaysJsonFeed() {
+    /// A typed `nmp.feed.author.<id>` NOFS sidecar decodes into a dynamic feed.
+    /// Keys without typed sidecars are absent.
+    func testTypedAuthorFeedSidecarDecodesDynamicFeed() {
         let authorKey = "nmp.feed.author.\(hex32(0xAB))"
         let threadKey = "nmp.feed.thread.\(hex32(0xCD))"
-
-        // JSON-derived dict: a placeholder author feed (1 dummy card) + a
-        // thread feed that has NO typed sidecar (must survive untouched).
-        let jsonAuthor = ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-author")], page: nil)
-        let jsonThread = ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-thread")], page: nil)
-        let json: [String: ChirpTimelineSnapshot] = [authorKey: jsonAuthor, threadKey: jsonThread]
 
         let typedEnvelope = TypedProjectionEnvelope(
             key: authorKey,
@@ -168,24 +161,16 @@ final class OpFeedDecoderTests: XCTestCase {
             fileIdentifier: TypedHomeFeedDecoder.fileIdentifier,
             payload: data(fromHex: OpFeedTestFixtures.populatedHex))
 
-        let merged = KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json: json, typed: [typedEnvelope])
+        let feeds = KernelUpdateFrameDecoder.decodeTypedFlatFeeds([typedEnvelope])
 
-        // Author feed now comes from the typed golden bytes (2 cards), not the
-        // 1-card JSON placeholder.
-        XCTAssertEqual(merged[authorKey]?.cards.count, 2)
-        XCTAssertEqual(merged[authorKey]?.cards.first?.card.id, hex32(0x03))
-        // Thread feed, with no typed sidecar, stays the JSON value.
-        XCTAssertEqual(merged[threadKey]?.cards.count, 1)
-        XCTAssertEqual(merged[threadKey]?.cards.first?.card.id, "json-thread")
+        XCTAssertEqual(feeds[authorKey]?.cards.count, 2)
+        XCTAssertEqual(feeds[authorKey]?.cards.first?.card.id, hex32(0x03))
+        XCTAssertNil(feeds[threadKey])
     }
 
-    /// No typed sidecar for the key (wrong schema id / non-feed key / empty
-    /// payload) → the JSON entry is the fallback, untouched.
-    func testAbsentOrMalformedTypedSidecarFallsBackToJson() {
+    /// Wrong schema id / non-feed key / empty payload produce no dynamic feed.
+    func testAbsentOrMalformedTypedSidecarProducesNoFeedEntry() {
         let authorKey = "nmp.feed.author.\(hex32(0x01))"
-        let json: [String: ChirpTimelineSnapshot] = [
-            authorKey: ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-only")], page: nil)
-        ]
 
         // (a) right key, WRONG schema id → ignored by the schemaId guard.
         let wrongSchema = TypedProjectionEnvelope(
@@ -204,24 +189,9 @@ final class OpFeedDecoderTests: XCTestCase {
             key: authorKey, schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
             fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: Data())
 
-        let merged = KernelUpdateFrameDecoder.overlayTypedFlatFeeds(
-            json: json, typed: [wrongSchema, homeKey, emptyPayload])
+        let feeds = KernelUpdateFrameDecoder.decodeTypedFlatFeeds([wrongSchema, homeKey, emptyPayload])
 
-        XCTAssertEqual(merged.count, 1)
-        XCTAssertEqual(merged[authorKey]?.cards.count, 1)
-        XCTAssertEqual(merged[authorKey]?.cards.first?.card.id, "json-only")
-    }
-
-    /// Minimal `ChirpRootCard` with a known id, for distinguishing JSON-vs-typed
-    /// provenance in the overlay tests.
-    private func dummyRootCard(id: String) -> ChirpRootCard {
-        ChirpRootCard(
-            card: ChirpEventCard(
-                id: id, authorPubkey: "", kind: 1, createdAt: 0, content: "",
-                contentTree: nil, relationCounts: nil,
-                authorDisplayName: nil, authorPictureUrl: nil, contentPreview: "",
-                isRepost: false),
-            attribution: [])
+        XCTAssertTrue(feeds.isEmpty)
     }
 
     // ── NFCT per-variant round-trip ──────────────────────────────────────────

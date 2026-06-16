@@ -66,9 +66,8 @@ object TypedAccountsDecoder {
     const val ACTIVE_ACCOUNT_FILE_IDENTIFIER = "KACT"
 
     /**
-     * Decode the typed `accounts` sidecar into the `List<AccountSummary>` the
-     * generic `payload:Value` path yields. `null` when no usable `KACC` sidecar
-     * is present (caller falls back to the generic decode).
+     * Decode the typed `accounts` sidecar into the `List<AccountSummary>` model.
+     * `null` when no usable `KACC` sidecar is present.
      */
     fun decodeAccounts(projections: List<TypedProjectionEnvelope>): List<AccountSummary>? {
         val payload = selectPayload(projections, ACCOUNTS_KEY, ACCOUNTS_SCHEMA_ID) ?: return null

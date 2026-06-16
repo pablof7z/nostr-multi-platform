@@ -6,14 +6,12 @@
 //! - `startup.rs`         — cold-start REQ emission (seed bootstrap + self profile)
 //! - `auth_gate.rs`       — NIP-42 AUTH paused/failed predicates + outbound partition
 //! - `profile.rs`         — profile/author open/close/claim/release
-//! - `thread.rs`          — thread open/close/hydration
 
 mod auth_gate;
 mod event;
 mod profile;
 mod relay_lifecycle;
 mod startup;
-mod thread;
 
 pub use profile::ProfileLiveness;
 
@@ -67,7 +65,7 @@ impl Kernel {
         requests.extend(self.maybe_open_timeline());
         // V-68 / V-112 (ADR-0042): author_view.request_pending / author_requests(),
         // thread_view.request_pending / prepare_thread_requests(), and
-        // maybe_open_thread_hydration() deleted — per-app FlatFeed handles these.
+        // maybe_open_thread_hydration() deleted; per-app FlatFeed handles these.
         // M2 migration: profile (kind:0) claims are registry interests now
         // (`claim_profile` → `InterestRegistry`); there is no bespoke
         // `pending_profile_claim_requests` drain — the planner compiles them.

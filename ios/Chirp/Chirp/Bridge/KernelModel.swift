@@ -846,7 +846,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
         #if DEBUG
         // B1: track the typed-decode success rate. A nil `typedHomeFeed` means
-        // this tick fell back to the generic `projections.homeFeed` decode.
+        // this tick had no usable typed home-feed sidecar.
         appMetrics.recordTypedDecode(success: result.typedHomeFeed != nil)
 
         // B2: empty-after-nonempty detection. If the freshly-applied snapshot

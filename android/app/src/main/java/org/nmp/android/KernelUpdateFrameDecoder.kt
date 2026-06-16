@@ -2,14 +2,11 @@ package org.nmp.android
 
 import android.util.Log
 import nmp.transport.FrameKind
-import nmp.transport.Pair
 import nmp.transport.ProjectionPresenceState
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
 import nmp.transport.TypedProjection
 import nmp.transport.UpdateFrame
-import nmp.transport.Value
-import nmp.transport.ValueKind
 import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
@@ -205,11 +202,8 @@ object KernelUpdateFrameDecoder {
         typedProjections: List<TypedProjectionEnvelope>,
     ): SnapshotProjections {
         // PR-B (#991/#979): the generic `payload:Value` projections sub-map is no
-        // longer present on the wire. Every projection is typed-first via its
-        // FlatBuffers sidecar. The `?: emptyList()` / `?: emptyMap()` chains below
-        // handle the case where a typed sidecar is absent (ADR-0037 Commitment 4:
-        // the generic fallback path is retained structurally but its Value source
-        // is gone; the effective behaviour is: absent typed sidecar → empty/null).
+        // longer present on the wire. Every projection is decoded from its typed
+        // FlatBuffers sidecar; absent sidecars collapse to empty/null here.
         val typedWallet = TypedWalletDecoder.decode(typedProjections)
         val typedActiveAccount = TypedAccountsDecoder.decodeActiveAccount(typedProjections)
         return SnapshotProjections(
@@ -305,100 +299,4 @@ object KernelUpdateFrameDecoder {
         return result
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Generic Value-map helpers — retained for legacy path compatibility.
-    // These are no longer used by the main decode spine (PR-B #991/#979) but
-    // remain available for any test or future projection that still needs to
-    // walk a generic Value tree.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private fun buildValueMap(v: Value): Map<String, Value> {
-        val len = v.mapLength
-        if (len == 0) return emptyMap()
-        val result = HashMap<String, Value>(len * 2)
-        for (i in 0 until len) {
-            val pair: Pair = v.map(i) ?: continue
-            val value: Value = pair.value ?: continue
-            val key = pair.key
-            result[convertFromSnakeCase(key)] = value
-        }
-        return result
-    }
-
-    private fun convertFromSnakeCase(key: String): String {
-        if (!key.contains('_')) return key
-        val leadingCount = key.indexOfFirst { it != '_' }.takeIf { it >= 0 } ?: return key
-        val trailingCount = key.reversed().indexOfFirst { it != '_' }.takeIf { it >= 0 } ?: 0
-        val start = leadingCount
-        val end = key.length - trailingCount
-        if (start >= end) return key
-        val body = key.substring(start, end)
-        val sb = StringBuilder(body.length)
-        var capitalizeNext = false
-        for (ch in body) {
-            when {
-                ch == '_' -> if (sb.isNotEmpty()) capitalizeNext = true
-                capitalizeNext -> {
-                    sb.append(ch.uppercaseChar())
-                    capitalizeNext = false
-                }
-                else -> sb.append(ch)
-            }
-        }
-        val leading = key.substring(0, start)
-        val trailing = key.substring(end)
-        return leading + sb.toString() + trailing
-    }
-
-    private fun Value.longOr(default: Long): Long = when (kind) {
-        ValueKind.Int -> intValue
-        ValueKind.UInt -> uintValue.toLong()
-        else -> default
-    }
-
-    private fun Value.intOr(default: Int): Int = longOr(default.toLong()).toInt()
-
-    private fun Value.boolOr(default: Boolean): Boolean = when (kind) {
-        ValueKind.Bool -> boolValue
-        else -> default
-    }
-
-    private fun Value.stringOr(default: String): String = when (kind) {
-        ValueKind.String -> stringValue ?: default
-        else -> default
-    }
-
-    private fun Value.stringOrNull(): String? = when (kind) {
-        ValueKind.String -> stringValue
-        ValueKind.Null -> null
-        else -> null
-    }
-
-    private fun <T : Any> Value.listOf(decode: (Value) -> T?): List<T> {
-        if (kind != ValueKind.List) return emptyList()
-        val len = listLength
-        if (len == 0) return emptyList()
-        val result = ArrayList<T>(len)
-        for (i in 0 until len) {
-            val item: Value = list(i) ?: continue
-            val decoded = decode(item) ?: continue
-            result.add(decoded)
-        }
-        return result
-    }
-
-    private fun <T : Any> Value.mapOf(decode: (Value) -> T?): Map<String, T> {
-        if (kind != ValueKind.Map) return emptyMap()
-        val len = mapLength
-        if (len == 0) return emptyMap()
-        val result = HashMap<String, T>(len * 2)
-        for (i in 0 until len) {
-            val pair: nmp.transport.Pair = map(i) ?: continue
-            val entryValue: Value = pair.value ?: continue
-            val rawKey = pair.key
-            val decoded = decode(entryValue) ?: continue
-            result[rawKey] = decoded
-        }
-        return result
-    }
 }

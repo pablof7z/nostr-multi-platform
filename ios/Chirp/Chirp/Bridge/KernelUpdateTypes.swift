@@ -16,20 +16,13 @@ enum KernelDecodedUpdateFrame {
 /// `SnapshotFrame` table (ADR-0044) — distinct from the `typed_projections`
 /// sidecar list every other `typed*` decode walks. PR #1034 added these
 /// first-class fields (`rev`, `running`, `metrics`, the relay/interest/wire
-/// vectors, `logs`) on the frame so a migrated host reads them instead of
-/// re-walking the generic JSON `payload` tree.
+/// vectors, `logs`) on the frame so the host reads them without walking a
+/// generic payload tree.
 ///
-/// All seven fields are written by the producer as a UNIT
-/// (`encode_snapshot_with_envelope`, `kernel/update.rs`) whenever the frame
-/// carries metrics, so this whole struct is gated on the one field whose
-/// FlatBuffers accessor reports presence (`SnapshotFrame.metrics != nil`). When
-/// the gate is open the host prefers these typed values; when it is closed (a
-/// legacy frame, or the test-only `encode_snapshot_with_typed` path) the value
-/// is `nil` and every accessor falls through to the generic JSON `payload`
-/// (`snapshot?.<field>`) — ADR-0037 Commitment 4. Every value is a raw mirror
-/// of the top-level `KernelSnapshot` fields (ADR-0032), field-identical to the
-/// JSON decode. This is the LAST consumer of the generic `payload`'s top-level
-/// scalars.
+/// All fields are written by the producer as a unit. The whole struct is gated
+/// on the one field whose FlatBuffers accessor reports presence
+/// (`SnapshotFrame.metrics != nil`); when it is absent, typed-only accessors
+/// collapse to their empty/default values.
 struct TypedSnapshotEnvelope: Equatable {
     let rev: UInt64
     let running: Bool
@@ -50,142 +43,85 @@ struct TypedSnapshotEnvelope: Equatable {
 // ─── Swift-side timing wrapper ────────────────────────────────────────────
 
 struct KernelUpdateResult {
-    /// Typed home-feed decode result (ADR-0038 typed path). Non-nil when the
-    /// snapshot carried a well-formed `NOFS` typed projection that the Swift
-    /// `NFCT` decoder could fully populate. `nil` means the generic
-    /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
+    /// All optional typed slots below are `nil` when the sidecar is absent,
+    /// cleared, idle, or failed decode-before-commit. `KernelModel+Projections`
+    /// is typed-only; nil slots collapse to empty/default state or keep the
+    /// prior cached value through `ProjectionMergeCache`.
+    /// Typed home-feed decode result (ADR-0038 typed path).
     let typedHomeFeed: ChirpTimelineSnapshot?
     /// Typed `accounts` projection decode (V6 Stage 4 / Wave B `KACC` sidecar).
-    /// Non-nil when the snapshot carried a well-formed `accounts` typed sidecar;
-    /// `nil` means the generic `projections.accounts` JSON fallback applies.
     let typedAccounts: [AccountSummary]?
-    /// Typed `active_account` projection decode (V6 Stage 4 / Wave B `KACT`
-    /// sidecar). Non-nil when the snapshot carried a well-formed `active_account`
-    /// typed sidecar that resolved to an active pubkey; `nil` means either no
-    /// sidecar OR no active account — both defer to the generic
-    /// `projections.active_account` JSON fallback (parity-preserving).
+    /// Typed `active_account` projection decode (V6 Stage 4 / Wave B `KACT`).
+    /// `nil` also represents "no active account".
     let typedActiveAccount: String?
-    /// Typed `configured_relays` projection decode (V6 Stage 4 / Wave B `KCRL`
-    /// sidecar). `nil` ⇒ the generic `projections.configured_relays` JSON
-    /// fallback applies.
+    /// Typed `configured_relays` projection decode (`KCRL`).
     let typedConfiguredRelays: [AppRelay]?
-    /// Typed `relay_role_options` projection decode (`KRRO`). `nil` ⇒ generic
-    /// `projections.relay_role_options` JSON fallback.
+    /// Typed `relay_role_options` projection decode (`KRRO`).
     let typedRelayRoleOptions: [RelayRoleOption]?
-    /// Typed `outbox_summary` projection decode (`KOXS`). `nil` ⇒ generic
-    /// `projections.outbox_summary` JSON fallback.
+    /// Typed `outbox_summary` projection decode (`KOXS`).
     let typedOutboxSummary: OutboxSummary?
-    /// Typed `publish_outbox` projection decode (`KPBO`). `nil` ⇒ generic
-    /// `projections.publish_outbox` JSON fallback.
+    /// Typed `publish_outbox` projection decode (`KPBO`).
     let typedPublishOutbox: [PublishOutboxItem]?
-    /// Typed `publish_queue` projection decode (`KPBQ`). The domain type is a
-    /// field-subset of the wire. `nil` ⇒ generic `projections.publish_queue`
-    /// JSON fallback.
+    /// Typed `publish_queue` projection decode (`KPBQ`).
     let typedPublishQueue: [PublishQueueEntry]?
-    /// Typed `relay_diagnostics` projection decode (`KRDG`). `nil` ⇒ generic
-    /// `projections.relay_diagnostics` JSON fallback.
+    /// Typed `relay_diagnostics` projection decode (`KRDG`).
     let typedRelayDiagnostics: RelayDiagnosticsSnapshot?
-    /// Typed `action_lifecycle` projection decode (`KALC`). `nil` ⇒ generic
-    /// `projections.action_lifecycle` JSON fallback.
+    /// Typed `action_lifecycle` projection decode (`KALC`).
     let typedActionLifecycle: ActionLifecycleSnapshot?
     /// Typed `nmp.follow_list` projection decode (`NF02`; envelope key
-    /// `nmp.follow_list`, schema_id `nmp.nip02.follow_list`). `nil` ⇒ generic
-    /// `projections["nmp.follow_list"]` JSON fallback.
+    /// `nmp.follow_list`, schema_id `nmp.nip02.follow_list`).
     let typedFollowList: FollowListSnapshot?
-    /// Typed `nmp.nip57.zaps` projection decode (`NZAP`). `nil` ⇒ generic
-    /// `projections["nmp.nip57.zaps"]` JSON fallback.
+    /// Typed `nmp.nip57.zaps` projection decode (`NZAP`).
     let typedZaps: ZapsAggregateSnapshot?
-    /// Typed `nmp.nip29.group_chat` projection decode (`NGCS`). `nil` ⇒ generic
-    /// `projections["nmp.nip29.group_chat"]` JSON fallback.
+    /// Typed `nmp.nip29.group_chat` projection decode (`NGCS`).
     let typedGroupChat: GroupChatSnapshot?
-    /// Typed `nmp.nip29.discovered_groups` projection decode (`NDGS`). `nil` ⇒
-    /// generic `projections["nmp.nip29.discovered_groups"]` JSON fallback.
+    /// Typed `nmp.nip29.discovered_groups` projection decode (`NDGS`).
     let typedDiscoveredGroups: DiscoveredGroupsSnapshot?
-    /// Typed `nmp.nip29.group_defaults` projection decode (`NGDF`, #626). `nil` ⇒
-    /// generic `projections["nmp.nip29.group_defaults"]` JSON fallback. The
-    /// crate-owned suggested public-group relay URL; read typed-first through the
-    /// `groupDefaults` accessor and seeded into `NewGroupSheet`'s editable relay
-    /// field. The output-only producer registers once at app init, so a current
-    /// kernel emits this on every tick (nil only on an older build).
+    /// Typed `nmp.nip29.group_defaults` projection decode (`NGDF`, #626).
     let typedGroupDefaults: GroupDefaultsSnapshot?
-    /// Typed `profile` projection decode (`KPRF`). `nil` ⇒ generic
-    /// `projections["profile"]` JSON fallback.
+    /// Typed `profile` projection decode (`KPRF`).
     let typedProfile: ProfileCard?
-    /// Typed `claimed_profiles` projection decode (`KCPR`). `nil` ⇒ generic
-    /// `projections["claimed_profiles"]` JSON fallback.
+    /// Typed `claimed_profiles` projection decode (`KCPR`).
     let typedClaimedProfiles: [String: ProfileCard]?
-    /// Typed `resolved_profiles` projection decode (`KRPR`). `nil` ⇒ generic
-    /// `projections["resolved_profiles"]` JSON fallback.
+    /// Typed `resolved_profiles` projection decode (`KRPR`).
     let typedResolvedProfiles: [String: ProfileCard]?
-    /// Typed `nmp.nip17.dm_inbox` projection decode (`NDMI`). `nil` ⇒ generic
-    /// `projections["nmp.nip17.dm_inbox"]` JSON fallback. Routed to the
-    /// `dmInbox` store (typed-first effective value) in `KernelModel.apply`.
+    /// Typed `nmp.nip17.dm_inbox` projection decode (`NDMI`).
     let typedDmInbox: DmInboxSnapshot?
-    /// Typed `nmp.nip17.dm_relay_list` projection decode (`NDRL`). `nil` ⇒ generic
-    /// `projections["nmp.nip17.dm_relay_list"]` JSON fallback. No Swift read
-    /// consumer yet — read through the `dmRelayList` accessor (added for parity).
+    /// Typed `nmp.nip17.dm_relay_list` projection decode (`NDRL`).
     let typedDmRelayList: DmRelayListSnapshot?
-    /// Typed `claimed_events` projection decode (`KCEV`). `nil` ⇒ generic
-    /// `projections.claimedEvents` JSON fallback. Still a live projection; no
-    /// longer the embed-resolution input (issue #1283 Phase 1 — see below).
+    /// Typed `claimed_events` projection decode (`KCEV`).
     let typedClaimedEvents: [String: ClaimedEventDto]?
     /// Typed `claimed_event_embeds` projection decode (`NEMB`, issue #1283
-    /// Phase 1). `nil` ⇒ generic `projections.claimedEventEmbeds` JSON fallback.
-    /// The kernel-resolved (`nmp_content::resolve_embed_projection`) embed map;
-    /// routed to `EmbedHost.update(envelopes:)` in `KernelModel.apply`. Replaces
-    /// the deleted in-Swift resolver — this is what closes the EmbedHost D0
-    /// violation and fixes the #1299 display_name precedence.
+    /// Phase 1).
     let typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
-    /// Typed `bunker_handshake` projection decode (`KBHS`). `nil` ⇒ generic
-    /// `projections["bunker_handshake"]` JSON fallback. The producer emits no
-    /// sidecar while the handshake slot is idle, so nil is the steady state.
+    /// Typed `bunker_handshake` projection decode (`KBHS`).
     let typedBunkerHandshake: BunkerHandshake?
-    /// Typed `nip46_onboarding` projection decode (`KN46`). `nil` ⇒ generic
-    /// `projections["nip46_onboarding"]` JSON fallback. Always present from a
-    /// current kernel (the static signer-app table is emitted every tick).
+    /// Typed `nip46_onboarding` projection decode (`KN46`).
     let typedNip46Onboarding: Nip46Onboarding?
     /// Typed `signer_state` projection decode (`KSST`). ADR-0048 D6 —
     /// generalises the V-14 `bunker_connection_state` sidecar. `nil` while no
     /// remote-signer session is active — the steady state for local-key
-    /// accounts; no JSON fallback available because iOS is typed-sidecar-only
-    /// (ADR-0037 §4). When non-nil, `isReady` drives the green dot,
+    /// accounts. When non-nil, `isReady` drives the green dot,
     /// `isAwaitingApproval` the "Waiting for Amber…" affordance,
     /// `isReconnecting` the amber badge, and `isUnavailable`/`isFailed` the
     /// red re-auth prompt (ADR-0032 / relay_diagnostics pattern).
     let typedSignerState: SignerState?
     /// Typed `nmp.marmot.snapshot` projection decode (`NMMS`, V-107 / ADR-0039).
-    /// `nil` ⇒ generic `projections["nmp.marmot.snapshot"]` JSON fallback. Routed
-    /// to `MarmotStore.apply` (typed-first effective value) in `KernelModel.apply`.
+    /// Routed to `MarmotStore.apply` in `KernelModel.apply`.
     /// The producer emits no sidecar while signed-out, so nil is the steady state.
     let typedMarmotSnapshot: MarmotSnapshot?
     /// Typed `nmp.marmot.messages` projection decode (`NMMG`, V-107 / ADR-0039).
-    /// `nil` ⇒ generic `projections["nmp.marmot.messages"]` JSON fallback. The
-    /// flattened-vector wire rebuilds the `group_id_hex -> [MarmotMessage]` map.
-    /// Routed to `MarmotStore.apply` (typed-first effective value) in
-    /// `KernelModel.apply`.
+    /// The flattened-vector wire rebuilds the `group_id_hex -> [MarmotMessage]`
+    /// map. Routed to `MarmotStore.apply` in `KernelModel.apply`.
     let typedMarmotMessages: [String: [MarmotMessage]]?
-    /// Typed `wallet` projection decode (`NWST`). `nil` ⇒ generic
-    /// `projections["wallet"]` JSON fallback. Read typed-first through the
-    /// `walletStatus` accessor (`typedWallet ?? snapshot?.walletStatus`) in
-    /// `KernelModel+Projections`. The producer emits no sidecar while the wallet
-    /// is disconnected (slot is `None`), so nil is the steady state. The
-    /// `wallet_pubkey_hex` producer field-add unblocked this flip.
+    /// Typed `wallet` projection decode (`NWST`). The producer emits no sidecar
+    /// while the wallet is disconnected, so nil is the steady state.
     let typedWallet: WalletStatusData?
-    /// Typed `settings_hub` projection decode (`KSHB`, kernel built-in). `nil` ⇒
-    /// generic `projections["settings_hub"]` JSON fallback. The single-key
-    /// `["relay_count": Int]` dict is read typed-first through the `settingsHub`
-    /// accessor in `KernelModel+Projections` and wrapped into `SettingsHubSummary`.
+    /// Typed `settings_hub` projection decode (`KSHB`, kernel built-in).
     let typedSettingsHub: [String: Int]?
-    /// Wave C: Typed `action_results` projection decode (`KARS`). `nil` ⇒ generic
-    /// `projections.action_results` JSON fallback. The per-tick drain array; maps
-    /// each `ActionResult` row to `LastActionResult`. NOTE: no read site wired yet
-    /// (foundation only; wire typed-first in `KernelModel.apply` as follow-up).
+    /// Wave C: Typed `action_results` projection decode (`KARS`).
     let typedActionResults: [LastActionResult]?
-    /// Wave C: Typed `action_stages` projection decode (`KAST`). `nil` ⇒ generic
-    /// `projections.action_stages` JSON fallback. The flat-vector wire rebuilds
-    /// the `[correlation_id: [ActionStageEntry]]` dictionary. NOTE: no read site
-    /// wired yet (foundation only; wire typed-first in `KernelModel.apply` as
-    /// follow-up).
+    /// Wave C: Typed `action_stages` projection decode (`KAST`).
     let typedActionStages: [String: [ActionStageEntry]]?
     // V-112 (ADR-0042): typedAuthorView (AuthorProfileSnapshot) and
     // typedThreadView (ThreadView) deleted — author_view / thread_view typed
@@ -193,9 +129,7 @@ struct KernelUpdateResult {
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
     /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the
-    /// frame carried the typed envelope (gated on `metrics`); `nil` ⇒ the
-    /// generic JSON `payload` top-level scalars apply (read through the
-    /// `KernelModel+Projections` accessors).
+    /// frame carried the typed envelope (gated on `metrics`).
     let typedEnvelope: TypedSnapshotEnvelope?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation

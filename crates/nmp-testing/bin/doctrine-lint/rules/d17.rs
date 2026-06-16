@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn scope_nmp_core_src_is_in_scope() {
         assert!(file_in_scope(&std::path::PathBuf::from(
-            "crates/nmp-core/src/kernel/requests/thread.rs"
+            "crates/nmp-core/src/kernel/requests/event.rs"
         )));
         assert!(file_in_scope(&std::path::PathBuf::from(
             "/abs/path/crates/nmp-core/src/actor/outbound.rs"

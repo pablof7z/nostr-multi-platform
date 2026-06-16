@@ -121,9 +121,7 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         ?.firstOrNull { it.id == s.activeAccount }
 
     // V-85 OP-centric render: typed root cards from the NOFS decoder are the
-    // sole home-feed source. The legacy `s.items` fallback (ADR-0037
-    // Commitment 4) was removed in #920 — the kernel's `"timeline"` projection
-    // was deleted in #924, so `s.items` is permanently empty.
+    // sole home-feed source.
     val opCards = s.modularTimeline.cards
     val hasOpFeed = opCards.isNotEmpty()
 

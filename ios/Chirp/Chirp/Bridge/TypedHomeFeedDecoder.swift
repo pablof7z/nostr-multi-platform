@@ -2,30 +2,26 @@ import Foundation
 import FlatBuffers
 
 /// Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers `NOFS` buffer
-/// (ADR-0038 Stage T4) into the SAME `ChirpTimelineSnapshot` model the generic
-/// `Value` projection path produces, so `HomeFeedView` renders either source
-/// identically.
+/// (ADR-0038 Stage T4) into the `ChirpTimelineSnapshot` model rendered by
+/// `HomeFeedView`.
 ///
-/// ADR-0037 introduced typed FlatBuffers runtime projections carried alongside
-/// the generic snapshot `payload`. The authorized pilot is `nmp.feed.home`,
-/// whose OP-centric view is the nmp-feed `RootFeedSnapshot<TimelineEventCard,
-/// Nip10ReplyAttribution>` (`schema_id = "nmp.nip01.opfeed"`, `file_identifier
-/// = "NOFS"`). The retired NFTS descriptor (`nmp.nip01.timeline`) is no longer
-/// preferred — an `NFTS`-tagged entry is treated as unrecognized and falls
-/// through to the generic projection (ADR-0037 Commitment 4).
+/// The OP-centric view is the nmp-feed
+/// `RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>` (`schema_id =
+/// "nmp.nip01.opfeed"`, `file_identifier = "NOFS"`). The retired NFTS
+/// descriptor (`nmp.nip01.timeline`) is no longer preferred and is treated as
+/// unrecognized.
 ///
-/// Every entry point falls back gracefully — it returns `nil` when the
-/// projection is absent, carries the wrong schema id, or cannot be verified as
-/// a well-formed `NOFS` buffer. Hosts treat `nil` as "no typed feed available"
-/// and keep rendering the generic snapshot.
+/// Every entry point returns `nil` when the projection is absent, carries the
+/// wrong schema id, or cannot be decoded as a well-formed `NOFS` buffer. Hosts
+/// treat `nil` as "no typed feed available" and collapse through typed-only
+/// accessors.
 ///
 /// CONSUMER STATUS — the typed path is now LIVE. `TypedHomeFeedDecoder` is
 /// wired into `KernelBridge.decodeFlatBuffer` as the PREFERRED decode path;
-/// `KernelModel.modularTimeline` returns the typed result when available,
-/// falling back to the generic `Value` path when the typed decode returns nil
-/// (ADR-0037 Commitment 4). The `NFCT` content-tree sub-buffer and the
-/// `NoteRelationCounts` typed sub-table are both fully decoded in Swift using
-/// the generated `nmp_content_*` FlatBuffers accessors.
+/// `KernelModel.modularTimeline` reads the typed result. The `NFCT`
+/// content-tree sub-buffer and the `NoteRelationCounts` typed sub-table are
+/// both fully decoded in Swift using the generated `nmp_content_*` FlatBuffers
+/// accessors.
 enum TypedHomeFeedDecoder {
     /// Projection key as published by the kernel (`TypedProjection.key`).
     static let projectionKey = "nmp.feed.home"

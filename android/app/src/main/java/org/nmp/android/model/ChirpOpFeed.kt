@@ -17,11 +17,9 @@ import kotlinx.serialization.Serializable
 // reply to a non-followed author's note surfaces THAT note here, tagged with
 // the replier in `attribution`. Replies never get their own row.
 //
-// V-85: these types now carry `@Serializable` so that `KernelUpdate` (also
-// `@Serializable`) compiles cleanly with `modularTimeline: ChirpOpFeedSnapshot`.
-// The generic JSON fallback path (ADR-0037 Commitment 4) can therefore decode
-// the `modularTimeline` field directly from the Rust serde JSON — the field
-// names are snake_case on the Rust side so `@SerialName` annotations map them.
+// V-85: these types carry `@Serializable` so that `KernelUpdate` compiles
+// cleanly with `modularTimeline: ChirpOpFeedSnapshot`. The typed sidecar
+// decoder is the live source for this model.
 // ─────────────────────────────────────────────────────────────────────────
 
 /**

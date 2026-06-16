@@ -4,34 +4,21 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Decoded shape of the kernel JSON snapshot — Android peer of iOS
- * `KernelUpdate` (see `ios/Chirp/.../KernelBridge.swift`). Every field is
- * nullable / defaulted so an older or trimmed kernel build still decodes
- * (D1: best-effort, fail-closed). Property names are camelCase; JSON is
- * snake_case via `JsonNamingStrategy.SnakeCase`.
- *
- * NO derived state lives here — this is a verbatim mirror (D8).
+ * Android peer of the Swift `KernelUpdate` bridge DTO. The frame decoder
+ * rebuilds it from the Tier-3 `SnapshotFrame` envelope and typed projection
+ * sidecars; every field stays defaulted so absent sidecars fail closed.
  */
 @Serializable
 data class KernelUpdate(
     val rev: Long = 0,
     val running: Boolean = false,
     val relayUrl: String = "",
-    @SerialName("items") val legacyItems: List<TimelineItem> = emptyList(),
     val modularTimeline: ChirpOpFeedSnapshot = ChirpOpFeedSnapshot(),
     val metrics: KernelMetricsLite? = null,
     val relayStatuses: List<RelayStatus> = emptyList(),
     val lastErrorToast: String? = null,
     val projections: SnapshotProjections? = null,
 ) {
-    // NOTE(#920): the kernel no longer emits a top-level `items` field nor the
-    // `"timeline"` projection key (both removed in PR #924), so `legacyItems`
-    // is now always empty — the home feed ships solely via `modularTimeline`
-    // (the typed `nmp.feed.home` OP-feed). This legacy fallback is retained as
-    // a separate UI-path migration; see follow-up issue.
-    val items: List<TimelineItem>
-        get() = legacyItems
-
     val activeAccount: String
         get() = projections?.activeAccount.orEmpty()
 }

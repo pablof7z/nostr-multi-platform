@@ -22,8 +22,7 @@ enum KernelUpdateFrame {
     /// A decoded snapshot frame. `(schemaVersion, sessionId, snapshotEpoch,
     /// typedProjections, flatFeeds, typedEnvelope)`. The generic `payload:Value`
     /// whole-payload tree is NO LONGER decoded — the typed `typed_projections`
-    /// sidecars + the Tier-3 `SnapshotFrame` envelope are the sole sources. (The
-    /// producer still emits `payload` for now; PR-B removes it from the schema.)
+    /// sidecars + the Tier-3 `SnapshotFrame` envelope are the sole sources.
     ///
     /// R3-S3 (ADR-0055): `sessionId` + `snapshotEpoch` are read off the SAME
     /// `frame.snapshot` table in the single decode pass and threaded out here so
@@ -51,11 +50,9 @@ enum WireProjectionState: UInt8 {
     case cleared = 1
 }
 
-/// ADR-0037: a typed FlatBuffers sidecar carried alongside the generic
-/// `payload` Value tree. Each envelope wraps one named projection's opaque
-/// NFTS/NFCT bytes plus its schema identity. Hosts that recognise a `schemaId`
-/// decode the bytes with the matching typed decoder; others ignore it and fall
-/// back to the generic snapshot.
+/// A typed FlatBuffers sidecar wraps one named projection's opaque payload bytes
+/// plus its schema identity. Hosts that recognise a `schemaId` decode the bytes
+/// with the matching typed decoder; others ignore the entry.
 ///
 /// R3-S3 (ADR-0055): `projectionRev` and `state` are now populated from
 /// the FlatBuffers `TypedProjection` fields so the `ProjectionMergeCache`
@@ -243,18 +240,15 @@ enum KernelUpdateFrameDecoder {
     private static func extractFlatFeeds(
         typed envelopes: [TypedProjectionEnvelope]
     ) -> [String: ChirpTimelineSnapshot] {
-        overlayTypedFlatFeeds(json: [:], typed: envelopes)
+        decodeTypedFlatFeeds(envelopes)
     }
 
-    /// Pure merge step (no FlatBuffers frame plumbing) so it is unit-testable
-    /// with hand-built envelopes. Overlays typed-decoded author/thread feeds
-    /// onto the JSON-derived dictionary; non-matching or undecodable envelopes
-    /// leave the JSON entry in place.
-    static func overlayTypedFlatFeeds(
-        json: [String: ChirpTimelineSnapshot],
-        typed envelopes: [TypedProjectionEnvelope]
+    /// Pure decode step (no FlatBuffers frame plumbing) so it is unit-testable
+    /// with hand-built envelopes.
+    static func decodeTypedFlatFeeds(
+        _ envelopes: [TypedProjectionEnvelope]
     ) -> [String: ChirpTimelineSnapshot] {
-        var feeds = json
+        var feeds: [String: ChirpTimelineSnapshot] = [:]
         for envelope in envelopes {
             guard flatFeedKeyPrefixes.contains(where: { envelope.key.hasPrefix($0) }),
                   envelope.schemaId == TypedHomeFeedDecoder.schemaId,

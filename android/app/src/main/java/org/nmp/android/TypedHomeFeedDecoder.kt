@@ -39,19 +39,16 @@ private val SUPPORTED_SCHEMA_VERSION: UInt = 1u
  * Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers `NOFS` buffer
  * (ADR-0038 Stage T4 / B4 — V-85 complete) into a [ChirpOpFeedSnapshot].
  *
- * ADR-0037 introduced typed FlatBuffers runtime projections carried alongside
- * the generic snapshot `payload`. The authorized pilot is `nmp.feed.home`,
- * whose OP-centric view is the nmp-feed `RootFeedSnapshot<TimelineEventCard,
- * Nip10ReplyAttribution>` (`schema_id = "nmp.nip01.opfeed"`, `file_identifier
- * = "NOFS"`). The retired NFTS descriptor (`nmp.nip01.timeline`) is no longer
- * preferred — an `NFTS`-tagged entry is treated as unrecognized and falls
- * through to the generic projection (ADR-0037 Commitment 4).
+ * The OP-centric view is the nmp-feed
+ * `RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>` (`schema_id =
+ * "nmp.nip01.opfeed"`, `file_identifier = "NOFS"`). The retired NFTS
+ * descriptor (`nmp.nip01.timeline`) is no longer preferred — an `NFTS`-tagged
+ * entry is treated as unrecognized.
  *
- * Every entry point falls back gracefully — it returns `null` when the
- * projection is absent, carries the wrong schema id, or cannot be verified as
- * a well-formed `NOFS` buffer. Hosts treat `null` as "no typed feed available"
- * and keep rendering the generic snapshot (ADR-0037 Commitment 4 permanent
- * fallback — the generic `Value` path is never removed).
+ * Every entry point returns `null` when the projection is absent, carries the
+ * wrong schema id, or cannot be verified as a well-formed `NOFS` buffer. Hosts
+ * treat `null` as "no typed feed available" and collapse to an empty/default
+ * feed state.
  *
  * V-85 adds the native Kotlin NFCT decoder (`decodeContentTree`) so
  * [ChirpEventCard.contentTree] is now populated from the embedded
@@ -101,17 +98,15 @@ object TypedHomeFeedDecoder {
 
     /**
      * Resolve the per-view author/thread flat feeds from the typed `NOFS`
-     * op-feed sidecars ONLY — the typed peer of the legacy
-     * [FlatFeedProjectionDecoder] generic `payload:Value` path. Each typed
-     * envelope whose key carries an author/thread prefix AND whose `schemaId`
-     * is the op-feed descriptor is decoded through [decode] (the dynamic feeds
-     * are byte-identical in shape to `nmp.feed.home`).
+     * op-feed sidecars only. Each typed envelope whose key carries an
+     * author/thread prefix AND whose `schemaId` is the op-feed descriptor is
+     * decoded through [decode] (the dynamic feeds are byte-identical in shape to
+     * `nmp.feed.home`).
      *
-     * Mirrors iOS `KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json:typed:)`
-     * after #1062 made the producer emit a typed sidecar for every dynamic feed
-     * key, so the typed path is authoritative. Undecodable or non-matching
-     * envelopes are skipped (F-05 / ADR-0037 Commitment 4: a malformed sidecar
-     * yields no entry; the screen renders its empty-state, never a stale value).
+     * Mirrors iOS `KernelUpdateFrameDecoder.extractFlatFeeds(typed:)`. #1062
+     * made the producer emit a typed sidecar for every dynamic feed key, so the
+     * typed path is authoritative. Undecodable or non-matching envelopes are
+     * skipped; the screen renders its empty-state, never a stale value.
      * Returns an empty map when no author/thread sidecar is present.
      */
     fun decodeFlatFeeds(
@@ -133,7 +128,7 @@ object TypedHomeFeedDecoder {
      *
      * Mirrors iOS `TypedHomeFeedDecoder.decode(bytes:)`. Verifies the
      * file_identifier before reading any fields; returns `null` on any parse
-     * error so the host falls back to the generic projection.
+     * error so the host collapses to the empty/default feed state.
      */
     fun decode(bytes: ByteArray): ChirpOpFeedSnapshot? {
         if (bytes.isEmpty()) return null
