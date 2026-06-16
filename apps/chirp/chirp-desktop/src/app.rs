@@ -17,8 +17,7 @@ use std::collections::HashMap;
 use crate::bridge::AppRuntime;
 use crate::render::{hex_color, note_body};
 use crate::snapshot::{
-    ActionStageRow, DmConversationSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
-    TimelineEventCard,
+    ActionStageRow, ModularTimelineSnapshot, ProfileCard, Snapshot, TimelineEventCard,
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
@@ -45,6 +44,7 @@ pub struct DesktopApp {
     pub(crate) compose: String,
     pub(crate) reply_to: Option<NoteRecord>,
     pub(crate) selected_dm_pubkey: Option<String>,
+    pub(crate) new_dm_pubkey: String,
     pub(crate) dm_compose: String,
     pub(crate) nsec_input: String,
     pub(crate) bunker_relay_input: String,
@@ -94,6 +94,7 @@ impl DesktopApp {
             compose: String::new(),
             reply_to: None,
             selected_dm_pubkey: None,
+            new_dm_pubkey: String::new(),
             dm_compose: String::new(),
             nsec_input: String::new(),
             bunker_relay_input: String::new(),
@@ -268,7 +269,7 @@ impl DesktopApp {
                     snap.projection("resolved_profiles").unwrap_or_default();
                 self.author_view(ui, snap, pubkey, feed, profiles);
             }
-            AppTab::Dms => self.dm_panel(ui, snap),
+            AppTab::Dms => crate::dm_panel::show(self, ui, snap),
             AppTab::Settings => self.settings_view(ui, snap),
             AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
             AppTab::Outbox => self.outbox_panel(ui, snap),
@@ -608,117 +609,6 @@ impl DesktopApp {
                         }
                     });
             });
-    }
-
-    fn dm_panel(&mut self, ui: &mut Ui, snap: &Snapshot) {
-        ui.heading("Direct Messages");
-        ui.separator();
-
-        let dm_snapshot: Option<DmConversationSnapshot> = snap.projection("nmp.nip17.dm_inbox");
-
-        match dm_snapshot {
-            None => {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(40.0);
-                    ui.label(RichText::new("No direct messages").size(15.0).weak());
-                });
-            }
-            Some(dm_data) => {
-                if dm_data.conversations.is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(40.0);
-                        ui.label(RichText::new("No conversations yet").size(15.0).weak());
-                    });
-                } else {
-                    ui.columns(2, |cols| {
-                        // Left pane: conversation list
-                        ScrollArea::vertical().auto_shrink([false, false]).show(
-                            &mut cols[0],
-                            |ui| {
-                                for conv in &dm_data.conversations {
-                                    let is_selected =
-                                        self.selected_dm_pubkey.as_ref() == Some(&conv.peer_pubkey);
-                                    if ui
-                                        .selectable_label(is_selected, &conv.peer_display)
-                                        .clicked()
-                                    {
-                                        self.selected_dm_pubkey = Some(conv.peer_pubkey.clone());
-                                    }
-                                    ui.separator();
-                                }
-                            },
-                        );
-
-                        // Right pane: selected conversation
-                        if let Some(ref selected_pubkey) = self.selected_dm_pubkey {
-                            if let Some(conv) = dm_data
-                                .conversations
-                                .iter()
-                                .find(|c| c.peer_pubkey == *selected_pubkey)
-                            {
-                                cols[1].vertical(|ui| {
-                                    ui.label(RichText::new(&conv.peer_display).strong());
-                                    ui.separator();
-
-                                    // Messages
-                                    ScrollArea::vertical().auto_shrink([false, false]).show(
-                                        ui,
-                                        |ui| {
-                                            for msg in &conv.messages {
-                                                let (author_label, color) = if msg.outgoing {
-                                                    ("You", Color32::from_rgb(96, 165, 250))
-                                                } else {
-                                                    (
-                                                        &conv.peer_display[..],
-                                                        Color32::from_rgb(148, 163, 184),
-                                                    )
-                                                };
-                                                ui.label(
-                                                    RichText::new(author_label)
-                                                        .small()
-                                                        .color(color)
-                                                        .strong(),
-                                                );
-                                                ui.label(&msg.content);
-                                                ui.separator();
-                                            }
-                                        },
-                                    );
-
-                                    // Compose box
-                                    ui.add_space(8.0);
-                                    ui.add(
-                                        TextEdit::multiline(&mut self.dm_compose)
-                                            .hint_text("Type a message…")
-                                            .desired_rows(2)
-                                            .desired_width(f32::INFINITY),
-                                    );
-
-                                    // Send button
-                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        let can_send = !self.dm_compose.trim().is_empty();
-                                        if ui
-                                            .add_enabled(can_send, egui::Button::new("Send"))
-                                            .clicked()
-                                        {
-                                            let _ = self
-                                                .bridge
-                                                .send_dm(selected_pubkey, self.dm_compose.trim());
-                                            self.dm_compose.clear();
-                                        }
-                                    });
-                                });
-                            }
-                        } else {
-                            cols[1].vertical_centered(|ui| {
-                                ui.add_space(40.0);
-                                ui.label(RichText::new("Select a conversation").size(14.0).weak());
-                            });
-                        }
-                    });
-                }
-            }
-        }
     }
 
     pub(crate) fn status_color(connection: &str) -> (char, Color32) {

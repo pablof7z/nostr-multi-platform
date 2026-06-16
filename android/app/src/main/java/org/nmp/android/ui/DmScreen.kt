@@ -71,6 +71,7 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
 
     var selectedPeerPubkey by remember { mutableStateOf<String?>(null) }
+    var showNewDmDialog by remember { mutableStateOf(false) }
 
     Box(modifier.fillMaxSize()) {
         if (selectedPeerPubkey != null) {
@@ -84,7 +85,18 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 model = model,
                 dmInbox = dmInbox,
                 resolvedProfiles = resolvedProfiles,
-                onSelectConversation = { pubkey -> selectedPeerPubkey = pubkey }
+                onSelectConversation = { pubkey -> selectedPeerPubkey = pubkey },
+                onStartConversation = { showNewDmDialog = true },
+            )
+        }
+        if (showNewDmDialog) {
+            NewDmDialog(
+                onDismiss = { showNewDmDialog = false },
+                onSend = { recipient, content ->
+                    model.sendDm(recipient, content)
+                    selectedPeerPubkey = recipient
+                    showNewDmDialog = false
+                },
             )
         }
     }
@@ -99,6 +111,7 @@ private fun DmConversationListScreen(
     dmInbox: DmInboxSnapshot,
     resolvedProfiles: Map<String, ProfileCard>,
     onSelectConversation: (String) -> Unit,
+    onStartConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
@@ -117,6 +130,12 @@ private fun DmConversationListScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Chats", style = MaterialTheme.typography.headlineSmall)
+                Button(
+                    onClick = onStartConversation,
+                    enabled = !dmInbox.isUnavailable,
+                ) {
+                    Text("New")
+                }
             }
             HorizontalDivider()
 
@@ -202,11 +221,7 @@ private fun DmConversationRow(
     // NostrAvatar below is self-claiming via LocalNostrProfileHost, so no manual
     // RememberProfileClaim is needed for the peer avatar here.
     val latest = conversation.messages.lastOrNull()
-    val peerShortHex = if (conversation.peerPubkey.length >= 16) {
-        "${conversation.peerPubkey.take(8)}…${conversation.peerPubkey.takeLast(8)}"
-    } else {
-        conversation.peerPubkey
-    }
+    val peerShortHex = shortPubkey(conversation.peerPubkey)
 
     Row(
         modifier
@@ -283,11 +298,7 @@ private fun DmConversationView(
 
     var draftMessage by remember { mutableStateOf("") }
 
-    val peerShortHex = if (peerPubkey.length >= 16) {
-        "${peerPubkey.take(8)}…${peerPubkey.takeLast(8)}"
-    } else {
-        peerPubkey
-    }
+    val peerShortHex = shortPubkey(peerPubkey)
 
     Column(modifier.fillMaxSize()) {
         // Header
@@ -470,20 +481,6 @@ private fun UnavailableDmState() {
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
         }
-    }
-}
-
-/**
- * Format Unix seconds as relative time (e.g., "5m ago", "2h ago").
- * Mirrors the iOS presentation-layer concern (D8).
- */
-private fun formatRelativeTime(createdAtSeconds: Long): String {
-    val deltaSecs = (System.currentTimeMillis() / 1000) - createdAtSeconds
-    return when {
-        deltaSecs < 60 -> "${deltaSecs}s ago"
-        deltaSecs < 3_600 -> "${deltaSecs / 60}m ago"
-        deltaSecs < 86_400 -> "${deltaSecs / 3_600}h ago"
-        else -> "${deltaSecs / 86_400}d ago"
     }
 }
 
