@@ -41,39 +41,37 @@ include!("builtin_projection_keys.generated.rs");
 impl Kernel {
     /// Collect the snapshot `projections` map: every host-registered
     /// projection closure plus the kernel-owned built-in projections (the
-    /// publish / relay-settings cluster, the identity pair, and the views cluster).
+    /// publish / relay-settings cluster, the identity pair, and the remaining
+    /// static view-support cluster).
     ///
     /// D0: `publish_queue`, `publish_outbox`, `configured_relays`, and
     /// `relay_role_options` are app-shaped relay/publish state; `accounts` /
-    /// `active_account` are identity output; and the views cluster (`profile`,
-    /// `author_view`, `thread_view`) is app-shaped social view state — none are
-    /// protocol-neutral kernel primitives, so none carry a typed
-    /// `KernelSnapshot` field. Unlike the host-registered `"wallet"` /
+    /// `active_account` are identity output; and `profile` /
+    /// `mention_profiles` / `claimed_*` / `resolved_profiles` are view-support
+    /// output — none are protocol-neutral kernel primitives, so none carry a
+    /// typed `KernelSnapshot` field. Unlike the host-registered `"wallet"` /
     /// `"bunker_handshake"` projections (which read actor-runtime slots through
     /// a no-arg closure), these are kernel-owned, so they cannot be expressed as
     /// a `SnapshotRegistry` closure — they are inserted here directly after the
     /// host closures run.
     ///
-    /// `profile_card()`, `author_view()`, and `thread_view()` read `&self` and
-    /// are called inside this helper.
+    /// `profile_card()` reads `&self` and is called inside this helper.
     ///
-    /// Step 3A (issue #920): the follow-feed projection cluster (`timeline` /
-    /// `inserted` / `updated` / `removed`) has been removed. The kernel no
-    /// longer derives a per-tick `visible_items()` list, so those keys are no
-    /// longer inserted and `mention_profiles` is seeded only from the open
-    /// `author_view` / `thread_view` items.
+    /// Step 3A (issue #920) and V-112 (ADR-0042): the follow-feed projection
+    /// cluster (`timeline` / `inserted` / `updated` / `removed`) and the
+    /// built-in `author_view` / `thread_view` projections are no longer
+    /// inserted here. App-owned feeds use dynamic Tier-1 `nmp.feed.*` typed
+    /// sidecars registered outside this helper.
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
     /// `"publish_outbox"`, `"configured_relays"`, `"relay_role_options"`,
     /// `"settings_hub"`, `"accounts"`, `"active_account"`, or `"profile"` is
     /// overwritten so the kernel-owned value stays authoritative.
     ///
-    /// D5: view-dependent keys (`author_view`, `thread_view`) are only inserted
-    /// when the corresponding view is open — they do NOT cross the language
-    /// boundary when no view is subscribed. All shells decode them as Optional
-    /// with appropriate defaults. A serialization failure degrades to a stable
-    /// empty value (`null` for the optional payloads) — D6: never a panic at the
-    /// snapshot boundary.
+    /// D5: dynamic view-dependent feed keys are Tier-1 registrations. Closing a
+    /// view removes its key from the registry; built-in Tier-2 keys here are
+    /// static support projections. A serialization failure degrades to a stable
+    /// empty value — D6: never a panic at the snapshot boundary.
     pub(super) fn snapshot_projections_with_publish_cluster(
         &mut self,
     ) -> std::collections::HashMap<String, serde_json::Value> {
@@ -228,18 +226,12 @@ impl Kernel {
                 serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
             );
         }
-        // D0: views cluster. `profile` is the active-account profile card.
-        // The remaining view-dependent keys are bounded by D5: they cross the
-        // language boundary only when the corresponding view is actually open.
+        // D0: view-support cluster. `profile` is the active-account profile
+        // card; app-owned author/thread feeds are dynamic Tier-1 keys.
         //
         // Step 3A (issue #920): the follow-feed cluster (`timeline` /
         // `inserted` / `updated` / `removed`) is no longer produced here — the
         // kernel no longer derives a per-tick `visible_items()` list.
-        //
-        // `author_view` / `thread_view`: present only when the respective
-        // view is open (their return values are already `Option<_>`; we skip
-        // inserting the key entirely rather than inserting JSON `null`). All
-        // shells decode these as Optional and handle `None` / absent gracefully.
         //
         // Serialization failures degrade to `null` as before —
         // D6: never a panic at the snapshot boundary.
@@ -284,19 +276,10 @@ impl Kernel {
             // Reset any prior tick's capture so the typed sidecar omits it.
             self.captured_relay_diagnostics = None;
         }
-        // `mention_profiles` — derived view (aim.md §4.2): pubkey ->
-        // {display, picture_url, avatar_initials, avatar_color} for every
-        // author surfaced in ANY currently-open view. Built from the union of
-        // the open `author_view` items and the open `thread_view` items so
-        // ThreadScreen / ProfileView find their authors pre-mapped without
-        // reconstructing the dict in Swift (V-31 thin-shell; replaces the Swift
-        // Dictionary derivation at `ThreadScreen.swift:23-35`).
-        //
-        // Step 3A (issue #920): the home `timeline` contribution (formerly the
-        // `visible_items()` `items` argument) has been removed — `mention_profiles`
-        // is now seeded only from the open author/thread views. First writer wins
-        // on collision — matches `mention_profiles_from_items` semantics. Empty
-        // `{}` when no view is open; never absent (D1).
+        // `mention_profiles` — retained derived view key. V-112 deleted the
+        // built-in author/thread item sources, so the accessor emits `{}` until
+        // a future producer owns concrete mention inputs. Empty map is a D1
+        // value, not projection absence.
         if declared.permits("mention_profiles") {
             let mention_profiles = self.mention_profiles();
             projections.insert(
@@ -340,9 +323,9 @@ impl Kernel {
             );
         }
         // `resolved_profiles` — pre-merged profile map for all consumers.
-        // Precedence: claimed_profiles (highest) → author_view.profile
-        // (only-if-absent) → mention_profiles (only-if-absent). Shipping the
-        // merge once here lets every shell delete its per-platform merge code
+        // Precedence: claimed_profiles (highest) → mention_profiles
+        // (only-if-absent). Shipping the merge once here lets every shell
+        // delete its per-platform merge code
         // (e.g. the TUI `LiveProfileMap` three-step ingest) and just read this
         // key. Always present as `{}` when empty (D1); BTreeMap for
         // deterministic key ordering (snapshot diff stability), mirroring
@@ -467,11 +450,11 @@ impl Kernel {
             resolved.insert(pubkey, card);
         }
 
-        // V-112 (ADR-0042): author_view.profile source deleted. Profile data for
-        // the author screen is now resolved via claimed_profiles (claim_profile
-        // from nmp_app_chirp_open_author_feed).
+        // V-112 (ADR-0042): the author-view profile source was deleted. Profile
+        // data for the author screen is now resolved via claimed_profiles
+        // (claim_profile from nmp_app_chirp_open_author_feed).
 
-        // 3. mention_profiles — only-if-absent (lowest precedence).
+        // 2. mention_profiles — only-if-absent (lowest precedence).
         for (pubkey, m) in self.mention_profiles() {
             resolved
                 .entry(pubkey.clone())

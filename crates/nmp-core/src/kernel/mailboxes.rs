@@ -118,8 +118,8 @@ impl Kernel {
 // `partition_ids_by_author_write_relays` cache-read helpers as the
 // kernel's REQ-construction surface. The kernel's `outbox_router` slot
 // is the live decision authority for every kernel-driven REQ; the
-// returned URL set is consumed by the call sites in
-// `requests/profile.rs` and `requests/thread.rs`.
+// returned URL set is consumed by `requests/profile.rs`. Author/thread view
+// feeds now route through app-owned FlatFeed registrations plus `open_interest`.
 
 /// Discriminator for the cold-start bootstrap seed passed into
 /// `app_relays` at the [`RoutingContext`] construction site.

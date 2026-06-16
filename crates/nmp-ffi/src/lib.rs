@@ -1708,10 +1708,14 @@ impl NmpApp {
             .lock()
             .ok()
             .and_then(|mut map| map.remove(key));
+        let removed_any = removed_feed || removed_projection || removed_observer.is_some();
         if let Some(observer_id) = removed_observer {
             self.unregister_event_observer(observer_id);
         }
-        removed_feed || removed_projection || removed_observer.is_some()
+        if removed_any {
+            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+        }
+        removed_any
     }
 
     /// Register a host-supplied action-result observer — the *push*
@@ -2242,7 +2246,7 @@ impl NmpApp {
     ) -> Vec<nmp_core::TypedProjectionData> {
         self.snapshot_projections
             .lock()
-            .map(|registry| registry.run_typed())
+            .map(|mut registry| registry.run_typed())
             .unwrap_or_default()
     }
 

@@ -7,8 +7,7 @@
 //!
 //! Precedence under test (highest → lowest):
 //!   1. `claimed_profiles` — full `ProfileCard` (carries `nip05`/`about`/`lnurl`)
-//!   2. (was: `author_view.profile`) — DELETED in V-112
-//!   3. (was: `mention_profiles`) — always empty since V-112
+//!   2. `mention_profiles` — currently empty since V-112
 
 use super::nostr::NostrEvent;
 use super::*;

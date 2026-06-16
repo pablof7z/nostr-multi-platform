@@ -72,9 +72,11 @@ pub trait SnapshotProjectionRegistrar {
     /// Register a **typed** FlatBuffers projection closure under `key` — the
     /// typed-sidecar counterpart to [`Self::register_snapshot_projection`]
     /// (ADR-0037). The closure returns the projection's opaque, host-declared
-    /// FlatBuffers payload ([`TypedProjectionData`]) carried verbatim in every
+    /// FlatBuffers payload ([`TypedProjectionData`]) carried verbatim in the
     /// `SnapshotFrame`'s `typed_projections` sidecar, or `None` when there is
-    /// nothing to emit this tick.
+    /// no changed row to emit this tick. Under incremental apply, omission
+    /// means retain the last decoded value; removal of the registered key emits
+    /// an explicit `Cleared` row.
     ///
     /// This method lives on the trait — not only on the concrete `NmpApp` — so
     /// reusable protocol/feed crates that register through `&impl

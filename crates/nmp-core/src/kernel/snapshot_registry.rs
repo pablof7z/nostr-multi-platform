@@ -8,10 +8,10 @@
 //!
 //! ## The problem
 //!
-//! [`KernelSnapshot`](super::types::KernelSnapshot) is a sealed social wire
-//! schema — `profile`, `items`, `author_view`, `thread_view`, … are baked
-//! into the JSON every shell decodes. A non-social app (marketplace, todo
-//! list, …) receives a snapshot it cannot make sense of.
+//! [`KernelSnapshot`](super::types::KernelSnapshot) is a sealed legacy wire
+//! schema — its built-in fields cannot grow a new app's domain state without
+//! editing `nmp-core`. A non-social app (marketplace, todo list, …) would
+//! otherwise receive only baked-in framework fields it cannot make sense of.
 //!
 //! ## The seam
 //!
@@ -46,7 +46,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::update_envelope::TypedProjectionData;
+use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 
 /// A host-registered projection closure.
 ///
@@ -107,8 +107,10 @@ use entry::ProjectionEntry;
 /// bytes — the closure (owned by an app/protocol crate) encodes its own typed
 /// schema and tags it with `schema_id` / `schema_version` / `file_identifier`.
 ///
-/// Returns `None` when the projection has nothing to emit this tick, so the
-/// sidecar omits the entry entirely rather than carrying an empty payload.
+/// Returns `None` when the projection has no changed payload this tick. Under
+/// incremental apply, omission means the host retains its cached value; it is
+/// never a clear signal. To clear a registered typed key, remove it through
+/// [`SnapshotRegistry::remove`], which emits a one-shot `Cleared` row.
 ///
 /// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with
 /// the actor thread (D8: the closure itself must also be non-blocking — it runs
@@ -169,6 +171,10 @@ mod bounds_tests;
 pub struct SnapshotRegistry {
     projections: HashMap<String, ProjectionEntry>,
     typed_projections: HashMap<String, TypedProjectionFn>,
+    /// One-shot `Cleared` rows for host-registered typed projections removed from
+    /// the registry. Tier-1 keys are not in the built-in manifest, so Rung 3
+    /// cannot synthesize these clears from `ProjectionPresence`.
+    pending_typed_clears: Vec<String>,
     /// Per-tick observers — no-result callbacks fired once per snapshot tick.
     ///
     /// A `Vec` rather than a keyed map: tick observers contribute no snapshot
@@ -344,6 +350,14 @@ impl SnapshotRegistry {
     pub fn remove(&mut self, key: &str) -> bool {
         let removed_generic = self.projections.remove(key).is_some();
         let removed_typed = self.typed_projections.remove(key).is_some();
+        if removed_typed
+            && !self
+                .pending_typed_clears
+                .iter()
+                .any(|pending| pending == key)
+        {
+            self.pending_typed_clears.push(key.to_string());
+        }
         removed_generic || removed_typed
     }
 
@@ -374,6 +388,7 @@ impl SnapshotRegistry {
         ) {
             return;
         }
+        self.pending_typed_clears.retain(|pending| pending != &key);
         self.typed_projections.insert(key, Box::new(f));
     }
 
@@ -382,13 +397,10 @@ impl SnapshotRegistry {
     ///
     /// Mirrors [`Self::run`]: each closure runs on the actor thread inside
     /// `make_update`, so it must be non-blocking (D8). A closure that returns
-    /// `None` contributes no sidecar entry (nothing to emit this tick); a
-    /// closure that panics is swallowed inside [`catch_unwind`] (D6) and its key
-    /// is omitted, exactly as if it had never been registered — every sibling
-    /// projection in the same tick still produces its value, and a panicking
-    /// host projection can never unwind the actor thread into a terminal
-    /// `Panic` frame.
-    pub fn run_typed(&self) -> Vec<TypedProjectionData> {
+    /// `None` contributes no sidecar entry (retain prior value under incremental
+    /// apply); a removed typed key contributes one `Cleared` row from the pending
+    /// queue. A closure panic is swallowed inside [`catch_unwind`] (D6).
+    pub fn run_typed(&mut self) -> Vec<TypedProjectionData> {
         let mut out = Vec::with_capacity(self.typed_projections.len());
         for projection in self.typed_projections.values() {
             // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but
@@ -404,6 +416,15 @@ impl SnapshotRegistry {
                 Ok(None) | Err(_) => continue,
             }
         }
+        out.extend(
+            std::mem::take(&mut self.pending_typed_clears)
+                .into_iter()
+                .map(|key| TypedProjectionData {
+                    key,
+                    state: WireProjectionState::Cleared,
+                    ..Default::default()
+                }),
+        );
         out
     }
 

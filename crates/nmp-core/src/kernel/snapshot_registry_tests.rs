@@ -10,7 +10,7 @@
 use super::snapshot_registry::{new_snapshot_projection_slot, SnapshotRegistry};
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::update_envelope::TypedProjectionData;
+use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 
 /// Build a minimal opaque [`TypedProjectionData`] entry for the typed-sidecar
 /// tests (ADR-0037). Payload bytes are arbitrary — `nmp-core` never reads them.
@@ -144,14 +144,14 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "relay_diagnostics",
             "relay_role_options",
             // pre-merged profile map: pubkey -> ProfileCard, merged once in
-            // Rust from claimed_profiles > author_view.profile > mention_profiles
-            // (each only-if-absent). Always present (D1) so consumers can delete
+            // Rust from claimed_profiles > mention_profiles (only-if-absent).
+            // Always present (D1) so consumers can delete
             // their per-platform merge code.
             "resolved_profiles",
             // settings-hub view (relays subtitle pre-format)
             "settings_hub",
-            // D5: `author_view`, `thread_view`, `timeline`, `inserted`,
-            // `updated`, `removed` are absent — no view is open.
+            // D5: dynamic feed keys and the retired timeline delta keys are
+            // absent when no dynamic feed is registered.
         ],
         "with no host projection and no open views the map carries only the static built-ins"
     );
@@ -324,7 +324,7 @@ fn registered_typed_projection_surfaces_through_run_typed() {
         Some(typed_entry("nmp.feed.home", &[0xde, 0xad, 0xbe, 0xef]))
     });
 
-    let registry = slot.lock().unwrap();
+    let mut registry = slot.lock().unwrap();
     let typed = registry.run_typed();
     assert_eq!(typed.len(), 1, "one typed projection was registered");
     assert_eq!(typed[0].key, "nmp.feed.home");
@@ -336,7 +336,7 @@ fn registered_typed_projection_surfaces_through_run_typed() {
 }
 
 /// A typed projection that returns `None` contributes no sidecar entry this
-/// tick — the sidecar carries only the projections that have something to emit.
+/// tick. Under incremental apply this means "retain prior value", not "clear".
 #[test]
 fn typed_projection_returning_none_is_skipped() {
     let slot = new_snapshot_projection_slot();
@@ -373,11 +373,10 @@ fn panicking_typed_projection_is_contained_and_others_survive() {
     assert_eq!(typed[0].key, "good");
 }
 
-/// `SnapshotRegistry::remove(key)` drops the projection from BOTH the generic
-/// and typed maps, leaving sibling keys untouched. This is the teardown half of
-/// the transient-feed seam (M2 author/thread feeds, ADR-0042 §5.1): without it a
-/// closed feed's `register_feed` closure keeps emitting a stale empty subtree on
-/// every tick.
+/// `SnapshotRegistry::remove(key)` drops the projection from BOTH maps and emits
+/// one typed `Cleared` row. Tier-1 host keys are not in the built-in manifest, so
+/// this is the only way an incremental host can distinguish "feed closed" from
+/// "feed omitted because unchanged".
 #[test]
 fn remove_drops_generic_and_typed_for_one_key_only() {
     let mut registry = SnapshotRegistry::new();
@@ -396,12 +395,22 @@ fn remove_drops_generic_and_typed_for_one_key_only() {
         !generic.contains_key("nmp.feed.author.alice"),
         "generic projection must be gone after remove"
     );
+    let typed = registry.run_typed();
+    let clear = typed
+        .iter()
+        .find(|t| t.key == "nmp.feed.author.alice")
+        .expect("typed removal must emit one Cleared row");
+    assert_eq!(clear.state, WireProjectionState::Cleared);
+    assert!(
+        clear.payload.is_empty(),
+        "Cleared rows carry no typed payload bytes"
+    );
     assert!(
         registry
             .run_typed()
             .iter()
             .all(|t| t.key != "nmp.feed.author.alice"),
-        "typed sidecar must be gone after remove"
+        "typed Cleared row must be one-shot"
     );
 
     // The sibling (home feed) is untouched.

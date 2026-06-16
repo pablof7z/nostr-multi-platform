@@ -762,9 +762,10 @@ pub struct Kernel {
     /// **Debt A**: the router is the live decision authority for every
     /// kernel-driven REQ. `kernel/requests/profile.rs` (`author_requests`,
     /// `profile_claim_request`, `pending_profile_claim_requests`,
-    /// `firehose_requests`) and `kernel/requests/thread.rs`
-    /// (`maybe_open_thread_hydration`) call through the router helpers
-    /// in `kernel/mailboxes.rs`; the bootstrap discovery seed flows
+    /// `firehose_requests`) calls through the router helpers in
+    /// `kernel/mailboxes.rs`; author/thread view feeds now use app-owned
+    /// `FlatFeed` registrations plus generic `open_interest`. The bootstrap
+    /// discovery seed flows
     /// through the substrate seam at
     /// `RoutingContext::session_keys::app_relays` (lane 7 fallback).
     outbox_router: Arc<dyn OutboxRouter>,

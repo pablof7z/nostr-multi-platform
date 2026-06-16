@@ -6,14 +6,12 @@
 //! - `startup.rs`         — cold-start REQ emission (seed bootstrap + self profile)
 //! - `auth_gate.rs`       — NIP-42 AUTH paused/failed predicates + outbound partition
 //! - `profile.rs`         — profile/author open/close/claim/release
-//! - `thread.rs`          — thread open/close/hydration
 
 mod auth_gate;
 mod event;
 mod profile;
 mod relay_lifecycle;
 mod startup;
-mod thread;
 
 pub use profile::ProfileLiveness;
 

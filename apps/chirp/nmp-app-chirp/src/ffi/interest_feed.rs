@@ -17,12 +17,11 @@
 //! the read path needs, with the `{1,6}` note-kind policy defined ONCE here so
 //! the two halves can never diverge:
 //!
-//! 1. **Kernel admission** — pushes a generic `open_interest`
+//! 1. **Kernel interest** — pushes a generic `open_interest`
 //!    (`{"kinds":[1,6],"authors":[pk]}`, consumer `author-<pk>`, scope Global)
 //!    through the existing [`nmp_ffi::nmp_app_open_interest`] so the kernel
-//!    stores matching events into `self.events` (a non-followed author would
-//!    otherwise be dropped before storage — V-112 gating fact #1) and fans
-//!    them out to every [`nmp_core::KernelEventObserver`].
+//!    subscribes for matching relay events and fans accepted stored events out
+//!    to every [`nmp_core::KernelEventObserver`].
 //! 2. **Feed render** — constructs a [`nmp_nip01::FlatFeed`] over the same
 //!    `{1,6}` author predicate and registers it as BOTH a feed controller
 //!    (output, under `nmp.feed.author.<pk>`) AND a kernel event observer
@@ -416,6 +415,7 @@ mod tests {
     use std::ffi::{CStr, CString};
 
     use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
+    use nmp_core::WireProjectionState;
     use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string};
     use serde_json::Value;
 
@@ -601,12 +601,22 @@ mod tests {
         let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
         assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
 
-        // unregister_feed (close) tears down the typed sidecar by key too.
+        // unregister_feed (close) tears down the typed sidecar by key and emits
+        // one Cleared row so an incremental host drops the cached dynamic key.
         nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
         let typed_after = app_ref.run_typed_snapshot_projections();
+        let clear = typed_after
+            .iter()
+            .find(|p| p.key == key)
+            .expect("close must emit a typed Cleared row for the dynamic key");
+        assert_eq!(clear.state, WireProjectionState::Cleared);
+        assert!(clear.payload.is_empty());
         assert!(
-            typed_after.iter().all(|p| p.key != key),
-            "close must remove the typed sidecar for the dynamic key"
+            app_ref
+                .run_typed_snapshot_projections()
+                .iter()
+                .all(|p| p.key != key),
+            "typed Cleared row must be one-shot"
         );
         nmp_app_free(app);
     }

@@ -64,7 +64,7 @@ impl Kernel {
         match &self.snapshot_projections {
             Some(slot) => slot
                 .lock()
-                .map(|registry| registry.run_typed())
+                .map(|mut registry| registry.run_typed())
                 .unwrap_or_default(),
             None => Vec::new(),
         }

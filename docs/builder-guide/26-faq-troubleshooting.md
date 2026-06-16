@@ -129,7 +129,9 @@ The canonical runtime frame is `nmp.transport.UpdateFrame`
 For normal state updates, `kind = Snapshot` and the `snapshot` table carries
 typed envelope fields plus `typed_projections`. `kind = Panic` is the terminal
 actor-thread failure frame. Hosts decode the frame with generated FlatBuffers
-readers; there is no production JSON snapshot fallback.
+readers; there is no production JSON snapshot fallback. Product view state
+comes from typed projection sidecars such as `nmp.feed.home`,
+`nmp.feed.author.<pubkey>`, and `nmp.feed.thread.<event_id>`.
 
 | Field | Type | Use |
 |---|---|---|
@@ -153,7 +155,9 @@ readers; there is no production JSON snapshot fallback.
 Debug order: `relay_statuses` → `logical_interests` → `wire_subscriptions` →
 `logs`. Product view state comes from typed projection sidecars; add a typed
 sidecar for new Swift/Kotlin UI state instead of relying on generic JSON.
-`metrics` is for perf, not correctness.
+For dynamic typed projections, `Changed` replaces the cached value, `Cleared`
+drops it, and omission in an incremental frame means retain the last decoded
+value. `metrics` is for perf, not correctness.
 
 ## Anti-patterns
 

@@ -146,17 +146,28 @@ on the callback path as part of the same frame as every other field.
 Register host-rendered projection state as a typed sidecar with
 `NmpApp::register_typed_snapshot_projection` (C-ABI registration support lives
 in `crates/nmp-ffi/src/snapshot.rs`). The closure returns
-`Option<TypedProjectionData>` containing:
+`Option<TypedProjectionData>`:
 
-- the projection key, e.g. `nmp.feed.home`;
-- `schema_id`, `schema_version`, and FlatBuffers `file_identifier`;
-- the projection payload bytes, owned by the app/protocol crate that owns the
+- `Some(Changed row)` contains the projection key, e.g. `nmp.feed.home`;
+  `schema_id`, `schema_version`, and FlatBuffers `file_identifier`; and the
+  projection payload bytes, owned by the app/protocol crate that owns the
   schema.
+- `None` means "no changed row this tick." Under incremental apply the host
+  retains the last successfully decoded value for that key.
+- `Cleared` is emitted by removing a registered typed key; the host drops any
+  cached value for that key.
 
 `nmp-core` treats those bytes as opaque. The host chooses the decoder by key and
 descriptor and reads the generated native model from the `typed_projections`
 vector. This is the production path for Swift/Kotlin/TS render inputs because it
 does not rely on a dynamic `payload:Value` tree.
+
+Idle or empty projections must still encode an empty snapshot payload when the
+key is registered. Do not use `None` or sidecar absence to mean "empty wallet",
+"idle signer", "no feed rows", or "not paired"; those are domain states inside
+the schema. If a `Changed` row cannot be decoded, the host keeps the prior
+value, does not advance the per-key applied rev, and requests/resumes from a
+fresh baseline instead of committing an empty substitute.
 
 The OP feed wiring is the canonical high-volume exemplar:
 `nmp-defaults` registers the `nmp.feed.home` typed sidecar, `nmp-nip01` owns the

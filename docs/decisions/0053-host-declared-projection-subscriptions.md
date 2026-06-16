@@ -198,13 +198,13 @@ for the life of the app, with no opt-out.
    declared" — holds for **every host that declares a `Narrow` set**.
 
    **No present-vs-absent ambiguity.** The host authored the declared set, so it knows
-   exactly which keys it asked for. A declared key with no data this tick follows each
-   projection's existing convention (`resolved_profiles` is `{}` when empty per D1;
-   `action_results` is drain-on-emit, absent in steady state). A *gated-out* key is
-   simply never in the frame — identical, from the host's decode path, to an
-   unregistered Tier-1 namespace (both shells already treat
-   `projections.first(where: {$0.key == k})` / `firstOrNull { it.key == k }`
-   returning `nil` as the empty/default case — verified in both shells).
+   exactly which Tier-2 keys it asked for. A declared key with no data this tick follows
+   each projection's existing convention (`resolved_profiles` is `{}` when empty per
+   D1; `action_results` is drain-on-emit, absent in steady state). Under incremental
+   apply, omission of an enabled typed key means "unchanged, retain cache"; teardown is
+   explicit through `state = Cleared`. A *gated-out* Tier-2 key is simply never produced
+   because the host declared it unused. Dynamic Tier-1 feeds are different: they
+   self-gate by registration and unregister on close.
 
 5. **One-way data flow is preserved (D1).** The declared set is written **once,
    before the kernel emits its first real frame**, and never again. It is a property
@@ -337,8 +337,9 @@ for the life of the app, with no opt-out.
   dynamic feeds need *lifecycle* gating (add/remove), not a static declared set.
   Forcing dynamic feeds through a static declaration would either require
   prefix/wildcard matching (`nmp.feed.author.*`) — reintroducing a dynamic concern
-  into a static mechanism — or a redundant second gate. Gating only the un-gated tier
-  (Tier-2) is the minimal correct surface.
+  into a static mechanism — or a redundant second gate. Dynamic typed feed teardown
+  emits `Cleared`; the static declaration set never owns their lifecycle. Gating only
+  the un-gated tier (Tier-2) is the minimal correct surface.
 - **A new dedicated FFI slot for the declared set, separate from `SnapshotRegistry`.**
   Rejected: it would add a parallel `Arc<Mutex<…>>`, a new actor parameter, and a
   second Reset-survival contract for no benefit. The registry is already the shared,
