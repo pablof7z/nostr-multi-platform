@@ -1,0 +1,112 @@
+//! Shared post-store projection fan-out for live ingest and cache-serve replay.
+
+use super::super::Kernel;
+use super::helpers;
+
+impl Kernel {
+    /// ADR-0057 — the SINGLE shared post-store projection fan-out, called by
+    /// BOTH the live ingest chokepoint ([`Self::ingest_accepted_event`]) AND the
+    /// cache-serve replay path ([`Self::feed_served_event`]).
+    ///
+    /// It owns the three post-store concerns, kind-agnostically:
+    /// NIP-parser dispatch, capability-cache transition sweep, and D9-clamped
+    /// app-observer notification. Callers MUST gate on the canonical accepted
+    /// outcome (`Inserted | Replaced | Ephemeral`).
+    pub(in crate::kernel) fn project_accepted_event(
+        &mut self,
+        verified: &crate::store::VerifiedEvent,
+    ) {
+        let raw = verified.raw();
+        let author = raw.pubkey.clone();
+        let event_id = raw.id.clone();
+        let created_at_for_trigger = raw.created_at;
+
+        // (2a) Snapshot the capability caches BEFORE the parser dispatch writes
+        // them, kind-agnostically.
+        let mailbox_before = self.mailbox_cache().snapshot(&author);
+        let dm_before = self.recipient_dm_relays(&author);
+        let profile_before = self.profile_lookup().profile(&author);
+        // ADR-0057 PR 3 — snapshot the contacts cache for the author (ANY author,
+        // like the profile snapshot above).
+        let contacts_before = self.contacts_lookup().follows(&author);
+
+        // (1) NIP-parser dispatch. D6 — a poisoned dispatcher lock degrades to
+        // "no parser fired" (graceful; persistence already succeeded).
+        if let Ok(d) = self.ingest_dispatcher_slot().read() {
+            d.dispatch(verified);
+        }
+
+        // (2b) Transition sweep AFTER dispatch.
+        let profile_after = self.profile_lookup().profile(&author);
+        if profile_before != profile_after {
+            self.cached_estimated_store_bytes.set(None);
+            self.projection_rev_tracker.source_versions.bump_profiles();
+            if !self.event_claims.is_empty() {
+                self.projection_rev_tracker
+                    .source_versions
+                    .bump_claimed_event_content();
+            }
+        }
+        let mailbox_after = self.mailbox_cache().snapshot(&author);
+        if mailbox_before != mailbox_after {
+            self.on_mailbox_changed(&author, &event_id, created_at_for_trigger);
+        }
+        let dm_after = self.recipient_dm_relays(&author);
+        if dm_before != dm_after {
+            self.on_dm_relays_changed(&author, created_at_for_trigger);
+        }
+        let contacts_after = self.contacts_lookup().follows(&author);
+        if contacts_before != contacts_after {
+            self.cached_estimated_store_bytes.set(None);
+            if self.active_account.as_deref() == Some(author.as_str()) {
+                let follows = contacts_after.unwrap_or_default();
+                self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
+            }
+        }
+
+        // (3) D9-clamped app-observer notify.
+        let now_secs = self.now_secs();
+        let mut kernel_event = helpers::kernel_event_from_verified(verified);
+        kernel_event.created_at = kernel_event.created_at.min(now_secs);
+        self.notify_event_observers(&kernel_event);
+    }
+
+    /// Wall-clock arrival timestamp (unix millis) for a store insert.
+    ///
+    /// Clock seam (kernel/clock.rs): `received_at_ms` is reducer output —
+    /// it is written into the `EventStore` — so it MUST read the injected
+    /// `Clock` rather than `SystemTime::now()` directly, otherwise
+    /// deterministic replay diverges (D9: the kernel owns time).
+    pub(in crate::kernel) fn ingest_received_at_ms(&self) -> u64 {
+        self.clock
+            .now()
+            .duration_since(super::super::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    /// Substrate-honest mailbox-change observer (replaces the deleted
+    /// `kernel/ingest/relay_list.rs` impl, 2026-05-25).
+    fn on_mailbox_changed(&mut self, author: &str, event_id: &str, created_at: u64) {
+        let _ = self.route_subscription_relays(
+            crate::stable_hash::stable_hash64(("mailbox-changed", event_id, created_at)),
+            &[author],
+            &[], // V-68/D0: no substrate social default; trace lane is kind-independent.
+            super::super::mailboxes::BootstrapSeed::Discovery,
+        );
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
+                pubkey: author.to_string(),
+                created_at,
+            });
+    }
+
+    /// F-02 — substrate-honest DM-relay-list-change observer.
+    pub(in crate::kernel) fn on_dm_relays_changed(&mut self, author: &str, created_at: u64) {
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::DmRelayListChanged {
+                pubkey: author.to_string(),
+                created_at,
+            });
+    }
+}

@@ -40,7 +40,6 @@ crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	594
 crates/nmp-core/src/kernel/claim_expansion_ingest_tests.rs	710
 crates/nmp-core/src/kernel/discovery_tests.rs	604
 crates/nmp-core/src/kernel/event_claim_tests.rs	560
-crates/nmp-core/src/kernel/ingest/mod.rs	748
 crates/nmp-core/src/kernel/ingest_tests.rs	952
 crates/nmp-core/src/kernel/mailboxes.rs	506
 crates/nmp-core/src/kernel/mod.rs	2797
