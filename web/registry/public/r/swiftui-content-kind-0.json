@@ -1,0 +1,19 @@
+{
+  "name": "swiftui-content-kind-0",
+  "type": "registry:ui",
+  "title": "Content Kind 0 (SwiftUI)",
+  "description": "Profile metadata (NIP-01, kind:0) embed renderer — avatar, display name, pubkey chip, NIP-05, and about preview.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-content-kind-registry",
+    "swiftui-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/content-kind-0/ProfileEmbed.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrContent/ProfileEmbed.swift",
+      "content": "import SwiftUI\n\n/// Rich renderer for kind:0 profile metadata embeds.\n///\n/// Replaces `DefaultProfileRenderer` via `registry.setProfile(ProfileEmbed())`.\n/// The projection is already resolved by Rust; this view only formats the raw\n/// kind:0 fields and raw hex pubkey for display.\npublic struct ProfileEmbed: KindRenderer {\n    public init() {}\n\n    public func body(\n        projection: EmbedKindProjection,\n        registry: NostrKindRegistry\n    ) -> AnyView {\n        guard case .profile(let profile) = projection else {\n            return AnyView(EmptyView())\n        }\n\n        let display = profile.displayName?.nonEmpty ?? shortHex(profile.pubkey)\n        let picture = profile.pictureUrl.flatMap(URL.init(string:))\n\n        return AnyView(\n            VStack(alignment: .leading, spacing: 10) {\n                HStack(alignment: .center, spacing: 10) {\n                    NostrAvatar(\n                        pubkey: profile.pubkey,\n                        pictureUrl: picture,\n                        size: 44,\n                        consumerID: \"content-kind-0.\\(profile.pubkey)\"\n                    )\n\n                    VStack(alignment: .leading, spacing: 3) {\n                        Text(display)\n                            .font(.headline)\n                            .foregroundStyle(.primary)\n                            .lineLimit(1)\n                        if let nip05 = profile.nip05?.nonEmpty {\n                            Label(nip05.stripRootNip05Prefix, systemImage: \"checkmark.seal.fill\")\n                                .font(.caption)\n                                .foregroundStyle(.secondary)\n                                .lineLimit(1)\n                        }\n                    }\n\n                    Spacer(minLength: 0)\n                    Text(\"kind:0\")\n                        .font(.caption2.monospaced())\n                        .foregroundStyle(.tertiary)\n                }\n\n                Text(shortHex(profile.pubkey))\n                    .font(.caption.monospaced())\n                    .foregroundStyle(.secondary)\n                    .lineLimit(1)\n                    .truncationMode(.middle)\n\n                if let about = profile.about?.nonEmpty {\n                    Text(about)\n                        .font(.callout)\n                        .foregroundStyle(.secondary)\n                        .fixedSize(horizontal: false, vertical: true)\n                        .lineLimit(4)\n                }\n            }\n        )\n    }\n\n    private func shortHex(_ value: String) -> String {\n        guard value.count > 16 else { return value }\n        return \"\\(value.prefix(8))...\\(value.suffix(8))\"\n    }\n}\n\nprivate extension String {\n    var nonEmpty: String? {\n        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)\n        return trimmed.isEmpty ? nil : trimmed\n    }\n\n    var stripRootNip05Prefix: String {\n        hasPrefix(\"_@\") ? String(dropFirst(2)) : self\n    }\n}\n"
+    }
+  ]
+}

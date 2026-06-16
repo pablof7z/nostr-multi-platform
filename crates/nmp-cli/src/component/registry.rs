@@ -284,12 +284,20 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/swiftui/content-kind-30023/ArticleEmbed.swift"),
     ),
     (
+        "swiftui/content-kind-0/ProfileEmbed.swift",
+        include_str!("../../registry/swiftui/content-kind-0/ProfileEmbed.swift"),
+    ),
+    (
         "swiftui/content-kind-9802/HighlightEmbed.swift",
         include_str!("../../registry/swiftui/content-kind-9802/HighlightEmbed.swift"),
     ),
     (
         "compose/content-kind-30023/NostrArticleCard.kt",
         include_str!("../../registry/compose/content-kind-30023/NostrArticleCard.kt"),
+    ),
+    (
+        "compose/content-kind-0/NostrProfileCard.kt",
+        include_str!("../../registry/compose/content-kind-0/NostrProfileCard.kt"),
     ),
     (
         "compose/login-block/NostrLoginBlock.kt",
@@ -310,6 +318,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "desktop/content-kind-30023/embed_article.rs",
         include_str!("../../registry/desktop/content-kind-30023/embed_article.rs"),
+    ),
+    (
+        "desktop/content-kind-0/profile_card.rs",
+        include_str!("../../registry/desktop/content-kind-0/profile_card.rs"),
     ),
     (
         "web/login-block/NostrLoginBlock.tsx",
