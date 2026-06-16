@@ -199,6 +199,7 @@ fn zap_receipt_ingest_updates_aggregate_projection() {
     assert_eq!(status, NmpRegisterStatus::Ok as u32);
     assert!(!handle.is_null());
     let rx = install_emit_signal(app);
+    nmp_app_start(app, 0, 200, 4);
 
     // The LN provider that mints the receipt (its nostrPubkey identity).
     let provider = Keys::generate();

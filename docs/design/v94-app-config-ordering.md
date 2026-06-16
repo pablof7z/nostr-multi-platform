@@ -4,19 +4,21 @@ Status: IMPLEMENTED (2026-05-30) — `NmpAppBuilder<S>` typestate shipped in PR 
 the three open design decisions (§7.i-iii) are resolved as: consume-and-return
 typestate, phantom-typed states, builder-is-the-AppHost.
 
-Issue: V-94 (#618). Co-designed with F-08 (NmpAppBuilder) and V-95
-(issue #619, WalletRuntime init order).
+Issue: V-94 (#618). Co-designed with F-08 (NmpAppBuilder) and V-95 (issue
+#619, WalletRuntime init order). Follow-up #618 Stage 1 (2026-06-16) moved the
+native actor spawn from `nmp_app_new` to `nmp_app_start`: `nmp_app_new` is now a
+passive handle with a command channel and update listener, and pre-start
+commands queue until the actor is spawned with the final configuration.
 
 ## 1. Problem (code-grounded)
 
-`nmp_app_new()` (crates/nmp-ffi/src/lib.rs:617) spawns the actor thread
-immediately. The actor blocks on `command_rx.recv()` for the FIRST command
-(crates/nmp-core/src/actor/mod.rs:1169-1178) — an explicit race-absorber so the
-host can run setters after `nmp_app_new` but before the kernel is built. The
-kernel is constructed only after that first command arrives, reading every
-wiring slot at construction time (actor/mod.rs:1185-1308): storage_path,
-routing_substrate, publish_resolver, ingest_dispatcher, dm_inbox_relay_lookup,
-blocked_relays, bootstrap_self_kinds, coverage_hook, req_frame_interceptor, etc.
+Historical root cause: `nmp_app_new()` spawned the actor thread immediately.
+The actor then blocked on the first command before constructing the kernel — an
+explicit race absorber so the host could run setters after `nmp_app_new` but
+before the kernel was built. The kernel construction point read every wiring
+slot: storage_path, routing_substrate, publish_resolver, ingest_dispatcher,
+dm_inbox_relay_lookup, blocked_relays, bootstrap_self_kinds, coverage_hook,
+req_frame_interceptor, etc.
 
 Consequence: any setter that runs AFTER the first command is silently ignored
 (the slot was already read). Ordering is documented in prose only (18 sites in

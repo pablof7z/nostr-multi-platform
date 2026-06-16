@@ -29,14 +29,12 @@ use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
 //
-// Every test in this file drives a full `nmp_app_new()` lifecycle. `nmp_app_new`
-// eagerly spawns the actor thread (which itself constructs the relay `Pool` and
-// its per-URL worker / translator threads) and the update-listener thread —
-// BEFORE any `nmp_app_start`. `nmp_app_free` only drops the `NmpApp` box; it does
-// not *join* those background threads, so their teardown (the actor's
-// `inbox_rx.recv()` returning `Err` once the host `CommandSender` drops, the
-// listener's `update_rx.recv()` likewise) races forward asynchronously after the
-// test body returns.
+// Every test in this file drives a full `NmpApp` lifecycle. `nmp_app_new`
+// starts the update-listener thread, while `nmp_app_start` spawns the actor
+// thread (which itself constructs the relay `Pool` and its per-URL worker /
+// translator threads). `nmp_app_free` joins any started actor plus the listener,
+// but concurrent full-lifecycle tests still share the same C-ABI callback
+// machinery and relay/runtime setup pressure.
 //
 // When these three tests run concurrently on the libtest thread pool, the leaked
 // teardown of one app overlaps the setup of the next (all three reuse the same

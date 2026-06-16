@@ -11,6 +11,9 @@
 // mid-invocation. Tests exercise `UpdateCallbackGate` directly (no full app
 // stack) via the `pub(crate)` gate fields.
 #[cfg(test)]
+#[path = "passive_start_tests.rs"]
+mod passive_start_tests;
+#[cfg(test)]
 #[path = "update_callback_quiescence_tests.rs"]
 mod update_callback_quiescence_tests;
 // Bug 1 (D6 fail-loud) — `NmpApp::remove_account_forgetting_keyring` checks the
@@ -35,6 +38,7 @@ mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-inte
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
 mod free;
+mod passive_start;
 // D13 sign-and-return — `nmp_app_sign_event_for_return` end-to-end through the
 // actor thread, reading the `signed_events` projection.
 #[cfg(test)]
@@ -262,6 +266,7 @@ use nmp_core::{
     ActorCommand, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
     RawEventObserverId,
 };
+use passive_start::{prestart_snapshot_frame, ActorStarter};
 use std::ffi::{c_char, c_uint, c_void, CStr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -604,6 +609,11 @@ pub struct NmpApp {
     /// wrong primitive for a single-shot lock-free flag, and the `Arc` would
     /// be dead shared ownership nothing consumes.
     pending_mls_autopublish: AtomicBool,
+    /// One-shot native actor starter. `nmp_app_start` consumes it, so
+    /// pre-start commands queue without constructing the kernel.
+    actor_starter: Mutex<Option<ActorStarter>>,
+    /// Passive-handle bootstrap frame sender, dropped at start/drop.
+    startup_update_tx: Mutex<Option<mpsc::Sender<nmp_core::UpdateFrameBytes>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
     /// M6 — namespace-keyed action-dispatch registry backing
@@ -819,27 +829,6 @@ pub struct NmpApp {
     /// content) so the wallet pay-invoice FFI shim can short-circuit a
     /// same-bolt11 retap before it crosses into `nmp-nip47`.
     pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
-}
-
-impl Drop for NmpApp {
-    fn drop(&mut self) {
-        if let Ok(mut inner) = self.update_callback.inner.lock() {
-            inner.registration = None;
-        }
-        // Route through `send_cmd` so the G-S4 queue-depth counter stays
-        // consistent: the actor decrements it as it dequeues `Shutdown`.
-        self.send_cmd(ActorCommand::Shutdown);
-        if let Ok(mut actor) = self.actor.lock() {
-            if let Some(handle) = actor.take() {
-                let _ = handle.join();
-            }
-        }
-        if let Ok(mut listener) = self.update_listener.lock() {
-            if let Some(handle) = listener.take() {
-                let _ = handle.join();
-            }
-        }
-    }
 }
 
 #[no_mangle]
@@ -1096,6 +1085,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // dropped — it MUST outlive the inner closure so the panic frame can
     // still be delivered after the actor's own sender is gone.
     let update_tx_panic = update_tx.clone();
+    let startup_update_tx = update_tx.clone();
     // Self-feedback sender for the actor — a clone of the command sender
     // that the host also keeps (`command_tx` above). Background workers
     // spawned from dispatch arms (the LNURL-pay round-trip the NIP-57
@@ -1109,140 +1099,146 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // for self-feedback traffic — acceptable for a backpressure gate that
     // watches for buildup, matches the existing `actor_sender()` caveat.
     let actor_command_tx_self = command_tx.clone();
-    let actor = thread::spawn(move || {
-        // D7 (actor-death visibility): the actor thread owns the kernel loop.
-        // If it panics, `send_cmd` would otherwise silently drop every
-        // subsequent command (the channel closes with no signal). Catch the
-        // unwind here and emit one envelope-conforming `Panic` frame on the
-        // update channel *before* this thread (and `update_tx`) is dropped,
-        // so the host receives a terminal, decodable signal.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_actor_with_observers(
-                command_rx,
-                actor_command_tx_self,
-                update_tx,
-                actor_lifecycle_observer,
-                actor_event_observers,
-                actor_raw_event_observers,
-                actor_snapshot_projections,
-                // V-38: substrate-generic relay-text interceptor slot. The
-                // host's `nmp-nip47` install registers its NWC runtime here;
-                // the actor calls `interceptor.on_relay_text(...)` for every
-                // inbound text frame.
-                actor_relay_text_interceptor,
-                // ADR-0051: fanned on `PoolEvent::Opened` (nmp-nip11 fetch).
-                actor_relay_connected_hook,
-                // D0: NIP-46 remote signing is an app noun — the
-                // bunker-handshake slot the actor's `IdentityRuntime` writes;
-                // the `"bunker_handshake"` projection (registered below) reads
-                // the matching clone.
-                actor_bunker_handshake,
-                // V-14 step b: bunker relay-layer connection-state slot.
-                // The broker callback → actor command → slot write keeps D4.
-                actor_signer_state,
-                // ADR-0052 §D3 — actor clones of the per-app signer hook slots
-                // (read by the actor's `IdentityRuntime` on bunker/NIP-55 restore).
-                actor_bunker_hook,
-                actor_external_signer_hook,
-                actor_configured_relays,
-                actor_mls_local_nsec,
-                actor_active_local_keys,
-                actor_capability_callback,
-                actor_storage_path,
-                // G-S4 — the actor's clone of the command-channel depth
-                // counter. Decremented per dequeued command; bound onto the
-                // kernel for the `actor_queue_depth` snapshot field.
-                actor_queue_depth,
-                // D2 — the actor's clone of the coverage-gate hook slot. Read
-                // once after kernel construction (and again after `Reset`) and
-                // installed on `SubscriptionLifecycle` so the production plan
-                // pipeline enforces D2 ("negentropy before REQ") via the
-                // per-app crate's policy closure.
-                actor_coverage_hook,
-                actor_req_frame_interceptor,
-                // The actor's clone of the host-op handler slot — read by the
-                // `Protocol` dispatch arm when a `HostOpCommand` runs (ADR-0052
-                // §D4). `None` (no stateful app bound) makes any such command
-                // record a `Failed` terminal stage; never a silent drop.
-                actor_host_op_handler,
-                // V-40 — the actor's clones of the substrate
-                // `EventIngestDispatcher` slot and the
-                // `DmInboxRelayLookup` slot. Per-NIP crates mutate the
-                // shared `Arc`s via `NmpApp::register_ingest_parser` /
-                // `set_dm_inbox_relay_lookup`; the actor binds them onto
-                // the kernel at construction.
-                actor_ingest_dispatcher,
-                actor_dm_inbox_relays,
-                // ADR-0057 PR 2 — the actor's clone of the substrate
-                // `ProfileLookup` slot, bound onto the kernel at construction
-                // (and re-bound on `Reset`) so the kernel's profile readers
-                // consult the same `Arc` the kind:0 `Kind0Parser` writes into.
-                actor_profile_lookup,
-                // ADR-0057 PR 3 — the actor's clone of the substrate
-                // `ContactsLookup` slot, bound onto the kernel at construction
-                // (and re-bound on `Reset`) so the kernel's follow-feed readers
-                // consult the same `Arc` the kind:3 `Kind3Parser` writes into.
-                actor_contacts_lookup,
-                // Mirrors `actor_dm_inbox_relays`: the actor's clone of the
-                // blocked-relay lookup slot, bound onto the kernel at
-                // construction so `build_routing_context` consults the same
-                // `Arc` the kind:10006 parser writes into.
-                actor_blocked_relays,
-                // Per-app bootstrap self-kinds override slot. Read once at
-                // kernel construction and applied via
-                // `Kernel::set_bootstrap_self_kinds_override`.
-                actor_bootstrap_self_kinds,
-                // V-51 phase 4 — the actor's clone of the routing-trace slot.
-                // Filled with `kernel.routing_trace()` right after kernel
-                // construction (and re-filled on `Reset`); per-app crates read
-                // it through `NmpApp::routing_trace`.
-                actor_routing_trace,
-                // V-51 phase 5 — the actor's clone of the substrate-routing
-                // factory slot. Read once after kernel construction (and on
-                // `Reset`); the factory builds the production router/cache
-                // pair the actor installs via `Kernel::set_routing`.
-                actor_routing_substrate,
-                // Spec §271 (2026-05-25) — the actor's clone of the
-                // substrate-publish-resolver factory slot. Read once after
-                // kernel construction (and on `Reset`); the factory builds
-                // the production resolver the actor installs via
-                // `Kernel::set_publish_resolver`. `None` leaves the
-                // kernel's `NoopOutboxResolver` default in place.
-                actor_publish_resolver,
-                actor_raw_event_forward_policy,
-                // V-82 — the actor's clone of the active-account slot. Threaded
-                // into the kernel at construction (and re-handed on `Reset`) so
-                // `NmpApp::active_account_handle` reads the slot the kernel
-                // actually writes on sign-in / switch / logout.
-                actor_active_account,
-                // V-83 — the actor's clone of the event-store publish-back slot.
-                // The actor publishes `kernel.event_store_handle()` into it after
-                // kernel construction (and re-publishes on `Reset`) so
-                // `NmpApp::event_by_id` reads the live kernel store.
-                actor_event_store,
-                // Test-support kernel-clock slot. Production never writes it
-                // (the kernel keeps its `SystemClock`); the
-                // `NmpApp::set_kernel_clock_for_test` seam writes an
-                // `Arc<dyn Clock>` the actor applies at construction so
-                // deterministic e2e tests stamp strictly-increasing
-                // `created_at` without a wall-clock sleep (D8).
-                actor_kernel_clock,
-            );
-        }));
-        if let Err(e) = result {
-            // Best-effort downcast of the panic payload — see
-            // `update_envelope::panic_message`. D6: `panic_message` and
-            // `encode_panic` is infallible in practice, so building the
-            // death signal cannot itself panic.
-            let msg = nmp_core::panic_message(&*e);
-            let frame = nmp_core::encode_panic(format!("actor thread died: {msg}"));
-            let _ = update_tx_panic.send(frame);
-        }
+    let actor_starter: ActorStarter = Box::new(move || {
+        thread::spawn(move || {
+            // D7 (actor-death visibility): the actor thread owns the kernel loop.
+            // If it panics, `send_cmd` would otherwise silently drop every
+            // subsequent command (the channel closes with no signal). Catch the
+            // unwind here and emit one envelope-conforming `Panic` frame on the
+            // update channel *before* this thread (and `update_tx`) is dropped,
+            // so the host receives a terminal, decodable signal.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_actor_with_observers(
+                    command_rx,
+                    actor_command_tx_self,
+                    update_tx,
+                    actor_lifecycle_observer,
+                    actor_event_observers,
+                    actor_raw_event_observers,
+                    actor_snapshot_projections,
+                    // V-38: substrate-generic relay-text interceptor slot. The
+                    // host's `nmp-nip47` install registers its NWC runtime here;
+                    // the actor calls `interceptor.on_relay_text(...)` for every
+                    // inbound text frame.
+                    actor_relay_text_interceptor,
+                    // ADR-0051: fanned on `PoolEvent::Opened` (nmp-nip11 fetch).
+                    actor_relay_connected_hook,
+                    // D0: NIP-46 remote signing is an app noun — the
+                    // bunker-handshake slot the actor's `IdentityRuntime` writes;
+                    // the `"bunker_handshake"` projection (registered below) reads
+                    // the matching clone.
+                    actor_bunker_handshake,
+                    // V-14 step b: bunker relay-layer connection-state slot.
+                    // The broker callback → actor command → slot write keeps D4.
+                    actor_signer_state,
+                    // ADR-0052 §D3 — actor clones of the per-app signer hook slots
+                    // (read by the actor's `IdentityRuntime` on bunker/NIP-55 restore).
+                    actor_bunker_hook,
+                    actor_external_signer_hook,
+                    actor_configured_relays,
+                    actor_mls_local_nsec,
+                    actor_active_local_keys,
+                    actor_capability_callback,
+                    actor_storage_path,
+                    // G-S4 — the actor's clone of the command-channel depth
+                    // counter. Decremented per dequeued command; bound onto the
+                    // kernel for the `actor_queue_depth` snapshot field.
+                    actor_queue_depth,
+                    // D2 — the actor's clone of the coverage-gate hook slot. Read
+                    // once after kernel construction (and again after `Reset`) and
+                    // installed on `SubscriptionLifecycle` so the production plan
+                    // pipeline enforces D2 ("negentropy before REQ") via the
+                    // per-app crate's policy closure.
+                    actor_coverage_hook,
+                    actor_req_frame_interceptor,
+                    // The actor's clone of the host-op handler slot — read by the
+                    // `Protocol` dispatch arm when a `HostOpCommand` runs (ADR-0052
+                    // §D4). `None` (no stateful app bound) makes any such command
+                    // record a `Failed` terminal stage; never a silent drop.
+                    actor_host_op_handler,
+                    // V-40 — the actor's clones of the substrate
+                    // `EventIngestDispatcher` slot and the
+                    // `DmInboxRelayLookup` slot. Per-NIP crates mutate the
+                    // shared `Arc`s via `NmpApp::register_ingest_parser` /
+                    // `set_dm_inbox_relay_lookup`; the actor binds them onto
+                    // the kernel at construction.
+                    actor_ingest_dispatcher,
+                    actor_dm_inbox_relays,
+                    // ADR-0057 PR 2 — the actor's clone of the substrate
+                    // `ProfileLookup` slot, bound onto the kernel at construction
+                    // (and re-bound on `Reset`) so the kernel's profile readers
+                    // consult the same `Arc` the kind:0 `Kind0Parser` writes into.
+                    actor_profile_lookup,
+                    // ADR-0057 PR 3 — the actor's clone of the substrate
+                    // `ContactsLookup` slot, bound onto the kernel at construction
+                    // (and re-bound on `Reset`) so the kernel's follow-feed readers
+                    // consult the same `Arc` the kind:3 `Kind3Parser` writes into.
+                    actor_contacts_lookup,
+                    // Mirrors `actor_dm_inbox_relays`: the actor's clone of the
+                    // blocked-relay lookup slot, bound onto the kernel at
+                    // construction so `build_routing_context` consults the same
+                    // `Arc` the kind:10006 parser writes into.
+                    actor_blocked_relays,
+                    // Per-app bootstrap self-kinds override slot. Read once at
+                    // kernel construction and applied via
+                    // `Kernel::set_bootstrap_self_kinds_override`.
+                    actor_bootstrap_self_kinds,
+                    // V-51 phase 4 — the actor's clone of the routing-trace slot.
+                    // Filled with `kernel.routing_trace()` right after kernel
+                    // construction (and re-filled on `Reset`); per-app crates read
+                    // it through `NmpApp::routing_trace`.
+                    actor_routing_trace,
+                    // V-51 phase 5 — the actor's clone of the substrate-routing
+                    // factory slot. Read once after kernel construction (and on
+                    // `Reset`); the factory builds the production router/cache
+                    // pair the actor installs via `Kernel::set_routing`.
+                    actor_routing_substrate,
+                    // Spec §271 (2026-05-25) — the actor's clone of the
+                    // substrate-publish-resolver factory slot. Read once after
+                    // kernel construction (and on `Reset`); the factory builds
+                    // the production resolver the actor installs via
+                    // `Kernel::set_publish_resolver`. `None` leaves the
+                    // kernel's `NoopOutboxResolver` default in place.
+                    actor_publish_resolver,
+                    actor_raw_event_forward_policy,
+                    // V-82 — the actor's clone of the active-account slot. Threaded
+                    // into the kernel at construction (and re-handed on `Reset`) so
+                    // `NmpApp::active_account_handle` reads the slot the kernel
+                    // actually writes on sign-in / switch / logout.
+                    actor_active_account,
+                    // V-83 — the actor's clone of the event-store publish-back slot.
+                    // The actor publishes `kernel.event_store_handle()` into it after
+                    // kernel construction (and re-publishes on `Reset`) so
+                    // `NmpApp::event_by_id` reads the live kernel store.
+                    actor_event_store,
+                    // Test-support kernel-clock slot. Production never writes it
+                    // (the kernel keeps its `SystemClock`); the
+                    // `NmpApp::set_kernel_clock_for_test` seam writes an
+                    // `Arc<dyn Clock>` the actor applies at construction so
+                    // deterministic e2e tests stamp strictly-increasing
+                    // `created_at` without a wall-clock sleep (D8).
+                    actor_kernel_clock,
+                );
+            }));
+            if let Err(e) = result {
+                // Best-effort downcast of the panic payload — see
+                // `update_envelope::panic_message`. D6: `panic_message` and
+                // `encode_panic` is infallible in practice, so building the
+                // death signal cannot itself panic.
+                let msg = nmp_core::panic_message(&*e);
+                let frame = nmp_core::encode_panic(format!("actor thread died: {msg}"));
+                let _ = update_tx_panic.send(frame);
+            }
+        })
     });
+    let _ = startup_update_tx.send(prestart_snapshot_frame(0));
     let (embed_sidecar, listener_embed_sidecar) = snapshot::embed_sidecar::new_embed_sidecar_pair();
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
-            snapshot::embed_sidecar::update_embed_sidecar_from_frame(&update, &listener_embed_sidecar);
+            snapshot::embed_sidecar::update_embed_sidecar_from_frame(
+                &update,
+                &listener_embed_sidecar,
+            );
             notify_identity_change_observers(
                 &listener_active_account,
                 &listener_last_active_account,
@@ -1329,7 +1325,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         kernel_clock,
         raw_event_forward_policy,
         pending_mls_autopublish,
-        actor: Mutex::new(Some(actor)),
+        actor_starter: Mutex::new(Some(actor_starter)),
+        startup_update_tx: Mutex::new(Some(startup_update_tx)),
+        actor: Mutex::new(None),
         update_listener: Mutex::new(Some(update_listener)),
         // M6 — the action registry the kernel ships with: `PublishModule`
         // only. NIP-29 / NIP-59 modules are app nouns (D0) and are
@@ -2607,12 +2605,11 @@ impl NmpApp {
     /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]
     /// (`Arc`).
     ///
-    /// Returns `None` until the actor has constructed the kernel
-    /// (the first command after `nmp_app_new` causes the actor to build
-    /// the kernel; the projection is published into the slot immediately
-    /// after — see `run_actor_with_observers`). Once `Some`, the same
-    /// projection survives until `Reset`, which rebuilds the kernel and
-    /// re-publishes a fresh projection clone into the slot.
+    /// Returns `None` until `nmp_app_start` spawns the actor and the actor has
+    /// constructed the kernel. The projection is published into the slot
+    /// immediately after construction — see `run_actor_with_observers`. Once
+    /// `Some`, the same projection survives until `Reset`, which rebuilds the
+    /// kernel and re-publishes a fresh projection clone into the slot.
     ///
     /// Per-app crates (chirp-repl `routing-trace` subcommand, the
     /// `nmp-testing` validation harness) read recent routing decisions via
@@ -2775,6 +2772,7 @@ pub extern "C" fn nmp_app_set_update_callback(
     let Some(app) = app_ref(app) else {
         return;
     };
+    let callback_registered = callback.is_some();
     let new_registration = callback.map(|callback| UpdateCallbackRegistration {
         context: context as usize,
         callback,
@@ -2794,13 +2792,17 @@ pub extern "C" fn nmp_app_set_update_callback(
     };
     let mut guard = guard;
     guard.registration = new_registration;
-    let _guard = app
+    let waited = app
         .update_callback
         .drained
         .wait_while(guard, |inner| inner.in_flight > 0);
     // When `wait_while` returns, `in_flight == 0` under the lock. The old
     // registration has been replaced and no invocation of it is in flight.
-    // Dropping `_guard` releases the lock.
+    // Dropping `waited` releases the lock.
+    drop(waited);
+    if callback_registered && !app.started.load(Ordering::SeqCst) {
+        app.emit_passive_prestart_snapshot();
+    }
 }
 
 #[no_mangle]
@@ -2859,7 +2861,10 @@ pub extern "C" fn nmp_app_start(
     // later setter call is dropped and recorded as `DroppedLateWiring`. Set
     // before the send so there is no window where a setter racing in just after
     // Start records `ReplacedPrevious` instead of the truthful drop.
-    app.started.store(true, Ordering::SeqCst);
+    let was_started = app.started.swap(true, Ordering::SeqCst);
+    if !was_started {
+        app.spawn_actor_if_needed();
+    }
 
     app.send_cmd(ActorCommand::Start {
         visible_limit: clamp_visible(visible_limit),

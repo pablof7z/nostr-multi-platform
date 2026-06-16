@@ -180,13 +180,6 @@ impl Inbox {
         self.rx.recv_timeout(timeout)
     }
 
-    /// Blocking receive used by the bootstrap path (wait for the first
-    /// command before constructing the kernel). Returns `None` if the inbox is
-    /// closed.
-    pub(super) fn recv(&self) -> Option<ActorMail> {
-        self.rx.recv().ok()
-    }
-
     /// Non-blocking drain of one mail, if any is queued.
     pub(super) fn try_recv(&self) -> Result<ActorMail, TryRecvError> {
         self.rx.try_recv()

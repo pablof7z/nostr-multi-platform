@@ -318,7 +318,7 @@ impl RemoteSignerHandle for ArcNip55Signer {
 /// apps have independent drivers and a freed-then-recreated app re-initialises
 /// cleanly.
 ///
-/// `nmp_app_new` calls this before the actor can run `Start`, which fixes the
+/// `nmp_app_new` calls this before `nmp_app_start` can spawn the actor, fixing the
 /// restore-order bug where a persisted NIP-55 account degraded because the hook
 /// was installed only after host-specific Android setup. Android JNI shims may
 /// still call the public symbol after registering their capability trampoline;

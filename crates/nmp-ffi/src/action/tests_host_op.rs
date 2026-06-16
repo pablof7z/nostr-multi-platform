@@ -8,7 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use super::super::{nmp_app_free, nmp_app_new};
+use super::super::{nmp_app_free, nmp_app_new, nmp_app_start};
 use super::*;
 
 // ──────────────────────────────────────────────────────────────────
@@ -68,8 +68,7 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
         correlation_id: &str,
         send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
-        let action_json =
-            serde_json::to_string(&action).map_err(|e| e.to_string())?;
+        let action_json = serde_json::to_string(&action).map_err(|e| e.to_string())?;
         // ADR-0052 §D4 (K2 rung 5.4): host-op dispatch flows through the single
         // `Protocol` write seam as `HostOpCommand` (the bespoke `DispatchHostOp`
         // arm was deleted). The handler still lives in the per-app
@@ -132,6 +131,7 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
     // module before any `nmp_app_dispatch_action` arrives.
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
     app_mut.register_action(TestHostOpModule);
+    nmp_app_start(app, 0, 256, 4);
 
     let out = dispatch_action_json(
         // SAFETY: `nmp_app_new` never returns null.
@@ -209,6 +209,7 @@ fn dispatch_host_op_without_handler_still_returns_correlation_id() {
     // a normal `correlation_id` envelope because `start()` and the
     // `execute()` enqueue both succeed.
     app_mut.register_action(TestHostOpModule);
+    nmp_app_start(app, 0, 256, 4);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -246,6 +247,7 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
     let app_mut = unsafe { &mut *app };
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
     app_mut.register_action(TestHostOpModule);
+    nmp_app_start(app, 0, 256, 4);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -317,6 +319,7 @@ fn host_op_panicking_handler_is_isolated_and_actor_survives() {
     app_mut.set_host_op_handler(Arc::new(PanickingHostHandler {
         seen: Arc::clone(&panic_seen),
     }) as Arc<dyn nmp_core::substrate::HostOpHandler>);
+    nmp_app_start(app, 0, 256, 4);
     let _ = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"boom"}"#);
 
     // The panicking handler IS reached (≤ 2 s wall-clock poll).

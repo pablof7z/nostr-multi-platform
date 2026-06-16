@@ -155,13 +155,13 @@ mod tests {
         // Smoke-test the composition path: build a real `NmpApp` and run
         // `register_defaults` via the gallery's one-shot. The only test that
         // exercises a real-app registration (the null-path test above covers
-        // the D6 degrade). Liveness reaches the host via the push callback
-        // (`nmp_app_set_update_callback`) and the `nmp_app_is_alive` probe;
-        // there is no pull-side snapshot symbol to assert against.
+        // the D6 degrade). `nmp_app_new` is passive; `nmp_app_start` spawns
+        // the actor before the D7 liveness probe can report alive.
         let app = nmp_ffi::nmp_app_new();
         assert!(!app.is_null(), "nmp_app_new must produce a non-null app");
 
         nmp_app_gallery_register(app as *mut c_void);
+        nmp_ffi::nmp_app_start(app as *mut nmp_ffi::NmpApp, 0, 256, 4);
         assert!(
             nmp_ffi::nmp_app_is_alive(app as *mut nmp_ffi::NmpApp) != 0,
             "registered app must report alive via the D7 probe"

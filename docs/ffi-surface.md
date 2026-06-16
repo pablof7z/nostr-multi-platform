@@ -24,10 +24,10 @@ helper symbols.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_app_new` | `() -> *mut NmpApp` | Allocate the kernel handle, spawn actor thread + update-listener thread. | Chirp, Android JNI (`nativeNew`) | Called on caller thread; returns non-null or crashes (OOM). Actor/listener run on own OS threads. | n/a — returns pointer, cannot error across FFI | n/a |
+| `nmp_app_new` | `() -> *mut NmpApp` | Allocate a passive kernel handle, command channel, and update-listener thread. The actor is spawned by the first `nmp_app_start`. | Chirp, Android JNI (`nativeNew`) | Called on caller thread; returns non-null or crashes (OOM). Listener runs on its own OS thread; actor runs only after start. | n/a — returns pointer, cannot error across FFI | n/a |
 | `nmp_app_free` | `(app: *mut NmpApp)` | Reclaim handle via `Box::from_raw`; `Drop` sends `Shutdown` and joins both threads (synchronous). | Chirp deinit, Android JNI (`nativeFree`) | Synchronous on calling thread. NOT idempotent on double-free (UB). | null is no-op | n/a |
 | `nmp_app_set_update_callback` | `(app, context: *mut c_void, callback: Option<fn(*mut c_void, *const u8, usize)>)` | Register push callback for FlatBuffers update frames. `None` unregisters. | Chirp, Android JNI | Callback fires on update-listener thread. Payload bytes are valid only for the call duration — callee must copy before returning. | null app / poisoned lock → early return | D7-clean: transport only |
-| `nmp_app_start` | `(app, _events_per_second: c_uint, visible_limit: c_uint, emit_hz: c_uint)` | Send `ActorCommand::Start`; clamps `visible_limit` to 1–500 (0 → default), `emit_hz` to 1–12 (0 → default). `_events_per_second` is a legacy unused ABI slot. | Chirp, Android JNI (`nativeStart`) | Fire-and-forget | null → early return | n/a |
+| `nmp_app_start` | `(app, _events_per_second: c_uint, visible_limit: c_uint, emit_hz: c_uint)` | Spawn the actor on first call, then send `ActorCommand::Start`; clamps `visible_limit` to 1–500 (0 → default), `emit_hz` to 1–12 (0 → default). `_events_per_second` is a legacy unused ABI slot. | Chirp, Android JNI (`nativeStart`) | Fire-and-forget | null → early return | n/a |
 | `nmp_app_configure` | `(app, _events_per_second: c_uint, visible_limit: c_uint, emit_hz: c_uint)` | Same as `start` but sends `ActorCommand::Configure` (hot-reconfigure without re-init). | Chirp | Fire-and-forget | null → early return | n/a |
 | `nmp_app_stop` | `(app)` | Send `ActorCommand::Stop`. | Chirp, Android JNI (`nativeStop`) | Fire-and-forget | null → early return | n/a |
 | `nmp_app_reset` | `(app)` | Send `ActorCommand::Reset`; clears kernel state. | Chirp | Fire-and-forget | null → early return | n/a |
@@ -220,7 +220,7 @@ update-listener thread after copying the borrowed FlatBuffers frame.
 
 | Type | Role | Allocator | Freer | Thread |
 |---|---|---|---|---|
-| `*mut NmpApp` | Opaque handle | Rust (`Box::into_raw` in `nmp_app_new`) | Rust (`Box::from_raw` in `nmp_app_free`; `Drop` joins threads) | Created on caller thread; actor/listener on own OS threads |
+| `*mut NmpApp` | Opaque handle | Rust (`Box::into_raw` in `nmp_app_new`) | Rust (`Box::from_raw` in `nmp_app_free`; `Drop` joins started actor + listener) | Created on caller thread; listener starts at allocation, actor starts on first `nmp_app_start` |
 | `*const c_char` (inputs) | C string args (pubkey, uri, content, …) | Caller | Caller; Rust copies into owned `String` synchronously, never frees the C buffer | Read synchronously on calling thread |
 | `*mut c_char` (output) | Return value of any FFI function that yields a heap string | Rust (`CString::into_raw`) | Caller must call `nmp_free_string` | Calling thread |
 | `*mut c_void` | Callback context for `set_update_callback`, `set_lifecycle_callback`, `set_capability_callback` | Caller; stored as `usize`, never dereffed by Rust | Caller-owned | Passed back on the relevant callback thread |
