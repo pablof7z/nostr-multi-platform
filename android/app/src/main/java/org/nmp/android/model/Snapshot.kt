@@ -89,6 +89,7 @@ data class SnapshotProjections(
     // The map is keyed by `primary_id` (event-id hex or `kind:pubkey:d` coord).
     // DECODE-ONLY: the kernel resolves embed projections; this shell is D0-clean.
     @SerialName("claimed_event_embeds") val claimedEventEmbeds: Map<String, EmbedEnvelopeEntry> = emptyMap(),
+    @SerialName("nmp.follow_list") val followList: FollowListSnapshot = FollowListSnapshot(),
 )
 
 /**

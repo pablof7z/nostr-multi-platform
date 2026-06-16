@@ -134,6 +134,16 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
         projections.insert("nmp.feed.home".to_string(), feed);
     }
 
+    // nmp.follow_list — active account's NIP-02 follow set. Desktop consumes
+    // the Rust-owned projection for button state and owns no local follow cache.
+    if let Some(m) =
+        find("nmp.follow_list").and_then(|b| nmp_nip02::decode_follow_list(b).ok())
+    {
+        if let Ok(value) = serde_json::to_value(&m) {
+            projections.insert("nmp.follow_list".to_string(), value);
+        }
+    }
+
     // resolved_profiles — pubkey -> ProfileCard map (mention/display resolution).
     if let Some(m) =
         find(tp::RESOLVED_PROFILES_SCHEMA_ID).and_then(|b| tp::decode_resolved_profiles(b).ok())
@@ -406,5 +416,22 @@ mod signer_projection_decode_tests {
         assert!(status.is_terminal_success);
         assert!(!status.is_in_flight);
         assert!(!status.is_failed);
+    }
+
+    /// Verifies the JSON shape produced from `nmp_nip02::decode_follow_list`
+    /// deserialises into the desktop snapshot mirror.
+    #[test]
+    fn follow_list_json_materialises_into_snapshot_type() {
+        let v = serde_json::json!({
+            "follows": [
+                { "pubkey": "aa" },
+                { "pubkey": "bb" }
+            ]
+        });
+        let snapshot: crate::snapshot::FollowListSnapshot = serde_json::from_value(v)
+            .expect("FollowListSnapshot must deserialize from nmp.follow_list JSON");
+        assert_eq!(snapshot.follows.len(), 2);
+        assert_eq!(snapshot.follows[0].pubkey, "aa");
+        assert_eq!(snapshot.follows[1].pubkey, "bb");
     }
 }

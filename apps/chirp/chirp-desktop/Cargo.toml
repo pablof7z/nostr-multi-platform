@@ -27,6 +27,9 @@ nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # the typed sidecar render cutover (ADR-0038).
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 
+# NIP-02 typed follow-list codec: decode nmp.follow_list for profile buttons.
+nmp-nip02 = { path = "../../../crates/nmp-nip02" }
+
 # NIP-17 typed DM-inbox codec: decode_dm_inbox_snapshot for the
 # "nmp.nip17.dm_inbox" sidecar (PR-B typed-first migration, #991/#979).
 nmp-nip17 = { path = "../../../crates/nmp-nip17" }

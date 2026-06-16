@@ -26,9 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -100,6 +97,7 @@ fun ProfileScreen(
     val displayName = profileCard?.displayName?.takeIf { it.isNotEmpty() } ?: shortPubkey
     val nip05 = profileCard?.nip05?.takeIf { it.isNotEmpty() }
     val noteCount = cards.size
+    val following = projections?.followList?.follows?.contains(pubkey) == true
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
     val eventClaimer: EventClaimer = { uri, consumerId, claim ->
         if (claim) model.claimEvent(uri, consumerId)
@@ -183,7 +181,12 @@ fun ProfileScreen(
                     }
 
                     Spacer(Modifier.size(12.dp))
-                    FollowButton(pubkey = pubkey, model = model)
+                    FollowButton(
+                        pubkey = pubkey,
+                        model = model,
+                        following = following,
+                        activePubkey = snapshot.activeAccount,
+                    )
                 }
 
                 HorizontalDivider()
@@ -228,29 +231,24 @@ fun ProfileScreen(
 }
 
 /**
- * Follow / Unfollow action (#1291 GAP 1b). MVP dispatch-only: Android has no
- * follow-list projection yet, so the label toggles on local optimistic state
- * seeded from the last dispatch. The kernel owns the kind:3 contact-list write;
- * this is a thin call site into the existing `model.follow`/`model.unfollow`.
- * Mirrors iOS `ProfileView`'s follow button.
+ * Follow / Unfollow action. The label reads the Rust-owned `nmp.follow_list`
+ * projection; this shell only dispatches actions and owns no follow state.
  */
 @Composable
-private fun FollowButton(pubkey: String, model: KernelModel) {
-    if (pubkey.isEmpty()) return
-    var following by remember(pubkey) { mutableStateOf(false) }
+private fun FollowButton(
+    pubkey: String,
+    model: KernelModel,
+    following: Boolean,
+    activePubkey: String?,
+) {
+    if (pubkey.isEmpty() || pubkey == activePubkey) return
     if (following) {
-        OutlinedButton(onClick = {
-            model.unfollow(pubkey)
-            following = false
-        }) {
+        OutlinedButton(onClick = { model.unfollow(pubkey) }) {
             Text("Following")
         }
     } else {
         Button(
-            onClick = {
-                model.follow(pubkey)
-                following = true
-            },
+            onClick = { model.follow(pubkey) },
             colors = ButtonDefaults.buttonColors(),
         ) {
             Text("Follow")

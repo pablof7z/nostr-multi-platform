@@ -200,6 +200,19 @@ pub struct RootCard {
     pub card: TimelineEventCard,
 }
 
+/// `nmp.follow_list` projection payload.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct FollowListSnapshot {
+    #[serde(default)]
+    pub follows: Vec<FollowEntry>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct FollowEntry {
+    #[serde(default)]
+    pub pubkey: String,
+}
+
 /// Desktop-local mirror of `nmp_nip01::TimelineEventCard` (post-#922 shape).
 ///
 /// Raw protocol data only — `author_pubkey` as hex, `created_at` as Unix
