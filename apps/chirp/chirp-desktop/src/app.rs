@@ -19,6 +19,7 @@ use crate::snapshot::{
     ActionStageRow, FollowListSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
 };
 use crate::timeline_panel::{avatar, feed_card, note_record_from_card};
+use crate::zap_amount::ZapAmountState;
 use nmp_nip01::NoteRecord;
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ pub struct DesktopApp {
     pub(crate) show_edit_profile: bool,
     pub(crate) nwc_input: String,
     pub(crate) pending_account_removal: Option<String>,
+    pub(crate) zap_amount: ZapAmountState,
 }
 
 impl DesktopApp {
@@ -108,6 +110,7 @@ impl DesktopApp {
             show_edit_profile: false,
             nwc_input: String::new(),
             pending_account_removal: None,
+            zap_amount: ZapAmountState::default(),
         }
     }
 
@@ -131,6 +134,8 @@ impl App for DesktopApp {
         if matches!(self.tab, AppTab::Home | AppTab::Thread(_)) || self.reply_to.is_some() {
             self.compose_bar(ctx, &snap);
         }
+
+        self.zap_amount_window(ctx);
     }
 }
 
@@ -356,6 +361,16 @@ impl DesktopApp {
             ui.add_space(6.0);
         });
     }
+
+    fn zap_amount_window(&mut self, ctx: &egui::Context) {
+        if let Some((target, amount_msats)) = self.zap_amount.show(ctx) {
+            let _ = self.bridge.zap(
+                &target.recipient_pubkey,
+                amount_msats,
+                &target.target_event_id,
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +409,7 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &thread_feed.cards {
-                    feed_card(
+                    if let Some(target) = feed_card(
                         ui,
                         &entry.card,
                         &profiles,
@@ -402,7 +417,9 @@ impl DesktopApp {
                         &mut self.tab,
                         &self.bridge,
                         &mut self.reply_to,
-                    );
+                    ) {
+                        self.zap_amount.open(target);
+                    }
                     ui.add_space(4.0);
                 }
             });
@@ -489,7 +506,7 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &author_feed.cards {
-                    feed_card(
+                    if let Some(target) = feed_card(
                         ui,
                         &entry.card,
                         &profiles,
@@ -497,7 +514,9 @@ impl DesktopApp {
                         &mut self.tab,
                         &self.bridge,
                         &mut self.reply_to,
-                    );
+                    ) {
+                        self.zap_amount.open(target);
+                    }
                     ui.add_space(4.0);
                 }
             });
