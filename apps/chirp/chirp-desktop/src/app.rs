@@ -17,7 +17,8 @@ use std::collections::HashMap;
 use crate::bridge::AppRuntime;
 use crate::render::{hex_color, note_body};
 use crate::snapshot::{
-    ActionStageRow, ModularTimelineSnapshot, ProfileCard, Snapshot, TimelineEventCard,
+    ActionStageRow, FollowListSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
+    TimelineEventCard,
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
@@ -494,17 +495,24 @@ impl DesktopApp {
         });
         ui.add_space(4.0);
 
-        // Follow / Unfollow — dispatches the existing nmp.follow / nmp.unfollow
-        // actions through the bridge (mirrors the TUI's `f`/`F` handlers).
-        ui.horizontal(|ui| {
-            if ui.button("Follow").clicked() {
-                let _ = self.bridge.follow(&pk);
-            }
-            if ui.button("Unfollow").clicked() {
-                let _ = self.bridge.unfollow(&pk);
-            }
-        });
-        ui.add_space(4.0);
+        let follow_list: FollowListSnapshot = snap.projection("nmp.follow_list").unwrap_or_default();
+        let following = follow_list
+            .follows
+            .iter()
+            .any(|entry| entry.pubkey == pubkey);
+        let is_self = snap.active_account.as_deref() == Some(pubkey);
+        if !is_self {
+            ui.horizontal(|ui| {
+                if following {
+                    if ui.button("Following").clicked() {
+                        let _ = self.bridge.unfollow(&pk);
+                    }
+                } else if ui.button("Follow").clicked() {
+                    let _ = self.bridge.follow(&pk);
+                }
+            });
+            ui.add_space(4.0);
+        }
 
         ui.separator();
         ui.add_space(4.0);

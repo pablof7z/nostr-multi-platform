@@ -14,6 +14,7 @@ import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
+import org.nmp.android.model.FollowListSnapshot
 import org.nmp.android.model.KernelMetricsLite
 import org.nmp.android.model.KernelUpdate
 import org.nmp.android.model.MarmotGroup
@@ -244,6 +245,7 @@ object KernelUpdateFrameDecoder {
             // (ADR-0037 Commitment 4 fail-closed; no JNI claim/release yet — that
             // is the #984 follow-up; the decode + gallery-render path is complete).
             claimedEventEmbeds = TypedEmbedSidecarDecoder.decode(typedProjections),
+            followList = TypedFollowListDecoder.decode(typedProjections) ?: FollowListSnapshot(),
         )
     }
 

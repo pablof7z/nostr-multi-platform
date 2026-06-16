@@ -2,7 +2,7 @@
 #
 # Kotlin flatc codegen-drift gate (issue #1093, extended for #1288).
 #
-# The checked-in Kotlin bindings cover two groups, both generated with flatc
+# The checked-in Kotlin bindings cover four groups, all generated with flatc
 # 25.2.10 (the Android/Kotlin runtime pin — see ci/check-flatbuffers-version-pins.sh
 # and android/app/build.gradle.kts):
 #   transport — android/app/src/main/java/nmp/transport/*.kt
@@ -11,6 +11,10 @@
 #               (flatc output for every `namespace nmp.kernel` root schema in
 #                crates/nmp-core/schema/*.fbs — signer_state, action_lifecycle,
 #                action_stages, action_results, relay_diagnostics, accounts, …)
+#   embed     — android/app/src/main/java/nmp/embed/*.kt
+#               (flatc output for crates/nmp-content/schema/embed_sidecar.fbs)
+#   nip02     — android/app/src/main/java/nmp/nip02/*.kt
+#               (flatc output for crates/nmp-nip02/schema/follow_list.fbs)
 #
 # This script regenerates the Kotlin bindings with the PINNED flatc version and
 # fails on any file difference — so the schemas and the Kotlin bindings can never
@@ -35,6 +39,12 @@
 #      flatc --kotlin -o android/app/src/main/java/ \
 #          -I crates/nmp-core/schema \
 #          $(grep -l 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs)
+#      # Embed sidecar binding:
+#      flatc --kotlin -o android/app/src/main/java/ \
+#          crates/nmp-content/schema/embed_sidecar.fbs
+#      # NIP-02 follow-list binding:
+#      flatc --kotlin -o android/app/src/main/java/ \
+#          crates/nmp-nip02/schema/follow_list.fbs
 #   3. Verify the output with this script.
 
 set -euo pipefail
@@ -202,4 +212,50 @@ if [[ "${embed_drift}" -ne 0 ]]; then
     exit 1
 fi
 
-echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed bindings in sync)"
+# ── NIP-02 follow-list binding — nmp.nip02 namespace ───────────────────────
+#
+# `follow_list.fbs` lives in nmp-nip02 rather than nmp-core because the
+# follow-list projection is a reusable NIP-02 building block. Android consumes
+# it directly for profile follow-button state, so its generated Kotlin binding
+# is drift-gated with the other shell-consumed schemas.
+NIP02_SCHEMA="${REPO_ROOT}/crates/nmp-nip02/schema/follow_list.fbs"
+NIP02_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/nip02"
+
+flatc --kotlin -o "${TMP_DIR}" "${NIP02_SCHEMA}"
+NIP02_GENERATED_DIR="${TMP_DIR}/nmp/nip02"
+
+nip02_drift=0
+nip02_checked=0
+if [[ -d "${NIP02_CHECKED_IN_DIR}" ]]; then
+    for checked_in in "${NIP02_CHECKED_IN_DIR}"/*.kt; do
+        [[ -f "${checked_in}" ]] || continue
+        base="$(basename "${checked_in}")"
+        fresh="${NIP02_GENERATED_DIR}/${base}"
+        if [[ ! -f "${fresh}" ]]; then
+            echo "kotlin-flatc-drift: checked-in NIP-02 binding ${base} has no" >&2
+            echo "  counterpart in a fresh flatc run over follow_list.fbs —" >&2
+            echo "  its source table was renamed or removed from the schema." >&2
+            nip02_drift=$((nip02_drift + 1))
+            continue
+        fi
+        if ! diff -u "${checked_in}" "${fresh}"; then
+            echo "kotlin-flatc-drift: NIP-02 binding ${base} drifted from a fresh run." >&2
+            nip02_drift=$((nip02_drift + 1))
+            continue
+        fi
+        nip02_checked=$((nip02_checked + 1))
+    done
+fi
+
+if [[ "${nip02_drift}" -ne 0 ]]; then
+    echo "" >&2
+    echo "kotlin-flatc-drift: ${nip02_drift} NIP-02 binding(s) drifted from a fresh" >&2
+    echo "'flatc --kotlin' run over crates/nmp-nip02/schema/follow_list.fbs." >&2
+    echo "Regenerate with:" >&2
+    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "      crates/nmp-nip02/schema/follow_list.fbs" >&2
+    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
+    exit 1
+fi
+
+echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed + ${nip02_checked} NIP-02 bindings in sync)"
