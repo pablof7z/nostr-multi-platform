@@ -28,9 +28,10 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 Two seams are wired in `register()`: `register_action` for the write path and
 `register_snapshot_projection` for the read path. A `KernelEventObserver` feeds
 raw kind:1 events into an app-owned feed store. The difference from the old
-fixture model is that `register()` **first inherits the canonical NMP
-composition** through `nmp_defaults::register_defaults(app)`, then adds the
-app-specific seams on top.
+fixture model is that `register()` is the app-core composition root: it **first
+inherits the canonical NMP composition** through
+`nmp_defaults::register_defaults(app)` exactly once, then adds the app-specific
+seams on top.
 
 The app crate you create for your product should open with the D0 boundary
 comment verbatim:
@@ -140,6 +141,7 @@ impl ActionModule for NoteActionModule {
     fn is_async_completing() -> bool { true }  // relay ack arrives later
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(nmp_core::ActorCommand),
@@ -214,7 +216,7 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     nmp_defaults::register_defaults(app);
 
     // 2. Write path.
-    app.register_action::<NoteActionModule>();
+    app.register_action(NoteActionModule);
 
     // 3. Event-driven view — populates the feed store on every ingest.
     app.register_event_observer(Arc::new(FeedObserver { store: Arc::clone(&store) }));
@@ -261,7 +263,8 @@ staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 
 1. Link `nmp-defaults`, `nmp-ffi`, and `microblog-core`.
 2. Export one registration symbol the iOS shell calls after `nmp_app_new()`.
-3. Call `nmp_defaults::register_defaults(app)` and then `microblog_core::register(app)`.
+3. Call `microblog_core::register(app)`. The defaults call is already inside
+   that app-core composition root.
 
 That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/nmp-app-chirp`.
 

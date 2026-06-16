@@ -62,6 +62,7 @@ impl ActionModule for NoteActionModule {
     fn is_async_completing() -> bool { true }  // relay ack arrives later
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(nmp_core::ActorCommand),
@@ -155,7 +156,9 @@ pub enum Update { ActionAccepted }
 
 There is no generated `FfiApp`. A thin staticlib shell
 (`apps/microblog/nmp-app-microblog/src/lib.rs`) calls
-`nmp_defaults::register_defaults(app)` and then `microblog_core::register(app)`.
+`microblog_core::register(app)`. That app-core function is the composition
+root: it calls `nmp_defaults::register_defaults(app)` once, then wires
+microblog-specific seams.
 See [19b](19b-walkthrough-microblog.md) for the shell.
 
 ### What `microblog-core` proves
@@ -190,11 +193,11 @@ Registration (`crates/nmp-nip29/src/register.rs`):
 
 ```rust
 pub fn register_actions(app: &mut NmpApp) {
-    app.register_action::<PostChatMessageAction>();
-    app.register_action::<ReactInGroupAction>();
-    app.register_action::<CreatePublicGroupAction>();
-    app.register_action::<DiscoverGroupsAction>();
-    app.register_action::<JoinGroupAction>();
+    app.register_action(PostChatMessageAction);
+    app.register_action(ReactInGroupAction);
+    app.register_action(CreatePublicGroupAction);
+    app.register_action(DiscoverGroupsAction);
+    app.register_action(JoinGroupAction);
     // … 10 more
 }
 ```
@@ -219,18 +222,18 @@ composition happens at the app layer; the only generic surface added to
 > read model. The protocol noun count (~35 named types) is similar — the
 > *composition mechanism* changed, not the scope.
 
-## Module composition: `register_defaults` + app `register()`
+## Module composition: app-core `register()`
 
-Every module's `register()` fn is called once at host init. Under ADR-0046 the
-host first inherits the canonical NMP composition through one library call,
-then adds app-specific seams on top. The microblog staticlib shell:
+Every app-core `register()` fn is called once at host init. Under ADR-0046 the
+app-core composition root inherits the canonical NMP composition through one
+library call, then adds app-specific seams on top. The microblog staticlib shell
+does not call defaults itself:
 
 ```rust
 // apps/microblog/nmp-app-microblog/src/lib.rs
 #[no_mangle]
 pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
     if app.is_null() { return; }
-    nmp_defaults::register_defaults(unsafe { &mut *app });
     microblog_core::register(unsafe { &mut *app });
 }
 ```
@@ -241,7 +244,9 @@ using `NmpAppBuilder`:
 ```rust
 use nmp_defaults::{NmpAppBuilder, RunConfig};
 
-let app = NmpAppBuilder::new()
+let mut builder = NmpAppBuilder::new();
+microblog_core::register(&mut builder);
+let app = builder
     .in_memory()
     .declare_consumed_projections(["microblog.items"])
     .start(RunConfig::default());
@@ -250,9 +255,9 @@ let app = NmpAppBuilder::new()
 
 `nmp_defaults::register_defaults` installs the production routing substrate,
 outbox resolver, NIP-02/17/57/65 action modules, DM-inbox + zap-receipts
-runtimes, WOT bootstrap, and the NIP-23 long-form typed projection. The app
-shell adds only app-specific projections and actions (here, the microblog
-feed).
+runtimes, WOT bootstrap, and the NIP-23 long-form typed projection. The app-core
+composition root adds only app-specific projections and actions (here, the
+microblog feed).
 
 Registration order matters for last-writer-wins slots, but ADR-0049 made the
 canonical defaults *yield* to app registrations: an app registering under a

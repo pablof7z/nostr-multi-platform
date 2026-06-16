@@ -45,9 +45,9 @@ microblog-core = { path = "../../../crates/microblog-core" }
 ```rust
 //! Thin staticlib shell. No app logic here; everything lives in microblog-core.
 use nmp_ffi::NmpApp;
-use nmp_defaults::register_defaults;
 
-/// Register the microblog app on top of the canonical NMP defaults.
+/// Register the microblog app. `microblog_core::register` is the composition root:
+/// it installs the canonical NMP defaults once, then the microblog seams.
 /// The iOS shell calls this after `nmp_app_new()` and before `nmp_app_start()`.
 #[no_mangle]
 pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
@@ -57,7 +57,6 @@ pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new()`.
     // No other reference aliases it here — the exclusive borrow is released
     // before any shared-borrow registration calls below.
-    nmp_defaults::register_defaults(unsafe { &mut *app });
     microblog_core::register(unsafe { &mut *app });
 }
 ```
@@ -69,7 +68,9 @@ composition fits in `examples/shell.rs` using `NmpAppBuilder`:
 use nmp_defaults::{NmpAppBuilder, RunConfig};
 
 fn main() {
-    let app = NmpAppBuilder::new()
+    let mut builder = NmpAppBuilder::new();
+    microblog_core::register(&mut builder);
+    let app = builder
         .storage_path("/tmp/microblog-data")
         .declare_consumed_projections(["microblog.items"])
         .start(RunConfig::default());
@@ -169,8 +170,8 @@ assembled — that is expected and honest, not a defect.
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
 - **Expecting a generated per-app FFI crate today.** `gen modules` is gone.
-  The staticlib shell is hand-written glue that calls `register_defaults`; see
-  [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
+  The staticlib shell is hand-written glue that calls the app-core composition
+  root; see [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
 - **Expecting UniFFI typed payload delivery today.** UniFFI is the planned
   binding/lifecycle bridge (M14); it is not the hot update payload format.
   Code that imports a typed UniFFI `AppUpdate` will not compile against master.

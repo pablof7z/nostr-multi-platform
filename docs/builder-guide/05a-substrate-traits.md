@@ -41,6 +41,7 @@ pub trait ActionModule: Send + Sync + 'static {
     // Called after start() returns Ok. `send` is the bridge to the actor's
     // mpsc channel — fire-and-forget, never blocks.
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(crate::ActorCommand),
@@ -67,7 +68,7 @@ pub trait ActionModule: Send + Sync + 'static {
 
 ```rust
 // In your module's register() fn:
-app.register_action::<MyActionModule>();
+app.register_action(MyActionModule);
 // crates/nmp-ffi/src/lib.rs:1087
 ```
 
@@ -187,7 +188,7 @@ output, treat them as stale. The correct replacements:
 | `ViewModule` (typed reactive projection) | `register_event_observer` + `register_snapshot_projection` |
 | `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
-| `ModuleRegistry` (composition root) | `register()` fn in each module crate, called from a thin staticlib shell or `examples/shell.rs` after `nmp_defaults::register_defaults` |
+| `ModuleRegistry` (composition root) | an app-core `register()` fn that calls `nmp_defaults::register_defaults` once, then app/protocol `register()` fns |
 | `ActionPlan` / `ActionTransition` / `reduce()` | `execute()` dispatching `ActorCommand` |
 
 See [27 — discrepancies](27-discrepancies.md) rows 11–15 for the triage

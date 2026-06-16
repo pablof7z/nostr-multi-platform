@@ -45,14 +45,13 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 `crates/nmp-nip29/src/register.rs`:
 
 ```rust
-// Called from the app core's `register()` (or a thin staticlib shell's
-// registration symbol) during init.
+// Called from an app-core composition root during init.
 pub fn register_actions(app: &mut NmpApp) {
-    app.register_action::<PostChatMessageAction>();
-    app.register_action::<ReactInGroupAction>();
-    app.register_action::<CreatePublicGroupAction>();
-    app.register_action::<DiscoverGroupsAction>();
-    app.register_action::<JoinGroupAction>();
+    app.register_action(PostChatMessageAction);
+    app.register_action(ReactInGroupAction);
+    app.register_action(CreatePublicGroupAction);
+    app.register_action(DiscoverGroupsAction);
+    app.register_action(JoinGroupAction);
     // … 10 more ActionModules
 }
 

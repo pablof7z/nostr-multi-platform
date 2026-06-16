@@ -57,7 +57,8 @@
 //!
 //! * It does not register any app-specific projection (Chirp's
 //!   `ModularTimelineProjection`, group-chat projection, Marmot, etc.).
-//!   Per-app crates wire those themselves on top of `register_defaults`.
+//!   App-core composition crates call `register_defaults` once, then wire
+//!   those app-specific registrations themselves.
 //! * It does not own a C-ABI surface. The `nmp_app_*` FFI lives in
 //!   `nmp-ffi` (and per-app `nmp_app_<app>_*` shells live in the app
 //!   crate). This crate is pure Rust composition.
@@ -67,22 +68,22 @@
 //! # Usage
 //!
 //! ```ignore
-//! use nmp_ffi::{nmp_app_free, nmp_app_new};
+//! use nmp_defaults::{NmpAppBuilder, RunConfig};
 //!
-//! // 1. Construct the app.
-//! let app = nmp_app_new();
+//! // 1. Construct the builder in the shell.
+//! let mut builder = NmpAppBuilder::new();
 //!
-//! // 2. Inherit the canonical NMP composition.
-//! // SAFETY: `app` is a valid pointer from `nmp_app_new`.
-//! nmp_defaults::register_defaults(unsafe { &mut *app });
+//! // 2. Call the app-core composition root. It calls `register_defaults`
+//! //    exactly once, then registers app-specific projections/actions.
+//! my_app_core::register(&mut builder);
 //!
-//! // 3. (Optional) Register any app-specific projections / actions.
-//! //    — e.g. a `ModularTimelineProjection` for a Twitter-style client.
+//! // 3. Drive the lifecycle.
+//! let app = builder
+//!     .in_memory()
+//!     .consume_all_builtin_projections()
+//!     .start(RunConfig::default());
 //!
-//! // 4. Drive the lifecycle (`nmp_app_start`, callbacks, etc.).
-//!
-//! // 5. Tear down.
-//! nmp_app_free(app);
+//! // 4. Tear down through the shell's normal FFI/runtime owner.
 //! ```
 //!
 //! # Ordering contract
