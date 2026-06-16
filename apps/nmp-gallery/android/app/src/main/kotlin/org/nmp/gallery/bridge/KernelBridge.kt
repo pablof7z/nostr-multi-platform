@@ -58,6 +58,10 @@ class KernelBridge {
 
     fun registryJson(): String = nativeRegistryJson()
 
+    /** Rust-owned NIP-19 profile encoder used for display/copy labels. */
+    fun encodeProfile(pubkey: String): String? =
+        if (handle != 0L) nativeEncodeProfile(handle, pubkey) else null
+
     /**
      * Demand-driven kind:0 fetch claim — see KernelBridge.swift /
      * `nmp_app_claim_profile`. Idempotent per (pubkey, consumerId);
@@ -144,6 +148,7 @@ class KernelBridge {
     private external fun nativeGalleryRegister(handle: Long)
     private external fun nativeShowcaseReferencesJson(): String
     private external fun nativeRegistryJson(): String
+    private external fun nativeEncodeProfile(handle: Long, pubkey: String): String?
     private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
     private external fun nativeStop(handle: Long)
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)

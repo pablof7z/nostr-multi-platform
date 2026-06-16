@@ -41,6 +41,7 @@ void nmp_app_stop(void *app);
 // removed `nmp_app_refresh_replaceable` symbol (no new C-ABI symbol).
 void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id, int force);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
+char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 

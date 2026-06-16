@@ -12,9 +12,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
 import org.nmp.gallery.gallery.REGISTRY_SECTIONS
 import org.nmp.gallery.gallery.RegistrySection
 import org.nmp.gallery.gallery.parseRegistryJson
@@ -60,11 +57,6 @@ class GalleryModel : ViewModel() {
      */
     private val _signerState = MutableStateFlow<LoginBlockSignerState?>(null)
     val signerState: StateFlow<LoginBlockSignerState?> = _signerState.asStateFlow()
-
-    private val json: Json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
 
     private var signerJob: Job? = null
 
@@ -168,57 +160,29 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Decode one FlatBuffers snapshot frame. Profiles are read directly from
-     * `projections.resolved_profiles` — the kernel's single, pre-merged profile
-     * projection (added in PR #812). The three-source merge (claimed_profiles +
-     * author_view.profile + mention_profiles, with its precedence rule) now
-     * lives in the kernel, so this host no longer reimplements it.
+     * Decode one FlatBuffers snapshot frame. Gallery reads Tier-3 fields and
+     * typed sidecars from `SnapshotFrame.typed_projections`; the legacy
+     * `snapshot.payload` / generic `Value` tree is not a production source.
      */
     private fun applyFrame(raw: ByteArray) {
-        val v = try {
-            NmpUpdateFrameDecoder.decodeSnapshot(raw)
+        val decoded = try {
+            NmpUpdateFrameDecoder.decodeSnapshot(raw) { pubkey -> bridge.encodeProfile(pubkey) }
         } catch (e: UpdateFrameDecodeException) {
             android.util.Log.w("GalleryModel", "drop frame: ${e.message}")
             return
         }
-        val projections = (v["projections"] as? JsonObject) ?: return
 
-        val assembled = mutableMapOf<String, ProfileWire>()
-
-        // Kernel-merged path: projections.resolved_profiles[pubkey] is already
-        // a ProfileWire-shaped entry. `npub_short` is derived from `npub` by the
-        // ProfileWire constructor default when absent (same algorithm as before).
-        (projections["resolved_profiles"] as? JsonObject)?.let { resolved ->
-            for ((pubkey, el) in resolved) {
-                val profile = runCatching {
-                    json.decodeFromJsonElement<ProfileWire>(el)
-                }.getOrNull() ?: continue
-                assembled[pubkey] = profile
-            }
+        if (decoded.resolvedProfiles.isNotEmpty()) {
+            _profileMap.value = _profileMap.value + decoded.resolvedProfiles
         }
 
-        if (assembled.isNotEmpty()) {
-            _profileMap.value = _profileMap.value + assembled
-        }
-
-        val events = mutableMapOf<String, ClaimedEventWire>()
-        (projections["claimed_events"] as? JsonObject)?.let { claimed ->
-            for ((primaryId, el) in claimed) {
-                val event = runCatching {
-                    json.decodeFromJsonElement<ClaimedEventWire>(el)
-                }.getOrNull() ?: continue
-                events[primaryId] = event
-            }
-        }
-        if (events.isNotEmpty()) {
-            _claimedEvents.value = _claimedEvents.value + events
+        if (decoded.claimedEvents.isNotEmpty()) {
+            _claimedEvents.value = _claimedEvents.value + decoded.claimedEvents
         }
 
         // ADR-0048 D6 — the unified remote-signer health slot. Absent =
         // no remote-signer session active (clears any prior state).
-        _signerState.value = (projections["signer_state"] as? JsonObject)?.let { el ->
-            runCatching { json.decodeFromJsonElement<LoginBlockSignerState>(el) }.getOrNull()
-        }
+        _signerState.value = decoded.signerState
     }
 
     override fun onCleared() {

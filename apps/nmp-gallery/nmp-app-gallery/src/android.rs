@@ -17,7 +17,7 @@ use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile,
+    nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile, nmp_app_encode_profile,
     nmp_app_deliver_external_signer_response, nmp_app_dispatch_action, nmp_app_free, nmp_app_new,
     nmp_app_release_event, nmp_app_release_profile, nmp_app_set_capability_callback,
     nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
@@ -197,6 +197,32 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeRegistryJs
         Ok(js) => js.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeEncodeProfile<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    pubkey: JString<'l>,
+) -> jstring {
+    let Some(s) = session_ref(handle) else {
+        return std::ptr::null_mut();
+    };
+    let Some(pubkey_c) = jstring_to_cstring(&mut env, &pubkey) else {
+        return std::ptr::null_mut();
+    };
+    let raw_ptr = nmp_app_encode_profile(s.app, pubkey_c.as_ptr());
+    if raw_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+    let encoded = unsafe { CStr::from_ptr(raw_ptr) }
+        .to_string_lossy()
+        .into_owned();
+    nmp_free_string(raw_ptr);
+    env.new_string(encoded)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[no_mangle]

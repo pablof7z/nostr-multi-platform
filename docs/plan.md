@@ -34,7 +34,7 @@ production fallback. Track under [F-10 issue #991](https://github.com/pablof7z/n
 
 **What does not work yet** (v1 blockers):
 1. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
-3. **F-05 / F-10 — DONE** — Full typed-projection coverage + `payload:Value` deletion complete. All consumers (chirp-tui, chirp-desktop, nmp-gallery TUI + desktop) decode typed-first; `encode_snapshot_with_envelope` no longer emits `payload:Value`; `decode_snapshot_payload` has zero callers. Frame-size delta: 14,504 B → 3,384 B (−76.7%) for an empty frame (the 4,457 B JSON blob = 31% overhead is now gone). See [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979), [#991](https://github.com/pablof7z/nostr-multi-platform/issues/991) (both closed).
+3. **F-05 / F-10 — DONE** — Full typed-projection coverage + `payload:Value` deletion complete. All consumers (chirp-tui, chirp-desktop, nmp-gallery TUI + desktop + Android/iOS) decode typed-first; `encode_snapshot_with_envelope` no longer emits `payload:Value`; `decode_snapshot_payload` has zero callers. Frame-size delta: 14,504 B → 3,384 B (−76.7%) for an empty frame (the 4,457 B JSON blob = 31% overhead is now gone). See [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979), [#991](https://github.com/pablof7z/nostr-multi-platform/issues/991) (both closed).
 
 **Web/wasm scope moved post-v1 (2026-06-11).** `nmp-wasm` stages 2–3c
 landed (PRs #372/#375/#378/#385), but browser persistence, IndexedDB/OPFS

@@ -52,11 +52,7 @@ struct GalleryShowcaseRelay: Decodable, Sendable {
     let role: String
 }
 
-/// One entry of the kernel's `projections.relay_role_options` array — the
-/// canonical role token paired with the kernel-emitted human-readable `label`
-/// and semantic `tint`. The relay-list component consumes `label`/`tint` from
-/// here directly; no role→label/tint derivation lives in Swift (ADR-0041,
-/// issue #996). Mirrors Chirp's `RelayRoleOption`.
+/// One entry of the kernel's `relay_role_options` typed sidecar.
 struct GalleryRelayRoleOption: Decodable, Equatable, Sendable {
     let value: String
     let label: String
@@ -75,51 +71,15 @@ let SHOWCASE_NOTE_NEVENT = GALLERY_SHOWCASE.note.uri
 let SHOWCASE_HIGHLIGHT_EVENT_ID = GALLERY_SHOWCASE.highlight.primaryId
 let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 
-/// Wire-shape of one entry in `projections.resolved_profiles` — the kernel's
-/// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
-/// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
-///
-/// The kernel pre-merges `claimed_profiles`, `author_view.profile`, and
-/// `mention_profiles` into this single key (see PR #812), so every entry
-/// carries a Rust-formatted bech32 `npub` regardless of which source won —
-/// mention-sourced entries simply have empty `nip05` / `about` and `lnurl:
-/// null`. The extra `lnurl` field the card carries is ignored here.
-private struct ResolvedProfileWire: Decodable {
-    let pubkey: String
-    let npub: String
-    let displayName: String?
-    let pictureUrl: String?
-    let nip05: String?
-    let about: String?
-}
-
-/// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The
-/// kernel's `KernelSnapshot` ships a host-extensible `projections` map; the
-/// gallery reads the pre-merged profile key from it:
-///
-///   * `projections.resolved_profiles[pubkey]` — the kernel's single,
-///     pre-merged `ProfileCard` per pubkey. The kernel applies the three-source
-///     precedence (`claimed_profiles` → `author_view.profile` →
-///     `mention_profiles`) once in Rust (PR #812); the gallery no longer
-///     re-implements that merge. Always present (`{}` when empty).
-///
-/// `snapshot.profiles[pubkey] -> ProfileWire?` is decoded directly from that
-/// surface so the per-component pages stay decoupled from the wire
-/// shape. Decoding is fault-tolerant — a missing/null projection key
-/// degrades to an empty map instead of failing the whole tick.
-struct GallerySnapshot: Decodable, Equatable {
+/// Model assembled from the typed FlatBuffers update frame. Tier-3 fields come
+/// from `SnapshotFrame` itself; host/kernel projections come from
+/// `SnapshotFrame.typed_projections`.
+struct GallerySnapshot: Equatable, @unchecked Sendable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
-    /// Pre-resolved embed-projection map produced by `nmp-ffi`'s embed sidecar
-    /// (issue #1283 / ADR-0034). Key = `primary_id`; value = fully resolved
-    /// `EmbeddedEventEnvelope` with `projection` already kind-dispatched in
-    /// Rust. Nil when the projection is absent (kernel not yet updated).
+    /// Pre-resolved embed-projection map produced by the `NEMB` typed sidecar.
     let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
-    /// Kernel-emitted relay-role presentation tokens from
-    /// `projections.relay_role_options` (issue #996). The relay-list page
-    /// looks `configured_relays.role` up here for `label`/`tint`, exactly as
-    /// Chirp's `RelayConfigRow` does — no Swift-side role derivation.
     let relayRoleOptions: [GalleryRelayRoleOption]
 
     static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], claimedEventEmbeds: nil)
@@ -134,135 +94,11 @@ struct GallerySnapshot: Decodable, Equatable {
         self.relayRoleOptions = relayRoleOptions
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case running, projections, accounts
-    }
-
-    private enum ProjectionsKeys: String, CodingKey {
-        case resolvedProfiles, accounts
-        // `claimed_event_embeds` — with `.convertFromSnakeCase` this matches
-        // the camelCase key after conversion.
-        case claimedEventEmbeds
-        // `relay_role_options` → camelCase after `.convertFromSnakeCase`.
-        case relayRoleOptions
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
-
-        // `accounts` may live either at the top level (legacy / test fixtures)
-        // or under `projections.accounts` (current kernel snapshot shape).
-        var resolvedAccounts: [AccountWire] = []
-
-        var assembled: [String: ProfileWire] = [:]
-        var claimedEmbeds: [String: EmbeddedEventEnvelope]? = nil
-        var roleOptions: [GalleryRelayRoleOption] = []
-        if let projections = try? container.nestedContainer(
-            keyedBy: ProjectionsKeys.self,
-            forKey: .projections
-        ) {
-            // The kernel ships one pre-merged card per pubkey under
-            // `resolved_profiles` (PR #812). The three-source precedence
-            // (claimed_profiles → author_view → mention_profiles) is applied
-            // in Rust; the gallery just decodes the result.
-            if let resolved = try? projections.decodeIfPresent(
-                [String: ResolvedProfileWire].self,
-                forKey: .resolvedProfiles
-            ) {
-                for (pubkey, card) in resolved {
-                    let key = card.pubkey.isEmpty ? pubkey : card.pubkey
-                    assembled[key] = profileWire(fromResolvedProfile: card, pubkey: key)
-                }
-            }
-            if let accs = try? projections.decodeIfPresent(
-                [AccountWire].self,
-                forKey: .accounts
-            ) {
-                resolvedAccounts = accs
-            }
-            // Issue #1283 / ADR-0034: decode the pre-resolved embed map from
-            // the `nmp-ffi` sidecar. Fault-tolerant — nil when absent.
-            claimedEmbeds = try? projections.decodeIfPresent(
-                [String: EmbeddedEventEnvelope].self,
-                forKey: .claimedEventEmbeds
-            )
-            // Issue #996: decode the kernel's relay-role presentation tokens so
-            // the relay-list page resolves label/tint from the kernel source of
-            // truth instead of deriving them in Swift.
-            if let opts = try? projections.decodeIfPresent(
-                [GalleryRelayRoleOption].self,
-                forKey: .relayRoleOptions
-            ) {
-                roleOptions = opts
-            }
-        }
-        // Top-level `accounts` fallback for tests / fixtures pre-projections.
-        if resolvedAccounts.isEmpty,
-           let topAccounts = try? container.decodeIfPresent(
-               [AccountWire].self,
-               forKey: .accounts
-           )
-        {
-            resolvedAccounts = topAccounts
-        }
-
-        self.profiles = assembled
-        self.accounts = resolvedAccounts
-        self.claimedEventEmbeds = claimedEmbeds
-        self.relayRoleOptions = roleOptions
-    }
 }
 
-/// Build a `ProfileWire` from one `resolved_profiles` entry (the kernel's
-/// pre-merged `ProfileCard`, which carries `npub` already-formatted by Rust
-/// per aim.md §2). `npubShort` is the only Swift-side derivation; aim.md §2
-/// stipulates shells own abbreviation. Every entry — including
-/// mention-sourced ones — carries a real bech32 `npub`, so the truncation is
-/// uniform.
-private func profileWire(fromResolvedProfile card: ResolvedProfileWire, pubkey: String) -> ProfileWire {
-    ProfileWire(
-        pubkey: pubkey,
-        displayName: card.displayName?.nonEmpty,
-        about: card.about?.nonEmpty,
-        pictureUrl: card.pictureUrl?.nonEmpty,
-        nip05: card.nip05?.nonEmpty,
-        npub: card.npub,
-        npubShort: shortenNpub(card.npub)
-    )
-}
-
-/// Truncate a bech32 npub for display (e.g. `npub1abcd…wxyz`). Mirrors the
-/// Rust-side helper the kernel deleted (aim.md §2 — shells own abbreviation).
-private func shortenNpub(_ npub: String) -> String {
-    guard npub.count > 12 else { return npub }
-    let prefix = npub.prefix(9) // "npub1XXXX"
-    let suffix = npub.suffix(4)
-    return "\(prefix)…\(suffix)"
-}
-
-private extension String {
-    /// Return `nil` for an empty string, otherwise `self`. Lets the gallery
-    /// treat `displayName: ""` (kernel default) the same as a missing field.
-    var nonEmpty: String? { isEmpty ? nil : self }
-}
-
-/// Minimal `accounts` row decoder. Phase 1 doesn't render accounts but
-/// keeping a typed slot here means phase 2 (sign-in showcase) can wire UI
-/// without re-writing the model.
-struct AccountWire: Decodable, Equatable {
+struct AccountWire: Equatable {
     let pubkey: String
     let active: Bool
-
-    private enum CodingKeys: String, CodingKey {
-        case pubkey, active
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.pubkey = try container.decodeIfPresent(String.self, forKey: .pubkey) ?? ""
-        self.active = try container.decodeIfPresent(Bool.self, forKey: .active) ?? false
-    }
 
     init(pubkey: String, active: Bool) {
         self.pubkey = pubkey
@@ -326,27 +162,18 @@ final class GalleryModel: NostrProfileHost {
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
-    /// `GallerySnapshot` now includes `claimedEventEmbeds` — the pre-resolved
-    /// embed-projection map produced by `nmp-ffi` (issue #1283 / ADR-0034).
-    /// A single `JSONDecoder` pass fills both the profile/account fields and the
-    /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
-    /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
+    /// Gallery decodes `SnapshotFrame.typed_projections` plus Tier-3 fields
+    /// directly. The legacy `snapshot.payload` generic tree is not a source.
     func decode(frame: Data) {
-        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
-            return
-        }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
         do {
-            let next = try decoder.decode(GallerySnapshot.self, from: data)
+            let next = try GalleryTypedSnapshotDecoder.snapshot(from: frame) { [kernel] pubkey in
+                kernel.encodeProfile(pubkey: pubkey)
+            }
             self.snapshot = next
             self.lastDecodeError = nil
-            // Embed-projection: feed the pre-resolved map directly from the
-            // typed `GallerySnapshot` field (no separate JSONSerialization pass).
             embedHost.update(claimedEventEmbeds: next.claimedEventEmbeds)
         } catch {
-            let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
+            let msg = "Gallery typed snapshot decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
             self.lastDecodeError = msg
         }
