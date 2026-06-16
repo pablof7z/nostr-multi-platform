@@ -39,10 +39,10 @@ fn tier3_golden_fixture_matches_encoder() {
     );
 }
 
-/// A representative typed envelope for round-trip tests — every
-/// [`SnapshotEnvelope`] field populated with a non-default value so a
-/// transposed/forgotten field in either codec direction fails the equality
-/// assertion.
+/// A representative typed envelope for round-trip tests. Fields already covered
+/// by the checked-in golden fixture carry the fixture values; metrics that were
+/// historically omitted from the auxiliary encoder stay zero here so the
+/// fixture remains stable and get explicit coverage below.
 fn golden_envelope() -> SnapshotEnvelope {
     SnapshotEnvelope {
         rev: 42,
@@ -50,8 +50,10 @@ fn golden_envelope() -> SnapshotEnvelope {
         last_tick_ms: 1_700_000_123_456,
         running: true,
         update_kind: "ViewBatch".to_string(),
+        note_events: 0,
         events_rx: 7,
         visible_items: 3,
+        events_since_last_update: 0,
         actor_queue_depth: 2,
         update_sequence: 11,
         relay_statuses: vec![RelayStatusEntry {
@@ -87,6 +89,22 @@ fn golden_envelope() -> SnapshotEnvelope {
         // so the round-trip of this fixture reads back 0.
         serialize_us: 0,
     }
+}
+
+#[test]
+fn extended_metrics_round_trip() {
+    let envelope = SnapshotEnvelope {
+        note_events: 5,
+        events_since_last_update: 2,
+        ..golden_envelope()
+    };
+    let wire = encode_snapshot_frame(&envelope, &[]);
+
+    assert_eq!(
+        decode_snapshot_envelope(&wire).expect("decode"),
+        envelope,
+        "note_events and events_since_last_update must survive encode/decode"
+    );
 }
 
 fn decode_hex_fixture(input: &str) -> Vec<u8> {

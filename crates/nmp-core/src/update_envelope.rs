@@ -56,10 +56,14 @@ pub struct SnapshotEnvelope {
     /// Run-state label (always `"ViewBatch"` today).
     pub update_kind: String,
     // --- Metrics (selected fields used by Rust shells) ---
+    /// Total kind:1 notes seen by the kernel.
+    pub note_events: u64,
     /// Total relay events received.
     pub events_rx: u64,
     /// Approximate number of visible timeline items.
     pub visible_items: u64,
+    /// Events processed since the previous emitted update.
+    pub events_since_last_update: u64,
     /// Current actor command-queue depth.
     pub actor_queue_depth: u32,
     /// Monotonically-increasing update sequence counter.
@@ -129,18 +133,27 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
 /// Shared by [`decode_snapshot_envelope`] and [`decode_update_frame`] so the
 /// two public decode paths cannot drift.
 fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnvelope {
-    let (events_rx, visible_items, actor_queue_depth, update_sequence, serialize_us) =
-        if let Some(metrics) = snapshot.metrics() {
-            (
-                metrics.events_rx(),
-                metrics.visible_items(),
-                metrics.actor_queue_depth(),
-                metrics.update_sequence(),
-                metrics.serialize_us(),
-            )
-        } else {
-            (0, 0, 0, 0, 0)
-        };
+    let (
+        note_events,
+        events_rx,
+        visible_items,
+        events_since_last_update,
+        actor_queue_depth,
+        update_sequence,
+        serialize_us,
+    ) = if let Some(metrics) = snapshot.metrics() {
+        (
+            metrics.note_events(),
+            metrics.events_rx(),
+            metrics.visible_items(),
+            metrics.events_since_last_update(),
+            metrics.actor_queue_depth(),
+            metrics.update_sequence(),
+            metrics.serialize_us(),
+        )
+    } else {
+        (0, 0, 0, 0, 0, 0, 0)
+    };
 
     SnapshotEnvelope {
         rev: snapshot.rev(),
@@ -148,8 +161,10 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         last_tick_ms: snapshot.last_tick_ms(),
         running: snapshot.running(),
         update_kind: snapshot.update_kind().unwrap_or("").to_string(),
+        note_events,
         events_rx,
         visible_items,
+        events_since_last_update,
         actor_queue_depth,
         update_sequence,
         relay_statuses: relay_status::decode_relay_statuses(snapshot),
@@ -301,8 +316,10 @@ pub fn encode_snapshot_frame(
     let metrics = fb::Metrics::create(
         &mut builder,
         &fb::MetricsArgs {
+            note_events: envelope.note_events,
             events_rx: envelope.events_rx,
             visible_items: envelope.visible_items,
+            events_since_last_update: envelope.events_since_last_update,
             actor_queue_depth: envelope.actor_queue_depth,
             update_sequence: envelope.update_sequence,
             ..Default::default()
