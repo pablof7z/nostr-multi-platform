@@ -76,6 +76,7 @@ final class NoteContentRenderingTests: XCTestCase {
                     authorDisplayName: "pablof7z",
                     authorPictureUrl: "identicon:\(pubkey.prefix(16))",
                     contentPreview: "embedded note body",
+                    relayProvenance: [],
                     isRepost: false
                 ),
             ],

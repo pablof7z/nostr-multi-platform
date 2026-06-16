@@ -4,9 +4,7 @@ use nmp_threading::{ThreadPointer, TimelineBlock};
 
 use super::fb;
 use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-use crate::timeline_projection::{
-    ModularTimelineSnapshot, RepostAttribution, TimelineEventCard,
-};
+use crate::timeline_projection::{ModularTimelineSnapshot, RepostAttribution, TimelineEventCard};
 
 // ===========================================================================
 // Decode
@@ -178,6 +176,10 @@ pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEve
         .transpose()?;
 
     let content_tree = decode_content_tree_bytes(card.content_tree_bytes())?;
+    let relay_provenance = card
+        .relay_provenance()
+        .map(|relays| relays.iter().map(str::to_string).collect())
+        .unwrap_or_default();
 
     // GH #920: the card no longer carries `author_display`, the flat display
     // mirrors, `content_preview`, or `content_render`. The wire still ships
@@ -194,6 +196,7 @@ pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEve
         content: card.content().unwrap_or_default().to_string(),
         content_tree,
         relation_counts,
+        relay_provenance,
         reposted_by,
     })
 }

@@ -14,6 +14,7 @@ fn ke(
         created_at,
         tags,
         content: content.into(),
+        relay_provenance: Vec::new(),
     }
 }
 

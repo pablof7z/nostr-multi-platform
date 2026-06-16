@@ -12,6 +12,7 @@ fn ev(id: &str, kind: u32, content: &str) -> KernelEvent {
         created_at: 1_700_000_000,
         tags: Vec::new(),
         content: content.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 

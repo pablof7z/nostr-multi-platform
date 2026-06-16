@@ -153,6 +153,7 @@ mod tests {
                 created_at: 0,
                 tags: vec![],
                 content: "".into(),
+                relay_provenance: Vec::new(),
             };
             assert!(
                 try_from_kernel_event(&ke).is_none(),
@@ -227,6 +228,7 @@ mod tests {
             created_at: 42,
             tags: vec![vec!["e".into(), "X".into()]],
             content: "c".into(),
+            relay_provenance: Vec::new(),
         };
         let r = try_from_kernel_event(&ke).unwrap();
         assert_eq!(r.event_id, "id");

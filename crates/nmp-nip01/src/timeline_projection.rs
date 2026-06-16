@@ -8,8 +8,7 @@ use std::{collections::BTreeMap, sync::{Arc, Mutex}, time::Instant};
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
 use nmp_core::substrate::{
-    BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext, MAX_PROJECTION_MESSAGES,
-    empty_suppression_lookup,
+    empty_suppression_lookup, BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext, MAX_PROJECTION_MESSAGES,
 };
 use nmp_core::KernelEventObserver;
 use nmp_feed::{FeedBlock, FeedCard};
@@ -61,6 +60,8 @@ pub struct TimelineEventCard {
     /// `resolved_profiles` / `claimed_events` maps.
     pub content_tree: ContentTreeWire,
     pub relation_counts: NoteRelationCounts,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_provenance: Vec<String>,
     /// `None` for ordinary notes; `Some` when this card was surfaced because
     /// a NIP-18 kind:6 repost superseded the original. `author_pubkey` /
     /// `content` above name the *original* note; this struct names who
@@ -194,6 +195,7 @@ impl TimelineEventCard {
             content: render_payload.content,
             content_tree,
             relation_counts,
+            relay_provenance: event.relay_provenance.clone(),
             reposted_by,
         }
     }
@@ -389,8 +391,7 @@ impl ModularTimelineProjection {
         let cards: Vec<TimelineEventCard> = inner
             .cards
             .values()
-            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey)
-                && !self.suppression.is_suppressed_event(&c.id))
+            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey) && !self.suppression.is_suppressed_event(&c.id))
             .cloned()
             .collect();
         ModularTimelineSnapshot {
@@ -415,8 +416,7 @@ impl ModularTimelineProjection {
         // when they were already in the window's state.
         let cards: Vec<TimelineEventCard> = cards
             .into_iter()
-            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey)
-                && !self.suppression.is_suppressed_event(&c.id))
+            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey) && !self.suppression.is_suppressed_event(&c.id))
             .collect();
         ModularTimelineSnapshot {
             blocks: page_blocks,
@@ -455,8 +455,7 @@ impl ModularTimelineProjection {
         let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
         let cards: Vec<TimelineEventCard> = cards
             .into_iter()
-            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey)
-                && !self.suppression.is_suppressed_event(&c.id))
+            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey) && !self.suppression.is_suppressed_event(&c.id))
             .collect();
         ModularTimelineSnapshot {
             blocks: page_blocks,

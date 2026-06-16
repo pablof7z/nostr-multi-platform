@@ -125,8 +125,20 @@ repostedBy(obj?:RepostAttribution):RepostAttribution|null {
   return offset ? (obj || new RepostAttribution()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+relayProvenance(index: number):string
+relayProvenance(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
+relayProvenance(index: number,optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 34);
+  return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
+}
+
+relayProvenanceLength():number {
+  const offset = this.bb!.__offset(this.bb_pos, 34);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+}
+
 static startTimelineEventCard(builder:flatbuffers.Builder) {
-  builder.startObject(15);
+  builder.startObject(16);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -199,6 +211,22 @@ static addContentPreview(builder:flatbuffers.Builder, contentPreviewOffset:flatb
 
 static addRepostedBy(builder:flatbuffers.Builder, repostedByOffset:flatbuffers.Offset) {
   builder.addFieldOffset(14, repostedByOffset, 0);
+}
+
+static addRelayProvenance(builder:flatbuffers.Builder, relayProvenanceOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(15, relayProvenanceOffset, 0);
+}
+
+static createRelayProvenanceVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
+  builder.startVector(4, data.length, 4);
+  for (let i = data.length - 1; i >= 0; i--) {
+    builder.addOffset(data[i]!);
+  }
+  return builder.endVector();
+}
+
+static startRelayProvenanceVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(4, numElems, 4);
 }
 
 static endTimelineEventCard(builder:flatbuffers.Builder):flatbuffers.Offset {

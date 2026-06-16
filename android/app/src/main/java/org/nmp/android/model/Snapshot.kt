@@ -266,6 +266,7 @@ data class TimelineItem(
     val contentPreview: String = "",
     val createdAt: Long = 0,
     val relayCount: Long = 0,
+    val relayProvenance: List<String> = emptyList(),
 )
 
 @Serializable

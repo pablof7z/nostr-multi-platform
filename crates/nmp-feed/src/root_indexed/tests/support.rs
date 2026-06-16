@@ -263,6 +263,7 @@ pub(super) fn root_event(id: &str, author: &str, created_at: u64, body: &str) ->
         created_at,
         tags: Vec::new(),
         content: body.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -277,6 +278,7 @@ pub(super) fn reply_event(id: &str, author: &str, created_at: u64, root_id: &str
             vec!["parent".to_string(), root_id.to_string()],
         ],
         content: "a reply".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -288,6 +290,7 @@ pub(super) fn profile_event(author: &str, subject: &str, display_name: &str) -> 
         created_at: 100,
         tags: vec![vec!["profile".to_string(), subject.to_string()]],
         content: display_name.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -305,5 +308,6 @@ pub(super) fn repost_event(
         created_at,
         tags: vec![vec!["repost".to_string(), target.to_string()]],
         content: body.to_string(),
+        relay_provenance: Vec::new(),
     }
 }

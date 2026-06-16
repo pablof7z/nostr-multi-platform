@@ -74,6 +74,7 @@ impl Kernel {
             created_at: cached.created_at,
             tags: cached.tags.clone(),
             content: cached.content.clone(),
+            relay_provenance: Vec::new(),
         };
         self.metric_stored_events = self.metric_stored_events.saturating_add(1);
         if cached.kind == 1 {

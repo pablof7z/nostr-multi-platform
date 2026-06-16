@@ -406,6 +406,7 @@ fn try_from_kernel_event_decodes_equivalently() {
             vec!["bolt11".into(), "lnbc500u1pvj...".into()],
         ],
         content: String::new(),
+        relay_provenance: Vec::new(),
     };
     let r = try_from_kernel_event(&kernel).unwrap();
     assert_eq!(r.event_id, "k".repeat(64));

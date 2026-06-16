@@ -138,6 +138,21 @@ pub(crate) fn feed_card(
                             .weak()
                             .color(Color32::from_rgb(148, 163, 184)),
                     );
+                    if !card.relay_provenance.is_empty() {
+                        let relay_count = card.relay_provenance.len();
+                        let label = if relay_count == 1 {
+                            "Received from 1 relay".to_string()
+                        } else {
+                            format!("Received from {relay_count} relays")
+                        };
+                        if ui
+                            .small_button(label)
+                            .on_hover_text(card.relay_provenance.join("\n"))
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(card.relay_provenance.join("\n"));
+                        }
+                    }
                     ui.horizontal(|ui| {
                         if ui.small_button("↩ Reply").clicked() {
                             *reply_to = Some(note_record_from_card(card));

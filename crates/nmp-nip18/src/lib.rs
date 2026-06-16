@@ -106,6 +106,7 @@ mod tests {
                 .map(|tag| tag.into_iter().map(str::to_string).collect())
                 .collect(),
             content: content.to_string(),
+            relay_provenance: Vec::new(),
         }
     }
 

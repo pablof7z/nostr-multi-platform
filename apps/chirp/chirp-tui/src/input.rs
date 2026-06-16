@@ -181,6 +181,11 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         }
         KeyCode::Char('n') => handle_n_key(state, runtime),
         KeyCode::Char('i') => match state.tab {
+            FeatureTab::Home => {
+                if let Some(row) = state.selected_row() {
+                    state.open_note_details_modal(row.note_details_text());
+                }
+            }
             FeatureTab::Chats => {
                 state.chat_composing = !state.chat_composing;
             }

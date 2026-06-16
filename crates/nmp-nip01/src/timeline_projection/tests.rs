@@ -29,6 +29,7 @@ fn note_with_content(id: &str, ts: u64, tags: Vec<Vec<String>>, content: &str) -
         created_at: ts,
         tags,
         content: content.into(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -87,8 +88,14 @@ fn snapshot_sorts_backfilled_events_newest_first() {
     assert_eq!(
         snap.blocks,
         vec![
-            TimelineBlock::Standalone { id: "new".to_string(), root: None },
-            TimelineBlock::Standalone { id: "old".to_string(), root: None }
+            TimelineBlock::Standalone {
+                id: "new".to_string(),
+                root: None
+            },
+            TimelineBlock::Standalone {
+                id: "old".to_string(),
+                root: None
+            }
         ]
     );
 }
@@ -105,8 +112,14 @@ fn window_snapshot_pages_blocks_with_stable_cursor() {
     assert_eq!(
         first.blocks,
         vec![
-            TimelineBlock::Standalone { id: "new".to_string(), root: None },
-            TimelineBlock::Standalone { id: "mid".to_string(), root: None }
+            TimelineBlock::Standalone {
+                id: "new".to_string(),
+                root: None
+            },
+            TimelineBlock::Standalone {
+                id: "mid".to_string(),
+                root: None
+            }
         ]
     );
     assert_eq!(
@@ -136,7 +149,10 @@ fn window_snapshot_pages_blocks_with_stable_cursor() {
 
     assert_eq!(
         second.blocks,
-        vec![TimelineBlock::Standalone { id: "old".to_string(), root: None }]
+        vec![TimelineBlock::Standalone {
+            id: "old".to_string(),
+            root: None
+        }]
     );
     assert!(!second.page.expect("page").has_more);
 }
@@ -161,7 +177,10 @@ fn window_snapshot_includes_visible_quote_cards() {
 
     assert_eq!(
         snap.blocks,
-        vec![TimelineBlock::Standalone { id: "root".to_string(), root: None }]
+        vec![TimelineBlock::Standalone {
+            id: "root".to_string(),
+            root: None
+        }]
     );
     assert_eq!(
         snap.cards
@@ -238,6 +257,7 @@ fn repost_cards_render_embedded_event_content_tree() {
         created_at: 2,
         tags: vec![vec!["e".into(), "inner".into()]],
         content: embedded.to_string(),
+        relay_provenance: Vec::new(),
     };
     let proj = ModularTimelineProjection::new(&spec_with_kinds(vec![1, nmp_nip18::KIND_REPOST]));
 
@@ -310,6 +330,7 @@ fn card_carries_raw_pubkey_and_no_denormalized_display() {
         created_at: 1,
         tags: vec![],
         content: "hello".into(),
+        relay_provenance: Vec::new(),
     });
     let pre = proj
         .snapshot()
@@ -329,6 +350,7 @@ fn card_carries_raw_pubkey_and_no_denormalized_display() {
         created_at: 2,
         tags: vec![],
         content: r#"{"display_name":"Alice","picture":"https://example.com/a.png"}"#.into(),
+        relay_provenance: Vec::new(),
     });
     let post = proj.snapshot();
     assert_eq!(post.cards.len(), 1, "kind:0 produces no card");

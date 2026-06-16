@@ -9,8 +9,8 @@
 
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
-use super::super::register::follow_list_typed_projection;
 use super::super::nmp_app_chirp_unregister;
+use super::super::register::follow_list_typed_projection;
 use super::helpers::{dispatch, register_app};
 
 /// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the three social
@@ -95,6 +95,7 @@ fn follow_list_typed_projection_lands_in_the_sidecar_and_round_trips() {
             vec!["p".to_string(), followed_b.clone()],
         ],
         content: String::new(),
+        relay_provenance: Vec::new(),
     });
 
     let entry = follow_list_typed_projection(&proj).expect("follow-list projection always emits");
@@ -112,8 +113,7 @@ fn follow_list_typed_projection_lands_in_the_sidecar_and_round_trips() {
 
     // The bytes in the sidecar decode back to the same snapshot the projection
     // reports — not only the generic `payload:Value` tree.
-    let decoded =
-        decode_follow_list(&entry.payload).expect("sidecar payload must decode as NF02");
+    let decoded = decode_follow_list(&entry.payload).expect("sidecar payload must decode as NF02");
     assert_eq!(decoded, proj.snapshot());
     let pubkeys: Vec<&str> = decoded.follows.iter().map(|f| f.pubkey.as_str()).collect();
     assert_eq!(pubkeys, vec![followed_a.as_str(), followed_b.as_str()]);

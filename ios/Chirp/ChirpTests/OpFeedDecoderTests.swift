@@ -220,6 +220,7 @@ final class OpFeedDecoderTests: XCTestCase {
                 id: id, authorPubkey: "", kind: 1, createdAt: 0, content: "",
                 contentTree: nil, relationCounts: nil,
                 authorDisplayName: nil, authorPictureUrl: nil, contentPreview: "",
+                relayProvenance: [],
                 isRepost: false),
             attribution: [])
     }

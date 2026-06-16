@@ -395,6 +395,7 @@ fn gated_out_kind_never_becomes_a_phantom_root() {
         created_at: 5,
         tags: Vec::new(),
         content: String::new(),
+        relay_provenance: Vec::new(),
     };
     h.ingest(&contacts);
 

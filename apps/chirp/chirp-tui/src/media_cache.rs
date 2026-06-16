@@ -220,6 +220,7 @@ mod tests {
             has_gap: false,
             thread_attribution: Vec::new(),
             relation_counts: Default::default(),
+            relay_provenance: Vec::new(),
             content_tree: Some(media_tree(urls)),
             content_render: ContentRenderData::default(),
             mention_pubkeys: Vec::new(),

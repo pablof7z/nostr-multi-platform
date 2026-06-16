@@ -192,6 +192,12 @@ object TypedHomeFeedDecoder {
             authorDisplayName = if (card?.hasAuthorDisplayName == true) card.authorDisplayName else null,
             authorPictureUrl = if (card?.hasAuthorPictureUrl == true) card.authorPictureUrl else null,
             contentPreview = card?.contentPreview ?: "",
+            relayProvenance = buildList {
+                val count = card?.relayProvenanceLength ?: 0
+                for (i in 0 until count) {
+                    card?.relayProvenance(i)?.let { add(it) }
+                }
+            },
         )
     }
 

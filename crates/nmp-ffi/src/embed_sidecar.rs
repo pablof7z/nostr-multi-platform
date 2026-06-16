@@ -105,6 +105,7 @@ fn row_to_kernel_event(row: &ClaimedEventRow) -> KernelEvent {
         created_at: row.created_at,
         tags: row.tags.clone(),
         content: row.content.clone(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -137,10 +138,7 @@ fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> Embedded
 /// own wire form (one-tick lag — see module doc).
 ///
 /// Silent no-ops on any decode failure (D6).
-pub(crate) fn update_embed_sidecar_from_frame(
-    frame_bytes: &[u8],
-    slot: &EmbedSidecarSlot,
-) {
+pub(crate) fn update_embed_sidecar_from_frame(frame_bytes: &[u8], slot: &EmbedSidecarSlot) {
     // Decode the full typed-projection sidecar from the frame.
     let Ok(projections) = decode_snapshot_typed_projections(frame_bytes) else {
         return;
@@ -187,10 +185,7 @@ pub(crate) fn update_embed_sidecar_from_frame(
 /// lock. Returns an empty map when the slot is `None` (first tick, before any
 /// frame is processed) or when the mutex is poisoned (D6).
 fn snapshot_map(slot: &EmbedSidecarSlot) -> BTreeMap<String, EmbeddedEventEnvelope> {
-    slot.lock()
-        .ok()
-        .and_then(|g| g.clone())
-        .unwrap_or_default()
+    slot.lock().ok().and_then(|g| g.clone()).unwrap_or_default()
 }
 
 /// Build the transitional JSON `Value` form of the embed sidecar from the slot.

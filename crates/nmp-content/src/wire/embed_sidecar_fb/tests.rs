@@ -23,6 +23,7 @@ fn kernel_event(id: &str, author: &str, kind: u32, content: &str, tags: Vec<Vec<
         created_at: 1_710_000_000,
         tags,
         content: content.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 

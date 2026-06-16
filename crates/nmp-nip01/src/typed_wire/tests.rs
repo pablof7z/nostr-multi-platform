@@ -50,6 +50,7 @@ fn sample_card() -> TimelineEventCard {
         content: "hello world".to_string(),
         content_tree: rich_content_tree(),
         relation_counts: known_counts(),
+        relay_provenance: Vec::new(),
         reposted_by: None,
     }
 }

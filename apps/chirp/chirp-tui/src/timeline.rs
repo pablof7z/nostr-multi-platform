@@ -26,6 +26,7 @@ pub struct TimelineRow {
     /// replied to.
     pub thread_attribution: Vec<RowReplyAttribution>,
     pub relation_counts: RowRelationCounts,
+    pub relay_provenance: Vec<String>,
     pub content_tree: Option<ContentTreeWire>,
     pub content_render: ContentRenderData,
     /// 64-hex pubkeys appearing as NIP-21 profile mentions inside this
@@ -113,6 +114,7 @@ impl TimelineRow {
             .map(ContentTreeWire::mentioned_pubkeys)
             .unwrap_or_default();
         let content_render = ContentRenderData::from_value(card.get("content_render"));
+        let relay_provenance = string_array_field(card, "relay_provenance");
         let repost = repost_from_card(card.get("reposted_by"), outer_created_at);
         // For reposts the displayed timestamp is the original note's publish
         // time (carried on `reposted_by.note_created_at`); the card's own
@@ -140,6 +142,7 @@ impl TimelineRow {
             has_gap: false,
             thread_attribution,
             relation_counts: RowRelationCounts::from_card(card),
+            relay_provenance,
             content_tree,
             content_render,
             mention_pubkeys,
@@ -168,6 +171,17 @@ impl TimelineRow {
                 "reply_attribution {} follow replies",
                 self.thread_attribution.len()
             ));
+        }
+        if !self.relay_provenance.is_empty() {
+            lines.push(format!(
+                "received_from {} relays",
+                self.relay_provenance.len()
+            ));
+            lines.extend(
+                self.relay_provenance
+                    .iter()
+                    .map(|relay| format!("  {relay}")),
+            );
         }
         if !self.mention_pubkeys.is_empty() {
             lines.push(format!("mentions {} profiles", self.mention_pubkeys.len()));
@@ -314,6 +328,16 @@ fn string_field(card: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
+}
+
+fn string_array_field(card: &Value, key: &str) -> Vec<String> {
+    card.get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
 }
 
 fn optional_string(value: Option<&Value>, key: &str) -> Option<String> {

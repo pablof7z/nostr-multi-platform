@@ -14,8 +14,7 @@
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{
-    decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope,
-    TypedProjectionData,
+    decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData,
 };
 use nmp_feed::{FeedCursor, FeedPage, RootCard, RootFeedSnapshot};
 use nmp_nip01::op_feed::{
@@ -36,6 +35,7 @@ fn root_event(id: u8) -> KernelEvent {
         created_at: 1_700_000_500,
         tags: Vec::new(),
         content: "a thread root".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -84,7 +84,9 @@ fn typed_entry(snapshot: &OpFeedSnapshot) -> (Vec<u8>, TypedProjectionData) {
         key: "nmp.feed.home".to_string(),
         schema_id: OP_FEED_SCHEMA_ID.to_string(),
         schema_version: OP_FEED_SCHEMA_VERSION,
-        file_identifier: std::str::from_utf8(OP_FEED_FILE_IDENTIFIER).unwrap().to_string(),
+        file_identifier: std::str::from_utf8(OP_FEED_FILE_IDENTIFIER)
+            .unwrap()
+            .to_string(),
         payload: bytes.clone(),
         ..Default::default()
     };

@@ -52,15 +52,20 @@ impl Kernel {
     /// `EventStore::insert` returns `Inserted | Replaced`. Best-effort:
     /// missing slot, poisoned mutex, or serialization failure on the
     /// C-ABI side are all silent no-ops (D6). The no-observers fast path
-    /// is branch-free — no allocation, no lock taken past the slot's
-    /// `Option`.
+    /// returns before provenance lookup or allocation.
     ///
     /// `KernelEvent` is the FFI-stable shape from `substrate::view`; the
     /// caller composes it from the kernel's `StoredEvent` (same fields,
     /// just cloned into the FFI struct).
     pub(in crate::kernel) fn notify_event_observers(&self, event: &KernelEvent) {
-        if let Some(slot) = &self.event_observers {
-            crate::actor::notify_observers(slot, event);
+        let Some(slot) = &self.event_observers else {
+            return;
+        };
+        let mut event = event.clone();
+        if event.relay_provenance.is_empty() {
+            event.relay_provenance =
+                super::provenance::relay_urls_for_event(&*self.store, &event.id);
         }
+        crate::actor::notify_observers(slot, &event);
     }
 }

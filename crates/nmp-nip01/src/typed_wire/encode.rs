@@ -243,8 +243,10 @@ fn encode_repost_attribution<'bldr>(
     // `note_created_at` only — no denormalized display copy. The vestigial
     // wire slots (kept byte-identical pending the cross-language follow-up)
     // get the absent shape: an npub-only fallback display + `has_* = false`.
-    let author_display =
-        encode_author_display(builder, &AuthorDisplay::fallback(&attribution.author_pubkey));
+    let author_display = encode_author_display(
+        builder,
+        &AuthorDisplay::fallback(&attribution.author_pubkey),
+    );
     let author_pubkey = builder.create_string(&attribution.author_pubkey);
     fb::RepostAttribution::create(
         builder,
@@ -281,7 +283,8 @@ pub(crate) fn encode_card<'bldr>(
     // fills the now-vestigial slots with the absent shape: a fallback
     // `AuthorDisplay` (npub-only, derived from the raw pubkey), empty preview,
     // `has_* = false`, and an empty `ContentRenderData`.
-    let author_display = encode_author_display(builder, &AuthorDisplay::fallback(&card.author_pubkey));
+    let author_display =
+        encode_author_display(builder, &AuthorDisplay::fallback(&card.author_pubkey));
     let relation_counts = encode_relation_counts(builder, &card.relation_counts);
     let reposted_by = card
         .reposted_by
@@ -292,6 +295,12 @@ pub(crate) fn encode_card<'bldr>(
     let author_pubkey = builder.create_string(&card.author_pubkey);
     let content = builder.create_string(&card.content);
     let content_preview = builder.create_string("");
+    let relay_provenance_offsets: Vec<WIPOffset<&str>> = card
+        .relay_provenance
+        .iter()
+        .map(|relay| builder.create_string(relay))
+        .collect();
+    let relay_provenance = builder.create_vector(&relay_provenance_offsets);
 
     let content_tree_bytes = encode_content_tree_bytes(&card.content_tree);
     let content_tree_bytes = builder.create_vector(&content_tree_bytes);
@@ -315,6 +324,7 @@ pub(crate) fn encode_card<'bldr>(
             author_picture_url: None,
             content_preview: Some(content_preview),
             reposted_by,
+            relay_provenance: Some(relay_provenance),
         },
     )
 }

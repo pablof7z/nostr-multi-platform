@@ -262,6 +262,7 @@ mod tests {
             created_at: 1,
             tags,
             content: String::new(),
+            relay_provenance: Vec::new(),
         }
     }
 
@@ -342,6 +343,7 @@ mod tests {
             created_at: 1,
             tags: vec![vec!["e".into(), "NOTE".into()]],
             content: "hello".into(),
+            relay_provenance: Vec::new(),
         };
         // kind:9734 (zap request) — also not a receipt.
         let request = KernelEvent {
@@ -354,6 +356,7 @@ mod tests {
                 vec!["e".into(), "NOTE".into()],
             ],
             content: String::new(),
+            relay_provenance: Vec::new(),
         };
         proj.on_kernel_event(&note);
         proj.on_kernel_event(&request);
@@ -379,6 +382,7 @@ mod tests {
                 vec!["bolt11".into(), "lnbc10n1pvj...".into()],
             ],
             content: String::new(),
+            relay_provenance: Vec::new(),
         };
         proj.on_kernel_event(&profile_zap);
         assert!(proj.snapshot().totals.is_empty());
@@ -401,6 +405,7 @@ mod tests {
                 vec!["e".into(), "NOTE".into()],
             ],
             content: String::new(),
+            relay_provenance: Vec::new(),
         };
         proj.on_kernel_event(&no_amount);
 

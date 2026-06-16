@@ -148,9 +148,9 @@ pub fn event_by_id_from_store(
         created_at: raw.created_at,
         tags: raw.tags.clone(),
         content: raw.content.clone(),
+        relay_provenance: relay_provenance_for_key(store.as_ref(), &key),
     })
 }
-
 
 /// Synchronous event-by-id read over a directly-held [`Arc<dyn EventStore>`].
 ///
@@ -180,7 +180,22 @@ pub fn event_by_id_from_arc(
         created_at: raw.created_at,
         tags: raw.tags.clone(),
         content: raw.content.clone(),
+        relay_provenance: relay_provenance_for_key(store.as_ref(), &key),
     })
+}
+
+pub fn relay_provenance_for_event(store: &dyn crate::store::EventStore, id: &str) -> Vec<String> {
+    use crate::kernel::hex_to_pubkey_bytes as hex_to_id_bytes;
+    hex_to_id_bytes(id)
+        .map(|key| relay_provenance_for_key(store, &key))
+        .unwrap_or_default()
+}
+
+fn relay_provenance_for_key(store: &dyn crate::store::EventStore, key: &[u8; 32]) -> Vec<String> {
+    store
+        .provenance_for(key)
+        .map(|entries| entries.into_iter().map(|entry| entry.relay_url).collect())
+        .unwrap_or_default()
 }
 
 /// Construct a fresh, empty [`RoutingSubstrateSlot`].

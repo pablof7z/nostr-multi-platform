@@ -7,7 +7,7 @@ use nmp_core::{ActorCommand, KernelEventObserver};
 use nmp_feed::{EventLookup, FeedRequest, FollowPredicate};
 
 use super::attribution::Nip10ReplyAttribution;
-use super::wiring::{OpFeedEngine, build_actor_claim_sink, register_op_feed};
+use super::wiring::{build_actor_claim_sink, register_op_feed, OpFeedEngine};
 
 pub(super) const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 pub(super) const BOB: &str = "bbbb000000000000000000000000000000000000000000000000000000000002";
@@ -105,6 +105,7 @@ pub(super) fn op_event(id: &str, author: &str, created_at: u64, body: &str) -> K
         created_at,
         tags: Vec::new(),
         content: body.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -129,6 +130,7 @@ pub(super) fn reply_event(id: &str, author: &str, created_at: u64, root_id: &str
             ],
         ],
         content: "a reply".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -150,6 +152,7 @@ pub(super) fn reply_to_parent(
             "reply".to_string(),
         ]],
         content: "reply to a repost".to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -161,6 +164,7 @@ pub(super) fn repost_etag(id: &str, author: &str, created_at: u64, target: &str)
         created_at,
         tags: vec![vec!["e".to_string(), target.to_string()]],
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -185,6 +189,7 @@ pub(super) fn repost_embedded(
         created_at,
         tags: vec![vec!["e".to_string(), target.id.clone()]],
         content: embedded.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -196,6 +201,7 @@ pub(super) fn profile_event(author: &str, created_at: u64, display_name: &str) -
         created_at,
         tags: Vec::new(),
         content: serde_json::json!({ "display_name": display_name }).to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 

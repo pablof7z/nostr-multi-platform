@@ -79,6 +79,8 @@ export type FeedItem = {
   contentTree?: ContentTreeWire;
   /** Unix seconds created_at. */
   createdAt: number;
+  /** Raw relay URLs that delivered this event, in store provenance order. */
+  relayProvenance: string[];
   /** Known-or-loading relation counts. */
   relationCounts: FeedRelationCounts;
   /** NIP-18 repost attribution — who surfaced this note via kind:6. */
@@ -159,9 +161,16 @@ function decodeRootCard(rootCard: RootCard): FeedItem | null {
     authorPubkey: card.authorPubkey() ?? "",
     content: card.content() ?? "",
     createdAt: Number(card.createdAt()),
+    relayProvenance: [],
     relationCounts,
     attribution,
   };
+  for (let j = 0; j < card.relayProvenanceLength(); j += 1) {
+    const relay = card.relayProvenance(j);
+    if (relay) {
+      item.relayProvenance.push(relay);
+    }
+  }
   if (card.hasAuthorDisplayName()) {
     const dn = card.authorDisplayName();
     if (dn) item.authorDisplayName = dn;

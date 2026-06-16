@@ -36,6 +36,7 @@ fn kind3(author: &str, p_tags: &[&str]) -> KernelEvent {
         created_at: 100,
         tags,
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

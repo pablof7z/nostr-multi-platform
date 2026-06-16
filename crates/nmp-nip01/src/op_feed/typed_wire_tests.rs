@@ -54,6 +54,7 @@ fn repost_card() -> TimelineEventCard {
             author_pubkey: hex32(0x42),
             note_created_at: 1_699_000_000,
         }),
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -74,6 +75,7 @@ fn bare_card() -> TimelineEventCard {
             zaps: RelationCount::Known { count: 0 },
         },
         reposted_by: None,
+        relay_provenance: Vec::new(),
     }
 }
 
@@ -204,7 +206,10 @@ fn repost_card_and_embedded_window_survive() {
     assert_eq!(recovered_page.limit, 50);
     assert!(recovered_page.has_more);
     assert_eq!(recovered_page.total_blocks, 2);
-    assert_eq!(decoded.metrics.expect("metrics present").make_window_us, 1234);
+    assert_eq!(
+        decoded.metrics.expect("metrics present").make_window_us,
+        1234
+    );
 }
 
 #[test]

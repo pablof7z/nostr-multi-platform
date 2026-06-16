@@ -15,6 +15,7 @@ fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> Kernel
         created_at,
         tags,
         content: format!("content of {id}"),
+        relay_provenance: Vec::new(),
     }
 }
 

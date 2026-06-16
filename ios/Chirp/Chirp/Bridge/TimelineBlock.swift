@@ -199,6 +199,8 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     /// First 180 Unicode scalars of `content`, no ellipsis. Used by the
     /// `syntheticItem` builder in `ModularBlockView`.
     let contentPreview: String
+    /// Raw relay URLs that delivered this event, in store provenance order.
+    let relayProvenance: [String]
     /// Typed NIP-18 repost signal. `true` when the kernel surfaced this card
     /// because a kind:6 repost superseded the original note — i.e. the Rust
     /// `TimelineEventCard.reposted_by` (FB `reposted_by` table) is present.
@@ -224,6 +226,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         authorDisplayName: String?,
         authorPictureUrl: String?,
         contentPreview: String,
+        relayProvenance: [String],
         isRepost: Bool
     ) {
         self.id = id
@@ -236,6 +239,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         self.authorDisplayName = authorDisplayName
         self.authorPictureUrl = authorPictureUrl
         self.contentPreview = contentPreview
+        self.relayProvenance = relayProvenance
         self.isRepost = isRepost
     }
 
@@ -250,6 +254,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         case authorDisplayName
         case authorPictureUrl
         case contentPreview
+        case relayProvenance
         case repostedBy
     }
 
@@ -265,6 +270,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         authorDisplayName = try c.decodeIfPresent(String.self, forKey: .authorDisplayName)
         authorPictureUrl = try c.decodeIfPresent(String.self, forKey: .authorPictureUrl)
         contentPreview = try c.decode(String.self, forKey: .contentPreview)
+        relayProvenance = try c.decodeIfPresent([String].self, forKey: .relayProvenance) ?? []
         // The Rust serde wire uses `#[serde(skip_serializing_if =
         // "Option::is_none")]` on `reposted_by`, so the key is ABSENT for a
         // plain note and a non-null object for a repost. Presence == repost.

@@ -22,6 +22,7 @@ fn make_event(
         created_at: 1710000000,
         tags,
         content: content.to_string(),
+        relay_provenance: Vec::new(),
     }
 }
 

@@ -101,6 +101,7 @@ mod tests {
             created_at,
             tags: vec![],
             content: content.to_string(),
+            relay_provenance: Vec::new(),
         }
     }
 
@@ -128,5 +129,4 @@ mod tests {
         assert_eq!(profile.display, None);
         assert_eq!(profile.picture_url, None);
     }
-
 }

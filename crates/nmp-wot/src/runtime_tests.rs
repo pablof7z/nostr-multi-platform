@@ -50,6 +50,7 @@ fn contact_event(event_author: &str, follows: usize) -> KernelEvent {
             .map(|i| vec!["p".to_string(), author(i as u16)])
             .collect(),
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

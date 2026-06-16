@@ -1,6 +1,8 @@
 package org.nmp.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -326,6 +330,7 @@ private fun RootCardRow(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun NoteRow(
     eventId: String,
     items: Map<String, TimelineItem>,
@@ -371,6 +376,12 @@ internal fun NoteRow(
             else -> "${deltaSecs / 86_400}d ago"
         }
     } ?: card?.let { "kind ${it.kind}" } ?: ""
+    val relayProvenance = card?.relayProvenance?.takeIf { it.isNotEmpty() }
+        ?: item?.relayProvenance
+        ?: emptyList()
+    val relayCount = if (relayProvenance.isNotEmpty()) relayProvenance.size.toLong() else item?.relayCount ?: 0
+    var showRelayProvenance by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
 
     val rowPadding = if (embedded) 10.dp else 12.dp
     Column(Modifier.fillMaxWidth().padding(rowPadding)) {
@@ -408,8 +419,48 @@ internal fun NoteRow(
             cards = cards,
             embedDepth = embedDepth,
         )
+        if (relayCount > 0) {
+            Spacer(Modifier.size(6.dp))
+            Text(
+                "Received from $relayCount ${if (relayCount == 1L) "relay" else "relays"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.combinedClickable(
+                    onClick = { showRelayProvenance = true },
+                    onLongClick = { showRelayProvenance = true },
+                ),
+            )
+        }
         Spacer(Modifier.size(8.dp))
         NoteActionsSummary(card, model)
+    }
+    if (showRelayProvenance) {
+        AlertDialog(
+            onDismissRequest = { showRelayProvenance = false },
+            title = { Text("Received from") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (relayProvenance.isEmpty()) {
+                        Text("No relay provenance", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        relayProvenance.forEach { relay ->
+                            Text(
+                                relay,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { clipboard.setText(AnnotatedString(relay)) },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showRelayProvenance = false }) {
+                    Text("Done")
+                }
+            },
+        )
     }
 }
 

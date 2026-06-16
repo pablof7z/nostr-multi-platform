@@ -23,6 +23,7 @@ fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> Kernel
         created_at,
         tags,
         content: String::new(),
+        relay_provenance: Vec::new(),
     }
 }
 

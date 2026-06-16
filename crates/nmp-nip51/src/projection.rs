@@ -321,6 +321,7 @@ mod tests {
             created_at: 100,
             tags,
             content: String::new(),
+            relay_provenance: Vec::new(),
         }
     }
 

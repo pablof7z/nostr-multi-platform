@@ -283,6 +283,7 @@ class TypedHomeFeedDecoderContractTest {
             0,
             preview,
             0,
+            0,
         )
         val attribution = FbRootCard.createAttributionVector(builder, intArrayOf())
         val root = FbRootCard.createRootCard(builder, card, attribution)
