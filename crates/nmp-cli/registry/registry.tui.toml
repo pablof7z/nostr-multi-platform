@@ -104,6 +104,17 @@ target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry
 role = "source"
 
 [[components]]
+id = "tui/content-kind-0"
+version = "0.1.0"
+target = "tui"
+description = "Profile metadata (NIP-01, kind:0) — DefaultProfileRenderer shipped inside tui/content-kind-registry."
+dependencies = ["tui/content-kind-registry"]
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+
+[[components]]
 id = "tui/content-kind-9802"
 version = "0.1.0"
 target = "tui"

@@ -139,6 +139,20 @@ target = "Components/NostrContent/ArticleEmbed.swift"
 role = "source"
 
 [[components]]
+id = "swiftui/content-kind-0"
+version = "0.1.0"
+target = "swiftui"
+description = "Profile metadata (NIP-01, kind:0) embed renderer — avatar, display name, pubkey chip, NIP-05, and about preview."
+dependencies = [
+    "swiftui/content-kind-registry",
+    "swiftui/user-avatar",
+]
+[[components.files]]
+source = "swiftui/content-kind-0/ProfileEmbed.swift"
+target = "Components/NostrContent/ProfileEmbed.swift"
+role = "source"
+
+[[components]]
 id = "swiftui/content-kind-9802"
 version = "0.1.0"
 target = "swiftui"
