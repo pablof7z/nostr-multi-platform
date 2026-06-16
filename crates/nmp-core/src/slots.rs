@@ -209,9 +209,9 @@ pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
 // Per-app substrate-publish-resolver factory. Mirrors `RoutingSubstrateFactory`:
 // production composition (`nmp-defaults::register_defaults`) writes a
 // closure into the [`PublishResolverSlot`] via
-// `NmpApp::set_publish_resolver_factory`; the actor reads it right after
-// kernel construction and applies the produced `Arc<dyn OutboxResolver>`
-// via `Kernel::set_publish_resolver`.
+// `NmpApp::set_publish_resolver_factory`; actor startup snapshots it and
+// applies the produced `Arc<dyn OutboxResolver>` via
+// `Kernel::set_publish_resolver`.
 //
 // The closure receives the four kernel-owned handles the router-side
 // `Nip65OutboxResolver` needs (`EventStore` + indexer / local-write /
@@ -228,9 +228,9 @@ pub type PublishResolverFactory = dyn Fn(
     + Sync;
 
 /// Slot wrapper for [`PublishResolverFactory`]. `None` until production
-/// composition calls `NmpApp::set_publish_resolver_factory`; the actor
-/// then reads it after kernel construction (and on `Reset`) and applies
-/// the produced resolver. `None` leaves the kernel's
+/// composition calls `NmpApp::set_publish_resolver_factory`; actor startup
+/// snapshots it, and `Reset` re-invokes the same snapped factory against the
+/// rebuilt kernel. `None` leaves the kernel's
 /// `NoopOutboxResolver` default in place (every publish fails closed
 /// with `NoTargets`, matching the production `Nip65OutboxResolver`'s
 /// behaviour for an uncached author).

@@ -139,7 +139,7 @@ pub struct ProtocolCommandContextParts<'a> {
     pub stages: &'a dyn ActionStageTracker,
     /// V-07 recipient-relay router wrapper.
     pub recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 — the per-app host-op handler slot accessor. Read by the
+    /// ADR-0052 §D4 — the per-app host-op handler accessor. Read by the
     /// `HostOpCommand` in [`crate::substrate::host_op`]; the noop singleton is
     /// installed for every other command (they never call it).
     pub host_op_handler: &'a dyn HostOpHandlerAccess,
@@ -175,7 +175,7 @@ pub struct ProtocolCommandContext<'a> {
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
     recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 — per-app host-op handler slot accessor.
+    /// ADR-0052 §D4 — per-app host-op handler accessor.
     host_op_handler: &'a dyn HostOpHandlerAccess,
     /// ADR-0052 §D5 — narrow wallet kernel-mutation surface (replaced the
     /// deleted `kernel: Option<&mut Kernel>` escape hatch).
@@ -380,9 +380,9 @@ impl<'a> ProtocolCommandContext<'a> {
         self.recipients
     }
 
-    /// ADR-0052 §D4 — clone the currently-installed host-op handler out of the
-    /// per-app slot (`None` when none is installed). D15-wrapped: a panicking
-    /// slot accessor falls back to `None` (the genuinely-absent-handler
+    /// ADR-0052 §D4 — clone the configured host-op handler (`None` when none
+    /// was installed before actor start). D15-wrapped: a panicking accessor
+    /// falls back to `None` (the genuinely-absent-handler
     /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
     #[must_use]
     pub fn host_op_handler(

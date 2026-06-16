@@ -12,6 +12,8 @@ use crate::actor::{
     RawEventObserverSlot,
 };
 use crate::kernel::Kernel;
+use crate::slots::RawEventForwardPolicyFactory;
+#[cfg(test)]
 use crate::slots::RawEventForwardPolicySlot;
 use crate::store::RawEvent;
 use crate::substrate::{
@@ -29,12 +31,33 @@ pub(crate) fn new_raw_event_forward_observer_id_slot() -> RawEventForwardObserve
     Arc::new(Mutex::new(Vec::new()))
 }
 
+#[cfg(test)]
 pub(crate) fn register_raw_event_forward_policies(
     kernel: &Kernel,
     raw_event_observers: &RawEventObserverSlot,
     pool: &Pool,
     id_slot: &RawEventForwardObserverIdSlot,
     policy_slot: &RawEventForwardPolicySlot,
+) {
+    let factory = policy_slot
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(Arc::clone));
+    register_raw_event_forward_policies_from_factory(
+        kernel,
+        raw_event_observers,
+        pool,
+        id_slot,
+        factory,
+    );
+}
+
+pub(crate) fn register_raw_event_forward_policies_from_factory(
+    kernel: &Kernel,
+    raw_event_observers: &RawEventObserverSlot,
+    pool: &Pool,
+    id_slot: &RawEventForwardObserverIdSlot,
+    factory: Option<Arc<RawEventForwardPolicyFactory>>,
 ) {
     let previous_ids = id_slot
         .lock()
@@ -44,11 +67,7 @@ pub(crate) fn register_raw_event_forward_policies(
         unregister_raw_observer(raw_event_observers, id);
     }
 
-    let Some(factory) = policy_slot
-        .lock()
-        .ok()
-        .and_then(|guard| guard.as_ref().map(Arc::clone))
-    else {
+    let Some(factory) = factory else {
         return;
     };
 

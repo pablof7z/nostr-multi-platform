@@ -18,7 +18,6 @@ use zeroize::Zeroizing;
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
-use crate::substrate::HostOpHandlerSlot;
 use nmp_network::pool::{BackoffClass, Pool, PoolEvent, RelayFrame as PoolFrame};
 
 use crate::kernel::{BackoffHint, RelayFrame};
@@ -53,19 +52,18 @@ fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
         PoolFrame::Close(reason) => RelayFrame::Close(reason),
     }
 }
-use crate::subs::PlanCoverageHook;
 
 use super::capability_worker::CapabilityWorkSender;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 use super::pending_sign::ParkedOp;
-use super::signer_port_dispatch;
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
 };
 use super::session_persistence;
+use super::signer_port_dispatch;
 use super::tick::{clamp_emit_hz_logged, emit_now, maybe_emit_after_dispatch};
-use super::{ActorCommand, RelayControl};
+use super::{ActorCommand, ActorConfig, RelayControl};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
 
@@ -313,44 +311,10 @@ pub(super) struct ActorContext<'a> {
     /// A disconnected channel (post-teardown) is a benign send-failure
     /// (D6 — the write is already irrelevant at that point).
     pub(super) capability_work_tx: &'a CapabilityWorkSender,
-    /// D2 — coverage-gate hook slot. Read by the `Reset` arm to re-install
-    /// the hook on the rebuilt kernel (mirrors initial install in
-    /// `run_actor_with_observers`).
-    pub(super) coverage_hook_slot: &'a Arc<Mutex<Option<PlanCoverageHook>>>,
-    /// Outbound planner REQ interceptor slot. Read by the `Reset` arm to
-    /// re-install the hook on the rebuilt kernel.
-    pub(super) req_frame_interceptor_slot: &'a crate::substrate::ReqFrameInterceptorSlot,
-    /// Host-installed [`crate::substrate::HostOpHandler`] slot. ADR-0052 §D4
-    /// (K2 rung 5.4): read by the `Protocol` arm (via the
-    /// `HostOpHandlerAccessAdapter`) so the [`crate::substrate::HostOpCommand`]
-    /// can clone the installed handler out at `run` time and route the action
-    /// body to the owner of the app-side state (today: `nmp-app-marmot`'s MLS
-    /// service). `None` means no handler was installed before the dispatch —
-    /// the command records a `Failed` terminal stage for the correlation id.
-    /// (Before rung 5.4 the deleted `DispatchHostOp` arm read this slot.)
-    pub(super) host_op_handler: &'a HostOpHandlerSlot,
-    /// V-40 — shared [`crate::substrate::EventIngestDispatcher`] slot.
-    /// Read by the `Reset` arm to re-bind the slot onto the rebuilt
-    /// kernel so per-NIP `register_actions` registrations survive a
-    /// state reset.
-    pub(super) ingest_dispatcher_slot:
-        &'a Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
-    /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. Same
-    /// `Reset`-survival contract as the ingest dispatcher slot.
-    pub(super) dm_inbox_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
-    /// ADR-0057 PR 2 — shared [`crate::substrate::ProfileLookup`] slot. Same
-    /// `Reset`-survival contract as `dm_inbox_relays_slot`.
-    pub(super) profile_lookup_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::ProfileLookup>>>,
-    /// ADR-0057 PR 3 — shared [`crate::substrate::ContactsLookup`] slot. Same
-    /// `Reset`-survival contract as `dm_inbox_relays_slot`.
-    pub(super) contacts_lookup_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::ContactsLookup>>>,
-    /// Shared [`crate::substrate::BlockedRelayLookup`] slot. Same
-    /// `Reset`-survival contract as `dm_inbox_relays_slot`.
-    pub(super) blocked_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::BlockedRelayLookup>>>,
-    /// Per-app bootstrap Tailing self-kinds override slot. `None` →
-    /// kernel reverts to its built-in default. Read by the `Reset` arm
-    /// to re-apply the override against the rebuilt kernel.
-    pub(super) bootstrap_self_kinds_slot: &'a Arc<Mutex<Option<Vec<u64>>>>,
+    /// Snapshotted actor setup read at actor start. Reset re-applies this same
+    /// immutable view so pre-start composition does not require slot reads on
+    /// the actor hot path.
+    pub(super) config: &'a ActorConfig,
     /// V-51 phase 4 — routing-trace projection slot. Read by the `Reset`
     /// arm to re-publish the rebuilt kernel's `routing_trace()` clone so
     /// `NmpApp::routing_trace` keeps returning a live projection across a
@@ -363,17 +327,6 @@ pub(super) struct ActorContext<'a> {
     /// the live store across a state wipe — same publish-back-on-`Reset`
     /// contract as `routing_trace_slot`.
     pub(super) event_store_slot: &'a crate::slots::EventStoreSlot,
-    /// V-51 phase 5 — per-app substrate-routing factory slot. Re-invoked by
-    /// the `Reset` arm against the rebuilt kernel's fresh projection clone
-    /// so a production router (e.g. `nmp_router::GenericOutboxRouter`)
-    /// survives a state wipe — same contract as the ingest dispatcher /
-    /// dm-inbox-lookup / routing-trace slots above.
-    pub(super) routing_substrate_slot: &'a crate::slots::RoutingSubstrateSlot,
-    /// Spec §271 (2026-05-25) — same contract as `routing_substrate_slot`,
-    /// for the publish-side resolver. Re-applied by the `Reset` arm against
-    /// the rebuilt kernel's fresh handles so the production
-    /// `nmp_router::Nip65OutboxResolver` survives a state wipe.
-    pub(super) publish_resolver_slot: &'a crate::slots::PublishResolverSlot,
     /// V-82 — the FFI-shared active-account hex-pubkey slot. The kernel writes
     /// its active account into this `Arc` on every identity mutation and the
     /// host (`nmp-ffi::NmpApp::active_account_handle`) holds the same `Arc`.
@@ -387,8 +340,6 @@ pub(super) struct ActorContext<'a> {
     /// re-registers them against fresh handles.
     pub(super) raw_event_forward_observer_ids:
         &'a crate::actor::raw_event_forwarder::RawEventForwardObserverIdSlot,
-    /// Policy factory slot used when registering raw-event forwarders.
-    pub(super) raw_event_forward_policy_slot: &'a crate::slots::RawEventForwardPolicySlot,
     /// Shared raw-event tap slot — held in the actor scope and threaded
     /// through here so the `Reset` arm can re-register the pipeline
     /// observer against the same `RawEventObserverSlot` (which itself
@@ -612,8 +563,7 @@ pub(super) fn dispatch_command(
                         // the SIGNING account's per-op deadline (ADR-0050 D4): a
                         // named 90s NIP-55 key must not inherit the active
                         // account's (e.g. 5s) budget. `""` = active (`None`).
-                        let named =
-                            (!account_pubkey.is_empty()).then_some(account_pubkey.as_str());
+                        let named = (!account_pubkey.is_empty()).then_some(account_pubkey.as_str());
                         let deadline = ctx.identity.sign_deadline_for(named);
                         ctx.parked_ops.push(ParkedOp::signed_events_projection(
                             op,
@@ -1284,22 +1234,14 @@ pub(super) fn dispatch_command(
             // and per-app crates; replacing it would silently return stale
             // rows to the host-app dispatch layer.
             let configured_relays_handle = ctx.kernel.take_app_relay_slot_for_reset();
-            // NOTE: the FFI-supplied LMDB `storage_path` (from
-            // `nmp_app_set_storage_path`) is NOT re-threaded here — `Reset`
-            // rebuilds the kernel with the in-memory store unless the
-            // `NMP_LMDB_PATH` env-var fallback in `build_event_store` is
-            // set. `Reset` is a "wipe all state" command and is rare in
-            // production; persisting across it is a deliberate non-goal of
-            // the FFI-path wiring.
             // V-82 — rebuild over the SAME FFI-shared active-account slot so
             // `NmpApp::active_account_handle()` keeps reading the slot the
             // rebuilt kernel writes (a bare `Kernel::new` would mint a fresh
             // slot and silently orphan the host's handle on every Reset).
             // Mirrors the routing-trace re-publish contract below: the shared
             // `Arc` outlives the discarded kernel.
-            *ctx.kernel = Kernel::with_storage_path_and_account_slot(
+            *ctx.kernel = ctx.config.kernel_with_account_slot(
                 ctx.kernel.visible_limit(),
-                None,
                 Arc::clone(ctx.active_account_slot),
             );
             // V-82 — clear the shared active-account slot to match the fresh
@@ -1332,77 +1274,7 @@ pub(super) fn dispatch_command(
             if let Some(handle) = configured_relays_handle {
                 ctx.kernel.set_app_relay_slot(handle);
             }
-            // V-40 — re-bind the substrate `EventIngestDispatcher` slot
-            // and the `DmInboxRelayLookup` handle on the rebuilt kernel.
-            // The slots outlive the reset (shared `Arc`s with `NmpApp`);
-            // re-binding ensures the rebuilt kernel sees the same per-NIP
-            // parser registrations + DM-relay cache the registration path
-            // mutated. Mirrors the initial bind in
-            // `run_actor_with_observers`.
-            ctx.kernel
-                .set_ingest_dispatcher_slot(Arc::clone(ctx.ingest_dispatcher_slot));
-            {
-                let lookup = ctx
-                    .dm_inbox_relays_slot
-                    .lock()
-                    .ok()
-                    .map(|g| Arc::clone(&*g))
-                    .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
-                ctx.kernel.set_dm_inbox_relay_lookup(lookup);
-            }
-            {
-                // ADR-0057 PR 2 — re-bind the profile cache on the rebuilt kernel.
-                let lookup = ctx
-                    .profile_lookup_slot
-                    .lock()
-                    .ok()
-                    .map(|g| Arc::clone(&*g))
-                    .unwrap_or_else(crate::substrate::empty_profile_lookup);
-                ctx.kernel.set_profile_lookup(lookup);
-            }
-            {
-                // ADR-0057 PR 3 — re-bind the contacts cache on the rebuilt kernel.
-                let lookup = ctx
-                    .contacts_lookup_slot
-                    .lock()
-                    .ok()
-                    .map(|g| Arc::clone(&*g))
-                    .unwrap_or_else(crate::substrate::empty_contacts_lookup);
-                ctx.kernel.set_contacts_lookup(lookup);
-            }
-            {
-                let lookup = ctx
-                    .blocked_relays_slot
-                    .lock()
-                    .ok()
-                    .map(|g| Arc::clone(&*g))
-                    .unwrap_or_else(crate::substrate::empty_blocked_relay_lookup);
-                ctx.kernel.set_blocked_relay_lookup(lookup);
-            }
-            {
-                let kinds = ctx.bootstrap_self_kinds_slot.lock().ok().and_then(|g| {
-                    g.as_ref()
-                        .map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>())
-                });
-                ctx.kernel.set_bootstrap_self_kinds_override(kinds);
-            }
-            // D2 — re-install the coverage-gate hook on the rebuilt kernel.
-            // The slot outlives the reset (shared `Arc` with `NmpApp`); reading
-            // it here ensures the rebuilt lifecycle also enforces D2. Mirrors
-            // the initial install in `run_actor_with_observers`.
-            if let Some(hook) = ctx.coverage_hook_slot.lock().ok().and_then(|g| g.clone()) {
-                ctx.kernel.lifecycle_mut().set_coverage_hook(hook);
-            }
-            if let Some(interceptor) = ctx
-                .req_frame_interceptor_slot
-                .lock()
-                .ok()
-                .and_then(|g| g.clone())
-            {
-                ctx.kernel
-                    .lifecycle_mut()
-                    .set_req_frame_interceptor(interceptor);
-            }
+            ctx.config.apply_to_kernel(ctx.kernel);
             // V-51 phase 4 — re-publish the rebuilt kernel's routing-trace
             // projection clone into the shared slot. The previous projection
             // was attached to the now-discarded kernel; `Reset` is a "wipe
@@ -1420,52 +1292,16 @@ pub(super) fn dispatch_command(
             if let Ok(mut guard) = ctx.event_store_slot.lock() {
                 *guard = Some(ctx.kernel.event_store_handle());
             }
-            // V-51 phase 5 — re-apply the per-app substrate-routing factory
-            // against the rebuilt kernel. Same contract as the routing-trace
-            // re-publish above: the previous router/cache pair was discarded
-            // with the old kernel; the factory rebuilds against the fresh
-            // projection so production composition survives a state wipe.
-            if let Some(factory) = ctx
-                .routing_substrate_slot
-                .lock()
-                .ok()
-                .and_then(|g| g.as_ref().map(Arc::clone))
-            {
-                let observer: Arc<dyn crate::substrate::RoutingTraceObserver> =
-                    ctx.kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
-                let (router, cache) = factory(observer);
-                ctx.kernel.set_routing(router, cache);
-            }
-            // Spec §271 (2026-05-25) — re-apply the per-app
-            // substrate-publish-resolver factory against the rebuilt kernel.
-            // Same contract as the routing-substrate re-apply above: the
-            // previous resolver was discarded with the old kernel; the
-            // factory rebuilds against the fresh handles so production
-            // composition survives a state wipe.
-            if let Some(factory) = ctx
-                .publish_resolver_slot
-                .lock()
-                .ok()
-                .and_then(|g| g.as_ref().map(Arc::clone))
-            {
-                let resolver = factory(
-                    ctx.kernel.event_store_handle(),
-                    ctx.kernel.indexer_relays_handle(),
-                    ctx.kernel.local_write_relays_handle(),
-                    ctx.kernel.active_account_handle(),
-                );
-                ctx.kernel.set_publish_resolver(resolver);
-            }
             // Re-register injected raw-event forwarding policies against the
             // rebuilt kernel. The prior observers captured handles from the
             // discarded kernel; re-running the factory preserves policy
             // registrations while keeping target selection out of core.
-            crate::actor::raw_event_forwarder::register_raw_event_forward_policies(
+            crate::actor::raw_event_forwarder::register_raw_event_forward_policies_from_factory(
                 ctx.kernel,
                 ctx.raw_event_observers_handle,
                 ctx.pool,
                 ctx.raw_event_forward_observer_ids,
-                ctx.raw_event_forward_policy_slot,
+                ctx.config.raw_event_forward_policy.clone(),
             );
             *ctx.startup_sent = false;
             if *ctx.running {
@@ -1643,13 +1479,13 @@ pub(super) fn dispatch_command(
             let recipients = RecipientRelayLookupAdapter {
                 kernel: &kernel_cell,
             };
-            // ADR-0052 §D4 — per-app host-op handler slot accessor, so the
+            // ADR-0052 §D4 — per-app host-op handler accessor, so the
             // `HostOpCommand` (which replaced the deleted `DispatchHostOp` arm)
-            // can clone the installed handler out at `run` time. Reaches no
-            // kernel/identity state, only the slot — so it needs no `RefCell`
+            // can clone the start-time configured handler at `run` time.
+            // Reaches no kernel/identity state, so it needs no `RefCell`
             // borrow and is safe to read inside the whole-body catch_unwind.
             let host_op_handler = HostOpHandlerAccessAdapter {
-                slot: ctx.host_op_handler,
+                handler: ctx.config.host_op_handler.clone(),
             };
             // ADR-0052 §D5 — narrow wallet kernel-mutation + zap-profile-read
             // adapters replace the deleted `kernel_mut()` / `lnurl_for_pubkey`
@@ -1814,14 +1650,8 @@ fn resolve_handle<'a>(
 pub(super) fn handle_relay_event(
     event: PoolEvent,
     kernel: &mut Kernel,
-    // V-38: substrate-generic interceptor slot — `nmp-nip47`'s wallet
-    // runtime installs itself here to peek at kind:23195 NWC responses
-    // before the kernel drops them as unknown kinds.
-    relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
-    // ADR-0051: relay-connected hook slot fanned on `PoolEvent::Opened`, plus
-    // the actor's waking self-sender (ADR-0050 §D3a) so a spawned nmp-nip11
-    // fetch can post `ActorCommand::SetRelayInfo` back and wake the loop.
-    relay_connected_hook: &crate::substrate::RelayConnectedHookSlot,
+    relay_text_interceptors: &[Arc<dyn crate::substrate::RelayTextInterceptor>],
+    relay_connected_hooks: &[Arc<dyn crate::substrate::RelayConnectedHook>],
     command_tx_self: &crate::actor::CommandSender,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
@@ -1869,15 +1699,12 @@ pub(super) fn handle_relay_event(
             // D7 preserved: actor reports the OS-level transition; the
             // kernel decides what to replay and rewrites `since`.
             let is_reconnect = !connected_urls.insert(canonical.clone());
-            // ADR-0051 — fan the connect to any installed hook (today
-            // `nmp-nip11`); the hook must not block (D8) and posts results back
-            // via `command_tx_self`.
-            crate::substrate::fan_relay_connected(
-                relay_connected_hook,
-                canonical.as_str(),
-                is_reconnect,
-                command_tx_self,
-            );
+            for hook in relay_connected_hooks {
+                let sender = command_tx_self.clone();
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    hook.on_relay_connected(canonical.as_str(), is_reconnect, sender);
+                }));
+            }
             if is_reconnect && running {
                 let replay = kernel.replay_on_reconnect(role, &url);
                 if !replay.is_empty() {
@@ -1994,11 +1821,7 @@ pub(super) fn handle_relay_event(
                 }
             }
             if let Some(text) = raw_text {
-                let interceptors = relay_text_interceptor
-                    .lock()
-                    .map(|guard| guard.clone())
-                    .unwrap_or_default();
-                for interceptor in interceptors {
+                for interceptor in relay_text_interceptors {
                     let extra = interceptor.on_relay_text(kernel, &url_str, &text);
                     outbound.extend(extra);
                 }

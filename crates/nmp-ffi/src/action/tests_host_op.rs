@@ -293,12 +293,12 @@ impl nmp_core::substrate::HostOpHandler for PanickingHostHandler {
 /// `HostOpCommand`'s internal handler catch) instead of unwinding the actor
 /// thread, AND the actor SURVIVES — a subsequent dispatch is still processed.
 ///
-/// Witness of survival: install a panicking handler, dispatch (the handler is
-/// reached and explodes), then HOT-SWAP an ok-handler in and dispatch again.
-/// If the first panic had unwound/killed the actor thread, the second
-/// dispatch's handler would never be invoked. We poll (≤ 2 s, the same
-/// wall-clock pattern the sibling host-op tests use) for the second handler's
-/// invocation — its presence proves the actor outlived the panic.
+/// Witness of survival: install a panicking handler before start, dispatch (the
+/// handler is reached and explodes), then dispatch again through the same
+/// snapped handler. If the first panic had unwound/killed the actor thread, the
+/// second dispatch's handler would never be invoked. We poll (≤ 2 s, the same
+/// wall-clock pattern the sibling host-op tests use) for the second invocation
+/// — its presence proves the actor outlived the panic.
 ///
 /// FAIL-BEFORE: with the bare `cmd.run(&mut pctx)` the `Protocol` arm had
 /// before this rung, a panicking handler reached through the new `HostOpCommand`
@@ -307,7 +307,6 @@ impl nmp_core::substrate::HostOpHandler for PanickingHostHandler {
 #[test]
 fn host_op_panicking_handler_is_isolated_and_actor_survives() {
     let panic_seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let ok_seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
 
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
@@ -336,23 +335,19 @@ fn host_op_panicking_handler_is_isolated_and_actor_survives() {
         "panicking handler must have been invoked before it panicked"
     );
 
-    // 2) Hot-swap an OK handler and dispatch AGAIN. If the panic had killed the
-    //    actor thread this dispatch's handler would never fire.
-    app_mut.set_host_op_handler(Arc::new(RecordingHostHandler {
-        seen: Arc::clone(&ok_seen),
-        respond_ok: true,
-    }) as Arc<dyn nmp_core::substrate::HostOpHandler>);
+    // 2) Dispatch AGAIN through the same snapped handler. If the panic had
+    //    killed the actor thread this dispatch's handler would never fire.
     let _ = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"after_panic"}"#);
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while std::time::Instant::now() < deadline {
-        if !ok_seen.lock().unwrap().is_empty() {
+        if panic_seen.lock().unwrap().len() >= 2 {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    let observed = ok_seen.lock().unwrap().first().cloned();
-    let (action_json, _corr) = observed.expect(
+    let observed = panic_seen.lock().unwrap().get(1).cloned();
+    let action_json = observed.expect(
         "actor must SURVIVE the panicking handler — the post-panic dispatch's \
          handler was never invoked within 2 s, so the actor thread died",
     );

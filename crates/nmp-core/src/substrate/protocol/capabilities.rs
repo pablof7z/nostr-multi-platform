@@ -169,27 +169,24 @@ pub trait ZapProfileLookup: Send + Sync {
     fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String>;
 }
 
-/// ADR-0052 §D4 — the narrow capability that reaches the per-app
-/// [`HostOpHandler`](crate::substrate::HostOpHandler) slot.
+/// ADR-0052 §D4 — the narrow capability that reaches the actor's configured
+/// [`HostOpHandler`](crate::substrate::HostOpHandler).
 ///
-/// This is the seam K2 rung 5.4 adds so the persistent, host-installed
-/// handler (the Marmot MLS service, hot-swappable on account switch) can be
-/// expressed as a one-shot [`ProtocolCommand`](super::ProtocolCommand) (the
-/// `HostOpCommand` in [`crate::substrate::host_op`]) instead of a bespoke
-/// `ActorCommand::DispatchHostOp` arm. The command captures NO handler itself
-/// — it asks this capability for an `Arc::clone` of whatever handler is
-/// installed *now*, so account-switch hot-swaps stay live (D2: the value the
-/// command reaches is per-app slot state, not baked into the command).
+/// This is the seam K2 rung 5.4 adds so the persistent, host-installed handler
+/// (the Marmot MLS service) can be expressed as a one-shot
+/// [`ProtocolCommand`](super::ProtocolCommand) (the `HostOpCommand` in
+/// [`crate::substrate::host_op`]) instead of a bespoke
+/// `ActorCommand::DispatchHostOp` arm. The command captures NO handler itself:
+/// it asks this capability for an `Arc::clone` of the handler that was snapped
+/// into actor config at start.
 ///
 /// It is deliberately narrow — it does NOT hand out `&mut Kernel` (rung 5.5
 /// deleted that escape hatch entirely); it returns only the opaque
 /// `Arc<dyn HostOpHandler>` (D0: no protocol type crosses).
 pub trait HostOpHandlerAccess: Send + Sync {
-    /// Clone the currently-installed handler out of the per-app slot, or
-    /// `None` if no handler was installed before the dispatch reached the
-    /// actor. The clone is taken under the slot lock and returned by value so
-    /// the long-running `handle` call never holds the slot mutex (D8 — must
-    /// not block the FFI `set_host_op_handler` writer).
+    /// Clone the configured handler, or `None` if no handler was installed
+    /// before actor start. The clone is returned by value so the long-running
+    /// `handle` call never depends on shared config locks.
     fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>>;
 }
 

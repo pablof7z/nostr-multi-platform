@@ -21,13 +21,13 @@ use super::commands::{self, IdentityRuntime};
 use super::dispatch::{dispatch_command, ActorContext};
 use super::ActorCommand;
 use crate::actor::capability_worker::{spawn_capability_worker, CapabilityWorkSender};
+use crate::actor::{ActorConfigSources, ActorMail, CommandSender};
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
-use crate::actor::{ActorMail, CommandSender};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
@@ -150,26 +150,37 @@ fn dispatch_capability_result(
     let ingest_dispatcher_slot = Arc::new(std::sync::RwLock::new(
         crate::substrate::EventIngestDispatcher::default(),
     ));
-    let dm_inbox_relays_slot = Arc::new(Mutex::new(
-        crate::substrate::empty_dm_inbox_relay_lookup(),
-    ));
-    let profile_lookup_slot =
-        Arc::new(Mutex::new(crate::substrate::empty_profile_lookup()));
-    let contacts_lookup_slot =
-        Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup()));
-    let blocked_relays_slot = Arc::new(Mutex::new(
-        crate::substrate::empty_blocked_relay_lookup(),
-    ));
+    let dm_inbox_relays_slot =
+        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup()));
+    let profile_lookup_slot = Arc::new(Mutex::new(crate::substrate::empty_profile_lookup()));
+    let contacts_lookup_slot = Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup()));
+    let blocked_relays_slot = Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup()));
     let bootstrap_self_kinds_slot = Arc::new(Mutex::new(None));
     let routing_trace_slot = Arc::new(Mutex::new(None));
     let event_store_slot = Arc::new(Mutex::new(None));
-    let routing_substrate_slot = Arc::new(Mutex::new(None));
-    let publish_resolver_slot = Arc::new(Mutex::new(None));
-    let active_account_slot = Arc::new(Mutex::new(None));
+    let active_account_slot = crate::slots::new_active_account_slot();
     let raw_event_forward_observer_ids =
         crate::actor::raw_event_forwarder::new_raw_event_forward_observer_id_slot();
-    let raw_event_forward_policy_slot = Arc::new(Mutex::new(None));
     let raw_event_observers = commands::new_raw_event_observer_slot();
+    let config = ActorConfigSources {
+        storage_path: Arc::new(Mutex::new(None)),
+        coverage_hook,
+        req_frame_interceptor,
+        host_op_handler,
+        relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
+        relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
+        ingest_dispatcher: ingest_dispatcher_slot,
+        dm_inbox_relays: dm_inbox_relays_slot,
+        profile_lookup: profile_lookup_slot,
+        contacts_lookup: contacts_lookup_slot,
+        blocked_relays: blocked_relays_slot,
+        bootstrap_self_kinds: bootstrap_self_kinds_slot,
+        routing_substrate: crate::slots::new_routing_substrate_slot(),
+        publish_resolver: crate::slots::new_publish_resolver_slot(),
+        raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+        kernel_clock: crate::slots::new_kernel_clock_slot(),
+    }
+    .snapshot();
 
     let mut ctx = ActorContext {
         kernel,
@@ -193,22 +204,11 @@ fn dispatch_capability_result(
         parked_ops: &mut parked_ops,
         command_tx_self: command_tx,
         capability_work_tx,
-        coverage_hook_slot: &coverage_hook,
-        req_frame_interceptor_slot: &req_frame_interceptor,
-        host_op_handler: &host_op_handler,
-        ingest_dispatcher_slot: &ingest_dispatcher_slot,
-        dm_inbox_relays_slot: &dm_inbox_relays_slot,
-        profile_lookup_slot: &profile_lookup_slot,
-        contacts_lookup_slot: &contacts_lookup_slot,
-        blocked_relays_slot: &blocked_relays_slot,
-        bootstrap_self_kinds_slot: &bootstrap_self_kinds_slot,
+        config: &config,
         routing_trace_slot: &routing_trace_slot,
         event_store_slot: &event_store_slot,
-        routing_substrate_slot: &routing_substrate_slot,
-        publish_resolver_slot: &publish_resolver_slot,
         active_account_slot: &active_account_slot,
         raw_event_forward_observer_ids: &raw_event_forward_observer_ids,
-        raw_event_forward_policy_slot: &raw_event_forward_policy_slot,
         raw_event_observers_handle: &raw_event_observers,
     };
 
@@ -240,7 +240,10 @@ fn capability_result_ready_dropped_for_removed_account() {
     let cmd_tx = CommandSender::new(inbox_tx);
     let (work_tx, _work_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
-        (spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx)), rx)
+        (
+            spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx)),
+            rx,
+        )
     };
 
     let mut identity = IdentityRuntime::new(
@@ -329,7 +332,10 @@ fn capability_result_ready_error_toasts_for_present_account() {
     let cmd_tx = CommandSender::new(inbox_tx);
     let (work_tx, _work_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
-        (spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx)), rx)
+        (
+            spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx)),
+            rx,
+        )
     };
 
     let mut identity = IdentityRuntime::new(

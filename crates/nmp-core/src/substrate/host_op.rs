@@ -8,21 +8,19 @@
 //! snapshot-projected result): `ActorCommand::Protocol(Box<dyn
 //! ProtocolCommand>)` and a bespoke `ActorCommand::DispatchHostOp { .. }` arm.
 //! The latter pulled a persistent, app-installed `Arc<dyn HostOpHandler>` from
-//! a per-app slot, wrapped `handle()` in `catch_unwind`, and routed the
+//! actor config, wrapped `handle()` in `catch_unwind`, and routed the
 //! `{"ok"/"pending"/"error"}` envelope into the `action_stages` /
 //! `action_results` mirror.
 //!
 //! Rung 5.4 collapses the two doors into one. The persistent installed handler
-//! stays exactly where it was — the per-app
+//! is now snapped into actor config from the
 //! [`HostOpHandlerSlot`](crate::substrate::HostOpHandlerSlot) the host writes
-//! through [`crate::NmpApp::set_host_op_handler`]. What changes is how the
-//! *dispatch* is expressed: instead of a dedicated `ActorCommand` variant, each
-//! host op mints a fresh [`HostOpCommand`] (a one-shot `ProtocolCommand`) that,
-//! at `run` time, asks the per-app slot for an `Arc::clone` of whatever handler
-//! is installed *now* — through the narrow
+//! through [`crate::NmpApp::set_host_op_handler`] before start. What changes is
+//! how the *dispatch* is expressed: instead of a dedicated `ActorCommand`
+//! variant, each host op mints a fresh [`HostOpCommand`] (a one-shot
+//! `ProtocolCommand`) that asks the narrow
 //! [`HostOpHandlerAccess`](crate::substrate::HostOpHandlerAccess) capability on
-//! [`ProtocolCommandContext`]. Because the clone is taken at run time, an
-//! account-switch hot-swap of the handler is still honoured (D2).
+//! [`ProtocolCommandContext`] for an `Arc::clone` of the snapped handler.
 //!
 //! # The two guarantees this preserves
 //!
@@ -33,8 +31,8 @@
 //!    actor thread. This body additionally wraps `handle()` directly so the
 //!    *failure-record* still names the panic precisely even though the
 //!    arm-level catch would also stop the unwind.
-//! 2. **Persistent handler, one-shot command.** The handler lives in the per-app
-//!    slot (persistent, hot-swappable); only the command is consumed per op.
+//! 2. **Persistent handler, one-shot command.** The handler is start-time actor
+//!    config, and only the command is consumed per op.
 //!
 //! # Terminal-verdict routing (D8, single canonical path)
 //!

@@ -852,7 +852,10 @@ fn snapshot_carries_nip46_onboarding_projection() {
     use std::thread;
     use std::time::Duration;
 
-    use crate::actor::{run_actor_with_observers, ActorCommand, ActorMail, CommandSender};
+    use crate::actor::{
+        run_actor_with_observers, ActorChannels, ActorCommand, ActorConfigSources, ActorMail,
+        ActorRuntimeSlots, CommandSender,
+    };
     use crate::capability_socket::new_capability_callback_slot;
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
@@ -889,83 +892,61 @@ fn snapshot_carries_nip46_onboarding_projection() {
 
     let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || {
-        run_actor_with_observers(
-            cmd_rx,
-            actor_self_tx,
-            upd_tx,
-            crate::actor::new_lifecycle_observer_slot(),
-            crate::actor::new_event_observer_slot(),
-            crate::actor::new_raw_event_observer_slot(),
+        let runtime = ActorRuntimeSlots {
+            lifecycle_observer: crate::actor::new_lifecycle_observer_slot(),
+            event_observers: crate::actor::new_event_observer_slot(),
+            raw_event_observers: crate::actor::new_raw_event_observer_slot(),
             snapshot_projections,
-            // V-38: substrate-generic relay-text interceptor slot.
-            crate::substrate::new_relay_text_interceptor_slot(),
-            // ADR-0051: throwaway relay-connected hook slot.
-            crate::substrate::new_relay_connected_hook_slot(),
-            bunker_slot,
-            // V-14 step b: throwaway connection-state slot.
-            crate::actor::new_signer_state_slot(),
-            // ADR-0052 §D3: throwaway per-app signer hook slots (this
-            // remote-signer test drives the broker through the bunker_slot
-            // shared handshake slot, not the hook seam).
-            crate::new_bunker_hook_slot(),
-            crate::new_external_signer_hook_slot(),
-            // Typed slot constructor.
-            crate::kernel::new_app_relay_slot(),
-            Arc::new(std::sync::Mutex::new(None)),
-            Arc::new(std::sync::Mutex::new(None)),
-            new_capability_callback_slot(),
-            Arc::new(std::sync::Mutex::new(None)),
-            Arc::new(AtomicU64::new(0)),
-            // D2 — test wiring; no coverage hook installed.
-            Arc::new(std::sync::Mutex::new(None)),
-            crate::substrate::new_req_frame_interceptor_slot(),
-            // Host-op handler slot — test wiring; this remote-signer test does
-            // not exercise the `DispatchHostOp` path.
-            crate::substrate::new_host_op_handler_slot(),
-            // V-40 — test wiring; no NIP-17 cache here.
-            Arc::new(std::sync::RwLock::new(
+            bunker_handshake: bunker_slot,
+            signer_state: crate::actor::new_signer_state_slot(),
+            bunker_hook: crate::new_bunker_hook_slot(),
+            external_signer_hook: crate::new_external_signer_hook_slot(),
+            configured_relays: crate::kernel::new_app_relay_slot(),
+            mls_local_nsec: Arc::new(std::sync::Mutex::new(None)),
+            active_local_keys: Arc::new(std::sync::Mutex::new(None)),
+            capability_callback: new_capability_callback_slot(),
+            queue_depth: Arc::new(AtomicU64::new(0)),
+            routing_trace: Arc::new(std::sync::Mutex::new(None)),
+            active_account: crate::slots::new_active_account_slot(),
+            event_store: crate::slots::new_event_store_slot(),
+        };
+        let config = ActorConfigSources {
+            storage_path: Arc::new(std::sync::Mutex::new(None)),
+            coverage_hook: Arc::new(std::sync::Mutex::new(None)),
+            req_frame_interceptor: crate::substrate::new_req_frame_interceptor_slot(),
+            host_op_handler: crate::substrate::new_host_op_handler_slot(),
+            relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
+            relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
+            ingest_dispatcher: Arc::new(std::sync::RwLock::new(
                 crate::substrate::EventIngestDispatcher::new(),
             )),
-            Arc::new(std::sync::Mutex::new(
+            dm_inbox_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_dm_inbox_relay_lookup(),
             )),
-            // ADR-0057 PR 2 — test wiring: empty profile lookup slot.
-            Arc::new(std::sync::Mutex::new(
+            profile_lookup: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_profile_lookup(),
             )),
-            // ADR-0057 PR 3 — test wiring: empty contacts lookup slot.
-            Arc::new(std::sync::Mutex::new(
+            contacts_lookup: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_contacts_lookup(),
             )),
-            // Test wiring — no blocked-relay cache installed; the kernel
-            // defaults to the empty-lookup that returns an empty
-            // `BlockedRelaySet` for every account.
-            Arc::new(std::sync::Mutex::new(
+            blocked_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_blocked_relay_lookup(),
             )),
-            // Test wiring — no bootstrap self-kinds override; the kernel
-            // uses its built-in `[0, 3, 10002, 10000, 10006]` default.
-            Arc::new(std::sync::Mutex::new(None)),
-            // V-51 phase 4 — test wiring; nothing reads the routing-trace slot here.
-            Arc::new(std::sync::Mutex::new(None)),
-            // V-51 phase 5 — test wiring; no per-app routing factory installed.
-            Arc::new(std::sync::Mutex::new(None)),
-            // Spec §271 (2026-05-25) — test wiring; no per-app
-            // publish-resolver factory installed. The under-`cfg(test)`
-            // auto-install on `Kernel::new()` (also via this actor's
-            // `Kernel::with_storage_path`) gives the kernel a working
-            // `Nip65OutboxResolver` regardless of this slot.
-            Arc::new(std::sync::Mutex::new(None)),
-            // Test wiring; no raw-event forwarding policy installed.
-            crate::slots::new_raw_event_forward_policy_slot(),
-            // V-82 — test wiring; nothing outside the actor reads the
-            // active-account slot here (private throwaway).
-            crate::slots::new_active_account_slot(),
-            // V-83 — test wiring; nothing outside the actor reads the
-            // event-store slot here (private throwaway).
-            crate::slots::new_event_store_slot(),
-            // Test-support kernel-clock slot — private throwaway (None).
-            crate::slots::new_kernel_clock_slot(),
+            bootstrap_self_kinds: Arc::new(std::sync::Mutex::new(None)),
+            routing_substrate: crate::slots::new_routing_substrate_slot(),
+            publish_resolver: crate::slots::new_publish_resolver_slot(),
+            raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+            kernel_clock: crate::slots::new_kernel_clock_slot(),
+        }
+        .snapshot();
+        run_actor_with_observers(
+            ActorChannels {
+                inbox_rx: cmd_rx,
+                command_tx_self: actor_self_tx,
+                update_tx: upd_tx,
+            },
+            config,
+            runtime,
         );
     });
 
@@ -996,8 +977,9 @@ fn snapshot_carries_nip46_onboarding_projection() {
         .iter()
         .find(|p| p.key == crate::actor::typed_projections::NIP46_ONBOARDING_SCHEMA_ID)
         .expect("snapshot missing nip46_onboarding typed sidecar");
-    let onboarding = crate::actor::typed_projections::decode_nip46_onboarding(&onboarding_entry.payload)
-        .expect("nip46_onboarding sidecar must decode");
+    let onboarding =
+        crate::actor::typed_projections::decode_nip46_onboarding(&onboarding_entry.payload)
+            .expect("nip46_onboarding sidecar must decode");
 
     // The typed projection's `stage_kind` + `is_in_flight` must reflect the
     // same broker progress as the prior JSON path.
@@ -1067,14 +1049,21 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
         .iter()
         .find(|p| p.key == crate::kernel::public_typed_projections::ACCOUNTS_SCHEMA_ID)
         .expect("snapshot missing accounts typed sidecar");
-    let accounts = crate::kernel::public_typed_projections::decode_accounts(&accounts_entry.payload)
-        .expect("accounts sidecar must decode");
+    let accounts =
+        crate::kernel::public_typed_projections::decode_accounts(&accounts_entry.payload)
+            .expect("accounts sidecar must decode");
     assert!(
-        accounts.accounts.iter().any(|row| row.id == pk || row.npub.contains(&pk)),
+        accounts
+            .accounts
+            .iter()
+            .any(|row| row.id == pk || row.npub.contains(&pk)),
         "snapshot missing remote-signer pubkey {pk} in accounts sidecar"
     );
     assert!(
-        accounts.accounts.iter().any(|row| row.signer_kind == "nip46"),
+        accounts
+            .accounts
+            .iter()
+            .any(|row| row.signer_kind == "nip46"),
         "snapshot missing nip46 signer_kind in accounts sidecar"
     );
 
