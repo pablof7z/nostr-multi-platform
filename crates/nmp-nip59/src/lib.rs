@@ -35,8 +35,13 @@
 //!
 //! <https://github.com/nostr-protocol/nips/blob/master/59.md>
 
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+
+extern crate alloc;
+
 pub use error::Nip59Error;
 pub use kinds::KIND_GIFT_WRAP;
+#[cfg(feature = "wrap")]
 pub use signer_seal::{build_seal_unsigned, gift_wrap_local, wrap_signed_seal};
 pub use wrap::{
     parse_outer_for_decrypt, parse_rumor, parse_seal_for_decrypt, unwrap_gift_wrap, UnwrappedGift,
@@ -44,5 +49,6 @@ pub use wrap::{
 
 mod error;
 pub mod kinds;
+#[cfg(feature = "wrap")]
 mod signer_seal;
 mod wrap;

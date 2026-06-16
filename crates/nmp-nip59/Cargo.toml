@@ -6,10 +6,18 @@ license = { workspace = true }
 repository.workspace = true
 description = "NIP-59 gift-wrap / seal / rumor. Shared envelope for NIP-17 DMs and Marmot Welcome delivery."
 
+[features]
+default = ["wrap"]
+std = ["nostr/std"]
+wrap = ["std"]
+
 [dependencies]
-nostr = { version = "0.44", features = ["nip44", "nip59"] }
+nostr = { version = "0.44", default-features = false, features = ["nip44", "nip59"] }
 # Zero-dependency Layer-0 kind-integer registry. nmp-nip59 cannot import
 # KIND_GIFT_WRAP from nmp-core (that direction would create a compile cycle
 # because nmp-core → nmp-nip59 already). nmp-kinds has zero workspace deps
 # so the cycle is structurally impossible.
 nmp-kinds = { path = "../nmp-kinds" }
+
+[dev-dependencies]
+nostr = { version = "0.44", default-features = false, features = ["std", "nip44", "nip59"] }

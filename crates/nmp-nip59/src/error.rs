@@ -1,6 +1,7 @@
 //! Error type for NIP-59 operations.
 
-use std::fmt;
+use alloc::string::{String, ToString};
+use core::fmt;
 
 /// Errors that can occur during NIP-59 gift-wrap and unwrap operations.
 #[derive(Debug, PartialEq)]
@@ -23,6 +24,7 @@ impl fmt::Display for Nip59Error {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for Nip59Error {}
 
 impl From<nostr::nips::nip59::Error> for Nip59Error {

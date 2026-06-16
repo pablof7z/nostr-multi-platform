@@ -18,6 +18,8 @@
 //! around two LOCAL `nostr::nips::nip44::decrypt` calls for the local-keys path
 //! (and the crate's tests).
 
+use alloc::format;
+use alloc::string::String;
 use nostr::nips::nip44;
 use nostr::{Event, JsonUtil, Keys, Kind, PublicKey, UnsignedEvent};
 
@@ -93,9 +95,12 @@ fn addresses_recipient(gift_wrap: &Event, recipient: &PublicKey) -> bool {
 ///
 /// [`Nip59Error::Nostr`] if the seal JSON is malformed or its signature fails to
 /// verify.
-pub fn parse_seal_for_decrypt(seal_plaintext: &str) -> Result<(Event, String, PublicKey), Nip59Error> {
+pub fn parse_seal_for_decrypt(
+    seal_plaintext: &str,
+) -> Result<(Event, String, PublicKey), Nip59Error> {
     let seal = Event::from_json(seal_plaintext).map_err(Nip59Error::from)?;
-    seal.verify()
+    let secp = nostr::secp256k1::Secp256k1::verification_only();
+    seal.verify_with_ctx(&secp)
         .map_err(|e| Nip59Error::Nostr(format!("seal verify: {e}")))?;
     let ciphertext = seal.content.clone();
     let author = seal.pubkey;
