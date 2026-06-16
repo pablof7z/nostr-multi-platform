@@ -127,18 +127,33 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 }
             }
 
-            // Publish NIP-65 relay list (#1291 GAP 5). Dispatches the existing
-            // `nmp.nip65.publish_relay_list` action with the current relay set;
-            // Rust builds the kind:10002 tags. Mirrors iOS RelaySettingsView.
+            // Publish relay metadata (#1291 GAP 5). Dispatches the existing
+            // Rust-owned action namespaces with the current relay set; Rust
+            // builds both kind:10002 and kind:10050 tags.
             HorizontalDivider()
-            Button(
-                onClick = { model.publishRelayList(relays) },
-                enabled = relays.isNotEmpty(),
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Text("Publish Relay List")
+                Button(
+                    onClick = { model.publishRelayList(relays) },
+                    enabled = relays.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Publish Relay List")
+                }
+                Spacer(Modifier.size(8.dp))
+                Button(
+                    onClick = {
+                        model.publishDmRelayList(relays.map { it.relayUrl })
+                        model.publishRelayList(relays)
+                    },
+                    enabled = relays.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Publish DM Inbox")
+                }
             }
 
             // Add relay form
