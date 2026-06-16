@@ -146,7 +146,7 @@ fn many_unknown_authors_batch_into_chunks() {
     assert_eq!(l.probed_mailboxes().len(), n);
 }
 
-// ─── current-plan diagnostics accessors (nmp-repl seam) ──────────────────
+// ─── current-plan diagnostics accessors ──────────────────────────────────
 
 /// `current_plan_unroutable` is empty before any compile, then reflects
 /// the plan's `unroutable_authors` after a recompile.

@@ -158,10 +158,6 @@ name = "nmp-nwc"
 path = "crates/nmp-nwc"
 
 [[public_crates]]
-name = "nmp-repl"
-path = "crates/nmp-repl"
-
-[[public_crates]]
 name = "nmp-signer-broker"
 path = "crates/nmp-signer-broker"
 

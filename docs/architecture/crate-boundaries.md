@@ -46,7 +46,7 @@ implementation is injected at composition time.
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip59`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
 | 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-wasm` |
-| Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, `nmp-repl`, app shells |
+| Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
 Sibling crates do not depend on each other unless the dependency is part of
 their declared responsibility. Binding crates are siblings: one binding crate

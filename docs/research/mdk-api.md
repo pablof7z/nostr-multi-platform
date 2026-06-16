@@ -32,7 +32,7 @@ Exit code: **5** (errors present).
 
 | Crate | License | Pull path |
 |---|---|---|
-| `clipboard-win v5.4.1` | `BSL-1.0` | `nmp-desktop` → `eframe` → `arboard` → `clipboard-win` AND `nmp-repl` → `rustyline` → `clipboard-win` |
+| `clipboard-win v5.4.1` | `BSL-1.0` | `nmp-desktop` → `eframe` → `arboard` → `clipboard-win` |
 | `error-code v3.3.2` | `BSL-1.0` | same path via `clipboard-win` |
 | `epaint_default_fonts v0.29.1` | `(MIT OR Apache-2.0) AND OFL-1.1 AND LicenseRef-UFL-1.0` | `nmp-desktop` → `eframe` → `egui` → `epaint` |
 
