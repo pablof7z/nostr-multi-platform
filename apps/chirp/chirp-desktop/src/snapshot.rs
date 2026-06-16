@@ -190,6 +190,14 @@ pub struct AppRelay {
 pub struct ModularTimelineSnapshot {
     #[serde(default)]
     pub cards: Vec<RootCard>,
+    #[serde(default)]
+    pub page: Option<FeedPage>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct FeedPage {
+    #[serde(default)]
+    pub has_more: bool,
 }
 
 /// One entry in the `nmp.feed.home` `cards` array — the `RootCard` wrapper
@@ -420,6 +428,19 @@ mod tests {
         let feed: ModularTimelineSnapshot =
             serde_json::from_value(json).expect("empty feed deserializes");
         assert!(feed.cards.is_empty());
+        assert!(feed.page.is_none());
+    }
+
+    #[test]
+    fn home_feed_decodes_has_more_page_flag() {
+        let json = serde_json::json!({
+            "cards": [],
+            "page": { "limit": 80, "has_more": true, "total_blocks": 120 }
+        });
+
+        let feed: ModularTimelineSnapshot =
+            serde_json::from_value(json).expect("feed page deserializes");
+        assert!(feed.page.as_ref().is_some_and(|page| page.has_more));
     }
 
     /// `resolved_profiles` decodes into the desktop's `ProfileCard` mirror,

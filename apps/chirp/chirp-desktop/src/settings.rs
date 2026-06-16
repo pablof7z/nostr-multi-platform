@@ -8,7 +8,7 @@
 use egui::{Color32, RichText, ScrollArea, TextEdit, Ui};
 use zeroize::Zeroize;
 
-use crate::app::{DesktopApp, relay_role_label};
+use crate::app::{relay_role_label, DesktopApp};
 use crate::snapshot::{AppRelay, BunkerHandshakeStatus, SignerStatus, Snapshot};
 
 impl DesktopApp {
@@ -56,6 +56,58 @@ impl DesktopApp {
             });
         }
 
+        if !snap.accounts.is_empty() {
+            ui.add_space(8.0);
+            egui::Grid::new("account_grid")
+                .num_columns(4)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label(RichText::new("Name").small().strong());
+                    ui.label(RichText::new("Pubkey").small().strong());
+                    ui.label(RichText::new("Status").small().strong());
+                    ui.label(RichText::new("").small());
+                    ui.end_row();
+
+                    for account in &snap.accounts {
+                        let name = account
+                            .display_name
+                            .as_deref()
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("(no name)");
+                        ui.label(name);
+                        ui.label(
+                            RichText::new(nmp_core::display::short_npub(&account.pubkey))
+                                .small()
+                                .weak(),
+                        )
+                        .on_hover_text(&account.pubkey);
+                        ui.label(if account.is_active { "Active" } else { "" });
+
+                        let confirm_removal = self.pending_account_removal.as_deref()
+                            == Some(account.pubkey.as_str());
+                        ui.horizontal(|ui| {
+                            if !account.is_active && ui.small_button("Switch").clicked() {
+                                self.bridge.switch_account(&account.pubkey);
+                                self.bridge.open_timeline();
+                            }
+
+                            if confirm_removal {
+                                if ui.small_button("Confirm Remove").clicked() {
+                                    self.bridge.remove_account(&account.pubkey);
+                                    self.pending_account_removal = None;
+                                }
+                                if ui.small_button("Cancel").clicked() {
+                                    self.pending_account_removal = None;
+                                }
+                            } else if ui.small_button("Remove").clicked() {
+                                self.pending_account_removal = Some(account.pubkey.clone());
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+        }
+
         // Bunker login section — decode the typed bunker_handshake sidecar so
         // connect-QR progress/success/failure is reflected in real time.
         if snap.active_account.is_none() {
@@ -79,8 +131,7 @@ impl DesktopApp {
                 ui.text_edit_singleline(&mut uri.clone());
 
                 // Live handshake progress from the kernel's typed sidecar.
-                let handshake: Option<BunkerHandshakeStatus> =
-                    snap.projection("bunker_handshake");
+                let handshake: Option<BunkerHandshakeStatus> = snap.projection("bunker_handshake");
                 if let Some(ref hs) = handshake {
                     let (label, color) = if hs.is_terminal_success {
                         ("Connected!", Color32::from_rgb(74, 222, 128))
@@ -253,11 +304,7 @@ impl DesktopApp {
                     ui.selectable_value(&mut self.new_relay_role, "both".to_string(), "both");
                     ui.selectable_value(&mut self.new_relay_role, "read".to_string(), "read");
                     ui.selectable_value(&mut self.new_relay_role, "write".to_string(), "write");
-                    ui.selectable_value(
-                        &mut self.new_relay_role,
-                        "indexer".to_string(),
-                        "indexer",
-                    );
+                    ui.selectable_value(&mut self.new_relay_role, "indexer".to_string(), "indexer");
                 });
             if ui.button("Add relay").clicked() && !self.new_relay_url.trim().is_empty() {
                 self.bridge
@@ -350,24 +397,21 @@ impl DesktopApp {
                             ui.label(RichText::new(&relay.role).color(role_color));
 
                             // Status
-                            let status_color =
-                                if relay.connection.eq_ignore_ascii_case("connected")
-                                    || relay.connection.eq_ignore_ascii_case("ready")
-                                {
-                                    Color32::from_rgb(74, 222, 128)
-                                } else if relay.connection.eq_ignore_ascii_case("disconnected")
-                                    || relay.connection.eq_ignore_ascii_case("down")
-                                {
-                                    Color32::from_rgb(248, 113, 113)
-                                } else {
-                                    Color32::from_rgb(249, 115, 22)
-                                };
+                            let status_color = if relay.connection.eq_ignore_ascii_case("connected")
+                                || relay.connection.eq_ignore_ascii_case("ready")
+                            {
+                                Color32::from_rgb(74, 222, 128)
+                            } else if relay.connection.eq_ignore_ascii_case("disconnected")
+                                || relay.connection.eq_ignore_ascii_case("down")
+                            {
+                                Color32::from_rgb(248, 113, 113)
+                            } else {
+                                Color32::from_rgb(249, 115, 22)
+                            };
                             ui.label(RichText::new(&relay.connection).color(status_color));
 
                             // Event count
-                            ui.label(
-                                RichText::new(relay.events_rx.to_string()).weak().small(),
-                            );
+                            ui.label(RichText::new(relay.events_rx.to_string()).weak().small());
 
                             ui.end_row();
                         }

@@ -14,6 +14,7 @@ mod render;
 mod settings;
 mod snapshot;
 mod snapshot_decode;
+mod timeline_panel;
 
 use app::DesktopApp;
 
