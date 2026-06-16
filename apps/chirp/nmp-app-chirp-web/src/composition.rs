@@ -45,20 +45,18 @@
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::KernelEventObserver;
 use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::KernelEventObserver;
+use nmp_core::TypedProjectionData;
+use nmp_feed::FeedRequest;
 use nmp_nip01::op_feed::{
     encode_op_feed_snapshot, register_op_feed, OpFeedEngine, OP_FEED_FILE_IDENTIFIER,
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION, OP_FEED_SNAPSHOT_KEY,
 };
 use nmp_nip02::ActiveFollowSet;
-use nmp_feed::FeedRequest;
-use nmp_core::TypedProjectionData;
 use nmp_wasm::WasmRuntime;
 
-use crate::claim_queue::{
-    build_queuing_claim_sink, drain_pending_claims, new_pending_claim_queue,
-};
+use crate::claim_queue::{build_queuing_claim_sink, drain_pending_claims, new_pending_claim_queue};
 
 /// Content-parser seam implementation backed by nmp-content.
 ///
@@ -77,7 +75,8 @@ impl nmp_core::substrate::ContentParser for NmpContentParser {
         // `RenderMode::Auto` sniffs the render mode from the event kind
         // (markdown for long-form 30023, inline for kind:1, …) — matching the
         // native tokenizer entry point.
-        let tree = nmp_content::tokenize_with_kind(content, tags, nmp_content::RenderMode::Auto, kind);
+        let tree =
+            nmp_content::tokenize_with_kind(content, tags, nmp_content::RenderMode::Auto, kind);
         nmp_content::wire::typed_fb::encode_content_tree(&tree.to_wire())
     }
 }
@@ -145,21 +144,41 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
 pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     let reducer = runtime.reducer_handle();
 
-    // 0. Install the production outbox router. The wasm32 path has no AppHost /
-    //    actor `set_routing_substrate` seam (native installs the substrate via
-    //    `nmp_defaults::register_substrate`), so the kernel would otherwise keep
-    //    its no-op `EmptyOutboxRouter` — making every outbox-direction REQ
-    //    (kind:0 profile claims, kind:3 contacts, kind:10002 NIP-65) silently
-    //    resolve to zero relays. (Event-id fetches work regardless because they
-    //    route through the Discovery seed, not the outbox router.) Must run
-    //    before `Start`. `InMemoryMailboxCache` starts empty; cold-start kind:0
-    //    fetches use the IndexerOnly bootstrap fallback, which needs no NIP-65
-    //    mailbox data. Wiring the kind:10002 ingest parser into this same cache
-    //    (for warm NIP-65 routing) is a follow-up.
-    reducer.borrow_mut().set_routing(
-        Arc::new(nmp_router::GenericOutboxRouter::new()),
-        Arc::new(nmp_router::InMemoryMailboxCache::new()),
-    );
+    // 0. Install the production substrate cache/parser pairs. The wasm32 path
+    //    has no native AppHost, so it must mirror the always-on correctness
+    //    floor from `nmp_defaults::register_substrate`: the router and
+    //    kind:10002 parser share one mailbox cache; the profile lookup and
+    //    kind:0 parser share one profile cache; the contacts lookup and kind:3
+    //    parser share one contacts cache. Without the shared contacts pair the
+    //    active-account kind:3 event is parsed but the kernel reads
+    //    EmptyContactsLookup, so follow-feed subscriptions never pick up the
+    //    user's follows.
+    let mailbox_cache = Arc::new(nmp_router::InMemoryMailboxCache::new());
+    let mailbox_reader: Arc<dyn nmp_core::substrate::MailboxCache> = mailbox_cache.clone();
+    let router: Arc<dyn nmp_core::substrate::OutboxRouter> =
+        Arc::new(nmp_router::GenericOutboxRouter::new());
+    let kind10002_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
+
+    let profile_cache = Arc::new(nmp_nip01::ProfileCache::new());
+    let profile_lookup: Arc<dyn nmp_core::substrate::ProfileLookup> = profile_cache.clone();
+    let kind0_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_nip01::Kind0Parser::new(profile_cache));
+
+    let contacts_cache = Arc::new(nmp_nip01::ContactsCache::new());
+    let contacts_lookup: Arc<dyn nmp_core::substrate::ContactsLookup> = contacts_cache.clone();
+    let kind3_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_nip01::Kind3Parser::new(contacts_cache));
+
+    {
+        let mut reducer = reducer.borrow_mut();
+        reducer.set_routing(router, mailbox_reader);
+        reducer.register_ingest_parser(10_002, kind10002_parser);
+        reducer.set_profile_lookup(profile_lookup);
+        reducer.register_ingest_parser(0, kind0_parser);
+        reducer.set_contacts_lookup(contacts_lookup);
+        reducer.register_ingest_parser(3, kind3_parser);
+    }
 
     // 0b. Install the content-parser seam so the `claimed_events` projection
     //     carries a parsed NFCT content tree. nmp-core can't depend on
@@ -167,7 +186,9 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     //     here (a layer that CAN depend on nmp-content) we install the real
     //     tokenizer. This lets a web host render the kernel-parsed content tree
     //     from a `claim_event` — the content components consume these bytes.
-    reducer.borrow_mut().set_content_parser(Arc::new(NmpContentParser));
+    reducer
+        .borrow_mut()
+        .set_content_parser(Arc::new(NmpContentParser));
 
     // 1. Active-account slot (for follow-set seeding + account switch).
     let active_account_slot = reducer.borrow().active_account_handle();
@@ -188,16 +209,8 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     let claim_sink = build_queuing_claim_sink(Arc::clone(&queue));
 
     // 5. Build the OP-feed engine.
-    let viewer = reducer
-        .borrow()
-        .active_account_pubkey()
-        .unwrap_or_default();
-    let engine = register_op_feed(
-        viewer,
-        follow_set.predicate(),
-        event_lookup,
-        claim_sink,
-    );
+    let viewer = reducer.borrow().active_account_pubkey().unwrap_or_default();
+    let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup, claim_sink);
 
     // 6. Register the engine as an event observer (kind:0/1/6 ingest).
     reducer
@@ -235,9 +248,9 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
 
     // 9. Register the typed snapshot projection under "nmp.feed.home".
     let engine_for_projection = Arc::clone(&engine);
-    reducer.borrow().register_typed_snapshot_projection(
-        OP_FEED_SNAPSHOT_KEY,
-        move || {
+    reducer
+        .borrow()
+        .register_typed_snapshot_projection(OP_FEED_SNAPSHOT_KEY, move || {
             let snapshot = engine_for_projection.snapshot(&FeedRequest::default());
             Some(TypedProjectionData {
                 key: OP_FEED_SNAPSHOT_KEY.to_string(),
@@ -247,8 +260,7 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
                 payload: encode_op_feed_snapshot(&snapshot),
                 ..Default::default()
             })
-        },
-    );
+        });
 
     // 10. Install post-tick drain hook.
     let queue_for_drain = Arc::clone(&queue);
