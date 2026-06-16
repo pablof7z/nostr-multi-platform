@@ -278,10 +278,11 @@ backfills; flag OFF ⇒ `since=301` floored REQ ⇒ only the stray survives
 
 #### Stage D3 — eviction⇄ledger coherence
 
-- **LRU eviction IS ENABLED in production** (`GcBudget::production` sets
-  `max_total_events = HOT_EVENT_CEILING = 10_000`, #1090 Stage 3; only the
-  test/`default` budget is `usize::MAX`). So D3 is a real requirement, not
-  design-only.
+- **Durable LRU eviction remains supported only as an explicit finite-retention
+  policy** (`GcBudget::with_durable_event_ceiling(n)`). Production default GC
+  now keeps valid fetched rows (`GcBudget::production().max_total_events =
+  usize::MAX`, #1480) and bounds RAM through the kernel RAM-cache pass instead.
+  D3 remains the required backstop for any explicit durable quota path.
 - Today the floor-coherent pin set (#1090 Stage 2 / #1327,
   `ram_eviction_floor.rs::pin_shape_events_below_floor`) pins every event at/below
   the PRESENCE floor so eviction never strands it. After D2 makes the ledger the
@@ -293,8 +294,9 @@ backfills; flag OFF ⇒ `since=301` floored REQ ⇒ only the stray survives
   D3 start; re-verify eviction enablement and the pin-set wiring then.
 
 **Disposition (LANDED).** Both legs shipped behind the default-off
-`coverage_ledger_enabled`, so D3 is dormant in production like D1/D2; eviction
-enablement re-verified (`GcBudget::production` keeps `HOT_EVENT_CEILING`).
+`coverage_ledger_enabled`, so D3 is dormant in production like D1/D2. #1480
+changed production GC to keep durable rows by default; the same D3 machinery
+continues to guard explicit finite durable-retention budgets.
 
 - **Leg 1 — pin below the ledger floor.** `Kernel::pin_floor_for_shape`
   (`kernel/ram_eviction_coverage.rs`) feeds the floor-coherent pin set

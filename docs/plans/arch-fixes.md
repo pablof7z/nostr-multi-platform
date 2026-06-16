@@ -123,22 +123,20 @@ become parser/observer-fed, leaving zero kind literals in the kernel ingest path
 - `pre_kind3_buffer` deleted — it only existed to park events the entanglement would have dropped.
 - App-agnostic again (D0): persistence stops assuming "social"; non-follow third-party interests get stored.
 
-### Storage model clarification (resolves the "won't the store grow forever?" worry)
-The on-device `EventStore` is **today** a **bounded local cache (~10k hot events), NOT an infinite log** — the durable
-log of nostr lives on relays. `Kernel::run_gc_step` (wired in production, actor 60s idle tick, `actor/mod.rs:2319-2334`)
-evicts least-recently-accessed **un-pinned** events from LMDB down to `HOT_EVENT_CEILING = 10_000`
-(`nmp-store/src/types/gc.rs:8-16`), plus RAM-cache eviction. "Persist everything" means **admission is not
-relevance-gated** (everything valid gets in, kind-agnostic); **eviction** (pin-aware LRU) is the single
-principled storage bound that REPLACES the ad-hoc relevance gate. Pinning (`derive_store_pin_set`, #1090 Stage 2)
-protects timeline / claims / open-views / floor-coherent shapes, so nothing live is evicted; only cold,
-unreferenced events age out (re-fetchable from relays; floored-shape pins guarantee re-request). The real
-safety property is therefore **pin-set correctness**, not store size — see PR 1 verification oracles.
+### Storage model clarification (updated by #1480)
+The on-device `EventStore` keeps every valid fetched event by default. The durable
+LMDB row set is **not** capped by the RAM hot-set ceiling; `Kernel::run_gc_step`
+(wired in production, actor 60s idle tick) uses `GcBudget::production()`, which
+reaps correctness deletes and tombstones but leaves durable LRU deletion disabled
+(`max_total_events = usize::MAX`). RAM working-set pressure is handled separately
+by kernel RAM-cache eviction.
 
-> **FOLLOW-UP (#1443) — tackle next, after this plan:** the owner wants the local cache to **never lose fetched
-> events** (full local history; app can use every event ever ingested). That means reconsidering the 10k LRU
-> ceiling itself — research whether the bound is RAM-driven or disk-driven (LMDB is mmap'd → likely disk-bound,
-> so durable could be unbounded while only the RAM read-caches stay bounded). This plan keeps the current
-> pin-aware-LRU bound; #1443 researches making the durable store unbounded/disk-bounded as the next step.
+"Persist everything" therefore means **admission is not relevance-gated** and
+production GC does not age out valid durable rows. The guarded pin-aware durable
+LRU machinery remains available only through an explicit finite-retention budget
+(`GcBudget::with_durable_event_ceiling(n)`) for a future disk/user quota policy.
+When that explicit path is used, pin-set correctness and coverage backstops remain
+the safety property that prevents holes below active floors.
 
 ---
 

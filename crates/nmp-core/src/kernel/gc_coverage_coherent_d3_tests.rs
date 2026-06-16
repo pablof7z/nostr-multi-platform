@@ -8,10 +8,10 @@
 //!    `coverage_floor` source the floor read uses (single-source discipline; no
 //!    second floor computation).
 //!
-//! 2. **Backstop guard set.** `derive_store_gc_inputs` builds a `CoverageGuard`
-//!    per active covered `(filter_hash, relay)` so the store can lower
-//!    `covered_through` atomically if eviction strands a below-floor event. (The
-//!    store-layer atomicity is proven in
+//! 2. **Backstop guard set.** `derive_coverage_guards` builds a `CoverageGuard`
+//!    per active covered `(filter_hash, relay)` for explicit finite durable
+//!    retention, so the store can lower `covered_through` atomically if eviction
+//!    strands a below-floor event. (The store-layer atomicity is proven in
 //!    `nmp-testing/tests/store_coverage_eviction_backstop.rs`; here we prove the
 //!    kernel hands the store the right guards.)
 //!
@@ -32,7 +32,10 @@ fn open_interest(kernel: &mut Kernel, filter_json: &str, consumer_id: &str) {
 
     let shape = crate::planner::InterestShape::from_filter_json(filter_json)
         .expect("test filter must be a valid NIP-01 filter object");
-    let key = SubKey::builder("open-interest").with(&shape).with(1u32).finish();
+    let key = SubKey::builder("open-interest")
+        .with(&shape)
+        .with(1u32)
+        .finish();
     let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, SubScope::Global);
     let interest = LogicalInterest {
         scope: InterestScope::Global,
@@ -241,25 +244,24 @@ fn derive_coverage_guards_is_empty_without_covered_interest() {
     );
 }
 
-// ── Integrated — both legs through the real `run_gc_step` production path ─────
+// ── Integrated — real `run_gc_step` default durable-retention policy ───────────
 
-/// The integrated D3 oracle through the REAL production `run_gc_step` (the sole
-/// production GC caller, on `GcBudget::production()` with the live
-/// `HOT_EVENT_CEILING`). With the flag on and an active covered follow-feed
-/// interest:
+/// The integrated oracle through the REAL production `run_gc_step` (the sole
+/// production GC caller) after #1480. With the flag on and an active covered
+/// follow-feed interest:
 ///
-/// - **Leg 1 (pin):** the below-`covered_through` event survives the production
-///   eviction pass — the ledger-floor pin protects it — so the ledger still
-///   honestly covers `[0, covered_through]`.
-/// - **Backstop coherence:** because leg 1 protected the covered event, the
-///   ledger is NOT lowered (no hole was punched). (The complementary
-///   backstop-fires-when-pin-bypassed direction is proven atomically at the
-///   store layer in `store_coverage_eviction_backstop.rs`.)
+/// - production durable LRU deletion is disabled, so valid fetched events remain
+///   queryable even beyond the historical 10k ceiling;
+/// - the coverage ledger stays unchanged because no durable below-floor row was
+///   deleted; and
+/// - the explicit finite-retention backstop remains covered by
+///   `store_coverage_eviction_backstop.rs`.
 ///
-/// Forces real eviction by inserting just over `HOT_EVENT_CEILING`.
+/// Inserts just over the historical durable ceiling to prove it no longer
+/// controls production row retention.
 #[test]
-fn run_gc_step_pin_leg_protects_covered_event_and_ledger_stays_honest() {
-    use crate::store::HOT_EVENT_CEILING;
+fn run_gc_step_default_retains_durable_events_and_ledger() {
+    use crate::store::DEFAULT_DURABLE_EVENT_CEILING;
 
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS + 10_000);
@@ -272,10 +274,12 @@ fn run_gc_step_pin_leg_protects_covered_event_and_ledger_stays_honest() {
     // The oldest covered event (t=10) — the prime LRU victim absent a pin.
     let oldest = format!("{:0>64x}", 0xD3F001u64);
     inject_note(&mut kernel, &oldest, &author, 10);
-    // Fill past the ceiling with NEWER unrelated events (different author, so
-    // they neither match the guard nor the shape's floor-coherent pin).
+    // Fill past the historical durable ceiling with NEWER unrelated events
+    // (different author, so they neither match the guard nor the shape's
+    // floor-coherent pin).
     let filler_author = make_pubkey(9_302);
-    for i in 0..(HOT_EVENT_CEILING as u64 + 50) {
+    let first_filler = format!("{:0>64x}", 0xE00000u64);
+    for i in 0..(DEFAULT_DURABLE_EVENT_CEILING as u64 + 50) {
         let id = format!("{:0>64x}", 0xE00000u64 + i);
         inject_note(&mut kernel, &id, &filler_author, 1_000 + i);
     }
@@ -288,21 +292,34 @@ fn run_gc_step_pin_leg_protects_covered_event_and_ledger_stays_honest() {
     open_interest(&mut kernel, &filter, "d3-integrated");
 
     let report = kernel.run_gc_step().expect("gc pass ran");
-    assert!(
-        report.lru_evicted > 0,
-        "the production ceiling must have evicted the over-ceiling filler overage"
+    assert_eq!(
+        report.lru_evicted, 0,
+        "production gc must not LRU-delete valid durable rows by default (#1480)"
     );
 
-    // Leg 1: the t=10 covered event survives (pinned below the ledger floor).
+    // The t=10 covered event survives. Under #1480 this is true because
+    // production durable LRU is disabled; the pin/backstop path is still tested
+    // by the unit tests above and the store-layer explicit-retention tests.
     assert!(
-        kernel.store.get_by_id(&id_bytes(&oldest)).unwrap().is_some(),
-        "the below-covered_through event must be PINNED through the real \
-         production GC pass — leg 1 protects it"
+        kernel
+            .store
+            .get_by_id(&id_bytes(&oldest))
+            .unwrap()
+            .is_some(),
+        "the below-covered_through event must remain durable after production GC"
     );
-    // Coherence: nothing below the floor was lost, so the ledger is unchanged.
+    assert!(
+        kernel
+            .store
+            .get_by_id(&id_bytes(&first_filler))
+            .unwrap()
+            .is_some(),
+        "over-historical-ceiling filler event must remain durable after production GC"
+    );
+    // Coherence: no durable row was lost, so the ledger is unchanged.
     assert_eq!(
         kernel.store.get_coverage(&fh, RELAY),
         Some(100),
-        "no below-floor covered event was evicted ⇒ the ledger stays honest at 100"
+        "no below-floor covered event was deleted ⇒ the ledger stays honest at 100"
     );
 }

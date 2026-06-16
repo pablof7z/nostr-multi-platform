@@ -174,8 +174,9 @@ pub fn gc_step(&self, budget: GcBudget) -> Result<GcReport, StoreError> {
 
 Single `gc_step()` is bounded by `GcBudget { max_events_per_step, max_duration_ms, max_total_events }`. The budget constructors are the single source of truth for these numbers (`crates/nmp-store/src/types/gc.rs`):
 
-- `GcBudget::default()` — the doc-schedule scan bounds `max_events_per_step = 2000` (`GC_MAX_EVENTS_PER_STEP`), `max_duration_ms = 50` (`GC_MAX_DURATION_MS`), with `max_total_events = usize::MAX` (LRU eviction disabled; backward-compatible).
-- `GcBudget::production()` — the on-device budget: the same scan bounds **plus** `max_total_events = HOT_EVENT_CEILING` (10,000) so Phase-2 LRU eviction actually runs. The finite ceiling is load-bearing: with `usize::MAX`, `st.events.len() > max_total_events` is never true and LRU growth stays unbounded.
+- `GcBudget::default()` — the doc-schedule scan bounds `max_events_per_step = 2000` (`GC_MAX_EVENTS_PER_STEP`), `max_duration_ms = 50` (`GC_MAX_DURATION_MS`), with `max_total_events = usize::MAX` (durable LRU deletion disabled).
+- `GcBudget::production()` — the on-device budget: the same scan bounds and the same `max_total_events = usize::MAX`. Production GC reaps correctness deletes and tombstones, but it does **not** delete valid fetched events just because they are cold (#1480).
+- `GcBudget::with_durable_event_ceiling(n)` — explicit disk/user retention policy. This is the only path that enables Phase-2 durable LRU deletion (`max_total_events = n`), and it must keep using the pin and coverage-guard machinery below.
 
 The actor calls `gc_step()` (via `Kernel::run_gc_step`, which threads the kernel clock's `now_secs` into the store — D7/D9):
 
@@ -215,8 +216,11 @@ protects no events.
 
 ### How the kernel derives the pin set
 
-`Kernel::run_gc_step` calls `Kernel::derive_store_pin_set()` immediately before
-`gc_step_with_pins`. The derivation (`crates/nmp-core/src/kernel/ram_eviction.rs`)
+When the durable budget is finite, `Kernel::run_gc_step` calls
+`Kernel::derive_store_pin_set()` immediately before `gc_step_with_pins`. With
+the default production budget (`max_total_events = usize::MAX`), `run_gc_step`
+passes an empty pin set and skips this store scan because no durable LRU delete
+can occur. The finite-retention derivation (`crates/nmp-core/src/kernel/ram_eviction.rs`)
 unions four live sources, mirroring the RAM-tier `events` pin set plus the
 floor-coherent extension, and converts each hex id to a 32-byte store `EventId`:
 
@@ -250,11 +254,11 @@ problem** and **no persisted-claims drift**: the cold-start path naturally
 re-derives the pin set from whatever timeline / claims / interests are live at
 the first GC tick after restart. There is nothing to reconcile on disk.
 
-> **Ceiling enabled (#1090 Stage 3).** `GcBudget::production()` now sets
-> `max_total_events = HOT_EVENT_CEILING` (10,000), so Phase-2 LRU eviction runs
-> on device. Floor-coherent pinning (source 4 above) is what makes the finite
-> ceiling safe: eviction can never punch a hole below an active floored shape's
-> `since`-floor.
+> **Default durable retention (#1480).** `GcBudget::production()` leaves
+> `max_total_events = usize::MAX`, so Phase-2 durable LRU deletion does not run
+> on device by default. Floor-coherent pinning and coverage guards remain
+> required for any explicit finite durable-retention budget because that path can
+> delete valid rows and must not punch a hole below an active covered range.
 
 ## 5. Memory accounting (the ADR-0003 gate)
 

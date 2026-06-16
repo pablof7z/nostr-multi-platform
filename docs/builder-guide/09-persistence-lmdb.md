@@ -106,10 +106,15 @@ relaunch:
 - **NMP secondaries.** Provenance, tombstones, relay reverse index, expiry
   index, and LRU access sequence are stored in NMP sub-dbs.
 - **Coverage ledger.** Completed coverage rows survive restart and remain
-  monotonic unless GC removes covered events; the GC backstop lowers affected
-  coverage rows in the same lock/transaction as the delete.
+  monotonic unless an explicit finite durable-retention policy removes covered
+  events; the GC backstop lowers affected coverage rows in the same
+  lock/transaction as the delete.
 - **Domain rows.** Module/domain rows and schema versions survive restart.
   Migrations run through `EventStore::run_migrations`.
+
+Production GC does not use the LRU access sequence to delete otherwise-valid
+events by default. The sequence is durable so an explicit disk/user retention
+policy can make deterministic LRU decisions when such a policy is configured.
 
 `MemEventStore` implements the same trait shape for tests and default builds,
 but it is not durable.

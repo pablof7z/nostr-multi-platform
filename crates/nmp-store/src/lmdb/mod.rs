@@ -73,7 +73,7 @@ mod tests_gc_stage1;
 // V-52 (#969) — relay-origin reverse index parity + persistence + backfill.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_relay_index;
-// #1090 Stage-3 — production budget re-enables the HOT_EVENT_CEILING.
+// #1480 — production budget keeps durable LRU disabled; finite retention is explicit.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc_stage3;
 // Secondary-index integrity tests (Bug-1: kind:5 a-tag leaks; Bug-2: freshness leaks).

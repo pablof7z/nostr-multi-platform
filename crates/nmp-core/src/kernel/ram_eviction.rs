@@ -318,21 +318,26 @@ impl Kernel {
     /// decision so `run_gc_step` (in the already-at-baseline `kernel/mod.rs`)
     /// stays a thin call site:
     ///
-    /// - pin scan **complete** → [`GcBudget::production`] (LRU ceiling enabled);
-    /// - pin scan **truncated** → production budget with `max_total_events =
-    ///   usize::MAX` so LRU eviction is conservatively skipped for this tick.
-    ///   We cannot safely evict events the truncated scan may not have pinned;
-    ///   the next 60-second tick retries from scratch.
+    /// - production durable LRU disabled (#1480) → empty pins, no store scan;
+    /// - finite durable-retention budget → derive pins; if the scan truncates,
+    ///   force `max_total_events = usize::MAX` so LRU deletion is skipped for
+    ///   this tick. We cannot safely delete events the truncated scan may not
+    ///   have pinned; the next tick retries from scratch.
     pub(crate) fn derive_store_gc_inputs(
         &self,
     ) -> (HashSet<crate::store::EventId>, crate::store::GcBudget) {
+        let production = crate::store::GcBudget::production();
+        if production.max_total_events == usize::MAX {
+            return (HashSet::new(), production);
+        }
+
         let (pins, complete) = self.derive_store_pin_set();
         let budget = if complete {
-            crate::store::GcBudget::production()
+            production
         } else {
             crate::store::GcBudget {
                 max_total_events: usize::MAX, // LRU eviction deferred this tick
-                ..crate::store::GcBudget::production()
+                ..production
             }
         };
         (pins, budget)
@@ -428,7 +433,6 @@ impl Kernel {
         // reads are against this key only; every other entry is a speculative
         // extra (a peer's kind:3 that happened to arrive during the session).
         let pinned: HashSet<String> = self.active_account.clone().into_iter().collect();
-        self.contacts_lookup()
-            .evict_to(&pinned, CONTACTS_RAM_HWM)
+        self.contacts_lookup().evict_to(&pinned, CONTACTS_RAM_HWM)
     }
 }

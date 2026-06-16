@@ -7,8 +7,8 @@
 //! REQ shape and floors that REQ's `since` to `covered_through + 1`, so the relay
 //! does not re-emit events already covered.
 //!
-//! LRU eviction (Stage 3 ceiling) is free to delete a *middle* event below
-//! `covered_through`. The floor stays at `covered_through + 1`, so the
+//! An explicit finite durable-retention policy can delete a *middle* event
+//! below `covered_through`. The floor stays at `covered_through + 1`, so the
 //! self-healing REQ — which only asks for events newer than the floor — will
 //! NEVER re-request that middle event: a permanent hole (unless eviction lowers
 //! the ledger; Stage D3 leg 2).
@@ -120,7 +120,9 @@ fn derive_store_pin_set_pins_events_below_shape_floor() {
     open_interest(&mut kernel, &filter, "floor-coherent-test");
     let shape = crate::planner::InterestShape::from_filter_json(&filter).unwrap();
     let fh = crate::planner::canonical_filter_hash(&shape);
-    kernel.store.record_coverage(&fh, "wss://relay.example/", 300);
+    kernel
+        .store
+        .record_coverage(&fh, "wss://relay.example/", 300);
 
     // Simulate prior RAM-tier eviction: drop the events from the RAM `events`
     // map so the STORE is their sole holder. This is the exact hole scenario —
@@ -165,7 +167,9 @@ fn derive_store_pin_set_returns_complete_for_small_stores() {
     open_interest(&mut kernel, &filter, "complete-flag-test");
     let shape = crate::planner::InterestShape::from_filter_json(&filter).unwrap();
     let fh = crate::planner::canonical_filter_hash(&shape);
-    kernel.store.record_coverage(&fh, "wss://relay.example/", 300);
+    kernel
+        .store
+        .record_coverage(&fh, "wss://relay.example/", 300);
 
     kernel.events.clear();
     let (pins, complete) = kernel.derive_store_pin_set();
@@ -403,7 +407,9 @@ fn derive_store_pin_set_does_not_pin_events_with_no_active_interest() {
     open_interest(&mut kernel, &filter_a, "floor-coherent-test");
     let shape_a = crate::planner::InterestShape::from_filter_json(&filter_a).unwrap();
     let fh_a = crate::planner::canonical_filter_hash(&shape_a);
-    kernel.store.record_coverage(&fh_a, "wss://relay.example/", 300);
+    kernel
+        .store
+        .record_coverage(&fh_a, "wss://relay.example/", 300);
 
     // Author B: NO active interest. Its cold event must not be pinned.
     let author_b = make_pubkey(7_202);
