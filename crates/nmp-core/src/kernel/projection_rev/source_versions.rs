@@ -57,16 +57,12 @@ pub(crate) struct SourceVersions {
     /// `Kernel::profile_claims` — D4 via `requests/profile.rs`).
     pub(crate) profile_claims_ver: u64,
 
-    /// Bumped on three conditions (codex #1 — store-backed + enrichment):
+    /// Bumped on two conditions (codex #1 — store-backed claimed content):
     /// 1. `claim_event` / `release_event` (the sole writers of
     ///    `Kernel::event_claims` — D4 via `requests/event.rs`).
     /// 2. A store-insert/replace whose event-id OR addressable coord matches a
     ///    live `event_claims` key — checked at the `verify_and_persist`
     ///    chokepoint in `ingest/`.
-    /// 3. `profiles_ver` bumps AND `event_claims` is non-empty — the enrichment
-    ///    dependency: `claimed_events` joins author kind:0 display/picture, so a
-    ///    profile update for an author of a live claimed event must re-derive the
-    ///    projection.
     pub(crate) claimed_event_content_ver: u64,
 
     /// Bumped when `open_views` changes. Currently always-empty (V-112/ADR-0042

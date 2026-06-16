@@ -74,6 +74,8 @@ mod claim_expansion_seam;
 mod claim_expansion_tests;
 #[cfg(test)]
 mod claim_expansion_tick_tests;
+#[cfg(test)]
+mod claimed_events_raw_author_tests;
 // ADR-0045 E1 — store-cache serve seam. The first half of the one event-
 // acquisition mechanism: at interest-open time, query the store for the
 // newest-N events matching the interest's shape and feed them through the

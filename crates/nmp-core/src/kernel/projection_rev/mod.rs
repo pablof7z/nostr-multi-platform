@@ -161,9 +161,9 @@ pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[
     // profile/event claim cluster
     ("claimed_profiles", &[SRC_PROFILE_CLAIMS, SRC_PROFILES]),
     ("resolved_profiles",&[SRC_PROFILE_CLAIMS, SRC_PROFILES]),
-    // claimed_event_content_ver: bumped on (1) claim_event/release_event,
-    // (2) store-ingest that matches a live claim, (3) profiles_ver bump when
-    // event_claims is non-empty (enrichment dependency, codex #1).
+    // claimed_event_content_ver: bumped on (1) claim_event/release_event and
+    // (2) store-ingest that matches a live claim. Profile enrichment is
+    // intentionally excluded: claimed_events carries raw event authors only.
     ("claimed_events",   &[SRC_CLAIMED_EVENT_CONTENT]),
     // mention_profiles: always-empty today (V-112/ADR-0042), but open_views_ver
     // is declared so any future view-open populating it triggers a rev bump.

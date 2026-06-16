@@ -764,14 +764,12 @@ pub(crate) struct ClaimedEventDto {
     /// Author pubkey, hex (64 chars). Presentation layer formats for
     /// display.
     pub(super) author_pubkey: String,
-    /// Author's display name from kind:0, if the kernel has it cached.
-    /// `None` means the kind:0 hasn't been ingested yet — the renderer
-    /// composes with `NostrProfileName` which falls back to the
-    /// truncated npub. Mirrors `TimelineItem::author_display_name`.
+    /// Legacy nullable field retained for wire compatibility. The kernel no
+    /// longer enriches `claimed_events` with kind:0 display data; renderers
+    /// compose `author_pubkey` with profile components/projections instead.
     pub(super) author_display_name: Option<String>,
-    /// Author's picture URL from kind:0, if the kernel has it cached.
-    /// `None` means kind:0 absent — `NostrAvatar` falls back to an
-    /// identicon. Mirrors `TimelineItem::author_picture_url`.
+    /// Legacy nullable field retained for wire compatibility. Avatar/profile
+    /// renderers resolve picture state through profile claims instead.
     pub(super) author_picture_url: Option<String>,
     /// Event kind.
     pub(super) kind: u32,
@@ -812,21 +810,6 @@ impl ClaimedEventDto {
 
     pub(super) fn with_content_tree(mut self, content_tree_bytes: Vec<u8>) -> Self {
         self.content_tree_bytes = content_tree_bytes;
-        self
-    }
-
-    /// Stamp the author's display name + picture URL from the kernel's
-    /// profile cache. `None` fields stay `None` when the kernel has no
-    /// kind:0 for the author yet — the renderer composes with
-    /// `NostrProfileName` / `NostrAvatar` which fall back to truncated
-    /// npub + identicon.
-    pub(super) fn with_author_profile(
-        mut self,
-        display_name: Option<String>,
-        picture_url: Option<String>,
-    ) -> Self {
-        self.author_display_name = display_name;
-        self.author_picture_url = picture_url;
         self
     }
 }

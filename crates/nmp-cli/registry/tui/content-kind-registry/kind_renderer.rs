@@ -24,8 +24,7 @@ use super::super::nostr_mention_chip::NostrMentionProfileHost;
 /// host the mention chip and `NostrContentView` already thread through render,
 /// rather than a parallel byline-only abstraction. With no host (preview-only
 /// callers) it falls back to a Rust-formatted `npub_short`. In neither case
-/// does the byline depend on the static `author_display_name` projection field;
-/// the kernel still emits that field for now, but it is no longer the source.
+/// does the byline depend on the static `author_display_name` projection field.
 pub(crate) fn author_byline(
     host: Option<&dyn NostrMentionProfileHost>,
     consumer_id: Option<&str>,

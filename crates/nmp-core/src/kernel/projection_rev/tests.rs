@@ -199,14 +199,14 @@ fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
     emit(&mut kernel);
 }
 
-// ── Scenario 2: profile enrichment after claim ────────────────────────────────
+// ── Scenario 2: profile update after claim ────────────────────────────────────
 
 /// S2: claim a note, then a kind:0 for its author arrives while the claim is
-/// live. `ingest_profile`'s enrichment chokepoint (profiles_ver + event_claims
-/// non-empty -> claimed_event_content_ver) must advance BOTH `profile` and
-/// `claimed_events`. Real ingest + claim + emit; oracle guards completeness.
+/// live. `claimed_events` carries raw author pubkeys only, so kind:0 arrival
+/// must advance `profile` without advancing `claimed_events`. Real ingest +
+/// claim + emit; oracle guards completeness.
 #[test]
-fn s2_profile_enrichment_after_claim_bumps_both_revs() {
+fn s2_profile_update_after_claim_does_not_bump_claimed_events() {
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
 
@@ -229,9 +229,9 @@ fn s2_profile_enrichment_after_claim_bumps_both_revs() {
 
     let (ce_after, _) = live_state(&kernel, "claimed_events");
     let (prof_after, _) = live_state(&kernel, "profile");
-    assert!(
-        ce_after > ce_before,
-        "claimed_events must advance on profile enrichment; {ce_before} -> {ce_after}"
+    assert_eq!(
+        ce_after, ce_before,
+        "claimed_events must not advance on profile-only enrichment; {ce_before} -> {ce_after}"
     );
     assert!(
         prof_after > prof_before,
@@ -496,4 +496,3 @@ fn s9_ram_eviction_of_profiles_advances_profile_rev() {
     );
     emit(&mut kernel);
 }
-
