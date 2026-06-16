@@ -8,19 +8,17 @@ use std::sync::{Arc, Mutex};
 
 use eframe::App;
 use egui::{
-    Align, CentralPanel, Color32, Frame, Layout, RichText, ScrollArea, SidePanel, TextEdit,
+    Align, CentralPanel, Color32, Layout, RichText, ScrollArea, SidePanel, TextEdit,
     TopBottomPanel, Ui,
 };
 
 use std::collections::HashMap;
 
 use crate::bridge::AppRuntime;
-use crate::render::{hex_color, note_body};
 use crate::snapshot::{
     ActionStageRow, FollowListSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
-    TimelineEventCard,
 };
-use nmp_core::tags::Nip10Refs;
+use crate::timeline_panel::{avatar, feed_card, note_record_from_card};
 use nmp_nip01::NoteRecord;
 
 // ---------------------------------------------------------------------------
@@ -57,6 +55,7 @@ pub struct DesktopApp {
     pub(crate) edit_picture: String,
     pub(crate) show_edit_profile: bool,
     pub(crate) nwc_input: String,
+    pub(crate) pending_account_removal: Option<String>,
 }
 
 impl DesktopApp {
@@ -78,7 +77,8 @@ impl DesktopApp {
                 // (built via `serde_json::json!`, since the `snapshot::*`
                 // payload structs are `Deserialize`-only) so the existing
                 // `snap.projection::<T>(key)` read sites keep working unchanged.
-                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(&event.payload) else {
+                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(&event.payload)
+                else {
                     continue;
                 };
                 if let Ok(mut slot) = reader_latest.lock() {
@@ -107,6 +107,7 @@ impl DesktopApp {
             edit_picture: String::new(),
             show_edit_profile: false,
             nwc_input: String::new(),
+            pending_account_removal: None,
         }
     }
 
@@ -332,13 +333,8 @@ impl DesktopApp {
                     } else {
                         "Publish"
                     };
-                    if ui
-                        .add_enabled(can_send, egui::Button::new(label))
-                        .clicked()
-                    {
-                        let _ = self
-                            .bridge
-                            .publish_note(self.compose.trim(), reply_target);
+                    if ui.add_enabled(can_send, egui::Button::new(label)).clicked() {
+                        let _ = self.bridge.publish_note(self.compose.trim(), reply_target);
                         self.compose.clear();
                         self.reply_to = None;
                     }
@@ -367,40 +363,6 @@ impl DesktopApp {
 // ---------------------------------------------------------------------------
 
 impl DesktopApp {
-    fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot) {
-        let feed: ModularTimelineSnapshot =
-            snap.projection("nmp.feed.home").unwrap_or_default();
-        // Pre-merged display-name map keyed by hex pubkey (kernel projection).
-        let profiles: HashMap<String, ProfileCard> =
-            snap.projection("resolved_profiles").unwrap_or_default();
-
-        if feed.cards.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.label(RichText::new("Connecting to relays…").size(15.0).weak());
-                ui.label(RichText::new("Live timeline will appear here.").weak());
-            });
-            return;
-        }
-
-        ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for entry in &feed.cards {
-                    feed_card(
-                        ui,
-                        &entry.card,
-                        &profiles,
-                        &snap.embeds,
-                        &mut self.tab,
-                        &self.bridge,
-                        &mut self.reply_to,
-                    );
-                    ui.add_space(6.0);
-                }
-            });
-    }
-
     fn thread_view(
         &mut self,
         ui: &mut Ui,
@@ -495,7 +457,8 @@ impl DesktopApp {
         });
         ui.add_space(4.0);
 
-        let follow_list: FollowListSnapshot = snap.projection("nmp.follow_list").unwrap_or_default();
+        let follow_list: FollowListSnapshot =
+            snap.projection("nmp.follow_list").unwrap_or_default();
         let following = follow_list
             .follows
             .iter()
@@ -634,32 +597,6 @@ impl DesktopApp {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Note card widget
-// ---------------------------------------------------------------------------
-
-/// Resolve a hex pubkey to a display label via the kernel's pre-merged
-/// `resolved_profiles` map, falling back to a truncated npub when no kind:0
-/// display name has arrived (aim.md §2 — presentation owns the fallback).
-fn display_label(pubkey: &str, profiles: &HashMap<String, ProfileCard>) -> String {
-    profiles
-        .get(pubkey)
-        .and_then(|p| p.display_name.as_deref())
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| nmp_core::display::short_npub(pubkey))
-}
-
-fn note_record_from_card(card: &TimelineEventCard) -> NoteRecord {
-    NoteRecord {
-        event_id: card.id.clone(),
-        author: card.author_pubkey.clone(),
-        created_at: card.created_at,
-        content: card.content.clone(),
-        refs: Nip10Refs::default(),
-    }
-}
-
 fn thread_reply_target(snap: &Snapshot, event_id: &str) -> Option<NoteRecord> {
     let key = format!("nmp.feed.thread.{event_id}");
     let feed: ModularTimelineSnapshot = snap.projection(&key)?;
@@ -669,129 +606,6 @@ fn thread_reply_target(snap: &Snapshot, event_id: &str) -> Option<NoteRecord> {
         .find(|entry| entry.card.id == event_id)
         .or_else(|| feed.cards.first())?;
     Some(note_record_from_card(&card.card))
-}
-
-/// Render one home-feed root card (`nmp.feed.home` → `TimelineEventCard`).
-///
-/// Display name is resolved from the snapshot's `resolved_profiles` map; the
-/// card itself carries only raw protocol data (hex pubkey, Unix `created_at`,
-/// verbatim `content`).
-fn feed_card(
-    ui: &mut Ui,
-    card: &TimelineEventCard,
-    profiles: &HashMap<String, ProfileCard>,
-    embeds: &HashMap<String, nmp_content::EmbeddedEventEnvelope>,
-    tab: &mut AppTab,
-    bridge: &AppRuntime,
-    reply_to: &mut Option<NoteRecord>,
-) {
-    let author_display = display_label(&card.author_pubkey, profiles);
-    let initials =
-        nmp_core::display::avatar_initials(&nmp_core::display::to_npub(&card.author_pubkey));
-    let color = nmp_core::display::avatar_color_hex(&card.author_pubkey);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let created_at_display = nmp_core::display::format_ago_secs(now, card.created_at);
-
-    Frame::group(ui.style())
-        .fill(ui.visuals().faint_bg_color)
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                avatar(ui, &initials, &color);
-                ui.add_space(6.0);
-                ui.vertical(|ui| {
-                    // Repost attribution line: "↻ reposted by <name>".
-                    if let Some(repost) = &card.reposted_by {
-                        let reposter = display_label(&repost.author_pubkey, profiles);
-                        ui.label(
-                            RichText::new(format!("↻ reposted by {reposter}"))
-                                .small()
-                                .weak()
-                                .color(Color32::from_rgb(148, 163, 184)),
-                        );
-                    }
-                    ui.horizontal(|ui| {
-                        // Clickable author name → open author view.
-                        if ui.button(RichText::new(&author_display).strong()).clicked() {
-                            *tab = AppTab::Author(card.author_pubkey.clone());
-                            bridge.open_author(&card.author_pubkey);
-                        }
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(RichText::new(&created_at_display).weak().small());
-                        });
-                    });
-                    // The kernel projection already unwraps kind:6 reposts
-                    // before the card reaches the shell — `content` is never
-                    // raw kind:6 JSON here.  Use the typed `reposted_by` field
-                    // for the repost badge instead of JSON-parsing `content`.
-                    if card.reposted_by.is_some() {
-                        ui.label(
-                            RichText::new("↩ repost")
-                                .small()
-                                .weak()
-                                .color(Color32::from_rgb(148, 163, 184)),
-                        );
-                    }
-                    let text = &card.content;
-                    if !text.is_empty() {
-                        // Render rich body; treat any click anywhere on it as
-                        // "open thread".  note_body renders an
-                        // `horizontal_wrapped` group of inline widgets — we
-                        // capture the response of the whole group by wrapping in
-                        // a `ui.scope` and checking `response.response.clicked()`.
-                        let scope = ui.scope(|ui| {
-                            note_body(ui, text.as_ref(), embeds);
-                        });
-                        if scope.response.interact(egui::Sense::click()).clicked() {
-                            *tab = AppTab::Thread(card.id.clone());
-                            bridge.open_thread(&card.id);
-                        }
-                    }
-                    // Like / Repost / Zap row.
-                    ui.horizontal(|ui| {
-                        if ui.small_button("↩ Reply").clicked() {
-                            *reply_to = Some(note_record_from_card(card));
-                        }
-                        if ui.small_button("❤ Like").clicked() {
-                            let _ = bridge.react(&card.id, "+");
-                        }
-                        if ui.small_button("🔁 Repost").clicked() {
-                            let _ = bridge.repost(&card.id, &card.author_pubkey);
-                        }
-                        if ui.small_button("⚡ Zap").clicked() {
-                            // Default amount: 21 sats = 21,000 msats.
-                            let _ = bridge.zap(&card.author_pubkey, 21_000, &card.id);
-                        }
-                    });
-                });
-            });
-        });
-}
-
-#[cfg(test)]
-mod reply_tests {
-    use super::*;
-
-    #[test]
-    fn reply_record_from_card_carries_raw_parent_fields() {
-        let card = TimelineEventCard {
-            id: "event-id".to_string(),
-            author_pubkey: "author-pubkey".to_string(),
-            created_at: 42,
-            content: "parent".to_string(),
-            ..Default::default()
-        };
-
-        let record = note_record_from_card(&card);
-
-        assert_eq!(record.event_id, "event-id");
-        assert_eq!(record.author, "author-pubkey");
-        assert_eq!(record.created_at, 42);
-        assert_eq!(record.content, "parent");
-        assert_eq!(record.refs, Nip10Refs::default());
-    }
 }
 
 pub(crate) fn relay_role_label(role: &str) -> &str {
@@ -806,18 +620,4 @@ pub(crate) fn relay_role_label(role: &str) -> &str {
         other if other.is_empty() => "Both",
         other => other,
     }
-}
-
-fn avatar(ui: &mut Ui, initials: &str, color_hex: &str) {
-    let size = egui::vec2(36.0, 36.0);
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    let painter = ui.painter();
-    painter.circle_filled(rect.center(), 18.0, hex_color(color_hex));
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        initials,
-        egui::FontId::proportional(14.0),
-        Color32::WHITE,
-    );
 }
