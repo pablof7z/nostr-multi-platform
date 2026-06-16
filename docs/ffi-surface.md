@@ -6,12 +6,13 @@
 > frames only; the old JSON runtime snapshot path is gone.
 
 The native runtime ships a flat `extern "C"` raw C ABI regardless of Rust module layout.
-All production functions accept a `*mut NmpApp` opaque handle and return void
-(or `*mut c_char` for `dispatch_capability`). **D6 invariant holds universally:**
-null or invalid arguments are silent no-ops; no `Result` or exception type ever
-crosses the boundary. The callers are **Chirp** (iOS, via `NmpCore.h`) and
-**Android** (via `nmp-android-ffi` JNI shim which calls through Rust paths, not
-direct C ABI). Pulse was deleted in HB50.
+Most production functions accept a `*mut NmpApp` opaque handle and return void
+(or `*mut c_char` for `dispatch_capability`). Init-only configuration symbols
+return `NmpConfigStatus` codes so post-start wiring mistakes are loud while
+remaining FFI-safe: `0` ok, `1` null app, `2` already started, `3` unavailable.
+The callers are **Chirp** (iOS, via `NmpCore.h`) and **Android** (via
+`nmp-android-ffi` JNI shim which calls through Rust paths, not direct C ABI).
+Pulse was deleted in HB50.
 
 This document describes the hand-maintained public surface. Treat exact symbol
 counts as generated-check territory; the live tree exports additional app,
@@ -43,7 +44,7 @@ archive.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_signer_broker_init` | `(app: *mut NmpApp)` | Construct a process-global `BunkerBroker`, register the `bunker://` hook. Idempotent — repeated calls are no-ops (the `OnceLock` is already set). Must be called once after `nmp_app_new`, before any `nmp_app_signin_bunker`. | Chirp boot | Called on caller thread; broker runs a worker thread internally. | null → early return | D7-clean: hooks a URI handler; decides no policy |
+| `nmp_signer_broker_init` | `(app: *mut NmpApp) -> uint32_t` | Construct the app-scoped `BunkerBroker`, register the `bunker://` hook. Idempotent pre-start. Must be called once after `nmp_app_new`, before `nmp_app_start` and any `nmp_app_signin_bunker`. Post-start calls return `NmpConfigStatus_AlreadyStarted` and record `DroppedLateWiring` in the composition ledger. | Chirp boot, Android JNI (`nativeNew`) | Called on caller thread; broker runs a worker thread internally. | null → `NmpConfigStatus_NullApp` | D7-clean: hooks a URI handler; decides no policy |
 | `nmp_app_cancel_bunker_handshake` | `(app: *mut NmpApp)` | Cancel any in-flight NIP-46 handshake. Idempotent/safe when nothing is in flight. `app` arg is currently unused (kept for future per-app brokers). | Chirp | Synchronous | null → no-op (OnceLock not set) | n/a |
 
 ---

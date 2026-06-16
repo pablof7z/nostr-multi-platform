@@ -19,9 +19,10 @@
 //!   replaced / yielded).
 //! * **ingest parsers, snapshot projections** — recorded at the AppHost
 //!   registration paths in `nmp-ffi`.
-//! * **last-writer-wins slots** (`set_routing_substrate`, `set_coverage_hook`,
-//!   `set_nostrconnect_bootstrap_relay`) — [`Disposition::ReplacedPrevious`]
-//!   when overwriting an already-installed value.
+//! * **read-once AppHost / config slots** (`set_routing_substrate`,
+//!   `set_coverage_hook`, `set_host_op_handler`,
+//!   `set_nostrconnect_bootstrap_relay`, etc.) — recorded when the slot is
+//!   installed, replaced, or rejected after start.
 //! * **dropped late wiring** — a setter invoked after `nmp_app_start`, whose
 //!   value the actor will never read. This finally implements the
 //!   `KernelDiagnostic::LateWiring` promise that `nmp-defaults/src/builder.rs`
@@ -77,8 +78,8 @@ impl Disposition {
 ///
 /// `seam` is a `&'static str` naming the registration surface
 /// (`"action_registry"`, `"ingest_parser"`, `"snapshot_projection"`,
-/// `"routing_substrate"`, `"coverage_hook"`, `"nostrconnect_bootstrap_relay"`,
-/// …). `key` is the seam-local identity (an action namespace, a kind, a
+/// `"routing_substrate"`, `"coverage_hook"`, `"host_op_handler"`,
+/// `"nostrconnect_bootstrap_relay"`, …). `key` is the seam-local identity (an action namespace, a kind, a
 /// projection key, or the slot name when a slot is singular). `provider` is the
 /// registering module/crate — typically `std::any::type_name::<M>()`.
 #[derive(Clone, Debug, Serialize)]

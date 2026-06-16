@@ -213,7 +213,7 @@ impl RoutingFactoryRegistrar for NmpApp {
     }
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        NmpApp::set_nostrconnect_bootstrap_relay(self, url)
+        NmpApp::set_nostrconnect_bootstrap_relay(self, url);
     }
 }
 

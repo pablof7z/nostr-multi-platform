@@ -97,27 +97,25 @@ implements `AppHost + ActionRegistrar` directly (builder-is-the-AppHost). The
 `start()` method exists only on `NmpAppBuilder<StorageSet>` — calling it without
 a storage choice is a compile error, proven by a `compile_fail` doctest.
 
-### 3.2 C-ABI runtime guard + diagnostic frame (b, irreducible for FFI)
+### 3.2 C-ABI runtime guard + composition-ledger diagnostic (b, irreducible for FFI)
 
 For hosts that drive the raw C-ABI directly (Chirp's Swift bridge, Kotlin), add
 a runtime guard:
 
 - The `NmpApp` carries a `started: AtomicBool` (set by the Start dispatch).
-- Each C-ABI `nmp_app_set_*` setter, when called after `started`, does NOT
-  silently mutate-and-be-ignored. It emits a single **late-wiring diagnostic**
-  on the EXISTING update-channel envelope — the same channel the actor panic
-  frame already rides (actor/mod.rs catch_unwind → `update_tx`; envelope spec at
-  docs/design/0001-ffi-update-channel-envelope.md). This is NOT a new delivery
-  channel and NOT a new top-level diagnostic subsystem.
-- The frame is a small typed variant ("LateWiring { symbol, ignored }") — the
-  minimal "KernelDiagnostic" the backlog gestured at, framed as POST-START
-  late-wiring detection, not presence-of-everything validation.
-- `nmp_app_set_storage_path` specifically: emit the late-wiring diagnostic AND
-  (since the default is data-loss) escalate it to a distinct severity so the host
-  surfaces it. This is the one slot where "ignored" is materially harmful.
+- Each init-only config setter, when called after `started`, does NOT silently
+  mutate-and-be-ignored. It returns `NmpConfigStatus_AlreadyStarted` on C/JNI
+  surfaces (or the Rust enum on internal setters) and records
+  `Disposition::DroppedLateWiring` in the composition ledger.
+- Hosts pull the existing `nmp_app_composition_report` diagnostic to inspect the
+  rejected seam/key. This keeps the signal on the ADR-0049 composition surface
+  instead of adding a second diagnostic channel.
+- `nmp_app_set_storage_path` specifically returns a nonzero status so Swift,
+  Kotlin, TUI, and desktop startup paths can assert/fail loudly before the app
+  silently falls back to in-memory storage.
 
-**Status (PR #858):** §3.2 is NOT implemented. The open backlog follow-up (V-94)
-tracks this remaining work.
+**Status (2026-06-16):** §3.2 is implemented as explicit status codes plus the
+ADR-0049 composition ledger. No update-channel `LateWiring` frame is used.
 
 ### 3.3 V-95 folded in
 
@@ -150,21 +148,17 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
   - `nmp_defaults::NmpAppBuilder` (config-phase host; implements `AppHost`).
   - `nmp_defaults::RunConfig` (the visible_limit / emit_hz that
     `nmp_app_start` takes today, made a typed value passed to `builder.start`).
-  - A late-wiring diagnostic variant on the existing FFI update-channel envelope
-    (likely in nmp-core where the envelope variants live, or nmp-ffi if the
-    envelope is FFI-local — decided by where ActorCommand::LifecycleEvent /
-    panic frames are defined).
+  - `NmpConfigStatus` (`Ok`, `NullApp`, `AlreadyStarted`, `Unavailable`) for
+    init-only C/JNI config calls that must be loud without throwing across FFI.
   - `NmpApp::started: AtomicBool` (new slot) + per-setter guard.
 
 ## 5. Ordered steps (for the implementer, after ADR sign-off)
 
-1. Add the late-wiring diagnostic variant to the FFI update-channel envelope;
-   document it alongside the panic frame in
-   docs/design/0001-ffi-update-channel-envelope.md.
+1. Add `NmpConfigStatus` return codes for init-only config calls and document
+   `DroppedLateWiring` as the pull diagnostic in the composition ledger.
 2. Add `NmpApp::started: AtomicBool`; set it in the Start dispatch arm. Guard
-   each C-ABI `nmp_app_set_*` setter: if `started`, emit the diagnostic instead
-   of silently mutating an already-read slot. Escalate severity for
-   `nmp_app_set_storage_path`.
+   each init-only config setter: if `started`, return `AlreadyStarted` and
+   record `DroppedLateWiring` instead of mutating an already-read slot.
 3. Introduce `NmpAppBuilder` in `nmp-defaults` implementing `AppHost`;
    move `register_defaults` to operate on it (free-fn-taking-`&mut impl AppHost`
    keeps working). Add `RunConfig` + terminal `start(self, RunConfig)`.

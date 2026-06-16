@@ -27,14 +27,11 @@ fun interface KernelSignerRequestListener {
 }
 
 /**
- * Thin JNI wrapper around `libnmp_android_ffi.so`, which links the SAME
- * `nmp_app_*` Rust kernel the iOS app consumes. Direct mirror of
- * `ios/Chirp/.../KernelBridge.swift`'s `KernelHandle`.
+ * Thin JNI wrapper around `libnmp_android_ffi.so`.
  *
- * Doctrine: no business logic or cached state (D5/D8). Errors never cross FFI
- * (D6) — natives return only a handle / bytes / void; outcomes arrive in the
- * next update frame. The Rust side lives in `crates/nmp-android-ffi` and calls
- * into `nmp-ffi`/`nmp-app-chirp` through Rust paths.
+ * Doctrine: no business logic or cached state (D5/D8). Runtime outcomes arrive
+ * in the next update frame. Init-only config calls may return `NmpConfigStatus`
+ * codes so ordering mistakes fail loudly without Android policy.
  */
 class KernelBridge {
     @Volatile
@@ -45,12 +42,12 @@ class KernelBridge {
         handle = nativeNew()
     }
 
-    /**
-     * Configure the Rust LMDB storage directory. Must be called before [start].
-     * Android owns only the platform path; Rust owns storage semantics.
-     */
+    /** Configure the Rust LMDB storage directory before [start]. */
     fun setStoragePath(path: String) {
-        if (handle != 0L) nativeSetStoragePath(handle, path)
+        if (handle != 0L) {
+            val status = nativeSetStoragePath(handle, path)
+            check(status == 0) { "nativeSetStoragePath failed with NmpConfigStatus=$status" }
+        }
     }
 
     fun start(visibleLimit: Int = 80, emitHz: Int = 4) {
@@ -449,7 +446,7 @@ class KernelBridge {
     }
 
     private external fun nativeNew(): Long
-    private external fun nativeSetStoragePath(handle: Long, path: String)
+    private external fun nativeSetStoragePath(handle: Long, path: String): Int
     private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
     private external fun nativeOpenTimeline(handle: Long)
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)

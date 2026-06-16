@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use nmp_core::__ffi_internal::{has_role, nostrconnect_relay_url};
 
-use crate::NmpApp;
+use crate::{NmpApp, NmpConfigStatus};
 
 impl NmpApp {
     /// Clone of the live relay-edit row slot.
@@ -14,9 +14,24 @@ impl NmpApp {
     }
 
     /// Store the initial relay configuration passed into actor start.
-    pub fn set_initial_relays_for_start(&self, relays: Vec<(String, String)>) {
+    pub fn set_initial_relays_for_start(&self, relays: Vec<(String, String)>) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "initial_relays_for_start",
+            "initial_relays_for_start",
+            "initial_relays_for_start",
+        ) {
+            return status;
+        }
         if let Ok(mut guard) = self.initial_relays_for_start.lock() {
+            self.record_slot_decision(
+                "initial_relays_for_start",
+                "initial_relays_for_start",
+                !guard.is_empty(),
+            );
             *guard = relays;
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
         }
     }
 
@@ -50,7 +65,14 @@ impl NmpApp {
             .and_then(|guard| guard.clone())
     }
 
-    pub(crate) fn set_nostrconnect_bootstrap_relay(&self, url: String) {
+    pub(crate) fn set_nostrconnect_bootstrap_relay(&self, url: String) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "nostrconnect_bootstrap_relay",
+            "nostrconnect_bootstrap_relay",
+            "nostrconnect_bootstrap_relay",
+        ) {
+            return status;
+        }
         if let Ok(mut guard) = self.nostrconnect_bootstrap_relay.lock() {
             // ADR-0049 Part 2 — record the last-writer-wins decision for this
             // slot (Installed / ReplacedPrevious / DroppedLateWiring).
@@ -60,6 +82,9 @@ impl NmpApp {
                 guard.is_some(),
             );
             *guard = Some(url);
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
         }
     }
 }

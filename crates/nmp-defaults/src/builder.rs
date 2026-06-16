@@ -64,7 +64,6 @@
 //! [`AppHost`]: nmp_core::substrate::AppHost
 
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use nmp_core::substrate::ActionRegistrar;
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
@@ -598,5 +597,10 @@ fn set_storage_path_via_cabi(app: *mut NmpApp, path: &str) {
     // duration of the call. Rust does not require an `unsafe` block to call
     // `pub extern "C"` functions exported from another Rust crate — the
     // unsafety is the caller's responsibility by convention.
-    nmp_ffi::nmp_app_set_storage_path(app, c_path.as_ptr());
+    let status = nmp_ffi::nmp_app_set_storage_path(app, c_path.as_ptr());
+    debug_assert_eq!(
+        status,
+        nmp_ffi::NmpConfigStatus::Ok.code(),
+        "builder storage_path must run before nmp_app_start"
+    );
 }

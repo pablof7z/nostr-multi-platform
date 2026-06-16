@@ -89,7 +89,7 @@ shell at your static lib and call `nmp_app_microblog_register` instead of
 
 ```swift
 raw = nmp_app_new()
-nmp_signer_broker_init(raw)
+precondition(nmp_signer_broker_init(raw) == 0)
 nmp_app_microblog_register(raw)   // your registration symbol
 nmp_app_set_update_callback(raw, ..., nmpUpdateCallback)
 nmp_app_start(raw, 0, 80, 4)

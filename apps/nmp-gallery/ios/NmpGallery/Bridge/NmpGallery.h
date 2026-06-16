@@ -15,6 +15,12 @@
 
 void *nmp_app_new(void);
 void nmp_app_free(void *app);
+typedef enum NmpConfigStatus {
+    NmpConfigStatus_Ok             = 0,
+    NmpConfigStatus_NullApp        = 1,
+    NmpConfigStatus_AlreadyStarted = 2,
+    NmpConfigStatus_Unavailable    = 3,
+} NmpConfigStatus;
 
 // Borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes. The pointer is valid
 // only for the callback duration; Swift copies before decoding.
@@ -23,8 +29,9 @@ void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback cal
 
 // Persistent storage directory for the LMDB EventStore backend. Must be called
 // before `nmp_app_start`; a NULL or empty `path` clears it. Inert unless
-// nmp-core is built with the `lmdb-backend` feature.
-void nmp_app_set_storage_path(void *app, const char *path);
+// nmp-core is built with the `lmdb-backend` feature. Returns
+// NmpConfigStatus_AlreadyStarted if called after nmp_app_start.
+uint32_t nmp_app_set_storage_path(void *app, const char *path);
 
 void nmp_app_start(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
