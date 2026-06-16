@@ -15,6 +15,7 @@ use egui::{
 use std::collections::HashMap;
 
 use crate::bridge::AppRuntime;
+use crate::diagnostics_flag;
 use crate::snapshot::{
     ActionStageRow, FollowListSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
 };
@@ -126,6 +127,9 @@ impl DesktopApp {
 impl App for DesktopApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let snap = self.snapshot().unwrap_or_default();
+        if matches!(self.tab, AppTab::Diagnostics) && !diagnostics_flag::enabled() {
+            self.tab = AppTab::Home;
+        }
 
         self.status_bar(ctx, &snap);
         self.sidebar(ctx, &snap);
@@ -215,14 +219,16 @@ impl DesktopApp {
                 {
                     self.tab = AppTab::Settings;
                 }
-                if ui
-                    .selectable_label(
-                        matches!(current_tab, AppTab::Diagnostics),
-                        "📊  Diagnostics",
-                    )
-                    .clicked()
-                {
-                    self.tab = AppTab::Diagnostics;
+                if diagnostics_flag::enabled() {
+                    if ui
+                        .selectable_label(
+                            matches!(current_tab, AppTab::Diagnostics),
+                            "📊  Diagnostics",
+                        )
+                        .clicked()
+                    {
+                        self.tab = AppTab::Diagnostics;
+                    }
                 }
                 if ui
                     .selectable_label(matches!(current_tab, AppTab::Outbox), "📤  Outbox")

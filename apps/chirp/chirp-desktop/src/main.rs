@@ -8,8 +8,10 @@
 
 mod app;
 mod bridge;
+mod diagnostics_flag;
 mod dm_panel;
 mod keyring;
+mod relation_counts;
 mod render;
 mod settings;
 mod snapshot;

@@ -125,13 +125,19 @@ pub(crate) fn feed_card(
                     let text = &card.content;
                     if !text.is_empty() {
                         let scope = ui.scope(|ui| {
-                            note_body(ui, text.as_ref(), embeds);
+                            note_body(ui, text.as_ref(), embeds, profiles);
                         });
                         if scope.response.interact(egui::Sense::click()).clicked() {
                             *tab = AppTab::Thread(card.id.clone());
                             bridge.open_thread(&card.id);
                         }
                     }
+                    ui.label(
+                        RichText::new(card.relation_counts.summary())
+                            .small()
+                            .weak()
+                            .color(Color32::from_rgb(148, 163, 184)),
+                    );
                     ui.horizontal(|ui| {
                         if ui.small_button("↩ Reply").clicked() {
                             *reply_to = Some(note_record_from_card(card));

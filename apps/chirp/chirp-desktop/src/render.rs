@@ -12,6 +12,8 @@ use nmp_content::{
 };
 use nmp_core::nip21::NostrUri;
 
+use crate::snapshot::ProfileCard;
+
 /// Parse a `#rrggbb` string into an egui colour, falling back to neutral grey.
 pub fn hex_color(hex: &str) -> Color32 {
     let h = hex.trim_start_matches('#');
@@ -34,7 +36,12 @@ pub fn hex_color(hex: &str) -> Color32 {
 /// segment whose `primary_id` is present in the map renders the embedded event
 /// (kernel-resolved, never re-parsed here — D0 thin-shell); an absent one falls
 /// back to the `↗ note` placeholder (the kernel has not claimed it yet).
-pub fn note_body(ui: &mut Ui, content: &str, embeds: &HashMap<String, EmbeddedEventEnvelope>) {
+pub fn note_body(
+    ui: &mut Ui,
+    content: &str,
+    embeds: &HashMap<String, EmbeddedEventEnvelope>,
+    profiles: &HashMap<String, ProfileCard>,
+) {
     let tree = tokenize_with_kind(content, &[], RenderMode::Auto, 1);
 
     ui.horizontal_wrapped(|ui| {
@@ -57,9 +64,10 @@ pub fn note_body(ui: &mut Ui, content: &str, embeds: &HashMap<String, EmbeddedEv
                         ui.hyperlink_to("🖼 media", u.as_str());
                     }
                 }
-                Segment::Mention(_) => {
+                Segment::Mention(uri) => {
                     ui.label(
-                        RichText::new("@mention").color(Color32::from_rgb(167, 139, 250)),
+                        RichText::new(mention_label(uri, profiles))
+                            .color(Color32::from_rgb(167, 139, 250)),
                     );
                 }
                 Segment::EventRef(uri) => {
@@ -75,6 +83,19 @@ pub fn note_body(ui: &mut Ui, content: &str, embeds: &HashMap<String, EmbeddedEv
             }
         }
     });
+}
+
+fn mention_label(uri: &NostrUri, profiles: &HashMap<String, ProfileCard>) -> String {
+    let NostrUri::Profile { pubkey, .. } = uri else {
+        return "@mention".to_string();
+    };
+    let label = profiles
+        .get(pubkey)
+        .and_then(|profile| profile.display_name.as_deref())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| nmp_core::display::short_npub(pubkey));
+    format!("@{label}")
 }
 
 /// The `primary_id` the embed sidecar keys an `EventRef` by: the event id for a
@@ -105,7 +126,10 @@ fn render_event_ref(ui: &mut Ui, uri: &NostrUri, embeds: &HashMap<String, Embedd
     let accent = Color32::from_rgb(110, 231, 183);
     match &envelope.projection {
         EmbedKindProjection::ShortNote(n) => {
-            ui.label(RichText::new(format!("↳ {}", truncate(&n.content_tree_text(), 160))));
+            ui.label(RichText::new(format!(
+                "↳ {}",
+                truncate(&n.content_tree_text(), 160)
+            )));
         }
         EmbedKindProjection::Article(a) => {
             let title = a.title.as_deref().unwrap_or("article");
@@ -196,7 +220,45 @@ mod tests {
             pubkey: "ef".repeat(32),
             relays: vec![],
         };
-        assert_eq!(event_ref_primary_id(&uri), None, "profile refs are not event embeds");
+        assert_eq!(
+            event_ref_primary_id(&uri),
+            None,
+            "profile refs are not event embeds"
+        );
+    }
+
+    #[test]
+    fn mention_label_uses_resolved_profile_name() {
+        let pubkey = "ef".repeat(32);
+        let uri = NostrUri::Profile {
+            pubkey: pubkey.clone(),
+            relays: vec![],
+        };
+        let mut profiles = HashMap::new();
+        profiles.insert(
+            pubkey,
+            ProfileCard {
+                display_name: Some("Alice".to_string()),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(mention_label(&uri, &profiles), "@Alice");
+    }
+
+    #[test]
+    fn mention_label_falls_back_to_short_npub() {
+        let pubkey = "ef".repeat(32);
+        let uri = NostrUri::Profile {
+            pubkey: pubkey.clone(),
+            relays: vec![],
+        };
+        let profiles = HashMap::new();
+
+        assert_eq!(
+            mention_label(&uri, &profiles),
+            format!("@{}", nmp_core::display::short_npub(&pubkey))
+        );
     }
 
     #[test]

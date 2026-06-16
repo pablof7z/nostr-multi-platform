@@ -14,6 +14,8 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
+use crate::relation_counts::RelationCounts;
+
 // ---------------------------------------------------------------------------
 // Top-level snapshot
 // ---------------------------------------------------------------------------
@@ -228,8 +230,8 @@ pub struct FollowEntry {
 /// name via the snapshot's `resolved_profiles` map (aim.md §2). We keep the
 /// mirror desktop-local (rather than importing the nmp-nip01 type) so the
 /// shell's decode surface stays decoupled from the projection's internal
-/// type. `content_tree` / `relation_counts` are omitted — the desktop renders
-/// plain text. Every field is `#[serde(default)]`.
+/// type. `content_tree` is omitted — the desktop renders rich text from
+/// `content`. Every field is `#[serde(default)]`.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct TimelineEventCard {
     #[serde(default)]
@@ -242,6 +244,8 @@ pub struct TimelineEventCard {
     pub created_at: u64,
     #[serde(default)]
     pub content: String,
+    #[serde(default)]
+    pub relation_counts: RelationCounts,
     /// Post-#922 cards carry no relay-count field; kept for forward
     /// compatibility, defaults to 0 (the relay-multiplier badge never shows).
     #[serde(default)]
@@ -383,6 +387,10 @@ mod tests {
         assert_eq!(card.author_pubkey, "deadbeef");
         assert_eq!(card.content, "hello nostr");
         assert_eq!(card.created_at, 1_700_000_000);
+        assert_eq!(
+            card.relation_counts.summary(),
+            "reply ...  react ...  repost ...  zap ..."
+        );
         assert!(card.reposted_by.is_none(), "ordinary note: no repost");
     }
 

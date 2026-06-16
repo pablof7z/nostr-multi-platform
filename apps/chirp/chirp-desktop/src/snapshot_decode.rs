@@ -136,9 +136,7 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
 
     // nmp.follow_list — active account's NIP-02 follow set. Desktop consumes
     // the Rust-owned projection for button state and owns no local follow cache.
-    if let Some(m) =
-        find("nmp.follow_list").and_then(|b| nmp_nip02::decode_follow_list(b).ok())
-    {
+    if let Some(m) = find("nmp.follow_list").and_then(|b| nmp_nip02::decode_follow_list(b).ok()) {
         if let Ok(value) = serde_json::to_value(&m) {
             projections.insert("nmp.follow_list".to_string(), value);
         }
@@ -153,7 +151,10 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             .iter()
             .map(|(k, card)| (k.clone(), profile_card_value(card)))
             .collect();
-        projections.insert("resolved_profiles".to_string(), serde_json::Value::Object(map));
+        projections.insert(
+            "resolved_profiles".to_string(),
+            serde_json::Value::Object(map),
+        );
     }
 
     // configured_relays — relay-edit rows for the Settings pane.
@@ -194,9 +195,8 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
     // Absent when no remote signer is active (the JSON closure also emits null
     // then — so no entry is added in that case, which is the correct absence
     // signal for the Settings pane).
-    if let Some(m) =
-        find(nmp_core::typed_projections::SIGNER_STATE_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_signer_state(b).ok())
+    if let Some(m) = find(nmp_core::typed_projections::SIGNER_STATE_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_signer_state(b).ok())
     {
         projections.insert(
             nmp_core::typed_projections::SIGNER_STATE_SCHEMA_ID.to_string(),
@@ -214,9 +214,8 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
 
     // bunker_handshake — NIP-46 connect-QR progress (KBHS typed sidecar).
     // Absent when no handshake is in flight (mirrors the JSON null semantics).
-    if let Some(m) =
-        find(nmp_core::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_bunker_handshake(b).ok())
+    if let Some(m) = find(nmp_core::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_bunker_handshake(b).ok())
     {
         projections.insert(
             nmp_core::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID.to_string(),
@@ -235,18 +234,19 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
     // nip46_onboarding — static signer-app probe table + handshake state (KN46
     // typed sidecar).  Always emitted by the kernel (never null) so always
     // decoded and inserted.
-    if let Some(m) =
-        find(nmp_core::typed_projections::NIP46_ONBOARDING_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_nip46_onboarding(b).ok())
+    if let Some(m) = find(nmp_core::typed_projections::NIP46_ONBOARDING_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_nip46_onboarding(b).ok())
     {
         let apps: Vec<serde_json::Value> = m
             .signer_apps
             .iter()
-            .map(|a| serde_json::json!({
-                "scheme": a.scheme,
-                "display_label": a.display_label,
-                "signer_kind": a.signer_kind,
-            }))
+            .map(|a| {
+                serde_json::json!({
+                    "scheme": a.scheme,
+                    "display_label": a.display_label,
+                    "signer_kind": a.signer_kind,
+                })
+            })
             .collect();
         projections.insert(
             nmp_core::typed_projections::NIP46_ONBOARDING_SCHEMA_ID.to_string(),
@@ -263,7 +263,8 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
     }
 
     // nmp.nip17.dm_inbox — DM conversations (host-registered sidecar).
-    if let Some(m) = find("nmp.nip17.dm_inbox").and_then(|b| nmp_nip17::decode_dm_inbox_snapshot(b).ok())
+    if let Some(m) =
+        find("nmp.nip17.dm_inbox").and_then(|b| nmp_nip17::decode_dm_inbox_snapshot(b).ok())
     {
         let conversations: Vec<serde_json::Value> = m
             .conversations
@@ -318,10 +319,10 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
         last_error_toast: envelope.last_error_toast,
         relay_statuses,
         metrics: crate::snapshot::Metrics {
-            note_events: 0,
+            note_events: envelope.note_events,
             events_rx: envelope.events_rx,
-            visible_items: 0,
-            events_since_last_update: 0,
+            visible_items: envelope.visible_items.min(usize::MAX as u64) as usize,
+            events_since_last_update: envelope.events_since_last_update,
         },
         profile,
         active_account,
@@ -387,14 +388,18 @@ mod signer_projection_decode_tests {
             "can_cancel": true,
             "message": "Approve in your signer app",
         });
-        let status: BunkerHandshakeStatus = serde_json::from_value(v)
-            .expect("BunkerHandshakeStatus must deserialize from the bunker_handshake projection JSON");
+        let status: BunkerHandshakeStatus = serde_json::from_value(v).expect(
+            "BunkerHandshakeStatus must deserialize from the bunker_handshake projection JSON",
+        );
         assert_eq!(status.stage, "waiting_for_approval");
         assert!(status.is_in_flight);
         assert!(!status.is_terminal_success);
         assert!(!status.is_failed);
         assert!(status.can_cancel);
-        assert_eq!(status.message.as_deref(), Some("Approve in your signer app"));
+        assert_eq!(
+            status.message.as_deref(),
+            Some("Approve in your signer app")
+        );
     }
 
     /// Verifies that the JSON shape `decode_snapshot_typed` inserts under
