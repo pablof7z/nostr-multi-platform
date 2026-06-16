@@ -13,6 +13,7 @@ use crate::app::{AppTab, DesktopApp};
 use crate::bridge::AppRuntime;
 use crate::render::{hex_color, note_body};
 use crate::snapshot::{ModularTimelineSnapshot, ProfileCard, Snapshot, TimelineEventCard};
+use crate::zap_amount::PendingZap;
 
 impl DesktopApp {
     pub(crate) fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot) {
@@ -33,7 +34,7 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &feed.cards {
-                    feed_card(
+                    if let Some(target) = feed_card(
                         ui,
                         &entry.card,
                         &profiles,
@@ -41,7 +42,9 @@ impl DesktopApp {
                         &mut self.tab,
                         &self.bridge,
                         &mut self.reply_to,
-                    );
+                    ) {
+                        self.zap_amount.open(target);
+                    }
                     ui.add_space(6.0);
                 }
 
@@ -74,7 +77,7 @@ pub(crate) fn feed_card(
     tab: &mut AppTab,
     bridge: &AppRuntime,
     reply_to: &mut Option<NoteRecord>,
-) {
+) -> Option<PendingZap> {
     let author_display = display_label(&card.author_pubkey, profiles);
     let initials =
         nmp_core::display::avatar_initials(&nmp_core::display::to_npub(&card.author_pubkey));
@@ -84,6 +87,7 @@ pub(crate) fn feed_card(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let created_at_display = nmp_core::display::format_ago_secs(now, card.created_at);
+    let mut zap_target = None;
 
     Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
@@ -138,13 +142,16 @@ pub(crate) fn feed_card(
                         if ui.small_button("🔁 Repost").clicked() {
                             let _ = bridge.repost(&card.id, &card.author_pubkey);
                         }
-                        if ui.small_button("⚡ Zap").clicked() {
-                            let _ = bridge.zap(&card.author_pubkey, 21_000, &card.id);
+                        if ui.small_button("⚡ Zap").clicked() && !card.author_pubkey.is_empty() {
+                            zap_target =
+                                Some(PendingZap::new(card.author_pubkey.clone(), card.id.clone()));
                         }
                     });
                 });
             });
         });
+
+    zap_target
 }
 
 pub(crate) fn note_record_from_card(card: &TimelineEventCard) -> NoteRecord {

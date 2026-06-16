@@ -15,6 +15,7 @@ mod settings;
 mod snapshot;
 mod snapshot_decode;
 mod timeline_panel;
+mod zap_amount;
 
 use app::DesktopApp;
 
