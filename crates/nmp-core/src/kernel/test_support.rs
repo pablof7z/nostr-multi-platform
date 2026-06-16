@@ -291,8 +291,7 @@ impl Kernel {
     /// [`Kernel::project_accepted_event`], which dispatches to the REGISTERED
     /// kind:0 parser (`TestKind0Parser` in test builds, `nmp_nip01::Kind0Parser`
     /// in production) → the parser writes the capability-owned profile cache →
-    /// the transition sweep bumps `profiles_ver` (and `claimed_event_content_ver`
-    /// when `event_claims` is non-empty). This is the SAME path a relay-delivered
+    /// the transition sweep bumps `profiles_ver`. This is the SAME path a relay-delivered
     /// or cache-served kind:0 takes; there is no separate cache writer. Callers
     /// keep the convenient `NostrEvent`-taking signature.
     ///

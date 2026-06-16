@@ -41,11 +41,6 @@ impl Kernel {
         if profile_before != profile_after {
             self.cached_estimated_store_bytes.set(None);
             self.projection_rev_tracker.source_versions.bump_profiles();
-            if !self.event_claims.is_empty() {
-                self.projection_rev_tracker
-                    .source_versions
-                    .bump_claimed_event_content();
-            }
         }
         let mailbox_after = self.mailbox_cache().snapshot(&author);
         if mailbox_before != mailbox_after {

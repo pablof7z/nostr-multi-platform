@@ -59,9 +59,8 @@ impl EmbedHostState {
     /// Non-fatal: malformed entries are silently skipped (D6 — the renderer
     /// falls back to a loading placeholder until a well-formed snapshot lands).
     ///
-    /// Returns the pubkeys of authors whose `author_display_name` is absent
-    /// so the caller can issue `claim_profile` and the next snapshot tick
-    /// brings their kind:0 metadata.
+    /// Returns the pubkeys of claimed-event authors so the caller can issue
+    /// `claim_profile`; `claimed_events` itself carries raw event data only.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) -> Vec<String> {
         // An absent (empty) claimed_events model is a no-op — do not wipe
         // existing envelopes when no events are claimed yet (mirrors the
@@ -150,15 +149,9 @@ fn kernel_event_from_row(row: &ClaimedEventRow) -> Option<KernelEvent> {
     })
 }
 
-/// Stamp the author's display name + picture URL on whichever
-/// projection variant carries those fields. `resolve_embed_projection`
-/// initializes them as `None` since it only sees the raw `KernelEvent`;
-/// this helper folds in the kernel's profile-cache enrichment delivered
-/// via `ClaimedEventRow.author_display_name` / `_picture_url`. The
-/// `Highlight` variant carries `author_display_name` only (no picture);
-/// `Unknown` follows the same shape. All variants degrade gracefully
-/// when both fields are `None` — renderers compose with
-/// `NostrProfileName` which falls back to the truncated npub.
+/// Stamp legacy author profile fields when an older typed row provides them.
+/// Current kernels leave these fields empty and renderers compose the raw
+/// author pubkey with `NostrProfileName` / `NostrAvatar`.
 fn apply_author_profile(
     projection: &mut EmbedKindProjection,
     display_name: Option<String>,

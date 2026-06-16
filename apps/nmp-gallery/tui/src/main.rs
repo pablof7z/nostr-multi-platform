@@ -641,14 +641,9 @@ fn handle_input_after_snapshot(ev: Event, selected_index: &mut usize) {
     }
 }
 
-/// Fire `claim_profile` for each author whose kind:0 hasn't arrived in
-/// `claimed_events.author_display_name` yet. `update_from_typed`
-/// returns the deduped pubkey list each tick; we let the kernel's
-/// per-(pubkey, consumer_id) refcounting dedup across ticks — re-claiming
-/// the same author on every snapshot is a near-no-op once kind:0 is
-/// cached. Component composability: the article renderer reads the
-/// enriched `ArticleProjection.author_display_name` and composes with
-/// `NostrProfileName`, falling back to truncated npub while in-flight.
+/// Fire `claim_profile` for each claimed-event author. `claimed_events` carries
+/// raw pubkeys only, so the profile components own kind:0 hydration through the
+/// normal per-(pubkey, consumer_id) refcounted claim path.
 fn claim_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
     for pubkey in authors {
         sink.claim_profile(pubkey, "nmp-gallery-tui.embed.author");

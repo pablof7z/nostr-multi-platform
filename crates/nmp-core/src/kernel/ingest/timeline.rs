@@ -129,8 +129,9 @@ impl Kernel {
         // The `author_display_name` fallback baked into each TimelineItem
         // snapshot is populated from the profile cache as soon as a
         // previously-claimed kind:0 arrives — no blank-out on first render.
-        // The `claimed_events` / `resolved_profiles` enrichment reads
-        // `self.profiles` which the claim path populates unchanged.
+        // `resolved_profiles` reads `self.profiles` which the claim path
+        // populates unchanged. `claimed_events` stays raw and carries the
+        // author pubkey for profile components to compose.
 
         // D9: kernel owns time — clamp relay-supplied created_at to now so a
         // future-dated event from a hostile/buggy relay cannot pin permanently

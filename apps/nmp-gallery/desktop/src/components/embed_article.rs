@@ -17,8 +17,7 @@ const BORDER_COLOR: Color = Color { r: 0.278, g: 0.333, b: 0.404, a: 1.0 };
 /// (presentation-owned claiming), NOT from the projection's static
 /// `author_display_name` field. The render path in `gallery.rs` claims the
 /// article author's kind:0 and resolves it through `LiveProfileMap` before
-/// constructing this card. The kernel still emits `author_display_name` for
-/// now, but this component no longer depends on it for display.
+/// constructing this card; `claimed_events` now carries raw pubkeys only.
 pub struct ArticleCard<'a> {
     article: &'a ArticleProjection,
     /// Presentation-resolved author label: the displaying renderer's

@@ -389,10 +389,10 @@ impl Kernel {
     /// nevent/note URIs; `kind:pubkey:d_tag` coordinate for naddr URIs). Walks
     /// the current `event_claims` set and looks each key up against `self.events`
     /// via `lookup_for_primary_id`; missing entries are silently absent (D1
-    /// best-effort). Each entry is enriched with the author's cached kind:0
-    /// display name + picture URL so the embed renderer composes with
-    /// NostrProfileName / NostrAvatar without a separate claim round-trip.
-    /// BTreeMap for deterministic key ordering.
+    /// best-effort). Entries carry raw event data only; author display state is
+    /// resolved by profile components through `claim_profile` and the
+    /// `claimed_profiles` / `resolved_profiles` projections. BTreeMap for
+    /// deterministic key ordering.
     ///
     /// Shared accessor for the generic JSON projection and its Tier-2 typed
     /// sidecar — see [`Self::mention_profiles`] for the divergence-safety
@@ -404,12 +404,6 @@ impl Kernel {
             std::collections::BTreeMap::new();
         for key in self.event_claims.keys() {
             if let Some(stored) = self.lookup_for_primary_id(key) {
-                let profile = self.profile_for_pubkey(&stored.author);
-                let display_name = profile
-                    .as_ref()
-                    .map(|p| p.display.clone())
-                    .filter(|d| !d.trim().is_empty());
-                let picture_url = profile.as_ref().and_then(|p| p.picture_url.clone());
                 // Parse raw content → NFCT bytes via the injected content-parser
                 // seam (no-op by default; web composition installs an
                 // nmp-content-backed parser so claim_event renders the
@@ -422,7 +416,6 @@ impl Kernel {
                 claimed_events.insert(
                     key.clone(),
                     ClaimedEventDto::from_stored(key.clone(), &stored)
-                        .with_author_profile(display_name, picture_url)
                         .with_content_tree(content_tree_bytes),
                 );
             }
