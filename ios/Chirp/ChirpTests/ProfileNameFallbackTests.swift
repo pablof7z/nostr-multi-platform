@@ -210,4 +210,40 @@ final class ProfileNameFallbackTests: XCTestCase {
             "With no name source the label collapses to shortHex.")
     }
 
+    // MARK: - Test C — DM peer labels and compose search
+
+    func test_dmPeerPresentation_prefersResolvedProfileDisplay() {
+        XCTAssertEqual(
+            DmPeerPresentation.label(pubkey: pk, profileDisplay: "Alice"),
+            "Alice",
+            "DM peer labels must prefer the Rust-owned resolved profile display.")
+        XCTAssertEqual(
+            DmPeerPresentation.label(pubkey: pk, profileDisplay: nil),
+            pk.shortHex,
+            "Missing profile data must fall back to the existing presentation short key.")
+        XCTAssertEqual(
+            DmPeerPresentation.label(pubkey: pk, profileDisplay: ""),
+            pk.shortHex,
+            "Empty profile labels must not render blank DM peers.")
+    }
+
+    func test_dmComposeSearch_matchesResolvedDisplayOrRawPubkey() {
+        XCTAssertTrue(
+            DmPeerPresentation.matchesContact(
+                pubkey: pk, profileDisplay: "Alice", query: "ali"),
+            "Compose search must find contacts by resolved display name.")
+        XCTAssertTrue(
+            DmPeerPresentation.matchesContact(
+                pubkey: pk, profileDisplay: "Alice", query: String(pk.prefix(8))),
+            "Compose search must still find contacts by raw pubkey.")
+        XCTAssertTrue(
+            DmPeerPresentation.matchesContact(
+                pubkey: pk, profileDisplay: "Alice", query: "   "),
+            "An empty trimmed query must show all contacts.")
+        XCTAssertFalse(
+            DmPeerPresentation.matchesContact(
+                pubkey: pk, profileDisplay: "Alice", query: "carol"),
+            "Unmatched display and pubkey text must be filtered out.")
+    }
+
 }

@@ -10,11 +10,10 @@ import SwiftUI
 //            `DmConversationView`.
 //
 // Thin-shell rule: ZERO protocol logic here. Conversations arrive
-// newest-thread-first from the Rust `DmInboxProjection`; this view only
-// renders the list and navigates into a thread. All display strings
-// (`peerShortNpub`, `peerAvatarInitials`, `peerAvatarColor`) are computed
-// in Rust and consumed verbatim — no bech32 encoding, no pubkey truncation
-// in Swift.
+// newest-thread-first from the Rust `DmInboxProjection`; profile labels and
+// images come from the Rust-owned profile projections through `KernelModel`.
+// Swift only renders the list, navigates into a thread, and falls back to the
+// existing presentation-only short key when no profile is available.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct DmListView: View {
@@ -124,20 +123,29 @@ struct DmListView: View {
 // ── Conversation row ──────────────────────────────────────────────────────
 
 private struct DmConversationRow: View {
+    @EnvironmentObject private var model: KernelModel
+
     let conversation: DmConversation
 
     /// The most recent message — the last entry, since the projection
     /// orders each thread chronologically (oldest first, newest last).
     private var latest: DmMessage? { conversation.messages.last }
 
+    private var peerDisplayLabel: String {
+        DmPeerPresentation.label(
+            pubkey: conversation.peerPubkey,
+            profileDisplay: model.profile(forPubkey: conversation.peerPubkey)?.display)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            // ADR-0032: initials, colour, and pubkey abbreviation are
-            // derived locally from the raw peer hex pubkey.
+            // The avatar self-claims the peer's kind:0. Its picture comes
+            // from the Rust-owned profile projection; fallback initials are
+            // purely presentational.
             NostrAvatar(
                 pubkey: conversation.peerPubkey,
                 url: nil,
-                initials: conversation.peerPubkey.displayInitials,
+                initials: peerDisplayLabel.displayInitials,
                 colorHex: conversation.peerPubkey.pubkeyColorHex,
                 size: 40
             )
@@ -145,10 +153,10 @@ private struct DmConversationRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(conversation.peerPubkey.shortHex)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                    NostrProfileName(
+                        displayName: peerDisplayLabel,
+                        font: .callout.weight(.semibold),
+                        color: .primary)
                     Spacer()
                     if let latest {
                         Text(latest.createdAt.relativeTimeFromUnixSeconds)
@@ -207,13 +215,16 @@ private struct DmComposeSheet: View {
         !trimmedRecipient.isEmpty && !trimmedDraft.isEmpty
     }
 
-    /// Follows filtered by `searchQuery` against the abbreviated pubkey
-    /// derived locally (ADR-0032). An empty query shows all follows.
+    /// Follows filtered by `searchQuery` against the raw pubkey or the
+    /// Rust-owned resolved profile label. An empty query shows all follows.
     private var filteredFollows: [FollowEntry] {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return model.followList.follows }
         return model.followList.follows.filter {
-            $0.pubkey.lowercased().contains(q)
+            DmPeerPresentation.matchesContact(
+                pubkey: $0.pubkey,
+                profileDisplay: model.profile(forPubkey: $0.pubkey)?.display,
+                query: q)
         }
     }
 
@@ -232,18 +243,22 @@ private struct DmComposeSheet: View {
                             Button {
                                 recipient = follow.pubkey
                             } label: {
+                                let contactLabel = DmPeerPresentation.label(
+                                    pubkey: follow.pubkey,
+                                    profileDisplay: model.profile(forPubkey: follow.pubkey)?.display)
                                 HStack(spacing: 8) {
                                     NostrAvatar(
                                         pubkey: follow.pubkey,
                                         url: nil,
-                                        initials: follow.pubkey.displayInitials,
+                                        initials: contactLabel.displayInitials,
                                         colorHex: follow.pubkey.pubkeyColorHex,
                                         size: 32
                                     )
                                     .equatable()
-                                    Text(follow.pubkey.shortHex)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
+                                    NostrProfileName(
+                                        displayName: contactLabel,
+                                        font: .subheadline,
+                                        color: .primary)
                                     Spacer()
                                     if recipient == follow.pubkey {
                                         Image(systemName: "checkmark")

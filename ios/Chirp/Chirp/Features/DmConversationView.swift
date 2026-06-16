@@ -8,12 +8,10 @@ import SwiftUI
 //   • Write: `nmp.nip17.send` via `DmInboxStore.sendDm` — the kind:14 rumor,
 //            the NIP-59 gift-wrap, and signing are all Rust-owned.
 //
-// Thin-shell rule: ZERO protocol logic here. The view re-derives nothing —
-// the conversation list, chronological ordering, decrypted content, and
-// the per-message `isOutgoing` flag (which side a bubble aligns to) all
-// come from the Rust `DmInboxProjection`. The shell never compares
-// pubkeys to decide — the kind:13 seal authenticated `sender_pubkey` once
-// already; replaying that comparison here is protocol logic leaking out.
+// Thin-shell rule: ZERO protocol logic here. The conversation list,
+// chronological ordering, decrypted content, and per-message `isOutgoing`
+// flag all come from the Rust `DmInboxProjection`. The title is rendered from
+// the Rust-owned profile projection through `NostrProfileName`.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct DmConversationView: View {
@@ -40,8 +38,17 @@ struct DmConversationView: View {
             composer
         }
         .chirpScreenBackground()
-        .navigationTitle(conversation?.peerPubkey.shortHex ?? peerPubkey.shortHex)
+        .navigationTitle(peerPubkey.shortHex)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                NostrProfileName(
+                    pubkey: peerPubkey,
+                    font: .headline,
+                    color: .primary,
+                    consumerID: "dm-conversation.title.\(peerPubkey)")
+            }
+        }
     }
 
     // ── Message stream ────────────────────────────────────────────────────
@@ -166,5 +173,28 @@ private struct DmMessageBubble: View {
             if !outgoing { Spacer(minLength: 48) }
         }
         .accessibilityIdentifier("dm-message-\(message.id)")
+    }
+}
+
+/// Presentation helpers for DM peer labels backed by Rust-owned profile data.
+enum DmPeerPresentation {
+    static func label(pubkey: String, profileDisplay: String?) -> String {
+        if let profileDisplay, !profileDisplay.isEmpty {
+            return profileDisplay
+        }
+        return pubkey.shortHex
+    }
+
+    static func matchesContact(
+        pubkey: String,
+        profileDisplay: String?,
+        query: String
+    ) -> Bool {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return true }
+        if pubkey.lowercased().contains(needle) { return true }
+        return label(pubkey: pubkey, profileDisplay: profileDisplay)
+            .lowercased()
+            .contains(needle)
     }
 }
