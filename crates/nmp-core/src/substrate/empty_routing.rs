@@ -30,8 +30,7 @@
 //! reads the per-app `RoutingSubstrateSlot` and applies the factory's
 //! `(router, cache)` pair via `Kernel::set_routing`. The Empty defaults
 //! fill that window. They are NEVER consulted in a production session
-//! that registers a routing factory (chirp does; the template does;
-//! nmp-repl does).
+//! that registers a routing factory (chirp does; the template does).
 
 #[cfg(any(test, feature = "test-support"))]
 use std::sync::Arc;

@@ -80,7 +80,7 @@ The helpers themselves stay in `nmp_core::display` — they are
 **legitimate** in:
 
 - TUI / desktop render code (`apps/chirp/chirp-tui/src/`, `apps/chirp/chirp-desktop/src/`).
-- CLI / REPL output (`crates/chirp-repl/src/`, `crates/nmp-repl/src/`).
+- CLI / REPL output (`crates/chirp-repl/src/`).
 - `#[cfg(test)]` blocks and `tests/` integration tests.
 
 Free-form metadata fallbacks (e.g. "Untitled group" when the MLS group

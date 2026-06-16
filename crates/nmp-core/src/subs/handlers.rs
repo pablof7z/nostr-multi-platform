@@ -21,8 +21,8 @@ impl SubscriptionLifecycle {
     ///
     /// `recompile_and_diff` returns only the *delta* vs. the last plan, so
     /// once the plan stabilises a recompile yields few or no frames even
-    /// though live subscriptions exist. Diagnostics (`nmp-repl`) need the
-    /// complete in-effect REQ set without tearing the registry down and
+    /// though live subscriptions exist. Diagnostics need the complete
+    /// in-effect REQ set without tearing the registry down and
     /// rebuilding it (which would double-count `compile_count` and re-fire
     /// the lifecycle / auth gates). This is the read-only seam for that.
     ///
@@ -61,9 +61,8 @@ impl SubscriptionLifecycle {
     /// compile has run yet.
     ///
     /// This is the read-only seam onto the otherwise-internal
-    /// `CompiledPlan::unroutable_authors` — exposed for diagnostics
-    /// (`nmp-repl`'s `outbox: … K unroutable` line) without leaking the
-    /// whole plan. Recomputing this caller-side would mean re-walking the
+    /// `CompiledPlan::unroutable_authors` — exposed for diagnostics without
+    /// leaking the whole plan. Recomputing this caller-side would mean re-walking the
     /// mailbox cache against the interest author set; the plan already did
     /// that work, so prefer this accessor.
     #[must_use]
