@@ -182,6 +182,10 @@ crate. If it is specific to one app's product domain, it belongs under
 `nmp-defaults` is the canonical composition root for normal NMP apps. It
 wires the default router, planner, store, ingest parsers, action modules,
 coverage hook, raw-event forwarding policies, and default projections.
+Reducer-owned delivery roots that cannot implement the full AppHost tier
+(currently Chirp web) must call `nmp-substrate-defaults` for the shared
+router/mailbox/profile/contacts cache-parser floor; they must not hand-copy
+that construction.
 
 App crates under `apps/<app>/` compose `nmp-defaults` plus app-specific
 state. They may expose app-specific FFI helpers only for kernel-shaped observer,

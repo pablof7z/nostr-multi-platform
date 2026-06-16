@@ -47,14 +47,12 @@ use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot
 use nmp_core::store::EventStore;
 use nmp_core::substrate::{
     ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, IngestParserRegistrar,
-    KernelReaderRegistrar, MailboxCache, OutboxRouter, RawEventForwardPolicy,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, RoutingTraceObserver,
+    KernelReaderRegistrar, RawEventForwardPolicy, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
 };
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
-    GenericOutboxRouter, InMemoryBlockedRelayCache, InMemoryMailboxCache, IndexerRepublishPolicy,
-    Kind10006Parser, Nip65OutboxResolver,
+    InMemoryBlockedRelayCache, IndexerRepublishPolicy, Kind10006Parser, Nip65OutboxResolver,
 };
 
 /// Declarative configuration for [`super::register_defaults_with`] — the
@@ -182,62 +180,16 @@ pub fn register_substrate(
     // publishes for, NOT a social toggle.
     nmp_router::register_actions(app);
 
-    // ── Routing substrate (V-51 phase 5 + kind:10002 ingest wiring) ─────
+    // ── Shared cache/parser substrate wiring ────────────────────────────
     //
-    // Install the production substrate-routing factory AND register the
-    // [`nmp_router::Kind10002Parser`] against the same shared cache the
-    // factory hands the kernel. Without the swap the kernel keeps its
-    // in-crate `EmptyOutboxRouter` (substrate-honest debt B, 2026-05-24)
-    // — every routing decision returns `Unroutable`. Without the parser
-    // registration kind:10002 events arrive but never populate the cache.
-    //
-    // `nmp-core` (Layer 3) cannot depend on `nmp-router` (Layer 2), so
-    // both injections go through the substrate seam: the routing factory
-    // for `(OutboxRouter, MailboxCache)`, and the dispatcher slot for
-    // the parser. The same `Arc<InMemoryMailboxCache>` is captured by
-    // BOTH paths so the writer (parser) and the readers (router +
-    // planner adapter) see one source of truth.
-    //
-    // Cache lifetime: created once at composition time and shared
-    // process-lifetime. A `Reset` rebuilds the router but re-uses this
-    // cache — the parser's `Arc` clone in the dispatcher would otherwise
-    // dangle. The factory closure captures `Arc::clone(&cache)` so the
-    // rebuilt kernel sees the live cache, not a fresh empty one.
-    //
-    // The supplied `RoutingTraceObserver` is threaded through
-    // `GenericOutboxRouter::with_trace_observer` so the kernel's
-    // trace-projection ring buffer (V-51 phase 1) keeps populating across
-    // the swap. The closure is re-invoked by the `Reset` dispatch arm
-    // against the rebuilt kernel's fresh trace projection.
-    let mailbox_cache: Arc<InMemoryMailboxCache> = Arc::new(InMemoryMailboxCache::new());
-    // H4 — install the SAME mailbox-cache instance as the read side for the
-    // `nmp_app_encode_profile` NIP-19 encoder. This is a THIRD clone of the
-    // one `InMemoryMailboxCache`: the other two go to the routing factory
-    // (below) and the `Kind10002Parser` (further below). Sharing one instance
-    // is what lets the encoder prefer `nprofile` from the kind:10002 relay
-    // hints the parser writes on ingest.
-    app.set_mailbox_cache_reader(
-        Arc::clone(&mailbox_cache) as Arc<dyn nmp_core::substrate::MailboxCache>
-    );
-    let cache_for_factory = Arc::clone(&mailbox_cache);
-    app.set_routing_substrate(
-        move |observer: Arc<dyn RoutingTraceObserver>|
-              -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
-            let router: Arc<dyn OutboxRouter> =
-                Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
-            let cache: Arc<dyn MailboxCache> = Arc::clone(&cache_for_factory) as _;
-            (router, cache)
-        },
-    );
-    // Register the substrate kind:10002 ingest parser against the same
-    // cache `set_routing_substrate` hands the kernel. The
-    // `EventIngestDispatcher` fans every accepted (D4 `Inserted | Replaced`)
-    // kind:10002 to this parser; the parser upserts the resolved
-    // `ParsedRelayList` (or removes the entry on an empty list) into
-    // the shared cache.
-    let parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
-    app.register_ingest_parser(10_002, parser);
+    // The mailbox/profile/contacts cache+parser pairs are used by both the
+    // native `AppHost` tier and reducer-owned web composition roots. Keep that
+    // construction single-sourced in the wasm-safe helper crate so the writer
+    // and reader handles cannot drift between native and web. The helper
+    // installs the shared mailbox cache (also as the H4 `set_mailbox_cache_reader`
+    // read side for the NIP-19 encoder), the routing-substrate factory, and the
+    // kind:10002 / kind:0 / kind:3 cache+parser pairs.
+    nmp_substrate_defaults::install_on_app_host(app);
 
     // ── kind:10006 blocked-relay cache (Phase 0 relay-attribution) ──────
     //
@@ -266,47 +218,6 @@ pub fn register_substrate(
     // via `Arc<dyn BlockedRelayLookup>`, so their idempotency guards see live
     // state (Phase 4 of relay-connection-attribution — §3.4).
     nmp_router::register_block_relay_actions(app, blocked_cache);
-
-    // ── kind:0 profile cache (ADR-0057 PR 2) ──────────────────────────
-    //
-    // Install the SAME `nmp_nip01::ProfileCache` on both ends so the kernel's
-    // profile readers (timeline enrichment, profile cards, claim-TTL gate,
-    // zap LNURL, RAM eviction) and the kind:0 ingest-parser writer see one
-    // source of truth:
-    //   1. As the kernel's `Arc<dyn ProfileLookup>` (reader).
-    //   2. As the `nmp_nip01::Kind0Parser`'s backing cache (writer), registered
-    //      with the `EventIngestDispatcher` so every accepted (D4
-    //      `Inserted | Replaced`) kind:0 upserts the parsed profile.
-    let profile_cache = Arc::new(nmp_nip01::ProfileCache::new());
-    app.set_profile_lookup(
-        Arc::clone(&profile_cache) as Arc<dyn nmp_core::substrate::ProfileLookup>
-    );
-    let kind0_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_nip01::Kind0Parser::new(profile_cache));
-    app.register_ingest_parser(0, kind0_parser);
-
-    // ── kind:3 contacts cache (ADR-0057 PR 3) ─────────────────────────
-    //
-    // Install the SAME `nmp_nip01::ContactsCache` on both ends so the kernel's
-    // contacts readers (follow-feed registration, the byte estimate, RAM
-    // eviction, the `contacts_authors` diagnostic) and the kind:3 ingest-parser
-    // writer see one source of truth:
-    //   1. As the kernel's `Arc<dyn ContactsLookup>` (reader).
-    //   2. As the `nmp_nip01::Kind3Parser`'s backing cache (writer), registered
-    //      with the `EventIngestDispatcher` so every accepted (D4
-    //      `Inserted | Replaced`) kind:3 upserts the parsed follow set.
-    // The kernel-owned follow-feed planner/lifecycle effects (re-register M2
-    // interests, rebuild `timeline_authors`, cache-serve) are NOT inlined into
-    // the parser — the kernel drives them itself on its own tick, via the
-    // active-account contacts-transition signal detected in
-    // `project_accepted_event` (the `IngestParser` stays side-effect-free).
-    let contacts_cache = Arc::new(nmp_nip01::ContactsCache::new());
-    app.set_contacts_lookup(
-        Arc::clone(&contacts_cache) as Arc<dyn nmp_core::substrate::ContactsLookup>
-    );
-    let kind3_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_nip01::Kind3Parser::new(contacts_cache));
-    app.register_ingest_parser(3, kind3_parser);
 
     // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
     //

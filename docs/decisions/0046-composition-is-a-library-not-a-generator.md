@@ -209,6 +209,12 @@ block — which is *un-copyable* because it threads a single shared
 mode this crate exists to prevent, so the substrate tier is now a function they
 call.
 
+Reducer-owned delivery roots that cannot implement the full AppHost tier
+(currently Chirp web) call `nmp-substrate-defaults`, the wasm-safe helper used
+by `register_substrate` for the shared router/mailbox/profile/contacts
+cache-parser floor. The native `register_substrate` tier still owns the
+AppHost-only publish resolver, raw forwarding, coverage, and NIP-11 pieces.
+
 **2. `NmpDefaults` config struct + `register_defaults_with` (config-as-fields).**
 `pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults)`
 consumes a declarative config; `register_defaults(app)` delegates to it with

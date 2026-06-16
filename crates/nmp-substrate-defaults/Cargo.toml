@@ -1,0 +1,15 @@
+[package]
+name = "nmp-substrate-defaults"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wasm-safe default substrate cache/parser wiring shared by nmp-defaults and reducer-owned web composition roots."
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-nip01 = { path = "../nmp-nip01", default-features = false }
+nmp-router = { path = "../nmp-router", default-features = false }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

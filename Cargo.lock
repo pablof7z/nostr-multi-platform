@@ -4406,7 +4406,7 @@ dependencies = [
  "nmp-feed",
  "nmp-nip01",
  "nmp-nip02",
- "nmp-router",
+ "nmp-substrate-defaults",
  "nmp-threading",
  "nmp-wasm",
  "serde_json",
@@ -4545,6 +4545,7 @@ dependencies = [
  "nmp-nip59",
  "nmp-nip77",
  "nmp-router",
+ "nmp-substrate-defaults",
  "nmp-threading",
  "nmp-wot",
  "nostr",
@@ -4910,6 +4911,15 @@ dependencies = [
  "tempfile",
  "tracing",
  "web-time",
+]
+
+[[package]]
+name = "nmp-substrate-defaults"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip01",
+ "nmp-router",
 ]
 
 [[package]]
