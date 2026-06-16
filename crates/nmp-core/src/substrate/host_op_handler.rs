@@ -25,7 +25,8 @@
 //! installs an `Arc<dyn HostOpHandler>` into [`NmpApp::set_host_op_handler`];
 //! the [`crate::substrate::HostOpCommand`] (dispatched through the single
 //! `ActorCommand::Protocol` write seam — ADR-0052 §D4, K2 rung 5.4) clones the
-//! handler out of this slot at `run` time and calls [`HostOpHandler::handle`].
+//! handler from the actor's start-time config and calls
+//! [`HostOpHandler::handle`].
 //! Before rung 5.4 a bespoke `ActorCommand::DispatchHostOp` arm did this; that
 //! second write seam was deleted and merged into `Protocol`.
 //!
@@ -116,10 +117,8 @@ pub trait HostOpHandler: Send + Sync {
 ///   `NmpApp` ↔ actor slot uses ([`crate::slots::MlsLocalNsecSlot`],
 ///   [`crate::slots::ActiveLocalKeysSlot`], etc.) — the `Mutex` is what
 ///   makes the slot writable without `&mut self` on `NmpApp`.
-/// * the inner `Arc<dyn HostOpHandler>` is what the actor clones out under
-///   the lock and calls — calling `handle` does NOT hold the outer mutex,
-///   so a long-running handler does not block the FFI `set_host_op_handler`
-///   write path.
+/// * the inner `Arc<dyn HostOpHandler>` is what the actor snapshots at
+///   `nmp_app_start`; calling `handle` later never holds the outer mutex.
 pub type HostOpHandlerSlot = Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>;
 
 /// Construct a fresh, empty [`HostOpHandlerSlot`].
@@ -172,8 +171,7 @@ mod tests {
     #[test]
     fn second_set_replaces_first_handler() {
         // Two distinct handlers with different identifying responses; the
-        // second `set` MUST replace the first so the host can hot-swap (e.g.
-        // on account switch).
+        // second `set` MUST replace the first before actor start.
         struct A;
         impl HostOpHandler for A {
             fn handle(&self, _: &str, _: &str) -> serde_json::Value {

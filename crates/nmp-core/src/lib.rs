@@ -377,10 +377,10 @@ pub mod __ffi_internal {
         new_raw_event_observer_slot, new_signer_state_slot, nostrconnect_relay_url,
         register_c_observer, register_c_raw_observer, register_rust_observer,
         register_rust_raw_observer, run_actor_with_observers, unregister_observer,
-        unregister_raw_observer, KernelEventObserverRegistration, KernelEventObserverSlot,
-        LifecycleObserverFn, LifecycleObserverRegistration, LifecycleObserverSlot,
-        RawEventObserverRegistration, RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
-        LIFECYCLE_PHASE_FOREGROUND,
+        unregister_raw_observer, ActorChannels, ActorConfigSources, ActorRuntimeSlots,
+        KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
+        LifecycleObserverRegistration, LifecycleObserverSlot, RawEventObserverRegistration,
+        RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
     };
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
     // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
@@ -420,8 +420,8 @@ pub mod __ffi_internal {
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
-    pub use crate::store::{RawEvent, VerifiedEvent};
-    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED}; // ADR-0055 churn
+    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
+    pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
 
     /// NIP golden-tag conformance harness — drives the (crate-private) command
     /// handlers against a real `Kernel` + `IdentityRuntime` and returns the
@@ -470,7 +470,7 @@ pub mod testing {
         crate::CommandSender,
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
     ) {
-        use crate::actor::run_actor_with_observers;
+        use crate::actor::{run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots};
         use crate::slots::new_storage_path_slot;
         use std::sync::atomic::AtomicU64;
         use std::sync::{Arc, Mutex};
@@ -486,51 +486,47 @@ pub mod testing {
 
         // All other slots are throwaways matching the pattern in run_actor().
         thread::spawn(move || {
+            let runtime = ActorRuntimeSlots {
+                lifecycle_observer: crate::actor::new_lifecycle_observer_slot(),
+                event_observers: crate::actor::new_event_observer_slot(),
+                raw_event_observers: crate::actor::new_raw_event_observer_slot(),
+                snapshot_projections: crate::kernel::new_snapshot_projection_slot(),
+                bunker_handshake: crate::actor::new_bunker_handshake_slot(),
+                signer_state: crate::actor::new_signer_state_slot(),
+                bunker_hook: crate::new_bunker_hook_slot(),
+                external_signer_hook: crate::new_external_signer_hook_slot(),
+                configured_relays: crate::kernel::new_app_relay_slot(),
+                mls_local_nsec: Arc::new(Mutex::new(None)),
+                active_local_keys: Arc::new(Mutex::new(None)),
+                capability_callback: crate::capability_socket::new_capability_callback_slot(),
+                queue_depth: Arc::new(AtomicU64::new(0)),
+                routing_trace: Arc::new(Mutex::new(None)),
+                active_account: crate::slots::new_active_account_slot(),
+                event_store: crate::slots::new_event_store_slot(),
+            };
+            let config = ActorConfigSources {
+                storage_path: path_slot,
+                coverage_hook: Arc::new(Mutex::new(None)),
+                req_frame_interceptor: crate::substrate::new_req_frame_interceptor_slot(),
+                host_op_handler: crate::substrate::new_host_op_handler_slot(),
+                relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
+                relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
+                ingest_dispatcher: Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+                dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+                profile_lookup: Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
+                contacts_lookup: Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup())),
+                blocked_relays: Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
+                bootstrap_self_kinds: Arc::new(Mutex::new(None)),
+                routing_substrate: crate::slots::new_routing_substrate_slot(),
+                publish_resolver: crate::slots::new_publish_resolver_slot(),
+                raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+                kernel_clock: crate::slots::new_kernel_clock_slot(),
+            }
+            .snapshot();
             run_actor_with_observers(
-                command_rx,
-                actor_command_tx_self,
-                update_tx,
-                crate::actor::new_lifecycle_observer_slot(),
-                crate::actor::new_event_observer_slot(),
-                crate::actor::new_raw_event_observer_slot(),
-                crate::kernel::new_snapshot_projection_slot(),
-                crate::substrate::new_relay_text_interceptor_slot(),
-                crate::substrate::new_relay_connected_hook_slot(),
-                crate::actor::new_bunker_handshake_slot(),
-                crate::actor::new_signer_state_slot(),
-                crate::new_bunker_hook_slot(), // ADR-0052 §D3 throwaway slots
-                crate::new_external_signer_hook_slot(),
-                crate::kernel::new_app_relay_slot(),
-                Arc::new(Mutex::new(None)),
-                Arc::new(Mutex::new(None)),
-                crate::capability_socket::new_capability_callback_slot(),
-                path_slot,
-                Arc::new(AtomicU64::new(0)),
-                Arc::new(Mutex::new(None)),
-                crate::substrate::new_req_frame_interceptor_slot(),
-                crate::substrate::new_host_op_handler_slot(),
-                Arc::new(std::sync::RwLock::new(
-                    crate::substrate::EventIngestDispatcher::new(),
-                )),
-                Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
-                // ADR-0057 PR 2 — throwaway profile lookup slot.
-                Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
-                // ADR-0057 PR 3 — throwaway contacts lookup slot.
-                Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup())),
-                Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
-                Arc::new(Mutex::new(None)),
-                Arc::new(Mutex::new(None)),
-                Arc::new(Mutex::new(None)),
-                Arc::new(Mutex::new(None)),
-                crate::slots::new_raw_event_forward_policy_slot(),
-                // V-82 — throwaway active-account slot (no FFI surface reads it
-                // on this test/spawn-actor entry point).
-                crate::slots::new_active_account_slot(),
-                // V-83 — throwaway event-store slot (no FFI surface reads it on
-                // this test/spawn-actor entry point).
-                crate::slots::new_event_store_slot(),
-                // Test-support kernel-clock slot — private throwaway (None).
-                crate::slots::new_kernel_clock_slot(),
+                ActorChannels { inbox_rx: command_rx, command_tx_self: actor_command_tx_self, update_tx },
+                config,
+                runtime,
             );
         });
         (command_tx, update_rx)

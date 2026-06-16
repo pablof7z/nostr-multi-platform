@@ -10,6 +10,7 @@
 use std::collections::{HashMap, HashSet};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel::Kernel;
@@ -39,16 +40,16 @@ use super::{CommandSender, RelayControl};
 /// are internally generated, so a panic there is a genuine bug that must stay
 /// visible.
 ///
-/// V-38: the substrate-generic `RelayTextInterceptorSlot` is passed through so
-/// an installed NIP-crate runtime (today `nmp-nip47`) can peek at text frames
-/// the kernel would otherwise drop. `nmp-core` no longer names `wallet` / `NWC`
-/// at the actor boundary (D0).
+/// V-38: the snapped substrate-generic relay text interceptors are passed
+/// through so installed NIP-crate runtimes can peek at text frames the kernel
+/// would otherwise drop. `nmp-core` no longer names protocol wallets at the
+/// actor boundary (D0).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn process_relay_event(
     event: PoolEvent,
     kernel: &mut Kernel,
-    relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
-    relay_connected_hook: &crate::substrate::RelayConnectedHookSlot,
+    relay_text_interceptors: &[Arc<dyn crate::substrate::RelayTextInterceptor>],
+    relay_connected_hooks: &[Arc<dyn crate::substrate::RelayConnectedHook>],
     command_tx_self: &CommandSender,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
@@ -65,8 +66,8 @@ pub(super) fn process_relay_event(
         handle_relay_event(
             event,
             kernel,
-            relay_text_interceptor,
-            relay_connected_hook,
+            relay_text_interceptors,
+            relay_connected_hooks,
             command_tx_self,
             relay_controls,
             slot_to_url,
@@ -87,9 +88,7 @@ pub(super) fn process_relay_event(
             .or_else(|| panic_payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "unknown panic".to_string());
         kernel.log(format!("actor: relay event handler panicked: {msg}"));
-        kernel.set_last_error_toast(Some(
-            "relay processing error — continuing".to_string(),
-        ));
+        kernel.set_last_error_toast(Some("relay processing error — continuing".to_string()));
         // Surface the toast on this tick rather than waiting for the next
         // `flush_due` — mirrors the pending-sign error path.
         emit_now(kernel, running, update_tx, last_emit);

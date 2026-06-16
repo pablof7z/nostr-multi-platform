@@ -32,6 +32,7 @@ mod action;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
 mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
+
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
 #[cfg(test)]
@@ -245,9 +246,10 @@ use nmp_core::__ffi_internal::{
     new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
     new_raw_event_observer_slot, new_signer_state_slot, new_snapshot_projection_slot,
     register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
-    unregister_observer, unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot,
-    KernelEventObserverSlot, LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot,
-    DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
+    unregister_observer, unregister_raw_observer, ActionRegistry, ActorChannels,
+    ActorConfigSources, ActorRuntimeSlots, CapabilityCallbackSlot, KernelEventObserverSlot,
+    LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
+    DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
 // host (per-app crate) constructs the slot and registers it via
@@ -545,10 +547,10 @@ pub struct NmpApp {
     event_store_handle: EventStoreSlot,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
-    /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
-    /// setter writes through this clone, the actor reads its clone when it
-    /// constructs the kernel (`run_actor_with_observers` →
-    /// `Kernel::with_storage_path` → `build_event_store`).
+    /// [`nmp_app_start`]. The C-ABI setter writes through this slot; actor
+    /// startup snapshots the value and uses it whenever it constructs a
+    /// kernel (`run_actor_with_observers` → `Kernel::with_storage_path` →
+    /// `build_event_store`), including `Reset`.
     ///
     /// `None` (the default until a host calls the setter) keeps the
     /// in-memory store. The path is only honoured when the crate is built
@@ -565,9 +567,9 @@ pub struct NmpApp {
     routing_trace: RoutingTraceSlot,
     /// V-51 phase 5 — per-app substrate-routing factory slot. The per-app
     /// crate (today: `nmp_app_chirp::ffi::register::nmp_app_chirp_register`)
-    /// writes a closure here via [`Self::set_routing_substrate`]; the actor
-    /// reads it after kernel construction (and again after `Reset`) and
-    /// invokes [`crate::kernel::Kernel::set_routing`] with the produced
+    /// writes a closure here via [`Self::set_routing_substrate`]; actor
+    /// startup snapshots it, then invokes [`crate::kernel::Kernel::set_routing`]
+    /// with the produced
     /// `(Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)` pair. `None` (the
     /// default) leaves the kernel's `EmptyOutboxRouter` + (test-only)
     /// `TestInMemoryMailboxCache` defaults in place (substrate-honest
@@ -576,9 +578,8 @@ pub struct NmpApp {
     /// Spec §271 (2026-05-25) — per-app substrate-publish-resolver
     /// factory slot. The per-app crate (today:
     /// `nmp_defaults::register_defaults`) writes a closure here via
-    /// [`Self::set_publish_resolver_factory`]; the actor reads it after
-    /// kernel construction (and again after `Reset`) and invokes
-    /// [`crate::kernel::Kernel::set_publish_resolver`] with the produced
+    /// [`Self::set_publish_resolver_factory`]; actor startup snapshots it, then
+    /// invokes [`crate::kernel::Kernel::set_publish_resolver`] with the produced
     /// `Arc<dyn nmp_core::publish::OutboxResolver>`. `None` (the default)
     /// leaves the kernel's `NoopOutboxResolver` default in place — every
     /// publish through `PublishTarget::Auto` then surfaces `NoTargets`
@@ -691,12 +692,12 @@ pub struct NmpApp {
     #[cfg(test)]
     send_cmd_count: AtomicU64,
     /// D2 coverage-gate hook slot. Set by the per-app crate (`nmp-app-chirp`)
-    /// via [`Self::set_coverage_hook`] before `nmp_app_start`. The actor thread
-    /// reads it once after kernel construction and installs it on the
-    /// `SubscriptionLifecycle`. Re-installed after `Reset`. Kept in an
-    /// `Arc<Mutex<Option<…>>>` slot (rather than passed directly to
-    /// `run_actor_with_observers` as an `Option`) so the per-app registration
-    /// pattern mirrors `storage_path` and the other pre-start slots.
+    /// via [`Self::set_coverage_hook`] before `nmp_app_start`. Actor startup
+    /// snapshots it into immutable config, installs it on the
+    /// `SubscriptionLifecycle`, and re-applies the same snapped hook after
+    /// `Reset`. Kept in an `Arc<Mutex<Option<…>>>` slot so the per-app
+    /// registration pattern mirrors `storage_path` and the other pre-start
+    /// slots.
     coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
     /// Outbound planner REQ interceptor slot. Protocol crates install this
     /// before start when they can replace selected raw REQs with a more
@@ -708,11 +709,11 @@ pub struct NmpApp {
     /// app's nouns (D0). See [`nmp_core::substrate::HostOpHandler`] for the full
     /// contract.
     ///
-    /// Shared `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` with the actor
-    /// thread (handed to `run_actor_with_observers`): the per-app crate
-    /// writes through this clone via [`Self::set_host_op_handler`] before
-    /// `nmp_app_start`; the actor's `Protocol` dispatch arm reads through its
-    /// clone (via the `HostOpHandlerAccess` capability) when an
+    /// Pre-start slot snapped when `nmp_app_start` consumes the actor starter:
+    /// the per-app crate writes through this clone via
+    /// [`Self::set_host_op_handler`] before start; the actor's `Protocol`
+    /// dispatch arm reads the snapped handler (via the
+    /// `HostOpHandlerAccess` capability) when an
     /// `ActionModule::execute` body enqueues a `HostOpCommand` (ADR-0052 §D4,
     /// K2 rung 5.4 — the bespoke `DispatchHostOp` arm was merged into
     /// `Protocol`). `None` (the default, and the only state for hosts that
@@ -723,11 +724,13 @@ pub struct NmpApp {
     /// runtime (today `nmp-nip47`) installs itself here so the actor can
     /// peek at every inbound text frame and let the runtime decode
     /// protocol-specific responses (kind:23195 NWC). Shared `Arc` with the
-    /// actor — the install side mutates through this clone, the actor reads
-    /// through the matching clone in `handle_relay_event`.
+    /// actor startup snapshots the installed interceptors into its relay-event
+    /// config. Mutating the slot after `nmp_app_start` does not affect the
+    /// running actor.
     relay_text_interceptor: nmp_core::substrate::RelayTextInterceptorSlot,
     /// ADR-0051 — relay-connected hook slot (twin of `relay_text_interceptor`
-    /// above): `nmp-nip11` installs its fetch hook, the actor fans it on
+    /// above): `nmp-nip11` installs its fetch hook before start, and actor
+    /// startup snapshots the installed hooks before fanning them on
     /// `PoolEvent::Opened`.
     relay_connected_hook: nmp_core::substrate::RelayConnectedHookSlot,
     /// ADR-0052 §D3 — per-app bunker-URI hook slot (replaces `bunker_hook::HOOK`;
@@ -754,7 +757,7 @@ pub struct NmpApp {
     /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot. The
     /// per-app crate (today `nmp-nip17::register_actions`) writes a
     /// concrete `DmRelayCache` here via
-    /// [`Self::set_dm_inbox_relay_lookup`]; the actor reads the current
+    /// [`Self::set_dm_inbox_relay_lookup`]; actor startup snapshots the current
     /// handle and binds it onto the kernel so the gift-wrap publish path
     /// and the planner-side `KernelMailboxes` adapter both see the same
     /// cache.
@@ -762,14 +765,14 @@ pub struct NmpApp {
     /// ADR-0057 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
     /// Mirrors `dm_inbox_relays_slot`: the per-app crate writes a concrete
     /// `nmp_nip01::ProfileCache` here via [`Self::set_profile_lookup`]; the
-    /// actor reads the current handle and binds it onto the kernel so the
+    /// actor startup snapshots the current handle and binds it onto the kernel so the
     /// kernel's profile readers (enrichment, claim-TTL, zap LNURL, RAM
     /// eviction) read through the same `Arc` the kind:0 `Kind0Parser` writes.
     profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>>,
     /// ADR-0057 PR 3 — shared [`nmp_core::substrate::ContactsLookup`] slot.
     /// Mirrors `profile_lookup_slot`: the per-app crate writes a concrete
     /// `nmp_nip01::ContactsCache` here via [`Self::set_contacts_lookup`]; the
-    /// actor reads the current handle and binds it onto the kernel so the
+    /// actor startup snapshots the current handle and binds it onto the kernel so the
     /// kernel's follow-feed readers read through the same `Arc` the kind:3
     /// `Kind3Parser` writes.
     contacts_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ContactsLookup>>>,
@@ -777,7 +780,7 @@ pub struct NmpApp {
     /// `dm_inbox_relays_slot`: the per-app crate (today: any app that
     /// wires `nmp_router::Kind10006Parser`) writes a concrete
     /// `Arc<InMemoryBlockedRelayCache>` here via
-    /// [`Self::set_blocked_relay_lookup`]; the actor reads the current
+    /// [`Self::set_blocked_relay_lookup`]; actor startup snapshots the current
     /// handle and binds it onto the kernel so the kernel's
     /// `build_routing_context` snapshot helper reads through the same
     /// `Arc` the kind:10006 parser writes into.
@@ -787,8 +790,7 @@ pub struct NmpApp {
     /// built-in `[0, 3, 10002, 10000, 10006]` list at
     /// `active_account_bootstrap_requests`. Written by the per-app crate
     /// via [`Self::set_bootstrap_self_kinds`] before `nmp_app_start`;
-    /// the actor reads through its matching clone at kernel construction
-    /// time and binds the resolved value onto the kernel via
+    /// actor startup snapshots the resolved value and binds it onto the kernel via
     /// [`nmp_core::kernel::Kernel::set_bootstrap_self_kinds_override`].
     bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
@@ -1013,19 +1015,19 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_queue_depth = Arc::clone(&queue_depth);
     // D2 — shared coverage-gate hook slot. The per-app crate (e.g.
     // `nmp-app-chirp`) writes through the `NmpApp`'s clone via
-    // [`NmpApp::set_coverage_hook`] before `nmp_app_start`; the actor reads
-    // its clone once after kernel construction and installs the hook on the
-    // `SubscriptionLifecycle`. Re-installed by the `Reset` dispatch arm so the
-    // rebuilt lifecycle also enforces D2. `None` (the test default) leaves
-    // the lifecycle's `coverage_hook: None` in place — every plan flows
-    // straight to raw REQ, preserving legacy behaviour.
+    // [`NmpApp::set_coverage_hook`] before `nmp_app_start`; actor startup
+    // snapshots the value and installs it on the `SubscriptionLifecycle`.
+    // `Reset` re-applies the same snapped hook. `None` (the test default)
+    // leaves the lifecycle's `coverage_hook: None` in place — every plan
+    // flows straight to raw REQ, preserving legacy behaviour.
     let coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>> = Arc::new(Mutex::new(None));
     let actor_coverage_hook = Arc::clone(&coverage_hook);
     let req_frame_interceptor = nmp_core::substrate::new_req_frame_interceptor_slot();
     let actor_req_frame_interceptor = Arc::clone(&req_frame_interceptor);
-    // Substrate-generic host-op handler slot — the actor's `Protocol` dispatch
-    // arm reads from this clone (via the `HostOpHandlerAccess` capability) when
-    // a `HostOpCommand` runs (ADR-0052 §D4). The per-app crate (today
+    // Substrate-generic host-op handler slot — actor startup snapshots this
+    // into config, and the `Protocol` dispatch arm reaches that snapped handler
+    // via the `HostOpHandlerAccess` capability when a `HostOpCommand` runs
+    // (ADR-0052 §D4). The per-app crate (today
     // `nmp-app-marmot`) writes through `NmpApp::set_host_op_handler` before
     // `nmp_app_start`. `None` is the default and the production state for
     // every host that does not bind a stateful app crate.
@@ -1035,7 +1037,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // V-40 — substrate `EventIngestDispatcher` slot. Per-NIP crates
     // (today: `nmp-nip17`) register their kind parsers through
     // [`NmpApp::register_ingest_parser`] which mutates THIS slot; the
-    // actor's kernel construction step binds it onto the kernel so the
+    // actor startup binds it onto the kernel so the
     // ingest path and the registration path share one dispatcher.
     let ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>> =
         Arc::new(std::sync::RwLock::new(
@@ -1045,7 +1047,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // V-40 — substrate `DmInboxRelayLookup` slot. The per-app crate
     // (today: `nmp-nip17::register_actions`) installs the concrete
     // `DmRelayCache` here via [`NmpApp::set_dm_inbox_relay_lookup`];
-    // the actor's kernel construction reads the current handle and binds
+    // actor startup snapshots the current handle and binds
     // it onto the kernel. Default is `EmptyDmInboxRelayLookup` (fail-
     // closed cold-start).
     let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>> =
@@ -1056,7 +1058,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // ADR-0057 PR 2 — substrate `ProfileLookup` slot. The per-app crate
     // (today: `nmp_defaults` register_substrate) installs the concrete
     // `nmp_nip01::ProfileCache` here via [`NmpApp::set_profile_lookup`]; the
-    // actor's kernel construction reads the current handle and binds it onto
+    // actor startup snapshots the current handle and binds it onto
     // the kernel. Default is `EmptyProfileLookup` (cold-start, every lookup None).
     let profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_profile_lookup()));
@@ -1064,7 +1066,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // ADR-0057 PR 3 — substrate `ContactsLookup` slot. The per-app crate
     // (today: `nmp_defaults` register_substrate) installs the concrete
     // `nmp_nip01::ContactsCache` here via [`NmpApp::set_contacts_lookup`]; the
-    // actor's kernel construction reads the current handle and binds it onto
+    // actor startup snapshots the current handle and binds it onto
     // the kernel. Default is `EmptyContactsLookup` (cold-start, every lookup None).
     let contacts_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ContactsLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_contacts_lookup()));
@@ -1100,6 +1102,48 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // watches for buildup, matches the existing `actor_sender()` caveat.
     let actor_command_tx_self = command_tx.clone();
     let actor_starter: ActorStarter = Box::new(move || {
+        let channels = ActorChannels {
+            inbox_rx: command_rx,
+            command_tx_self: actor_command_tx_self,
+            update_tx,
+        };
+        let runtime = ActorRuntimeSlots {
+            lifecycle_observer: actor_lifecycle_observer,
+            event_observers: actor_event_observers,
+            raw_event_observers: actor_raw_event_observers,
+            snapshot_projections: actor_snapshot_projections,
+            bunker_handshake: actor_bunker_handshake,
+            signer_state: actor_signer_state,
+            bunker_hook: actor_bunker_hook,
+            external_signer_hook: actor_external_signer_hook,
+            configured_relays: actor_configured_relays,
+            mls_local_nsec: actor_mls_local_nsec,
+            active_local_keys: actor_active_local_keys,
+            capability_callback: actor_capability_callback,
+            queue_depth: actor_queue_depth,
+            routing_trace: actor_routing_trace,
+            active_account: actor_active_account,
+            event_store: actor_event_store,
+        };
+        let config = ActorConfigSources {
+            storage_path: actor_storage_path,
+            coverage_hook: actor_coverage_hook,
+            req_frame_interceptor: actor_req_frame_interceptor,
+            host_op_handler: actor_host_op_handler,
+            relay_text_interceptor: actor_relay_text_interceptor,
+            relay_connected_hook: actor_relay_connected_hook,
+            ingest_dispatcher: actor_ingest_dispatcher,
+            dm_inbox_relays: actor_dm_inbox_relays,
+            profile_lookup: actor_profile_lookup,
+            contacts_lookup: actor_contacts_lookup,
+            blocked_relays: actor_blocked_relays,
+            bootstrap_self_kinds: actor_bootstrap_self_kinds,
+            routing_substrate: actor_routing_substrate,
+            publish_resolver: actor_publish_resolver,
+            raw_event_forward_policy: actor_raw_event_forward_policy,
+            kernel_clock: actor_kernel_clock,
+        }
+        .snapshot();
         thread::spawn(move || {
             // D7 (actor-death visibility): the actor thread owns the kernel loop.
             // If it panics, `send_cmd` would otherwise silently drop every
@@ -1108,117 +1152,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             // update channel *before* this thread (and `update_tx`) is dropped,
             // so the host receives a terminal, decodable signal.
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_actor_with_observers(
-                    command_rx,
-                    actor_command_tx_self,
-                    update_tx,
-                    actor_lifecycle_observer,
-                    actor_event_observers,
-                    actor_raw_event_observers,
-                    actor_snapshot_projections,
-                    // V-38: substrate-generic relay-text interceptor slot. The
-                    // host's `nmp-nip47` install registers its NWC runtime here;
-                    // the actor calls `interceptor.on_relay_text(...)` for every
-                    // inbound text frame.
-                    actor_relay_text_interceptor,
-                    // ADR-0051: fanned on `PoolEvent::Opened` (nmp-nip11 fetch).
-                    actor_relay_connected_hook,
-                    // D0: NIP-46 remote signing is an app noun — the
-                    // bunker-handshake slot the actor's `IdentityRuntime` writes;
-                    // the `"bunker_handshake"` projection (registered below) reads
-                    // the matching clone.
-                    actor_bunker_handshake,
-                    // V-14 step b: bunker relay-layer connection-state slot.
-                    // The broker callback → actor command → slot write keeps D4.
-                    actor_signer_state,
-                    // ADR-0052 §D3 — actor clones of the per-app signer hook slots
-                    // (read by the actor's `IdentityRuntime` on bunker/NIP-55 restore).
-                    actor_bunker_hook,
-                    actor_external_signer_hook,
-                    actor_configured_relays,
-                    actor_mls_local_nsec,
-                    actor_active_local_keys,
-                    actor_capability_callback,
-                    actor_storage_path,
-                    // G-S4 — the actor's clone of the command-channel depth
-                    // counter. Decremented per dequeued command; bound onto the
-                    // kernel for the `actor_queue_depth` snapshot field.
-                    actor_queue_depth,
-                    // D2 — the actor's clone of the coverage-gate hook slot. Read
-                    // once after kernel construction (and again after `Reset`) and
-                    // installed on `SubscriptionLifecycle` so the production plan
-                    // pipeline enforces D2 ("negentropy before REQ") via the
-                    // per-app crate's policy closure.
-                    actor_coverage_hook,
-                    actor_req_frame_interceptor,
-                    // The actor's clone of the host-op handler slot — read by the
-                    // `Protocol` dispatch arm when a `HostOpCommand` runs (ADR-0052
-                    // §D4). `None` (no stateful app bound) makes any such command
-                    // record a `Failed` terminal stage; never a silent drop.
-                    actor_host_op_handler,
-                    // V-40 — the actor's clones of the substrate
-                    // `EventIngestDispatcher` slot and the
-                    // `DmInboxRelayLookup` slot. Per-NIP crates mutate the
-                    // shared `Arc`s via `NmpApp::register_ingest_parser` /
-                    // `set_dm_inbox_relay_lookup`; the actor binds them onto
-                    // the kernel at construction.
-                    actor_ingest_dispatcher,
-                    actor_dm_inbox_relays,
-                    // ADR-0057 PR 2 — the actor's clone of the substrate
-                    // `ProfileLookup` slot, bound onto the kernel at construction
-                    // (and re-bound on `Reset`) so the kernel's profile readers
-                    // consult the same `Arc` the kind:0 `Kind0Parser` writes into.
-                    actor_profile_lookup,
-                    // ADR-0057 PR 3 — the actor's clone of the substrate
-                    // `ContactsLookup` slot, bound onto the kernel at construction
-                    // (and re-bound on `Reset`) so the kernel's follow-feed readers
-                    // consult the same `Arc` the kind:3 `Kind3Parser` writes into.
-                    actor_contacts_lookup,
-                    // Mirrors `actor_dm_inbox_relays`: the actor's clone of the
-                    // blocked-relay lookup slot, bound onto the kernel at
-                    // construction so `build_routing_context` consults the same
-                    // `Arc` the kind:10006 parser writes into.
-                    actor_blocked_relays,
-                    // Per-app bootstrap self-kinds override slot. Read once at
-                    // kernel construction and applied via
-                    // `Kernel::set_bootstrap_self_kinds_override`.
-                    actor_bootstrap_self_kinds,
-                    // V-51 phase 4 — the actor's clone of the routing-trace slot.
-                    // Filled with `kernel.routing_trace()` right after kernel
-                    // construction (and re-filled on `Reset`); per-app crates read
-                    // it through `NmpApp::routing_trace`.
-                    actor_routing_trace,
-                    // V-51 phase 5 — the actor's clone of the substrate-routing
-                    // factory slot. Read once after kernel construction (and on
-                    // `Reset`); the factory builds the production router/cache
-                    // pair the actor installs via `Kernel::set_routing`.
-                    actor_routing_substrate,
-                    // Spec §271 (2026-05-25) — the actor's clone of the
-                    // substrate-publish-resolver factory slot. Read once after
-                    // kernel construction (and on `Reset`); the factory builds
-                    // the production resolver the actor installs via
-                    // `Kernel::set_publish_resolver`. `None` leaves the
-                    // kernel's `NoopOutboxResolver` default in place.
-                    actor_publish_resolver,
-                    actor_raw_event_forward_policy,
-                    // V-82 — the actor's clone of the active-account slot. Threaded
-                    // into the kernel at construction (and re-handed on `Reset`) so
-                    // `NmpApp::active_account_handle` reads the slot the kernel
-                    // actually writes on sign-in / switch / logout.
-                    actor_active_account,
-                    // V-83 — the actor's clone of the event-store publish-back slot.
-                    // The actor publishes `kernel.event_store_handle()` into it after
-                    // kernel construction (and re-publishes on `Reset`) so
-                    // `NmpApp::event_by_id` reads the live kernel store.
-                    actor_event_store,
-                    // Test-support kernel-clock slot. Production never writes it
-                    // (the kernel keeps its `SystemClock`); the
-                    // `NmpApp::set_kernel_clock_for_test` seam writes an
-                    // `Arc<dyn Clock>` the actor applies at construction so
-                    // deterministic e2e tests stamp strictly-increasing
-                    // `created_at` without a wall-clock sleep (D8).
-                    actor_kernel_clock,
-                );
+                run_actor_with_observers(channels, config, runtime);
             }));
             if let Err(e) = result {
                 // Best-effort downcast of the panic payload — see
@@ -1363,18 +1297,17 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         send_cmd_count: AtomicU64::new(0),
         // D2 — the `NmpApp`'s clone of the coverage-gate hook slot. Written
         // by the per-app crate via [`NmpApp::set_coverage_hook`] before
-        // `nmp_app_start`; the actor reads its clone after kernel
-        // construction and installs the hook on `SubscriptionLifecycle`.
+        // `nmp_app_start`; actor startup snapshots it into config and
+        // installs the hook on `SubscriptionLifecycle`.
         coverage_hook,
         req_frame_interceptor,
         // The `NmpApp`'s clone of the host-op handler slot. Written by the
         // per-app crate (today `nmp-app-marmot`) via
-        // [`NmpApp::set_host_op_handler`] before `nmp_app_start`; the actor
-        // reads through its matching clone when a `HostOpCommand` runs on the
-        // `Protocol` arm (ADR-0052 §D4).
+        // [`NmpApp::set_host_op_handler`] before `nmp_app_start`; actor
+        // startup snapshots it for the `Protocol` arm (ADR-0052 §D4).
         host_op_handler,
-        // V-38: the same Arc clone the actor holds — `nmp-nip47` installs
-        // its NWC runtime here.
+        // V-38: pre-start relay-frame hooks; actor startup snapshots them into
+        // relay-event config.
         relay_text_interceptor,
         relay_connected_hook,
         // ADR-0052 §D3 — per-app signer hook slots + broker/driver handles
@@ -1386,13 +1319,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         signer_broker: Arc::new(Mutex::new(None)),
         #[cfg(feature = "external-signer")]
         external_signer_driver: Arc::new(Mutex::new(None)),
-        // V-40 — the `NmpApp`'s clones of the substrate `IngestParser`
-        // dispatcher slot and the DM-inbox relay-lookup slot. Per-NIP
-        // crates mutate these through
-        // [`NmpApp::register_ingest_parser`] / [`NmpApp::set_dm_inbox_relay_lookup`];
-        // the actor's matching clones bind onto the kernel at
-        // construction time so the registration and the read path
-        // share one `Arc`.
+        // V-40 — substrate ingest/lookup wiring. The dispatcher remains a
+        // shared registry handle; lookup slots are snapped to their current
+        // handles at actor start.
         ingest_dispatcher_slot,
         dm_inbox_relays_slot,
         // ADR-0057 PR 2 — the `NmpApp`'s clone of the substrate `ProfileLookup`
@@ -1748,12 +1677,11 @@ impl NmpApp {
     /// D0: `nmp-core` defines the seam; the assembly crate installs the policy
     /// closure (today `nmp-app-chirp` consumes [`nmp_coverage_gate::CoverageGate`]).
     ///
-    /// The hook lives in an `Arc<Mutex<Option<…>>>` slot shared with the
-    /// actor thread; the actor reads it once after kernel construction (and
-    /// again after `Reset`) and binds it onto the `SubscriptionLifecycle`.
-    /// A second call replaces the slot's contents — the next `Reset` will
-    /// install the newer hook, but the currently-installed hook on the live
-    /// lifecycle is not retroactively swapped.
+    /// The hook lives in an `Arc<Mutex<Option<…>>>` pre-start slot. Actor
+    /// startup snapshots it into config and binds that snapped hook onto the
+    /// `SubscriptionLifecycle`; `Reset` re-applies the same snapped hook.
+    /// A later call only mutates the dormant FFI-side slot and does not affect
+    /// the already-running actor.
     ///
     /// D6 — a poisoned slot mutex is a silent no-op (the host's hook is
     /// dropped); the lifecycle keeps whatever policy was previously
@@ -1769,9 +1697,9 @@ impl NmpApp {
 
     /// Install the outbound planner REQ interceptor.
     ///
-    /// MUST be called before `nmp_app_start`. The actor reads this slot at
-    /// kernel construction and after `Reset`; absent means every planner REQ
-    /// follows the raw NIP-01 path.
+    /// MUST be called before `nmp_app_start`. Actor startup snapshots this slot
+    /// and re-applies the same interceptor after `Reset`; absent means every
+    /// planner REQ follows the raw NIP-01 path.
     pub fn set_req_frame_interceptor(
         &self,
         interceptor: std::sync::Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
@@ -1788,8 +1716,9 @@ impl NmpApp {
     /// `nmp_core::substrate::HostOpCommand` (ADR-0052 §D4, K2 rung 5.4 — the
     /// bespoke `DispatchHostOp` arm was merged into the single `Protocol` write
     /// seam) and the app-owned state the op mutates (today: `nmp-app-marmot`'s
-    /// `MarmotService`). The `HostOpCommand` clones the handler out of this slot
-    /// at `run` time and calls `handle(action_json, correlation_id)`.
+    /// `MarmotService`). The actor snapshots the handler at `nmp_app_start`;
+    /// `HostOpCommand` clones that handler at `run` time and calls
+    /// `handle(action_json, correlation_id)`.
     ///
     /// `nmp-core` deliberately does NOT name the app's typed action enum
     /// (D0 — no Marmot / MLS / app-specific nouns in the kernel); the handler
@@ -1799,22 +1728,18 @@ impl NmpApp {
     /// translation layer the legacy `nmp_marmot_dispatch` symbol used
     /// (deleted in ADR-0025 PR 3, 2026-05-23).
     ///
-    /// The slot is `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` shared with
-    /// the actor thread (handed to `run_actor_with_observers` at
-    /// construction time). Like [`Self::set_coverage_hook`], this takes
-    /// `&self`: the host may install — or replace — the handler at any
-    /// time. A second call replaces the first; the new handler is the one the
-    /// *next* `HostOpCommand` clones out of the slot at run time (account-switch
-    /// hot-swap).
+    /// The slot is `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` so app
+    /// composition can install the handler without `&mut self` before start.
+    /// Stage 2 of #618 snapshots it into actor config at `nmp_app_start`; a
+    /// later setter only mutates the dormant FFI-side slot and does not affect
+    /// the already-running actor.
     ///
     /// D6 — a poisoned slot mutex is a silent no-op (the host's handler is
     /// dropped on the floor); the slot keeps whatever value was previously
     /// installed (or `None`, in which case the `HostOpCommand` records the
     /// `Failed { reason: "no host op handler installed" }` terminal). MUST
-    /// be called before any `nmp_app_dispatch_action` that targets a
-    /// namespace whose `ActionModule::execute` emits a host-op `Protocol`
-    /// command — installing the handler late produces a stream of `Failed`
-    /// terminals for the gap, not a panic.
+    /// be called before `nmp_app_start` for any app whose
+    /// `ActionModule::execute` emits a host-op `Protocol` command.
     pub fn set_host_op_handler(
         &self,
         handler: std::sync::Arc<dyn nmp_core::substrate::HostOpHandler>,
@@ -1829,9 +1754,9 @@ impl NmpApp {
     /// at every inbound text frame from the wallet relay to decode
     /// kind:23195 responses before the kernel drops them as unknown kinds.
     ///
-    /// MUST be called before any `nmp_app_wallet_*` FFI symbol is invoked;
-    /// otherwise the wallet runtime is unreachable and the actions surface
-    /// a `Failed` terminal. A poisoned mutex is a silent no-op (D6).
+    /// MUST be called before `nmp_app_start`; otherwise the wallet runtime is
+    /// unreachable and the actions surface a `Failed` terminal. A poisoned
+    /// mutex is a silent no-op (D6).
     pub fn set_relay_text_interceptor(
         &self,
         interceptor: std::sync::Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
@@ -1846,7 +1771,8 @@ impl NmpApp {
     ///
     /// Protocol runtimes installed by different composition layers can share
     /// the same inbound frame stream. Each runtime filters the frames it owns
-    /// and returns an empty vector for the rest.
+    /// and returns an empty vector for the rest. MUST be called before
+    /// `nmp_app_start`; actor startup snapshots the installed interceptor list.
     pub fn add_relay_text_interceptor(
         &self,
         interceptor: std::sync::Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
@@ -1857,7 +1783,8 @@ impl NmpApp {
     }
 
     /// ADR-0051 — install a [`nmp_core::substrate::RelayConnectedHook`]
-    /// (today `nmp-nip11`); the actor fans it on `PoolEvent::Opened`. Additive.
+    /// (today `nmp-nip11`); the actor snapshots installed hooks at start and
+    /// fans them on `PoolEvent::Opened`. Additive.
     pub fn add_relay_connected_hook(
         &self,
         hook: std::sync::Arc<dyn nmp_core::substrate::RelayConnectedHook>,
@@ -2117,10 +2044,10 @@ impl NmpApp {
     /// kernel keeps its in-crate defaults; the production swap is a
     /// no-op for that one process).
     ///
-    /// The factory is re-invoked by the `Reset` dispatch arm against the
-    /// rebuilt kernel's fresh projection so the production router/cache
-    /// pair survives a state wipe (mirrors the `routing_trace_slot`
-    /// re-publish step).
+    /// The snapped factory is re-invoked by the `Reset` dispatch arm against
+    /// the rebuilt kernel's fresh projection so the production router/cache
+    /// pair survives a state wipe (mirrors the `routing_trace_slot` re-publish
+    /// step).
     pub fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(
@@ -2146,10 +2073,10 @@ impl NmpApp {
     /// constructs `PublishEngine` with the in-crate `NoopOutboxResolver`
     /// default (fail-closed); production composition
     /// (`nmp-defaults::register_defaults`) installs the
-    /// router-side resolver through this factory slot. The actor reads
-    /// the slot right after kernel construction (and on `Reset`) and
-    /// invokes [`crate::kernel::Kernel::set_publish_resolver`] with the
-    /// produced `Arc<dyn OutboxResolver>`.
+    /// router-side resolver through this factory slot. Actor startup snapshots
+    /// the slot and invokes [`crate::kernel::Kernel::set_publish_resolver`]
+    /// with the produced `Arc<dyn OutboxResolver>`; `Reset` re-invokes the
+    /// same snapped factory against fresh kernel handles.
     ///
     /// `factory` receives the four kernel-owned handles the router-side
     /// `Nip65OutboxResolver` needs (`EventStore` + the indexer /
@@ -2163,8 +2090,8 @@ impl NmpApp {
     /// kernel keeps its `NoopOutboxResolver`; every publish then fails
     /// closed with `NoTargets`).
     ///
-    /// The factory is re-invoked by the `Reset` dispatch arm against the
-    /// rebuilt kernel's fresh handles so the production resolver survives
+    /// The snapped factory is re-invoked by the `Reset` dispatch arm against
+    /// the rebuilt kernel's fresh handles so the production resolver survives
     /// a state wipe (mirrors `set_routing_substrate`).
     pub fn set_publish_resolver_factory<F>(&self, factory: F)
     where
@@ -2203,7 +2130,8 @@ impl NmpApp {
     /// The actor owns the generic observer + `Pool` send path. Production
     /// composition installs policy objects here so reusable crates can decide
     /// target relays using kernel-owned read handles without `nmp-core`
-    /// depending on those crates.
+    /// depending on those crates. MUST be called before `nmp_app_start`; actor
+    /// startup snapshots the factory and reuses it after `Reset`.
     pub fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
     where
         F: Fn(
