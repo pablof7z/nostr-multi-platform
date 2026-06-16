@@ -21,7 +21,7 @@ final class NostrRelayRowTests: XCTestCase {
 
     func testTintColorResolvesSemanticTokens() {
         XCTAssertEqual(NostrRelayRow.tintColor(for: "accent"), .accentColor)
-        XCTAssertEqual(NostrRelayRow.tintColor(for: "info"), .blue)
+        XCTAssertEqual(NostrRelayRow.tintColor(for: "info"), ChirpColor.accent)
         XCTAssertEqual(NostrRelayRow.tintColor(for: "success"), .green)
         XCTAssertEqual(NostrRelayRow.tintColor(for: "warning"), .orange)
         XCTAssertEqual(NostrRelayRow.tintColor(for: "danger"), .red)

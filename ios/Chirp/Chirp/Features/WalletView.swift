@@ -14,7 +14,6 @@ struct WalletView: View {
             } else {
                 disconnectedSection
             }
-            technologySection
         }
         .scrollContentBackground(.hidden)
         .chirpScreenBackground()
@@ -32,8 +31,8 @@ struct WalletView: View {
         Section {
             VStack(spacing: 16) {
                 Image(systemName: "bolt.circle")
-                    .font(.system(size: 52, weight: .light))
-                    .foregroundStyle(ChirpColor.zap)
+                    .font(.system(size: 56, weight: .light))
+                    .foregroundStyle(ChirpColor.accent)
                     .symbolRenderingMode(.hierarchical)
 
                 VStack(spacing: 8) {
@@ -51,7 +50,10 @@ struct WalletView: View {
                     Label("Connect Wallet", systemImage: "bolt.fill")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(ChirpColor.zap)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+                .controlSize(.large)
+                .tint(ChirpColor.accent)
+                .frame(maxWidth: 260)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
@@ -85,7 +87,7 @@ struct WalletView: View {
 
                 Image(systemName: "bolt.circle.fill")
                     .font(.system(size: 48, weight: .light))
-                    .foregroundStyle(ChirpColor.zap)
+                    .foregroundStyle(ChirpColor.accent)
                     .symbolRenderingMode(.hierarchical)
 
                 if let sats = status.balanceSats {
@@ -130,7 +132,7 @@ struct WalletView: View {
         Section("Actions") {
             HStack(spacing: 12) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(ChirpColor.zap)
+                    .foregroundStyle(ChirpColor.accent)
                 Text("Send")
                     .font(.callout.weight(.semibold))
                 Spacer()
@@ -141,17 +143,11 @@ struct WalletView: View {
         }
     }
 
-    // ── Technology ────────────────────────────────────────────────────────────
-
-    private var technologySection: some View {
-        Section("Powered By") {
-            HStack(spacing: 12) {
-                TechTile(label: "NWC", sublabel: "Nostr Wallet Connect", color: ChirpColor.zap)
-                TechTile(label: "NIP-57", sublabel: "Zap protocol", color: ChirpColor.accent)
-                TechTile(label: "Cashu", sublabel: "Ecash tokens", color: ChirpColor.textSecondary)
-            }
-        }
-    }
+    // A former "Powered By" section rendered three candy-colored protocol
+    // tiles (NWC / NIP-57 / Cashu). It was decorative marketing chrome — the
+    // disconnected copy already names NWC/Alby/Zeus — and read as amateur on
+    // an otherwise restrained wallet screen, so it was removed (iOS polish
+    // pass, docs/design/ios-polish-checklist.md).
 
     // V-23 thin-shell: `shortNpub` formerly lived here. The kernel now
     // projects `wallet_npub_short` (see `WalletStatus` in
@@ -208,7 +204,8 @@ private struct ConnectWalletSheet: View {
                     // The kernel rejects invalid URIs and surfaces the reason as a toast.
                     .disabled(uri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .buttonStyle(.borderedProminent)
-                    .tint(ChirpColor.zap)
+                    .buttonBorderShape(.roundedRectangle(radius: 12))
+                    .tint(ChirpColor.accent)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -223,27 +220,4 @@ private struct ConnectWalletSheet: View {
         }
     }
 
-}
-
-// ── Technology tile ────────────────────────────────────────────────────────
-
-private struct TechTile: View {
-    let label: String
-    let sublabel: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(label)
-                .font(.headline)
-                .foregroundStyle(color)
-            Text(sublabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-    }
 }

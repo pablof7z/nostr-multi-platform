@@ -1,8 +1,32 @@
 import SwiftUI
 
 enum ChirpColor {
-    static let accent = Color.accentColor
+    /// Monochrome, high-contrast accent (Vercel-style): pure black in light
+    /// mode, pure white in dark mode. The app is anchored on this single
+    /// accent — tint, selected tabs, buttons, links, mentions and hashtags all
+    /// resolve to it, so the UI reads as one restrained black-and-white system
+    /// rather than a scatter of blue/black/cyan icons.
+    static let accent = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark ? .white : .black
+    })
+    /// Foreground that sits on top of `accent` fills (e.g. the outgoing DM
+    /// bubble, prominent buttons) — the inverse of `accent`, so it stays
+    /// legible in both appearances.
+    static let onAccent = Color(.systemBackground)
     static let accentSoft = accent.opacity(0.12)
+    /// Generated-avatar fallback (no profile picture): a neutral grayscale
+    /// chip. The deterministic per-pubkey color was the loudest element on an
+    /// otherwise monochrome screen; real profile images keep their color.
+    static let avatarFallbackBackground = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 0.17, alpha: 1)    // ~#2C2C2E
+            : UIColor(white: 0.913, alpha: 1)   // ~#E9E9EB
+    })
+    static let avatarFallbackForeground = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 0.96, alpha: 1)
+            : UIColor(white: 0.07, alpha: 1)
+    })
     static let bg = Color(.systemBackground)
     static let surface = Color(.secondarySystemBackground)
     static let surfaceElevated = Color(.tertiarySystemBackground)
@@ -12,7 +36,9 @@ enum ChirpColor {
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
     static let textTertiary = Color(.tertiaryLabel)
-    static let link = Color(.link)
+    // Links, mentions and hashtags use the single monochrome accent (kept
+    // distinct from body text by weight + underline, not by a blue hue).
+    static let link = accent
     static let success = Color(.systemGreen)
     static let warning = Color(.systemOrange)
     static let danger = Color(.systemRed)
@@ -27,7 +53,7 @@ enum ChirpColor {
     static let focusedLine = accent.opacity(0.28)
     static let messageOutgoingBackground = accent
     static let messageIncomingBackground = surface
-    static let messageOutgoingForeground = Color(.white)
+    static let messageOutgoingForeground = onAccent
     static let messageIncomingForeground = textPrimary
     static let mediaBackdrop = Color(.black)
     static let mediaForeground = Color(.white)
@@ -143,6 +169,7 @@ struct ChirpPlaceholder: View {
             Image(systemName: systemImage)
                 .font(.system(size: 44, weight: .light))
                 .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
             Text(title)
                 .font(.headline)
             if let subtitle {
@@ -197,7 +224,7 @@ struct ComposeProgressRing: View {
                 .animation(.easeInOut(duration: 0.15), value: fraction)
             if showNumber {
                 Text("\(remaining)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(isOver ? ChirpColor.danger : ChirpColor.textSecondary)
                     .minimumScaleFactor(0.7)
             }

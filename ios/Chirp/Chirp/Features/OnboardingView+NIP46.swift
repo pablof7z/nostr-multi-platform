@@ -12,8 +12,7 @@ extension OnboardingView {
 
     var nip46SignerSection: some View {
         VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            Text("Remote signer (NIP-46)")
-                .font(.caption)
+            ChirpSectionHeader(title: "Remote signer (NIP-46)")
 
             // QR code toggle
             Button {
@@ -117,7 +116,6 @@ extension OnboardingView {
         }
         .padding(.horizontal, ChirpSpace.l)
         .padding(.vertical, ChirpSpace.l)
-        .padding(.horizontal, ChirpSpace.l)
     }
 
     // MARK: — Helpers

@@ -57,7 +57,7 @@ struct RelaySettingsView: View {
 
             Section {
                 Text("Advertises your relays as DM inbox so others can reach you via NIP-17.")
-                    .font(.system(.footnote, design: .rounded))
+                    .font(.footnote)
                     .foregroundStyle(ChirpColor.textSecondary)
                     .listRowBackground(ChirpColor.transparent)
                     .listRowSeparator(.hidden)
@@ -110,17 +110,17 @@ struct RelaySettingsView: View {
             switch stage {
             case .accepted:
                 Text("Published ✓")
-                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ChirpColor.positive)
                     .padding(.vertical, ChirpSpace.s)
             case let .failed(reason):
                 VStack(alignment: .leading, spacing: ChirpSpace.xs) {
                     Text("Publish failed")
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(ChirpColor.danger)
                     if !reason.isEmpty {
                         Text(reason)
-                            .font(.system(.footnote, design: .rounded))
+                            .font(.footnote)
                             .foregroundStyle(ChirpColor.textSecondary)
                     }
                     publishButton(label: "Try again", systemImage: "arrow.clockwise")
@@ -148,7 +148,7 @@ struct RelaySettingsView: View {
         HStack(spacing: ChirpSpace.s) {
             ProgressView().controlSize(.small)
             Text("Publishing…")
-                .font(.system(.subheadline, design: .rounded))
+                .font(.subheadline)
                 .foregroundStyle(ChirpColor.textSecondary)
         }
         .padding(.vertical, ChirpSpace.s)

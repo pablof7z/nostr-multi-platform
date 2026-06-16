@@ -29,13 +29,11 @@ struct OutboxEventRow: View {
                     .frame(width: 22)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(item.title)
-                            .font(.headline)
-                        Text("kind \(item.kind)")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
+                    // The raw protocol "kind <n>" was removed — it's an
+                    // implementation detail, not a user-facing label. The
+                    // human title carries the meaning.
+                    Text(item.title)
+                        .font(.headline)
                     // ADR-0032 / V-115: compute locally from raw relay count + unix seconds.
                     Text(targetSummary)
                         .font(.caption)
