@@ -49,7 +49,12 @@ impl FfiApp {
 
 ### 6.2 AppState
 
-`AppState` is the logical source-of-truth shape for the UI. The runtime `FullState` payload is encoded as FlatBuffers and decoded into the platform shadow model. UniFFI may expose helper objects and lifecycle APIs, but `AppState` is not cloned across the hot path as a UniFFI record.
+`AppState` is the logical source-of-truth shape for the UI. The runtime `FullState`
+payload is encoded as typed FlatBuffers update frames and decoded into the
+platform shadow model. UniFFI may expose helper objects and lifecycle APIs, but
+`AppState` is not cloned across the hot path as a UniFFI record. The update frame
+has no `payload:Value` compatibility tree; host-visible state is carried by typed
+envelope fields and typed projection sidecars.
 
 Top-level shape (long-term, illustrative; v1 contains the kernel fields needed by [`docs/plan.md`](../plan.md) and keeps product subsystems absent or empty):
 

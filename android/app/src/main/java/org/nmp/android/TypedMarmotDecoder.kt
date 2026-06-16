@@ -32,16 +32,14 @@ private const val TAG = "TypedMarmotDecoder"
  * Verbatim mirror of the Rust DTOs in `crates/nmp-marmot/src/projection/payload.rs`
  * (V-107 / ADR-0039). The `has_*` companion bools reproduce the JSON
  * null-when-absent semantics (ADR-0032). The messages wire flattens
- * `group_id_hex -> [message]` to a vector, rebuilt into the `Map<String,
- * List<MarmotMessage>>` the generic path yields.
+ * `group_id_hex -> [message]` to a vector, rebuilt into the Android
+ * `Map<String, List<MarmotMessage>>` domain shape.
  *
- * Both wires carry `schema_version` (mirrors `SCHEMA_VERSION = 1`); an unknown
- * version fails closed to `null` so the host falls back to the generic path
+ * Both wires carry `schema_version`; an unknown version fails closed to `null`
  * rather than mis-reading a future layout.
  *
- * ADR-0037 Commitment 4: typed-FIRST with permanent generic fallback. Each
- * `decode*` returns `null` when its sidecar is absent / wrong schema /
- * unverifiable, so the caller keeps the generic `payload:Value` subtree. Fail
+ * Each `decode*` returns `null` when its sidecar is absent / wrong schema /
+ * unverifiable, so the typed-only host keeps the Marmot projection absent. Fail
  * closed (D1/D6) on a malformed buffer.
  */
 object TypedMarmotDecoder {

@@ -4,11 +4,12 @@
 > renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
 > as `nmp-defaults` / `nmp_defaults`.
 >
-> Current status (2026-06-13): ADR-0044 and the PR-B/F-05/F-10 work superseded
-> this ADR's permanence claim for `payload:Value`. Production `UpdateFrame`
-> snapshots no longer emit or decode a generic payload tree; hosts read typed
-> `SnapshotEnvelope` fields plus `typed_projections` sidecars. The text below is
-> the historical migration decision record.
+> Current status (2026-06-16): ADR-0044 and the PR-B/F-05/F-10 work superseded
+> this ADR's permanence claim for `payload:Value`; the follow-up cleanup removed
+> `SnapshotFrame.payload` and the `Value`/`Pair` variant tree from
+> `nmp_update.fbs`. Production `UpdateFrame` snapshots carry typed
+> `SnapshotEnvelope` fields plus `typed_projections` sidecars only. The text
+> below is the historical migration decision record.
 
 - **Status:** Accepted / Partially implemented (2026-05-28; PR-B in progress 2026-06-11)
 - **Relates to:** the FlatBuffers update-transport envelope (commits `021ba295`
@@ -35,7 +36,7 @@ generic, self-describing `Value` tree:
 ```fbs
 table SnapshotFrame {
   schema_version:uint = 1;
-  payload:Value;            // generic Value/Pair/List/Map tree
+  payload:Value;            // historical: removed from the current schema
 }
 ```
 
@@ -104,7 +105,8 @@ table TypedProjection {
 
 table SnapshotFrame {
   schema_version:uint = 1;
-  payload:Value;                          // compatibility during migration — permanent
+  // Historical migration slot: removed from the current schema.
+  payload:Value;
   typed_projections:[TypedProjection];    // new: typed sidecar, may be empty/absent
 }
 ```
@@ -210,10 +212,10 @@ methods, so adding one more generic method changes no object-safety property.
 
 ### What this does NOT change
 
-- `payload:Value` stays in `SnapshotFrame` **permanently**. It remains the sole
-  representation for every projection that is not (yet) typed — the long tail of
-  low-frequency projections never needs a typed schema. This ADR does **not**
-  schedule removal of the generic tree.
+- **Historical only:** this ADR originally said `payload:Value` stayed in
+  `SnapshotFrame` permanently. ADR-0044 and the 2026-06-16 schema cleanup reverse
+  that commitment. The current update transport has no generic payload tree and
+  no compatibility slot; host-visible projections need typed sidecars.
 - The `UpdateFrame` / `SnapshotFrame` / `PanicFrame` envelope shape, the `"NMPU"`
   file identifier, and `schema_version` semantics — unchanged. `typed_projections`
   is an additive optional vector; an absent or empty vector is a valid frame.

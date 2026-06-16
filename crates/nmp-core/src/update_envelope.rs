@@ -7,13 +7,11 @@
 //!   per-projection typed FlatBuffers sidecar (ADR-0037).
 //! - `Panic`: terminal actor-thread death signal.
 //!
-//! PR-B (#991/#979): the generic `payload:Value` JSON tree is no longer
-//! emitted or decoded — the schema field is `(deprecated)` and the generated
-//! bindings expose no accessor for it. Consumers read the typed
-//! [`SnapshotEnvelope`] (via [`decode_snapshot_envelope`] /
-//! [`decode_update_frame`]) and the typed sidecar entries (via
-//! [`decode_snapshot_typed_projections`] paired with the per-key decoders in
-//! `nmp_core::typed_projections`).
+//! The generic `payload:Value` JSON tree no longer exists in the schema.
+//! Consumers read the typed [`SnapshotEnvelope`] (via
+//! [`decode_snapshot_envelope`] / [`decode_update_frame`]) and the typed
+//! sidecar entries (via [`decode_snapshot_typed_projections`] paired with the
+//! per-key decoders in `nmp_core::typed_projections`).
 
 use crate::transport::wire as fb;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
@@ -24,10 +22,10 @@ mod projection_state;
 mod relay_status;
 mod tier3_frame;
 mod typed_projection_decode;
-use typed_projection_decode::decode_typed_projections;
 pub use projection_state::WireProjectionState;
 pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};
 pub(crate) use tier3_frame::{encode_snapshot_with_envelope, FrameEpochStamp};
+use typed_projection_decode::decode_typed_projections;
 
 /// Schema version of the periodic snapshot payload. Bump on any breaking
 /// snapshot field change.
@@ -38,7 +36,7 @@ pub type UpdateFrameBytes = Vec<u8>;
 
 /// Typed Tier-3 snapshot envelope — the strongly-typed `SnapshotFrame` fields
 /// that Rust consumers (chirp-tui, chirp-desktop) read instead of walking the
-/// generic `payload:Value` tree.
+/// deleted generic payload tree.
 ///
 /// Mirrors the fields written by `encode_snapshot_with_envelope` (ADR-0044).
 /// Fields absent from the wire (never-written or default-zero) are returned as
@@ -108,10 +106,8 @@ pub struct SnapshotEnvelope {
 /// their Rust zero-value. Returns an error only on a malformed frame that cannot
 /// be parsed at all.
 ///
-/// This is the Rust counterpart to iOS's `TypedSnapshotEnvelope` (used by
-/// `KernelUpdateFrameDecoder.extractTypedEnvelope`). Rust shells that complete
-/// the PR-B typed-first migration use this function instead of decoding
-/// `payload:Value`.
+/// This is the Rust counterpart to typed native envelope decoders. Consumers
+/// use this function instead of a generic payload reader.
 pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, UpdateFrameDecodeError> {
     if !fb::update_frame_buffer_has_identifier(bytes) {
         return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
@@ -219,7 +215,7 @@ pub enum UpdateEnvelope {
 /// The `payload` is opaque to `nmp-core`: it is a host-declared, framework-side
 /// FlatBuffers buffer identified by `schema_id` / `schema_version` /
 /// `file_identifier`. The transport layer never interprets these bytes; it only
-/// carries them losslessly alongside the generic `Value` snapshot.
+/// carries them losslessly alongside the typed Tier-3 snapshot envelope.
 ///
 /// ADR-0055 Rung 2: `projection_rev` and `state` fields added (tail-appended on
 /// the wire — old decoders read them as default 0 / Changed, treating every entry
@@ -264,7 +260,7 @@ impl fmt::Display for UpdateFrameDecodeError {
         match self {
             Self::InvalidFlatbuffer(msg) => write!(f, "invalid update frame: {msg}"),
             Self::InvalidValue(msg) => write!(f, "invalid update value: {msg}"),
-            Self::MissingSnapshotPayload => write!(f, "snapshot frame missing payload"),
+            Self::MissingSnapshotPayload => write!(f, "snapshot frame missing snapshot"),
             Self::MissingPanicPayload => write!(f, "panic frame missing payload"),
             Self::UnexpectedPanicFrame(msg) => write!(f, "expected snapshot, got panic: {msg}"),
         }
@@ -284,8 +280,8 @@ impl std::error::Error for UpdateFrameDecodeError {}
 /// [`SnapshotEnvelope`] subset (the documented Rust consumer surface), so a
 /// frame round-trips losslessly through [`decode_snapshot_envelope`].
 ///
-/// No generic `payload:Value` is written — the field is `(deprecated)` in the
-/// schema and the generated bindings expose no writer for it (PR-B #991/#979).
+/// No generic `payload:Value` is written — the transport schema has no generic
+/// payload slot.
 #[must_use]
 pub fn encode_snapshot_frame(
     envelope: &SnapshotEnvelope,
@@ -312,12 +308,18 @@ pub fn encode_snapshot_frame(
             ..Default::default()
         },
     );
-    let last_error_toast =
-        envelope.last_error_toast.as_deref().map(|s| builder.create_string(s));
-    let last_error_category =
-        envelope.last_error_category.as_deref().map(|s| builder.create_string(s));
-    let last_planner_error =
-        envelope.last_planner_error.as_deref().map(|s| builder.create_string(s));
+    let last_error_toast = envelope
+        .last_error_toast
+        .as_deref()
+        .map(|s| builder.create_string(s));
+    let last_error_category = envelope
+        .last_error_category
+        .as_deref()
+        .map(|s| builder.create_string(s));
+    let last_planner_error = envelope
+        .last_planner_error
+        .as_deref()
+        .map(|s| builder.create_string(s));
     let snapshot = fb::SnapshotFrame::create(
         &mut builder,
         &fb::SnapshotFrameArgs {
@@ -416,10 +418,8 @@ pub fn encode_panic(msg: impl Into<String>) -> UpdateFrameBytes {
 /// Decode one update frame into the canonical discriminated envelope
 /// (ADR-0001 / T103): the FlatBuffers `FrameKind` tag IS the discriminant.
 ///
-/// PR-B (#991/#979): the `Snapshot` arm carries the typed
-/// [`SnapshotEnvelope`]; the generic JSON payload no longer exists on the
-/// wire. Pre-PR-B frames (payload-only, no Tier-3 fields) still parse — their
-/// Tier-3 fields read as FlatBuffers defaults (zero/empty).
+/// The `Snapshot` arm carries the typed [`SnapshotEnvelope`]; the generic JSON
+/// payload no longer exists on the wire or in the schema.
 pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDecodeError> {
     if !fb::update_frame_buffer_has_identifier(bytes) {
         return Err(UpdateFrameDecodeError::InvalidFlatbuffer(

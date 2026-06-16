@@ -33,7 +33,10 @@ fn tier3_golden_fixture_matches_encoder() {
     // Golden sanity: the frame must carry the NMPU identifier.
     assert!(fb::update_frame_buffer_has_identifier(&wire));
     // Round-trip: the decoded envelope must equal golden_envelope().
-    assert_eq!(decode_snapshot_envelope(&wire).expect("decode"), golden_envelope());
+    assert_eq!(
+        decode_snapshot_envelope(&wire).expect("decode"),
+        golden_envelope()
+    );
 }
 
 /// A representative typed envelope for round-trip tests — every
@@ -155,7 +158,10 @@ fn typed_sidecar_round_trips_opaque_payloads_alongside_envelope() {
 
     // The envelope decoder must still see the same envelope, ignoring the
     // typed sidecar entirely.
-    assert_eq!(decode_snapshot_envelope(&wire).expect("decode envelope"), envelope);
+    assert_eq!(
+        decode_snapshot_envelope(&wire).expect("decode envelope"),
+        envelope
+    );
 }
 
 #[test]
@@ -172,39 +178,16 @@ fn frame_without_sidecar_decodes_with_empty_typed_vector() {
 fn decode_snapshot_envelope_rejects_panic_frame() {
     let wire = encode_panic("boom");
     let err = decode_snapshot_envelope(&wire).expect_err("panic must not decode as snapshot");
-    assert!(matches!(err, UpdateFrameDecodeError::MissingSnapshotPayload));
+    assert!(matches!(
+        err,
+        UpdateFrameDecodeError::MissingSnapshotPayload
+    ));
     let err =
         decode_snapshot_typed_projections(&wire).expect_err("panic must not decode as snapshot");
-    assert!(matches!(err, UpdateFrameDecodeError::MissingSnapshotPayload));
-}
-
-/// Forward-compat proof for the PR-B zeroing: a pre-PR-B v1 frame (generic
-/// JSON `payload:Value` written, NO Tier-3 fields) must still PARSE as a
-/// `Snapshot` frame on the new reader. The deprecated `payload` slot is
-/// invisible to the regenerated bindings, so the Tier-3 fields all read as
-/// FlatBuffers defaults — the frame is structurally valid, just empty.
-///
-/// The same fixture bytes are decoded by web/chirp's TS tests
-/// (`web/chirp/src/nmp/runtime.test.ts`), which still carry the generic-value
-/// decoder — the fixture freezes the v1 wire format for BOTH readers.
-#[test]
-fn pre_prb_v1_fixture_still_parses_as_snapshot_frame() {
-    let wire = decode_hex_fixture(include_str!(
-        "../../tests/fixtures/update_frame_snapshot_v1.fb.hex"
+    assert!(matches!(
+        err,
+        UpdateFrameDecodeError::MissingSnapshotPayload
     ));
-    match decode_update_frame(&wire).expect("v1 fixture must remain parseable") {
-        UpdateEnvelope::Snapshot(envelope) => {
-            // The v1 fixture predates the Tier-3 fields — everything reads as
-            // the FlatBuffers default. `rev` lived only inside the (now
-            // unread) JSON payload.
-            assert_eq!(envelope.rev, 0, "v1 fixture has no Tier-3 rev field");
-            assert!(!envelope.running, "v1 fixture has no Tier-3 running field");
-            assert!(envelope.relay_statuses.is_empty());
-        }
-        other => panic!("expected snapshot frame, got {other:?}"),
-    }
-    let typed = decode_snapshot_typed_projections(&wire).expect("typed decode succeeds");
-    assert!(typed.is_empty(), "v1 fixture carries no typed sidecar");
 }
 
 #[test]

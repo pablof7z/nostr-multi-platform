@@ -158,9 +158,10 @@ keeps using the same accessors, oblivious to the delta mechanics.
   wallet, dm_inbox, …) are emitted `Changed` when live, explicit `Cleared` when
   absent — never silently omitted. Their rev gating is a later rung; the S6 metric
   is therefore labeled "Tier-2 / claimed_profiles churn," not whole-frame waste.
-- **Gallery: NO change** — it reads the deprecated generic `payload:Value` path,
-  not typed projections; do NOT regenerate its curated subset (it broke in Rung 2
-  exactly because of a blanket regen). See `0055-rung3.md` §6.
+- **Gallery:** Android/iOS shells now pass production `UpdateFrame` bytes to the
+  Rust `nmp-app-gallery` helper, which decodes the typed envelope and Gallery
+  sidecars into the existing Gallery JSON model. The native curated
+  `payload:Value` transport subset is gone. See `0055-rung3.md` §6.
 - **Capstone gate (R3-S5):** re-run ffi-stress S6 with incremental apply ON vs
   OFF; assert Tier-2 `waste_ratio < 0.05`, frame bytes ON < OFF, no `serialize_us`
   regression, and an incremental-vs-full byte-identity oracle. Plus the Rung-1

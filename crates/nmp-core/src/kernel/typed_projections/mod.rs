@@ -86,39 +86,39 @@ mod builtins_diagnostics;
 mod relay_diagnostics_fb;
 mod signed_events_fb;
 
+pub(crate) use configured_relays_fb::encode_configured_relays;
 pub use configured_relays_fb::{
     ConfiguredRelayRow, ConfiguredRelaysModel, CONFIGURED_RELAYS_FILE_IDENTIFIER,
     CONFIGURED_RELAYS_SCHEMA_ID, CONFIGURED_RELAYS_SCHEMA_VERSION,
 };
-pub(crate) use configured_relays_fb::encode_configured_relays;
 // `RelayRoleOptionRow` is named in the inline mapping in
-// `builtin_typed_projections` below; `ConfiguredRelayRow` is named only inside
-// its own codec module + tests (so it is not re-exported here).
-pub(crate) use relay_role_options_fb::{
-    encode_relay_role_options, RelayRoleOptionRow, RelayRoleOptionsModel,
-    RELAY_ROLE_OPTIONS_FILE_IDENTIFIER, RELAY_ROLE_OPTIONS_SCHEMA_ID,
-    RELAY_ROLE_OPTIONS_SCHEMA_VERSION,
+// `builtin_typed_projections` below and is also public so out-of-tree typed
+// consumers can decode the kernel-owned role presentation tokens.
+pub(crate) use relay_role_options_fb::encode_relay_role_options;
+pub use relay_role_options_fb::{
+    RelayRoleOptionRow, RelayRoleOptionsModel, RELAY_ROLE_OPTIONS_FILE_IDENTIFIER,
+    RELAY_ROLE_OPTIONS_SCHEMA_ID, RELAY_ROLE_OPTIONS_SCHEMA_VERSION,
 };
+pub(crate) use settings_hub_fb::encode_settings_hub;
 pub use settings_hub_fb::{
     SettingsHubModel, SETTINGS_HUB_FILE_IDENTIFIER, SETTINGS_HUB_SCHEMA_ID,
     SETTINGS_HUB_SCHEMA_VERSION,
 };
-pub(crate) use settings_hub_fb::encode_settings_hub;
 // Wave C publish/outbox cluster. The nested-row types (`PublishQueueEntryRow`,
 // `RelayAckOutcomeRow`, `PublishOutboxItemRow`, `PublishOutboxRelayRow`) are
 // named in the inline mappings in `builtin_typed_projections` below — where the
 // `pub(super)`/`pub(crate)` DTO types are reachable — so they are re-exported
 // here alongside their `Model` + encode entry points.
+pub(crate) use outbox_summary_fb::encode_outbox_summary;
 pub use outbox_summary_fb::{
     OutboxSummaryModel, OUTBOX_SUMMARY_FILE_IDENTIFIER, OUTBOX_SUMMARY_SCHEMA_ID,
     OUTBOX_SUMMARY_SCHEMA_VERSION,
 };
-pub(crate) use outbox_summary_fb::encode_outbox_summary;
+pub(crate) use publish_outbox_fb::encode_publish_outbox;
 pub use publish_outbox_fb::{
     PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
     PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
 };
-pub(crate) use publish_outbox_fb::encode_publish_outbox;
 // Internal-only encoder; the publicly re-exported `publish_queue` names
 // (`PublishQueueModel` / `PublishQueueEntryRow` / `RelayAckOutcomeRow` / the
 // envelope constants) live in the PUBLIC block below so they are not declared
@@ -126,45 +126,45 @@ pub(crate) use publish_outbox_fb::encode_publish_outbox;
 pub(crate) use publish_queue_fb::encode_publish_queue;
 // Wave C identity + views cluster (`accounts` / `active_account` / `profile`).
 // V-112 (ADR-0042): `author_view` / `thread_view` FlatBuffer codecs deleted.
+pub(crate) use accounts_fb::encode_accounts;
 pub use accounts_fb::{
     AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID,
     ACCOUNTS_SCHEMA_VERSION,
 };
-pub(crate) use accounts_fb::encode_accounts;
+pub(crate) use active_account_fb::encode_active_account;
 pub use active_account_fb::{
     ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_VERSION,
 };
-pub(crate) use active_account_fb::encode_active_account;
+pub(crate) use profile_fb::encode_profile;
 pub use profile_fb::{
     ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
-pub(crate) use profile_fb::encode_profile;
 // Wave C profile/event cluster (`mention_profiles` / `claimed_profiles` /
 // `claimed_events` / `resolved_profiles`). The map-entry / row types
 // (`MentionProfileRow`, `ClaimedEventRow`) and the shared `ProfileCardModel`
 // (from `profile_fb`, reused by `claimed_profiles` / `resolved_profiles`) are
 // named in the inline mappings in `builtins_profiles.rs`, so they are
 // re-exported here alongside their `Model` + encode entry points.
-pub use claimed_events_fb::{
-    ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
-    CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
-};
 pub(crate) use claimed_events_fb::encode_claimed_events;
+pub use claimed_events_fb::{
+    ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID,
+    CLAIMED_EVENTS_SCHEMA_VERSION,
+};
+pub(crate) use claimed_profiles_fb::encode_claimed_profiles;
 pub use claimed_profiles_fb::{
     ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER, CLAIMED_PROFILES_SCHEMA_ID,
     CLAIMED_PROFILES_SCHEMA_VERSION,
 };
-pub(crate) use claimed_profiles_fb::encode_claimed_profiles;
 pub(crate) use mention_profiles_fb::{
     encode_mention_profiles, MentionProfileRow, MentionProfilesModel,
     MENTION_PROFILES_FILE_IDENTIFIER, MENTION_PROFILES_SCHEMA_ID, MENTION_PROFILES_SCHEMA_VERSION,
 };
+pub(crate) use resolved_profiles_fb::encode_resolved_profiles;
 pub use resolved_profiles_fb::{
     ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER, RESOLVED_PROFILES_SCHEMA_ID,
     RESOLVED_PROFILES_SCHEMA_VERSION,
 };
-pub(crate) use resolved_profiles_fb::encode_resolved_profiles;
 // Wave C action-lifecycle + relay-diagnostics cluster (`action_results` /
 // `signed_events` / `action_stages` / `action_lifecycle` / `relay_diagnostics`).
 // The codec Models + row types are named in the cluster's struct->Model /
@@ -194,8 +194,7 @@ pub use signed_events_fb::{
     SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
 };
 
-#[cfg(test)]
-pub(crate) use relay_role_options_fb::decode_relay_role_options;
+pub use relay_role_options_fb::decode_relay_role_options;
 // Wave C profile/event cluster — `decode_claimed_events` promoted to unconditional
 // pub (nmp-gallery typed-sidecar migration); `decode_claimed_profiles` promoted
 // to unconditional pub (V-112 follow-up: the claimed_profiles sidecar is the
@@ -252,11 +251,11 @@ pub use relay_diagnostics_fb::{
 pub use accounts_fb::decode_accounts;
 pub use active_account_fb::decode_active_account;
 pub use configured_relays_fb::decode_configured_relays;
-pub use settings_hub_fb::decode_settings_hub;
 pub use profile_fb::decode_profile;
+pub use settings_hub_fb::decode_settings_hub;
 // V-112 (ADR-0042): decode_author_view / decode_thread_view deleted.
-pub use publish_outbox_fb::decode_publish_outbox;
 pub use outbox_summary_fb::decode_outbox_summary;
+pub use publish_outbox_fb::decode_publish_outbox;
 
 use crate::update_envelope::TypedProjectionData;
 

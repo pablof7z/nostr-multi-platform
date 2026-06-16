@@ -12,7 +12,7 @@ use std::ffi::{c_void, CStr, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
@@ -76,7 +76,10 @@ extern "C" fn on_capability_request(
         .into_owned();
     let parsed: serde_json::Value = serde_json::from_str(&request).unwrap_or_default();
     if parsed.get("namespace").and_then(|v| v.as_str()) != Some("external_signer") {
-        return to_c_string(capability_error_envelope(&request, "unsupported-on-android"));
+        return to_c_string(capability_error_envelope(
+            &request,
+            "unsupported-on-android",
+        ));
     }
     let Some(payload) = parsed.get("payload_json").and_then(|v| v.as_str()) else {
         return to_c_string(capability_error_envelope(&request, "missing-payload"));
@@ -196,6 +199,25 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeRegistryJs
     match env.new_string(crate::registry::raw_json()) {
         Ok(js) => js.into_raw(),
         Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnapshotJson<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    frame: JByteArray<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    let Ok(bytes) = env.convert_byte_array(frame) else {
+        return null;
+    };
+    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(&bytes) else {
+        return null;
+    };
+    match env.new_string(json) {
+        Ok(js) => js.into_raw(),
+        Err(_) => null,
     }
 }
 

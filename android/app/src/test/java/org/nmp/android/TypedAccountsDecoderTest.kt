@@ -6,14 +6,11 @@ import nmp.kernel.AccountsSnapshot
 import nmp.kernel.ActiveAccountSnapshot
 import nmp.transport.FrameKind
 import nmp.transport.Metrics
-import nmp.transport.Pair as TransportPair
 import nmp.transport.ProjectionPresenceState
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
 import nmp.transport.TypedProjection
 import nmp.transport.UpdateFrame
-import nmp.transport.Value
-import nmp.transport.ValueKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -31,9 +28,7 @@ import org.junit.Test
  *  - null / absent semantics (`has_active_account == false`, `has_display_name
  *    == false`);
  *  - malformed-sidecar skip (clobbered file identifier → `null`);
- *  - fallback survival (generic `payload:Value` path with no typed sidecar);
- *  - typed-wins-over-generic for both keys;
- *  - the generic fallback now reads `npub` (not the nonexistent `npub_short`);
+ *  - fail-closed behavior when a typed sidecar is absent or malformed;
  *  - npub abbreviation matches iOS `shortHex` (`prefix(8)…suffix(8)`).
  */
 @OptIn(ExperimentalUnsignedTypes::class)
@@ -133,14 +128,13 @@ class TypedAccountsDecoderTest {
         assertEquals("npub1qqq…qsg7lnxq", expected)
     }
 
-    // ── integration: fallback + typed-wins through the full frame path ─────────
+    // ── integration: typed-only frame path ────────────────────────────────────
 
     @Test
     fun noTypedSidecarYieldsEmptyAccounts() {
         // PR-B (#991/#979): the generic `payload:Value` fallback is gone.
         // Without a typed sidecar, accounts and activeAccount are empty/null.
         val frame = frame(
-            projections = { b -> valueMap(b) },
             typedSidecars = emptyList(),
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
@@ -154,7 +148,6 @@ class TypedAccountsDecoderTest {
     fun typedAccountsAndActiveAccountAreDecoded() {
         // PR-B: typed sidecars are the sole source of accounts/activeAccount.
         val frame = frame(
-            projections = { b -> valueMap(b) }, // lambda ignored post-PR-B
             typedSidecars = listOf(
                 Triple("accounts", "accounts", accountsBuffer()),
                 Triple("active_account", "active_account", activeAccountBuffer("idhex-active")),
@@ -173,7 +166,6 @@ class TypedAccountsDecoderTest {
     fun typedActiveAccountNullPubkeyIsAuthoritative() {
         // Typed `has_active_account == false` is AUTHORITATIVE null (not absent).
         val frame = frame(
-            projections = { b -> valueMap(b) }, // lambda ignored post-PR-B
             typedSidecars = listOf(
                 Triple("active_account", "active_account", activeAccountBuffer(null)),
             ),
@@ -184,20 +176,10 @@ class TypedAccountsDecoderTest {
     }
 
     @Test
-    fun malformedTypedAccountsFallsBackToGeneric() {
+    fun malformedTypedAccountsFailsClosed() {
         val garbled = accountsBuffer().copyOf()
         garbled[4] = 'X'.code.toByte() // clobber KACC identifier → undecodable
         val frame = frame(
-            projections = { b ->
-                valueMap(
-                    b,
-                    "accounts" to valueList(
-                        b,
-                        accountEntry(b, "fallback", npubFull, "Fb", "active", "nsec"),
-                    ),
-                    "active_account" to valueString(b, "fallback"),
-                )
-            },
             typedSidecars = listOf(
                 Triple("accounts", "accounts", garbled),
             ),
@@ -205,7 +187,7 @@ class TypedAccountsDecoderTest {
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val accounts = decoded.update.projections?.accounts.orEmpty()
         // PR-B: undecodable typed sidecar → no generic path; accounts is empty (fails closed).
-        assertTrue("garbled sidecar must yield empty accounts (no generic fallback in PR-B)", accounts.isEmpty())
+        assertTrue("garbled sidecar must yield empty accounts", accounts.isEmpty())
     }
 
     // ── builders ───────────────────────────────────────────────────────────────
@@ -260,33 +242,10 @@ class TypedAccountsDecoderTest {
         return b.sizedByteArray()
     }
 
-    /** One generic `AccountSummary` as a `Value` map (snake_case keys). */
-    private fun accountEntry(
-        b: FlatBufferBuilder,
-        id: String,
-        npub: String,
-        displayName: String,
-        status: String,
-        signerLabel: String,
-    ): Int = valueMap(
-        b,
-        "id" to valueString(b, id),
-        "npub" to valueString(b, npub),
-        "display_name" to valueString(b, displayName),
-        "status" to valueString(b, status),
-        "signer_label" to valueString(b, signerLabel),
-    )
-
     @OptIn(ExperimentalUnsignedTypes::class)
     private fun frame(
-        projections: (FlatBufferBuilder) -> Int,
         typedSidecars: List<Triple<String, String, ByteArray>>,
     ): ByteArray {
-        // `projections` lambda is unused post-PR-B (the generic `payload:Value`
-        // slot is gone; typed sidecars are the only projection source). The
-        // parameter is retained so existing callers compile unchanged — the
-        // lambda result is simply discarded. If a test relied on the generic path
-        // it must add a typed sidecar instead.
         val b = FlatBufferBuilder(2048)
         val sidecarOffsets = typedSidecars.map { (key, schemaId, bytes) ->
             typedProjection(b, key, schemaId, bytes)
@@ -333,29 +292,5 @@ class TypedAccountsDecoderTest {
             b, keyOffset, typedPayload,
             /* projectionRev = */ 0UL, /* state = */ ProjectionPresenceState.Changed,
         )
-    }
-
-    private fun valueString(b: FlatBufferBuilder, value: String): Int {
-        val s = b.createString(value)
-        return Value.createValue(b, ValueKind.String, false, 0L, 0UL, 0.0, s, 0, 0)
-    }
-
-    private fun valueInt(b: FlatBufferBuilder, value: Long): Int =
-        Value.createValue(b, ValueKind.Int, false, value, 0UL, 0.0, 0, 0, 0)
-
-    private fun valueBool(b: FlatBufferBuilder, value: Boolean): Int =
-        Value.createValue(b, ValueKind.Bool, value, 0L, 0UL, 0.0, 0, 0, 0)
-
-    private fun valueList(b: FlatBufferBuilder, vararg values: Int): Int {
-        val list = Value.createListVector(b, values)
-        return Value.createValue(b, ValueKind.List, false, 0L, 0UL, 0.0, 0, list, 0)
-    }
-
-    private fun valueMap(b: FlatBufferBuilder, vararg entries: Pair<String, Int>): Int {
-        val pairs = entries.map { (key, value) ->
-            TransportPair.createPair(b, b.createString(key), value)
-        }.toIntArray()
-        val map = Value.createMapVector(b, pairs)
-        return Value.createValue(b, ValueKind.Map, false, 0L, 0UL, 0.0, 0, 0, map)
     }
 }

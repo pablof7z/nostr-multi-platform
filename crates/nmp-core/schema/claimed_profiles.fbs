@@ -9,12 +9,7 @@ namespace nmp.kernel;
 // `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
 // `serde_json` serialisation of `claimed_profiles()` (a
 // `BTreeMap<String, ProfileCard>`: pubkey -> profile card for every currently
-// claimed UI profile) under the JSON key `"claimed_profiles"`. That generic
-// `Value` projection stays the source of truth (inserted unchanged); this
-// buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections`
-// sidecar (ADR-0037) under the SAME key. A host with a `KCPR` decoder prefers
-// this typed payload; an un-updated host falls back to the generic `Value`
-// subtree. Purely additive (Wave C).
+// claimed UI profile) under the JSON key `"claimed_profiles"`. This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
 // FlatBuffers has no map type, so the `pubkey -> ProfileCard` map is flattened
 // to a vector of `{key, value}` entries. The producer is a `BTreeMap`, so the

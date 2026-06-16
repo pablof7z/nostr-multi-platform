@@ -94,8 +94,6 @@ data class TimelineWindowPage(
 /**
  * Decoded OP-centric home projection payload (`RootFeedSnapshot`). [page] is
  * null when the snapshot carries no paging envelope (the empty-feed case).
- * ADR-0037 Commitment 4: the generic `Value` path can populate this type from
- * the Rust JSON serde output when no NOFS typed projection is available.
  */
 @Serializable
 data class ChirpOpFeedSnapshot(

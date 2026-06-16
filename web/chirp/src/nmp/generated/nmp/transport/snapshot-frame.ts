@@ -36,144 +36,144 @@ schemaVersion():number {
 }
 
 typedProjections(index: number, obj?:TypedProjection):TypedProjection|null {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? (obj || new TypedProjection()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 typedProjectionsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 rev():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 kernelSchemaVersion():number {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 lastTickMs():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 updateKind():string|null
 updateKind(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 updateKind(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 running():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 metrics(obj?:Metrics):Metrics|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? (obj || new Metrics()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 relayStatus(obj?:RelayStatus):RelayStatus|null {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? (obj || new RelayStatus()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 relayStatuses(index: number, obj?:RelayStatus):RelayStatus|null {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? (obj || new RelayStatus()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 relayStatusesLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 logicalInterests(index: number, obj?:LogicalInterestStatus):LogicalInterestStatus|null {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? (obj || new LogicalInterestStatus()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 logicalInterestsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 wireSubscriptions(index: number, obj?:WireSubscriptionStatus):WireSubscriptionStatus|null {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? (obj || new WireSubscriptionStatus()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 wireSubscriptionsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 logs(index: number):string
 logs(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
 logs(index: number,optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 28);
   return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
 }
 
 logsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 28);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 lastErrorToast():string|null
 lastErrorToast(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastErrorToast(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 30);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 lastErrorCategory():string|null
 lastErrorCategory(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastErrorCategory(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 34);
+  const offset = this.bb!.__offset(this.bb_pos, 32);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 lastPlannerError():string|null
 lastPlannerError(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastPlannerError(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 36);
+  const offset = this.bb!.__offset(this.bb_pos, 34);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 storeOpenFailure():string|null
 storeOpenFailure(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 storeOpenFailure(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 38);
+  const offset = this.bb!.__offset(this.bb_pos, 36);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 noConfiguredRelays():boolean|null {
-  const offset = this.bb!.__offset(this.bb_pos, 40);
+  const offset = this.bb!.__offset(this.bb_pos, 38);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : null;
 }
 
 negentropySyncStats(obj?:NegentropySyncStats):NegentropySyncStats|null {
-  const offset = this.bb!.__offset(this.bb_pos, 42);
+  const offset = this.bb!.__offset(this.bb_pos, 40);
   return offset ? (obj || new NegentropySyncStats()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 snapshotEpoch():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 44);
+  const offset = this.bb!.__offset(this.bb_pos, 42);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 sessionId():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 46);
+  const offset = this.bb!.__offset(this.bb_pos, 44);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 static startSnapshotFrame(builder:flatbuffers.Builder) {
-  builder.startObject(22);
+  builder.startObject(21);
 }
 
 static addSchemaVersion(builder:flatbuffers.Builder, schemaVersion:number) {
@@ -181,7 +181,7 @@ static addSchemaVersion(builder:flatbuffers.Builder, schemaVersion:number) {
 }
 
 static addTypedProjections(builder:flatbuffers.Builder, typedProjectionsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, typedProjectionsOffset, 0);
+  builder.addFieldOffset(1, typedProjectionsOffset, 0);
 }
 
 static createTypedProjectionsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -197,35 +197,35 @@ static startTypedProjectionsVector(builder:flatbuffers.Builder, numElems:number)
 }
 
 static addRev(builder:flatbuffers.Builder, rev:bigint) {
-  builder.addFieldInt64(3, rev, BigInt('0'));
+  builder.addFieldInt64(2, rev, BigInt('0'));
 }
 
 static addKernelSchemaVersion(builder:flatbuffers.Builder, kernelSchemaVersion:number) {
-  builder.addFieldInt32(4, kernelSchemaVersion, 0);
+  builder.addFieldInt32(3, kernelSchemaVersion, 0);
 }
 
 static addLastTickMs(builder:flatbuffers.Builder, lastTickMs:bigint) {
-  builder.addFieldInt64(5, lastTickMs, BigInt('0'));
+  builder.addFieldInt64(4, lastTickMs, BigInt('0'));
 }
 
 static addUpdateKind(builder:flatbuffers.Builder, updateKindOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, updateKindOffset, 0);
+  builder.addFieldOffset(5, updateKindOffset, 0);
 }
 
 static addRunning(builder:flatbuffers.Builder, running:boolean) {
-  builder.addFieldInt8(7, +running, +false);
+  builder.addFieldInt8(6, +running, +false);
 }
 
 static addMetrics(builder:flatbuffers.Builder, metricsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(8, metricsOffset, 0);
+  builder.addFieldOffset(7, metricsOffset, 0);
 }
 
 static addRelayStatus(builder:flatbuffers.Builder, relayStatusOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(9, relayStatusOffset, 0);
+  builder.addFieldOffset(8, relayStatusOffset, 0);
 }
 
 static addRelayStatuses(builder:flatbuffers.Builder, relayStatusesOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(10, relayStatusesOffset, 0);
+  builder.addFieldOffset(9, relayStatusesOffset, 0);
 }
 
 static createRelayStatusesVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -241,7 +241,7 @@ static startRelayStatusesVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addLogicalInterests(builder:flatbuffers.Builder, logicalInterestsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(11, logicalInterestsOffset, 0);
+  builder.addFieldOffset(10, logicalInterestsOffset, 0);
 }
 
 static createLogicalInterestsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -257,7 +257,7 @@ static startLogicalInterestsVector(builder:flatbuffers.Builder, numElems:number)
 }
 
 static addWireSubscriptions(builder:flatbuffers.Builder, wireSubscriptionsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(12, wireSubscriptionsOffset, 0);
+  builder.addFieldOffset(11, wireSubscriptionsOffset, 0);
 }
 
 static createWireSubscriptionsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -273,7 +273,7 @@ static startWireSubscriptionsVector(builder:flatbuffers.Builder, numElems:number
 }
 
 static addLogs(builder:flatbuffers.Builder, logsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(13, logsOffset, 0);
+  builder.addFieldOffset(12, logsOffset, 0);
 }
 
 static createLogsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -289,35 +289,35 @@ static startLogsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addLastErrorToast(builder:flatbuffers.Builder, lastErrorToastOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(14, lastErrorToastOffset, 0);
+  builder.addFieldOffset(13, lastErrorToastOffset, 0);
 }
 
 static addLastErrorCategory(builder:flatbuffers.Builder, lastErrorCategoryOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(15, lastErrorCategoryOffset, 0);
+  builder.addFieldOffset(14, lastErrorCategoryOffset, 0);
 }
 
 static addLastPlannerError(builder:flatbuffers.Builder, lastPlannerErrorOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(16, lastPlannerErrorOffset, 0);
+  builder.addFieldOffset(15, lastPlannerErrorOffset, 0);
 }
 
 static addStoreOpenFailure(builder:flatbuffers.Builder, storeOpenFailureOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(17, storeOpenFailureOffset, 0);
+  builder.addFieldOffset(16, storeOpenFailureOffset, 0);
 }
 
 static addNoConfiguredRelays(builder:flatbuffers.Builder, noConfiguredRelays:boolean) {
-  builder.addFieldInt8(18, +noConfiguredRelays, null);
+  builder.addFieldInt8(17, +noConfiguredRelays, null);
 }
 
 static addNegentropySyncStats(builder:flatbuffers.Builder, negentropySyncStatsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(19, negentropySyncStatsOffset, 0);
+  builder.addFieldOffset(18, negentropySyncStatsOffset, 0);
 }
 
 static addSnapshotEpoch(builder:flatbuffers.Builder, snapshotEpoch:bigint) {
-  builder.addFieldInt64(20, snapshotEpoch, BigInt('0'));
+  builder.addFieldInt64(19, snapshotEpoch, BigInt('0'));
 }
 
 static addSessionId(builder:flatbuffers.Builder, sessionId:bigint) {
-  builder.addFieldInt64(21, sessionId, BigInt('0'));
+  builder.addFieldInt64(20, sessionId, BigInt('0'));
 }
 
 static endSnapshotFrame(builder:flatbuffers.Builder):flatbuffers.Offset {

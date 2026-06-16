@@ -31,33 +31,6 @@ enum ProjectionPresenceState:ubyte {
   Cleared = 1
 }
 
-enum ValueKind:ubyte {
-  Null = 0,
-  Bool = 1,
-  Int = 2,
-  UInt = 3,
-  Float = 4,
-  String = 5,
-  List = 6,
-  Map = 7
-}
-
-table Pair {
-  key:string (required);
-  value:Value;
-}
-
-table Value {
-  kind:ValueKind = Null;
-  bool_value:bool = false;
-  int_value:long = 0;
-  uint_value:ulong = 0;
-  float_value:double = 0.0;
-  string_value:string;
-  list:[Value];
-  map:[Pair];
-}
-
 table TypedPayload {
   schema_id:string;
   schema_version:uint = 1;
@@ -190,23 +163,13 @@ table WireSubscriptionStatus {
 
 table SnapshotFrame {
   schema_version:uint = 1;
-  // PR-B (#991/#979): DEPRECATED — emission zeroed, no reader remains.
-  // Every kernel-built-in projection has a typed codec emitted each tick
-  // (accounts/active_account/profile/configured_relays/settings_hub/
-  // publish_outbox/outbox_summary/author_view/thread_view/resolved_profiles/
-  // claimed_events in kernel/typed_projections/; relay_statuses + metrics are
-  // ADR-0044 Tier-3 envelope fields). All Rust shells (chirp-tui,
-  // chirp-desktop, nmp-gallery TUI + desktop), iOS, and Android read
-  // typed-first. The field is kept `(deprecated)` so the vtable slot stays
-  // reserved: pre-PR-B frames (e.g. the v1 golden fixture) remain parseable,
-  // and no future field can be assigned this slot. Generated bindings expose
-  // no accessor for it; web/chirp's typed-first port is post-v1 (#1209).
-  payload:Value (deprecated);             // PR-B: zeroed — typed sidecars are authoritative
-  typed_projections:[TypedProjection];    // new: typed sidecar
+  // Generic `payload:Value` was deleted: there is no compatibility slot and no
+  // schema-level JSON escape hatch. Snapshot state is carried by the typed
+  // Tier-3 envelope fields below plus per-key typed projection sidecars.
+  typed_projections:[TypedProjection];
 
   // ADR-0044 Tier-3 envelope fields. APPENDED at the tail so existing
-  // payload-readers stay byte-compatible (FlatBuffers keys fields by vtable
-  // slot; new trailing fields read as default/absent on an old reader).
+  // typed readers get FlatBuffers defaults for fields they do not know.
   // Mirrors the top-level KernelSnapshot fields (types.rs:799).
   rev:ulong;                              // identity / revision
   kernel_schema_version:uint;             // KERNEL_SCHEMA_VERSION (distinct from

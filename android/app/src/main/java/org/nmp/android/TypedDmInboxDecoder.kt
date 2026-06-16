@@ -23,9 +23,8 @@ private const val TAG = "TypedDmInboxDecoder"
  * is always a wire vector (the producer never omits it), mapped to the domain
  * `List<String>`.
  *
- * ADR-0037 Commitment 4: typed-FIRST with permanent generic fallback. Returns
- * `null` when the `NDMI` sidecar is absent / wrong schema / unverifiable, so the
- * caller keeps the generic `payload:Value` `nmp.nip17.dm_inbox` subtree. A
+ * Returns `null` when the `NDMI` sidecar is absent / wrong schema /
+ * unverifiable, so the typed-only host keeps the DM inbox projection absent. A
  * malformed sidecar yields `null` (fail closed, D1/D6).
  */
 object TypedDmInboxDecoder {

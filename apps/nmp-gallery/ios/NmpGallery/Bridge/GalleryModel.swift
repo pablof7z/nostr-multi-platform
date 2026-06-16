@@ -84,7 +84,7 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 /// carries a Rust-formatted bech32 `npub` regardless of which source won —
 /// mention-sourced entries simply have empty `nip05` / `about` and `lnurl:
 /// null`. The extra `lnurl` field the card carries is ignored here.
-private struct ResolvedProfileWire: Decodable {
+private struct ResolvedProfileWire: Decodable, Sendable {
     let pubkey: String
     let npub: String
     let displayName: String?
@@ -106,7 +106,7 @@ private struct ResolvedProfileWire: Decodable {
 /// surface so the per-component pages stay decoupled from the wire
 /// shape. Decoding is fault-tolerant — a missing/null projection key
 /// degrades to an empty map instead of failing the whole tick.
-struct GallerySnapshot: Decodable, Equatable {
+struct GallerySnapshot: Decodable, Equatable, Sendable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
@@ -249,7 +249,7 @@ private extension String {
 /// Minimal `accounts` row decoder. Phase 1 doesn't render accounts but
 /// keeping a typed slot here means phase 2 (sign-in showcase) can wire UI
 /// without re-writing the model.
-struct AccountWire: Decodable, Equatable {
+struct AccountWire: Decodable, Equatable, Sendable {
     let pubkey: String
     let active: Bool
 

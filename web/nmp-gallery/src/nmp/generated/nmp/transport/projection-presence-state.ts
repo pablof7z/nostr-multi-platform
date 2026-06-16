@@ -2,13 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
-export enum ValueKind {
-  Null = 0,
-  Bool = 1,
-  Int = 2,
-  UInt = 3,
-  Float = 4,
-  String = 5,
-  List = 6,
-  Map = 7
+export enum ProjectionPresenceState {
+  Changed = 0,
+  Cleared = 1
 }

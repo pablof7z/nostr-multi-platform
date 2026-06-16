@@ -7,21 +7,12 @@
 //! visible); this module owns only the assembly of the final `SnapshotFrame`
 //! table — the transport layer's `SnapshotFrame` shape.
 //!
-//! PR-B (#991/#979): the `payload:Value` slot is now set to `None`. The
-//! generic JSON Value tree is no longer emitted. Every Rust shell (chirp-tui,
-//! chirp-desktop, nmp-gallery TUI, nmp-gallery desktop) reads typed-first from
-//! the Tier-3 `SnapshotEnvelope` + per-projection typed sidecars.
-//! iOS is unaffected — `KernelUpdateFrameDecoder.swift` already reads the Tier-3
-//! envelope fields and never read `payload`.
-//! Android was BROKEN by PR-B (#1084): `KernelUpdateFrameDecoder.kt` gated its
-//! entire decode on `snapshot.payload ?: return null`; the fix rebuilds the
-//! Android spine from the Tier-3 fields (same as iOS) in the same PR.
-//! Web/TS still reads `payload` on the generic path and is unaffected until
-//! its typed-first port (#1007, post-v1).
+//! The generic JSON `payload:Value` slot has been deleted from the transport
+//! schema. Every shell reads typed-first from the Tier-3 `SnapshotEnvelope` plus
+//! per-projection typed sidecars.
 
 use super::{
-    encode_typed_projections, TypedProjectionData, UpdateFrameBytes,
-    SNAPSHOT_SCHEMA_VERSION,
+    encode_typed_projections, TypedProjectionData, UpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION,
 };
 use crate::transport::wire as fb;
 use flatbuffers::FlatBufferBuilder;
@@ -37,8 +28,7 @@ pub(crate) struct FrameEpochStamp {
 }
 
 /// Encode a snapshot with the typed projection sidecar AND the typed Tier-3
-/// envelope fields (ADR-0044). The generic `payload:Value` slot is intentionally
-/// left absent (PR-B #991/#979: emission zeroed).
+/// envelope fields (ADR-0044).
 ///
 /// ADR-0055 Rung 2: `epoch` carries the frame-level epoch identity stamps
 /// (`snapshot_epoch` + `session_id`) so old readers ignore them (tail-appended
@@ -53,11 +43,9 @@ pub(crate) struct FrameEpochStamp {
 /// FlatBuffers offset into the builder's internal buffer may be retained past
 /// this function's return (the builder is single-writer on the actor thread).
 ///
-/// All Rust shells read typed-first; the deprecated `payload` field is absent in
-/// the wire bytes. The `snapshot: Value` parameter has been removed — the kernel
-/// no longer needs to serialise the full JSON snapshot for transport. The field
-/// is retained in the `.fbs` schema (marked `deprecated`) for schema
-/// compatibility with old pre-PR-B binaries; new readers never read it.
+/// The `snapshot: Value` parameter has been removed — the kernel no longer
+/// serialises the full JSON snapshot for transport, and the `.fbs` schema no
+/// longer carries a compatibility slot for it.
 #[must_use]
 pub(crate) fn encode_snapshot_with_envelope(
     builder: &mut FlatBufferBuilder<'_>,

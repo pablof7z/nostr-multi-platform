@@ -7,12 +7,7 @@ namespace nmp.kernel;
 // `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
 // `serde_json` serialisation of `mention_profiles()` (a
 // `HashMap<String, MentionProfilePayload>`: pubkey -> per-author raw kind:0
-// fields) under the JSON key `"mention_profiles"`. That generic `Value`
-// projection stays the source of truth (inserted unchanged); this buffer is
-// emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
-// (ADR-0037) under the SAME key. A host with a `KMPR` decoder prefers this
-// typed payload; an un-updated host falls back to the generic `Value` subtree.
-// Purely additive (Wave C).
+// fields) under the JSON key `"mention_profiles"`. This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
 // FlatBuffers has no map type, so the `pubkey -> MentionProfilePayload` map is
 // flattened to a vector of `{key, value}` entries sorted by `key` (the nip29 /

@@ -9,9 +9,9 @@ import org.junit.Test
 /**
  * Golden-frame regression test for issue #1084 (Android completely dark at v0.3.0).
  *
- * **Root cause**: `KernelUpdateFrameDecoder.decodeSnapshot` gated the entire decode
- * on `snapshot.payload ?: return null`. PR-B (#991/#979) stopped emitting
- * `payload:Value`, so every frame silently dropped, leaving Android dark.
+ * **Root cause**: `KernelUpdateFrameDecoder.decodeSnapshot` used the removed
+ * generic snapshot value path as its gate, so typed-only frames silently
+ * dropped and left Android dark.
  *
  * **Fix**: rebuild the decode spine from the Tier-3 `SnapshotFrame` envelope fields
  * (ADR-0044): `rev`, `running`, `metrics`, `relay_statuses`, `last_error_toast` —
@@ -25,7 +25,7 @@ import org.junit.Test
  * the new hex is printed to stderr only when the fixture drifts (not on every run).
  *
  * TDD evidence: this test FAILED before the fix (the old decoder returned null on
- * any frame where `payload` is absent) and PASSES after the Tier-3 spine rebuild.
+ * typed-only frames) and PASSES after the Tier-3 spine rebuild.
  */
 @OptIn(ExperimentalUnsignedTypes::class)
 class KernelUpdateFrameDecoderTier3GoldenTest {
@@ -42,10 +42,10 @@ class KernelUpdateFrameDecoderTier3GoldenTest {
         val bytes = bytesFromHex(hex)
         val decoded = KernelUpdateFrameDecoder.decode(bytes)
 
-        // Before the fix: decode() returned null (payload absent → early return).
+        // Before the fix: decode() returned null on typed-only frames.
         // After the fix: decode() returns a non-null Snapshot.
         assertNotNull(
-            "#1084 regression: decode() must not return null for a Tier-3 frame (payload absent)",
+            "#1084 regression: decode() must not return null for a typed Tier-3 frame",
             decoded,
         )
         check(decoded is KernelDecodedUpdateFrame.Snapshot) { "expected Snapshot, got $decoded" }
@@ -54,7 +54,7 @@ class KernelUpdateFrameDecoderTier3GoldenTest {
 
         // rev = 42 (matches golden_envelope() in Rust tests.rs)
         assertEquals(
-            "rev must come from Tier-3 SnapshotFrame.rev, not the absent payload:Value",
+            "rev must come from Tier-3 SnapshotFrame.rev",
             42L,
             update.rev,
         )

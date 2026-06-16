@@ -37,20 +37,20 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const RELAY_ROLE_OPTIONS_SCHEMA_ID: &str = "relay_role_options";
+pub const RELAY_ROLE_OPTIONS_SCHEMA_ID: &str = "relay_role_options";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const RELAY_ROLE_OPTIONS_FILE_IDENTIFIER: &[u8; 4] = b"KRRO";
+pub const RELAY_ROLE_OPTIONS_FILE_IDENTIFIER: &[u8; 4] = b"KRRO";
 /// Wire schema version. Bump on any breaking change to `relay_role_options.fbs`.
-pub(crate) const RELAY_ROLE_OPTIONS_SCHEMA_VERSION: u32 = 1;
+pub const RELAY_ROLE_OPTIONS_SCHEMA_VERSION: u32 = 1;
 
 /// One relay-role picker option — a field-for-field mirror of one
 /// `RelayRoleOption`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RelayRoleOptionRow {
-    pub(crate) value: String,
-    pub(crate) label: String,
-    pub(crate) tint: String,
-    pub(crate) is_default: bool,
+pub struct RelayRoleOptionRow {
+    pub value: String,
+    pub label: String,
+    pub tint: String,
+    pub is_default: bool,
 }
 
 /// The `"relay_role_options"` read model — the ordered picker options. Built
@@ -59,8 +59,8 @@ pub(crate) struct RelayRoleOptionRow {
 /// `crate::actor::relay_role_options()` output (whose element type is
 /// `pub(crate)`-but-unnameable outside the codegen feature) into these rows.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RelayRoleOptionsModel {
-    pub(crate) options: Vec<RelayRoleOptionRow>,
+pub struct RelayRoleOptionsModel {
+    pub options: Vec<RelayRoleOptionRow>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -106,8 +106,7 @@ pub(crate) fn encode_relay_role_options(model: &RelayRoleOptionsModel) -> Vec<u8
 /// Decode typed FlatBuffers bytes (as produced by [`encode_relay_role_options`])
 /// back into a [`RelayRoleOptionsModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_relay_role_options(bytes: &[u8]) -> Result<RelayRoleOptionsModel, String> {
+pub fn decode_relay_role_options(bytes: &[u8]) -> Result<RelayRoleOptionsModel, String> {
     if bytes.len() < 8 || !fb::relay_role_options_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KRRO file identifier".to_string());
     }

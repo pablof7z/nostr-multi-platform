@@ -30,7 +30,7 @@ class KernelBridge {
     private var handle: Long = 0
 
     init {
-        System.loadLibrary("nmp_app_gallery")
+        ensureLoaded()
         handle = nativeNew()
     }
 
@@ -156,4 +156,23 @@ class KernelBridge {
     private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
     private external fun nativeNextSignerRequest(handle: Long, timeoutMs: Long): String?
     private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
+
+    companion object {
+        private val loaded: Boolean = run {
+            System.loadLibrary("nmp_app_gallery")
+            true
+        }
+
+        private fun ensureLoaded() {
+            loaded
+        }
+
+        internal fun decodeSnapshotJson(frame: ByteArray): String? {
+            ensureLoaded()
+            return nativeDecodeSnapshotJson(frame)
+        }
+
+        @JvmStatic
+        private external fun nativeDecodeSnapshotJson(frame: ByteArray): String?
+    }
 }

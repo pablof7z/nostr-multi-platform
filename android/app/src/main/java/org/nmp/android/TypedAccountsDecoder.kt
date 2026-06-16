@@ -13,9 +13,9 @@ private const val TAG = "TypedAccountsDecoder"
 /**
  * Presence wrapper for the typed `active_account` (`KACT`) decode. The domain
  * value is a nullable `String?` where `null` means "no account active" — which
- * collides with the "fall back to generic" sentinel. So the decoder returns a
+ * collides with the "no typed sidecar" sentinel. So the decoder returns a
  * non-null [ActiveAccountResult] when (and only when) a usable `KACT` sidecar is
- * present; a null wrapper means "no typed sidecar, fall back". The inner
+ * present; a null wrapper means "no usable typed sidecar". The inner
  * [pubkey] then faithfully carries `null` (JSON `null`, `has_active_account ==
  * false`) without being confused for absence. Mirrors the wallet decoder's
  * `TypedWalletStrings?` presence pattern, and iOS
@@ -33,17 +33,14 @@ data class ActiveAccountResult(val pubkey: String?)
  *  - `active_account` (`KACT` / [ActiveAccountSnapshot]) → `String?`
  *
  * The producer is `Kernel::snapshot_projections_with_publish_cluster`
- * (`crates/nmp-core/src/kernel/update/projections.rs`), which inserts the
- * generic `Value` projection AND emits these buffers alongside under the SAME
- * key (ADR-0037). A host with a `KACC` / `KACT` decoder prefers the typed
- * payload; an un-updated host falls back to the generic `Value` subtree.
+ * (`crates/nmp-core/src/kernel/update/projections.rs`), which emits these typed
+ * buffers under the account-cluster keys.
  *
- * ADR-0037 Commitment 4: typed-FIRST with a permanent generic fallback.
  * [decodeAccounts] returns `null`, and [decodeActiveAccount] returns `null`,
  * when the matching sidecar is absent, carries the wrong schema id, or is an
- * un-verifiable buffer; the caller ([KernelUpdateFrameDecoder.decodeProjections])
- * then keeps the generic `Value` map for that key. A malformed sidecar yields
- * `null` (fail closed, D1/D6 — never a partial or stale value).
+ * unverifiable buffer; the caller then uses the typed-only empty/null default for
+ * that projection. A malformed sidecar yields `null` (fail closed, D1/D6 — never
+ * a partial or stale value).
  *
  * Field mapping note (#979): the `AccountSummaryRow` carries the FULL `npub`
  * (bech32). The Android [AccountSummary] domain type now also carries the full
@@ -66,9 +63,8 @@ object TypedAccountsDecoder {
     const val ACTIVE_ACCOUNT_FILE_IDENTIFIER = "KACT"
 
     /**
-     * Decode the typed `accounts` sidecar into the `List<AccountSummary>` the
-     * generic `payload:Value` path yields. `null` when no usable `KACC` sidecar
-     * is present (caller falls back to the generic decode).
+     * Decode the typed `accounts` sidecar into the Android domain list. `null`
+     * when no usable `KACC` sidecar is present.
      */
     fun decodeAccounts(projections: List<TypedProjectionEnvelope>): List<AccountSummary>? {
         val payload = selectPayload(projections, ACCOUNTS_KEY, ACCOUNTS_SCHEMA_ID) ?: return null
@@ -79,7 +75,7 @@ object TypedAccountsDecoder {
      * Decode the typed `active_account` sidecar. Returns a non-null
      * [ActiveAccountResult] only when a usable `KACT` sidecar is present (its
      * [ActiveAccountResult.pubkey] then carries the authoritative `String?`);
-     * `null` means "fall back to the generic decode".
+     * `null` means "no usable typed sidecar".
      */
     fun decodeActiveAccount(projections: List<TypedProjectionEnvelope>): ActiveAccountResult? {
         val payload = selectPayload(projections, ACTIVE_ACCOUNT_KEY, ACTIVE_ACCOUNT_SCHEMA_ID)
@@ -143,8 +139,7 @@ object TypedAccountsDecoder {
     /**
      * Map a typed [AccountSummaryRow] to the Android domain [AccountSummary].
      * Carries the full `npub`; `has_display_name == false` -> `displayName =
-     * ""` (the Android subset stores a defaulted-empty String, matching the
-     * generic `decodeAccountSummary` path).
+     * ""` (the Android subset stores a defaulted-empty String).
      */
     private fun mapAccountSummary(row: AccountSummaryRow): AccountSummary = AccountSummary(
         id = row.id ?: "",

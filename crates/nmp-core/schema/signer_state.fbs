@@ -15,11 +15,10 @@ namespace nmp.kernel;
 // `crates/nmp-core/src/actor/mod.rs`, which serialises the shared
 // `SignerStateSlot` (`Arc<Mutex<Option<SignerStateDto>>>`). When the slot holds
 // `None` (no remote-signer session active) the closure contributes JSON `null`;
-// when it holds `Some(dto)` it serialises the `SignerStateDto`. That generic
-// `Value` projection stays the source of truth (registered unchanged); this
-// buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections`
-// sidecar (ADR-0037) under the SAME key, and ONLY when the JSON closure
-// produces a non-null value.
+// when it holds `Some(dto)` it serialises the `SignerStateDto`. This typed
+// buffer is the host-visible update-frame representation and is emitted in
+// `SnapshotFrame.typed_projections` under the same key only when the slot
+// contains a value.
 //
 // Field-for-field mirror of the serialised `SignerStateDto`
 // (`crates/nmp-core/src/actor/commands/identity.rs`). All fields are present in
@@ -28,7 +27,8 @@ namespace nmp.kernel;
 //
 // D0: remote-signer session health is an app noun; NOT a typed `KernelSnapshot`
 // field — projected under `projections["signer_state"]` exactly like a
-// host-registered namespace, and typed here ALONGSIDE the generic `Value`.
+// host-registered namespace, and typed here as the host-visible update-frame
+// representation.
 // D6: the decoder returns `Err(String)` on malformed input, never panics.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
