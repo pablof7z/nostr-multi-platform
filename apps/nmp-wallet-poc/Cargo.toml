@@ -2,12 +2,18 @@
 # Not a member of the default workspace build (see top-level Cargo.toml exclude).
 # Compile on demand: `cargo build --manifest-path apps/nmp-wallet-poc/Cargo.toml`.
 # Re-activate when #1001 enters scope (together with nmp-nip60).
+#
+# This empty `[workspace]` table makes the parked app its OWN workspace root.
+# Otherwise Cargo's workspace auto-discovery walks up to the monorepo root,
+# sees this package in `[workspace].exclude`, and rejects standalone builds.
+[workspace]
+
 [package]
 name = "nmp-wallet-poc"
-version = { workspace = true }
-edition = { workspace = true }
-license = { workspace = true }
-repository.workspace = true
+version = "0.8.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/pablof7z/nostr-multi-platform"
 description = "NIP-60 wallet proof-of-concept: deposit testnut tokens, send a nutzap, receive and redeem. PARKED: post-v1 (depends on nmp-nip60 / #1001)."
 
 [[bin]]
