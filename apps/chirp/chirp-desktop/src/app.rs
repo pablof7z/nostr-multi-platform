@@ -20,7 +20,8 @@ use crate::snapshot::{
     ActionStageRow, DmConversationSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
     TimelineEventCard,
 };
-use nmp_chirp_config;
+use nmp_core::tags::Nip10Refs;
+use nmp_nip01::NoteRecord;
 
 // ---------------------------------------------------------------------------
 // App state
@@ -42,6 +43,7 @@ pub struct DesktopApp {
     pub(crate) latest: Arc<Mutex<Option<Snapshot>>>,
     pub(crate) tab: AppTab,
     pub(crate) compose: String,
+    pub(crate) reply_to: Option<NoteRecord>,
     pub(crate) selected_dm_pubkey: Option<String>,
     pub(crate) dm_compose: String,
     pub(crate) nsec_input: String,
@@ -90,6 +92,7 @@ impl DesktopApp {
             latest,
             tab: AppTab::Home,
             compose: String::new(),
+            reply_to: None,
             selected_dm_pubkey: None,
             dm_compose: String::new(),
             nsec_input: String::new(),
@@ -122,7 +125,7 @@ impl App for DesktopApp {
         self.sidebar(ctx, &snap);
         self.content(ctx, &snap);
 
-        if matches!(self.tab, AppTab::Home) {
+        if matches!(self.tab, AppTab::Home | AppTab::Thread(_)) || self.reply_to.is_some() {
             self.compose_bar(ctx, &snap);
         }
     }
@@ -277,13 +280,37 @@ impl DesktopApp {
             ui.add_space(6.0);
 
             let signed_in = snap.active_account.is_some();
+            let explicit_reply = self.reply_to.clone();
+            let thread_reply = match &self.tab {
+                AppTab::Thread(event_id) => thread_reply_target(snap, event_id),
+                _ => None,
+            };
+            let reply_target = explicit_reply.as_ref().or(thread_reply.as_ref());
 
             if let Some(err) = &snap.last_error_toast {
                 ui.colored_label(Color32::from_rgb(248, 113, 113), err);
             }
 
+            if let Some(target) = reply_target {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "Replying to {}",
+                            nmp_core::display::short_npub(&target.author)
+                        ))
+                        .small()
+                        .weak(),
+                    );
+                    if explicit_reply.is_some() && ui.small_button("Cancel").clicked() {
+                        self.reply_to = None;
+                    }
+                });
+            }
+
             ui.horizontal(|ui| {
-                let hint = if signed_in {
+                let hint = if reply_target.is_some() {
+                    "Write a reply…"
+                } else if signed_in {
                     "Write a note…"
                 } else {
                     "Write a note (sign in first to publish)…"
@@ -298,12 +325,20 @@ impl DesktopApp {
             ui.horizontal(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let can_send = signed_in && !self.compose.trim().is_empty();
+                    let label = if reply_target.is_some() {
+                        "Reply"
+                    } else {
+                        "Publish"
+                    };
                     if ui
-                        .add_enabled(can_send, egui::Button::new("Publish"))
+                        .add_enabled(can_send, egui::Button::new(label))
                         .clicked()
                     {
-                        let _ = self.bridge.publish_note(self.compose.trim(), None);
+                        let _ = self
+                            .bridge
+                            .publish_note(self.compose.trim(), reply_target);
                         self.compose.clear();
+                        self.reply_to = None;
                     }
                     if let Some(name) = snap.profile.display_name.as_deref() {
                         if !name.is_empty() {
@@ -350,7 +385,15 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &feed.cards {
-                    feed_card(ui, &entry.card, &profiles, &snap.embeds, &mut self.tab, &self.bridge);
+                    feed_card(
+                        ui,
+                        &entry.card,
+                        &profiles,
+                        &snap.embeds,
+                        &mut self.tab,
+                        &self.bridge,
+                        &mut self.reply_to,
+                    );
                     ui.add_space(6.0);
                 }
             });
@@ -387,7 +430,15 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &thread_feed.cards {
-                    feed_card(ui, &entry.card, &profiles, &snap.embeds, &mut self.tab, &self.bridge);
+                    feed_card(
+                        ui,
+                        &entry.card,
+                        &profiles,
+                        &snap.embeds,
+                        &mut self.tab,
+                        &self.bridge,
+                        &mut self.reply_to,
+                    );
                     ui.add_space(4.0);
                 }
             });
@@ -466,7 +517,15 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &author_feed.cards {
-                    feed_card(ui, &entry.card, &profiles, &snap.embeds, &mut self.tab, &self.bridge);
+                    feed_card(
+                        ui,
+                        &entry.card,
+                        &profiles,
+                        &snap.embeds,
+                        &mut self.tab,
+                        &self.bridge,
+                        &mut self.reply_to,
+                    );
                     ui.add_space(4.0);
                 }
             });
@@ -693,6 +752,27 @@ fn display_label(pubkey: &str, profiles: &HashMap<String, ProfileCard>) -> Strin
         .unwrap_or_else(|| nmp_core::display::short_npub(pubkey))
 }
 
+fn note_record_from_card(card: &TimelineEventCard) -> NoteRecord {
+    NoteRecord {
+        event_id: card.id.clone(),
+        author: card.author_pubkey.clone(),
+        created_at: card.created_at,
+        content: card.content.clone(),
+        refs: Nip10Refs::default(),
+    }
+}
+
+fn thread_reply_target(snap: &Snapshot, event_id: &str) -> Option<NoteRecord> {
+    let key = format!("nmp.feed.thread.{event_id}");
+    let feed: ModularTimelineSnapshot = snap.projection(&key)?;
+    let card = feed
+        .cards
+        .iter()
+        .find(|entry| entry.card.id == event_id)
+        .or_else(|| feed.cards.first())?;
+    Some(note_record_from_card(&card.card))
+}
+
 /// Render one home-feed root card (`nmp.feed.home` → `TimelineEventCard`).
 ///
 /// Display name is resolved from the snapshot's `resolved_profiles` map; the
@@ -705,6 +785,7 @@ fn feed_card(
     embeds: &HashMap<String, nmp_content::EmbeddedEventEnvelope>,
     tab: &mut AppTab,
     bridge: &AppRuntime,
+    reply_to: &mut Option<NoteRecord>,
 ) {
     let author_display = display_label(&card.author_pubkey, profiles);
     let initials =
@@ -772,6 +853,9 @@ fn feed_card(
                     }
                     // Like / Repost / Zap row.
                     ui.horizontal(|ui| {
+                        if ui.small_button("↩ Reply").clicked() {
+                            *reply_to = Some(note_record_from_card(card));
+                        }
                         if ui.small_button("❤ Like").clicked() {
                             let _ = bridge.react(&card.id, "+");
                         }
@@ -786,6 +870,30 @@ fn feed_card(
                 });
             });
         });
+}
+
+#[cfg(test)]
+mod reply_tests {
+    use super::*;
+
+    #[test]
+    fn reply_record_from_card_carries_raw_parent_fields() {
+        let card = TimelineEventCard {
+            id: "event-id".to_string(),
+            author_pubkey: "author-pubkey".to_string(),
+            created_at: 42,
+            content: "parent".to_string(),
+            ..Default::default()
+        };
+
+        let record = note_record_from_card(&card);
+
+        assert_eq!(record.event_id, "event-id");
+        assert_eq!(record.author, "author-pubkey");
+        assert_eq!(record.created_at, 42);
+        assert_eq!(record.content, "parent");
+        assert_eq!(record.refs, Nip10Refs::default());
+    }
 }
 
 pub(crate) fn relay_role_label(role: &str) -> &str {
