@@ -19,6 +19,7 @@ pub(crate) mod action_registry;
 // an append-only record of host-init registration decisions, read back as JSON
 // through `nmp_app_composition_report`. Written only at registration time, not
 // on any hot path (D8).
+mod composition_accessors;
 pub mod composition_ledger;
 mod composition_seams;
 // Actor-owned per-correlation_id stage tracker. `pub(crate)` so the
@@ -312,9 +313,9 @@ mod auth_tests;
 #[cfg(test)]
 mod auth_url_threading_tests;
 #[cfg(test)]
-mod contacts_fanout_tests;
-#[cfg(test)]
 mod contacts_chokepoint_pr3_tests;
+#[cfg(test)]
+mod contacts_fanout_tests;
 
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ};
 // `chrono::Local` reads the OS-local wall clock; the `clock` feature it lives
@@ -2138,10 +2139,7 @@ impl Kernel {
         // the LMDB-tier gc_step (#1085) so the two paths stay independent and
         // merge-clean.
         let ram_report = self.evict_ram_caches();
-        if ram_report.events_evicted
-            + ram_report.profiles_evicted
-            + ram_report.contacts_evicted
-            > 0
+        if ram_report.events_evicted + ram_report.profiles_evicted + ram_report.contacts_evicted > 0
         {
             tracing::debug!(
                 events_evicted = ram_report.events_evicted,
@@ -2675,167 +2673,6 @@ impl Kernel {
     #[allow(dead_code)] // Reserved for follow-on wiring of actual routing call sites.
     pub(crate) fn outbox_router(&self) -> &dyn OutboxRouter {
         &*self.outbox_router
-    }
-
-    /// Inject the DM-inbox relay lookup (V-40 composition seam). Production
-    /// composition (apps that depend on `nmp-nip17`) calls this after
-    /// `Kernel::new` to install the shared `Arc<DmRelayCache>` so the
-    /// kernel's `recipient_dm_relays` reader + the planner-side
-    /// `KernelMailboxes` adapter both see the same kind:10050 entries the
-    /// kind:10050 ingest parser writes. Default is
-    /// [`crate::substrate::EmptyDmInboxRelayLookup`] (every lookup returns
-    /// `None`, the fail-closed cold-start contract).
-    ///
-    /// MUST be called BEFORE the first kind:10050 event is ingested — the
-    /// caches are independent stores, not a write-through pair, so a swap
-    /// after ingest would lose cached entries.
-    pub(crate) fn set_dm_inbox_relay_lookup(&mut self, lookup: Arc<dyn DmInboxRelayLookup>) {
-        self.dm_inbox_relays = lookup;
-    }
-
-    /// Inject the kind:0 profile lookup (composition seam — ADR-0057 PR 2).
-    /// Apps that depend on `nmp-nip01` call this after `Kernel::new` to install
-    /// a shared `Arc<ProfileCache>` so the enrichment / claim-TTL / zap-LNURL /
-    /// RAM-eviction readers AND the kind:0 ingest-parser writer all see the
-    /// same cache. Default is [`crate::substrate::EmptyProfileLookup`] (every
-    /// lookup returns `None`, the cold-start "no kind:0 yet" contract).
-    ///
-    /// MUST be called BEFORE the first kind:0 event is ingested — the cache is
-    /// an independent store, not a write-through pair, so a swap after ingest
-    /// would lose cached entries.
-    pub(crate) fn set_profile_lookup(&mut self, lookup: Arc<dyn ProfileLookup>) {
-        self.profile_lookup = lookup;
-    }
-
-    /// Read accessor for the injected profile lookup. The kernel's profile
-    /// readers (`profile_for_pubkey`, claim-TTL gates, zap LNURL, RAM eviction)
-    /// consult this trait object; it never names the kind:0 wire format (D0).
-    pub(crate) fn profile_lookup(&self) -> &dyn ProfileLookup {
-        &*self.profile_lookup
-    }
-
-    /// Inject the kind:3 contacts (follow-set) lookup (composition seam —
-    /// ADR-0057 PR 3). Apps that depend on `nmp-nip01` call this after
-    /// `Kernel::new` to install a shared `Arc<ContactsCache>` so the
-    /// follow-feed registration / byte-estimate / RAM-eviction readers AND the
-    /// kind:3 ingest-parser writer all see the same cache. Default is
-    /// [`crate::substrate::EmptyContactsLookup`] (every lookup returns `None`,
-    /// the cold-start "no kind:3 yet" contract).
-    ///
-    /// MUST be called BEFORE the first kind:3 event is ingested — the cache is
-    /// an independent store, not a write-through pair, so a swap after ingest
-    /// would lose cached entries.
-    pub(crate) fn set_contacts_lookup(&mut self, lookup: Arc<dyn ContactsLookup>) {
-        self.contacts_lookup = lookup;
-    }
-
-    /// Read accessor for the injected contacts lookup. The kernel's contacts
-    /// readers (`register_follow_feed_for_active_account`, the byte estimate,
-    /// RAM eviction, the `contacts_authors` diagnostic) consult this trait
-    /// object; it never names the kind:3 wire format (D0).
-    pub(crate) fn contacts_lookup(&self) -> &dyn ContactsLookup {
-        &*self.contacts_lookup
-    }
-
-    /// Inject the blocked-relay lookup (composition seam). Apps that depend on
-    /// `nmp-router` call this after `Kernel::new` to install a shared
-    /// `Arc<InMemoryBlockedRelayCache>` so the `build_routing_context` reader,
-    /// the kind:10006 ingest parser writer, AND the publish engine all see the
-    /// same cache. Default is [`crate::substrate::EmptyBlockedRelayLookup`]
-    /// (zero-block). MUST be called BEFORE the first kind:10006 ingest — the
-    /// caches are independent stores, so a swap after ingest loses entries.
-    pub(crate) fn set_blocked_relay_lookup(&mut self, lookup: Arc<dyn BlockedRelayLookup>) {
-        // Forward to the publish engine (privacy fix — the outbox resolver
-        // must also exclude blocked relays); then keep the routing-side handle.
-        self.publish_engine
-            .set_blocked_relay_lookup(Arc::clone(&lookup));
-        self.blocked_relays = lookup;
-    }
-
-    /// Shared handle to the injected `Arc<dyn BlockedRelayLookup>` — used by
-    /// `kernel/mailboxes.rs::build_routing_context` to snapshot a
-    /// [`crate::substrate::BlockedRelaySet`] per call.
-    pub(crate) fn blocked_relays_arc(&self) -> Arc<dyn BlockedRelayLookup> {
-        Arc::clone(&self.blocked_relays)
-    }
-
-    /// Override the active-account bootstrap Tailing self-kinds list
-    /// (`startup::SELF_KINDS_TAILING`). `None` (the default) uses the
-    /// built-in list.
-    ///
-    /// MUST be called BEFORE the first `active_account_bootstrap_requests`
-    /// call so the override takes effect on cold-start / sign-in. The
-    /// FFI's `bootstrap_self_kinds` pre-start slot wires through this
-    /// setter at actor start.
-    pub(crate) fn set_bootstrap_self_kinds_override(&mut self, kinds: Option<Vec<u32>>) {
-        self.bootstrap_self_kinds_override = kinds;
-    }
-
-    /// Read-only accessor for the bootstrap self-kinds override slot. The
-    /// `startup.rs` module reads through this rather than the bare field
-    /// so the override resolution policy (None → use builtin) stays
-    /// localised to a single call site.
-    pub(crate) fn bootstrap_self_kinds_override(&self) -> Option<&[u32]> {
-        self.bootstrap_self_kinds_override.as_deref()
-    }
-
-    /// Replace the kernel's [`EventIngestDispatcher`] slot with `slot`.
-    /// Composition-time wiring path — the actor calls this with the
-    /// `Arc<RwLock<EventIngestDispatcher>>` slot owned by `NmpApp` so
-    /// `NmpApp::register_ingest_parser` and the kernel share one
-    /// dispatcher.
-    ///
-    /// MUST be called BEFORE the first event is ingested.
-    pub(crate) fn set_ingest_dispatcher_slot(
-        &mut self,
-        slot: Arc<std::sync::RwLock<EventIngestDispatcher>>,
-    ) {
-        self.ingest_dispatcher = slot;
-    }
-
-    /// Shared handle to the injected `Arc<dyn DmInboxRelayLookup>`. Used by
-    /// the planner-side `KernelMailboxes` adapter so the planner reads the
-    /// same DM-inbox relay entries the gift-wrap publish path reads.
-    pub(crate) fn dm_inbox_relays_arc(&self) -> Arc<dyn DmInboxRelayLookup> {
-        Arc::clone(&self.dm_inbox_relays)
-    }
-
-    /// Register a [`crate::substrate::IngestParser`] for `kind` against the
-    /// kernel's shared [`EventIngestDispatcher`] slot. Composition-time
-    /// wiring path — `NmpApp::register_ingest_parser` calls this through
-    /// a kernel handle shared with the actor; the slot pattern matches
-    /// the rest of the substrate's host-extension seams.
-    ///
-    /// D6 — a poisoned dispatcher lock degrades to a no-op (the
-    /// registration is dropped; the kernel keeps its current set).
-    /// MUST be called before the first event is ingested.
-    #[allow(dead_code)] // Wired through `NmpApp` at composition time.
-    pub(crate) fn register_ingest_parser(
-        &self,
-        kind: u32,
-        parser: Arc<dyn crate::substrate::IngestParser>,
-    ) {
-        if let Ok(mut d) = self.ingest_dispatcher.write() {
-            d.register_kind(kind, parser);
-        }
-    }
-
-    /// Shared handle to the kernel's [`EventIngestDispatcher`] slot. Used
-    /// by the actor / kernel ingest path to dispatch a verified event to
-    /// every registered parser; used by the FFI composition seam to
-    /// install fresh parsers.
-    pub(crate) fn ingest_dispatcher_slot(&self) -> Arc<std::sync::RwLock<EventIngestDispatcher>> {
-        Arc::clone(&self.ingest_dispatcher)
-    }
-
-    /// V-58 — drain any pending backoff hints enqueued during the last
-    /// `handle_message` call. The actor calls this immediately after each
-    /// inbound frame dispatch to forward hints to the pool worker.
-    ///
-    /// Returns an empty `Vec` (no allocation) when there are no hints.
-    /// The returned `Vec` is owned; the kernel's queue is cleared on return.
-    pub(crate) fn take_backoff_hints(&mut self) -> Vec<(String, BackoffHint)> {
-        std::mem::take(&mut self.pending_backoff_hints)
     }
 }
 

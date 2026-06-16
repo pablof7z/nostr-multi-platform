@@ -583,39 +583,28 @@ mod tests {
         let key = author_feed_key(&pubkey);
         let app_ref = unsafe { &*app };
         let typed = app_ref.run_typed_snapshot_projections();
-        let entry = typed
-            .iter()
-            .find(|p| p.key == key)
-            .expect("typed sidecar registered under the dynamic author key");
+        let entry = typed.iter().find(|p| p.key == key).expect("typed sidecar");
 
-        // Same op-feed schema identity the home feed (`nmp.feed.home`) uses —
-        // no new .fbs; the host's NOFS decoder is reused verbatim.
         assert_eq!(entry.schema_id, OP_FEED_SCHEMA_ID);
         assert_eq!(entry.schema_version, OP_FEED_SCHEMA_VERSION);
         assert_eq!(entry.file_identifier, "NOFS");
 
-        // The typed payload decodes to the SAME seeded cards (newest-first) the
-        // generic JSON projection carries — typed and JSON never diverge.
         let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload)
             .expect("typed payload decodes as a NOFS op-feed snapshot");
         let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
         assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
 
-        // unregister_feed (close) tears down the typed sidecar by key and emits
-        // one Cleared row so an incremental host drops the cached dynamic key.
         nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
         let typed_after = app_ref.run_typed_snapshot_projections();
         let clear = typed_after
             .iter()
             .find(|p| p.key == key)
-            .expect("close must emit a typed Cleared row for the dynamic key");
+            .expect("Cleared row");
         assert_eq!(clear.state, WireProjectionState::Cleared);
         assert!(clear.payload.is_empty());
+        let typed_again = app_ref.run_typed_snapshot_projections();
         assert!(
-            app_ref
-                .run_typed_snapshot_projections()
-                .iter()
-                .all(|p| p.key != key),
+            typed_again.iter().all(|p| p.key != key),
             "typed Cleared row must be one-shot"
         );
         nmp_app_free(app);

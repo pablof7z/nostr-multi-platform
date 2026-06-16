@@ -313,10 +313,7 @@ fn panicking_projection_is_contained_and_others_survive() {
     );
 }
 
-/// ADR-0037 — a registered typed projection's opaque bytes are collected by
-/// `run_typed`, keyed by the projection key, carried verbatim. The typed
-/// registry shares the slot with the generic one but is a separate map, so a
-/// typed-only registration contributes nothing to `run` (the generic path).
+/// ADR-0037: `run_typed` carries registered opaque bytes by projection key.
 #[test]
 fn registered_typed_projection_surfaces_through_run_typed() {
     let slot = new_snapshot_projection_slot();
@@ -335,8 +332,7 @@ fn registered_typed_projection_surfaces_through_run_typed() {
     );
 }
 
-/// A typed projection that returns `None` contributes no sidecar entry this
-/// tick. Under incremental apply this means "retain prior value", not "clear".
+/// `None` means "no changed payload this tick", not "clear".
 #[test]
 fn typed_projection_returning_none_is_skipped() {
     let slot = new_snapshot_projection_slot();
@@ -350,10 +346,7 @@ fn typed_projection_returning_none_is_skipped() {
     assert_eq!(typed[0].key, "present");
 }
 
-/// D6 — a typed projection closure that panics is contained: its entry is
-/// omitted and every sibling typed projection in the same tick still produces
-/// its bytes. The actor thread is never unwound (same guarantee as the generic
-/// `run` path).
+/// D6: a panicking typed projection is omitted without killing siblings.
 #[test]
 fn panicking_typed_projection_is_contained_and_others_survive() {
     let slot = new_snapshot_projection_slot();
@@ -373,20 +366,23 @@ fn panicking_typed_projection_is_contained_and_others_survive() {
     assert_eq!(typed[0].key, "good");
 }
 
-/// `SnapshotRegistry::remove(key)` drops the projection from BOTH maps and emits
-/// one typed `Cleared` row. Tier-1 host keys are not in the built-in manifest, so
-/// this is the only way an incremental host can distinguish "feed closed" from
-/// "feed omitted because unchanged".
+/// `remove(key)` drops both maps and emits one typed `Cleared` row.
 #[test]
 fn remove_drops_generic_and_typed_for_one_key_only() {
     let mut registry = SnapshotRegistry::new();
     // A transient feed registers BOTH a generic and a typed projection under its
     // key; a sibling (e.g. the home feed) is registered too.
-    registry.register("nmp.feed.author.alice", || serde_json::json!({ "cards": [] }));
+    registry.register(
+        "nmp.feed.author.alice",
+        || serde_json::json!({ "cards": [] }),
+    );
     registry.register_typed("nmp.feed.author.alice", || {
         Some(typed_entry("nmp.feed.author.alice", &[0xAB]))
     });
-    registry.register("nmp.feed.home", || serde_json::json!({ "cards": [{ "id": "h" }] }));
+    registry.register(
+        "nmp.feed.home",
+        || serde_json::json!({ "cards": [{ "id": "h" }] }),
+    );
 
     // Removing the transient key reports success and clears it from both maps.
     assert!(registry.remove("nmp.feed.author.alice"));
@@ -399,17 +395,12 @@ fn remove_drops_generic_and_typed_for_one_key_only() {
     let clear = typed
         .iter()
         .find(|t| t.key == "nmp.feed.author.alice")
-        .expect("typed removal must emit one Cleared row");
+        .expect("Cleared row");
     assert_eq!(clear.state, WireProjectionState::Cleared);
+    assert!(clear.payload.is_empty(), "Cleared rows carry no payload");
+    let typed_again = registry.run_typed();
     assert!(
-        clear.payload.is_empty(),
-        "Cleared rows carry no typed payload bytes"
-    );
-    assert!(
-        registry
-            .run_typed()
-            .iter()
-            .all(|t| t.key != "nmp.feed.author.alice"),
+        typed_again.iter().all(|t| t.key != "nmp.feed.author.alice"),
         "typed Cleared row must be one-shot"
     );
 

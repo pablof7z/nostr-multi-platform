@@ -350,12 +350,11 @@ impl SnapshotRegistry {
     pub fn remove(&mut self, key: &str) -> bool {
         let removed_generic = self.projections.remove(key).is_some();
         let removed_typed = self.typed_projections.remove(key).is_some();
-        if removed_typed
-            && !self
-                .pending_typed_clears
-                .iter()
-                .any(|pending| pending == key)
-        {
+        let clear_pending = self
+            .pending_typed_clears
+            .iter()
+            .any(|pending| pending == key);
+        if removed_typed && !clear_pending {
             self.pending_typed_clears.push(key.to_string());
         }
         removed_generic || removed_typed
@@ -396,10 +395,9 @@ impl SnapshotRegistry {
     /// vector that becomes the snapshot frame's `typed_projections` sidecar.
     ///
     /// Mirrors [`Self::run`]: each closure runs on the actor thread inside
-    /// `make_update`, so it must be non-blocking (D8). A closure that returns
-    /// `None` contributes no sidecar entry (retain prior value under incremental
-    /// apply); a removed typed key contributes one `Cleared` row from the pending
-    /// queue. A closure panic is swallowed inside [`catch_unwind`] (D6).
+    /// `make_update`, so it must be non-blocking (D8). `None` means retain the
+    /// prior value; removed keys emit one pending `Cleared` row. Closure panics
+    /// are swallowed inside [`catch_unwind`] (D6).
     pub fn run_typed(&mut self) -> Vec<TypedProjectionData> {
         let mut out = Vec::with_capacity(self.typed_projections.len());
         for projection in self.typed_projections.values() {
