@@ -12,15 +12,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -51,6 +56,7 @@ fun ThreadScreen(
     val cardLookup = cards.associate { it.card.id to it.card }
     val resolvedProfiles = projections?.resolvedProfiles ?: emptyMap()
     val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    var replyContent by remember(eventId) { mutableStateOf("") }
 
     // Provide the on-demand claimer at the thread root so `RememberProfileClaim`
     // calls in thread author rows are live (not no-ops) — mirrors TimelineScreen
@@ -99,7 +105,8 @@ fun ThreadScreen(
             if (cards.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .weight(1f)
+                        .fillMaxWidth()
                         .padding(16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -110,7 +117,7 @@ fun ThreadScreen(
                     )
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                     itemsIndexed(
                         cards,
                         key = { _, root -> root.card.id },
@@ -125,6 +132,35 @@ fun ThreadScreen(
                             HorizontalDivider(Modifier.padding(start = 56.dp))
                         }
                     }
+                }
+            }
+
+            HorizontalDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextField(
+                    value = replyContent,
+                    onValueChange = { replyContent = it },
+                    label = { Text("Write a reply") },
+                    modifier = Modifier.weight(1f),
+                    maxLines = 4,
+                )
+                Spacer(Modifier.size(8.dp))
+                Button(
+                    onClick = {
+                        val content = replyContent.trim()
+                        if (content.isNotEmpty()) {
+                            model.publishNote(content, eventId)
+                            replyContent = ""
+                        }
+                    },
+                    enabled = replyContent.isNotBlank(),
+                ) {
+                    Text("Reply")
                 }
             }
         }

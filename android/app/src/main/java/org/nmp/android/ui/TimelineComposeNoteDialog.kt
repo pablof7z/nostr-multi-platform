@@ -24,17 +24,20 @@ import androidx.compose.ui.unit.dp
 internal fun ComposeNoteDialog(
     onDismiss: () -> Unit,
     onPublish: (content: String) -> Unit,
+    title: String = "New Note",
+    inputLabel: String = "What's happening?",
+    confirmLabel: String = "Publish",
 ) {
     var content by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Note") },
+        title = { Text(title) },
         text = {
             TextField(
                 value = content,
                 onValueChange = { content = it },
-                label = { Text("What's happening?") },
+                label = { Text(inputLabel) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp),
@@ -50,7 +53,7 @@ internal fun ComposeNoteDialog(
                 },
                 enabled = content.isNotBlank(),
             ) {
-                Text("Publish")
+                Text(confirmLabel)
             }
         },
         dismissButton = {
