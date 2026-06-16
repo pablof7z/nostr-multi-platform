@@ -79,8 +79,8 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
 ///
-/// The kernel pre-merges `claimed_profiles`, `author_view.profile`, and
-/// `mention_profiles` into this single key (see PR #812), so every entry
+/// The kernel pre-merges `claimed_profiles` and `mention_profiles` into this
+/// single key, so every entry
 /// carries a Rust-formatted bech32 `npub` regardless of which source won —
 /// mention-sourced entries simply have empty `nip05` / `about` and `lnurl:
 /// null`. The extra `lnurl` field the card carries is ignored here.
@@ -98,10 +98,9 @@ private struct ResolvedProfileWire: Decodable {
 /// gallery reads the pre-merged profile key from it:
 ///
 ///   * `projections.resolved_profiles[pubkey]` — the kernel's single,
-///     pre-merged `ProfileCard` per pubkey. The kernel applies the three-source
-///     precedence (`claimed_profiles` → `author_view.profile` →
-///     `mention_profiles`) once in Rust (PR #812); the gallery no longer
-///     re-implements that merge. Always present (`{}` when empty).
+///     pre-merged `ProfileCard` per pubkey. The kernel applies precedence
+///     (`claimed_profiles` → `mention_profiles`) once in Rust; the gallery no
+///     longer re-implements that merge. Always present (`{}` when empty).
 ///
 /// `snapshot.profiles[pubkey] -> ProfileWire?` is decoded directly from that
 /// surface so the per-component pages stay decoupled from the wire
@@ -163,9 +162,9 @@ struct GallerySnapshot: Decodable, Equatable {
             forKey: .projections
         ) {
             // The kernel ships one pre-merged card per pubkey under
-            // `resolved_profiles` (PR #812). The three-source precedence
-            // (claimed_profiles → author_view → mention_profiles) is applied
-            // in Rust; the gallery just decodes the result.
+            // `resolved_profiles`. The precedence
+            // (claimed_profiles -> mention_profiles) is applied in Rust; the
+            // gallery just decodes the result.
             if let resolved = try? projections.decodeIfPresent(
                 [String: ResolvedProfileWire].self,
                 forKey: .resolvedProfiles

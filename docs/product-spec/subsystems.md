@@ -198,6 +198,12 @@ represented explicitly rather than replaced by a display fallback:
 
 When the underlying data arrives — kind:0 for an author, kind-9735 zap receipts for a note, the actual decrypted body for a DM — the view payload updates in place, the platform's reactive primitive detects the change, and only the affected cell re-renders. No spinner is ever shown for already-rendered cells.
 
+Projection presence is a separate transport contract. A missing field inside a
+decoded payload means the domain-specific D1 state above. A missing typed
+projection row in an incremental frame means the projection did not change and
+the host keeps its last decoded value. Projection teardown is explicit via
+`Cleared`.
+
 **Stale freshness is exposed, not gated.** Each enriched-from-cache field may optionally carry a sibling field `xxx_freshness: FreshnessHint` (recent, hours_old, days_old, never_verified). UI may choose to render a small badge. The framework never withholds the underlying value based on freshness.
 
 **Concrete example: lean timeline payload.**

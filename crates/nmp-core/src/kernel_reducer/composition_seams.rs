@@ -55,8 +55,10 @@ impl super::KernelReducer {
     ///
     /// The closure `f` is called once per `make_update_frame` tick (on the
     /// wasm32 path that is the 1 Hz timer + explicit snapshot pulls). It
-    /// returns `Some(TypedProjectionData)` when there is data to emit, or
-    /// `None` to suppress the key for that tick.
+    /// returns `Some(TypedProjectionData)` when there is a changed payload to
+    /// emit, or `None` to omit an unchanged row for that tick. Under
+    /// incremental apply, omission retains the host cache; unregistering the
+    /// key emits an explicit `Cleared` row.
     ///
     /// This is the wasm32 equivalent of
     /// `NmpApp::register_typed_snapshot_projection`.

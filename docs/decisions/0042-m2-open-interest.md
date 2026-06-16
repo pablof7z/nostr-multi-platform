@@ -3,8 +3,8 @@
 - Status: Accepted (mechanism). Read-path admission/projection finalized by ADR-0057.
 - Date: 2026-06-03
 - Supersedes the bespoke per-verb feed primitives scheduled for removal in
-  `crates/nmp-core/src/kernel/requests/profile.rs` (module doc) and
-  `crates/nmp-core/src/kernel/requests/thread.rs` (module doc), per
+  `crates/nmp-core/src/kernel/requests/profile.rs` and the deleted
+  `kernel/requests/thread.rs` stub, per
   `docs/design/subscription-compilation/compiler.md` §3.5 ("M2 full migration").
 
 ## 1. Context
@@ -83,8 +83,10 @@ The `scope` param maps to `crate::planner::InterestScope` on the
 `ActiveAccount` folds to `SubScope::Global` for the dedup key — identical to the
 existing `InterestRegistry::legacy_scope` convention — while the real
 `InterestScope::ActiveAccount` rides on the `LogicalInterest` so the compiler
-re-routes on account switch. Author/thread feeds use scope `0` (re-route on
-switch); hashtag feeds use scope `1` (account-agnostic).
+re-routes on account switch. Contact feeds use the account-routed surface. A
+visited author or open thread is keyed to a concrete pubkey/root id and uses
+scope `1` (Global); it does not reroute on account switch. Hashtag feeds also
+use scope `1`.
 
 ## 3. Net symbol delta
 
@@ -121,13 +123,12 @@ screens with no event source.
 The migration replaces the kernel's bundled decision with **explicit app
 composition**:
 
-- **Notes / replies feed** → the host calls `open_interest` with the filter it
-  chooses (`{1,6}` for Chirp). The kind set now lives in Swift (D0-correct).
+- **Notes / replies feed** → the app crate calls `open_interest` with the filter it
+  chooses (`{1,6}` for Chirp). The kind set now lives in Chirp's Rust
+  composition root (D0-correct), not in `nmp-core`.
 - **Profile card** → `claim_profile(pubkey, "author-page-<pk>", …)` → the
-  highest-precedence `claimed_profiles` projection tier (which already exists
-  and, per the deleted `projections.rs` precedence `claimed_profiles >
-  author_view.profile > mention_profiles`, already overrode the
-  `author_view.profile` tier this ADR removes).
+  highest-precedence `claimed_profiles` projection tier. The deleted author-view
+  profile tier no longer participates in profile resolution.
 - **Thread root hydration** → `claim_event(nostr:nevent…, "thread-root-<id>", …)`
   → `claimed_events`. When the root URI cannot be determined from context the
   call is skipped (a follow-up, not a refactor blocker).
@@ -165,11 +166,13 @@ and the home feed already runs on it:
   for every stored event — `kernel/ingest/timeline.rs:219`).
 
 Author and thread feeds are therefore additional **feed instances registered
-under their own keys** (e.g. `nmp.feed.author.<consumer>` /
-`nmp.feed.thread.<consumer>`) through the same `register_feed` +
-`register_event_observer` composition the home feed uses — or a single generic
-filter-feed instance in `nmp-nip01`/`nmp-feed` parameterised by the
-`InterestShape` the matching `open_interest` registered. Building a parallel
+under their own keys** (`nmp.feed.author.<pubkey>` /
+`nmp.feed.thread.<event_id>`) through the same feed registry, event-observer,
+and typed-sidecar composition the home feed uses. Chirp's app crate is the
+owner: open registers `FlatFeed` + observer + `NOFS` typed projection and then
+opens the matching `open_interest`; close unregisters the dynamic key and
+closes the matching interest. Removing the typed projection emits one one-shot
+`Cleared` row so host caches drop the key immediately. Building a parallel
 `interest_feeds` snapshot projection next to this engine would be exactly the
 "parallel machinery / substrate theater" the repo forbids; the existing seam is
 the architecturally-right home.
@@ -188,11 +191,10 @@ The task framed this as "−5 +2 = −3 surface, within freeze policy." That is
 true for the *subscribe* surface and for the `diagnostic_firehose` verb (which
 has zero projection / Swift coupling — a clean mechanical delete). It is **not**
 true for the author/thread verbs: their `author_view` / `thread_view`
-projections are the sole read path for Chirp's `ProfileView` / `ThreadScreen`
-(verified: `ProfileView.swift` derives its note list from `authorView.items`),
-and deleting them forces the feed-registration read-path work above.
-The author/thread read-path migration is the architecture-significant half and
-is sequenced as a follow-up sprint (see GitHub Issues).
+projections were the sole read path for Chirp's `ProfileView` / `ThreadScreen`.
+Deleting them forced the feed-registration read-path work above. That
+architecture-significant half is now implemented by app-owned dynamic
+FlatFeeds and explicit typed-projection teardown.
 
 ## 6. Consequences
 

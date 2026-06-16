@@ -153,9 +153,8 @@ demo still issues REQs through `RelayRole::{Content,Indexer}`
 hardcoded constants `CONTENT_RELAY_URL = "wss://relay.primal.net"` and
 `INDEXER_RELAY_URL = "wss://purplepag.es"`
 (`crates/nmp-core/src/relay.rs:1-2`). `crates/nmp-core/src/kernel/requests/`
-(profile/thread builders) still carry "scheduled for replacement by
-`SubscriptionCompiler`-driven" comments
-(`kernel/requests/profile.rs:5`, `kernel/requests/thread.rs:5`), and
+still carries legacy replacement notes for the remaining bespoke request
+builder path, and
 `kernel/status.rs` / `kernel/update.rs` still render those constants.
 
 So today's demo timeline does **not** fan per-author to NIP-65 write relays

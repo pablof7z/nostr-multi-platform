@@ -190,6 +190,27 @@ Decisions captured here for `aim.md` §7.1:
 - All update variants carry a monotonic `rev` and platforms enforce the stale guard.
 - **No JSON runtime fallback.** JSON may be used for Nostr relay frames, diagnostics, golden fixtures, and temporary migration/test tooling. The production Rust-to-frontend update transport has one canonical schema: FlatBuffers.
 
+#### Typed projection presence contract
+
+The FlatBuffers `typed_projections` stream has a deliberate state contract. A
+row with `state = Changed` carries the whole authoritative payload for that
+projection key at its `projection_rev`. A row with `state = Cleared` tells the
+host to drop any cached value for the key. When incremental apply is enabled,
+an omitted key means retain the last successfully decoded value; omission is
+never a clear signal.
+
+Typed producers that have an idle or empty state must encode that empty state
+as a `Changed` payload. Returning `None` from a producer means "no changed row
+this tick". Decode failure is host-local corruption handling: the host keeps
+the prior value, does not advance the per-key applied rev, latches resync, and
+continues applying sibling projections that decoded successfully.
+
+Domain optionals stay inside the payload schema. Examples: absent profile
+fields mean best-effort D1 data is not known yet; signer, wallet, bunker, and
+Marmot idle states are represented by their schema-specific state/`has_*`
+fields or by no registered sidecar until that runtime exists. These meanings
+must not be collapsed into projection absence.
+
 ### 6.5 Capabilities
 
 Each capability is a Rust trait with `#[uniffi::export(callback_interface)]`. Native implements it; Rust calls it. Native reports raw data; Rust decides policy (D7). v1 capabilities:
@@ -236,6 +257,15 @@ Decision captured here for `aim.md` §7.2 and §7.3:
 **Views are opened via `dispatch(OpenView)` with a platform-generated `ViewId`, and updates arrive as `ViewBatch` entries keyed by that id.** Materialization is lazy in `nmp-core` — view payloads live in the actor and are projected into `ViewSnapshots`/`ViewBatch` on every change.
 
 The component-facing API on each platform is *not* `ViewId`-based. Per ADR-0005, generated wrappers (`useProfile(pubkey)`, `@Profile`, `rememberProfile(pubkey)`, etc.) expose a refcounted, domain-keyed surface that translates component mount/unmount into `OpenView`/`CloseView` dispatches and writes incoming payloads into typed domain-keyed dictionaries on the platform side. App developers think in domain concepts; the framework handles subscription lifecycle and refcounted sharing behind the wrapper.
+
+Dynamic FlatFeed-backed views, such as Chirp author and thread screens, are
+owned by the app crate that registers them. Opening a screen installs a
+`FlatFeed`, its event observer, and a typed sidecar under a concrete key
+(`nmp.feed.author.<pubkey>` or `nmp.feed.thread.<event_id>`), then opens the
+matching `open_interest` for relay admission. Closing the screen unregisters
+that key and closes the interest. The unregister path emits a one-shot
+`Cleared` typed row so host caches drop the dynamic key immediately; the key is
+not part of the static Tier-2 projection manifest.
 
 Rationale vs. opaque `ViewHandle` reference types:
 

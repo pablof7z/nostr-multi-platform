@@ -17,12 +17,11 @@
 //! the read path needs, with the `{1,6}` note-kind policy defined ONCE here so
 //! the two halves can never diverge:
 //!
-//! 1. **Kernel admission** — pushes a generic `open_interest`
+//! 1. **Kernel interest** — pushes a generic `open_interest`
 //!    (`{"kinds":[1,6],"authors":[pk]}`, consumer `author-<pk>`, scope Global)
 //!    through the existing [`nmp_ffi::nmp_app_open_interest`] so the kernel
-//!    stores matching events into `self.events` (a non-followed author would
-//!    otherwise be dropped before storage — V-112 gating fact #1) and fans
-//!    them out to every [`nmp_core::KernelEventObserver`].
+//!    subscribes for matching relay events and fans accepted stored events out
+//!    to every [`nmp_core::KernelEventObserver`].
 //! 2. **Feed render** — constructs a [`nmp_nip01::FlatFeed`] over the same
 //!    `{1,6}` author predicate and registers it as BOTH a feed controller
 //!    (output, under `nmp.feed.author.<pk>`) AND a kernel event observer
@@ -416,6 +415,7 @@ mod tests {
     use std::ffi::{CStr, CString};
 
     use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
+    use nmp_core::WireProjectionState;
     use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string};
     use serde_json::Value;
 
@@ -583,30 +583,29 @@ mod tests {
         let key = author_feed_key(&pubkey);
         let app_ref = unsafe { &*app };
         let typed = app_ref.run_typed_snapshot_projections();
-        let entry = typed
-            .iter()
-            .find(|p| p.key == key)
-            .expect("typed sidecar registered under the dynamic author key");
+        let entry = typed.iter().find(|p| p.key == key).expect("typed sidecar");
 
-        // Same op-feed schema identity the home feed (`nmp.feed.home`) uses —
-        // no new .fbs; the host's NOFS decoder is reused verbatim.
         assert_eq!(entry.schema_id, OP_FEED_SCHEMA_ID);
         assert_eq!(entry.schema_version, OP_FEED_SCHEMA_VERSION);
         assert_eq!(entry.file_identifier, "NOFS");
 
-        // The typed payload decodes to the SAME seeded cards (newest-first) the
-        // generic JSON projection carries — typed and JSON never diverge.
         let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload)
             .expect("typed payload decodes as a NOFS op-feed snapshot");
         let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
         assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
 
-        // unregister_feed (close) tears down the typed sidecar by key too.
         nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
         let typed_after = app_ref.run_typed_snapshot_projections();
+        let clear = typed_after
+            .iter()
+            .find(|p| p.key == key)
+            .expect("Cleared row");
+        assert_eq!(clear.state, WireProjectionState::Cleared);
+        assert!(clear.payload.is_empty());
+        let typed_again = app_ref.run_typed_snapshot_projections();
         assert!(
-            typed_after.iter().all(|p| p.key != key),
-            "close must remove the typed sidecar for the dynamic key"
+            typed_again.iter().all(|p| p.key != key),
+            "typed Cleared row must be one-shot"
         );
         nmp_app_free(app);
     }

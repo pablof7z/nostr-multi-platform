@@ -109,12 +109,12 @@ private func apply(result: KernelUpdateResult) {
 they cross a thread boundary), the stale one is dropped. **Never disable this
 guard** and never derive UI truth from anything but the latest applied snapshot.
 
-> Nuance: `KernelModel` keeps a 60s TTL `authorViewCache`/`threadViewCache`
-> (`KernelModel.swift:130-199`). That is a *projection* cache for instant
-> back-navigation, refreshed every snapshot — not a source of truth. The view
-> still prefers the live `model.authorView` when it matches
-> (`ProfileViews.swift:41-46`). Caching the *render input* briefly is fine;
-> caching *facts* the kernel owns is the D4 violation.
+> Nuance: `KernelModel` may keep projection merge caches for incremental apply
+> and decode-before-commit. They are transport shadows of Rust-owned state, not
+> sources of truth. A `Cleared` typed row removes a cached dynamic key
+> immediately; an omitted key in an incremental frame retains the last decoded
+> value until a later `Changed` or `Cleared`. Caching the *render input* for the
+> update stream is fine; caching *facts* the kernel owns is the D4 violation.
 
 ## Reading a typed projection in `apply()`
 
@@ -122,8 +122,7 @@ guard** and never derive UI truth from anything but the latest applied snapshot.
 > delivered under its key in `SnapshotFrame.typed_projections` (registered
 > Rust-side via `register_typed_snapshot_projection`; see
 > [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). It is **not** the ViewModule
-> view-delta system, and it is **not** the SwiftUI `authorViewCache` projection
-> cache mentioned at the rev-guard nuance above.
+> view-delta system, and it is **not** a host-owned source of truth.
 
 The named typed fields in `apply()` (`items`, `profile`, `relayStatuses`) are
 the kernel's built-in slices. App- and module-owned state arrives in the same
@@ -151,8 +150,11 @@ Projection reads obey the same rules as every other snapshot field:
   into the prior value (D4).
 - **Honor the monotonic rev guard** — a projection read from a stale frame is
   dropped with the rest of that frame.
-- **Render placeholders, not spinners** — an absent projection key means "not
-  populated yet", which renders the D1 placeholder, never a loading gate.
+- **Apply presence deliberately** — `Changed` replaces the value, `Cleared`
+  removes it, and omission in an incremental frame retains the last decoded
+  value. An idle/empty value is a decoded payload, not absence.
+- **Render placeholders, not spinners** — missing optional fields inside a
+  decoded payload render D1 placeholders; they never become loading gates.
 - **Never derive UI truth** from anything but the latest applied snapshot;
   typed projections are shadows of kernel-owned state, not caches you mutate.
 

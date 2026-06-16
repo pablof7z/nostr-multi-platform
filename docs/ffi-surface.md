@@ -127,8 +127,10 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 `nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
 v0.3.1). Author/thread feeds go through the generic `nmp_app_open_interest` /
-`nmp_app_close_interest` pair (per-app FlatFeeds compose the view); profile
-hydration uses `nmp_app_claim_profile`.
+`nmp_app_close_interest` pair for relay admission. Chirp's app crate composes
+the view by registering app-owned FlatFeeds under `nmp.feed.author.<pubkey>` /
+`nmp.feed.thread.<event_id>` and unregistering those dynamic keys on close;
+profile hydration uses `nmp_app_claim_profile`.
 
 ---
 

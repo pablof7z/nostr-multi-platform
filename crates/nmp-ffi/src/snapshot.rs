@@ -51,8 +51,10 @@ impl NmpApp {
     ///
     /// The typed sidecar is emitted alongside the existing generic `Value` tree in
     /// every `SnapshotFrame` (ADR-0037). `f` runs on the actor thread on every
-    /// tick — it MUST be non-blocking (D8) and returns `None` when there is
-    /// nothing to emit this tick.
+    /// tick — it MUST be non-blocking (D8) and returns `None` when there is no
+    /// changed row to emit this tick. Under incremental apply, omission means
+    /// retain the last decoded value; unregistering the key emits one `Cleared`
+    /// row.
     pub fn register_typed_snapshot_projection(
         &self,
         key: impl Into<String>,
@@ -71,13 +73,14 @@ impl NmpApp {
     /// `typed_projections` sidecar on every tick; exposing it as a `&self`
     /// accessor lets a host (or an app-crate test) introspect what its
     /// registrations actually emit without driving a full snapshot tick. A
-    /// closure returning `None` contributes nothing. A poisoned registry mutex
+    /// closure returning `None` contributes nothing. Pending `Cleared` rows for
+    /// removed typed keys are drained exactly once. A poisoned registry mutex
     /// degrades to an empty vector (D6).
     #[must_use]
     pub fn run_typed_snapshot_projections(&self) -> Vec<nmp_core::TypedProjectionData> {
         self.snapshot_projections
             .lock()
-            .map(|registry| registry.run_typed())
+            .map(|mut registry| registry.run_typed())
             .unwrap_or_default()
     }
 

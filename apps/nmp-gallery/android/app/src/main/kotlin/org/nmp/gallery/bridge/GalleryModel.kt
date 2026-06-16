@@ -170,8 +170,7 @@ class GalleryModel : ViewModel() {
     /**
      * Decode one FlatBuffers snapshot frame. Profiles are read directly from
      * `projections.resolved_profiles` — the kernel's single, pre-merged profile
-     * projection (added in PR #812). The three-source merge (claimed_profiles +
-     * author_view.profile + mention_profiles, with its precedence rule) now
+     * projection. The precedence merge (claimed_profiles + mention_profiles)
      * lives in the kernel, so this host no longer reimplements it.
      */
     private fun applyFrame(raw: ByteArray) {
