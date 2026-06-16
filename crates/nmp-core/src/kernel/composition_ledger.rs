@@ -17,15 +17,18 @@
 //! * **action registry** — every [`crate::kernel::ActionRegistry::register`] /
 //!   `register_default` call, with the resolved [`Disposition`] (installed /
 //!   replaced / yielded).
-//! * **ingest parsers, snapshot projections** — recorded at the AppHost
-//!   registration paths in `nmp-ffi`.
+//! * **ingest parsers, snapshot projections, observer/interceptor hooks** —
+//!   recorded at the AppHost registration paths in `nmp-ffi`.
 //! * **last-writer-wins slots** (`set_routing_substrate`, `set_coverage_hook`,
-//!   `set_nostrconnect_bootstrap_relay`) — [`Disposition::ReplacedPrevious`]
-//!   when overwriting an already-installed value.
+//!   resolver factories, cache/lookup slots, etc.) —
+//!   [`Disposition::ReplacedPrevious`] when overwriting an already-installed
+//!   value.
 //! * **dropped late wiring** — a setter invoked after `nmp_app_start`, whose
 //!   value the actor will never read. This finally implements the
 //!   `KernelDiagnostic::LateWiring` promise that `nmp-defaults/src/builder.rs`
 //!   documented but never built.
+//! * **live late wiring** — a post-start registration on a seam intentionally
+//!   read through a shared handle, recorded as [`Disposition::AppliedLive`].
 //!
 //! NOT recorded: the hot path. The ledger is written only during host-init
 //! registration and the rare runtime slot replacement — never on the actor
@@ -39,8 +42,8 @@ use serde::Serialize;
 
 /// What happened to a single registration attempt.
 ///
-/// The four dispositions mirror the order-independent-yielding semantics of
-/// ADR-0049 Part 1 plus the late-wiring drop of Part 2.
+/// The dispositions mirror the order-independent-yielding semantics of
+/// ADR-0049 Part 1 plus the post-start outcomes of Part 2.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum Disposition {
     /// A first-time registration: the key/slot was unclaimed and is now held
@@ -58,6 +61,10 @@ pub enum Disposition {
     /// the wiring slots once at kernel construction, so this value is dropped
     /// and never takes effect (the `KernelDiagnostic::LateWiring` case).
     DroppedLateWiring,
+    /// A registration happened after `nmp_app_start` on a seam that is
+    /// intentionally live: the shared registry/slot is read by the running
+    /// actor, so the value takes effect immediately for future ticks/events.
+    AppliedLive,
 }
 
 impl Disposition {
@@ -69,6 +76,7 @@ impl Disposition {
             Disposition::ReplacedPrevious => "replaced_previous",
             Disposition::YieldedToExisting => "yielded_to_existing",
             Disposition::DroppedLateWiring => "dropped_late_wiring",
+            Disposition::AppliedLive => "applied_live",
         }
     }
 }

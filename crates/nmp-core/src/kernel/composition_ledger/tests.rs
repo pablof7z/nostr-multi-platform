@@ -90,6 +90,7 @@ fn disposition_as_str_tokens_are_stable() {
         Disposition::DroppedLateWiring.as_str(),
         "dropped_late_wiring"
     );
+    assert_eq!(Disposition::AppliedLive.as_str(), "applied_live");
 }
 
 #[test]

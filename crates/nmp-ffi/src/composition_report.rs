@@ -2,9 +2,10 @@
 //!
 //! Sole entry point: [`nmp_app_composition_report`]. A host (or a diagnostics
 //! screen) calls this to render "which modules / parsers / projections / wiring
-//! slots did the composition install, which yielded to an app override, and
-//! which were dropped because they were wired after `nmp_app_start`?" — NMP's
-//! analog of Spring Boot's `ConditionEvaluationReport`.
+//! slots did the composition install, which yielded to an app override, which
+//! were dropped because they were wired after `nmp_app_start`, and which late
+//! registrations applied through an intentionally live seam?" — NMP's analog of
+//! Spring Boot's `ConditionEvaluationReport`.
 //!
 //! ## Why a dedicated FFI symbol (not a snapshot-projection)
 //!
@@ -63,14 +64,16 @@ fn empty_payload() -> *mut c_char {
 ///       "provider": "app::MyPublish", "disposition": "ReplacedPrevious",
 ///       "replaced": "nmp_core::publish::PublishModule" },
 ///     { "seam": "routing_substrate", "key": "routing_substrate",
-///       "provider": "routing_substrate", "disposition": "DroppedLateWiring" }
+///       "provider": "routing_substrate", "disposition": "DroppedLateWiring" },
+///     { "seam": "typed_snapshot_projection", "key": "feed.thread",
+///       "provider": "host_typed_snapshot_projection", "disposition": "AppliedLive" }
 ///   ]
 /// }
 /// ```
 ///
 /// `disposition` is one of `Installed`, `ReplacedPrevious`,
-/// `YieldedToExisting`, `DroppedLateWiring`. `replaced` is present only for
-/// `ReplacedPrevious` / `YieldedToExisting`.
+/// `YieldedToExisting`, `DroppedLateWiring`, `AppliedLive`. `replaced` is
+/// present only for `ReplacedPrevious` / `YieldedToExisting`.
 ///
 /// D6: returns the empty-ledger payload — never NULL — when `app` is null or
 /// when JSON encoding fails.
@@ -136,7 +139,7 @@ mod tests {
             type Action = serde_json::Value;
             const NAMESPACE: &'static str = "test.composition.probe";
             fn start(
-        &self,
+                &self,
                 _ctx: &mut ActionContext,
                 _action: Self::Action,
             ) -> Result<(), ActionRejection> {
@@ -146,7 +149,7 @@ mod tests {
                 None
             }
             fn execute(
-        &self,
+                &self,
                 _action: Self::Action,
                 _correlation_id: &str,
                 _send: &dyn Fn(nmp_core::ActorCommand),

@@ -77,6 +77,9 @@ mod routing_trace;
 // (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
 // the snapshot tick.
 mod composition_report;
+#[cfg(test)]
+#[path = "composition_late_wiring_tests.rs"]
+mod composition_late_wiring_tests;
 mod snapshot;
 mod storage;
 mod timeline;
@@ -623,9 +626,9 @@ pub struct NmpApp {
     /// a hot path (D8).
     composition_ledger: Arc<nmp_core::CompositionLedger>,
     /// ADR-0049 Part 2 — flips to `true` the first time `nmp_app_start` sends
-    /// `ActorCommand::Start`. After that point the actor has read every wiring
-    /// slot once at kernel construction, so any setter call is dropped and
-    /// recorded as `DroppedLateWiring`. A plain `AtomicBool`
+    /// `ActorCommand::Start`. After that point init-only setters must be
+    /// dropped and recorded as `DroppedLateWiring`; intentionally live shared
+    /// registries record `AppliedLive` instead. A plain `AtomicBool`
     /// (single-flag, lock-free; same posture as `pending_mls_autopublish`).
     started: AtomicBool,
     /// Host-extensible snapshot output registry — the output-side counterpart
@@ -1505,22 +1508,85 @@ impl NmpApp {
         &self.composition_ledger
     }
 
-    /// ADR-0049 Part 2 — record a last-writer-wins **wiring-slot** decision.
+    /// ADR-0049 Part 2 — record an init-only registration decision.
+    ///
+    /// Returns `true` when the caller should install the value. A post-start
+    /// call records `DroppedLateWiring` and returns `false`, making the ledger
+    /// match behavior instead of recording a drop while mutating a shared slot.
+    pub(crate) fn record_init_only_registration(
+        &self,
+        seam: &'static str,
+        key: impl Into<String>,
+        provider: impl Into<String>,
+    ) -> bool {
+        let late = self.started.load(Ordering::SeqCst);
+        let disposition = if late {
+            nmp_core::Disposition::DroppedLateWiring
+        } else {
+            nmp_core::Disposition::Installed
+        };
+        self.composition_ledger
+            .record(seam, key, provider, disposition, None);
+        !late
+    }
+
+    /// ADR-0049 Part 2 — record a live registration decision.
+    ///
+    /// Some registries are intentionally read through shared handles by the
+    /// running actor (snapshot projections, relay text hooks, etc.). A
+    /// post-start mutation on those seams takes effect, so the ledger records
+    /// `AppliedLive` rather than the false `DroppedLateWiring` disposition.
+    pub(crate) fn record_live_registration(
+        &self,
+        seam: &'static str,
+        key: impl Into<String>,
+        provider: impl Into<String>,
+    ) {
+        let disposition = if self.started.load(Ordering::SeqCst) {
+            nmp_core::Disposition::AppliedLive
+        } else {
+            nmp_core::Disposition::Installed
+        };
+        self.composition_ledger
+            .record(seam, key, provider, disposition, None);
+    }
+
+    /// ADR-0049 Part 2 — record a last-writer-wins **init-only wiring-slot**
+    /// decision.
     ///
     /// `seam`/`key` name the slot (e.g. `"routing_substrate"`). When the app is
-    /// already started the value is dropped by the actor (it read the slot once
-    /// at kernel construction), so this records [`nmp_core::Disposition::DroppedLateWiring`];
-    /// otherwise the slot is being (re)written pre-start. `had_previous` is
-    /// `true` when the slot already held a value — distinguishing a first
-    /// install from an overwrite.
-    pub(crate) fn record_slot_decision(
+    /// already started the value is dropped and this returns `false`.
+    /// Otherwise the slot is being (re)written pre-start. `had_previous`
+    /// distinguishes a first install from an overwrite.
+    pub(crate) fn record_init_only_slot_decision(
+        &self,
+        seam: &'static str,
+        key: &'static str,
+        had_previous: bool,
+    ) -> bool {
+        let late = self.started.load(Ordering::SeqCst);
+        let disposition = if late {
+            nmp_core::Disposition::DroppedLateWiring
+        } else if had_previous {
+            nmp_core::Disposition::ReplacedPrevious
+        } else {
+            nmp_core::Disposition::Installed
+        };
+        self.composition_ledger
+            .record(seam, key, key, disposition, None);
+        !late
+    }
+
+    /// ADR-0049 Part 2 — record a last-writer-wins slot that is intentionally
+    /// live after start.
+    pub(crate) fn record_live_slot_decision(
         &self,
         seam: &'static str,
         key: &'static str,
         had_previous: bool,
     ) {
         let disposition = if self.started.load(Ordering::SeqCst) {
-            nmp_core::Disposition::DroppedLateWiring
+            nmp_core::Disposition::AppliedLive
         } else if had_previous {
             nmp_core::Disposition::ReplacedPrevious
         } else {
@@ -1555,21 +1621,13 @@ impl NmpApp {
     ) {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             let key = key.into();
-            // ADR-0049 Part 2 — record the projection registration. A pre-start
-            // call is `Installed`; a post-start call is dropped by the actor
-            // (it reads the projection registry handle once) and recorded as
-            // `DroppedLateWiring`. Keyed by the projection key.
-            let disposition = if self.started.load(Ordering::SeqCst) {
-                nmp_core::Disposition::DroppedLateWiring
-            } else {
-                nmp_core::Disposition::Installed
-            };
-            self.composition_ledger.record(
+            // ADR-0049 Part 2 — snapshot projections are a live shared
+            // registry. Late dynamic feeds/Marmot projections are visible to
+            // the running actor, so record AppliedLive rather than a false drop.
+            self.record_live_registration(
                 "snapshot_projection",
                 key.clone(),
                 "host_snapshot_projection",
-                disposition,
-                None,
             );
             registry.register(key, f);
         }
@@ -1605,6 +1663,12 @@ impl NmpApp {
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
+            let key = key.into();
+            self.record_live_registration(
+                "snapshot_projection_gated",
+                key.clone(),
+                "host_snapshot_projection_gated",
+            );
             registry.register_gated(key, gate, f);
         }
     }
@@ -1759,7 +1823,13 @@ impl NmpApp {
         if let Ok(mut slot) = self.coverage_hook.lock() {
             // ADR-0049 Part 2 — record before overwriting so `had_previous`
             // reflects the pre-write state of this last-writer-wins slot.
-            self.record_slot_decision("coverage_hook", "coverage_hook", slot.is_some());
+            if !self.record_init_only_slot_decision(
+                "coverage_hook",
+                "coverage_hook",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = Some(hook);
         }
     }
@@ -1774,6 +1844,13 @@ impl NmpApp {
         interceptor: std::sync::Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
     ) {
         if let Ok(mut slot) = self.req_frame_interceptor.lock() {
+            if !self.record_init_only_slot_decision(
+                "req_frame_interceptor",
+                "req_frame_interceptor",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = Some(interceptor);
         }
     }
@@ -1834,6 +1911,11 @@ impl NmpApp {
         interceptor: std::sync::Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
     ) {
         if let Ok(mut slot) = self.relay_text_interceptor.lock() {
+            self.record_live_slot_decision(
+                "relay_text_interceptor",
+                "relay_text_interceptor",
+                !slot.is_empty(),
+            );
             slot.clear();
             slot.push(interceptor);
         }
@@ -1849,6 +1931,11 @@ impl NmpApp {
         interceptor: std::sync::Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
     ) {
         if let Ok(mut slot) = self.relay_text_interceptor.lock() {
+            self.record_live_registration(
+                "relay_text_interceptor",
+                "relay_text_interceptor",
+                "relay_text_interceptor",
+            );
             slot.push(interceptor);
         }
     }
@@ -1859,6 +1946,11 @@ impl NmpApp {
         &self,
         hook: std::sync::Arc<dyn nmp_core::substrate::RelayConnectedHook>,
     ) {
+        self.record_live_registration(
+            "relay_connected_hook",
+            "relay_connected_hook",
+            "relay_connected_hook",
+        );
         nmp_core::substrate::install_relay_connected_hook(&self.relay_connected_hook, hook);
     }
 
@@ -1885,21 +1977,15 @@ impl NmpApp {
         if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
             // ADR-0049 Part 2 — record the parser registration. This is an
             // additive seam (multiple parsers per kind coexist), so a pre-start
-            // call is always `Installed`; a post-start call is dropped by the
-            // actor and recorded as `DroppedLateWiring`. Keyed by kind; the
-            // provider is the (type-erased) parser trait-object name.
-            let disposition = if self.started.load(Ordering::SeqCst) {
-                nmp_core::Disposition::DroppedLateWiring
-            } else {
-                nmp_core::Disposition::Installed
-            };
-            self.composition_ledger.record(
+            // call is `Installed`; a post-start call is a real drop and must
+            // not mutate the dispatcher the running kernel reads.
+            if !self.record_init_only_registration(
                 "ingest_parser",
                 format!("kind:{kind}"),
                 std::any::type_name::<dyn nmp_core::substrate::IngestParser>(),
-                disposition,
-                None,
-            );
+            ) {
+                return;
+            }
             d.register_kind(kind, parser);
         }
     }
@@ -1977,6 +2063,13 @@ impl NmpApp {
         lookup: std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
     ) {
         if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
+            if !self.record_init_only_registration(
+                "dm_inbox_relay_lookup",
+                "dm_inbox_relay_lookup",
+                "dm_inbox_relay_lookup",
+            ) {
+                return;
+            }
             *slot = lookup;
         }
     }
@@ -1996,6 +2089,13 @@ impl NmpApp {
         lookup: std::sync::Arc<dyn nmp_core::substrate::ProfileLookup>,
     ) {
         if let Ok(mut slot) = self.profile_lookup_slot.lock() {
+            if !self.record_init_only_registration(
+                "profile_lookup",
+                "profile_lookup",
+                "profile_lookup",
+            ) {
+                return;
+            }
             *slot = lookup;
         }
     }
@@ -2015,6 +2115,13 @@ impl NmpApp {
         lookup: std::sync::Arc<dyn nmp_core::substrate::ContactsLookup>,
     ) {
         if let Ok(mut slot) = self.contacts_lookup_slot.lock() {
+            if !self.record_init_only_registration(
+                "contacts_lookup",
+                "contacts_lookup",
+                "contacts_lookup",
+            ) {
+                return;
+            }
             *slot = lookup;
         }
     }
@@ -2036,6 +2143,13 @@ impl NmpApp {
         lookup: std::sync::Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
     ) {
         if let Ok(mut slot) = self.blocked_relays_slot.lock() {
+            if !self.record_init_only_registration(
+                "blocked_relay_lookup",
+                "blocked_relay_lookup",
+                "blocked_relay_lookup",
+            ) {
+                return;
+            }
             *slot = lookup;
         }
     }
@@ -2062,6 +2176,13 @@ impl NmpApp {
         cache: std::sync::Arc<dyn nmp_core::substrate::MailboxCache>,
     ) {
         if let Ok(mut slot) = self.mailbox_cache_reader.lock() {
+            if !self.record_init_only_slot_decision(
+                "mailbox_cache_reader",
+                "mailbox_cache_reader",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = Some(cache);
         }
     }
@@ -2091,6 +2212,13 @@ impl NmpApp {
     /// moment of sign-in.
     pub fn set_bootstrap_self_kinds(&self, kinds: Option<Vec<u64>>) {
         if let Ok(mut slot) = self.bootstrap_self_kinds.lock() {
+            if !self.record_init_only_slot_decision(
+                "bootstrap_self_kinds",
+                "bootstrap_self_kinds",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = kinds;
         }
     }
@@ -2131,7 +2259,13 @@ impl NmpApp {
     {
         if let Ok(mut slot) = self.routing_substrate.lock() {
             // ADR-0049 Part 2 — record the last-writer-wins decision.
-            self.record_slot_decision("routing_substrate", "routing_substrate", slot.is_some());
+            if !self.record_init_only_slot_decision(
+                "routing_substrate",
+                "routing_substrate",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = Some(std::sync::Arc::new(factory));
         }
     }
@@ -2176,6 +2310,13 @@ impl NmpApp {
             + 'static,
     {
         if let Ok(mut slot) = self.publish_resolver.lock() {
+            if !self.record_init_only_slot_decision(
+                "publish_resolver_factory",
+                "publish_resolver_factory",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = Some(std::sync::Arc::new(factory));
         }
     }
@@ -2211,6 +2352,13 @@ impl NmpApp {
             + 'static,
     {
         if let Ok(mut slot) = self.raw_event_forward_policy.lock() {
+            if !self.record_init_only_slot_decision(
+                "raw_event_forward_policy_factory",
+                "raw_event_forward_policy_factory",
+                slot.is_some(),
+            ) {
+                return;
+            }
             *slot = Some(std::sync::Arc::new(factory));
         }
     }
@@ -2853,10 +3001,10 @@ pub extern "C" fn nmp_app_start(
     }
 
     // ADR-0049 Part 2 — mark the app started BEFORE sending Start. From this
-    // point the actor reads every wiring slot once at kernel construction, so a
-    // later setter call is dropped and recorded as `DroppedLateWiring`. Set
-    // before the send so there is no window where a setter racing in just after
-    // Start records `ReplacedPrevious` instead of the truthful drop.
+    // point init-only setters are dropped instead of staging next-reset state,
+    // while intentionally live registries record AppliedLive. Set before the
+    // send so there is no window where a setter racing in just after Start
+    // records `ReplacedPrevious` instead of the truthful post-start outcome.
     app.started.store(true, Ordering::SeqCst);
 
     app.send_cmd(ActorCommand::Start {

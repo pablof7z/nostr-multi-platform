@@ -59,6 +59,12 @@ impl NmpApp {
         f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
+            let key = key.into();
+            self.record_live_registration(
+                "typed_snapshot_projection",
+                key.clone(),
+                "host_typed_snapshot_projection",
+            );
             registry.register_typed(key, f);
         }
     }
@@ -116,6 +122,11 @@ impl NmpApp {
     /// non-blocking (D8). A poisoned registry mutex is a silent no-op (D6).
     pub fn register_snapshot_tick_observer(&self, f: impl Fn() + Send + Sync + 'static) {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
+            self.record_live_registration(
+                "snapshot_tick_observer",
+                "snapshot_tick_observer",
+                "host_snapshot_tick_observer",
+            );
             registry.register_tick_observer(f);
         }
     }
