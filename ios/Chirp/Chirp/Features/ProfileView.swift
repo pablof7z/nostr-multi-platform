@@ -12,7 +12,6 @@ struct ProfileView: View {
     @EnvironmentObject private var model: KernelModel
     @EnvironmentObject private var router: ChirpRouter
 
-    @State private var copiedNpub = false
     @State private var isEditingProfile = false
 
     private var profileConsumerID: String { "profile-screen-\(pubkey)" }
@@ -178,25 +177,18 @@ struct ProfileView: View {
         }
     }
 
-    /// Genuinely screen-specific chrome kept outside `NostrUserCard`: the
-    /// npub-copy chip and the about blurb. Avatar, display name, and the NIP-05
-    /// badge now come from the shared primitive (issue #995).
+    /// Genuinely screen-specific chrome kept outside `NostrUserCard`: the about
+    /// blurb. Avatar, display name, NIP-05 badge, and npub copy now come from
+    /// shared primitives (issues #995 and #993).
     private var profileChrome: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // ADR-0032 / V-115: bech32 no longer in projection; encode host-side
-            // on demand. Always show the copy button — pubkey is always available.
-            Button(action: copyNpub) {
-                HStack(spacing: 4) {
-                    Text(pubkey.shortHex)
-                        .font(.body.monospaced())
-                        .foregroundStyle(.secondary)
-                    Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(minHeight: 44, alignment: .leading)
-            }
-            .buttonStyle(.plain)
+            // ADR-0032 / V-115: bech32 no longer in projection. Provide the
+            // host-encoded copy value to the shared chip; pubkey is always available.
+            NostrNpubChip(
+                npub: model.encodeProfile(pubkey: pubkey) ?? pubkey,
+                npubShort: pubkey.shortHex
+            )
+            .frame(minHeight: 44, alignment: .leading)
 
             if let about = profile?.about, !about.isEmpty {
                 Text(about)
@@ -281,18 +273,6 @@ struct ProfileView: View {
             return
         }
         isEditingProfile = true
-    }
-
-    private func copyNpub() {
-        // ADR-0032 / V-115: encode bech32 host-side; fall back to hex if the
-        // C function fails (e.g. invalid key or no app handle).
-        let npub = model.encodeProfile(pubkey: pubkey) ?? pubkey
-        UIPasteboard.general.string = npub
-        copiedNpub = true
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            copiedNpub = false
-        }
     }
 }
 
