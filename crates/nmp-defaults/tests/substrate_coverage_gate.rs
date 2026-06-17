@@ -39,11 +39,12 @@ use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot
 use nmp_core::store::EventStore;
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
-    ActionModule, ActionRegistrar, CoverageHookRegistrar, IngestParser, IngestParserRegistrar,
-    KernelReaderRegistrar, MailboxCache, OutboxRouter, RawEventForwardPolicy,
-    RawEventForwardPolicyContext, RelayConnectedHook, RelayConnectedHookRegistrar,
-    RelayTextInterceptor, RelayTextInterceptorRegistrar, ReqFrameInterceptor,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, RoutingTraceObserver,
+    ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
+    CoverageHookRegistrar, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
+    MailboxCache, OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext,
+    RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, RoutingTraceObserver,
 };
 use nmp_coverage_gate::CoverageGate;
 
@@ -92,9 +93,15 @@ impl RelayConnectedHookRegistrar for GateSpy {
     }
 }
 
+impl BlockedRelayLookupRegistrar for GateSpy {
+    fn set_blocked_relay_lookup(&self, _lookup: Arc<dyn BlockedRelayLookup>) {
+        // Blocked relay lookup — no-op; not under test here.
+    }
+}
+
 impl IngestParserRegistrar for GateSpy {
     fn register_ingest_parser(&self, _kind: u32, _parser: Arc<dyn IngestParser>) {
-        // kind:10002 parser — recorded as a no-op; not under test here.
+        // kind:10002/10006 parsers — recorded as a no-op; not under test here.
     }
 
     fn replace_ingest_parser(

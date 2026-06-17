@@ -13,10 +13,10 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    CoverageHookRegistrar, DmInboxRelayRegistrar, EventObserverRegistrar, HostCapabilities,
-    IdentityChangeRegistrar, IngestParserRegistrar, KernelReaderRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
+    EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
+    KernelReaderRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_ffi::NmpApp;
 
@@ -180,6 +180,13 @@ impl<S> DmInboxRelayRegistrar for NmpAppBuilder<S> {
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_dm_inbox_relay_lookup(lookup);
+    }
+}
+
+impl<S> BlockedRelayLookupRegistrar for NmpAppBuilder<S> {
+    fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.set_blocked_relay_lookup(lookup);
     }
 }
 

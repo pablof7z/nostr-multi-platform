@@ -46,14 +46,15 @@ use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
 use nmp_core::substrate::{
-    ActionRegistrar, CoverageHookRegistrar, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter, RawEventForwardPolicy, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    RoutingTraceObserver,
+    ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, IngestParserRegistrar,
+    KernelReaderRegistrar, MailboxCache, OutboxRouter, RawEventForwardPolicy,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, RoutingTraceObserver,
 };
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
-    GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy, Nip65OutboxResolver,
+    GenericOutboxRouter, InMemoryBlockedRelayCache, InMemoryMailboxCache, IndexerRepublishPolicy,
+    Kind10006Parser, Nip65OutboxResolver,
 };
 
 /// Declarative configuration for [`super::register_defaults_with`] — the
@@ -164,6 +165,7 @@ impl Default for NmpDefaults {
 /// this crate exists to prevent).
 pub fn register_substrate(
     app: &mut (impl ActionRegistrar
+          + BlockedRelayLookupRegistrar
           + CoverageHookRegistrar
           + IngestParserRegistrar
           + KernelReaderRegistrar
@@ -236,6 +238,28 @@ pub fn register_substrate(
     let parser: Arc<dyn nmp_core::substrate::IngestParser> =
         Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
     app.register_ingest_parser(10_002, parser);
+
+    // ── kind:10006 blocked-relay cache (Phase 0 relay-attribution) ──────
+    //
+    // Install the SAME `InMemoryBlockedRelayCache` on both ends — identical
+    // pattern to the kind:10002 mailbox cache above (one Arc, two roles):
+    //   1. As the kernel's `Arc<dyn BlockedRelayLookup>` (reader) via
+    //      `set_blocked_relay_lookup`, so `snapshot_blocked_relays` returns the
+    //      set the parser populated.
+    //   2. As the `Kind10006Parser`'s backing cache (writer), registered with
+    //      the `EventIngestDispatcher` so every accepted (D4 `Inserted |
+    //      Replaced`) kind:10006 upserts the parsed blocked-relay set.
+    // The same `Arc<InMemoryBlockedRelayCache>` is captured by BOTH paths so
+    // the writer (parser) and the reader (kernel routing context) see one source
+    // of truth. Without this wiring `snapshot_blocked_relays` always returns an
+    // empty set regardless of what the user has blocked.
+    let blocked_cache: Arc<InMemoryBlockedRelayCache> = Arc::new(InMemoryBlockedRelayCache::new());
+    app.set_blocked_relay_lookup(
+        Arc::clone(&blocked_cache) as Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
+    );
+    let blocked_parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(Kind10006Parser::new(blocked_cache));
+    app.register_ingest_parser(10_006, blocked_parser);
 
     // ── kind:0 profile cache (ADR-0057 PR 2) ──────────────────────────
     //
