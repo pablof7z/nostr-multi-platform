@@ -3,7 +3,7 @@
 //! Pure delegation to per-subsystem modules. This file exists so `mod.rs`
 //! stays focused on the open() + Inner shape.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
 use super::{
@@ -32,6 +32,17 @@ impl EventStore for LmdbEventStore {
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
         query::scan_by_author_kind(&self.inner, author, kinds, since, until, limit)
+    }
+
+    fn scan_by_authors_kind<'a>(
+        &'a self,
+        authors: &BTreeSet<PubKey>,
+        kinds: &[u32],
+        since: Option<u64>,
+        until: Option<u64>,
+        limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        query::scan_by_authors_kind(&self.inner, authors, kinds, since, until, limit)
     }
 
     fn get_param_replaceable(

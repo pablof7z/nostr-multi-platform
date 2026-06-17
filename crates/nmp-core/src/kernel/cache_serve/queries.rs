@@ -215,6 +215,7 @@ pub(in crate::kernel) fn completion_key_for_interest(
 pub(in crate::kernel) fn query_until_mut(query: &mut StoreQuery) -> Option<&mut Option<u64>> {
     match query {
         StoreQuery::AuthorKind { until, .. }
+        | StoreQuery::AuthorsKind { until, .. }
         | StoreQuery::KindTime { until, .. }
         | StoreQuery::KindDtag { until, .. } => Some(until),
         StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => None,
@@ -225,6 +226,7 @@ pub(in crate::kernel) fn query_until_mut(query: &mut StoreQuery) -> Option<&mut 
 pub(in crate::kernel) fn query_until(query: &StoreQuery) -> Option<u64> {
     match query {
         StoreQuery::AuthorKind { until, .. }
+        | StoreQuery::AuthorsKind { until, .. }
         | StoreQuery::KindTime { until, .. }
         | StoreQuery::KindDtag { until, .. } => *until,
         StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => None,
@@ -236,6 +238,7 @@ pub(in crate::kernel) fn query_until(query: &StoreQuery) -> Option<u64> {
 pub(in crate::kernel) fn query_since_mut(query: &mut StoreQuery) -> Option<&mut Option<u64>> {
     match query {
         StoreQuery::AuthorKind { since, .. }
+        | StoreQuery::AuthorsKind { since, .. }
         | StoreQuery::KindTime { since, .. }
         | StoreQuery::KindDtag { since, .. } => Some(since),
         StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => None,
