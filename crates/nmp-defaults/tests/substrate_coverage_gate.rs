@@ -33,7 +33,7 @@
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::{CompiledPlan, RelayPlan};
+use nmp_core::planner::{CompiledPlan, RelayAttribution, RelayPlan};
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
@@ -205,6 +205,7 @@ fn plan_with_relays(n: usize) -> CompiledPlan {
                 relay_url: url,
                 role_tags: Default::default(),
                 sub_shapes: Vec::new(),
+                attribution: RelayAttribution::default(),
             },
         );
     }

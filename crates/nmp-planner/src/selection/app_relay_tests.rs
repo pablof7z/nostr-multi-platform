@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     interest::InterestShape,
-    plan::{canonical_filter_hash, RelayPlan, SubShape},
+    plan::{canonical_filter_hash, RelayAttribution, RelayPlan, SubShape},
 };
 
 /// Helper that builds a per-relay sub-shape tagged with the supplied routing
@@ -30,6 +30,7 @@ fn plan_with_sources(relays: &[(&str, &[&str], &[RoutingSource])]) -> CompiledPl
                 relay_url: (*relay).to_string(),
                 role_tags,
                 sub_shapes: vec![sub],
+                attribution: RelayAttribution::default(),
             },
         );
     }

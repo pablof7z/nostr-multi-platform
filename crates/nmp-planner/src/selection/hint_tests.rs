@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     interest::InterestShape,
-    plan::{canonical_filter_hash, RelayPlan, SubShape},
+    plan::{canonical_filter_hash, RelayAttribution, RelayPlan, SubShape},
 };
 
 fn plan_with_sources(relays: &[(&str, &[&str], &[RoutingSource])]) -> CompiledPlan {
@@ -23,6 +23,7 @@ fn plan_with_sources(relays: &[(&str, &[&str], &[RoutingSource])]) -> CompiledPl
                 relay_url: (*relay).to_string(),
                 role_tags: sources.iter().cloned().collect(),
                 sub_shapes: vec![sub_shape],
+                attribution: RelayAttribution::default(),
             },
         );
     }

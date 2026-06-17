@@ -333,6 +333,19 @@ pub fn apply_selection_with_lookup(
             continue;
         }
         relay_plan.sub_shapes = kept_subs;
+
+        // Prune attribution to match the narrowed author set so retained
+        // attribution never claims authors absent from the standing plan.
+        relay_plan
+            .attribution
+            .outbox_authors
+            .retain(|a| allowed_authors.contains(a));
+        for interest_attr in &mut relay_plan.attribution.interests {
+            interest_attr
+                .authors
+                .retain(|a| allowed_authors.contains(a));
+        }
+
         new_per_relay.insert(relay, relay_plan);
     }
     plan.per_relay = new_per_relay;

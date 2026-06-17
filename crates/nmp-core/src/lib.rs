@@ -114,8 +114,8 @@ pub mod planner {
     };
     pub use nmp_planner::lattice::{merge, MergeOutcome};
     pub use nmp_planner::plan::{
-        canonical_filter_hash, CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape,
-        UserConfiguredCategory,
+        canonical_filter_hash, CompiledPlan, HintOrigin, InterestAttribution, PlannerError,
+        RelayAttribution, RelayPlan, RoutingSource, SubShape, UserConfiguredCategory,
     };
     pub use nmp_planner::selection::apply_selection;
     // W4 — warm-relay score lookup seam + lookup-aware selection.

@@ -39,7 +39,7 @@ use crate::{
         InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
         PTagRouting, Pubkey, RelayUrl,
     },
-    plan::RoutingSource,
+    plan::{RelayAttribution, RoutingSource},
 };
 
 // ─── RelayEntry ──────────────────────────────────────────────────────────────
@@ -68,6 +68,9 @@ pub(super) struct RelayEntry {
     /// All routing lanes that contributed to this relay entry.
     pub sources: BTreeSet<RoutingSource>,
     pub interest_id: InterestId,
+    /// Per-relay, per-interest routing provenance. Populated by the case
+    /// handlers at lane-tagging time; merged at Stage 3.
+    pub attribution: RelayAttribution,
 }
 
 impl RelayEntry {
@@ -79,6 +82,7 @@ impl RelayEntry {
         InterestLifecycle,
         BTreeSet<RoutingSource>,
         InterestId,
+        RelayAttribution,
     ) {
         self.base_shape.authors = self.authors_for_relay;
         self.base_shape.addresses = self.addresses_for_relay;
@@ -87,6 +91,7 @@ impl RelayEntry {
             self.lifecycle,
             self.sources,
             self.interest_id,
+            self.attribution,
         )
     }
 }

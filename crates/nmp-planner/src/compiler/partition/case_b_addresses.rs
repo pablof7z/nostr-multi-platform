@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
-    plan::{RoutingSource, UserConfiguredCategory},
+    plan::{RelayAttribution, RoutingSource, UserConfiguredCategory},
 };
 
 /// Route an interest with address-pointer pubkeys to their outbox relays.
@@ -101,6 +101,7 @@ pub(super) fn route(
                 lifecycle: interest.lifecycle.clone(),
                 sources,
                 interest_id: interest.id.clone(),
+                attribution: RelayAttribution::default(),
             });
     }
 }
