@@ -258,8 +258,14 @@ pub fn register_substrate(
         Arc::clone(&blocked_cache) as Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
     );
     let blocked_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(Kind10006Parser::new(blocked_cache));
+        Arc::new(Kind10006Parser::new(Arc::clone(&blocked_cache)));
     app.register_ingest_parser(10_006, blocked_parser);
+    // Register the `nmp.nip51.block_relay` and `nmp.nip51.unblock_relay`
+    // action modules. Both hold an `Arc` clone of the SAME
+    // `InMemoryBlockedRelayCache` the parser writes into and the kernel reads
+    // via `Arc<dyn BlockedRelayLookup>`, so their idempotency guards see live
+    // state (Phase 4 of relay-connection-attribution — §3.4).
+    nmp_router::register_block_relay_actions(app, blocked_cache);
 
     // ── kind:0 profile cache (ADR-0057 PR 2) ──────────────────────────
     //
