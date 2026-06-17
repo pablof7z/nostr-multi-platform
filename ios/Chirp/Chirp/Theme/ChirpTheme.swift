@@ -141,6 +141,7 @@ struct ChirpPrimaryButton: View {
                 if let systemImage { Image(systemName: systemImage) }
                 Text(title)
             }
+            .foregroundStyle(ChirpColor.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
         }

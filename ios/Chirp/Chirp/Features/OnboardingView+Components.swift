@@ -21,6 +21,7 @@ extension OnboardingView {
                 } label: {
                     Label("Create account", systemImage: "person.badge.plus")
                         .font(.headline)
+                        .foregroundStyle(ChirpColor.onAccent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                 }
@@ -101,6 +102,7 @@ extension OnboardingView {
                 } label: {
                     Label("Create account", systemImage: "arrow.right.circle.fill")
                         .font(.headline)
+                        .foregroundStyle(ChirpColor.onAccent)
                         .frame(maxWidth: 280)
                         .padding(.vertical, 16)
                 }
