@@ -163,6 +163,81 @@ fn cache_served_kind3_drives_effects_via_shared_project_accepted_event() {
     );
 }
 
+/// (2b) Cold-restart offline rehydration via the UNIVERSAL store-first bootstrap
+/// (ADR-0045 R3). On relaunch the in-memory contacts cache is empty and the
+/// active account's own kind:3 is the INPUT that defines the follow-feed interest
+/// — never a member of any consumer interest — so nothing in the consumer path
+/// would ever serve it. The fix is universal store-first: the bootstrap
+/// self-kinds interest (kinds 0/3/10002/…) registered by
+/// `active_account_bootstrap_requests` is itself cache-served on open, so the
+/// stored kind:3 flows through the SHARED `project_accepted_event` → `Kind3Parser`
+/// → contacts cache → contacts-transition → follow-feed registration — with NO
+/// relay connectivity.
+///
+/// NON-VACUITY: drop the `enqueue_interest_cache_serve` call from
+/// `register_tailing_self_kinds_interest` and this fails — the bootstrap interest
+/// would only REQ the network and the offline cache would stay empty.
+#[test]
+fn cold_restart_bootstrap_self_kinds_interest_cache_serves_stored_kind3() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    kernel.active_account = Some(ALICE.to_string());
+
+    // Phase 1: ALICE's kind:3 (following BOB + CAROL) lands and persists.
+    kernel
+        .inject_replaceable_event(
+            "4444444444444444444444444444444444444444444444444444444444444444",
+            ALICE,
+            2_000,
+            3,
+            vec![p_tag(BOB), p_tag(CAROL)],
+            "wss://alice.relay/",
+            2_000_000,
+        )
+        .expect("inject kind:3 must succeed");
+
+    // Phase 2: cold restart — lose the in-memory contacts cache + the
+    // follow-feed derived state + served-interest completion set. The kind:3
+    // itself remains in the event store.
+    kernel.clear_test_contacts_cache();
+    kernel.sync_follow_feed_interests(&[]);
+    kernel.clear_served_interest_shapes();
+    assert!(
+        kernel.contacts_lookup().follows(ALICE).is_none(),
+        "precondition: contacts cache empty after cold restart"
+    );
+    assert!(
+        !kernel.timeline_authors_for_test().contains(BOB),
+        "precondition: timeline_authors cleared after cold restart"
+    );
+
+    // Phase 3: the cold-start bootstrap path — this is what `start()` /
+    // identity-restore runs. NO relay connectivity; the store-first half of the
+    // bootstrap self-kinds interest serves the stored kind:3.
+    let _ = kernel.active_account_bootstrap_requests();
+
+    // The stored kind:3 was cache-served through the shared chokepoint,
+    // rebuilding the follow set + timeline_authors + interests from disk alone.
+    assert_eq!(
+        kernel.contacts_lookup().follows(ALICE),
+        Some(vec![BOB.to_string(), CAROL.to_string()]),
+        "store-first bootstrap must repopulate the contacts cache from the stored \
+         kind:3 with no relay connectivity"
+    );
+    assert!(
+        kernel.timeline_authors_for_test().contains(BOB)
+            && kernel.timeline_authors_for_test().contains(CAROL),
+        "store-first bootstrap must rebuild timeline_authors from the rehydrated \
+         follow set"
+    );
+    assert_eq!(
+        kernel.follow_feed_interest_ids_for_test().len(),
+        3,
+        "store-first bootstrap must register one follow-feed interest per follow \
+         plus the active account"
+    );
+}
+
 /// (3) Follow-a-new-author backfill — the `pre_kind3_buffer`-deletion
 /// replacement (ADR-0057). A note from CAROL arrives and persists BEFORE ALICE
 /// follows her (admission ≠ persistence: it is stored on valid signature, not

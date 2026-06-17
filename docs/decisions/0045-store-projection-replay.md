@@ -3,7 +3,10 @@
 - Status: Accepted pending implementation. **Revised 2026-06-12 (Revision 2 —
   owner product correction): the staged-by-domain rollout (§9) is superseded by
   a single always-on cache-serve mechanism; see "Revision 2" below, which amends
-  the Decision (§2) and replaces §9 and §11.**
+  the Decision (§2) and replaces §9 and §11.** **Revised 2026-06-17 (Revision 3 —
+  owner correction): store-first is UNIVERSAL — every interest, including the
+  active account's own kind:0/3/10002 bootstrap kinds, is served from the local
+  store on open and revalidated by its wire REQ. See "Revision 3" below.**
 - Date: 2026-06-12
 - Issue: #1086 (F-12), `doctrine:d1`, `priority:p1`, `area:core`, `area:store`
 - Related: #1087/#1091 (author-aware watermark rewrite — the load-bearing
@@ -136,6 +139,94 @@ contract is the single always-on seam, and the **acceptance test is universal**:
 > failure of the one mechanism.
 
 See §11 (revised) for the v1 recommendation under this shape.
+
+---
+
+## Revision 3 (2026-06-17) — owner correction: store-first is UNIVERSAL
+
+Revision 2 established "one mechanism, always on." Revision 3 states the rule at
+its full reach: **every interest is served from the local store the moment it
+opens, and revalidated by its wire REQ — including the active account's own
+bootstrap kinds (kind:0 profile, kind:3 contacts, kind:10002 relay list,
+kind:10000/10006).** The store-serve half and the wire REQ are the two halves of
+the one mechanism (R2.2), and they run together for **every** interest the system
+compiles — host-declared or built-in, consumer or bootstrap, discovery-direction
+or follow-feed. Store-first is the universal default; the network is the
+revalidation layer on top of it.
+
+### R3.1 The principle (owner, 2026-06-17)
+
+> "Store-first applies to everything by default. We serve the kinds we need from
+> the cache; later, if we find a kind:3 — or any kind — with fresher data, that is
+> the EXACT SAME THING as a new version of an event being signed right now. It
+> should LITERALLY be the same code.
+>
+> Scenario: the app opens. We serve the kinds we need from the cache, find a
+> kind:3 signed at t+0, show it to the app, query the relay, find the exact same
+> event — nothing happens, we already have the latest version. Later, a new
+> version is signed in some other client; we see the event come in; we route it
+> through the same mechanism, which results — without the app doing ANYTHING — in a
+> resubscription of the kinds shown in the timeline under the new kind:3. The app
+> doesn't even know some other client followed someone new; it just keeps
+> receiving the data it needs to show.
+>
+> Store-first is what makes every NMP app perfectly offline-first."
+
+### R3.2 The two halves run together, for every interest
+
+Cache-serve is the **first half** of the one mechanism; the wire REQ is the
+**refinement half**. They are **additive** — both always run:
+
+- **Serve from cache, then revalidate.** On open, every interest is served from
+  the local store immediately, and its wire REQ (tailing or one-shot) fires in
+  parallel to refine and tail for future updates. Time-to-first-pixel is **zero**;
+  the network keeps the view current from there.
+- **One code path for cached and fresh — literally the same code.** A
+  store-served event and a relay-delivered event flow through the *same*
+  `project_accepted_event` seam under the *same* supersession rule (newest
+  `created_at` wins; event-id tiebreak). When the relay returns the event we
+  already hold, supersession makes it a no-op; when it returns a newer one — or
+  another client signs one mid-session — the same seam re-drives every downstream
+  effect (the contacts transition re-registers the follow-feed; the timeline
+  re-subscribes under the new follow set). Cold-start serve and live arrival
+  differ ONLY by `Provenance` — never by mechanism.
+- **The on-disk copy is authoritative offline.** When the app is offline, or in
+  the window before the REQ round-trips, the last-known copy on disk **is** the
+  current copy — and rendering it immediately is exactly right. This is what makes
+  the app show your follow list, your profile, and your relay list on a plane, in
+  line with aim.md §4.1 ("every read goes through the store").
+
+### R3.3 Store-first resolves the cold-start chicken-and-egg
+
+The active account's NIP-65 mailbox (kind:10002) and follow set (kind:3) are
+needed to drive everything downstream — and store-first delivers them **first**:
+
+- Serving the stored kind:10002 yields the last-known relay list **immediately**,
+  so the first wire REQs target the user's real outbox. (The indexer-relay
+  fallback remains for the cold-cold case: a brand-new install with no kind:10002
+  on disk yet.)
+- Serving the stored kind:3 populates the contacts cache at startup, firing the
+  contacts transition (`on_active_contacts_changed`) → registering the follow-feed
+  → serving the followed authors' notes. The entire timeline rehydrates from disk
+  with the app doing nothing — the offline-first acceptance test (R2.6) passes for
+  the bootstrap kinds, not just consumer feeds.
+
+### R3.4 What the implementation does
+
+- **Every built-in interest cache-serves on open.** The bootstrap self-kinds
+  tailing interest and the one-shot discovery interests
+  (`kernel/requests/startup.rs`) route through `enqueue_interest_cache_serve` like
+  every other interest, serving kind:0/3/10002/… from the store on open. Their
+  tailing / one-shot wire REQ fires alongside for revalidation (R3.2).
+- **The §6 watermark⇄serve invariant binds the bootstrap shapes.** kind:0/3/10002/…
+  are watermark-floored, therefore they are cache-served — the invariant ("no
+  watermark floor without cache-serve for the same shape") applies to them as to
+  every other floored shape.
+- **Every code comment frames cache-serve as the default for all interests** —
+  the store-serve half runs for each interest, with the wire REQ as the refinement
+  half on top.
+
+Store-first is the law for every interest the system opens.
 
 ---
 
