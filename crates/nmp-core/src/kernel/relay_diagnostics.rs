@@ -114,10 +114,9 @@ pub(super) struct RelayDiagnosticsRow {
     pub(super) last_event_ms: Option<u64>,
     /// Most recent NIP-01 NOTICE prose, or `None`.
     pub(super) last_notice: Option<String>,
-    /// Total NOTICE frames received from this relay (session counter).
+    /// Total NOTICE frames received (session counter; not capped by the ring).
     pub(in crate::kernel) notice_count: u64,
-    /// Bounded NOTICE log, newest first (up to 32 entries). Each entry carries
-    /// a wall-clock Unix-ms timestamp; shells format as "Xs ago" (aim.md §62).
+    /// Bounded NOTICE log, newest first (≤32 entries; wall-clock Unix-ms).
     pub(in crate::kernel) notices: Vec<RelayDiagnosticsNotice>,
     /// Most recent error prose, or `None`.
     pub(super) last_error: Option<String>,
@@ -336,12 +335,8 @@ fn build_relay_row(
     };
     let info = s.info.as_ref().map(RelayDiagnosticsInfo::from_doc);
     let notice_count = s.notices_rx;
-    let notices: Vec<RelayDiagnosticsNotice> = s
-        .notices
-        .iter()
-        .rev()
-        .map(|n| RelayDiagnosticsNotice { at_ms: n.at_ms, text: n.text.clone() })
-        .collect();
+    let notices: Vec<RelayDiagnosticsNotice> = s.notices.iter().rev()
+        .map(|n| RelayDiagnosticsNotice { at_ms: n.at_ms, text: n.text.clone() }).collect();
     let (
         role,
         connection,

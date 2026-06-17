@@ -51,7 +51,6 @@ use connection_reason::{connection_reason_from_fb, create_connection_reason};
 mod notice;
 pub use notice::NoticeRow;
 use notice::{create_notice, notice_from_fb};
-
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use generated::nmp::kernel as fb;
@@ -109,9 +108,7 @@ pub struct RelayRow {
     /// Unix epoch milliseconds of the last event received; 0 when none.
     pub last_event_ms: u64,
     pub last_notice: Option<String>,
-    /// Total NOTICE frames received (session counter).
     pub notice_count: u64,
-    /// Bounded NOTICE log, newest first (up to 32 entries).
     pub notices: Vec<NoticeRow>,
     pub last_error: Option<String>,
     pub wire_subs: Vec<WireSubRow>,
@@ -423,13 +420,9 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
             reasons.push(connection_reason_from_fb(r));
         }
     }
-    let mut notices = Vec::new();
-    if let Some(fb_notices) = row.notices() {
-        notices.reserve(fb_notices.len());
-        for n in fb_notices.iter() {
-            notices.push(notice_from_fb(n));
-        }
-    }
+    let notices = row.notices()
+        .map(|v| v.iter().map(notice_from_fb).collect())
+        .unwrap_or_default();
     RelayRow {
         relay_url: row.relay_url().unwrap_or_default().to_string(),
         short_url: row.short_url().unwrap_or_default().to_string(),

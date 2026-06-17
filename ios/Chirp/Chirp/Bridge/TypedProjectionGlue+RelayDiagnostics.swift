@@ -49,6 +49,8 @@ extension TypedProjectionGlue {
             lastConnectedMs: row.lastConnectedMs,
             lastEventMs: row.lastEventMs,
             lastNotice: row.hasLastNotice ? (row.lastNotice ?? "") : nil,
+            noticeCount: row.noticeCount,
+            notices: row.notices.map(relayDiagnosticsNotice),
             lastError: row.hasLastError ? (row.lastError ?? "") : nil,
             wireSubs: row.wireSubs.map(relayDiagnosticsWireSub),
             info: row.info.map(relayDiagnosticsInfo),
@@ -57,6 +59,15 @@ extension TypedProjectionGlue {
     }
     // `relayDiagnosticsInfo` lives in TypedProjectionGlue+RelayDiagnosticsInfo.swift
     // (pre-existing extraction) — do not redeclare it here.
+
+    private static func relayDiagnosticsNotice(
+        _ notice: nmp_kernel_RelayDiagnosticsNotice
+    ) -> RelayDiagnosticsNotice {
+        RelayDiagnosticsNotice(
+            atMs: notice.atMs,
+            text: notice.text ?? ""
+        )
+    }
 
     private static func relayConnectionReason(
         _ reason: nmp_kernel_RelayConnectionReason

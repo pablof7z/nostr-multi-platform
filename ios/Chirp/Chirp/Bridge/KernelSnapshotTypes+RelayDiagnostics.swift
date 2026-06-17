@@ -67,6 +67,17 @@ struct RelayDiagnosticsInfo: Decodable, Equatable {
     let restrictedWrites: Bool?
 }
 
+/// One entry in the per-relay bounded NOTICE log (mirror of `RelayDiagnosticsNotice`).
+/// `atMs` carries wall-clock Unix epoch milliseconds; shells format as "Xs ago"
+/// via `relativeTimeFromUnixSeconds` (aim.md §62). `text` is pre-truncated to
+/// 180 chars at the Rust capture site.
+struct RelayDiagnosticsNotice: Decodable, Identifiable, Equatable {
+    let atMs: UInt64
+    let text: String
+    /// Stable identity for `ForEach` — use timestamp as tie-breaker with text.
+    var id: String { "\(atMs)-\(text)" }
+}
+
 /// One routing provenance reason explaining why a relay was placed in the plan.
 /// Mirrors the Rust `RelayConnectionReason` struct.
 ///
@@ -109,6 +120,11 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let lastConnectedMs: UInt64
     let lastEventMs: UInt64
     let lastNotice: String?
+    /// Total NOTICE frames received from this relay (session counter).
+    let noticeCount: UInt64
+    /// Bounded NOTICE log, newest first (up to 32 entries). Each entry carries
+    /// a wall-clock Unix-ms timestamp; shells format via `relativeTimeFromUnixSeconds`.
+    let notices: [RelayDiagnosticsNotice]
     let lastError: String?
     let wireSubs: [RelayDiagnosticsWireSub]
     /// ADR-0051 — the relay's NIP-11 information document; `nil` until
