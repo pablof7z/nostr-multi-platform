@@ -55,24 +55,8 @@ extension TypedProjectionGlue {
             reasons: row.reasons.map(relayConnectionReason)
         )
     }
-
-    private static func relayDiagnosticsInfo(
-        _ info: nmp_kernel_RelayDiagnosticsInfo
-    ) -> RelayDiagnosticsInfo {
-        RelayDiagnosticsInfo(
-            name: info.hasName ? (info.name ?? "") : nil,
-            description: info.hasDescription ? (info.description ?? "") : nil,
-            icon: info.hasIcon ? (info.icon ?? "") : nil,
-            pubkey: info.hasPubkey ? (info.pubkey ?? "") : nil,
-            contact: info.hasContact ? (info.contact ?? "") : nil,
-            software: info.hasSoftware ? (info.software ?? "") : nil,
-            version: info.hasVersion ? (info.version ?? "") : nil,
-            supportedNips: info.supportedNips.map { $0 },
-            paymentRequired: info.hasPaymentRequired ? info.paymentRequired : nil,
-            authRequired: info.hasAuthRequired ? info.authRequired : nil,
-            restrictedWrites: info.hasRestrictedWrites ? info.restrictedWrites : nil
-        )
-    }
+    // `relayDiagnosticsInfo` lives in TypedProjectionGlue+RelayDiagnosticsInfo.swift
+    // (pre-existing extraction) — do not redeclare it here.
 
     private static func relayConnectionReason(
         _ reason: nmp_kernel_RelayConnectionReason
