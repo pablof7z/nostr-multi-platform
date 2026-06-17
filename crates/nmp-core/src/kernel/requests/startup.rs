@@ -156,13 +156,14 @@ impl Kernel {
     /// (not `ensure_sub`) so an account switch replaces the prior account's
     /// author in the slot rather than leaking it (V-04).
     ///
-    /// ADR-0045 — intentionally does NOT route through
-    /// [`crate::kernel::Kernel::enqueue_interest_cache_serve`]: these are
-    /// `is_indexer_discovery` bootstrap lanes whose explicit intent is a fresh
-    /// network fetch (the cold-start author-unknown fallback). Serving a
-    /// possibly-stale store copy would defeat the bootstrap. The store-first
-    /// uniformity guarantee applies to consumer interests, not these
-    /// discovery-direction bootstrap REQs.
+    /// ADR-0045 R3 — store-first is universal: this interest is served from the
+    /// local store on open (the store-serve half) AND refined by its wire REQ
+    /// (the network half). The two halves run together. `is_indexer_discovery`
+    /// drives only the wire half's cold-start author-unknown fallback (landing
+    /// the REQ on `bootstrap_indexer_relays` when the author's outbox is not yet
+    /// known); it does not gate the store-serve, which runs for every interest.
+    /// Serving the last-known stored copy immediately is exactly what makes the
+    /// app offline-first; the REQ revalidates in place.
     ///
     /// `seed` is the stable, human-readable [`SubKey`] discriminator (e.g.
     /// `"bootstrap:self-dm-relays"`). The matching `InterestId` is derived
@@ -186,12 +187,16 @@ impl Kernel {
         let interest = LogicalInterest {
             id: InterestId(sub_key.0),
             scope: InterestScope::Global,
-            shape,
+            shape: shape.clone(),
             hints: Vec::new(),
             lifecycle: InterestLifecycle::OneShot,
             is_indexer_discovery: true,
         };
         self.lifecycle.registry_mut().set_sub(identity, interest);
+        // Store-serve half (ADR-0045 R3): surface the last-known stored copy of
+        // these kinds immediately. The `set_sub` registration above drives the
+        // wire REQ (refinement half) on the next recompile.
+        self.enqueue_interest_cache_serve(&sub_key, &shape);
     }
 
     /// Register the cold-start reactive tailing subscription over
@@ -202,10 +207,12 @@ impl Kernel {
     /// Uses `set_sub` so an account switch swaps the author in-place
     /// rather than leaving the prior account's REQ live.
     ///
-    /// ADR-0045 — intentionally NOT cache-served (same rationale as
-    /// `register_oneshot_discovery_interest`): an `is_indexer_discovery`
-    /// bootstrap REQ whose intent is the live republication of the active
-    /// account's replaceable kinds, not a store replay.
+    /// ADR-0045 R3 — store-first is universal: cache-served from the local store
+    /// on open (same store-serve half as every consumer interest) AND tailed
+    /// over the wire for live republications. Serving the active account's own
+    /// stored kind:0/3/10002/… immediately is what hydrates the profile, the
+    /// follow set (→ the follow-feed → the timeline), and the relay list on cold
+    /// start with no network — the tailing REQ revalidates in place.
     fn register_tailing_self_kinds_interest(&mut self, owner: SubOwnerKey, author: String) {
         let sub_key = SubKey::new("bootstrap:self-kinds-tailing");
         let identity = SubIdentity::new(owner, sub_key, SubScope::Global);
@@ -228,7 +235,7 @@ impl Kernel {
         let interest = LogicalInterest {
             id: InterestId(sub_key.0),
             scope: InterestScope::Global,
-            shape,
+            shape: shape.clone(),
             hints: Vec::new(),
             lifecycle: InterestLifecycle::Tailing,
             // Cold-start chicken-and-egg: the active account's NIP-65
@@ -241,6 +248,11 @@ impl Kernel {
             is_indexer_discovery: true,
         };
         self.lifecycle.registry_mut().set_sub(identity, interest);
+        // Store-serve half (ADR-0045 R3): serve the active account's own stored
+        // replaceable kinds (kind:0/3/10002/…) from the local store on open, so
+        // the profile, follow set, and relay list rehydrate offline. The
+        // `set_sub` registration drives the tailing wire REQ (refinement half).
+        self.enqueue_interest_cache_serve(&sub_key, &shape);
     }
 }
 
