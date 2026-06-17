@@ -162,9 +162,10 @@ pub trait EventStore: Send + Sync {
 
     /// `idx_author_kind` (multi-author) scan, newest-first across the combined author set.
     ///
-    /// Results are globally sorted by `(created_at desc, id asc)` across all authors.
-    /// Duplicate event IDs are suppressed. The default implementation fans out to
-    /// `scan_by_author_kind` per author; backends may override for a single-pass path.
+    /// Results are globally sorted by `(created_at desc, id asc)` across all authors,
+    /// duplicate event IDs suppressed. Required (no default) — every backend implements
+    /// it natively, exactly like the single-author [`Self::scan_by_author_kind`]; there
+    /// is no fan-out fallback so there is only ever one implementation per backend.
     fn scan_by_authors_kind<'a>(
         &'a self,
         authors: &BTreeSet<PubKey>,
@@ -172,27 +173,7 @@ pub trait EventStore: Send + Sync {
         since: Option<u64>,
         until: Option<u64>,
         limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-        let mut all: Vec<StoredEvent> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        for author in authors {
-            let iter = self.scan_by_author_kind(author, kinds, since, until, limit)?;
-            for item in iter {
-                let ev = item?;
-                if seen.insert(ev.raw.id.clone()) {
-                    all.push(ev);
-                }
-            }
-        }
-        all.sort_by(|a, b| {
-            b.raw
-                .created_at
-                .cmp(&a.raw.created_at)
-                .then(a.raw.id.cmp(&b.raw.id))
-        });
-        all.truncate(limit);
-        Ok(Box::new(all.into_iter().map(Ok)))
-    }
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 
     /// `idx_kind_dtag` lookup — returns the current parameterized replaceable for
     /// `(pubkey, kind, d_tag)`, or `Ok(None)`.

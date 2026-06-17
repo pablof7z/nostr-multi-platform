@@ -278,6 +278,16 @@ impl EventStore for LmdbEventStore {
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
         Err(Self::not_enabled())
     }
+    fn scan_by_authors_kind<'a>(
+        &'a self,
+        _authors: &std::collections::BTreeSet<PubKey>,
+        _kinds: &[u32],
+        _since: Option<u64>,
+        _until: Option<u64>,
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn get_param_replaceable(
         &self,
         _pubkey: &PubKey,
