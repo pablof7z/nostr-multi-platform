@@ -388,13 +388,16 @@ impl Kernel {
                 ..Default::default()
             };
 
-            let interest_id = {
-                let registry = self.lifecycle.registry_mut();
-                let (_token, interest_id) =
-                    self.oneshot
-                        .request(registry, InterestScope::Global, shape, Vec::new());
-                interest_id
-            };
+            // Unified front-door path: prepare + register_interest (EnsureAbsent
+            // = register-if-absent, so same-shape reverifies share one slot).
+            let (_token, interest_id, identity, interest) =
+                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+            self.register_interest(
+                identity,
+                interest,
+                crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                "reverify-oneshot",
+            );
             // Bridge: planner emits the REQ for this interest_id; the bridge in
             // `register_planner_wire_frames` moves these keys into `reverify_subs`
             // under the planner sub_id so EOSE re-stamps the TTL.
@@ -405,10 +408,7 @@ impl Kernel {
             registered_any = true;
         }
 
-        if registered_any {
-            self.lifecycle.enqueue_trigger(crate::subs::CompileTrigger::ViewOpened {
-                interest_ids: Vec::new(),
-            });
-        }
+        // register_interest already enqueues InvalidateCompile on install.
+        let _ = registered_any;
     }
 }

@@ -10,33 +10,36 @@
 //! ## Lifecycle (built on T81 primitives — nothing re-implemented)
 //!
 //! A oneshot is just a [`LogicalInterest`] with
-//! [`InterestLifecycle::OneShot`] registered through
-//! [`InterestRegistry::ensure_sub`]. The wire side CLOSEs the REQ on first
-//! EOSE in `kernel/ingest`'s `handle_text` (the `keep_live` computation that
-//! evicts non-persistent `wire_subs` rows) — this module adds **only** the
-//! request → completion bookkeeping the actor polls. No parallel `OneShot`
-//! tracker exists.
+//! [`InterestLifecycle::OneShot`] registered through the unified front-door
+//! ([`crate::kernel::Kernel::register_interest`] with
+//! [`crate::kernel::cache_serve::InterestWrite::EnsureAbsent`]). The wire side
+//! CLOSEs the REQ on first EOSE in `kernel/ingest`'s `handle_text` (the
+//! `keep_live` computation that evicts non-persistent `wire_subs` rows) — this
+//! module adds **only** the request → completion bookkeeping the actor polls.
+//! No parallel `OneShot` tracker exists.
 //!
 //! ## Delivery model
 //!
 //! `nmp-core` has no async runtime and the kernel actor is synchronous, so
 //! delivery is **poll-based**, not callback/future:
-//! 1. [`OneshotApi::request`] → registers the interest, returns a
-//!    [`OneshotToken`].
-//! 2. The actor calls [`OneshotApi::complete`] from the ingest seam when a
+//! 1. [`OneshotApi::prepare`] → mints a token, derives the identity+interest,
+//!    records bookkeeping. Returns `(token, interest_id, identity, interest)`.
+//! 2. The Kernel calls `register_interest(identity, interest, EnsureAbsent, …)`
+//!    through the unified front-door (so store-serve fires on every oneshot too).
+//! 3. The actor calls [`OneshotApi::complete`] from the ingest seam when a
 //!    matching event lands (or on EOSE — "first result or end-of-stored").
-//! 3. [`OneshotApi::drain_completed`] (idempotent) yields finished tokens; the
+//! 4. [`OneshotApi::drain_completed`] (idempotent) yields finished tokens; the
 //!    actor releases each via [`OneshotApi::release`], dropping the registry
 //!    owner so the interest GCs when no other owner holds it.
 //!
 //! Identical oneshots **dedup**: the registry owner is derived deterministically
-//! from the `(scope, shape)` hash, so two `request`s for the same profile share
+//! from the `(scope, shape)` hash, so two `prepare`s for the same profile share
 //! one registry slot (notedeck's dedup-across-owners, §3.2).
 //!
 //! Doctrine: **D4** the registry stays the single writer (this is a thin
-//! facade — every mutation goes through `ensure_sub`/`drop_owner`).
+//! facade — every mutation goes through the front-door or `drop_owner`).
 //! **D6** no panics, no `Result` across FFI; internal state only.
-//! **D8** `request` allocates one interest; `complete`/`drain` are O(touched)
+//! **D8** `prepare` allocates one interest; `complete`/`drain` are O(touched)
 //! and the token order is deterministic.
 
 use std::collections::BTreeMap;
@@ -60,9 +63,9 @@ struct Pending {
     completed: bool,
 }
 
-/// Transient one-shot read coordinator. Owns the request table; borrows the
-/// [`InterestRegistry`] on each call so the registry remains the single
-/// writer (D4) — `OneshotApi` never holds a registry reference between calls.
+/// Transient one-shot read coordinator. Owns the request table; the registry
+/// is mutated by the Kernel's unified front-door (D4) — `OneshotApi` itself
+/// never touches the registry between calls.
 #[derive(Default)]
 pub struct OneshotApi {
     pending: BTreeMap<OneshotToken, Pending>,
@@ -76,39 +79,31 @@ impl OneshotApi {
         Self::default()
     }
 
-    /// Register a one-shot interest for `shape` under `scope` and return its
-    /// token paired with the [`InterestId`] the registry assigned. Idempotent
-    /// at the registry layer: a second `request` for the same `(scope, shape)`
-    /// attaches a *distinct token* but shares the single deduped registry slot
-    /// (notedeck §3.2) — so two views asking for the same profile produce one
-    /// wire REQ.
+    /// Pure bookkeeping half of a oneshot request.
     ///
-    /// The interest is `OneShot`, so the existing wire lifecycle CLOSEs it on
-    /// first EOSE; no extra close machinery here.
+    /// Mints a token, derives the `SubIdentity` and `LogicalInterest` for the
+    /// `(scope, shape)` pair, and records the pending entry. Returns the
+    /// `(token, interest_id, identity, interest)` tuple; the **caller** (the
+    /// Kernel) then calls `register_interest(identity, interest, EnsureAbsent,
+    /// reason)` through the unified front-door so the store-serve fires too.
     ///
-    /// The returned `InterestId` lets callers correlate the registered
-    /// interest with the `WireFrame::Req { interest_id, … }` the planner
-    /// later emits for it — the bridge `kernel::Kernel` uses to map the
-    /// planner-assigned `sub_id` back to the `OneshotToken` so EOSE routing
-    /// and store-gate decisions key on the actual wire sub-id (PD-033-C
-    /// Stage 1). Identical `(scope, shape)` inputs return the same
-    /// `InterestId` across calls — the dedup invariant the registry
-    /// guarantees on the underlying `SubKey`.
+    /// Idempotent at the registry layer: a second `prepare` for the same
+    /// `(scope, shape)` produces a distinct token but the same `interest_id`
+    /// and the same `SubKey`, so the front-door's `EnsureAbsent` will attach
+    /// this token's owner to the existing slot without clobbering the filter
+    /// (notedeck §3.2 dedup-across-owners).
     ///
     /// `hints` seeds the constructed [`LogicalInterest::hints`] so the first
-    /// REQ for a hint-bearing read (e.g. a `nostr:nevent…` claim carrying
-    /// NIP-19 relay TLVs) can fan out to publisher-provided relays in
-    /// addition to the planner's bootstrap lanes. **The dedup key is
-    /// `(scope, shape)` only** — `shape_key` does NOT hash `hints` — so
-    /// callers passing `Vec::new()` observe byte-identical registry,
-    /// `InterestId`, and dedup behavior to before this parameter existed.
-    pub fn request(
+    /// REQ for a hint-bearing read (e.g. a `nostr:nevent…` claim) can fan out
+    /// to publisher-provided relays. **The dedup key is `(scope, shape)` only**
+    /// — `shape_key` does NOT hash `hints` — so callers passing `Vec::new()`
+    /// observe byte-identical `InterestId` and dedup behavior.
+    pub fn prepare(
         &mut self,
-        registry: &mut InterestRegistry,
         scope: InterestScope,
         shape: InterestShape,
         hints: Vec<RelayHint>,
-    ) -> (OneshotToken, InterestId) {
+    ) -> (OneshotToken, InterestId, SubIdentity, LogicalInterest) {
         let token = OneshotToken(self.next_token);
         self.next_token = self.next_token.saturating_add(1);
 
@@ -128,27 +123,22 @@ impl OneshotApi {
             shape,
             hints,
             lifecycle: InterestLifecycle::OneShot,
-            // `OneshotApi::request` is the legacy discovery-direction
-            // fan-out (`kernel/discovery.rs::drain_unknown_oneshots`); opt
-            // into the planner-extension bootstrap-indexer fallback so the
-            // cold-start author-unknown case keeps landing instead of
-            // collapsing to `unroutable` (PD-033-C invariant).
+            // `OneshotApi` is the legacy discovery-direction fan-out
+            // (`kernel/discovery.rs::drain_unknown_oneshots`); opt into the
+            // planner-extension bootstrap-indexer fallback so the cold-start
+            // author-unknown case keeps landing instead of collapsing to
+            // `unroutable` (PD-033-C invariant).
             is_indexer_discovery: true,
         };
-        // `ensure_sub`: register-if-absent. A re-request never clobbers an
-        // in-flight filter (§3.3); it just attaches this token's owner.
-        // Return value (newly installed?) intentionally unused — we only
-        // need the side effect of the registration.
-        let _ = registry.ensure_sub(identity.clone(), interest);
 
         self.pending.insert(
             token,
             Pending {
-                identity,
+                identity: identity.clone(),
                 completed: false,
             },
         );
-        (token, interest_id)
+        (token, interest_id, identity, interest)
     }
 
     /// Mark `token`'s oneshot complete (first matching result observed, or
@@ -226,9 +216,24 @@ fn shape_key(scope: &SubScope, shape: &InterestShape) -> SubKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
 
     fn profile_shape(pk: &str) -> InterestShape {
         InterestShape::profile_for(pk.to_string())
+    }
+
+    /// Helper: prepare + register into a bare registry (test-only path).
+    fn prepare_and_register(
+        api: &mut OneshotApi,
+        reg: &mut InterestRegistry,
+        scope: InterestScope,
+        shape: InterestShape,
+        hints: Vec<RelayHint>,
+    ) -> (OneshotToken, InterestId) {
+        let (token, interest_id, identity, interest) = api.prepare(scope, shape, hints);
+        let t = RegistryWriteToken::for_test();
+        let _ = reg.apply(&t, InterestWrite::EnsureAbsent, identity, interest);
+        (token, interest_id)
     }
 
     #[test]
@@ -242,7 +247,8 @@ mod tests {
     fn request_registers_a_oneshot_interest() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (t, _id) = api.request(
+        let (t, _id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),
@@ -261,13 +267,15 @@ mod tests {
     fn identical_oneshots_dedup_to_one_registry_slot() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (a, a_id) = api.request(
+        let (a, a_id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),
             Vec::new(),
         );
-        let (b, b_id) = api.request(
+        let (b, b_id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),
@@ -297,7 +305,8 @@ mod tests {
     fn complete_then_drain_is_idempotent() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (t, _id) = api.request(
+        let (t, _id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("bob"),
@@ -332,13 +341,15 @@ mod tests {
     fn distinct_shapes_get_distinct_slots() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (_, alice_id) = api.request(
+        let (_, alice_id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),
             Vec::new(),
         );
-        let (_, carol_id) = api.request(
+        let (_, carol_id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("carol"),
@@ -351,17 +362,15 @@ mod tests {
         );
     }
 
-    /// Regression guard for the `hints` parameter (V-59 rung 1, #3): a caller
-    /// passing `Vec::new()` must see BYTE-IDENTICAL behavior to before the
-    /// parameter existed — empty `hints` on the registered interest, the same
-    /// `InterestId`, and the same single deduped registry slot. This is the
-    /// "no behavior change for non-hint callers" invariant the discovery
-    /// oneshots rely on.
+    /// Regression guard for the `hints` parameter: a caller passing `Vec::new()`
+    /// must see BYTE-IDENTICAL behavior — empty `hints` on the registered interest,
+    /// the same `InterestId`, and the same single deduped registry slot.
     #[test]
     fn empty_hints_registers_interest_with_no_hints() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (_, id) = api.request(
+        let (_, id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),
@@ -377,17 +386,14 @@ mod tests {
         );
         assert!(
             interest.hints.is_empty(),
-            "an empty-hints request must register an interest with no hints — \
-             byte-identical to the pre-parameter behavior"
+            "an empty-hints request must register an interest with no hints"
         );
     }
 
     /// Hints DO flow onto the constructed `LogicalInterest`, but they do NOT
     /// participate in dedup: a hint-bearing request and an otherwise-identical
     /// empty-hints request for the same `(scope, shape)` share one slot and one
-    /// `InterestId`. `shape_key` hashes `(scope, shape)` only — proving hints
-    /// cannot fork the registry slot (so a claim's hints never accidentally
-    /// split a deduped read into two wire REQs).
+    /// `InterestId`. `shape_key` hashes `(scope, shape)` only.
     #[test]
     fn hints_populate_interest_but_do_not_affect_dedup() {
         let mut reg = InterestRegistry::new();
@@ -397,7 +403,8 @@ mod tests {
             url: "wss://relay.example.com".to_string(),
             source: crate::planner::HintSource::UserConfigured,
         };
-        let (_, hinted_id) = api.request(
+        let (_, hinted_id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),
@@ -415,7 +422,8 @@ mod tests {
         // A second request for the same (scope, shape) with EMPTY hints dedups
         // to the same slot and returns the same InterestId — hints are not part
         // of the dedup key.
-        let (_, empty_id) = api.request(
+        let (_, empty_id) = prepare_and_register(
+            &mut api,
             &mut reg,
             InterestScope::Global,
             profile_shape("alice"),

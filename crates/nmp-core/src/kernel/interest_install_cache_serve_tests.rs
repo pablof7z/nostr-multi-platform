@@ -72,10 +72,15 @@ fn push_interest_serves_store_on_install() {
     assert!(parser.seen_kinds().is_empty(), "parser must be cleared");
 
     // ── Phase 3: install interest via the real PushInterest front door ────────
-    // `push_interest_and_serve` is exactly what the `ActorCommand::PushInterest`
-    // dispatch arm calls — registry push + recompile trigger + store-cache serve.
+    // `register_interest(Replace)` is exactly what the `ActorCommand::PushInterest`
+    // dispatch arm calls — unified front-door with Replace policy.
     let interest = author_kind1_interest(1, &author);
-    kernel.push_interest_and_serve(interest);
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel.register_interest(identity, interest, InterestWrite::Replace, "push-interest");
+    }
     drain_cache_serves(&mut kernel, 10);
 
     // ── Phase 4: parser must have received all 3 stored events ────────────────
@@ -114,12 +119,16 @@ fn ensure_interest_serves_store_on_newly_installed() {
     parser.clear();
 
     // ── EnsureInterest (newly installed) via the real front door ─────────────
-    // `ensure_interest_and_serve` is exactly what the
+    // `register_interest(EnsureAbsent)` is exactly what the
     // `ActorCommand::EnsureInterest` dispatch arm (and open_interest_sub /
-    // open_uri) call — ensure_sub + trigger + serve, all gated on newly-installed.
+    // open_uri) calls — unified front-door with EnsureAbsent policy.
     let identity = sub_id(42);
     let interest = author_kind1_interest(42, &author);
-    let newly = kernel.ensure_interest_and_serve(identity, interest, "ensure-interest");
+    let newly = {
+        use crate::kernel::cache_serve::InterestWrite;
+        let reg = kernel.register_interest(identity, interest, InterestWrite::EnsureAbsent, "ensure-interest");
+        reg.newly_installed
+    };
     assert!(newly, "must be newly installed");
     drain_cache_serves(&mut kernel, 10);
 
@@ -156,7 +165,11 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     // First install — serves (via the real front door).
     let identity_1 = sub_id(100);
     let interest_1 = author_kind1_interest(100, &author);
-    let newly_1 = kernel.ensure_interest_and_serve(identity_1, interest_1, "ensure-interest");
+    let newly_1 = {
+        use crate::kernel::cache_serve::InterestWrite;
+        let reg = kernel.register_interest(identity_1, interest_1, InterestWrite::EnsureAbsent, "ensure-interest");
+        reg.newly_installed
+    };
     assert!(newly_1);
     drain_cache_serves(&mut kernel, 10);
     let after_first = parser.seen_kinds().len();
@@ -169,10 +182,14 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     // serve; no pending serve is queued.
     let identity_2 = sub_id(100);
     let interest_2 = author_kind1_interest(100, &author);
-    let newly_2 = kernel.ensure_interest_and_serve(identity_2, interest_2, "ensure-interest");
+    let newly_2 = {
+        use crate::kernel::cache_serve::InterestWrite;
+        let reg = kernel.register_interest(identity_2, interest_2, InterestWrite::EnsureAbsent, "ensure-interest");
+        reg.newly_installed
+    };
     assert!(
         !newly_2,
-        "second ensure_interest_and_serve for same slot must return false"
+        "second EnsureAbsent for same slot must return false (not newly installed)"
     );
     assert!(
         !kernel.has_pending_cache_serves(),
@@ -249,10 +266,15 @@ fn two_session_push_interest_kp_regression() {
     );
 
     // ── Session 2: push the KP interest (production path) ────────────────────
-    // `push_interest_and_serve` is the exact call the
-    // `ActorCommand::PushInterest` arm makes from `nmp-marmot/src/ffi.rs:499`.
+    // `register_interest(Replace)` is the exact call the
+    // `ActorCommand::PushInterest` arm makes (Replace policy).
     let interest = kp_interest(999, &receiver_hex);
-    kernel.push_interest_and_serve(interest);
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel.register_interest(identity, interest, InterestWrite::Replace, "push-interest");
+    }
     drain_cache_serves(&mut kernel, 10);
 
     // ── Assert: parser received stored KP events, NO network needed ───────────
@@ -300,7 +322,12 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
 
     // First serve — in-memory events are already present; cache-serve skips them.
     let interest = author_kind1_interest(50, &author);
-    kernel.push_interest_and_serve(interest);
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel.register_interest(identity, interest, InterestWrite::Replace, "push-interest");
+    }
     drain_cache_serves(&mut kernel, 10);
     // Events already in memory → serve skips → no additional dispatches.
     let after_first_serve = parser.seen_kinds().len();
@@ -318,7 +345,12 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     // Second install via PushInterest with a new InterestId (fresh completion key).
     // This must NOT panic and must NOT deliver duplicate events (in-memory dedup).
     let interest_2 = author_kind1_interest(51, &author);
-    kernel.push_interest_and_serve(interest_2);
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let identity = SubIdentity::from_legacy_interest(&interest_2);
+        kernel.register_interest(identity, interest_2, InterestWrite::Replace, "push-interest");
+    }
     drain_cache_serves(&mut kernel, 10);
 
     let after_reserve = parser.seen_kinds();
@@ -340,7 +372,7 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
 /// caches cold), then drives the real `dispatch_kernel_action(OpenUri{npub})`
 /// path and asserts the registered kind:0 parser receives the stored event
 /// WITHOUT any network — proving open_uri now routes through the single
-/// ensure-install front door (`ensure_interest_and_serve`).
+/// ensure-install front door (`register_interest(EnsureAbsent)`).
 #[test]
 fn open_uri_serves_store_for_resolved_target() {
     use crate::app::{KernelAction, KernelUpdate};

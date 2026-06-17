@@ -360,15 +360,12 @@ mod production_ingest_tests {
             limit: Some(1),
             ..Default::default()
         };
-        let (_, interest_id) = {
-            let registry = kernel.lifecycle.registry_mut();
-            kernel.oneshot.request(
-                registry,
-                crate::planner::InterestScope::Global,
-                shape,
-                Vec::new(),
-            )
-        };
+        let (_, interest_id, identity, interest) = kernel.oneshot.prepare(
+            crate::planner::InterestScope::Global,
+            shape,
+            Vec::new(),
+        );
+        kernel.register_interest(identity, interest, crate::kernel::cache_serve::InterestWrite::EnsureAbsent, "claim-expand-oneshot");
 
         let oneshot_before = kernel.test_oneshot_in_flight();
         assert_eq!(

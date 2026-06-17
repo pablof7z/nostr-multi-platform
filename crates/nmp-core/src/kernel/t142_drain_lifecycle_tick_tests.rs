@@ -97,11 +97,18 @@ fn t142_drain_lifecycle_tick_with_trigger_emits_frames() {
     // Register alice's kind:10002 write relay in the kernel cache.
     install_relay_list(&kernel, ALICE, &["wss://alice-t142.relay/"]);
 
-    // Register a follow interest for alice.
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(follow_interest(1, ALICE));
+    // Register a follow interest for alice via the test-only seam.
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let t = RegistryWriteToken::for_test();
+        let interest = follow_interest(1, ALICE);
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel
+            .lifecycle_mut()
+            .registry_mut()
+            .apply(&t, InterestWrite::Replace, identity, interest);
+    }
     kernel
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);

@@ -12,6 +12,13 @@ use crate::planner::{
 };
 use crate::substrate::BlockedRelaySet;
 
+fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
+    use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+    let t = RegistryWriteToken::for_test();
+    let identity = SubIdentity::from_legacy_interest(&interest);
+    reg.apply(&t, InterestWrite::Replace, identity, interest);
+}
+
 fn make_interest(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
         id: InterestId(id),
@@ -58,7 +65,7 @@ fn attribution_accessible_after_compile() {
     let relay = "wss://relay.example.com".to_string();
     let cache = make_cache_with_relay(&author, &relay);
     let interest = make_interest(1, &author);
-    lc.registry_mut().push(interest);
+    push_legacy(lc.registry_mut(), interest);
     lc.set_indexer_relays(vec![]);
 
     let empty_blocked = BlockedRelaySet::new();
@@ -79,7 +86,7 @@ fn blocked_relay_absent_from_wire_frames() {
     let relay = "wss://blocked.relay.example.com".to_string();
     let cache = make_cache_with_relay(&author, &relay);
     let interest = make_interest(1, &author);
-    lc.registry_mut().push(interest);
+    push_legacy(lc.registry_mut(), interest);
     lc.set_indexer_relays(vec![]);
 
     let mut blocked = BlockedRelaySet::new();

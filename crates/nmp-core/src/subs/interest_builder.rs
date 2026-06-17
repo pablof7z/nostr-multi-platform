@@ -100,15 +100,19 @@ mod tests {
 
     #[test]
     fn same_filter_different_json_order_dedups_to_one_slot() {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
         let mut reg = InterestRegistry::new();
+        let t = RegistryWriteToken::for_test();
         let (id_a, int_a) =
             build_interest_pair(r#"{"kinds":[1,6],"authors":["aa","bb"]}"#, "c", 0).unwrap();
         let (id_b, int_b) =
             build_interest_pair(r#"{"authors":["bb","aa"],"kinds":[6,1]}"#, "c", 0).unwrap();
 
-        assert!(reg.ensure_sub(id_a, int_a), "first open installs");
+        let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id_a, int_a);
+        assert!(r1.newly_installed, "first open installs");
+        let r2 = reg.apply(&t, InterestWrite::EnsureAbsent, id_b, int_b);
         assert!(
-            !reg.ensure_sub(id_b, int_b),
+            !r2.newly_installed,
             "same filter+consumer is a no-op install (already present)"
         );
         assert_eq!(reg.len(), 1, "deduped to a single slot");
@@ -116,13 +120,17 @@ mod tests {
 
     #[test]
     fn distinct_consumers_share_the_slot_and_last_close_drops_it() {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
         let mut reg = InterestRegistry::new();
+        let t = RegistryWriteToken::for_test();
         let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
         let (id1, int1) = build_interest_pair(filter, "consumer-1", 0).unwrap();
         let (id2, int2) = build_interest_pair(filter, "consumer-2", 0).unwrap();
 
-        assert!(reg.ensure_sub(id1.clone(), int1), "consumer-1 installs");
-        assert!(!reg.ensure_sub(id2.clone(), int2), "consumer-2 attaches");
+        let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id1.clone(), int1);
+        assert!(r1.newly_installed, "consumer-1 installs");
+        let r2 = reg.apply(&t, InterestWrite::EnsureAbsent, id2.clone(), int2);
+        assert!(!r2.newly_installed, "consumer-2 attaches");
         assert_eq!(reg.len(), 1);
 
         let (close1, _) = build_interest_pair(filter, "consumer-1", 0).unwrap();
@@ -136,14 +144,18 @@ mod tests {
 
     #[test]
     fn active_account_and_global_scope_of_same_filter_are_distinct_slots() {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
         let mut reg = InterestRegistry::new();
+        let t = RegistryWriteToken::for_test();
         let filter = r##"{"kinds":[1],"#t":["bitcoin"]}"##;
         let (id_active, int_active) = build_interest_pair(filter, "c", 0).unwrap();
         let (id_global, int_global) = build_interest_pair(filter, "c", 1).unwrap();
 
-        assert!(reg.ensure_sub(id_active, int_active));
+        let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id_active, int_active);
+        assert!(r1.newly_installed);
+        let r2 = reg.apply(&t, InterestWrite::EnsureAbsent, id_global, int_global);
         assert!(
-            reg.ensure_sub(id_global, int_global),
+            r2.newly_installed,
             "different scope → newly installed, not a dedup"
         );
         assert_eq!(reg.len(), 2);

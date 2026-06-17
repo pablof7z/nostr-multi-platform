@@ -16,6 +16,13 @@ fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()
 }
 
+fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
+    use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+    let t = RegistryWriteToken::for_test();
+    let identity = SubIdentity::from_legacy_interest(&interest);
+    reg.apply(&t, InterestWrite::Replace, identity, interest);
+}
+
 /// Single-author follow interest (kind:1 timeline).
 fn follow(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
@@ -49,7 +56,7 @@ fn probe_reqs(frames: &[WireFrame]) -> Vec<&WireFrame> {
 fn unknown_author_triggers_mailbox_probe() {
     let mut l = SubscriptionLifecycle::new(); // indexer = [purplepag.es]
     let empty = InMemoryMailboxCache::new(); // nothing cached
-    l.registry_mut().push(follow(1, "ab01"));
+    push_legacy(l.registry_mut(), follow(1, "ab01"));
 
     let frames = l.recompile_and_diff(&empty).expect("compile");
     let probes = probe_reqs(&frames);
@@ -77,7 +84,7 @@ fn unknown_author_triggers_mailbox_probe() {
 fn probed_author_not_reprobed() {
     let mut l = SubscriptionLifecycle::new();
     let empty = InMemoryMailboxCache::new();
-    l.registry_mut().push(follow(1, "cd01"));
+    push_legacy(l.registry_mut(), follow(1, "cd01"));
 
     let first = l.recompile_and_diff(&empty).expect("compile 1");
     assert_eq!(probe_reqs(&first).len(), 1);
@@ -112,7 +119,7 @@ fn cached_author_never_probed() {
             both_relays: vec![],
         },
     );
-    l.registry_mut().push(follow(1, "ef01"));
+    push_legacy(l.registry_mut(), follow(1, "ef01"));
 
     let frames = l.recompile_and_diff(&cache).expect("compile");
     assert_eq!(
@@ -133,7 +140,7 @@ fn many_unknown_authors_batch_into_chunks() {
     let n = MAILBOX_PROBE_BATCH * 2 + 7;
     for i in 0..n as u32 {
         let seed = format!("z{i:05}");
-        l.registry_mut().push(follow(u64::from(i) + 1, &seed));
+        push_legacy(l.registry_mut(), follow(u64::from(i) + 1, &seed));
     }
     let frames = l.recompile_and_diff(&empty).expect("compile");
     let probes = probe_reqs(&frames);
@@ -164,8 +171,8 @@ fn current_plan_unroutable_reflects_plan() {
             both_relays: vec![],
         },
     );
-    l.registry_mut().push(follow(1, "rt01"));
-    l.registry_mut().push(follow(2, "ur01"));
+    push_legacy(l.registry_mut(), follow(1, "rt01"));
+    push_legacy(l.registry_mut(), follow(2, "ur01"));
 
     let _ = l.recompile_and_diff(&cache).expect("compile");
     let unroutable = l.current_plan_unroutable();
@@ -200,7 +207,7 @@ fn current_plan_frames_materialises_full_content_plan() {
             both_relays: vec![],
         },
     );
-    l.registry_mut().push(follow(1, "cp01"));
+    push_legacy(l.registry_mut(), follow(1, "cp01"));
 
     let _ = l.recompile_and_diff(&cache).expect("compile");
     let frames = l.current_plan_frames();
@@ -244,7 +251,7 @@ fn no_indexer_no_app_relay_means_no_probe() {
     l.set_indexer_relays(vec![]);
     l.set_app_relays(vec![]); // explicit: default is already empty
     let empty = InMemoryMailboxCache::new();
-    l.registry_mut().push(follow(1, "aa99"));
+    push_legacy(l.registry_mut(), follow(1, "aa99"));
     let frames = l.recompile_and_diff(&empty).expect("compile");
     assert_eq!(probe_reqs(&frames).len(), 0);
     assert!(
@@ -265,7 +272,7 @@ fn app_relay_only_still_emits_mailbox_probe() {
     l.set_indexer_relays(vec![]); // no dedicated indexer at all
     l.set_app_relays(vec!["wss://relay.primal.net".to_string()]);
     let empty = InMemoryMailboxCache::new(); // nothing cached
-    l.registry_mut().push(follow(1, "ab01"));
+    push_legacy(l.registry_mut(), follow(1, "ab01"));
 
     let frames = l.recompile_and_diff(&empty).expect("compile");
     let probes = probe_reqs(&frames);
@@ -300,7 +307,7 @@ fn probe_unions_indexer_and_app_relays() {
     let mut l = SubscriptionLifecycle::new(); // indexer = [purplepag.es]
     l.set_app_relays(vec!["wss://relay.primal.net".to_string()]);
     let empty = InMemoryMailboxCache::new();
-    l.registry_mut().push(follow(1, "cd02"));
+    push_legacy(l.registry_mut(), follow(1, "cd02"));
 
     let frames = l.recompile_and_diff(&empty).expect("compile");
     let probes = probe_reqs(&frames);

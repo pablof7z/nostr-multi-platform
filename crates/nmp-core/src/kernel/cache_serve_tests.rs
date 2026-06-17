@@ -115,10 +115,14 @@ pub(super) fn register_interest_for_test(
         sub_key,
         SubScope::Global,
     );
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .set_sub(identity, interest);
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        let t = RegistryWriteToken::for_test();
+        kernel
+            .lifecycle_mut()
+            .registry_mut()
+            .apply(&t, InterestWrite::Replace, identity, interest);
+    }
 }
 
 /// Clear `kernel.events` and `kernel.timeline` to simulate a cold second

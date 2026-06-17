@@ -80,7 +80,7 @@ mod claimed_events_raw_author_tests;
 // acquisition mechanism: at interest-open time, query the store for the
 // newest-N events matching the interest's shape and feed them through the
 // post-store projection-dispatch path (not store.insert — see ADR §1.2).
-mod cache_serve;
+pub(crate) mod cache_serve;
 #[cfg(test)]
 mod cache_serve_all_kinds_dispatcher_tests;
 #[cfg(test)]
@@ -2496,11 +2496,15 @@ impl Kernel {
         identity: crate::subs::SubIdentity,
         interest: crate::planner::LogicalInterest,
     ) -> bool {
-        // ADR-0045 E1 — delegate to the single ensure-install front door so the
-        // "register-if-absent → trigger + store-serve on newly-installed" recipe
-        // lives in exactly one place (shared with the EnsureInterest dispatch
-        // arm and the open_uri resolver).
-        self.ensure_interest_and_serve(identity, interest, "open-interest")
+        // Unified front-door (EnsureAbsent = register-if-absent). Store-serve +
+        // recompile trigger fire only when the interest is newly installed.
+        let reg = self.register_interest(
+            identity,
+            interest,
+            crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            "open-interest",
+        );
+        reg.newly_installed
     }
 
     /// M2 (ADR-0042) — detach one owner from a generic feed interest and, when

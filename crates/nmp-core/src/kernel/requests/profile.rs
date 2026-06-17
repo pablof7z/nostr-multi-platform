@@ -268,15 +268,18 @@ impl Kernel {
             is_indexer_discovery: true,
         };
 
-        // `set_sub`: attach this owner and (re)install the interest. Using
-        // `set_sub` (not `ensure_sub`) is what makes the Tailing upgrade work —
-        // the interest is replaced in place while the owner set is preserved.
-        self.lifecycle.registry_mut().set_sub(identity, interest);
-        // Drive the planner so the next drain compiles the (possibly upgraded)
-        // interest into a wire REQ.
-        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
-            interest_ids: Vec::new(),
-        });
+        // Unified front-door (Replace = set_sub semantics): attach this owner
+        // and replace the interest in place. The Tailing liveness upgrade works
+        // because Replace always installs the new lifecycle, and `changed == true`
+        // when lifecycle changed → recompile fires, upgrading OneShot→Tailing on
+        // the wire. Store-serve is also triggered (fixing the kind:0 cold-start
+        // bug: consequence §5a of the design doc).
+        self.register_interest(
+            identity,
+            interest,
+            crate::kernel::cache_serve::InterestWrite::Replace,
+            "profile-claim",
+        );
     }
 
     pub(crate) fn release_profile(

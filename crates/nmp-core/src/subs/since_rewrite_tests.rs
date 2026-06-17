@@ -28,6 +28,14 @@ fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()
 }
 
+fn push_legacy(reg: &mut super::InterestRegistry, interest: LogicalInterest) {
+    use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+    use super::SubIdentity;
+    let t = RegistryWriteToken::for_test();
+    let identity = SubIdentity::from_legacy_interest(&interest);
+    reg.apply(&t, InterestWrite::Replace, identity, interest);
+}
+
 fn timeline_interest(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
         id: InterestId(id),
@@ -145,7 +153,7 @@ fn since_none_stays_none_for_backfill_interest_after_watermark_rewrite() {
     // backfill (OneShot, lifecycle!=Tailing) with no since. The watermark
     // rewrite must NOT introduce a lower bound.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
-    l.registry_mut().push(backfill_interest(1, "a"));
+    push_legacy(l.registry_mut(), backfill_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -167,7 +175,7 @@ fn tailing_since_none_is_narrowed_to_watermark_plus_one() {
     // Watermark = 1700; Tailing interest with no explicit since.
     // T129 must narrow it to since=1701 so the relay skips cached events.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
-    l.registry_mut().push(timeline_interest(1, "a")); // lifecycle: Tailing
+    push_legacy(l.registry_mut(), timeline_interest(1, "a")); // lifecycle: Tailing
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -187,8 +195,7 @@ fn some_since_is_raised_to_watermark_plus_one() {
     // Interest has an explicit since=500 (older than the watermark).
     // Watermark = 1700, so the floor is 1701.  The rewrite must raise it.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
-    l.registry_mut()
-        .push(timeline_interest_with_since(1, "a", 500));
+    push_legacy(l.registry_mut(), timeline_interest_with_since(1, "a", 500));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -209,7 +216,7 @@ fn does_not_rewrite_when_watermark_is_none() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
     // Empty cache: watermark fn returns None for every shape.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| None));
-    l.registry_mut().push(timeline_interest(1, "a"));
+    push_legacy(l.registry_mut(), timeline_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -230,8 +237,7 @@ fn user_since_wins_when_newer_than_watermark() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
     // Watermark = 1500, user explicit since = 1800 (newer).
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1500)));
-    l.registry_mut()
-        .push(timeline_interest_with_since(1, "a", 1800));
+    push_legacy(l.registry_mut(), timeline_interest_with_since(1, "a", 1800));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -258,7 +264,7 @@ fn ephemeral_kinds_skip_since_rewrite() {
     // (20000-29999) must SKIP the rewrite — the event store doesn't persist
     // them so the watermark is meaningless.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
-    l.registry_mut().push(ephemeral_interest(1, "a"));
+    push_legacy(l.registry_mut(), ephemeral_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -343,7 +349,7 @@ fn multi_author_no_since_when_watermark_fn_returns_none() {
             Some(1700)
         }
     }));
-    l.registry_mut().push(two_author_interest(10, "a", "b"));
+    push_legacy(l.registry_mut(), two_author_interest(10, "a", "b"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -385,7 +391,7 @@ fn multi_author_since_is_min_watermark_plus_one() {
     // since=1 so the watermark rewrite applies (#1281: since=None is exempt).
     let mut interest = two_author_interest(11, "a", "b");
     interest.shape.since = Some(1);
-    l.registry_mut().push(interest);
+    push_legacy(l.registry_mut(), interest);
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -420,8 +426,7 @@ fn multi_relay_emits_identical_rewritten_since() {
     l.set_selection_budget(usize::MAX, usize::MAX);
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
     // since=500 so the watermark rewrite applies (#1281: since=None is exempt).
-    l.registry_mut()
-        .push(timeline_interest_with_since(1, "a", 500));
+    push_legacy(l.registry_mut(), timeline_interest_with_since(1, "a", 500));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
