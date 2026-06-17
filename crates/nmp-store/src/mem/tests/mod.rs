@@ -1,0 +1,15 @@
+//! Unit tests for `MemEventStore` — P2 invariant checks.
+//!
+//! Integration tests using the full `StoreHarness` live in
+//! `crates/nmp-testing/tests/store_*.rs`.
+//!
+//! Sub-modules (split to stay under the 500-LOC file-size hard cap):
+//!   insert_tests       — tombstone max-merge and replaceable-dup provenance
+//!   query_visit_tests  — early-stop visitor and `query` wrapper ordering
+//!   authors_kind_tests — `StoreQuery::AuthorsKind` multi-author query invariants
+//!   relay_index_tests  — V-52 relay-origin reverse-index invariants
+
+mod insert_tests;
+mod query_visit_tests;
+mod authors_kind_tests;
+mod relay_index_tests;
