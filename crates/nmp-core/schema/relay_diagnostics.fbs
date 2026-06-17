@@ -115,10 +115,24 @@ table RelayDiagnosticsInfo {
 table RelayConnectionReason {
   // Stable machine tag: `"nip65"` / `"hint"` / `"account_read"` /
   // `"account_write"` / `"indexer"` / `"app_relay"` / `"debug"` /
-  // `"bootstrap"` / `"blocked"`.
+  // `"bootstrap"` / `"blocked"` / `"interest"`.
   kind:string;
   // Pre-formatted human label (`"Outbox of 3 people"`, `"App relay"`, …).
   label:string;
+  // Semantic hue key reusing the existing tone vocabulary
+  // (`"ok"` / `"warn"` / `"accent"` / `"muted"`).
+  tone:string;
+  // Hex pubkeys of authors relevant to this reason (capped at 8).
+  // Non-empty for `"nip65"` and `"interest"` variants.
+  author_pubkeys:[string];
+  // Exact author total (>= len(author_pubkeys)). Zero when not applicable.
+  author_total:uint;
+  // Pre-formatted kinds label (`"kind:0, kind:1"`). Non-empty for
+  // `"interest"` variants only.
+  kinds_label:string;
+  // Hint origin event id (hex). Absent for non-hint reasons.
+  has_source_event_id:bool;
+  source_event_id:string;
 }
 
 // One rolled-up row per known relay URL (mirror of `RelayDiagnosticsRow`).

@@ -108,6 +108,10 @@ impl SubscriptionLifecycle {
         //  • selection budget (max_connections, max_per_user)
         //  • watermark_generation                          — bumped at EOSE/NEG-DONE
         //    (CRITICAL: missing this causes stale `since` → silent under-fetch)
+        //  • blocked relay set (GAP-2 fix)                 — sorted URL iterator
+        //    Without this, a kind:10006-only change leaves the fingerprint
+        //    unchanged → memo guard returns the cached plan → SPLIT B never
+        //    re-runs → the blocked relay keeps its REQ.
         //
         // Score-lookup (W4) is intentionally excluded: the score map only
         // influences `apply_selection`, not `compile()`, and score cells
@@ -142,6 +146,13 @@ impl SubscriptionLifecycle {
             self.select_max_connections.hash(&mut h);
             self.select_max_per_user.hash(&mut h);
             self.watermark_generation.hash(&mut h);
+            // GAP-2: include the blocked set so a kind:10006-only change
+            // (block/unblock) forces a real recompile and SPLIT B re-runs.
+            if let Some(blocked) = blocked {
+                for url in blocked.iter() {
+                    url.hash(&mut h);
+                }
+            }
             h.finish64()
         };
 

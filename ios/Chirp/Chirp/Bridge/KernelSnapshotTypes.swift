@@ -408,9 +408,18 @@ struct RelayDiagnosticsInfo: Decodable, Equatable {
 ///
 /// `kind` is a stable machine tag for icon/tone lookups; `label` is the
 /// pre-formatted human string the shell renders directly.
+/// `tone` is the semantic hue key (`"ok"` / `"warn"` / `"accent"` / `"muted"`).
+/// `authorPubkeys` carries the (capped) author pubkey list; `authorTotal` is
+/// the exact total count. `kindsLabel` is the pre-formatted kinds string for
+/// interest reasons. `sourceEventId` carries the hint origin event id when known.
 struct RelayConnectionReason: Decodable, Equatable {
     let kind: String
     let label: String
+    let tone: String
+    let authorPubkeys: [String]
+    let authorTotal: UInt32
+    let kindsLabel: String
+    let sourceEventId: String?
 }
 
 /// One rolled-up relay row.

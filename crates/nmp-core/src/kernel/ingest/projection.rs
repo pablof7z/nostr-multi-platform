@@ -29,6 +29,13 @@ impl Kernel {
         // ADR-0057 PR 3 — snapshot the contacts cache for the author (ANY author,
         // like the profile snapshot above).
         let contacts_before = self.contacts_lookup().follows(&author);
+        // GAP-3: snapshot the active account's blocked-relay set BEFORE dispatch
+        // so we can detect a kind:10006 write and enqueue a recompile.
+        let blocked_before_urls: std::collections::BTreeSet<String> = self
+            .snapshot_blocked_relays()
+            .iter()
+            .cloned()
+            .collect();
 
         // (1) NIP-parser dispatch. D6 — a poisoned dispatcher lock degrades to
         // "no parser fired" (graceful; persistence already succeeded).
@@ -56,6 +63,21 @@ impl Kernel {
             if self.active_account.as_deref() == Some(author.as_str()) {
                 let follows = contacts_after.unwrap_or_default();
                 self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
+            }
+        }
+        // GAP-3: detect blocked-relay-set change. Kind:10006 is the wire shape,
+        // but the transition detector is kind-agnostic (mirrors the contacts
+        // pattern above). When the active account's blocked set changes, enqueue
+        // a recompile so SPLIT B removes the newly-blocked relay on the next drain.
+        // Only check for the active account — the blocked set is account-scoped.
+        if self.active_account.as_deref() == Some(author.as_str()) {
+            let blocked_after_urls: std::collections::BTreeSet<String> = self
+                .snapshot_blocked_relays()
+                .iter()
+                .cloned()
+                .collect();
+            if blocked_before_urls != blocked_after_urls {
+                self.on_blocked_relays_changed();
             }
         }
 
@@ -102,6 +124,21 @@ impl Kernel {
             .enqueue_trigger(crate::subs::CompileTrigger::DmRelayListChanged {
                 pubkey: author.to_string(),
                 created_at,
+            });
+    }
+
+    /// GAP-3 — blocked-relay-set-change observer.
+    ///
+    /// Called when the active account's kind:10006 blocked-relay list is
+    /// updated by an ingest parser (typically `Kind10006Parser` in `nmp-router`).
+    /// Enqueues an `InvalidateCompile` trigger so System-A's SPLIT B re-runs on
+    /// the next drain and drops the newly-blocked relay's REQ from the wire plan.
+    fn on_blocked_relays_changed(&mut self) {
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                reason: crate::subs::InvalidateReason::External(
+                    "blocked-relays-changed".to_string(),
+                ),
             });
     }
 }

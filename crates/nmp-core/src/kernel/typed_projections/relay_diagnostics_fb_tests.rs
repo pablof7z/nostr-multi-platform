@@ -129,14 +129,32 @@ fn reasons_round_trip() {
         ConnectionReasonRow {
             kind: "blocked".to_string(),
             label: "Blocked".to_string(),
+            tone: "muted".to_string(),
+            author_pubkeys: vec![],
+            author_total: 0,
+            kinds_label: String::new(),
+            source_event_id: None,
         },
         ConnectionReasonRow {
             kind: "nip65".to_string(),
             label: "Outbox of 2 people".to_string(),
+            tone: "accent".to_string(),
+            author_pubkeys: vec![
+                "aabbcc".to_string(),
+                "ddeeff".to_string(),
+            ],
+            author_total: 2,
+            kinds_label: String::new(),
+            source_event_id: None,
         },
         ConnectionReasonRow {
-            kind: "app_relay".to_string(),
-            label: "App relay".to_string(),
+            kind: "hint".to_string(),
+            label: "Relay hint".to_string(),
+            tone: "warn".to_string(),
+            author_pubkeys: vec![],
+            author_total: 0,
+            kinds_label: String::new(),
+            source_event_id: Some("deadbeef".to_string()),
         },
     ];
     let decoded =

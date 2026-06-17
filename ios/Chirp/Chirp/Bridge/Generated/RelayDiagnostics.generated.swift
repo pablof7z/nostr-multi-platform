@@ -333,6 +333,12 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
   private enum VTOFFSET: VOffset {
     case kind = 4
     case label = 6
+    case tone = 8
+    case authorPubkeys = 10
+    case authorTotal = 12
+    case kindsLabel = 14
+    case hasSourceEventId = 16
+    case sourceEventId = 18
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -341,18 +347,46 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
   public var kindSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.kind.v) }
   public var label: String? { let o = _accessor.offset(VTOFFSET.label.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var labelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.label.v) }
-  public static func startRelayConnectionReason(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public var tone: String? { let o = _accessor.offset(VTOFFSET.tone.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var toneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.tone.v) }
+  public var authorPubkeysCount: Int32 { let o = _accessor.offset(VTOFFSET.authorPubkeys.v); return o == 0 ? 0 : _accessor.vector(count: o) }
+  public func authorPubkeys(at index: Int32) -> String? { let o = _accessor.offset(VTOFFSET.authorPubkeys.v); return o == 0 ? nil : _accessor.directString(at: _accessor.vector(at: o) + index * 4) }
+  public var authorTotal: UInt32 { let o = _accessor.offset(VTOFFSET.authorTotal.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var kindsLabel: String? { let o = _accessor.offset(VTOFFSET.kindsLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var kindsLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.kindsLabel.v) }
+  public var hasSourceEventId: Bool { let o = _accessor.offset(VTOFFSET.hasSourceEventId.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var sourceEventId: String? { let o = _accessor.offset(VTOFFSET.sourceEventId.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var sourceEventIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.sourceEventId.v) }
+  public static func startRelayConnectionReason(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
   public static func add(kind: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: kind, at: VTOFFSET.kind.p) }
   public static func add(label: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: label, at: VTOFFSET.label.p) }
+  public static func add(tone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: tone, at: VTOFFSET.tone.p) }
+  public static func addVectorOf(authorPubkeys: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkeys, at: VTOFFSET.authorPubkeys.p) }
+  public static func add(authorTotal: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: authorTotal, def: 0, at: VTOFFSET.authorTotal.p) }
+  public static func add(kindsLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: kindsLabel, at: VTOFFSET.kindsLabel.p) }
+  public static func add(hasSourceEventId: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasSourceEventId, def: false, at: VTOFFSET.hasSourceEventId.p) }
+  public static func add(sourceEventId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: sourceEventId, at: VTOFFSET.sourceEventId.p) }
   public static func endRelayConnectionReason(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createRelayConnectionReason(
     _ fbb: inout FlatBufferBuilder,
     kindOffset kind: Offset = Offset(),
-    labelOffset label: Offset = Offset()
+    labelOffset label: Offset = Offset(),
+    toneOffset tone: Offset = Offset(),
+    authorPubkeysVectorOffset authorPubkeys: Offset = Offset(),
+    authorTotal: UInt32 = 0,
+    kindsLabelOffset kindsLabel: Offset = Offset(),
+    hasSourceEventId: Bool = false,
+    sourceEventIdOffset sourceEventId: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_RelayConnectionReason.startRelayConnectionReason(&fbb)
     nmp_kernel_RelayConnectionReason.add(kind: kind, &fbb)
     nmp_kernel_RelayConnectionReason.add(label: label, &fbb)
+    nmp_kernel_RelayConnectionReason.add(tone: tone, &fbb)
+    nmp_kernel_RelayConnectionReason.addVectorOf(authorPubkeys: authorPubkeys, &fbb)
+    nmp_kernel_RelayConnectionReason.add(authorTotal: authorTotal, &fbb)
+    nmp_kernel_RelayConnectionReason.add(kindsLabel: kindsLabel, &fbb)
+    nmp_kernel_RelayConnectionReason.add(hasSourceEventId: hasSourceEventId, &fbb)
+    nmp_kernel_RelayConnectionReason.add(sourceEventId: sourceEventId, &fbb)
     return nmp_kernel_RelayConnectionReason.endRelayConnectionReason(&fbb, start: __start)
   }
 
@@ -360,6 +394,12 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.kind.p, fieldName: "kind", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.label.p, fieldName: "label", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.tone.p, fieldName: "tone", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.authorPubkeys.p, fieldName: "author_pubkeys", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
+    try _v.visit(field: VTOFFSET.authorTotal.p, fieldName: "author_total", required: false, type: UInt32.self)
+    try _v.visit(field: VTOFFSET.kindsLabel.p, fieldName: "kinds_label", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasSourceEventId.p, fieldName: "has_source_event_id", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.sourceEventId.p, fieldName: "source_event_id", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }
