@@ -70,10 +70,11 @@ pub use action::{
     ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
 pub use app_host::{
-    AppHost, CoverageHookRegistrar, DmInboxRelayRegistrar, EventObserverRegistrar, HostCapabilities,
-    IdentityChangeRegistrar, IncrementalApplyError, IngestParserRegistrar, KernelReaderRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+    AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
+    EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
+    IngestParserRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SnapshotProjectionRegistrar,
 };
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
 pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};

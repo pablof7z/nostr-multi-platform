@@ -1,7 +1,23 @@
 use crate::{
     interest::{HintSource, RelayHint, RelayUrl},
-    plan::{RoutingSource, UserConfiguredCategory},
+    plan::{HintOrigin, RoutingSource, UserConfiguredCategory},
 };
+
+/// Derive the `HintOrigin` that describes where this hint came from.
+///
+/// Parallel to `routing_source_for_hint` but captures the originating event id
+/// when available, so the attribution record can surface it in diagnostics.
+pub(super) fn hint_origin_for(hint: &RelayHint) -> HintOrigin {
+    match &hint.source {
+        HintSource::EventTag { event_id, .. } => HintOrigin::EventTag {
+            event_id: event_id.clone(),
+        },
+        HintSource::Provenance { event_id } => HintOrigin::Provenance {
+            event_id: event_id.clone(),
+        },
+        HintSource::UserConfigured => HintOrigin::UserConfigured,
+    }
+}
 
 pub(super) fn route_for_hint(hint: &RelayHint) -> Option<(RelayUrl, RoutingSource)> {
     Some((

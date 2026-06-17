@@ -18,7 +18,9 @@ use std::collections::BTreeSet;
 
 use crate::interest::InterestShape;
 use crate::plan::UserConfiguredCategory;
-use crate::plan::{canonical_filter_hash, CompiledPlan, RelayPlan, RoutingSource, SubShape};
+use crate::plan::{
+    canonical_filter_hash, CompiledPlan, RelayAttribution, RelayPlan, RoutingSource, SubShape,
+};
 use crate::selection::apply_selection;
 use crate::selection::relay_score_lookup::{NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup};
 
@@ -46,6 +48,7 @@ fn plan_nip65(relays: &[(&str, &[&str])]) -> CompiledPlan {
                 relay_url: (*relay).to_string(),
                 role_tags,
                 sub_shapes: vec![sub],
+                attribution: RelayAttribution::default(),
             },
         );
     }
@@ -79,6 +82,7 @@ fn plan_app_relay(relay: &str, authors: &[&str]) -> CompiledPlan {
             relay_url: relay.to_string(),
             role_tags,
             sub_shapes: vec![sub],
+            attribution: RelayAttribution::default(),
         },
     );
     CompiledPlan {
@@ -289,6 +293,7 @@ fn plan_with_role_tags(
             relay_url: relay.to_string(),
             role_tags,
             sub_shapes: vec![sub],
+            attribution: RelayAttribution::default(),
         },
     );
     CompiledPlan {

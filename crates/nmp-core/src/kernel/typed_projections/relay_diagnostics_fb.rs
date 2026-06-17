@@ -39,6 +39,13 @@
 #[path = "generated/relay_diagnostics_generated.rs"]
 pub mod generated;
 
+// ConnectionReasonRow model + encode/decode helpers extracted to satisfy the
+// 500-LOC file-size gate (AGENTS.md).
+#[path = "relay_diagnostics_connection_reason.rs"]
+mod connection_reason;
+pub use connection_reason::ConnectionReasonRow;
+use connection_reason::{connection_reason_from_fb, create_connection_reason};
+
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use generated::nmp::kernel as fb;
@@ -101,6 +108,9 @@ pub struct RelayRow {
     pub discovery_kinds_label: String,
     /// ADR-0051 — the relay's NIP-11 information document; `None` until fetched.
     pub info: Option<InfoRow>,
+    /// Routing provenance reasons (SPLIT A, pre-block). Empty before the first
+    /// compile or when no attribution is available.
+    pub reasons: Vec<ConnectionReasonRow>,
 }
 
 /// A field-for-field mirror of one SERIALISED `RelayDiagnosticsInfo` (ADR-0051).
@@ -224,6 +234,12 @@ fn create_relay_row<'a>(
         .map(|w| create_wire_sub(fbb, w))
         .collect();
     let wire_subs = fbb.create_vector(&wire_offsets);
+    let reason_offsets: Vec<WIPOffset<fb::RelayConnectionReason<'_>>> = row
+        .reasons
+        .iter()
+        .map(|r| create_connection_reason(fbb, r))
+        .collect();
+    let reasons = fbb.create_vector(&reason_offsets);
     let info = row.info.as_ref().map(|i| create_info(fbb, i));
     let relay_url = fbb.create_string(&row.relay_url);
     let short_url = fbb.create_string(&row.short_url);
@@ -269,6 +285,7 @@ fn create_relay_row<'a>(
             wire_subs: Some(wire_subs),
             info,
             discovery_kinds_label: Some(discovery_kinds_label),
+            reasons: Some(reasons),
         },
     )
 }
@@ -384,6 +401,13 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
             wire_subs.push(wire_sub_from_fb(s));
         }
     }
+    let mut reasons = Vec::new();
+    if let Some(fb_reasons) = row.reasons() {
+        reasons.reserve(fb_reasons.len());
+        for r in fb_reasons.iter() {
+            reasons.push(connection_reason_from_fb(r));
+        }
+    }
     RelayRow {
         relay_url: row.relay_url().unwrap_or_default().to_string(),
         short_url: row.short_url().unwrap_or_default().to_string(),
@@ -408,6 +432,7 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         wire_subs,
         discovery_kinds_label: row.discovery_kinds_label().unwrap_or_default().to_string(),
         info: row.info().map(info_from_fb),
+        reasons,
     }
 }
 

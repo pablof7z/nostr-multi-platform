@@ -37,6 +37,7 @@ use std::collections::BTreeMap;
 mod discovery;
 mod format;
 mod info;
+mod reasons;
 
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
 use discovery::discovery_kinds_label_for_subs;
@@ -45,6 +46,7 @@ use format::{
     role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
 };
 pub(in crate::kernel) use info::RelayDiagnosticsInfo;
+use reasons::{build_reasons, RelayConnectionReason};
 
 /// Snapshot-projection key under which the diagnostics roll-up is emitted.
 /// Keep in sync with the Swift `SnapshotProjections.relayDiagnostics`
@@ -124,6 +126,12 @@ pub(super) struct RelayDiagnosticsRow {
     /// no document). Apps read `info.name` / `info.icon` / … directly — no
     /// HTTP, no JSON, no awareness of NIP-11.
     pub(super) info: Option<RelayDiagnosticsInfo>,
+    /// Pre-built connection-reason list derived from `RelayAttribution`. One
+    /// entry per routing lane that placed this relay in the plan (NIP-65
+    /// outbox, app relay, indexer, hint, …). Empty before the first compile
+    /// or when no attribution is available. The `"blocked"` entry is always
+    /// first when the relay is in the user's kind:10006 block list.
+    pub(crate) reasons: Vec<RelayConnectionReason>,
 }
 
 /// Enriched per-subscription view for `WireSubscriptionDetailView` and the
@@ -230,12 +238,18 @@ impl Kernel {
             }
         }
 
+        // Snapshot the blocked-relay set and attribution map for reason building.
+        let blocked = self.snapshot_blocked_relays();
+        let attribution = self.lifecycle.current_plan_attribution();
+
         let relays: Vec<RelayDiagnosticsRow> = order
             .into_iter()
             .map(|url| {
                 let status = by_url.get(&url);
                 let subs = subs_by_url.remove(&url).unwrap_or_default();
-                build_relay_row(url, status, subs, started_unix_ms)
+                let attr = attribution.get(&url);
+                let is_blocked = blocked.contains(&url);
+                build_relay_row(url, status, subs, started_unix_ms, attr, is_blocked)
             })
             .collect();
 
@@ -276,7 +290,10 @@ fn build_relay_row(
     status: Option<&RelayStatus>,
     subs: Vec<WireSubscriptionStatus>,
     started_unix_ms: u64,
+    attr: Option<&crate::planner::RelayAttribution>,
+    is_blocked: bool,
 ) -> RelayDiagnosticsRow {
+    let reasons = build_reasons(attr, is_blocked);
     // Synthetic row for an outbox-only URL with no `RelayStatus` lane —
     // mirrors the old Swift `syntheticRelayStatus` helper but stays Rust-
     // owned so the shell renders fields directly.
@@ -305,6 +322,7 @@ fn build_relay_row(
             subs,
             started_unix_ms,
             None,
+            reasons,
         );
     };
     let info = s.info.as_ref().map(RelayDiagnosticsInfo::from_doc);
@@ -349,6 +367,7 @@ fn build_relay_row(
         subs,
         started_unix_ms,
         info,
+        reasons,
     )
 }
 
@@ -369,6 +388,7 @@ fn finish_row(
     subs: Vec<WireSubscriptionStatus>,
     started_unix_ms: u64,
     info: Option<RelayDiagnosticsInfo>,
+    reasons: Vec<RelayConnectionReason>,
 ) -> RelayDiagnosticsRow {
     let total_sub_count = subs.len() as u32;
     let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
@@ -413,6 +433,7 @@ fn finish_row(
         wire_subs,
         discovery_kinds_label,
         info,
+        reasons,
     }
 }
 

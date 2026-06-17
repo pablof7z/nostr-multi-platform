@@ -48,7 +48,7 @@ use super::inbox_helper::route_p_tags_to_inbox;
 use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestId, InterestLifecycle, InterestShape, LogicalInterest, Pubkey, RelayUrl},
-    plan::{RoutingSource, UserConfiguredCategory},
+    plan::{RelayAttribution, RoutingSource, UserConfiguredCategory},
 };
 
 /// Route a `#p`-only interest (no authors/addresses) to inbox relays.
@@ -154,6 +154,7 @@ pub(super) fn route_bootstrap_content_inbox(
                 lifecycle: interest.lifecycle.clone(),
                 sources,
                 interest_id: interest.id.clone(),
+                attribution: RelayAttribution::default(),
             });
     }
 }

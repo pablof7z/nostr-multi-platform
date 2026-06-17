@@ -34,7 +34,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::{
     interest::{InterestId, InterestLifecycle, InterestShape, LogicalInterest, RelayUrl},
     lattice::{merge, MergeOutcome},
-    plan::{canonical_filter_hash, CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape},
+    plan::{
+        canonical_filter_hash, CompiledPlan, PlannerError, RelayAttribution, RelayPlan,
+        RoutingSource, SubShape,
+    },
 };
 use partition::{partition_interest, RelayEntry};
 use plan_id::compute_plan_id;
@@ -329,15 +332,20 @@ impl<'a> SubscriptionCompiler<'a> {
         //
         // `role_tags` accumulates ALL RoutingSource lanes across all entries
         // for a relay, preserving the four-lane discipline (§3.1).
+        // `attribution` merges all per-lane attribution slices from this relay's
+        // entries and is preserved alongside `role_tags`.
         let mut per_relay: BTreeMap<RelayUrl, RelayPlan> = BTreeMap::new();
         for (relay_url, entries) in relay_entries {
             let mut role_tags: BTreeSet<RoutingSource> = BTreeSet::new();
-            // Shape + lifecycle + all source lanes + originating interest id.
+            let mut attribution = RelayAttribution::default();
+            // Shape + lifecycle + all source lanes + originating interest id +
+            // per-entry attribution.
             let mut shaped: Vec<(
                 InterestShape,
                 InterestLifecycle,
                 BTreeSet<RoutingSource>,
                 InterestId,
+                RelayAttribution,
             )> = entries
                 .into_iter()
                 .map(partition::RelayEntry::into_shape)
@@ -360,11 +368,21 @@ impl<'a> SubscriptionCompiler<'a> {
 
             let mut sub_shapes: Vec<(InterestShape, InterestLifecycle, Vec<InterestId>)> =
                 Vec::new();
-            for (shape, lifecycle, entry_sources, interest_id) in shaped {
+            for (shape, lifecycle, entry_sources, interest_id, entry_attribution) in shaped {
                 // Merge all source lanes from this entry into role_tags.
-                for src in entry_sources {
-                    role_tags.insert(src);
+                for src in &entry_sources {
+                    role_tags.insert(src.clone());
                 }
+                // Merge attribution alongside role_tags.
+                attribution
+                    .outbox_authors
+                    .extend(entry_attribution.outbox_authors);
+                attribution
+                    .user_configured
+                    .extend(entry_attribution.user_configured);
+                attribution.hints.extend(entry_attribution.hints);
+                attribution.interests.extend(entry_attribution.interests);
+
                 let mut merged = false;
                 for (existing_shape, existing_lifecycle, existing_ids) in &mut sub_shapes {
                     if let MergeOutcome::Merged(new_shape) = merge(
@@ -409,6 +427,7 @@ impl<'a> SubscriptionCompiler<'a> {
                 RelayPlan {
                     relay_url,
                     role_tags,
+                    attribution,
                     sub_shapes: relay_sub_shapes,
                 },
             );

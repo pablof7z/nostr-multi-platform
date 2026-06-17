@@ -49,18 +49,23 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::inbox_helper::route_p_tags_to_inbox;
 use super::{MailboxCache, RelayEntry};
 use crate::{
-    interest::{
-        InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl,
-    },
-    plan::{RoutingSource, UserConfiguredCategory},
+    interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
+    plan::{HintOrigin, InterestAttribution, RelayAttribution, RoutingSource, UserConfiguredCategory},
 };
 
-/// Per-relay accumulator: (authors, addresses, sources).
-type CaseAEntry = (
-    BTreeSet<Pubkey>,
-    BTreeSet<NaddrCoord>,
-    BTreeSet<RoutingSource>,
-);
+/// Per-relay accumulator for Case A routing.
+#[derive(Default)]
+struct CaseAEntry {
+    authors: BTreeSet<Pubkey>,
+    addresses: BTreeSet<NaddrCoord>,
+    sources: BTreeSet<RoutingSource>,
+    /// Authors routed via NIP-65 write relays (lane 1 only).
+    outbox_authors: BTreeSet<Pubkey>,
+    /// UserConfigured sub-categories that contributed to this relay.
+    user_configured: BTreeSet<crate::plan::UserConfiguredCategory>,
+    /// Hint origins that pointed to this relay.
+    hint_origins: BTreeSet<HintOrigin>,
+}
 
 /// Route an interest with explicit authors to outbox relays.
 ///
@@ -125,11 +130,11 @@ pub(super) fn route(
             Some(snapshot) => {
                 // NIP-65 lane: author's declared write relays.
                 for relay in snapshot.outbox_relays() {
-                    let entry = per_relay
-                        .entry(relay.clone())
-                        .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
-                    entry.0.insert(author.clone());
-                    entry.2.insert(RoutingSource::Nip65);
+                    let entry = per_relay.entry(relay.clone()).or_default();
+                    entry.authors.insert(author.clone());
+                    entry.sources.insert(RoutingSource::Nip65);
+                    // Attribution: track which authors arrived via NIP-65 outbox.
+                    entry.outbox_authors.insert(author.clone());
                     landed = true;
                 }
             }
@@ -145,13 +150,13 @@ pub(super) fn route(
         // AppRelay lane: additive whenever app_relays are configured, both
         // when NIP-65 is known AND when it is unknown.
         for relay in app_relays {
-            let entry = per_relay
-                .entry(relay.clone())
-                .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
-            entry.0.insert(author.clone());
-            entry.2.insert(RoutingSource::UserConfigured(
+            let entry = per_relay.entry(relay.clone()).or_default();
+            entry.authors.insert(author.clone());
+            entry.sources.insert(RoutingSource::UserConfigured(
                 UserConfiguredCategory::AppRelay,
             ));
+            // Attribution: track AppRelay sub-category.
+            entry.user_configured.insert(UserConfiguredCategory::AppRelay);
             landed = true;
         }
 
@@ -169,13 +174,12 @@ pub(super) fn route(
             // in `unroutable` so the kernel can surface the toast.
             if is_discovery_oneshot && !bootstrap_indexer_relays.is_empty() {
                 for relay in bootstrap_indexer_relays {
-                    let entry = per_relay
-                        .entry(relay.clone())
-                        .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
-                    entry.0.insert(author.clone());
-                    entry.2.insert(RoutingSource::UserConfigured(
+                    let entry = per_relay.entry(relay.clone()).or_default();
+                    entry.authors.insert(author.clone());
+                    entry.sources.insert(RoutingSource::UserConfigured(
                         UserConfiguredCategory::Indexer,
                     ));
+                    entry.user_configured.insert(UserConfiguredCategory::Indexer);
                     landed = true;
                 }
             }
@@ -191,11 +195,9 @@ pub(super) fn route(
         match mailbox_cache.get(&coord.pubkey) {
             Some(snapshot) => {
                 for relay in snapshot.outbox_relays() {
-                    let entry = per_relay
-                        .entry(relay.clone())
-                        .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
-                    entry.1.insert(coord.clone());
-                    entry.2.insert(RoutingSource::Nip65);
+                    let entry = per_relay.entry(relay.clone()).or_default();
+                    entry.addresses.insert(coord.clone());
+                    entry.sources.insert(RoutingSource::Nip65);
                     landed = true;
                 }
             }
@@ -205,13 +207,12 @@ pub(super) fn route(
         }
 
         for relay in app_relays {
-            let entry = per_relay
-                .entry(relay.clone())
-                .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
-            entry.1.insert(coord.clone());
-            entry.2.insert(RoutingSource::UserConfigured(
+            let entry = per_relay.entry(relay.clone()).or_default();
+            entry.addresses.insert(coord.clone());
+            entry.sources.insert(RoutingSource::UserConfigured(
                 UserConfiguredCategory::AppRelay,
             ));
+            entry.user_configured.insert(UserConfiguredCategory::AppRelay);
             landed = true;
         }
 
@@ -236,16 +237,17 @@ pub(super) fn route(
             continue;
         };
         any_valid_hint = true;
-        let entry = per_relay
-            .entry(relay_url)
-            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
+        let origin = super::hint_helper::hint_origin_for(hint);
+        let entry = per_relay.entry(relay_url).or_default();
         for author in &interest.shape.authors {
-            entry.0.insert(author.clone());
+            entry.authors.insert(author.clone());
         }
         for coord in &interest.shape.addresses {
-            entry.1.insert(coord.clone());
+            entry.addresses.insert(coord.clone());
         }
-        entry.2.insert(source);
+        entry.sources.insert(source);
+        // Attribution: record the hint origin.
+        entry.hint_origins.insert(origin);
     }
     // If any valid hint routed all authors and coords, remove them from
     // unroutable. The hint is their landing pad; they are no longer stranded.
@@ -258,17 +260,28 @@ pub(super) fn route(
         }
     }
 
-    for (relay_url, (authors, addrs, sources)) in per_relay {
+    for (relay_url, entry) in per_relay {
+        let all_authors = entry.authors;
         relay_entries
             .entry(relay_url)
             .or_default()
             .push(RelayEntry {
                 base_shape: base_shape.clone(),
-                authors_for_relay: authors,
-                addresses_for_relay: addrs,
+                authors_for_relay: all_authors.clone(),
+                addresses_for_relay: entry.addresses,
                 lifecycle: interest.lifecycle.clone(),
-                sources,
+                sources: entry.sources,
                 interest_id: interest.id.clone(),
+                attribution: RelayAttribution {
+                    outbox_authors: entry.outbox_authors,
+                    user_configured: entry.user_configured,
+                    hints: entry.hint_origins,
+                    interests: vec![InterestAttribution {
+                        interest_id: interest.id.clone(),
+                        kinds: interest.shape.kinds.clone(),
+                        authors: all_authors,
+                    }],
+                },
             });
     }
 

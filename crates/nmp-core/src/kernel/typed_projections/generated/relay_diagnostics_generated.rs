@@ -780,6 +780,221 @@ impl ::core::fmt::Debug for RelayDiagnosticsInfo<'_> {
       ds.finish()
   }
 }
+pub enum RelayConnectionReasonOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct RelayConnectionReason<'a> {
+  pub _tab: ::flatbuffers::Table<'a>,
+}
+
+impl<'a> ::flatbuffers::Follow<'a> for RelayConnectionReason<'a> {
+  type Inner = RelayConnectionReason<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> RelayConnectionReason<'a> {
+  pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+  pub const VT_LABEL: ::flatbuffers::VOffsetT = 6;
+  pub const VT_TONE: ::flatbuffers::VOffsetT = 8;
+  pub const VT_AUTHOR_PUBKEYS: ::flatbuffers::VOffsetT = 10;
+  pub const VT_AUTHOR_TOTAL: ::flatbuffers::VOffsetT = 12;
+  pub const VT_KINDS_LABEL: ::flatbuffers::VOffsetT = 14;
+  pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 16;
+  pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 18;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+    RelayConnectionReason { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args RelayConnectionReasonArgs<'args>
+  ) -> ::flatbuffers::WIPOffset<RelayConnectionReason<'bldr>> {
+    let mut builder = RelayConnectionReasonBuilder::new(_fbb);
+    if let Some(x) = args.source_event_id { builder.add_source_event_id(x); }
+    if let Some(x) = args.kinds_label { builder.add_kinds_label(x); }
+    builder.add_author_total(args.author_total);
+    if let Some(x) = args.author_pubkeys { builder.add_author_pubkeys(x); }
+    if let Some(x) = args.tone { builder.add_tone(x); }
+    if let Some(x) = args.label { builder.add_label(x); }
+    if let Some(x) = args.kind { builder.add_kind(x); }
+    builder.add_has_source_event_id(args.has_source_event_id);
+    builder.finish()
+  }
+
+  #[inline]
+  pub fn kind(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayConnectionReason::VT_KIND, None)}
+  }
+  #[inline]
+  pub fn label(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayConnectionReason::VT_LABEL, None)}
+  }
+  #[inline]
+  pub fn tone(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayConnectionReason::VT_TONE, None)}
+  }
+  #[inline]
+  pub fn author_pubkeys(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(RelayConnectionReason::VT_AUTHOR_PUBKEYS, None)}
+  }
+  #[inline]
+  pub fn author_total(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(RelayConnectionReason::VT_AUTHOR_TOTAL, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn kinds_label(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayConnectionReason::VT_KINDS_LABEL, None)}
+  }
+  #[inline]
+  pub fn has_source_event_id(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(RelayConnectionReason::VT_HAS_SOURCE_EVENT_ID, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn source_event_id(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayConnectionReason::VT_SOURCE_EVENT_ID, None)}
+  }
+}
+
+impl ::flatbuffers::Verifiable for RelayConnectionReason<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut ::flatbuffers::Verifier, pos: usize
+  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+    v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("label", Self::VT_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("tone", Self::VT_TONE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&str>>>>("author_pubkeys", Self::VT_AUTHOR_PUBKEYS, false)?
+     .visit_field::<u32>("author_total", Self::VT_AUTHOR_TOTAL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("kinds_label", Self::VT_KINDS_LABEL, false)?
+     .visit_field::<bool>("has_source_event_id", Self::VT_HAS_SOURCE_EVENT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("source_event_id", Self::VT_SOURCE_EVENT_ID, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct RelayConnectionReasonArgs<'a> {
+    pub kind: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub tone: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub author_pubkeys: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+    pub author_total: u32,
+    pub kinds_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub has_source_event_id: bool,
+    pub source_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+}
+impl<'a> Default for RelayConnectionReasonArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    RelayConnectionReasonArgs {
+      kind: None,
+      label: None,
+      tone: None,
+      author_pubkeys: None,
+      author_total: 0,
+      kinds_label: None,
+      has_source_event_id: false,
+      source_event_id: None,
+    }
+  }
+}
+
+pub struct RelayConnectionReasonBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayConnectionReasonBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_kind(&mut self, kind: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayConnectionReason::VT_KIND, kind);
+  }
+  #[inline]
+  pub fn add_label(&mut self, label: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayConnectionReason::VT_LABEL, label);
+  }
+  #[inline]
+  pub fn add_tone(&mut self, tone: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayConnectionReason::VT_TONE, tone);
+  }
+  #[inline]
+  pub fn add_author_pubkeys(&mut self, author_pubkeys: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayConnectionReason::VT_AUTHOR_PUBKEYS, author_pubkeys);
+  }
+  #[inline]
+  pub fn add_author_total(&mut self, author_total: u32) {
+    self.fbb_.push_slot::<u32>(RelayConnectionReason::VT_AUTHOR_TOTAL, author_total, 0);
+  }
+  #[inline]
+  pub fn add_kinds_label(&mut self, kinds_label: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayConnectionReason::VT_KINDS_LABEL, kinds_label);
+  }
+  #[inline]
+  pub fn add_has_source_event_id(&mut self, has_source_event_id: bool) {
+    self.fbb_.push_slot::<bool>(RelayConnectionReason::VT_HAS_SOURCE_EVENT_ID, has_source_event_id, false);
+  }
+  #[inline]
+  pub fn add_source_event_id(&mut self, source_event_id: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayConnectionReason::VT_SOURCE_EVENT_ID, source_event_id);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelayConnectionReasonBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    RelayConnectionReasonBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> ::flatbuffers::WIPOffset<RelayConnectionReason<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    ::flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl ::core::fmt::Debug for RelayConnectionReason<'_> {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+    let mut ds = f.debug_struct("RelayConnectionReason");
+      ds.field("kind", &self.kind());
+      ds.field("label", &self.label());
+      ds.field("tone", &self.tone());
+      ds.field("author_pubkeys", &self.author_pubkeys());
+      ds.field("author_total", &self.author_total());
+      ds.field("kinds_label", &self.kinds_label());
+      ds.field("has_source_event_id", &self.has_source_event_id());
+      ds.field("source_event_id", &self.source_event_id());
+      ds.finish()
+  }
+}
+
 pub enum RelayDiagnosticsRowOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -823,6 +1038,7 @@ impl<'a> RelayDiagnosticsRow<'a> {
   pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 52;
   pub const VT_INFO: ::flatbuffers::VOffsetT = 54;
   pub const VT_DISCOVERY_KINDS_LABEL: ::flatbuffers::VOffsetT = 56;
+  pub const VT_REASONS: ::flatbuffers::VOffsetT = 58;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -837,6 +1053,7 @@ impl<'a> RelayDiagnosticsRow<'a> {
     builder.add_last_event_ms(args.last_event_ms);
     builder.add_last_connected_ms(args.last_connected_ms);
     builder.add_total_events_rx(args.total_events_rx);
+    if let Some(x) = args.reasons { builder.add_reasons(x); }
     if let Some(x) = args.info { builder.add_info(x); }
     if let Some(x) = args.discovery_kinds_label { builder.add_discovery_kinds_label(x); }
     if let Some(x) = args.wire_subs { builder.add_wire_subs(x); }
@@ -1054,6 +1271,13 @@ impl<'a> RelayDiagnosticsRow<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS_LABEL, None)}
   }
+  #[inline]
+  pub fn reasons(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayConnectionReason<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayConnectionReason>>>>(RelayDiagnosticsRow::VT_REASONS, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
@@ -1089,6 +1313,7 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayDiagnosticsWireSub>>>>("wire_subs", Self::VT_WIRE_SUBS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<RelayDiagnosticsInfo>>("info", Self::VT_INFO, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("discovery_kinds_label", Self::VT_DISCOVERY_KINDS_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayConnectionReason>>>>("reasons", Self::VT_REASONS, false)?
      .finish();
     Ok(())
   }
@@ -1121,6 +1346,7 @@ pub struct RelayDiagnosticsRowArgs<'a> {
     pub wire_subs: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayDiagnosticsWireSub<'a>>>>>,
     pub info: Option<::flatbuffers::WIPOffset<RelayDiagnosticsInfo<'a>>>,
     pub discovery_kinds_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub reasons: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayConnectionReason<'a>>>>>,
 }
 impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
   #[inline]
@@ -1153,6 +1379,7 @@ impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
       wire_subs: None,
       info: None,
       discovery_kinds_label: None,
+      reasons: None,
     }
   }
 }
@@ -1271,6 +1498,10 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsRowBuilder<'a
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS_LABEL, discovery_kinds_label);
   }
   #[inline]
+  pub fn add_reasons(&mut self, reasons: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<RelayConnectionReason<'b >>>>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_REASONS, reasons);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelayDiagnosticsRowBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     RelayDiagnosticsRowBuilder {
@@ -1315,6 +1546,7 @@ impl ::core::fmt::Debug for RelayDiagnosticsRow<'_> {
       ds.field("wire_subs", &self.wire_subs());
       ds.field("info", &self.info());
       ds.field("discovery_kinds_label", &self.discovery_kinds_label());
+      ds.field("reasons", &self.reasons());
       ds.finish()
   }
 }

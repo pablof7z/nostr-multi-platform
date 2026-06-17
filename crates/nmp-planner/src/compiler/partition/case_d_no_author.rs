@@ -35,7 +35,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::RelayEntry;
 use crate::{
     interest::{InterestShape, LogicalInterest, RelayUrl},
-    plan::{RoutingSource, UserConfiguredCategory},
+    plan::{HintOrigin, InterestAttribution, RelayAttribution, RoutingSource, UserConfiguredCategory},
 };
 
 /// Route no-author hints. Stacks with the normal Case D sources.
@@ -44,14 +44,19 @@ pub(super) fn route_hints(
     base_shape: &InterestShape,
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
 ) {
-    let mut per_relay: BTreeMap<RelayUrl, BTreeSet<RoutingSource>> = BTreeMap::new();
+    // Accumulate both routing sources and hint origins per relay URL.
+    let mut per_relay: BTreeMap<RelayUrl, (BTreeSet<RoutingSource>, BTreeSet<HintOrigin>)> =
+        BTreeMap::new();
     for hint in &interest.hints {
         let Some((relay_url, source)) = super::hint_helper::route_for_hint(hint) else {
             continue;
         };
-        per_relay.entry(relay_url).or_default().insert(source);
+        let origin = super::hint_helper::hint_origin_for(hint);
+        let entry = per_relay.entry(relay_url).or_default();
+        entry.0.insert(source);
+        entry.1.insert(origin);
     }
-    for (relay_url, sources) in per_relay {
+    for (relay_url, (sources, hint_origins)) in per_relay {
         relay_entries
             .entry(relay_url)
             .or_default()
@@ -62,6 +67,15 @@ pub(super) fn route_hints(
                 lifecycle: interest.lifecycle.clone(),
                 sources,
                 interest_id: interest.id.clone(),
+                attribution: RelayAttribution {
+                    hints: hint_origins,
+                    interests: vec![InterestAttribution {
+                        interest_id: interest.id.clone(),
+                        kinds: interest.shape.kinds.clone(),
+                        authors: BTreeSet::new(),
+                    }],
+                    ..RelayAttribution::default()
+                },
             });
     }
 }
@@ -125,6 +139,7 @@ pub(super) fn route(
                 lifecycle: interest.lifecycle.clone(),
                 sources,
                 interest_id: interest.id.clone(),
+                attribution: RelayAttribution::default(),
             });
     }
 }
@@ -164,6 +179,7 @@ pub(super) fn route_bootstrap_content(
                 lifecycle: interest.lifecycle.clone(),
                 sources,
                 interest_id: interest.id.clone(),
+                attribution: RelayAttribution::default(),
             });
     }
 }

@@ -10,14 +10,15 @@
 use std::collections::BTreeSet;
 
 use crate::planner::{
-    apply_selection_with_lookup, CompiledPlan, InterestId, InterestLifecycle, InterestShape,
-    LogicalInterest, MailboxCache, PlannerError, SubscriptionCompiler,
+    apply_selection_with_lookup, CompiledPlan, InterestId, InterestLifecycle, MailboxCache,
+    PlannerError, SubscriptionCompiler,
 };
 use crate::stable_hash::stable_hash64;
 use nmp_planner::RelayAuthorScoreLookup;
 
 use super::trigger::CompileTrigger;
-use super::wire::{lifecycle_for_shape, plan_diff, WireFrame};
+use super::wire::{plan_diff, WireFrame};
+use super::watermark_rewrite::{apply_watermark_rewrite, shape_is_ephemeral_only};
 use super::{SubscriptionLifecycle, MAILBOX_PROBE_BATCH};
 
 impl SubscriptionLifecycle {
@@ -58,6 +59,36 @@ impl SubscriptionLifecycle {
         mailbox_cache: &dyn MailboxCache,
         score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Result<Vec<WireFrame>, PlannerError> {
+        self.recompile_inner(mailbox_cache, score_lookup, None)
+    }
+
+    /// Recompile with a W4 warm-relay score filter AND a blocked-relay set.
+    ///
+    /// Like [`Self::recompile_and_diff_with_lookup`] but additionally:
+    /// - Captures the pre-block attribution snapshot into
+    ///   `current_plan_attribution` (SPLIT A: diagnostic purpose).
+    /// - Removes blocked relays from the wire-authoritative plan after capture
+    ///   (SPLIT B: wire-safety — blocked relays must not receive REQs).
+    ///
+    /// Called by `drain_tick_with_lookup_and_blocked` (the actor idle-loop
+    /// bridge path in `lifecycle_drain.rs`).
+    pub fn recompile_and_diff_with_blocked(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: &crate::substrate::BlockedRelaySet,
+    ) -> Result<Vec<WireFrame>, PlannerError> {
+        self.recompile_inner(mailbox_cache, score_lookup, Some(blocked))
+    }
+
+    /// Core recompile implementation. All public recompile entry points delegate
+    /// here. `blocked` controls the SPLIT A/B attribution-capture + block-filter.
+    fn recompile_inner(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: Option<&crate::substrate::BlockedRelaySet>,
+    ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
 
         // ── Compile-input memoization ───────────────────────────────────────
@@ -78,6 +109,10 @@ impl SubscriptionLifecycle {
         //  • selection budget (max_connections, max_per_user)
         //  • watermark_generation                          — bumped at EOSE/NEG-DONE
         //    (CRITICAL: missing this causes stale `since` → silent under-fetch)
+        //  • blocked relay set (GAP-2 fix)                 — sorted URL iterator
+        //    Without this, a kind:10006-only change leaves the fingerprint
+        //    unchanged → memo guard returns the cached plan → SPLIT B never
+        //    re-runs → the blocked relay keeps its REQ.
         //
         // Score-lookup (W4) is intentionally excluded: the score map only
         // influences `apply_selection`, not `compile()`, and score cells
@@ -112,6 +147,13 @@ impl SubscriptionLifecycle {
             self.select_max_connections.hash(&mut h);
             self.select_max_per_user.hash(&mut h);
             self.watermark_generation.hash(&mut h);
+            // GAP-2: include the blocked set so a kind:10006-only change
+            // (block/unblock) forces a real recompile and SPLIT B re-runs.
+            if let Some(blocked) = blocked {
+                for url in blocked.iter() {
+                    url.hash(&mut h);
+                }
+            }
             h.finish64()
         };
 
@@ -191,6 +233,30 @@ impl SubscriptionLifecycle {
         // stays None (backfill/oneshot, full history requested — #1281 intent).
         if let Some(wm) = self.watermark_fn.as_ref() {
             apply_watermark_rewrite(&mut plan, wm.as_ref(), &interests);
+        }
+
+        // SPLIT A — diagnostic attribution snapshot (pre-block, post-selection).
+        //
+        // Captured here — after greedy selection and watermark rewrite, before
+        // the blocked-relay post-pass — so the diagnostics projection can report
+        // "would-be" attribution for all selected relays, including those that
+        // are currently blocked. The snapshot is read by
+        // `Kernel::relay_diagnostics_snapshot` via `current_plan_attribution()`.
+        self.current_plan_attribution = plan
+            .per_relay
+            .iter()
+            .map(|(url, relay_plan)| (url.clone(), relay_plan.attribution.clone()))
+            .collect();
+
+        // SPLIT B — block filter: remove blocked relays from the
+        // wire-authoritative plan. Blocked relays must not receive REQs (the
+        // user's kind:10006 list is a signal-to-noise / privacy boundary).
+        // The diagnostic snapshot above already captured attribution for these
+        // relays, so `connection_tone("blocked")` can still surface them.
+        if let Some(blocked) = blocked {
+            if !blocked.is_empty() {
+                plan.per_relay.retain(|url, _| !blocked.contains(url));
+            }
         }
 
         let prior = self.current_plan.as_ref();
@@ -319,6 +385,32 @@ impl SubscriptionLifecycle {
         mailbox_cache: &dyn MailboxCache,
         score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Vec<WireFrame> {
+        self.drain_tick_inner(mailbox_cache, score_lookup, None)
+    }
+
+    /// Drain the trigger inbox with a W4 warm-relay score filter AND a
+    /// blocked-relay set.
+    ///
+    /// Called by `Kernel::drain_lifecycle_tick` (the actor idle-loop bridge)
+    /// so the kernel's `snapshot_blocked_relays()` is applied on every drain.
+    /// Passes `blocked` into `recompile_and_diff_with_blocked` (SPLIT A+B).
+    #[must_use]
+    pub fn drain_tick_with_lookup_and_blocked(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: &crate::substrate::BlockedRelaySet,
+    ) -> Vec<WireFrame> {
+        self.drain_tick_inner(mailbox_cache, score_lookup, Some(blocked))
+    }
+
+    /// Core drain-tick implementation. Public entry points delegate here.
+    fn drain_tick_inner(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: Option<&crate::substrate::BlockedRelaySet>,
+    ) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {
             return Vec::new();
@@ -339,7 +431,7 @@ impl SubscriptionLifecycle {
                 auth_flushed.extend(self.auth_gate.record_transition(url.clone(), state.clone()));
             }
         }
-        match self.recompile_and_diff_with_lookup(mailbox_cache, score_lookup) {
+        match self.recompile_inner(mailbox_cache, score_lookup, blocked) {
             Ok(mut frames) => {
                 frames.extend(auth_flushed);
                 frames
@@ -357,96 +449,5 @@ impl SubscriptionLifecycle {
     }
 }
 
-// ─── T129 watermark rewrite ──────────────────────────────────────────────────
-
-/// Returns `true` when every kind in `shape.kinds` is in the ephemeral range
-/// 20000..30000 (per NIP-01 §3 ephemerals). Empty `kinds` is "wildcard" and
-/// is NOT considered ephemeral — persistent kinds may match, so the rewrite
-/// still applies. Mirrors the carve-out NDK added in commit `5afbd245`.
-pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
-    !shape.kinds.is_empty() && shape.kinds.iter().all(|k| (20000..30000).contains(k))
-}
-
-/// In-place rewrite of every non-ephemeral sub-shape's `since` to
-/// `max(existing_since, watermark + 1)`.
-///
-/// The rewrite is lifecycle-aware (#1281 refinement):
-///
-/// - **`Tailing` + `since=None`**: the interest is a live feed that wants
-///   events from now onward. The rewrite IS applied — `since` is set to
-///   `watermark + 1` so the relay does not re-send already-cached events.
-///   This is the core T129 optimisation for ongoing subscriptions.
-///
-/// - **non-`Tailing` (OneShot/backfill) + `since=None`**: the caller
-///   explicitly requested full history ("all-time / backfill"). Raising
-///   `None` to `watermark+1` would silently prevent the relay from returning
-///   events older than the local store watermark, defeating backfill.
-///   These interests are EXEMPT — `since` stays `None`.
-///
-/// - **`since=Some(t)` (any lifecycle)**: the optimisation always applies —
-///   raise the existing floor to `max(t, watermark + 1)` so the relay does
-///   not re-send events already on disk.
-///
-/// The `interests` slice is needed to resolve each sub-shape's lifecycle via
-/// its `originating_interests` IDs (mirrors `wire::lifecycle_for_shape`).
-///
-/// The rewrite is purely a value mutation — `canonical_filter_hash` is left
-/// untouched so the wire-emitter's diff treats a re-opened sub as the same
-/// `sub_id` it had before (the watermark moves between recompiles, but the
-/// REQ is only emitted on the first compile that introduces the shape).
-/// This matches NDK's `opts.addSinceFromCache` once-at-sub-open semantics
-/// (`core/src/subscription/index.ts:537`).
-///
-/// D8: walks the plan tree exactly once; no per-shape allocation beyond the
-/// one closure call into the resolver (which itself is responsible for
-/// reusing its index buffers via `query_visit(limit=1)`).
-pub(super) fn apply_watermark_rewrite(
-    plan: &mut CompiledPlan,
-    watermark_fn: &(dyn Fn(&InterestShape, &str) -> Option<u64> + Send + Sync),
-    interests: &[LogicalInterest],
-) {
-    // K3 Stage D2 (ADR-0056 §3.D2): the floor is computed per-`(filter_hash,
-    // relay)`, not per-shape. The relay is the `per_relay` map key, in scope
-    // here, so we thread `relay_plan.relay_url` into the resolver. The
-    // presence-derived resolver ignores the relay (presence is relay-agnostic),
-    // so this is behaviour-preserving until the coverage ledger is enabled with
-    // a row for the key — the central plumbing change D1's body flagged.
-    for relay_plan in plan.per_relay.values_mut() {
-        let relay_url = relay_plan.relay_url.clone();
-        for sub_shape in &mut relay_plan.sub_shapes {
-            if shape_is_ephemeral_only(&sub_shape.shape) {
-                continue;
-            }
-            if sub_shape.shape.since.is_none() {
-                // #1281 (lifecycle-aware): only apply T129 narrowing for Tailing
-                // interests. A Tailing+None interest is a live feed — we narrow it
-                // to watermark+1 so the relay skips already-cached events.
-                // A non-Tailing+None interest (backfill/oneshot) must stay None so
-                // the relay returns full history, not just events newer than the
-                // local watermark.
-                let lifecycle = lifecycle_for_shape(sub_shape, interests);
-                if lifecycle != InterestLifecycle::Tailing {
-                    continue;
-                }
-                // Tailing + since=None: apply T129 narrowing.
-                let Some(watermark) = watermark_fn(&sub_shape.shape, &relay_url) else {
-                    continue;
-                };
-                sub_shape.shape.since = Some(watermark.saturating_add(1));
-                continue;
-            }
-            // since=Some(t): raise the existing floor toward watermark+1.
-            // The is_none() branch above continues, so since is always Some here.
-            let Some(existing) = sub_shape.shape.since else {
-                continue;
-            };
-            let Some(watermark) = watermark_fn(&sub_shape.shape, &relay_url) else {
-                continue;
-            };
-            let floor = watermark.saturating_add(1);
-            if floor > existing {
-                sub_shape.shape.since = Some(floor);
-            }
-        }
-    }
-}
+// T129 watermark-rewrite helpers are in `super::watermark_rewrite`
+// (extracted to satisfy the 500-LOC file-size gate — AGENTS.md).

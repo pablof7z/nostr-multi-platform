@@ -333,6 +333,37 @@ pub fn apply_selection_with_lookup(
             continue;
         }
         relay_plan.sub_shapes = kept_subs;
+
+        // Prune attribution to match the narrowed author set so retained
+        // attribution never claims authors absent from the standing plan.
+        relay_plan
+            .attribution
+            .outbox_authors
+            .retain(|a| allowed_authors.contains(a));
+        for interest_attr in &mut relay_plan.attribution.interests {
+            interest_attr
+                .authors
+                .retain(|a| allowed_authors.contains(a));
+        }
+        // GAP-4: drop InterestAttribution entries whose author-shaped subshape
+        // was fully removed by selection. After the sub-shape filter above,
+        // `relay_plan.sub_shapes` contains only surviving sub-shapes. An
+        // InterestAttribution entry must be dropped if its interest_id does not
+        // appear in any surviving sub_shape's `originating_interests` AND the
+        // interest had authors (no-author/wildcard interests legitimately have
+        // empty author sets and are always retained — they correspond to
+        // wildcard sub-shapes that selection never drops).
+        let surviving_interest_ids: std::collections::BTreeSet<&crate::InterestId> =
+            relay_plan
+                .sub_shapes
+                .iter()
+                .flat_map(|s| s.originating_interests.iter())
+                .collect();
+        relay_plan.attribution.interests.retain(|ia| {
+            // Wildcard (no-author) interests are always retained.
+            ia.authors.is_empty() || surviving_interest_ids.contains(&ia.interest_id)
+        });
+
         new_per_relay.insert(relay, relay_plan);
     }
     plan.per_relay = new_per_relay;

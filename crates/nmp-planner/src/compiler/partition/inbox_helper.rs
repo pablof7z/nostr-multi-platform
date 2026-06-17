@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestId, InterestLifecycle, InterestShape, PTagRouting, Pubkey, RelayUrl},
-    plan::RoutingSource,
+    plan::{RelayAttribution, RoutingSource},
 };
 
 /// Route `#p` tag values to their inbox relays (read ∪ both).
@@ -76,6 +76,7 @@ pub(super) fn route_p_tags_to_inbox(
                     lifecycle: lifecycle.clone(),
                     sources: BTreeSet::from([source.clone()]),
                     interest_id: interest_id.clone(),
+                    attribution: RelayAttribution::default(),
                 });
             }
         }

@@ -234,6 +234,17 @@ pub trait DmInboxRelayRegistrar {
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
 }
 
+/// Install the blocked-relay lookup — the composition root passes the SAME
+/// `Arc<InMemoryBlockedRelayCache>` (from `nmp-router`) it backs the
+/// `Kind10006Parser` with, so the kernel's routing context always reads from
+/// the same cache the parser writes.
+///
+/// Mirrors [`DmInboxRelayRegistrar`]: a separate narrow trait because this is
+/// the router layer's concern, not the general kernel-reader seam.
+pub trait BlockedRelayLookupRegistrar {
+    fn set_blocked_relay_lookup(&self, lookup: Arc<dyn super::BlockedRelayLookup>);
+}
+
 /// Install the outbound routing / publish / raw-forward factories and the
 /// NIP-46 bootstrap relay — the composition root's substrate-factory seam.
 pub trait RoutingFactoryRegistrar {
@@ -326,6 +337,7 @@ pub trait AppHost:
     + CoverageHookRegistrar
     + KernelReaderRegistrar
     + DmInboxRelayRegistrar
+    + BlockedRelayLookupRegistrar
     + RoutingFactoryRegistrar
     + HostCapabilities
 {
@@ -343,6 +355,7 @@ impl<T> AppHost for T where
         + CoverageHookRegistrar
         + KernelReaderRegistrar
         + DmInboxRelayRegistrar
+        + BlockedRelayLookupRegistrar
         + RoutingFactoryRegistrar
         + HostCapabilities
 {

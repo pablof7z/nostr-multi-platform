@@ -1,6 +1,6 @@
 use super::*;
 use crate::interest::InterestShape;
-use crate::plan::{canonical_filter_hash, RelayPlan, RoutingSource, SubShape};
+use crate::plan::{canonical_filter_hash, RelayAttribution, RelayPlan, RoutingSource, SubShape};
 
 /// Build a tiny plan with one sub-shape per relay, where each sub-shape's
 /// `authors` is the given set. Helper for terse tests.
@@ -25,6 +25,7 @@ fn plan_with(relays: &[(&str, &[&str])]) -> CompiledPlan {
                 relay_url: (*relay).to_string(),
                 role_tags,
                 sub_shapes: vec![sub],
+                attribution: RelayAttribution::default(),
             },
         );
     }
@@ -306,6 +307,7 @@ fn relay_with_only_wildcard_sub_shape_is_preserved_with_budget() {
             relay_url: "wss://wildcard-only".to_string(),
             role_tags,
             sub_shapes: vec![wildcard_sub],
+            attribution: RelayAttribution::default(),
         },
     );
 

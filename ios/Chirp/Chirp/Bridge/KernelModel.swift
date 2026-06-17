@@ -635,6 +635,32 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         track(kernel.unfollow(pubkey: pubkey))
     }
 
+    /// Dispatch `nmp.nip51.block_relay` for the active account.
+    ///
+    /// Reads the active account pubkey from `activeAccount` and includes it in
+    /// the `BlockRelayInput` body so the router-owned ActionModule can read the
+    /// current blocked set for idempotency. Fails immediately when no account
+    /// is active (no spinner is started, no FFI call is made).
+    @discardableResult
+    func blockRelay(url: String) -> DispatchResult {
+        guard let pubkey = activeAccount else {
+            return .failure("block relay: no active account")
+        }
+        return track(kernel.dispatchChirpIntent(.blockRelay(url: url, accountPubkey: pubkey)))
+    }
+
+    /// Dispatch `nmp.nip51.unblock_relay` for the active account.
+    ///
+    /// Symmetric to `blockRelay`. The router-owned ActionModule rejects with a
+    /// Conflict (no publish) when the relay is not currently blocked.
+    @discardableResult
+    func unblockRelay(url: String) -> DispatchResult {
+        guard let pubkey = activeAccount else {
+            return .failure("unblock relay: no active account")
+        }
+        return track(kernel.dispatchChirpIntent(.unblockRelay(url: url, accountPubkey: pubkey)))
+    }
+
     @discardableResult
     func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
         track(kernel.dispatchChirpIntent(intent))

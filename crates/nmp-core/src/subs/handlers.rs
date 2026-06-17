@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::planner::{InterestId, InterestLifecycle, RelayUrl};
 
-use super::recompile::shape_is_ephemeral_only;
+use super::watermark_rewrite::shape_is_ephemeral_only;
 use super::trigger::RelayAuthState;
 use super::wire::{self, lifecycle_for_shape, WireFrame};
 use super::SubscriptionLifecycle;
@@ -71,6 +71,18 @@ impl SubscriptionLifecycle {
             .as_ref()
             .map(|p| p.unroutable_authors.clone())
             .unwrap_or_default()
+    }
+
+    /// Per-relay routing provenance from the last successful compile, captured
+    /// BEFORE the blocked-relay post-pass (SPLIT A). Empty before the first
+    /// compile. Read by `Kernel::relay_diagnostics_snapshot` to surface
+    /// connection reasons for all selected relays — including blocked ones.
+    #[must_use]
+    pub fn current_plan_attribution(
+        &self,
+    ) -> &std::collections::BTreeMap<crate::planner::RelayUrl, crate::planner::RelayAttribution>
+    {
+        &self.current_plan_attribution
     }
 
     /// A5 — relay-reconnected. Per recompilation.md §4.2: replay current plan

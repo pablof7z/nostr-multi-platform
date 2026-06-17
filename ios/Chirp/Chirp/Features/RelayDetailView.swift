@@ -14,11 +14,13 @@ import SwiftUI
 
 struct RelayDetailView: View {
     let row: RelayDiagnosticsRow
+    @EnvironmentObject private var model: KernelModel
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 statusSection
+                RelayReasonsSection(row: row)
                 if let info = row.info {
                     infoSection(info)
                 }
