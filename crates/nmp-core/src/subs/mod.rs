@@ -50,6 +50,7 @@ pub(crate) mod wire;
 mod handlers;
 mod lifecycle;
 mod recompile;
+mod watermark_rewrite;
 
 #[cfg(test)]
 mod attribution_split_tests;

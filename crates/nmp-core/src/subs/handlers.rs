@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::planner::{InterestId, InterestLifecycle, RelayUrl};
 
-use super::recompile::shape_is_ephemeral_only;
+use super::watermark_rewrite::shape_is_ephemeral_only;
 use super::trigger::RelayAuthState;
 use super::wire::{self, lifecycle_for_shape, WireFrame};
 use super::SubscriptionLifecycle;
