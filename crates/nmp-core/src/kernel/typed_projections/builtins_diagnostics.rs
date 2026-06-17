@@ -34,7 +34,8 @@
 use super::{
     encode_action_lifecycle, encode_action_results, encode_action_stages, encode_relay_diagnostics,
     encode_signed_events, ActionLifecycleModel, ActionResultsModel, ActionStagesModel,
-    InfoRow, InterestRow, RelayDiagnosticsModel, RelayRow, SignedEventsModel, WireSubRow,
+    ConnectionReasonRow, InfoRow, InterestRow, RelayDiagnosticsModel, RelayRow, SignedEventsModel,
+    WireSubRow,
     ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
     ACTION_RESULTS_FILE_IDENTIFIER, ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
     ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION,
@@ -90,6 +91,14 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
         wire_subs: row.wire_subs.iter().map(wire_sub_row).collect(),
         discovery_kinds_label: row.discovery_kinds_label.clone(),
         info: row.info.as_ref().map(info_row),
+        reasons: row
+            .reasons
+            .iter()
+            .map(|r| ConnectionReasonRow {
+                kind: r.kind.clone(),
+                label: r.label.clone(),
+            })
+            .collect(),
     }
 }
 

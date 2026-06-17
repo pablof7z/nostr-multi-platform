@@ -109,6 +109,18 @@ table RelayDiagnosticsInfo {
   restricted_writes:bool;
 }
 
+// One entry in the `reasons` list explaining why a relay was placed in the plan
+// (mirror of `RelayConnectionReason`). Kind is a stable machine tag; label is
+// the pre-formatted human string the shell renders directly.
+table RelayConnectionReason {
+  // Stable machine tag: `"nip65"` / `"hint"` / `"account_read"` /
+  // `"account_write"` / `"indexer"` / `"app_relay"` / `"debug"` /
+  // `"bootstrap"` / `"blocked"`.
+  kind:string;
+  // Pre-formatted human label (`"Outbox of 3 people"`, `"App relay"`, …).
+  label:string;
+}
+
 // One rolled-up row per known relay URL (mirror of `RelayDiagnosticsRow`).
 table RelayDiagnosticsRow {
   // Canonical relay URL — stable list identity.
@@ -164,6 +176,10 @@ table RelayDiagnosticsRow {
   // Pre-classified discovery kinds served by open wire subscriptions. Shells
   // render this directly instead of parsing REQ filter JSON.
   discovery_kinds_label:string;
+  // Routing provenance reasons (SPLIT A, pre-block). Empty before the first
+  // compile or when no attribution is available. The `"blocked"` entry is
+  // always first when the relay is in the user's kind:10006 block list.
+  reasons:[RelayConnectionReason];
 }
 
 // Enriched logical-interest row (mirror of `RelayDiagnosticsInterest`).

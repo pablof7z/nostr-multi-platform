@@ -254,7 +254,16 @@ enum TypedProjectionGlue {
             lastNotice: row.hasLastNotice ? (row.lastNotice ?? "") : nil,
             lastError: row.hasLastError ? (row.lastError ?? "") : nil,
             wireSubs: row.wireSubs.map(relayDiagnosticsWireSub),
-            info: row.info.map(relayDiagnosticsInfo)
+            info: row.info.map(relayDiagnosticsInfo),
+            reasons: row.reasons.map(relayConnectionReason)
+        )
+    }
+    private static func relayConnectionReason(
+        _ reason: nmp_kernel_RelayConnectionReason
+    ) -> RelayConnectionReason {
+        RelayConnectionReason(
+            kind: reason.kind ?? "",
+            label: reason.label ?? ""
         )
     }
     private static func relayDiagnosticsWireSub(

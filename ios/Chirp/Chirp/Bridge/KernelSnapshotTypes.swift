@@ -403,6 +403,16 @@ struct RelayDiagnosticsInfo: Decodable, Equatable {
     let restrictedWrites: Bool?
 }
 
+/// One routing provenance reason explaining why a relay was placed in the plan.
+/// Mirrors the Rust `RelayConnectionReason` struct.
+///
+/// `kind` is a stable machine tag for icon/tone lookups; `label` is the
+/// pre-formatted human string the shell renders directly.
+struct RelayConnectionReason: Decodable, Equatable {
+    let kind: String
+    let label: String
+}
+
 /// One rolled-up relay row.
 struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let relayUrl: String
@@ -433,6 +443,10 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     /// path this decodes from `info: null`; on the typed path the child-table
     /// presence is the discriminator (no `has_info` flag).
     let info: RelayDiagnosticsInfo?
+    /// Routing provenance reasons (SPLIT A, pre-block). Empty before the first
+    /// compile or when no attribution is available. The `"blocked"` entry is
+    /// always first when the relay is in the user's kind:10006 block list.
+    let reasons: [RelayConnectionReason]
     var id: String { relayUrl }
 }
 

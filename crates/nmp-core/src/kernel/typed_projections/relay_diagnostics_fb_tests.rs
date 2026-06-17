@@ -47,6 +47,7 @@ fn sample() -> RelayDiagnosticsModel {
                 close_reason: None,
             }],
             discovery_kinds_label: "profile (0)".to_string(),
+            reasons: vec![],
             info: Some(InfoRow {
                 name: Some("Relay One".to_string()),
                 description: None,
@@ -117,4 +118,28 @@ fn buffer_carries_the_krdg_file_identifier() {
 fn decode_rejects_malformed_input() {
     assert!(decode_relay_diagnostics(&[]).is_err());
     assert!(decode_relay_diagnostics(b"NMPU0000").is_err());
+}
+
+/// `reasons` round-trips: a non-empty list with multiple entries — including
+/// the "blocked" sentinel — must survive encode/decode with all fields intact.
+#[test]
+fn reasons_round_trip() {
+    let mut model = sample();
+    model.relays[0].reasons = vec![
+        ConnectionReasonRow {
+            kind: "blocked".to_string(),
+            label: "Blocked".to_string(),
+        },
+        ConnectionReasonRow {
+            kind: "nip65".to_string(),
+            label: "Outbox of 2 people".to_string(),
+        },
+        ConnectionReasonRow {
+            kind: "app_relay".to_string(),
+            label: "App relay".to_string(),
+        },
+    ];
+    let decoded =
+        decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode succeeds");
+    assert_eq!(decoded.relays[0].reasons, model.relays[0].reasons);
 }
