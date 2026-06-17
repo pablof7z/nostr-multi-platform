@@ -325,7 +325,7 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "KRDG" }
+  public static var id: String { "KRDG" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_kernel_RelayConnectionReason.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -363,7 +363,8 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
   public static func addVectorOf(authorPubkeys: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkeys, at: VTOFFSET.authorPubkeys.p) }
   public static func add(authorTotal: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: authorTotal, def: 0, at: VTOFFSET.authorTotal.p) }
   public static func add(kindsLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: kindsLabel, at: VTOFFSET.kindsLabel.p) }
-  public static func add(hasSourceEventId: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasSourceEventId, def: false, at: VTOFFSET.hasSourceEventId.p) }
+  public static func add(hasSourceEventId: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasSourceEventId, def: false,
+   at: VTOFFSET.hasSourceEventId.p) }
   public static func add(sourceEventId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: sourceEventId, at: VTOFFSET.sourceEventId.p) }
   public static func endRelayConnectionReason(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createRelayConnectionReason(
@@ -394,11 +395,11 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
     try _v.visit(field: VTOFFSET.kind.p, fieldName: "kind", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.label.p, fieldName: "label", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.tone.p, fieldName: "tone", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.authorPubkeys.p, fieldName: "author_pubkeys", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
-    try _v.visit(field: VTOFFSET.authorTotal.p, fieldName: "author_total", required: false, type: UInt32.self)
-    try _v.visit(field: VTOFFSET.kindsLabel.p, fieldName: "kinds_label", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasSourceEventId.p, fieldName: "has_source_event_id", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.sourceEventId.p, fieldName: "source_event_id", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.authorPubkeys.p, fieldName: "authorPubkeys", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
+    try _v.visit(field: VTOFFSET.authorTotal.p, fieldName: "authorTotal", required: false, type: UInt32.self)
+    try _v.visit(field: VTOFFSET.kindsLabel.p, fieldName: "kindsLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasSourceEventId.p, fieldName: "hasSourceEventId", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.sourceEventId.p, fieldName: "sourceEventId", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }
