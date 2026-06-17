@@ -241,9 +241,9 @@ pub use publish_queue_fb::{
     PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
 };
 pub use relay_diagnostics_fb::{
-    decode_relay_diagnostics, ConnectionReasonRow, InfoRow, InterestRow, RelayDiagnosticsModel,
-    RelayRow, WireSubRow, RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
-    RELAY_DIAGNOSTICS_SCHEMA_VERSION,
+    decode_relay_diagnostics, ConnectionReasonRow, InfoRow, InterestRow, NoticeRow,
+    RelayDiagnosticsModel, RelayRow, WireSubRow, RELAY_DIAGNOSTICS_FILE_IDENTIFIER,
+    RELAY_DIAGNOSTICS_SCHEMA_ID, RELAY_DIAGNOSTICS_SCHEMA_VERSION,
 };
 // PR-B: newly-promoted decode functions for the identity/views/outbox cluster.
 // These replace the last remaining `payload:Value` read sites in chirp-tui

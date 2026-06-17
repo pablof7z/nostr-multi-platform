@@ -30,6 +30,11 @@ fn sample() -> RelayDiagnosticsModel {
             last_connected_ms: 1_700_000_003_000,
             last_event_ms: 0,
             last_notice: Some("rate limited".to_string()),
+            notice_count: 3,
+            notices: vec![
+                super::NoticeRow { at_ms: 1_700_000_010_000, text: "newest".to_string() },
+                super::NoticeRow { at_ms: 1_700_000_001_000, text: "oldest".to_string() },
+            ],
             last_error: None,
             wire_subs: vec![WireSubRow {
                 wire_id: "ff".repeat(32),

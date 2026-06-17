@@ -46,6 +46,12 @@ mod connection_reason;
 pub use connection_reason::ConnectionReasonRow;
 use connection_reason::{connection_reason_from_fb, create_connection_reason};
 
+// NoticeRow model + encode/decode helpers extracted to satisfy the 500-LOC gate.
+#[path = "relay_diagnostics_notice.rs"]
+mod notice;
+pub use notice::NoticeRow;
+use notice::{create_notice, notice_from_fb};
+
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use generated::nmp::kernel as fb;
@@ -103,6 +109,10 @@ pub struct RelayRow {
     /// Unix epoch milliseconds of the last event received; 0 when none.
     pub last_event_ms: u64,
     pub last_notice: Option<String>,
+    /// Total NOTICE frames received (session counter).
+    pub notice_count: u64,
+    /// Bounded NOTICE log, newest first (up to 32 entries).
+    pub notices: Vec<NoticeRow>,
     pub last_error: Option<String>,
     pub wire_subs: Vec<WireSubRow>,
     pub discovery_kinds_label: String,
@@ -240,6 +250,9 @@ fn create_relay_row<'a>(
         .map(|r| create_connection_reason(fbb, r))
         .collect();
     let reasons = fbb.create_vector(&reason_offsets);
+    let notice_offsets: Vec<WIPOffset<fb::RelayDiagnosticsNotice<'_>>> =
+        row.notices.iter().map(|n| create_notice(fbb, n)).collect();
+    let notices = fbb.create_vector(&notice_offsets);
     let info = row.info.as_ref().map(|i| create_info(fbb, i));
     let relay_url = fbb.create_string(&row.relay_url);
     let short_url = fbb.create_string(&row.short_url);
@@ -280,6 +293,8 @@ fn create_relay_row<'a>(
             last_event_ms: row.last_event_ms,
             has_last_notice: row.last_notice.is_some(),
             last_notice,
+            notice_count: row.notice_count,
+            notices: Some(notices),
             has_last_error: row.last_error.is_some(),
             last_error,
             wire_subs: Some(wire_subs),
@@ -408,6 +423,13 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
             reasons.push(connection_reason_from_fb(r));
         }
     }
+    let mut notices = Vec::new();
+    if let Some(fb_notices) = row.notices() {
+        notices.reserve(fb_notices.len());
+        for n in fb_notices.iter() {
+            notices.push(notice_from_fb(n));
+        }
+    }
     RelayRow {
         relay_url: row.relay_url().unwrap_or_default().to_string(),
         short_url: row.short_url().unwrap_or_default().to_string(),
@@ -428,6 +450,8 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         last_connected_ms: row.last_connected_ms(),
         last_event_ms: row.last_event_ms(),
         last_notice: row.has_last_notice().then(|| opt(row.last_notice())).flatten(),
+        notice_count: row.notice_count(),
+        notices,
         last_error: row.has_last_error().then(|| opt(row.last_error())).flatten(),
         wire_subs,
         discovery_kinds_label: row.discovery_kinds_label().unwrap_or_default().to_string(),

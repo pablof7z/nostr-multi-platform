@@ -5,9 +5,12 @@
 //! projection that keeps one row per actual socket URL while preserving the
 //! legacy `RelayStatus` shape consumed by shells.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 
-use super::{CanonicalRelayUrl, Counters, Instant, Kernel, RelayRole, RelayStatus, WireSub};
+use super::{
+    CanonicalRelayUrl, Counters, Instant, Kernel, NoticeEntry, RelayRole, RelayStatus,
+    WireSub, MAX_NOTICE_LOG,
+};
 use crate::substrate::RelayInfoDoc;
 
 #[derive(Clone, Debug, Default)]
@@ -37,6 +40,9 @@ struct RelayTransportStatus {
     connected_at: Option<Instant>,
     last_event_at: Option<Instant>,
     last_notice: Option<String>,
+    /// Bounded NOTICE log (oldest first). Mirrored from `RelayHealth.notices`
+    /// for the URL-keyed transport path; populated in `record_transport_notice`.
+    notices: VecDeque<NoticeEntry>,
     last_error: Option<String>,
     error_category: Option<String>,
     reconnect_count: u32,
@@ -54,6 +60,7 @@ impl RelayTransportStatus {
             connected_at: None,
             last_event_at: None,
             last_notice: None,
+            notices: VecDeque::new(),
             last_error: None,
             error_category: None,
             reconnect_count: 0,
@@ -114,6 +121,8 @@ impl RelayTransportMap {
                         last_error: row.last_error.clone(),
                         error_category: row.error_category.clone(),
                         events_rx: row.counters.events_rx,
+                        notices_rx: row.counters.notices_rx,
+                        notices: row.notices.iter().cloned().collect(),
                         bytes_rx: row.counters.bytes_rx,
                         bytes_tx: row.counters.bytes_tx,
                         denied: row.denied,
@@ -328,9 +337,14 @@ impl Kernel {
         relay_url: &str,
         notice: String,
     ) {
+        let at_ms = self.now_ms();
         let entry = self.transport_relays.entry(role, relay_url);
         entry.counters.notices_rx = entry.counters.notices_rx.saturating_add(1);
-        entry.last_notice = Some(notice);
+        entry.last_notice = Some(notice.clone());
+        if entry.notices.len() >= MAX_NOTICE_LOG {
+            entry.notices.pop_front();
+        }
+        entry.notices.push_back(NoticeEntry { at_ms, text: notice });
     }
 
     pub(super) fn record_transport_closed_frame(&mut self, role: RelayRole, relay_url: &str) {

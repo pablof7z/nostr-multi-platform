@@ -319,6 +319,50 @@ public struct nmp_kernel_RelayDiagnosticsInfo: FlatBufferTable, FlatbuffersVecto
   }
 }
 
+public struct nmp_kernel_RelayDiagnosticsNotice: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "KRDG" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_kernel_RelayDiagnosticsNotice.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case atMs = 4
+    case text = 6
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var atMs: UInt64 { let o = _accessor.offset(VTOFFSET.atMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var text: String? { let o = _accessor.offset(VTOFFSET.text.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var textSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.text.v) }
+  public static func startRelayDiagnosticsNotice(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public static func add(atMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: atMs, def: 0, at: VTOFFSET.atMs.p) }
+  public static func add(text: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: text, at: VTOFFSET.text.p) }
+  public static func endRelayDiagnosticsNotice(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createRelayDiagnosticsNotice(
+    _ fbb: inout FlatBufferBuilder,
+    atMs: UInt64 = 0,
+    textOffset text: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_kernel_RelayDiagnosticsNotice.startRelayDiagnosticsNotice(&fbb)
+    nmp_kernel_RelayDiagnosticsNotice.add(atMs: atMs, &fbb)
+    nmp_kernel_RelayDiagnosticsNotice.add(text: text, &fbb)
+    return nmp_kernel_RelayDiagnosticsNotice.endRelayDiagnosticsNotice(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.atMs.p, fieldName: "atMs", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.text.p, fieldName: "text", required: false, type: ForwardOffset<String>.self)
+    _v.finish()
+  }
+}
+
 public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
@@ -438,12 +482,14 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     case lastEventMs = 42
     case hasLastNotice = 44
     case lastNotice = 46
-    case hasLastError = 48
-    case lastError = 50
-    case wireSubs = 52
-    case info = 54
-    case discoveryKindsLabel = 56
-    case reasons = 58
+    case noticeCount = 48
+    case notices = 50
+    case hasLastError = 52
+    case lastError = 54
+    case wireSubs = 56
+    case info = 58
+    case discoveryKindsLabel = 60
+    case reasons = 62
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -482,6 +528,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var hasLastNotice: Bool { let o = _accessor.offset(VTOFFSET.hasLastNotice.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var lastNotice: String? { let o = _accessor.offset(VTOFFSET.lastNotice.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var lastNoticeSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastNotice.v) }
+  public var noticeCount: UInt64 { let o = _accessor.offset(VTOFFSET.noticeCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var notices: FlatbufferVector<nmp_kernel_RelayDiagnosticsNotice> { return _accessor.vector(at: VTOFFSET.notices.v, byteSize: 4) }
   public var hasLastError: Bool { let o = _accessor.offset(VTOFFSET.hasLastError.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var lastError: String? { let o = _accessor.offset(VTOFFSET.lastError.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var lastErrorSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastError.v) }
@@ -490,7 +538,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var discoveryKindsLabel: String? { let o = _accessor.offset(VTOFFSET.discoveryKindsLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var discoveryKindsLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.discoveryKindsLabel.v) }
   public var reasons: FlatbufferVector<nmp_kernel_RelayConnectionReason> { return _accessor.vector(at: VTOFFSET.reasons.v, byteSize: 4) }
-  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 28) }
+  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 30) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(shortUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortUrl, at: VTOFFSET.shortUrl.p) }
   public static func add(roleLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: roleLabel, at: VTOFFSET.roleLabel.p) }
@@ -516,6 +564,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public static func add(hasLastNotice: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastNotice, def: false,
    at: VTOFFSET.hasLastNotice.p) }
   public static func add(lastNotice: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastNotice, at: VTOFFSET.lastNotice.p) }
+  public static func add(noticeCount: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: noticeCount, def: 0, at: VTOFFSET.noticeCount.p) }
+  public static func addVectorOf(notices: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: notices, at: VTOFFSET.notices.p) }
   public static func add(hasLastError: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastError, def: false,
    at: VTOFFSET.hasLastError.p) }
   public static func add(lastError: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastError, at: VTOFFSET.lastError.p) }
@@ -548,6 +598,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     lastEventMs: UInt64 = 0,
     hasLastNotice: Bool = false,
     lastNoticeOffset lastNotice: Offset = Offset(),
+    noticeCount: UInt64 = 0,
+    noticesVectorOffset notices: Offset = Offset(),
     hasLastError: Bool = false,
     lastErrorOffset lastError: Offset = Offset(),
     wireSubsVectorOffset wireSubs: Offset = Offset(),
@@ -578,6 +630,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     nmp_kernel_RelayDiagnosticsRow.add(lastEventMs: lastEventMs, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(hasLastNotice: hasLastNotice, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(lastNotice: lastNotice, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(noticeCount: noticeCount, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.addVectorOf(notices: notices, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(hasLastError: hasLastError, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(lastError: lastError, &fbb)
     nmp_kernel_RelayDiagnosticsRow.addVectorOf(wireSubs: wireSubs, &fbb)
@@ -611,6 +665,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     try _v.visit(field: VTOFFSET.lastEventMs.p, fieldName: "lastEventMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.hasLastNotice.p, fieldName: "hasLastNotice", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.lastNotice.p, fieldName: "lastNotice", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.noticeCount.p, fieldName: "noticeCount", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.notices.p, fieldName: "notices", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_RelayDiagnosticsNotice>, nmp_kernel_RelayDiagnosticsNotice>>.self)
     try _v.visit(field: VTOFFSET.hasLastError.p, fieldName: "hasLastError", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.lastError.p, fieldName: "lastError", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.wireSubs.p, fieldName: "wireSubs", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_RelayDiagnosticsWireSub>, nmp_kernel_RelayDiagnosticsWireSub>>.self)

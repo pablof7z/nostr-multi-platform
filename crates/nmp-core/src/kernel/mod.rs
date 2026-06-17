@@ -536,9 +536,9 @@ use std::sync::atomic::AtomicU64;
 pub(crate) use types::KernelSnapshot;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
-    MentionProfilePayload, Metrics, OutboxSummarySnapshot, ProfileCard, PublishOutboxItem,
-    PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimelineItem, TimingMilestones,
-    WireSub, WireSubscriptionState, WireSubscriptionStatus,
+    MentionProfilePayload, Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
+    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimelineItem,
+    TimingMilestones, WireSub, WireSubscriptionState, WireSubscriptionStatus, MAX_NOTICE_LOG,
 };
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).

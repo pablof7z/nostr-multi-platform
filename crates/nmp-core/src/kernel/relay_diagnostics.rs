@@ -37,6 +37,7 @@ use std::collections::BTreeMap;
 mod discovery;
 mod format;
 mod info;
+mod notice;
 mod reasons;
 
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
@@ -46,6 +47,7 @@ use format::{
     role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
 };
 pub(in crate::kernel) use info::RelayDiagnosticsInfo;
+pub(in crate::kernel) use notice::RelayDiagnosticsNotice;
 use reasons::{build_reasons, RelayConnectionReason};
 
 /// Snapshot-projection key under which the diagnostics roll-up is emitted.
@@ -112,6 +114,11 @@ pub(super) struct RelayDiagnosticsRow {
     pub(super) last_event_ms: Option<u64>,
     /// Most recent NIP-01 NOTICE prose, or `None`.
     pub(super) last_notice: Option<String>,
+    /// Total NOTICE frames received from this relay (session counter).
+    pub(in crate::kernel) notice_count: u64,
+    /// Bounded NOTICE log, newest first (up to 32 entries). Each entry carries
+    /// a wall-clock Unix-ms timestamp; shells format as "Xs ago" (aim.md §62).
+    pub(in crate::kernel) notices: Vec<RelayDiagnosticsNotice>,
     /// Most recent error prose, or `None`.
     pub(super) last_error: Option<String>,
     /// Per-wire-subscription detail rows (newest by sort id last — the
@@ -323,9 +330,18 @@ fn build_relay_row(
             started_unix_ms,
             None,
             reasons,
+            0,
+            vec![],
         );
     };
     let info = s.info.as_ref().map(RelayDiagnosticsInfo::from_doc);
+    let notice_count = s.notices_rx;
+    let notices: Vec<RelayDiagnosticsNotice> = s
+        .notices
+        .iter()
+        .rev()
+        .map(|n| RelayDiagnosticsNotice { at_ms: n.at_ms, text: n.text.clone() })
+        .collect();
     let (
         role,
         connection,
@@ -368,6 +384,8 @@ fn build_relay_row(
         started_unix_ms,
         info,
         reasons,
+        notice_count,
+        notices,
     )
 }
 
@@ -389,6 +407,8 @@ fn finish_row(
     started_unix_ms: u64,
     info: Option<RelayDiagnosticsInfo>,
     reasons: Vec<RelayConnectionReason>,
+    notice_count: u64,
+    notices: Vec<RelayDiagnosticsNotice>,
 ) -> RelayDiagnosticsRow {
     let total_sub_count = subs.len() as u32;
     let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
@@ -429,6 +449,8 @@ fn finish_row(
         last_connected_ms: last_connected_raw.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_event_ms: last_event_raw.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_notice,
+        notice_count,
+        notices,
         last_error,
         wire_subs,
         discovery_kinds_label,

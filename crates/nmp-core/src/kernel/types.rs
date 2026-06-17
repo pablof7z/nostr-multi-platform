@@ -4,6 +4,8 @@
 //! Profile, `TimelineItem`, `ProfileCard`, view payloads, relay health/status, wire
 //! subscription state, counters, and the `AuthorRelayList` cache entry.
 
+use std::collections::VecDeque;
+
 use super::{CanonicalRelayUrl, HashMap, HashSet, Instant, Serialize};
 
 // ── Event read-cache ──────────────────────────────────────────────────────────
@@ -206,6 +208,16 @@ pub(crate) struct RelayStatus {
     /// without substring-matching the English `last_error` prose.
     pub(super) error_category: Option<String>,
     pub(super) events_rx: u64,
+    /// Total NOTICE frames received on this relay (sourced from
+    /// `Counters::notices_rx`). Projected into `RelayDiagnosticsRow.notice_count`.
+    pub(super) notices_rx: u64,
+    /// Bounded NOTICE log (newest first in the projection; here the Vec carries
+    /// them in arrival order for cheap map). Sourced from `RelayHealth.notices`
+    /// / `RelayTransportStatus.notices`.
+    /// Excluded from serde: carries through typed-projection path only.
+    #[serde(skip)]
+    #[cfg_attr(feature = "codegen-schema", schemars(skip))]
+    pub(super) notices: Vec<NoticeEntry>,
     pub(super) bytes_rx: u64,
     pub(super) bytes_tx: u64,
     /// T120 (G8 / G11): relay has denied this client by policy
@@ -354,6 +366,25 @@ pub(super) struct OutboxSummarySnapshot {
     pub(super) failed: u32,
 }
 
+/// One entry in the per-relay bounded NOTICE log.
+///
+/// Populated at the SAME capture hook that sets `RelayHealth.last_notice` /
+/// `RelayTransportStatus.last_notice`, with a wall-clock Unix-ms timestamp
+/// (`self.now_ms()`) so the log is independently renderable without a
+/// started-at anchor. The ring is capped at [`MAX_NOTICE_LOG`] entries
+/// (oldest-dropped) to bound memory.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
+pub(super) struct NoticeEntry {
+    /// Wall-clock Unix epoch milliseconds when this NOTICE arrived.
+    pub(super) at_ms: u64,
+    /// Notice text (truncated to 180 chars at the capture site).
+    pub(super) text: String,
+}
+
+/// Maximum number of NOTICE entries retained per relay in the bounded log.
+pub(super) const MAX_NOTICE_LOG: usize = 32;
+
 /// Per-relay rolling counters for diagnostics.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Counters {
@@ -378,6 +409,11 @@ pub(super) struct RelayHealth {
     pub(super) connected_at: Option<Instant>,
     pub(super) last_event_at: Option<Instant>,
     pub(super) last_notice: Option<String>,
+    /// Bounded NOTICE log (oldest first, capped at [`MAX_NOTICE_LOG`]). Each
+    /// entry carries a wall-clock Unix-ms timestamp from `now_ms()`. Populated
+    /// alongside `last_notice` in the NOTICE capture hook; projected into
+    /// `RelayDiagnosticsRow.notices` + `RelayDiagnosticsRow.notice_count`.
+    pub(super) notices: VecDeque<NoticeEntry>,
     pub(super) last_error: Option<String>,
     /// Machine-readable category for `last_error`. Closed key set:
     /// `auth_required | transient | permanent | malformed_event | policy_denied`
@@ -420,6 +456,7 @@ impl Default for RelayHealth {
             connected_at: None,
             last_event_at: None,
             last_notice: None,
+            notices: VecDeque::new(),
             last_error: None,
             error_category: None,
             reconnect_count: 0,

@@ -109,6 +109,16 @@ table RelayDiagnosticsInfo {
   restricted_writes:bool;
 }
 
+// One entry in the per-relay bounded NOTICE log (mirror of `RelayDiagnosticsNotice`).
+// Ordered newest-first in the `notices` vector. `at_ms` carries wall-clock Unix
+// epoch milliseconds (aim.md §62 compliance — shells format as "Xs ago").
+table RelayDiagnosticsNotice {
+  // Wall-clock Unix epoch milliseconds when this NOTICE arrived.
+  at_ms:ulong;
+  // NOTICE prose (truncated to 180 chars at the capture site).
+  text:string;
+}
+
 // One entry in the `reasons` list explaining why a relay was placed in the plan
 // (mirror of `RelayConnectionReason`). Kind is a stable machine tag; label is
 // the pre-formatted human string the shell renders directly.
@@ -179,6 +189,11 @@ table RelayDiagnosticsRow {
   // Most recent NIP-01 NOTICE prose; absent when none.
   has_last_notice:bool;
   last_notice:string;
+  // Total NOTICE frames received from this relay (session counter).
+  notice_count:ulong;
+  // Bounded NOTICE log (newest first, up to 32 entries). Each entry carries a
+  // wall-clock Unix-ms timestamp; shells format as "Xs ago" (aim.md §62).
+  notices:[RelayDiagnosticsNotice];
   // Most recent error prose; absent when none.
   has_last_error:bool;
   last_error:string;
