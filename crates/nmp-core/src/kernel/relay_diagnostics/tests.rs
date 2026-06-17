@@ -157,6 +157,67 @@ fn snapshot_emits_every_transport_url_for_same_role() {
     assert_eq!(relay_b.bytes_tx_display.as_deref(), Some("128 B"));
 }
 
+/// Ingesting N NOTICEs for a relay must produce `notice_count == N` and a
+/// `notices` list capped at 32 entries (oldest dropped), with entries ordered
+/// newest-first in the projection.
+#[test]
+fn notice_count_and_bounded_log() {
+    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use std::collections::HashMap;
+
+    let url = "wss://relay-notice.test/";
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connecting_url(RelayRole::Content, url);
+    kernel.relay_connected_url(RelayRole::Content, url);
+
+    // Ingest 35 NOTICEs — more than the cap of 32.
+    let total: usize = 35;
+    for i in 0..total {
+        // Synthesise a minimal NOTICE frame through handle_message.
+        let frame = crate::kernel::RelayFrame::Text(
+            serde_json::json!(["NOTICE", format!("msg {i}")]).to_string(),
+        );
+        kernel.handle_message(RelayRole::Content, url, frame);
+    }
+
+    let snap = kernel.relay_diagnostics_snapshot();
+    let row = snap
+        .relays
+        .iter()
+        .find(|r| r.relay_url.starts_with("wss://relay-notice.test"))
+        .expect("relay row must be present");
+
+    // Total counter is exact (not capped).
+    assert_eq!(row.notice_count, total as u64, "notice_count must equal total NOTICEs received");
+
+    // Ring is capped at 32 (MAX_NOTICE_LOG).
+    assert_eq!(row.notices.len(), 32, "notices ring must be capped at 32");
+
+    // Newest-first: the last ingested message ("msg 34") must be first.
+    assert_eq!(row.notices[0].text, "msg 34", "notices must be ordered newest-first");
+    assert_eq!(row.notices[31].text, "msg 3", "oldest retained entry must be msg 3");
+
+    // last_notice still reflects the most recent notice text.
+    assert_eq!(row.last_notice.as_deref(), Some("msg 34"));
+
+    // Build a map to cross-check all 32 retained entries.
+    let text_set: HashMap<&str, ()> =
+        row.notices.iter().map(|n| (n.text.as_str(), ())).collect();
+    for i in 3..=34_usize {
+        assert!(
+            text_set.contains_key(format!("msg {i}").as_str()),
+            "expected msg {i} in retained notices"
+        );
+    }
+    // Msgs 0, 1, 2 must have been evicted (oldest-dropped).
+    for i in 0..3_usize {
+        assert!(
+            !text_set.contains_key(format!("msg {i}").as_str()),
+            "msg {i} must have been evicted from the bounded ring"
+        );
+    }
+}
+
 #[test]
 fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
     use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};

@@ -1,8 +1,8 @@
 //! Live relay-frame parsing and relay-specific accepted-event bookkeeping.
 
 use super::super::{
-    truncate, CanonicalRelayUrl, Instant, Kernel, NostrEvent, OutboundMessage, RelayFrame,
-    RelayRole, Value,
+    truncate, CanonicalRelayUrl, Instant, Kernel, NostrEvent, NoticeEntry, OutboundMessage,
+    RelayFrame, RelayRole, Value, MAX_NOTICE_LOG,
 };
 use super::IngestSource;
 
@@ -91,9 +91,16 @@ impl Kernel {
                     .get(1)
                     .and_then(Value::as_str)
                     .map_or_else(|| "notice".to_string(), |s| truncate(s, 180));
+                // Capture timestamp before mutable borrow (NLL: &self ends here).
+                let at_ms = self.now_ms();
                 let relay = self.relay_mut(role);
                 relay.counters.notices_rx = relay.counters.notices_rx.saturating_add(1);
                 relay.last_notice = Some(notice.clone());
+                if relay.notices.len() >= MAX_NOTICE_LOG {
+                    relay.notices.pop_front();
+                }
+                relay.notices.push_back(NoticeEntry { at_ms, text: notice.clone() });
+                // relay borrow ends; transport map updated separately (URL-keyed).
                 self.record_transport_notice(role, relay_url, notice.clone());
                 self.changed_since_emit = true;
                 self.log(format!("NOTICE {} {notice}", role.key()));

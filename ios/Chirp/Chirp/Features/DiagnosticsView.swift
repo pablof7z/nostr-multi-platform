@@ -399,6 +399,11 @@ struct DiagRelayRow: View {
                         .font(.caption)
                         .foregroundStyle(ChirpColor.warning)
                 }
+                if row.noticeCount > 0 {
+                    Text("\(row.noticeCount) notice\(row.noticeCount == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(ChirpColor.warning)
+                }
             }
             if let notice = row.lastNotice {
                 Text(notice)

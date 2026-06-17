@@ -24,6 +24,9 @@ struct RelayDetailView: View {
                 if let info = row.info {
                     infoSection(info)
                 }
+                if !row.notices.isEmpty {
+                    noticesSection
+                }
                 subsOverviewSection
                 if !row.wireSubs.isEmpty {
                     wireSubsSection
@@ -136,6 +139,43 @@ struct RelayDetailView: View {
                             .foregroundStyle(ChirpColor.danger)
                             .multilineTextAlignment(.trailing)
                     }
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+    }
+
+    // NOTICE log — bounded list of the last ≤32 NOTICEs, newest first. Each
+    // entry carries a wall-clock Unix-ms timestamp rendered as "Xs ago" by
+    // `relativeTimeFromUnixSeconds` (aim.md §62 — no Swift-side date formatting).
+    // `noticeCount` shows the total (may exceed 32); the ring shows the retained
+    // tail. Thin-shell rule: no Swift-side sorting or filtering — order from Rust.
+    private var noticesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Notices")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if row.noticeCount > UInt64(row.notices.count) {
+                    Text("\(row.noticeCount) total")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(row.notices.enumerated()), id: \.offset) { index, notice in
+                    if index > 0 { RelayDetailDivider() }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text((notice.atMs / 1000).relativeTimeFromUnixSeconds)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(notice.text)
+                            .font(.caption)
+                            .foregroundStyle(ChirpColor.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 6)
                 }
             }
             .padding(.horizontal, 12)
