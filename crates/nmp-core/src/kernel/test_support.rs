@@ -465,6 +465,23 @@ impl Kernel {
         self.follow_feed_interest_ids.iter().cloned().collect()
     }
 
+    /// The author set carried by the SINGLE collapsed follow-feed interest
+    /// (#1497) — `None` when no follow-feed interest is registered. Looks the
+    /// interest up by its tracked id so the test sees exactly the shape that
+    /// was installed in the registry.
+    #[cfg(test)]
+    pub(crate) fn follow_feed_interest_authors_for_test(
+        &self,
+    ) -> Option<std::collections::BTreeSet<String>> {
+        let id = self.follow_feed_interest_ids.iter().next()?;
+        self.lifecycle
+            .registry()
+            .iter_active()
+            .into_iter()
+            .find(|i| &i.id == id)
+            .map(|i| i.shape.authors.clone())
+    }
+
     /// Snapshot of the follow-derived `timeline_authors` projection.
     #[cfg(test)]
     pub(crate) fn timeline_authors_for_test(&self) -> &std::collections::BTreeSet<String> {

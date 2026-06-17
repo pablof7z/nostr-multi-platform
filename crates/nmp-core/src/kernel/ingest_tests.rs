@@ -534,12 +534,13 @@ fn ingest_contacts_for_active_account_syncs_follow_feed_projection() {
         "timeline_authors must also include the active account itself",
     );
 
-    // One M2 follow-feed interest per follow plus one for the active account.
+    // ONE multi-author follow-feed interest covering every follow plus the
+    // active account (#1497 collapse).
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        3,
-        "active-account kind:3 must register one follow-feed interest per follow \
-         plus one for the active account itself",
+        1,
+        "active-account kind:3 must register ONE multi-author follow-feed \
+         interest covering every follow plus the active account itself",
     );
 }
 

@@ -153,12 +153,14 @@ fn t168_switch_active_reconciles_followfeed_to_new_account() {
     switch_active(&mut id, &mut kernel, &second_id, false);
     let frames = kernel.drain_lifecycle_tick();
 
-    // The second account was created with DEFAULT_FOLLOWS (2 follows) + self-interest.
+    // The second account installs ONE multi-author follow-feed interest
+    // covering its default follows + self (#1497 collapse).
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        3,
+        1,
         "T168: switching to the second account must withdraw A's follow-feed \
-         interests and install the second account's default follows + self: {:?}",
+         interest and install the second account's single multi-author \
+         follow-feed interest: {:?}",
         kernel.follow_feed_interest_ids_for_test()
     );
     assert!(

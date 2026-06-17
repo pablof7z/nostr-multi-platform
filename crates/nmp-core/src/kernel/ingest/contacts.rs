@@ -8,57 +8,55 @@ use crate::stable_hash::stable_hash64;
 use crate::subs::{AccountId, CompileTrigger};
 use std::collections::BTreeSet as BTreeSetInner;
 
-/// Deterministic `InterestId` for a contact-list-authors interest keyed by
-/// pubkey and the host-declared `kinds` set.
+/// Deterministic `InterestId` for the SINGLE multi-author follow-feed interest,
+/// keyed by the host-declared `kinds` set.
 ///
-/// Hashes `("contact-list-authors", pubkey, kinds_sorted_string)` so the same
-/// `(pubkey, kinds)` pair always produces the same id across restarts, enabling
-/// stable `withdraw` / `push` round-trips. The `kinds` component means two
-/// registrations of the same pubkey under different kind sets do NOT collide —
-/// switching kinds withdraws the old interest id and pushes a fresh one.
+/// The follow-feed collapsed to ONE interest whose shape carries the whole
+/// follow set in `authors` (#1497 amendment 5), so the id is keyed on `kinds`
+/// only — the author set lives inside the interest's shape. Changing the follow
+/// set REPLACES the slot's interest in place (same id, `push` = upsert);
+/// switching the host kinds withdraws the old id and registers a fresh one.
 ///
-/// `kinds_sorted_string` is the kinds rendered in ascending order, joined by
-/// commas (e.g. `"1,6"`). A `BTreeSet` already iterates in sorted order, so the
-/// rendering is deterministic.
-fn contact_list_authors_interest_id(pubkey: &str, kinds: &BTreeSetInner<u32>) -> InterestId {
+/// Hashes `("follow-feed-authors", kinds_sorted_string)` so the same `kinds`
+/// set always produces the same id across restarts, enabling stable
+/// `withdraw` / `push` round-trips. `kinds_sorted_string` is the kinds rendered
+/// in ascending order, joined by commas (e.g. `"1,6"`). A `BTreeSet` already
+/// iterates in sorted order, so the rendering is deterministic.
+fn follow_feed_interest_id(kinds: &BTreeSetInner<u32>) -> InterestId {
     let kinds_sorted_string = kinds
         .iter()
         .map(u32::to_string)
         .collect::<Vec<_>>()
         .join(",");
     InterestId(stable_hash64((
-        "contact-list-authors",
-        pubkey,
+        "follow-feed-authors",
         kinds_sorted_string.as_str(),
     )))
 }
 
-/// Per-author cap on the contact-list-authors REQ. Without this an
-/// `InterestShape` with no bounds risks an unbounded backfill on the wire
-/// (codex finding #6).
-const FOLLOW_FEED_LIMIT: u32 = 1000;
-
-/// Build a `LogicalInterest` for a single contact-list-author pubkey using the
-/// host-declared `kinds` set (`InterestLifecycle::Tailing`,
-/// `InterestScope::Global`).
+/// Build the SINGLE multi-author follow-feed `LogicalInterest` covering the
+/// whole follow set (`authors`) under the host-declared `kinds`
+/// (`InterestLifecycle::Tailing`, `InterestScope::Global`).
 ///
 /// `nmp-core` does not know which kinds belong to the host's app concept — the
 /// `kinds` argument is supplied by the host through
 /// `ActorCommand::OpenContactFeed { kinds }` (D0: the substrate
 /// carries no app-specific social knowledge).
 ///
-/// Carries `limit: Some(1000)`. The relay returns the newest 1000 events and
-/// then tails — `Tailing` lifecycle keeps the sub live past EOSE for new events.
-fn follow_feed_interest(pubkey: &str, kinds: &BTreeSetInner<u32>) -> LogicalInterest {
-    let mut authors = BTreeSetInner::new();
-    authors.insert(pubkey.to_string());
+/// No `limit` (#1497 amendment 5): the feed already windows via `nmp-feed`, and
+/// relays send what they choose, so a per-request limit is not load protection —
+/// it existed only to force the per-author fan-out this collapse removes. The
+/// `Tailing` lifecycle keeps the sub live past EOSE for new events.
+fn follow_feed_interest(
+    authors: BTreeSetInner<String>,
+    kinds: &BTreeSetInner<u32>,
+) -> LogicalInterest {
     LogicalInterest {
-        id: contact_list_authors_interest_id(pubkey, kinds),
+        id: follow_feed_interest_id(kinds),
         scope: InterestScope::Global,
         shape: InterestShape {
             authors,
             kinds: kinds.clone(),
-            limit: Some(FOLLOW_FEED_LIMIT),
             ..Default::default()
         },
         hints: Vec::new(),
@@ -73,16 +71,18 @@ impl Kernel {
     /// T140 — Register (or replace) M2 `LogicalInterest`s for the active
     /// account's follow set.
     ///
-    /// Withdraws any previously-registered follow-feed interests (tracked in
-    /// `self.follow_feed_interest_ids`), then pushes one new `LogicalInterest`
-    /// per pubkey in `follows` into the lifecycle registry. The `FollowListChanged`
-    /// trigger is NOT enqueued here — callers are responsible for that (avoids
-    /// duplicate triggers when this is called from a path that already enqueues).
+    /// Withdraws the previously-registered follow-feed interest (tracked in
+    /// `self.follow_feed_interest_ids`), then pushes ONE multi-author
+    /// `LogicalInterest` whose shape covers the whole follow set + the active
+    /// user into the lifecycle registry (#1497 amendment 5 — collapsed from the
+    /// per-author fan-out). The `FollowListChanged` trigger is NOT enqueued
+    /// here — callers are responsible for that (avoids duplicate triggers when
+    /// this is called from a path that already enqueues).
     ///
     /// After this call the planner's next `drain_tick` will compile the new
     /// interest set and emit the correct REQ/CLOSE diff via `drain_lifecycle_tick`.
     pub(crate) fn sync_follow_feed_interests(&mut self, follows: &[String]) {
-        // Withdraw stale interests from the prior follow set.
+        // Withdraw the stale interest from the prior follow set / kinds.
         let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
         for id in &old_ids {
             self.lifecycle.registry_mut().withdraw(id);
@@ -101,32 +101,36 @@ impl Kernel {
             return;
         }
 
-        // Register one LogicalInterest per followed pubkey.
-        for pubkey in follows {
-            let interest = follow_feed_interest(pubkey, &kinds);
-            let id = interest.id.clone();
-            self.lifecycle.registry_mut().push(interest);
-            self.follow_feed_interest_ids.insert(id);
+        // Collect the whole author set: every follow + the active user (so the
+        // user's own notes appear in their timeline). Distinct pubkeys collapse
+        // into ONE multi-author interest — the planner's Case A routing fans the
+        // shape per-author to each author's outbox relays at compile time
+        // (`compiler/partition/case_a_authors.rs`).
+        let mut authors: BTreeSetInner<String> = follows.iter().cloned().collect();
+        if let Some(ref me) = self.active_account {
+            authors.insert(me.clone());
         }
 
-        // Also register an interest for the active user themselves so their own
-        // notes appear in the timeline.
-        if let Some(ref me) = self.active_account {
-            let interest = follow_feed_interest(me, &kinds);
-            let id = interest.id.clone();
-            self.lifecycle.registry_mut().push(interest);
-            self.follow_feed_interest_ids.insert(id);
+        // No authors (logout: empty follow set AND no active account) means the
+        // subscription is NOT active — register nothing and clear the derived
+        // author cache. An empty-authors interest would be a malformed REQ.
+        if authors.is_empty() {
+            self.timeline_authors = BTreeSet::new();
+            return;
         }
+
+        // Register the SINGLE multi-author follow-feed interest.
+        let interest = follow_feed_interest(authors.clone(), &kinds);
+        let interest_id = interest.id.clone();
+        let interest_shape = interest.shape.clone();
+        self.lifecycle.registry_mut().push(interest);
+        self.follow_feed_interest_ids.insert(interest_id.clone());
 
         // Rebuild the `timeline_authors` derived cache from the new follow set
         // so `should_store_event` / `ingest_timeline_event` gate correctly.
         // `timeline_authors` is a denormalized read-cache over the M2 registry
         // (D4: the registry is the single source of truth; this is a projection).
-        let mut authors: BTreeSet<String> = follows.iter().cloned().collect();
-        if let Some(ref me) = self.active_account {
-            authors.insert(me.clone());
-        }
-        self.timeline_authors = authors;
+        self.timeline_authors = authors.into_iter().collect();
 
         // ADR-0057 — the `pre_kind3_buffer` (V-59 rung 1) is DELETED. Admission
         // is now separated from persistence: a not-yet-followed author's
@@ -136,40 +140,25 @@ impl Kernel {
         // cache-serve enqueued below — `feed_served_event` re-projects them into
         // the timeline read-cache. No buffer / no replay needed.
 
-        // ADR-0045 E1 — store-cache serve for follow-feed interests.
+        // ADR-0045 E1 — store-cache serve for the follow-feed interest.
         //
         // `sync_follow_feed_interests` uses the legacy `push` path (not
         // `open_interest_sub`) so the cache-serve hook in `open_interest_sub`
-        // does not fire here. Enqueue a serve for every newly-registered
-        // follow-feed interest, then drain ONE aggregate-budget chunk
-        // synchronously so the next snapshot carries store data (D1). The
-        // remainder continues on the actor tick (§5 chunked continuation) —
-        // a 300–500-follow cold start never bursts unbounded synchronous
-        // work on the actor thread.
+        // does not fire here. Enqueue ONE serve for the multi-author interest,
+        // then drain a single aggregate-budget chunk synchronously so the next
+        // snapshot carries store data (D1). The collapsed shape maps to ONE
+        // `StoreQuery::AuthorsKind` (`cache_serve/queries.rs`), so a 300–500-
+        // follow cold start drains via one multi-author scan, not one per author.
         //
-        // We reconstruct each interest's shape directly from `(pubkey, kinds)`
-        // rather than looking it up via the registry to keep this O(n) instead
-        // of O(n²). The `follow_feed_interest` constructor is deterministic.
-        //
-        // Route every author through the SHARED enqueue helper
+        // Route through the SHARED enqueue helper
         // (`enqueue_interest_cache_serve_deferred`) so the completion-key
         // derivation is the one centralised recipe — no hand-copied
         // `legacy_key` → `completion_key_for_interest` block to drift (PR #1237
-        // review F3). `_deferred` enqueues WITHOUT draining; we drain ONCE after
-        // the whole batch so a 300–500-follow cold start runs one synchronous
-        // chunk, not one per author.
+        // review F3).
         {
             use crate::subs::InterestRegistry;
-            // Collect the pubkey list: follows + active user.
-            let mut cache_serve_authors: Vec<String> = follows.to_vec();
-            if let Some(ref me) = self.active_account {
-                cache_serve_authors.push(me.clone());
-            }
-            for pubkey in cache_serve_authors {
-                let interest = follow_feed_interest(&pubkey, &kinds);
-                let sub_key = InterestRegistry::legacy_key(&interest.id);
-                self.enqueue_interest_cache_serve_deferred(&sub_key, &interest.shape);
-            }
+            let sub_key = InterestRegistry::legacy_key(&interest_id);
+            self.enqueue_interest_cache_serve_deferred(&sub_key, &interest_shape);
             self.run_cache_serve_step();
         }
     }
@@ -188,11 +177,11 @@ impl Kernel {
     /// capability-owned contacts cache for the author, exactly like the profile
     /// / mailbox / DM-relay transitions).
     ///
-    /// `follows` is the freshly-parsed capped follow set the parser wrote into
-    /// the cache (`capped_contact_follows` — the SAME pure function the
+    /// `follows` is the freshly-parsed follow set the parser wrote into
+    /// the cache (`contact_follows` — the SAME pure function the
     /// `nmp-nip02` follow-set observers use, so the router's `timeline_authors`,
     /// the follow predicate, and the `nmp.follow_list` snapshot can never
-    /// diverge on which 500 follows count). An empty `follows` is a CLEARED
+    /// diverge on which follows count). An empty `follows` is a CLEARED
     /// follow set (a kind:3 with no `p` tags), which correctly WITHDRAWS the
     /// prior follow-feed interests via `sync_follow_feed_interests(&[])`.
     ///
@@ -343,30 +332,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contact_list_authors_interest_id_is_restart_stable() {
+    fn follow_feed_interest_id_is_restart_stable() {
         let kinds = BTreeSetInner::from([1u32, 6u32]);
-        // Restart-stable: the same (pubkey, kinds) pair hashes identically
-        // across calls.
+        // Restart-stable: the same kinds set hashes identically across calls.
         assert_eq!(
-            contact_list_authors_interest_id(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                &kinds,
-            ),
-            contact_list_authors_interest_id(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                &kinds,
-            ),
+            follow_feed_interest_id(&kinds),
+            follow_feed_interest_id(&kinds),
         );
-        // Distinct pubkeys never collide.
+        // Distinct kinds sets never collide, so switching the host-declared
+        // kinds withdraws the old id and registers a fresh one.
         assert_ne!(
-            contact_list_authors_interest_id("alice", &kinds),
-            contact_list_authors_interest_id("bob", &kinds),
+            follow_feed_interest_id(&BTreeSetInner::from([1u32, 6u32])),
+            follow_feed_interest_id(&BTreeSetInner::from([1u32])),
         );
-        // Distinct kinds sets for the same pubkey never collide, so switching
-        // the host-declared kinds withdraws the old id and pushes a fresh one.
-        assert_ne!(
-            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32, 6u32])),
-            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32])),
-        );
+    }
+
+    #[test]
+    fn follow_feed_interest_is_single_multi_author_no_limit() {
+        let kinds = BTreeSetInner::from([1u32, 6u32]);
+        let authors = BTreeSetInner::from([
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        ]);
+        let interest = follow_feed_interest(authors.clone(), &kinds);
+        // ONE interest covers the whole author set (no per-author fan-out).
+        assert_eq!(interest.shape.authors, authors);
+        assert_eq!(interest.shape.kinds, kinds);
+        // No `limit` (#1497 amendment 5) — the per-author backfill cap is gone.
+        assert_eq!(interest.shape.limit, None);
     }
 }

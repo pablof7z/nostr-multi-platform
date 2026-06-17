@@ -19,8 +19,9 @@
 //!   after an EOSE frame (no auto-CLOSE), at parity with the old
 //!   `seed-timeline-*` keep-alive behaviour.
 //!
-//! - [`m2_follow_feed_interest_carries_limit`] — the M2 follow-feed REQ must
-//!   carry `"limit":1000` (the follow-feed backfill cap; no unbounded backfill).
+//! - [`m2_follow_feed_interest_is_collapsed_limitless_multi_author`] — the M2
+//!   follow-feed REQ is ONE multi-author filter with NO `limit` (#1497
+//!   amendment 5 — collapsed from the per-author fan-out, no backfill cap).
 //!
 //! - [`empty_follows_clears_timeline_authors_and_interests`] — an active
 //!   account with no cached follows must CLEAR stale follow-feed interest ids
@@ -201,25 +202,32 @@ fn m2_follow_feed_sub_survives_eose() {
     );
 }
 
-// ─── limit parity (no unbounded backfill) ────────────────────────────────────
+// ─── collapsed limitless multi-author interest (#1497 amendment 5) ────────────
 
-/// The M2 follow-feed REQ must carry `"limit":1000` — the follow-feed backfill cap.
+/// The M2 follow-feed is ONE multi-author REQ with NO `limit` (#1497 collapse).
+///
+/// ALICE follows BOB; both authors declare the SAME write relay, so the single
+/// collapsed multi-author interest compiles to ONE REQ on that relay carrying
+/// BOTH authors and no per-author backfill cap.
 #[test]
-fn m2_follow_feed_interest_carries_limit() {
+fn m2_follow_feed_interest_is_collapsed_limitless_multi_author() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
     // for (D0: the substrate no longer hardcodes a kind set).
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
-    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
+    // Both ALICE and BOB write to the same relay so the collapsed multi-author
+    // interest produces ONE REQ on that relay carrying both authors.
+    install_relay_list(&kernel, ALICE, &["wss://shared-t140.relay/"]);
+    install_relay_list(&kernel, BOB, &["wss://shared-t140.relay/"]);
     kernel
         .inject_replaceable_event(
             "0000000000000000000000000000000000000000000000000000000000000003",
             ALICE,
             2_000,
             3,
-            vec![vec!["p".to_string(), ALICE.to_string()]],
-            "wss://alice-t140.relay/",
+            vec![vec!["p".to_string(), BOB.to_string()]],
+            "wss://shared-t140.relay/",
             2_000_000,
         )
         .expect("inject kind:3");
@@ -232,9 +240,17 @@ fn m2_follow_feed_interest_carries_limit() {
             _ => None,
         })
         .expect("M2 drain must emit a follow-feed REQ");
+    // No `limit` (#1497 amendment 5 — the per-author backfill cap is gone).
     assert!(
-        filter.contains("\"limit\":1000"),
-        "T140: M2 follow-feed REQ must carry limit:1000. Got filter: {filter}"
+        !filter.contains("\"limit\""),
+        "T140: collapsed follow-feed REQ must carry NO limit. Got filter: {filter}"
+    );
+    // ONE multi-author filter: both ALICE (self) and BOB (follow) ride the same
+    // REQ on the shared relay.
+    assert!(
+        filter.contains(ALICE) && filter.contains(BOB),
+        "T140: collapsed follow-feed REQ must be one multi-author filter \
+         carrying every follow + self. Got filter: {filter}"
     );
 }
 

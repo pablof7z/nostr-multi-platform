@@ -73,13 +73,13 @@ fn relay_kind3_populates_cache_rebuilds_authors_and_registers_interests() {
         "timeline_authors must include the active account itself"
     );
 
-    // Effect (c): one M2 follow-feed interest per follow plus one for the
-    // active account.
+    // Effect (c): ONE multi-author follow-feed interest covering every follow
+    // plus the active account (#1497 collapse).
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        3,
-        "active-account kind:3 must register one follow-feed interest per follow \
-         plus one for the active account"
+        1,
+        "active-account kind:3 must register ONE multi-author follow-feed \
+         interest covering every follow plus the active account"
     );
 }
 
@@ -232,9 +232,9 @@ fn cold_restart_bootstrap_self_kinds_interest_cache_serves_stored_kind3() {
     );
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        3,
-        "store-first bootstrap must register one follow-feed interest per follow \
-         plus the active account"
+        1,
+        "store-first bootstrap must register ONE multi-author follow-feed \
+         interest covering every follow plus the active account (#1497 collapse)"
     );
 }
 
@@ -376,7 +376,8 @@ fn prepopulate_contacts_seeds_effects_without_emitting_a_phantom_event() {
     );
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        3,
-        "prepopulate must register the follow-feed interests (2 follows + the active account)"
+        1,
+        "prepopulate must register ONE multi-author follow-feed interest \
+         covering the follows + the active account (#1497 collapse)"
     );
 }

@@ -37,7 +37,8 @@ use crate::substrate::EventIngestDispatcher;
 ///
 /// | Shape pattern | `StoreQuery` | Increment |
 /// |---|---|---|
-/// | ≥1 author + ≥1 kind | `AuthorKind` per author | E1 |
+/// | 1 author + ≥1 kind | `AuthorKind` | E1 |
+/// | >1 author + ≥1 kind | one `AuthorsKind` (multi-author) | E1 (#1497) |
 /// | 0 authors + ≥1 kind + 0 tags + 0 addrs | `KindTime` | E1 |
 /// | `#p` single-value + kind:1059 only | `Ptag` (DM inbox) | E2 |
 /// | `#p` single-value + ≥1 kind (non-DM) | `Ptag` (mention) | E3 |
@@ -121,27 +122,41 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
 
     if shape.authors.is_empty() {
         // KindTime — global / hashtag feed (0 authors + ≥1 kind).
-        vec![StoreQuery::KindTime {
+        return vec![StoreQuery::KindTime {
             kinds,
             since: shape.since,
             until: shape.until,
-        }]
-    } else {
-        // AuthorKind — one query per author; results merged under the shared
-        // budget. Mirrors the per-author watermark scan `#1091` uses.
-        shape
-            .authors
-            .iter()
-            .filter_map(|author_hex| {
-                let author = hex_to_pubkey_bytes(author_hex)?;
-                Some(StoreQuery::AuthorKind {
-                    author,
-                    kinds: kinds.clone(),
-                    since: shape.since,
-                    until: shape.until,
-                })
-            })
-            .collect()
+        }];
+    }
+
+    // Decode the author hexes once; skip any that fail to parse. A slice
+    // pattern selects the query variant panic-free (D6: no `expect`/`unwrap`).
+    let decoded: Vec<crate::store::PubKey> = shape
+        .authors
+        .iter()
+        .filter_map(|author_hex| hex_to_pubkey_bytes(author_hex))
+        .collect();
+
+    match decoded.as_slice() {
+        // Every author hex failed to decode → not covered.
+        [] => Vec::new(),
+        // Single author → `AuthorKind` (the dedicated single-author index path).
+        [author] => vec![StoreQuery::AuthorKind {
+            author: *author,
+            kinds,
+            since: shape.since,
+            until: shape.until,
+        }],
+        // Multi-author shape (#1497 follow-feed collapse) → ONE `AuthorsKind`
+        // scan over the combined author set, newest-first. Replaces the prior
+        // per-author `AuthorKind` fan-out so a 300–500-follow cold start serves
+        // via a single multi-author query, not one per author.
+        _ => vec![StoreQuery::AuthorsKind {
+            authors: decoded.iter().copied().collect(),
+            kinds,
+            since: shape.since,
+            until: shape.until,
+        }],
     }
 }
 
