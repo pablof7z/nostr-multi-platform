@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -74,6 +74,7 @@
 		704D121428463E20F29B3202 /* GroupDefaults.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D75F3370D27FAAEA3B8C33 /* GroupDefaults.generated.swift */; };
 		728AF2FB6635CBEA25C9529D /* KernelUpdateFrameDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD470B56883794083C54B5CC /* KernelUpdateFrameDecoder.swift */; };
 		72E6C28DE61F97428F972267 /* RootShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F55FC6A139DA43D434DBF9 /* RootShell.swift */; };
+		8132C0EF7B0D475A47201AED /* RelayReasonsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B07886EA628FF8E299E53963 /* RelayReasonsSection.swift */; };
 		81DD4A55F9CB39E1CA036CFD /* NostrKindRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC56C5F40E415157200F282 /* NostrKindRegistry.swift */; };
 		821C01932D552C3E58B95B67 /* ResolvedProfiles.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACEAFE25D0DCECE8B802799 /* ResolvedProfiles.generated.swift */; };
 		82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32D744B5446C909E7AEEB8F /* OnboardingView.swift */; };
@@ -297,6 +298,7 @@
 		AB6AB62ADB750E771B9F1D0F /* DiscoveredGroups.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredGroups.generated.swift; sourceTree = "<group>"; };
 		AFCA4A8404400622F483ABF9 /* DmListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmListView.swift; sourceTree = "<group>"; };
 		AFCE56EF6CC2D5CB4D646C2D /* TypedProjectionDecoders.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedProjectionDecoders.generated.swift; sourceTree = "<group>"; };
+		B07886EA628FF8E299E53963 /* RelayReasonsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayReasonsSection.swift; sourceTree = "<group>"; };
 		B15293C7F9947AC5629CC8A6 /* MarmotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotModels.swift; sourceTree = "<group>"; };
 		B34B9F50E7C49105F1EA88D2 /* TypedPublishRelayDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedPublishRelayDecoderTests.swift; sourceTree = "<group>"; };
 		B6BA6E01703E7E522BE70DA8 /* TypedNip46ClusterDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedNip46ClusterDecoderTests.swift; sourceTree = "<group>"; };
@@ -476,6 +478,7 @@
 				23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */,
 				985298ED1B842E892A6FA759 /* ProfileView.swift */,
 				9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */,
+				B07886EA628FF8E299E53963 /* RelayReasonsSection.swift */,
 				C2F8B2163D47A913D43D7566 /* RelaySettingsView.swift */,
 				7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */,
 				2C01000494AC737F8F8E286D /* ThreadScreen.swift */,
@@ -739,7 +742,6 @@
 				};
 			};
 			buildConfigurationList = 44649860CA8F9C9EA0EA2354 /* Build configuration list for PBXProject "Chirp" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -751,7 +753,8 @@
 			packageReferences = (
 				7975390E2C96E8FADE956838 /* XCRemoteSwiftPackageReference "flatbuffers" */,
 			);
-			preferredProjectObjectVersion = 54;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 26E6F52A54743D11DFA78B83 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -945,6 +948,7 @@
 				00C2DBD92D2895E9C3FADB2A /* PublishQueue.generated.swift in Sources */,
 				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
 				BFDF559A18663B252819EEFD /* RelayDiagnostics.generated.swift in Sources */,
+				8132C0EF7B0D475A47201AED /* RelayReasonsSection.swift in Sources */,
 				E0261E96E6ED75A89AC63364 /* RelayRoleOptions.generated.swift in Sources */,
 				E2628E82F930E2172C3B5FD5 /* RelaySeeding.swift in Sources */,
 				B6D3716BDDDD6ECC762599C3 /* RelaySettingsView.swift in Sources */,

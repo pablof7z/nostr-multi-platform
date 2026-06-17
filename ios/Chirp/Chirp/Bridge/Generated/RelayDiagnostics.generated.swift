@@ -349,8 +349,7 @@ public struct nmp_kernel_RelayConnectionReason: FlatBufferTable, FlatbuffersVect
   public var labelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.label.v) }
   public var tone: String? { let o = _accessor.offset(VTOFFSET.tone.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var toneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.tone.v) }
-  public var authorPubkeysCount: Int32 { let o = _accessor.offset(VTOFFSET.authorPubkeys.v); return o == 0 ? 0 : _accessor.vector(count: o) }
-  public func authorPubkeys(at index: Int32) -> String? { let o = _accessor.offset(VTOFFSET.authorPubkeys.v); return o == 0 ? nil : _accessor.directString(at: _accessor.vector(at: o) + index * 4) }
+  public var authorPubkeys: FlatbufferVector<String?> { return _accessor.vector(at: VTOFFSET.authorPubkeys.v, byteSize: 4) }
   public var authorTotal: UInt32 { let o = _accessor.offset(VTOFFSET.authorTotal.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var kindsLabel: String? { let o = _accessor.offset(VTOFFSET.kindsLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var kindsLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.kindsLabel.v) }

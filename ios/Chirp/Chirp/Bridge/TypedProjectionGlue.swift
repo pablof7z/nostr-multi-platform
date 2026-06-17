@@ -261,17 +261,11 @@ enum TypedProjectionGlue {
     private static func relayConnectionReason(
         _ reason: nmp_kernel_RelayConnectionReason
     ) -> RelayConnectionReason {
-        var authorPubkeys: [String] = []
-        for i in 0..<reason.authorPubkeysCount {
-            if let pk = reason.authorPubkeys(at: i) {
-                authorPubkeys.append(pk)
-            }
-        }
         return RelayConnectionReason(
             kind: reason.kind ?? "",
             label: reason.label ?? "",
             tone: reason.tone ?? "",
-            authorPubkeys: authorPubkeys,
+            authorPubkeys: reason.authorPubkeys.map { $0 ?? "" },
             authorTotal: reason.authorTotal,
             kindsLabel: reason.kindsLabel ?? "",
             sourceEventId: reason.hasSourceEventId ? reason.sourceEventId : nil
