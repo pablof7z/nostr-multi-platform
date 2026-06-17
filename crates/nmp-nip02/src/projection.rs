@@ -46,7 +46,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::kinds::KIND_CONTACT_LIST;
-use nmp_core::tags::capped_contact_follows;
+use nmp_core::tags::contact_follows;
 use nmp_core::KernelEventObserver;
 use serde::Serialize;
 
@@ -210,14 +210,14 @@ impl KernelEventObserver for FollowListProjection {
             return;
         }
 
-        // Apply the kernel's follow cap through the one shared pure function
-        // (`capped_contact_follows`): first-`TIMELINE_AUTHOR_LIMIT` valid-hex
-        // `p`-tags in document order — the IDENTICAL set the router subscribes
-        // to in `Kernel::ingest_contacts` and the sibling `ActiveFollowSet`
-        // predicate qualifies. Before this the projection advertised an
-        // UNCAPPED follow list, so a >500-follow account surfaced follows the
-        // feed can never serve (the router only REQs the first 500).
-        let followed: Vec<String> = capped_contact_follows(&event.tags);
+        // Derive the follow list through the one shared pure function
+        // (`contact_follows`): every valid-hex `p`-tag in document order — the
+        // IDENTICAL set the router subscribes to in `Kernel::ingest_contacts`
+        // and the sibling `ActiveFollowSet` predicate qualifies. The follow set
+        // is uncapped (#1497 amendment 6): the follow-feed is one multi-author
+        // interest covering every follow, so the projection advertises exactly
+        // what the feed serves.
+        let followed: Vec<String> = contact_follows(&event.tags);
 
         let Ok(mut follows) = self.follows.lock() else {
             return;

@@ -91,37 +91,23 @@ pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
         .collect()
 }
 
-/// Per-account cap on the number of follows derived from a kind:3 contact
-/// list. The kernel REQs at most this many follow-feed authors, so anything
-/// downstream that rebuilds the active account's follow set (the router's
-/// `timeline_authors`, the NIP-02 predicate producer, the `nmp.follow_list`
-/// snapshot) MUST apply the same bound or it diverges from what the wire
-/// actually subscribes to.
-///
-/// Substrate-generic: a cap is a number, not an app noun (D0). It lives here
-/// in the kind-agnostic tag module so both `nmp-core` ingest and the
-/// `nmp-nip02` observers reach the single source of truth without
-/// `nmp-core → nmp-nip02` inversion. [`crate::relay`] re-exports this as its
-/// historical `TIMELINE_AUTHOR_LIMIT` name; there is exactly one `500` in the
-/// codebase.
-pub const TIMELINE_AUTHOR_LIMIT: usize = 500;
-
-/// Derive the active account's capped follow set from a kind:3 contact list's
+/// Derive the active account's full follow set from a kind:3 contact list's
 /// tags — the **single source of truth** for "which follows count".
 ///
-/// Semantics (must match `Kernel::ingest_contacts` exactly):
+/// Uncapped (#1497 amendment 6): the follow-feed collapsed to ONE multi-author
+/// interest with no per-author limit, so there is no wire-subscription bound to
+/// mirror — every valid follow is subscribed. Semantics:
 /// 1. Keep `["p", <value>, …]` tags whose value is a valid 64-hex pubkey
 ///    ([`crate::kernel::is_hex_pubkey`]) — malformed `p` entries are skipped.
 /// 2. Preserve **document order**; do **not** dedup and do **not** sort
 ///    (the kernel collects into a `Vec`, so a duplicate `p` tag occupies a
-///    cap slot exactly as it does on the wire).
-/// 3. Take the first [`TIMELINE_AUTHOR_LIMIT`] survivors.
+///    slot exactly as it does on the wire).
 ///
 /// Returns owned `String`s so callers (kernel ingest and the two `nmp-nip02`
-/// `KernelEventObserver`s) all consume an identical capped set without
-/// re-implementing — and therefore re-diverging — the recipe.
+/// `KernelEventObserver`s) all consume an identical set without re-implementing —
+/// and therefore re-diverging — the recipe.
 #[must_use]
-pub fn capped_contact_follows(tags: &[Vec<String>]) -> Vec<String> {
+pub fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
     tags.iter()
         .filter_map(|tag| {
             if tag.first().map(String::as_str) == Some("p") {
@@ -132,7 +118,6 @@ pub fn capped_contact_follows(tags: &[Vec<String>]) -> Vec<String> {
                 None
             }
         })
-        .take(TIMELINE_AUTHOR_LIMIT)
         .collect()
 }
 
@@ -431,7 +416,7 @@ pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
 // Unit tests live in sibling files to keep this module under the 500-line
 // ceiling. `use super::*` in each provides the same namespace access an inline
 // `mod tests` would. `tags_tests.rs` covers the constructors, readers, NIP-10
-// parser, and the `capped_contact_follows` follow-cap; `tags_reply_tests.rs`
+// parser, and the `contact_follows` follow-set extraction; `tags_reply_tests.rs`
 // covers `reply_tags`.
 #[cfg(test)]
 #[path = "tags_tests.rs"]

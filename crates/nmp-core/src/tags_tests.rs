@@ -1,5 +1,5 @@
 //! Unit tests for the shared tag constructors / readers / NIP-10 parser and
-//! the [`super::capped_contact_follows`] follow-cap function.
+//! the [`super::contact_follows`] follow-set extraction function.
 //!
 //! Extracted from the inline `mod tests` in `tags.rs` to keep that file under
 //! the 500-line ceiling (same precedent as `tags_reply_tests.rs`). `use
@@ -83,7 +83,7 @@ fn first_tag_value_handles_key_only_tag() {
     assert_eq!(first_tag_value(&tags, "e"), None);
 }
 
-// ── follow cap (capped_contact_follows) ─────────────────────────────────
+// ── follow-set extraction (contact_follows) ─────────────────────────────
 
 /// Deterministic distinct valid 64-hex pubkey for index `i`.
 fn hex_pk(i: usize) -> String {
@@ -102,23 +102,26 @@ fn p_tags(follows: &[String]) -> Vec<Vec<String>> {
 }
 
 #[test]
-fn capped_follows_keeps_first_500_in_order() {
+fn contact_follows_is_uncapped_and_in_order() {
+    // No per-author cap (#1497 amendment 6): a >500-follow list returns EVERY
+    // valid follow, in document order — the follow-feed is one multi-author
+    // interest covering them all.
     let follows: Vec<String> = (0..600).map(hex_pk).collect();
-    let capped = capped_contact_follows(&p_tags(&follows));
-    assert_eq!(capped.len(), TIMELINE_AUTHOR_LIMIT);
-    assert_eq!(capped, follows[..TIMELINE_AUTHOR_LIMIT].to_vec());
+    let extracted = contact_follows(&p_tags(&follows));
+    assert_eq!(extracted.len(), 600);
+    assert_eq!(extracted, follows);
 }
 
 #[test]
-fn capped_follows_below_cap_returns_all() {
+fn contact_follows_below_threshold_returns_all() {
     let follows: Vec<String> = (0..3).map(hex_pk).collect();
-    assert_eq!(capped_contact_follows(&p_tags(&follows)), follows);
+    assert_eq!(contact_follows(&p_tags(&follows)), follows);
 }
 
 #[test]
-fn capped_follows_skips_non_hex_p_values() {
+fn contact_follows_skips_non_hex_p_values() {
     // Malformed `p` values (too short, non-hex) are skipped — matching the
-    // kernel's `is_hex_pubkey` filter — and do NOT occupy a cap slot.
+    // kernel's `is_hex_pubkey` filter.
     let valid_a = hex_pk(1);
     let valid_b = hex_pk(2);
     let tags = vec![
@@ -127,32 +130,31 @@ fn capped_follows_skips_non_hex_p_values() {
         vec!["p".to_string(), "tooshort".to_string()],
         vec!["p".to_string(), valid_b.clone()],
     ];
-    assert_eq!(capped_contact_follows(&tags), vec![valid_a, valid_b]);
+    assert_eq!(contact_follows(&tags), vec![valid_a, valid_b]);
 }
 
 #[test]
-fn capped_follows_ignores_non_p_tags() {
+fn contact_follows_ignores_non_p_tags() {
     let pk = hex_pk(7);
     let tags = vec![
         vec!["e".to_string(), hex_pk(99)],
         vec!["p".to_string(), pk.clone()],
         vec!["t".to_string(), "topic".to_string()],
     ];
-    assert_eq!(capped_contact_follows(&tags), vec![pk]);
+    assert_eq!(contact_follows(&tags), vec![pk]);
 }
 
 #[test]
-fn capped_follows_preserves_duplicate_slots_no_dedup() {
+fn contact_follows_preserves_duplicate_slots_no_dedup() {
     // The kernel collects into a `Vec` (no dedup), so a duplicate `p` tag
-    // occupies a cap slot exactly as it does on the wire. The function must
-    // mirror that — dedup would silently change which authors fall inside the
-    // cap when an account has near-500 follows with duplicates.
+    // occupies a slot exactly as it does on the wire. The function must mirror
+    // that — dedup would silently change membership.
     let pk = hex_pk(3);
     let tags = vec![
         vec!["p".to_string(), pk.clone()],
         vec!["p".to_string(), pk.clone()],
     ];
-    assert_eq!(capped_contact_follows(&tags), vec![pk.clone(), pk]);
+    assert_eq!(contact_follows(&tags), vec![pk.clone(), pk]);
 }
 
 // ── NIP-02 kind:3 contact-list edit builders (issue #1246) ──────────────

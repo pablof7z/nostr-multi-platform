@@ -84,17 +84,16 @@
 //! * **D0** — `nmp-nip02` is a NIP crate, so NIP-02 nouns are fine here. No
 //!   NIP token leaks into `nmp-core`. The predicate is a std closure; no
 //!   `nmp-feed` type appears in this crate's surface.
-//! * **D5** — the set is bounded by the kernel's `TIMELINE_AUTHOR_LIMIT`
-//!   (500). The bound is **not** applied upstream: the kernel fans the *raw*
-//!   kind:3 event (all `p` tags) to every `KernelEventObserver`, so this
-//!   observer must apply the cap itself. It does so by routing the event's
-//!   tags through the one shared pure function
-//!   [`nmp_core::tags::capped_contact_follows`] — the IDENTICAL recipe
-//!   `Kernel::ingest_contacts` uses (first-500-valid-hex-`p`-tags in document
-//!   order). This is the single source of truth for the cap; the sibling
+//! * **D5** — the set is the full kind:3 follow set (uncapped, #1497
+//!   amendment 6). The kernel fans the *raw* kind:3 event (all `p` tags) to
+//!   every `KernelEventObserver`, so this observer derives membership itself.
+//!   It does so by routing the event's tags through the one shared pure function
+//!   [`nmp_core::tags::contact_follows`] — the IDENTICAL recipe
+//!   `Kernel::ingest_contacts` uses (every valid-hex-`p`-tag in document
+//!   order). This is the single source of truth for membership; the sibling
 //!   [`crate::projection::FollowListProjection`] applies the very same function
 //!   so the predicate producer and the snapshot can never disagree on which
-//!   500 follows count.
+//!   follows count.
 //!
 //! # Sibling lifecycle divergence (NOT unified here)
 //!
@@ -125,7 +124,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
-use nmp_core::tags::capped_contact_follows;
+use nmp_core::tags::contact_follows;
 use nmp_core::KernelEventObserver;
 
 /// A registered change callback. Fires on every follow-set transition
@@ -324,16 +323,15 @@ impl KernelEventObserver for ActiveFollowSet {
             return;
         }
 
-        // Apply the kernel's follow cap through the one shared pure function
-        // (`capped_contact_follows`): first-`TIMELINE_AUTHOR_LIMIT`
-        // valid-hex `p`-tags in document order — the IDENTICAL set the router
-        // subscribes to in `Kernel::ingest_contacts`. Before this the observer
-        // rebuilt an UNCAPPED set, so the predicate qualified authors the
-        // router never REQs (>500-follow accounts). The shared function dedups
-        // nothing and preserves order; the `BTreeSet` here additionally
-        // de-duplicates and sorts, which only ever *shrinks* membership — it
-        // can never re-admit a capped-out follow.
-        let mut rebuilt: BTreeSet<String> = capped_contact_follows(&event.tags)
+        // Derive the follow set through the one shared pure function
+        // (`contact_follows`): every valid-hex `p`-tag in document order — the
+        // IDENTICAL set the router subscribes to in `Kernel::ingest_contacts`.
+        // The follow set is uncapped (#1497 amendment 6): the follow-feed is one
+        // multi-author interest covering every follow, so the predicate and the
+        // wire subscription cover the same authors. The shared function dedups
+        // nothing and preserves order; the `BTreeSet` here de-duplicates and
+        // sorts for membership lookup.
+        let mut rebuilt: BTreeSet<String> = contact_follows(&event.tags)
             .into_iter()
             .collect();
         // Self-inclusion: the active account's own pubkey is always a member.
