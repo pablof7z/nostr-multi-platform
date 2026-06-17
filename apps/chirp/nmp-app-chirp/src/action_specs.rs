@@ -83,6 +83,20 @@ pub enum ChirpActionIntent {
         #[serde(default)]
         reply_to: Option<String>,
     },
+    /// Block a relay: add `url` to the active account's kind:10006 blocked-relay
+    /// list. `account_pubkey` is the active signer's hex pubkey — the module uses
+    /// it to read the current blocked set for idempotency. Mapped to the
+    /// `nmp.nip51.block_relay` router-owned ActionModule.
+    BlockRelay {
+        url: String,
+        account_pubkey: String,
+    },
+    /// Unblock a relay: remove `url` from the active account's kind:10006 list.
+    /// Symmetric to [`BlockRelay`]. Mapped to `nmp.nip51.unblock_relay`.
+    UnblockRelay {
+        url: String,
+        account_pubkey: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -167,6 +181,12 @@ pub fn action_spec_for_intent(intent: ChirpActionIntent) -> Result<ActionDispatc
             &content,
             reply_to.as_deref(),
         )),
+        ChirpActionIntent::BlockRelay { url, account_pubkey } => {
+            Ok(block_relay_spec(&url, &account_pubkey))
+        }
+        ChirpActionIntent::UnblockRelay { url, account_pubkey } => {
+            Ok(unblock_relay_spec(&url, &account_pubkey))
+        }
     }
 }
 
@@ -284,6 +304,33 @@ pub fn zap_spec(
             target_event_id: non_empty(target_event_id),
             comment: non_empty(comment),
         },
+    )
+}
+
+/// Build the `nmp.nip51.block_relay` action body.
+///
+/// Wire shape: `{"url":"…","account_pubkey":"…"}`, matching the
+/// `nmp_router::block_relay::BlockRelayInput` serde shape. The router-owned
+/// ActionModule validates the URL scheme and applies the edit idempotently
+/// against the active account's kind:10006 blocked-relay list.
+#[must_use]
+pub fn block_relay_spec(url: &str, account_pubkey: &str) -> ActionDispatchSpec {
+    ActionDispatchSpec::new(
+        "nmp.nip51.block_relay",
+        json!({ "url": url, "account_pubkey": account_pubkey }).to_string(),
+    )
+}
+
+/// Build the `nmp.nip51.unblock_relay` action body.
+///
+/// Symmetric to [`block_relay_spec`]: removes `url` from the active account's
+/// kind:10006 blocked-relay list. Rejects with `ActionRejection::Conflict` when
+/// the relay is not currently blocked (no publish, no spinner).
+#[must_use]
+pub fn unblock_relay_spec(url: &str, account_pubkey: &str) -> ActionDispatchSpec {
+    ActionDispatchSpec::new(
+        "nmp.nip51.unblock_relay",
+        json!({ "url": url, "account_pubkey": account_pubkey }).to_string(),
     )
 }
 
