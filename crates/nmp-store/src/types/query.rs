@@ -5,6 +5,8 @@
 //! same index logic as the specialized `scan_by_*` methods (no duplicate
 //! index code). See `docs/design/nostrdb-notedeck-lessons.md` §2.3.
 
+use std::collections::BTreeSet;
+
 use super::ids::{EventId, PubKey};
 
 /// A read query over the event store, expressed in terms of the index that
@@ -15,6 +17,14 @@ pub enum StoreQuery {
     /// `idx_author_kind` — events by `author` with kind in `kinds`.
     AuthorKind {
         author: PubKey,
+        kinds: Vec<u32>,
+        since: Option<u64>,
+        until: Option<u64>,
+    },
+    /// `idx_author_kind` (multi-author) — events by any author in `authors` with kind in `kinds`,
+    /// newest-first across the combined author set.
+    AuthorsKind {
+        authors: BTreeSet<PubKey>,
         kinds: Vec<u32>,
         since: Option<u64>,
         until: Option<u64>,

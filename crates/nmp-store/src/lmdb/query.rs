@@ -7,6 +7,7 @@
 //! `(created_at desc, id desc)`; the Mem invariant is `(created_at desc,
 //! id asc)`. We post-sort the materialized vec to match Mem's order.
 
+use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
@@ -109,6 +110,32 @@ pub(super) fn scan_by_author_kind<'a>(
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
     let pk = PublicKey::from_slice(author).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let mut f = Filter::new().author(pk);
+    if !kinds.is_empty() {
+        f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+    }
+    if let Some(s) = since {
+        f = f.since(Timestamp::from_secs(s));
+    }
+    if let Some(u) = until {
+        f = f.until(Timestamp::from_secs(u));
+    }
+    let v = run_filter(inner, f, limit)?;
+    Ok(Box::new(v.into_iter().map(Ok)))
+}
+
+pub(super) fn scan_by_authors_kind<'a>(
+    inner: &'a Arc<Inner>,
+    authors: &BTreeSet<PubKey>,
+    kinds: &[u32],
+    since: Option<u64>,
+    until: Option<u64>,
+    limit: usize,
+) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+    let pks: Vec<PublicKey> = authors
+        .iter()
+        .map(|a| PublicKey::from_slice(a).map_err(|e| StoreError::Encoding(format!("pk: {e}"))))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut f = Filter::new().authors(pks);
     if !kinds.is_empty() {
         f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
     }
@@ -271,12 +298,17 @@ pub(super) fn query_visit(
             kinds,
             since,
             until,
-        } => {
-            let v = collect(scan_by_author_kind(
-                inner, author, kinds, *since, *until, limit,
-            )?)?;
-            v
-        }
+        } => collect(scan_by_author_kind(
+            inner, author, kinds, *since, *until, limit,
+        )?)?,
+        StoreQuery::AuthorsKind {
+            authors,
+            kinds,
+            since,
+            until,
+        } => collect(scan_by_authors_kind(
+            inner, authors, kinds, *since, *until, limit,
+        )?)?,
         StoreQuery::KindTime {
             kinds,
             since,

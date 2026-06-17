@@ -61,6 +61,12 @@ mod test_fixtures;
 mod tests;
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_kind5;
+// AuthorsKind multi-author query parity (split from tests.rs for 500-LOC cap).
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_authors_kind;
+// addr-tombstone GC tests — S-2 audit fix (split from tests.rs for 500-LOC cap).
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_addr_tombstone;
 // W2 TDD gate-tests for `relay_scores`.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod relay_scores_tests;
@@ -271,6 +277,16 @@ impl EventStore for LmdbEventStore {
     fn scan_by_author_kind<'a>(
         &'a self,
         _author: &PubKey,
+        _kinds: &[u32],
+        _since: Option<u64>,
+        _until: Option<u64>,
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn scan_by_authors_kind<'a>(
+        &'a self,
+        _authors: &std::collections::BTreeSet<PubKey>,
         _kinds: &[u32],
         _since: Option<u64>,
         _until: Option<u64>,

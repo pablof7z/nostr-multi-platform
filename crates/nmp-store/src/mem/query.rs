@@ -18,6 +18,7 @@
 //! Replaceable-event supersession (`handle_supersession`) is likewise O(N) per
 //! insert. Do not use this backend for high-throughput relay connections.
 
+use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 
 use super::{access_stamp, bytes_to_hex, MemEventStore};
@@ -58,6 +59,37 @@ pub(super) fn scan_by_author_kind<'a>(
         .values()
         .filter(|ev| {
             ev.raw.pubkey == author_hex
+                && kinds.contains(&ev.raw.kind)
+                && since.is_none_or(|s| ev.raw.created_at >= s)
+                && until.is_none_or(|u| ev.raw.created_at <= u)
+        })
+        .cloned()
+        .collect();
+    results.sort_by(|a, b| {
+        b.raw
+            .created_at
+            .cmp(&a.raw.created_at)
+            .then(a.raw.id.cmp(&b.raw.id))
+    });
+    results.truncate(limit);
+    Ok(Box::new(results.into_iter().map(Ok)))
+}
+
+pub(super) fn scan_by_authors_kind<'a>(
+    store: &'a MemEventStore,
+    authors: &BTreeSet<PubKey>,
+    kinds: &[u32],
+    since: Option<u64>,
+    until: Option<u64>,
+    limit: usize,
+) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+    let author_hexes: Vec<String> = authors.iter().map(|a| bytes_to_hex(a)).collect();
+    let st = store.lock()?;
+    let mut results: Vec<StoredEvent> = st
+        .events
+        .values()
+        .filter(|ev| {
+            author_hexes.contains(&ev.raw.pubkey)
                 && kinds.contains(&ev.raw.kind)
                 && since.is_none_or(|s| ev.raw.created_at >= s)
                 && until.is_none_or(|u| ev.raw.created_at <= u)
@@ -229,6 +261,16 @@ fn matches(ev: &StoredEvent, query: &StoreQuery) -> bool {
             until,
         } => {
             ev.raw.pubkey == bytes_to_hex(author)
+                && kinds.contains(&ev.raw.kind)
+                && in_range(*since, *until)
+        }
+        StoreQuery::AuthorsKind {
+            authors,
+            kinds,
+            since,
+            until,
+        } => {
+            authors.iter().any(|a| bytes_to_hex(a) == ev.raw.pubkey)
                 && kinds.contains(&ev.raw.kind)
                 && in_range(*since, *until)
         }
