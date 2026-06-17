@@ -52,6 +52,7 @@ impl SubscriptionLifecycle {
             bootstrap_content_relays: Vec::new(),
             bootstrap_indexer_relays: Vec::new(),
             current_plan: None,
+            current_plan_attribution: std::collections::BTreeMap::new(),
             auth_gate: AuthGate::new(),
             compile_count: 0,
             coverage_hook: None,

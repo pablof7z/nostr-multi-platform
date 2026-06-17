@@ -52,6 +52,8 @@ mod lifecycle;
 mod recompile;
 
 #[cfg(test)]
+mod attribution_split_tests;
+#[cfg(test)]
 mod coverage_hook_tests;
 #[cfg(test)]
 mod discovery_tests;
@@ -225,6 +227,14 @@ pub struct SubscriptionLifecycle {
     bootstrap_indexer_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,
+    /// Diagnostic attribution snapshot — per-relay [`crate::planner::RelayAttribution`]
+    /// for the unblocked, post-selection candidate plan. Retained separately from
+    /// `current_plan` (which is block-filtered for the wire) so the diagnostics
+    /// projection can report would-be attribution even for blocked relays.
+    ///
+    /// Updated on every successful compile; empty before the first compile.
+    current_plan_attribution:
+        std::collections::BTreeMap<RelayUrl, crate::planner::RelayAttribution>,
     /// Per-relay auth state + pending REQ buffer.
     auth_gate: AuthGate,
     /// Monotonic compile counter for test assertions.

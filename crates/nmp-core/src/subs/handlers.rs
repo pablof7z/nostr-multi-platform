@@ -73,6 +73,18 @@ impl SubscriptionLifecycle {
             .unwrap_or_default()
     }
 
+    /// Per-relay routing provenance from the last successful compile, captured
+    /// BEFORE the blocked-relay post-pass (SPLIT A). Empty before the first
+    /// compile. Read by `Kernel::relay_diagnostics_snapshot` to surface
+    /// connection reasons for all selected relays — including blocked ones.
+    #[must_use]
+    pub fn current_plan_attribution(
+        &self,
+    ) -> &std::collections::BTreeMap<crate::planner::RelayUrl, crate::planner::RelayAttribution>
+    {
+        &self.current_plan_attribution
+    }
+
     /// A5 — relay-reconnected. Per recompilation.md §4.2: replay current plan
     /// to that relay WITHOUT invoking the planner. This is a pure replay, not
     /// a recompile.

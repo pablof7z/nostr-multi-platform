@@ -22,7 +22,7 @@ pub(super) fn connection_tone(connection: &str) -> &'static str {
     } else if lower.contains("connect") {
         // "reconnecting", "connecting", "auth_paused_will_reconnect", etc.
         "warn"
-    } else if lower == "unknown" || lower == "idle" || lower == "—" {
+    } else if lower == "unknown" || lower == "idle" || lower == "—" || lower == "blocked" {
         "muted"
     } else {
         "error"

@@ -58,6 +58,36 @@ impl SubscriptionLifecycle {
         mailbox_cache: &dyn MailboxCache,
         score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Result<Vec<WireFrame>, PlannerError> {
+        self.recompile_inner(mailbox_cache, score_lookup, None)
+    }
+
+    /// Recompile with a W4 warm-relay score filter AND a blocked-relay set.
+    ///
+    /// Like [`Self::recompile_and_diff_with_lookup`] but additionally:
+    /// - Captures the pre-block attribution snapshot into
+    ///   `current_plan_attribution` (SPLIT A: diagnostic purpose).
+    /// - Removes blocked relays from the wire-authoritative plan after capture
+    ///   (SPLIT B: wire-safety — blocked relays must not receive REQs).
+    ///
+    /// Called by `drain_tick_with_lookup_and_blocked` (the actor idle-loop
+    /// bridge path in `lifecycle_drain.rs`).
+    pub fn recompile_and_diff_with_blocked(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: &crate::substrate::BlockedRelaySet,
+    ) -> Result<Vec<WireFrame>, PlannerError> {
+        self.recompile_inner(mailbox_cache, score_lookup, Some(blocked))
+    }
+
+    /// Core recompile implementation. All public recompile entry points delegate
+    /// here. `blocked` controls the SPLIT A/B attribution-capture + block-filter.
+    fn recompile_inner(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: Option<&crate::substrate::BlockedRelaySet>,
+    ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
 
         // ── Compile-input memoization ───────────────────────────────────────
@@ -193,6 +223,30 @@ impl SubscriptionLifecycle {
             apply_watermark_rewrite(&mut plan, wm.as_ref(), &interests);
         }
 
+        // SPLIT A — diagnostic attribution snapshot (pre-block, post-selection).
+        //
+        // Captured here — after greedy selection and watermark rewrite, before
+        // the blocked-relay post-pass — so the diagnostics projection can report
+        // "would-be" attribution for all selected relays, including those that
+        // are currently blocked. The snapshot is read by
+        // `Kernel::relay_diagnostics_snapshot` via `current_plan_attribution()`.
+        self.current_plan_attribution = plan
+            .per_relay
+            .iter()
+            .map(|(url, relay_plan)| (url.clone(), relay_plan.attribution.clone()))
+            .collect();
+
+        // SPLIT B — block filter: remove blocked relays from the
+        // wire-authoritative plan. Blocked relays must not receive REQs (the
+        // user's kind:10006 list is a signal-to-noise / privacy boundary).
+        // The diagnostic snapshot above already captured attribution for these
+        // relays, so `connection_tone("blocked")` can still surface them.
+        if let Some(blocked) = blocked {
+            if !blocked.is_empty() {
+                plan.per_relay.retain(|url, _| !blocked.contains(url));
+            }
+        }
+
         let prior = self.current_plan.as_ref();
         let raw_frames = plan_diff(prior, Some(&plan), &interests);
 
@@ -319,6 +373,32 @@ impl SubscriptionLifecycle {
         mailbox_cache: &dyn MailboxCache,
         score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Vec<WireFrame> {
+        self.drain_tick_inner(mailbox_cache, score_lookup, None)
+    }
+
+    /// Drain the trigger inbox with a W4 warm-relay score filter AND a
+    /// blocked-relay set.
+    ///
+    /// Called by `Kernel::drain_lifecycle_tick` (the actor idle-loop bridge)
+    /// so the kernel's `snapshot_blocked_relays()` is applied on every drain.
+    /// Passes `blocked` into `recompile_and_diff_with_blocked` (SPLIT A+B).
+    #[must_use]
+    pub fn drain_tick_with_lookup_and_blocked(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: &crate::substrate::BlockedRelaySet,
+    ) -> Vec<WireFrame> {
+        self.drain_tick_inner(mailbox_cache, score_lookup, Some(blocked))
+    }
+
+    /// Core drain-tick implementation. Public entry points delegate here.
+    fn drain_tick_inner(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+        blocked: Option<&crate::substrate::BlockedRelaySet>,
+    ) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {
             return Vec::new();
@@ -339,7 +419,7 @@ impl SubscriptionLifecycle {
                 auth_flushed.extend(self.auth_gate.record_transition(url.clone(), state.clone()));
             }
         }
-        match self.recompile_and_diff_with_lookup(mailbox_cache, score_lookup) {
+        match self.recompile_inner(mailbox_cache, score_lookup, blocked) {
             Ok(mut frames) => {
                 frames.extend(auth_flushed);
                 frames
