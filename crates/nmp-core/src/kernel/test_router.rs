@@ -42,6 +42,11 @@ use crate::substrate::{
 
 /// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
 /// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002).
+///
+/// NOTE: intentional copy of `nmp_router::is_discovery_kind` — `nmp-core`
+/// cannot depend on `nmp-router` (would invert the §3 crate-boundary arrow)
+/// and adding it as a dev-dep triggers rustc trait-coherence failures; see the
+/// module-level comment for the full explanation.
 #[inline]
 fn is_discovery_kind(kind: u32) -> bool {
     kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)

@@ -88,11 +88,9 @@ pub struct Nip65OutboxResolver {
     active_account: ActiveAccountSlot,
 }
 
-/// Returns true for kinds that index relays exist to serve: kind:0 (profile),
-/// kind:3 (contacts), and 10000–19999 (replaceable events per NIP-01).
-pub fn is_discovery_kind(kind: u32) -> bool {
-    kind == 0 || kind == 3 || (10000..20000).contains(&kind)
-}
+// Canonical definition lives in `discovery`; re-exported here so `lib.rs` and
+// external callers keep the same public path (`nmp_router::is_discovery_kind`).
+pub use crate::discovery::is_discovery_kind;
 
 impl Nip65OutboxResolver {
     /// Build a resolver backed by the given event store and a shared indexer

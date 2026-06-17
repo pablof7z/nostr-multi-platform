@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 /// True for kinds the indexer lane serves (kind:0 / kind:3 / 10000–19999).
 #[inline]
 #[must_use]
-pub(crate) fn is_discovery_kind(kind: u32) -> bool {
+pub fn is_discovery_kind(kind: u32) -> bool {
     kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
 }
 
