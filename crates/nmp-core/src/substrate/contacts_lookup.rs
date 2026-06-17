@@ -15,9 +15,9 @@
 //!   ([`crate::substrate::IngestParser`]) — registered with the kernel's
 //!   [`crate::substrate::EventIngestDispatcher`] at composition time. It owns
 //!   the supersession rule (newest kind:3 wins, lexicographic event-id tiebreak)
-//!   and extracts the capped follow set via `nmp_core::tags::capped_contact_follows`
+//!   and extracts the follow set via `nmp_core::tags::contact_follows`
 //!   (the SAME pure function the kernel's old `ingest_contacts` used, so the
-//!   first-500-valid-hex-p-tags cap is byte-identical).
+//!   valid-hex-p-tags extraction is byte-identical).
 //! - The **reader** is the kernel
 //!   (`register_follow_feed_for_active_account`, the byte estimate, RAM
 //!   eviction, the diagnostic `contacts_authors` counter) — it consults this
@@ -47,8 +47,8 @@ use std::sync::Arc;
 ///
 /// Carries the parsed follow set plus the source `(event_id, created_at)` the
 /// cache needs for supersession (newest kind:3 wins) and RAM-eviction LRU
-/// ordering. The follow set is the capped, document-order list of valid-hex
-/// `p`-tag pubkeys (see `nmp_core::tags::capped_contact_follows`).
+/// ordering. The follow set is the document-order list of valid-hex
+/// `p`-tag pubkeys (see `nmp_core::tags::contact_follows`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ContactsView {
     /// Source kind:3 event id (used by the supersession tiebreak + diagnostics).
@@ -211,8 +211,8 @@ impl TestContactsCache {
     }
 
     /// Parse a kind:3 event's `(event_id, created_at, tags)` into a
-    /// [`ContactsView`] (extracting the capped follow set via
-    /// `crate::tags::capped_contact_follows`) and upsert it. The parse contract
+    /// [`ContactsView`] (extracting the follow set via
+    /// `crate::tags::contact_follows`) and upsert it. The parse contract
     /// is a verbatim port of the production `nmp_nip01::Kind3Parser` so
     /// test-seeded contacts match production exactly. Returns whether the
     /// candidate superseded the cached entry.
@@ -223,7 +223,7 @@ impl TestContactsCache {
         created_at: u64,
         tags: &[Vec<String>],
     ) -> bool {
-        let follows = crate::tags::capped_contact_follows(tags);
+        let follows = crate::tags::contact_follows(tags);
         self.upsert_view(
             pubkey,
             ContactsView {

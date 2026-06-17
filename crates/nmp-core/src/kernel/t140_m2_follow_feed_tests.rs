@@ -173,3 +173,50 @@ fn t140_follow_list_change_rereg_interests_new_relay_appears() {
          targeting wss://bob-t140.relay/; got urls: {req_urls:?}"
     );
 }
+
+// ─── Test 3 — #1497 test (a): >500 follows → ONE interest, no cap ─────────────
+
+/// #1497 amendment 5/6 — a follow set well beyond the retired 500-author cap
+/// produces a SINGLE multi-author follow-feed interest whose shape covers EVERY
+/// followed author plus self. No per-author fan-out, no `TIMELINE_AUTHOR_LIMIT`
+/// truncation, no per-author `limit`.
+#[test]
+fn t140_follow_set_over_500_is_one_uncapped_multi_author_interest() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    kernel.active_account = Some(ALICE.to_string());
+
+    // 600 distinct valid 64-hex follows — comfortably past the retired 500 cap.
+    let follows: Vec<String> = (0..600)
+        .map(|i| format!("{:016x}{}", i as u64, "0".repeat(48)))
+        .collect();
+
+    kernel.sync_follow_feed_interests(&follows);
+
+    // Exactly ONE follow-feed interest (collapsed from the per-author fan-out).
+    assert_eq!(
+        kernel.follow_feed_interest_ids_for_test().len(),
+        1,
+        ">500 follows must collapse into ONE follow-feed interest"
+    );
+
+    // Its shape carries EVERY follow plus self — uncapped.
+    let authors = kernel
+        .follow_feed_interest_authors_for_test()
+        .expect("the single follow-feed interest must be registered");
+    assert_eq!(
+        authors.len(),
+        601,
+        "the one interest must cover all 600 follows + self (uncapped, #1497)"
+    );
+    for pk in &follows {
+        assert!(
+            authors.contains(pk),
+            "every follow must be in the single interest's author set: {pk}"
+        );
+    }
+    assert!(
+        authors.contains(ALICE),
+        "the active account itself must be in the interest's author set"
+    );
+}

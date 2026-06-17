@@ -34,9 +34,11 @@
 //!   pin source.
 //!
 //! ### `profiles` pin set (pubkey → Profile)
-//! - The pubkey is in `self.timeline_authors` (current follow set — each
-//!   timeline item's `author_display_name` / `author_picture_url` are read
-//!   from this cache on every snapshot tick via `timeline_item()`).
+//! The follow set is **NOT** a pin source (#1497 amendment 6): the profile
+//! cache is a plain bounded LRU decoupled from the follow count. An evicted
+//! followed-author profile re-serves from the store on demand (kind:0 is
+//! store-first), so pinning every followed author forever is overkill. Only
+//! genuinely-unbacked live references are pinned:
 //! - The pubkey is in `self.profile_claims` (a UI component is claiming it).
 //! - The pubkey is the active account's own key (`self.active_account`).
 //! - **Open-interest authors**: the author of every pinned open-interest
@@ -77,7 +79,7 @@
 //! | Map | High-watermark | Rationale |
 //! |-----|---------------|-----------|
 //! | `events` | 2 × `TIMELINE_CACHE_LIMIT` = 1 000 | 500 timeline entries + up to 500 thread/author/oneshot extras. |
-//! | `profiles` | 2 × `TIMELINE_AUTHOR_LIMIT` = 2 000 | 1 000 follow-set entries (all pinned) + 1 000 non-followed browsed profiles. |
+//! | `profiles` | 4 000 (`PROFILES_RAM_HWM`) | Plain bounded LRU, decoupled from the follow count (#1497 amendment 6). Comfortably holds a large follow set plus browsed profiles; over-bound entries evict oldest-first and re-serve from the store on demand. |
 //! | contacts cache | 32 | In practice ≤ a handful (active account + a few peers whose kind:3 arrived). |
 //!
 //! ## Interaction with #1085 / #957
@@ -109,8 +111,11 @@ mod gc_floor_coherent_tests;
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;
 
-/// High-watermark for the profile cache. 2 × `TIMELINE_AUTHOR_LIMIT` (1 000).
-pub(super) const PROFILES_RAM_HWM: usize = 2_000;
+/// High-watermark for the profile cache — a plain bounded LRU decoupled from
+/// the follow count (#1497 amendment 6). A few thousand entries comfortably
+/// covers a large follow set plus browsed profiles; over-bound entries evict
+/// oldest-first and re-serve from the store on demand (kind:0 is store-first).
+pub(super) const PROFILES_RAM_HWM: usize = 4_000;
 
 /// High-watermark for the contacts cache.  Small: it keys on unique
 /// pubkeys whose kind:3 was ingested — almost always ≤ a handful in
@@ -400,15 +405,16 @@ impl Kernel {
         // ADR-0057 PR 2 — the profile cache is capability-owned
         // (`nmp_nip01::ProfileCache` behind `Arc<dyn ProfileLookup>`); the cache
         // owns the eviction *mechanism* (oldest-first, lexicographic-pubkey
-        // tiebreak — byte-identical to the former kernel-owned logic), the
-        // kernel owns the *policy* (which pubkeys are pinned + the HWM). Build
-        // the pin set here — followed authors + claimed profiles + active
-        // account + open-interest authors — and hand it to the cache.
+        // tiebreak), the kernel owns the *policy* (which pubkeys are pinned + the
+        // HWM). The follow set is NOT pinned (#1497 amendment 6 — plain bounded
+        // LRU; an evicted followed-author profile re-serves from the store on
+        // demand). Pin only genuinely-unbacked live references: claimed profiles
+        // + active account + open-interest authors (the feed-engine read path
+        // for open interests has no store fallback).
         let pinned: HashSet<String> = self
-            .timeline_authors
-            .iter()
+            .profile_claims
+            .keys()
             .cloned()
-            .chain(self.profile_claims.keys().cloned())
             .chain(self.active_account.clone())
             .chain(view_pins.profile_pubkeys.iter().cloned())
             .collect();

@@ -429,9 +429,9 @@ impl Kernel {
     /// receive `Some` before editing the follow set. Publishing an edit when
     /// `None` is returned would risk silently wiping an unloaded contact list.
     ///
-    /// Note: the list is uncapped — the 500-entry `TIMELINE_AUTHOR_LIMIT` cap
-    /// is for subscription author REQs, not contact-list editing. Capping here
-    /// would silently drop follows ≥501 on every edit.
+    /// Note: the list is uncapped — and the follow set is now uncapped
+    /// everywhere (#1497 amendment 6 collapsed the follow-feed to one
+    /// multi-author interest with no per-author limit).
     #[must_use]
     pub(crate) fn try_current_follows(&self) -> Option<Vec<String>> {
         let (tags, _content) = self.try_current_kind3_event()?;

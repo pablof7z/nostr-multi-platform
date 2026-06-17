@@ -287,16 +287,23 @@ fn claimed_profiles_are_never_evicted() {
     }
 }
 
-/// Profiles for followed authors (`timeline_authors`) must NEVER be evicted.
+/// The profile cache is a plain bounded LRU decoupled from the follow set
+/// (#1497 amendment 6): the follow set does NOT pin profiles. A followed-author
+/// profile that is among the least-recently-used (oldest `created_at`) entries
+/// evicts like any other — it re-serves from the store on demand.
 #[test]
-fn followed_profiles_are_never_evicted() {
+fn followed_profiles_are_not_pinned_and_evict_lru() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS);
 
+    // `inject_profiles` assigns ascending `created_at`, so the first-injected
+    // profiles are the least-recently-used (oldest) and evict first.
     let over = PROFILES_RAM_HWM + 64 + 50;
     let pubkeys = inject_profiles(&mut kernel, over, T0_SECS);
+    let evicting = over - PROFILES_RAM_HWM; // how many must be removed
 
-    // Mark the first 20 as followed.
+    // Mark the OLDEST 20 (the first-injected, LRU end) as followed. The follow
+    // set must NOT save them from eviction.
     let followed: Vec<String> = pubkeys[..20].to_vec();
     for pk in &followed {
         kernel.timeline_authors.insert(pk.clone());
@@ -304,10 +311,24 @@ fn followed_profiles_are_never_evicted() {
 
     kernel.evict_ram_caches();
 
+    // The bound holds.
+    assert!(
+        kernel.profile_lookup().len() <= PROFILES_RAM_HWM,
+        "profile cache must be bounded to HWM={PROFILES_RAM_HWM}"
+    );
+    // The followed-but-oldest profiles evicted — the follow set did not pin them.
     for pk in &followed {
         assert!(
+            !kernel.profile_lookup().contains(pk),
+            "followed profile {pk} at the LRU end must evict — the follow set \
+             must NOT pin it (#1497 amendment 6)"
+        );
+    }
+    // The newest (most-recently-used) profiles survive — LRU keeps the tail.
+    for pk in &pubkeys[evicting + 64..] {
+        assert!(
             kernel.profile_lookup().contains(pk),
-            "followed profile {pk} must survive eviction"
+            "newest profile {pk} must survive LRU eviction"
         );
     }
 }

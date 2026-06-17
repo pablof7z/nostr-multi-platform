@@ -9,34 +9,33 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::StoreQuery;
 use std::collections::BTreeSet;
 
-// ─── 3. Aggregate per-tick budget + chunked continuation ────────────────────
+// ─── 3. Collapsed follow-feed serve: ONE AuthorsKind, multi-author, bounded ──
 
-/// ADR §5 — the merge-blocking property from the review: the follow feed
-/// registers ONE single-author interest PER follow, so the budget must hold
-/// at the AGGREGATE level, not just per interest.
+/// #1497 test (b) — the follow-feed collapsed to ONE multi-author interest, so
+/// its cache-serve issues a SINGLE `StoreQuery::AuthorsKind` (not a per-author
+/// fan-out), serves the visible window newest-first across multiple followed
+/// authors, and records exactly one completion key.
 ///
 /// 250 followed authors × 2 stored events each (500 events total, distinct
 /// ascending timestamps). After `sync_follow_feed_interests`:
 ///
-/// - the first (synchronous) step has served at most the aggregate tick
-///   budget (2 × visible window = 160), NOT all 500;
-/// - the continuation queue is non-empty;
-/// - repeated `run_cache_serve_step` calls (the actor-tick piggyback) each
-///   serve ≤ the budget and drain the queue within a bounded step count;
-/// - after the drain every stored event has been served and every interest's
-///   completion key is recorded.
+/// - the collapsed shape maps to exactly ONE `AuthorsKind` query;
+/// - the synchronous drain serves the bounded visible window (≤ the tick
+///   budget) — the 300–500-follow cold start is ONE multi-author scan, not 250
+///   per-author serves (the ADR §5 anti-burst property, now intrinsic to the
+///   collapse rather than enforced across N pending serves);
+/// - the served timeline carries events from MULTIPLE distinct authors,
+///   newest-first;
+/// - exactly one completion key is recorded and the queue drains empty.
 #[test]
-fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
+fn e1_follow_feed_serves_single_authorskind_multi_author_newest_first() {
+    use crate::planner::InterestShape;
     const AUTHORS: usize = 250;
     const EVENTS_PER_AUTHOR: usize = 2;
     const TOTAL: usize = AUTHORS * EVENTS_PER_AUTHOR;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let tick_budget = kernel.visible_limit * 2;
-    assert!(
-        TOTAL > 2 * tick_budget,
-        "fixture must exceed two tick budgets to prove multi-tick continuation"
-    );
 
     let base_ts: u64 = 1_700_000_000;
     let mut author_keys: Vec<::nostr::Keys> = Vec::with_capacity(AUTHORS);
@@ -50,9 +49,22 @@ fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
     kernel.active_account = Some(hex_pk("aa"));
     kernel.follow_feed_kinds = BTreeSet::from([1u32]);
 
-    // Seed the store: distinct ascending timestamps so every event can beat
-    // the aggregate-window floor (over-serve is allowed; the assertion is the
-    // per-step CAP, not a minimum).
+    // The collapsed multi-author shape maps to exactly ONE AuthorsKind query.
+    let collapsed_shape = InterestShape {
+        authors: follows.iter().cloned().collect(),
+        kinds: BTreeSet::from([1u32]),
+        ..Default::default()
+    };
+    let queries = shape_to_store_queries(&collapsed_shape);
+    assert_eq!(queries.len(), 1, "collapsed follow-feed → ONE store query");
+    assert!(
+        matches!(&queries[0], StoreQuery::AuthorsKind { .. }),
+        "collapsed follow-feed must map to a single AuthorsKind, got {:?}",
+        queries[0]
+    );
+
+    // Seed the store: distinct ascending timestamps so the newest window is
+    // unambiguous (the newest events span multiple authors).
     for (i, keys) in author_keys.iter().enumerate() {
         kernel.timeline_authors.insert(follows[i].clone());
         seed_events(
@@ -66,43 +78,58 @@ fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
 
     simulate_cold_restart(&mut kernel);
 
-    // The sync enqueues one serve per follow (+1 for the active account) and
-    // synchronously drains exactly ONE aggregate-budget chunk.
+    // The sync enqueues ONE serve for the multi-author follow-feed interest and
+    // synchronously drains it. The serve is bounded by the visible window.
     kernel.sync_follow_feed_interests(&follows);
 
-    let after_first_step = kernel.events.len();
+    let served = kernel.events.len();
+    assert!(served > 0, "the synchronous drain must serve the visible window");
     assert!(
-        after_first_step <= tick_budget,
-        "first step must serve at most the aggregate tick budget \
-         ({tick_budget}), got {after_first_step} — per-interest budgets alone \
-         are the #1085 anti-pattern"
-    );
-    assert!(after_first_step > 0, "first step must serve something");
-    assert!(
-        kernel.has_pending_cache_serves(),
-        "work beyond the first chunk must remain queued for the actor tick"
+        served <= tick_budget,
+        "the collapsed serve is bounded by the tick budget ({tick_budget}), \
+         got {served} — the 300–500-follow cold start is one bounded scan"
     );
 
-    // Continuation: drain on subsequent "ticks" (each step ≤ budget, asserted
-    // inside the helper). 500 events / 160 per tick → must finish well within
-    // 20 steps.
-    let steps = drain_cache_serves(&mut kernel, 20);
-    assert!(steps >= 2, "drain must have required multiple continuation ticks");
+    // Drain any continuation (none expected — depth ≤ visible window < budget).
+    let _ = drain_cache_serves(&mut kernel, 20);
 
-    // Everything on disk was served (ascending timestamps all beat the floor).
-    assert_eq!(
-        kernel.events.len(),
-        TOTAL,
-        "after the drain every stored event must have been served"
-    );
-    // Every interest completed: follows + the active account.
+    // Exactly one completion key — ONE interest, ONE AuthorsKind query.
     assert_eq!(
         kernel.served_interest_shapes.len(),
-        AUTHORS + 1,
-        "every per-follow interest (plus the active account's) must record \
-         its completion key after the drain"
+        1,
+        "the one multi-author follow-feed interest records exactly one \
+         completion key"
     );
     assert!(!kernel.has_pending_cache_serves(), "queue must be empty");
+
+    // The served timeline is newest-first across MULTIPLE distinct authors.
+    let timeline_authors: Vec<String> = kernel
+        .timeline
+        .iter()
+        .filter_map(|id| kernel.events.get(id).map(|e| e.author.clone()))
+        .collect();
+    assert!(
+        !timeline_authors.is_empty(),
+        "the served events must populate the timeline"
+    );
+    let distinct: BTreeSet<&String> = timeline_authors.iter().collect();
+    assert!(
+        distinct.len() > 1,
+        "the collapsed serve must surface events from MULTIPLE followed \
+         authors (got {} distinct in {} timeline items)",
+        distinct.len(),
+        timeline_authors.len()
+    );
+    // Newest-first: created_at is non-increasing down the timeline.
+    let created: Vec<u64> = kernel
+        .timeline
+        .iter()
+        .filter_map(|id| kernel.events.get(id).map(|e| e.created_at))
+        .collect();
+    assert!(
+        created.windows(2).all(|w| w[0] >= w[1]),
+        "the served timeline must be newest-first; got {created:?}"
+    );
 }
 
 // ─── 5. Watermark ⇄ serve invariant (§6) ────────────────────────────────────
@@ -159,11 +186,21 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
         other => panic!("expected AuthorKind, got {other:?}"),
     }
 
+    // Multi-author shapes collapse to ONE `AuthorsKind` query (#1497 follow-feed
+    // collapse), not a per-author `AuthorKind` fan-out.
     let queries2 = shape_to_store_queries(&shape_author_no_events);
-    assert_eq!(queries2.len(), 2, "2 authors + 1 kind → 2 AuthorKind queries");
-    assert!(queries2
-        .iter()
-        .all(|q| matches!(q, StoreQuery::AuthorKind { .. })));
+    assert_eq!(
+        queries2.len(),
+        1,
+        "2 authors + 1 kind → 1 AuthorsKind query (multi-author collapse)"
+    );
+    match &queries2[0] {
+        StoreQuery::AuthorsKind { authors, kinds, .. } => {
+            assert_eq!(authors.len(), 2, "AuthorsKind must carry both authors");
+            assert_eq!(kinds, &vec![1u32]);
+        }
+        other => panic!("expected AuthorsKind, got {other:?}"),
+    }
 
     let queries3 = shape_to_store_queries(&shape_kindtime);
     assert_eq!(queries3.len(), 1, "0 authors + 1 kind → 1 KindTime query");

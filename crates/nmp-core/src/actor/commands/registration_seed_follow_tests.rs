@@ -127,8 +127,9 @@ fn create_account_installs_exact_default_followfeed_and_self() {
     assert!(authors.contains(&active));
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        3,
-        "new account must install one follow-feed interest per seed follow plus self"
+        1,
+        "new account must install ONE multi-author follow-feed interest \
+         covering every seed follow plus self (#1497 collapse)"
     );
 
     let kind3 = event_jsons_of_kind(&outbound, 3)
@@ -273,7 +274,9 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
             .expect("follow feed filter must carry kinds");
         assert!(kinds.contains(&Value::from(1)));
         assert!(kinds.contains(&Value::from(6)));
-        assert_eq!(json.get("limit"), Some(&Value::from(1000)));
+        // No `limit` on the collapsed multi-author follow-feed REQ (#1497
+        // amendment 5 — the per-author backfill cap is gone).
+        assert_eq!(json.get("limit"), None);
     }
 }
 

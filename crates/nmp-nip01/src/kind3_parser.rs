@@ -10,11 +10,11 @@
 //!
 //! # Parse contract — exact port of the kernel's former `ingest_contacts`
 //!
-//! The follow-set extraction is `nmp_core::tags::capped_contact_follows` — the
+//! The follow-set extraction is `nmp_core::tags::contact_follows` — the
 //! SAME pure function the kernel's old `ingest_contacts` and the `nmp-nip02`
 //! `ActiveFollowSet` / `FollowListProjection` observers call. So the cache's
-//! follow set is byte-identical to the pre-PR-3 behaviour: the first-500
-//! valid-hex `p`-tag pubkeys, in document order.
+//! follow set is byte-identical across all consumers: every valid-hex `p`-tag
+//! pubkey, in document order (uncapped, #1497 amendment 6).
 //!
 //! # Side-effect-free against kernel state (the `IngestParser` contract)
 //!
@@ -64,7 +64,7 @@ impl Kind3Parser {
         if raw.kind != KIND_CONTACT_LIST {
             return false;
         }
-        let follows = nmp_core::tags::capped_contact_follows(&raw.tags);
+        let follows = nmp_core::tags::contact_follows(&raw.tags);
         self.cache.upsert_view(
             raw.pubkey.clone(),
             ContactsView {
