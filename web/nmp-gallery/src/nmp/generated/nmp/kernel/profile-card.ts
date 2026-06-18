@@ -30,57 +30,57 @@ pubkey(optionalEncoding?:any):string|Uint8Array|null {
 }
 
 hasDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 displayName():string|null
 displayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 displayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 pictureUrl():string|null
 pictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 pictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 nip05():string|null
 nip05(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 nip05(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 about():string|null
 about(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 about(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasLnurl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lnurl():string|null
 lnurl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lnurl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startProfileCard(builder:flatbuffers.Builder) {
-  builder.startObject(10);
+  builder.startObject(9);
 }
 
 static addPubkey(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset) {
@@ -88,35 +88,35 @@ static addPubkey(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset) {
 }
 
 static addHasDisplayName(builder:flatbuffers.Builder, hasDisplayName:boolean) {
-  builder.addFieldInt8(2, +hasDisplayName, +false);
+  builder.addFieldInt8(1, +hasDisplayName, +false);
 }
 
 static addDisplayName(builder:flatbuffers.Builder, displayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, displayNameOffset, 0);
+  builder.addFieldOffset(2, displayNameOffset, 0);
 }
 
 static addHasPictureUrl(builder:flatbuffers.Builder, hasPictureUrl:boolean) {
-  builder.addFieldInt8(4, +hasPictureUrl, +false);
+  builder.addFieldInt8(3, +hasPictureUrl, +false);
 }
 
 static addPictureUrl(builder:flatbuffers.Builder, pictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, pictureUrlOffset, 0);
+  builder.addFieldOffset(4, pictureUrlOffset, 0);
 }
 
 static addNip05(builder:flatbuffers.Builder, nip05Offset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, nip05Offset, 0);
+  builder.addFieldOffset(5, nip05Offset, 0);
 }
 
 static addAbout(builder:flatbuffers.Builder, aboutOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(7, aboutOffset, 0);
+  builder.addFieldOffset(6, aboutOffset, 0);
 }
 
 static addHasLnurl(builder:flatbuffers.Builder, hasLnurl:boolean) {
-  builder.addFieldInt8(8, +hasLnurl, +false);
+  builder.addFieldInt8(7, +hasLnurl, +false);
 }
 
 static addLnurl(builder:flatbuffers.Builder, lnurlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(9, lnurlOffset, 0);
+  builder.addFieldOffset(8, lnurlOffset, 0);
 }
 
 static endProfileCard(builder:flatbuffers.Builder):flatbuffers.Offset {

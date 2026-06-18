@@ -88,51 +88,35 @@ eoseObserved():boolean {
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-openedDisplay():string|null
-openedDisplay(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-openedDisplay(optionalEncoding?:any):string|Uint8Array|null {
+openedMs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 24);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-hasLastEventDisplay():boolean {
+lastEventMs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 26);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-lastEventDisplay():string|null
-lastEventDisplay(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-lastEventDisplay(optionalEncoding?:any):string|Uint8Array|null {
+eoseMs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 28);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-hasEoseDisplay():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-eoseDisplay():string|null
-eoseDisplay(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-eoseDisplay(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 hasCloseReason():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 34);
+  const offset = this.bb!.__offset(this.bb_pos, 30);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 closeReason():string|null
 closeReason(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 closeReason(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 36);
+  const offset = this.bb!.__offset(this.bb_pos, 32);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startRelayDiagnosticsWireSub(builder:flatbuffers.Builder) {
-  builder.startObject(17);
+  builder.startObject(15);
 }
 
 static addWireId(builder:flatbuffers.Builder, wireIdOffset:flatbuffers.Offset) {
@@ -175,32 +159,24 @@ static addEoseObserved(builder:flatbuffers.Builder, eoseObserved:boolean) {
   builder.addFieldInt8(9, +eoseObserved, +false);
 }
 
-static addOpenedDisplay(builder:flatbuffers.Builder, openedDisplayOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(10, openedDisplayOffset, 0);
+static addOpenedMs(builder:flatbuffers.Builder, openedMs:bigint) {
+  builder.addFieldInt64(10, openedMs, BigInt('0'));
 }
 
-static addHasLastEventDisplay(builder:flatbuffers.Builder, hasLastEventDisplay:boolean) {
-  builder.addFieldInt8(11, +hasLastEventDisplay, +false);
+static addLastEventMs(builder:flatbuffers.Builder, lastEventMs:bigint) {
+  builder.addFieldInt64(11, lastEventMs, BigInt('0'));
 }
 
-static addLastEventDisplay(builder:flatbuffers.Builder, lastEventDisplayOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(12, lastEventDisplayOffset, 0);
-}
-
-static addHasEoseDisplay(builder:flatbuffers.Builder, hasEoseDisplay:boolean) {
-  builder.addFieldInt8(13, +hasEoseDisplay, +false);
-}
-
-static addEoseDisplay(builder:flatbuffers.Builder, eoseDisplayOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(14, eoseDisplayOffset, 0);
+static addEoseMs(builder:flatbuffers.Builder, eoseMs:bigint) {
+  builder.addFieldInt64(12, eoseMs, BigInt('0'));
 }
 
 static addHasCloseReason(builder:flatbuffers.Builder, hasCloseReason:boolean) {
-  builder.addFieldInt8(15, +hasCloseReason, +false);
+  builder.addFieldInt8(13, +hasCloseReason, +false);
 }
 
 static addCloseReason(builder:flatbuffers.Builder, closeReasonOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(16, closeReasonOffset, 0);
+  builder.addFieldOffset(14, closeReasonOffset, 0);
 }
 
 static endRelayDiagnosticsWireSub(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -208,7 +184,7 @@ static endRelayDiagnosticsWireSub(builder:flatbuffers.Builder):flatbuffers.Offse
   return offset;
 }
 
-static createRelayDiagnosticsWireSub(builder:flatbuffers.Builder, wireIdOffset:flatbuffers.Offset, shortWireIdOffset:flatbuffers.Offset, relayUrlOffset:flatbuffers.Offset, filterSummaryOffset:flatbuffers.Offset, stateLabelOffset:flatbuffers.Offset, stateToneOffset:flatbuffers.Offset, consumerCountLabelOffset:flatbuffers.Offset, hasEventsRxDisplay:boolean, eventsRxDisplayOffset:flatbuffers.Offset, eoseObserved:boolean, openedDisplayOffset:flatbuffers.Offset, hasLastEventDisplay:boolean, lastEventDisplayOffset:flatbuffers.Offset, hasEoseDisplay:boolean, eoseDisplayOffset:flatbuffers.Offset, hasCloseReason:boolean, closeReasonOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createRelayDiagnosticsWireSub(builder:flatbuffers.Builder, wireIdOffset:flatbuffers.Offset, shortWireIdOffset:flatbuffers.Offset, relayUrlOffset:flatbuffers.Offset, filterSummaryOffset:flatbuffers.Offset, stateLabelOffset:flatbuffers.Offset, stateToneOffset:flatbuffers.Offset, consumerCountLabelOffset:flatbuffers.Offset, hasEventsRxDisplay:boolean, eventsRxDisplayOffset:flatbuffers.Offset, eoseObserved:boolean, openedMs:bigint, lastEventMs:bigint, eoseMs:bigint, hasCloseReason:boolean, closeReasonOffset:flatbuffers.Offset):flatbuffers.Offset {
   RelayDiagnosticsWireSub.startRelayDiagnosticsWireSub(builder);
   RelayDiagnosticsWireSub.addWireId(builder, wireIdOffset);
   RelayDiagnosticsWireSub.addShortWireId(builder, shortWireIdOffset);
@@ -220,11 +196,9 @@ static createRelayDiagnosticsWireSub(builder:flatbuffers.Builder, wireIdOffset:f
   RelayDiagnosticsWireSub.addHasEventsRxDisplay(builder, hasEventsRxDisplay);
   RelayDiagnosticsWireSub.addEventsRxDisplay(builder, eventsRxDisplayOffset);
   RelayDiagnosticsWireSub.addEoseObserved(builder, eoseObserved);
-  RelayDiagnosticsWireSub.addOpenedDisplay(builder, openedDisplayOffset);
-  RelayDiagnosticsWireSub.addHasLastEventDisplay(builder, hasLastEventDisplay);
-  RelayDiagnosticsWireSub.addLastEventDisplay(builder, lastEventDisplayOffset);
-  RelayDiagnosticsWireSub.addHasEoseDisplay(builder, hasEoseDisplay);
-  RelayDiagnosticsWireSub.addEoseDisplay(builder, eoseDisplayOffset);
+  RelayDiagnosticsWireSub.addOpenedMs(builder, openedMs);
+  RelayDiagnosticsWireSub.addLastEventMs(builder, lastEventMs);
+  RelayDiagnosticsWireSub.addEoseMs(builder, eoseMs);
   RelayDiagnosticsWireSub.addHasCloseReason(builder, hasCloseReason);
   RelayDiagnosticsWireSub.addCloseReason(builder, closeReasonOffset);
   return RelayDiagnosticsWireSub.endRelayDiagnosticsWireSub(builder);
