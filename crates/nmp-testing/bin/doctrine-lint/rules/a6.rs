@@ -52,7 +52,10 @@ const BANNED_TOKENS: &[BannedToken] = &[
     BannedToken { token: "register_snapshot_projection_gated(", anchor: true },
     BannedToken { token: "nmp_app_register_snapshot_projection", anchor: false },
     BannedToken { token: "SnapshotRegistry::register(", anchor: false },
-    BannedToken { token: ".register_gated(", anchor: true },
+    // `anchor: false` — the leading `.` already disambiguates (no `register_typed_*`
+    // method contains `.register_gated(`); an anchor would wrongly reject every real
+    // `receiver.register_gated(` call since the char before `.` is always an identifier.
+    BannedToken { token: ".register_gated(", anchor: false },
     BannedToken { token: "ProjectionFn", anchor: true },
 ];
 

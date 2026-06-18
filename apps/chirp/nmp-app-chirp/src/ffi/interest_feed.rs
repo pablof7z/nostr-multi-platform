@@ -498,10 +498,8 @@ mod tests {
         assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
 
         nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
-        assert!(
-            typed_projection_is_gone(app, &author_feed_key(&pubkey)),
-            "author feed projection must be gone after close",
-        );
+        let gone = typed_projection_is_gone(app, &author_feed_key(&pubkey));
+        assert!(gone, "author feed projection must be gone after close");
         nmp_app_free(app);
     }
 
@@ -544,10 +542,8 @@ mod tests {
         assert_eq!(ids, vec!["b2".repeat(32), root_id.clone()]);
 
         nmp_app_chirp_close_thread_feed(app, root_c.as_ptr());
-        assert!(
-            typed_projection_is_gone(app, &thread_feed_key(&root_id)),
-            "thread feed projection must be gone after close",
-        );
+        let gone = typed_projection_is_gone(app, &thread_feed_key(&root_id));
+        assert!(gone, "thread feed projection must be gone after close");
         nmp_app_free(app);
     }
 
