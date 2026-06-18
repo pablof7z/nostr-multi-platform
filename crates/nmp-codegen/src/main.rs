@@ -37,6 +37,12 @@ fn run() -> Result<(), String> {
         // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
         // from the SAME projection registry as `typed-decoders`; no stdin.
         "builtin-keys" => run_gen_builtin_keys(args),
+        // #1493 P9 — generate the native known-signer detection lists (Kotlin
+        // `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog
+        // JSON on stdin (`dump_signer_catalog`). Mirrors `gen swift`: reads the
+        // catalog from stdin, `--check` diffs the generated files + asserts the
+        // AndroidManifest/Info.plist schemes.
+        "signer-catalog" => run_gen_signer_catalog(args),
         // NOTE (ADR-0046): `gen modules` was deleted. Composition is a library
         // (`nmp-defaults::register_defaults`), not a generated FFI crate.
         other => Err(format!("unknown subcommand `gen {other}`\n{}", help())),
@@ -338,6 +344,63 @@ fn run_gen_builtin_keys(args: Vec<String>) -> Result<(), String> {
     }
 }
 
+/// `nmp gen signer-catalog [--catalog - | <path>] [--check]`.
+///
+/// `--catalog` defaults to `-` (stdin). The expected input is whatever
+/// `dump_signer_catalog` writes (`cargo run -p nmp-core --bin
+/// dump_signer_catalog`) — a top-level JSON array of known signer apps.
+///
+/// Without `--check`, writes the generated native lists (three Kotlin
+/// `KnownSigners.generated.kt` copies + two Swift `KnownSigners.generated.swift`
+/// copies). With `--check`, diffs each against a fresh render AND asserts the
+/// `AndroidManifest <queries>` / `Info.plist LSApplicationQueriesSchemes`
+/// schemes match the catalog, exiting non-zero on any drift. The CI gate at
+/// `.github/workflows/codegen-drift.yml` uses `--check`.
+fn run_gen_signer_catalog(args: Vec<String>) -> Result<(), String> {
+    let mut catalog_path = PathBuf::from("-");
+    let mut check = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--catalog" => {
+                index += 1;
+                catalog_path = args
+                    .get(index)
+                    .map(PathBuf::from)
+                    .ok_or_else(|| "--catalog requires a path or `-`".to_string())?;
+            }
+            "--check" => check = true,
+            other => return Err(format!("unknown argument {other}\n{}", help())),
+        }
+        index += 1;
+    }
+
+    let json = read_schemas(&catalog_path)?;
+
+    if check {
+        let outcome = nmp_codegen::check_signer_catalog(&json)?;
+        if outcome.up_to_date {
+            println!("nmp gen signer-catalog --check: ok");
+            Ok(())
+        } else {
+            Err(format!(
+                "signer-catalog codegen stale / drifted:\n  {}\n\
+                 Regenerate with:\n  \
+                 cargo run -q -p nmp-core --bin dump_signer_catalog \
+                 | cargo run -q -p nmp-codegen -- gen signer-catalog\n\
+                 (manifest/plist scheme mismatches must be fixed by hand to match the catalog)",
+                outcome.problems.join("\n  ")
+            ))
+        }
+    } else {
+        let written = nmp_codegen::generate_signer_catalog(&json)?;
+        for path in written {
+            println!("wrote {}", path.display());
+        }
+        Ok(())
+    }
+}
+
 /// Read the schema JSON from `path` (or stdin if `path == "-"`).
 fn read_schemas(path: &std::path::Path) -> Result<String, String> {
     if path == std::path::Path::new("-") {
@@ -363,6 +426,7 @@ fn help() -> String {
      nmp gen swift             [--schemas - | <path>] [--out <path>] [--check]\n  \
      nmp gen typed-decoders    [--out <path>] [--check]\n  \
      nmp gen projection-cache  [--platform swift|kotlin] [--out <path>] [--check]\n  \
-     nmp gen builtin-keys      [--out <path>] [--check]"
+     nmp gen builtin-keys      [--out <path>] [--check]\n  \
+     nmp gen signer-catalog    [--catalog - | <path>] [--check]"
         .to_string()
 }

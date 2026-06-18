@@ -74,6 +74,18 @@ jobs:
       - name: Check kernel built-in key codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen builtin-keys --check
 
+      # #1493 P9 — the native known-signer detection lists (Kotlin
+      # KnownSigners.generated.kt × 3 + Swift KnownSigners.generated.swift × 2)
+      # are GENERATED from the Rust catalog (nmp_core::signer_catalog) via the
+      # dump_signer_catalog binary. This gate also asserts the AndroidManifest
+      # <queries> / Info.plist LSApplicationQueriesSchemes schemes match the
+      # catalog. Fails any PR whose generated lists or declared schemes differ
+      # from a fresh run, so the native surfaces cannot drift from Rust.
+      - name: Check native signer-catalog codegen is up to date
+        run: |
+          cargo run --quiet -p nmp-core --bin dump_signer_catalog \
+            | cargo run --quiet -p nmp-codegen -- gen signer-catalog --check
+
   # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
   # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs
   # must be byte-identical to a fresh `flatc --rust` run (rustfmt'd) over
