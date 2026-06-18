@@ -55,6 +55,7 @@ mod allow;
 mod braces;
 mod cli;
 mod event_flow_gates;
+mod header_scan_a6;
 mod report;
 mod rules;
 mod scope;
@@ -66,10 +67,10 @@ use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
 use rules::{
-    a5, a6, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
+    a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
 };
 use scope::{
-    a5_file_in_scope, a6_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
+    a5_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
     d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
     d9_file_in_scope, is_doctrine_lint_source,
@@ -132,7 +133,6 @@ fn main() -> ExitCode {
             if let Err(e) = scan_one_file(
                 path,
                 &cfg.a5_extra_scopes,
-                &cfg.a6_extra_scopes,
                 &cfg.d8_extra_scopes,
                 &cfg.d9_extra_scopes,
                 &cfg.d10_extra_scopes,
@@ -157,27 +157,9 @@ fn main() -> ExitCode {
             }
         }
 
-        // A6 — also scan C/Obj-C header files (.h) in the ios/ tree for the
-        // banned C-ABI symbol `nmp_app_register_snapshot_projection`. The
-        // .rs-only walker above would silently miss a reappearance in
-        // `ios/Chirp/Chirp/Bridge/NmpCore.h`.
-        if !cfg.workspace_d8 {
-            let h_files = match walker::collect_h_files(root) {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("doctrine-lint: failed to walk headers {}: {}", root.display(), e);
-                    return ExitCode::from(2);
-                }
-            };
-            for path in &h_files {
-                if !a6_file_in_scope(path, &cfg.a6_extra_scopes) {
-                    continue;
-                }
-                if let Err(e) = scan_one_h_file_a6(path, &cfg.a6_extra_scopes, &mut all_findings) {
-                    eprintln!("doctrine-lint: failed to read {}: {}", path.display(), e);
-                    return ExitCode::from(2);
-                }
-            }
+        // A6 (banned schema-less snapshot lane) scans `.rs` + `.h` in `header_scan_a6.rs`.
+        if !header_scan_a6::scan_root_for_a6(root, &cfg, &mut all_findings) {
+            return ExitCode::from(2);
         }
     }
 
@@ -237,7 +219,6 @@ fn finish(
 fn scan_one_file(
     path: &Path,
     a5_extra_scopes: &[String],
-    a6_extra_scopes: &[String],
     d8_extra_scopes: &[String],
     d9_extra_scopes: &[String],
     d10_extra_scopes: &[String],
@@ -258,7 +239,6 @@ fn scan_one_file(
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
     let a5_in_scope = a5_file_in_scope(path, a5_extra_scopes);
-    let a6_in_scope = a6_file_in_scope(path, a6_extra_scopes);
     let d0_exempt = d0::file_is_exempt(path);
     let d6_test_file = d6::file_is_test_only(path);
     let d7_in_scope = d7::file_in_scope(path);
@@ -368,24 +348,6 @@ fn scan_one_file(
                 }
                 findings.push(report::Finding {
                     rule: a5::ID,
-                    path: path.to_path_buf(),
-                    line: sl.line_no,
-                    col,
-                    message: msg,
-                    suggested,
-                });
-            }
-        }
-        // A6 — in-repo use of the deleted schema-less JSON snapshot-projection lane.
-        // Workspace-wide scope (same as A5). Test-only files and #[cfg(test)] bodies exempt.
-        // Skipped in --workspace-d8 (no-polling sweep only).
-        if !workspace_d8 && a6_in_scope && !d6_test_file && !sl.in_test_cfg {
-            for (col, msg, suggested) in a6::check(sl.text, sl.is_comment, sl.in_test_cfg) {
-                if allow::line_allows(sl.text, a6::ID) {
-                    continue;
-                }
-                findings.push(report::Finding {
-                    rule: a6::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,
@@ -823,37 +785,6 @@ fn scan_one_file(
     }
 
     Ok(())
-}
-
-/// Scan one C/Obj-C header file (`.h`) for A6 violations only.
-///
-/// Header files have no `#[cfg(test)]` modules, no Rust brace tracking, and
-/// no `d6_test_file` concept — every non-comment line is a live production
-/// declaration. Uses [`walker::scan_h_file`] which sets `in_test_cfg = false`
-/// on every line.
-fn scan_one_h_file_a6(
-    path: &Path,
-    a6_extra_scopes: &[String],
-    findings: &mut Vec<report::Finding>,
-) -> std::io::Result<()> {
-    if !a6_file_in_scope(path, a6_extra_scopes) {
-        return Ok(());
-    }
-    walker::scan_h_file(path, |sl| {
-        for (col, msg, suggested) in a6::check(sl.text, sl.is_comment, false) {
-            if allow::line_allows(sl.text, a6::ID) {
-                continue;
-            }
-            findings.push(report::Finding {
-                rule: a6::ID,
-                path: path.to_path_buf(),
-                line: sl.line_no,
-                col,
-                message: msg,
-                suggested,
-            });
-        }
-    })
 }
 
 // File-scope resolution helpers (`dN_file_in_scope`, `is_doctrine_lint_source`)
