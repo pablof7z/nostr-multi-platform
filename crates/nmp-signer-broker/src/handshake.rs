@@ -2,9 +2,24 @@
 //!
 //! Pure-ish module: takes a `RelayClient` impl and a `Keys` (local ephemeral
 //! key), runs the `connect` → `get_public_key` dance, returns the user's
-//! pubkey. Side effects are limited to: publishing on the relay client,
-//! receiving inbound events via a `Receiver<Value>` it sets up, and bumping
-//! a cancellation flag.
+//! pubkey. Side effects are limited to: publishing on the relay client and
+//! receiving inbound events via a `Receiver<Value>` it sets up.
+//!
+//! ## Waiting is event-driven (D8 — no polling)
+//!
+//! Every wait in this module `select!`s over three receivers and blocks until
+//! exactly one is ready — it never wakes on a timer to re-check a flag:
+//!
+//! - the **inbound** channel (`Receiver<Value>`) — a relay event arrived;
+//! - a one-shot **cancel** channel (`Receiver<()>`) — the broker cancelled the
+//!   session (`cancel()` sends `()` and drops its sender; either a delivered
+//!   `()` or the resulting disconnect wakes the `select!`);
+//! - a single **deadline** timer (`crossbeam_channel::after`) — the per-step
+//!   wall-clock budget elapsed. This fires once at the deadline; it is a bound,
+//!   not a re-check loop.
+//!
+//! This replaced an earlier `recv_timeout(200ms)` loop that existed only to
+//! re-poll a cancel `AtomicBool` between blocking receives.
 //!
 //! ## Protocol shape (client-initiated, the `bunker://` URI form)
 //!
@@ -25,10 +40,9 @@
 //! on lifecycle / cancellation and lets us unit-test the protocol logic with
 //! a `Vec`-backed `RelayClient` stub.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crossbeam_channel::Receiver;
 use nostr::nips::nip44;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, Tag, Timestamp};
 use serde_json::{json, Value};
@@ -111,11 +125,11 @@ pub fn build_req_frame(sub_id: &str, local_pubkey_hex: &str) -> String {
 pub fn run_handshake(
     relay: &dyn RelayClient,
     inbound_rx: &Receiver<Value>,
+    cancel_rx: &Receiver<()>,
     local_keys: &Keys,
     remote_pubkey: PublicKey,
     secret: Option<&str>,
     perms: Option<&str>,
-    cancel: &AtomicBool,
     progress: &mut dyn FnMut(&str, Option<&str>),
 ) -> Result<HandshakeOutcome, HandshakeError> {
     // Step 1 — connect.
@@ -135,10 +149,10 @@ pub fn run_handshake(
     // string. The authoritative pubkey comes from `get_public_key` below.
     let _connect_resp = await_response(
         inbound_rx,
+        cancel_rx,
         &connect_id,
         local_keys,
         remote_pubkey,
-        cancel,
         STEP_TIMEOUT,
         "connect",
     )?;
@@ -156,10 +170,10 @@ pub fn run_handshake(
     )?;
     let gpk_resp = await_response(
         inbound_rx,
+        cancel_rx,
         &gpk_id,
         local_keys,
         remote_pubkey,
-        cancel,
         STEP_TIMEOUT,
         "get_public_key",
     )?;
@@ -246,35 +260,25 @@ fn publish_rpc(
 /// raw event JSON (the third element of `["EVENT", sub_id, event_json]`).
 /// Each event is decrypted with NIP-44, parsed as JSON-RPC, and matched on
 /// `id`. Other events (e.g. responses to other in-flight RPCs) are dropped.
+///
+/// The wait is event-driven (D8 — no polling): each iteration blocks in a
+/// `select!` over the inbound channel, the cancel channel, and a single
+/// deadline timer set to the *remaining* budget. There is no timer-driven
+/// re-check — the loop only re-enters when a matching event has not yet
+/// arrived (a stray/other-RPC event was dropped), and the deadline timer is
+/// re-armed to the shrinking remaining budget so the overall step bound holds.
 fn await_response(
     inbound_rx: &Receiver<Value>,
+    cancel_rx: &Receiver<()>,
     expected_id: &str,
     local_keys: &Keys,
     remote_pubkey: PublicKey,
-    cancel: &AtomicBool,
     timeout: Duration,
     method_label: &str,
 ) -> Result<String, HandshakeError> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        if cancel.load(Ordering::Acquire) {
-            return Err(HandshakeError::Cancelled);
-        }
-        let remaining = deadline
-            .checked_duration_since(std::time::Instant::now())
-            .ok_or_else(|| {
-                HandshakeError::Timeout(format!("no response to {method_label} within {timeout:?}"))
-            })?;
-        let wait = remaining.min(Duration::from_millis(200));
-        let event = match inbound_rx.recv_timeout(wait) {
-            Ok(v) => v,
-            Err(RecvTimeoutError::Timeout) => continue,
-            Err(RecvTimeoutError::Disconnected) => {
-                return Err(HandshakeError::Transport(
-                    "inbound channel disconnected".to_string(),
-                ));
-            }
-        };
+        let event = recv_inbound_or_cancel(inbound_rx, cancel_rx, deadline, method_label, timeout)?;
         let Some(ciphertext) = event.get("content").and_then(|v| v.as_str()) else {
             continue;
         };
@@ -313,6 +317,49 @@ fn await_response(
     }
 }
 
+/// Block until the next inbound event, cancellation, or the step deadline,
+/// whichever comes first — the single event-driven wait both handshake loops
+/// share (D8 — no polling).
+///
+/// `select!`s over three receivers and blocks until exactly one is ready:
+/// - `inbound_rx` — returns the event;
+/// - `cancel_rx` — returns [`HandshakeError::Cancelled`]. A delivered `()`
+///   *or* a `Disconnected` (the broker dropped its `cancel_tx`) both mean
+///   "cancelled"; either wakes the `select!` immediately;
+/// - a `crossbeam_channel::after(remaining)` timer — returns
+///   [`HandshakeError::Timeout`]. It fires once at the deadline; re-arming it
+///   to the shrinking `remaining` each loop iteration keeps the overall step
+///   bound without ever waking early to re-check a flag.
+///
+/// An inbound `Disconnected` (every sender dropped without a cancel) surfaces
+/// as [`HandshakeError::Transport`].
+fn recv_inbound_or_cancel(
+    inbound_rx: &Receiver<Value>,
+    cancel_rx: &Receiver<()>,
+    deadline: std::time::Instant,
+    method_label: &str,
+    timeout: Duration,
+) -> Result<Value, HandshakeError> {
+    let remaining = deadline
+        .checked_duration_since(std::time::Instant::now())
+        .ok_or_else(|| {
+            HandshakeError::Timeout(format!("no response to {method_label} within {timeout:?}"))
+        })?;
+    let deadline_rx = crossbeam_channel::after(remaining);
+    crossbeam_channel::select_biased! {
+        // Cancel wins over queued inbound noise.
+        recv(cancel_rx) -> _ => Err(HandshakeError::Cancelled),
+        // Deadline before inbound so a flooded stale-event queue cannot
+        // starve the step deadline.
+        recv(deadline_rx) -> _ => Err(HandshakeError::Timeout(format!(
+            "no response to {method_label} within {timeout:?}"
+        ))),
+        recv(inbound_rx) -> msg => msg.map_err(|_| {
+            HandshakeError::Transport("inbound channel disconnected".to_string())
+        }),
+    }
+}
+
 // ─── nostrconnect:// (signer-initiated) handshake ────────────────────────────
 
 /// Result of a successful nostrconnect:// handshake: the signer's pubkey and
@@ -345,18 +392,18 @@ pub struct NostrConnectOutcome {
 pub fn run_nostrconnect_handshake(
     relay: &dyn RelayClient,
     inbound_rx: &Receiver<Value>,
+    cancel_rx: &Receiver<()>,
     local_keys: &Keys,
     expected_secret: &str,
-    cancel: &AtomicBool,
     progress: &mut dyn FnMut(&str, Option<&str>),
 ) -> Result<NostrConnectOutcome, HandshakeError> {
     // Step 1 — wait for the signer's connect event.
     progress("connecting", Some("Waiting for signer to scan QR code"));
     let (signer_pubkey, connect_id) = await_nostrconnect_connect(
         inbound_rx,
+        cancel_rx,
         local_keys,
         expected_secret,
-        cancel,
         STEP_TIMEOUT,
     )?;
 
@@ -411,10 +458,10 @@ pub fn run_nostrconnect_handshake(
     // Step 4 — await the get_public_key response.
     let gpk_resp = await_response(
         inbound_rx,
+        cancel_rx,
         &gpk_id,
         local_keys,
         signer_pk,
-        cancel,
         STEP_TIMEOUT,
         "get_public_key",
     )?;
@@ -439,31 +486,17 @@ pub fn run_nostrconnect_handshake(
 /// `since` filter, without aborting the handshake prematurely.
 fn await_nostrconnect_connect(
     inbound_rx: &Receiver<Value>,
+    cancel_rx: &Receiver<()>,
     local_keys: &Keys,
     expected_secret: &str,
-    cancel: &AtomicBool,
     timeout: Duration,
 ) -> Result<(String, String), HandshakeError> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        if cancel.load(Ordering::Acquire) {
-            return Err(HandshakeError::Cancelled);
-        }
-        let remaining = deadline
-            .checked_duration_since(std::time::Instant::now())
-            .ok_or_else(|| {
-                HandshakeError::Timeout("no connect frame from signer within timeout".to_string())
-            })?;
-        let wait = remaining.min(Duration::from_millis(200));
-        let event = match inbound_rx.recv_timeout(wait) {
-            Ok(v) => v,
-            Err(RecvTimeoutError::Timeout) => continue,
-            Err(RecvTimeoutError::Disconnected) => {
-                return Err(HandshakeError::Transport(
-                    "inbound channel disconnected".to_string(),
-                ));
-            }
-        };
+        // Event-driven wait (D8 — no polling): blocks until a frame arrives,
+        // cancellation, or the step deadline. No timer-driven re-check.
+        let event =
+            recv_inbound_or_cancel(inbound_rx, cancel_rx, deadline, "connect frame from signer", timeout)?;
 
         // Extract signer pubkey from event.pubkey.
         let signer_pubkey_hex = match event.get("pubkey").and_then(|v| v.as_str()) {

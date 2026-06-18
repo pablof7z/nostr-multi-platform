@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 
+use crossbeam_channel::Receiver as CbReceiver;
 use nmp_signers::{Nip46Signer, SignerPayload};
 use nostr::{Keys, PublicKey, SecretKey};
 use serde_json::Value;
@@ -23,6 +24,11 @@ impl BunkerBroker {
         let me = Arc::clone(self);
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
+        // Restore runs no interactive handshake, but `cancel()` still signals
+        // this channel (and drops the sender) on teardown; the dial loop in
+        // `connect_session` observes cancellation via the `cancel` AtomicBool
+        // checkpoint. Kept for the shared `ActiveSession` shape (D8 — no polling).
+        let (cancel_tx, _cancel_rx) = crossbeam_channel::bounded::<()>(1);
 
         // Spawn under the lock so the worker can't reach `install_session`
         // before the placeholder is staged. See `broker.rs::start_handshake`
@@ -35,6 +41,7 @@ impl BunkerBroker {
                 generation,
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
+                cancel_tx,
                 handshake_thread: Some(thread),
                 dispatcher_thread: None,
                 transport: BrokerTransport::new(
@@ -106,8 +113,8 @@ impl BunkerBroker {
         relays: &[String],
         local_keys: &Keys,
         cancel: &AtomicBool,
-    ) -> Option<(Arc<dyn RelayClient>, mpsc::Receiver<Value>)> {
-        let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    ) -> Option<(Arc<dyn RelayClient>, CbReceiver<Value>)> {
+        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
         let inbound_tx_for_cb = inbound_tx.clone();
         let event_cb: EventCallback = Arc::new(move |event| {
             let _ = inbound_tx_for_cb.send(event);

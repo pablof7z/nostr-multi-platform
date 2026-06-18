@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 
+use crossbeam_channel::Receiver as CbReceiver;
 use nmp_signers::Nip46SignerHandle;
 use nostr::{Keys, PublicKey};
 use rand::Rng;
@@ -46,6 +47,8 @@ impl BunkerBroker {
         let secret_for_thread = secret.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
+        // Event-driven cancel wakeup (D8 — no polling); see `broker.rs`.
+        let (cancel_tx, cancel_rx) = crossbeam_channel::bounded::<()>(1);
 
         // Spawn under the lock so the worker can't reach `install_session`
         // before the placeholder is staged. See `broker.rs::start_handshake`
@@ -57,6 +60,7 @@ impl BunkerBroker {
                     local_keys,
                     secret_for_thread,
                     cancel_for_thread,
+                    cancel_rx,
                     generation,
                 );
             });
@@ -64,6 +68,7 @@ impl BunkerBroker {
                 generation,
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
+                cancel_tx,
                 handshake_thread: Some(thread),
                 dispatcher_thread: None,
                 transport: BrokerTransport::new(
@@ -84,9 +89,10 @@ impl BunkerBroker {
         local_keys: Keys,
         expected_secret: String,
         cancel: Arc<AtomicBool>,
+        cancel_rx: CbReceiver<()>,
         generation: u64,
     ) {
-        let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
         let inbound_tx_for_cb = inbound_tx.clone();
         let event_cb: EventCallback = Arc::new(move |event| {
             let _ = inbound_tx_for_cb.send(event);
@@ -142,9 +148,9 @@ impl BunkerBroker {
         let outcome = match run_nostrconnect_handshake(
             relay.as_ref(),
             &inbound_rx,
+            &cancel_rx,
             &local_keys,
             &expected_secret,
-            &cancel,
             &mut progress_emitter,
         ) {
             Ok(o) => o,

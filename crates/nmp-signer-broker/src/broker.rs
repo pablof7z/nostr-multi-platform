@@ -35,6 +35,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+use crossbeam_channel::{Receiver as CbReceiver, Sender as CbSender};
 use nmp_signers::{parse_bunker_uri, Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 use serde_json::Value;
@@ -97,6 +98,13 @@ struct ActiveSession {
     generation: u64,
     relay: Arc<dyn RelayClient>,
     cancel: Arc<AtomicBool>,
+    /// Event-driven cancel wakeup for the handshake (D8 — no polling). The
+    /// handshake `select!`s over its inbound channel AND this receiver; `cancel()`
+    /// sends `()` here (and drops this sender) so the in-flight handshake wakes
+    /// immediately instead of polling the `cancel` `AtomicBool` on a timer. The
+    /// `AtomicBool` is retained only for the cheap pre-dial checkpoint loads
+    /// before the handshake's blocking waits begin.
+    cancel_tx: CbSender<()>,
     handshake_thread: Option<JoinHandle<()>>,
     /// Inbound-dispatcher thread spawned by `install_completed_signer` (routes
     /// steady-state kind:24133 replies to the transport). Stored so `cancel()`
@@ -157,6 +165,9 @@ impl BunkerBroker {
 
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
+        // Event-driven cancel wakeup (D8). One-shot is enough: cancellation is
+        // terminal. The worker takes `cancel_rx`; the session keeps `cancel_tx`.
+        let (cancel_tx, cancel_rx) = crossbeam_channel::bounded::<()>(1);
         let me = Arc::clone(self);
 
         // Spawn under the lock: the worker's first contention point is its
@@ -168,7 +179,7 @@ impl BunkerBroker {
         // is a mutate-if-Some no-op).
         if let Ok(mut guard) = self.active.lock() {
             let thread = std::thread::spawn(move || {
-                me.run_handshake_thread(uri, cancel_for_thread, generation)
+                me.run_handshake_thread(uri, cancel_for_thread, cancel_rx, generation)
             });
             *guard = Some(ActiveSession {
                 generation,
@@ -176,6 +187,7 @@ impl BunkerBroker {
                 // We use an `Arc<NoopRelay>` so the field type stays simple.
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
+                cancel_tx,
                 handshake_thread: Some(thread),
                 dispatcher_thread: None,
                 transport: BrokerTransport::new(
@@ -230,6 +242,15 @@ impl BunkerBroker {
             session
                 .cancel
                 .store(true, std::sync::atomic::Ordering::Release);
+            // Event-driven cancel wakeup (D8 — no polling). The in-flight
+            // handshake `select!`s over its inbound channel AND `cancel_rx`;
+            // sending here wakes it immediately. `try_send` is non-blocking (the
+            // bounded(1) channel never backs up — cancel is one-shot) and runs
+            // on the actor call path, which must not block. Even if the send is
+            // dropped, dropping `cancel_tx` with the session disconnects
+            // `cancel_rx`, which the handshake `select!` also treats as
+            // cancellation — so the wakeup is guaranteed either way.
+            let _ = session.cancel_tx.try_send(());
             // SIGNAL-ONLY relay teardown. `signal_shutdown()` drops the event
             // callback's `inbound_tx` clone (closing the broker dispatcher's
             // channel), tells the relay worker to exit (`WorkerCmd::Shutdown`),
@@ -360,6 +381,7 @@ impl BunkerBroker {
         self: Arc<Self>,
         uri_str: String,
         cancel: Arc<AtomicBool>,
+        cancel_rx: CbReceiver<()>,
         generation: u64,
     ) {
         let bunker_uri = match parse_bunker_uri(&uri_str) {
@@ -396,7 +418,7 @@ impl BunkerBroker {
         // logic between two consumers via a fan-out: during handshake the
         // handshake function owns the receiver; afterwards we re-tap the
         // event callback to route directly to the transport.
-        let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
         let inbound_tx_for_cb = inbound_tx.clone();
         let event_cb: EventCallback = Arc::new(move |event| {
             // Best-effort: if the receiver is dropped (broker cancelled),
@@ -477,11 +499,11 @@ impl BunkerBroker {
         let outcome = match run_handshake(
             relay.as_ref(),
             &inbound_rx,
+            &cancel_rx,
             &local_keys,
             remote_pubkey,
             bunker_uri.secret.as_deref().map(String::as_str),
             bunker_uri.permissions.as_deref(),
-            &cancel,
             &mut progress_emitter,
         ) {
             Ok(o) => o,
@@ -526,7 +548,7 @@ impl BunkerBroker {
         self: &Arc<Self>,
         handle: Nip46SignerHandle,
         transport: Arc<BrokerTransport>,
-        inbound_rx: mpsc::Receiver<Value>,
+        inbound_rx: CbReceiver<Value>,
         outcome: HandshakeOutcome,
         generation: u64,
     ) {
@@ -549,7 +571,7 @@ impl BunkerBroker {
         self: &Arc<Self>,
         signer: Arc<Nip46Signer>,
         transport: Arc<BrokerTransport>,
-        inbound_rx: mpsc::Receiver<Value>,
+        inbound_rx: CbReceiver<Value>,
         generation: u64,
     ) {
         transport.bind_signer(&signer);

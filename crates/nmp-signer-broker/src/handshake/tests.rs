@@ -3,6 +3,17 @@ use crate::relay_client::{RelayClient, RelayError};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
+/// A never-cancelled cancel receiver for the happy/error-path tests: the
+/// returned `Sender` is leaked so the channel never disconnects, so the
+/// handshake `select!` only ever fires on inbound events or the deadline.
+fn never_cancel() -> Receiver<()> {
+    let (tx, rx) = crossbeam_channel::unbounded::<()>();
+    // Keep the sender alive for the whole process so `cancel_rx` never sees a
+    // spurious `Disconnected` (which the handshake treats as cancellation).
+    std::mem::forget(tx);
+    rx
+}
+
 /// Test double for `RelayClient`. Every published frame is both retained
 /// in `sent` (for post-hoc assertions on the main thread) and forwarded
 /// over a notification channel so driver threads can *block* on the next
@@ -100,9 +111,8 @@ fn happy_path_connect_then_get_public_key_returns_user_pubkey() {
     let user_pk_hex = user_keys.public_key().to_hex();
 
     let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
-
-    let cancel = Arc::new(AtomicBool::new(false));
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
+    let cancel_rx = never_cancel();
 
     // Driver thread: block on each outgoing frame as it is published,
     // manufacture the matching bunker response, push it onto the inbound
@@ -136,11 +146,11 @@ fn happy_path_connect_then_get_public_key_returns_user_pubkey() {
     let outcome = run_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         bunker_pubkey,
         None,
         None,
-        &cancel,
         &mut |stage, msg| progress_events.push((stage.to_string(), msg.map(String::from))),
     )
     .expect("handshake completes");
@@ -162,27 +172,26 @@ fn cancellation_aborts_with_cancelled_error() {
     let bunker_pk = Keys::generate().public_key();
 
     let (relay, frame_rx) = StubRelay::new();
-    let (_inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    let (_inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
+    let (cancel_tx, cancel_rx) = crossbeam_channel::bounded::<()>(1);
 
-    let cancel = Arc::new(AtomicBool::new(false));
-    let cancel_clone = Arc::clone(&cancel);
-    // Deterministic trigger: block until the handshake publishes its
-    // first outgoing frame (the `connect` RPC), then request cancel.
-    // `await_response` re-checks the cancel flag at least every 200ms,
-    // so it observes this without any inbound traffic. No sleep needed.
+    // Deterministic trigger: block until the handshake publishes its first
+    // outgoing frame (the `connect` RPC), then cancel by sending on the cancel
+    // channel. The handshake `select!` wakes immediately on the cancel arm —
+    // event-driven, with no inbound traffic and no timer. No sleep needed.
     let canceller = std::thread::spawn(move || {
         let _ = frame_rx.recv();
-        cancel_clone.store(true, Ordering::Release);
+        let _ = cancel_tx.send(());
     });
 
     let err = run_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         bunker_pk,
         None,
         None,
-        &cancel,
         &mut |_, _| {},
     )
     .expect_err("cancelled");
@@ -357,9 +366,9 @@ fn run_handshake_surfaces_bunker_error_response() {
     let bunker_pubkey = bunker_keys.public_key();
 
     let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
 
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_rx = never_cancel();
 
     // Driver: block until the first outgoing frame (the `connect` RPC)
     // arrives, then reply with an explicit error payload. `recv()`
@@ -396,11 +405,11 @@ fn run_handshake_surfaces_bunker_error_response() {
     let err = run_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         bunker_pubkey,
         None,
         None,
-        &cancel,
         &mut |_, _| {},
     )
     .expect_err("bunker error must abort the handshake");
@@ -426,9 +435,9 @@ fn run_handshake_rejects_non_string_result() {
     let bunker_pubkey = bunker_keys.public_key();
 
     let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
 
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_rx = never_cancel();
 
     // Driver: block for the first outgoing frame, then reply with a
     // malformed (non-string `result`) payload. `recv()` blocks.
@@ -460,11 +469,11 @@ fn run_handshake_rejects_non_string_result() {
     let err = run_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         bunker_pubkey,
         None,
         None,
-        &cancel,
         &mut |_, _| {},
     )
     .expect_err("non-string result must abort the handshake");
@@ -489,9 +498,9 @@ fn run_handshake_skips_stray_events_then_completes() {
     let stranger = Keys::generate();
 
     let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
 
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_rx = never_cancel();
 
     // Driver: block on each outgoing frame; for every one, inject noise
     // (stranger event + garbage ciphertext) ahead of the genuine reply.
@@ -551,11 +560,11 @@ fn run_handshake_skips_stray_events_then_completes() {
     let outcome = run_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         bunker_pubkey,
         None,
         None,
-        &cancel,
         &mut |_, _| {},
     )
     .expect("handshake completes despite stray events");
@@ -607,19 +616,19 @@ fn run_nostrconnect_handshake_rejects_secret_mismatch() {
     let signer_keys = Keys::generate();
 
     let (relay, _drop) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
 
     // Signer sends a connect frame with the WRONG secret.
     let bad = signer_connect_event(&signer_keys, client_keys.public_key(), "wrong-secret");
     inbound_tx.send(bad).unwrap();
 
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_rx = never_cancel();
     let err = run_nostrconnect_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         "the-real-secret",
-        &cancel,
         &mut |_, _| {},
     )
     .expect_err("secret mismatch must abort");
@@ -645,14 +654,14 @@ fn run_nostrconnect_handshake_happy_path_returns_pubkeys() {
     let secret = "session-secret-xyz";
 
     let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
 
     // Deliver the connect frame up front.
     let connect =
         signer_connect_event(&signer_keys, client_keys.public_key(), secret);
     inbound_tx.send(connect).unwrap();
 
-    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_rx = never_cancel();
 
     // Driver: block on each outgoing frame; after the broker publishes
     // `get_public_key`, reply with the user pubkey. The connect-ack is
@@ -699,9 +708,9 @@ fn run_nostrconnect_handshake_happy_path_returns_pubkeys() {
     let outcome = run_nostrconnect_handshake(
         relay.as_ref(),
         &inbound_rx,
+        &cancel_rx,
         &client_keys,
         secret,
-        &cancel,
         &mut |_, _| {},
     )
     .expect("nostrconnect handshake completes");
