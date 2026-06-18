@@ -29,6 +29,8 @@ pub(super) struct RelayTransportMap {
 #[derive(Clone, Debug)]
 struct InfoEntry {
     doc: RelayInfoDoc,
+    /// Only read by `info_is_fresh`, which is `#[cfg(test)]`-guarded.
+    #[allow(dead_code)]
     fetched_at: Instant,
 }
 
@@ -142,8 +144,8 @@ impl RelayTransportMap {
     }
 
     /// Whether a *fresh* (within `ttl`) document already exists for
-    /// `relay_url` as of `now`. The `nmp-nip11` connect-hook consults this to
-    /// avoid refetching on every reconnect.
+    /// `relay_url` as of `now`. Only called from `relay_info_is_fresh`.
+    #[cfg(test)] // consumed by relay_diagnostics/tests.rs via relay_info_is_fresh
     fn info_is_fresh(&self, relay_url: &str, now: Instant, ttl: std::time::Duration) -> bool {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.info
@@ -225,8 +227,8 @@ impl Kernel {
     }
 
     /// ADR-0051 — whether a fresh (within `ttl`) relay-information document
-    /// already exists for `relay_url`. The `nmp-nip11` connect-hook reads this
-    /// (via the FFI seam) to avoid a refetch on every reconnect.
+    /// already exists for `relay_url`. Only used by relay_diagnostics tests.
+    #[cfg(test)] // consumed by relay_diagnostics/tests.rs
     #[must_use]
     pub(crate) fn relay_info_is_fresh(&self, relay_url: &str, ttl: std::time::Duration) -> bool {
         self.transport_relays

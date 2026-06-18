@@ -64,16 +64,8 @@ pub fn is_hex_id(value: &str) -> bool {
     is_hex_pubkey(value)
 }
 
-pub(super) fn parse_relay_list(
-    event_id: &str,
-    created_at: u64,
-    tags: &[Vec<String>],
-) -> AuthorRelayList {
-    let mut list = AuthorRelayList {
-        event_id: event_id.to_string(),
-        created_at,
-        ..AuthorRelayList::default()
-    };
+pub(super) fn parse_relay_list(tags: &[Vec<String>]) -> AuthorRelayList {
+    let mut list = AuthorRelayList::default();
     let mut seen = HashSet::new();
 
     for tag in tags {

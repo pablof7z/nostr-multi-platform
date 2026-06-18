@@ -534,10 +534,15 @@ use std::sync::atomic::AtomicU64;
 // transport layer (`crate::update_envelope::encode_snapshot_with_envelope`) can
 // name `&KernelSnapshot` to populate the typed Tier-3 `SnapshotFrame` fields.
 pub(crate) use types::KernelSnapshot;
+// TimelineItem is only constructed in tests (timeline_item()) and referenced
+// by the codegen-schema alias above. Bring it into scope for test builds so
+// `update/views.rs` (which is also #[cfg(test)]-gated) can name it.
+#[cfg(test)]
+use types::TimelineItem;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
     MentionProfilePayload, Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
-    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimelineItem,
+    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent,
     TimingMilestones, WireSub, WireSubscriptionState, WireSubscriptionStatus, MAX_NOTICE_LOG,
 };
 
@@ -1523,19 +1528,6 @@ impl Kernel {
     /// D4: `&mut self` — the kernel is the sole writer of this configuration.
     pub fn set_replaceable_ttl(&mut self, config: replaceable_ttl::ReplaceableTtlConfig) {
         self.replaceable_ttl = config;
-    }
-
-    /// Look up the TTL for a given replaceable event kind.
-    ///
-    /// Returns the kind-specific TTL if configured, otherwise the default TTL.
-    /// Used by the F-TTL ingest path and pending_reverify queue to determine
-    /// `check_again_after` values.
-    ///
-    /// D8: no clock — the kernel never calls this; callers pass millisecond
-    /// timestamps (now + ttl_for_kind = check_again_after).
-    #[must_use]
-    pub(crate) fn ttl_for_kind(&self, kind: u32) -> std::time::Duration {
-        self.replaceable_ttl.ttl_for_kind(kind)
     }
 
     /// F-TTL — enqueue a replaceable event for re-verification if its freshness
@@ -2580,11 +2572,10 @@ impl Kernel {
     pub(crate) fn prepopulate_author_relay_list(
         &mut self,
         pubkey: String,
-        event_id: String,
         created_at: u64,
         tags: Vec<Vec<String>>,
     ) {
-        let parsed = parse_relay_list_to_substrate(&event_id, created_at, &tags);
+        let parsed = parse_relay_list_to_substrate(&tags);
         let empty = parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
         if empty {
             self.mailbox_cache.remove(&pubkey);
@@ -2660,25 +2651,14 @@ impl Kernel {
     }
 }
 
-/// Adapter — translate the kernel's existing `parse_relay_list`
-/// (which returns the legacy `AuthorRelayList` with `event_id` +
-/// `created_at` supersession metadata) into the substrate
-/// [`ParsedRelayList`] the [`MailboxCache`] trait operates on.
+/// Translate `parse_relay_list` output into the [`ParsedRelayList`] form
+/// the [`MailboxCache`] trait operates on.
 ///
-/// The supersession metadata is dropped here — the store enforces
-/// kind:10002 supersession before `ingest_relay_list` is called
-/// (see the doc comment on `ingest::relay_list::ingest_relay_list`).
-/// The pre-step-3 kernel kept a "belt-and-suspenders" mirror of
-/// the store's logic on the kernel-side cache; step 3 collapses to a
-/// single source of truth (the store) per the planning-discipline rule
-/// (`AGENTS.md`: "single source of truth per fact").
-fn parse_relay_list_to_substrate(
-    event_id: &str,
-    created_at: u64,
-    tags: &[Vec<String>],
-) -> ParsedRelayList {
-    // Reuse the existing parser, then translate fields.
-    let legacy = parse_relay_list(event_id, created_at, tags);
+/// Supersession is enforced by the store before this path is reached;
+/// there is no kernel-side belt-and-suspenders mirror (single source of
+/// truth per `AGENTS.md`).
+fn parse_relay_list_to_substrate(tags: &[Vec<String>]) -> ParsedRelayList {
+    let legacy = parse_relay_list(tags);
     ParsedRelayList {
         read: legacy.read_relays,
         write: legacy.write_relays,

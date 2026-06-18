@@ -1104,7 +1104,6 @@ pub(crate) fn create_account(
             Ok(signed) => {
                 kernel.prepopulate_author_relay_list(
                     signed.unsigned.pubkey.clone(),
-                    signed.id.clone(),
                     signed.unsigned.created_at,
                     signed.unsigned.tags.clone(),
                 );

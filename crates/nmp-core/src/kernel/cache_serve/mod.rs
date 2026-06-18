@@ -88,7 +88,7 @@ pub(super) mod queries;
 
 pub(in crate::kernel) use queries::{
     completion_key_for_interest, query_since_mut, query_until_mut,
-    shape_needs_ingest_parser_dispatch, shape_to_store_queries,
+    shape_to_store_queries,
 };
 
 use super::Kernel;
@@ -179,17 +179,6 @@ pub(super) struct PendingCacheServe {
     /// an optimization; the per-event `timeline_authors` check at feed time
     /// is the correctness gate.
     pub(super) timeline_bound: bool,
-    /// Whether events collected during this serve should be dispatched through
-    /// the `IngestParser` dispatcher in addition to `notify_event_observers`.
-    /// Set at enqueue time by querying `EventIngestDispatcher::is_interested`
-    /// for any kind in the shape — true when at least one registered parser
-    /// would fire for those kinds. Covers DM gift-wraps (kind:1059), follow-feed
-    /// notes (kind:1), and any other kind covered by a registered parser
-    /// (including all-kinds range parsers like chirp-tui's `RawCacheIngestParser`).
-    ///
-    /// Note: this flag does NOT gate `notify_raw_event_observers` — the verbatim
-    /// signed-event tap fires only on live relay ingest, never on cache-serve.
-    pub(super) needs_ingest_parser_dispatch: bool,
 }
 
 impl Kernel {
@@ -326,28 +315,12 @@ impl Kernel {
                 .iter()
                 .all(|a| self.timeline_authors.contains(a));
 
-        // Query the live dispatcher registrations to decide whether cache-served
-        // events for this shape need `IngestParser` dispatch. Reads the lock
-        // once at enqueue time; the flag is stable for the lifetime of the serve
-        // (parsers are not removed mid-serve in normal operation).
-        // D6 — a poisoned lock yields `None` → `false` (no dispatch), which is
-        // the safe graceful-degrade: events reach `notify_event_observers` as
-        // always; only the IngestParser fan-out is suppressed.
-        let needs_ingest_parser_dispatch = self
-            .ingest_dispatcher_slot()
-            .read()
-            .ok()
-            .as_deref()
-            .map(|d| shape_needs_ingest_parser_dispatch(shape, Some(d)))
-            .unwrap_or(false);
-
         self.pending_cache_serves.push_back(PendingCacheServe {
             completion_key,
             queries,
             query_idx: 0,
             remaining_depth: self.serve_depth_for_shape(shape),
             timeline_bound,
-            needs_ingest_parser_dispatch,
         });
     }
 

@@ -500,7 +500,7 @@ impl crate::substrate::IngestParser for TestKind10002Parser {
         if raw.kind != 10_002 {
             return;
         }
-        let parsed = super::parse_relay_list_to_substrate(&raw.id, raw.created_at, &raw.tags);
+        let parsed = super::parse_relay_list_to_substrate(&raw.tags);
         let empty = parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
         if empty {
             self.cache.remove(&raw.pubkey);

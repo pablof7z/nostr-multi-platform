@@ -10,6 +10,7 @@ use super::super::StoredEvent;
 /// This is a display-layer extractor owned by the kernel so the Swift
 /// thin-shell does not have to parse Nostr event JSON in the view layer
 /// (aim.md §6.9, Chirp thin-shell rule).
+#[cfg(test)] // called from timeline_item (test-only) and inline tests
 pub(super) fn parse_repost_inner(raw: &str) -> (Option<String>, Option<String>) {
     let trimmed = raw.trim();
     if !trimmed.starts_with('{') {
@@ -76,6 +77,7 @@ pub(super) fn nmp_store_to_kernel_stored(e: nmp_store::StoredEvent) -> StoredEve
 /// without a branch (host renders `Text(label)` unconditionally; an empty
 /// string collapses to a no-op). Plain English form — see aim.md §6
 /// anti-pattern #1: native must not duplicate pluralization.
+#[cfg(test)] // only called from tests
 pub(super) fn format_previous_count_label(count: usize) -> String {
     match count {
         0 => String::new(),
@@ -87,6 +89,7 @@ pub(super) fn format_previous_count_label(count: usize) -> String {
 /// Pluralized affordance label for the "N more replies" footer below the
 /// focused thread item. Empty when `count == 0`. Same rationale as
 /// [`format_previous_count_label`].
+#[cfg(test)] // only called from tests
 pub(super) fn format_next_count_label(count: usize) -> String {
     match count {
         0 => String::new(),
