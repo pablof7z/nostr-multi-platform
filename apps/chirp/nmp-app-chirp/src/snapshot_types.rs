@@ -24,22 +24,27 @@ pub struct RuntimeMetrics {
 }
 
 /// Relay connection row in diagnostics projection (relay_diagnostics).
+///
+/// Carries RAW kernel values only. Display strings (short URL, title-cased
+/// role/connection/auth, compact event counts, formatted byte sizes,
+/// discovery-kind labels) are derived in the shell render layer.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct RelayRow {
     #[serde(default)]
     pub relay_url: String,
+    /// Raw role token (e.g. `"content"`, `"indexer"`). Shells title-case.
     #[serde(default)]
-    pub short_url: String,
-    #[serde(default)]
-    pub role_label: String,
+    pub role: String,
     #[serde(default)]
     pub role_tone: String,
+    /// Raw connection token (e.g. `"connected"`). Shells title-case.
     #[serde(default)]
-    pub connection_label: String,
+    pub connection: String,
     #[serde(default)]
     pub connection_tone: String,
+    /// Raw auth token (e.g. `"ok"`, `"—"`). Shells title-case (pass `"—"`).
     #[serde(default)]
-    pub auth_label: String,
+    pub auth: String,
     #[serde(default)]
     pub auth_tone: String,
     #[serde(default)]
@@ -51,17 +56,18 @@ pub struct RelayRow {
     #[serde(default)]
     pub total_events_rx: u64,
     #[serde(default)]
-    pub total_events_display: String,
-    #[serde(default)]
     pub reconnect_count: u64,
+    /// Raw discovery kind numbers (deduplicated, sorted). Shells format.
     #[serde(default)]
-    pub discovery_kinds_label: String,
+    pub discovery_kinds: Vec<u64>,
+    /// Raw bytes received. Shells format ("1.2 KB") when > 0.
     #[serde(default)]
-    pub bytes_rx_display: Option<String>,
+    pub bytes_rx: u64,
+    /// Raw bytes transmitted. Shells format ("1.2 KB") when > 0.
     #[serde(default)]
-    pub bytes_tx_display: Option<String>,
-    /// Unix epoch milliseconds; 0 means "never observed". aim.md §62: no
-    /// pre-formatted strings on the wire — shells format at render time.
+    pub bytes_tx: u64,
+    /// Unix epoch milliseconds; 0 means "never observed". Raw value on the
+    /// wire — shells format relative time at render.
     #[serde(default)]
     pub last_connected_ms: u64,
     #[serde(default)]
@@ -75,27 +81,32 @@ pub struct RelayRow {
 }
 
 /// Wire-level subscription row within a relay's diagnostics.
+///
+/// Carries RAW kernel values only. Display strings (short wire id, title-cased
+/// state, consumer-count phrase, compact event count) are derived in the shell
+/// render layer.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct RelayWireSubRow {
     #[serde(default)]
     pub wire_id: String,
     #[serde(default)]
-    pub short_wire_id: String,
-    #[serde(default)]
     pub relay_url: String,
     #[serde(default)]
     pub filter_summary: String,
+    /// Raw state token (e.g. `"open"`). Shells title-case.
     #[serde(default)]
-    pub state_label: String,
+    pub state: String,
     #[serde(default)]
     pub state_tone: String,
+    /// Raw consumer count. Shells format as `"N consumer(s)"`.
     #[serde(default)]
-    pub consumer_count_label: String,
+    pub consumer_count: u32,
+    /// Raw events received counter. Shells format as compact count.
     #[serde(default)]
-    pub events_rx_display: Option<String>,
+    pub events_rx: u64,
     #[serde(default)]
     pub eose_observed: bool,
-    /// Unix epoch milliseconds; 0 means "never observed". aim.md §62.
+    /// Unix epoch milliseconds; 0 means "never observed". Raw value on wire.
     #[serde(default)]
     pub opened_ms: u64,
     #[serde(default)]

@@ -218,22 +218,20 @@ fn typed_home_feed(projections: &[nmp_core::TypedProjectionData]) -> Option<Valu
 fn relay_row_from_typed(row: nmp_core::typed_projections::RelayRow) -> RelayRow {
     RelayRow {
         relay_url: row.relay_url,
-        short_url: row.short_url,
-        role_label: row.role_label,
+        role: row.role,
         role_tone: row.role_tone,
-        connection_label: row.connection_label,
+        connection: row.connection,
         connection_tone: row.connection_tone,
-        auth_label: row.auth_label,
+        auth: row.auth,
         auth_tone: row.auth_tone,
         total_sub_count: row.total_sub_count as u64,
         active_sub_count: row.active_sub_count as u64,
         eosed_sub_count: row.eosed_sub_count as u64,
         total_events_rx: row.total_events_rx,
-        total_events_display: row.total_events_display,
         reconnect_count: row.reconnect_count as u64,
-        discovery_kinds_label: row.discovery_kinds_label,
-        bytes_rx_display: row.bytes_rx_display,
-        bytes_tx_display: row.bytes_tx_display,
+        discovery_kinds: row.discovery_kinds,
+        bytes_rx: row.bytes_rx,
+        bytes_tx: row.bytes_tx,
         last_connected_ms: row.last_connected_ms,
         last_event_ms: row.last_event_ms,
         last_notice: row.last_notice,
@@ -245,13 +243,12 @@ fn relay_row_from_typed(row: nmp_core::typed_projections::RelayRow) -> RelayRow 
 fn wire_sub_from_typed(sub: nmp_core::typed_projections::WireSubRow) -> RelayWireSubRow {
     RelayWireSubRow {
         wire_id: sub.wire_id,
-        short_wire_id: sub.short_wire_id,
         relay_url: sub.relay_url,
         filter_summary: sub.filter_summary,
-        state_label: sub.state_label,
+        state: sub.state,
         state_tone: sub.state_tone,
-        consumer_count_label: sub.consumer_count_label,
-        events_rx_display: sub.events_rx_display,
+        consumer_count: sub.consumer_count,
+        events_rx: sub.events_rx,
         eose_observed: sub.eose_observed,
         opened_ms: sub.opened_ms,
         last_event_ms: sub.last_event_ms,
@@ -307,22 +304,20 @@ fn relays_from(projections: Option<&Value>) -> Vec<RelayRow> {
         .flatten()
         .map(|row| RelayRow {
             relay_url: string_field(row, "relay_url"),
-            short_url: string_field(row, "short_url"),
-            role_label: string_field(row, "role_label"),
+            role: string_field(row, "role"),
             role_tone: string_field(row, "role_tone"),
-            connection_label: string_field(row, "connection_label"),
+            connection: string_field(row, "connection"),
             connection_tone: string_field(row, "connection_tone"),
-            auth_label: string_field(row, "auth_label"),
+            auth: string_field(row, "auth"),
             auth_tone: string_field(row, "auth_tone"),
             total_sub_count: number_field(row, "total_sub_count"),
             active_sub_count: number_field(row, "active_sub_count"),
             eosed_sub_count: number_field(row, "eosed_sub_count"),
             total_events_rx: number_field(row, "total_events_rx"),
-            total_events_display: string_field(row, "total_events_display"),
             reconnect_count: number_field(row, "reconnect_count"),
-            discovery_kinds_label: string_field(row, "discovery_kinds_label"),
-            bytes_rx_display: optional_string(row, "bytes_rx_display"),
-            bytes_tx_display: optional_string(row, "bytes_tx_display"),
+            discovery_kinds: u64_vec_field(row, "discovery_kinds"),
+            bytes_rx: number_field(row, "bytes_rx"),
+            bytes_tx: number_field(row, "bytes_tx"),
             last_connected_ms: number_field(row, "last_connected_ms"),
             last_event_ms: number_field(row, "last_event_ms"),
             last_notice: optional_string(row, "last_notice"),
@@ -339,13 +334,12 @@ fn relay_wire_subs_from(row: &Value) -> Vec<RelayWireSubRow> {
         .flatten()
         .map(|sub| RelayWireSubRow {
             wire_id: string_field(sub, "wire_id"),
-            short_wire_id: string_field(sub, "short_wire_id"),
             relay_url: string_field(sub, "relay_url"),
             filter_summary: string_field(sub, "filter_summary"),
-            state_label: string_field(sub, "state_label"),
+            state: string_field(sub, "state"),
             state_tone: string_field(sub, "state_tone"),
-            consumer_count_label: string_field(sub, "consumer_count_label"),
-            events_rx_display: optional_string(sub, "events_rx_display"),
+            consumer_count: number_field(sub, "consumer_count") as u32,
+            events_rx: number_field(sub, "events_rx"),
             eose_observed: sub
                 .get("eose_observed")
                 .and_then(Value::as_bool)
@@ -429,6 +423,16 @@ fn optional_string(value: &Value, key: &str) -> Option<String> {
 
 fn number_field(value: &Value, key: &str) -> u64 {
     value.get(key).and_then(Value::as_u64).unwrap_or_default()
+}
+
+fn u64_vec_field(value: &Value, key: &str) -> Vec<u64> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_u64)
+        .collect()
 }
 
 #[cfg(test)]

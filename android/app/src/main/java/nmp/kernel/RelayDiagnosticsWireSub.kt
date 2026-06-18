@@ -138,11 +138,11 @@ class RelayDiagnosticsWireSub : Table() {
         }
         fun createRelayDiagnosticsWireSub(builder: FlatBufferBuilder, wireIdOffset: Int, relayUrlOffset: Int, filterSummaryOffset: Int, stateOffset: Int, stateToneOffset: Int, consumerCount: UInt, eventsRx: ULong, eoseObserved: Boolean, openedMs: ULong, lastEventMs: ULong, eoseMs: ULong, hasCloseReason: Boolean, closeReasonOffset: Int) : Int {
             builder.startTable(13)
-            addCloseReason(builder, closeReasonOffset)
             addEoseMs(builder, eoseMs)
             addLastEventMs(builder, lastEventMs)
             addOpenedMs(builder, openedMs)
             addEventsRx(builder, eventsRx)
+            addCloseReason(builder, closeReasonOffset)
             addConsumerCount(builder, consumerCount)
             addStateTone(builder, stateToneOffset)
             addState(builder, stateOffset)

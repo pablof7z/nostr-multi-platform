@@ -118,7 +118,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let connected = state
         .relays
         .iter()
-        .filter(|relay| relay_is_connected(&relay.connection_label))
+        .filter(|relay| relay_is_connected(&relay.connection))
         .count();
     let relay_dot = if connected > 0 {
         '\u{25cf}'

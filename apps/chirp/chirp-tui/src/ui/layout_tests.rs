@@ -102,20 +102,18 @@ fn settings_tab_renders_all_relay_inventory_and_raw_filters() {
     });
     state.relays.push(RelayRow {
         relay_url: "wss://relay.example".to_string(),
-        short_url: "relay.example".to_string(),
-        role_label: "Content".to_string(),
-        connection_label: "Connected".to_string(),
+        role: "content".to_string(),
+        connection: "connected".to_string(),
         total_sub_count: 1,
         active_sub_count: 1,
         total_events_rx: 12,
-        total_events_display: "12".to_string(),
         wire_subs: vec![RelayWireSubRow {
-            short_wire_id: "sub-feed".to_string(),
+            wire_id: "sub-feed".to_string(),
             filter_summary: r#"{"kinds":[1],"limit":20}"#.to_string(),
-            state_label: "Open".to_string(),
-            consumer_count_label: "1 consumer".to_string(),
+            state: "open".to_string(),
+            consumer_count: 1,
             opened_ms: 1_700_000_000_000,
-            events_rx_display: Some("12".to_string()),
+            events_rx: 12,
             ..Default::default()
         }],
         ..Default::default()

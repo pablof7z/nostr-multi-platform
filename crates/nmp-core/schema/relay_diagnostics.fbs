@@ -11,7 +11,7 @@ namespace nmp.kernel;
 // detail rows, every aggregate computed) under the JSON key `"relay_diagnostics"`.
 // This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
-// ## Timestamp fields (aim.md §62 compliance)
+// ## Timestamp fields (no pre-formatted prose on the wire)
 //
 // Timestamp fields (`last_connected_ms`, `last_event_ms`, `opened_ms`,
 // `eose_ms`) carry Unix epoch milliseconds (ulong). Shells format them as

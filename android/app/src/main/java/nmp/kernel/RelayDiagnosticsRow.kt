@@ -225,9 +225,9 @@ class RelayDiagnosticsRow : Table() {
     fun discoveryKinds(j: Int) : ULong {
         val o = __offset(52)
         return if (o != 0) {
-            __vector(o).let { bb.getLong(it + j * 8).toULong() }
+            bb.getLong(__vector(o) + j * 8).toULong()
         } else {
-            0UL
+            0uL
         }
     }
     val discoveryKindsLength : Int
@@ -258,19 +258,19 @@ class RelayDiagnosticsRow : Table() {
         }
         fun createRelayDiagnosticsRow(builder: FlatBufferBuilder, relayUrlOffset: Int, roleOffset: Int, roleToneOffset: Int, connectionOffset: Int, connectionToneOffset: Int, authOffset: Int, authToneOffset: Int, totalSubCount: UInt, activeSubCount: UInt, eosedSubCount: UInt, totalEventsRx: ULong, reconnectCount: UInt, bytesRx: ULong, bytesTx: ULong, lastConnectedMs: ULong, lastEventMs: ULong, hasLastNotice: Boolean, lastNoticeOffset: Int, noticeCount: ULong, noticesOffset: Int, hasLastError: Boolean, lastErrorOffset: Int, wireSubsOffset: Int, infoOffset: Int, discoveryKindsOffset: Int, reasonsOffset: Int) : Int {
             builder.startTable(26)
+            addNoticeCount(builder, noticeCount)
+            addLastEventMs(builder, lastEventMs)
+            addLastConnectedMs(builder, lastConnectedMs)
+            addBytesTx(builder, bytesTx)
+            addBytesRx(builder, bytesRx)
+            addTotalEventsRx(builder, totalEventsRx)
             addReasons(builder, reasonsOffset)
             addDiscoveryKinds(builder, discoveryKindsOffset)
             addInfo(builder, infoOffset)
             addWireSubs(builder, wireSubsOffset)
             addLastError(builder, lastErrorOffset)
             addNotices(builder, noticesOffset)
-            addNoticeCount(builder, noticeCount)
             addLastNotice(builder, lastNoticeOffset)
-            addLastEventMs(builder, lastEventMs)
-            addLastConnectedMs(builder, lastConnectedMs)
-            addBytesTx(builder, bytesTx)
-            addBytesRx(builder, bytesRx)
-            addTotalEventsRx(builder, totalEventsRx)
             addReconnectCount(builder, reconnectCount)
             addEosedSubCount(builder, eosedSubCount)
             addActiveSubCount(builder, activeSubCount)
@@ -328,10 +328,11 @@ class RelayDiagnosticsRow : Table() {
         fun startWireSubsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
         fun addInfo(builder: FlatBufferBuilder, info: Int) = builder.addOffset(23, info, 0)
         fun addDiscoveryKinds(builder: FlatBufferBuilder, discoveryKinds: Int) = builder.addOffset(24, discoveryKinds, 0)
-        fun createDiscoveryKindsVector(builder: FlatBufferBuilder, data: LongArray) : Int {
+        @kotlin.ExperimentalUnsignedTypes
+        fun createDiscoveryKindsVector(builder: FlatBufferBuilder, data: ULongArray) : Int {
             builder.startVector(8, data.size, 8)
             for (i in data.size - 1 downTo 0) {
-                builder.addLong(data[i])
+                builder.addLong(data[i].toLong())
             }
             return builder.endVector()
         }

@@ -205,7 +205,7 @@ impl Kernel {
         // Fixed wall-clock anchor from kernel start (NO live clock read here):
         // raw ms-since-start markers are lifted to STABLE Unix-ms by adding it,
         // so an unchanged relay serializes byte-identically every 4 Hz tick (no
-        // per-second churn, no per-ms jitter). Shells format at render (§62).
+        // per-second churn, no per-ms jitter). Shells format at render time.
         let started_unix_ms = self.timing.started_unix_ms.unwrap_or(0);
 
         // Pre-compute statuses keyed by relay URL so each row can be filled

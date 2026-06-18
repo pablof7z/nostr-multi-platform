@@ -36,34 +36,32 @@ fn sample_payload() -> Value {
                     "relay_diagnostics": {
                         "relays": [{
                             "relay_url": "wss://relay.example",
-                            "short_url": "relay.example",
-                            "role_label": "Read/Write",
+                            "role": "content",
                             "role_tone": "primary",
-                            "connection_label": "Open",
+                            "connection": "open",
                             "connection_tone": "ok",
-                            "auth_label": "OK",
+                            "auth": "ok",
                             "auth_tone": "ok",
                             "total_sub_count": 4,
                             "active_sub_count": 3,
                             "eosed_sub_count": 1,
                             "total_events_rx": 42,
-                            "total_events_display": "42",
                             "reconnect_count": 2,
-                            "bytes_rx_display": "1 KB",
-                            "bytes_tx_display": "128 B",
+                            "discovery_kinds": [0, 3, 10002],
+                            "bytes_rx": 1024,
+                            "bytes_tx": 128,
                             "last_connected_ms": 1700000000000,
                             "last_event_ms": 1700000003000,
                             "last_notice": "NOTICE text",
                             "last_error": null,
                             "wire_subs": [{
                                 "wire_id": "sub-filter-json",
-                                "short_wire_id": "sub-filt...",
                                 "relay_url": "wss://relay.example",
                                 "filter_summary": "{\"kinds\":[1],\"limit\":20}",
-                                "state_label": "Open",
+                                "state": "open",
                                 "state_tone": "ok",
-                                "consumer_count_label": "1 consumer",
-                                "events_rx_display": "12",
+                                "consumer_count": 1,
+                                "events_rx": 12,
                                 "eose_observed": true,
                                 "opened_ms": 1700000000000,
                                 "last_event_ms": 1700000003000,
@@ -97,9 +95,13 @@ fn sample_payload() -> Value {
 
 fn assert_sample_snapshot(snapshot: SharedSnapshot) {
     assert_eq!(snapshot.metrics.events_rx, 5);
-    assert_eq!(snapshot.relays[0].connection_label, "Open");
+    assert_eq!(snapshot.relays[0].connection, "open");
     assert_eq!(snapshot.relays[0].relay_url, "wss://relay.example");
     assert_eq!(snapshot.relays[0].total_sub_count, 4);
+    assert_eq!(snapshot.relays[0].discovery_kinds, vec![0, 3, 10002]);
+    assert_eq!(snapshot.relays[0].wire_subs[0].state, "open");
+    assert_eq!(snapshot.relays[0].wire_subs[0].consumer_count, 1);
+    assert_eq!(snapshot.relays[0].wire_subs[0].events_rx, 12);
     assert_eq!(
         snapshot.relays[0].wire_subs[0].filter_summary,
         "{\"kinds\":[1],\"limit\":20}"
@@ -126,11 +128,11 @@ fn unwraps_snapshot_envelope_when_present() {
             "projections": {
                 "relay_diagnostics": {
                     "relays": [{
-                        "short_url": "relay.example",
-                        "role_label": "Read",
-                        "connection_label": "Open",
+                        "relay_url": "wss://relay.example",
+                        "role": "content",
+                        "connection": "open",
                         "active_sub_count": 1,
-                        "total_events_display": "7",
+                        "total_events_rx": 7,
                         "last_event_ms": 0,
                         "last_error": null
                     }],
@@ -147,7 +149,8 @@ fn unwraps_snapshot_envelope_when_present() {
 
     assert_eq!(snapshot.metrics.events_rx, 7);
     assert_eq!(snapshot.relays.len(), 1);
-    assert_eq!(snapshot.relays[0].short_url, "relay.example");
+    assert_eq!(snapshot.relays[0].relay_url, "wss://relay.example");
+    assert_eq!(snapshot.relays[0].connection, "open");
 }
 
 /// A `RootFeedSnapshot`-shaped JSON value (ADR-0038): one thread-root card
