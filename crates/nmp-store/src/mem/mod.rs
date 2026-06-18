@@ -48,6 +48,7 @@
 
 pub(super) mod domain;
 pub(super) mod gc;
+pub(super) mod ic;
 pub(super) mod insert;
 // NIP-09 (kind:5) deletion handler — extracted from insert.rs for the 500 LOC cap.
 pub(super) mod insert_kind5;
@@ -149,6 +150,15 @@ pub(super) struct MemState {
     /// returns `Some`.  Removed symmetrically whenever an event is evicted or
     /// deleted from the primary map.
     pub(super) access_index: HashMap<String, u64>,
+
+    /// Interaction-counter sidecar (issue #1519).
+    ///
+    /// Key: `(target_event_id_hex, CounterKind as u8)`.
+    /// Value: count.
+    ///
+    /// Maintained symmetrically with the event map — any insert increments,
+    /// any removal decrements. Parity with the LMDB backend.
+    pub(super) interaction_counters: HashMap<(String, u8), u64>,
 }
 
 impl MemState {
@@ -166,6 +176,7 @@ impl MemState {
             domain_versions: HashMap::new(),
             access_seq: 0,
             access_index: HashMap::new(),
+            interaction_counters: HashMap::new(),
         }
     }
 

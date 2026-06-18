@@ -52,7 +52,7 @@ pub(super) fn handle_kind5(
             continue;
         };
         // Author check: load target via fork; capture expiry for O(1) index cleanup.
-        let (target_is_self, target_stored, target_expiry, target_kind) = match inner
+        let (target_is_self, target_stored, target_expiry, target_kind, target_tags) = match inner
             .lmdb
             .get_event_by_id(txn, &target_id_bytes)
             .map_err(|e| StoreError::Io(format!("k5 get: {e}")))?
@@ -62,9 +62,10 @@ pub(super) fn handle_kind5(
                 let is_self = owned.pubkey.as_bytes().as_slice() == kind5_pubkey.as_slice();
                 let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
                 let kind = owned.kind.as_u16() as u32;
-                (is_self, true, expiry, kind)
+                let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                (is_self, true, expiry, kind, Some(tags))
             }
-            None => (true, false, None, 0), // Not stored — tombstone for future arrivals.
+            None => (true, false, None, 0, None), // Not stored — tombstone for future arrivals.
         };
         if !target_is_self {
             continue;
@@ -108,6 +109,17 @@ pub(super) fn handle_kind5(
             gc::lru_delete(inner, txn, &target_id_bytes)?;
             // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
             gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
+            // Issue #1519: decrement interaction-counter for the removed event.
+            if inner.interaction_counters_usable {
+                if let Some(ref tags) = target_tags {
+                    super::interaction_counters::apply_on_remove(
+                        inner.interaction_counters,
+                        txn,
+                        target_kind,
+                        tags,
+                    )?;
+                }
+            }
         }
     }
 
@@ -155,6 +167,8 @@ pub(super) fn handle_kind5(
                         let mut existing_id = [0u8; 32];
                         existing_id.copy_from_slice(owned.id.as_bytes());
                         let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                        let existing_kind = owned.kind.as_u16() as u32;
+                        let existing_tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
                         inner
                             .lmdb
                             .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
@@ -170,6 +184,15 @@ pub(super) fn handle_kind5(
                         )?;
                         gc::lru_delete(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
+                        // Issue #1519: decrement interaction-counter for removed addressable.
+                        if inner.interaction_counters_usable {
+                            super::interaction_counters::apply_on_remove(
+                                inner.interaction_counters,
+                                txn,
+                                existing_kind,
+                                &existing_tags,
+                            )?;
+                        }
                     }
                 }
                 // Delete the replaceable_freshness row for this coordinate so stale
@@ -195,6 +218,8 @@ pub(super) fn handle_kind5(
                         let mut existing_id = [0u8; 32];
                         existing_id.copy_from_slice(owned.id.as_bytes());
                         let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                        let existing_kind = owned.kind.as_u16() as u32;
+                        let existing_tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
                         inner
                             .lmdb
                             .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
@@ -210,6 +235,15 @@ pub(super) fn handle_kind5(
                         )?;
                         gc::lru_delete(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
+                        // Issue #1519: decrement interaction-counter for removed replaceable.
+                        if inner.interaction_counters_usable {
+                            super::interaction_counters::apply_on_remove(
+                                inner.interaction_counters,
+                                txn,
+                                existing_kind,
+                                &existing_tags,
+                            )?;
+                        }
                     }
                 }
                 // Delete the replaceable_freshness row (Bug-2 fix).
@@ -280,6 +314,17 @@ pub(super) fn handle_kind5(
     // events do not normally carry expiration tags, but keep the index honest).
     if let Some(exp) = event.expiration() {
         gc::expiry_index_put(inner, txn, exp, &kind5_id)?;
+    }
+    // Issue #1519: kind:5 is itself kind 5 — not a counter kind (1/6/7/9735),
+    // so apply_on_insert is a no-op. We still call it for consistency so the
+    // code path is uniform.
+    if inner.interaction_counters_usable {
+        super::interaction_counters::apply_on_insert(
+            inner.interaction_counters,
+            txn,
+            event.kind,
+            &event.tags,
+        )?;
     }
     Ok(InsertOutcome::Inserted {
         id: kind5_id,

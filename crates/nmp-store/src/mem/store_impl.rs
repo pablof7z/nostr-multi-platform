@@ -195,6 +195,31 @@ impl EventStore for MemEventStore {
         query::dump(self, out, format)
     }
 
+    fn interaction_counts(
+        &self,
+        target: &crate::types::EventId,
+    ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
+        let st = self.lock()?;
+        let target_hex = super::bytes_to_hex(target);
+        let replies = st.interaction_counters
+            .get(&(target_hex.clone(), crate::interaction::CounterKind::Reply as u8))
+            .copied()
+            .unwrap_or(0);
+        let reactions = st.interaction_counters
+            .get(&(target_hex.clone(), crate::interaction::CounterKind::Reaction as u8))
+            .copied()
+            .unwrap_or(0);
+        let reposts = st.interaction_counters
+            .get(&(target_hex.clone(), crate::interaction::CounterKind::Repost as u8))
+            .copied()
+            .unwrap_or(0);
+        let zaps = st.interaction_counters
+            .get(&(target_hex, crate::interaction::CounterKind::Zap as u8))
+            .copied()
+            .unwrap_or(0);
+        Ok(crate::TargetInteractionCounts { replies, reactions, reposts, zaps })
+    }
+
     // ─── F-TTL replaceable freshness ───────────────────────────────────────────
 
     fn get_check_again_after(&self, key: &crate::ReplaceableKey) -> Option<u64> {

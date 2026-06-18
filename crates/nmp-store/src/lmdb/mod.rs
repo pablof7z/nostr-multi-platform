@@ -54,6 +54,9 @@ mod tombstones;
 // W2 — relay-author-scores LMDB encode/decode layer.
 #[cfg(feature = "lmdb-backend")]
 pub mod relay_scores;
+// Issue #1519 — interaction-counter sidecar.
+#[cfg(feature = "lmdb-backend")]
+mod interaction_counters;
 // Sub-db + env open logic extracted for LOC budget.
 #[cfg(feature = "lmdb-backend")]
 mod open;
@@ -91,6 +94,9 @@ mod tests_gc_stage3;
 // Secondary-index integrity tests (Bug-1: kind:5 a-tag leaks; Bug-2: freshness leaks).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_secondary_index;
+// Issue #1519 — interaction-counter sidecar tests.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_interaction_counters;
 
 use std::path::{Path, PathBuf};
 
@@ -230,6 +236,21 @@ mod inner {
         /// sub-db — re-created with real readers/writers, not re-activated
         /// (ADR-0056 §2.1).
         pub(crate) coverage: Database<Bytes, Bytes>,
+
+        /// Interaction-counter sidecar (issue #1519).
+        ///
+        /// Key: `target_event_id(32) || counter_kind(1)`.
+        /// Value: `count(8 bytes, big-endian u64)`.
+        ///
+        /// Written atomically with event inserts and removes — same `RwTxn`
+        /// (ADR-0011). Counts are always consistent with the stored event set.
+        pub(crate) interaction_counters: Database<Bytes, Bytes>,
+
+        /// True when the `nmp-interaction-counters` sub-db schema version is
+        /// known (version == 1). Set false if an unknown future version is
+        /// detected on open, causing reads to fall back to
+        /// `TargetInteractionCounts::default()` (forward-compat safeguard).
+        pub(crate) interaction_counters_usable: bool,
 
         // ── GC scan state (V-117 fixes) ───────────────────────────────────────
         /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that

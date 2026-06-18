@@ -65,6 +65,12 @@ fn decode(bytes: &[u8]) -> Result<TombstoneRow, StoreError> {
     Ok(p.into())
 }
 
+/// Alias exposed so `gc.rs` can reuse tombstone deserialization
+/// without duplicating `PersistRow`.
+pub(super) fn decode_row(bytes: &[u8]) -> Result<TombstoneRow, StoreError> {
+    decode(bytes)
+}
+
 // ─── Per-id ──────────────────────────────────────────────────────────────────
 
 pub(super) fn get(

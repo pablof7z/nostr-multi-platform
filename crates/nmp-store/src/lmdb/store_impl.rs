@@ -196,6 +196,13 @@ impl EventStore for LmdbEventStore {
         dump_mod::dump(&self.inner, out, format)
     }
 
+    fn interaction_counts(
+        &self,
+        target: &crate::types::EventId,
+    ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
+        super::interaction_counters::read_counts(&self.inner, target)
+    }
+
     // ─── F-TTL replaceable freshness ───────────────────────────────────────────
 
     fn get_check_again_after(&self, key: &crate::ReplaceableKey) -> Option<u64> {
