@@ -377,6 +377,46 @@ fn no_raw_tap_positive_fixture_fires() {
     );
 }
 
+/// A BARE `// doctrine-allow: no_raw_tap` (no `—`/`- ` justification) must NOT
+/// silence the rule — the escape hatch is eliminated, so any opt-out requires a
+/// reason (the rule routes through `allow::line_allows_with_reason`).
+#[test]
+fn no_raw_tap_bare_allow_does_not_silence() {
+    let workspace = workspace_root();
+    let crate_src = workspace
+        .join("target")
+        .join("doctrine_lint_no_raw_tap_bare_allow")
+        .join("crates")
+        .join("nmp-fake-crate")
+        .join("src");
+    let _ = std::fs::remove_dir_all(
+        workspace
+            .join("target")
+            .join("doctrine_lint_no_raw_tap_bare_allow"),
+    );
+    std::fs::create_dir_all(&crate_src).expect("create fake crate src dir");
+    // A production violation line carrying a BARE allow (no reason).
+    std::fs::write(
+        crate_src.join("bare_allow.rs"),
+        "fn wire() {\n    \
+         app.register_raw_event_observer(filter, observer); // doctrine-allow: no_raw_tap\n}\n",
+    )
+    .expect("write bare-allow fixture");
+
+    let crate_src_str = crate_src.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
+    assert_eq!(
+        code, 1,
+        "a bare no_raw_tap allow (no reason) must NOT silence the rule; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[no_raw_tap]"),
+        "the finding must still fire under a bare allow; stdout:\n{}",
+        stdout
+    );
+}
+
 #[test]
 fn no_raw_tap_negative_fixture_clean() {
     // Stage neg.rs under a fake `crates/nmp-fake-crate/src/` tree so
@@ -449,7 +489,7 @@ fn no_raw_tap_class_fixture_fires_without_named_token() {
 
 #[test]
 fn no_raw_tap_covers_apps_scope() {
-    // The old A5 rule covered apps/; this replacement must too. Stage the named
+    // This rule must cover apps/ too (an app could re-introduce a below-seam tap). Stage the named
     // positive fixture under a fake `apps/` tree and assert it fires.
     let workspace = workspace_root();
     let app_src = workspace

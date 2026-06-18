@@ -123,9 +123,9 @@ pub enum SinkDestination {
 
 /// Injected policy: decides whether and where to deliver a `SignedEventFrame`.
 ///
-/// This is the single canonical policy seam for external event delivery.
-/// Implementations decide which relay targets (or native sinks) should
-/// receive each inbound signed event frame.
+/// This is the single canonical policy seam for in-process relay forwarding.
+/// Implementations decide which relay targets should receive each inbound
+/// signed event frame.
 pub trait ExternalEventSinkPolicy: Send + Sync {
     /// Subset of event kinds this policy wants to observe.
     /// Called once per registration; the dispatcher gates on this before

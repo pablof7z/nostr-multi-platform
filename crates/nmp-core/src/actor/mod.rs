@@ -1249,12 +1249,12 @@ pub fn run_actor_with_observers(
     // `register_raw_event_forward_policies_from_factory` below and re-installed
     // after every `Reset`.
     //
-    // Registration-race fix: the dispatcher's registry exists from app
-    // construction (zero-arg `new()`), so the FFI layer may already have
-    // published an instance into `dispatcher_slot` and accepted native-sink
-    // registrations before this actor thread spawned. Adopt that published
-    // instance if present — registrations buffered on it must survive. Only if
-    // the slot is empty (non-FFI test harnesses) do we create + publish one.
+    // Instance-identity fix: the dispatcher exists from app construction
+    // (zero-arg `new()`), so the FFI layer may already have published an
+    // instance into `dispatcher_slot` before this actor thread spawned. Adopt
+    // that published instance if present so the actor and any FFI handle share
+    // one dispatcher. Only if the slot is empty (non-FFI test harnesses) do we
+    // create + publish one.
     let external_event_sink_dispatcher = {
         let existing = dispatcher_slot
             .lock()

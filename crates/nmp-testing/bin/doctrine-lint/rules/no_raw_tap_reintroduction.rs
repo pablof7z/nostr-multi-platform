@@ -181,7 +181,7 @@ fn class_violation_col(line: &str) -> Option<usize> {
 /// True iff the rule should scan `path`.
 ///
 /// Scope: workspace production Rust source under BOTH `crates/` and `apps/`
-/// (the old A5 rule this replaces also covered `apps/`, where an app could
+/// (an app could otherwise
 /// re-introduce a below-seam tap). Excludes:
 /// - `nmp-testing` crate (test infrastructure and fixture host)
 /// - doctrine-lint binary source (contains the banned tokens as string

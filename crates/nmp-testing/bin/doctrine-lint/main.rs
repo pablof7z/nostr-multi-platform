@@ -722,7 +722,7 @@ fn scan_one_file(
                 sl.in_test_cfg,
                 no_raw_tap_reintroduction::in_sink_module(path),
             ) {
-                if allow::line_allows(sl.text, no_raw_tap_reintroduction::ID) {
+                if allow::line_allows_with_reason(sl.text, no_raw_tap_reintroduction::ID) {
                     continue;
                 }
                 findings.push(report::Finding {
