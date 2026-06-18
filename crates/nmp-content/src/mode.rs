@@ -5,6 +5,25 @@
 
 use serde::{Deserialize, Serialize};
 
+// Markdown-rendering kinds. Named here so the [`sniff_mode_from_kind`] table
+// carries no bare numeric literals — the same kind a reader has to look up in
+// the spec to understand. `KIND_LONG_FORM_ARTICLE` is re-used from the
+// canonical definition in [`crate::longform`]; the draft + wiki kinds have no
+// other home in this crate today.
+//
+// TODO(#1493): migrate these kind constants to `nmp-kinds` once that crate
+// owns the shared kind registry (another lane owns `nmp-kinds`; do not edit it
+// from here).
+use crate::longform::KIND_LONG_FORM_ARTICLE;
+
+/// NIP-23 long-form **draft** kind (`30024`) — same Markdown body shape as
+/// [`KIND_LONG_FORM_ARTICLE`], not yet published as the canonical article.
+const KIND_LONG_FORM_DRAFT: u32 = 30_024;
+
+/// NIP-54 wiki-article kind (`30818`) — Markdown content (AsciiDoc/Markdown
+/// per NIP-54; rendered here as Markdown).
+const KIND_WIKI_ARTICLE: u32 = 30_818;
+
 /// Tokenizer mode — selects whether markdown block syntax is interpreted or
 /// treated as literal text.
 ///
@@ -40,8 +59,9 @@ pub enum RenderMode {
 #[must_use]
 pub fn sniff_mode_from_kind(kind: u32) -> RenderMode {
     match kind {
-        // NIP-23 long-form content and NIP-54 wiki — all markdown.
-        30023 | 30024 | 30818 => RenderMode::Markdown,
+        // NIP-23 long-form content (article + draft) and NIP-54 wiki — all
+        // markdown.
+        KIND_LONG_FORM_ARTICLE | KIND_LONG_FORM_DRAFT | KIND_WIKI_ARTICLE => RenderMode::Markdown,
         _ => RenderMode::Plain,
     }
 }
