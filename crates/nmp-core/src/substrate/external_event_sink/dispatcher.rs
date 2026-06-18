@@ -21,9 +21,11 @@
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "native")]
 use nmp_network::pool::Pool;
 
 use super::diagnostics::ExternalEventSinkDiagnostics;
+#[cfg(feature = "native")]
 use super::worker::run_worker;
 use super::{ExternalEventSinkPolicy, IngestOutcomeKind, SignedEventFrame};
 use crate::actor::KindFilter;
@@ -41,12 +43,20 @@ const DISPATCH_CHANNEL_BOUND: usize = 1024;
 /// `BTreeSet` every call.
 #[derive(Clone)]
 pub(super) struct RegisteredPolicy {
+    // Read only by the relay-forwarding worker (native). On wasm the worker is
+    // not compiled, so this trait object is intentionally unread there; the
+    // cached `kind_filter` is still used by `dispatch`/`all_idle_for_kind`.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     pub(super) policy: Arc<dyn ExternalEventSinkPolicy>,
     pub(super) kind_filter: Arc<KindFilter>,
 }
 
 // ─── Worker message ───────────────────────────────────────────────────────────
 
+// Fields are read only by the worker thread, which is `native`-gated. On wasm
+// the channel is still constructed (the dispatcher type is wasm-safe) but never
+// drained, so the fields are intentionally unread there.
+#[cfg_attr(not(feature = "native"), allow(dead_code))]
 pub(super) struct DispatchWork {
     pub(super) frame: SignedEventFrame,
     /// Snapshot of policies (with cached filters) matching this frame's kind.
@@ -54,6 +64,11 @@ pub(super) struct DispatchWork {
 }
 
 /// Shared runtime handle, bound once via [`ExternalEventSinkDispatcher::bind_runtime`].
+///
+/// Native-only: it owns the relay `Pool`, which is gated behind nmp-network's
+/// `native` feature. On wasm there is no relay transport, so neither this handle
+/// nor the worker that consumes it is compiled.
+#[cfg(feature = "native")]
 pub(super) struct Runtime {
     pub(super) pool: Pool,
 }
@@ -69,10 +84,15 @@ pub struct ExternalEventSinkDispatcher {
     tx: SyncSender<DispatchWork>,
     /// Inbound receiver, held until `bind_runtime` moves it onto the worker
     /// thread. Dropped with the dispatcher if it is never bound (no leak).
+    /// Consumed only by `bind_runtime` (native); on wasm there is no worker to
+    /// bind, so it is held but never taken.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     rx: Arc<Mutex<Option<Receiver<DispatchWork>>>>,
     policies: Arc<Mutex<Vec<RegisteredPolicy>>>,
     diagnostics: Arc<ExternalEventSinkDiagnostics>,
     /// `true` once `bind_runtime` has spawned the worker. Guards double bind.
+    /// Read only by `bind_runtime` (native).
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     bound: Arc<Mutex<bool>>,
 }
 
@@ -174,6 +194,13 @@ impl ExternalEventSinkDispatcher {
     ///
     /// Called once from the actor loop. Frames dispatched before this point sit
     /// in the bounded channel and are processed as soon as the worker starts.
+    ///
+    /// Native-only: it takes a relay `Pool` and spawns the forwarding worker.
+    /// On wasm there is no relay transport and no worker, so binding does not
+    /// exist; the dispatcher still accepts `dispatch`/`all_idle_for_kind` calls
+    /// (the channel buffers, nothing drains it) so the kernel ingest chokepoint
+    /// compiles unchanged.
+    #[cfg(feature = "native")]
     pub fn bind_runtime(&self, pool: Pool) {
         {
             let mut bound = match self.bound.lock() {
@@ -217,6 +244,9 @@ pub fn new_external_event_sink_dispatcher_slot() -> ExternalEventSinkDispatcherS
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-#[cfg(test)]
+// The dispatcher tests exercise `bind_runtime` + the relay-forwarding worker,
+// both of which are `native`-only. Gate the suite to native so a
+// `--no-default-features` (wasm-proxy) check does not try to compile it.
+#[cfg(all(test, feature = "native"))]
 #[path = "dispatcher/tests.rs"]
 mod tests;

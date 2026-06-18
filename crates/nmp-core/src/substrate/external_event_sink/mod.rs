@@ -21,6 +21,13 @@
 
 pub mod diagnostics;
 pub mod dispatcher;
+// The worker thread drains the dispatch channel and forwards `["EVENT", …]`
+// frames through `nmp_network::pool::Pool`. That transport is `native`-only
+// (relay sockets), so the worker compiles only on native. On wasm the
+// dispatcher type still exists (so the kernel ingest chokepoint, the slot, and
+// policy registration compile) but performs no relay forwarding — there are no
+// relays on the wasm preview target. This is the D20 wasm-reachability split.
+#[cfg(feature = "native")]
 mod worker;
 
 use std::sync::Arc;
