@@ -365,7 +365,10 @@ impl MarmotProjection {
             .collect();
         let invites_chip_label = display::invites_chip_label(pending_welcomes.len());
 
-        let mut key_package = match inner.key_package_published_at {
+        // Reaching this snapshot path means the iOS shell has a live
+        // `MarmotHandle`, so the identity IS registered. The `false` branch
+        // is only ever served by `MarmotSnapshot::empty()` on the Swift side.
+        let key_package = match inner.key_package_published_at {
             Some(ts) => {
                 let age = now_secs.saturating_sub(ts);
                 KeyPackageStatus {
@@ -373,21 +376,13 @@ impl MarmotProjection {
                     d_tag: inner.key_package_d_tag.clone(),
                     age_secs: Some(age),
                     stale: age > KEY_PACKAGE_STALE_SECS,
-                    age_display: Some(KeyPackageStatus::bucket_age(age)),
-                    subtitle: String::new(),
-                    action_label: String::new(),
+                    is_registered: true,
                 }
             }
-            None => KeyPackageStatus::default(),
-        };
-        // Reaching this snapshot path means the iOS shell has a live
-        // `MarmotHandle`, so the identity IS registered. The `false` branch
-        // is only ever served by `MarmotSnapshot::empty()` on the Swift side.
-        key_package.subtitle = key_package.render_subtitle(true);
-        key_package.action_label = if key_package.published {
-            KeyPackageStatus::ACTION_LABEL_ROTATE.to_string()
-        } else {
-            KeyPackageStatus::ACTION_LABEL_PUBLISH.to_string()
+            None => KeyPackageStatus {
+                is_registered: true,
+                ..Default::default()
+            },
         };
 
         let cached_kp_pubkeys = inner.service.cached_kp_pubkeys();

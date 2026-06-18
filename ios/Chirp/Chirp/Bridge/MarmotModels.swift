@@ -58,34 +58,24 @@ struct MarmotPendingWelcome: Decodable, Identifiable, Equatable {
 }
 
 /// No explicit `CodingKeys`: `.convertFromSnakeCase` maps `"d_tag"` → `dTag`,
-/// `"age_secs"` → `ageSecs`, `"age_display"` → `ageDisplay`,
-/// `"action_label"` → `actionLabel` automatically (same pattern as
-/// `MarmotGroup` above).
+/// `"age_secs"` → `ageSecs`, `"is_registered"` → `isRegistered` automatically
+/// (same pattern as `MarmotGroup` above).
 struct MarmotKeyPackage: Decodable, Equatable {
     let published: Bool
     let dTag: String?
     let ageSecs: UInt64?
     let stale: Bool
-    /// Pre-formatted bucketed age ("12s old" / "7m old" / …) — Rust owns the
-    /// §6/AP1 string so the iOS shell never re-derives it.
-    let ageDisplay: String?
-    /// Pre-formatted row subtitle. Encodes the four-branch policy
-    /// (registered? · published? · age · stale) so the shell renders one
-    /// string verbatim.
-    let subtitle: String
-    /// Button label ("Publish key package" / "Rotate key package") — the
-    /// kernel picks the verb off `published` to keep the §4.4 ternary out of
-    /// the shell.
-    let actionLabel: String
+    /// `true` when this status was built against a registered Marmot signing
+    /// identity. `false` only when no handle exists. Shells gate the publish
+    /// button and derive subtitle copy from this + published/ageSecs/stale.
+    let isRegistered: Bool
 
     static let empty = MarmotKeyPackage(
         published: false,
         dTag: nil,
         ageSecs: nil,
         stale: false,
-        ageDisplay: nil,
-        subtitle: "Sign in with an nsec to enable",
-        actionLabel: ""
+        isRegistered: false
     )
 }
 

@@ -51,7 +51,9 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NMMS";
 /// Wire schema version. Bump on any additive or breaking change to `marmot_snapshot.fbs`.
 /// v2: added `PendingOpRow` (with `age_secs`) + `LastOpError` tables and the
 /// `pending_ops` / `last_op_error` fields on `MarmotSnapshot`.
-pub const SCHEMA_VERSION: u32 = 2;
+/// v3: removed `age_display` / `subtitle` / `action_label` from `KeyPackageStatus`
+/// (presentation formatting moved to shells per aim.md §2); added `is_registered`.
+pub const SCHEMA_VERSION: u32 = 3;
 
 // --- typed-projection envelope -------------------------------------------
 
@@ -230,9 +232,6 @@ fn encode_key_package<'a>(
     kp: &KeyPackageStatus,
 ) -> Off<'a, fb::KeyPackageStatus<'a>> {
     let d_tag = kp.d_tag.as_ref().map(|s| fbb.create_string(s));
-    let age_display = kp.age_display.as_ref().map(|s| fbb.create_string(s));
-    let subtitle = fbb.create_string(&kp.subtitle);
-    let action_label = fbb.create_string(&kp.action_label);
     fb::KeyPackageStatus::create(
         fbb,
         &fb::KeyPackageStatusArgs {
@@ -242,10 +241,7 @@ fn encode_key_package<'a>(
             has_age_secs: kp.age_secs.is_some(),
             age_secs: kp.age_secs.unwrap_or(0),
             stale: kp.stale,
-            has_age_display: kp.age_display.is_some(),
-            age_display,
-            subtitle: Some(subtitle),
-            action_label: Some(action_label),
+            is_registered: kp.is_registered,
         },
     )
 }
@@ -347,9 +343,7 @@ fn decode_key_package(kp: fb::KeyPackageStatus<'_>) -> KeyPackageStatus {
         d_tag: optional_string(kp.has_d_tag(), kp.d_tag()),
         age_secs: optional_u64(kp.has_age_secs(), kp.age_secs()),
         stale: kp.stale(),
-        age_display: optional_string(kp.has_age_display(), kp.age_display()),
-        subtitle: kp.subtitle().unwrap_or_default().to_string(),
-        action_label: kp.action_label().unwrap_or_default().to_string(),
+        is_registered: kp.is_registered(),
     }
 }
 

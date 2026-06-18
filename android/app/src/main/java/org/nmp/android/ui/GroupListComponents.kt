@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import org.nmp.android.KernelModel
 import org.nmp.android.model.MarmotGroup
+import org.nmp.android.model.MarmotKeyPackage
 import org.nmp.android.model.MarmotLastOpError
 import org.nmp.android.model.MarmotPendingOp
 import org.nmp.android.model.MarmotPendingWelcome
@@ -45,12 +46,13 @@ import org.nmp.android.model.MarmotSnapshot
  * `GroupsScreen.kt` so neither file crosses the 500-LOC hard cap (AGENTS.md).
  *
  * Thin-shell rule (aim.md §2): ZERO protocol logic. Every Rust-owned string
- * (`displayLabel`, `lastOpError`, `subtitle`, `actionLabel`) is rendered
- * verbatim; the only shell-side copy is structural chrome (section headers,
- * field labels).
+ * (`displayLabel`, `lastOpError`) is rendered verbatim; the only shell-side
+ * copy is structural chrome (section headers, field labels) and the key-package
+ * subtitle / action label derived from raw status fields.
  */
 @Composable
 internal fun KeyPackageRow(model: KernelModel, snapshot: MarmotSnapshot) {
+    val kp = snapshot.keyPackage
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -59,17 +61,36 @@ internal fun KeyPackageRow(model: KernelModel, snapshot: MarmotSnapshot) {
         Column(Modifier.weight(1f)) {
             Text("Key package", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(
-                snapshot.keyPackage.subtitle,
+                keyPackageSubtitle(kp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.size(8.dp))
-        OutlinedButton(onClick = { model.marmot.publishKeyPackage() }) {
-            Text(snapshot.keyPackage.actionLabel.ifEmpty { "Publish" })
+        OutlinedButton(
+            onClick = { model.marmot.publishKeyPackage() },
+            enabled = kp.isRegistered,
+        ) {
+            Text(if (kp.published) "Rotate key package" else "Publish key package")
         }
     }
     HorizontalDivider()
+}
+
+private fun bucketAge(secs: Long): String = when {
+    secs < 60 -> "${secs}s old"
+    secs < 3_600 -> "${secs / 60}m old"
+    secs < 86_400 -> "${secs / 3_600}h old"
+    else -> "${secs / 86_400}d old"
+}
+
+private fun keyPackageSubtitle(kp: MarmotKeyPackage): String {
+    if (!kp.isRegistered) return "Sign in with an nsec to enable"
+    if (!kp.published) return "Not published"
+    val parts = mutableListOf("Published")
+    kp.ageSecs?.let { parts.add(bucketAge(it)) }
+    if (kp.stale) parts.add("needs rotation")
+    return parts.joinToString(" · ")
 }
 
 @Composable

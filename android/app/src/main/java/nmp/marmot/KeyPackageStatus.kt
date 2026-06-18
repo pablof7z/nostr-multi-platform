@@ -64,44 +64,11 @@ class KeyPackageStatus : Table() {
             val o = __offset(14)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val hasAgeDisplay : Boolean
+    val isRegistered : Boolean
         get() {
             val o = __offset(16)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val ageDisplay : String?
-        get() {
-            val o = __offset(18)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val ageDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
-    fun ageDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
-    val subtitle : String?
-        get() {
-            val o = __offset(20)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val subtitleAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(20, 1)
-    fun subtitleInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 20, 1)
-    val actionLabel : String?
-        get() {
-            val o = __offset(22)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val actionLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
-    fun actionLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsKeyPackageStatus(_bb: ByteBuffer): KeyPackageStatus = getRootAsKeyPackageStatus(_bb, KeyPackageStatus())
@@ -109,31 +76,25 @@ class KeyPackageStatus : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createKeyPackageStatus(builder: FlatBufferBuilder, published: Boolean, hasDTag: Boolean, dTagOffset: Int, hasAgeSecs: Boolean, ageSecs: ULong, stale: Boolean, hasAgeDisplay: Boolean, ageDisplayOffset: Int, subtitleOffset: Int, actionLabelOffset: Int) : Int {
-            builder.startTable(10)
+        fun createKeyPackageStatus(builder: FlatBufferBuilder, published: Boolean, hasDTag: Boolean, dTagOffset: Int, hasAgeSecs: Boolean, ageSecs: ULong, stale: Boolean, isRegistered: Boolean) : Int {
+            builder.startTable(7)
             addAgeSecs(builder, ageSecs)
-            addActionLabel(builder, actionLabelOffset)
-            addSubtitle(builder, subtitleOffset)
-            addAgeDisplay(builder, ageDisplayOffset)
             addDTag(builder, dTagOffset)
-            addHasAgeDisplay(builder, hasAgeDisplay)
+            addIsRegistered(builder, isRegistered)
             addStale(builder, stale)
             addHasAgeSecs(builder, hasAgeSecs)
             addHasDTag(builder, hasDTag)
             addPublished(builder, published)
             return endKeyPackageStatus(builder)
         }
-        fun startKeyPackageStatus(builder: FlatBufferBuilder) = builder.startTable(10)
+        fun startKeyPackageStatus(builder: FlatBufferBuilder) = builder.startTable(7)
         fun addPublished(builder: FlatBufferBuilder, published: Boolean) = builder.addBoolean(0, published, false)
         fun addHasDTag(builder: FlatBufferBuilder, hasDTag: Boolean) = builder.addBoolean(1, hasDTag, false)
         fun addDTag(builder: FlatBufferBuilder, dTag: Int) = builder.addOffset(2, dTag, 0)
         fun addHasAgeSecs(builder: FlatBufferBuilder, hasAgeSecs: Boolean) = builder.addBoolean(3, hasAgeSecs, false)
         fun addAgeSecs(builder: FlatBufferBuilder, ageSecs: ULong) = builder.addLong(4, ageSecs.toLong(), 0)
         fun addStale(builder: FlatBufferBuilder, stale: Boolean) = builder.addBoolean(5, stale, false)
-        fun addHasAgeDisplay(builder: FlatBufferBuilder, hasAgeDisplay: Boolean) = builder.addBoolean(6, hasAgeDisplay, false)
-        fun addAgeDisplay(builder: FlatBufferBuilder, ageDisplay: Int) = builder.addOffset(7, ageDisplay, 0)
-        fun addSubtitle(builder: FlatBufferBuilder, subtitle: Int) = builder.addOffset(8, subtitle, 0)
-        fun addActionLabel(builder: FlatBufferBuilder, actionLabel: Int) = builder.addOffset(9, actionLabel, 0)
+        fun addIsRegistered(builder: FlatBufferBuilder, isRegistered: Boolean) = builder.addBoolean(6, isRegistered, false)
         fun endKeyPackageStatus(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

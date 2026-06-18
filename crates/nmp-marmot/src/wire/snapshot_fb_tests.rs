@@ -60,9 +60,7 @@ fn populated() -> MarmotSnapshot {
             d_tag: Some("kp-d-tag".to_string()),
             age_secs: Some(42),
             stale: false,
-            age_display: Some("42s old".to_string()),
-            subtitle: "Published · 42s old".to_string(),
-            action_label: "Rotate key package".to_string(),
+            is_registered: true,
         },
         cached_kp_pubkeys: vec!["2".repeat(64), "3".repeat(64)],
         invites_chip_label: Some("1 invite".to_string()),
@@ -129,7 +127,6 @@ fn absent_options_round_trip_as_none_not_zero_or_empty() {
     snapshot.groups[0].last_msg_at = None;
     snapshot.key_package.d_tag = None;
     snapshot.key_package.age_secs = None;
-    snapshot.key_package.age_display = None;
     snapshot.invites_chip_label = None;
 
     let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
@@ -138,7 +135,6 @@ fn absent_options_round_trip_as_none_not_zero_or_empty() {
     assert_eq!(decoded.groups[0].last_msg_at, None);
     assert_eq!(decoded.key_package.d_tag, None);
     assert_eq!(decoded.key_package.age_secs, None);
-    assert_eq!(decoded.key_package.age_display, None);
     assert_eq!(decoded.invites_chip_label, None);
     assert_eq!(decoded, snapshot);
 }

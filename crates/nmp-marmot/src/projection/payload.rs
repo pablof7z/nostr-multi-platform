@@ -86,11 +86,10 @@ pub struct PendingWelcomeRow {
 
 /// KeyPackage publication health for the local identity.
 ///
-/// The `subtitle`, `age_display`, and `action_label` fields are pre-formatted
-/// strings the iOS shell renders verbatim (aim.md §6 anti-pattern #1: native
-/// must not duplicate timestamp / pluralization / state→label switches). The
-/// shell never branches on `published` / `age_secs` / `stale` for display — it
-/// reads the strings directly.
+/// Raw status struct — shells (Swift, Kotlin) own all presentation formatting
+/// (subtitles, button labels, bucketed age strings). Per aim.md §2: Rust sends
+/// raw data only. Presentation layers derive copy from `published`, `age_secs`,
+/// `stale`, and `is_registered`.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct KeyPackageStatus {
     /// `true` once `publish_key_package` has been dispatched this session
@@ -104,72 +103,11 @@ pub struct KeyPackageStatus {
     pub age_secs: Option<u64>,
     /// `true` when `age_secs` exceeds the 7-day rotation threshold.
     pub stale: bool,
-    /// Bucketed age string ("12s old" / "7m old" / "3h old" / "5d old") or
-    /// `null` when `age_secs` is `None`. Removes the §6/AP1 `ageString`
-    /// helper from the iOS `MarmotKeyPackageRow`.
-    #[serde(default)]
-    pub age_display: Option<String>,
-    /// Full subtitle the iOS row renders. Encodes the four-branch policy
-    /// (`!is_registered` / `!published` / `published+age` / `published+no-age`,
-    /// optionally suffixed with `· needs rotation` when stale) so the shell
-    /// just reads one string.
-    #[serde(default)]
-    pub subtitle: String,
-    /// Button label — "Publish key package" before the first publish,
-    /// "Rotate key package" once `published` flips. Removes the §4.4 ternary
-    /// the iOS row used to do on `kp.published`.
-    #[serde(default)]
-    pub action_label: String,
-}
-
-impl KeyPackageStatus {
-    /// Subtitle when no signing identity is yet registered with the kernel.
-    /// Surfaced from `MarmotSnapshot::empty()` so the iOS row never has to
-    /// branch on `is_registered` for display copy.
-    pub const SUBTITLE_NOT_REGISTERED: &'static str = "Sign in with an nsec to enable";
-
-    pub(crate) const ACTION_LABEL_PUBLISH: &'static str = "Publish key package";
-    pub(crate) const ACTION_LABEL_ROTATE: &'static str = "Rotate key package";
-
-    /// Bucket `secs` into a `Ns / Nm / Nh / Nd old` display string. Mirrors
-    /// the §6/AP1 helper previously implemented in `SettingsHubView.swift`.
-    pub(crate) fn bucket_age(secs: u64) -> String {
-        if secs < 60 {
-            format!("{secs}s old")
-        } else if secs < 3_600 {
-            format!("{}m old", secs / 60)
-        } else if secs < 86_400 {
-            format!("{}h old", secs / 3_600)
-        } else {
-            format!("{}d old", secs / 86_400)
-        }
-    }
-
-    /// Build the rendered subtitle from the underlying `published` /
-    /// `age_secs` / `stale` triple, given whether a signing identity is
-    /// currently registered. The `is_registered = false` branch is the only
-    /// branch unreachable from a successful `MarmotProjection::snapshot()`
-    /// (snapshot only runs against a non-null handle); it is supplied by
-    /// `MarmotSnapshot::empty()`.
-    pub(crate) fn render_subtitle(&self, is_registered: bool) -> String {
-        if !is_registered {
-            return Self::SUBTITLE_NOT_REGISTERED.to_string();
-        }
-        if !self.published {
-            return "Not published".to_string();
-        }
-        match self.age_secs {
-            Some(_) => {
-                let age = self.age_display.as_deref().unwrap_or("");
-                let mut s = format!("Published · {age}");
-                if self.stale {
-                    s.push_str(" · needs rotation");
-                }
-                s
-            }
-            None => "Published".to_string(),
-        }
-    }
+    /// `true` when this status was built against a registered Marmot signing
+    /// identity. `false` only when no handle exists (empty snapshot path).
+    /// Shells gate the publish button and derive subtitle copy from this +
+    /// `published` / `age_secs` / `stale`.
+    pub is_registered: bool,
 }
 
 /// Summary of one pending (deferred) op waiting for a peer's KP to arrive.
@@ -279,11 +217,7 @@ impl MarmotSnapshot {
     /// kernel-side snapshot path always sets `is_registered = true`.
     #[must_use]
     pub fn empty() -> Self {
-        let kp = KeyPackageStatus {
-            subtitle: KeyPackageStatus::SUBTITLE_NOT_REGISTERED.to_string(),
-            action_label: KeyPackageStatus::ACTION_LABEL_PUBLISH.to_string(),
-            ..Default::default()
-        };
+        let kp = KeyPackageStatus::default();
         Self {
             groups: Vec::new(),
             pending_welcomes: Vec::new(),

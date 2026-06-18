@@ -52,8 +52,9 @@ object TypedMarmotDecoder {
     const val MESSAGES_SCHEMA_ID = "nmp.marmot.messages"
     const val MESSAGES_FILE_IDENTIFIER = "NMMG"
 
-    // Snapshot (NMMS): v1 = original shape; v2 adds pending_ops + last_op_error.
-    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u)
+    // Snapshot (NMMS): v1 = original shape; v2 adds pending_ops + last_op_error;
+    // v3 removes age_display/subtitle/action_label, adds is_registered on KeyPackageStatus.
+    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u, 3u)
 
     // Messages (NMMG): unchanged at v1.
     private const val SUPPORTED_MESSAGES_SCHEMA_VERSION: UInt = 1u
@@ -148,9 +149,7 @@ object TypedMarmotDecoder {
         dTag = if (kp.hasDTag) kp.dTag else null,
         ageSecs = if (kp.hasAgeSecs) kp.ageSecs.toLong() else null,
         stale = kp.stale,
-        ageDisplay = if (kp.hasAgeDisplay) kp.ageDisplay else null,
-        subtitle = kp.subtitle ?: "",
-        actionLabel = kp.actionLabel ?: "",
+        isRegistered = kp.isRegistered,
     )
 
     private fun mapPendingOp(op: FbPendingOpRow): MarmotPendingOp = MarmotPendingOp(
