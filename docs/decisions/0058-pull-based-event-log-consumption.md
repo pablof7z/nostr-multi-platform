@@ -8,6 +8,12 @@
   contract (§5), retention/GC (§6), the ADR-0039 reconciliation (§6.1), and the
   ladder (§8). The body sections below are amended inline where they were factually
   wrong; Revision 2 carries the authoritative contract.**
+  **Revised again 2026-06-18 (Revision 3 — residual hardening): a second adversarial codex
+  review raised three blocking residuals — `LruEviction`-as-`Deleted` is a mirror
+  correctness trap, `delete_by_filter` / `AdminPurge` hook coverage was missing, and the
+  ladder contradicted itself on whether the bounded log GC ships in step-1. Rev 3 fixes all
+  three in place (taxonomy §3 / R2.2, hook list R2.2, ladder §8) and adds the "Revision 3"
+  section below, authoritative where it supersedes Rev 2.**
 - **Date:** 2026-06-18
 - **Doctrine:** `doctrine:d1` (reads-through-store), `doctrine:d4` (single writer),
   `doctrine:d5` (bounded), `doctrine:d8` (no polling)
@@ -125,30 +131,57 @@ implementer picks one and uses it uniformly:
 ```
 Inserted                         // a newly stored, accepted event
 Replaced  { replaced_id }        // replaceable/parameterized-replaceable supersede
-Deleted   { target_id, reason: DeleteReason }
+Deleted   { target_id, reason: DeleteReason }   // SEMANTIC removal only — Rev 3
 
 DeleteReason = Nip09            // NIP-09 kind:5 semantic delete (self-delete of a target)
-             | Nip40Expiry      // NIP-40 expiration purge
-             | AdminPurge       // explicit DeleteFilter / admin/user purge
-             | LruEviction      // durable-LRU removal (only when a finite ceiling is set)
+             | Nip40Expiry      // NIP-40 expiration purge (event meant to be gone)
+             | AdminPurge       // destructive delete_by_filter (ByAuthor/ByIds/ByKindRange)
+// Rev 3: LRU eviction and delete_by_filter(ByRelayOnly) are RETENTION-class — the event
+// still validly exists, so they emit NO Deleted row (see the Decision below). A mirror
+// acts on a Deleted row by deleting its copy; it must NEVER do so on retention eviction.
 ```
 
 **Which mutations produce rows.** `Inserted` and `Replaced` rows are produced on the
 accepting insert/replace path (one `Replaced` carrying the superseded id; the kind:5
 *event itself* is an `Inserted`). One `Deleted { target_id, Nip09 }` is emitted **per
 removed target** inside `insert_kind5` (both the `e`-tag and `a`-tag arms). `Nip40Expiry`
-and `LruEviction` rows are emitted by the GC pass when it purges/evicts a primary row.
+rows are emitted by the GC pass when it purges an expired primary row. **`AdminPurge`
+rows are emitted by `delete_by_filter`** (`crates/nmp-store/src/events.rs:363`), one per
+removed primary row, under the same lock/txn as the removal — for the **destructive**
+variants `ByAuthor` / `ByIds` / `ByKindRange` (operator intent to remove). The
+`ByRelayOnly` variant is relay-source bookkeeping, not a destroy (the event still validly
+exists elsewhere), so it is retention-class and emits **no** consumer-visible `Deleted`
+row — like LRU eviction, which **emits no row at all** (Rev 3; see the Decision below).
 **Duplicates produce no row** (see §5) and **address-only tombstones** (a kind:5 `a`-tag
 that matched no stored event yet — `insert_kind5.rs:107-111`) produce no `Deleted` row,
 because no stored event was removed; they remain pure tombstone state until a future
 arrival is suppressed.
 
-**Decision — `Nip40Expiry` and `LruEviction` DO get rows.** A mirror that holds only
-distinct events still needs to learn an event left the authoritative set, regardless
-of *why*, or it will diverge (keep a row the source dropped). `reason` lets a mirror
-that only cares about NIP-09 filter the rest. This is also what makes R2.4's seq-keyed
-log GC tractable: the log is the complete mutation history up to its own retention
-floor, not a partial one.
+**Decision (Rev 3) — `Deleted` rows are SEMANTIC removals only; retention eviction emits
+no row.** A `Deleted` row is a signal a mirror **acts on** by deleting its own copy, so
+it must mean "this event is genuinely gone from the authoritative set," never "this store
+dropped it for capacity or relay bookkeeping." Therefore:
+
+- **`Nip09`, `Nip40Expiry`, and `AdminPurge` DO get rows** — all three are semantic
+  removals: the author deleted it (kind:5), the event's own signed `expiration` tag fired
+  (NIP-40 — meant to be gone), or an operator purged it on purpose (`delete_by_filter`
+  `ByAuthor`/`ByIds`/`ByKindRange`). A mirror deletes its copy on these; `reason` lets a
+  mirror that only honors NIP-09 filter the other two.
+- **LRU eviction does NOT get a `Deleted` row at all** — an evicted event still validly
+  exists, so a `Deleted { LruEviction }` would steer a mirror to **destroy valid data**
+  (the trap Rev 2 fell into). `LruEviction` is **removed from `DeleteReason`**.
+  Retention/eviction is invisible to the consumer by construction: a `Protected` cursor's
+  log-floor pin (R2.3) prevents eviction of **unconsumed** log rows, and a consumer that
+  falls past `max_lag_entries` receives an explicit `PullGap` (re-sync from
+  `first_available_seq`), never a false delete. `delete_by_filter(ByRelayOnly)` — the
+  event still exists, only its sole relay source was dropped — is in this same retention
+  class and likewise emits **no** consumer-visible `Deleted` row.
+
+The earlier "the log must record every removal regardless of *why* to stay a complete
+mutation history" reasoning is **withdrawn**: log-GC tractability comes from seq-keying
+(R2.3), not from logging retention evictions. The mirror contract is therefore
+unambiguous — **a mirror deletes its copy ONLY on `Nip09` / `Nip40Expiry` / `AdminPurge`,
+NEVER on retention eviction.**
 
 ### R2.3 Retention is its own seq-keyed log GC — not an event-id pin, not a K3 pin
 
@@ -181,8 +214,10 @@ primary-event LRU and the K3 coverage-ledger pins:
   cannot pin the log unbounded (D5).
 
 This means R2.3 introduces a **new store seam** (the log GC + its
-`min_protected_cursor_seq` input), specified as its own ladder step (§8 step-4), not a
-reuse of the K3 pin path. It composes with K3: a `Protected` cursor whose raw bytes
+`min_protected_cursor_seq` input), not a reuse of the K3 pin path. Its **bounded floor
+ships in §8 step-1**; the `Protected`-cursor floor-pin that raises that floor to the
+slowest protected cursor composes on top in **§8 step-4**. It composes with K3: a
+`Protected` cursor whose raw bytes
 let a mirror avoid pinning *primary* rows still needs its *log* rows retained, and the
 log GC is the only thing that retains them.
 
@@ -259,9 +294,12 @@ Rejected alternatives, with reasons:
   mirror that wants the pre-existing corpus already has the store's own export/query
   surface (the `hl` mirror does an initial nostrdb sync by other means). Coupling a
   one-time historical scan into the cursor primitive would burden it speculatively
-  (D5). If a mirror genuinely needs "everything, then tail," that is a mirror-side
-  concatenation of (export snapshot) + (cursor from head), specified in the step-5
-  `hl` migration, **not** the step-1 log.
+  (D5). If a mirror genuinely needs "everything, then tail," the sound procedure
+  (specified in the §8 step-5 `hl` migration) is: **register the cursor at the current
+  head FIRST, then export the current store, then pull from that cursor** — tolerating
+  duplicates but **never** gaps (cursor-first guarantees no arrival lands in the window
+  between export and registration). That is mirror-side composition of (export snapshot)
+  + (cursor from head), **not** a step-1 log concern.
 
 The log is thus an **arrival journal from the upgrade point forward**, which is exactly
 what an arrival-ordered cursor can honestly provide.
@@ -308,6 +346,73 @@ LMDB sub-db count; land it before step-1 **or** develop step-1 directly on top o
 to avoid two simultaneous sub-db-count migrations. #1541 (event-driven wakeups) does
 not block step-1 but **should land before step-3 (FFI wake)**, which generalizes its
 wake model. This is tactical ordering for #1566, not an ADR decision.
+
+---
+
+## Revision 3 (2026-06-18) — residual hardening
+
+A second adversarial codex review (verdict: "not yet sound to execute") raised three
+BLOCKING residuals against Revision 2, all verified against code. Rev 3 closes them by
+correcting the taxonomy (§3 / R2.2), the hook list (R2.2), and the ladder (§8) **in
+place** — the sections above now read correctly. This section records the decisions.
+
+### R3.1 `Deleted` rows are SEMANTIC removals only — LRU eviction emits no row
+
+Rev 2 made `LruEviction` a `Deleted` reason and argued a mirror "needs to learn an event
+left the authoritative set, regardless of *why*." That is a **correctness trap**: LRU
+eviction is not a Nostr semantic delete — the evicted event still validly exists and the
+store writes **no** tombstone for it (durable LRU is off by default,
+`crates/nmp-store/src/types/gc.rs:34,65,76`; eviction creates no tombstone) — so a mirror
+that acted on the row would **destroy valid data**. **Decision: `LruEviction` is removed
+from `DeleteReason` entirely** — not kept as an advisory marker (an advisory row invites
+exactly the confusion; dropping it is the cleaner, footgun-free choice). Retention is made
+invisible to the consumer by construction: a `Protected` cursor's log-floor pin (R2.3)
+keeps **unconsumed** log rows from being pruned, and a consumer that falls past
+`max_lag_entries` gets an explicit `PullGap` (re-sync from `first_available_seq`), never a
+false delete. `DeleteReason` is now `Nip09 | Nip40Expiry | AdminPurge` — all three are
+**semantic** ("this event is genuinely gone from the authoritative set"): author delete,
+NIP-40 expiry (the event's own signed `expiration` fired), operator purge. **Mirror
+contract: a mirror deletes its copy ONLY on `Nip09` / `Nip40Expiry` / `AdminPurge`, NEVER
+on retention eviction.** Corrected inline in §3, R2.2, and §6.
+
+### R3.2 `delete_by_filter` / `AdminPurge` hook coverage
+
+`EventStore::delete_by_filter(DeleteFilter)` (`crates/nmp-store/src/events.rs:363`; e.g.
+`DeleteFilter::ByRelayOnly`, exercised at `lmdb/tests_kind5.rs:191`) is a primary mutation
+site the Rev-2 hook list and parity tests omitted. **It is now in the hook list (R2.2) and
+the step-1 parity tests (§8):** it emits one log row per removed primary row, under the
+same lock/txn as the removal. Its `DeleteReason` follows R3.1 — the **destructive**
+variants `ByAuthor` / `ByIds` / `ByKindRange` (operator intent) emit `Deleted { AdminPurge }`;
+**`ByRelayOnly`** is relay-source bookkeeping (the event still validly exists elsewhere)
+and is **retention-class — it emits NO consumer-visible `Deleted` row**, exactly like LRU
+eviction. This keeps the mirror contract sound: no relay-cleanup or capacity operation can
+make a mirror destroy a valid event.
+
+### R3.3 Ladder consistency — the bounded log GC ships in step-1
+
+Rev 2 contradicted itself: R2.4 put the bounded seq-keyed log GC **in** step-1, while §8
+listed "log GC / retention" as a separate later step — reopening the unbounded
+raw-event-duplication risk. **Resolved: the bounded log GC — the `log_retention_floor_seq`
+floor mechanism plus a default retention bound — ships inside step-1.** There is no
+standalone "log GC" step. The only retention work deferred is the **advanced
+`Protected`-cursor floor-pin** (`min_protected_cursor_seq`, a ceiling on the step-1 floor),
+which composes in step-4. **Step-1 never ships always-on unbounded raw-event log writes.**
+The §8 ladder is renumbered accordingly: the standalone GC step is gone, so `hl` migration
+is now step-5 and `load_older` is step-6.
+
+### R3.4 `hl` initial full-sync procedure (R2.6 refinement)
+
+The §8 step-5 `hl` migration specifies initial full sync as: **register the cursor at the
+current head, then export the current store, then pull from that cursor** — tolerating
+duplicates but **never** gaps. Cursor-first guarantees no arrival lands in the window
+between export and registration.
+
+### Untouched (closed in Rev 2, confirmed still closed)
+
+R2.1 (level-triggered wake + drain + initial-wake + re-wake while lag remains), R2.5
+(txn-local DB-resident seq allocation, not an `AtomicU64`), R2.7 (`load_older` split out —
+step-1 is `GlobalLog`-only), and R2.8 (hard FFI page caps + no-UI-thread-pull) are
+**unchanged** by Rev 3.
 
 ---
 
@@ -360,16 +465,17 @@ PullCursor { consumer_id, scope: PullScope, after_seq: IngestSeq,
 StoreLogEntry {
   seq: u64,                         // monotonic INGEST order (not created_at)
   op:  Inserted | Replaced { replaced_id }
-     | Deleted { target_id, reason: DeleteReason },   // taxonomy — Rev 2 R2.2
+     | Deleted { target_id, reason: DeleteReason },   // SEMANTIC removal only — R2.2 / Rev 3
   event_id,
   raw_event: Option<RawEvent>,      // present for Inserted / Replaced (bounded by R2.4)
   source_relay: Option<RelayUrl>,
   received_at_ms,
 }
 
-// Rev 2 R2.2 — every reason an event left the authoritative set; a mirror filters
-// on `reason` (e.g. NIP-09-only) but is told regardless so it cannot diverge.
-DeleteReason = Nip09 | Nip40Expiry | AdminPurge | LruEviction
+// Rev 3 — `Deleted` rows are SEMANTIC removals a mirror acts on (deletes its copy):
+// author delete, NIP-40 expiry, or operator purge. RETENTION removals (LRU eviction,
+// delete_by_filter(ByRelayOnly)) emit NO row — the event still validly exists.
+DeleteReason = Nip09 | Nip40Expiry | AdminPurge
 ```
 
 - `Inserted` for accepted stored events; `Replaced` carries the new event + the
@@ -378,6 +484,12 @@ DeleteReason = Nip09 | Nip40Expiry | AdminPurge | LruEviction
   appended at the store-internal mutation site, NOT derived from the public
   `InsertOutcome`** — kind:5 removes targets as internal side effects and still
   returns `InsertOutcome::Inserted` (Rev 2 R2.2; `mem/insert_kind5.rs:34-38,88-90`).
+- **`AdminPurge`** rows come from `delete_by_filter` (`events.rs:363`), one per removed
+  primary row, for the destructive `ByAuthor`/`ByIds`/`ByKindRange` variants (R2.2).
+- **Retention removals emit no row (Rev 3):** LRU eviction and
+  `delete_by_filter(ByRelayOnly)` produce **no** `Deleted` row — the event still validly
+  exists. A mirror deletes its local copy **only** on a `Deleted` row (`Nip09` /
+  `Nip40Expiry` / `AdminPurge`), **never** on retention eviction (R2.2).
 - **Duplicates do not create log entries** — see §5.
 
 `scan_log_since_seq` returns a **level-triggered** page (Rev 2 R2.1):
@@ -493,6 +605,13 @@ retained to the slowest protected cursor, not forever. UI rows stay protected by
 existing interest/feed claims. The log GC composes *alongside* the K3 coverage-ledger
 pin machinery (ADR-0056); it does not reuse or duplicate it.
 
+**Retention eviction is mirror-invisible (Rev 3).** Pruning a *log* row (this GC) or
+evicting a *primary* event row (LRU, or `delete_by_filter(ByRelayOnly)`) **never** emits a
+consumer-visible `Deleted` row — those events still validly exist. A `Protected` cursor's
+floor pin keeps its **unconsumed** log rows from being pruned; a cursor that falls past
+`max_lag_entries` gets an explicit `PullGap`, not a false delete. A mirror deletes its copy
+only on a semantic `Deleted` row (`Nip09` / `Nip40Expiry` / `AdminPurge` — R2.2).
+
 ### 6.1 Reconciliation with ADR-0039 (the load-bearing point)
 
 ADR-0039 rejects a **generic pull accessor for kernel-derived projections** because
@@ -543,36 +662,49 @@ poll loop." That reasoning is fully preserved here:
 The store **foundation** overlaps #1523 and is partly landed. The remaining,
 pull-specific work is tracked in **#1566** (a #1523 subissue):
 
-> **Rev 2 re-scope.** Step-1 is `GlobalLog`-only, ships its bounded log GC inside the
-> same PR (so raw-event duplication is never unbounded), appends log rows at the
-> store-internal mutation sites (not from `InsertOutcome`), and allocates seq inside
-> the event txn. The log GC / retention is its **own** step (now step-5), not a reuse
-> of the K3 pin path. `load_older` is **not** solved by step-1 and gets its own
-> separate-design step (now step-7).
+> **Re-scope (Rev 2, sharpened in Rev 3).** Step-1 is `GlobalLog`-only and ships the
+> **bounded seq-keyed log GC inside the same PR** — the `log_retention_floor_seq` floor
+> mechanism *and* a default retention bound both land in step-1, so raw-event duplication
+> is never unbounded (there is **no** separate "log GC = later step"). Step-1 appends log
+> rows at the store-internal mutation sites (not from `InsertOutcome`) and allocates seq
+> inside the event txn. The only retention work deferred is the **advanced
+> `Protected`-cursor floor-pin** (`min_protected_cursor_seq` ceiling on the step-1 floor),
+> which composes in step-4. `load_older` is **not** solved by step-1 and gets its own
+> separate-design step (step-6).
 
-1. **Store ingest-seq index + log (`GlobalLog`) + `scan_log_since_seq`** on both
-   backends (Mem + LMDB). Seq allocated **inside the event mutation txn** (R2.5); log
-   rows appended at **store-internal mutation sites** including each kind:5 target
-   removal (R2.2); `op` taxonomy with `DeleteReason` (R2.2); `PullPage` carries
-   `next_after_seq` / `latest_seq` / `has_more` (R2.1); a **default bounded log
-   policy** so raw duplication is bounded even with no cursor (R2.4). Parity tests:
-   late old event after cursor; duplicate → no seq; `Replaced` op; NIP-09 `Deleted`
-   ops (per target); `Nip40Expiry` / `LruEviction` ops; LMDB reopen seq continuity;
-   no-backfill on upgrade (R2.6). *Smallest independently-valuable PR; the keystone.*
+1. **Store ingest-seq index + log (`GlobalLog`) + `scan_log_since_seq` + bounded log GC**
+   on both backends (Mem + LMDB). Seq allocated **inside the event mutation txn** (R2.5);
+   log rows appended at **store-internal mutation sites** — each kind:5 target removal and
+   each `delete_by_filter` removed primary row (R2.2); `op` taxonomy with
+   `DeleteReason = Nip09 | Nip40Expiry | AdminPurge` — **LRU eviction and
+   `delete_by_filter(ByRelayOnly)` emit NO row** (R2.2 / Rev 3); `PullPage` carries
+   `next_after_seq` / `latest_seq` / `has_more` (R2.1); **the seq-keyed log GC with a
+   default retention bound ships HERE** (`log_retention_floor_seq` + a default
+   `max_log_entries` / size budget), so raw duplication is bounded even with no cursor
+   registered (R2.4). Parity tests: late old event after cursor; duplicate → no seq;
+   `Replaced` op; NIP-09 `Deleted` ops (per target); `Nip40Expiry` op; **`AdminPurge` op
+   per `delete_by_filter` removed row (`ByAuthor`/`ByIds`/`ByKindRange`)**; **`ByRelayOnly`
+   and LRU eviction emit NO `Deleted` row**; default log-GC bound prunes the tail and
+   `oldest_available_seq()` rises; LMDB reopen seq continuity; no-backfill on upgrade
+   (R2.6). *Smallest independently-valuable PR; the keystone.*
 2. **Kernel pull service** over the `GlobalLog` scope (no FFI yet). The
    level-triggered drain + initial-wake / re-wake registry semantics (R2.1) live here.
 3. **FFI `PullPage` + typed `nmp.pull.wake`** (generalize the #1520 wake). Hard FFI
    page-size cap; document `pull_page` must not run on the UI thread from `apply()`
    (R2.8).
 4. **Cursor registration + retention modes** — `GapAllowed` explicit-gap contract +
-   `Protected { max_lag_entries }` publishing `min_protected_cursor_seq` to the log GC,
-   with explicit gap / lag-degrade tests.
-5. **Seq-keyed log GC** (`log_retention_floor_seq`, the separate store seam — R2.3),
-   composed alongside (never merged into) primary LRU and the K3 coverage pins.
-6. **`hl` mirror migration** onto the `GlobalLog` cursor (mirror contract = distinct
-   events + optional merged-provenance read, not traffic replay); then confirm the
-   #1552 native sink stays deleted.
-7. **`load_older` → interest-scoped pagination — SEPARATE DESIGN (R2.7).** *Not* a
+   `Protected { max_lag_entries }` publishing `min_protected_cursor_seq` as a **ceiling on
+   the step-1 `log_retention_floor_seq`** (the advanced retention mode — pin the log floor
+   to the slowest protected cursor; degrade to the gap contract past `max_lag_entries`),
+   with explicit gap / lag-degrade tests. (The log GC *bound* itself already shipped in
+   step-1; this step only adds the Protected floor-pin on top of it.)
+5. **`hl` mirror migration** onto the `GlobalLog` cursor (mirror contract = distinct
+   events + optional merged-provenance read, not traffic replay; **deletes only on a
+   semantic `Deleted` row — `Nip09` / `Nip40Expiry` / `AdminPurge` — never on retention
+   eviction**, R2.2). Initial full sync (R2.6): **register the cursor at the current head,
+   then export the current store, then pull from that cursor** — tolerating duplicates but
+   **never** gaps. Then confirm the #1552 native sink stays deleted.
+6. **`load_older` → interest-scoped pagination — SEPARATE DESIGN (R2.7).** *Not* a
    thin wrapper over the global seq log. Requires an interest-scoped seq index or a
    two-cursor model (a `created_at`/id display cursor + a seq cursor for the
    late-old-event completeness check). Design step in its own right; feed display
