@@ -35,9 +35,6 @@ pub mod nmp {
             pub const VT_ADMIN_COUNT: ::flatbuffers::VOffsetT = 16;
             pub const VT_PUBLIC: ::flatbuffers::VOffsetT = 18;
             pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
-            pub const VT_INITIALS: ::flatbuffers::VOffsetT = 22;
-            pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 24;
-            pub const VT_SUBTITLE: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -54,15 +51,6 @@ pub mod nmp {
                 args: &'args DiscoveredGroupArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<DiscoveredGroup<'bldr>> {
                 let mut builder = DiscoveredGroupBuilder::new(_fbb);
-                if let Some(x) = args.subtitle {
-                    builder.add_subtitle(x);
-                }
-                if let Some(x) = args.display_name {
-                    builder.add_display_name(x);
-                }
-                if let Some(x) = args.initials {
-                    builder.add_initials(x);
-                }
                 builder.add_admin_count(args.admin_count);
                 builder.add_member_count(args.member_count);
                 if let Some(x) = args.about {
@@ -187,42 +175,6 @@ pub mod nmp {
                         .unwrap()
                 }
             }
-            #[inline]
-            pub fn initials(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        DiscoveredGroup::VT_INITIALS,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        DiscoveredGroup::VT_DISPLAY_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn subtitle(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        DiscoveredGroup::VT_SUBTITLE,
-                        None,
-                    )
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for DiscoveredGroup<'_> {
@@ -261,21 +213,6 @@ pub mod nmp {
                     .visit_field::<u32>("admin_count", Self::VT_ADMIN_COUNT, false)?
                     .visit_field::<bool>("public", Self::VT_PUBLIC, false)?
                     .visit_field::<bool>("open", Self::VT_OPEN, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "initials",
-                        Self::VT_INITIALS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "display_name",
-                        Self::VT_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "subtitle",
-                        Self::VT_SUBTITLE,
-                        false,
-                    )?
                     .finish();
                 Ok(())
             }
@@ -290,9 +227,6 @@ pub mod nmp {
             pub admin_count: u32,
             pub public: bool,
             pub open: bool,
-            pub initials: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub subtitle: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for DiscoveredGroupArgs<'a> {
             #[inline]
@@ -307,9 +241,6 @@ pub mod nmp {
                     admin_count: 0,
                     public: false,
                     open: false,
-                    initials: None,
-                    display_name: None,
-                    subtitle: None,
                 }
             }
         }
@@ -378,27 +309,6 @@ pub mod nmp {
                     .push_slot::<bool>(DiscoveredGroup::VT_OPEN, open, false);
             }
             #[inline]
-            pub fn add_initials(&mut self, initials: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    DiscoveredGroup::VT_INITIALS,
-                    initials,
-                );
-            }
-            #[inline]
-            pub fn add_display_name(&mut self, display_name: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    DiscoveredGroup::VT_DISPLAY_NAME,
-                    display_name,
-                );
-            }
-            #[inline]
-            pub fn add_subtitle(&mut self, subtitle: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    DiscoveredGroup::VT_SUBTITLE,
-                    subtitle,
-                );
-            }
-            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> DiscoveredGroupBuilder<'a, 'b, A> {
@@ -427,9 +337,6 @@ pub mod nmp {
                 ds.field("admin_count", &self.admin_count());
                 ds.field("public", &self.public());
                 ds.field("open", &self.open());
-                ds.field("initials", &self.initials());
-                ds.field("display_name", &self.display_name());
-                ds.field("subtitle", &self.subtitle());
                 ds.finish()
             }
         }

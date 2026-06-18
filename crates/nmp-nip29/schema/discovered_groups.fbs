@@ -14,10 +14,9 @@ namespace nmp.nip29;
 //
 // Raw data only (ADR-0032): protocol fields are raw values — the in-relay group
 // id (`["d", _]` tag value), the host relay URL, raw `["name"/"picture"/"about"]`
-// tag values, raw `["p", _]` tag cardinalities. The V-24 thin-shell display
-// fields (`initials`, `display_name`, `subtitle`) are pre-computed by Rust (the
-// projection owns presentation so the shell renders them verbatim) and travel
-// here unchanged — they are not re-derived host-side.
+// tag values, raw `["p", _]` tag cardinalities. Presentation-layer formatting
+// (display-name fallback, avatar initials, subtitle) is the shell's
+// responsibility and is NOT pre-computed here.
 //
 // Identity encoding: strings, not raw bytes — `group_id` / `host_relay_url` are
 // `String` in the source serde types, so `string` is byte-for-byte parity.
@@ -48,9 +47,6 @@ table DiscoveredGroup {
   admin_count:uint32;       // cardinality of `["p", _]` on latest 39001
   public:bool;              // false iff latest 39000 carried `["private"]`
   open:bool;                // false iff latest 39000 carried `["closed"]`
-  initials:string;          // pre-computed avatar initials (V-24, Rust-owned)
-  display_name:string;      // `name` else `group_id` fallback (V-24)
-  subtitle:string;          // pre-formatted accessibility subtitle (V-24)
 }
 
 // The serialised discovery read model. `groups` is ordered alphabetically by

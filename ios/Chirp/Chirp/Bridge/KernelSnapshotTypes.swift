@@ -100,6 +100,10 @@ struct GroupChatSnapshot: Decodable, Equatable {
 
 /// One discovered NIP-29 group, ready for `JoinGroupView` to render.
 ///
+/// Raw protocol data only (ADR-0032). Presentation-layer fields such as
+/// display-name fallback, avatar initials, and formatted subtitle are
+/// computed by the `DiscoveredGroup` extension below.
+///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
 /// maps `"group_id"` / `"host_relay_url"` / `"member_count"` / `"admin_count"`
 /// automatically.
@@ -118,21 +122,30 @@ struct DiscoveredGroup: Decodable, Identifiable, Equatable {
     let adminCount: UInt32
     let `public`: Bool
     let open: Bool
-    /// Pre-computed 2-char uppercase initials for the avatar tile (Rust:
-    /// first 2 chars of `name` if non-empty, else of `group_id`,
-    /// uppercased). Thin-shell V-24 — no Swift derivation.
-    let initials: String
-    /// Display name: `name` when non-empty, `groupId` as fallback. The
-    /// shell renders this verbatim without a null-coalescing conditional
-    /// (V-24).
-    let displayName: String
-    /// Pre-formatted accessibility subtitle, e.g.
-    /// `"# Public · Open · 5 members"` / `"🔒 Private · Closed · 1 member"`.
-    /// Visibility glyphs (`#` / `🔒`) and pluralization live in Rust
-    /// (V-24).
-    let subtitle: String
 
     var id: String { "\(hostRelayUrl)|\(groupId)" }
+}
+
+extension DiscoveredGroup {
+    /// Display name: `name` when non-empty, `groupId` as fallback (ADR-0032).
+    var displayName: String {
+        if let n = name, !n.isEmpty { return n }
+        return groupId
+    }
+
+    /// Two-character uppercase initials for the avatar tile (ADR-0032).
+    var initials: String {
+        String(displayName.prefix(2).uppercased())
+    }
+
+    /// Formatted subtitle: visibility glyph + access + pluralized member count
+    /// (ADR-0032).
+    var subtitle: String {
+        let vis = `public` ? "# Public" : "🔒 Private"
+        let acc = open ? "Open" : "Closed"
+        let mem = memberCount == 1 ? "1 member" : "\(memberCount) members"
+        return "\(vis) · \(acc) · \(mem)"
+    }
 }
 
 /// The serialised read-model `JoinGroupView` consumes. `groups` is ordered

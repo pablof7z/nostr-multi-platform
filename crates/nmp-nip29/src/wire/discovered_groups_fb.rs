@@ -8,9 +8,9 @@
 //! is the typed payload a `NDGS`-aware host decodes with generated accessors
 //! instead of JSON reflection.
 //!
-//! Raw data only (ADR-0032): protocol fields are raw values; the V-24 thin-shell
-//! display fields (`initials` / `display_name` / `subtitle`) are pre-computed by
-//! the projection (Rust owns presentation) and carried verbatim.
+//! Raw data only (ADR-0032): protocol fields are raw values. Presentation-layer
+//! formatting (display-name fallback, avatar initials, subtitle) is the shell's
+//! responsibility and is not encoded here.
 //!
 //! Optional fields: `name` / `picture` / `about` are `Option<String>` in
 //! [`DiscoveredGroup`]. They are encoded as bare FlatBuffers `string` (absent ==
@@ -103,9 +103,6 @@ fn encode_group<'a>(
     let name = group.name.as_ref().map(|s| fbb.create_string(s));
     let picture = group.picture.as_ref().map(|s| fbb.create_string(s));
     let about = group.about.as_ref().map(|s| fbb.create_string(s));
-    let initials = fbb.create_string(&group.initials);
-    let display_name = fbb.create_string(&group.display_name);
-    let subtitle = fbb.create_string(&group.subtitle);
 
     fb::DiscoveredGroup::create(
         fbb,
@@ -119,9 +116,6 @@ fn encode_group<'a>(
             admin_count: group.admin_count,
             public: group.public,
             open: group.open,
-            initials: Some(initials),
-            display_name: Some(display_name),
-            subtitle: Some(subtitle),
         },
     )
 }
@@ -169,9 +163,6 @@ fn decode_group(group: fb::DiscoveredGroup<'_>) -> Result<DiscoveredGroup, Strin
         admin_count: group.admin_count(),
         public: group.public(),
         open: group.open(),
-        initials: str_field(group.initials(), "DiscoveredGroup.initials")?,
-        display_name: str_field(group.display_name(), "DiscoveredGroup.display_name")?,
-        subtitle: str_field(group.subtitle(), "DiscoveredGroup.subtitle")?,
     })
 }
 
