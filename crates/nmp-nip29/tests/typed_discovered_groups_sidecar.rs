@@ -21,7 +21,7 @@ use nmp_nip29::{
 /// kind:39000/39002 events for the wired relay roll into the
 /// `"nmp.nip29.discovered_groups"` typed sidecar with the `NDGS` identifier; the
 /// payload decodes back into the typed `DiscoveredGroupsSnapshot`, preserving the
-/// rolled-up counts, the `Option<String>` fields, and the V-24 display fields.
+/// rolled-up counts and the `Option<String>` fields.
 #[test]
 fn discovered_groups_typed_sidecar_round_trips() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
@@ -83,10 +83,6 @@ fn discovered_groups_typed_sidecar_round_trips() {
     assert_eq!(group.picture, None);
     assert_eq!(group.member_count, 2);
     assert!(group.public && group.open);
-    // V-24 display fields are pre-computed by the projection and carried verbatim.
-    assert_eq!(group.display_name, "Rust Nostr");
-    assert!(!group.initials.is_empty());
-    assert!(!group.subtitle.is_empty());
 
     teardown(app);
 }

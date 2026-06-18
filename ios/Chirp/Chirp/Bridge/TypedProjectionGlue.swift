@@ -281,9 +281,8 @@ enum TypedProjectionGlue {
     /// order). `name`/`picture`/`about` are tag-derived `Option<String>` on the
     /// wire — bare FlatBuffers strings where absent decodes to `nil`; the glue
     /// preserves that `nil` (NOT `?? ""`) so the typed value is byte-identical to
-    /// the JSON path's `null`. The V-24 thin-shell display fields
-    /// (`initials`/`displayName`/`subtitle`) travel pre-computed and are copied
-    /// verbatim (never re-derived host-side, ADR-0032).
+    /// the JSON path's `null`. Presentation fields (`displayName`/`initials`/
+    /// `subtitle`) are computed by the `DiscoveredGroup` extension (ADR-0032).
     static func discoveredGroups(
         _ reader: nmp_nip29_DiscoveredGroupsSnapshot
     ) -> DiscoveredGroupsSnapshot {
@@ -299,10 +298,7 @@ enum TypedProjectionGlue {
                     memberCount: row.memberCount,
                     adminCount: row.adminCount,
                     public: row.public_,
-                    open: row.open_,
-                    initials: row.initials ?? "",
-                    displayName: row.displayName ?? "",
-                    subtitle: row.subtitle ?? ""
+                    open: row.open_
                 )
             }
         )

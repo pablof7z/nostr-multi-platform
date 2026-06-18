@@ -29,9 +29,6 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     case adminCount = 16
     case public_ = 18
     case open_ = 20
-    case initials = 22
-    case displayName = 24
-    case subtitle = 26
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -50,13 +47,7 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
   public var adminCount: UInt32 { let o = _accessor.offset(VTOFFSET.adminCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var public_: Bool { let o = _accessor.offset(VTOFFSET.public_.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var open_: Bool { let o = _accessor.offset(VTOFFSET.open_.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var initials: String? { let o = _accessor.offset(VTOFFSET.initials.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var initialsSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.initials.v) }
-  public var displayName: String? { let o = _accessor.offset(VTOFFSET.displayName.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var displayNameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.displayName.v) }
-  public var subtitle: String? { let o = _accessor.offset(VTOFFSET.subtitle.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var subtitleSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.subtitle.v) }
-  public static func startDiscoveredGroup(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 12) }
+  public static func startDiscoveredGroup(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 9) }
   public static func add(groupId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: groupId, at: VTOFFSET.groupId.p) }
   public static func add(hostRelayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: hostRelayUrl, at: VTOFFSET.hostRelayUrl.p) }
   public static func add(name: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: name, at: VTOFFSET.name.p) }
@@ -68,9 +59,6 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
    at: VTOFFSET.public_.p) }
   public static func add(open_: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: open_, def: false,
    at: VTOFFSET.open_.p) }
-  public static func add(initials: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: initials, at: VTOFFSET.initials.p) }
-  public static func add(displayName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayName, at: VTOFFSET.displayName.p) }
-  public static func add(subtitle: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: subtitle, at: VTOFFSET.subtitle.p) }
   public static func endDiscoveredGroup(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createDiscoveredGroup(
     _ fbb: inout FlatBufferBuilder,
@@ -82,10 +70,7 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     memberCount: UInt32 = 0,
     adminCount: UInt32 = 0,
     public_: Bool = false,
-    open_: Bool = false,
-    initialsOffset initials: Offset = Offset(),
-    displayNameOffset displayName: Offset = Offset(),
-    subtitleOffset subtitle: Offset = Offset()
+    open_: Bool = false
   ) -> Offset {
     let __start = nmp_nip29_DiscoveredGroup.startDiscoveredGroup(&fbb)
     nmp_nip29_DiscoveredGroup.add(groupId: groupId, &fbb)
@@ -97,9 +82,6 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     nmp_nip29_DiscoveredGroup.add(adminCount: adminCount, &fbb)
     nmp_nip29_DiscoveredGroup.add(public_: public_, &fbb)
     nmp_nip29_DiscoveredGroup.add(open_: open_, &fbb)
-    nmp_nip29_DiscoveredGroup.add(initials: initials, &fbb)
-    nmp_nip29_DiscoveredGroup.add(displayName: displayName, &fbb)
-    nmp_nip29_DiscoveredGroup.add(subtitle: subtitle, &fbb)
     return nmp_nip29_DiscoveredGroup.endDiscoveredGroup(&fbb, start: __start)
   }
 
@@ -114,9 +96,6 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     try _v.visit(field: VTOFFSET.adminCount.p, fieldName: "adminCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.public_.p, fieldName: "public_", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.open_.p, fieldName: "open_", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.initials.p, fieldName: "initials", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.displayName.p, fieldName: "displayName", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.subtitle.p, fieldName: "subtitle", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

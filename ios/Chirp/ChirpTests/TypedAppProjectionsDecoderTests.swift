@@ -227,9 +227,10 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertEqual(full.adminCount, 3)
         XCTAssertTrue(full.public)
         XCTAssertTrue(full.open)
-        XCTAssertEqual(full.initials, "TF")
-        XCTAssertEqual(full.displayName, "Typed Full")
-        XCTAssertEqual(full.subtitle, "# Public · Open · 42 members (typed)")
+        // Shell-derived display helpers (computed properties in DiscoveredGroup extension)
+        XCTAssertEqual(full.displayName, "Typed Full")    // name present → use name
+        XCTAssertEqual(full.initials, "TY")               // first 2 of "Typed Full" uppercased
+        XCTAssertEqual(full.subtitle, "# Public · Open · 42 members")
 
         // Row 1: optional tag-derived `name`/`picture`/`about` ABSENT. The glue
         // must preserve nil (NOT `?? ""`), byte-identical to the JSON `null`.
@@ -241,7 +242,10 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertEqual(bare.memberCount, 0)
         XCTAssertFalse(bare.public)
         XCTAssertFalse(bare.open)
+        // Shell-derived: fallback to groupId since name is nil
         XCTAssertEqual(bare.displayName, "typed-group-bare")
+        XCTAssertEqual(bare.initials, "TY")               // first 2 of "typed-group-bare"
+        XCTAssertEqual(bare.subtitle, "🔒 Private · Closed · 0 members")
     }
 
     func testAbsentDiscoveredGroupsSidecarFallsBack() {
@@ -332,9 +336,6 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         let fullName = fbb.create(string: "Typed Full")
         let fullPic = fbb.create(string: "https://typed/pic.png")
         let fullAbout = fbb.create(string: "typed about")
-        let fullInitials = fbb.create(string: "TF")
-        let fullDisplay = fbb.create(string: "Typed Full")
-        let fullSubtitle = fbb.create(string: "# Public · Open · 42 members (typed)")
         let full = nmp_nip29_DiscoveredGroup.createDiscoveredGroup(
             &fbb,
             groupIdOffset: fullId,
@@ -345,18 +346,12 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
             memberCount: 42,
             adminCount: 3,
             public_: true,
-            open_: true,
-            initialsOffset: fullInitials,
-            displayNameOffset: fullDisplay,
-            subtitleOffset: fullSubtitle)
+            open_: true)
 
         // Row 1 — optional `name`/`picture`/`about` absent (offsets left default
         // → wire string absent → decoder yields nil, parity with JSON `null`).
         let bareId = fbb.create(string: "typed-group-bare")
         let bareHost = fbb.create(string: "wss://typed-groups.example")
-        let bareInitials = fbb.create(string: "TG")
-        let bareDisplay = fbb.create(string: "typed-group-bare")
-        let bareSubtitle = fbb.create(string: "🔒 Private · Closed · 0 members (typed)")
         let bare = nmp_nip29_DiscoveredGroup.createDiscoveredGroup(
             &fbb,
             groupIdOffset: bareId,
@@ -364,10 +359,7 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
             memberCount: 0,
             adminCount: 0,
             public_: false,
-            open_: false,
-            initialsOffset: bareInitials,
-            displayNameOffset: bareDisplay,
-            subtitleOffset: bareSubtitle)
+            open_: false)
 
         let groupsVec = fbb.createVector(ofOffsets: [full, bare])
         let host = fbb.create(string: "wss://typed-groups.example")
