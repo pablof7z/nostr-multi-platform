@@ -168,6 +168,7 @@ const SOCIAL_NAMESPACES: &[&str] = &[
     "nmp.follow",
     "nmp.unfollow",
     "nmp.nip25.react",
+    "nmp.nip25.unreact",
     "nmp.nip17.send",
     "nmp.nip17.publish_relay_list",
     "nmp.nip57.zap",

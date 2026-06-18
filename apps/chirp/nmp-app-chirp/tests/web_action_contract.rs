@@ -27,7 +27,8 @@ fn web_chirp_action_contract_dispatches_against_registered_app_actions() {
     for (intent, expected_namespace) in [
         (
             AppAction::React {
-                target_event_id: "abc".to_string(),
+                target_event_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_string(),
                 reaction: "+".to_string(),
             },
             "nmp.nip25.react",

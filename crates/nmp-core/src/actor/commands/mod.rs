@@ -227,7 +227,7 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 #[cfg(feature = "native")]
 pub(super) use publish::{
     close_contact_feed, follow, open_contact_feed, publish_profile, publish_signed_event,
-    publish_unsigned_event, publish_unsigned_event_to_relays, react,
+    publish_unsigned_event, publish_unsigned_event_to_relays,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

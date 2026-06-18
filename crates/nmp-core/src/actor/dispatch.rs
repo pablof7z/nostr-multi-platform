@@ -335,11 +335,10 @@ pub(super) struct ActorContext<'a> {
     /// same slot, so the shared handle survives a state wipe — same contract
     /// as the routing-trace projection re-publish above.
     pub(super) active_account_slot: &'a crate::slots::ActiveAccountSlot,
-/// Step-1 external event sink dispatcher.  Created once in
+    /// Step-1 external event sink dispatcher.  Created once in
     /// `run_actor_with_observers`; shared through context so `Reset` can
     /// re-register policies against the rebuilt kernel.
-    pub(super) external_event_sink_dispatcher:
-        &'a crate::substrate::ExternalEventSinkDispatcher,
+    pub(super) external_event_sink_dispatcher: &'a crate::substrate::ExternalEventSinkDispatcher,
 }
 
 // Debt C — capability adapters for `ProtocolCommandContext`, extracted to
@@ -902,29 +901,6 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::React {
-            target_event_id,
-            reaction,
-            correlation_id,
-        } => {
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            let outbound = commands::react(
-                ctx.identity,
-                ctx.kernel,
-                &target_event_id,
-                &reaction,
-                correlation_id,
-                ctx.parked_ops,
-            );
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
         ActorCommand::Follow {
             pubkey,
             correlation_id,
@@ -1330,7 +1306,10 @@ pub(super) fn dispatch_command(
             // Reconstruct the SubKey the legacy push path minted for this id,
             // then drop every slot carrying that key (covers all scopes).
             let key = crate::subs::InterestRegistry::legacy_key(&id);
-            ctx.kernel.lifecycle_mut().registry_mut().drop_slot_by_key(key);
+            ctx.kernel
+                .lifecycle_mut()
+                .registry_mut()
+                .drop_slot_by_key(key);
             ctx.kernel.lifecycle_mut().enqueue_trigger(
                 crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External(

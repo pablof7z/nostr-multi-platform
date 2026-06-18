@@ -4539,6 +4539,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip11",
  "nmp-nip17",
+ "nmp-nip25",
  "nmp-nip47",
  "nmp-nip51",
  "nmp-nip57",
@@ -4672,6 +4673,7 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-ffi",
+ "nmp-nip25",
  "nostr",
  "serde",
  "serde_json",
@@ -4704,6 +4706,15 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip18"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip25"
 version = "0.8.0"
 dependencies = [
  "nmp-core",

@@ -1,0 +1,18 @@
+[package]
+name = "nmp-nip25"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-25 public reaction actions and bounded viewer reaction projection for NMP apps."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

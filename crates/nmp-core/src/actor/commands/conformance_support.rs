@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::identity::{add_signer, create_account, IdentityRuntime};
-use super::publish::{follow, publish_unsigned_event, react};
+use super::publish::{follow, publish_unsigned_event};
 use crate::actor::SignerSource;
 use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PublishStore};
@@ -114,13 +114,25 @@ impl ConformanceHarness {
         );
     }
 
-    /// Drive `react` (kind:7). Returns the emitted `EVENT` JSON object.
+    /// Drive a kind:7 reaction draft through the generic unsigned publish door.
+    /// Returns the emitted `EVENT` JSON object.
     pub fn emit_reaction(&mut self, target_event_id: &str, reaction: &str) -> Value {
-        let outbound = react(
+        let author = self.kernel.event_author(target_event_id);
+        let (tags, content) =
+            crate::tags::reaction_tags(target_event_id, author.as_deref(), reaction)
+                .expect("conformance reaction target must be a 64-hex event id");
+        let unsigned = UnsignedEvent {
+            pubkey: String::new(),
+            kind: 7,
+            tags,
+            content,
+            created_at: self.kernel.now_secs(),
+        };
+        let outbound = publish_unsigned_event(
             &self.identity,
             &mut self.kernel,
-            target_event_id,
-            reaction,
+            unsigned,
+            None,
             None,
             &mut Vec::new(),
         );
@@ -139,7 +151,6 @@ impl ConformanceHarness {
         );
         last_event_json(&outbound)
     }
-
 
     /// Drive a kind:1 short-text note publish. Returns the emitted `EVENT` JSON
     /// object. When `reply_to` is `Some(parent_id)` the note is built as a

@@ -120,18 +120,36 @@ Same shape as `nmp.follow`. Removes the pubkey from kind:3 and re-publishes.
 
 ### `nmp.nip25.react` · React to an event (kind:7)
 
-Crate: `nmp-nip02/src/lib.rs`
+Crate: `nmp-nip25/src/action.rs`
 
 ```json
-{ "target_event_id": "abcdef…", "reaction": "+" }
+{ "target_event_id": "abcdef…", "reaction": "+", "target_author_pubkey": "012345…" }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `target_event_id` | string | Hex event id to react to. |
 | `reaction` | string | NIP-25 reaction content. `"+"` (like) is the default; `"-"` (dislike) or any emoji shortcode. |
+| `target_author_pubkey` | string | Optional target author pubkey. When present, the kind:7 carries the NIP-25 `p` tag for notification routing. |
 
 `reaction` may be omitted — defaults to `"+"`.
+
+---
+
+### `nmp.nip25.unreact` · Delete one of the viewer's reactions (kind:5)
+
+Crate: `nmp-nip25/src/action.rs`
+
+```json
+{ "reaction_event_id": "abcdef…", "reason": "" }
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `reaction_event_id` | string | Hex event id of the viewer's own kind:7 reaction to delete. |
+| `reason` | string | Optional kind:5 deletion content. Defaults to an empty string. |
+
+The viewer reaction projection exposes `reaction_event_id`; callers pass that id back to unreact.
 
 ---
 
@@ -328,7 +346,8 @@ Each `ActionModule` is registered at app-init via `ActionRegistry::register`:
 // in your app's init function:
 nmp_nip17::register_actions(app);   // registers nmp.nip17.send + nmp.nip17.publish_relay_list
 nmp_nip57::register_actions(app);   // registers nmp.nip57.zap
-nmp_nip02::register_actions(app);   // registers nmp.follow, nmp.unfollow, nmp.nip25.react
+nmp_nip02::register_follow_actions(app); // registers nmp.follow + nmp.unfollow
+nmp_nip25::register_actions(app);   // registers nmp.nip25.react + nmp.nip25.unreact
 nmp_nip65::register_actions(app);   // registers nmp.nip65.publish_relay_list
 nmp_nip29::register_actions(app);   // registers nmp.nip29.*
 // nmp.publish + nmp.wallet.pay_invoice are registered automatically by nmp_app_chirp_register

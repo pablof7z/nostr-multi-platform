@@ -1,22 +1,13 @@
-//! `nmp-nip02` — social-graph primitives as substrate `ActionModule`s.
+//! `nmp-nip02` — follow-list primitives as substrate `ActionModule`s.
 //!
 //! # Scope
 //!
-//! Despite the crate name (NIP-02 = Follow List, kind:3), this crate hosts
-//! the minimal cluster of social verbs every Nostr client implements:
+//! This crate owns the NIP-02 kind:3 follow-list write and read surfaces:
 //!
-//! | Namespace            | Wire kind | NIP    | Verb           |
-//! |----------------------|-----------|--------|----------------|
-//! | `nmp.follow`         | kind:3    | NIP-02 | Follow         |
-//! | `nmp.unfollow`       | kind:3    | NIP-02 | Unfollow       |
-//! | `nmp.nip25.react`    | kind:7    | NIP-25 | Reaction       |
-//!
-//! NIP-02 (follow list) and NIP-25 (reactions) are co-located here because
-//! they share the same governance story — they are substrate-level social
-//! primitives that escape through `nmp_app_dispatch_action`, not per-app
-//! verbs. Keeping them in one crate keeps the action surface coherent and
-//! gives every Nostr app on top of NMP a single `register_actions(app)` call
-//! to wire the social graph.
+//! | Namespace      | Wire kind | NIP    | Verb     |
+//! |----------------|-----------|--------|----------|
+//! | `nmp.follow`   | kind:3    | NIP-02 | Follow   |
+//! | `nmp.unfollow` | kind:3    | NIP-02 | Unfollow |
 //!
 //! Alongside the action modules and the [`FollowListProjection`] read model,
 //! this crate hosts [`ActiveFollowSet`] — the OP-centric home feed's (V-80)
@@ -29,36 +20,27 @@
 //!
 //! # Why this exists
 //!
-//! Before this crate, the `Follow` / `Unfollow` / `React` `ActionModule`s
-//! lived in `apps/chirp/nmp-app-chirp/src/ffi/actions.rs` (as
-//! `ChirpFollowModule` / `ChirpUnfollowModule` / `ChirpReactModule`). That
-//! placement made the wiring app-local even though the verbs themselves are
-//! generic Nostr protocol primitives — Opus direction review #10 flagged
-//! this as the Follow / React "escape path" out of `nmp-app-chirp`. Any
-//! future Nostr app on top of NMP would have to either depend on the Chirp
-//! app crate (an inversion of the dep graph) or re-implement the modules
-//! verbatim.
+//! Before this crate, the `Follow` / `Unfollow` `ActionModule`s lived in
+//! `apps/chirp/nmp-app-chirp/src/ffi/actions.rs` as app-local verbs. That
+//! placement made the wiring app-local even though follow-list edits are
+//! generic Nostr protocol primitives.
 //!
-//! This crate lifts the three modules into a reusable substrate crate so
-//! any app calls `nmp_nip02::register_actions(&mut app)` to wire the
-//! social-graph dispatch namespaces — the same shape `nmp-nip17` /
-//! `nmp-nip57` / `nmp-nip65` already use.
+//! This crate lifts follow/unfollow into a reusable substrate crate. Public
+//! NIP-25 reactions now live in `nmp-nip25`; this crate re-exports the old
+//! `ReactAction` / `ReactModule` names and its legacy `register_actions`
+//! helper delegates to `nmp-nip25` for compatibility.
 //!
 //! # D0 — namespace hygiene
 //!
-//! All three namespaces start with `nmp.` (the D9 lint rule for protocol
-//! crates), and the kernel still carries no NIP-02 / NIP-25 nouns: the
-//! executors enqueue the existing `ActorCommand::{React, Follow, Unfollow}`
-//! variants, and the actor on its own thread builds + signs the kind:3 /
-//! kind:7 event (D7 — sign on the actor thread).
+//! Both NIP-02 namespaces start with `nmp.` (the D9 lint rule for protocol
+//! crates). The action executors enqueue follow-list commands and the actor
+//! on its own thread builds + signs the kind:3 event (D7).
 //!
 //! # D11 — single door
 //!
-//! The bespoke C-ABI symbols `nmp_app_react` / `nmp_app_follow` /
-//! `nmp_app_unfollow` were deleted in a prior cycle; the only way to reach
-//! these verbs from a host is via `nmp_app_dispatch_action(namespace,
-//! action_json)`. This crate plugs into the same registry that the publish
-//! engine, NIP-17, NIP-57, NIP-65, and NIP-29 use.
+//! The bespoke C-ABI symbols `nmp_app_follow` / `nmp_app_unfollow` were
+//! deleted in a prior cycle; the only way to reach these verbs from a host is
+//! via `nmp_app_dispatch_action(namespace, action_json)`.
 
 use nmp_core::substrate::{ActionModule, ActionRegistrar};
 use nmp_core::ActorCommand;
@@ -69,6 +51,7 @@ pub mod projection;
 pub mod wire;
 
 pub use active_follow_set::ActiveFollowSet;
+pub use nmp_nip25::{ReactAction, ReactModule};
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{
     decode_follow_list, encode_follow_list, FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER,
@@ -92,27 +75,6 @@ pub struct PubkeyAction {
     /// actor's `Follow` / `Unfollow` command handlers (D6 — failures
     /// surface as toasts, never panics).
     pub pubkey: String,
-}
-
-/// Wire shape for `nmp.nip25.react` —
-/// `{"target_event_id":"<hex>","reaction":"<emoji-or-+>"}`.
-///
-/// `reaction` defaults to `"+"` (the standard kind:7 "like") when absent,
-/// matching the behaviour of the deleted `nmp_app_react` C symbol's
-/// `.unwrap_or("+")` so a host migrating from the bespoke symbol gets the
-/// same defaults.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ReactAction {
-    /// Hex id of the event being reacted to.
-    pub target_event_id: String,
-    /// Reaction content. NIP-25 allows `"+"` (like), `"-"` (dislike), or
-    /// an arbitrary emoji shortcode. Defaults to `"+"` when absent.
-    #[serde(default = "default_reaction")]
-    pub reaction: String,
-}
-
-fn default_reaction() -> String {
-    "+".to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -173,54 +135,31 @@ impl ActionModule for UnfollowModule {
     }
 }
 
-/// `nmp.nip25.react` — publish a kind:7 NIP-25 reaction to the event
-/// identified by `target_event_id`.
-///
-/// The executor enqueues `ActorCommand::React`; the actor builds + signs
-/// the kind:7 event on its own thread (D7) and the publish engine reports
-/// the terminal verdict under the same `correlation_id` the host received
-/// from `dispatch_action`.
-pub struct ReactModule;
-
-impl ActionModule for ReactModule {
-    const NAMESPACE: &'static str = "nmp.nip25.react";
-    type Action = ReactAction;
-
-    fn execute(
-        &self,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        send(ActorCommand::React {
-            target_event_id: action.target_event_id,
-            reaction: action.reaction,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Registration helper
 // ---------------------------------------------------------------------------
 
-/// Register all three social-graph `ActionModule`s against `app`'s action
-/// registry. This is the single call a host wires from its init path
-/// (mirrors `nmp_nip17::register_actions`, `nmp_nip57::register_actions`,
-/// `nmp_router::register_actions` — the NIP-65 publish action, absorbed
-/// from the former `nmp-nip65` crate at step 3 of the crate-boundary
-/// migration).
+/// Register only the NIP-02 follow-list `ActionModule`s.
 ///
 /// Registration MUST happen before `nmp_app_start` because
 /// the host-side action registrar requires `&mut self`.
-pub fn register_actions(app: &mut impl ActionRegistrar) {
+pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
     // Yielding defaults (ADR-0049 Part 1): each module installs only if its
     // namespace is unclaimed, so an app may pre-empt any of them regardless of
     // whether it registers before or after `register_defaults`.
     app.register_default_action(FollowModule);
     app.register_default_action(UnfollowModule);
-    app.register_default_action(ReactModule);
+}
+
+/// Compatibility helper for older composition roots that expected
+/// `nmp_nip02::register_actions` to wire the full public social bundle.
+///
+/// New composition code should call [`register_follow_actions`] and
+/// `nmp_nip25::register_actions` explicitly so NIP-25 remains the visible
+/// owner of public reactions.
+pub fn register_actions(app: &mut impl ActionRegistrar) {
+    register_follow_actions(app);
+    nmp_nip25::register_actions(app);
 }
 
 // ---------------------------------------------------------------------------
@@ -243,35 +182,6 @@ mod tests {
     #[test]
     fn unfollow_namespace_matches_d9_substrate_shape() {
         assert_eq!(UnfollowModule::NAMESPACE, "nmp.unfollow");
-    }
-
-    #[test]
-    fn react_namespace_matches_d9_substrate_shape() {
-        // NIP-25 is the reactions NIP; the namespace carries the NIP
-        // marker so a reviewer can map verb → NIP at a glance.
-        assert_eq!(ReactModule::NAMESPACE, "nmp.nip25.react");
-    }
-
-    // ----- decoder defaults ------------------------------------------------
-
-    #[test]
-    fn react_action_defaults_reaction_to_plus_when_absent() {
-        let action: ReactAction =
-            serde_json::from_str(r#"{"target_event_id":"abc"}"#).expect("valid JSON");
-        assert_eq!(
-            action.reaction, "+",
-            "absent reaction must default to '+' to match the deleted \
-             nmp_app_react C symbol's .unwrap_or(\"+\") behaviour"
-        );
-        assert_eq!(action.target_event_id, "abc");
-    }
-
-    #[test]
-    fn react_action_preserves_explicit_reaction() {
-        let action: ReactAction =
-            serde_json::from_str(r#"{"target_event_id":"abc","reaction":"🤙"}"#)
-                .expect("valid JSON");
-        assert_eq!(action.reaction, "🤙");
     }
 
     #[test]
@@ -306,14 +216,15 @@ mod tests {
     #[test]
     fn follow_executor_enqueues_follow_with_correlation_id() {
         let cmd = capture_one(|send| {
-            FollowModule.execute(
-                PubkeyAction {
-                    pubkey: "deadbeef".to_string(),
-                },
-                "test-cid-follow",
-                send,
-            )
-            .expect("execute must not fail");
+            FollowModule
+                .execute(
+                    PubkeyAction {
+                        pubkey: "deadbeef".to_string(),
+                    },
+                    "test-cid-follow",
+                    send,
+                )
+                .expect("execute must not fail");
         });
         match cmd {
             ActorCommand::Follow {
@@ -335,14 +246,15 @@ mod tests {
     #[test]
     fn unfollow_executor_enqueues_unfollow_with_correlation_id() {
         let cmd = capture_one(|send| {
-            UnfollowModule.execute(
-                PubkeyAction {
-                    pubkey: "cafebabe".to_string(),
-                },
-                "test-cid-unfollow",
-                send,
-            )
-            .expect("execute must not fail");
+            UnfollowModule
+                .execute(
+                    PubkeyAction {
+                        pubkey: "cafebabe".to_string(),
+                    },
+                    "test-cid-unfollow",
+                    send,
+                )
+                .expect("execute must not fail");
         });
         match cmd {
             ActorCommand::Unfollow {
@@ -353,33 +265,6 @@ mod tests {
                 assert_eq!(correlation_id.as_deref(), Some("test-cid-unfollow"));
             }
             other => panic!("expected ActorCommand::Unfollow, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn react_executor_enqueues_react_with_payload_and_correlation_id() {
-        let cmd = capture_one(|send| {
-            ReactModule.execute(
-                ReactAction {
-                    target_event_id: "abc".to_string(),
-                    reaction: "+".to_string(),
-                },
-                "test-cid-react",
-                send,
-            )
-            .expect("execute must not fail");
-        });
-        match cmd {
-            ActorCommand::React {
-                target_event_id,
-                reaction,
-                correlation_id,
-            } => {
-                assert_eq!(target_event_id, "abc");
-                assert_eq!(reaction, "+");
-                assert_eq!(correlation_id.as_deref(), Some("test-cid-react"));
-            }
-            other => panic!("expected ActorCommand::React, got {other:?}"),
         }
     }
 }

@@ -740,19 +740,6 @@ pub enum ActorCommand {
     CancelPublish {
         handle: String,
     },
-    /// T66a publish — kind:7 reaction to `target_event_id`.
-    React {
-        target_event_id: String,
-        reaction: String,
-        /// Registry-minted action id when this React originates from
-        /// `nmp_app_dispatch_action` (`chirp.react`). The publish engine
-        /// reports the verdict under this id (via
-        /// `publish_signed_with_correlation`) so the host spinner keyed on
-        /// the dispatch return value can be cleared. Sign-step early exits
-        /// also use it to record a `Failed` terminal via
-        /// `record_action_failure`. Non-dispatch callers pass `None`.
-        correlation_id: Option<String>,
-    },
     /// T66a publish — append `pubkey` to the active account's kind:3 follow
     /// set and re-publish it.
     Follow {
@@ -1263,10 +1250,7 @@ pub fn run_actor_with_observers(
     // one dispatcher. Only if the slot is empty (non-FFI test harnesses) do we
     // create + publish one.
     let external_event_sink_dispatcher = {
-        let existing = dispatcher_slot
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone());
+        let existing = dispatcher_slot.lock().ok().and_then(|guard| guard.clone());
         match existing {
             Some(d) => d,
             None => {

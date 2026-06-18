@@ -1,5 +1,5 @@
-//! Publish handlers — generic unsigned events, kind:0 (profile), kind:7
-//! (reaction), kind:3 (follow-edit), and timeline (re)open.
+//! Publish handlers — generic unsigned events, kind:0 (profile), kind:3
+//! (follow-edit), and timeline (re)open.
 //!
 //! Every handler builds an `UnsignedEvent`, signs it with the active
 //! account's key (D6: a missing active account is surfaced as a toast, never
@@ -438,8 +438,9 @@ pub(crate) fn publish_signed_event(
 /// hand-rolls the timestamp — D7: the kernel owns the wall clock), signs with
 /// the active account, and routes through the NIP-65 outbox (D3).
 ///
-/// Sibling of [`react`] — same non-blocking sign + `correlation_id`
-/// threading, kind:0 instead of kind:1. `correlation_id` is the
+/// Sibling of the other action-dispatched publish helpers — same non-blocking
+/// sign + `correlation_id` threading, kind:0 instead of kind:1.
+/// `correlation_id` is the
 /// registry-minted action id; threading it through makes the publish engine
 /// report it in `action_results` so the host spinner keyed on the dispatch
 /// return value can be cleared. `None` for non-dispatch callers.
@@ -512,77 +513,6 @@ pub(crate) fn publish_profile(
     }
 }
 
-pub(crate) fn react(
-    identity: &IdentityRuntime,
-    kernel: &mut Kernel,
-    target_event_id: &str,
-    reaction: &str,
-    correlation_id: Option<String>,
-    parked_ops: &mut Vec<ParkedOp>,
-) -> Vec<OutboundMessage> {
-    let Some(pubkey) = identity.active_pubkey() else {
-        // Broken-promise fix: `toast_no_account` records `Failed` against the
-        // dispatch correlation_id (no-op for `None` callers).
-        return toast_no_account(kernel, "react", correlation_id);
-    };
-    // Build NIP-25 tags + normalised content via the shared builder.
-    // `reaction_tags` returns None for invalid hex — surface as fail_publish
-    // so the broken-promise fix records the terminal under the dispatch id.
-    let author = kernel.event_author(target_event_id);
-    let (tags, content) =
-        match crate::tags::reaction_tags(target_event_id, author.as_deref(), reaction) {
-            Some(t) => t,
-            None => {
-                return fail_publish(
-                    kernel,
-                    "react: malformed target event id".to_string(),
-                    correlation_id,
-                );
-            }
-        };
-    let unsigned = UnsignedEvent {
-        pubkey,
-        kind: 7,
-        tags,
-        content,
-        created_at: kernel.now_secs(),
-    };
-    // Non-blocking sign: a remote signer's `Pending` op is parked for the
-    // actor's idle-tick poll loop rather than blocking the actor thread.
-    let mut op = match sign_active_nonblocking(identity, &unsigned) {
-        Ok(op) => op,
-        Err(reason) => {
-            // Broken-promise fix: a sign-setup failure happens on the actor
-            // thread AFTER `dispatch_action` already returned the
-            // correlation_id — `fail_publish` records the terminal failure.
-            return fail_publish(kernel, reason, correlation_id);
-        }
-    };
-    match op.poll() {
-        // Local key resolved on the spot — publish through the engine with the
-        // dispatch correlation_id so the terminal verdict reports it.
-        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
-        Some(Err(e)) => {
-            // Broken-promise fix: a local-key sign error happens after
-            // `dispatch_action` returned the correlation_id — record it.
-            fail_publish(kernel, format!("sign failed: {e}"), correlation_id)
-        }
-        None => {
-            // Remote signer pending — park the op WITH its correlation_id so
-            // the dispatched reaction still settles under the id the host is
-            // waiting on once the broker turns the sign request around.
-            parked_ops.push(ParkedOp::publish(
-                op,
-                Vec::new(),
-                PublishTarget::Auto,
-                correlation_id,
-                identity.active_sign_deadline(),
-            ));
-            Vec::new()
-        }
-    }
-}
-
 /// Add (`add == true`) or remove a follow from the active account's kind:3
 /// set and re-publish the full list (NIP-02 replaceable).
 pub(crate) fn follow(
@@ -620,11 +550,7 @@ pub(crate) fn follow(
     // the old gate-less `current_follows`, which returned `[]` on a not-loaded
     // list.
     let Some((current_tags, current_content)) = kernel.try_current_kind3_event() else {
-        return fail_publish(
-            kernel,
-            "follow_list_not_loaded".to_string(),
-            correlation_id,
-        );
+        return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
     // Splice ONLY the `p` section — preserve relay hints, petnames, every
     // non-`p` tag, and the original content verbatim (issue #1246a).

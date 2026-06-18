@@ -21,6 +21,7 @@ nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 # to call the per-NIP `register_actions` selectively rather than
 # `register_defaults` wholesale.
 nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip25 = { path = "../nmp-nip25" }
 nmp-nip11 = { path = "../nmp-nip11" }
 nmp-nip17 = { path = "../nmp-nip17" }
 # NIP-47 Nostr Wallet Connect: `register_wallet` is wired through the
