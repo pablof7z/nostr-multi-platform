@@ -1,8 +1,17 @@
 //! NIP-19: bech32-encoded entities for Nostr.
 //!
-//! Implements parse + format for the six entity types:
-//! `npub`, `nsec`, `note` (bare 32-byte keys/ids) and the TLV forms
-//! `nprofile`, `nevent`, `naddr`.
+//! Thin adapter over [`nostr::nips::nip19`] (the rust-nostr canonical codec).
+//! NMP keeps its own typed surface — [`Nip19Entity`], [`NprofileData`],
+//! [`NeventData`], [`NaddrData`], the `encode_*` / `decode_*` /
+//! [`parse`] / [`format`] free functions, and the [`Nip19Error`] enum — so
+//! every existing caller is source-compatible, but the actual bech32 + TLV
+//! encoding/decoding is delegated to `nostr` rather than re-implemented here.
+//!
+//! Per AGENTS.md / aim.md ("reuse the `nostr` crate; never re-implement a
+//! protocol codec from scratch") this module is an NMP-shaped wrapper, not a
+//! second codec. The previous hand-rolled bech32/TLV implementation was the
+//! parallel codec #1493 set out to retire — having two NIP-19 codecs in one
+//! workspace is a divergence/correctness hazard.
 //!
 //! # Example — bare key round-trip
 //! ```
@@ -29,7 +38,11 @@
 //! assert_eq!(decoded.pubkey, data.pubkey);
 //! ```
 
-use bech32::{Bech32, Bech32m, Hrp};
+use nostr::nips::nip19::{
+    FromBech32, Nip19, Nip19Coordinate, Nip19Event, Nip19Profile, ToBech32,
+};
+use nostr::nips::nip01::Coordinate;
+use nostr::{EventId, Kind, PublicKey, RelayUrl, SecretKey};
 
 // ─── HRPs ──────────────────────────────────────────────────────────────────
 
@@ -39,17 +52,6 @@ const HRP_NOTE: &str = "note";
 const HRP_NPROFILE: &str = "nprofile";
 const HRP_NEVENT: &str = "nevent";
 const HRP_NADDR: &str = "naddr";
-
-// ─── TLV type bytes ────────────────────────────────────────────────────────
-
-/// TLV type byte: `special` (pubkey / event-id / d-tag).
-pub const TLV_SPECIAL: u8 = 0;
-/// TLV type byte: relay URL.
-pub const TLV_RELAY: u8 = 1;
-/// TLV type byte: author pubkey.
-pub const TLV_AUTHOR: u8 = 2;
-/// TLV type byte: event kind (4-byte big-endian u32).
-pub const TLV_KIND: u8 = 3;
 
 // ─── Public data types ─────────────────────────────────────────────────────
 
@@ -110,14 +112,13 @@ pub enum Nip19Entity {
 pub enum Nip19Error {
     /// Input is not valid hex or wrong length.
     InvalidHex,
-    /// bech32 encoding/decoding failure.
+    /// bech32 encoding/decoding failure (also covers an unparseable relay URL
+    /// inside a TLV payload).
     Bech32(String),
     /// TLV structure is malformed.
     MalformedTlv(String),
     /// Unknown HRP — not a recognised NIP-19 prefix.
     UnknownHrp(String),
-    /// A required TLV field is absent.
-    MissingField(&'static str),
 }
 
 impl std::fmt::Display for Nip19Error {
@@ -127,7 +128,6 @@ impl std::fmt::Display for Nip19Error {
             Self::Bech32(msg) => write!(f, "bech32 error: {msg}"),
             Self::MalformedTlv(msg) => write!(f, "malformed TLV: {msg}"),
             Self::UnknownHrp(hrp) => write!(f, "unknown HRP: {hrp}"),
-            Self::MissingField(field) => write!(f, "missing required TLV field: {field}"),
         }
     }
 }
@@ -136,148 +136,224 @@ impl std::error::Error for Nip19Error {}
 
 // ─── Hex helpers ───────────────────────────────────────────────────────────
 
-fn hex_to_bytes(hex: &str) -> Result<[u8; 32], Nip19Error> {
-    if hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(Nip19Error::InvalidHex);
-    }
-    let mut out = [0u8; 32];
-    for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
-        let hi = nibble(chunk[0])?;
-        let lo = nibble(chunk[1])?;
-        out[i] = (hi << 4) | lo;
-    }
-    Ok(out)
-}
-
-fn nibble(b: u8) -> Result<u8, Nip19Error> {
-    match b {
-        b'0'..=b'9' => Ok(b - b'0'),
-        b'a'..=b'f' => Ok(b - b'a' + 10),
-        b'A'..=b'F' => Ok(b - b'A' + 10),
-        _ => Err(Nip19Error::InvalidHex),
+/// Reject obviously-malformed hex *before* handing it to `nostr`, so a bad
+/// pubkey / id surfaces as [`Nip19Error::InvalidHex`] (the variant callers
+/// match on) rather than a generic key/parse error.
+fn require_hex64(hex: &str) -> Result<(), Nip19Error> {
+    if hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Ok(())
+    } else {
+        Err(Nip19Error::InvalidHex)
     }
 }
 
-#[must_use]
-pub fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+// ─── Error mapping ───────────────────────────────────────────────────────────
+
+/// Map a `nostr` NIP-19 error onto NMP's typed surface.
+fn map_nostr_err(err: nostr::nips::nip19::Error) -> Nip19Error {
+    use nostr::nips::nip19::Error as N;
+    match err {
+        N::WrongPrefix => Nip19Error::UnknownHrp(String::new()),
+        N::FieldMissing(_) | N::TLV | N::TryFromSlice => {
+            Nip19Error::MalformedTlv(err.to_string())
+        }
+        N::Keys(_) | N::Event(_) => Nip19Error::InvalidHex,
+        N::RelayUrl(_) => Nip19Error::Bech32(err.to_string()),
+        other => Nip19Error::Bech32(other.to_string()),
+    }
+}
+
+/// The HRP (human-readable prefix) of a bech32 string — the substring before
+/// the final `1` separator. Used to give [`Nip19Error::UnknownHrp`] the actual
+/// prefix and to reject cross-HRP confusion in the `decode_*` helpers (e.g. an
+/// `nprofile…` fed to [`decode_npub`]).
+fn hrp_of(bech: &str) -> Result<&str, Nip19Error> {
+    bech.rfind('1')
+        .map(|sep| &bech[..sep])
+        .filter(|h| !h.is_empty())
+        .ok_or_else(|| Nip19Error::Bech32("no separator '1'".into()))
+}
+
+/// Guard that `bech`'s HRP equals `expected`; otherwise surface the actual HRP
+/// as [`Nip19Error::UnknownHrp`] (cross-HRP confusion is a silent-routing bug
+/// class — see `decode_npub_rejects_cross_hrp_nprofile_string`).
+fn require_hrp(bech: &str, expected: &str) -> Result<(), Nip19Error> {
+    let hrp = hrp_of(bech)?;
+    if hrp == expected {
+        Ok(())
+    } else {
+        Err(Nip19Error::UnknownHrp(hrp.to_string()))
+    }
+}
+
+// ─── Conversions: nostr types → NMP data ─────────────────────────────────────
+
+fn relays_to_strings(relays: &[RelayUrl]) -> Vec<String> {
+    relays.iter().map(ToString::to_string).collect()
+}
+
+fn relays_from_strings(relays: &[String]) -> Result<Vec<RelayUrl>, Nip19Error> {
+    relays
+        .iter()
+        .map(|r| {
+            // NIP-19 relay TLV length is a single byte, so a relay URL over
+            // 255 bytes would silently corrupt the encoding. Reject up-front
+            // with a typed error rather than emit a non-round-trippable string.
+            if r.len() > MAX_TLV_VALUE_LEN {
+                return Err(Nip19Error::MalformedTlv(format!(
+                    "relay URL exceeds {MAX_TLV_VALUE_LEN}-byte TLV limit: {} bytes",
+                    r.len()
+                )));
+            }
+            RelayUrl::parse(r).map_err(|e| Nip19Error::Bech32(e.to_string()))
+        })
+        .collect()
+}
+
+/// Maximum byte length of a single NIP-19 TLV value (the length prefix is one
+/// byte). Relay URLs and the `naddr` identifier must fit, or the encoded
+/// entity would not round-trip.
+const MAX_TLV_VALUE_LEN: usize = 255;
+
+/// Convert an NMP `u32` kind to a `nostr::Kind`, rejecting values outside the
+/// protocol's u16 domain (0..=65535). Without this guard a `u32` ≥ 65536 would
+/// wrap on the `as u16` cast and silently encode a different kind.
+fn kind_to_nostr(kind: u32) -> Result<Kind, Nip19Error> {
+    u16::try_from(kind)
+        .map(Kind::from_u16)
+        .map_err(|_| Nip19Error::MalformedTlv(format!("event kind {kind} exceeds u16 range")))
+}
+
+fn nprofile_to_data(p: &Nip19Profile) -> NprofileData {
+    NprofileData {
+        pubkey: p.public_key.to_hex(),
+        relays: relays_to_strings(&p.relays),
+    }
+}
+
+fn nevent_to_data(e: &Nip19Event) -> NeventData {
+    NeventData {
+        event_id: e.event_id.to_hex(),
+        relays: relays_to_strings(&e.relays),
+        author: e.author.map(|a| a.to_hex()),
+        kind: e.kind.map(|k| k.as_u16() as u32),
+    }
+}
+
+fn ncoordinate_to_data(c: &Nip19Coordinate) -> NaddrData {
+    NaddrData {
+        identifier: c.coordinate.identifier.clone(),
+        pubkey: c.coordinate.public_key.to_hex(),
+        kind: c.coordinate.kind.as_u16() as u32,
+        relays: relays_to_strings(&c.relays),
+    }
+}
+
+// ─── Conversions: NMP data → nostr types ─────────────────────────────────────
+
+fn pubkey_from_hex(hex: &str) -> Result<PublicKey, Nip19Error> {
+    require_hex64(hex)?;
+    PublicKey::from_hex(hex).map_err(|_| Nip19Error::InvalidHex)
+}
+
+fn event_id_from_hex(hex: &str) -> Result<EventId, Nip19Error> {
+    require_hex64(hex)?;
+    EventId::from_hex(hex).map_err(|_| Nip19Error::InvalidHex)
+}
+
+fn data_to_nprofile(data: &NprofileData) -> Result<Nip19Profile, Nip19Error> {
+    Ok(Nip19Profile::new(
+        pubkey_from_hex(&data.pubkey)?,
+        relays_from_strings(&data.relays)?,
+    ))
+}
+
+fn data_to_nevent(data: &NeventData) -> Result<Nip19Event, Nip19Error> {
+    let mut ev = Nip19Event::new(event_id_from_hex(&data.event_id)?);
+    ev.relays = relays_from_strings(&data.relays)?;
+    ev.author = match &data.author {
+        Some(a) => Some(pubkey_from_hex(a)?),
+        None => None,
+    };
+    ev.kind = match data.kind {
+        Some(k) => Some(kind_to_nostr(k)?),
+        None => None,
+    };
+    Ok(ev)
+}
+
+fn data_to_ncoordinate(data: &NaddrData) -> Result<Nip19Coordinate, Nip19Error> {
+    // The `d`-tag identifier is encoded as the `special` TLV (single-byte
+    // length); reject over-255-byte identifiers up-front.
+    if data.identifier.len() > MAX_TLV_VALUE_LEN {
+        return Err(Nip19Error::MalformedTlv(format!(
+            "naddr identifier exceeds {MAX_TLV_VALUE_LEN}-byte TLV limit: {} bytes",
+            data.identifier.len()
+        )));
+    }
+    let coord = Coordinate::new(kind_to_nostr(data.kind)?, pubkey_from_hex(&data.pubkey)?)
+        .identifier(data.identifier.clone());
+    Ok(Nip19Coordinate::new(coord, relays_from_strings(&data.relays)?))
 }
 
 // ─── Bare-key encode / decode ──────────────────────────────────────────────
 
-fn encode_bare(hrp_str: &str, hex: &str) -> Result<String, Nip19Error> {
-    let bytes = hex_to_bytes(hex)?;
-    let hrp = Hrp::parse(hrp_str).map_err(|e| Nip19Error::Bech32(e.to_string()))?;
-    bech32::encode::<Bech32>(hrp, &bytes).map_err(|e| Nip19Error::Bech32(e.to_string()))
-}
-
-fn decode_bare(bech: &str, expected_hrp: &str) -> Result<String, Nip19Error> {
-    let (hrp, bytes) = bech32::decode(bech).map_err(|e| Nip19Error::Bech32(e.to_string()))?;
-    if hrp.as_str() != expected_hrp {
-        return Err(Nip19Error::UnknownHrp(hrp.to_string()));
-    }
-    if bytes.len() != 32 {
-        return Err(Nip19Error::MalformedTlv(format!(
-            "expected 32 bytes, got {}",
-            bytes.len()
-        )));
-    }
-    Ok(bytes_to_hex(&bytes))
-}
-
 /// Encode a public key hex string as an `npub` bech32 string.
 #[must_use]
 pub fn encode_npub(hex: &str) -> Result<String, Nip19Error> {
-    encode_bare(HRP_NPUB, hex)
+    // `PublicKey::to_bech32()` is infallible (`Err = Infallible`); the
+    // `map_err` arm can never run, but D6 forbids `unreachable!` in nmp-core,
+    // so degrade to a typed error rather than panic across the FFI seam.
+    pubkey_from_hex(hex)?
+        .to_bech32()
+        .map_err(|_| Nip19Error::Bech32("npub encode".into()))
 }
 
 /// Decode an `npub` bech32 string to a hex public key.
 #[must_use]
 pub fn decode_npub(bech: &str) -> Result<String, Nip19Error> {
-    decode_bare(bech, HRP_NPUB)
+    require_hrp(bech, HRP_NPUB)?;
+    PublicKey::from_bech32(bech)
+        .map(|pk| pk.to_hex())
+        .map_err(map_nostr_err)
 }
 
 /// Encode a private key hex string as an `nsec` bech32 string.
 #[must_use]
 pub fn encode_nsec(hex: &str) -> Result<String, Nip19Error> {
-    encode_bare(HRP_NSEC, hex)
+    require_hex64(hex)?;
+    // `SecretKey::to_bech32()` is infallible; degrade rather than panic (D6).
+    SecretKey::from_hex(hex)
+        .map_err(|_| Nip19Error::InvalidHex)?
+        .to_bech32()
+        .map_err(|_| Nip19Error::Bech32("nsec encode".into()))
 }
 
 /// Decode an `nsec` bech32 string to a hex private key.
 #[must_use]
 pub fn decode_nsec(bech: &str) -> Result<String, Nip19Error> {
-    decode_bare(bech, HRP_NSEC)
+    require_hrp(bech, HRP_NSEC)?;
+    SecretKey::from_bech32(bech)
+        .map(|sk| sk.to_secret_hex())
+        .map_err(map_nostr_err)
 }
 
 /// Encode an event id hex string as a `note` bech32 string.
 #[must_use]
 pub fn encode_note(hex: &str) -> Result<String, Nip19Error> {
-    encode_bare(HRP_NOTE, hex)
+    // `EventId::to_bech32()` is infallible; degrade rather than panic (D6).
+    event_id_from_hex(hex)?
+        .to_bech32()
+        .map_err(|_| Nip19Error::Bech32("note encode".into()))
 }
 
 /// Decode a `note` bech32 string to a hex event id.
 #[must_use]
 pub fn decode_note(bech: &str) -> Result<String, Nip19Error> {
-    decode_bare(bech, HRP_NOTE)
-}
-
-// ─── TLV helpers ───────────────────────────────────────────────────────────
-
-/// Append one TLV entry to `buf`. Panics if `value.len() > 255`.
-pub fn tlv_append(buf: &mut Vec<u8>, typ: u8, value: &[u8]) {
-    assert!(value.len() <= 255, "TLV value too long");
-    buf.push(typ);
-    buf.push(value.len() as u8);
-    buf.extend_from_slice(value);
-}
-
-/// Iterate over TLV triplets `(type, value)`.
-fn tlv_iter(data: &[u8]) -> TlvIter<'_> {
-    TlvIter { data, pos: 0 }
-}
-
-struct TlvIter<'a> {
-    data: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> Iterator for TlvIter<'a> {
-    type Item = Result<(u8, &'a [u8]), Nip19Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.pos >= self.data.len() {
-            return None;
-        }
-        if self.pos + 2 > self.data.len() {
-            return Some(Err(Nip19Error::MalformedTlv(
-                "truncated type/length".into(),
-            )));
-        }
-        let typ = self.data[self.pos];
-        let len = self.data[self.pos + 1] as usize;
-        self.pos += 2;
-        if self.pos + len > self.data.len() {
-            return Some(Err(Nip19Error::MalformedTlv(format!(
-                "TLV value truncated: need {len} bytes"
-            ))));
-        }
-        let value = &self.data[self.pos..self.pos + len];
-        self.pos += len;
-        Some(Ok((typ, value)))
-    }
-}
-
-fn encode_tlv(hrp_str: &str, tlv: &[u8]) -> Result<String, Nip19Error> {
-    let hrp = Hrp::parse(hrp_str).map_err(|e| Nip19Error::Bech32(e.to_string()))?;
-    bech32::encode::<Bech32m>(hrp, tlv).map_err(|e| Nip19Error::Bech32(e.to_string()))
-}
-
-fn decode_tlv(bech: &str, expected_hrp: &str) -> Result<Vec<u8>, Nip19Error> {
-    let (hrp, bytes) = bech32::decode(bech).map_err(|e| Nip19Error::Bech32(e.to_string()))?;
-    if hrp.as_str() != expected_hrp {
-        return Err(Nip19Error::UnknownHrp(hrp.to_string()));
-    }
-    Ok(bytes)
+    require_hrp(bech, HRP_NOTE)?;
+    EventId::from_bech32(bech)
+        .map(|id| id.to_hex())
+        .map_err(map_nostr_err)
 }
 
 // ─── nprofile ──────────────────────────────────────────────────────────────
@@ -285,38 +361,16 @@ fn decode_tlv(bech: &str, expected_hrp: &str) -> Result<Vec<u8>, Nip19Error> {
 /// Encode an `NprofileData` as an `nprofile` bech32m string.
 #[must_use]
 pub fn encode_nprofile(data: &NprofileData) -> Result<String, Nip19Error> {
-    let key_bytes = hex_to_bytes(&data.pubkey)?;
-    let mut tlv = Vec::new();
-    tlv_append(&mut tlv, TLV_SPECIAL, &key_bytes);
-    for relay in &data.relays {
-        tlv_append(&mut tlv, TLV_RELAY, relay.as_bytes());
-    }
-    encode_tlv(HRP_NPROFILE, &tlv)
+    data_to_nprofile(data)?.to_bech32().map_err(map_nostr_err)
 }
 
 /// Decode an `nprofile` bech32m string into `NprofileData`.
 #[must_use]
 pub fn decode_nprofile(bech: &str) -> Result<NprofileData, Nip19Error> {
-    let bytes = decode_tlv(bech, HRP_NPROFILE)?;
-    let mut pubkey: Option<String> = None;
-    let mut relays = Vec::new();
-    for item in tlv_iter(&bytes) {
-        let (typ, val) = item?;
-        match typ {
-            TLV_SPECIAL => {
-                if val.len() != 32 {
-                    return Err(Nip19Error::MalformedTlv("pubkey must be 32 bytes".into()));
-                }
-                pubkey = Some(bytes_to_hex(val));
-            }
-            TLV_RELAY => relays.push(String::from_utf8_lossy(val).into_owned()),
-            _ => {} // unknown TLV types are ignored per spec
-        }
-    }
-    Ok(NprofileData {
-        pubkey: pubkey.ok_or(Nip19Error::MissingField("special/pubkey"))?,
-        relays,
-    })
+    require_hrp(bech, HRP_NPROFILE)?;
+    Nip19Profile::from_bech32(bech)
+        .map(|p| nprofile_to_data(&p))
+        .map_err(map_nostr_err)
 }
 
 // ─── nevent ────────────────────────────────────────────────────────────────
@@ -324,60 +378,16 @@ pub fn decode_nprofile(bech: &str) -> Result<NprofileData, Nip19Error> {
 /// Encode an `NeventData` as an `nevent` bech32m string.
 #[must_use]
 pub fn encode_nevent(data: &NeventData) -> Result<String, Nip19Error> {
-    let id_bytes = hex_to_bytes(&data.event_id)?;
-    let mut tlv = Vec::new();
-    tlv_append(&mut tlv, TLV_SPECIAL, &id_bytes);
-    for relay in &data.relays {
-        tlv_append(&mut tlv, TLV_RELAY, relay.as_bytes());
-    }
-    if let Some(ref author) = data.author {
-        tlv_append(&mut tlv, TLV_AUTHOR, &hex_to_bytes(author)?);
-    }
-    if let Some(kind) = data.kind {
-        tlv_append(&mut tlv, TLV_KIND, &kind.to_be_bytes());
-    }
-    encode_tlv(HRP_NEVENT, &tlv)
+    data_to_nevent(data)?.to_bech32().map_err(map_nostr_err)
 }
 
 /// Decode an `nevent` bech32m string into `NeventData`.
 #[must_use]
 pub fn decode_nevent(bech: &str) -> Result<NeventData, Nip19Error> {
-    let bytes = decode_tlv(bech, HRP_NEVENT)?;
-    let mut event_id: Option<String> = None;
-    let mut relays = Vec::new();
-    let mut author: Option<String> = None;
-    let mut kind: Option<u32> = None;
-    for item in tlv_iter(&bytes) {
-        let (typ, val) = item?;
-        match typ {
-            TLV_SPECIAL => {
-                if val.len() != 32 {
-                    return Err(Nip19Error::MalformedTlv("event id must be 32 bytes".into()));
-                }
-                event_id = Some(bytes_to_hex(val));
-            }
-            TLV_RELAY => relays.push(String::from_utf8_lossy(val).into_owned()),
-            TLV_AUTHOR => {
-                if val.len() != 32 {
-                    return Err(Nip19Error::MalformedTlv("author must be 32 bytes".into()));
-                }
-                author = Some(bytes_to_hex(val));
-            }
-            TLV_KIND => {
-                if val.len() != 4 {
-                    return Err(Nip19Error::MalformedTlv("kind must be 4 bytes".into()));
-                }
-                kind = Some(u32::from_be_bytes([val[0], val[1], val[2], val[3]]));
-            }
-            _ => {}
-        }
-    }
-    Ok(NeventData {
-        event_id: event_id.ok_or(Nip19Error::MissingField("special/event_id"))?,
-        relays,
-        author,
-        kind,
-    })
+    require_hrp(bech, HRP_NEVENT)?;
+    Nip19Event::from_bech32(bech)
+        .map(|e| nevent_to_data(&e))
+        .map_err(map_nostr_err)
 }
 
 // ─── naddr ─────────────────────────────────────────────────────────────────
@@ -385,51 +395,16 @@ pub fn decode_nevent(bech: &str) -> Result<NeventData, Nip19Error> {
 /// Encode an `NaddrData` as an `naddr` bech32m string.
 #[must_use]
 pub fn encode_naddr(data: &NaddrData) -> Result<String, Nip19Error> {
-    let author_bytes = hex_to_bytes(&data.pubkey)?;
-    let mut tlv = Vec::new();
-    tlv_append(&mut tlv, TLV_SPECIAL, data.identifier.as_bytes());
-    for relay in &data.relays {
-        tlv_append(&mut tlv, TLV_RELAY, relay.as_bytes());
-    }
-    tlv_append(&mut tlv, TLV_AUTHOR, &author_bytes);
-    tlv_append(&mut tlv, TLV_KIND, &data.kind.to_be_bytes());
-    encode_tlv(HRP_NADDR, &tlv)
+    data_to_ncoordinate(data)?.to_bech32().map_err(map_nostr_err)
 }
 
 /// Decode an `naddr` bech32m string into `NaddrData`.
 #[must_use]
 pub fn decode_naddr(bech: &str) -> Result<NaddrData, Nip19Error> {
-    let bytes = decode_tlv(bech, HRP_NADDR)?;
-    let mut identifier: Option<String> = None;
-    let mut relays = Vec::new();
-    let mut pubkey: Option<String> = None;
-    let mut kind: Option<u32> = None;
-    for item in tlv_iter(&bytes) {
-        let (typ, val) = item?;
-        match typ {
-            TLV_SPECIAL => identifier = Some(String::from_utf8_lossy(val).into_owned()),
-            TLV_RELAY => relays.push(String::from_utf8_lossy(val).into_owned()),
-            TLV_AUTHOR => {
-                if val.len() != 32 {
-                    return Err(Nip19Error::MalformedTlv("author must be 32 bytes".into()));
-                }
-                pubkey = Some(bytes_to_hex(val));
-            }
-            TLV_KIND => {
-                if val.len() != 4 {
-                    return Err(Nip19Error::MalformedTlv("kind must be 4 bytes".into()));
-                }
-                kind = Some(u32::from_be_bytes([val[0], val[1], val[2], val[3]]));
-            }
-            _ => {}
-        }
-    }
-    Ok(NaddrData {
-        identifier: identifier.ok_or(Nip19Error::MissingField("special/identifier"))?,
-        pubkey: pubkey.ok_or(Nip19Error::MissingField("author"))?,
-        kind: kind.ok_or(Nip19Error::MissingField("kind"))?,
-        relays,
-    })
+    require_hrp(bech, HRP_NADDR)?;
+    Nip19Coordinate::from_bech32(bech)
+        .map(|c| ncoordinate_to_data(&c))
+        .map_err(map_nostr_err)
 }
 
 // ─── Top-level polymorphic parse / format ──────────────────────────────────
@@ -446,17 +421,35 @@ pub fn decode_naddr(bech: &str) -> Result<NaddrData, Nip19Error> {
 /// ```
 #[must_use]
 pub fn parse(bech: &str) -> Result<Nip19Entity, Nip19Error> {
-    let sep = bech
-        .rfind('1')
-        .ok_or_else(|| Nip19Error::Bech32("no separator '1'".into()))?;
-    match &bech[..sep] {
-        HRP_NPUB => Ok(Nip19Entity::Npub(decode_npub(bech)?)),
-        HRP_NSEC => Ok(Nip19Entity::Nsec(decode_nsec(bech)?)),
-        HRP_NOTE => Ok(Nip19Entity::Note(decode_note(bech)?)),
-        HRP_NPROFILE => Ok(Nip19Entity::Nprofile(decode_nprofile(bech)?)),
-        HRP_NEVENT => Ok(Nip19Entity::Nevent(decode_nevent(bech)?)),
-        HRP_NADDR => Ok(Nip19Entity::Naddr(decode_naddr(bech)?)),
-        other => Err(Nip19Error::UnknownHrp(other.to_string())),
+    // Validate the separator first so a non-bech32 string surfaces as
+    // `Bech32` (the variant callers match on for "not a NIP-19 string"),
+    // mirroring the prior hand-rolled dispatcher.
+    let hrp = hrp_of(bech)?;
+    // Reject an unrecognised HRP up-front — before bech32 checksum
+    // validation — so an unknown prefix always surfaces as `UnknownHrp(hrp)`
+    // regardless of whether the body happens to be valid bech32 (matches the
+    // prior hand-rolled dispatcher's prefix-first contract).
+    if !matches!(
+        hrp,
+        HRP_NPUB | HRP_NSEC | HRP_NOTE | HRP_NPROFILE | HRP_NEVENT | HRP_NADDR
+    ) {
+        return Err(Nip19Error::UnknownHrp(hrp.to_string()));
+    }
+    match Nip19::from_bech32(bech) {
+        Ok(Nip19::Pubkey(pk)) => Ok(Nip19Entity::Npub(pk.to_hex())),
+        Ok(Nip19::Secret(sk)) => Ok(Nip19Entity::Nsec(sk.to_secret_hex())),
+        Ok(Nip19::EventId(id)) => Ok(Nip19Entity::Note(id.to_hex())),
+        Ok(Nip19::Profile(p)) => Ok(Nip19Entity::Nprofile(nprofile_to_data(&p))),
+        Ok(Nip19::Event(e)) => Ok(Nip19Entity::Nevent(nevent_to_data(&e))),
+        Ok(Nip19::Coordinate(c)) => Ok(Nip19Entity::Naddr(ncoordinate_to_data(&c))),
+        #[allow(unreachable_patterns)]
+        Ok(_) => Err(Nip19Error::UnknownHrp(hrp.to_string())),
+        // `nostr` returns `WrongPrefix` for a recognised-bech32 / unknown-NIP19
+        // HRP; surface the actual prefix the caller passed.
+        Err(nostr::nips::nip19::Error::WrongPrefix) => {
+            Err(Nip19Error::UnknownHrp(hrp.to_string()))
+        }
+        Err(e) => Err(map_nostr_err(e)),
     }
 }
 
