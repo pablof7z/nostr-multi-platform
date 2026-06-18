@@ -22,7 +22,7 @@ From docs.rs/nostrdb (v0.4.0) and the C `nostrdb` README + Damus dev thread:
 - **Construction:** `Ndb::new(db_dir: &str, config: &Config) -> Result<Self>`. The LMDB environment is created **internally by the C library** from the path + `Config`. mapsize auto-halves on failure. **No environment-injection constructor exists.**
 - **Ingest:** `process_event(&self, json: &str) -> Result<()>`, `process_client_event`, `process_event_with(json, IngestMetadata)`. Documented as: *"returns immediately and doesn't provide any information on if ingestion was successful."* Fire-and-forget JSON in.
 - **Architecture:** strfry-derived **share-nothing**: a dedicated **ingester thread verifies signatures** then transfers ownership to a **single writer thread** ("LMDB allows multithreaded reads… but only a single-threaded writer" — Damus dev thread). Mutation is owned by nostrdb's own threads.
-- **Query:** `query(&self, txn: &Transaction, filters: &[Filter], max_results: i32) -> Result<Vec<QueryResult>>`. Returns a **materialized `Vec`**. The C core has `ndb_query_visit` (visitor); **the Rust binding does not expose it.**
+- **Query:** `query(&self, txn: &Transaction, filters: &[Filter], max_results: i32) -> Result<Vec<QueryResult>>` returns a **materialized `Vec`**. Visitor semantics **are** available in current upstream: `nostrdb-rs` exposes `fold` / `try_fold` on its query iterators, so an early-stopping, no-full-buffer scan is now expressible without forking the binding. The original objection that the visitor path is "unbound" is **no longer true** and is not a basis for rejection.
 - **Subscriptions:** `subscribe(&[Filter]) -> Subscription`, `poll_for_notes`, `wait_for_notes` — low-level poll/wake.
 - **Storage:** custom flatbuffer-like packed note layout mmap'd in LMDB; zero-copy reads; a per-note mutable metadata table (`get_note_metadata`, `NoteMetadataBuf`).
 - **Mutation surface:** **no insert/write/update/delete methods in the Rust binding.** No NIP-09 delete entry point. Replaceable / kind:5 semantics are applied *internally by nostrdb on its own terms* during ingest, not steerable by the caller.
@@ -48,21 +48,36 @@ NMP's `EventStore::insert` (`store/mem/insert.rs`) is a single ordered policy pi
 
 ## 4. D8 analysis (reactivity contract)
 
-**Partially violated, and on the load-bearing axis.** D8 demands a composite reverse index and **zero per-event allocation after warmup** — the visitor path that `nostrdb-notedeck-lessons.md` §2.3 specifically wanted to adopt. The Rust binding exposes only `query(...) -> Result<Vec<QueryResult>>` with an `i32` cap. Every view recompute would **materialize a `Vec`**, allocating proportional to result size on the hot path. The C `ndb_query_visit` exists but is **unbound in `nostrdb-rs`** — adopting it would require forking/extending the binding (an FFI maintenance surface), defeating the "free maintenance" argument. The reverse-index-naming-interested-views requirement is also entirely NMP's; nostrdb's subscriptions are flat filter polls.
+**Violated on the load-bearing axis — but not for the reason the original draft gave.** The earlier objection (no visitor binding, forced `Vec` materialization) is **withdrawn**: current `nostrdb-rs` exposes `fold` / `try_fold` over query iterators, so an early-stopping, zero-full-buffer scan is now expressible. The real D8 incompatibility is the **composite reverse index**: D8 requires NMP to maintain a reverse index that, on each insert, names exactly *which interested views must be woken*. That index is NMP-owned and is the mechanism behind the reactivity contract. nostrdb's wake model is a **flat filter-poll subscription** (`subscribe(&[Filter])` + `poll_for_notes` / `wait_for_notes`): a fixed set of filters that the caller polls for "you have new notes." It cannot express "this insert touches these named views and only these," cannot carry NMP's view-identity into the wake, and cannot be driven from NMP's own insert pipeline (which nostrdb does not expose — see §2/§3). The reverse-index-naming-interested-views requirement is entirely NMP's and has no expression in nostrdb's subscription model. That, not visitor-unboundedness, is the D8 blocker.
 
 ## 5. ADR-0011 compatibility (env ownership)
 
 **Violated outright.** ADR-0011's accepted decision is *"NMP owns the `lmdb::Environment` and injects it into [the store crate]"* so that `insert()` commits event + provenance + watermarks + claims + domain rows in **one `RwTxn`**. `Ndb::new(db_dir, &Config)` creates the env internally with **no injection seam** (no `with_env`, no exposed txn-scoped write). The two-environment fallback in ADR-0011 §"Two-phase-write fallback" was explicitly rejected as the primary design due to write-amplification and recovery-window ambiguity — and it would be *forced* here. A `with_env` upstream PR is far less plausible against a C-core binding than against the pure-Rust `nostr-lmdb` ADR-0011 already plans for.
 
+## 5b. License checkpoint (blocks code-level borrowing)
+
+There is an **unresolved licensing ambiguity** that independently blocks any code-level reuse:
+
+- `nostrdb-rs`'s `Cargo.toml` advertises **`license = "GPL-3.0-or-later"`** in its crate metadata.
+- The upstream C `nostrdb` repository appears to be **BSD-licensed**.
+
+These two facts are in tension and have **not** been reconciled with upstream. Until the discrepancy is resolved in writing:
+
+- **Code-level borrowing — copying, adapting, or vendoring source from `nostrdb` or `nostrdb-rs` into NMP — is blocked.** GPL-3.0-or-later is incompatible with NMP's licensing posture, and we cannot rely on the C-repo BSD notice to override the crate's published GPL metadata.
+- This checkpoint is **independent** of the D4/D8/ADR-0011 technical reasons below: even if the architecture fit were perfect, the unresolved license would still bar copying source. Adopting *concepts* (the design lessons in §7) is unaffected — only verbatim/derived source is gated.
+
+Lifting this gate requires upstream clarification (relicense, dual-license clarification, or an explicit BSD statement on `nostrdb-rs`).
+
 ## 6. RECOMMENDATION
 
 **Reject `nostrdb-rs`. Keep the hand-rolled `LmdbEventStore` path targeting `nostr-lmdb` per ADR-0011.**
 
-Decisive reasons (any one is sufficient; all three hold):
+Decisive reasons (any one is sufficient; all four hold):
 
 1. **D4:** nostrdb owns its own ingester+writer threads and fixed insert policy; `process_event` is fire-and-forget `Result<()>`. NMP cannot be the single writer per fact nor interpose its insert invariants (foreign pre-tombstones, provenance merge, claim-GC, NIP-40, kind:5 self-delete-only, `InsertOutcome`, ADR-0007 emit).
 2. **ADR-0011:** `Ndb::new` creates the LMDB env internally with no injection; single-commit atomicity across NMP's secondaries is impossible without the already-rejected two-env fallback.
-3. **D8:** the Rust binding exposes only `query → Vec<QueryResult>`; no `query_visit`. Forces per-recompute Vec materialization, incompatible with the zero-per-event-alloc visitor path D8 mandates.
+3. **D8:** NMP's composite reverse index — which on each insert names exactly the interested views to wake — is NMP-owned and inexpressible in nostrdb's flat filter-poll subscription model (`subscribe` + `poll_for_notes`). (Note: the visitor/allocation objection from the original draft is withdrawn — current `nostrdb-rs` exposes `fold` / `try_fold` early-stopping scans; it is no longer a rejection ground.)
+4. **License:** `nostrdb-rs` publishes `GPL-3.0-or-later` while the C repo appears BSD; the ambiguity is unresolved (§5b). Code-level borrowing is blocked until cleared — independent of the technical reasons above.
 
 Risk note: the "battle-tested code for free" upside is real but does not survive contact with D4/D8/ADR-0011 — the invariants we would have to rebuild *above* nostrdb are exactly the ones that carry the correctness load, and we would carry an FFI fork on top.
 
@@ -78,5 +93,18 @@ The hand-rolled path should adopt these *as Rust design*, not as a dependency:
 
 ## 8. Follow-ups
 
-- Update `nostrdb-notedeck-lessons.md` §2.5/§5 to point at this doc as the resolved decision (separate task; not blocking).
-- M3 implementation proceeds against `nostr-lmdb` + ADR-0011 env-injection PR as already planned.
+The conceptual techniques carried over in §7 are tracked as concrete implementation issues. The decision-refresh task itself is #1515.
+
+| Issue | What it implements |
+|---|---|
+| #1515 | This decision refresh — corrects the stale visitor objection, states direct-adoption blockers concretely, adds the license checkpoint, cross-links follow-ups. |
+| #1516 | True streaming LMDB `query_visit` (§7 visitor semantic; lessons §2.3) — `query_visit(filter, FnMut(&StoredEvent) -> Continue|Stop)` as the default for view-internal scans. |
+| #1517 | Audit and tighten cache `StoreQuery` planning/index coverage — correctness for ADR-0045 offline/cache-serve coverage and intentional index paths. |
+| #1518 | Queryable relay provenance indexes without splitting store ownership — provenance derived from insert-owned sidecars, single-writer (§7 no split-ownership). |
+| #1519 | Persist insert-owned projection metadata sidecars (§7 separable metadata; lessons §2.2) — restart-safe cache projections without recomputing aggregates from scratch. |
+| #1520 | Event-driven store notification/replay wakeups — correct missed wakeups, no polling-based reactivity (§7 / lessons §2.4 subscription wakeup model). |
+| #1521 | Map LMDB cache health failures to diagnostics — typed diagnostics for map/reader/migration health. |
+| #1522 | Capture cache adaptation baselines and fixtures before any performance-affecting PR (precondition for #1516 and others). |
+| #1524 | Final cache adaptation acceptance gates and regression thresholds. |
+
+M3 implementation proceeds against `nostr-lmdb` + ADR-0011 env-injection as already planned.

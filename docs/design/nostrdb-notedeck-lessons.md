@@ -52,7 +52,16 @@ nostrdb already exists, is fast, is Rust-callable via `nostrdb-rs`, and is being
 - **Option B:** Implement our own LMDB-backed `EventStore` from scratch using `heed` or `lmdb-zero`. Full control. Reinvent strfry's wheel.
 - **Option C:** Use `nostr-lmdb` from the `rust-nostr` workspace, which is more naive than nostrdb but already in the dependency tree we depend on.
 
-**Recommendation:** revisit this at the start of M3. Option A (nostrdb-rs) is probably the right move for v1 — we'd be picking up battle-tested code from a team that has demonstrated they care about performance. The risk is API surface mismatch with our `EventStore` trait, but nostrdb's API is shape-compatible (filters, subscriptions, inserts).
+> **Resolved (2026-06-18):** This question was decided in
+> [`docs/design/nostrdb-rs-evaluation.md`](nostrdb-rs-evaluation.md): **`nostrdb-rs` is rejected**; NMP keeps the
+> hand-rolled `LmdbEventStore` targeting `nostr-lmdb` per ADR-0011. The decisive blockers are D4 (nostrdb owns its
+> own ingester+writer threads and fire-and-forget `process_event`), ADR-0011 (no LMDB env-injection seam, so
+> single-commit atomicity across NMP's sidecars is impossible), D8 (NMP's composite reverse index naming interested
+> views per insert is inexpressible in nostrdb's flat filter-poll subscriptions), and an unresolved GPL-vs-BSD
+> licensing ambiguity that blocks code-level borrowing. **The preliminary "Option A is probably right" lean below is
+> superseded — read it as historical context only.**
+
+**Recommendation (preliminary; superseded — see the banner above):** revisit this at the start of M3. Option A (nostrdb-rs) is probably the right move for v1 — we'd be picking up battle-tested code from a team that has demonstrated they care about performance. The risk is API surface mismatch with our `EventStore` trait, but nostrdb's API is shape-compatible (filters, subscriptions, inserts).
 
 This is a deferred decision; it does not block earlier milestones.
 
@@ -311,7 +320,7 @@ These aren't disagreements with notedeck — they're consequences of different f
 
 ## 7. Summary
 
-nostrdb gives us a strong recommendation to **depend on it, not reimplement it**, for M3's LMDB layer. The performance is real, the API is shape-compatible with our `EventStore` trait, and we get free maintenance from a team that cares.
+nostrdb gives us a strong set of *design lessons* for M3's LMDB layer. (The earlier "depend on it, not reimplement it" recommendation is **superseded**: [`docs/design/nostrdb-rs-evaluation.md`](nostrdb-rs-evaluation.md) rejected `nostrdb-rs` on D4 / ADR-0011 / D8 / licensing grounds — we adopt the *concepts*, not the dependency.)
 
 Notedeck gives us **a proof-of-concept Rust implementation** of most of what M2 (subscription compilation), M5 (NIP-42 retry layer), M6 (typed publish), and M8 (multi-session) need. Several specific patterns (`SubKey`, `(owner, key, scope)`, `set_sub` vs `ensure_sub`, `SubScope::Account` switch-away, compaction-and-transparent-retry split, `UnknownIds`, `TimeCached`) should be adopted as-is.
 
