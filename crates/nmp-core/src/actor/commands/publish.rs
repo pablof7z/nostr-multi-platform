@@ -690,23 +690,33 @@ pub(crate) fn follow(
 /// (screen re-entry) before a new kind:3 arrives, and is also where the host
 /// first activates the subscription by declaring its kinds. An empty `kinds`
 /// set clears the subscription (equivalent to `close_contact_feed`).
+///
+/// The host-declared kinds are stored UNCONDITIONALLY — including before any
+/// account is active (#1493 P4). Both Chirp shells mount the home-feed view at
+/// app launch (`HomeFeedView.task` / `TimelineScreen.LaunchedEffect`), which can
+/// fire this verb before the user signs in. The kinds are pure host policy that
+/// outlives the identity; persisting them now lets the sign-in path's
+/// `reconcile_follow_feed_after_identity_change` →
+/// `register_follow_feed_for_active_account` register the follow-feed under the
+/// stored kinds without the host having to re-declare them post-identity (which
+/// was the per-platform imperative `openTimeline()` band-aid Android carried and
+/// iOS lacked — a latent "no feed after first sign-in" bug on the View-driven
+/// path). `set_follow_feed_kinds` calls `register_follow_feed_for_active_account`
+/// internally, which correctly early-returns while no account is active, so
+/// storing the kinds registers no interest yet — it only primes the kernel.
 pub(crate) fn open_contact_feed(
-    identity: &IdentityRuntime,
+    _identity: &IdentityRuntime,
     kernel: &mut Kernel,
     kinds: std::collections::BTreeSet<u32>,
 ) -> Vec<OutboundMessage> {
-    match identity.active_pubkey() {
-        Some(_pk) => {
-            // Store the host-declared kinds and re-register M2 follow-feed
-            // interests so drain_lifecycle_tick emits REQ frames for the follow
-            // set on the next idle tick. `set_follow_feed_kinds` already calls
-            // `register_follow_feed_for_active_account` internally. An empty
-            // set clears all follow-feed interests (D5 CLEAR branch).
-            kernel.set_follow_feed_kinds(kinds);
-            Vec::new()
-        }
-        None => toast_no_account(kernel, "open_contact_feed", None),
-    }
+    // Store the host-declared kinds and (re-)register M2 follow-feed interests
+    // so drain_lifecycle_tick emits REQ frames for the follow set on the next
+    // idle tick. Idempotent and account-agnostic: with no active account this
+    // only persists the kinds (registration early-returns); the subsequent
+    // identity-change reconcile reads them back. An empty set clears all
+    // follow-feed interests (D5 CLEAR branch).
+    kernel.set_follow_feed_kinds(kinds);
+    Vec::new()
 }
 
 /// Tear down the contact-feed subscription opened by `open_contact_feed`.

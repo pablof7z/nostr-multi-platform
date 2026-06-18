@@ -301,10 +301,18 @@ class KernelModel : ViewModel() {
     // Account management
     // -------------------------------------------------------------------------
 
-    /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace). */
+    /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace).
+     *
+     *  No imperative post-identity `openTimeline()`: the home-feed interest is
+     *  registered by the view that renders it (`TimelineScreen` →
+     *  `LaunchedEffect { model.openTimeline() }`), exactly as on iOS
+     *  (`HomeFeedView.task { model.openTimeline() }`). The kernel now persists
+     *  the host-declared follow-feed kinds even before an account exists
+     *  (#1493 P4 / `open_contact_feed`), so the sign-in reconcile re-registers
+     *  the feed without the shell re-declaring it. Driving it from the identity
+     *  op was a per-platform policy band-aid the shell must not carry (D7). */
     fun signInNsec(secret: String) {
         bridge.signInNsec(secret)
-        bridge.openTimeline()
     }
 
     /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
@@ -329,16 +337,16 @@ class KernelModel : ViewModel() {
     fun nostrConnectUri(relayUrl: String? = null, callbackScheme: String? = null): String? =
         bridge.nostrConnectUri(relayUrl, callbackScheme)
 
-    /** Create a new local account with the given display name. */
+    /** Create a new local account with the given display name.
+     *  See [signInNsec] re: no imperative post-identity `openTimeline()`. */
     fun createAccount(displayName: String) {
         bridge.createLocalAccount(displayName)
-        bridge.openTimeline()
     }
 
-    /** Switch the active account (direct C-ABI — no ActionModule for switch namespace). */
+    /** Switch the active account (direct C-ABI — no ActionModule for switch namespace).
+     *  See [signInNsec] re: no imperative post-identity `openTimeline()`. */
     fun switchAccount(pubkey: String) {
         bridge.switchAccount(pubkey)
-        bridge.openTimeline()
     }
 
     /** Remove the account identified by the given pubkey (direct C-ABI). */
