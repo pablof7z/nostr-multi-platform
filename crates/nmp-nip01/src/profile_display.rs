@@ -1,4 +1,3 @@
-use nmp_core::nip19::encode_npub;
 use nmp_core::substrate::KernelEvent;
 use serde::{Deserialize, Serialize};
 
@@ -9,16 +8,16 @@ use serde::{Deserialize, Serialize};
 /// absent in kind:0 is modelled as `Option<String>` — the host shell
 /// chooses how to render the missing case (typically by formatting
 /// `author_pubkey` itself).
+///
+/// ADR-0032 / V-115: `npub` (bech32) has been removed — Rust must not
+/// encode presentation-layer bech32 in projection types. Shells that
+/// need bech32 must call `nmp_app_encode_profile` / their own encoder.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AuthorDisplay {
     /// Display name from kind:0 (`display_name` / `displayName` / `name`).
     /// `None` when no kind:0 has arrived yet for this author — presentation
     /// layer falls back to formatting the raw pubkey itself.
     pub name: Option<String>,
-    /// Bech32 `npub1…` encoding of the author pubkey. Pubkey-deterministic;
-    /// retained for shells that lack a bech32 encoder. `None` only if the
-    /// raw hex cannot be parsed (D6 fallback). Not derived from kind:0.
-    pub npub: Option<String>,
     /// `picture` URL from kind:0. `None` when no kind:0 has arrived yet,
     /// or when the kind:0 omits the `picture` field — presentation layer
     /// chooses a placeholder/identicon strategy.
@@ -36,13 +35,12 @@ pub struct ProfileDisplay {
 }
 
 impl AuthorDisplay {
-    /// The "no kind:0 yet" shape — name and picture_url are absent. The
-    /// bech32 `npub` is pubkey-deterministic so it is always derivable.
+    /// The "no kind:0 yet" shape — name and picture_url are absent.
+    /// Shells that need bech32 must encode the raw pubkey themselves.
     #[must_use]
-    pub fn fallback(pubkey: &str) -> Self {
+    pub fn fallback(_pubkey: &str) -> Self {
         Self {
             name: None,
-            npub: encode_npub(pubkey).ok(),
             picture_url: None,
         }
     }

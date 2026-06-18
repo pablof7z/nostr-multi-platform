@@ -37,8 +37,8 @@ class RelationCountInterest : Table() {
                 null
             }
         }
-    val namespaceAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun namespaceInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val namespaceAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun namespaceInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val targetEventId : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class RelationCountInterest : Table() {
                 null
             }
         }
-    val targetEventIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun targetEventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val targetEventIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun targetEventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val tag : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class RelationCountInterest : Table() {
                 null
             }
         }
-    val tagAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun tagInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val tagAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun tagInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelationCountInterest(_bb: ByteBuffer): RelationCountInterest = getRootAsRelationCountInterest(_bb, RelationCountInterest())

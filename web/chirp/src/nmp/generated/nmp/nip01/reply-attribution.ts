@@ -37,44 +37,20 @@ authorDisplay(obj?:AuthorDisplay):AuthorDisplay|null {
   return offset ? (obj || new AuthorDisplay()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
-hasAuthorDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorDisplayName():string|null
-authorDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorDisplayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-hasAuthorPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorPictureUrl():string|null
-authorPictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorPictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 replyEventId():string|null
 replyEventId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 replyEventId(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 replyCreatedAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 static startReplyAttribution(builder:flatbuffers.Builder) {
-  builder.startObject(8);
+  builder.startObject(4);
 }
 
 static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffers.Offset) {
@@ -85,28 +61,12 @@ static addAuthorDisplay(builder:flatbuffers.Builder, authorDisplayOffset:flatbuf
   builder.addFieldOffset(1, authorDisplayOffset, 0);
 }
 
-static addHasAuthorDisplayName(builder:flatbuffers.Builder, hasAuthorDisplayName:boolean) {
-  builder.addFieldInt8(2, +hasAuthorDisplayName, +false);
-}
-
-static addAuthorDisplayName(builder:flatbuffers.Builder, authorDisplayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, authorDisplayNameOffset, 0);
-}
-
-static addHasAuthorPictureUrl(builder:flatbuffers.Builder, hasAuthorPictureUrl:boolean) {
-  builder.addFieldInt8(4, +hasAuthorPictureUrl, +false);
-}
-
-static addAuthorPictureUrl(builder:flatbuffers.Builder, authorPictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, authorPictureUrlOffset, 0);
-}
-
 static addReplyEventId(builder:flatbuffers.Builder, replyEventIdOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, replyEventIdOffset, 0);
+  builder.addFieldOffset(2, replyEventIdOffset, 0);
 }
 
 static addReplyCreatedAt(builder:flatbuffers.Builder, replyCreatedAt:bigint) {
-  builder.addFieldInt64(7, replyCreatedAt, BigInt('0'));
+  builder.addFieldInt64(3, replyCreatedAt, BigInt('0'));
 }
 
 static endReplyAttribution(builder:flatbuffers.Builder):flatbuffers.Offset {

@@ -42,8 +42,8 @@ class TimelineBlockEntry : Table() {
                 null
             }
         }
-    val standaloneIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun standaloneIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val standaloneIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun standaloneIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val standaloneRoot : nmp.nip01.ThreadPointer? get() = standaloneRoot(nmp.nip01.ThreadPointer())
     fun standaloneRoot(obj: nmp.nip01.ThreadPointer) : nmp.nip01.ThreadPointer? {
         val o = __offset(8)

@@ -43,8 +43,11 @@ final class OpFeedDecoderTests: XCTestCase {
         XCTAssertEqual(root.card.kind, 1)
         XCTAssertEqual(root.card.createdAt, 1_700_000_500)
         XCTAssertEqual(root.card.content, "a thread root")
-        XCTAssertEqual(root.card.contentPreview, "a thread root")
-        // root_card() has absent display mirrors (has_* == false).
+        // GH #920: the card encoder no longer denormalizes a render preview;
+        // `encode_card` writes an empty `content_preview` slot and the
+        // presentation layer derives the preview from `content`.
+        XCTAssertEqual(root.card.contentPreview, "")
+        // GH #920: the card's author display is the absent fallback (has_* == false).
         XCTAssertNil(root.card.authorDisplayName)
         XCTAssertNil(root.card.authorPictureUrl)
 

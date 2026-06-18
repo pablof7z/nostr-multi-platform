@@ -202,10 +202,12 @@ object TypedHomeFeedDecoder {
     }
 
     private fun makeAttribution(entry: ReplyAttribution): ChirpReplyAttribution {
+        // ADR-0032 / #1493: flat mirrors removed; read nested authorDisplay.
+        val display = entry.authorDisplay
         return ChirpReplyAttribution(
             authorPubkey = entry.authorPubkey ?: "",
-            authorDisplayName = if (entry.hasAuthorDisplayName) entry.authorDisplayName else null,
-            authorPictureUrl = if (entry.hasAuthorPictureUrl) entry.authorPictureUrl else null,
+            authorDisplayName = if (display?.hasName == true) display.name else null,
+            authorPictureUrl = if (display?.hasPictureUrl == true) display.pictureUrl else null,
             replyEventId = entry.replyEventId ?: "",
             replyCreatedAt = entry.replyCreatedAt,
         )

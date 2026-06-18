@@ -107,17 +107,20 @@ function decodeAttribution(ra: ReplyAttribution): FeedAttribution {
     replyEventId: ra.replyEventId() ?? "",
     replyCreatedAt: Number(ra.replyCreatedAt()),
   };
-  if (ra.hasAuthorDisplayName()) {
+  // ADR-0032 / #1493: flat mirrors removed from ReplyAttribution; read from
+  // nested authorDisplay table.
+  const display = ra.authorDisplay();
+  if (display?.hasName()) {
     // Guard against empty string: `?? ""` would set authorDisplayName="" which
     // blocks the resolvedProfiles (KRPR) fallback in feedItemsToRows because
     // `"" ?? resolvedProfiles.get(pubkey)` returns "" (nullish coalescing only
     // bypasses null/undefined, not empty string).  Leave undefined so the
     // presentation-layer join can supply the name from KRPR.
-    const dn = ra.authorDisplayName();
+    const dn = display.name();
     if (dn) out.authorDisplayName = dn;
   }
-  if (ra.hasAuthorPictureUrl()) {
-    const url = ra.authorPictureUrl();
+  if (display?.hasPictureUrl()) {
+    const url = display.pictureUrl();
     if (url) out.authorPictureUrl = url;
   }
   return out;

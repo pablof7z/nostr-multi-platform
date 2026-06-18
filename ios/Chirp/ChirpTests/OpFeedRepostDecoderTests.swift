@@ -41,8 +41,11 @@ final class OpFeedRepostDecoderTests: XCTestCase {
         XCTAssertEqual(repost.card.id, OpFeedTestFixtures.hex32(0x09))
         XCTAssertEqual(repost.card.kind, 6)
         XCTAssertTrue(repost.card.isRepost, "card with reposted_by must be flagged repost")
-        XCTAssertEqual(repost.card.authorDisplayName, "Alice")
-        XCTAssertEqual(repost.card.authorPictureUrl, "https://example.com/a.png")
+        // GH #920: the card-level author display is the absent fallback; the
+        // card carries no denormalized name/picture (the attribution table is
+        // the populated display surface, and a repost card has none here).
+        XCTAssertNil(repost.card.authorDisplayName)
+        XCTAssertNil(repost.card.authorPictureUrl)
         XCTAssertTrue(repost.attribution.isEmpty)
     }
 }

@@ -37,8 +37,8 @@ class ContentProfileRenderEntry : Table() {
                 null
             }
         }
-    val keyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val pubkey : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class ContentProfileRenderEntry : Table() {
                 null
             }
         }
-    val pubkeyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val pubkeyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val display : nmp.nip01.AuthorDisplay? get() = display(nmp.nip01.AuthorDisplay())
     fun display(obj: nmp.nip01.AuthorDisplay) : nmp.nip01.AuthorDisplay? {
         val o = __offset(8)

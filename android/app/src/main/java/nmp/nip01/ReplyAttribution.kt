@@ -48,52 +48,20 @@ class ReplyAttribution : Table() {
             null
         }
     }
-    val hasAuthorDisplayName : Boolean
-        get() {
-            val o = __offset(8)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
-        }
-    val authorDisplayName : String?
-        get() {
-            val o = __offset(10)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val authorDisplayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun authorDisplayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
-    val hasAuthorPictureUrl : Boolean
-        get() {
-            val o = __offset(12)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
-        }
-    val authorPictureUrl : String?
-        get() {
-            val o = __offset(14)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val authorPictureUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
-    fun authorPictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     val replyEventId : String?
         get() {
-            val o = __offset(16)
+            val o = __offset(8)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val replyEventIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
-    fun replyEventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
+    val replyEventIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun replyEventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val replyCreatedAt : ULong
         get() {
-            val o = __offset(18)
+            val o = __offset(10)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     companion object {
@@ -103,27 +71,19 @@ class ReplyAttribution : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createReplyAttribution(builder: FlatBufferBuilder, authorPubkeyOffset: Int, authorDisplayOffset: Int, hasAuthorDisplayName: Boolean, authorDisplayNameOffset: Int, hasAuthorPictureUrl: Boolean, authorPictureUrlOffset: Int, replyEventIdOffset: Int, replyCreatedAt: ULong) : Int {
-            builder.startTable(8)
+        fun createReplyAttribution(builder: FlatBufferBuilder, authorPubkeyOffset: Int, authorDisplayOffset: Int, replyEventIdOffset: Int, replyCreatedAt: ULong) : Int {
+            builder.startTable(4)
             addReplyCreatedAt(builder, replyCreatedAt)
             addReplyEventId(builder, replyEventIdOffset)
-            addAuthorPictureUrl(builder, authorPictureUrlOffset)
-            addAuthorDisplayName(builder, authorDisplayNameOffset)
             addAuthorDisplay(builder, authorDisplayOffset)
             addAuthorPubkey(builder, authorPubkeyOffset)
-            addHasAuthorPictureUrl(builder, hasAuthorPictureUrl)
-            addHasAuthorDisplayName(builder, hasAuthorDisplayName)
             return endReplyAttribution(builder)
         }
-        fun startReplyAttribution(builder: FlatBufferBuilder) = builder.startTable(8)
+        fun startReplyAttribution(builder: FlatBufferBuilder) = builder.startTable(4)
         fun addAuthorPubkey(builder: FlatBufferBuilder, authorPubkey: Int) = builder.addOffset(0, authorPubkey, 0)
         fun addAuthorDisplay(builder: FlatBufferBuilder, authorDisplay: Int) = builder.addOffset(1, authorDisplay, 0)
-        fun addHasAuthorDisplayName(builder: FlatBufferBuilder, hasAuthorDisplayName: Boolean) = builder.addBoolean(2, hasAuthorDisplayName, false)
-        fun addAuthorDisplayName(builder: FlatBufferBuilder, authorDisplayName: Int) = builder.addOffset(3, authorDisplayName, 0)
-        fun addHasAuthorPictureUrl(builder: FlatBufferBuilder, hasAuthorPictureUrl: Boolean) = builder.addBoolean(4, hasAuthorPictureUrl, false)
-        fun addAuthorPictureUrl(builder: FlatBufferBuilder, authorPictureUrl: Int) = builder.addOffset(5, authorPictureUrl, 0)
-        fun addReplyEventId(builder: FlatBufferBuilder, replyEventId: Int) = builder.addOffset(6, replyEventId, 0)
-        fun addReplyCreatedAt(builder: FlatBufferBuilder, replyCreatedAt: ULong) = builder.addLong(7, replyCreatedAt.toLong(), 0)
+        fun addReplyEventId(builder: FlatBufferBuilder, replyEventId: Int) = builder.addOffset(2, replyEventId, 0)
+        fun addReplyCreatedAt(builder: FlatBufferBuilder, replyCreatedAt: ULong) = builder.addLong(3, replyCreatedAt.toLong(), 0)
         fun endReplyAttribution(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

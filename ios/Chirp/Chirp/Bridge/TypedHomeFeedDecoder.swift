@@ -108,10 +108,12 @@ enum TypedHomeFeedDecoder {
     }
 
     private static func makeAttribution(_ entry: nmp_nip01_ReplyAttribution) -> ChirpReplyAttribution {
-        ChirpReplyAttribution(
+        // ADR-0032 / #1493: flat mirrors removed; read nested authorDisplay.
+        let display = entry.authorDisplay
+        return ChirpReplyAttribution(
             authorPubkey: entry.authorPubkey ?? "",
-            authorDisplayName: optionalString(entry.authorDisplayName, present: entry.hasAuthorDisplayName),
-            authorPictureUrl: optionalString(entry.authorPictureUrl, present: entry.hasAuthorPictureUrl),
+            authorDisplayName: optionalString(display?.name, present: display?.hasName ?? false),
+            authorPictureUrl: optionalString(display?.pictureUrl, present: display?.hasPictureUrl ?? false),
             replyEventId: entry.replyEventId ?? "",
             replyCreatedAt: entry.replyCreatedAt
         )

@@ -25,7 +25,6 @@ fn content_tree() -> nmp_content::ContentTreeWire {
 fn full_display() -> AuthorDisplay {
     AuthorDisplay {
         name: Some("Alice".to_string()),
-        npub: Some("npub1alice".to_string()),
         picture_url: Some("https://example.com/a.png".to_string()),
     }
 }
@@ -87,12 +86,9 @@ fn attribution(byte: u8, with_display: bool) -> Nip10ReplyAttribution {
         } else {
             AuthorDisplay {
                 name: None,
-                npub: Some("npub1carol".to_string()),
                 picture_url: None,
             }
         },
-        author_display_name: with_display.then(|| "Alice".to_string()),
-        author_picture_url: with_display.then(|| "https://example.com/a.png".to_string()),
         reply_event_id: hex32(byte.wrapping_add(0x80)),
         reply_created_at: 1_700_000_900 + u64::from(byte),
     }
@@ -178,14 +174,14 @@ fn root_with_attribution_preserves_raw_fields() {
     assert_eq!(root.attribution[0].author_pubkey, hex32(0x10));
     assert_eq!(root.attribution[0].reply_event_id, hex32(0x90));
     assert_eq!(root.attribution[0].reply_created_at, 1_700_000_900 + 0x10);
-    // Present display mirrors survive.
+    // Present author_display fields survive.
     assert_eq!(
-        root.attribution[0].author_display_name.as_deref(),
+        root.attribution[0].author_display.name.as_deref(),
         Some("Alice")
     );
-    // Absent display mirrors stay `None` (has_* = false, no kind:0 yet).
-    assert_eq!(root.attribution[1].author_display_name, None);
-    assert_eq!(root.attribution[1].author_picture_url, None);
+    // Absent author_display fields stay `None` (has_* = false, no kind:0 yet).
+    assert_eq!(root.attribution[1].author_display.name, None);
+    assert_eq!(root.attribution[1].author_display.picture_url, None);
 }
 
 #[test]

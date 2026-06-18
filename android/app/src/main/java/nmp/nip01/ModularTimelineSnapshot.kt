@@ -71,8 +71,8 @@ class ModularTimelineSnapshot : Table() {
         get() {
             val o = __offset(10); return if (o != 0) __vector_len(o) else 0
         }
-    val feedWindowBytesAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun feedWindowBytesInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val feedWindowBytesAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun feedWindowBytesInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsModularTimelineSnapshot(_bb: ByteBuffer): ModularTimelineSnapshot = getRootAsModularTimelineSnapshot(_bb, ModularTimelineSnapshot())

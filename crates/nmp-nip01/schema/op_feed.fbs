@@ -37,18 +37,14 @@ namespace nmp.nip01;
 
 // One follow's NIP-10 reply attributed back to a thread root. Raw data only
 // (ADR-0032): raw hex pubkey, raw reply event id, raw signed created_at, and
-// the kind:0 display mirrors carried verbatim (absent until a kind:0 lands,
-// distinguished by the has_* companion bools). AuthorDisplay is the same typed
-// mirror table the sibling TimelineEventCard reuses (from the include).
+// the kind:0 display mirrors via the nested AuthorDisplay table (absent until a
+// kind:0 lands). AuthorDisplay is the same typed mirror table the sibling
+// TimelineEventCard reuses (from the include). The redundant flat mirrors
+// (has_author_display_name / author_display_name / has_author_picture_url /
+// author_picture_url) have been removed (#1493 P1, ADR-0032).
 table ReplyAttribution {
   author_pubkey:string;          // raw hex pubkey of the replying follow
   author_display:AuthorDisplay;  // reused from timeline_snapshot.fbs
-  // Flat mirrors of author_display.{name,picture_url}; has_* distinguishes
-  // "absent (no kind:0 yet)" from "present empty string".
-  has_author_display_name:bool;
-  author_display_name:string;
-  has_author_picture_url:bool;
-  author_picture_url:string;
   reply_event_id:string;         // raw hex event id of the reply
   reply_created_at:uint64;       // raw signed created_at, Unix seconds
 }
