@@ -4,7 +4,9 @@
 
 import * as flatbuffers from 'flatbuffers';
 
+import { RelayConnectionReason } from '../../nmp/kernel/relay-connection-reason.js';
 import { RelayDiagnosticsInfo } from '../../nmp/kernel/relay-diagnostics-info.js';
+import { RelayDiagnosticsNotice } from '../../nmp/kernel/relay-diagnostics-notice.js';
 import { RelayDiagnosticsWireSub } from '../../nmp/kernel/relay-diagnostics-wire-sub.js';
 
 
@@ -160,42 +162,67 @@ lastNotice(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasLastError():boolean {
+noticeCount():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 48);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
+}
+
+notices(index: number, obj?:RelayDiagnosticsNotice):RelayDiagnosticsNotice|null {
+  const offset = this.bb!.__offset(this.bb_pos, 50);
+  return offset ? (obj || new RelayDiagnosticsNotice()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
+}
+
+noticesLength():number {
+  const offset = this.bb!.__offset(this.bb_pos, 50);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+}
+
+hasLastError():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 52);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lastError():string|null
 lastError(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastError(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 50);
+  const offset = this.bb!.__offset(this.bb_pos, 54);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 wireSubs(index: number, obj?:RelayDiagnosticsWireSub):RelayDiagnosticsWireSub|null {
-  const offset = this.bb!.__offset(this.bb_pos, 52);
+  const offset = this.bb!.__offset(this.bb_pos, 56);
   return offset ? (obj || new RelayDiagnosticsWireSub()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 wireSubsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 52);
+  const offset = this.bb!.__offset(this.bb_pos, 56);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 info(obj?:RelayDiagnosticsInfo):RelayDiagnosticsInfo|null {
-  const offset = this.bb!.__offset(this.bb_pos, 54);
+  const offset = this.bb!.__offset(this.bb_pos, 58);
   return offset ? (obj || new RelayDiagnosticsInfo()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 discoveryKindsLabel():string|null
 discoveryKindsLabel(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 discoveryKindsLabel(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 56);
+  const offset = this.bb!.__offset(this.bb_pos, 60);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
+reasons(index: number, obj?:RelayConnectionReason):RelayConnectionReason|null {
+  const offset = this.bb!.__offset(this.bb_pos, 62);
+  return offset ? (obj || new RelayConnectionReason()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
+}
+
+reasonsLength():number {
+  const offset = this.bb!.__offset(this.bb_pos, 62);
+  return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
+}
+
 static startRelayDiagnosticsRow(builder:flatbuffers.Builder) {
-  builder.startObject(27);
+  builder.startObject(30);
 }
 
 static addRelayUrl(builder:flatbuffers.Builder, relayUrlOffset:flatbuffers.Offset) {
@@ -286,16 +313,36 @@ static addLastNotice(builder:flatbuffers.Builder, lastNoticeOffset:flatbuffers.O
   builder.addFieldOffset(21, lastNoticeOffset, 0);
 }
 
+static addNoticeCount(builder:flatbuffers.Builder, noticeCount:bigint) {
+  builder.addFieldInt64(22, noticeCount, BigInt('0'));
+}
+
+static addNotices(builder:flatbuffers.Builder, noticesOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(23, noticesOffset, 0);
+}
+
+static createNoticesVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
+  builder.startVector(4, data.length, 4);
+  for (let i = data.length - 1; i >= 0; i--) {
+    builder.addOffset(data[i]!);
+  }
+  return builder.endVector();
+}
+
+static startNoticesVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(4, numElems, 4);
+}
+
 static addHasLastError(builder:flatbuffers.Builder, hasLastError:boolean) {
-  builder.addFieldInt8(22, +hasLastError, +false);
+  builder.addFieldInt8(24, +hasLastError, +false);
 }
 
 static addLastError(builder:flatbuffers.Builder, lastErrorOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(23, lastErrorOffset, 0);
+  builder.addFieldOffset(25, lastErrorOffset, 0);
 }
 
 static addWireSubs(builder:flatbuffers.Builder, wireSubsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(24, wireSubsOffset, 0);
+  builder.addFieldOffset(26, wireSubsOffset, 0);
 }
 
 static createWireSubsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -311,11 +358,27 @@ static startWireSubsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addInfo(builder:flatbuffers.Builder, infoOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(25, infoOffset, 0);
+  builder.addFieldOffset(27, infoOffset, 0);
 }
 
 static addDiscoveryKindsLabel(builder:flatbuffers.Builder, discoveryKindsLabelOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(26, discoveryKindsLabelOffset, 0);
+  builder.addFieldOffset(28, discoveryKindsLabelOffset, 0);
+}
+
+static addReasons(builder:flatbuffers.Builder, reasonsOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(29, reasonsOffset, 0);
+}
+
+static createReasonsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
+  builder.startVector(4, data.length, 4);
+  for (let i = data.length - 1; i >= 0; i--) {
+    builder.addOffset(data[i]!);
+  }
+  return builder.endVector();
+}
+
+static startReasonsVector(builder:flatbuffers.Builder, numElems:number) {
+  builder.startVector(4, numElems, 4);
 }
 
 static endRelayDiagnosticsRow(builder:flatbuffers.Builder):flatbuffers.Offset {
