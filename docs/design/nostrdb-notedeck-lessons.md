@@ -279,9 +279,26 @@ Concrete commitments by milestone:
 
 ### M3 (LMDB + persistence)
 
-- **Decide nostrdb-rs vs heed-from-scratch vs nostr-lmdb** (§2.5). Recommendation: nostrdb-rs.
-- **Persist projection cache** alongside events (§2.2).
-- **EventStore trait exposes `query_visit`** (§2.3) for visitor-based queries.
+- **Decide nostrdb-rs vs heed-from-scratch vs nostr-lmdb** (§2.5). ✅ DONE — chose
+  `nostr-lmdb` fork (`nmp-nostr-lmdb`) for tight env-sharing (ADR-0011 / ADR-0012).
+- **Persist projection cache** alongside events (§2.2). Post-v1.
+- **EventStore trait exposes `query_visit`** (§2.3) for visitor-based queries. ✅ DONE —
+  streaming `run_filter_visit` lands in epic #1523 (true lazy conversion, `Break` stops
+  immediately). Acceptance gates added in issue #1524 (`cache_no_materialization_gate`,
+  `cache_serve_replay_fixtures` — see `docs/design/lmdb/cache-gates.md`).
+
+#### Epic #1523 outcome (2026-06-18)
+
+The nostrdb visitor pattern (§2.3) is now fully implemented in NMP:
+
+| Deliverable | Status |
+|---|---|
+| LMDB streaming `run_filter_visit` (lazy deserialization) | ✅ Shipped (#1523) |
+| Materialization counter under `test-support` feature | ✅ `nmp_store::{conversion_count,reset_conversion_count}` |
+| No-over-scan regression gate (8 tests) | ✅ `cache_no_materialization_gate.rs` |
+| Mem ≡ LMDB parity fixtures (5 shapes × 2 backends) | ✅ `cache_serve_replay_fixtures.rs` |
+| CI wired | ✅ `test.yml` "lmdb acceptance gates" step |
+| Gate inventory documented | ✅ `docs/design/lmdb/cache-gates.md` |
 
 ### M4 (negentropy)
 

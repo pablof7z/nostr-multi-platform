@@ -189,3 +189,12 @@ Violation of any invariant fails the test with a precise diff of which sub-db is
 ## 5. CI integration
 
 `cargo test --workspace --features lmdb-backend` becomes part of the pre-merge gate from M3 onward (`plan.md` §6 will be updated). The criterion benches in `crates/nmp-testing/benches/store_*.rs` run nightly with regression checks against the previous week's median (>5% regression on any p99 fails the nightly).
+
+## 6. Cache adoption acceptance gates (epic #1523)
+
+See [`cache-gates.md`](cache-gates.md) for the full gate inventory and run commands.
+
+| Gate file | What it proves |
+|---|---|
+| `cache_no_materialization_gate.rs` | LMDB streaming stops conversion at `Break` (no over-scan) |
+| `cache_serve_replay_fixtures.rs` | Mem ≡ LMDB result parity for 5 query shapes × 2 backends |

@@ -110,6 +110,14 @@ use std::collections::HashSet;
 #[cfg(not(feature = "lmdb-backend"))]
 use std::ops::ControlFlow;
 
+// ─── Test-support counter re-exports ─────────────────────────────────────────
+//
+// `nmp-testing` integration tests consume these through `nmp_store::lmdb::*`
+// when built with `--features test-support,lmdb-backend`.
+
+#[cfg(all(feature = "lmdb-backend", any(test, feature = "test-support")))]
+pub use query::{conversion_count, reset_conversion_count};
+
 // ─── Internal sub-db / env handles (feature-on only) ─────────────────────────
 
 #[cfg(feature = "lmdb-backend")]

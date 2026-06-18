@@ -24,8 +24,8 @@ use crate::StoreError;
 
 use super::query_streaming::{build_filter, run_filter_visit};
 
-#[cfg(test)]
-pub(crate) use super::query_streaming::{conversion_count, reset_conversion_count};
+#[cfg(any(test, feature = "test-support"))]
+pub use super::query_streaming::{conversion_count, reset_conversion_count};
 
 // ─── Primary lookup ──────────────────────────────────────────────────────────
 
