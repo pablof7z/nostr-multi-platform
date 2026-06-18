@@ -58,10 +58,13 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
 
     // ADR-0032 / #623: bind pre-computed label and tone — no raw-string
     // branching in Kotlin (thin-shell rule). Both are null when no wallet
-    // is configured on this snapshot tick (tone "inactive" ≡ not connected).
+    // is configured on this snapshot tick.
     val walletLabel = s.projections?.walletLabel
-    val walletTone  = s.projections?.walletTone
-    val isConnected = walletTone != null && walletTone != "inactive"
+    // Rust owns the connected decision (`WalletStatus.is_connected`); the shell
+    // binds it verbatim instead of re-deriving from the tone discriminant (which
+    // was a native branch on a Rust wire value; D7 / thin-shell). Mirrors iOS,
+    // which gates on `status.isConnected`. `null` (no wallet projection) ⇒ false.
+    val isConnected = s.projections?.walletIsConnected ?: false
     val balance = s.projections?.walletBalance ?: ""
 
     Box(modifier.fillMaxSize()) {

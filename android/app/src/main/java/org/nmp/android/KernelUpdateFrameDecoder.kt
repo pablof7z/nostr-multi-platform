@@ -223,6 +223,9 @@ object KernelUpdateFrameDecoder {
             // typed NIP-47 decoder so WalletScreen never branches on raw strings.
             walletLabel = typedWallet?.statusLabel,
             walletTone = typedWallet?.statusTone,
+            // Rust-computed connected flag bound verbatim (D7); the UI gates on
+            // this instead of `walletTone != "inactive"`. Mirrors iOS.
+            walletIsConnected = typedWallet?.isConnected,
             relayRoleOptions = TypedRelayRoleOptionsDecoder.decode(typedProjections) ?: emptyList(),
             marmotSnapshot = TypedMarmotDecoder.decodeSnapshot(typedProjections),
             marmotMessages = TypedMarmotDecoder.decodeMessages(typedProjections) ?: emptyMap(),
