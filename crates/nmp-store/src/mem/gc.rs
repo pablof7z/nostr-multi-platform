@@ -66,11 +66,17 @@ pub(super) fn gc_step_with_pins(
         .collect();
 
     for id_hex in &expired_ids {
+        // Capture kind+tags BEFORE removal for counter decrement.
+        let ic_data = st.events.get(id_hex).map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
         if let Some(ev) = st.events.remove(id_hex) {
             st.provenance.remove(id_hex);
             relay_index_remove(&mut *st, id_hex);
             relay_kind_remove_id(&mut *st, id_hex);
             access_remove(&mut *st, id_hex);
+            // Issue #1519: decrement interaction counter for expired event.
+            if let Some((ik, ref it)) = ic_data {
+                super::ic::ic_decrement(&mut *st, ik, it);
+            }
             st.tombstones.insert(
                 id_hex.clone(),
                 TombstoneRow {
@@ -142,11 +148,17 @@ pub(super) fn gc_step_with_pins(
                     )
                 })
             };
+            // Capture kind+tags BEFORE removal for counter decrement.
+            let ic_data = st.events.get(&id_hex).map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
             if st.events.remove(&id_hex).is_some() {
                 st.provenance.remove(&id_hex);
                 relay_index_remove(&mut *st, &id_hex);
                 relay_kind_remove_id(&mut *st, &id_hex);
                 access_remove(&mut *st, &id_hex);
+                // Issue #1519: decrement interaction counter for evicted event.
+                if let Some((ik, ref it)) = ic_data {
+                    super::ic::ic_decrement(&mut *st, ik, it);
+                }
                 report.lru_evicted += 1;
                 if let Some((author, kind, created_at, tags)) = evicted_fields {
                     for (gi, guard) in guards.iter().enumerate() {

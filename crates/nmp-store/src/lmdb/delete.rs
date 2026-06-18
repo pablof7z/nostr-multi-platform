@@ -53,8 +53,8 @@ fn by_ids(
 ) -> Result<usize, StoreError> {
     let mut n = 0usize;
     for id in ids {
-        // Load the event to capture its expiry timestamp + kind before deletion.
-        let (expiry, kind) = match inner
+        // Load the event to capture its expiry timestamp + kind+tags before deletion.
+        let (expiry, kind, event_tags) = match inner
             .lmdb
             .get_event_by_id(txn, &id)
             .map_err(|e| StoreError::Io(format!("get: {e}")))?
@@ -62,10 +62,10 @@ fn by_ids(
             None => continue, // Not stored — skip.
             Some(ev) => {
                 let owned = ev.into_owned();
-                (
-                    owned.tags.expiration().map(|ts| ts.as_secs()),
-                    owned.kind.as_u16() as u32,
-                )
+                let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                let kind = owned.kind.as_u16() as u32;
+                let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                (expiry, kind, Some(tags))
             }
         };
         let f = Filter::new().id(nostr::EventId::from_slice(&id)
@@ -77,6 +77,15 @@ fn by_ids(
         provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, txn, &id, kind)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
+        // Issue #1519: decrement interaction-counter for deleted event.
+        if let Some(ref tags) = event_tags {
+            super::interaction_counters::apply_on_remove(
+                inner.interaction_counters,
+                txn,
+                kind,
+                tags,
+            )?;
+        }
         n += 1;
     }
     Ok(n)
@@ -85,8 +94,8 @@ fn by_ids(
 fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<usize, StoreError> {
     let pk = PublicKey::from_slice(&pk).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let f = Filter::new().author(pk);
-    // Collect (id, expiry, kind) before the bulk delete so index cleanup is O(1) per event.
-    let victims: Vec<(EventId, Option<u64>, u32)> = inner
+    // Collect (id, expiry, kind, tags) before the bulk delete so index cleanup is O(1) per event.
+    let victims: Vec<(EventId, Option<u64>, u32, Option<Vec<Vec<String>>>)> = inner
         .lmdb
         .query(txn, f.clone())
         .map_err(|e| StoreError::Io(format!("q: {e}")))?
@@ -96,7 +105,8 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
             id.copy_from_slice(owned.id.as_bytes());
             let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
             let kind = owned.kind.as_u16() as u32;
-            (id, expiry, kind)
+            let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+            (id, expiry, kind, Some(tags))
         })
         .collect();
     let n = victims.len();
@@ -104,10 +114,19 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
         .lmdb
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-    for (id, expiry, kind) in victims {
+    for (id, expiry, kind, event_tags) in victims {
         provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, txn, &id, kind)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
+        // Issue #1519: decrement interaction-counter for deleted event.
+        if let Some(ref tags) = event_tags {
+            super::interaction_counters::apply_on_remove(
+                inner.interaction_counters,
+                txn,
+                kind,
+                tags,
+            )?;
+        }
     }
     Ok(n)
 }
@@ -120,8 +139,8 @@ fn by_kind_range(
 ) -> Result<usize, StoreError> {
     let kinds: Vec<Kind> = (lo..=hi).map(|k| Kind::from(k as u16)).collect();
     let f = Filter::new().kinds(kinds);
-    // Collect (id, expiry, kind) before the bulk delete so index cleanup is O(1) per event.
-    let victims: Vec<(EventId, Option<u64>, u32)> = inner
+    // Collect (id, expiry, kind, tags) before the bulk delete so index cleanup is O(1) per event.
+    let victims: Vec<(EventId, Option<u64>, u32, Option<Vec<Vec<String>>>)> = inner
         .lmdb
         .query(txn, f.clone())
         .map_err(|e| StoreError::Io(format!("q: {e}")))?
@@ -131,7 +150,8 @@ fn by_kind_range(
             id.copy_from_slice(owned.id.as_bytes());
             let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
             let kind = owned.kind.as_u16() as u32;
-            (id, expiry, kind)
+            let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+            (id, expiry, kind, Some(tags))
         })
         .collect();
     let n = victims.len();
@@ -139,10 +159,19 @@ fn by_kind_range(
         .lmdb
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-    for (id, expiry, kind) in victims {
+    for (id, expiry, kind, event_tags) in victims {
         provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, txn, &id, kind)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
+        // Issue #1519: decrement interaction-counter for deleted event.
+        if let Some(ref tags) = event_tags {
+            super::interaction_counters::apply_on_remove(
+                inner.interaction_counters,
+                txn,
+                kind,
+                tags,
+            )?;
+        }
     }
     Ok(n)
 }
@@ -197,19 +226,19 @@ fn by_relay_only(
     }
     let n = victims.len();
     for id in victims {
-        // Load expiry + kind before deletion so index cleanup can be O(1).
-        let (expiry, kind) = match inner
+        // Load expiry + kind+tags before deletion so index cleanup can be O(1).
+        let (expiry, kind, event_tags) = match inner
             .lmdb
             .get_event_by_id(txn, &id)
             .map_err(|e| StoreError::Io(format!("get: {e}")))?
         {
-            None => (None, 0),
+            None => (None, 0, None),
             Some(ev) => {
                 let owned = ev.into_owned();
-                (
-                    owned.tags.expiration().map(|ts| ts.as_secs()),
-                    owned.kind.as_u16() as u32,
-                )
+                let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                let kind = owned.kind.as_u16() as u32;
+                let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                (expiry, kind, Some(tags))
             }
         };
         let f = Filter::new().id(nostr::EventId::from_slice(&id)
@@ -221,6 +250,15 @@ fn by_relay_only(
         provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, txn, &id, kind)?;
         gc::lru_delete(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
+        // Issue #1519: decrement interaction-counter for deleted event.
+        if let Some(ref tags) = event_tags {
+            super::interaction_counters::apply_on_remove(
+                inner.interaction_counters,
+                txn,
+                kind,
+                tags,
+            )?;
+        }
     }
     Ok(n)
 }

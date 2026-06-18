@@ -152,6 +152,18 @@ pub(super) fn insert(
             if let Some(exp) = event.expiration() {
                 gc::expiry_index_put(inner, &mut txn, exp, &id_bytes)?;
             }
+            // Issue #1519: increment interaction-counter sidecar for the newly
+            // inserted event. Classifies by kind+tags; no-op for non-counter kinds.
+            // Note: replaceable kinds (0,3,10000-19999,30000-39999) are never
+            // interaction counter kinds, so Replaced outcome is always a no-op here.
+            if inner.interaction_counters_usable {
+                super::interaction_counters::apply_on_insert(
+                    inner.interaction_counters,
+                    &mut txn,
+                    event.kind,
+                    &event.tags,
+                )?;
+            }
             if let Some((replaced_id, replaced_expiry)) = pre_existing {
                 // Replaced — also drop the replaced event's provenance + LRU entry.
                 // A replaceable supersession keeps the same kind, so the replaced

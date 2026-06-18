@@ -2,6 +2,8 @@
 //!
 //! Extracted from `insert.rs` to keep that file under the 500 LOC hard cap.
 //! Entry point is `handle_kind5_insert` — called exclusively by `insert.rs`.
+//! D4: all mutations flow through `handle_kind5_insert`; callers must not
+//! bypass this path.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,7 +12,11 @@ use super::{
     access_remove, access_stamp, relay_index_add, relay_index_remove, relay_kind_add,
     relay_kind_remove_id, upsert_provenance, MemState,
 };
+use super::ic::{ic_decrement, ic_increment};
 use crate::types::{InsertOutcome, RawEvent, RelayUrl, StoredEvent, TombstoneOrigin, TombstoneRow};
+
+// ─── Public entry point ───────────────────────────────────────────────────────
+
 
 pub(super) fn handle_kind5_insert(
     st: &mut MemState,
@@ -31,11 +37,16 @@ pub(super) fn handle_kind5_insert(
             }
             // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
             let target_id = existing.raw.id_bytes().expect("stored event has valid hex id");
+            // Capture kind+tags BEFORE removal for counter decrement.
+            let ic_kind = existing.raw.kind;
+            let ic_tags = existing.raw.tags.clone();
             st.events.remove(&target_hex);
             st.provenance.remove(&target_hex);
             relay_index_remove(st, &target_hex);
             relay_kind_remove_id(st, &target_hex);
             access_remove(st, &target_hex);
+            // Issue #1519: decrement counter for removed event.
+            ic_decrement(st, ic_kind, &ic_tags);
             merge_tombstone(
                 &mut st.tombstones,
                 target_hex,
@@ -85,11 +96,17 @@ pub(super) fn handle_kind5_insert(
             .collect();
 
         for target_hex in to_delete {
+            // Capture kind+tags BEFORE removal for counter decrement.
+            let ic_data = st.events.get(&target_hex).map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
             if let Some(existing) = st.events.remove(&target_hex) {
                 st.provenance.remove(&target_hex);
                 relay_index_remove(st, &target_hex);
                 relay_kind_remove_id(st, &target_hex);
                 access_remove(st, &target_hex);
+                // Issue #1519: decrement counter for removed event.
+                if let Some((ik, ref it)) = ic_data {
+                    ic_decrement(st, ik, it);
+                }
                 // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
                 let target_id = existing
                     .raw
@@ -112,6 +129,9 @@ pub(super) fn handle_kind5_insert(
     }
 
     // Store the kind:5 event itself.
+    // Capture kind+tags before move (kind:5 is not a counter kind — no-op, but uniform).
+    let k5_ic_kind = event.kind;
+    let k5_ic_tags = event.tags.clone();
     st.events.insert(
         kind5_id_hex.clone(),
         StoredEvent {
@@ -120,6 +140,8 @@ pub(super) fn handle_kind5_insert(
         },
     );
     access_stamp(st, &kind5_id_hex);
+    // Issue #1519: increment counter (no-op for kind:5).
+    ic_increment(st, k5_ic_kind, &k5_ic_tags);
     let sources_after = {
         let p = st.provenance.entry(kind5_id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
@@ -135,7 +157,7 @@ pub(super) fn handle_kind5_insert(
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
 
-fn kind5_tomb(
+pub(super) fn kind5_tomb(
     target_id: [u8; 32],
     kind5_id: [u8; 32],
     kind5_pubkey: &str,

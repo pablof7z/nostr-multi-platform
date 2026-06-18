@@ -11,8 +11,9 @@
 
 use std::sync::Arc;
 
-use super::insert_kind5;
 use super::{access_remove, access_stamp, bytes_to_hex, relay_index_add, relay_index_remove, relay_kind_add, relay_kind_remove_id, upsert_provenance, MemEventStore, MemState};
+use super::ic::{ic_decrement, ic_increment};
+use super::insert_kind5;
 use crate::types::{
     DeleteFilter, InsertOutcome, RawEvent, RejectReason, RelayUrl, StoredEvent, TombstoneOrigin,
 };
@@ -176,11 +177,17 @@ pub(super) fn delete_by_filter(
     };
     let count = ids_to_remove.len();
     for id in ids_to_remove {
+        // Capture kind+tags before removal for counter decrement.
+        let ic_data = st.events.get(&id).map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
         st.events.remove(&id);
         st.provenance.remove(&id);
         relay_index_remove(&mut *st, &id);
         relay_kind_remove_id(&mut *st, &id);
         access_remove(&mut *st, &id);
+        // Issue #1519: decrement counter for deleted event.
+        if let Some((ik, ref it)) = ic_data {
+            ic_decrement(&mut *st, ik, it);
+        }
     }
     Ok(count)
 }
@@ -248,12 +255,23 @@ fn handle_supersession(
             // existing_hex is a key from st.events — it is a stored (verified) event id.
             let replaced_id = RawEvent::hex_to_bytes32_owned(existing_hex)
                 .expect("stored event key is valid hex");
+            // Capture kind+tags of replaced event BEFORE removal for counter decrement.
+            let replaced_ic = st.events.get(existing_hex).map(|ev| {
+                (ev.raw.kind, ev.raw.tags.clone())
+            });
             st.events.remove(existing_hex);
             st.provenance.remove(existing_hex);
             relay_index_remove(st, existing_hex);
             relay_kind_remove_id(st, existing_hex);
             access_remove(st, existing_hex);
+            // Issue #1519: decrement counter for replaced event.
+            if let Some((rk, ref rt)) = replaced_ic {
+                ic_decrement(st, rk, rt);
+            }
             let new_id = id_bytes;
+            // Capture kind+tags before moving event into StoredEvent.
+            let new_ic_kind = event.kind;
+            let new_ic_tags = event.tags.clone();
             st.events.insert(
                 id_hex.clone(),
                 StoredEvent {
@@ -262,6 +280,8 @@ fn handle_supersession(
                 },
             );
             access_stamp(st, &id_hex);
+            // Issue #1519: increment counter for new event.
+            ic_increment(st, new_ic_kind, &new_ic_tags);
             let p = st.provenance.entry(id_hex.clone()).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
             relay_index_add(st, source, &id_hex);
@@ -279,6 +299,9 @@ fn handle_supersession(
             }
         }
     } else {
+        // Capture kind+tags before moving event into StoredEvent.
+        let ic_kind = event.kind;
+        let ic_tags = event.tags.clone();
         st.events.insert(
             id_hex.clone(),
             StoredEvent {
@@ -287,6 +310,8 @@ fn handle_supersession(
             },
         );
         access_stamp(st, &id_hex);
+        // Issue #1519: increment interaction counter.
+        ic_increment(st, ic_kind, &ic_tags);
         let sources_after = {
             let p = st.provenance.entry(id_hex.clone()).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
@@ -325,6 +350,9 @@ fn handle_normal_insert(
         };
     }
 
+    // Capture kind+tags before moving event into StoredEvent.
+    let ic_kind = event.kind;
+    let ic_tags = event.tags.clone();
     st.events.insert(
         id_hex.clone(),
         StoredEvent {
@@ -333,6 +361,8 @@ fn handle_normal_insert(
         },
     );
     access_stamp(st, &id_hex);
+    // Issue #1519: increment interaction counter.
+    ic_increment(st, ic_kind, &ic_tags);
     let sources_after = {
         let p = st.provenance.entry(id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
@@ -345,5 +375,4 @@ fn handle_normal_insert(
         sources_after,
     }
 }
-
 
