@@ -42,6 +42,14 @@ fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()
 }
 
+fn push_legacy(reg: &mut super::InterestRegistry, interest: LogicalInterest) {
+    use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+    use super::SubIdentity;
+    let t = RegistryWriteToken::for_test();
+    let identity = SubIdentity::from_legacy_interest(&interest);
+    reg.apply(&t, InterestWrite::Replace, identity, interest);
+}
+
 fn timeline_interest(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
         id: InterestId(id),
@@ -112,7 +120,7 @@ fn coverage_hook_runs_once_after_compile() {
         *count_for_hook.lock().unwrap() = plan.per_relay.len();
     }));
 
-    l.registry_mut().push(timeline_interest(1, "a"));
+    push_legacy(l.registry_mut(), timeline_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
 
@@ -150,7 +158,7 @@ fn coverage_hook_mutation_reaches_wire_diff() {
         plan.per_relay.clear();
     }));
 
-    l.registry_mut().push(timeline_interest(2, "b"));
+    push_legacy(l.registry_mut(), timeline_interest(2, "b"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
 
@@ -179,7 +187,7 @@ fn coverage_hook_drop_closes_prior_req() {
         }
     }));
 
-    l.registry_mut().push(timeline_interest(3, "c"));
+    push_legacy(l.registry_mut(), timeline_interest(3, "c"));
 
     // Compile #1: hook passive → REQ flies.
     let frames1 = l.recompile_and_diff(&mailboxes).expect("compile #1");
@@ -209,7 +217,7 @@ fn coverage_hook_drop_closes_prior_req() {
 #[test]
 fn no_coverage_hook_leaves_plan_unchanged() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("d", &["wss://r4"]);
-    l.registry_mut().push(timeline_interest(4, "d"));
+    push_legacy(l.registry_mut(), timeline_interest(4, "d"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
 

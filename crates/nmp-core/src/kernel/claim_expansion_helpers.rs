@@ -10,7 +10,7 @@ use crate::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, LogicalInterest, RelayHint,
 };
 use crate::relay::CanonicalRelayUrl;
-use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
+use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 use super::{
     claim_expansion::{
@@ -164,15 +164,19 @@ impl Kernel {
             // the owner AND replaces the interest — so any valid owner works here.
             let owner = SubOwnerKey::new(("claim-expansion-hint-update", interest_id.0));
             let identity = SubIdentity::new(owner, sub_key, SubScope::Global);
-            self.lifecycle
-                .registry_mut()
-                .set_sub(identity, updated_interest);
+            // Unified front-door (Replace = set_sub semantics): replaces the
+            // hint in place. Hints differ ⇒ plan_relevant_change == true ⇒
+            // recompile fires (emits W7 hint REQs); shape unchanged ⇒ same
+            // completion key ⇒ serve is an idempotent no-op (safe; §5 safety).
+            self.register_interest(
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest: updated_interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::Replace,
+                }],
+                "claim-expansion-phase2",
+            );
         }
-
-        // Trigger a planner recompile to emit the new hints as REQs (W7).
-        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
-            interest_ids: Vec::new(),
-        });
     }
 
     /// Mark a claim as terminal and emit a wire-log transition.

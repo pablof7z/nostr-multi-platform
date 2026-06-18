@@ -58,10 +58,14 @@ fn kernel_with_one_sub(
             both_relays: vec![],
         },
     );
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(timeline_interest(interest_id, author));
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let interest = timeline_interest(interest_id, author);
+        let t = RegistryWriteToken::for_test();
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel.lifecycle_mut().registry_mut().apply(&t, InterestWrite::Replace, identity, interest);
+    }
     // First recompile populates `current_plan`. The frames returned here are
     // the initial REQ wave; the test deliberately discards them — we only
     // care that the plan is now resident so the subsequent reconnect can
@@ -193,10 +197,14 @@ fn replay_applies_t129_watermark_to_since() {
     kernel
         .lifecycle_mut()
         .set_watermark_fn(Arc::new(|_shape: &InterestShape, _relay: &str| Some(1700)));
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(timeline_interest_with_since(7, author, 500));
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let interest = timeline_interest_with_since(7, author, 500);
+        let t = RegistryWriteToken::for_test();
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel.lifecycle_mut().registry_mut().apply(&t, InterestWrite::Replace, identity, interest);
+    }
     let _ = kernel
         .lifecycle_mut()
         .recompile_and_diff(&mailboxes)

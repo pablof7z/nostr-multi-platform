@@ -39,7 +39,6 @@
 use super::super::{truncate, Instant, Kernel, OutboundMessage};
 use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{HintSource, InterestScope, InterestShape, NaddrCoord, RelayHint};
-use crate::subs::CompileTrigger;
 
 impl Kernel {
     /// Refcount a consumer's interest in the event identified by `uri` and,
@@ -266,21 +265,27 @@ impl Kernel {
             })
             .collect();
 
-        // D4 — single registration path. The wire frame is emitted by
-        // the planner's `drain_tick` (triggered by the `ViewOpened`
-        // enqueue below), NOT by this function.
-        let (token, interest_id) = {
-            let registry = self.lifecycle.registry_mut();
-            self.oneshot
-                .request(registry, InterestScope::Global, shape, initial_hints)
-        };
+        // Unified front-door path: prepare mints the token and derives
+        // identity+interest; register_interest installs via EnsureAbsent and
+        // fires the store-serve + recompile trigger (replaces the bare
+        // ensure_sub + manual ViewOpened enqueue pattern).
+        let (token, interest_id, identity, interest) =
+            self.oneshot.prepare(InterestScope::Global, shape, initial_hints);
+        self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
+            "oneshot-event-claim",
+        );
         self.pending_discovery_oneshots
             .insert(interest_id.clone(), token);
         self.event_claim_requested.insert(primary_id.clone());
         // W5 — register claim-expansion tracker. Must be called AFTER
-        // OneshotApi::request so `interest_id` is resolved. The tracker
-        // stores the interest_id, author, and URI relay hints for the
-        // Phase 1/2/3 state machine (§7.3 retarget).
+        // prepare so `interest_id` is resolved. The tracker stores the
+        // interest_id, author, and URI relay hints for the Phase 1/2/3
+        // state machine (§7.3 retarget).
         self.register_claim_expansion(
             primary_id,
             Some(interest_id),
@@ -288,12 +293,7 @@ impl Kernel {
             uri_relay_hints,
             Instant::now(),
         );
-        // A2 — view-equivalent registered an interest. Empty
-        // `interest_ids` is correct (the compiler walks the full
-        // registry; this Vec is diagnostic provenance only).
-        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
-            interest_ids: Vec::new(),
-        });
+        // register_interest already enqueued InvalidateCompile on install.
 
         Vec::new()
     }

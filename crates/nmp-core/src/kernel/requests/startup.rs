@@ -6,7 +6,7 @@ use super::super::{Duration, Instant, Kernel, OutboundMessage};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
+use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// Self-fetched account-config kinds the cold-start tailing subscription
 /// keeps live after sign-in.
@@ -122,13 +122,9 @@ impl Kernel {
         // bootstrap chicken-and-egg.
         self.register_tailing_self_kinds_interest(owner, self_pk.clone());
 
-        // Coalesced trigger: per-tick inbox collapses the registrations
-        // above into a single recompile pass (D8). Diagnostic
-        // `interest_ids` left empty — the compiler walks the full
-        // registry, not a filtered subset.
-        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
-            interest_ids: Vec::new(),
-        });
+        // The two register_interest(Replace) calls above each enqueue an
+        // InvalidateCompile trigger when the interest is new or changed — that
+        // is sufficient. No extra ViewOpened needed here.
 
         // Protocol-specific `#p`-addressed subscriptions (NIP-57 receipts,
         // NIP-25 reactions addressed to the user, …) USED to be emitted here
@@ -187,24 +183,29 @@ impl Kernel {
         let interest = LogicalInterest {
             id: InterestId(sub_key.0),
             scope: InterestScope::Global,
-            shape: shape.clone(),
+            shape,
             hints: Vec::new(),
             lifecycle: InterestLifecycle::OneShot,
             is_indexer_discovery: true,
         };
-        self.lifecycle.registry_mut().set_sub(identity, interest);
-        // Store-serve half (ADR-0045 R3): surface the last-known stored copy of
-        // these kinds immediately. The `set_sub` registration above drives the
-        // wire REQ (refinement half) on the next recompile.
-        self.enqueue_interest_cache_serve(&sub_key, &shape);
+        // Unified front-door: Replace so an account switch swaps the author
+        // in-place (store-serve + recompile trigger both fire when changed).
+        self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
+            "bootstrap-oneshot-discovery",
+        );
     }
 
     /// Register the cold-start reactive tailing subscription over
     /// [`SELF_KINDS_TAILING`] for `author`. Single REQ, no limit, lifetime
-    /// = process (planner CLOSEs only on account switch via `set_sub`
-    /// replacing the slot's author, or on explicit registry teardown).
+    /// = process (planner CLOSEs only on account switch via Replace replacing
+    /// the slot's author, or on explicit registry teardown).
     ///
-    /// Uses `set_sub` so an account switch swaps the author in-place
+    /// Uses Replace so an account switch swaps the author in-place
     /// rather than leaving the prior account's REQ live.
     ///
     /// ADR-0045 R3 — store-first is universal: cache-served from the local store
@@ -235,7 +236,7 @@ impl Kernel {
         let interest = LogicalInterest {
             id: InterestId(sub_key.0),
             scope: InterestScope::Global,
-            shape: shape.clone(),
+            shape,
             hints: Vec::new(),
             lifecycle: InterestLifecycle::Tailing,
             // Cold-start chicken-and-egg: the active account's NIP-65
@@ -247,12 +248,16 @@ impl Kernel {
             // kind:10002 ingests.
             is_indexer_discovery: true,
         };
-        self.lifecycle.registry_mut().set_sub(identity, interest);
-        // Store-serve half (ADR-0045 R3): serve the active account's own stored
-        // replaceable kinds (kind:0/3/10002/…) from the local store on open, so
-        // the profile, follow set, and relay list rehydrate offline. The
-        // `set_sub` registration drives the tailing wire REQ (refinement half).
-        self.enqueue_interest_cache_serve(&sub_key, &shape);
+        // Unified front-door: Replace so an account switch swaps the author
+        // in-place (store-serve + recompile trigger both fire when changed).
+        self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
+            "bootstrap-self-kinds",
+        );
     }
 }
 

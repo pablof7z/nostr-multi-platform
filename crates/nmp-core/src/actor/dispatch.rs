@@ -1320,14 +1320,25 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::PushInterest(interest) => {
-            // ADR-0045 — legacy push install recipe (registry push + recompile
-            // trigger + store-cache serve) is centralised on the kernel so this
-            // arm stays a one-liner and the recipe lives in one place.
-            ctx.kernel.push_interest_and_serve(interest);
+            // Route through the unified front-door. Derive the legacy identity
+            // (synthetic single owner, planner-interest-id key) so the slot
+            // matches what WithdrawInterest reconstructs for teardown.
+            let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
+            ctx.kernel.register_interest(
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::Replace,
+                }],
+                "push-interest",
+            );
             Some(Vec::new())
         }
         ActorCommand::WithdrawInterest(id) => {
-            ctx.kernel.lifecycle_mut().registry_mut().withdraw(&id);
+            // Reconstruct the SubKey the legacy push path minted for this id,
+            // then drop every slot carrying that key (covers all scopes).
+            let key = crate::subs::InterestRegistry::legacy_key(&id);
+            ctx.kernel.lifecycle_mut().registry_mut().drop_slot_by_key(key);
             ctx.kernel.lifecycle_mut().enqueue_trigger(
                 crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External(
@@ -1338,12 +1349,16 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::EnsureInterest { identity, interest } => {
-            // ADR-0045 — register-if-absent install recipe (ensure_sub +
-            // recompile trigger + store-cache serve, all gated on
-            // newly-installed) is centralised on the kernel so this arm stays a
-            // one-liner and shares the recipe with open_interest_sub / open_uri.
-            ctx.kernel
-                .ensure_interest_and_serve(identity, interest, "ensure-interest");
+            // Unified front-door — register-if-absent (EnsureAbsent). Store-serve
+            // + recompile trigger fire only when the interest is newly installed.
+            ctx.kernel.register_interest(
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
+                "ensure-interest",
+            );
             Some(Vec::new())
         }
         ActorCommand::DropInterestOwner(identity) => {

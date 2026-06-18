@@ -336,10 +336,17 @@ fn scenario(keys: &Keys, relay_url: &str) -> (Kernel, String) {
             both_relays: vec![],
         },
     );
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(follow_feed_interest(&author_hex));
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let t = RegistryWriteToken::for_test();
+        let interest = follow_feed_interest(&author_hex);
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel
+            .lifecycle_mut()
+            .registry_mut()
+            .apply(&t, InterestWrite::Replace, identity, interest);
+    }
     let frames = kernel
         .lifecycle_mut()
         .recompile_and_diff(&mailboxes)

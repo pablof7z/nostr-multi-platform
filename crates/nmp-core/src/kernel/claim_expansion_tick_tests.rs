@@ -62,7 +62,16 @@ mod tests {
             lifecycle: InterestLifecycle::Tailing,
             is_indexer_discovery: false,
         };
-        kernel.lifecycle_mut().registry_mut().push(interest);
+        {
+            use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+            use crate::subs::SubIdentity;
+            let t = RegistryWriteToken::for_test();
+            let identity = SubIdentity::from_legacy_interest(&interest);
+            kernel
+                .lifecycle_mut()
+                .registry_mut()
+                .apply(&t, InterestWrite::Replace, identity, interest);
+        }
         kernel
             .lifecycle_mut()
             .set_selection_budget(usize::MAX, usize::MAX);

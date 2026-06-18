@@ -15,7 +15,10 @@ use crate::planner::{
 fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()
 }
-
+fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
+    use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+    let _ = reg.apply(&RegistryWriteToken::for_test(), InterestWrite::Replace, SubIdentity::from_legacy_interest(&interest), interest);
+}
 /// Single-author follow interest (kind:1 timeline).
 fn follow(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
@@ -83,8 +86,7 @@ fn recompile_caps_per_relay_at_max_connections() {
                 both_relays: vec![],
             },
         );
-        l.registry_mut()
-            .push(follow(u64::from(i) + 1, &author_seed));
+        push_legacy(l.registry_mut(), follow(u64::from(i) + 1, &author_seed));
     }
 
     let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -126,8 +128,7 @@ fn recompile_preserves_app_relay_under_budget() {
                 both_relays: vec![],
             },
         );
-        l.registry_mut()
-            .push(follow(u64::from(i) + 1, &author_seed));
+        push_legacy(l.registry_mut(), follow(u64::from(i) + 1, &author_seed));
     }
 
     let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -181,8 +182,7 @@ fn dropped_relay_emits_close_on_next_recompile() {
                 both_relays: vec![],
             },
         );
-        l.registry_mut()
-            .push(follow(u64::from(i) + 1, &author_seed));
+        push_legacy(l.registry_mut(), follow(u64::from(i) + 1, &author_seed));
     }
 
     let first = l.recompile_and_diff(&mailboxes).expect("first compile");
@@ -303,7 +303,7 @@ fn dead_relay_excluded_from_next_recompile() {
             both_relays: vec![],
         },
     );
-    l.registry_mut().push(follow(1, "cc01"));
+    push_legacy(l.registry_mut(), follow(1, "cc01"));
 
     // First compile: both relays present.
     let _ = l.recompile_and_diff(&mailboxes).expect("first compile");
@@ -342,7 +342,7 @@ fn fully_dead_author_returns_when_relay_alive_again() {
             both_relays: vec![],
         },
     );
-    l.registry_mut().push(follow(1, "dd01"));
+    push_legacy(l.registry_mut(), follow(1, "dd01"));
 
     // Compile, kill, recompile.
     let _ = l.recompile_and_diff(&mailboxes).expect("compile 1");
@@ -423,7 +423,7 @@ fn drain_tick_follow_list_changed_emits_req_frames() {
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
     };
-    l.registry_mut().push(interest);
+    push_legacy(l.registry_mut(), interest);
 
     // Set up mailbox so the author routes to a relay.
     let mut mailboxes = InMemoryMailboxCache::new();
@@ -499,7 +499,7 @@ fn drain_tick_authenticated_flushes_pending_reqs() {
     // Step 1: make the relay the single app relay and register an interest
     // so the compile routes a REQ to it.
     l.set_app_relays(vec![relay_url.clone()]);
-    l.registry_mut().push(follow(1, "aa"));
+    push_legacy(l.registry_mut(), follow(1, "aa"));
 
     // Step 2: pause the relay (ChallengeReceived) and compile — REQs get buffered.
     l.enqueue_trigger(CompileTrigger::RelayAuthStateChanged {
@@ -733,7 +733,7 @@ fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
         lifecycle: InterestLifecycle::OneShot,
         is_indexer_discovery: false,
     };
-    l.registry_mut().push(interest);
+    push_legacy(l.registry_mut(), interest);
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let landed: Vec<&WireFrame> = frames
@@ -782,7 +782,7 @@ fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
 
     let mailboxes = InMemoryMailboxCache::new();
     let event_id_hex: String = "bb".repeat(32);
-    l.registry_mut().push(LogicalInterest {
+    push_legacy(l.registry_mut(), LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
         shape: InterestShape {
@@ -848,7 +848,7 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
         // discovery-direction profile-shape interest opts in.
         is_indexer_discovery: true,
     };
-    l.registry_mut().push(interest);
+    push_legacy(l.registry_mut(), interest);
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let landed: Vec<&WireFrame> = frames

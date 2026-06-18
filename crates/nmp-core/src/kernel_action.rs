@@ -108,11 +108,18 @@ fn open_uri(kernel: &mut Kernel, uri: String) -> KernelUpdate {
     // a `nostr:` URI whose target is already in the store serves those events
     // to parsers/projections (closes the F2 bypass: this path previously called
     // bare `ensure_sub` with neither a recompile trigger nor a store-cache
-    // serve). `ensure_interest_and_serve` is idempotent register-if-absent —
+    // serve). `register_interest(EnsureAbsent)` is idempotent register-if-absent —
     // re-opening the same URI attaches another owner without clobbering the
     // live filter (§3.3) and re-serving a completed shape is a no-op. The
     // newly-installed return is unused here; the side effect is what matters.
-    let _ = kernel.ensure_interest_and_serve(identity, interest, "open-uri");
+    let _ = kernel.register_interest(
+        &[crate::kernel::cache_serve::InterestRegistration {
+            identity,
+            interest,
+            policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+        }],
+        "open-uri",
+    );
 
     view
 }

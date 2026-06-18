@@ -72,10 +72,14 @@ fn active_dm_inbox_uses_lookup_relays_not_nip65_read_relays() {
     // lookup capability.
     kernel.seed_kind10050_for_test(&account, &["wss://dm-only.example/"]);
 
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(active_dm_inbox_interest(&account));
+    {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::subs::SubIdentity;
+        let interest = active_dm_inbox_interest(&account);
+        let t = RegistryWriteToken::for_test();
+        let identity = SubIdentity::from_legacy_interest(&interest);
+        kernel.lifecycle_mut().registry_mut().apply(&t, InterestWrite::Replace, identity, interest);
+    }
     let frames = kernel.drain_lifecycle_tick();
 
     let req_relays: Vec<&str> = frames

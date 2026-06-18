@@ -44,7 +44,6 @@
 use super::{Kernel, OutboundMessage};
 use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{InterestScope, InterestShape};
-use crate::subs::CompileTrigger;
 
 /// Typed discriminant for entries in [`Kernel::oneshot_subs`].
 ///
@@ -223,11 +222,18 @@ impl Kernel {
                 limit: Some(batch.len() as u32),
                 ..Default::default()
             };
-            let (token, interest_id) = {
-                let registry = self.lifecycle.registry_mut();
-                self.oneshot
-                    .request(registry, InterestScope::Global, shape, Vec::new())
-            };
+            // OneshotApi::prepare: pure bookkeeping, returns identity+interest
+            // for the unified front-door (store-serve + trigger inclusive).
+            let (token, interest_id, identity, interest) =
+                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+            self.register_interest(
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
+                "oneshot-discovery-events",
+            );
             // PD-033-C Stage 1 bridge: stash the token by interest_id. The
             // planner's next `drain_tick` emits a `WireFrame::Req` carrying
             // this `interest_id`; `register_planner_wire_frames` consumes
@@ -264,11 +270,16 @@ impl Kernel {
                 limit: Some(batch.len() as u32 * 3),
                 ..Default::default()
             };
-            let (token, interest_id) = {
-                let registry = self.lifecycle.registry_mut();
-                self.oneshot
-                    .request(registry, InterestScope::Global, shape, Vec::new())
-            };
+            let (token, interest_id, identity, interest) =
+                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+            self.register_interest(
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
+                "oneshot-discovery-profiles",
+            );
             // PD-033-C Stage 1 bridge (see twin comment in events arm).
             self.pending_discovery_oneshots.insert(interest_id, token);
             registered_any = true;
@@ -283,17 +294,10 @@ impl Kernel {
             self.unknown_ids.put_back_pubkeys(pubkeys);
         }
 
-        if registered_any {
-            // A2 — view-equivalent registered one or more interests. The
-            // `interest_ids` field is diagnostic provenance only (the
-            // compiler walks the full registry, not a filtered subset), so
-            // an empty Vec is a correct and zero-allocation form. Per-tick
-            // coalescing in the trigger inbox guarantees ≤1 recompile per
-            // tick regardless of how many oneshots this drain registered.
-            self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
-                interest_ids: Vec::new(),
-            });
-        }
+        // register_interest already enqueues InvalidateCompile when newly
+        // installed. The redundant ViewOpened is dropped — triggers coalesce in
+        // the inbox, so one InvalidateCompile per tick is sufficient.
+        let _ = registered_any;
 
         Vec::new()
     }

@@ -83,9 +83,15 @@ impl Kernel {
     /// interest set and emit the correct REQ/CLOSE diff via `drain_lifecycle_tick`.
     pub(crate) fn sync_follow_feed_interests(&mut self, follows: &[String]) {
         // Withdraw the stale interest from the prior follow set / kinds.
-        let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
-        for id in &old_ids {
-            self.lifecycle.registry_mut().withdraw(id);
+        // Use drop_slot_by_key (legacy-key bridge) to remove any scope
+        // the slot was registered under.
+        {
+            use crate::subs::InterestRegistry;
+            let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
+            for id in &old_ids {
+                let key = InterestRegistry::legacy_key(id);
+                self.lifecycle.registry_mut().drop_slot_by_key(key);
+            }
         }
         self.follow_feed_interest_ids.clear();
 
@@ -119,48 +125,38 @@ impl Kernel {
             return;
         }
 
-        // Register the SINGLE multi-author follow-feed interest.
+        // Build the SINGLE multi-author follow-feed interest.
         let interest = follow_feed_interest(authors.clone(), &kinds);
         let interest_id = interest.id.clone();
-        let interest_shape = interest.shape.clone();
-        self.lifecycle.registry_mut().push(interest);
-        self.follow_feed_interest_ids.insert(interest_id.clone());
 
         // Rebuild the `timeline_authors` derived cache from the new follow set
         // so `should_store_event` / `ingest_timeline_event` gate correctly.
         // `timeline_authors` is a denormalized read-cache over the M2 registry
         // (D4: the registry is the single source of truth; this is a projection).
+        // Must be set BEFORE register_interest so enqueue_cache_serve's
+        // `timeline_bound` flag is computed against the updated author set.
         self.timeline_authors = authors.into_iter().collect();
 
-        // ADR-0057 — the `pre_kind3_buffer` (V-59 rung 1) is DELETED. Admission
-        // is now separated from persistence: a not-yet-followed author's
-        // follow-feed event is already persisted in the store (kind-agnostically,
-        // on valid signature), so there is nothing to "park". The follow added
-        // here surfaces the author's prior events from the store via the
-        // cache-serve enqueued below — `feed_served_event` re-projects them into
-        // the timeline read-cache. No buffer / no replay needed.
+        // Derive the legacy identity for this interest (single synthetic owner,
+        // planner-interest-id key) — matches what drop_slot_by_key used above.
+        let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
 
-        // ADR-0045 E1 — store-cache serve for the follow-feed interest.
+        // ADR-0045 E1 — unified front-door: register + serve in one call.
+        // The collapsed shape maps to ONE `StoreQuery::AuthorsKind`, so a
+        // 300–500-follow cold start drains via one multi-author scan, not per
+        // author (D1: first snapshot after install carries store data).
         //
-        // `sync_follow_feed_interests` uses the legacy `push` path (not
-        // `open_interest_sub`) so the cache-serve hook in `open_interest_sub`
-        // does not fire here. Enqueue ONE serve for the multi-author interest,
-        // then drain a single aggregate-budget chunk synchronously so the next
-        // snapshot carries store data (D1). The collapsed shape maps to ONE
-        // `StoreQuery::AuthorsKind` (`cache_serve/queries.rs`), so a 300–500-
-        // follow cold start drains via one multi-author scan, not one per author.
-        //
-        // Route through the SHARED enqueue helper
-        // (`enqueue_interest_cache_serve_deferred`) so the completion-key
-        // derivation is the one centralised recipe — no hand-copied
-        // `legacy_key` → `completion_key_for_interest` block to drift (PR #1237
-        // review F3).
-        {
-            use crate::subs::InterestRegistry;
-            let sub_key = InterestRegistry::legacy_key(&interest_id);
-            self.enqueue_interest_cache_serve_deferred(&sub_key, &interest_shape);
-            self.run_cache_serve_step();
-        }
+        // ADR-0057 — the `pre_kind3_buffer` is DELETED; cache-serve here
+        // surfaces prior stored events for any newly-added follows.
+        self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
+            "follow-list-changed",
+        );
+        self.follow_feed_interest_ids.insert(interest_id);
     }
 
     /// ADR-0057 PR 3 — the kernel-owned follow-feed effects, driven by the
