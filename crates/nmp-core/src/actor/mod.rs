@@ -317,7 +317,7 @@ pub(crate) use relay_roles::RelayRoleOption;
 // `nostrconnect_relay_url` is consumed by `nmp-ffi` (native only) through
 // `nmp_core::__ffi_internal::nostrconnect_relay_url`.
 #[cfg(feature = "native")]
-pub use relay_roles::{nostrconnect_relay_url, Nip65Role};
+pub use relay_roles::nostrconnect_relay_url;
 
 /// Where a signer added via [`ActorCommand::AddSigner`] comes from.
 ///
@@ -1161,7 +1161,7 @@ pub(super) enum RelayConnectionKind {
 #[cfg(feature = "native")]
 use outbound::wire_frames_to_outbound;
 
-#[cfg(feature = "native")]
+#[cfg(all(feature = "native", any(test, feature = "test-support")))]
 pub use compat::run_actor;
 #[cfg(feature = "native")]
 #[allow(unused_imports)]

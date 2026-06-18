@@ -27,14 +27,14 @@ impl<'a> ::flatbuffers::Follow<'a> for ProfileCard<'a> {
 
 impl<'a> ProfileCard<'a> {
   pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HAS_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-  pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-  pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-  pub const VT_NIP05: ::flatbuffers::VOffsetT = 16;
-  pub const VT_ABOUT: ::flatbuffers::VOffsetT = 18;
-  pub const VT_HAS_LNURL: ::flatbuffers::VOffsetT = 20;
-  pub const VT_LNURL: ::flatbuffers::VOffsetT = 22;
+  pub const VT_HAS_DISPLAY_NAME: ::flatbuffers::VOffsetT = 6;
+  pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
+  pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 10;
+  pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
+  pub const VT_NIP05: ::flatbuffers::VOffsetT = 14;
+  pub const VT_ABOUT: ::flatbuffers::VOffsetT = 16;
+  pub const VT_HAS_LNURL: ::flatbuffers::VOffsetT = 18;
+  pub const VT_LNURL: ::flatbuffers::VOffsetT = 20;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {

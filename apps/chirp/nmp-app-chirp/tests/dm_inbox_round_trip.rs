@@ -181,17 +181,22 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     );
 
     // Empty-inbox shape contract: with no active account the snapshot surfaces
-    // `{"conversations":[], "remote_signer_unsupported":true}` — NOT JSON `null`
-    // or a missing key. ADR-0050 §D6: the flag now means "no active account"
-    // (the host hides the DM screen), not "bunker cannot decrypt".
+    // `{"conversations":[], "decrypt_state":"unavailable","undecrypted_count":0}`.
+    // ADR-0050 §D7: `remote_signer_unsupported: bool` was replaced by the
+    // `decrypt_state` / `undecrypted_count` errors-as-state pair. "unavailable"
+    // means no active account; the host hides the DM screen on this token.
     let (tx_empty, _rx_empty) = channel::<ActorMail>();
     let empty_projection =
         DmInboxProjection::new(CommandSender::new(tx_empty), Arc::new(Mutex::new(None)));
     let empty_json = empty_projection.snapshot_json();
     assert_eq!(
         empty_json,
-        serde_json::json!({ "conversations": [], "remote_signer_unsupported": true }),
-        "empty-inbox (no active account) must carry remote_signer_unsupported:true",
+        serde_json::json!({
+            "conversations": [],
+            "decrypt_state": "unavailable",
+            "undecrypted_count": 0
+        }),
+        "empty-inbox (no active account) must surface decrypt_state:unavailable + undecrypted_count:0",
     );
 
     nmp_app_free(app);

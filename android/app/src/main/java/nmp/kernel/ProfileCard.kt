@@ -41,26 +41,37 @@ class ProfileCard : Table() {
     fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val hasDisplayName : Boolean
         get() {
-            val o = __offset(8)
+            val o = __offset(6)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val displayName : String?
         get() {
-            val o = __offset(10)
+            val o = __offset(8)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val hasPictureUrl : Boolean
         get() {
-            val o = __offset(12)
+            val o = __offset(10)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val pictureUrl : String?
+        get() {
+            val o = __offset(12)
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
+        }
+    val pictureUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun pictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
+    val nip05 : String?
         get() {
             val o = __offset(14)
             return if (o != 0) {
@@ -69,9 +80,9 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val pictureUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
-    fun pictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
-    val nip05 : String?
+    val nip05AsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun nip05InByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
+    val about : String?
         get() {
             val o = __offset(16)
             return if (o != 0) {
@@ -80,35 +91,24 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val nip05AsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
-    fun nip05InByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
-    val about : String?
-        get() {
-            val o = __offset(18)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val aboutAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
-    fun aboutInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
+    val aboutAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun aboutInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val hasLnurl : Boolean
         get() {
-            val o = __offset(20)
+            val o = __offset(18)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val lnurl : String?
         get() {
-            val o = __offset(22)
+            val o = __offset(20)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val lnurlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
-    fun lnurlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
+    val lnurlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(20, 1)
+    fun lnurlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 20, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsProfileCard(_bb: ByteBuffer): ProfileCard = getRootAsProfileCard(_bb, ProfileCard())
@@ -117,7 +117,7 @@ class ProfileCard : Table() {
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
         fun createProfileCard(builder: FlatBufferBuilder, pubkeyOffset: Int, hasDisplayName: Boolean, displayNameOffset: Int, hasPictureUrl: Boolean, pictureUrlOffset: Int, nip05Offset: Int, aboutOffset: Int, hasLnurl: Boolean, lnurlOffset: Int) : Int {
-            builder.startTable(10)
+            builder.startTable(9)
             addLnurl(builder, lnurlOffset)
             addAbout(builder, aboutOffset)
             addNip05(builder, nip05Offset)
@@ -129,16 +129,16 @@ class ProfileCard : Table() {
             addHasDisplayName(builder, hasDisplayName)
             return endProfileCard(builder)
         }
-        fun startProfileCard(builder: FlatBufferBuilder) = builder.startTable(10)
+        fun startProfileCard(builder: FlatBufferBuilder) = builder.startTable(9)
         fun addPubkey(builder: FlatBufferBuilder, pubkey: Int) = builder.addOffset(0, pubkey, 0)
-        fun addHasDisplayName(builder: FlatBufferBuilder, hasDisplayName: Boolean) = builder.addBoolean(2, hasDisplayName, false)
-        fun addDisplayName(builder: FlatBufferBuilder, displayName: Int) = builder.addOffset(3, displayName, 0)
-        fun addHasPictureUrl(builder: FlatBufferBuilder, hasPictureUrl: Boolean) = builder.addBoolean(4, hasPictureUrl, false)
-        fun addPictureUrl(builder: FlatBufferBuilder, pictureUrl: Int) = builder.addOffset(5, pictureUrl, 0)
-        fun addNip05(builder: FlatBufferBuilder, nip05: Int) = builder.addOffset(6, nip05, 0)
-        fun addAbout(builder: FlatBufferBuilder, about: Int) = builder.addOffset(7, about, 0)
-        fun addHasLnurl(builder: FlatBufferBuilder, hasLnurl: Boolean) = builder.addBoolean(8, hasLnurl, false)
-        fun addLnurl(builder: FlatBufferBuilder, lnurl: Int) = builder.addOffset(9, lnurl, 0)
+        fun addHasDisplayName(builder: FlatBufferBuilder, hasDisplayName: Boolean) = builder.addBoolean(1, hasDisplayName, false)
+        fun addDisplayName(builder: FlatBufferBuilder, displayName: Int) = builder.addOffset(2, displayName, 0)
+        fun addHasPictureUrl(builder: FlatBufferBuilder, hasPictureUrl: Boolean) = builder.addBoolean(3, hasPictureUrl, false)
+        fun addPictureUrl(builder: FlatBufferBuilder, pictureUrl: Int) = builder.addOffset(4, pictureUrl, 0)
+        fun addNip05(builder: FlatBufferBuilder, nip05: Int) = builder.addOffset(5, nip05, 0)
+        fun addAbout(builder: FlatBufferBuilder, about: Int) = builder.addOffset(6, about, 0)
+        fun addHasLnurl(builder: FlatBufferBuilder, hasLnurl: Boolean) = builder.addBoolean(7, hasLnurl, false)
+        fun addLnurl(builder: FlatBufferBuilder, lnurl: Int) = builder.addOffset(8, lnurl, 0)
         fun endProfileCard(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

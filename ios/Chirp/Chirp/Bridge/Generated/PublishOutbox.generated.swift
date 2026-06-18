@@ -104,13 +104,13 @@ public struct nmp_kernel_PublishOutboxItem: FlatBufferTable, FlatbuffersVectorIn
     case kind = 8
     case title = 10
     case preview = 12
-    case status = 16
-    case statusLabel = 18
-    case systemImage = 20
-    case canRetry = 22
-    case targetRelays = 24
-    case relays = 28
-    case createdAt = 30
+    case status = 14
+    case statusLabel = 16
+    case systemImage = 18
+    case canRetry = 20
+    case targetRelays = 22
+    case relays = 24
+    case createdAt = 26
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -134,7 +134,7 @@ public struct nmp_kernel_PublishOutboxItem: FlatBufferTable, FlatbuffersVectorIn
   public var targetRelays: UInt32 { let o = _accessor.offset(VTOFFSET.targetRelays.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var relays: FlatbufferVector<nmp_kernel_PublishOutboxRelay> { return _accessor.vector(at: VTOFFSET.relays.v, byteSize: 4) }
   public var createdAt: UInt64 { let o = _accessor.offset(VTOFFSET.createdAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startPublishOutboxItem(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 14) }
+  public static func startPublishOutboxItem(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 12) }
   public static func add(handle: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: handle, at: VTOFFSET.handle.p) }
   public static func add(eventId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: eventId, at: VTOFFSET.eventId.p) }
   public static func add(kind: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: kind, def: 0, at: VTOFFSET.kind.p) }

@@ -317,8 +317,8 @@ enum TypedProjectionGlue {
     /// `null`-when-`None` semantics (ADR-0032): when `has_x == false` the
     /// optional field is `nil`, regardless of the (empty) string slot.
     private static func profileCard(_ card: nmp_kernel_ProfileCard) -> ProfileCard {
-        // ADR-0032 / V-115: `npub` slot deprecated; `card.npub` returns nil/empty.
-        // `ProfileCard` no longer has an `npub` property (removed from wire).
+        // V-115 / ADR-0032: `npub` slot fully removed from profile_card.fbs.
+        // `ProfileCard` carries only hex `pubkey`; shells encode bech32 themselves.
         ProfileCard(
             pubkey: card.pubkey ?? "",
             displayName: card.hasDisplayName ? (card.displayName ?? "") : nil,

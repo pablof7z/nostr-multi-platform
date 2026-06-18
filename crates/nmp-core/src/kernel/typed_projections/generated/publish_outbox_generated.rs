@@ -229,13 +229,13 @@ impl<'a> PublishOutboxItem<'a> {
   pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
   pub const VT_TITLE: ::flatbuffers::VOffsetT = 10;
   pub const VT_PREVIEW: ::flatbuffers::VOffsetT = 12;
-  pub const VT_STATUS: ::flatbuffers::VOffsetT = 16;
-  pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 18;
-  pub const VT_SYSTEM_IMAGE: ::flatbuffers::VOffsetT = 20;
-  pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 22;
-  pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 24;
-  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 28;
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 30;
+  pub const VT_STATUS: ::flatbuffers::VOffsetT = 14;
+  pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 16;
+  pub const VT_SYSTEM_IMAGE: ::flatbuffers::VOffsetT = 18;
+  pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 20;
+  pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 22;
+  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 24;
+  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 26;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
