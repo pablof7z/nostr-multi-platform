@@ -377,44 +377,21 @@ fn no_raw_tap_positive_fixture_fires() {
     );
 }
 
-/// A BARE `// doctrine-allow: no_raw_tap` (no `—`/`- ` justification) must NOT
-/// silence the rule — the escape hatch is eliminated, so any opt-out requires a
-/// reason (the rule routes through `allow::line_allows_with_reason`).
+/// A bare `// doctrine-allow: no_raw_tap` (no reason) must NOT silence the rule —
+/// it routes through `allow::line_allows_with_reason` (parser unit-tested in `allow.rs`).
 #[test]
 fn no_raw_tap_bare_allow_does_not_silence() {
-    let workspace = workspace_root();
-    let crate_src = workspace
-        .join("target")
-        .join("doctrine_lint_no_raw_tap_bare_allow")
-        .join("crates")
-        .join("nmp-fake-crate")
-        .join("src");
-    let _ = std::fs::remove_dir_all(
-        workspace
-            .join("target")
-            .join("doctrine_lint_no_raw_tap_bare_allow"),
-    );
-    std::fs::create_dir_all(&crate_src).expect("create fake crate src dir");
-    // A production violation line carrying a BARE allow (no reason).
+    let src = workspace_root().join("target/doctrine_lint_no_raw_tap_bare/crates/fake/src");
+    let _ = std::fs::remove_dir_all(workspace_root().join("target/doctrine_lint_no_raw_tap_bare"));
+    std::fs::create_dir_all(&src).expect("create fake crate src");
     std::fs::write(
-        crate_src.join("bare_allow.rs"),
-        "fn wire() {\n    \
-         app.register_raw_event_observer(filter, observer); // doctrine-allow: no_raw_tap\n}\n",
+        src.join("bare.rs"),
+        "fn w() { app.register_raw_event_observer(f, o); } // doctrine-allow: no_raw_tap\n",
     )
-    .expect("write bare-allow fixture");
-
-    let crate_src_str = crate_src.to_string_lossy().into_owned();
-    let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
-    assert_eq!(
-        code, 1,
-        "a bare no_raw_tap allow (no reason) must NOT silence the rule; stdout:\n{}\nstderr:\n{}",
-        stdout, stderr
-    );
-    assert!(
-        stdout.contains("error[no_raw_tap]"),
-        "the finding must still fire under a bare allow; stdout:\n{}",
-        stdout
-    );
+    .expect("write fixture");
+    let (code, stdout, _) = run_lint(&["--path", &src.to_string_lossy()]);
+    assert_eq!(code, 1, "bare allow must NOT silence no_raw_tap; stdout:\n{stdout}");
+    assert!(stdout.contains("error[no_raw_tap]"), "finding must still fire; stdout:\n{stdout}");
 }
 
 #[test]
