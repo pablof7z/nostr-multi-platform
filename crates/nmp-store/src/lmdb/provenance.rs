@@ -12,6 +12,7 @@
 use heed::types::Bytes;
 use heed::{Database, RoTxn, RwTxn};
 
+use super::open_error::classify_heed_err;
 use crate::types::{EventId, ProvenanceEntry, RelayUrl};
 use crate::StoreError;
 
@@ -68,11 +69,15 @@ pub(super) fn relay_index_put(
     txn: &mut RwTxn,
     relay_url: &str,
     id: &EventId,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
     let key = relay_index_key(relay_url, id);
     relay_index
         .put(txn, &key, &[])
-        .map_err(|e| StoreError::Io(format!("relay_index put: {e}")))
+        // Grow-path put: classify so an `MDB_MAP_FULL` surfaces as the typed
+        // `StoreError::MapFull` health variant (#1521), never a stringly `Io`.
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))
 }
 
 /// Remove a single `(relay_url, event_id)` entry from the relay index.
@@ -177,6 +182,8 @@ pub(super) fn relay_kind_put(
     relay_url: &str,
     kind: u32,
     id: &EventId,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
     if crate::types::is_relay_provenance_private(kind) {
         return Ok(());
@@ -184,7 +191,9 @@ pub(super) fn relay_kind_put(
     let key = relay_kind_key(relay_url, kind, id);
     relay_kind
         .put(txn, &key, &[])
-        .map_err(|e| StoreError::Io(format!("relay_kind put: {e}")))
+        // Grow-path put: classify so an `MDB_MAP_FULL` surfaces as the typed
+        // `StoreError::MapFull` health variant (#1521), never a stringly `Io`.
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))
 }
 
 /// Remove a single `(relay_url, kind, event_id)` entry from the relay-kind index.
@@ -273,6 +282,7 @@ fn encode(entries: &[ProvenanceEntry]) -> Result<Vec<u8>, StoreError> {
 /// faithful projection of provenance.  Adds the `(relay_url, id)` entry for the
 /// incoming relay; if the LRU eviction overwrites an existing non-primary relay
 /// (capacity full), the evicted relay's `(relay, id)` index entry is removed.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn upsert(
     db: Database<Bytes, Bytes>,
     relay_index: Database<Bytes, Bytes>,
@@ -282,6 +292,8 @@ pub(super) fn upsert(
     relay_url: RelayUrl,
     kind: u32,
     received_at_ms: u64,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<u32, StoreError> {
     let mut entries = read_rw(db, txn, id)?;
 
@@ -296,10 +308,10 @@ pub(super) fn upsert(
         sort_and_mark(&mut entries);
         let bytes = encode(&entries)?;
         db.put(txn, id, &bytes)
-            .map_err(|e| StoreError::Io(format!("prov put: {e}")))?;
+            .map_err(|e| classify_heed_err(e, map_size, max_readers))?;
         // Index entry already present (idempotent), but re-assert for safety.
-        relay_index_put(relay_index, txn, &relay_url, id)?;
-        relay_kind_put(relay_kind, txn, &relay_url, kind, id)?;
+        relay_index_put(relay_index, txn, &relay_url, id, map_size, max_readers)?;
+        relay_kind_put(relay_kind, txn, &relay_url, kind, id, map_size, max_readers)?;
         return Ok(entries.len() as u32);
     }
 
@@ -317,7 +329,7 @@ pub(super) fn upsert(
             sort_and_mark(&mut entries);
             let bytes = encode(&entries)?;
             db.put(txn, id, &bytes)
-                .map_err(|e| StoreError::Io(format!("prov put: {e}")))?;
+                .map_err(|e| classify_heed_err(e, map_size, max_readers))?;
             // Index: drop the evicted relay, add the incoming one.  Only drop the
             // evicted entry if no surviving provenance entry still references it
             // (it cannot, since provenance relays are unique, but stay defensive).
@@ -325,8 +337,8 @@ pub(super) fn upsert(
                 relay_index_delete_exact(relay_index, txn, &evicted_relay, id)?;
                 relay_kind_delete_exact(relay_kind, txn, &evicted_relay, kind, id)?;
             }
-            relay_index_put(relay_index, txn, &relay_url, id)?;
-            relay_kind_put(relay_kind, txn, &relay_url, kind, id)?;
+            relay_index_put(relay_index, txn, &relay_url, id, map_size, max_readers)?;
+            relay_kind_put(relay_kind, txn, &relay_url, kind, id, map_size, max_readers)?;
             return Ok(entries.len() as u32);
         }
     }
@@ -341,9 +353,9 @@ pub(super) fn upsert(
     sort_and_mark(&mut entries);
     let bytes = encode(&entries)?;
     db.put(txn, id, &bytes)
-        .map_err(|e| StoreError::Io(format!("prov put: {e}")))?;
-    relay_index_put(relay_index, txn, &relay_url, id)?;
-    relay_kind_put(relay_kind, txn, &relay_url, kind, id)?;
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))?;
+    relay_index_put(relay_index, txn, &relay_url, id, map_size, max_readers)?;
+    relay_kind_put(relay_kind, txn, &relay_url, kind, id, map_size, max_readers)?;
     Ok(entries.len() as u32)
 }
 

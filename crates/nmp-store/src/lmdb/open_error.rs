@@ -14,13 +14,15 @@ use heed::MdbError;
 
 use crate::StoreError;
 
-/// Classify a `nmp_nostr_lmdb::StoreError` (the error type returned by
-/// `Lmdb::open_env` / `Lmdb::with_env`) into a typed `StoreError`.
+/// Classify a `nmp_nostr_lmdb::StoreError` (the error type returned by the
+/// fork's `Lmdb::open_env` / `Lmdb::with_env` *and* by its write path —
+/// `save_event_with_txn`, which is where an `MDB_MAP_FULL` raised by the bulk
+/// event `put` actually surfaces) into a typed `StoreError`.
 ///
-/// `map_size` and `max_readers` are the limits that were passed to
-/// `open_env`; they are embedded into `MapFull` / `ReaderExhaustion`
-/// variants so the diagnostic is self-contained.
-pub(super) fn classify_open_error(
+/// `map_size` and `max_readers` are the limits the store was opened with;
+/// they are embedded into `MapFull` / `ReaderExhaustion` variants so the
+/// diagnostic is self-contained.
+pub(super) fn classify_store_err(
     e: nmp_nostr_lmdb::StoreError,
     map_size: usize,
     max_readers: u32,
@@ -32,7 +34,7 @@ pub(super) fn classify_open_error(
     // message which may contain file-system paths.
     match e {
         nmp_nostr_lmdb::StoreError::Heed(h) => classify_heed_direct(h, map_size, max_readers),
-        _ => StoreError::Io("lmdb open failed (non-heed internal error)".into()),
+        _ => StoreError::Io("lmdb internal error (non-heed)".into()),
     }
 }
 

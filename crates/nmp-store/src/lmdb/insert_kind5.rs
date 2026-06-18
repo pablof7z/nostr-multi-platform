@@ -288,6 +288,8 @@ pub(super) fn handle_kind5(
             source.clone(),
             5,
             received_at_ms,
+            inner.map_size,
+            inner.max_readers,
         )?;
         return Ok(InsertOutcome::Duplicate {
             id: kind5_id,
@@ -297,7 +299,9 @@ pub(super) fn handle_kind5(
     inner
         .lmdb
         .store(txn, &mut fbb, &nostr_ev)
-        .map_err(|e| StoreError::Io(format!("k5 store: {e}")))?;
+        // Bulk kind:5 event write — classify so `MDB_MAP_FULL` surfaces as the
+        // typed `StoreError::MapFull` health variant (#1521), never a stringly `Io`.
+        .map_err(|e| super::open_error::classify_store_err(e, inner.map_size, inner.max_readers))?;
     let count = provenance::upsert(
         inner.provenance,
         inner.relay_index,
@@ -307,6 +311,8 @@ pub(super) fn handle_kind5(
         source.clone(),
         5,
         received_at_ms,
+        inner.map_size,
+        inner.max_readers,
     )?;
     // Stamp LRU access for the newly stored kind:5 event.
     gc::lru_stamp(inner, txn, &kind5_id)?;

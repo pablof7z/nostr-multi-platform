@@ -40,7 +40,7 @@ pub(super) fn open_impl_with_limits(
     map_size: usize,
     max_readers: u32,
 ) -> Result<LmdbEventStore, StoreError> {
-    use super::open_error::{classify_heed_err, classify_open_error};
+    use super::open_error::{classify_heed_err, classify_store_err};
     // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
     // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1),
@@ -56,9 +56,9 @@ pub(super) fn open_impl_with_limits(
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
     let env = Lmdb::open_env(path, map_size, max_readers, NMP_ADDITIONAL_DBS)
-        .map_err(|e| classify_open_error(e, map_size, max_readers))?;
+        .map_err(|e| classify_store_err(e, map_size, max_readers))?;
     let lmdb = Lmdb::with_env(env.clone())
-        .map_err(|e| classify_open_error(e, map_size, max_readers))?;
+        .map_err(|e| classify_store_err(e, map_size, max_readers))?;
 
     // Open NMP sub-dbs on the shared env in one write txn (atomic with the
     // upstream schema). The local closure keeps the call sites DRY.
@@ -133,7 +133,15 @@ pub(super) fn open_impl_with_limits(
     // (pre-#1518 databases).  Gated by the domain_versions key so the scan runs
     // exactly once.  Must run AFTER the relay-index backfill is irrelevant to
     // ordering — it reads provenance + events independently.
-    backfill_relay_kind_index(&env, &lmdb, provenance, relay_kind, domain_versions)?;
+    backfill_relay_kind_index(
+        &env,
+        &lmdb,
+        provenance,
+        relay_kind,
+        domain_versions,
+        map_size,
+        max_readers,
+    )?;
 
     // Issue #1519 — interaction-counter schema init.
     let interaction_counters_usable =
@@ -360,12 +368,15 @@ const RELAY_KIND_BACKFILL_KEY: &[u8] = b"nmp-relay-kind";
 /// relay in its provenance list, skipping privacy-gated kinds (checked inside
 /// `provenance::relay_kind_put`).  The event's kind comes from the primary
 /// store (one query over all events to build an `id → kind` map).
+#[allow(clippy::too_many_arguments)]
 fn backfill_relay_kind_index(
     env: &Env,
     lmdb: &Lmdb,
     provenance: Database<Bytes, Bytes>,
     relay_kind: Database<Bytes, Bytes>,
     domain_versions: Database<Bytes, Bytes>,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
     // O(1) gate — skip the full scan if the migration already ran.
     {
@@ -432,7 +443,9 @@ fn backfill_relay_kind_index(
         .write_txn()
         .map_err(|e| StoreError::Io(format!("relay-kind backfill write_txn: {e}")))?;
     for (relay_url, kind, id) in entries {
-        super::provenance::relay_kind_put(relay_kind, &mut txn, &relay_url, kind, &id)?;
+        super::provenance::relay_kind_put(
+            relay_kind, &mut txn, &relay_url, kind, &id, map_size, max_readers,
+        )?;
     }
     domain_versions
         .put(&mut txn, RELAY_KIND_BACKFILL_KEY, &1u32.to_be_bytes())
