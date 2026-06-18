@@ -14,6 +14,17 @@
   ladder contradicted itself on whether the bounded log GC ships in step-1. Rev 3 fixes all
   three in place (taxonomy §3 / R2.2, hook list R2.2, ladder §8) and adds the "Revision 3"
   section below, authoritative where it supersedes Rev 2.**
+  **Revised again 2026-06-18 (Revision 4 — mirror semantic-delete contract): a fourth
+  adversarial codex review found one residual deep hole. Because retention removals (LRU
+  eviction, `delete_by_filter(ByRelayOnly)`) destroy the primary event row yet emit no
+  `Deleted` row, a durable mirror is necessarily a SEMANTIC SUPERSET of the store, not an exact
+  current-store replica — and a semantic delete (NIP-09 / NIP-40) that arrives AFTER the target
+  was already retention-evicted removes nothing in the store, so it produces no `Deleted` row,
+  and a mirror relying on `Deleted` rows would keep the dead event forever. Rev 4 closes this by
+  making the mirror apply NIP-09 / NIP-40 ITSELF from the log stream / its own copy (§5,
+  step-5) and reframing `Deleted` rows as a best-effort optimization for events the store still
+  holds, not the mirror's source of truth for deletion. See the "Revision 4" section below,
+  authoritative where it supersedes Rev 3.**
 - **Date:** 2026-06-18
 - **Doctrine:** `doctrine:d1` (reads-through-store), `doctrine:d4` (single writer),
   `doctrine:d5` (bounded), `doctrine:d8` (no polling)
@@ -180,8 +191,14 @@ dropped it for capacity or relay bookkeeping." Therefore:
 The earlier "the log must record every removal regardless of *why* to stay a complete
 mutation history" reasoning is **withdrawn**: log-GC tractability comes from seq-keying
 (R2.3), not from logging retention evictions. The mirror contract is therefore
-unambiguous — **a mirror deletes its copy ONLY on `Nip09` / `Nip40Expiry` / `AdminPurge`,
-NEVER on retention eviction.**
+unambiguous — **a mirror NEVER deletes its copy on a retention eviction.** **Rev 4 sharpens
+the positive half:** a `Deleted` row is only ever emitted for an event the producing store
+**still held** at delete time, so it is a best-effort optimization, **not** a durable mirror's
+source of truth for deletion. A durable mirror is a semantic superset of the store and **MUST
+apply NIP-09 / NIP-40 itself** (from the kind:5 `Inserted` row and the held event's
+`expiration` tag), so that a delete racing retention eviction — which removes nothing in the
+store and emits no `Deleted` row — is still applied by the mirror (see §5 and the "Revision 4"
+section).
 
 ### R2.3 Retention is its own seq-keyed log GC — not an event-id pin, not a K3 pin
 
@@ -416,6 +433,85 @@ step-1 is `GlobalLog`-only), and R2.8 (hard FFI page caps + no-UI-thread-pull) a
 
 ---
 
+## Revision 4 (2026-06-18) — mirror semantic-delete contract
+
+A fourth adversarial codex review confirmed Rev 3 closed its three blockers (the
+`LruEviction` false-delete trap, `delete_by_filter` destructive-hook coverage, the ladder
+step-1 bounded log GC) with **no** regression on R2.1 / R2.5 / R2.7 / R2.8 — and found **one**
+residual deep hole, fixed here.
+
+### R4.1 The hole: a semantic delete that races retention eviction emits no `Deleted` row
+
+Rev 3 correctly made retention removals (LRU eviction, `delete_by_filter(ByRelayOnly)`) emit
+**no** `Deleted` row, because the event still validly exists elsewhere. But `ByRelayOnly` is
+**destructive of the primary event row**, not provenance-only: `crates/nmp-store/src/mem/insert.rs:147`
+builds `ids_to_remove`, `crates/nmp-store/src/lmdb/delete.rs` `by_relay_only` removes it, and
+`crates/nmp-store/src/lmdb/tests_kind5.rs:186-218` asserts the row is gone. So a durable mirror
+that **keeps** retention-evicted events is necessarily a **SEMANTIC SUPERSET** of the store, not
+an exact replica of its current authoritative set.
+
+That superset opens a hole Rev 3 does not close:
+
+1. Event `E` is logged (`Inserted`) and mirrored.
+2. `E` is removed locally by LRU eviction or `delete_by_filter(ByRelayOnly)` — correctly **no**
+   `Deleted` row (`E` still validly exists).
+3. Later a NIP-09 kind:5 (or NIP-40 expiry) for `E` is observed. The store's kind:5 handler
+   removes **per removed target** — but `E`'s primary row is **already absent locally**, so it
+   removes nothing → emits **no** `Deleted { Nip09 }` row (`crates/nmp-store/src/mem/insert_kind5.rs`
+   only removes/tombstones-with-removal inside the `target present` branch; the LMDB twin only
+   emits a `Deleted` row when `target_stored`).
+4. A mirror that relied on `Deleted` rows never learns `E` is semantically dead → it **keeps a
+   deleted event forever** (divergence; privacy-relevant if `E` was a since-deleted note).
+
+### R4.2 The fix: the mirror is a SEMANTIC SUPERSET and applies NIP-09 / NIP-40 itself
+
+Adopted (codex's sound first option), specified precisely in §5 and step-5:
+
+- **The mirror is a SEMANTIC SUPERSET, not an exact current-store replica.** It keeps events
+  the store retention-evicts. Stated plainly in §5, step-5, and §3.
+- **Because it is a superset, the mirror MUST apply Nostr deletion semantics ITSELF** and MUST
+  NOT rely on the store's `Deleted` rows for correctness:
+  - **NIP-09:** the mirror receives every kind:5 as a normal `Inserted` log row (kind:5 is an
+    accepted event), and applies it to **its own** copy — deleting the target ids from its own
+    store — exactly as any Nostr client does, regardless of whether the producing store still
+    held the target. This is what makes the step-3 race resolve correctly.
+  - **NIP-40:** the mirror applies expiry locally from the `expiration` tag on the events it
+    holds, regardless of whether the producing store already expired them.
+- **`Deleted` rows are reframed as a best-effort signal/optimization for events the store still
+  held** — not the mirror's source of truth for deletion. A consumer that only tracks the
+  store's current authoritative set MAY use them; a durable superset mirror MUST additionally
+  apply NIP-09 / NIP-40 itself.
+
+### R4.3 What the store emits on a kind:5 whose target row is already absent
+
+**Decision (stated explicitly):** the store emits the **kind:5's OWN `Inserted` row** (always —
+kind:5 is an accepted event), but does **NOT** fabricate a `Deleted` row for the already-absent
+target (it removed nothing). The mirror's correctness comes from processing that kind:5
+`Inserted` row **itself**. This is internally consistent with R2.2: "kind:5 emits an `Inserted`
+for the kind:5 event plus one `Deleted` per **actually-removed** target" — an absent target is
+not an actually-removed target, so the only row is the kind:5 `Inserted`. No new store behavior
+is required; the fix is entirely in the **mirror** contract (the consumer applies kind:5 / NIP-40
+to its own copy). The store taxonomy, hook list, and retention rules from Rev 2 / Rev 3 are
+**unchanged**.
+
+### R4.4 Parity / contract tests
+
+- **Step-1 (store parity):** the delete-races-eviction case — log a target (`Inserted`),
+  retention-evict it (`ByRelayOnly` or LRU, no `Deleted` row), then deliver a kind:5 for it;
+  assert the store emits **no** `Deleted` row for the absent target but the log **still** carries
+  the kind:5's own `Inserted` row.
+- **Step-5 (mirror contract):** on that same sequence, assert the mirror **deletes its copy** of
+  the target by processing the kind:5 `Inserted` row itself.
+
+### Untouched (closed in Rev 2 / Rev 3, confirmed still closed by Rev 4)
+
+The `LruEviction` false-delete trap (R3.1), `delete_by_filter` destructive-hook coverage
+(R3.2), the ladder step-1 bounded log GC (R3.3 / R2.4), and R2.1 / R2.5 / R2.7 / R2.8 are
+**unchanged** by Rev 4. Rev 4 touches only the **mirror-side** delete contract (§5, step-5) and
+the framing of `Deleted` rows (§3, R2.2, §6); it adds no store behavior and removes none.
+
+---
+
 ## 1. Problem
 
 Two consumers want events at their own pace, and neither is served well by a push
@@ -487,9 +583,13 @@ DeleteReason = Nip09 | Nip40Expiry | AdminPurge
 - **`AdminPurge`** rows come from `delete_by_filter` (`events.rs:363`), one per removed
   primary row, for the destructive `ByAuthor`/`ByIds`/`ByKindRange` variants (R2.2).
 - **Retention removals emit no row (Rev 3):** LRU eviction and
-  `delete_by_filter(ByRelayOnly)` produce **no** `Deleted` row — the event still validly
-  exists. A mirror deletes its local copy **only** on a `Deleted` row (`Nip09` /
-  `Nip40Expiry` / `AdminPurge`), **never** on retention eviction (R2.2).
+  `delete_by_filter(ByRelayOnly)` produce **no** `Deleted` row — even though `ByRelayOnly`
+  destroys the primary event row, the event still validly exists elsewhere. A mirror **never**
+  deletes its local copy on a retention eviction (R2.2).
+- **A mirror is a semantic superset and applies deletes itself (Rev 4):** the mirror keeps
+  events the store retention-evicted, so its delete correctness comes from **processing the
+  kind:5 `Inserted` row and the `expiration` tag itself**, not from the store's `Deleted` rows
+  (which are a best-effort optimization for events the store still held). See §5.
 - **Duplicates do not create log entries** — see §5.
 
 `scan_log_since_seq` returns a **level-triggered** page (Rev 2 R2.1):
@@ -565,6 +665,40 @@ future consumer genuinely needs per-arrival data, add a separate `arrival_log
 { arrival_seq, event_id, source_relay, outcome }` under its own issue/ADR — **do not
 burden this primitive speculatively** (D5: no invented mechanism).
 
+**The mirror is a SEMANTIC SUPERSET, not an exact current-store replica (Rev 4).**
+Retention removals destroy the producing store's primary row but emit no `Deleted` row:
+LRU eviction drops the row, and `delete_by_filter(ByRelayOnly)` **does** delete the primary
+event row (`crates/nmp-store/src/mem/insert.rs:147` builds `ids_to_remove`;
+`crates/nmp-store/src/lmdb/delete.rs` `by_relay_only`; asserted at
+`crates/nmp-store/src/lmdb/tests_kind5.rs:186-218`) — it is destructive, not
+provenance-only. A durable mirror **keeps** events the producing store retention-evicted (it
+does not re-fetch to re-confirm them), so by construction the mirror's set is a superset of the
+store's current authoritative set, not a mirror image of it. **Because it is a superset, the
+mirror MUST apply Nostr deletion semantics ITSELF and MUST NOT rely on the store's `Deleted`
+rows for correctness:**
+
+- **NIP-09.** The mirror receives every kind:5 event as an ordinary `Inserted` log row (kind:5
+  is itself an accepted, stored event — R2.2). The mirror applies that kind:5 to **its own
+  copy** — deleting the referenced target ids from its own store — exactly as any Nostr client
+  does, **regardless of whether the producing store still held the target.** This is what
+  closes the race in which a kind:5 arrives after the target was already retention-evicted: the
+  producing store removes nothing and emits no `Deleted` row, but the mirror still acts because
+  it processes the kind:5 `Inserted` row itself.
+- **NIP-40 expiry.** The mirror applies expiration **locally** from the `expiration` tag on the
+  events it holds (it has the events and their tags), regardless of whether the producing store
+  already expired and pruned them.
+
+**`Deleted` rows are reframed as a best-effort signal/optimization, NOT the mirror's source of
+truth (Rev 4).** A `Deleted { Nip09 | Nip40Expiry | AdminPurge }` row is emitted only for an
+event the producing store **still held** at delete time (a removal actually happened). It lets
+a consumer that only cares about the store's current authoritative set short-circuit — such a
+consumer MAY use `Deleted` rows directly. But a durable superset mirror **MUST additionally
+apply NIP-09 / NIP-40 itself** from the log stream / its own copy, because a delete that races
+retention eviction produces no `Deleted` row. The retention-class rule from Rev 3 still holds in
+full: a mirror **NEVER** deletes on a retention eviction (there is no row to act on, and the
+event still validly exists). `AdminPurge` remains a best-effort operator-purge signal a mirror
+MAY honor; it has no NIP equivalent to re-derive, so it is advisory only.
+
 ## 6. Retention / GC
 
 > **Rev 2 correction.** The Rev 1 text here assumed production runs durable LRU
@@ -609,8 +743,11 @@ pin machinery (ADR-0056); it does not reuse or duplicate it.
 evicting a *primary* event row (LRU, or `delete_by_filter(ByRelayOnly)`) **never** emits a
 consumer-visible `Deleted` row — those events still validly exist. A `Protected` cursor's
 floor pin keeps its **unconsumed** log rows from being pruned; a cursor that falls past
-`max_lag_entries` gets an explicit `PullGap`, not a false delete. A mirror deletes its copy
-only on a semantic `Deleted` row (`Nip09` / `Nip40Expiry` / `AdminPurge` — R2.2).
+`max_lag_entries` gets an explicit `PullGap`, not a false delete. A mirror **never** deletes its
+copy on a retention eviction. It deletes its copy by applying NIP-09 / NIP-40 **itself** from the
+log stream / its own copy (Rev 4, §5); the store's semantic `Deleted` rows
+(`Nip09` / `Nip40Expiry` / `AdminPurge` — R2.2) are a best-effort optimization for events the
+store still held, not the mirror's source of truth.
 
 ### 6.1 Reconciliation with ADR-0039 (the load-bearing point)
 
@@ -684,7 +821,11 @@ pull-specific work is tracked in **#1566** (a #1523 subissue):
    registered (R2.4). Parity tests: late old event after cursor; duplicate → no seq;
    `Replaced` op; NIP-09 `Deleted` ops (per target); `Nip40Expiry` op; **`AdminPurge` op
    per `delete_by_filter` removed row (`ByAuthor`/`ByIds`/`ByKindRange`)**; **`ByRelayOnly`
-   and LRU eviction emit NO `Deleted` row**; default log-GC bound prunes the tail and
+   and LRU eviction emit NO `Deleted` row**; **delete-races-eviction (Rev 4): a target id is
+   logged (`Inserted`), then retention-evicted (`ByRelayOnly` or LRU — no `Deleted` row), then
+   a kind:5 for it arrives — assert the store removes nothing for the absent target and emits
+   NO `Deleted` row for it, but the LOG still carries the kind:5's own `Inserted` row so a
+   superset mirror can act on it**; default log-GC bound prunes the tail and
    `oldest_available_seq()` rises; LMDB reopen seq continuity; no-backfill on upgrade
    (R2.6). *Smallest independently-valuable PR; the keystone.*
 2. **Kernel pull service** over the `GlobalLog` scope (no FFI yet). The
@@ -699,11 +840,24 @@ pull-specific work is tracked in **#1566** (a #1523 subissue):
    with explicit gap / lag-degrade tests. (The log GC *bound* itself already shipped in
    step-1; this step only adds the Protected floor-pin on top of it.)
 5. **`hl` mirror migration** onto the `GlobalLog` cursor (mirror contract = distinct
-   events + optional merged-provenance read, not traffic replay; **deletes only on a
-   semantic `Deleted` row — `Nip09` / `Nip40Expiry` / `AdminPurge` — never on retention
-   eviction**, R2.2). Initial full sync (R2.6): **register the cursor at the current head,
-   then export the current store, then pull from that cursor** — tolerating duplicates but
-   **never** gaps. Then confirm the #1552 native sink stays deleted.
+   events + optional merged-provenance read, not traffic replay). **The mirror is a SEMANTIC
+   SUPERSET, not an exact current-store replica (Rev 4): it keeps events the store
+   retention-evicts, so its delete path is "apply NIP-09 + NIP-40 from the log stream / its own
+   copy," not "act on the store's `Deleted` rows."** Concretely: the mirror processes each
+   kind:5 `Inserted` row by deleting that kind:5's target ids from **its own** store, and
+   applies NIP-40 expiry from the `expiration` tag on the events it holds — **regardless of
+   whether the producing store still held the target.** **Invariant: a delete that races
+   retention eviction is still applied by the mirror, because the mirror processes the kind:5
+   event itself** (the store removed nothing for the already-absent target and emitted no
+   `Deleted` row). The store's `Deleted` rows (`Nip09` / `Nip40Expiry` / `AdminPurge`, R2.2)
+   are a best-effort optimization a consumer that only tracks the store's current authoritative
+   set MAY use; a durable superset mirror MUST additionally apply NIP-09 / NIP-40 itself. **The
+   mirror NEVER deletes on a retention eviction** (no row, event still validly exists, R3.1).
+   Mirror-contract test: assert the mirror deletes its copy on the delete-races-eviction case
+   (step-1 parity case) by processing the kind:5 `Inserted` row itself. Initial full sync
+   (R2.6): **register the cursor at the current head, then export the current store, then pull
+   from that cursor** — tolerating duplicates but **never** gaps. Then confirm the #1552 native
+   sink stays deleted.
 6. **`load_older` → interest-scoped pagination — SEPARATE DESIGN (R2.7).** *Not* a
    thin wrapper over the global seq log. Requires an interest-scoped seq index or a
    two-cursor model (a `created_at`/id display cursor + a seq cursor for the
