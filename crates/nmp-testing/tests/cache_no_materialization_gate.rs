@@ -20,6 +20,11 @@ use nmp_testing::store_harness::{hex_to_id, StoreHarness, ALICE_HEX, ALICE_PUBKE
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+// CONVERSION_COUNT is a process-wide static; tests run in parallel and would
+// race on reset→read.  Serialise every counter-sensitive section with this
+// mutex so each test sees only its own conversions.
+static COUNTER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn author_hex(i: u8) -> String {
     format!("{:02x}{}", i, "0".repeat(62))
 }
@@ -37,6 +42,7 @@ fn visit_break_after(
     limit: usize,
     break_after: usize,
 ) -> (usize, usize) {
+    let _guard = COUNTER_LOCK.lock().unwrap();
     reset_conversion_count();
     let mut visited = 0usize;
     store
@@ -87,6 +93,7 @@ fn limit_caps_conversions_no_over_scan() {
         since: None,
         until: None,
     };
+    let _guard = COUNTER_LOCK.lock().unwrap();
     reset_conversion_count();
     let mut visited = 0usize;
     h.store
