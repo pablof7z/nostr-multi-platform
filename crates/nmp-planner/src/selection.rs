@@ -96,11 +96,24 @@ use relay_score_lookup::RelayAuthorScoreLookup;
 /// bounds the NIP-65 connection storm; it must not erase the only relay a
 /// caller supplied as evidence for where a specific event can be found.
 ///
+/// NIP-17 DM-inbox relays ([`RoutingSource::Nip17DmRelay`], resolved from a
+/// recipient's kind:10050 list) are a protocol-mandated *inbox*, not an
+/// optimizable NIP-65 *outbox*. A gift-wrap inbox interest (Case C: my pubkey
+/// in `#p`, no author filter) compiles to an empty-author wildcard sub-shape,
+/// so it scores ZERO coverage in the greedy pass and survives only through the
+/// budget-bounded wildcard backfill — which stops the moment `max_connections`
+/// is exhausted by NIP-65 outbox relays. Under a large follow set that prunes
+/// the DM inbox relay and the user silently stops receiving direct messages.
+/// Selection exists ONLY to bound the kind:10002 outbox storm; kind:10050 DM
+/// relays must bypass it, exactly like Hint/Provenance/AppRelay. See
+/// `selection/dm_relay_tests.rs` for the regression (#1493 P7).
+///
 /// See `selection/tests.rs::app_relay_survives_*` for the contract and the
 /// gallery-TUI smoke regression that motivated this carve-out.
 fn relay_bypasses_selection(role_tags: &BTreeSet<RoutingSource>) -> bool {
     role_tags.contains(&RoutingSource::Hint)
         || role_tags.contains(&RoutingSource::Provenance)
+        || role_tags.contains(&RoutingSource::Nip17DmRelay)
         || role_tags.contains(&RoutingSource::UserConfigured(
             UserConfiguredCategory::AppRelay,
         ))
@@ -475,6 +488,9 @@ fn greedy_select(
 #[cfg(test)]
 #[path = "selection/app_relay_tests.rs"]
 mod app_relay_tests;
+#[cfg(test)]
+#[path = "selection/dm_relay_tests.rs"]
+mod dm_relay_tests;
 #[cfg(test)]
 #[path = "selection/hint_tests.rs"]
 mod hint_tests;
