@@ -11,19 +11,28 @@ use super::{conv, Inner};
 use crate::types::{StoreQuery, StoredEvent};
 use crate::StoreError;
 
-// ─── Test-only conversion counter ────────────────────────────────────────────
+// ─── Materialization counter (test-support) ───────────────────────────────────
+//
+// Counts how many LMDB events were deserialized (`EventBorrow → StoredEvent`)
+// per `run_filter_visit` call.  Exposed under `test-support` so integration
+// tests in `nmp-testing` can assert that early-`Break` visits do not
+// over-convert the corpus.  Never compiled into production binaries.
 
-#[cfg(test)]
-pub(crate) static CONVERSION_COUNT: std::sync::atomic::AtomicUsize =
+#[cfg(any(test, feature = "test-support"))]
+pub static CONVERSION_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-#[cfg(test)]
-pub(crate) fn reset_conversion_count() {
+/// Reset the materialization counter to zero.
+///
+/// Call before each sub-test that asserts on the count.
+#[cfg(any(test, feature = "test-support"))]
+pub fn reset_conversion_count() {
     CONVERSION_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
 }
 
-#[cfg(test)]
-pub(crate) fn conversion_count() -> usize {
+/// Return the current materialization count since the last reset.
+#[cfg(any(test, feature = "test-support"))]
+pub fn conversion_count() -> usize {
     CONVERSION_COUNT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -172,7 +181,7 @@ pub(crate) fn run_filter_visit(
         }
         let owned: Event = ev_borrow.into_owned();
         let raw = conv::nostr_to_raw(&owned)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         CONVERSION_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let stored = conv::stored_from_raw(raw, 0);
 

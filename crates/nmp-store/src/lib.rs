@@ -55,6 +55,15 @@ pub use types::{
 // Re-export error types from types (defined there to avoid circular imports).
 pub use types::{StoreError, VerifyError};
 
+// ── Test-support: LMDB materialization counter ────────────────────────────────
+//
+// Re-exported so `nmp-testing` integration tests can reach
+// `nmp_store::reset_conversion_count()` / `nmp_store::conversion_count()`
+// without spelling out the internal `lmdb::query_streaming` path.
+// Only compiled when lmdb-backend is on (the counter lives in LMDB code).
+#[cfg(all(feature = "lmdb-backend", any(test, feature = "test-support")))]
+pub use lmdb::{conversion_count, reset_conversion_count};
+
 // F-TTL — re-export replaceable freshness types from nmp-nostr-lmdb.
 // Only available when lmdb-backend is enabled (the module owns the LMDB types).
 #[cfg(feature = "lmdb-backend")]

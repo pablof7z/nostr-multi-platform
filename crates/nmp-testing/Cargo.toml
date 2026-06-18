@@ -116,6 +116,22 @@ name = "store_cache_baseline"
 path = "tests/store_cache_baseline.rs"
 required-features = ["lmdb-backend"]
 
+# Epic #1523 acceptance gate: materialization regression (LMDB streaming).
+# Proves that early ControlFlow::Break stops conversion immediately.
+# cargo test -p nmp-testing --features lmdb-backend --test cache_no_materialization_gate
+[[test]]
+name = "cache_no_materialization_gate"
+path = "tests/cache_no_materialization_gate.rs"
+required-features = ["lmdb-backend"]
+
+# Epic #1523 acceptance gate: Mem ≡ LMDB parity fixtures.
+# Runs the same fixtures against both backends via for_each_backend!.
+# cargo test -p nmp-testing --test cache_serve_replay_fixtures
+# cargo test -p nmp-testing --features lmdb-backend --test cache_serve_replay_fixtures
+[[test]]
+name = "cache_serve_replay_fixtures"
+path = "tests/cache_serve_replay_fixtures.rs"
+
 # Doctrine-lint smoke test — runs the binary against fixtures under
 # bin/doctrine-lint/fixtures/ and asserts pass/fail per rule.
 # `cargo test -p nmp-testing --test doctrine_lint_smoke`

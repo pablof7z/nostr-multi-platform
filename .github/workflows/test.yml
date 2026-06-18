@@ -58,6 +58,19 @@ jobs:
         env:
           RUSTFLAGS: ""
 
+      # Epic #1523 cache adoption acceptance gates.
+      #
+      # cache_no_materialization_gate: proves that early ControlFlow::Break in
+      #   query_visit stops LMDB event conversion immediately — no over-scan.
+      # cache_serve_replay_fixtures: Mem ≡ LMDB parity fixtures (5 query shapes,
+      #   both backends via for_each_backend!).
+      - name: cargo test nmp-testing (lmdb acceptance gates)
+        run: |
+          cargo test -p nmp-testing --features lmdb-backend --test cache_no_materialization_gate
+          cargo test -p nmp-testing --features lmdb-backend --test cache_serve_replay_fixtures
+        env:
+          RUSTFLAGS: ""
+
       # ADR-0048 Stage 2 NIP-55 proof gate (advances #1124).
       #
       # `cargo test --workspace` (above) runs nmp-ffi with default features,
