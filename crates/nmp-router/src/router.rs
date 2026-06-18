@@ -22,15 +22,17 @@
 //!   `session_keys.active_read` is attributed to
 //!   [`UserConfiguredCategory::ActiveAccountRead`].
 //! - **Lane 5 — ClassRouted.** On the [`RoutingContext::explicit_targets`]
-//!   shortcut, the router classifies `evt.kind` into the right
-//!   [`EventClass`] (Search/Draft/Wiki/Other) before attributing the
-//!   forced URLs to `ClassRouted{class, via: Explicit}`. The generic
-//!   algorithm itself has NO NIP-51 cache to consult — the substrate
-//!   carries no class-relays accessor — so the only ClassRouted path in
-//!   the router is the explicit-targets shortcut (which the NIP-17 /
-//!   NIP-29 / Marmot / NIP-50 search actions populate). Class refinement
-//!   in attribution lets the V-51 observer trace render the correct
-//!   class label.
+//!   shortcut, the router attributes the forced URLs to
+//!   `ClassRouted{EventClass::Other("explicit"), via: Explicit}` — the
+//!   same kind-agnostic attribution the subscription path has always used
+//!   (`RoutedRelaySet::from_explicit`). The generic algorithm has NO
+//!   NIP-51 cache to consult and, per #1493, carries NO per-NIP
+//!   kind→class table either — protocol knowledge stays out of the
+//!   substrate router. The explicit-targets shortcut is populated by the
+//!   NIP-17 / NIP-29 / Marmot / NIP-50 search actions. (A future
+//!   `RoutingContext::explicit_class` could let the NIP-aware caller
+//!   supply a Wiki/Draft/Search trace label without re-introducing the
+//!   table — see the `TODO(#1493)` on [`GenericOutboxRouter`].)
 //! - **Lane 6 — Indexer.** ALWAYS-ON for discovery kinds (kind:0,
 //!   kind:3, kind:10000–19999) — both publish and subscribe (R+W
 //!   symmetric per spec §3.1). Stacks on top of lane 1; defeats the

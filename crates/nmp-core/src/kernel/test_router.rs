@@ -19,11 +19,14 @@
 //! kept in-crate.
 //!
 //! The lanes implemented below mirror lanes 1, 2 (hint), 4
-//! (UserConfigured), 5 (ClassRouted attribution refinement on
-//! `explicit_targets`), 6 (discovery indexer), and 7 (AppRelay fallback)
-//! of `nmp_router::GenericOutboxRouter` — the same coverage as
-//! production routing. Lane 3 (Provenance) is subscribe-only and is
-//! also covered. This is an acknowledged minor algorithm duplication;
+//! (UserConfigured), 5 (ClassRouted attribution on `explicit_targets`), 6
+//! (discovery indexer), and 7 (AppRelay fallback) of
+//! `nmp_router::GenericOutboxRouter` — the same coverage as production
+//! routing. Lane 3 (Provenance) is subscribe-only and is also covered.
+//! Lane 5 attributes `ClassRouted{Other("explicit"), Explicit}` for BOTH
+//! publish and subscribe (no per-kind classification — see #1493: the
+//! generic router dropped its per-NIP kind→class table). This is an
+//! acknowledged minor algorithm duplication;
 //! Debt B's full elimination still holds for production code, where
 //! composition installs `nmp_router::GenericOutboxRouter` via
 //! `NmpApp::set_routing_substrate` -> `Kernel::set_routing`. Both routers
@@ -35,9 +38,8 @@ use std::sync::Arc;
 use super::Kernel;
 use crate::planner::{HintSource, LogicalInterest};
 use crate::substrate::{
-    AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, OutboxRouter,
-    RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, UnsignedEvent,
-    UserConfiguredCategory,
+    AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
+    RoutingSource, UnsignedEvent, UserConfiguredCategory,
 };
 
 /// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
@@ -77,35 +79,6 @@ fn relay_hints_from_tags(tags: &[Vec<String>]) -> Vec<String> {
     out
 }
 
-/// Map an event kind to its [`EventClass`] for lane-5 attribution
-/// (mirrors `nmp_router::router::classify_kind`).
-fn classify_kind(kind: u32) -> EventClass {
-    match kind {
-        818 | 30_818 | 30_819 => EventClass::Wiki,
-        1234 | 31_234 => EventClass::Draft,
-        _ => EventClass::Other(String::from("explicit")),
-    }
-}
-
-/// Build the lane-5 explicit-set with the right `EventClass` for `kind`.
-fn explicit_set_for_kind(urls: &[String], blocked: &BlockedRelaySet, kind: u32) -> RoutedRelaySet {
-    let class = classify_kind(kind);
-    let mut out = RoutedRelaySet::new();
-    for url in urls {
-        if blocked.contains(url) {
-            continue;
-        }
-        out.add(
-            url.clone(),
-            RoutingSource::ClassRouted {
-                class: class.clone(),
-                via: ClassRoutingPath::Explicit,
-            },
-        );
-    }
-    out
-}
-
 /// Test-only [`OutboxRouter`] mirroring
 /// `nmp_router::GenericOutboxRouter` lane-by-lane. See module docs.
 pub(crate) struct TestOutboxRouter;
@@ -123,12 +96,10 @@ impl OutboxRouter for TestOutboxRouter {
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
         if let Some(explicit) = ctx.explicit_targets {
-            // Lane 5 — refine the EventClass for the publish kind.
-            return Ok(explicit_set_for_kind(
-                explicit,
-                ctx.blocked_relays,
-                evt.kind,
-            ));
+            // Lane 5 — attribute `ClassRouted{Other("explicit"), Explicit}`,
+            // kind-agnostic (no per-NIP classification; mirrors the generic
+            // router after #1493).
+            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
         }
         let mut out = RoutedRelaySet::new();
         // Lane 1 — author's NIP-65 write set.
@@ -202,10 +173,9 @@ impl OutboxRouter for TestOutboxRouter {
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
         if let Some(explicit) = ctx.explicit_targets {
-            // Lane 5 — no kind available on subscriptions; fall through to
-            // the substrate's generic explicit-set (attributes via
+            // Lane 5 — the substrate's generic explicit-set (attributes via
             // `EventClass::Other("explicit")`). The generic router does the
-            // same for `route_subscription`.
+            // same for both publish and subscribe (#1493).
             return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
         }
         let mut out = RoutedRelaySet::new();

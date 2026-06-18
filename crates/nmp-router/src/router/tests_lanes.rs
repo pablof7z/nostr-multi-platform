@@ -10,8 +10,9 @@
 //! - Lane 3 — Provenance (`interest.hints` carrying
 //!   `HintSource::Provenance`).
 //! - Lane 4 — UserConfigured (active-account read/write).
-//! - Lane 5 — ClassRouted (explicit-targets attribution refined to the
-//!   right `EventClass` for the publish kind).
+//! - Lane 5 — ClassRouted (kind-agnostic explicit-targets attribution to
+//!   `EventClass::Other("explicit")`; the per-NIP kind→class table was
+//!   removed in #1493).
 //!
 //! Split out to keep both `tests.rs` and this file under the 500-LOC
 //! ceiling.
