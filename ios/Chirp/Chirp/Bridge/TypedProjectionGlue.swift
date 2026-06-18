@@ -652,6 +652,11 @@ enum TypedProjectionGlue {
             lastEventAtMs: r.lastEventAtMs,
             lastNotice: r.lastNotice,
             negentropyProbe: r.negentropyProbe ?? "",
+            // The transport `RelayStatus` wire table does not carry the per-relay
+            // NOTICE counter (it lives on the `Metrics` table + the richer
+            // `relay_diagnostics` projection, which is what the diagnostics badge
+            // reads). The transport snapshot path therefore reports 0 here.
+            noticesRx: 0,
             reconnectCount: r.reconnectCount,
             relayUrl: r.relayUrl ?? "",
             role: r.role ?? ""
