@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 
 use crate::planner::{
-    apply_selection_with_lookup, CompiledPlan, InterestId, InterestLifecycle, MailboxCache,
+    apply_selection_with_lookup, InterestId, InterestLifecycle, MailboxCache,
     PlannerError, SubscriptionCompiler,
 };
 use crate::stable_hash::stable_hash64;
@@ -18,7 +18,7 @@ use nmp_planner::RelayAuthorScoreLookup;
 
 use super::trigger::CompileTrigger;
 use super::wire::{plan_diff, WireFrame};
-use super::watermark_rewrite::{apply_watermark_rewrite, shape_is_ephemeral_only};
+use super::watermark_rewrite::apply_watermark_rewrite;
 use super::{SubscriptionLifecycle, MAILBOX_PROBE_BATCH};
 
 impl SubscriptionLifecycle {

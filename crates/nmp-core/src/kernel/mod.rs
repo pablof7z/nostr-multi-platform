@@ -388,7 +388,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
-use crate::store::{EventStore, MemEventStore};
+use crate::store::EventStore;
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
