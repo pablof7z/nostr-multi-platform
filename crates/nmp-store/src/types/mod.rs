@@ -22,7 +22,7 @@ pub use gc::{
     DeleteFilter, DumpFormat, DumpStats, GcBudget, GcReport, DEFAULT_DURABLE_EVENT_CEILING,
     GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
 };
-pub(crate) use ids::hex_to_event_id;
+pub(crate) use ids::{hex_to_event_id, is_relay_provenance_private};
 pub use ids::{EventId, PubKey, RelayUrl};
 pub use outcomes::{InsertOutcome, ProvenanceEntry, RejectReason, TombstoneOrigin, TombstoneRow};
 pub use query::StoreQuery;

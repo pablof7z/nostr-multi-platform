@@ -52,7 +52,7 @@ pub(super) fn handle_kind5(
             continue;
         };
         // Author check: load target via fork; capture expiry for O(1) index cleanup.
-        let (target_is_self, target_stored, target_expiry) = match inner
+        let (target_is_self, target_stored, target_expiry, target_kind) = match inner
             .lmdb
             .get_event_by_id(txn, &target_id_bytes)
             .map_err(|e| StoreError::Io(format!("k5 get: {e}")))?
@@ -61,9 +61,10 @@ pub(super) fn handle_kind5(
                 let owned = target.into_owned();
                 let is_self = owned.pubkey.as_bytes().as_slice() == kind5_pubkey.as_slice();
                 let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
-                (is_self, true, expiry)
+                let kind = owned.kind.as_u16() as u32;
+                (is_self, true, expiry, kind)
             }
-            None => (true, false, None), // Not stored — tombstone for future arrivals.
+            None => (true, false, None, 0), // Not stored — tombstone for future arrivals.
         };
         if !target_is_self {
             continue;
@@ -96,7 +97,14 @@ pub(super) fn handle_kind5(
                 .delete(txn, filter)
                 .map_err(|e| StoreError::Io(format!("k5 delete: {e}")))?;
             // Also drop NMP-side provenance and LRU entry.
-            provenance::delete(inner.provenance, inner.relay_index, txn, &target_id_bytes)?;
+            provenance::delete(
+                inner.provenance,
+                inner.relay_index,
+                inner.relay_kind,
+                txn,
+                &target_id_bytes,
+                target_kind,
+            )?;
             gc::lru_delete(inner, txn, &target_id_bytes)?;
             // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
             gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
@@ -152,7 +160,14 @@ pub(super) fn handle_kind5(
                             .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
                             .map_err(|e| StoreError::Io(format!("k5 remove_addressable: {e}")))?;
                         // Clean NMP-side secondary indexes for the removed event.
-                        provenance::delete(inner.provenance, inner.relay_index, txn, &existing_id)?;
+                        provenance::delete(
+                            inner.provenance,
+                            inner.relay_index,
+                            inner.relay_kind,
+                            txn,
+                            &existing_id,
+                            tgt_kind,
+                        )?;
                         gc::lru_delete(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
                     }
@@ -185,7 +200,14 @@ pub(super) fn handle_kind5(
                             .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
                             .map_err(|e| StoreError::Io(format!("k5 remove_replaceable: {e}")))?;
                         // Clean NMP-side secondary indexes for the removed event.
-                        provenance::delete(inner.provenance, inner.relay_index, txn, &existing_id)?;
+                        provenance::delete(
+                            inner.provenance,
+                            inner.relay_index,
+                            inner.relay_kind,
+                            txn,
+                            &existing_id,
+                            tgt_kind,
+                        )?;
                         gc::lru_delete(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
                     }
@@ -226,9 +248,11 @@ pub(super) fn handle_kind5(
         let count = provenance::upsert(
             inner.provenance,
             inner.relay_index,
+            inner.relay_kind,
             txn,
             &kind5_id,
             source.clone(),
+            5,
             received_at_ms,
         )?;
         return Ok(InsertOutcome::Duplicate {
@@ -243,9 +267,11 @@ pub(super) fn handle_kind5(
     let count = provenance::upsert(
         inner.provenance,
         inner.relay_index,
+        inner.relay_kind,
         txn,
         &kind5_id,
         source.clone(),
+        5,
         received_at_ms,
     )?;
     // Stamp LRU access for the newly stored kind:5 event.

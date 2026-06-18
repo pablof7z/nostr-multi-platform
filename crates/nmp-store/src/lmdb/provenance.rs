@@ -89,6 +89,119 @@ pub(super) fn relay_index_delete_exact(
     Ok(())
 }
 
+// ─── #1518 relay×kind presence index ─────────────────────────────────────────
+
+/// Separator byte between the `relay_url` and `kind` segments of a relay-kind
+/// key.  Same rationale as `RELAY_INDEX_SEP`: relay URLs are valid UTF-8 and
+/// never contain a NUL byte.
+const RELAY_KIND_SEP: u8 = 0x00;
+
+// Privacy gate (`is_relay_provenance_private`) is the single source of truth in
+// `crate::types::ids` — shared with the in-memory backend so both gate the same
+// kinds.
+
+/// Encode a relay-kind key as `relay_url || 0x00 || kind(BE4) || event_id(32)`.
+///
+/// `relay_url` comes first so all entries for one relay are a contiguous prefix
+/// range; `kind` next so one relay's entries for a single kind are a contiguous
+/// sub-range (big-endian so the byte order matches numeric order).
+fn relay_kind_key(relay_url: &str, kind: u32, id: &EventId) -> Vec<u8> {
+    let mut k = Vec::with_capacity(relay_url.len() + 1 + 4 + 32);
+    k.extend_from_slice(relay_url.as_bytes());
+    k.push(RELAY_KIND_SEP);
+    k.extend_from_slice(&kind.to_be_bytes());
+    k.extend_from_slice(id);
+    k
+}
+
+/// Inclusive lower bound for a prefix scan of one relay's entries.
+pub(super) fn relay_kind_relay_lo(relay_url: &str) -> Vec<u8> {
+    let mut k = Vec::with_capacity(relay_url.len() + 1);
+    k.extend_from_slice(relay_url.as_bytes());
+    k.push(RELAY_KIND_SEP);
+    k
+}
+
+/// Exclusive upper bound for a prefix scan of one relay's entries.
+pub(super) fn relay_kind_relay_hi(relay_url: &str) -> Vec<u8> {
+    let mut k = Vec::with_capacity(relay_url.len() + 1);
+    k.extend_from_slice(relay_url.as_bytes());
+    k.push(RELAY_KIND_SEP + 1); // 0x01
+    k
+}
+
+/// Inclusive lower bound for a scan of one relay's entries for a single kind.
+pub(super) fn relay_kind_kind_lo(relay_url: &str, kind: u32) -> Vec<u8> {
+    let mut k = Vec::with_capacity(relay_url.len() + 1 + 4);
+    k.extend_from_slice(relay_url.as_bytes());
+    k.push(RELAY_KIND_SEP);
+    k.extend_from_slice(&kind.to_be_bytes());
+    k
+}
+
+/// Exclusive upper bound for a scan of one relay's entries for a single kind.
+///
+/// For `kind == u32::MAX` there is no `kind + 1`, so we fall back to the relay's
+/// upper bound (`relay_url || 0x01`), which is still exclusive of every entry
+/// for that relay/kind.
+pub(super) fn relay_kind_kind_hi(relay_url: &str, kind: u32) -> Vec<u8> {
+    if kind == u32::MAX {
+        return relay_kind_relay_hi(relay_url);
+    }
+    let mut k = Vec::with_capacity(relay_url.len() + 1 + 4);
+    k.extend_from_slice(relay_url.as_bytes());
+    k.push(RELAY_KIND_SEP);
+    k.extend_from_slice(&(kind + 1).to_be_bytes());
+    k
+}
+
+/// Decode the `kind` segment of a relay-kind key for a relay whose URL byte
+/// length is `relay_url_len`.  Returns `None` if the key is malformed.
+pub(super) fn relay_kind_kind_from_key(key: &[u8], relay_url_len: usize) -> Option<u32> {
+    // Expected layout: relay_url_len + 1 separator + 4 kind + 32 id bytes.
+    if key.len() != relay_url_len + 1 + 4 + 32 {
+        return None;
+    }
+    let start = relay_url_len + 1;
+    let kind_bytes: [u8; 4] = key[start..start + 4].try_into().ok()?;
+    Some(u32::from_be_bytes(kind_bytes))
+}
+
+/// Write a `(relay_url, kind, event_id)` presence entry — privacy-gated.
+///
+/// A no-op for `is_relay_provenance_private(kind)` so a privacy-gated kind can
+/// never enter the index regardless of which write path calls this.
+pub(super) fn relay_kind_put(
+    relay_kind: Database<Bytes, Bytes>,
+    txn: &mut RwTxn,
+    relay_url: &str,
+    kind: u32,
+    id: &EventId,
+) -> Result<(), StoreError> {
+    if crate::types::is_relay_provenance_private(kind) {
+        return Ok(());
+    }
+    let key = relay_kind_key(relay_url, kind, id);
+    relay_kind
+        .put(txn, &key, &[])
+        .map_err(|e| StoreError::Io(format!("relay_kind put: {e}")))
+}
+
+/// Remove a single `(relay_url, kind, event_id)` entry from the relay-kind index.
+pub(super) fn relay_kind_delete_exact(
+    relay_kind: Database<Bytes, Bytes>,
+    txn: &mut RwTxn,
+    relay_url: &str,
+    kind: u32,
+    id: &EventId,
+) -> Result<(), StoreError> {
+    let key = relay_kind_key(relay_url, kind, id);
+    relay_kind
+        .delete(txn, &key)
+        .map_err(|e| StoreError::Io(format!("relay_kind delete: {e}")))?;
+    Ok(())
+}
+
 /// Decode the relay-url list from a serialized provenance value.
 ///
 /// Used by the relay-index backfill (`open.rs`) and by `delete` to find every
@@ -163,9 +276,11 @@ fn encode(entries: &[ProvenanceEntry]) -> Result<Vec<u8>, StoreError> {
 pub(super) fn upsert(
     db: Database<Bytes, Bytes>,
     relay_index: Database<Bytes, Bytes>,
+    relay_kind: Database<Bytes, Bytes>,
     txn: &mut RwTxn,
     id: &EventId,
     relay_url: RelayUrl,
+    kind: u32,
     received_at_ms: u64,
 ) -> Result<u32, StoreError> {
     let mut entries = read_rw(db, txn, id)?;
@@ -184,6 +299,7 @@ pub(super) fn upsert(
             .map_err(|e| StoreError::Io(format!("prov put: {e}")))?;
         // Index entry already present (idempotent), but re-assert for safety.
         relay_index_put(relay_index, txn, &relay_url, id)?;
+        relay_kind_put(relay_kind, txn, &relay_url, kind, id)?;
         return Ok(entries.len() as u32);
     }
 
@@ -207,8 +323,10 @@ pub(super) fn upsert(
             // (it cannot, since provenance relays are unique, but stay defensive).
             if !entries.iter().any(|e| e.relay_url == evicted_relay) {
                 relay_index_delete_exact(relay_index, txn, &evicted_relay, id)?;
+                relay_kind_delete_exact(relay_kind, txn, &evicted_relay, kind, id)?;
             }
             relay_index_put(relay_index, txn, &relay_url, id)?;
+            relay_kind_put(relay_kind, txn, &relay_url, kind, id)?;
             return Ok(entries.len() as u32);
         }
     }
@@ -225,6 +343,7 @@ pub(super) fn upsert(
     db.put(txn, id, &bytes)
         .map_err(|e| StoreError::Io(format!("prov put: {e}")))?;
     relay_index_put(relay_index, txn, &relay_url, id)?;
+    relay_kind_put(relay_kind, txn, &relay_url, kind, id)?;
     Ok(entries.len() as u32)
 }
 
@@ -237,8 +356,10 @@ pub(super) fn upsert(
 pub(super) fn delete(
     db: Database<Bytes, Bytes>,
     relay_index: Database<Bytes, Bytes>,
+    relay_kind: Database<Bytes, Bytes>,
     txn: &mut RwTxn,
     id: &EventId,
+    kind: u32,
 ) -> Result<(), StoreError> {
     // Remove the reverse-index entries for every relay in this event's
     // provenance before the provenance row itself is dropped.  Decode into an
@@ -253,6 +374,9 @@ pub(super) fn delete(
     };
     for relay_url in relays {
         relay_index_delete_exact(relay_index, txn, &relay_url, id)?;
+        // #1518: also drop the relay×kind entry. A no-op key for a privacy-gated
+        // kind (never written) — delete tolerates a missing key.
+        relay_kind_delete_exact(relay_kind, txn, &relay_url, kind, id)?;
     }
     db.delete(txn, id)
         .map_err(|e| StoreError::Io(format!("prov delete: {e}")))?;

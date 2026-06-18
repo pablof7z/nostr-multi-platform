@@ -15,6 +15,23 @@ pub type PubKey = [u8; 32];
 /// in one crate flows into the others without conversion.
 pub type RelayUrl = String;
 
+// ─── #1518 relay×kind privacy gate ───────────────────────────────────────────
+
+/// Kinds excluded from the relay×kind provenance index for privacy: NIP-04 DMs
+/// (4), NIP-17 private DMs (14/15) and seal/gift-wrap (13/1059), plus the legacy
+/// gift-wrap kind (1060).  The presence of a private-message kind on a relay must
+/// never be queryable, so these never enter the index on either backend.
+///
+/// Single source of truth shared by both backends — the LMDB write path
+/// (`lmdb::provenance::relay_kind_put`) and the in-memory write path
+/// (`mem::relay_kind_add`) both gate on [`is_relay_provenance_private`].
+pub(crate) const RELAY_PROVENANCE_PRIVATE_KINDS: &[u32] = &[4, 13, 14, 15, 1059, 1060];
+
+/// True if `kind` is privacy-gated and must never enter the relay×kind index.
+pub(crate) fn is_relay_provenance_private(kind: u32) -> bool {
+    RELAY_PROVENANCE_PRIVATE_KINDS.contains(&kind)
+}
+
 // ─── Hex utilities ───────────────────────────────────────────────────────────
 
 /// Decode a 64-character lowercase/uppercase hex string to 32 bytes.

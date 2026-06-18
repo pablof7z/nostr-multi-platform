@@ -28,14 +28,15 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     const MAX_READERS: u32 = 126;
     // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
-    // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1).  The
-    // nmp-claims / nmp-claims-budget sub-dbs were removed in #1090 Stage 1
-    // (persisted claims deleted in favour of a kernel-derived ephemeral pin set
-    // passed to `gc_step_with_pins`).  The nmp-watermarks sub-db was removed in
-    // #1090 Stage 3 (dead persisted-watermark machinery had zero production
-    // callers); the K3 coverage ledger below is its purpose-built, actually-read
-    // successor (ADR-0056 §2.1 / §3 — re-created, not re-activated).
-    const NMP_ADDITIONAL_DBS: u32 = 10;
+    // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1),
+    // relay-kind (#1518).  The nmp-claims / nmp-claims-budget sub-dbs were
+    // removed in #1090 Stage 1 (persisted claims deleted in favour of a
+    // kernel-derived ephemeral pin set passed to `gc_step_with_pins`).  The
+    // nmp-watermarks sub-db was removed in #1090 Stage 3 (dead persisted-
+    // watermark machinery had zero production callers); the K3 coverage ledger
+    // below is its purpose-built, actually-read successor (ADR-0056 §2.1 / §3 —
+    // re-created, not re-activated).
+    const NMP_ADDITIONAL_DBS: u32 = 11;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -69,6 +70,8 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let expiry_index = open("nmp-expiry-index", &mut txn)?;
     // V-52 — relay-origin reverse index: relay_url || 0x00 || event_id(32) → empty.
     let relay_index = open("nmp-relay-index", &mut txn)?;
+    // #1518 — relay×kind index: relay_url || 0x00 || kind(BE4) || event_id(32) → empty.
+    let relay_kind = open("nmp-relay-kind", &mut txn)?;
     // K3 Stage D1 (ADR-0056 §3) — coverage ledger:
     // filter_hash || 0x1F || relay_url → covered_through(8 BE).
     let coverage = open("nmp-coverage", &mut txn)?;
@@ -106,6 +109,13 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // runs exactly once.
     backfill_relay_index(&env, provenance, relay_index, domain_versions)?;
 
+    // #1518 — one-time backfill: populate the relay×kind index from existing
+    // events + provenance for any events stored before the index existed
+    // (pre-#1518 databases).  Gated by the domain_versions key so the scan runs
+    // exactly once.  Must run AFTER the relay-index backfill is irrelevant to
+    // ordering — it reads provenance + events independently.
+    backfill_relay_kind_index(&env, &lmdb, provenance, relay_kind, domain_versions)?;
+
     Ok(LmdbEventStore {
         path: path.to_path_buf(),
         inner: Arc::new(Inner {
@@ -121,6 +131,7 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             lru_seq: AtomicU64::new(lru_seq_init),
             expiry_index,
             relay_index,
+            relay_kind,
             coverage,
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
         }),
@@ -292,5 +303,104 @@ fn backfill_relay_index(
         .map_err(|e| StoreError::Io(format!("relay backfill version put: {e}")))?;
     txn.commit()
         .map_err(|e| StoreError::Io(format!("relay backfill commit: {e}")))?;
+    Ok(())
+}
+
+/// Key recording that the #1518 relay×kind-index backfill has completed for this
+/// store.  Shares the `nmp-domain-versions` sub-db; relies on the same
+/// repository-wide `nmp-` prefix reservation as the other backfill keys.
+const RELAY_KIND_BACKFILL_KEY: &[u8] = b"nmp-relay-kind";
+
+/// Populate the relay×kind index from existing events + provenance for any
+/// events stored before the index existed (pre-#1518 databases).
+///
+/// **Migration gate**: the `domain_versions` sub-db is checked first.  If
+/// `RELAY_KIND_BACKFILL_KEY` is already present this returns immediately — the
+/// scan runs exactly once per physical database.
+///
+/// The relay×kind index is derived from provenance keyed by the event's kind:
+/// for every stored event we record one `(relay_url, kind, event_id)` entry per
+/// relay in its provenance list, skipping privacy-gated kinds (checked inside
+/// `provenance::relay_kind_put`).  The event's kind comes from the primary
+/// store (one query over all events to build an `id → kind` map).
+fn backfill_relay_kind_index(
+    env: &Env,
+    lmdb: &Lmdb,
+    provenance: Database<Bytes, Bytes>,
+    relay_kind: Database<Bytes, Bytes>,
+    domain_versions: Database<Bytes, Bytes>,
+) -> Result<(), StoreError> {
+    // O(1) gate — skip the full scan if the migration already ran.
+    {
+        let txn = env
+            .read_txn()
+            .map_err(|e| StoreError::Io(format!("relay-kind backfill gate read_txn: {e}")))?;
+        if domain_versions
+            .get(&txn, RELAY_KIND_BACKFILL_KEY)
+            .map_err(|e| StoreError::Io(format!("relay-kind backfill gate get: {e}")))?
+            .is_some()
+        {
+            return Ok(());
+        }
+    }
+
+    // One-time scan: build the id → kind map from the primary store, then walk
+    // provenance to collect (relay_url, kind, event_id) for every entry.
+    let entries: Vec<(String, u32, [u8; 32])> = {
+        let txn = env
+            .read_txn()
+            .map_err(|e| StoreError::Io(format!("relay-kind backfill read_txn: {e}")))?;
+
+        // id → kind from every stored event.
+        let mut kind_for_id: std::collections::HashMap<[u8; 32], u32> =
+            std::collections::HashMap::new();
+        let iter = lmdb
+            .query(&txn, nostr::Filter::new())
+            .map_err(|e| StoreError::Io(format!("relay-kind backfill query: {e}")))?;
+        for ev in iter {
+            let owned: nostr::Event = ev.into_owned();
+            let mut id = [0u8; 32];
+            id.copy_from_slice(owned.id.as_bytes());
+            kind_for_id.insert(id, owned.kind.as_u16() as u32);
+        }
+
+        let mut out: Vec<(String, u32, [u8; 32])> = Vec::new();
+        for entry in provenance
+            .iter(&txn)
+            .map_err(|e| StoreError::Io(format!("relay-kind backfill prov iter: {e}")))?
+        {
+            let (k, v) =
+                entry.map_err(|e| StoreError::Io(format!("relay-kind backfill prov step: {e}")))?;
+            if k.len() != 32 {
+                continue;
+            }
+            let mut id = [0u8; 32];
+            id.copy_from_slice(k);
+            // An event must still be present in the primary store to be indexed
+            // — a provenance row with no event is a dangling artefact we skip.
+            let Some(&kind) = kind_for_id.get(&id) else {
+                continue;
+            };
+            for relay_url in super::provenance::decode_relays(v)? {
+                out.push((relay_url, kind, id));
+            }
+        }
+        out
+    };
+
+    // Write index entries + version key in a single atomic transaction.  The
+    // privacy gate lives in `relay_kind_put` so backfill can never re-introduce
+    // a privacy-gated kind.
+    let mut txn = env
+        .write_txn()
+        .map_err(|e| StoreError::Io(format!("relay-kind backfill write_txn: {e}")))?;
+    for (relay_url, kind, id) in entries {
+        super::provenance::relay_kind_put(relay_kind, &mut txn, &relay_url, kind, &id)?;
+    }
+    domain_versions
+        .put(&mut txn, RELAY_KIND_BACKFILL_KEY, &1u32.to_be_bytes())
+        .map_err(|e| StoreError::Io(format!("relay-kind backfill version put: {e}")))?;
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("relay-kind backfill commit: {e}")))?;
     Ok(())
 }

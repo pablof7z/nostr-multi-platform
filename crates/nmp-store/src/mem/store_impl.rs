@@ -127,6 +127,16 @@ impl EventStore for MemEventStore {
         Ok(super::list_seen_on(&st, relay_url))
     }
 
+    fn relay_kind_coverage(&self, relay_url: &str) -> Result<Vec<u32>, StoreError> {
+        let st = self.lock()?;
+        Ok(super::relay_kind_coverage(&st, relay_url))
+    }
+
+    fn relay_kind_count(&self, relay_url: &str, kind: u32) -> Result<u64, StoreError> {
+        let st = self.lock()?;
+        Ok(super::relay_kind_count(&st, relay_url, kind))
+    }
+
     fn insert(
         &self,
         event: VerifiedEvent,

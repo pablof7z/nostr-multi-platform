@@ -146,14 +146,18 @@ pub(super) fn gc_step(
                 .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
             for (index_key, id) in &to_reap {
                 // Load the event before deletion to capture the freshness key
-                // (Bug-2 fix: stale replaceable_freshness must be cleaned).
-                let freshness_key = match inner
+                // (Bug-2 fix: stale replaceable_freshness must be cleaned) and
+                // its kind (#1518: relay×kind index cleanup).
+                let (freshness_key, kind) = match inner
                     .lmdb
                     .get_event_by_id(&txn, id)
                     .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
                 {
-                    Some(ev) => freshness_key_from_event(&ev.into_owned()),
-                    None => None,
+                    Some(ev) => {
+                        let owned = ev.into_owned();
+                        (freshness_key_from_event(&owned), owned.kind.as_u16() as u32)
+                    }
+                    None => (None, 0),
                 };
                 // Remove the index entry first (we already hold its exact key).
                 inner
@@ -167,7 +171,7 @@ pub(super) fn gc_step(
                     .lmdb
                     .delete(&mut txn, f)
                     .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-                provenance::delete(inner.provenance, inner.relay_index, &mut txn, id)?;
+                provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, &mut txn, id, kind)?;
                 lru_delete(inner, &mut txn, id)?;
                 // Bug-2 fix: delete stale replaceable_freshness row.
                 if let Some(fk) = freshness_key {
@@ -278,15 +282,16 @@ pub(super) fn gc_step(
                     // K3 Stage D3 backstop.
                     // Use the write txn for the read (heed RwTxn derefs to
                     // RoTxn; mirrors the pattern in delete.rs:by_ids).
-                    let (expiry, freshness_key, guard_fields) =
+                    let (expiry, freshness_key, guard_fields, kind) =
                         match inner.lmdb.get_event_by_id(&txn, id)
                             .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
                         {
-                            None => (None, None, None),
+                            None => (None, None, None, 0),
                             Some(ev) => {
                                 let owned = ev.into_owned();
                                 let exp = owned.tags.expiration().map(|ts| ts.as_secs());
                                 let fk = freshness_key_from_event(&owned);
+                                let kind = owned.kind.as_u16() as u32;
                                 let gf = if guards.is_empty() {
                                     None
                                 } else {
@@ -297,12 +302,12 @@ pub(super) fn gc_step(
                                         .collect();
                                     Some((
                                         owned.pubkey.to_hex(),
-                                        owned.kind.as_u16() as u32,
+                                        kind,
                                         owned.created_at.as_secs(),
                                         tags,
                                     ))
                                 };
-                                (exp, fk, gf)
+                                (exp, fk, gf, kind)
                             }
                         };
                     let f = Filter::new().id(
@@ -313,7 +318,7 @@ pub(super) fn gc_step(
                         .lmdb
                         .delete(&mut txn, f)
                         .map_err(|e| StoreError::Io(format!("lru evict del: {e}")))?;
-                    provenance::delete(inner.provenance, inner.relay_index, &mut txn, id)?;
+                    provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, &mut txn, id, kind)?;
                     lru_delete(inner, &mut txn, id)?;
                     // V-118: clean expiry-index using the known expiry timestamp.
                     expiry_index_delete_exact(inner, &mut txn, expiry, id)?;

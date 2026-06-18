@@ -8,8 +8,10 @@
 //!   query_visit_tests  — early-stop visitor and `query` wrapper ordering
 //!   authors_kind_tests — `StoreQuery::AuthorsKind` multi-author query invariants
 //!   relay_index_tests  — V-52 relay-origin reverse-index invariants
+//!   relay_kind_tests   — #1518 relay×kind presence-index invariants
 
 mod insert_tests;
 mod query_visit_tests;
 mod authors_kind_tests;
 mod relay_index_tests;
+mod relay_kind_tests;

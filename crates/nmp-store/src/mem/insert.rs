@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{access_remove, access_stamp, bytes_to_hex, relay_index_add, relay_index_remove, upsert_provenance, MemEventStore, MemState};
+use super::{access_remove, access_stamp, bytes_to_hex, relay_index_add, relay_index_remove, relay_kind_add, relay_kind_remove_id, upsert_provenance, MemEventStore, MemState};
 use crate::types::{
     DeleteFilter, InsertOutcome, RawEvent, RejectReason, RelayUrl, StoredEvent, TombstoneOrigin,
     TombstoneRow,
@@ -178,6 +178,7 @@ pub(super) fn delete_by_filter(
         st.events.remove(&id);
         st.provenance.remove(&id);
         relay_index_remove(&mut *st, &id);
+        relay_kind_remove_id(&mut *st, &id);
         access_remove(&mut *st, &id);
     }
     Ok(count)
@@ -206,6 +207,7 @@ fn handle_supersession(
             p.len() as u32
         };
         relay_index_add(st, source, &id_hex);
+        relay_kind_add(st, source, kind, &id_hex);
         return InsertOutcome::Duplicate {
             id: id_bytes,
             sources_after,
@@ -248,6 +250,7 @@ fn handle_supersession(
             st.events.remove(existing_hex);
             st.provenance.remove(existing_hex);
             relay_index_remove(st, existing_hex);
+            relay_kind_remove_id(st, existing_hex);
             access_remove(st, existing_hex);
             let new_id = id_bytes;
             st.events.insert(
@@ -261,6 +264,7 @@ fn handle_supersession(
             let p = st.provenance.entry(id_hex.clone()).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
             relay_index_add(st, source, &id_hex);
+            relay_kind_add(st, source, kind, &id_hex);
             InsertOutcome::Replaced {
                 new_id,
                 replaced_id,
@@ -288,6 +292,7 @@ fn handle_supersession(
             p.len() as u32
         };
         relay_index_add(st, source, &id_hex);
+        relay_kind_add(st, source, kind, &id_hex);
         InsertOutcome::Inserted {
             id: id_bytes,
             sources_after,
@@ -303,6 +308,7 @@ fn handle_normal_insert(
 ) -> InsertOutcome {
     let id_bytes = event.id_bytes().expect("passed is_structurally_valid");
     let id_hex = event.id.clone();
+    let kind = event.kind;
 
     if st.events.contains_key(&id_hex) {
         let sources_after = {
@@ -311,6 +317,7 @@ fn handle_normal_insert(
             p.len() as u32
         };
         relay_index_add(st, source, &id_hex);
+        relay_kind_add(st, source, kind, &id_hex);
         return InsertOutcome::Duplicate {
             id: id_bytes,
             sources_after,
@@ -331,6 +338,7 @@ fn handle_normal_insert(
         p.len() as u32
     };
     relay_index_add(st, source, &id_hex);
+    relay_kind_add(st, source, kind, &id_hex);
     InsertOutcome::Inserted {
         id: id_bytes,
         sources_after,
@@ -359,6 +367,7 @@ fn handle_kind5_insert(
             st.events.remove(&target_hex);
             st.provenance.remove(&target_hex);
             relay_index_remove(st, &target_hex);
+            relay_kind_remove_id(st, &target_hex);
             access_remove(st, &target_hex);
             merge_tombstone(
                 &mut st.tombstones,
@@ -412,6 +421,7 @@ fn handle_kind5_insert(
             if let Some(existing) = st.events.remove(&target_hex) {
                 st.provenance.remove(&target_hex);
                 relay_index_remove(st, &target_hex);
+                relay_kind_remove_id(st, &target_hex);
                 access_remove(st, &target_hex);
                 // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
                 let target_id = existing
@@ -449,6 +459,7 @@ fn handle_kind5_insert(
         p.len() as u32
     };
     relay_index_add(st, source, &kind5_id_hex);
+    relay_kind_add(st, source, 5, &kind5_id_hex);
     InsertOutcome::Inserted {
         id: kind5_id_bytes,
         sources_after,
