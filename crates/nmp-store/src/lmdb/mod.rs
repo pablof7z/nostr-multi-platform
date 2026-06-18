@@ -42,6 +42,9 @@ mod insert_kind5;
 mod provenance;
 #[cfg(feature = "lmdb-backend")]
 mod query;
+// Streaming helpers extracted from query.rs to stay within the 500-LOC gate.
+#[cfg(feature = "lmdb-backend")]
+mod query_streaming;
 #[cfg(feature = "lmdb-backend")]
 mod query_relay_index;
 #[cfg(feature = "lmdb-backend")]
