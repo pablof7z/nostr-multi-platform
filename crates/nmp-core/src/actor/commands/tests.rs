@@ -153,7 +153,7 @@ fn create_account_generates_fresh_active_key() {
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
     assert_eq!(kernel.account_snapshot().0.len(), 1);
     assert!(id.active_pubkey().is_some());
 }
@@ -175,7 +175,7 @@ fn create_account_empty_relays_keeps_preconfigured_relays() {
 
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
 
     // The pre-seeded relay set survives — empty onboarding relays do NOT clobber it.
     let rows = kernel.configured_relays_snapshot();
@@ -190,7 +190,7 @@ fn create_account_empty_relays_leaves_unseeded_kernel_empty() {
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
 
     assert!(
         kernel.configured_relays_snapshot().is_empty(),
@@ -203,7 +203,7 @@ fn create_account_launch_override_relay_gets_rust_owned_default_role() {
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays = vec![("wss://maestro.test/".to_string(), String::new())];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
 
     let rows = kernel.configured_relays_snapshot();
     assert_eq!(rows.len(), 1);
@@ -224,7 +224,15 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
             "indexer".to_string(),
         ),
     ];
-    let outbound = create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    // App-supplied seed follows (NMP no longer hardcodes them — #1493) so the
+    // cold-start kind:3 is published.
+    let follows = vec![
+        "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52".to_string(),
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string(),
+    ];
+    let outbound = create_account(
+        &mut id, &mut kernel, false, &profile, &relays, &follows, false, true,
+    );
     assert!(
         outbound.iter().any(|msg| msg.text.contains("\"kind\":0")),
         "create_account must return the kind:0 EVENT frame for actor dispatch"
@@ -328,7 +336,7 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
     let mut profile = std::collections::HashMap::new();
     profile.insert("name".to_string(), "Signup User".to_string());
     let relays = vec![("wss://signup-write.test".to_string(), "write".to_string())];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
 
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(), // ignored by signer; filled from active account
@@ -369,7 +377,7 @@ fn switch_active_flips_status_synchronously() {
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false, true);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
     let first_id = kernel.account_snapshot().0[0].id.clone();
     let second_active = id.active_pubkey().unwrap();
     assert_ne!(first_id, second_active);

@@ -173,6 +173,7 @@ fn persists_generated_account_for_next_launch() {
         false,
         &HashMap::new(),
         &[],
+        &[],
         false,
         true,
     );

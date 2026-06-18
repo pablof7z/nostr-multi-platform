@@ -138,9 +138,9 @@ pub use feed::nmp_app_load_older_feed;
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_register_agent_nsec,
-    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec,
-    nmp_app_switch_active,
+    create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,
+    nmp_app_register_agent_nsec, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline DELETED.
 // Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic

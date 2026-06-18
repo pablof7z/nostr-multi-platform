@@ -34,19 +34,24 @@ fn main() {
     // 3. (Optional) Register any app-specific projections / actions here.
     //    e.g. nmp_nip29::register_actions(&mut builder) for group chat.
 
-    // 4. Commit the storage choice, declare the consumed projections, and
-    //    start the kernel. `.in_memory()` advances to `StorageSet`;
-    //    `.consume_all_builtin_projections()` makes the ADR-0053 decision and
-    //    advances to `ProjectionsDeclared`, unlocking `.start()`. For
-    //    production replace `.in_memory()` with `.storage_path("/path/to/lmdb")`
-    //    and prefer `.declare_consumed_projections([..])` to narrow to the keys
-    //    your UI reads.
+    // 4. Commit the storage choice, declare the consumed projections, decide
+    //    the initial relay set, and start the kernel. `.in_memory()` advances
+    //    to `StorageSet`; `.consume_all_builtin_projections()` makes the
+    //    ADR-0053 decision and advances to `ProjectionsDeclared`;
+    //    `.without_initial_relays()` makes the #1493 relay decision (this demo
+    //    ships no built-in relays — declare your own with
+    //    `.with_relays([("wss://your.relay", "both")])`) and advances to
+    //    `RelaysDeclared`, unlocking `.start()`. For production replace
+    //    `.in_memory()` with `.storage_path("/path/to/lmdb")`, prefer
+    //    `.declare_consumed_projections([..])` to narrow to the keys your UI
+    //    reads, and declare your relays with `.with_relays([..])`.
     //
-    //    Omitting EITHER decision is a COMPILE ERROR — storage = V-94,
-    //    projections = ADR-0053 DEBT 2.
+    //    Omitting ANY decision is a COMPILE ERROR — storage = V-94,
+    //    projections = ADR-0053 DEBT 2, relays = #1493.
     let app = builder
         .in_memory()
         .consume_all_builtin_projections()
+        .without_initial_relays()
         .start(RunConfig::default());
 
     println!("nmp-defaults: NmpAppBuilder → start() complete.");

@@ -174,13 +174,14 @@ pub fn register_defaults(app: &mut impl AppHost) {
 /// Always calls [`register_substrate`] (the correctness floor is NOT
 /// toggleable — it is correctness, not preference), then layers the
 /// social-feature defaults selected by the `social` / `dms` / `zaps` /
-/// `longform` toggles on top, and finally installs the operator-policy
-/// `nostrconnect` bootstrap relay.
+/// `longform` toggles on top, and finally wires the `nostrconnect` bootstrap
+/// relay ONLY when the leaf app supplied one (`Some(url)`).
 ///
 /// `register_defaults(app)` ≡ `register_defaults_with(app,
-/// NmpDefaults::default())` — the default-constructed config reproduces
-/// today's behaviour exactly (every social feature on, the previously
-/// hardcoded `CoverageGate::default()` and `"wss://relay.damus.io"`).
+/// NmpDefaults::default())` — the default-constructed config enables every
+/// social feature and uses `CoverageGate::default()`, but owns NO operator
+/// policy: `nostrconnect_bootstrap_relay` defaults to `None` (#1493), so the
+/// no-arg path wires no relay URL at all.
 ///
 /// See [`NmpDefaults`] for the full field set and each field's default.
 pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
@@ -256,17 +257,21 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
         register_longform_projection(app);
     }
 
-    // ── Bootstrap relay for client-initiated NIP-46 (V-65) ──────────────
+    // ── Bootstrap relay for client-initiated NIP-46 (V-65 / #1493) ──────
     //
-    // Fallback relay for `nostrconnect://` handshakes when the user has no
-    // configured write relay. This is the *composition-root* home for the
-    // default — operator policy legitimately lives here, not in nmp-core (D0).
-    // It is always wired (its value, not its presence, is the config knob).
+    // Fallback relay for `nostrconnect://` handshakes when the app has no
+    // configured write relay. This is an operator-chosen relay URL, so NMP
+    // (including this composition library) supplies NONE by default (#1493).
+    // Only wire the slot when the leaf app explicitly provided one; otherwise
+    // leave it unset and let the handshake resolve from configured write relays
+    // (and fail-closed if there are none).
     //
-    // A per-app crate may override this after calling `register_defaults` by
-    // invoking `AppHost::set_nostrconnect_bootstrap_relay` a second time
-    // (last-writer-wins, like every other pre-start slot).
-    app.set_nostrconnect_bootstrap_relay(nostrconnect_bootstrap_relay);
+    // A per-app crate may also set this after calling `register_defaults` by
+    // invoking `AppHost::set_nostrconnect_bootstrap_relay` (last-writer-wins,
+    // like every other pre-start slot).
+    if let Some(relay) = nostrconnect_bootstrap_relay {
+        app.set_nostrconnect_bootstrap_relay(relay);
+    }
 }
 
 /// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection

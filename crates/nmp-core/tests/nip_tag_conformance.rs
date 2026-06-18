@@ -418,7 +418,7 @@ fn create_account_publishes_kind10002_to_coldstart_relays() {
     ];
     let mut profile = HashMap::new();
     profile.insert("display_name".to_string(), "Marcus Webb".to_string());
-    h.create_account(profile, &relays);
+    h.create_account(profile, &relays, &[]);
 
     let event = h
         .published_event_of_kind(10002)
@@ -453,7 +453,7 @@ fn create_account_publishes_kind0_to_coldstart_relays() {
     ];
     let mut profile = HashMap::new();
     profile.insert("display_name".to_string(), "Marcus Webb".to_string());
-    h.create_account(profile, &relays);
+    h.create_account(profile, &relays, &[]);
 
     let event = h
         .published_event_of_kind(0)
@@ -480,11 +480,10 @@ fn create_account_publishes_kind0_to_coldstart_relays() {
 }
 
 /// NIP-02 / NIP-65 cold-start: `create_account` publishes a kind:3 contacts
-/// list (the `DEFAULT_FOLLOWS` seed set) alongside kind:0 and kind:10002. A
-/// brand-new account has no kind:10002 of its own yet, so routing the kind:3
-/// through `PublishTarget::Auto` would resolve `NoTargets` and the publish
-/// engine would silently drop it — the new account's follows would never
-/// propagate to relays.
+/// list (the app-supplied `initial_follows` seed set) alongside kind:0 and
+/// kind:10002. A brand-new account has no kind:10002 of its own yet, so routing
+/// the kind:3 through `PublishTarget::Auto` would resolve `NoTargets` and the
+/// publish engine would silently drop it — the follows would never propagate.
 ///
 /// `create_account` closes that gap by routing the initial kind:3 to the same
 /// explicit cold-start target as kind:0 / kind:10002. This test pins that the
@@ -503,7 +502,8 @@ fn create_account_publishes_kind3_to_coldstart_relays() {
     ];
     let mut profile = HashMap::new();
     profile.insert("display_name".to_string(), "Marcus Webb".to_string());
-    h.create_account(profile, &relays);
+    let follows = vec![hex64('b'), hex64('c')]; // app-supplied seed set (#1493)
+    h.create_account(profile, &relays, &follows);
 
     let event = h
         .published_event_of_kind(3)
@@ -514,7 +514,7 @@ fn create_account_publishes_kind3_to_coldstart_relays() {
     let p_values = values_for_key(&event, "p");
     assert!(
         !p_values.is_empty(),
-        "cold-start kind:3 must carry the DEFAULT_FOLLOWS seed `p` tags"
+        "cold-start kind:3 must carry the app-supplied initial_follows `p` tags"
     );
     for pubkey in &p_values {
         assert!(

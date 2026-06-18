@@ -31,6 +31,7 @@ fn with_wallet_wires_stack_before_start() {
         .with_wallet()
         .in_memory()
         .consume_all_builtin_projections()
+        .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() after with_wallet() returned null");
 
@@ -57,6 +58,7 @@ fn with_wallet_composes_with_register_defaults_and_storage() {
             .with_wallet()
             .storage_path("/tmp/nmp_test_v95_wallet")
             .consume_all_builtin_projections()
+            .without_initial_relays()
             .start(RunConfig::default())
     };
     assert!(!app.is_null());

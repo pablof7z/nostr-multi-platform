@@ -48,6 +48,11 @@ pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, Nmp
 // C-ABI call every Chirp shell (iOS, Android, tui, desktop) uses to declare it
 // (`consume_all` — Chirp is a full client). No hand-maintained key list.
 pub use ffi::nmp_app_chirp_declare_consumed_projections;
+// #1493 — Chirp-owned create-account wrapper that injects Chirp's product seed
+// follows (`nmp_chirp_config::chirp_default_follows`). The generic
+// `nmp_app_create_new_account` auto-follows nobody; the Swift/Kotlin shells call
+// THIS symbol so the seed pubkeys never transit the thin shell.
+pub use ffi::nmp_app_chirp_create_new_account;
 // M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
 // `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
 pub use action_specs::{

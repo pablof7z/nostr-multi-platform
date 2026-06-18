@@ -545,9 +545,16 @@ pub enum ActorCommand {
     /// where `role` is `"read"`, `"write"`, `"both"`, `"indexer"`, or a
     /// comma-separated composite such as `"both,indexer"`. `mls` requests
     /// account-scoped MLS setup in app composition crates.
+    ///
+    /// `initial_follows` is the app-supplied set of hex pubkeys the fresh
+    /// account auto-follows (kind:3 contacts prepopulate + cold-start publish).
+    /// NMP no longer hardcodes any default follow set — auto-follow is operator
+    /// policy that originates in the leaf app (#1493). An empty vector means the
+    /// account starts with no contacts and no cold-start kind:3 is published.
     CreateAccount {
         profile: HashMap<String, String>,
         relays: Vec<(String, String)>,
+        initial_follows: Vec<String>,
         mls: bool,
         /// Whether to make the newly created account the active account.
         /// `true` for the standard onboarding flow; `false` for creating

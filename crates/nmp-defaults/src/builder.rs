@@ -22,18 +22,26 @@
 //!       │  states — they don't advance     │                                          │
 //!       │  the required chain)             ▼                                          ▼
 //!       │                          (no .start here)            NmpAppBuilder<ProjectionsDeclared>
-//!       │                                                                  │  .start(RunConfig)
-//!       │                                                                  ▼
-//!       │                                                  StartedApp (*mut NmpApp, running)
+//!       │                                                                  │  .with_relays(iter)        ─┐
+//!       │                                                                  │  .without_initial_relays() ─┤
+//!       │                                                                  ▼                             ▼
+//!       │                                                          (no .start here)         NmpAppBuilder<RelaysDeclared>
+//!       │                                                                                              │  .start(RunConfig)
+//!       │                                                                                              ▼
+//!       │                                                                              StartedApp (*mut NmpApp, running)
 //!       │
-//!       ╰─ .start(RunConfig) — DOES NOT COMPILE until ProjectionsDeclared
+//!       ╰─ .start(RunConfig) — DOES NOT COMPILE until RelaysDeclared
 //! ```
 //!
-//! Two compile-time gates: (1) a storage decision (`Unstarted → StorageSet`),
-//! and (2) an ADR-0053 projection-consumption decision
-//! (`StorageSet → ProjectionsDeclared`). Forgetting either is a compile error,
-//! so a host can never silently ship the full Tier-2 built-in firehose —
-//! "everything" is the explicit `.consume_all_builtin_projections()` call.
+//! Three compile-time gates: (1) a storage decision (`Unstarted → StorageSet`),
+//! (2) an ADR-0053 projection-consumption decision
+//! (`StorageSet → ProjectionsDeclared`), and (3) a #1493 initial-relay decision
+//! (`ProjectionsDeclared → RelaysDeclared`). Forgetting any is a compile error,
+//! so a host can never silently ship the full Tier-2 built-in firehose
+//! ("everything" is the explicit `.consume_all_builtin_projections()` call) nor
+//! silently inherit a framework relay default (NMP has none — relays are
+//! leaf-app policy supplied via `.with_relays(...)` or the explicit
+//! `.without_initial_relays()`).
 //!
 //! # Usage (canonical Rust composition root)
 //!
@@ -43,6 +51,7 @@
 //! let app: *mut nmp_ffi::NmpApp = NmpAppBuilder::new()
 //!     .in_memory()                                  // required: choose storage
 //!     .declare_consumed_projections(["profile"])    // required: declare ADR-0053 set
+//!     .with_relays([("wss://your.relay", "both")])  // required: declare relays (#1493)
 //!     .start(RunConfig::default());                 // consume builder → started handle
 //!
 //! // `NmpAppBuilder` is gone; setters are unreachable.
@@ -71,16 +80,6 @@ use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 use crate::relay_config;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
 mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
-
-/// The app-template's built-in default relay configuration.
-///
-/// Used when the caller declares no relays via `with_relay`/`with_relays` and
-/// no persisted sidecar exists. This is the composition-root home for the
-/// default relay set — `nmp-core` no longer carries any hardcoded fallback.
-const DEFAULT_APP_RELAYS: &[(&str, &str)] = &[
-    ("wss://relay.primal.net", "both,indexer"),
-    ("wss://purplepag.es", "indexer"),
-];
 
 // ── Type-state markers ───────────────────────────────────────────────────────
 
@@ -112,6 +111,16 @@ pub struct StorageSet;
 /// (`SnapshotRegistry`/`NmpApp`) is unchanged; only the app-facing builder
 /// gains this compile-time gate.
 pub struct ProjectionsDeclared;
+
+/// Builder state: the app has made an explicit initial-relay decision (#1493).
+///
+/// Reached from `ProjectionsDeclared` via either `.with_relays(...)` (declare
+/// the relay set the app starts with) or `.without_initial_relays()` (explicit
+/// "this app ships no built-in relays"). `start()` is available ONLY in this
+/// state — so an app CANNOT silently inherit a framework relay default by
+/// forgetting to decide. NMP (including `nmp-defaults`) owns no operator relay
+/// URLs; the relay set is leaf-app policy supplied here.
+pub struct RelaysDeclared;
 
 // ── RunConfig ────────────────────────────────────────────────────────────────
 
@@ -170,7 +179,9 @@ impl Default for RunConfig {
 /// the initial type; advance to `NmpAppBuilder<StorageSet>` via
 /// `.storage_path(p)` or `.in_memory()`, then to
 /// `NmpAppBuilder<ProjectionsDeclared>` via `.declare_consumed_projections(…)`
-/// or `.consume_all_builtin_projections()`.
+/// or `.consume_all_builtin_projections()`, then to
+/// `NmpAppBuilder<RelaysDeclared>` via `.with_relays(…)` or
+/// `.without_initial_relays()`.
 ///
 /// # Compile-fail: calling `start()` without a storage choice is an error
 ///
@@ -200,6 +211,23 @@ impl Default for RunConfig {
 ///     .start(RunConfig::default()); // ← still missing the projection decision
 /// ```
 ///
+/// # Compile-fail: calling `start()` without a relay decision is an error
+///
+/// The following code does **not** compile because `start()` only exists on
+/// `NmpAppBuilder<RelaysDeclared>`, not on `NmpAppBuilder<ProjectionsDeclared>`
+/// — #1493's compile-time enforcement that the app cannot silently inherit a
+/// framework relay default (NMP has none):
+///
+/// ```compile_fail
+/// use nmp_defaults::{NmpAppBuilder, RunConfig};
+///
+/// // ERROR: no method named `start` found for `NmpAppBuilder<ProjectionsDeclared>`
+/// let _app = NmpAppBuilder::new()
+///     .in_memory()
+///     .consume_all_builtin_projections() // advances to ProjectionsDeclared
+///     .start(RunConfig::default());      // ← still missing the relay decision
+/// ```
+///
 /// The correct sequence is:
 ///
 /// ```rust,no_run
@@ -208,17 +236,20 @@ impl Default for RunConfig {
 /// let _app = NmpAppBuilder::new()
 ///     .in_memory()                               // ← required: advance to StorageSet
 ///     .declare_consumed_projections(["profile"]) // ← required: advance to ProjectionsDeclared
+///     .without_initial_relays()                  // ← required: advance to RelaysDeclared
 ///     .start(RunConfig::default());              // ← now compiles
 /// ```
 pub struct NmpAppBuilder<S> {
     /// Owned pointer. INVARIANT: non-null while the builder exists; freed
     /// either by `start()` (released to the runtime) or by `Drop`.
     app: *mut NmpApp,
-    /// App-declared relay overrides. `None` ⇒ use [`DEFAULT_APP_RELAYS`];
-    /// `Some(v)` ⇒ the caller declared these via `with_relay`/`with_relays`.
-    /// Resolved into the kernel's `configured_relays` (via the JSON sidecar)
-    /// at `start()`.
-    user_relays: Option<Vec<(String, String)>>,
+    /// App-declared initial relay set (#1493). Empty until the app makes the
+    /// explicit `ProjectionsDeclared → RelaysDeclared` decision via
+    /// `.with_relays(...)` (non-empty) or `.without_initial_relays()` (empty).
+    /// Resolved into the kernel's `configured_relays` (via the JSON sidecar) at
+    /// `start()`. NMP carries no relay fallback — what the app declares here is
+    /// exactly what the kernel starts with.
+    user_relays: Vec<(String, String)>,
     _state: PhantomData<S>,
 }
 
@@ -242,44 +273,9 @@ impl NmpAppBuilder<Unstarted> {
         assert!(!app.is_null(), "nmp_app_new() returned null");
         Self {
             app,
-            user_relays: None,
+            user_relays: Vec::new(),
             _state: PhantomData,
         }
-    }
-}
-
-// ── Relay declaration (both states) ─────────────────────────────────────────
-
-impl<S> NmpAppBuilder<S> {
-    /// Declare a relay the app wants to start with. Multiple calls accumulate.
-    ///
-    /// The first call clears the built-in [`DEFAULT_APP_RELAYS`] (so declaring
-    /// any relay replaces the defaults entirely); subsequent calls append.
-    ///
-    /// `role` is a relay-role string (`"read"`, `"write"`, `"both"`,
-    /// `"indexer"`, or a composite like `"both,indexer"`). It is canonicalized
-    /// by the kernel when the row is seeded.
-    #[must_use]
-    pub fn with_relay(mut self, url: impl Into<String>, role: impl Into<String>) -> Self {
-        self.user_relays
-            .get_or_insert_with(Vec::new)
-            .push((url.into(), role.into()));
-        self
-    }
-
-    /// Declare several relays at once. Equivalent to calling [`Self::with_relay`]
-    /// for each `(url, role)` pair. The first declaration (here or via
-    /// `with_relay`) clears the built-in defaults.
-    #[must_use]
-    pub fn with_relays(
-        mut self,
-        relays: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
-    ) -> Self {
-        let list = self.user_relays.get_or_insert_with(Vec::new);
-        for (url, role) in relays {
-            list.push((url.into(), role.into()));
-        }
-        self
     }
 }
 
@@ -441,9 +437,79 @@ impl NmpAppBuilder<StorageSet> {
     }
 }
 
-// ── Terminal transition: start (ProjectionsDeclared only) ────────────────────
+// ── Initial-relay decision (ProjectionsDeclared → RelaysDeclared) ────────────
+//
+// #1493: operator relay URLs are leaf-app policy, never an NMP default — not in
+// `nmp-core`, not in `nmp-defaults`. The app MUST decide its initial relay set
+// before `start()`. Forgetting is a compile error (`start()` only exists on
+// `RelaysDeclared`). Two ways to decide — both advance the typestate:
+//   * `.with_relays(iter)`        — declare the relay set the app starts with.
+//   * `.without_initial_relays()` — explicit "this app ships no built-in relays".
 
 impl NmpAppBuilder<ProjectionsDeclared> {
+    /// Declare the initial relay set the app starts with, and advance to
+    /// `RelaysDeclared` (unlocking `start()`).
+    ///
+    /// Each item is a `(url, role)` pair where `role` is a relay-role string
+    /// (`"read"`, `"write"`, `"both"`, `"indexer"`, or a composite like
+    /// `"both,indexer"`); the kernel canonicalizes it when the row is seeded.
+    /// These values are leaf-app policy (#1493) — NMP supplies no default, so
+    /// what the app declares here is exactly what the kernel starts with.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `relays` is empty — that is the `.without_initial_relays()`
+    /// case, which must be chosen explicitly so a no-relay start is never a
+    /// silent accident.
+    #[must_use]
+    pub fn with_relays(
+        mut self,
+        relays: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> NmpAppBuilder<RelaysDeclared> {
+        self.user_relays = relays
+            .into_iter()
+            .map(|(url, role)| (url.into(), role.into()))
+            .collect();
+        assert!(
+            !self.user_relays.is_empty(),
+            "with_relays called with an empty set — use .without_initial_relays() \
+             to start with no relays explicitly"
+        );
+        self.into_relays_declared()
+    }
+
+    /// Explicitly start with NO initial relays, and advance to `RelaysDeclared`
+    /// (unlocking `start()`).
+    ///
+    /// This is the visible, greppable opt-out for offline/test/local apps. The
+    /// kernel starts with an empty `configured_relays`; network operations
+    /// fail-closed (`NoTargets`) until relays are added at runtime via
+    /// `nmp_app_add_relay`. Use it only when the app genuinely ships no
+    /// built-in relays — otherwise declare them with [`Self::with_relays`].
+    #[must_use]
+    pub fn without_initial_relays(mut self) -> NmpAppBuilder<RelaysDeclared> {
+        self.user_relays = Vec::new();
+        self.into_relays_declared()
+    }
+
+    /// Internal: move ownership into a `RelaysDeclared` builder WITHOUT running
+    /// `Drop` (same `ptr::read` + `mem::forget` rationale as the other
+    /// transitions — see `storage_path`).
+    fn into_relays_declared(self) -> NmpAppBuilder<RelaysDeclared> {
+        let app = self.app;
+        let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        std::mem::forget(self);
+        NmpAppBuilder {
+            app,
+            user_relays,
+            _state: PhantomData,
+        }
+    }
+}
+
+// ── Terminal transition: start (RelaysDeclared only) ─────────────────────────
+
+impl NmpAppBuilder<RelaysDeclared> {
     /// Consume the builder and start the NMP kernel.
     ///
     /// This is the **only** path from `NmpAppBuilder<ProjectionsDeclared>` to a
@@ -471,14 +537,10 @@ impl NmpAppBuilder<ProjectionsDeclared> {
         // the drop glue. The caller takes ownership of `app`.
         std::mem::forget(self);
 
-        // Resolve the app's declared default relay set: caller-declared relays
-        // if any, else the built-in `DEFAULT_APP_RELAYS`.
-        let relay_defaults: Vec<(String, String)> = user_relays.unwrap_or_else(|| {
-            DEFAULT_APP_RELAYS
-                .iter()
-                .map(|(u, r)| (u.to_string(), r.to_string()))
-                .collect()
-        });
+        // The app's declared initial relay set (#1493): exactly what
+        // `.with_relays(...)` declared, or empty if `.without_initial_relays()`
+        // was chosen. NMP carries no relay fallback.
+        let relay_defaults: Vec<(String, String)> = user_relays;
 
         // Decide the initial relay set:
         //   * Persistent store → load the JSON sidecar from the storage dir; on

@@ -95,6 +95,10 @@ FFI_FILE_ROOTS=(
     # test file, same posture as marmot/ffi/tests.rs).
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/mod.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/actions.rs"
+    # Chirp-owned create-account wrapper (#1493): nmp_app_chirp_create_new_account
+    # injects Chirp's product seed follows (nmp-chirp-config) in Rust so the
+    # shell never carries operator pubkeys.
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/create_account.rs"
     # ADR-0053 host-declared projection consumption set
     # (nmp_app_chirp_declare_consumed_projections): the single static call both
     # shells use to declare Chirp's consumed Tier-2 built-ins.

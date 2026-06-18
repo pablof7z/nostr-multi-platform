@@ -206,9 +206,74 @@ pub extern "C" fn nmp_app_create_new_account(
     app.send_cmd(ActorCommand::CreateAccount {
         profile,
         relays,
+        // Generic create-account auto-follows nobody. Auto-follow is operator
+        // policy that lives in the leaf app, not in framework FFI (#1493). A
+        // Chirp-owned wrapper (`nmp_app_chirp_create_new_account`) injects
+        // Chirp's seed follows via `create_new_account_with_initial_follows`.
+        initial_follows: Vec::new(),
         mls,
         make_active: make_active != 0,
     });
+}
+
+/// Shared create-account dispatch with an explicit, app-supplied initial
+/// follow set. Re-exported for app composition crates (e.g. `nmp-app-chirp`)
+/// that own the seed-follow policy and must thread it in WITHOUT routing
+/// operator pubkeys through the thin native shell (#1493) — the same Rust-owned
+/// pattern the relay bootstrap uses (`nmp_app_chirp_seed_default_relays`).
+///
+/// `follows` is the list of hex pubkeys the fresh account auto-follows. An empty
+/// slice means no contacts are prepopulated and no cold-start kind:3 is
+/// published. Returns `true` when the command was dispatched, `false` on a null
+/// app or undecodable `profile_json` / `relays_json` (D6 — surfaces a toast,
+/// never traps across the FFI).
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn create_new_account_with_initial_follows(
+    app: *mut NmpApp,
+    profile_json: *const c_char,
+    relays_json: *const c_char,
+    mls: bool,
+    make_active: u8,
+    follows: Vec<String>,
+) -> bool {
+    let Some(app) = app_ref(app) else {
+        return false;
+    };
+    let Some(profile_json) = c_string_argument(profile_json) else {
+        return false;
+    };
+    let Some(relays_json) = c_string_argument(relays_json) else {
+        return false;
+    };
+
+    let profile: std::collections::HashMap<String, String> =
+        if let Ok(p) = serde_json::from_str(&profile_json) {
+            p
+        } else {
+            app.send_cmd(ActorCommand::ShowToast {
+                message: "Failed to decode profile JSON".to_string(),
+            });
+            return false;
+        };
+
+    let relays: Vec<(String, String)> = if let Ok(r) = serde_json::from_str(&relays_json) {
+        r
+    } else {
+        app.send_cmd(ActorCommand::ShowToast {
+            message: "Failed to decode relays JSON".to_string(),
+        });
+        return false;
+    };
+
+    app.set_pending_mls_autopublish(mls);
+    app.send_cmd(ActorCommand::CreateAccount {
+        profile,
+        relays,
+        initial_follows: follows,
+        mls,
+        make_active: make_active != 0,
+    });
+    true
 }
 
 #[no_mangle]

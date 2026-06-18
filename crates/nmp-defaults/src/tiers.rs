@@ -80,12 +80,20 @@ pub struct NmpDefaults {
     pub coverage_gate: CoverageGate,
 
     /// Fallback relay for client-initiated NIP-46 (`nostrconnect://`)
-    /// handshakes when the user has no configured write relay. Operator
-    /// policy — legitimately a composition-root default, not an `nmp-core`
-    /// concern (D0).
+    /// handshakes when the app has no configured write relay. This is an
+    /// operator-chosen relay URL — leaf-app policy, NOT an `nmp-defaults`
+    /// default (#1493): NMP, including this composition library, owns no relay
+    /// URLs. `None` means no fallback is wired; a `nostrconnect://` handshake
+    /// then resolves the relay from the app's configured write relays and, if
+    /// there are none, fails-closed (the FFI returns a null URI) rather than
+    /// dialing any framework-chosen relay.
     ///
-    /// **Default:** `"wss://relay.damus.io"`.
-    pub nostrconnect_bootstrap_relay: String,
+    /// A leaf app that wants a bootstrap fallback sets `Some(url)` here (or
+    /// calls `AppHost::set_nostrconnect_bootstrap_relay` after
+    /// `register_defaults`).
+    ///
+    /// **Default:** `None`.
+    pub nostrconnect_bootstrap_relay: Option<String>,
 
     /// Wire the NIP-02 follow/unfollow/react action bundle **and** the WOT
     /// bootstrap runtime. The social graph layer. Disable for a non-social
@@ -117,13 +125,14 @@ pub struct NmpDefaults {
 }
 
 impl Default for NmpDefaults {
-    /// Reproduces today's `register_defaults()` behaviour exactly: the
-    /// previously-hardcoded `CoverageGate::default()` and
-    /// `"wss://relay.damus.io"` bootstrap relay, with every social feature on.
+    /// The canonical NMP wiring: `CoverageGate::default()`, every social
+    /// feature on, and NO operator relay policy. `nostrconnect_bootstrap_relay`
+    /// is `None` — NMP ships no relay URL (#1493); a leaf app that wants a
+    /// nostrconnect fallback supplies it explicitly.
     fn default() -> Self {
         Self {
             coverage_gate: CoverageGate::default(),
-            nostrconnect_bootstrap_relay: "wss://relay.damus.io".to_string(),
+            nostrconnect_bootstrap_relay: None,
             social: true,
             dms: true,
             zaps: true,

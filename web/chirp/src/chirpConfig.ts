@@ -13,7 +13,12 @@ export const CHIRP_INDEXER_RELAY_URL = "wss://purplepag.es";
 export type ChirpRelayBootstrapEntry = { url: string; role: string };
 
 export const CHIRP_RELAY_BOOTSTRAP: ChirpRelayBootstrapEntry[] = [
-  { url: CHIRP_CONTENT_RELAY_URL, role: "both,indexer" },
+  // role MUST match nmp-chirp-config::CHIRP_RELAY_BOOTSTRAP exactly. The
+  // content relay is "both" (read/write); purplepag.es is the dedicated
+  // indexer. (#1493 fixed a drift where this said "both,indexer" — Primal is
+  // not also an indexer; discovery/outbox lookups go to purplepag.es.)
+  // FOLLOW-UP: generate this list from the Rust source so it cannot re-drift.
+  { url: CHIRP_CONTENT_RELAY_URL, role: "both" },
   { url: CHIRP_INDEXER_RELAY_URL, role: "indexer" },
 ];
 

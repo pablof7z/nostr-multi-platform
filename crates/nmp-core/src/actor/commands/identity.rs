@@ -979,13 +979,6 @@ fn finish_signer_add(
     }
 }
 
-/// Pubkeys every fresh account follows out-of-the-box (hex, kind:3).
-pub(super) const DEFAULT_FOLLOWS: &[&str] = &[
-    // npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft
-    "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
-    // fiatjaf
-    "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-];
 const DEFAULT_ONBOARDING_OVERRIDE_ROLE: &str = "both,indexer";
 
 pub(crate) fn create_account(
@@ -994,6 +987,7 @@ pub(crate) fn create_account(
     relays_ready: bool,
     profile: &HashMap<String, String>,
     relays: &[(String, String)],
+    initial_follows: &[String],
     _mls: bool,
     make_active: bool,
 ) -> Vec<OutboundMessage> {
@@ -1007,11 +1001,14 @@ pub(crate) fn create_account(
         kernel.set_configured_relays(relay_rows.clone());
     }
 
-    let follows = DEFAULT_FOLLOWS
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect::<Vec<_>>();
-    kernel.prepopulate_contacts(id.clone(), follows);
+    // Operator policy (which accounts a fresh account auto-follows) is supplied
+    // by the app, never hardcoded in NMP (the old `DEFAULT_FOLLOWS` const lived
+    // here and baked Chirp's seed pubkeys into the framework — #1493). An empty
+    // `initial_follows` means the account starts with no contacts and no
+    // cold-start kind:3 is published.
+    if !initial_follows.is_empty() {
+        kernel.prepopulate_contacts(id.clone(), initial_follows.to_vec());
+    }
 
     let mut publish_outbound = Vec::new();
     // ── Publish kind:0 metadata ──────────────────────────────────
@@ -1147,7 +1144,12 @@ pub(crate) fn create_account(
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_outbound);
-    outbound.extend(publish_initial_follows(identity, kernel, &relay_rows));
+    outbound.extend(publish_initial_follows(
+        identity,
+        kernel,
+        &relay_rows,
+        initial_follows,
+    ));
     outbound
 }
 
@@ -1220,8 +1222,8 @@ fn nip65_tags_from_relay_rows(rows: &[AppRelay]) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Publish the cold-start kind:3 contacts list (`DEFAULT_FOLLOWS`) for a
-/// brand-new account.
+/// Publish the cold-start kind:3 contacts list (the app-supplied
+/// `initial_follows`) for a brand-new account.
 ///
 /// Like kind:0 and kind:10002, this is a cold-start publish: the account has
 /// no kind:10002 on file, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
@@ -1234,17 +1236,25 @@ fn nip65_tags_from_relay_rows(rows: &[AppRelay]) -> Vec<Vec<String>> {
 /// `relay_rows` are the canonical relay rows declared during onboarding,
 /// threaded through from `create_account` so the cold-start target can be
 /// resolved without rebuilding or re-normalizing them.
+///
+/// `follows` is operator policy supplied by the app (NMP no longer hardcodes a
+/// default follow set — #1493). An empty list means no contacts to announce, so
+/// no kind:3 is signed or published.
 fn publish_initial_follows(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     relay_rows: &[AppRelay],
+    follows: &[String],
 ) -> Vec<OutboundMessage> {
+    if follows.is_empty() {
+        return Vec::new();
+    }
     let Some(author) = identity.active_pubkey() else {
         return Vec::new();
     };
-    let tags = DEFAULT_FOLLOWS
+    let tags = follows
         .iter()
-        .map(|p| vec!["p".to_string(), p.to_string()])
+        .map(|p| vec!["p".to_string(), p.clone()])
         .collect::<Vec<_>>();
     let unsigned = UnsignedEvent {
         pubkey: author,

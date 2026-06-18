@@ -51,6 +51,7 @@
 //! the C-ABI surface is unchanged.
 
 mod actions;
+mod create_account;
 mod declared_projections;
 mod handle;
 mod helpers;
@@ -66,6 +67,7 @@ mod typed_actions;
 #[cfg(test)]
 mod tests;
 
+pub use create_account::nmp_app_chirp_create_new_account;
 pub use declared_projections::nmp_app_chirp_declare_consumed_projections;
 pub use handle::ChirpHandle;
 #[cfg(feature = "marmot")]

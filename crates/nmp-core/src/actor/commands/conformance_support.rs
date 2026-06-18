@@ -215,6 +215,7 @@ impl ConformanceHarness {
         &mut self,
         profile: HashMap<String, String>,
         relays: &[(String, String)],
+        initial_follows: &[String],
     ) {
         create_account(
             &mut self.identity,
@@ -222,6 +223,7 @@ impl ConformanceHarness {
             false,
             &profile,
             relays,
+            initial_follows,
             false,
             true,
         );

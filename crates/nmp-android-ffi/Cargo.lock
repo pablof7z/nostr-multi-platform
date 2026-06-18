@@ -1842,6 +1842,7 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip77",
  "nmp-router",
+ "nmp-substrate-defaults",
  "nmp-wot",
  "nostr",
  "serde",
@@ -2144,6 +2145,15 @@ dependencies = [
  "serde_json",
  "tracing",
  "web-time",
+]
+
+[[package]]
+name = "nmp-substrate-defaults"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip01",
+ "nmp-router",
 ]
 
 [[package]]

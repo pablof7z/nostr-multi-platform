@@ -123,6 +123,12 @@ void nmp_app_deliver_external_signer_response(void *app, const char *response_js
 // the active account.
 char *nmp_app_sign_event_for_return(void *app, const char *account_pubkey_hex, const char *unsigned_json);
 void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls, uint8_t make_active);
+// Chirp-owned create-account wrapper (#1493). Same arguments as
+// nmp_app_create_new_account, but the fresh account auto-follows Chirp's
+// product seed set (nmp-chirp-config::chirp_default_follows) — the seed pubkeys
+// stay in Rust, never in this shell. Chirp callers use THIS symbol; the generic
+// one auto-follows nobody. Returns false on a NULL app or undecodable JSON.
+bool nmp_app_chirp_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls, uint8_t make_active);
 void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
 void nmp_app_add_relay(void *app, const char *url, const char *role);

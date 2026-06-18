@@ -654,6 +654,7 @@ pub(super) fn dispatch_command(
         ActorCommand::CreateAccount {
             profile,
             relays,
+            initial_follows,
             mls,
             make_active,
         } => {
@@ -663,6 +664,7 @@ pub(super) fn dispatch_command(
                 ctx.relays_ready,
                 &profile,
                 &relays,
+                &initial_follows,
                 mls,
                 make_active,
             );
