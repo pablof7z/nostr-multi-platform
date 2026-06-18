@@ -58,6 +58,23 @@ pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 pub mod bounds;
 use bounds::{admit_additive, admit_keyed};
 
+/// Result of a [`SnapshotRegistry::register_typed`] call (Blocker C).
+///
+/// Callers that record a composition-ledger disposition MUST derive it from
+/// this result rather than from a pre-insertion key-presence check, so the
+/// ledger stays truthful when the registry is at the D5 cap and silently drops
+/// a new-key registration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedAdmission {
+    /// A new key was accepted and the closure inserted.
+    Inserted,
+    /// An existing key was replaced (always allowed regardless of the cap).
+    Replaced,
+    /// A new key was rejected because the registry is at the
+    /// [`bounds::MAX_SNAPSHOT_PROJECTIONS`] ceiling (D5 loud no-op).
+    DroppedFull,
+}
+
 // ADR-0053 — the host-declared consumed-projection set. Extracted to a `pub`
 // submodule so the registry file stays within its LOC ceiling; the type is part
 // of the public seam (read by the kernel to gate Tier-2 built-ins).
@@ -188,22 +205,35 @@ impl SnapshotRegistry {
     ///
     /// D5: same [`MAX_SNAPSHOT_PROJECTIONS`](bounds::MAX_SNAPSHOT_PROJECTIONS) ceiling;
     /// re-registering an existing key is always allowed.
+    ///
+    /// Returns a [`TypedAdmission`] describing what actually happened so the caller
+    /// can record a truthful composition-ledger disposition (Blocker C):
+    /// - [`TypedAdmission::Inserted`] — new key accepted (was absent, below the cap).
+    /// - [`TypedAdmission::Replaced`] — existing key replaced (always allowed).
+    /// - [`TypedAdmission::DroppedFull`] — new key rejected (registry is at the
+    ///   [`MAX_SNAPSHOT_PROJECTIONS`](bounds::MAX_SNAPSHOT_PROJECTIONS) ceiling).
     pub fn register_typed(
         &mut self,
         key: impl Into<String>,
         f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
-    ) {
+    ) -> TypedAdmission {
         let key = key.into();
+        let key_exists = self.typed_projections.contains_key(&key);
         if !admit_keyed(
             self.typed_projections.len(),
-            self.typed_projections.contains_key(&key),
+            key_exists,
             &key,
             "typed snapshot projection",
         ) {
-            return;
+            return TypedAdmission::DroppedFull;
         }
         self.pending_typed_clears.retain(|pending| pending != &key);
         self.typed_projections.insert(key, Box::new(f));
+        if key_exists {
+            TypedAdmission::Replaced
+        } else {
+            TypedAdmission::Inserted
+        }
     }
 
     /// Run every registered typed projection and collect the results into the

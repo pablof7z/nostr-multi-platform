@@ -41,27 +41,33 @@ impl NmpApp {
         key: impl Into<String>,
         f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
+        use nmp_core::__ffi_internal::TypedAdmission;
         let key = key.into();
         if let Ok(mut registry) = self.snapshot_projections.lock() {
-            // ADR-0049 — determine disposition BEFORE inserting so we can report
-            // whether we are the first registrant (`Installed`) or are replacing
-            // an existing closure (`ReplacedPrevious`).
-            let had_previous = registry
-                .registered_typed_keys()
-                .any(|k| k == key.as_str());
-            registry.register_typed(key.clone(), f);
-            let disposition = if had_previous {
-                nmp_core::Disposition::ReplacedPrevious
-            } else {
-                nmp_core::Disposition::Installed
+            // ADR-0049 / Blocker C — derive the ledger disposition from the
+            // ACTUAL admission result returned by `register_typed` rather than
+            // from a pre-insertion key-presence check. This is the only way to
+            // distinguish a genuine `Installed` from a `DroppedFull` silent
+            // no-op when the registry is at the D5 cap.
+            let admission = registry.register_typed(key.clone(), f);
+            let disposition = match admission {
+                TypedAdmission::Inserted => Some(nmp_core::Disposition::Installed),
+                TypedAdmission::Replaced => Some(nmp_core::Disposition::ReplacedPrevious),
+                // D5 cap hit: the closure was silently dropped. Record a
+                // diagnostic via the ledger with a dedicated disposition so
+                // the host can observe the cap-induced drop at composition
+                // time (tracing::warn already fired inside `admit_keyed`).
+                TypedAdmission::DroppedFull => None,
             };
-            self.composition_ledger.record(
-                "typed_snapshot_projection",
-                key.clone(),
-                key,
-                disposition,
-                None,
-            );
+            if let Some(disp) = disposition {
+                self.composition_ledger.record(
+                    "typed_snapshot_projection",
+                    key.clone(),
+                    key,
+                    disp,
+                    None,
+                );
+            }
         }
     }
 
@@ -327,10 +333,11 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// ADR-0049 / BLOCKER 2 — `register_typed_snapshot_projection` records a
+    /// ADR-0049 / Blocker C — `register_typed_snapshot_projection` records a
     /// truthful composition-ledger disposition:
     /// - First registration for a key → `Installed`.
     /// - Second registration for the same key → `ReplacedPrevious`.
+    /// - Over-cap new key → NO ledger entry (silent drop, not a false `Installed`).
     /// - `DroppedLateWiring` is never recorded (the typed registry is live at all
     ///   times — there is no "post-start drop" for it).
     #[test]
@@ -397,6 +404,73 @@ mod tests {
         assert_eq!(
             dm["disposition"], "Installed",
             "distinct key must record Installed, not ReplacedPrevious"
+        );
+
+        nmp_app_free(app);
+    }
+
+    /// Blocker C — over-cap new key must NOT produce a false `Installed` ledger
+    /// entry. The D5 ceiling is 64; when the 65th distinct key is registered
+    /// the registry drops it silently (`TypedAdmission::DroppedFull`) and the
+    /// caller must NOT record `Installed` for the ghost key.
+    #[test]
+    fn over_cap_typed_projection_does_not_record_installed() {
+        use nmp_core::__ffi_internal::MAX_SNAPSHOT_PROJECTIONS;
+
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null.
+        let app_ref = unsafe { &*app };
+
+        // Fill the registry to the exact cap with distinct keys.
+        for i in 0..MAX_SNAPSHOT_PROJECTIONS {
+            app_ref.register_typed_snapshot_projection(format!("nmp.test.key{i}"), || None);
+        }
+
+        // Verify the cap keys are in the ledger.
+        let ledger_before = app_ref.composition_ledger().to_json();
+        let records_before = ledger_before["records"].as_array().expect("records array");
+        let count_before = records_before.len();
+        assert_eq!(
+            count_before,
+            MAX_SNAPSHOT_PROJECTIONS,
+            "ledger must have exactly {MAX_SNAPSHOT_PROJECTIONS} entries after filling to cap"
+        );
+
+        // Now attempt to register one MORE distinct key — should be dropped.
+        let over_cap_key = "nmp.test.over_cap_key";
+        app_ref.register_typed_snapshot_projection(over_cap_key, || None);
+
+        // The over-cap key must NOT appear in the ledger.
+        let ledger_after = app_ref.composition_ledger().to_json();
+        let records_after = ledger_after["records"].as_array().expect("records array");
+        let has_over_cap_entry = records_after.iter().any(|r| r["key"] == over_cap_key);
+        assert!(
+            !has_over_cap_entry,
+            "an over-cap registration must NOT produce a ledger entry (no false Installed)"
+        );
+        assert_eq!(
+            records_after.len(),
+            MAX_SNAPSHOT_PROJECTIONS,
+            "ledger size must remain {MAX_SNAPSHOT_PROJECTIONS} after over-cap attempt"
+        );
+
+        // Replacing an existing key at cap IS still allowed and MUST record ReplacedPrevious.
+        let first_key = "nmp.test.key0";
+        app_ref.register_typed_snapshot_projection(first_key, || None);
+        let ledger_after_replace = app_ref.composition_ledger().to_json();
+        let records_after_replace = ledger_after_replace["records"].as_array().expect("records array");
+        let replaced_entries: Vec<_> = records_after_replace
+            .iter()
+            .filter(|r| r["key"] == first_key)
+            .collect();
+        assert_eq!(
+            replaced_entries.len(),
+            2,
+            "replacing an existing key at cap must produce two ledger entries"
+        );
+        assert_eq!(
+            replaced_entries[1]["disposition"], "ReplacedPrevious",
+            "second registration for an existing key at cap must record ReplacedPrevious"
         );
 
         nmp_app_free(app);

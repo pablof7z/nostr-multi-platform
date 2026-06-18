@@ -141,10 +141,10 @@ pub use commands::{register_c_observer, LifecycleObserverRegistration};
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
-// `"bunker_handshake"` snapshot-projection closure.
+// `"bunker_handshake"` typed snapshot-projection closure.
 // V-01 Phase 1c: bunker types are native actor / FFI only.
 #[cfg(feature = "native")]
-pub(crate) use commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
+pub(crate) use commands::BunkerHandshakeSlot;
 // `nmp-ffi`'s `nmp_app_new` constructs the bunker-handshake slot before
 // handing it to the actor; promoted to `pub` for the extracted crate.
 #[cfg(feature = "native")]

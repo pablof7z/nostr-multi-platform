@@ -395,6 +395,12 @@ pub mod __ffi_internal {
     // through this internal surface to type the
     // `register_typed_snapshot_projection` seam on the `AppHost` trait.
     pub use crate::kernel::snapshot_registry::TypedProjectionFn;
+    // Blocker C: `nmp-ffi` reads the admission result to record a truthful
+    // composition-ledger disposition (Installed / Replaced / DroppedFull).
+    pub use crate::kernel::snapshot_registry::TypedAdmission;
+    // Blocker C test support: the D5 cap constant so the over-cap test can
+    // fill the registry to exactly the ceiling without hard-coding the value.
+    pub use crate::kernel::snapshot_registry::bounds::MAX_SNAPSHOT_PROJECTIONS;
     pub use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 }
 

@@ -254,20 +254,30 @@ describe("shared Chirp web semantics", () => {
     expect(chirp?.cards[0]).toMatchObject({ id: "note-a", author_pubkey: "abc" });
   });
 
-  it("featureSnapshotFromEnvelope returns empty defaults (generic projections lane deleted)", () => {
+  it("featureSnapshotFromEnvelope returns the canonical zero-state constant (generic projections lane deleted)", () => {
     // The generic JSON `projections` map was deleted in PR #1515 (escape hatch
-    // #2 eliminated). `featureSnapshotFromEnvelope` now always returns the
-    // zero-state FeatureSnapshot regardless of the envelope contents.
-    // Callers that need real data use the typed FlatBuffers sidecar path.
-    const feature = featureSnapshotFromEnvelope({
-      t: "snapshot",
-      v: { rev: 1 },
-    });
-    expect(feature.accounts).toEqual([]);
-    expect(feature.dmConversations).toEqual([]);
-    expect(feature.discoveredGroups).toEqual([]);
-    expect(feature.relayDiagnostics).toEqual([]);
-    expect(feature.outbox).toEqual([]);
+    // #2 eliminated). `featureSnapshotFromEnvelope` is now a constant-return
+    // with no dead helpers (dmFrom, groupsFrom, messagesFrom, projection).
+    // This test proves: (a) the function returns zero-state for any input, and
+    // (b) the same reference is returned regardless of the envelope value —
+    // proving no parsing happens inside.
+    const featureWithEnvelope = featureSnapshotFromEnvelope({ t: "snapshot", v: { rev: 1 } });
+    const featureWithUndefined = featureSnapshotFromEnvelope(undefined);
+    const featureWithNull = featureSnapshotFromEnvelope(null);
+
+    // All calls return identical state (same constant object).
+    expect(featureWithEnvelope).toBe(featureWithUndefined);
+    expect(featureWithEnvelope).toBe(featureWithNull);
+
+    // All fields are zero-state.
+    expect(featureWithEnvelope.accounts).toEqual([]);
+    expect(featureWithEnvelope.dmConversations).toEqual([]);
+    expect(featureWithEnvelope.discoveredGroups).toEqual([]);
+    expect(featureWithEnvelope.groupMessages).toEqual([]);
+    expect(featureWithEnvelope.relayDiagnostics).toEqual([]);
+    expect(featureWithEnvelope.outbox).toEqual([]);
+    expect(featureWithEnvelope.followCount).toBe(0);
+    expect(featureWithEnvelope.activeAccount).toBe("");
   });
 });
 

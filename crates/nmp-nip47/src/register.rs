@@ -157,10 +157,9 @@ pub fn register_wallet(
     storage_path: Option<String>,
 ) -> WalletRuntimeHandle {
     // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
-    //    writer, D4), the others are captured below by the `"wallet"`
-    //    generic + typed snapshot projection closures.
+    //    writer, D4), the other is captured below by the typed snapshot
+    //    projection closure.
     let status_slot: WalletStatusSlot = new_wallet_status_slot();
-    let projection_slot = Arc::clone(&status_slot);
     let typed_projection_slot = Arc::clone(&status_slot);
 
     // 2. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
