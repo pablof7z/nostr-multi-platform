@@ -10,8 +10,9 @@
 //! - Lane 3 — Provenance (`interest.hints` carrying
 //!   `HintSource::Provenance`).
 //! - Lane 4 — UserConfigured (active-account read/write).
-//! - Lane 5 — ClassRouted (explicit-targets attribution refined to the
-//!   right `EventClass` for the publish kind).
+//! - Lane 5 — ClassRouted (kind-agnostic explicit-targets attribution to
+//!   `EventClass::Other("explicit")`; the per-NIP kind→class table was
+//!   removed in #1493).
 //!
 //! Split out to keep both `tests.rs` and this file under the 500-LOC
 //! ceiling.
@@ -23,7 +24,7 @@ use nmp_core::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, RelayHint,
 };
 use nmp_core::substrate::{
-    BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet,
+    BlockedRelaySet, ClassRoutingPath, EventClass, MailboxCache, ParsedRelayList, SessionKeySet,
 };
 
 use crate::InMemoryMailboxCache;
@@ -355,84 +356,48 @@ fn subscribe_lane4_fires_for_authorless_wildcard_interest() {
     )));
 }
 
-// ─── Lane 5 (ClassRouted) — explicit_targets carries the right class ──
+// ─── Lane 5 (ClassRouted) — explicit_targets attribution is kind-agnostic ──
+//
+// D0 (#1493): the generic router no longer carries a per-NIP kind→class table.
+// EVERY kind forced through `explicit_targets` — including the kinds the old
+// `classify_kind` table singled out (NIP-54 wiki 818/30818/30819, NIP-37 draft
+// 1234/31234) — attributes uniformly to `ClassRouted{Other("explicit"),
+// Explicit}`, matching the long-standing subscription-side `from_explicit`
+// behaviour and keeping the routing-trace JSON's `"explicit"` label stable.
 
 #[test]
-fn explicit_publish_lane5_classifies_wiki_kinds() {
-    let cache = InMemoryMailboxCache::new();
-    let blocked = BlockedRelaySet::new();
-    let explicit = vec!["wss://wiki-relay.example".to_string()];
-    let app: Vec<String> = vec![];
-    let router = GenericOutboxRouter::new();
-    for kind in [818u32, 30_818, 30_819] {
-        let c = ctx(&cache, &blocked, Some(&explicit), &app);
-        let evt = UnsignedEvent { kind, ..unsigned() };
-        let r = router.route_publish(&evt, &c).unwrap();
-        let url = "wss://wiki-relay.example".to_string();
-        let sources = &r.relays[&url];
-        assert!(
-            sources.iter().any(|s| matches!(
-                s,
-                RoutingSource::ClassRouted {
-                    class: EventClass::Wiki,
-                    via: ClassRoutingPath::Explicit,
-                }
-            )),
-            "kind {kind} must attribute to ClassRouted{{Wiki, Explicit}}; got {sources:?}"
-        );
-    }
-}
-
-#[test]
-fn explicit_publish_lane5_classifies_draft_kinds() {
-    let cache = InMemoryMailboxCache::new();
-    let blocked = BlockedRelaySet::new();
-    let explicit = vec!["wss://drafts.example".to_string()];
-    let app: Vec<String> = vec![];
-    let router = GenericOutboxRouter::new();
-    for kind in [1234u32, 31_234] {
-        let c = ctx(&cache, &blocked, Some(&explicit), &app);
-        let evt = UnsignedEvent { kind, ..unsigned() };
-        let r = router.route_publish(&evt, &c).unwrap();
-        let url = "wss://drafts.example".to_string();
-        let sources = &r.relays[&url];
-        assert!(
-            sources.iter().any(|s| matches!(
-                s,
-                RoutingSource::ClassRouted {
-                    class: EventClass::Draft,
-                    via: ClassRoutingPath::Explicit,
-                }
-            )),
-            "kind {kind} must attribute to ClassRouted{{Draft, Explicit}}; got {sources:?}"
-        );
-    }
-}
-
-#[test]
-fn explicit_publish_lane5_falls_back_to_other_for_unclassified_kinds() {
-    // kind:1 — no class binding in the router. Must attribute to
-    // `EventClass::Other("explicit")` (preserves the pre-existing label
-    // so the routing-trace JSON stays stable for these kinds).
+fn explicit_publish_lane5_attributes_other_explicit_regardless_of_kind() {
     let cache = InMemoryMailboxCache::new();
     let blocked = BlockedRelaySet::new();
     let explicit = vec!["wss://forced.example".to_string()];
     let app: Vec<String> = vec![];
-    let c = ctx(&cache, &blocked, Some(&explicit), &app);
     let router = GenericOutboxRouter::new();
-    let r = router.route_publish(&unsigned(), &c).unwrap();
-    let url = "wss://forced.example".to_string();
-    let sources = &r.relays[&url];
-    let other = sources.iter().find(|s| matches!(
-        s,
-        RoutingSource::ClassRouted { via: ClassRoutingPath::Explicit, .. }
-    ));
-    match other {
-        Some(RoutingSource::ClassRouted { class, .. }) => match class {
-            EventClass::Other(name) => assert_eq!(name, "explicit"),
-            _ => panic!("kind:1 must classify to Other(\"explicit\"), got {class:?}"),
-        },
-        _ => panic!("ClassRouted source missing: {sources:?}"),
+    // Spans the former wiki + draft kinds plus an ordinary kind:1 — the router
+    // must not special-case any of them now that the per-NIP table is gone.
+    for kind in [1u32, 818, 30_818, 30_819, 1234, 31_234] {
+        let c = ctx(&cache, &blocked, Some(&explicit), &app);
+        let evt = UnsignedEvent { kind, ..unsigned() };
+        let r = router.route_publish(&evt, &c).unwrap();
+        let url = "wss://forced.example".to_string();
+        let sources = &r.relays[&url];
+        let class_routed = sources.iter().find(|s| {
+            matches!(
+                s,
+                RoutingSource::ClassRouted { via: ClassRoutingPath::Explicit, .. }
+            )
+        });
+        match class_routed {
+            Some(RoutingSource::ClassRouted { class, .. }) => match class {
+                EventClass::Other(name) => assert_eq!(
+                    name, "explicit",
+                    "kind {kind} must attribute to Other(\"explicit\")"
+                ),
+                other => panic!(
+                    "kind {kind} must attribute to Other(\"explicit\"), got {other:?}"
+                ),
+            },
+            _ => panic!("kind {kind}: ClassRouted source missing: {sources:?}"),
+        }
     }
 }
 

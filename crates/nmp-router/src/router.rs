@@ -22,15 +22,17 @@
 //!   `session_keys.active_read` is attributed to
 //!   [`UserConfiguredCategory::ActiveAccountRead`].
 //! - **Lane 5 — ClassRouted.** On the [`RoutingContext::explicit_targets`]
-//!   shortcut, the router classifies `evt.kind` into the right
-//!   [`EventClass`] (Search/Draft/Wiki/Other) before attributing the
-//!   forced URLs to `ClassRouted{class, via: Explicit}`. The generic
-//!   algorithm itself has NO NIP-51 cache to consult — the substrate
-//!   carries no class-relays accessor — so the only ClassRouted path in
-//!   the router is the explicit-targets shortcut (which the NIP-17 /
-//!   NIP-29 / Marmot / NIP-50 search actions populate). Class refinement
-//!   in attribution lets the V-51 observer trace render the correct
-//!   class label.
+//!   shortcut, the router attributes the forced URLs to
+//!   `ClassRouted{EventClass::Other("explicit"), via: Explicit}` — the
+//!   same kind-agnostic attribution the subscription path has always used
+//!   (`RoutedRelaySet::from_explicit`). The generic algorithm has NO
+//!   NIP-51 cache to consult and, per #1493, carries NO per-NIP
+//!   kind→class table either — protocol knowledge stays out of the
+//!   substrate router. The explicit-targets shortcut is populated by the
+//!   NIP-17 / NIP-29 / Marmot / NIP-50 search actions. (A future
+//!   `RoutingContext::explicit_class` could let the NIP-aware caller
+//!   supply a Wiki/Draft/Search trace label without re-introducing the
+//!   table — see the `TODO(#1493)` on [`GenericOutboxRouter`].)
 //! - **Lane 6 — Indexer.** ALWAYS-ON for discovery kinds (kind:0,
 //!   kind:3, kind:10000–19999) — both publish and subscribe (R+W
 //!   symmetric per spec §3.1). Stacks on top of lane 1; defeats the
@@ -46,10 +48,9 @@ use std::sync::Arc;
 
 use nmp_core::planner::{HintSource, LogicalInterest};
 use nmp_core::substrate::{
-    truncate_event_id, AppRelayMode, ClassRoutingPath, Direction, EventClass, LaneOutcome,
-    OutboxRouter, PublishTrace, RouteAttempt, RoutedRelaySet, RoutingContext, RoutingError,
-    RoutingLane, RoutingSource, RoutingTraceObserver, SubscriptionTrace, UnsignedEvent,
-    UserConfiguredCategory,
+    truncate_event_id, AppRelayMode, Direction, LaneOutcome, OutboxRouter, PublishTrace,
+    RouteAttempt, RoutedRelaySet, RoutingContext, RoutingError, RoutingLane, RoutingSource,
+    RoutingTraceObserver, SubscriptionTrace, UnsignedEvent, UserConfiguredCategory,
 };
 
 use crate::discovery::{indexer_kind_scope, is_discovery_kind};
@@ -83,55 +84,27 @@ fn relay_hints_from_tags(tags: &[Vec<String>]) -> Vec<String> {
     out
 }
 
-/// Map an `UnsignedEvent.kind` to its [`EventClass`] for lane-5
-/// attribution. Mirrors ADR-0020 §2's built-in kind→class table for the
-/// three classes the enum enumerates:
-///
-/// - kind:818 / 30818 / 30819 → [`EventClass::Wiki`]
-/// - kind:1234 / 31234       → [`EventClass::Draft`]
-/// - everything else         → [`EventClass::Other("explicit")`]
-///
-/// `EventClass::Search` has no canonical publish kind (search is a
-/// REQ-only operation), so it never appears here. The fallback string
-/// `"explicit"` matches [`RoutedRelaySet::from_explicit`]'s pre-existing
-/// label so the on-the-wire JSON projection
-/// (`nmp_core::kernel::routing_trace_dto::event_class_to_json`) is
-/// stable for callers that already relied on the prior label.
-fn classify_kind(kind: u32) -> EventClass {
-    match kind {
-        818 | 30_818 | 30_819 => EventClass::Wiki,
-        1234 | 31_234 => EventClass::Draft,
-        _ => EventClass::Other(String::from("explicit")),
-    }
-}
-
-/// Lane-5 specialisation of [`RoutedRelaySet::from_explicit`]: same
-/// blocked-relay post-filter, but the attributed `EventClass` is the
-/// classification of `kind` (not the placeholder `Other("explicit")`).
-/// Used by the publish path so a kind:30818 wiki forced through
-/// `explicit_targets` traces as `ClassRouted{Wiki, Explicit}` rather
-/// than `ClassRouted{Other("explicit"), Explicit}`.
-fn explicit_set_for_kind(
-    urls: &[String],
-    blocked: &nmp_core::substrate::BlockedRelaySet,
-    kind: u32,
-) -> RoutedRelaySet {
-    let class = classify_kind(kind);
-    let mut out = RoutedRelaySet::new();
-    for url in urls {
-        if blocked.contains(url) {
-            continue;
-        }
-        out.add(
-            url.clone(),
-            RoutingSource::ClassRouted {
-                class: class.clone(),
-                via: ClassRoutingPath::Explicit,
-            },
-        );
-    }
-    out
-}
+// D0 (#1493): the generic router must NOT carry a per-NIP kind→class table.
+// The previous `classify_kind` / `explicit_set_for_kind` helpers mapped wiki
+// (NIP-54: 818/30818/30819) and draft (NIP-37: 1234/31234) kinds to an
+// `EventClass` purely to decorate the V-51 routing TRACE — the routing
+// DECISION never depended on it (the relay set comes verbatim from
+// `ctx.explicit_targets`, URLs the NIP-aware caller already chose). Hardcoding
+// those NIP kinds in the substrate router was the layering violation.
+//
+// The explicit-targets publish path now attributes `ClassRouted{Other(
+// "explicit"), Explicit}` via [`RoutedRelaySet::from_explicit`] — identical to
+// the long-standing subscription-side `from_explicit` attribution, so the two
+// override paths are finally symmetric and the on-the-wire JSON projection
+// (`routing_trace_dto::event_class_to_json`) keeps emitting the stable
+// `"explicit"` label.
+//
+// TODO(#1493): to restore the cosmetic Wiki/Draft trace label without the
+// per-NIP table, thread an `explicit_class: Option<EventClass>` through
+// `RoutingContext` so the NIP-aware caller that populates `explicit_targets`
+// (nmp-nip17/nmp-nip29/nmp-marmot/nmp-nip50) also supplies its own class. That
+// field touches kernel constructors owned by the routing lane
+// (`kernel/mailboxes.rs`), so it is left as a follow-up for that lane.
 
 pub struct GenericOutboxRouter {
     /// V-51 phase 1 — optional trace observer fired after every successful
@@ -193,11 +166,12 @@ impl OutboxRouter for GenericOutboxRouter {
         // is zero-alloc, but .push() allocates; skip it when nobody reads.
         let tracing_active = self.trace_observer.is_some();
         let out = if let Some(explicit) = ctx.explicit_targets {
-            // §3.4 — the override seam. Skip the generic algorithm.
-            // Lane 5: classify `evt.kind` so the ClassRouted attribution
-            // carries the right EventClass (Wiki/Draft/Other), not the
-            // generic "explicit" placeholder.
-            explicit_set_for_kind(explicit, ctx.blocked_relays, evt.kind)
+            // §3.4 — the override seam. Skip the generic algorithm and return
+            // the caller-forced URLs attributed to `ClassRouted{Other(
+            // "explicit"), Explicit}` (blocked-relay post-filter applied). The
+            // router does not classify `evt.kind` — see the D0 note above
+            // `GenericOutboxRouter`.
+            RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays)
         } else {
             let mut out = RoutedRelaySet::new();
             let mut attempts: Vec<RouteAttempt> = Vec::new();
