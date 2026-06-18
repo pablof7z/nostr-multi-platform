@@ -38,3 +38,7 @@ android/.fastembed_cache/
 
 # Wiki raw capture log (proactive-context artifact; regenerated locally, never committed)
 docs/wiki/_citations.log
+
+# perf-sanity harness — never commit real account secrets or captured corpora
+scripts/perf-sanity/accounts.json
+artifacts/real-events.jsonl
