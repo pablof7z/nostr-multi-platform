@@ -100,10 +100,16 @@ const TIMEOUT_CODE: &str = "timeout";
 const AUTH_REQUIRED_CODE: &str = "auth-required";
 
 /// Permanent NIP-20 OK-false prefixes (engine gives up on these immediately).
+///
+/// `rate-limited` is deliberately NOT here: NIP-01 defines it as "slow down"
+/// (the relay is throttling, not rejecting the event), so it falls through to
+/// `AckClass::Transient` and is retried with exponential backoff. `pow` stays
+/// permanent because retrying the *same* signed event cannot satisfy a PoW
+/// requirement — adding PoW would re-sign the event into a different id, which
+/// is a separate publish, not a retry.
 const PERMANENT_CODES: &[&str] = &[
     "blocked",
     "pow",
-    "rate-limited",
     "restricted",
     "invalid",
     "duplicate",
@@ -118,10 +124,11 @@ const PERMANENT_CODES: &[&str] = &[
 pub(crate) enum AckClass {
     /// `auth-required` — re-auth via the active signer, retry once.
     AuthRequired,
-    /// Connection drop, socket reset, timeout, transient I/O — retry with
-    /// backoff. Default verdict for unknown codes (conservative).
+    /// Connection drop, socket reset, timeout, transient I/O, or a
+    /// `rate-limited` relay asking us to slow down — retry with backoff.
+    /// Default verdict for unknown codes (conservative).
     Transient,
-    /// `blocked` / `pow` / `rate-limited` / `restricted` / `invalid` /
+    /// `blocked` / `pow` / `restricted` / `invalid` /
     /// `duplicate` / `mute` — permanent rejection; do not retry, surface to
     /// the snapshot. Also: a successful ack (`ok=true`) is conceptually
     /// permanent but never reaches the classifier (the engine routes it to
