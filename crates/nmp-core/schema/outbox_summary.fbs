@@ -23,12 +23,9 @@ namespace nmp.kernel;
 //   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
 //         crates/nmp-core/schema/outbox_summary.fbs
 
+// ADR-0032 / doctrine §4.4: `title` and `subtitle` pre-formatted English
+// strings removed; shells derive display strings from the raw counters.
 table OutboxSummarySnapshot {
-  // Pre-formatted headline (e.g. `"Nothing waiting"`, `"3 pending publishes"`).
-  // Always non-empty (D1).
-  title:string;
-  // Pre-formatted explanatory subtitle. Always non-empty (D1).
-  subtitle:string;
   // Total in-flight publishes (sending + retrying + queued + failed).
   total:uint;
   // Count currently sending.

@@ -1,17 +1,92 @@
 import SwiftUI
 
 // Per-row UI for `NotificationsView`. Lifted into a sibling file so the
-// parent screen stays focused on the summary + section composition. All
-// projection-provided status labels (`statusLabel`, `attemptLabel`), the SF
-// Symbol name (`systemImage`), and the retry flag (`canRetry`) come from Rust
-// (`projections["publish_outbox"]`); these structs only choose status-driven
-// colors — presentation, not policy (aim.md §4.4: no kind-number switches in
-// Swift).
+// parent screen stays focused on the summary + section composition.
+//
+// ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`, `systemImage`
+// are no longer carried on the wire projection. This file owns the shell-side
+// presentation helpers (`kindTitle`, `iconName`, `preview`, `statusLabel`).
+// The kernel still owns policy: `canRetry`, raw `status` token, `attempt`
+// count. Presentation chooses colors (aim.md §4.4: no kind-number switches
+// drive _policy_ — only icon/label presentation here).
 //
 // ADR-0032 / V-115: `targetSummary` and `createdAtDisplay` were removed from
 // the Rust projection. The target relay count (`targetRelays`) and raw unix
 // seconds (`createdAt`) are provided instead; this view computes the display
 // string locally.
+
+// MARK: - Shell-side presentation helpers
+
+extension PublishOutboxItem {
+    /// Human-readable kind label. Shell-side equivalent of the removed
+    /// `publish_event_title()` Rust function.
+    var kindTitle: String {
+        switch kind {
+        case 0: return "Profile"
+        case 1: return "Note"
+        case 6: return "Repost"
+        case 7: return "Reaction"
+        case 9735: return "Zap"
+        case 30023: return "Article"
+        default: return "Event"
+        }
+    }
+
+    /// SF Symbol name for the event kind. Shell-side equivalent of the removed
+    /// `publish_event_system_image()` Rust function.
+    var iconName: String {
+        switch kind {
+        case 0: return "person.crop.circle"
+        case 1: return "text.bubble"
+        case 6: return "arrow.2.squarepath"
+        case 7: return "heart"
+        case 9735: return "bolt"
+        case 30023: return "doc.text"
+        default: return "doc.text"
+        }
+    }
+
+    /// Preview string derived from raw content. Shell-side equivalent of the
+    /// removed `publish_event_preview()` Rust function.
+    var previewText: String {
+        content.isEmpty ? "(no content)" : content
+    }
+
+    /// Human-readable status label. Shell-side equivalent of the removed
+    /// `publish_outbox_status_label()` Rust function.
+    var statusLabel: String {
+        switch status {
+        case "sending": return "Sending"
+        case "retrying": return "Retrying"
+        case "queued": return "Queued"
+        case "failed": return "Failed"
+        default: return status.capitalized
+        }
+    }
+}
+
+extension PublishOutboxRelay {
+    /// Human-readable status label for this relay row. Shell-side equivalent
+    /// of the removed `publish_outbox_relay_status_label()` Rust function.
+    var statusLabel: String {
+        switch status {
+        case "sending": return "Sending"
+        case "ok": return "OK"
+        case "retrying": return "Retrying"
+        case "pending": return "Pending"
+        case "failed": return "Failed"
+        default: return status.capitalized
+        }
+    }
+
+    /// "try N" badge text — empty when `attempt == 0`. Shell-side equivalent
+    /// of the removed `publish_outbox_attempt_label()` Rust function.
+    var attemptLabel: String {
+        attempt == 0 ? "" : "try \(attempt)"
+    }
+}
+
+// MARK: - Views
 
 struct OutboxEventRow: View {
     let item: PublishOutboxItem
@@ -23,16 +98,13 @@ struct OutboxEventRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: item.systemImage)
+                Image(systemName: item.iconName)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(iconColor)
                     .frame(width: 22)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    // The raw protocol "kind <n>" was removed — it's an
-                    // implementation detail, not a user-facing label. The
-                    // human title carries the meaning.
-                    Text(item.title)
+                    Text(item.kindTitle)
                         .font(.headline)
                     // ADR-0032 / V-115: compute locally from raw relay count + unix seconds.
                     Text(targetSummary)
@@ -44,7 +116,7 @@ struct OutboxEventRow: View {
                 OutboxStatusBadge(label: item.statusLabel, status: item.status)
             }
 
-            Text(item.preview)
+            Text(item.previewText)
                 .font(.callout)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -146,7 +218,7 @@ struct OutboxRelayRow: View {
 }
 
 struct OutboxStatusBadge: View {
-    /// Pre-formatted label from `publish_outbox[].status_label`.
+    /// Shell-computed status label.
     let label: String
     /// Raw status key — color selection only.
     let status: String

@@ -1,10 +1,33 @@
 import SwiftUI
 
+// MARK: - OutboxSummary display helpers
+
+// ADR-0032 / doctrine §4.4: `title` and `subtitle` removed from the wire.
+// The shell computes them from the raw counters.
+extension OutboxSummary {
+    /// Primary headline for the outbox summary section.
+    var displayTitle: String {
+        if total == 0 { return "Nothing waiting" }
+        return total == 1 ? "1 pending publish" : "\(total) pending publishes"
+    }
+
+    /// Secondary subtitle describing the current breakdown.
+    var displaySubtitle: String {
+        if total == 0 { return "Your local outbox is clear." }
+        var parts: [String] = []
+        if sending > 0 { parts.append("\(sending) currently sending") }
+        if retrying > 0 { parts.append("\(retrying) retrying") }
+        if queued > 0 { parts.append("\(queued) queued") }
+        if failed > 0 { parts.append("\(failed) failed") }
+        return parts.joined(separator: ", ") + "."
+    }
+}
+
 /// Publish-outbox screen. Thin shell: Rust owns publish status, retry policy,
-/// and projection-provided row labels under `projections["outbox_summary"]`
-/// and `projections["publish_outbox"]`. The per-row UI lives in
-/// `NotificationsView+OutboxRow.swift` (color/SF-Symbol selection is
-/// presentation only).
+/// and raw counters under `projections["outbox_summary"]` and
+/// `projections["publish_outbox"]`. Display strings are computed here.
+/// The per-row UI lives in `NotificationsView+OutboxRow.swift` (color/SF-Symbol
+/// selection is presentation only).
 struct NotificationsView: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
@@ -51,9 +74,9 @@ struct NotificationsView: View {
                 .frame(width: 30)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(model.outboxSummary.title)
+                Text(model.outboxSummary.displayTitle)
                     .font(.headline)
-                Text(model.outboxSummary.subtitle)
+                Text(model.outboxSummary.displaySubtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -226,21 +226,8 @@ fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
     );
     let decoded_summary =
         decode_outbox_summary(&os.payload).expect("outbox_summary sidecar must decode");
-    // The kernel owns the English strings even with an empty outbox.
-    assert!(
-        !decoded_summary.title.is_empty(),
-        "outbox_summary.title is always non-empty (D1)"
-    );
-    assert_eq!(
-        os_json.get("title").and_then(serde_json::Value::as_str),
-        Some(decoded_summary.title.as_str()),
-        "typed and JSON outbox_summary.title must agree"
-    );
-    assert_eq!(
-        os_json.get("subtitle").and_then(serde_json::Value::as_str),
-        Some(decoded_summary.subtitle.as_str()),
-        "typed and JSON outbox_summary.subtitle must agree"
-    );
+    // ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings
+    // removed from the wire; only raw counters are asserted here.
     assert_eq!(
         os_json.get("total").and_then(serde_json::Value::as_u64),
         Some(u64::from(decoded_summary.total)),

@@ -109,27 +109,27 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── outbox_summary (KOXS) ────────────────────────────────────────────────
 
     func testTypedOutboxSummarySidecarDecodes() throws {
+        // ADR-0032 / doctrine §4.4: `title` / `subtitle` removed from the wire.
         let envelope = TypedProjectionEnvelope(
             key: TypedOutboxSummaryDecoder.key,
             schemaId: TypedOutboxSummaryDecoder.schemaId,
             schemaVersion: 1,
             fileIdentifier: TypedOutboxSummaryDecoder.fileIdentifier,
             payload: buildOutboxSummary(
-                title: "7 pending publishes",
-                subtitle: "Typed subtitle distinct from JSON",
                 total: 7, sending: 3, retrying: 2, queued: 1, failed: 1))
 
         let summary = try XCTUnwrap(
             TypedOutboxSummaryDecoder.decode(from: [envelope]),
             "well-formed KOXS sidecar must decode")
 
-        XCTAssertEqual(summary.title, "7 pending publishes")
-        XCTAssertEqual(summary.subtitle, "Typed subtitle distinct from JSON")
         XCTAssertEqual(summary.total, 7)
         XCTAssertEqual(summary.sending, 3)
         XCTAssertEqual(summary.retrying, 2)
         XCTAssertEqual(summary.queued, 1)
         XCTAssertEqual(summary.failed, 1)
+        // Shell-computed display strings:
+        XCTAssertEqual(summary.displayTitle, "7 pending publishes")
+        XCTAssertTrue(summary.displaySubtitle.contains("3 currently sending"))
     }
 
     func testAbsentOutboxSummarySidecarFallsBack() {
@@ -146,6 +146,8 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── publish_outbox (KPBO) ────────────────────────────────────────────────
 
     func testTypedPublishOutboxSidecarDecodes() throws {
+        // ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`,
+        // `systemImage` removed from the wire; `content` added.
         let envelope = TypedProjectionEnvelope(
             key: TypedPublishOutboxDecoder.key,
             schemaId: TypedPublishOutboxDecoder.schemaId,
@@ -162,33 +164,37 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertEqual(item.handle, "typed-handle-1")
         XCTAssertEqual(item.eventId, "typed-event-1")
         XCTAssertEqual(item.kind, 1)
-        XCTAssertEqual(item.title, "Typed Note")
-        XCTAssertEqual(item.preview, "typed preview")
+        XCTAssertEqual(item.content, "typed content body")
         // ADR-0032 / V-115: `createdAtDisplay`/`targetSummary` removed; assert
         // raw unix-seconds and relay count instead.
         XCTAssertEqual(item.createdAt, 1_700_000_000)
         XCTAssertEqual(item.status, "sending")
-        XCTAssertEqual(item.statusLabel, "Sending")
-        XCTAssertEqual(item.systemImage, "paperplane")
         XCTAssertTrue(item.canRetry)
         XCTAssertEqual(item.targetRelays, 2)
         XCTAssertEqual(item.relays.count, 2)
+        // Shell-computed display helpers:
+        XCTAssertEqual(item.kindTitle, "Note")
+        XCTAssertEqual(item.iconName, "text.bubble")
+        XCTAssertEqual(item.statusLabel, "Sending")
 
         XCTAssertEqual(item.relays[0].relayUrl, "wss://typed-r1")
         XCTAssertEqual(item.relays[0].status, "sending")
-        XCTAssertEqual(item.relays[0].statusLabel, "Sending")
         XCTAssertEqual(item.relays[0].attempt, 0)
-        XCTAssertEqual(item.relays[0].attemptLabel, "")
         XCTAssertEqual(item.relays[0].message, "typed msg")
         XCTAssertEqual(item.relays[0].relayReason, "typed reason")
+        // Shell-computed relay display helpers:
+        XCTAssertEqual(item.relays[0].statusLabel, "Sending")
+        XCTAssertEqual(item.relays[0].attemptLabel, "")
 
         // Second relay leaves `relayReason` empty — the producer's
         // `skip_serializing_if` field carried as the empty string the JSON path
         // would also yield (parity).
         XCTAssertEqual(item.relays[1].relayUrl, "wss://typed-r2")
         XCTAssertEqual(item.relays[1].attempt, 3)
-        XCTAssertEqual(item.relays[1].attemptLabel, "try 3")
         XCTAssertEqual(item.relays[1].relayReason, "")
+        // Shell-computed:
+        XCTAssertEqual(item.relays[1].attemptLabel, "try 3")
+        XCTAssertEqual(item.relays[1].statusLabel, "Retrying")
     }
 
     func testAbsentPublishOutboxSidecarFallsBack() {
@@ -280,60 +286,52 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     }
 
     private func buildOutboxSummary(
-        title: String, subtitle: String, total: UInt32, sending: UInt32,
+        total: UInt32, sending: UInt32,
         retrying: UInt32, queued: UInt32, failed: UInt32
     ) -> Data {
+        // ADR-0032 / doctrine §4.4: `title` / `subtitle` removed from the wire.
         var fbb = FlatBufferBuilder(initialSize: 256)
-        let titleOff = fbb.create(string: title)
-        let subtitleOff = fbb.create(string: subtitle)
         let root = nmp_kernel_OutboxSummarySnapshot.createOutboxSummarySnapshot(
-            &fbb, titleOffset: titleOff, subtitleOffset: subtitleOff,
-            total: total, sending: sending, retrying: retrying,
+            &fbb, total: total, sending: sending, retrying: retrying,
             queued: queued, failed: failed)
         nmp_kernel_OutboxSummarySnapshot.finish(&fbb, end: root)
         return fbb.data
     }
 
     private func buildPublishOutbox() -> Data {
+        // ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`,
+        // `systemImage`, relay `statusLabel`, relay `attemptLabel` removed.
+        // `content` added to item.
         var fbb = FlatBufferBuilder(initialSize: 1024)
 
         let r1Url = fbb.create(string: "wss://typed-r1")
         let r1Status = fbb.create(string: "sending")
-        let r1Label = fbb.create(string: "Sending")
         let r1Msg = fbb.create(string: "typed msg")
         let r1Reason = fbb.create(string: "typed reason")
         let r1 = nmp_kernel_PublishOutboxRelay.createPublishOutboxRelay(
             &fbb, relayUrlOffset: r1Url, statusOffset: r1Status,
-            statusLabelOffset: r1Label, attempt: 0, attemptLabelOffset: Offset(),
-            messageOffset: r1Msg, relayReasonOffset: r1Reason)
+            attempt: 0, messageOffset: r1Msg, relayReasonOffset: r1Reason)
 
         let r2Url = fbb.create(string: "wss://typed-r2")
         let r2Status = fbb.create(string: "retrying")
-        let r2Label = fbb.create(string: "Retrying")
-        let r2AttemptLabel = fbb.create(string: "try 3")
         let r2Msg = fbb.create(string: "")
         // relayReason intentionally omitted (Offset()) → decodes to "".
         let r2 = nmp_kernel_PublishOutboxRelay.createPublishOutboxRelay(
             &fbb, relayUrlOffset: r2Url, statusOffset: r2Status,
-            statusLabelOffset: r2Label, attempt: 3, attemptLabelOffset: r2AttemptLabel,
-            messageOffset: r2Msg, relayReasonOffset: Offset())
+            attempt: 3, messageOffset: r2Msg, relayReasonOffset: Offset())
 
         let relaysVec = fbb.createVector(ofOffsets: [r1, r2])
 
         let handle = fbb.create(string: "typed-handle-1")
         let eventId = fbb.create(string: "typed-event-1")
-        let title = fbb.create(string: "Typed Note")
-        let preview = fbb.create(string: "typed preview")
+        let content = fbb.create(string: "typed content body")
         // ADR-0032 / V-115: use raw unix seconds; no createdAtDisplay/targetSummary.
         let status = fbb.create(string: "sending")
-        let statusLabel = fbb.create(string: "Sending")
-        let systemImage = fbb.create(string: "paperplane")
         let item = nmp_kernel_PublishOutboxItem.createPublishOutboxItem(
             &fbb, handleOffset: handle, eventIdOffset: eventId, kind: 1,
-            titleOffset: title, previewOffset: preview,
-            statusOffset: status, statusLabelOffset: statusLabel,
-            systemImageOffset: systemImage, canRetry: true, targetRelays: 2,
-            relaysVectorOffset: relaysVec, createdAt: 1_700_000_000)
+            statusOffset: status, canRetry: true, targetRelays: 2,
+            relaysVectorOffset: relaysVec, createdAt: 1_700_000_000,
+            contentOffset: content)
 
         let itemsVec = fbb.createVector(ofOffsets: [item])
         let root = nmp_kernel_PublishOutboxSnapshot.createPublishOutboxSnapshot(

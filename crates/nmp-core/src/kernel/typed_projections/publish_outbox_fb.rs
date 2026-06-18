@@ -50,9 +50,7 @@ pub const PUBLISH_OUTBOX_SCHEMA_VERSION: u32 = 1;
 pub struct PublishOutboxRelayRow {
     pub relay_url: String,
     pub status: String,
-    pub status_label: String,
     pub attempt: u32,
-    pub attempt_label: String,
     pub message: String,
     pub relay_reason: String,
 }
@@ -63,19 +61,21 @@ pub struct PublishOutboxRelayRow {
 /// V-115 / ADR-0032: `created_at_display` and `target_summary` fully
 /// removed from the schema. `created_at` (raw Unix-seconds u64) carries
 /// the timestamp; shells format with their own locale.
+/// ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+/// `status_label` pre-formatted strings removed; `content` (raw event
+/// content) added so shells can render their own presentation.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PublishOutboxItemRow {
     pub handle: String,
     pub event_id: String,
     pub kind: u32,
-    pub title: String,
-    pub preview: String,
+    /// Raw verbatim event content. Shells format for display (truncation,
+    /// encrypted-content placeholder, kind-specific preview, etc.).
+    pub content: String,
     /// Raw Unix-seconds creation timestamp (ADR-0032). Replaces
     /// `created_at_display`; shells format with their own locale + TZ.
     pub created_at: u64,
     pub status: String,
-    pub status_label: String,
-    pub system_image: String,
     pub can_retry: bool,
     pub target_relays: u32,
     pub relays: Vec<PublishOutboxRelayRow>,
@@ -107,8 +107,6 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
                 .map(|relay| {
                     let relay_url = fbb.create_string(&relay.relay_url);
                     let status = fbb.create_string(&relay.status);
-                    let status_label = fbb.create_string(&relay.status_label);
-                    let attempt_label = fbb.create_string(&relay.attempt_label);
                     let message = fbb.create_string(&relay.message);
                     let relay_reason = fbb.create_string(&relay.relay_reason);
                     fb::PublishOutboxRelay::create(
@@ -116,11 +114,10 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
                         &fb::PublishOutboxRelayArgs {
                             relay_url: Some(relay_url),
                             status: Some(status),
-                            status_label: Some(status_label),
                             attempt: relay.attempt,
-                            attempt_label: Some(attempt_label),
                             message: Some(message),
                             relay_reason: Some(relay_reason),
+                            ..Default::default()
                         },
                     )
                 })
@@ -129,29 +126,26 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
 
             let handle = fbb.create_string(&item.handle);
             let event_id = fbb.create_string(&item.event_id);
-            let title = fbb.create_string(&item.title);
-            let preview = fbb.create_string(&item.preview);
+            let content = fbb.create_string(&item.content);
             let status = fbb.create_string(&item.status);
-            let status_label = fbb.create_string(&item.status_label);
-            let system_image = fbb.create_string(&item.system_image);
             // V-115 / ADR-0032: `created_at_display` and `target_summary`
             // removed from schema (fully deleted, not tombstoned). Pass raw
             // `created_at` (uint64) so shells format with their own locale.
+            // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+            // `status_label` removed; `content` (raw event content) added.
             fb::PublishOutboxItem::create(
                 &mut fbb,
                 &fb::PublishOutboxItemArgs {
                     handle: Some(handle),
                     event_id: Some(event_id),
                     kind: item.kind,
-                    title: Some(title),
-                    preview: Some(preview),
+                    content: Some(content),
                     status: Some(status),
-                    status_label: Some(status_label),
-                    system_image: Some(system_image),
                     can_retry: item.can_retry,
                     target_relays: item.target_relays,
                     relays: Some(relays),
                     created_at: item.created_at,
+                    ..Default::default()
                 },
             )
         })
@@ -189,9 +183,7 @@ pub fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String>
                     relays.push(PublishOutboxRelayRow {
                         relay_url: relay.relay_url().unwrap_or_default().to_string(),
                         status: relay.status().unwrap_or_default().to_string(),
-                        status_label: relay.status_label().unwrap_or_default().to_string(),
                         attempt: relay.attempt(),
-                        attempt_label: relay.attempt_label().unwrap_or_default().to_string(),
                         message: relay.message().unwrap_or_default().to_string(),
                         relay_reason: relay.relay_reason().unwrap_or_default().to_string(),
                     });
@@ -199,16 +191,15 @@ pub fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String>
             }
             // V-115 / ADR-0032: `created_at_display` and `target_summary`
             // removed from schema; decode `created_at` (raw uint64).
+            // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+            // `status_label` removed; `content` added.
             items.push(PublishOutboxItemRow {
                 handle: item.handle().unwrap_or_default().to_string(),
                 event_id: item.event_id().unwrap_or_default().to_string(),
                 kind: item.kind(),
-                title: item.title().unwrap_or_default().to_string(),
-                preview: item.preview().unwrap_or_default().to_string(),
+                content: item.content().unwrap_or_default().to_string(),
                 created_at: item.created_at(),
                 status: item.status().unwrap_or_default().to_string(),
-                status_label: item.status_label().unwrap_or_default().to_string(),
-                system_image: item.system_image().unwrap_or_default().to_string(),
                 can_retry: item.can_retry(),
                 target_relays: item.target_relays(),
                 relays,
