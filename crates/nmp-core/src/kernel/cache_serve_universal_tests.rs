@@ -212,6 +212,23 @@ fn open_interest(kernel: &mut Kernel, seed: u64, shape: InterestShape) -> bool {
     kernel.open_interest_sub(sub_identity(seed), interest)
 }
 
+/// Enqueue a single cache-serve interest via `register_interest`.
+///
+/// Wraps the `&[InterestRegistration { identity, interest, policy }]` boilerplate
+/// shared by every call site. `policy` is always `EnsureAbsent` (install a fresh
+/// slot so `changed=true` fires the serve — the right semantic for test phases
+/// that deliberately use distinct keys to bypass the idempotency guard).
+fn register_one(kernel: &mut Kernel, owner: &'static str, key: SubKey, shape: InterestShape, reason: &'static str) {
+    kernel.register_interest(
+        &[InterestRegistration {
+            identity: SubIdentity::new(SubOwnerKey::new(owner), key, SubScope::Global),
+            interest: LogicalInterest { shape, ..Default::default() },
+            policy: InterestWrite::EnsureAbsent,
+        }],
+        reason,
+    );
+}
+
 // ─── The universal acceptance test ───────────────────────────────────────────
 
 /// ADR-0045 §8 / issue #1086 — v1 exit criterion.
@@ -403,86 +420,31 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
 
     // E3 — thread: register Etag interest with a fresh key → newly_installed=true.
     {
-        let mut thread_shape = InterestShape {
-            kinds: BTreeSet::from([1u32]),
-            ..Default::default()
-        };
-        thread_shape
-            .tags
-            .insert("e".to_string(), BTreeSet::from([parent_id_hex.clone()]));
+        let mut thread_shape = InterestShape { kinds: BTreeSet::from([1u32]), ..Default::default() };
+        thread_shape.tags.insert("e".to_string(), BTreeSet::from([parent_id_hex.clone()]));
         let thread_key = SubKey::new(("thread-phase3", &parent_id_hex));
-        kernel.register_interest(
-            &[InterestRegistration {
-                identity: SubIdentity::new(
-                    SubOwnerKey::new("test-thread-phase3"),
-                    thread_key,
-                    SubScope::Global,
-                ),
-                interest: LogicalInterest {
-                    shape: thread_shape,
-                    ..Default::default()
-                },
-                policy: InterestWrite::EnsureAbsent,
-            }],
-            "test-phase3-thread",
-        );
+        register_one(&mut kernel, "test-thread-phase3", thread_key, thread_shape, "test-phase3-thread");
     }
 
     // E3 — long-form: register KindDtag interest with a fresh key.
     {
         let author_for_longform = sender_keys.public_key().to_hex();
-        let mut longform_shape = InterestShape {
-            kinds: BTreeSet::from([30023u32]),
-            ..Default::default()
-        };
+        let mut longform_shape = InterestShape { kinds: BTreeSet::from([30023u32]), ..Default::default() };
         longform_shape.addresses.insert(NaddrCoord {
             pubkey: author_for_longform.clone(),
             kind: 30023,
             d_tag: d_tag.to_string(),
         });
         let lf_key = SubKey::new(("longform-phase3", &author_for_longform, d_tag));
-        kernel.register_interest(
-            &[InterestRegistration {
-                identity: SubIdentity::new(
-                    SubOwnerKey::new("test-longform-phase3"),
-                    lf_key,
-                    SubScope::Global,
-                ),
-                interest: LogicalInterest {
-                    shape: longform_shape,
-                    ..Default::default()
-                },
-                policy: InterestWrite::EnsureAbsent,
-            }],
-            "test-phase3-longform",
-        );
+        register_one(&mut kernel, "test-longform-phase3", lf_key, longform_shape, "test-phase3-longform");
     }
 
     // E2 — DM inbox: register Ptag interest with a fresh key.
     {
-        let mut dm_shape = InterestShape {
-            kinds: BTreeSet::from([1059u32]),
-            ..Default::default()
-        };
-        dm_shape
-            .tags
-            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let mut dm_shape = InterestShape { kinds: BTreeSet::from([1059u32]), ..Default::default() };
+        dm_shape.tags.insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
         let dm_key = SubKey::new(("dm-phase3", &receiver_hex));
-        kernel.register_interest(
-            &[InterestRegistration {
-                identity: SubIdentity::new(
-                    SubOwnerKey::new("test-dm-phase3"),
-                    dm_key,
-                    SubScope::Global,
-                ),
-                interest: LogicalInterest {
-                    shape: dm_shape,
-                    ..Default::default()
-                },
-                policy: InterestWrite::EnsureAbsent,
-            }],
-            "test-phase3-dm",
-        );
+        register_one(&mut kernel, "test-dm-phase3", dm_key, dm_shape, "test-phase3-dm");
     }
 
     // Drain: `sync_follow_feed_interests` ran one synchronous step; continue
@@ -593,29 +555,10 @@ fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
 
     // ── Phase 3: register interest and drain cache-serve for kind:1059 ──────────
     {
-        let mut dm_shape = InterestShape {
-            kinds: BTreeSet::from([1059u32]),
-            ..Default::default()
-        };
-        dm_shape
-            .tags
-            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let mut dm_shape = InterestShape { kinds: BTreeSet::from([1059u32]), ..Default::default() };
+        dm_shape.tags.insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
         let dm_key = SubKey::new(("ingest-parser-test", &receiver_hex));
-        kernel.register_interest(
-            &[InterestRegistration {
-                identity: SubIdentity::new(
-                    SubOwnerKey::new("test-ingest-parser"),
-                    dm_key,
-                    SubScope::Global,
-                ),
-                interest: LogicalInterest {
-                    shape: dm_shape,
-                    ..Default::default()
-                },
-                policy: InterestWrite::EnsureAbsent,
-            }],
-            "test-ingest-parser-dm",
-        );
+        register_one(&mut kernel, "test-ingest-parser", dm_key, dm_shape, "test-ingest-parser-dm");
     }
     drain_cache_serves(&mut kernel, 10);
 
