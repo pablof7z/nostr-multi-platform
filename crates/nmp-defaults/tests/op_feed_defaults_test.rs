@@ -329,7 +329,7 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
 
 // ─── 5. load_older losslessness: typed sidecar reflects the grown window ──────
 
-/// Regression guard for escape hatch #2 elimination (PR #1515).
+/// Regression guard for escape hatch #2 elimination (PR #1525).
 ///
 /// The deleted JSON producer (`FeedController::snapshot_json`) used
 /// `snapshot_current_window()` internally — it honored any prior `load_older`

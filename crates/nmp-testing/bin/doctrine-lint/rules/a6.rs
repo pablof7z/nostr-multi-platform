@@ -2,7 +2,7 @@
 //!
 //! The generic (`serde_json::Value`) projection lane
 //! (`register_snapshot_projection` / `ProjectionFn` / `SnapshotRegistry::register` /
-//! `KernelSnapshot::projections`) was eliminated in PR #1515 (escape hatch #2).
+//! `KernelSnapshot::projections`) was eliminated in PR #1525 (escape hatch #2).
 //! The FlatBuffers wire schema deleted `payload:Value` from `SnapshotFrame` so
 //! the lane was never wire-encoded; the Rust-internal producer code is now gone.
 //! Only the typed FlatBuffers lane (`register_typed_snapshot_projection` /

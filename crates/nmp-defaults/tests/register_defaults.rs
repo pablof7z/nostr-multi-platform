@@ -131,7 +131,7 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
 /// (`AppHost::register_snapshot_tick_observer`) because it only diffs the active
 /// pubkey and enqueues `PushInterest` / `WithdrawInterest` — it produced no
 /// projection data. After the re-home (and with the entire JSON lane deleted per
-/// rule A6 / PR #1515), `"nmp.nip57.zap_subscription"` must NOT appear in the
+/// rule A6 / PR #1525), `"nmp.nip57.zap_subscription"` must NOT appear in the
 /// typed projection registry at all.
 #[test]
 fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {

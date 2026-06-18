@@ -164,7 +164,7 @@ fn typed_sidecar_is_present_and_empty_when_slot_is_none() {
 
 #[test]
 fn typed_sidecar_carries_the_expected_resolved_map() {
-    // The JSON lane was deleted in PR #1515 (escape hatch #2 eliminated).
+    // The JSON lane was deleted in PR #1525 (escape hatch #2 eliminated).
     // This test proves the typed FlatBuffers sidecar carries the correct
     // resolved entries for all three supported embed kinds.
     let slot = new_embed_sidecar_slot();
