@@ -29,154 +29,130 @@ wireId(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-shortWireId():string|null
-shortWireId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-shortWireId(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 6);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 relayUrl():string|null
 relayUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 relayUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 filterSummary():string|null
 filterSummary(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 filterSummary(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-stateLabel():string|null
-stateLabel(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-stateLabel(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+state():string|null
+state(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+state(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 stateTone():string|null
 stateTone(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 stateTone(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 12);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+consumerCount():number {
   const offset = this.bb!.__offset(this.bb_pos, 14);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
-consumerCountLabel():string|null
-consumerCountLabel(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-consumerCountLabel(optionalEncoding?:any):string|Uint8Array|null {
+eventsRx():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 16);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-hasEventsRxDisplay():boolean {
+eoseObserved():boolean {
   const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-eventsRxDisplay():string|null
-eventsRxDisplay(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-eventsRxDisplay(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-eoseObserved():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
 openedMs():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 lastEventMs():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 eoseMs():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 hasCloseReason():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 closeReason():string|null
 closeReason(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 closeReason(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 28);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startRelayDiagnosticsWireSub(builder:flatbuffers.Builder) {
-  builder.startObject(15);
+  builder.startObject(13);
 }
 
 static addWireId(builder:flatbuffers.Builder, wireIdOffset:flatbuffers.Offset) {
   builder.addFieldOffset(0, wireIdOffset, 0);
 }
 
-static addShortWireId(builder:flatbuffers.Builder, shortWireIdOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(1, shortWireIdOffset, 0);
-}
-
 static addRelayUrl(builder:flatbuffers.Builder, relayUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, relayUrlOffset, 0);
+  builder.addFieldOffset(1, relayUrlOffset, 0);
 }
 
 static addFilterSummary(builder:flatbuffers.Builder, filterSummaryOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, filterSummaryOffset, 0);
+  builder.addFieldOffset(2, filterSummaryOffset, 0);
 }
 
-static addStateLabel(builder:flatbuffers.Builder, stateLabelOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, stateLabelOffset, 0);
+static addState(builder:flatbuffers.Builder, stateOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(3, stateOffset, 0);
 }
 
 static addStateTone(builder:flatbuffers.Builder, stateToneOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, stateToneOffset, 0);
+  builder.addFieldOffset(4, stateToneOffset, 0);
 }
 
-static addConsumerCountLabel(builder:flatbuffers.Builder, consumerCountLabelOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, consumerCountLabelOffset, 0);
+static addConsumerCount(builder:flatbuffers.Builder, consumerCount:number) {
+  builder.addFieldInt32(5, consumerCount, 0);
 }
 
-static addHasEventsRxDisplay(builder:flatbuffers.Builder, hasEventsRxDisplay:boolean) {
-  builder.addFieldInt8(7, +hasEventsRxDisplay, +false);
-}
-
-static addEventsRxDisplay(builder:flatbuffers.Builder, eventsRxDisplayOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(8, eventsRxDisplayOffset, 0);
+static addEventsRx(builder:flatbuffers.Builder, eventsRx:bigint) {
+  builder.addFieldInt64(6, eventsRx, BigInt('0'));
 }
 
 static addEoseObserved(builder:flatbuffers.Builder, eoseObserved:boolean) {
-  builder.addFieldInt8(9, +eoseObserved, +false);
+  builder.addFieldInt8(7, +eoseObserved, +false);
 }
 
 static addOpenedMs(builder:flatbuffers.Builder, openedMs:bigint) {
-  builder.addFieldInt64(10, openedMs, BigInt('0'));
+  builder.addFieldInt64(8, openedMs, BigInt('0'));
 }
 
 static addLastEventMs(builder:flatbuffers.Builder, lastEventMs:bigint) {
-  builder.addFieldInt64(11, lastEventMs, BigInt('0'));
+  builder.addFieldInt64(9, lastEventMs, BigInt('0'));
 }
 
 static addEoseMs(builder:flatbuffers.Builder, eoseMs:bigint) {
-  builder.addFieldInt64(12, eoseMs, BigInt('0'));
+  builder.addFieldInt64(10, eoseMs, BigInt('0'));
 }
 
 static addHasCloseReason(builder:flatbuffers.Builder, hasCloseReason:boolean) {
-  builder.addFieldInt8(13, +hasCloseReason, +false);
+  builder.addFieldInt8(11, +hasCloseReason, +false);
 }
 
 static addCloseReason(builder:flatbuffers.Builder, closeReasonOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(14, closeReasonOffset, 0);
+  builder.addFieldOffset(12, closeReasonOffset, 0);
 }
 
 static endRelayDiagnosticsWireSub(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -184,17 +160,15 @@ static endRelayDiagnosticsWireSub(builder:flatbuffers.Builder):flatbuffers.Offse
   return offset;
 }
 
-static createRelayDiagnosticsWireSub(builder:flatbuffers.Builder, wireIdOffset:flatbuffers.Offset, shortWireIdOffset:flatbuffers.Offset, relayUrlOffset:flatbuffers.Offset, filterSummaryOffset:flatbuffers.Offset, stateLabelOffset:flatbuffers.Offset, stateToneOffset:flatbuffers.Offset, consumerCountLabelOffset:flatbuffers.Offset, hasEventsRxDisplay:boolean, eventsRxDisplayOffset:flatbuffers.Offset, eoseObserved:boolean, openedMs:bigint, lastEventMs:bigint, eoseMs:bigint, hasCloseReason:boolean, closeReasonOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createRelayDiagnosticsWireSub(builder:flatbuffers.Builder, wireIdOffset:flatbuffers.Offset, relayUrlOffset:flatbuffers.Offset, filterSummaryOffset:flatbuffers.Offset, stateOffset:flatbuffers.Offset, stateToneOffset:flatbuffers.Offset, consumerCount:number, eventsRx:bigint, eoseObserved:boolean, openedMs:bigint, lastEventMs:bigint, eoseMs:bigint, hasCloseReason:boolean, closeReasonOffset:flatbuffers.Offset):flatbuffers.Offset {
   RelayDiagnosticsWireSub.startRelayDiagnosticsWireSub(builder);
   RelayDiagnosticsWireSub.addWireId(builder, wireIdOffset);
-  RelayDiagnosticsWireSub.addShortWireId(builder, shortWireIdOffset);
   RelayDiagnosticsWireSub.addRelayUrl(builder, relayUrlOffset);
   RelayDiagnosticsWireSub.addFilterSummary(builder, filterSummaryOffset);
-  RelayDiagnosticsWireSub.addStateLabel(builder, stateLabelOffset);
+  RelayDiagnosticsWireSub.addState(builder, stateOffset);
   RelayDiagnosticsWireSub.addStateTone(builder, stateToneOffset);
-  RelayDiagnosticsWireSub.addConsumerCountLabel(builder, consumerCountLabelOffset);
-  RelayDiagnosticsWireSub.addHasEventsRxDisplay(builder, hasEventsRxDisplay);
-  RelayDiagnosticsWireSub.addEventsRxDisplay(builder, eventsRxDisplayOffset);
+  RelayDiagnosticsWireSub.addConsumerCount(builder, consumerCount);
+  RelayDiagnosticsWireSub.addEventsRx(builder, eventsRx);
   RelayDiagnosticsWireSub.addEoseObserved(builder, eoseObserved);
   RelayDiagnosticsWireSub.addOpenedMs(builder, openedMs);
   RelayDiagnosticsWireSub.addLastEventMs(builder, lastEventMs);
