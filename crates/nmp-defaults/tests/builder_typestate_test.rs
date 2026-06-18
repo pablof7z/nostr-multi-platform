@@ -35,6 +35,7 @@ fn start_default() -> *mut nmp_ffi::NmpApp {
     let app = NmpAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
+        .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() returned null pointer");
     app
@@ -59,6 +60,7 @@ fn builder_storage_path_start_returns_non_null() {
     let app = NmpAppBuilder::new()
         .storage_path("/tmp/nmp_test_v94")
         .consume_all_builtin_projections()
+        .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() returned null after storage_path()");
     nmp_app_stop(app);
@@ -77,6 +79,7 @@ fn builder_implements_apphost_for_register_defaults() {
         builder
             .in_memory()
             .consume_all_builtin_projections()
+            .without_initial_relays()
             .start(RunConfig::default())
     };
     assert!(!app.is_null());
@@ -126,6 +129,7 @@ fn builder_full_pipeline_with_register_defaults_and_custom_run_config() {
         builder
             .in_memory()
             .consume_all_builtin_projections()
+            .without_initial_relays()
             .start(cfg)
     };
     assert!(!app.is_null());
@@ -143,6 +147,7 @@ fn builder_declare_consumed_projections_narrows_and_advances_typestate() {
     let app = NmpAppBuilder::new()
         .in_memory()
         .declare_consumed_projections(["profile", "accounts"])
+        .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null());
     // SAFETY: `nmp_app_start` returned non-null; the pointer is valid for the
@@ -166,6 +171,7 @@ fn builder_consume_all_builtin_projections_is_not_narrowing() {
     let app = NmpAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
+        .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null());
     // SAFETY: non-null pointer from start(); freed below.
@@ -175,6 +181,34 @@ fn builder_consume_all_builtin_projections_is_not_narrowing() {
     );
     nmp_app_stop(app);
     nmp_app_free(app);
+}
+
+/// #1493 — `.with_relays(...)` is the typestate-advancing relay decision
+/// (`ProjectionsDeclared → RelaysDeclared`): it declares the app's initial
+/// relay set AND unlocks `.start()`. NMP supplies no relay default, so this is
+/// the only way (besides `.without_initial_relays()`) to reach `start()`.
+#[test]
+fn builder_with_relays_advances_typestate_and_starts() {
+    let app = NmpAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .with_relays([("wss://app-owned.relay/", "both")])
+        .start(RunConfig::default());
+    assert!(!app.is_null(), "with_relays → start must return non-null");
+    nmp_app_stop(app);
+    nmp_app_free(app);
+}
+
+/// #1493 — `.with_relays(empty)` panics: a no-relay start must be the explicit
+/// `.without_initial_relays()` choice, never a silent empty declaration.
+#[test]
+#[should_panic(expected = "without_initial_relays")]
+fn builder_with_relays_empty_panics() {
+    let _app = NmpAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .with_relays(Vec::<(String, String)>::new())
+        .start(RunConfig::default());
 }
 
 /// ADR-0053 DEBT 2 — declarations are additive across the trait method and the
@@ -194,6 +228,7 @@ fn builder_declared_projections_union_across_trait_and_typestate_methods() {
     let app = builder
         .in_memory()
         .declare_consumed_projections(["accounts"])
+        .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null());
     // SAFETY: non-null pointer from start(); freed below.

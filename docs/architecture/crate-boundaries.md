@@ -179,20 +179,37 @@ crate. If it is specific to one app's product domain, it belongs under
 
 ## 9. App Composition
 
-`nmp-defaults` is the canonical composition root for normal NMP apps. It
-wires the default router, planner, store, ingest parsers, action modules,
-coverage hook, raw-event forwarding policies, and default projections.
-Reducer-owned delivery roots that cannot implement the full AppHost tier
-(currently Chirp web) must call `nmp-substrate-defaults` for the shared
-router/mailbox/profile/contacts cache-parser floor; they must not hand-copy
-that construction.
+`nmp-defaults` is a reusable NMP composition library, **not a leaf
+application**. It wires generic NMP mechanisms — the default router, planner,
+store, ingest parsers, action modules, coverage hook, raw-event forwarding
+policies, default projections, and typed seams. Reducer-owned delivery roots
+that cannot implement the full AppHost tier (currently Chirp web) must call
+`nmp-substrate-defaults` for the shared router/mailbox/profile/contacts
+cache-parser floor; they must not hand-copy that construction.
+
+`nmp-defaults` (like `nmp-core` and every other NMP crate) **must not own
+operator policy facts** — relay URLs, nostrconnect bootstrap relay URLs, seed
+pubkeys, account auto-follow lists, or signer permission batches. Those facts
+belong only in leaf app Rust crates (`apps/<app>/...`, e.g.
+`apps/chirp/nmp-chirp-config`) or operator-provided app config (#1493). The
+`NmpAppBuilder` enforces this at compile time: an app must declare its initial
+relay set with `.with_relays(...)` or explicitly opt out with
+`.without_initial_relays()` before `start()` — there is no framework relay
+default to inherit silently.
 
 App crates under `apps/<app>/` compose `nmp-defaults` plus app-specific
-state. They may expose app-specific FFI helpers only for kernel-shaped observer,
-projection, opaque-handle, or lifecycle seams. Mutating product behavior should
-flow through registered actions or protocol commands.
+state **and own all operator policy** (relays, seed follows, signer perms).
+They may expose app-specific FFI helpers only for kernel-shaped observer,
+projection, opaque-handle, or lifecycle seams — including thin wrappers that
+inject the app's own operator policy into a generic command (e.g.
+`nmp_app_chirp_create_new_account` threading `chirp_default_follows` into
+`ActorCommand::CreateAccount`, mirroring `nmp_app_chirp_seed_default_relays`).
+Mutating product behavior should flow through registered actions or protocol
+commands.
 
-Native platform shells render Rust-owned state and execute capabilities only.
+Native platform shells render Rust-owned state and execute capabilities only;
+they never carry operator policy (relay URLs, seed pubkeys) — that originates
+in the leaf app's Rust crate and is injected by app-owned FFI.
 
 ---
 

@@ -122,6 +122,7 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
         true,
         &HashMap::new(),
         &relays,
+        &[],
         false,
         true,
     );

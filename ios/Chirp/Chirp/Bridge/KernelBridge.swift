@@ -367,7 +367,12 @@ final class KernelHandle {
         return String(cString: ptr)
     }
 
-    /// Dispatch a `nmp_app_create_new_account` call.
+    /// Dispatch a `nmp_app_chirp_create_new_account` call.
+    ///
+    /// Uses the Chirp-owned wrapper (not the generic `nmp_app_create_new_account`)
+    /// so the fresh account auto-follows Chirp's product seed set, which lives in
+    /// Rust (`nmp_chirp_config::chirp_default_follows`) — the seed pubkeys never
+    /// transit this shell (#1493).
     ///
     /// The profile + relays are encoded through the `CreateAccountFFIPayload`
     /// `Codable` struct so the exact wire shape (`{"name":"…"}` + `[[url,role],…]`)
@@ -409,7 +414,7 @@ final class KernelHandle {
         }
         profileStr.withCString { profilePtr in
             relaysStr.withCString { relaysPtr in
-                nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls, 1)
+                _ = nmp_app_chirp_create_new_account(raw, profilePtr, relaysPtr, mls, 1)
             }
         }
         return nil

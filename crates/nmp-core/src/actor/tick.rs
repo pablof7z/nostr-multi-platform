@@ -401,6 +401,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                 relays: vec![("wss://relay.primal.net".to_string(), "both".to_string())],
+                initial_follows: Vec::new(),
                 mls: false,
                 make_active: true,
             })

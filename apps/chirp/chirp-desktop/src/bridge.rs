@@ -236,21 +236,11 @@ impl AppRuntime {
     // ------------------------------------------------------------------
     // Account lifecycle
     // ------------------------------------------------------------------
-
-    pub fn create_account(
-        &self,
-        profile: std::collections::HashMap<String, String>,
-        relays: Vec<(String, String)>,
-    ) {
-        let name = profile.get("name").map(String::as_str).unwrap_or("");
-        let about = profile.get("about").map(String::as_str).unwrap_or("");
-        let picture = profile.get("picture").map(String::as_str).unwrap_or("");
-        let relay_pairs: Vec<(&str, &str)> = relays
-            .iter()
-            .map(|(url, role)| (url.as_str(), role.as_str()))
-            .collect();
-        let _ = self.client.create_account(name, about, picture, &relay_pairs);
-    }
+    //
+    // `create_account` lives in the sibling `bridge_accounts` module (another
+    // `impl AppRuntime` block) — it routes through the Chirp-owned C-ABI
+    // create-account wrapper and would otherwise push this file past the
+    // 500-LOC ceiling (#1493).
 
     pub fn sign_in_nsec(&self, secret: &str) {
         let _ = self.client.sign_in_nsec(secret);

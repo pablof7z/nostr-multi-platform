@@ -44,6 +44,13 @@ fn onboarding_relays() -> Vec<(String, String)> {
     ]
 }
 
+/// The product seed-follow set these tests exercise. NMP no longer hardcodes a
+/// default follow list (#1493) — `create_account` takes the follows as an
+/// app-supplied argument, so the tests own the fixture here.
+fn seed_follows() -> Vec<String> {
+    vec![SEED_NPUB_HEX.to_string(), FIATJAF_HEX.to_string()]
+}
+
 fn event_jsons_of_kind(outbound: &[crate::relay::OutboundMessage], kind: u64) -> Vec<Value> {
     outbound
         .iter()
@@ -116,6 +123,7 @@ fn create_account_installs_exact_default_followfeed_and_self() {
         false,
         &profile,
         &onboarding_relays(),
+        &seed_follows(),
         false,
         true,
     );
@@ -153,6 +161,7 @@ fn create_account_followfeed_uses_configured_relay_before_mailboxes_arrive() {
         false,
         &profile,
         &onboarding_relays(),
+        &seed_follows(),
         false,
         true,
     );
@@ -189,7 +198,16 @@ fn create_account_followfeed_probes_default_follow_mailboxes_via_indexer() {
         "wss://onboard-indexer.relay/".to_string(),
         "both,indexer".to_string(),
     )];
-    create_account(&mut identity, &mut kernel, false, &profile, &relays, false, true);
+    create_account(
+        &mut identity,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &seed_follows(),
+        false,
+        true,
+    );
 
     let frames = kernel.drain_lifecycle_tick();
     let reqs = reqs_by_relay(&frames);
@@ -216,6 +234,7 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
         false,
         &profile,
         &onboarding_relays(),
+        &seed_follows(),
         false,
         true,
     );
@@ -290,6 +309,7 @@ fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
         false,
         &profile,
         &onboarding_relays(),
+        &seed_follows(),
         false,
         true,
     );

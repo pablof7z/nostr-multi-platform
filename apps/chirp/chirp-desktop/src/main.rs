@@ -8,6 +8,7 @@
 
 mod app;
 mod bridge;
+mod bridge_accounts;
 mod diagnostics_flag;
 mod dm_panel;
 mod keyring;

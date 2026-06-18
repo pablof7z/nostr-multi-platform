@@ -380,14 +380,15 @@ fn register_defaults_with_toggles_skip_their_blocks() {
     }
 }
 
-/// A custom `nostrconnect_bootstrap_relay` is consumed without panic (the value,
-/// not the presence, is the knob — it is always wired). The relay value itself
-/// is not exposed through a read seam, so this guards the plumbing/consume path.
+/// A custom `nostrconnect_bootstrap_relay` is consumed without panic. The relay
+/// value itself is not exposed through a read seam, so this guards the
+/// plumbing/consume path. (#1493: the default is now `None` — NMP ships no relay
+/// URL — so a leaf app supplies `Some(url)` here.)
 #[test]
 fn register_defaults_with_accepts_custom_bootstrap_relay() {
     let app = nmp_app_new();
     let cfg = nmp_defaults::NmpDefaults {
-        nostrconnect_bootstrap_relay: "wss://relay.example.test".to_string(),
+        nostrconnect_bootstrap_relay: Some("wss://relay.example.test".to_string()),
         ..Default::default()
     };
     nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);

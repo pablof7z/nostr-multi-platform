@@ -6,13 +6,13 @@ use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
 use nmp_app_chirp::{
-    nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec,
-    nmp_app_chirp_open_tag_feed, nmp_app_nostrconnect_uri, nmp_marmot_register_active,
-    nmp_marmot_unregister, send_dm_spec, zap_spec,
+    nmp_app_cancel_bunker_handshake, nmp_app_chirp_create_new_account,
+    nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_open_tag_feed, nmp_app_nostrconnect_uri,
+    nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec, zap_spec,
 };
 use nmp_ffi::{
-    nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_remove_relay,
-    nmp_app_retry_publish, nmp_app_signin_nsec, nmp_free_string,
+    nmp_app_cancel_publish, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
+    nmp_free_string,
 };
 use serde_json::{json, Value};
 
@@ -80,7 +80,9 @@ impl AppRuntime {
             .collect();
         let relays = CString::new(Value::Array(relays_json).to_string())
             .map_err(|_| "relays JSON contains NUL byte".to_string())?;
-        nmp_app_create_new_account(self.app_ptr(), profile.as_ptr(), relays.as_ptr(), mls, 1);
+        // Chirp-owned wrapper injects Chirp's seed follows in Rust (#1493); the
+        // generic nmp_app_create_new_account auto-follows nobody.
+        nmp_app_chirp_create_new_account(self.app_ptr(), profile.as_ptr(), relays.as_ptr(), mls, 1);
         Ok(())
     }
 

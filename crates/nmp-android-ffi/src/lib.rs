@@ -37,9 +37,10 @@ mod signer;
 mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
+use nmp_app_chirp::nmp_app_chirp_create_new_account;
 use nmp_ffi::{
     NmpConfigStatus,
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_declare_incremental_apply,
+    nmp_app_add_relay, nmp_app_declare_incremental_apply,
     nmp_app_encode_profile, nmp_app_free, nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, nmp_free_string,
 };
@@ -210,9 +211,11 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "Android User".to_string());
-    // nmp_app_create_new_account expects:
+    // nmp_app_chirp_create_new_account expects:
     //   profile_json = {"name":"…"}
     //   relays_json  = [["url","role"],…]  (Vec<(String,String)> serde shape)
+    // The Chirp wrapper (not the generic nmp_app_create_new_account) injects
+    // Chirp's product seed follows from nmp-chirp-config in Rust (#1493).
     let profile_json = format!(r#"{{"name":"{}"}}"#, name.replace('"', ""));
     let relays_json = relay_seeding::default_relays_json_array();
     let (Ok(profile_c), Ok(relays_c)) = (CString::new(profile_json), CString::new(relays_json))
@@ -220,7 +223,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
         return;
     };
     s.with_app(|app| {
-        nmp_app_create_new_account(app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
+        nmp_app_chirp_create_new_account(app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
     });
 }
 
