@@ -32,10 +32,12 @@ sha2 = "0.10"
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 tracing = "0.1"
 hex = "0.4"
-# tungstenite + rustls: WebSocket connections to relay for wallet event fetch.
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+# NOTE: this crate performs ZERO relay I/O. It owns no socket and no relay URL.
+# The kernel fetches the wallet's events through its EventStore / interest
+# pipeline and feeds them in via `Nip60WalletHandle::ingest_*`; events to publish
+# are queued in the handle's outbox and dispatched by the kernel through its
+# `ActorCommand::Publish*` chokepoint. Do NOT re-add a private relay socket here.
 
 [dev-dependencies]
-# Real-relay integration tests require nostr Keys generation.
+# nostr Keys generation for the in-memory protocol tests.
 nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
