@@ -1,6 +1,0 @@
-{
-  "installCommand": "cd web/registry && npm install",
-  "buildCommand": "cd web/registry && npm run build",
-  "outputDirectory": "web/registry/dist",
-  "framework": "vite"
-}
