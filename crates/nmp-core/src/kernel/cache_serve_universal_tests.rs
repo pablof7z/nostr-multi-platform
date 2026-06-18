@@ -42,6 +42,7 @@
 use super::cache_serve_tests::{drain_cache_serves, hex_pk, simulate_cold_restart};
 use super::*;
 use crate::actor::{new_raw_event_observer_slot, register_rust_raw_observer, KindFilter, RawEventObserver};
+use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
 };
@@ -211,6 +212,23 @@ fn open_interest(kernel: &mut Kernel, seed: u64, shape: InterestShape) -> bool {
     kernel.open_interest_sub(sub_identity(seed), interest)
 }
 
+/// Enqueue a single cache-serve interest via `register_interest`.
+///
+/// Wraps the `&[InterestRegistration { identity, interest, policy }]` boilerplate
+/// shared by every call site. `policy` is always `EnsureAbsent` (install a fresh
+/// slot so `changed=true` fires the serve — the right semantic for test phases
+/// that deliberately use distinct keys to bypass the idempotency guard).
+fn register_one(kernel: &mut Kernel, owner: &'static str, key: SubKey, shape: InterestShape, reason: &'static str) {
+    kernel.register_interest(
+        &[InterestRegistration {
+            identity: SubIdentity::new(SubOwnerKey::new(owner), key, SubScope::Global),
+            interest: LogicalInterest { shape, ..Default::default() },
+            policy: InterestWrite::EnsureAbsent,
+        }],
+        reason,
+    );
+}
+
 // ─── The universal acceptance test ───────────────────────────────────────────
 
 /// ADR-0045 §8 / issue #1086 — v1 exit criterion.
@@ -265,7 +283,7 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     // an author who is NOT in `timeline_authors`; without a matching open
     // interest the kernel's `ingest_timeline_event` admission gate would drop
     // it at Phase-1 ingest time and it would never reach the store.
-    // Note: the open here also calls `enqueue_cache_serve` (store is empty →
+    // Note: the open here also triggers a cache-serve (store is empty →
     // no-op scan) and marks the completion key as served. After
     // `simulate_cold_restart` the key is cleared and Phase 3 re-opens it.
     {
@@ -384,17 +402,14 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
 
     // ── Phase 3: open interests and drain cache-serves (ZERO relay) ───────────
     //
-    // `open_interest_sub` calls `enqueue_cache_serve` ONLY when the interest is
-    // NEWLY installed (lifecycle registry check). The thread interest was
-    // pre-opened in Phase 1 (to admit the event at ingest time), so the registry
-    // still holds the slot. Calling `open_interest_sub` again with the same
-    // identity would find the slot and return `newly_installed=false`.
-    //
-    // Solution: call `enqueue_cache_serve` directly with a stable key derived
-    // from a distinct sub_key that is NOT in the pre-open's registry slot.
-    // `simulate_cold_restart` cleared `served_interest_shapes` so the completion
-    // key is fresh; `enqueue_cache_serve` idempotently skips duplicates via the
-    // pending queue check.
+    // `register_interest` only enqueues a serve when `changed=true` (i.e. the
+    // slot is newly installed or its shape changed). The thread interest was
+    // pre-opened in Phase 1 so the registry still holds the slot under the
+    // Phase-1 key. We use DISTINCT fresh keys ("thread-phase3", …) that are not
+    // in the pre-open slot — `EnsureAbsent` with a fresh key installs a new slot
+    // (`newly_installed=true`, `changed=true`) and enqueues the serve.
+    // `simulate_cold_restart` cleared `served_interest_shapes`, so the completion
+    // key is fresh and the idempotency guard does not suppress the serve.
     //
     // For the feed we use `sync_follow_feed_interests` (the production entry
     // point), which computes its own SubKey from the active account + authors
@@ -403,53 +418,33 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     // E1 — feed: sync_follow_feed_interests enqueues per-author AuthorKind serves.
     kernel.sync_follow_feed_interests(&[feed_author.clone()]);
 
-    // E3 — thread: directly enqueue Etag cache-serve (bypasses registry check).
+    // E3 — thread: register Etag interest with a fresh key → newly_installed=true.
     {
-        let mut thread_shape = InterestShape {
-            kinds: BTreeSet::from([1u32]),
-            ..Default::default()
-        };
-        thread_shape
-            .tags
-            .insert("e".to_string(), BTreeSet::from([parent_id_hex.clone()]));
-        // Use a fresh SubKey that doesn't collide with the pre-open registration.
-        let thread_key = crate::subs::SubKey::new(("thread-phase3", &parent_id_hex));
-        let completion_key =
-            crate::kernel::cache_serve::completion_key_for_interest(&thread_key, &thread_shape);
-        kernel.enqueue_cache_serve(&thread_shape, completion_key);
+        let mut thread_shape = InterestShape { kinds: BTreeSet::from([1u32]), ..Default::default() };
+        thread_shape.tags.insert("e".to_string(), BTreeSet::from([parent_id_hex.clone()]));
+        let thread_key = SubKey::new(("thread-phase3", &parent_id_hex));
+        register_one(&mut kernel, "test-thread-phase3", thread_key, thread_shape, "test-phase3-thread");
     }
 
-    // E3 — long-form: directly enqueue KindDtag cache-serve.
+    // E3 — long-form: register KindDtag interest with a fresh key.
     {
         let author_for_longform = sender_keys.public_key().to_hex();
-        let mut longform_shape = InterestShape {
-            kinds: BTreeSet::from([30023u32]),
-            ..Default::default()
-        };
+        let mut longform_shape = InterestShape { kinds: BTreeSet::from([30023u32]), ..Default::default() };
         longform_shape.addresses.insert(NaddrCoord {
             pubkey: author_for_longform.clone(),
             kind: 30023,
             d_tag: d_tag.to_string(),
         });
-        let lf_key = crate::subs::SubKey::new(("longform-phase3", &author_for_longform, d_tag));
-        let completion_key =
-            crate::kernel::cache_serve::completion_key_for_interest(&lf_key, &longform_shape);
-        kernel.enqueue_cache_serve(&longform_shape, completion_key);
+        let lf_key = SubKey::new(("longform-phase3", &author_for_longform, d_tag));
+        register_one(&mut kernel, "test-longform-phase3", lf_key, longform_shape, "test-phase3-longform");
     }
 
-    // E2 — DM inbox: directly enqueue Ptag cache-serve (raw observer dispatch).
+    // E2 — DM inbox: register Ptag interest with a fresh key.
     {
-        let mut dm_shape = InterestShape {
-            kinds: BTreeSet::from([1059u32]),
-            ..Default::default()
-        };
-        dm_shape
-            .tags
-            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
-        let dm_key = crate::subs::SubKey::new(("dm-phase3", &receiver_hex));
-        let completion_key =
-            crate::kernel::cache_serve::completion_key_for_interest(&dm_key, &dm_shape);
-        kernel.enqueue_cache_serve(&dm_shape, completion_key);
+        let mut dm_shape = InterestShape { kinds: BTreeSet::from([1059u32]), ..Default::default() };
+        dm_shape.tags.insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let dm_key = SubKey::new(("dm-phase3", &receiver_hex));
+        register_one(&mut kernel, "test-dm-phase3", dm_key, dm_shape, "test-phase3-dm");
     }
 
     // Drain: `sync_follow_feed_interests` ran one synchronous step; continue
@@ -558,19 +553,12 @@ fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
         "Phase 2: IngestParser seen list must be cleared before cache-serve"
     );
 
-    // ── Phase 3: enqueue and drain cache-serve for kind:1059 ──────────────────
+    // ── Phase 3: register interest and drain cache-serve for kind:1059 ──────────
     {
-        let mut dm_shape = InterestShape {
-            kinds: BTreeSet::from([1059u32]),
-            ..Default::default()
-        };
-        dm_shape
-            .tags
-            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
-        let dm_key = crate::subs::SubKey::new(("ingest-parser-test", &receiver_hex));
-        let completion_key =
-            crate::kernel::cache_serve::completion_key_for_interest(&dm_key, &dm_shape);
-        kernel.enqueue_cache_serve(&dm_shape, completion_key);
+        let mut dm_shape = InterestShape { kinds: BTreeSet::from([1059u32]), ..Default::default() };
+        dm_shape.tags.insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let dm_key = SubKey::new(("ingest-parser-test", &receiver_hex));
+        register_one(&mut kernel, "test-ingest-parser", dm_key, dm_shape, "test-ingest-parser-dm");
     }
     drain_cache_serves(&mut kernel, 10);
 

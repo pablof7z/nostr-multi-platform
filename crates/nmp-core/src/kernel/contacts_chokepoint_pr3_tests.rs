@@ -137,13 +137,30 @@ fn cache_served_kind3_drives_effects_via_shared_project_accepted_event() {
     // each served event through `feed_served_event` → the SHARED
     // `project_accepted_event` → the registered kind:3 parser → contacts cache →
     // the active-account contacts-transition signal → the follow-feed effects.
+    //
+    // Routed through the real front-door `register_interest` (Replace policy so
+    // the slot is freshly installed after the cold-restart state clear, which
+    // ensures `changed=true` → serve is enqueued and drained synchronously).
     let shape = crate::planner::InterestShape {
         authors: std::collections::BTreeSet::from([ALICE.to_string()]),
         kinds: std::collections::BTreeSet::from([3u32]),
         ..Default::default()
     };
-    let sub_key = crate::subs::SubKey::new("cold-restart-contacts-serve");
-    kernel.enqueue_interest_cache_serve(&sub_key, &shape);
+    kernel.register_interest(
+        &[crate::kernel::cache_serve::InterestRegistration {
+            identity: crate::subs::SubIdentity::new(
+                crate::subs::SubOwnerKey::new("test-cold-restart-contacts"),
+                crate::subs::SubKey::new("cold-restart-contacts-serve"),
+                crate::subs::SubScope::Global,
+            ),
+            interest: crate::planner::LogicalInterest {
+                shape,
+                ..Default::default()
+            },
+            policy: crate::kernel::cache_serve::InterestWrite::Replace,
+        }],
+        "test-cold-restart-contacts",
+    );
 
     // The cache-served kind:3 rebuilt the follow set + the kernel-owned effects.
     assert_eq!(
@@ -174,9 +191,10 @@ fn cache_served_kind3_drives_effects_via_shared_project_accepted_event() {
 /// → contacts cache → contacts-transition → follow-feed registration — with NO
 /// relay connectivity.
 ///
-/// NON-VACUITY: drop the `enqueue_interest_cache_serve` call from
-/// `register_tailing_self_kinds_interest` and this fails — the bootstrap interest
-/// would only REQ the network and the offline cache would stay empty.
+/// NON-VACUITY: drop the cache-serve enqueue from
+/// `register_tailing_self_kinds_interest` (by preventing `register_interest`
+/// from calling it) and this fails — the bootstrap interest would only REQ the
+/// network and the offline cache would stay empty.
 #[test]
 fn cold_restart_bootstrap_self_kinds_interest_cache_serves_stored_kind3() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

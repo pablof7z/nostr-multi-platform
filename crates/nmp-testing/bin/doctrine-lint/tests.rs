@@ -1735,3 +1735,62 @@ fn a5_does_not_fire_in_definition_files() {
     );
     let _ = code; // other rules may fire on the file; A5 silence is the gate
 }
+
+// ─── Cache-serve enqueue seal (ADR-0045 store-first by construction) ─────────
+
+/// Seal guard: the two low-level enqueue helpers
+/// (`enqueue_cache_serve`, `enqueue_interest_cache_serve_deferred`) MUST remain
+/// PRIVATE to `crates/nmp-core/src/kernel/cache_serve/mod.rs`. Making them
+/// wider (`pub`, `pub(crate)`, `pub(in crate::kernel)`, …) would re-open the
+/// bypass that `Kernel::register_interest` was sealed to prevent.
+///
+/// The Rust compiler already enforces this once the functions are private — this
+/// test is defense-in-depth: it fails immediately if anyone re-widens the
+/// visibility declaration in the source, before a reviewer has to notice it.
+#[test]
+fn cache_serve_enqueue_helpers_are_sealed_private_to_module() {
+    let root = workspace_root();
+    let mod_path = root.join("crates/nmp-core/src/kernel/cache_serve/mod.rs");
+    let src = std::fs::read_to_string(&mod_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", mod_path.display(), e));
+
+    // The helpers must be plain `fn` — no visibility prefix that would expose
+    // them outside `cache_serve/mod.rs`. Check every plausible wider form.
+    let banned_patterns = [
+        "pub fn enqueue_cache_serve(",
+        "pub(crate) fn enqueue_cache_serve(",
+        "pub(super) fn enqueue_cache_serve(",
+        "pub(in crate::kernel) fn enqueue_cache_serve(",
+        "pub fn enqueue_interest_cache_serve_deferred(",
+        "pub(crate) fn enqueue_interest_cache_serve_deferred(",
+        "pub(super) fn enqueue_interest_cache_serve_deferred(",
+        "pub(in crate::kernel) fn enqueue_interest_cache_serve_deferred(",
+        // The deleted combo helper must stay deleted.
+        "pub fn enqueue_interest_cache_serve(",
+        "pub(crate) fn enqueue_interest_cache_serve(",
+        "pub(in crate::kernel) fn enqueue_interest_cache_serve(",
+    ];
+
+    let mut violations: Vec<String> = Vec::new();
+    for (line_no, line) in src.lines().enumerate() {
+        for pat in &banned_patterns {
+            if line.contains(pat) {
+                violations.push(format!(
+                    "{}:{}: visibility widening detected — `{}` must remain private to cache_serve: {}",
+                    mod_path.display(),
+                    line_no + 1,
+                    pat.split('(').next().unwrap_or(pat),
+                    line.trim(),
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "enqueue_cache_serve and enqueue_interest_cache_serve_deferred must be \
+         private to cache_serve/mod.rs (the only production enqueue path is \
+         Kernel::register_interest). Violations:\n{}",
+        violations.join("\n")
+    );
+}

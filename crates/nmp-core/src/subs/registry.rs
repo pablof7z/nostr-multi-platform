@@ -1,7 +1,9 @@
 //! Logical-interest registry — the single writer of the active-interest set (D4).
 //!
-//! View modules and action modules push `LogicalInterest`s here; the planner
-//! reads via [`InterestRegistry::iter_active`]. The registry is keyed by the
+//! View modules and action modules register `LogicalInterest`s via
+//! [`crate::kernel::Kernel::register_interest`] (the single front-door); the
+//! planner reads via [`InterestRegistry::iter_active`]. The registry is keyed
+//! by the
 //! `(owner, key, scope)` triple from `docs/design/nostrdb-notedeck-lessons.md`
 //! §3.2 (see [`crate::subs::sub_key`]):
 //!

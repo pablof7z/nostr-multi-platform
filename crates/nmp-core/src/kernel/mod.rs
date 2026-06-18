@@ -1323,7 +1323,7 @@ pub struct Kernel {
     pub(in crate::kernel) served_interest_shapes: HashSet<u64>,
     /// ADR-0045 §5 — continuation queue for store-cache serves.
     ///
-    /// [`Kernel::enqueue_cache_serve`] pushes; [`Kernel::run_cache_serve_step`]
+    /// `enqueue_cache_serve` pushes; [`Kernel::run_cache_serve_step`]
     /// drains under ONE shared per-tick budget, resuming partially-completed
     /// serves (per-query `until` cursor) on subsequent actor ticks. This is
     /// the chunked continuation ADR §5 mandates so a cold start with hundreds

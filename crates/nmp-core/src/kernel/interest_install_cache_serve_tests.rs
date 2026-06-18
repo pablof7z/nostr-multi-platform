@@ -11,9 +11,10 @@
 //! (pushed via `app.push_interest`) could never be satisfied from the store
 //! on relaunch → MLS group creation permanently no-ops cross-session.
 //!
-//! This fix extracts the E1 serve block from `open_interest_sub` into
-//! `Kernel::enqueue_interest_cache_serve` (single choke-point) and calls it
-//! from every interest-install path.
+//! This fix funnels all interest-install paths through
+//! [`crate::kernel::Kernel::register_interest`] (single front-door), which
+//! enqueues the ADR-0045 E1 store-cache serve for every newly-installed
+//! interest.
 //!
 //! # Test inventory
 //!
@@ -410,8 +411,8 @@ fn open_uri_serves_store_for_resolved_target() {
         matches!(update, KernelUpdate::ViewOpened { .. }),
         "open_uri must resolve the npub to a profile view; got {update:?}"
     );
-    // open_uri serves synchronously through enqueue_interest_cache_serve; drain
-    // any continuation to be safe.
+    // open_uri serves synchronously through register_interest; drain any
+    // continuation to be safe.
     drain_cache_serves(&mut kernel, 10);
 
     // ── Phase 4: parser must have received the stored kind:0 event ───────────

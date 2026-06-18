@@ -21,7 +21,7 @@
 //! cold start would still burst `follows × budget` events synchronously.
 //! Cache-serve therefore budgets at the **aggregate** level:
 //!
-//! - [`Kernel::enqueue_cache_serve`] only queues work — it never scans.
+//! - `enqueue_cache_serve` only queues work — it never scans.
 //! - [`Kernel::run_cache_serve_step`] drains the queue under ONE shared
 //!   per-tick budget ([`Kernel::cache_serve_tick_budget`], counted in
 //!   store-events *visited* — visits are the actor work, served or not).
@@ -106,11 +106,10 @@ pub(crate) enum InterestWrite {
     /// shared slot (today's `ensure_sub`). Used by: generic feed opens
     /// (`OpenInterest`/`open_interest_sub`), `open_uri`, oneshot discovery.
     EnsureAbsent,
-    /// Force-replace. Attach the owner and replace the slot's interest
-    /// (today's `set_sub` / legacy `push`). Used by: bootstrap self-kinds and
-    /// account switch (author swap), profile-claim liveness upgrade
-    /// (OneShot→Tailing), claim-expansion hint update, and the legacy
-    /// `ActorCommand::PushInterest` command.
+    /// Force-replace. Attach the owner and replace the slot's interest.
+    /// Used by: bootstrap self-kinds and account switch (author swap),
+    /// profile-claim liveness upgrade (OneShot→Tailing), claim-expansion
+    /// hint update, and the `ActorCommand::PushInterest` command.
     Replace,
 }
 
@@ -246,37 +245,14 @@ impl Kernel {
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
 
-    /// ADR-0045 single choke-point — queue a store-cache serve for an interest
-    /// that was just installed (any install path), then drain ONE aggregate-budget
-    /// chunk synchronously so the first snapshot after install carries store data
-    /// (D1). Further work stays queued and continues on the actor tick (§5
-    /// chunked continuation). Idempotent: completion keys already served or
-    /// already queued are no-ops.
+    /// Enqueue-only — derive the completion key and queue the serve WITHOUT
+    /// draining a budget chunk. Private to this module: the ONLY callers are
+    /// [`Kernel::register_interest`] (batch enqueue → one trailing drain) and
+    /// `enqueue_cache_serve` is the lowest-level primitive below this.
     ///
-    /// The single key-derivation + enqueue + drain recipe. Every interest-install
-    /// path funnels here so the completion-key derivation lives in exactly one
-    /// place — no hand-copied recipe can drift from it (the lesson F3 of the
-    /// PR #1237 review enforces).
-    ///
-    /// `pub(crate)` so `crate::actor::dispatch` can reach it without
-    /// crossing the `pub(in crate::kernel)` boundary.
-    pub(crate) fn enqueue_interest_cache_serve(
-        &mut self,
-        key: &crate::subs::SubKey,
-        shape: &InterestShape,
-    ) {
-        self.enqueue_interest_cache_serve_deferred(key, shape);
-        self.run_cache_serve_step();
-    }
-
-    /// Enqueue-only half of [`Kernel::enqueue_interest_cache_serve`] — derive
-    /// the completion key and queue the serve WITHOUT draining a budget chunk.
-    ///
-    /// For batch installers (the follow-feed sync registers one interest per
-    /// followed pubkey) that want N enqueues under ONE trailing
-    /// [`Kernel::run_cache_serve_step`]. The completion-key derivation is shared
-    /// with the single-install path, so the two cannot drift.
-    pub(in crate::kernel) fn enqueue_interest_cache_serve_deferred(
+    /// The completion-key derivation lives here in one place so no call site
+    /// can hand-copy it and drift (PR #1237 / F3 lesson).
+    fn enqueue_interest_cache_serve_deferred(
         &mut self,
         key: &crate::subs::SubKey,
         shape: &InterestShape,
@@ -317,7 +293,11 @@ impl Kernel {
     /// already served or already queued is a no-op. Shapes not covered by any
     /// engineering increment are marked served immediately (no retry, no queue
     /// entry).
-    pub(in crate::kernel) fn enqueue_cache_serve(
+    ///
+    /// Private to this module — the only production caller is
+    /// `enqueue_interest_cache_serve_deferred` (above). All external code
+    /// reaches the enqueue path through [`Kernel::register_interest`].
+    fn enqueue_cache_serve(
         &mut self,
         shape: &InterestShape,
         completion_key: u64,
