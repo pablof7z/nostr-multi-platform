@@ -1,38 +1,39 @@
+import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
 import { webContentCore, webContentMediaGrid, webContentMentionChip, webContentMinimal, webContentQuoteCard, webContentView } from "./contentWeb";
 import { contentKindComponents } from "./contentKindComponents";
 
 // Content — SwiftUI
-import contentCoreSwift from "../vendor/swiftui/content-core/NostrContentRenderer.swift?raw";
-import contentCoreWireSwift from "../vendor/swiftui/content-core/ContentTreeWire.swift?raw";
-import contentMinimalSwift from "../vendor/swiftui/content-minimal/NostrMinimalContentView.swift?raw";
-import contentMinimalPreviewSwift from "../vendor/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift?raw";
-import contentViewSwift from "../vendor/swiftui/content-view/NostrContentView.swift?raw";
-import contentGroupingSwift from "../vendor/swiftui/content-view/NostrContentGrouping.swift?raw";
-import contentViewPreviewSwift from "../vendor/swiftui/content-view/Examples/NostrContentViewPreview.swift?raw";
-import mentionChipSwift from "../vendor/swiftui/content-mention-chip/NostrMentionChip.swift?raw";
-import quoteCardSwift from "../vendor/swiftui/content-quote-card/NostrQuoteCard.swift?raw";
-import mediaGridSwift from "../vendor/swiftui/content-media-grid/NostrMediaGrid.swift?raw";
+const contentCoreSwift = nativeSource("registry/swiftui/content-core/NostrContentRenderer.swift");
+const contentCoreWireSwift = nativeSource("registry/swiftui/content-core/ContentTreeWire.swift");
+const contentMinimalSwift = nativeSource("registry/swiftui/content-minimal/NostrMinimalContentView.swift");
+const contentMinimalPreviewSwift = nativeSource("registry/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift");
+const contentViewSwift = nativeSource("registry/swiftui/content-view/NostrContentView.swift");
+const contentGroupingSwift = nativeSource("registry/swiftui/content-view/NostrContentGrouping.swift");
+const contentViewPreviewSwift = nativeSource("registry/swiftui/content-view/Examples/NostrContentViewPreview.swift");
+const mentionChipSwift = nativeSource("registry/swiftui/content-mention-chip/NostrMentionChip.swift");
+const quoteCardSwift = nativeSource("registry/swiftui/content-quote-card/NostrQuoteCard.swift");
+const mediaGridSwift = nativeSource("registry/swiftui/content-media-grid/NostrMediaGrid.swift");
 
 // Content — Compose
-import composeContentRendererKotlin from "../vendor/compose/content-core/NostrContentRenderer.kt?raw";
-import composeContentTreeWireKotlin from "../vendor/compose/content-core/ContentTreeWire.kt?raw";
-import composeContentViewKotlin from "../vendor/compose/content-view/NostrContentView.kt?raw";
-import composeContentGroupingKotlin from "../vendor/compose/content-view/NostrContentGrouping.kt?raw";
-import composeMentionChipKotlin from "../vendor/compose/content-mention-chip/NostrMentionChip.kt?raw";
-import composeQuoteCardKotlin from "../vendor/compose/content-quote-card/NostrQuoteCard.kt?raw";
-import composeMediaGridKotlin from "../vendor/compose/content-media-grid/NostrMediaGrid.kt?raw";
+const composeContentRendererKotlin = nativeSource("registry/compose/content-core/NostrContentRenderer.kt");
+const composeContentTreeWireKotlin = nativeSource("registry/compose/content-core/ContentTreeWire.kt");
+const composeContentViewKotlin = nativeSource("registry/compose/content-view/NostrContentView.kt");
+const composeContentGroupingKotlin = nativeSource("registry/compose/content-view/NostrContentGrouping.kt");
+const composeMentionChipKotlin = nativeSource("registry/compose/content-mention-chip/NostrMentionChip.kt");
+const composeQuoteCardKotlin = nativeSource("registry/compose/content-quote-card/NostrQuoteCard.kt");
+const composeMediaGridKotlin = nativeSource("registry/compose/content-media-grid/NostrMediaGrid.kt");
 
 // Content — Ratatui
-import tuiContentTreeWireRust from "../vendor/tui/content-core/content_tree_wire.rs?raw";
-import tuiContentRenderDataRust from "../vendor/tui/content-core/content_render_data.rs?raw";
-import tuiTextWrapRust from "../vendor/tui/content-core/ratatui_text_wrap.rs?raw";
-import tuiContentViewRust from "../vendor/tui/content-view/nostr_content_view.rs?raw";
-import tuiContentWidgetRust from "../vendor/tui/content-view/nostr_content_widget.rs?raw";
-import tuiMentionChipRust from "../vendor/tui/content-mention-chip/nostr_mention_chip.rs?raw";
-import tuiMinimalContentRust from "../vendor/tui/content-minimal/nostr_minimal_content.rs?raw";
-import tuiMediaGridRust from "../vendor/tui/content-media-grid/nostr_media_grid.rs?raw";
-import tuiQuoteCardRust from "../vendor/tui/content-quote-card/nostr_quote_card.rs?raw";
+const tuiContentTreeWireRust = nativeSource("registry/tui/content-core/content_tree_wire.rs");
+const tuiContentRenderDataRust = nativeSource("registry/tui/content-core/content_render_data.rs");
+const tuiTextWrapRust = nativeSource("registry/tui/content-core/ratatui_text_wrap.rs");
+const tuiContentViewRust = nativeSource("registry/tui/content-view/nostr_content_view.rs");
+const tuiContentWidgetRust = nativeSource("registry/tui/content-view/nostr_content_widget.rs");
+const tuiMentionChipRust = nativeSource("registry/tui/content-mention-chip/nostr_mention_chip.rs");
+const tuiMinimalContentRust = nativeSource("registry/tui/content-minimal/nostr_minimal_content.rs");
+const tuiMediaGridRust = nativeSource("registry/tui/content-media-grid/nostr_media_grid.rs");
+const tuiQuoteCardRust = nativeSource("registry/tui/content-quote-card/nostr_quote_card.rs");
 
 export const contentComponents: Component[] = [
   {

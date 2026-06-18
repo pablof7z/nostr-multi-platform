@@ -74,12 +74,19 @@ class VendorDriftGateTest {
         "NostrLoginBlock.kt",
     )
 
-    /** Copy locations. Chirp does not vendor the Compose UI (it has its own screens). */
+    /**
+     * Copy locations. Chirp does not vendor the Compose UI (it has its own screens).
+     *
+     * The web showcase no longer carries a hand-copied vendor fork: it reads the
+     * Compose source straight out of the gated `registry.json` export (generated
+     * from `crates/nmp-cli/registry/`, verified by `crates/nmp-cli/tests/export.rs`).
+     * So the CLI registry copy below is the only remaining vendored copy on the
+     * web path, and the gallery -> CLI -> registry.json chain stays fully gated.
+     */
     private fun copyPaths(file: String): List<String> = buildList {
         if (file != "NostrLoginBlock.kt") {
             add("android/app/src/main/java/org/nmp/android/$file")
         }
-        add("web/registry/src/vendor/compose/login-block/$file")
         add("crates/nmp-cli/registry/compose/login-block/$file")
     }
 

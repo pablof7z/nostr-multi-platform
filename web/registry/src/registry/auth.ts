@@ -1,13 +1,14 @@
+import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
 
 // Auth - SwiftUI
-import loginBlockSwift from "../vendor/swiftui/login-block/NostrLoginBlock.swift?raw";
+const loginBlockSwift = nativeSource("registry/swiftui/login-block/NostrLoginBlock.swift");
 
 // Auth - Compose (ADR-0048 Stage 2: NIP-55 login-block)
-import composeLoginBlockKotlin from "../vendor/compose/login-block/NostrLoginBlock.kt?raw";
-import composeExternalSignerBridgeKotlin from "../vendor/compose/login-block/ExternalSignerCapabilityBridge.kt?raw";
-import composeExternalSignerWireKotlin from "../vendor/compose/login-block/ExternalSignerWire.kt?raw";
-import composeAmberIntentCodecKotlin from "../vendor/compose/login-block/AmberIntentCodec.kt?raw";
+const composeLoginBlockKotlin = nativeSource("registry/compose/login-block/NostrLoginBlock.kt");
+const composeExternalSignerBridgeKotlin = nativeSource("registry/compose/login-block/ExternalSignerCapabilityBridge.kt");
+const composeExternalSignerWireKotlin = nativeSource("registry/compose/login-block/ExternalSignerWire.kt");
+const composeAmberIntentCodecKotlin = nativeSource("registry/compose/login-block/AmberIntentCodec.kt");
 
 // Auth - Web (SolidJS, NIP-07)
 import loginBlockWeb from "../vendor/web/login-block/NostrLoginBlock.tsx?raw";
