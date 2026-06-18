@@ -218,10 +218,22 @@ impl Nip60WalletHandle {
 
     /// Check a mint quote and mint tokens if the invoice has been paid.
     ///
-    /// Returns `Err(Nip60Error::QuoteNotPaid)` if the invoice has not been
-    /// paid yet — the caller is responsible for waiting and retrying (sleeping
-    /// in library code violates D8). For testnut, invoices are auto-paid
-    /// within milliseconds; a single short wait in the caller is sufficient.
+    /// This performs exactly one mint-status HTTP read and returns; it owns no
+    /// sleep+check loop, so it stays D8-clean (no polling in library code).
+    /// Returns `Err(Nip60Error::QuoteNotPaid)` if the invoice has not been paid
+    /// yet — the caller decides when to re-check.
+    ///
+    /// # Why the caller re-checks (protocol constraint, not debt)
+    ///
+    /// The Cashu mint-quote flow (NUT-04 / NUT-23 BOLT11) is request/response:
+    /// a quote advances `UNPAID → PAID → ISSUED` and the wallet learns of the
+    /// transition only by re-reading `GET /v1/mint/quote/{method}/{quote_id}`.
+    /// The base spec defines **no** push primitive (no webhook / callback / WS
+    /// notification) for "invoice paid". So a single short library sleep loop
+    /// here would just be hidden polling. Instead this returns `QuoteNotPaid`
+    /// and leaves the *when-to-re-check* policy to the kernel, which can drive
+    /// it from a wall-clock-gated observer rather than a busy-wait. For testnut,
+    /// invoices are auto-paid within milliseconds; a single re-check suffices.
     ///
     /// The new kind:7375 token event and kind:7376 history event are queued in
     /// the outbox for the kernel to publish.
