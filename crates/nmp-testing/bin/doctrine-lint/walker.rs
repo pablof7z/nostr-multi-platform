@@ -35,12 +35,26 @@ pub struct ScannedLine<'a> {
 /// `fixtures/` subtree (the lint must not scan its own positive fixtures).
 pub fn collect_rs_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
-    walk(root, &mut out)?;
+    walk(root, "rs", &mut out)?;
     out.sort();
     Ok(out)
 }
 
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
+/// Walk a directory tree under `root`, returning every `.h` (C/Obj-C header)
+/// file path, sorted for deterministic output. Skips `target/`, `.git/`, and
+/// `fixtures/` subtrees.
+///
+/// Used by A6 to catch the banned `nmp_app_register_snapshot_projection`
+/// C-ABI symbol reappearing in native headers (e.g. `NmpCore.h`), which the
+/// `.rs`-only walker would miss entirely.
+pub fn collect_h_files(root: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    walk(root, "h", &mut out)?;
+    out.sort();
+    Ok(out)
+}
+
+fn walk(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) -> io::Result<()> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -54,10 +68,40 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
             continue;
         }
         if file_type.is_dir() {
-            walk(&path, out)?;
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            walk(&path, ext, out)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some(ext) {
             out.push(path);
         }
+    }
+    Ok(())
+}
+
+/// Scan a single header (`.h`) file line by line, invoking `visit` per line.
+///
+/// Unlike [`scan_file`] for Rust, header files have no `#[cfg(test)]` module
+/// concept — every line is always "live". Block-comment state is tracked so
+/// rules can distinguish `// …` / `/* … */` from live declarations.
+pub fn scan_h_file<F>(path: &Path, mut visit: F) -> io::Result<()>
+where
+    F: FnMut(&ScannedLine<'_>),
+{
+    let body = fs::read_to_string(path)?;
+    let mut in_block_comment = false;
+
+    for (idx, raw_line) in body.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = raw_line.trim_start();
+        let starts_in_block_comment = in_block_comment;
+        let is_comment = starts_in_block_comment || trimmed.starts_with("//");
+        update_block_comment(raw_line, &mut in_block_comment);
+
+        visit(&ScannedLine {
+            line_no,
+            text: raw_line,
+            // Header files have no Rust `#[cfg(test)]` concept.
+            in_test_cfg: false,
+            is_comment,
+        });
     }
     Ok(())
 }

@@ -62,13 +62,21 @@ pub fn file_is_exempt(path: &Path) -> bool {
     s.contains("/bin/doctrine-lint/") || s.starts_with("doctrine-lint/")
 }
 
-/// True iff the file is in the A6 scan scope: within `crates/` or `apps/`,
-/// and not the doctrine-lint source tree itself.
+/// True iff the file is in the A6 scan scope.
+///
+/// `.rs` files: within `crates/` or `apps/`, not the doctrine-lint tree.
+/// `.h` header files: within `ios/` — catches C-ABI symbol reappearance in
+/// native bridge headers (e.g. `ios/Chirp/Chirp/Bridge/NmpCore.h`) that the
+/// `.rs`-only walker would silently miss.
 pub fn file_in_scope(path: &Path) -> bool {
     if file_is_exempt(path) {
         return false;
     }
     let s = path.to_string_lossy().replace('\\', "/");
+    let is_h = path.extension().and_then(|e| e.to_str()) == Some("h");
+    if is_h {
+        return s.contains("/ios/") || s.starts_with("ios/");
+    }
     s.contains("/crates/") || s.contains("/apps/") || s.starts_with("crates/") || s.starts_with("apps/")
 }
 
@@ -255,5 +263,76 @@ mod tests {
     #[test]
     fn files_outside_monorepo_are_not_in_scope() {
         assert!(!file_in_scope(&PathBuf::from("/tmp/external/src/lib.rs")));
+    }
+
+    /// BLOCKER 3 — header files inside `ios/` are in scope for A6.
+    ///
+    /// This is the coverage-gap fix: before this change, `file_in_scope` only
+    /// matched `crates/` and `apps/` paths and would silently skip
+    /// `ios/Chirp/Chirp/Bridge/NmpCore.h`. A reappearance of the banned
+    /// C-ABI symbol in the header would pass the lint undetected.
+    #[test]
+    fn ios_header_is_in_scope_for_a6() {
+        assert!(
+            file_in_scope(&PathBuf::from(
+                "ios/Chirp/Chirp/Bridge/NmpCore.h"
+            )),
+            "ios/.h files must be in A6 scope (C-ABI symbol reappearance guard)"
+        );
+        // The specific file the blocker names.
+        assert!(
+            file_in_scope(&PathBuf::from(
+                "/repo/ios/Chirp/Chirp/Bridge/NmpCore.h"
+            )),
+            "absolute path to NmpCore.h must be in scope"
+        );
+    }
+
+    /// A `.h` file outside `ios/` is NOT in scope (no false positives on
+    /// third-party headers under `crates/` or other non-ios trees).
+    #[test]
+    fn h_file_outside_ios_is_not_in_scope() {
+        assert!(
+            !file_in_scope(&PathBuf::from("crates/nmp-ffi/include/nmp_ffi.h")),
+            ".h files under crates/ must NOT be in A6 scope (only ios/ headers)"
+        );
+        assert!(
+            !file_in_scope(&PathBuf::from("/tmp/external.h")),
+            ".h files outside the monorepo must not be in scope"
+        );
+    }
+
+    /// The banned C-ABI token is flagged in a header declaration line.
+    ///
+    /// `a6::check` already handles raw token matching; this test confirms that
+    /// a realistic C function declaration containing
+    /// `nmp_app_register_snapshot_projection` is flagged by the same rule
+    /// that fires on `.rs` files.
+    #[test]
+    fn c_header_declaration_of_banned_symbol_is_flagged() {
+        let line = "void nmp_app_register_snapshot_projection(NmpApp *app, const char *key, void (*fn)(void));";
+        let hits = check(line, false, false);
+        assert_eq!(
+            hits.len(),
+            1,
+            "the banned C-ABI symbol in a header declaration must be flagged"
+        );
+        assert!(
+            hits[0].1.contains("rule A6"),
+            "finding message must reference rule A6; got: {}",
+            hits[0].1
+        );
+    }
+
+    /// The typed-registration C symbol must NOT be flagged.
+    #[test]
+    fn c_header_typed_symbol_is_not_flagged() {
+        let line = "void nmp_app_register_typed_snapshot_projection(NmpApp *app, const char *key, void (*fn)(void));";
+        let hits = check(line, false, false);
+        assert!(
+            hits.is_empty(),
+            "nmp_app_register_TYPED_snapshot_projection must NOT be flagged; got: {:?}",
+            hits
+        );
     }
 }

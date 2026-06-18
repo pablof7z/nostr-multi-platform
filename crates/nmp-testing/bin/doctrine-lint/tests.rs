@@ -1866,3 +1866,51 @@ fn a6_negative_fixture_clean() {
     );
 }
 
+/// BLOCKER 3 — the A6 scanner catches the banned C-ABI symbol in a `.h` header
+/// file (the coverage gap that the `.rs`-only walker would have missed).
+///
+/// Stages `fixtures/a6/pos.h` under `target/` in a subdirectory whose name
+/// matches `--a6-extra-scope`, then scans it. The fixture declares
+/// `nmp_app_register_snapshot_projection` in a C function prototype — exactly
+/// the reappearance the gap guard is designed to catch.
+#[test]
+fn a6_header_file_positive_fixture_fires() {
+    let workspace = workspace_root();
+    // Stage inside ios/ so `a6::file_in_scope` accepts it without extra flags,
+    // but we also pass --a6-extra-scope so the staged-under-target path is
+    // accepted regardless of the ios/ check.
+    let tmp = workspace.join("target").join("doctrine_lint_a6_h_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("a6/pos.h"));
+    std::fs::copy(&pos_src, tmp.join("pos.h")).expect("copy pos.h fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--a6-extra-scope",
+        "doctrine_lint_a6_h_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "a6 header positive must exit 1 (banned C-ABI symbol in .h); stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[A6]"),
+        "a6 header positive must emit an A6 finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("pos.h"),
+        "a6 finding must point at the .h file; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("rule A6"),
+        "a6 finding message must reference rule A6; stdout:\n{}",
+        stdout
+    );
+}
+

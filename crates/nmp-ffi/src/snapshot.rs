@@ -20,19 +20,48 @@ pub(crate) mod embed_sidecar;
 impl NmpApp {
     /// Register a typed FlatBuffers projection closure for a named projection key.
     ///
-    /// The typed sidecar is emitted alongside the existing generic `Value` tree in
+    /// The typed sidecar is emitted alongside the existing typed-projection set in
     /// every `SnapshotFrame` (ADR-0037). `f` runs on the actor thread on every
     /// tick — it MUST be non-blocking (D8) and returns `None` when there is no
     /// changed row to emit this tick. Under incremental apply, omission means
     /// retain the last decoded value; unregistering the key emits one `Cleared`
     /// row.
+    ///
+    /// ADR-0049 — records a truthful composition-ledger disposition:
+    /// - [`nmp_core::Disposition::Installed`] — first registration for this key.
+    /// - [`nmp_core::Disposition::ReplacedPrevious`] — a closure was already
+    ///   registered under this key; the new one wins (last-writer-wins).
+    ///
+    /// `DroppedLateWiring` is intentionally NEVER recorded here: the registry is
+    /// an `Arc<Mutex<SnapshotRegistry>>` that the actor reads on EVERY tick, so a
+    /// registration made after start goes live immediately — there is no "too late"
+    /// condition for typed snapshot projections.
     pub fn register_typed_snapshot_projection(
         &self,
         key: impl Into<String>,
         f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
+        let key = key.into();
         if let Ok(mut registry) = self.snapshot_projections.lock() {
-            registry.register_typed(key, f);
+            // ADR-0049 — determine disposition BEFORE inserting so we can report
+            // whether we are the first registrant (`Installed`) or are replacing
+            // an existing closure (`ReplacedPrevious`).
+            let had_previous = registry
+                .registered_typed_keys()
+                .any(|k| k == key.as_str());
+            registry.register_typed(key.clone(), f);
+            let disposition = if had_previous {
+                nmp_core::Disposition::ReplacedPrevious
+            } else {
+                nmp_core::Disposition::Installed
+            };
+            self.composition_ledger.record(
+                "typed_snapshot_projection",
+                key.clone(),
+                key,
+                disposition,
+                None,
+            );
         }
     }
 
@@ -295,6 +324,81 @@ mod tests {
         assert_eq!(entry.schema_version, 1);
         assert_eq!(entry.file_identifier, "NFTS");
         assert_eq!(entry.payload, vec![0xde, 0xad, 0xbe, 0xef]);
+        nmp_app_free(app);
+    }
+
+    /// ADR-0049 / BLOCKER 2 — `register_typed_snapshot_projection` records a
+    /// truthful composition-ledger disposition:
+    /// - First registration for a key → `Installed`.
+    /// - Second registration for the same key → `ReplacedPrevious`.
+    /// - `DroppedLateWiring` is never recorded (the typed registry is live at all
+    ///   times — there is no "post-start drop" for it).
+    #[test]
+    fn typed_projection_records_composition_ledger_disposition() {
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null.
+        let app_ref = unsafe { &*app };
+
+        // First registration: Installed.
+        app_ref.register_typed_snapshot_projection("nmp.feed.home", || None);
+        let ledger_json = app_ref.composition_ledger().to_json();
+        let records = ledger_json["records"]
+            .as_array()
+            .expect("composition ledger must have a records array");
+        let first = records
+            .iter()
+            .find(|r| r["key"] == "nmp.feed.home")
+            .expect("ledger must contain an entry for nmp.feed.home after first registration");
+        assert_eq!(
+            first["seam"], "typed_snapshot_projection",
+            "seam must be typed_snapshot_projection"
+        );
+        // serde derives serialize `Disposition::Installed` as `"Installed"`.
+        assert_eq!(
+            first["disposition"], "Installed",
+            "first registration must record Installed"
+        );
+        assert!(
+            first.get("replaced").is_none() || first["replaced"].is_null(),
+            "Installed disposition must not carry a replaced field"
+        );
+
+        // Second registration for the same key: ReplacedPrevious.
+        app_ref.register_typed_snapshot_projection("nmp.feed.home", || None);
+        let ledger_json2 = app_ref.composition_ledger().to_json();
+        let records2 = ledger_json2["records"]
+            .as_array()
+            .expect("records array present");
+        let home_records: Vec<_> = records2
+            .iter()
+            .filter(|r| r["key"] == "nmp.feed.home")
+            .collect();
+        assert_eq!(
+            home_records.len(),
+            2,
+            "two registrations must produce two ledger entries"
+        );
+        let second = &home_records[1];
+        assert_eq!(
+            second["disposition"], "ReplacedPrevious",
+            "second registration for the same key must record ReplacedPrevious"
+        );
+
+        // Distinct key: separate Installed entry.
+        app_ref.register_typed_snapshot_projection("nmp.nip17.dm_inbox", || None);
+        let ledger_json3 = app_ref.composition_ledger().to_json();
+        let records3 = ledger_json3["records"]
+            .as_array()
+            .expect("records array present");
+        let dm = records3
+            .iter()
+            .find(|r| r["key"] == "nmp.nip17.dm_inbox")
+            .expect("dm_inbox entry must be in ledger");
+        assert_eq!(
+            dm["disposition"], "Installed",
+            "distinct key must record Installed, not ReplacedPrevious"
+        );
+
         nmp_app_free(app);
     }
 }

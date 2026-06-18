@@ -33,6 +33,7 @@ use nmp_core::KernelEventObserver;
 // `AttributionPayload` brings `author_pubkey()` into scope for the attribution
 // assertion in `followed_reply_surfaces_root_with_attribution`.
 use nmp_feed::AttributionPayload as _;
+use nmp_feed::FeedController as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
@@ -321,6 +322,70 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
     assert!(
         snapshot.cards.is_empty(),
         "wiring must not fabricate feed state (no replayed/duplicated interest output)"
+    );
+
+    nmp_app_free(app);
+}
+
+// ─── 5. load_older losslessness: typed sidecar reflects the grown window ──────
+
+/// Regression guard for escape hatch #2 elimination (PR #1515).
+///
+/// The deleted JSON producer (`FeedController::snapshot_json`) used
+/// `snapshot_current_window()` internally — it honored any prior `load_older`
+/// call that had grown `window_limit`. The replacement typed sidecar MUST do
+/// the same. This test proves it: after ingesting more than the default window
+/// (80 events) and calling `load_older()`, the typed sidecar decoded from the
+/// app's projection must contain more than 80 cards.
+#[test]
+fn load_older_typed_sidecar_reflects_grown_window() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    assert!(!app.is_null());
+
+    // SAFETY: valid non-null pointer.
+    set_app_active(app, Some(ALICE));
+    let defaults =
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string());
+    let engine = &defaults.engine;
+
+    // Ingest 90 root events from ALICE (the viewer, so all are in-feed).
+    // Each event gets a unique 64-hex id.
+    let observer: &dyn KernelEventObserver = &**engine;
+    for i in 0u64..90 {
+        let id = format!("{:0>64}", i);
+        let ev = KernelEvent {
+            id: id.clone().into(),
+            author: ALICE.to_string(),
+            kind: 1,
+            created_at: 1000 + i,
+            tags: Vec::new(),
+            content: format!("post {i}"),
+            relay_provenance: Vec::new(),
+        };
+        observer.on_kernel_event(&ev);
+    }
+
+    // Before load_older: typed sidecar should have exactly 80 cards (default window).
+    let before = read_typed_op_feed(app, "nmp.feed.home")
+        .expect("typed sidecar must be present after events");
+    assert_eq!(
+        before.cards.len(),
+        80,
+        "before load_older: sidecar must be bounded to the default window (80)"
+    );
+
+    // load_older grows window_limit to 160 (or total count, whichever is smaller).
+    let had_more = engine.load_older();
+    assert!(had_more, "load_older must return true when older events exist");
+
+    // After load_older: typed sidecar must reflect the grown window — all 90 cards.
+    let after = read_typed_op_feed(app, "nmp.feed.home")
+        .expect("typed sidecar must still be present after load_older");
+    assert_eq!(
+        after.cards.len(),
+        90,
+        "after load_older: typed sidecar must reflect the grown window (all 90 events, not just 80)"
     );
 
     nmp_app_free(app);

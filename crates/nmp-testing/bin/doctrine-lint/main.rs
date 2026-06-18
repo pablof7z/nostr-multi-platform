@@ -156,6 +156,29 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
         }
+
+        // A6 — also scan C/Obj-C header files (.h) in the ios/ tree for the
+        // banned C-ABI symbol `nmp_app_register_snapshot_projection`. The
+        // .rs-only walker above would silently miss a reappearance in
+        // `ios/Chirp/Chirp/Bridge/NmpCore.h`.
+        if !cfg.workspace_d8 {
+            let h_files = match walker::collect_h_files(root) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("doctrine-lint: failed to walk headers {}: {}", root.display(), e);
+                    return ExitCode::from(2);
+                }
+            };
+            for path in &h_files {
+                if !a6_file_in_scope(path, &cfg.a6_extra_scopes) {
+                    continue;
+                }
+                if let Err(e) = scan_one_h_file_a6(path, &cfg.a6_extra_scopes, &mut all_findings) {
+                    eprintln!("doctrine-lint: failed to read {}: {}", path.display(), e);
+                    return ExitCode::from(2);
+                }
+            }
+        }
     }
 
     let rules = if cfg.workspace_d8 {
@@ -800,6 +823,37 @@ fn scan_one_file(
     }
 
     Ok(())
+}
+
+/// Scan one C/Obj-C header file (`.h`) for A6 violations only.
+///
+/// Header files have no `#[cfg(test)]` modules, no Rust brace tracking, and
+/// no `d6_test_file` concept — every non-comment line is a live production
+/// declaration. Uses [`walker::scan_h_file`] which sets `in_test_cfg = false`
+/// on every line.
+fn scan_one_h_file_a6(
+    path: &Path,
+    a6_extra_scopes: &[String],
+    findings: &mut Vec<report::Finding>,
+) -> std::io::Result<()> {
+    if !a6_file_in_scope(path, a6_extra_scopes) {
+        return Ok(());
+    }
+    walker::scan_h_file(path, |sl| {
+        for (col, msg, suggested) in a6::check(sl.text, sl.is_comment, false) {
+            if allow::line_allows(sl.text, a6::ID) {
+                continue;
+            }
+            findings.push(report::Finding {
+                rule: a6::ID,
+                path: path.to_path_buf(),
+                line: sl.line_no,
+                col,
+                message: msg,
+                suggested,
+            });
+        }
+    })
 }
 
 // File-scope resolution helpers (`dN_file_in_scope`, `is_doctrine_lint_source`)

@@ -75,7 +75,10 @@ export type FeatureSnapshot = {
   authorProfile?: ProfileLine;
   thread?: ThreadLine;
 };
-export type KernelSnapshot = { rev?: number; projections?: Record<string, unknown> & { timeline?: TimelineItem[] } };
+// The generic JSON `projections` map was removed in PR #1515 (escape hatch #2
+// eliminated). `KernelSnapshot` no longer carries a `projections` field — all
+// projection data arrives through typed FlatBuffers sidecars.
+export type KernelSnapshot = { rev?: number };
 
 export function kernelSnapshotFromEnvelope(envelope: unknown): KernelSnapshot | undefined {
   const root = objectRecord(envelope);
@@ -87,8 +90,11 @@ export function kernelSnapshotFromEnvelope(envelope: unknown): KernelSnapshot | 
   return snapshot ? (snapshot as KernelSnapshot) : undefined;
 }
 
-export function featureSnapshotFromEnvelope(envelope: unknown): FeatureSnapshot {
-  const source = objectRecord(kernelSnapshotFromEnvelope(envelope)?.projections) ?? {};
+export function featureSnapshotFromEnvelope(_envelope: unknown): FeatureSnapshot {
+  // The generic JSON `projections` map no longer exists on the wire (PR #1515).
+  // This function returns the zero-state FeatureSnapshot. Callers that need real
+  // projection data must use the typed FlatBuffers sidecar path.
+  const source: Record<string, unknown> = {};
   return {
     accounts: array(source.accounts).map(accountFrom),
     activeAccount: str(source.active_account),
@@ -107,10 +113,6 @@ export function featureSnapshotFromEnvelope(envelope: unknown): FeatureSnapshot 
   };
 }
 
-export function timelineFromKernel(snapshot: KernelSnapshot | undefined): TimelineItem[] {
-  return Array.isArray(snapshot?.projections?.timeline) ? snapshot.projections.timeline : [];
-}
-
 export function chirpTimelineFromEnvelope(envelope: unknown): ChirpTimelineSnapshot | undefined {
   const root = objectRecord(envelope);
   if (!root) {
@@ -122,11 +124,6 @@ export function chirpTimelineFromEnvelope(envelope: unknown): ChirpTimelineSnaps
     return undefined;
   }
   return { blocks: candidate.blocks, cards: candidate.cards as ChirpEventCard[] };
-}
-
-export function displayRows(kernel: KernelSnapshot | undefined, chirp: ChirpTimelineSnapshot | undefined): TimelineItem[] {
-  const timeline = timelineFromKernel(kernel);
-  return timeline.length > 0 ? timeline : (chirp?.cards.map(cardFromChirpEvent) ?? []);
 }
 
 /**
