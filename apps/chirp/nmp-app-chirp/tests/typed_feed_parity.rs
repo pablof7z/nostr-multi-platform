@@ -56,11 +56,8 @@ fn populated_snapshot() -> OpFeedSnapshot {
                 author_pubkey: hex32(0x10),
                 author_display: AuthorDisplay {
                     name: None,
-                    npub: Some("npub1carol".to_string()),
                     picture_url: None,
                 },
-                author_display_name: None,
-                author_picture_url: None,
                 reply_event_id: hex32(0x90),
                 reply_created_at: 1_700_000_900,
             }],
