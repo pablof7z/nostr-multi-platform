@@ -30,8 +30,8 @@ use crate::substrate::EventIngestDispatcher;
 ///
 /// Returns an empty vec when the shape has no mapping (not covered by any
 /// engineering increment). Shapes not covered are marked served immediately
-/// at enqueue time (no retry, no queue entry) — see
-/// [`crate::kernel::Kernel::enqueue_cache_serve`].
+/// at enqueue time (no retry, no queue entry) — see `enqueue_cache_serve`
+/// in `cache_serve/mod.rs`.
 ///
 /// ## Coverage table (ADR §3, E1–E3)
 ///
