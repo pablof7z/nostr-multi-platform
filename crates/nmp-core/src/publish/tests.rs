@@ -391,10 +391,13 @@ fn classify_ack_maps_codes_to_engine_policy_d7_boundary() {
     // still passes, but the type system breaks first.
 
     // Permanent NIP-20 OK-false prefixes → Permanent.
+    //
+    // `rate-limited` is intentionally absent: NIP-01 defines it as "slow down",
+    // so it is retryable (see the Transient bucket below). `pow` stays Permanent
+    // because the engine cannot add proof-of-work without re-signing the event.
     for code in [
         "blocked",
         "pow",
-        "rate-limited",
         "restricted",
         "invalid",
         "duplicate",
@@ -413,8 +416,17 @@ fn classify_ack_maps_codes_to_engine_policy_d7_boundary() {
     let ack = RelayAck::failed("wss://r", "auth-required", "need auth");
     assert_eq!(classify_ack(&ack), AckClass::AuthRequired);
 
-    // Transport-class + unknown codes → Transient (conservative retry).
-    for code in ["timeout", "io", "connection-reset", "totally-new-code", ""] {
+    // Transport-class + `rate-limited` + unknown codes → Transient (retry with
+    // backoff). `rate-limited` is the relay throttling us, not rejecting the
+    // event, so retrying after a backoff is the correct etiquette.
+    for code in [
+        "timeout",
+        "io",
+        "connection-reset",
+        "rate-limited",
+        "totally-new-code",
+        "",
+    ] {
         let ack = RelayAck::failed("wss://r", code, "transport");
         assert_eq!(
             classify_ack(&ack),

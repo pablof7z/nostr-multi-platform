@@ -18,11 +18,14 @@ use crate::publish::PublishEngineError;
 
 /// Split a NIP-20 `OK-false` reason into a `(code, message)` pair.
 ///
-/// NIP-20 specs the reason as `<prefix>: <message>` for retryable /
-/// permanent classes (`"blocked"`, `"pow"`, `"rate-limited"`,
-/// `"auth-required"`, …). Reasons without a colon become `("error", msg)`
-/// — the engine's classifier treats the unknown `"error"` code as
-/// `Transient` (conservative retry), matching the existing M7 behaviour.
+/// NIP-20 specs the reason as `<prefix>: <message>` for its standardized
+/// prefixes (`"blocked"`, `"pow"`, `"rate-limited"`, `"auth-required"`, …).
+/// This split is policy-neutral — it only extracts the prefix; the engine's
+/// `classify_ack` decides which prefixes are permanent vs. retryable (e.g.
+/// `rate-limited` is retryable, `blocked` is permanent). Reasons without a
+/// colon become `("error", msg)` — the classifier treats the unknown
+/// `"error"` code as `Transient` (conservative retry), matching the existing
+/// M7 behaviour.
 pub(super) fn split_ok_message(msg: &str) -> (String, String) {
     if let Some((prefix, rest)) = msg.split_once(':') {
         let code = prefix.trim().to_ascii_lowercase();

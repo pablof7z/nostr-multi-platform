@@ -149,12 +149,16 @@ struct RelayAck {
 }
 ```
 
-Classification is the engine's job (`classify_ack`, `state.rs:133-150`):
+Classification is the engine's job (`classify_ack`, `state.rs`):
 `auth-required → AuthRequired`; the permanent set
-(`blocked`/`pow`/`rate-limited`/`restricted`/`invalid`/`duplicate`) →
-`Permanent` (no retry); **everything else, including unknown tokens →
-`Transient`** (conservative retry-once-with-backoff). `ok=true` never
-reaches the classifier. The dispatcher trait
+(`blocked`/`pow`/`restricted`/`invalid`/`duplicate`/`mute`) →
+`Permanent` (no retry); **everything else, including `rate-limited` and
+unknown tokens → `Transient`** (retry with exponential backoff).
+`rate-limited` is transient on purpose — NIP-01 defines it as "slow
+down", so backing off and retrying is the correct etiquette rather than
+giving up; `pow` stays permanent because the engine cannot add
+proof-of-work without re-signing the event into a different id. `ok=true`
+never reaches the classifier. The dispatcher trait
 (`crates/nmp-core/src/publish/traits.rs:121-123`) returns
 `Vec<RelayAck>` and **must not** call `classify_ack`.
 
