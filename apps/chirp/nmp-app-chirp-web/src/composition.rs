@@ -145,40 +145,12 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     let reducer = runtime.reducer_handle();
 
     // 0. Install the production substrate cache/parser pairs. The wasm32 path
-    //    has no native AppHost, so it must mirror the always-on correctness
-    //    floor from `nmp_defaults::register_substrate`: the router and
-    //    kind:10002 parser share one mailbox cache; the profile lookup and
-    //    kind:0 parser share one profile cache; the contacts lookup and kind:3
-    //    parser share one contacts cache. Without the shared contacts pair the
-    //    active-account kind:3 event is parsed but the kernel reads
-    //    EmptyContactsLookup, so follow-feed subscriptions never pick up the
-    //    user's follows.
-    let mailbox_cache = Arc::new(nmp_router::InMemoryMailboxCache::new());
-    let mailbox_reader: Arc<dyn nmp_core::substrate::MailboxCache> = mailbox_cache.clone();
-    let router: Arc<dyn nmp_core::substrate::OutboxRouter> =
-        Arc::new(nmp_router::GenericOutboxRouter::new());
-    let kind10002_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
-
-    let profile_cache = Arc::new(nmp_nip01::ProfileCache::new());
-    let profile_lookup: Arc<dyn nmp_core::substrate::ProfileLookup> = profile_cache.clone();
-    let kind0_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_nip01::Kind0Parser::new(profile_cache));
-
-    let contacts_cache = Arc::new(nmp_nip01::ContactsCache::new());
-    let contacts_lookup: Arc<dyn nmp_core::substrate::ContactsLookup> = contacts_cache.clone();
-    let kind3_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_nip01::Kind3Parser::new(contacts_cache));
-
-    {
-        let mut reducer = reducer.borrow_mut();
-        reducer.set_routing(router, mailbox_reader);
-        reducer.register_ingest_parser(10_002, kind10002_parser);
-        reducer.set_profile_lookup(profile_lookup);
-        reducer.register_ingest_parser(0, kind0_parser);
-        reducer.set_contacts_lookup(contacts_lookup);
-        reducer.register_ingest_parser(3, kind3_parser);
-    }
+    //    has no native AppHost, so it calls the same wasm-safe construction
+    //    helper used by `nmp_defaults::register_substrate`: one mailbox cache
+    //    shared by the router and kind:10002 parser, one profile cache shared
+    //    by the profile lookup and kind:0 parser, and one contacts cache shared
+    //    by the contacts lookup and kind:3 parser.
+    nmp_substrate_defaults::install_on_reducer(&mut reducer.borrow_mut());
 
     // 0b. Install the content-parser seam so the `claimed_events` projection
     //     carries a parsed NFCT content tree. nmp-core can't depend on

@@ -30,21 +30,22 @@
 //! support state and belongs to a NIP-77 integration harness, not this unit; we
 //! deliberately assert the runtime's *presence* here, not its internal decision.
 
+use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::{CompiledPlan, RelayAttribution, RelayPlan};
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_core::store::EventStore;
+use nmp_core::store::{EventStore, RawEvent, VerifiedEvent};
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
     CoverageHookRegistrar, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext,
+    MailboxCache, OutboxRouter, PublishTrace, RawEventForwardPolicy, RawEventForwardPolicyContext,
     RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
     RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, RoutingTraceObserver,
+    RoutedRelaySet, RoutingFactoryRegistrar, RoutingTraceObserver, SubscriptionTrace,
 };
 use nmp_coverage_gate::CoverageGate;
 
@@ -59,6 +60,20 @@ struct GateSpy {
     coverage_hook: Mutex<Option<PlanCoverageHook>>,
     req_interceptor: Mutex<Option<Arc<dyn ReqFrameInterceptor>>>,
     relay_interceptors: Mutex<usize>,
+    parsers: Mutex<HashMap<u32, Arc<dyn IngestParser>>>,
+    parser_kinds: Mutex<Vec<u32>>,
+    mailbox_reader: Mutex<Option<Arc<dyn MailboxCache>>>,
+    routing_cache: Mutex<Option<Arc<dyn MailboxCache>>>,
+    profile_lookup_count: Mutex<usize>,
+    contacts_lookup_count: Mutex<usize>,
+}
+
+struct NoopRoutingTraceObserver;
+
+impl RoutingTraceObserver for NoopRoutingTraceObserver {
+    fn on_publish(&self, _summary: PublishTrace, _routed: &RoutedRelaySet) {}
+
+    fn on_subscription(&self, _summary: SubscriptionTrace, _routed: &RoutedRelaySet) {}
 }
 
 impl ActionRegistrar for GateSpy {
@@ -100,8 +115,9 @@ impl BlockedRelayLookupRegistrar for GateSpy {
 }
 
 impl IngestParserRegistrar for GateSpy {
-    fn register_ingest_parser(&self, _kind: u32, _parser: Arc<dyn IngestParser>) {
-        // kind:10002/10006 parsers — recorded as a no-op; not under test here.
+    fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>) {
+        self.parser_kinds.lock().unwrap().push(kind);
+        self.parsers.lock().unwrap().insert(kind, parser);
     }
 
     fn replace_ingest_parser(
@@ -133,31 +149,28 @@ impl IngestParserRegistrar for GateSpy {
 
 impl KernelReaderRegistrar for GateSpy {
     fn set_profile_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
-        // ADR-0057 PR 2 — register_substrate installs the kind:0 profile cache;
-        // this spy ignores it (the gate under test is the coverage hook, not
-        // the profile lookup).
+        *self.profile_lookup_count.lock().unwrap() += 1;
     }
 
     fn set_contacts_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ContactsLookup>) {
-        // ADR-0057 PR 3 — register_substrate installs the kind:3 contacts cache;
-        // this spy ignores it (the gate under test is the coverage hook, not
-        // the contacts lookup).
+        *self.contacts_lookup_count.lock().unwrap() += 1;
     }
 
-    fn set_mailbox_cache_reader(&self, _cache: Arc<dyn MailboxCache>) {
-        // Shared mailbox-cache reader — no-op; not under test here.
+    fn set_mailbox_cache_reader(&self, cache: Arc<dyn MailboxCache>) {
+        *self.mailbox_reader.lock().unwrap() = Some(cache);
     }
 }
 
 impl RoutingFactoryRegistrar for GateSpy {
-    fn set_routing_substrate<F>(&self, _factory: F)
+    fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(Arc<dyn RoutingTraceObserver>) -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)
             + Send
             + Sync
             + 'static,
     {
-        // Routing factory — no-op; not under test here.
+        let (_router, cache) = factory(Arc::new(NoopRoutingTraceObserver));
+        *self.routing_cache.lock().unwrap() = Some(cache);
     }
 
     fn set_publish_resolver_factory<F>(&self, _factory: F)
@@ -210,6 +223,81 @@ fn plan_with_relays(n: usize) -> CompiledPlan {
         );
     }
     plan
+}
+
+fn kind10002_event(author: &str) -> VerifiedEvent {
+    VerifiedEvent::from_raw_unchecked(RawEvent {
+        id: "100020000000000000000000000000000000000000000000000000000000002".into(),
+        pubkey: author.into(),
+        created_at: 1_700_000_002,
+        kind: 10_002,
+        tags: vec![vec![
+            "r".into(),
+            "wss://alice.write.example".into(),
+            "write".into(),
+        ]],
+        content: String::new(),
+        sig: "22".repeat(64),
+    })
+}
+
+#[test]
+fn register_substrate_installs_shared_cache_parser_floor() {
+    let mut spy = GateSpy::default();
+    nmp_defaults::register_substrate(&mut spy, CoverageGate::default());
+
+    let mut parser_kinds = spy.parser_kinds.lock().unwrap().clone();
+    parser_kinds.sort_unstable();
+    assert_eq!(
+        parser_kinds,
+        vec![0, 3, 10_002, 10_006],
+        "register_substrate must install the shared kind:0/kind:3/kind:10002 parsers \
+         plus the native kind:10006 blocked-relay parser"
+    );
+    assert_eq!(
+        *spy.profile_lookup_count.lock().unwrap(),
+        1,
+        "register_substrate must install one profile reader"
+    );
+    assert_eq!(
+        *spy.contacts_lookup_count.lock().unwrap(),
+        1,
+        "register_substrate must install one contacts reader"
+    );
+
+    let mailbox_reader = spy
+        .mailbox_reader
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("register_substrate must install the NIP-19 mailbox reader");
+    let routing_cache = spy
+        .routing_cache
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("register_substrate must install the router mailbox cache");
+    let parser = spy
+        .parsers
+        .lock()
+        .unwrap()
+        .get(&10_002)
+        .cloned()
+        .expect("register_substrate must install the kind:10002 parser");
+
+    let author = "aaaa000000000000000000000000000000000000000000000000000000000001";
+    parser.parse(&kind10002_event(author));
+
+    assert_eq!(
+        mailbox_reader.write_relays(&author.to_string()),
+        Some(vec!["wss://alice.write.example".to_string()]),
+        "the native mailbox reader must see the relay list written by the parser"
+    );
+    assert_eq!(
+        routing_cache.write_relays(&author.to_string()),
+        Some(vec!["wss://alice.write.example".to_string()]),
+        "the routing factory cache must be the same cache written by the parser"
+    );
 }
 
 #[test]

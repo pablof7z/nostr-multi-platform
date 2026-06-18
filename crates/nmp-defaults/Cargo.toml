@@ -13,6 +13,9 @@ nmp-core = { path = "../nmp-core" }
 # Layer-2 routing: `GenericOutboxRouter`, `InMemoryMailboxCache`, and the
 # `nmp.nip65.publish_relay_list` action module the template registers.
 nmp-router = { path = "../nmp-router" }
+# Wasm-safe default cache/parser wiring shared by this native AppHost
+# composition root and reducer-owned web roots.
+nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 # Common NIP action modules + ingest parsers the canonical NMP composition
 # wires by default. A second app that does not need one of these is expected
 # to call the per-NIP `register_actions` selectively rather than
