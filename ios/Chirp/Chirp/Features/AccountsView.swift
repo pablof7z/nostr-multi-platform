@@ -347,10 +347,11 @@ private struct SignerStateRow: View {
         return "circle.fill"
     }
 
-    // ADR-0032 / #1099: the status label and tone→colour mapping are Rust-
-    // precomputed. Swift renders `signerState.statusLabel` verbatim and maps
-    // `signerState.statusTone` → `Color` via the shared helper — no string-
-    // switch on `state` remains in this view (thin-shell rule).
+    // #1493 P9 (labels-to-shells): the status label and tone are shell-derived
+    // from the raw `state` token by `SignerStateTone` (via `SignerState`'s
+    // computed `statusLabel` / `statusTone`). This view renders them and maps
+    // the tone → `Color` via the shared helper — no string-switch on `state`
+    // for control flow remains here (thin-shell rule; aim.md:62).
     private var statusColor: Color {
         SignerStateTone.color(forTone: signerState.statusTone)
     }
@@ -394,10 +395,11 @@ private struct BunkerHandshakeProgress: View {
     let handshake: BunkerHandshake
     let onCancel: () -> Void
 
-    // Doctrine §6 anti-pattern #1 / RMP bible commandment #4: every derived
-    // value below comes from Rust (`BunkerHandshakeDto::new`). The Swift
-    // helpers used to switch on `handshake.stage.lowercased()` — that ternary
-    // tree now lives in `crates/nmp-core/src/actor/commands/identity.rs`.
+    // Doctrine §6 anti-pattern #1 / RMP bible commandment #4: the control-flow
+    // flags below come from Rust (`BunkerHandshakeDto::new`), so this view never
+    // switches on `handshake.stage` to drive UI state. #1493 P9: the English
+    // `stageLabel` is the one presentation string, derived from the raw `stage`
+    // token by `BunkerHandshake.stageLabel` (the shell renderer).
 
     private var isFailed: Bool {
         handshake.isFailed ?? false
@@ -411,10 +413,10 @@ private struct BunkerHandshakeProgress: View {
     }
 
     private var stageLabel: String {
-        // Fall back to `stage` only for legacy kernels (D1) that predate the
-        // projection-provided stage label. A current kernel supplies a non-empty
-        // `stageLabel`, so this fallback never fires in production today.
-        handshake.stageLabel ?? handshake.stage
+        // #1493 P9: the English label is derived from the raw `stage` token by
+        // the `BunkerHandshake.stageLabel` shell renderer (an unrecognized stage
+        // falls through to the raw token, never empty).
+        handshake.stageLabel
     }
 
     var body: some View {

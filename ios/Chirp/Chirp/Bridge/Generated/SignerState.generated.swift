@@ -29,8 +29,6 @@ public struct nmp_kernel_SignerState: FlatBufferTable, FlatbuffersVectorInitiali
     case isReconnecting = 16
     case isUnavailable = 18
     case isFailed = 20
-    case statusLabel = 22
-    case statusTone = 24
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -47,11 +45,7 @@ public struct nmp_kernel_SignerState: FlatBufferTable, FlatbuffersVectorInitiali
   public var isReconnecting: Bool { let o = _accessor.offset(VTOFFSET.isReconnecting.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isUnavailable: Bool { let o = _accessor.offset(VTOFFSET.isUnavailable.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isFailed: Bool { let o = _accessor.offset(VTOFFSET.isFailed.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var statusLabel: String? { let o = _accessor.offset(VTOFFSET.statusLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var statusLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.statusLabel.v) }
-  public var statusTone: String? { let o = _accessor.offset(VTOFFSET.statusTone.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var statusToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.statusTone.v) }
-  public static func startSignerState(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 11) }
+  public static func startSignerState(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 9) }
   public static func add(signerKind: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: signerKind, at: VTOFFSET.signerKind.p) }
   public static func add(state: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: state, at: VTOFFSET.state.p) }
   public static func add(hasReason: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasReason, def: false,
@@ -67,8 +61,6 @@ public struct nmp_kernel_SignerState: FlatBufferTable, FlatbuffersVectorInitiali
    at: VTOFFSET.isUnavailable.p) }
   public static func add(isFailed: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isFailed, def: false,
    at: VTOFFSET.isFailed.p) }
-  public static func add(statusLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: statusLabel, at: VTOFFSET.statusLabel.p) }
-  public static func add(statusTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: statusTone, at: VTOFFSET.statusTone.p) }
   public static func endSignerState(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createSignerState(
     _ fbb: inout FlatBufferBuilder,
@@ -80,9 +72,7 @@ public struct nmp_kernel_SignerState: FlatBufferTable, FlatbuffersVectorInitiali
     isAwaitingApproval: Bool = false,
     isReconnecting: Bool = false,
     isUnavailable: Bool = false,
-    isFailed: Bool = false,
-    statusLabelOffset statusLabel: Offset = Offset(),
-    statusToneOffset statusTone: Offset = Offset()
+    isFailed: Bool = false
   ) -> Offset {
     let __start = nmp_kernel_SignerState.startSignerState(&fbb)
     nmp_kernel_SignerState.add(signerKind: signerKind, &fbb)
@@ -94,8 +84,6 @@ public struct nmp_kernel_SignerState: FlatBufferTable, FlatbuffersVectorInitiali
     nmp_kernel_SignerState.add(isReconnecting: isReconnecting, &fbb)
     nmp_kernel_SignerState.add(isUnavailable: isUnavailable, &fbb)
     nmp_kernel_SignerState.add(isFailed: isFailed, &fbb)
-    nmp_kernel_SignerState.add(statusLabel: statusLabel, &fbb)
-    nmp_kernel_SignerState.add(statusTone: statusTone, &fbb)
     return nmp_kernel_SignerState.endSignerState(&fbb, start: __start)
   }
 
@@ -110,8 +98,6 @@ public struct nmp_kernel_SignerState: FlatBufferTable, FlatbuffersVectorInitiali
     try _v.visit(field: VTOFFSET.isReconnecting.p, fieldName: "isReconnecting", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isUnavailable.p, fieldName: "isUnavailable", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isFailed.p, fieldName: "isFailed", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.statusLabel.p, fieldName: "statusLabel", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.statusTone.p, fieldName: "statusTone", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

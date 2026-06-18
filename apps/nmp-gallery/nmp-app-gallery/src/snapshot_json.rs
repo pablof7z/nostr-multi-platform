@@ -225,8 +225,6 @@ fn signer_state_json(model: &SignerStateModel) -> Value {
         "is_reconnecting": model.is_reconnecting,
         "is_unavailable": model.is_unavailable,
         "is_failed": model.is_failed,
-        "status_label": model.status_label,
-        "status_tone": model.status_tone,
     })
 }
 

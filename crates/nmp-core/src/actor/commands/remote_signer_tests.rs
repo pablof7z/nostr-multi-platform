@@ -218,13 +218,13 @@ fn bunker_handshake_progress_writes_then_clears() {
 }
 
 /// Pins the doctrine §6 anti-pattern #1 fix: `BunkerHandshakeDto` carries
-/// pre-computed boolean flags + a pre-formatted English `stage_label` so
-/// `AccountsView.swift` can render fields directly instead of switching on
-/// the raw `stage` string. One assertion block per stage covers every flag
-/// transition the shell branches on (visibility guard, cancel-button gate,
-/// terminal-icon swap, retry-button label, English subtitle).
+/// pre-computed boolean flags so `AccountsView.swift` branches on a single flag
+/// instead of switching on the raw `stage` string. Per #1493 P9 (labels-to-
+/// shells) the English `stage_label` is no longer on the wire — the shell
+/// derives it from the raw `stage` token (asserted here) — so this test pins the
+/// flag transitions plus the stable `stage` token the shell renders from.
 #[test]
-fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
+fn bunker_handshake_dto_pre_computes_view_flags_and_stage() {
     let (id, mut kernel) = fresh();
 
     // ── `"connecting"` — handshake in flight ──────────────────────────────
@@ -240,7 +240,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
     assert!(!dto.is_failed, "connecting has not failed");
     assert!(!dto.is_terminal_success, "connecting is not terminal");
     assert!(dto.can_cancel, "cancel is available while connecting");
-    assert_eq!(dto.stage_label, "Connecting to bunker relays…");
+    assert_eq!(dto.stage, "connecting");
 
     // ── `"awaiting_pubkey"` — also in flight ──────────────────────────────
     bunker_handshake_progress(&id, &mut kernel, "awaiting_pubkey".to_string(), None);
@@ -250,7 +250,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
     assert!(!dto.is_failed);
     assert!(!dto.is_terminal_success);
     assert!(dto.can_cancel, "cancel still available awaiting pubkey");
-    assert_eq!(dto.stage_label, "Awaiting bunker approval…");
+    assert_eq!(dto.stage, "awaiting_pubkey");
 
     // ── `"ready"` — terminal success ──────────────────────────────────────
     bunker_handshake_progress(&id, &mut kernel, "ready".to_string(), None);
@@ -263,7 +263,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
         "ready is the terminal-success flag"
     );
     assert!(!dto.can_cancel, "no cancel once terminal");
-    assert_eq!(dto.stage_label, "Connected");
+    assert_eq!(dto.stage, "ready");
 
     // ── `"failed"` — terminal failure ─────────────────────────────────────
     bunker_handshake_progress(
@@ -278,7 +278,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
     assert!(dto.is_failed, "failed flag tracks terminal failure");
     assert!(!dto.is_terminal_success);
     assert!(!dto.can_cancel, "no cancel once terminal");
-    assert_eq!(dto.stage_label, "Bunker handshake failed");
+    assert_eq!(dto.stage, "failed");
 }
 
 #[test]

@@ -10,7 +10,6 @@ fn round_trips_full_model() {
         is_failed: false,
         is_terminal_success: false,
         can_cancel: true,
-        stage_label: "Connecting to bunker relays…".to_string(),
     };
     let bytes = encode_bunker_handshake(&model);
     let decoded = decode_bunker_handshake(&bytes).expect("decodes");
@@ -27,7 +26,6 @@ fn message_none_round_trips_as_none() {
         is_failed: true,
         is_terminal_success: false,
         can_cancel: false,
-        stage_label: "Bunker handshake failed".to_string(),
     };
     let bytes = encode_bunker_handshake(&model);
     let decoded = decode_bunker_handshake(&bytes).expect("decodes");

@@ -91,28 +91,6 @@ class SignerState : Table() {
             val o = __offset(20)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val statusLabel : String?
-        get() {
-            val o = __offset(22)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val statusLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
-    fun statusLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
-    val statusTone : String?
-        get() {
-            val o = __offset(24)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val statusToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(24, 1)
-    fun statusToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 24, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsSignerState(_bb: ByteBuffer): SignerState = getRootAsSignerState(_bb, SignerState())
@@ -121,10 +99,8 @@ class SignerState : Table() {
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
         fun SignerStateBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "KSST")
-        fun createSignerState(builder: FlatBufferBuilder, signerKindOffset: Int, stateOffset: Int, hasReason: Boolean, reasonOffset: Int, isReady: Boolean, isAwaitingApproval: Boolean, isReconnecting: Boolean, isUnavailable: Boolean, isFailed: Boolean, statusLabelOffset: Int, statusToneOffset: Int) : Int {
-            builder.startTable(11)
-            addStatusTone(builder, statusToneOffset)
-            addStatusLabel(builder, statusLabelOffset)
+        fun createSignerState(builder: FlatBufferBuilder, signerKindOffset: Int, stateOffset: Int, hasReason: Boolean, reasonOffset: Int, isReady: Boolean, isAwaitingApproval: Boolean, isReconnecting: Boolean, isUnavailable: Boolean, isFailed: Boolean) : Int {
+            builder.startTable(9)
             addReason(builder, reasonOffset)
             addState(builder, stateOffset)
             addSignerKind(builder, signerKindOffset)
@@ -136,7 +112,7 @@ class SignerState : Table() {
             addHasReason(builder, hasReason)
             return endSignerState(builder)
         }
-        fun startSignerState(builder: FlatBufferBuilder) = builder.startTable(11)
+        fun startSignerState(builder: FlatBufferBuilder) = builder.startTable(9)
         fun addSignerKind(builder: FlatBufferBuilder, signerKind: Int) = builder.addOffset(0, signerKind, 0)
         fun addState(builder: FlatBufferBuilder, state: Int) = builder.addOffset(1, state, 0)
         fun addHasReason(builder: FlatBufferBuilder, hasReason: Boolean) = builder.addBoolean(2, hasReason, false)
@@ -146,8 +122,6 @@ class SignerState : Table() {
         fun addIsReconnecting(builder: FlatBufferBuilder, isReconnecting: Boolean) = builder.addBoolean(6, isReconnecting, false)
         fun addIsUnavailable(builder: FlatBufferBuilder, isUnavailable: Boolean) = builder.addBoolean(7, isUnavailable, false)
         fun addIsFailed(builder: FlatBufferBuilder, isFailed: Boolean) = builder.addBoolean(8, isFailed, false)
-        fun addStatusLabel(builder: FlatBufferBuilder, statusLabel: Int) = builder.addOffset(9, statusLabel, 0)
-        fun addStatusTone(builder: FlatBufferBuilder, statusTone: Int) = builder.addOffset(10, statusTone, 0)
         fun endSignerState(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

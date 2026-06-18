@@ -67,12 +67,6 @@ pub struct SignerStateModel {
     pub is_unavailable: bool,
     /// `state == "failed"`.
     pub is_failed: bool,
-    /// Pre-computed display label (ADR-0032 / #1099). Rendered verbatim by
-    /// shells; mirrors `SignerStateDto::status_label`.
-    pub status_label: String,
-    /// Pre-computed display tone — `"active"` | `"warning"` | `"error"` |
-    /// `"inactive"` (ADR-0032 / #1099). Mirrors `SignerStateDto::status_tone`.
-    pub status_tone: String,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -85,8 +79,6 @@ pub(crate) fn encode_signer_state(model: &SignerStateModel) -> Vec<u8> {
     let signer_kind = fbb.create_string(&model.signer_kind);
     let state = fbb.create_string(&model.state);
     let reason = model.reason.as_ref().map(|v| fbb.create_string(v));
-    let status_label = fbb.create_string(&model.status_label);
-    let status_tone = fbb.create_string(&model.status_tone);
     let root = fb::SignerState::create(
         &mut fbb,
         &fb::SignerStateArgs {
@@ -99,8 +91,6 @@ pub(crate) fn encode_signer_state(model: &SignerStateModel) -> Vec<u8> {
             is_reconnecting: model.is_reconnecting,
             is_unavailable: model.is_unavailable,
             is_failed: model.is_failed,
-            status_label: Some(status_label),
-            status_tone: Some(status_tone),
         },
     );
     fb::finish_signer_state_buffer(&mut fbb, root);
@@ -119,16 +109,9 @@ pub fn decode_signer_state(bytes: &[u8]) -> Result<SignerStateModel, String> {
     }
     let root = fb::root_as_signer_state(bytes)
         .map_err(|e| format!("not a valid SignerState buffer: {e}"))?;
-    let state = root.state().unwrap_or_default().to_string();
-    // `status_label` / `status_tone` are tail-appended (additive) and therefore
-    // absent in buffers that predate #1099 — fall back to re-deriving them from
-    // the authoritative `state` token via the exact same logic the producer
-    // uses, so an older buffer still yields a correct domain value (D1).
-    let (fallback_label, fallback_tone) =
-        crate::actor::commands::signer_state_label_and_tone(&state);
     Ok(SignerStateModel {
         signer_kind: root.signer_kind().unwrap_or_default().to_string(),
-        state,
+        state: root.state().unwrap_or_default().to_string(),
         reason: root
             .has_reason()
             .then(|| root.reason().unwrap_or_default().to_string()),
@@ -137,14 +120,6 @@ pub fn decode_signer_state(bytes: &[u8]) -> Result<SignerStateModel, String> {
         is_reconnecting: root.is_reconnecting(),
         is_unavailable: root.is_unavailable(),
         is_failed: root.is_failed(),
-        status_label: root
-            .status_label()
-            .map(str::to_string)
-            .unwrap_or(fallback_label),
-        status_tone: root
-            .status_tone()
-            .map(str::to_string)
-            .unwrap_or(fallback_tone),
     })
 }
 

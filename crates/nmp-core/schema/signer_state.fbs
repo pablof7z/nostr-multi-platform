@@ -67,15 +67,11 @@ table SignerState {
   // `state == "failed"` — permanent error (rejected / mismatch / timeout),
   // session bricked. Hosts prompt re-auth on this signal.
   is_failed:bool;
-  // Pre-computed display label (ADR-0032 / #1099). Shells render verbatim;
-  // no string-switch on `state`. Values: "Connected" | "Reconnecting…" |
-  // "Waiting for approval…" | "Signer unavailable" | "Connection failed" |
-  // "Unknown". Tail-appended (additive) — older hosts ignore it.
-  status_label:string;
-  // Pre-computed display tone: "active" | "warning" | "error" | "inactive".
-  // Shells map to colour/icon without any state-string knowledge (ADR-0032 /
-  // #1099). Tail-appended (additive) — older hosts ignore it.
-  status_tone:string;
+  // ADR-0032 / doctrine §4.4 (#1493 P9 — labels-to-shells, mirrors #1568): the
+  // pre-computed English `status_label` and semantic `status_tone` strings were
+  // removed from this wire. Shells derive both from the raw `state` token (and
+  // the `is_*` flags) themselves — Rust emits raw tokens, the iOS/Android shells
+  // render the English. See aim.md:62.
 }
 
 file_identifier "KSST";

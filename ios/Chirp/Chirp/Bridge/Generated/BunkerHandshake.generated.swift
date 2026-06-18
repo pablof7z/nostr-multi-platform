@@ -28,7 +28,6 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     case isFailed = 14
     case isTerminalSuccess = 16
     case canCancel = 18
-    case stageLabel = 20
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -43,9 +42,7 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
   public var isFailed: Bool { let o = _accessor.offset(VTOFFSET.isFailed.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isTerminalSuccess: Bool { let o = _accessor.offset(VTOFFSET.isTerminalSuccess.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var canCancel: Bool { let o = _accessor.offset(VTOFFSET.canCancel.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var stageLabel: String? { let o = _accessor.offset(VTOFFSET.stageLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var stageLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.stageLabel.v) }
-  public static func startBunkerHandshake(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 9) }
+  public static func startBunkerHandshake(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
   public static func add(stage: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stage, at: VTOFFSET.stage.p) }
   public static func add(hasMessage: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasMessage, def: false,
    at: VTOFFSET.hasMessage.p) }
@@ -60,7 +57,6 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
    at: VTOFFSET.isTerminalSuccess.p) }
   public static func add(canCancel: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: canCancel, def: false,
    at: VTOFFSET.canCancel.p) }
-  public static func add(stageLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stageLabel, at: VTOFFSET.stageLabel.p) }
   public static func endBunkerHandshake(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createBunkerHandshake(
     _ fbb: inout FlatBufferBuilder,
@@ -71,8 +67,7 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     isInFlight: Bool = false,
     isFailed: Bool = false,
     isTerminalSuccess: Bool = false,
-    canCancel: Bool = false,
-    stageLabelOffset stageLabel: Offset = Offset()
+    canCancel: Bool = false
   ) -> Offset {
     let __start = nmp_kernel_BunkerHandshake.startBunkerHandshake(&fbb)
     nmp_kernel_BunkerHandshake.add(stage: stage, &fbb)
@@ -83,7 +78,6 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     nmp_kernel_BunkerHandshake.add(isFailed: isFailed, &fbb)
     nmp_kernel_BunkerHandshake.add(isTerminalSuccess: isTerminalSuccess, &fbb)
     nmp_kernel_BunkerHandshake.add(canCancel: canCancel, &fbb)
-    nmp_kernel_BunkerHandshake.add(stageLabel: stageLabel, &fbb)
     return nmp_kernel_BunkerHandshake.endBunkerHandshake(&fbb, start: __start)
   }
 
@@ -97,7 +91,6 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     try _v.visit(field: VTOFFSET.isFailed.p, fieldName: "isFailed", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isTerminalSuccess.p, fieldName: "isTerminalSuccess", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.canCancel.p, fieldName: "canCancel", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.stageLabel.p, fieldName: "stageLabel", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

@@ -8,18 +8,17 @@
 //! 4. Empty and truncated inputs are rejected gracefully (D6 — no panics).
 //! 5. All five state tokens (`ready` / `awaiting_approval` / `reconnecting`
 //!    / `unavailable` / `failed`) round-trip with both backend kinds.
-//! 6. The pre-computed `status_label` / `status_tone` fields (ADR-0032 / #1099)
-//!    round-trip, and decode falls back to deriving them from `state` when a
-//!    buffer predates those tail-appended fields.
+//!
+//! Per #1493 P9 (labels-to-shells, mirrors #1568) the wire carries only the raw
+//! `state` token + `is_*` flags; the English label / semantic tone are derived
+//! by the iOS/Android shells, so there is nothing label-shaped to round-trip
+//! here any more.
 
 use super::*;
-use crate::actor::commands::signer_state_label_and_tone;
 
-/// Build a model for `state`, pre-computing the label/tone exactly as the
-/// producer (`SignerStateDto::new`) does, so round-trip tests assert against
-/// the canonical values rather than hand-maintained literals.
+/// Build a model for `state`, pre-computing only the `is_*` flags exactly as the
+/// producer (`SignerStateDto::new`) does.
 fn model_for(signer_kind: &str, state: &str, reason: Option<&str>) -> SignerStateModel {
-    let (status_label, status_tone) = signer_state_label_and_tone(state);
     SignerStateModel {
         signer_kind: signer_kind.to_string(),
         state: state.to_string(),
@@ -29,8 +28,6 @@ fn model_for(signer_kind: &str, state: &str, reason: Option<&str>) -> SignerStat
         is_reconnecting: state == "reconnecting",
         is_unavailable: state == "unavailable",
         is_failed: state == "failed",
-        status_label,
-        status_tone,
     }
 }
 
@@ -40,8 +37,7 @@ fn encode_nip46_ready_round_trips() {
     let bytes = encode_signer_state(&model);
     let decoded = decode_signer_state(&bytes).expect("ready round-trip");
     assert_eq!(decoded, model);
-    assert_eq!(decoded.status_label, "Connected");
-    assert_eq!(decoded.status_tone, "active");
+    assert!(decoded.is_ready);
 }
 
 #[test]
@@ -50,8 +46,7 @@ fn encode_nip46_reconnecting_with_reason_round_trips() {
     let bytes = encode_signer_state(&model);
     let decoded = decode_signer_state(&bytes).expect("reconnecting round-trip");
     assert_eq!(decoded, model);
-    assert_eq!(decoded.status_label, "Reconnecting…");
-    assert_eq!(decoded.status_tone, "warning");
+    assert!(decoded.is_reconnecting);
 }
 
 #[test]
@@ -60,19 +55,18 @@ fn encode_nip46_failed_with_reason_round_trips() {
     let bytes = encode_signer_state(&model);
     let decoded = decode_signer_state(&bytes).expect("failed round-trip");
     assert_eq!(decoded, model);
-    assert_eq!(decoded.status_label, "Connection failed");
-    assert_eq!(decoded.status_tone, "error");
+    assert!(decoded.is_failed);
 }
 
 #[test]
 fn encode_nip55_awaiting_approval_round_trips() {
-    // ADR-0048 D6: the NIP-55 Intent round-trip drives "Waiting for approval…".
+    // ADR-0048 D6: the NIP-55 Intent round-trip drives the shell's
+    // "Waiting for approval…" rendering off `is_awaiting_approval`.
     let model = model_for("nip55", "awaiting_approval", None);
     let bytes = encode_signer_state(&model);
     let decoded = decode_signer_state(&bytes).expect("awaiting_approval round-trip");
     assert_eq!(decoded, model);
-    assert_eq!(decoded.status_label, "Waiting for approval…");
-    assert_eq!(decoded.status_tone, "warning");
+    assert!(decoded.is_awaiting_approval);
 }
 
 #[test]
@@ -82,8 +76,7 @@ fn encode_nip55_unavailable_with_reason_round_trips() {
     let bytes = encode_signer_state(&model);
     let decoded = decode_signer_state(&bytes).expect("unavailable round-trip");
     assert_eq!(decoded, model);
-    assert_eq!(decoded.status_label, "Signer unavailable");
-    assert_eq!(decoded.status_tone, "error");
+    assert!(decoded.is_unavailable);
 }
 
 #[test]
@@ -97,83 +90,6 @@ fn reason_absent_when_ready_decodes_to_none() {
     assert!(!decoded.is_reconnecting);
     assert!(!decoded.is_unavailable);
     assert!(!decoded.is_failed);
-}
-
-/// ADR-0032 / #1099: every wire state token maps to its canonical label + tone.
-#[test]
-fn status_label_and_tone_are_correct_for_each_state() {
-    assert_eq!(
-        signer_state_label_and_tone("ready"),
-        ("Connected".to_string(), "active".to_string())
-    );
-    // `"connected"` is the legacy NIP-46 alias of `"ready"`.
-    assert_eq!(
-        signer_state_label_and_tone("connected"),
-        ("Connected".to_string(), "active".to_string())
-    );
-    assert_eq!(
-        signer_state_label_and_tone("reconnecting"),
-        ("Reconnecting…".to_string(), "warning".to_string())
-    );
-    assert_eq!(
-        signer_state_label_and_tone("awaiting_approval"),
-        ("Waiting for approval…".to_string(), "warning".to_string())
-    );
-    assert_eq!(
-        signer_state_label_and_tone("unavailable"),
-        ("Signer unavailable".to_string(), "error".to_string())
-    );
-    assert_eq!(
-        signer_state_label_and_tone("failed"),
-        ("Connection failed".to_string(), "error".to_string())
-    );
-    // Forward-compat: an unknown token degrades to inactive/Unknown, never panics.
-    assert_eq!(
-        signer_state_label_and_tone("some_future_token"),
-        ("Unknown".to_string(), "inactive".to_string())
-    );
-}
-
-/// ADR-0032 / #1099 forward-compat: a buffer that lacks the tail-appended
-/// `status_label` / `status_tone` fields (an older host) must decode with the
-/// label/tone *re-derived from `state`* — byte-identical to what a new host
-/// would have written. We simulate the older buffer by encoding a model whose
-/// label/tone are deliberately blank, then asserting the decoder backfills them
-/// from `state`. (A blank tail string is indistinguishable, at decode, from an
-/// absent one for the fallback's purpose: both must yield the derived value.)
-#[test]
-fn older_buffer_without_label_tone_derives_from_state() {
-    // Hand-build a model with EMPTY label/tone (as if the producer predated
-    // #1099 and the fields were never written). The flatc encoder writes empty
-    // strings; the decoder's fallback fires on `None` from a truly absent
-    // field. To exercise the *absent*-field path we encode without the fields
-    // at the FlatBuffers layer.
-    let mut fbb = flatbuffers::FlatBufferBuilder::new();
-    let signer_kind = fbb.create_string("nip46");
-    let state = fbb.create_string("reconnecting");
-    let root = fb::SignerState::create(
-        &mut fbb,
-        &fb::SignerStateArgs {
-            signer_kind: Some(signer_kind),
-            state: Some(state),
-            has_reason: false,
-            reason: None,
-            is_ready: false,
-            is_awaiting_approval: false,
-            is_reconnecting: true,
-            is_unavailable: false,
-            is_failed: false,
-            // status_label / status_tone intentionally omitted (older buffer).
-            status_label: None,
-            status_tone: None,
-        },
-    );
-    fb::finish_signer_state_buffer(&mut fbb, root);
-    let bytes = fbb.finished_data().to_vec();
-
-    let decoded = decode_signer_state(&bytes).expect("older-buffer decode");
-    assert_eq!(decoded.status_label, "Reconnecting…");
-    assert_eq!(decoded.status_tone, "warning");
 }
 
 #[test]

@@ -1,22 +1,18 @@
 import SwiftUI
 
-/// Display helpers for the remote-signer `status_tone` field (ADR-0032 / #1099).
+/// Authoritative shell renderer for the remote-signer display label + tone
+/// (#1493 P9 — labels-to-shells, mirrors #1568; aim.md:62).
 ///
-/// Display decisions live in Rust: the kernel ships `status_label`
-/// ("Connected", "Reconnecting…", "Waiting for approval…", "Signer
-/// unavailable", "Connection failed", "Unknown") and `status_tone`
-/// ("active" | "warning" | "error" | "inactive") on the typed `signer_state`
-/// wire (tail-appended additive fields). `SignerStateRow` renders the label
-/// verbatim and maps the tone → `Color` via [`color(forTone:)`]; no Swift-side
-/// string-switch on `state` remains.
-///
-/// [`derivedLabel`] / [`derivedTone`] are the forward-compat fallback used ONLY
-/// when decoding an older buffer that predates those fields — they re-derive
-/// label/tone from the `state` token, mirroring the Rust
-/// `signer_state_label_and_tone()` function byte-for-byte (D1). New buffers
-/// carry the precomputed values and never hit those paths.
+/// The typed `signer_state` wire carries only the raw `state` token and the
+/// `is_*` flags; Rust no longer ships any pre-formatted English. This enum owns
+/// the presentation: [`derivedLabel`] maps `state` → the English label
+/// ("Connected", "Reconnecting…", "Waiting for approval…", "Signer unavailable",
+/// "Connection failed", "Unknown") and [`derivedTone`] maps `state` → a semantic
+/// tone ("active" | "warning" | "error" | "inactive"), which [`color(forTone:)`]
+/// turns into a `Color`. The Android peer (`TypedSignerStateDecoder.deriveStatus*`)
+/// mirrors this table.
 enum SignerStateTone {
-    /// Map a pre-computed `statusTone` string to a `Color`.
+    /// Map a derived `tone` string to a `Color`.
     /// Vocabulary: `"active"` | `"warning"` | `"error"` | `"inactive"`.
     static func color(forTone tone: String) -> Color {
         switch tone {
@@ -27,7 +23,7 @@ enum SignerStateTone {
         }
     }
 
-    /// Mirror of Rust `signer_state_label_and_tone()` — label half.
+    /// Shell renderer: the English label for a raw `state` token (#1493 P9).
     static func derivedLabel(_ state: String) -> String {
         switch state {
         case "ready", "connected": return "Connected"
@@ -39,7 +35,7 @@ enum SignerStateTone {
         }
     }
 
-    /// Mirror of Rust `signer_state_label_and_tone()` — tone half.
+    /// Shell renderer: the semantic tone for a raw `state` token (#1493 P9).
     static func derivedTone(_ state: String) -> String {
         switch state {
         case "ready", "connected":              return "active"

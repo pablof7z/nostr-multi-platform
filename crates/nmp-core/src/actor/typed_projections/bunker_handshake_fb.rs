@@ -53,7 +53,6 @@ pub struct BunkerHandshakeModel {
     pub is_failed: bool,
     pub is_terminal_success: bool,
     pub can_cancel: bool,
-    pub stage_label: String,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -65,7 +64,6 @@ pub(crate) fn encode_bunker_handshake(model: &BunkerHandshakeModel) -> Vec<u8> {
     let mut fbb = FlatBufferBuilder::new();
     let stage = fbb.create_string(&model.stage);
     let message = model.message.as_ref().map(|v| fbb.create_string(v));
-    let stage_label = fbb.create_string(&model.stage_label);
     let root = fb::BunkerHandshake::create(
         &mut fbb,
         &fb::BunkerHandshakeArgs {
@@ -77,7 +75,6 @@ pub(crate) fn encode_bunker_handshake(model: &BunkerHandshakeModel) -> Vec<u8> {
             is_failed: model.is_failed,
             is_terminal_success: model.is_terminal_success,
             can_cancel: model.can_cancel,
-            stage_label: Some(stage_label),
         },
     );
     fb::finish_bunker_handshake_buffer(&mut fbb, root);
@@ -106,7 +103,6 @@ pub fn decode_bunker_handshake(bytes: &[u8]) -> Result<BunkerHandshakeModel, Str
         is_failed: root.is_failed(),
         is_terminal_success: root.is_terminal_success(),
         can_cancel: root.can_cancel(),
-        stage_label: root.stage_label().unwrap_or_default().to_string(),
     })
 }
 
