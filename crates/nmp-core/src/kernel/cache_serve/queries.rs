@@ -3,7 +3,8 @@
 //!
 //! ## E1 shapes (authors + kinds, KindTime)
 //!
-//! - ≥1 author + ≥1 kind → one `AuthorKind` query per author.
+//! - exactly 1 author + ≥1 kind → one `AuthorKind` query.
+//! - >1 author + ≥1 kind → one multi-author `AuthorsKind` query (#1497).
 //! - 0 authors + ≥1 kind + 0 tags + 0 addrs → `KindTime`.
 //!
 //! ## E2 shape (DM gift-wrap inbox)

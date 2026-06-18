@@ -56,7 +56,8 @@ pub struct ContactsView {
     /// Source kind:3 `created_at` (Unix seconds). Drives both supersession
     /// (newest wins) and the RAM-eviction LRU ordering.
     pub created_at: u64,
-    /// The capped follow set (valid-hex `p`-tag pubkeys, in document order).
+    /// The full follow set (valid-hex `p`-tag pubkeys, in document order;
+    /// uncapped since #1497).
     /// An empty vector is a CLEARED follow set (a real, distinct state from
     /// "no kind:3 cached" — see the module docs).
     pub follows: Vec<String>,

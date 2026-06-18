@@ -189,8 +189,8 @@ fn e1_stored_events_reappear_after_cold_restart_without_relay() {
 // ─── 2. Serve depth = 1× visible window ─────────────────────────────────────
 
 /// ADR §4 (owner decision 2026-06-12): the serve depth for one interest is 1×
-/// the consumer's visible window — NOT `shape.limit` (the follow feed's wire
-/// cap is `Some(1000)`) and NOT a fixed constant.
+/// the consumer's visible window — NOT `shape.limit` (a tailing follow feed
+/// carries no wire cap, `None`, since #1497) and NOT a fixed constant.
 ///
 /// Seeds `visible_limit + 5` events from one author, cold-restarts, serves,
 /// drains, and asserts exactly `visible_limit` events were served — the

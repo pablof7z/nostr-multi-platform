@@ -412,10 +412,14 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     // key is fresh and the idempotency guard does not suppress the serve.
     //
     // For the feed we use `sync_follow_feed_interests` (the production entry
-    // point), which computes its own SubKey from the active account + authors
-    // and is not affected by the registry collision.
+    // point), which derives its own InterestId from the host-declared kinds
+    // (the follow set lives in the interest's shape, #1497) and is not affected
+    // by the registry collision.
 
-    // E1 — feed: sync_follow_feed_interests enqueues per-author AuthorKind serves.
+    // E1 — feed: sync_follow_feed_interests registers ONE multi-author follow
+    // interest (#1497). With a single author here its cache-serve maps to one
+    // `AuthorKind`; for >1 author it maps to one multi-author `AuthorsKind` —
+    // no per-author fan-out either way.
     kernel.sync_follow_feed_interests(&[feed_author.clone()]);
 
     // E3 — thread: register Etag interest with a fresh key → newly_installed=true.
