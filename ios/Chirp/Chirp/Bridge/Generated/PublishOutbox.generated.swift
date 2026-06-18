@@ -8,17 +8,13 @@ import Common
 
 import FlatBuffers
 
-// ADR-0032 / doctrine §4.4: `statusLabel`, `attemptLabel` removed from relay;
-// `title`, `preview`, `statusLabel`, `systemImage` removed from item.
-// `content` added to item. VT offsets updated to match publish_outbox.fbs.
-
 public struct nmp_kernel_PublishOutboxRelay: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "KPBO" }
+  public static var id: String { "KPBO" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_kernel_PublishOutboxRelay.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -83,7 +79,7 @@ public struct nmp_kernel_PublishOutboxItem: FlatBufferTable, FlatbuffersVectorIn
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "KPBO" }
+  public static var id: String { "KPBO" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_kernel_PublishOutboxItem.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -173,7 +169,7 @@ public struct nmp_kernel_PublishOutboxSnapshot: FlatBufferTable, FlatbuffersVect
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "KPBO" }
+  public static var id: String { "KPBO" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_kernel_PublishOutboxSnapshot.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
