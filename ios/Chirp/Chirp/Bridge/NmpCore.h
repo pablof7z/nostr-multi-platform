@@ -183,24 +183,6 @@ typedef void (*NmpEventObserverCallback)(void *context, const char *event_json);
 uint64_t nmp_app_register_event_observer(void *app, void *context, NmpEventObserverCallback callback);
 void nmp_app_unregister_event_observer(void *app, uint64_t id);
 
-// ── Raw signed-event tap ─────────────────────────────────────────────────
-//
-// `nmp_app_register_raw_event_observer` registers a callback that fires
-// once per accepted inbound event whose `kind` matches `kinds_json`, with a
-// nul-terminated JSON encoding of the VERBATIM flat NIP-01 signed event
-// `{id,pubkey,created_at,kind,tags,content,sig}` (the `sig` is preserved
-// byte-for-byte — the whole point). `kinds_json` is a JSON array of u32
-// kinds (e.g. `"[445,1059]"`); a null pointer, `"[]"`, or unparseable
-// input means "deliver every kind". The payload pointer is borrowed for
-// the callback's duration only. Returns a non-zero `u64` id on success,
-// `0` on failure (null app, null callback, poisoned mutex).
-//
-// `nmp_app_unregister_raw_event_observer` drops a registration by id.
-// Idempotent (D6): unknown ids / null app are silent no-ops.
-typedef void (*NmpRawEventObserverCallback)(void *context, const char *event_json);
-uint64_t nmp_app_register_raw_event_observer(void *app, void *context, NmpRawEventObserverCallback callback, const char *kinds_json);
-void nmp_app_unregister_raw_event_observer(void *app, uint64_t id);
-
 // NIP-47 Nostr Wallet Connect. All fire-and-forget (D6); outcomes arrive via
 // the snapshot's `wallet_status` and `last_error_toast` fields.
 void nmp_app_wallet_connect(void *app, const char *uri);

@@ -24,7 +24,9 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
-use nmp_core::{ActorCommand, ActorMail, CommandSender, RawEventObserver};
+use nmp_core::{ActorCommand, ActorMail, CommandSender};
+use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_core::substrate::IngestParser;
 use nmp_ffi::{
     nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_signin_nsec, nmp_app_start,
     NmpApp,
@@ -83,6 +85,19 @@ fn drive_local_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
     }
 }
 
+fn verified(ev: &nostr::Event) -> VerifiedEvent {
+    let raw = RawEvent {
+        id: ev.id.to_hex(),
+        pubkey: ev.pubkey.to_hex(),
+        created_at: ev.created_at.as_u64(),
+        kind: ev.kind.as_u16() as u32,
+        tags: ev.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+        content: ev.content.clone(),
+        sig: ev.sig.to_string(),
+    };
+    VerifiedEvent::try_from_raw(raw).expect("real signed event must verify")
+}
+
 /// THE NIP-17 DM INBOX PORT-CHAIN PROOF: register the DM inbox through the FFI
 /// symbol (proving it does not panic / take exclusive ownership), then construct
 /// an auxiliary `DmInboxProjection` whose active account is Bob, ingest an
@@ -107,7 +122,7 @@ fn dm_inbox_decrypts_through_the_signer_port() {
 
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "hello bob", 12345);
     let envelope_json = nostr::JsonUtil::as_json(&envelope);
-    <DmInboxProjection as RawEventObserver>::on_raw_event(&proj, 1059, &envelope_json);
+    proj.parse(&verified(&envelope));
     drive_local_decrypts(&rx, &bob);
 
     let snapshot_json = proj.snapshot_json();
@@ -159,11 +174,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
 
     let (proj, rx) = aux_projection(&bob.public_key());
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "wire-shape check", 700);
-    <DmInboxProjection as RawEventObserver>::on_raw_event(
-        &proj,
-        1059,
-        &nostr::JsonUtil::as_json(&envelope),
-    );
+    proj.parse(&verified(&envelope));
     drive_local_decrypts(&rx, &bob);
 
     let snapshot_value = proj.snapshot_json();

@@ -1,16 +1,14 @@
-//! Raw signed-event forwarding contract.
+//! Raw signed-event forwarding shared data types.
 //!
-//! `nmp-core` owns the transport-adjacent dispatch seam: after an inbound
-//! signed event has passed verification and store insertion, the actor can
-//! ask an injected policy which relay targets should receive the same signed
-//! event frame. The policy decides *whether* and *where* to forward; the
-//! actor owns the `Pool` send because sockets are substrate runtime state.
+//! `RawEventForwardPolicyContext` and `RawEventForwardTarget` are the shared
+//! data types used by the external event sink policy path. The policy trait
+//! itself is `ExternalEventSinkPolicy` in `external_event_sink/mod.rs`.
 
 use std::sync::Arc;
 
 use crate::slots::IndexerRelaysSlot;
-use crate::store::{EventStore, RawEvent};
-use crate::{KindFilter, RelayRole};
+use crate::store::EventStore;
+use crate::RelayRole;
 
 /// Kernel-owned handles available to a raw-event forwarding policy.
 ///
@@ -49,21 +47,3 @@ impl RawEventForwardTarget {
     }
 }
 
-/// Policy object injected by reusable crates.
-///
-/// Implementations should be cheap, deterministic, and side-effect free
-/// except for their own bounded in-memory bookkeeping. Returning an empty
-/// target list means "do not forward this event".
-pub trait RawEventForwardPolicy: Send + Sync {
-    /// Event kinds this policy wants to observe. Empty means all kinds.
-    fn kind_filter(&self) -> KindFilter;
-
-    /// Resolve forwarding targets for `raw`, given the relay that delivered
-    /// it. The actor will wrap the event JSON in `["EVENT", ...]` and send it
-    /// to each returned target.
-    fn forward_targets(
-        &self,
-        raw: &RawEvent,
-        source_relay_url: Option<&str>,
-    ) -> Vec<RawEventForwardTarget>;
-}

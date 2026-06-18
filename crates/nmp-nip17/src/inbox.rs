@@ -3,9 +3,8 @@
 //! # Overview
 //!
 //! This is the *inbound* counterpart to [`crate::build_dm_rumor`]. It is an
-//! [`IngestParser`](nmp_core::substrate::IngestParser) (and, for live relay
-//! provenance, a [`RawEventObserver`](nmp_core::RawEventObserver)) registered
-//! with a kind:1059 filter. For every accepted gift-wrap envelope it:
+//! [`IngestParser`](nmp_core::substrate::IngestParser) registered with a
+//! kind:1059 filter. For every accepted gift-wrap envelope it:
 //!
 //! 1. Parses the verbatim wire JSON into a signed `nostr::Event` (the `sig`
 //!    is mandatory — NIP-44 decryption verifies the seal).
@@ -71,7 +70,7 @@ use nmp_core::planner::{
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, ViewDependencies};
-use nmp_core::{CommandSender, KindFilter, RawEventObserver};
+use nmp_core::{CommandSender, KindFilter};
 use nmp_nip59::KIND_GIFT_WRAP;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
@@ -184,8 +183,7 @@ impl DmInboxSnapshot {
 /// (ADR-0050 §D6).
 ///
 /// Construct with the actor [`CommandSender`] and the pubkey-only
-/// [`ActiveAccountSlot`], register the `Arc` as an `IngestParser` (and
-/// optionally a [`RawEventObserver`] for live relay provenance) with
+/// [`ActiveAccountSlot`], register the `Arc` as an `IngestParser` with
 /// [`Self::kind_filter`], and capture it in a snapshot-projection closure
 /// (`snapshot_json`).
 pub struct DmInboxProjection {
@@ -205,8 +203,7 @@ pub struct DmInboxProjection {
 impl DmInboxProjection {
     /// Construct an inbox bound to the actor command sender and the pubkey-only
     /// active-account slot (ADR-0050 §D6). The message store starts empty;
-    /// envelopes arrive via [`IngestParser::parse`] /
-    /// [`RawEventObserver::on_raw_event`] and decrypt through the port.
+    /// envelopes arrive via [`IngestParser::parse`] and decrypt through the port.
     #[must_use]
     pub fn new(tx: CommandSender, active_pubkey: ActiveAccountSlot) -> Self {
         Self {
@@ -294,7 +291,7 @@ impl DmInboxProjection {
     /// chain's terminal continuation runs (inline for a local account, from the
     /// mailbox drain for a bunker). Factored out of the observer/parser impls so
     /// the unit tests can assert the launch outcome.
-    fn ingest_gift_wrap(&self, json: &str, source_relay_url: Option<&str>) -> bool {
+    pub fn ingest_gift_wrap(&self, json: &str, source_relay_url: Option<&str>) -> bool {
         // Parse the verbatim signed event off the borrowed buffer. A malformed
         // envelope is a silent no-op (D6).
         let Ok(event) = Event::from_json(json) else {
@@ -322,21 +319,6 @@ impl DmInboxProjection {
     }
 }
 
-impl RawEventObserver for DmInboxProjection {
-    /// One accepted inbound signed event (verbatim flat NIP-01 JSON, `sig`
-    /// included). The kind filter guarantees `kind == 1059`; `ingest_gift_wrap`
-    /// launches the port-driven unwrap chain. Every pre-launch failure is a
-    /// silent no-op (D6); the store mutation is the load-bearing effect a later
-    /// snapshot tick surfaces.
-    fn on_raw_event(&self, _kind: u32, json: &str) {
-        let _ = self.ingest_gift_wrap(json, None);
-    }
-
-    fn on_raw_event_with_source(&self, _kind: u32, json: &str, source_relay_url: Option<&str>) {
-        let _ = self.ingest_gift_wrap(json, source_relay_url);
-    }
-}
-
 impl IngestParser for DmInboxProjection {
     /// Receive a kind:1059 gift-wrap from the substrate ingest dispatcher.
     ///
@@ -351,8 +333,8 @@ impl IngestParser for DmInboxProjection {
     /// Source relay provenance is unavailable at the `IngestParser` seam today
     /// (the dispatcher API carries only the `VerifiedEvent`); relay-delivered
     /// events therefore accumulate no `source_relays` entries via this path.
-    /// The `RawEventObserver` path continues to populate `source_relays` for
-    /// live relay delivery.
+    /// Callers that have the relay URL available should use
+    /// [`Self::ingest_gift_wrap`] directly.
     ///
     /// D3/D8 — runs synchronously on the actor thread; bounded per-event work
     /// (one JSON serialisation, one outer-envelope parse, ONE port command).

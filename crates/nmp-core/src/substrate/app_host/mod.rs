@@ -31,13 +31,13 @@ use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
 use crate::{
-    AppRelaySlot, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
-    RawEventObserverId,
+    AppRelaySlot, KernelEventObserver, KernelEventObserverId,
 };
 
 use super::{
-    ActionRegistrar, ContactsLookup, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
-    ProfileLookup, RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook,
+    ActionRegistrar, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy,
+    IngestParser, MailboxCache, OutboxRouter,
+    ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
     RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 
@@ -108,8 +108,7 @@ pub trait IngestParserRegistrar {
     fn unregister_ingest_parser_range(&self, slot_key: &'static str);
 }
 
-/// Register / unregister kernel-event and raw-event observers (the v1 fan-out
-/// extension mechanism — [`KernelEventObserver`] and [`RawEventObserver`]).
+/// Register / unregister kernel-event observers.
 pub trait EventObserverRegistrar {
     fn register_event_observer(
         &self,
@@ -123,26 +122,6 @@ pub trait EventObserverRegistrar {
         new: Option<KernelEventObserverId>,
     ) -> Option<KernelEventObserverId>;
 
-    /// Register a raw signed-event observer for **verbatim forwarding only**.
-    ///
-    /// The tap delivers the exact signed NIP-01 frame (including `sig`) for
-    /// every accepted live-ingest event matching `kinds`. It fires on live
-    /// ingest (including `Duplicate` outcomes) but does **NOT** fire on
-    /// cache-served replay.
-    ///
-    /// **State derivation belongs on `register_ingest_parser` (rule A5),
-    /// not here.** The `IngestParser` seam fires on cache-served replay
-    /// (since PR-1/#1137 + PR-2/#1145) and supports slot-keyed replace for
-    /// lifecycle-managed singleton parsers. Use the raw tap exclusively when
-    /// the `sig` field must be forwarded verbatim to an external store or
-    /// relay bridge (e.g. the `hl` app's nostrdb mirror).
-    fn register_raw_event_observer(
-        &self,
-        kinds: KindFilter,
-        observer: Arc<dyn RawEventObserver>,
-    ) -> RawEventObserverId;
-
-    fn unregister_raw_event_observer(&self, id: RawEventObserverId);
 }
 
 /// Register a Rust-side callback for active-account changes (per-account
@@ -267,12 +246,22 @@ pub trait RoutingFactoryRegistrar {
             + Sync
             + 'static;
 
-    fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
+    /// Register the external event sink policy factory.
+    ///
+    /// Policies returned by this factory receive typed [`SignedEventFrame`]s
+    /// from the [`ExternalEventSinkDispatcher`] on a dedicated worker thread.
+    /// Default no-op so AppHost impls that do not need event forwarding compile
+    /// without changes; override in production composition roots.
+    ///
+    /// [`SignedEventFrame`]: crate::substrate::SignedEventFrame
+    /// [`ExternalEventSinkDispatcher`]: crate::substrate::ExternalEventSinkDispatcher
+    fn set_external_event_sink_policy_factory<F>(&self, _factory: F)
     where
-        F: Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn RawEventForwardPolicy>>
+        F: Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn ExternalEventSinkPolicy>>
             + Send
             + Sync
-            + 'static;
+            + 'static,
+    {}
 
     /// Register the host-supplied fallback relay URL for client-initiated
     /// NIP-46 `nostrconnect://` handshakes.

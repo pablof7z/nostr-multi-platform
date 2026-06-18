@@ -1,56 +1,66 @@
+//! Tests for the dispatcher integration.
+//!
+//! The dispatcher is wired directly into the persistence chokepoint and
+//! receives typed `RawEvent`s without a JSON-round-trip.  Policy registration
+//! installs `ExternalEventSinkPolicy` objects on the dispatcher directly.
+
 use std::sync::{Arc, Mutex};
 
-use crate::actor::raw_event_forwarder::{
-    new_raw_event_forward_observer_id_slot, register_raw_event_forward_policies,
-    RawEventForwardObserver, RawEventForwardSender,
-};
-use crate::actor::{new_raw_event_observer_slot, raw_observers_idle_for_kind};
+use crate::actor::raw_event_forwarder::register_raw_event_forward_policies;
 use crate::kernel::Kernel;
 use crate::store::RawEvent;
-use crate::substrate::{RawEventForwardPolicy, RawEventForwardTarget};
+use crate::substrate::{
+    ExternalEventSinkDispatcher, ExternalEventSinkPolicy, RawEventForwardTarget,
+};
+use crate::substrate::external_event_sink::{SignedEventFrame, SinkDestination};
 use crate::{KindFilter, RelayRole};
 
+// ─── Capture helpers ──────────────────────────────────────────────────────────
+
 #[derive(Clone, Default)]
-struct CaptureSender {
-    sends: Arc<Mutex<Vec<(String, String, RelayRole)>>>,
+struct CapturePolicy {
+    frames: Arc<Mutex<Vec<SignedEventFrame>>>,
 }
 
-impl CaptureSender {
-    fn sends(&self) -> Vec<(String, String, RelayRole)> {
-        self.sends.lock().expect("sends").clone()
+impl CapturePolicy {
+    fn frames(&self) -> Vec<SignedEventFrame> {
+        self.frames.lock().expect("frames").clone()
     }
 }
 
-impl RawEventForwardSender for CaptureSender {
-    fn send_to(&self, target: &RawEventForwardTarget, frame_text: &str) -> bool {
-        self.sends.lock().expect("sends").push((
-            target.relay_url.clone(),
-            frame_text.to_string(),
-            target.relay_role,
-        ));
-        true
-    }
-}
-
-struct StaticPolicy {
-    target: String,
-}
-
-impl RawEventForwardPolicy for StaticPolicy {
+impl ExternalEventSinkPolicy for CapturePolicy {
     fn kind_filter(&self) -> KindFilter {
         KindFilter::from_kinds([0u32])
     }
 
-    fn forward_targets(
-        &self,
-        _raw: &RawEvent,
-        _source_relay_url: Option<&str>,
-    ) -> Vec<RawEventForwardTarget> {
-        vec![RawEventForwardTarget::new(
+    fn destinations(&self, frame: &SignedEventFrame) -> Vec<SinkDestination> {
+        self.frames.lock().expect("frames").push(frame.clone());
+        vec![] // no relay delivery in unit tests
+    }
+}
+
+/// A static policy that always returns a single relay target — used to
+/// exercise the `ExternalEventSinkPolicySlot` registration path.
+struct StaticPolicy {
+    target: String,
+}
+
+impl ExternalEventSinkPolicy for StaticPolicy {
+    fn kind_filter(&self) -> KindFilter {
+        KindFilter::from_kinds([0u32])
+    }
+
+    fn destinations(&self, _frame: &SignedEventFrame) -> Vec<SinkDestination> {
+        vec![SinkDestination::Relay(RawEventForwardTarget::new(
             self.target.clone(),
             RelayRole::Indexer,
-        )]
+        ))]
     }
+}
+
+fn make_pool() -> nmp_network::pool::Pool {
+    let (relay_tx, _relay_rx) = std::sync::mpsc::channel();
+    nmp_network::pool::Pool::new(nmp_network::pool::PoolConfig::default(), relay_tx)
 }
 
 fn make_raw(kind: u32) -> RawEvent {
@@ -65,55 +75,66 @@ fn make_raw(kind: u32) -> RawEvent {
     }
 }
 
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
 #[test]
-fn observer_builds_event_frame_and_sends_to_policy_targets() {
-    let sender = Arc::new(CaptureSender::default());
-    let observer = RawEventForwardObserver::new(
-        Arc::new(StaticPolicy {
-            target: "wss://indexer/".into(),
-        }),
-        Arc::clone(&sender) as Arc<dyn RawEventForwardSender>,
-    );
+fn dispatcher_accepts_frames_from_capture_policy() {
+    let dispatcher = ExternalEventSinkDispatcher::new();
+    dispatcher.bind_runtime(make_pool());
+
+    let capture = Arc::new(CapturePolicy::default());
+    dispatcher.set_policies(vec![capture.clone() as Arc<dyn ExternalEventSinkPolicy>]);
+
+    // Build a frame and dispatch it.
     let raw = make_raw(0);
-    let json = serde_json::to_string(&raw).expect("raw json");
+    use crate::substrate::external_event_sink::{IngestOutcomeKind, SignedEventFrame};
+    let frame = SignedEventFrame::build(
+        Arc::new(raw),
+        Some(Arc::from("wss://relay/")),
+        IngestOutcomeKind::Inserted,
+    )
+    .expect("frame");
 
-    let sent = observer.process(&raw, Some("wss://content/"), &json);
+    dispatcher.dispatch(frame);
 
-    assert_eq!(sent, 1);
-    let sends = sender.sends();
-    assert_eq!(sends.len(), 1);
-    assert_eq!(sends[0].0, "wss://indexer/");
-    assert_eq!(sends[0].2, RelayRole::Indexer);
-    assert!(sends[0].1.starts_with(r#"["EVENT","#));
-    assert!(sends[0].1.ends_with(']'));
+    // Give the worker thread a moment to drain the channel.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    let frames = capture.frames();
+    assert_eq!(frames.len(), 1, "expected exactly one frame delivered");
+    let f = &frames[0];
+    assert_eq!(f.raw.kind, 0);
+    assert!(f.canonical_json.contains("\"kind\":0"), "canonical_json should contain kind:0");
+    assert_eq!(f.source_relay.as_deref(), Some("wss://relay/"));
 }
 
+/// `register_raw_event_forward_policies` installs policies on the dispatcher.
+/// The dispatcher must be non-idle for the registered kind after installation.
 #[test]
-fn re_register_unregisters_stale_policy_observers() {
-    let raw_slot = new_raw_event_observer_slot();
-    let id_slot = new_raw_event_forward_observer_id_slot();
-    let policy_slot = crate::slots::new_raw_event_forward_policy_slot();
+fn register_policies_installs_dispatcher_policies() {
+    let sink_policy_slot = crate::slots::new_external_event_sink_policy_slot();
+
     {
-        let mut guard = policy_slot.lock().expect("policy slot");
+        let mut guard = sink_policy_slot.lock().expect("policy slot");
         *guard = Some(Arc::new(|_context| {
             vec![Arc::new(StaticPolicy {
                 target: "wss://indexer/".into(),
-            }) as Arc<dyn RawEventForwardPolicy>]
+            }) as Arc<dyn ExternalEventSinkPolicy>]
         }));
     }
-    let (relay_tx, _relay_rx) = std::sync::mpsc::channel();
-    let pool = nmp_network::pool::Pool::new(nmp_network::pool::PoolConfig::default(), relay_tx);
+
+    let dispatcher = ExternalEventSinkDispatcher::new();
     let kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
 
-    register_raw_event_forward_policies(&kernel, &raw_slot, &pool, &id_slot, &policy_slot);
-    assert!(!raw_observers_idle_for_kind(&raw_slot, 0));
-    assert_eq!(id_slot.lock().expect("id slot").len(), 1);
-    let first_id = id_slot.lock().expect("id slot")[0];
+    register_raw_event_forward_policies(
+        &kernel,
+        &dispatcher,
+        &sink_policy_slot,
+    );
 
-    register_raw_event_forward_policies(&kernel, &raw_slot, &pool, &id_slot, &policy_slot);
-
-    assert!(!raw_observers_idle_for_kind(&raw_slot, 0));
-    let ids = id_slot.lock().expect("id slot").clone();
-    assert_eq!(ids.len(), 1);
-    assert_ne!(ids[0], first_id);
+    // The dispatcher handles kind:0 via its policy list.
+    assert!(
+        !dispatcher.all_idle_for_kind(0),
+        "dispatcher must NOT be idle for kind 0 after registration"
+    );
 }

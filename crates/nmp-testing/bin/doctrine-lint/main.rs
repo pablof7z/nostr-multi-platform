@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21/D23/D24/D25/D26.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21/D23/D24/D25/D26.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d23,d24,d25,d26}.rs` for
+//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d23,d24,d25,d26}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -67,10 +67,11 @@ use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
 use rules::{
-    a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
+    d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
+    no_raw_tap_reintroduction,
 };
 use scope::{
-    a5_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
+    d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
     d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
     d9_file_in_scope, is_doctrine_lint_source,
@@ -132,7 +133,6 @@ fn main() -> ExitCode {
         for path in &files {
             if let Err(e) = scan_one_file(
                 path,
-                &cfg.a5_extra_scopes,
                 &cfg.d8_extra_scopes,
                 &cfg.d9_extra_scopes,
                 &cfg.d10_extra_scopes,
@@ -166,7 +166,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26"
+        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/no_raw_tap"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -218,7 +218,6 @@ fn finish(
 #[allow(clippy::too_many_arguments)]
 fn scan_one_file(
     path: &Path,
-    a5_extra_scopes: &[String],
     d8_extra_scopes: &[String],
     d9_extra_scopes: &[String],
     d10_extra_scopes: &[String],
@@ -238,9 +237,9 @@ fn scan_one_file(
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
-    let a5_in_scope = a5_file_in_scope(path, a5_extra_scopes);
     let d0_exempt = d0::file_is_exempt(path);
     let d6_test_file = d6::file_is_test_only(path);
+    let no_raw_tap_in_scope = no_raw_tap_reintroduction::file_in_scope(path);
     let d7_in_scope = d7::file_in_scope(path);
     let d8_in_scope = d8::file_in_scope(path, d8_extra_scopes);
     let d9_in_scope = d9_file_in_scope(path, d9_extra_scopes);
@@ -333,29 +332,6 @@ fn scan_one_file(
         // fires only when the file is in scope (kernel/actor/FFI substrate).
         d14_tracker.observe_line(sl.text, sl.is_comment);
 
-        // A5 — raw-tap registrations in production code that are NOT in the
-        // seam's own definition files violate rule A5. State-derivation must
-        // use `register_ingest_parser` (fires on cache-served replay + slot-
-        // keyed replace). The rule is workspace-wide (any in-repo production
-        // caller is a violation) but self-gates via `a5::file_in_scope`
-        // (definition files are exempt). Test-only files (`d6_test_file`) and
-        // #[cfg(test)] bodies (`sl.in_test_cfg`) are exempt. Skipped in
-        // --workspace-d8 (no-polling sweep only).
-        if !workspace_d8 && a5_in_scope && !d6_test_file && !sl.in_test_cfg {
-            for (col, msg, suggested) in a5::check(sl.text, sl.is_comment, sl.in_test_cfg) {
-                if allow::line_allows(sl.text, a5::ID) {
-                    continue;
-                }
-                findings.push(report::Finding {
-                    rule: a5::ID,
-                    path: path.to_path_buf(),
-                    line: sl.line_no,
-                    col,
-                    message: msg,
-                    suggested,
-                });
-            }
-        }
         // D0
         if !workspace_d8 && !d0_exempt {
             for (col, msg, suggested) in d0::check(sl.text, sl.is_comment) {
@@ -735,6 +711,30 @@ fn scan_one_file(
             d6_test_file,
             findings,
         );
+        // no_raw_tap — bans re-introduction of the deleted raw event tap. Workspace-wide;
+        // test-only files / #[cfg(test)] bodies / --workspace-d8 sweeps are exempt.
+        if !workspace_d8 && no_raw_tap_in_scope && !d6_test_file && !sl.in_test_cfg
+            && !is_doctrine_lint_source(path)
+        {
+            for (col, msg, suggested) in no_raw_tap_reintroduction::check(
+                sl.text,
+                sl.is_comment,
+                sl.in_test_cfg,
+                no_raw_tap_reintroduction::in_sink_module(path),
+            ) {
+                if allow::line_allows(sl.text, no_raw_tap_reintroduction::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: no_raw_tap_reintroduction::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses

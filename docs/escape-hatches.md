@@ -2,54 +2,58 @@
 
 The NMP framework guards the kernel behind doctrine seams (D0–D8). Most app
 code should never need to cross these seams directly. This document catalogs
-the **four escape hatches** — production-level lanes that callers can use to
+the **three escape hatches** — production-level lanes that callers can use to
 reach below the framework guarantees — and explains when each is appropriate.
 
-Use these only when the framework's normal seams genuinely cannot serve your
-use case. Every escape hatch trades a framework guarantee for direct access.
+A capability the sound design cannot express through a typed seam is a design
+gap to close, not an exception to whitelist. Use these only when the framework's
+normal seams genuinely cannot serve your use case.
 
 ---
 
-## 1. Raw Event Tap — `nmp_app_register_raw_event_observer`
+## Retired: the raw event tap
 
-**Module:** `crates/nmp-ffi/src/raw_event_tap.rs`
-**Rust API:** `NmpApp::register_raw_event_observer`
-**C ABI:** `nmp_app_register_raw_event_observer` / `nmp_app_unregister_raw_event_observer`
+The original raw event tap (`nmp_app_register_raw_event_observer` /
+`RawEventObserver`) has been **eliminated**. It had no backpressure, silently
+matched all kinds on a null filter, and ran callbacks synchronously on the actor
+thread. There is no replacement push sink — the speculative batched
+`ExternalEventSink` C-ABI (register/ack/store-resync) that briefly stood in for
+it has also been removed.
 
-**What it gives you:** The verbatim inbound `SignedEvent` JSON (id + pubkey +
-created_at + kind + tags + content + **sig**) for every accepted live-ingest
-event whose kind matches your filter, delivered on a dedicated drain thread.
+Two distinct needs the tap conflated are now served separately:
 
-**Important: live ingest only.** The tap fires on live relay delivery
-(including `Duplicate` outcomes). It does **not** fire on cache-served replay.
-If you need your consumer to see both live events and events served from the
-local store on cold start, use `register_ingest_parser` (rule A5 / escape hatch #4) instead.
+- **In-process relay forwarding** is an internal policy seam, not an escape
+  hatch. The kernel owns an `ExternalEventSinkPolicy` dispatcher
+  (`crates/nmp-core/src/substrate/external_event_sink/`) that fans verified
+  inbound frames — including `Duplicate` outcomes with source-relay provenance —
+  out to relay targets on a background worker thread. The only in-repo consumer
+  is `IndexerRepublishPolicy`. It is not exposed over the FFI.
+- **External per-event consumption** (e.g. the `hl` app's nostrdb mirror) will
+  read through the store via a **bounded, backpressured pull cursor** (a store
+  ingest-log cursor — forthcoming work), never a kernel push callback. Until
+  that lands there is no live-delivery FFI for external mirrors.
 
-**What it bypasses:**
-- D1 — subscription/planner routing is invisible; you receive events regardless
-  of whether any subscription asked for them.
-- D3 — no projection routing; you get the wire event, not a view object.
-- D5 — outside the bounded snapshot cluster; high-volume kinds with a null
-  filter will fire on every accepted event with no back-pressure.
-- D8 — callback runs on the drain thread; any blocking operation stalls the
-  drain.
-
-**When appropriate:** Only when you need the `sig` field verbatim **to
-forward the exact signed frame to an external store or relay bridge** — e.g.
-the `hl` app's nostrdb mirror that stores events locally including their
-signatures. If you need to derive in-process state or projections, use
-`register_ingest_parser` (rule A5) instead.
-
-**Raw-tap retirement ladder (four-PR history):**
-- PR-1 (#1137) — NIP-17 DM inbox moved from raw tap to `IngestParser`; cache-serve replay wired.
-- PR-2 (#1145) — Marmot moved from raw tap to `IngestParser`; slot-keyed replace semantics added.
-- PR-3 (#1148) — chirp-tui debug raw-event cache moved to `IngestParser`.
-- PR-4 (this PR) — tap narrowed to verbatim-forwarding contract; `swap_dm_inbox_observer` dead surface deleted; lint backstop (rule A5) added.
-
+The lint rule `no_raw_tap_reintroduction` mechanically prevents the tap's
+symbols from reappearing.
 
 ---
 
-## 2. Action Module Seam — `NmpApp::register_action::<M>()`
+## Retired: the snapshot projector
+
+The schema-less JSON snapshot projector
+(`nmp_app_register_snapshot_projection` / the generic `KernelSnapshot::projections`
+map) has been **eliminated**. It was never wire-encoded — every host already
+reconstructed its view from the typed FlatBuffers projection sidecar — so the
+generic lane was dead producer code that bypassed D3 (typed projection routing).
+Production host-rendered state now flows through a single canonical path:
+`register_typed_snapshot_projection` (ADR-0037 typed runtime projections).
+
+The lint rule `A6` mechanically prevents the JSON lane's symbols from
+reappearing.
+
+---
+
+## 1. Action Module Seam — `NmpApp::register_action::<M>()`
 
 **Module:** `crates/nmp-core/src/app.rs`  
 **Rust API:** `NmpApp::register_action::<M>()` where `M: ActionModule`
@@ -57,19 +61,19 @@ signatures. If you need to derive in-process state or projections, use
 This is **not** an escape hatch in the negative sense — it is the **preferred
 way** to extend the kernel. An `ActionModule` provides:
 - A typed action handler dispatched via `dispatch_action` JSON payloads.
-- An optional `SnapshotProjector` for view delivery.
+- An optional typed `SnapshotProjector` for view delivery.
 - An optional `LogicalInterest` set for subscription routing.
 
-It is listed here because callers who reach for a raw tap or inject function
-often actually need an action module. If your use case involves (a) triggering
-Nostr events from user input, or (b) projecting custom state into the snapshot,
-use `ActionModule` before reaching for any escape hatch.
+It is listed here because callers who reach for an ingest parser or inject
+function often actually need an action module. If your use case involves (a)
+triggering Nostr events from user input, or (b) projecting custom state into the
+snapshot, use `ActionModule` before reaching for any escape hatch.
 
 See `docs/dispatch-actions.md` for the action namespace catalog.
 
 ---
 
-## 3. Test-Only Injectors — `nmp_app_inject_*`
+## 2. Test-Only Injectors — `nmp_app_inject_*`
 
 **Module:** `crates/nmp-ffi/src/testing.rs`
 **Gate:** `#[cfg(any(test, feature = "test-support"))]` — **never in production ABI**
@@ -82,11 +86,12 @@ the Schnorr + id-hash verification gate.
 
 **When appropriate:** Integration tests and REPL-driven diagnostics only.
 Never call these from production app code; the `test-support` feature flag
-prevents accidental inclusion.
+prevents accidental inclusion. This is the only mechanically-gated kernel-bypass
+exception.
 
 ---
 
-## 4. IngestParser — `register_ingest_parser` / `replace_ingest_parser`
+## 3. IngestParser — `register_ingest_parser` / `replace_ingest_parser`
 
 **Module:** `crates/nmp-core/src/kernel/ingest/mod.rs`  
 **Rust API:** `NmpApp::register_ingest_parser` / `NmpApp::replace_ingest_parser`  
@@ -116,9 +121,9 @@ slot silently replaces the first. Use namespaced slot names (e.g.
 
 **When appropriate:** Whenever you need to derive in-process state from
 inbound events — decrypt gift-wraps, build projections, accumulate per-kind
-views, or feed an external projection that must also see cached events on cold
-start. This is the **preferred path over the raw event tap** for any consumer
-that does more than forward a verbatim signed frame.
+views. This is the **preferred in-process consumption path**; an external store
+mirror that needs verbatim signed frames will use the forthcoming bounded
+store pull cursor instead.
 
 **What it bypasses:**
 - D3 — your parser runs outside the kernel's typed projection dispatch; the
@@ -127,7 +132,7 @@ that does more than forward a verbatim signed frame.
 **Does NOT bypass:**
 - D1 — the kernel only calls your parser for events that arrived via a wired
   subscription interest; you still need a matching `LogicalInterest` registered
-  (typically via an `ActionModule` or a `register_raw_event_observer` interest).
+  (typically via an `ActionModule` or a registered `LogicalInterest`).
 - D8 — the parser closure runs inline on the ingest path; it must be cheap and
   non-blocking.
 
@@ -136,22 +141,22 @@ that does more than forward a verbatim signed frame.
 ## Decision tree
 
 ```
-Need the `sig` field to forward the signed frame verbatim to an
-external store or relay bridge (e.g. nostrdb mirror)?
-  → raw event tap (#1)
-  NOTE: live ingest only — does NOT see cache-served replay.
-
-Need the `sig` field to derive in-process state (decrypt gift-wraps,
-build projections, accumulate per-kind views)?
-  → register_ingest_parser (rule A5) — fires on live ingest AND
+Need to derive in-process state from inbound signed events (decrypt
+gift-wraps, build projections, accumulate per-kind views)?
+  → register_ingest_parser (#3) — fires on live ingest AND
     cache-served replay; supports slot-keyed lifecycle replace.
 
+Need verbatim signed frames in an external store/relay-bridge mirror
+(e.g. an out-of-tree nostrdb mirror)?
+  → the forthcoming bounded store pull cursor (no live-delivery FFI yet).
+
 Need custom state in every snapshot?
-  → ActionModule snapshotProjector (#2)
+  → typed sidecar via register_typed_snapshot_projection (ADR-0037),
+    or an ActionModule snapshotProjector (#1)
 
 Need to handle a dispatch_action payload or publish Nostr events?
-  → ActionModule (#2)
+  → ActionModule (#1)
 
 Writing a test and need synthetic events without live relays?
-  → test-only injectors (#3)
+  → test-only injectors (#2)
 ```

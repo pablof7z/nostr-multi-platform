@@ -33,11 +33,6 @@ impl Kernel {
                     return None;
                 }
             };
-        let raw_for_observer = if self.raw_event_observers_idle_for_kind(event.kind) {
-            None
-        } else {
-            Some(verified.raw().clone())
-        };
         // V-40 — clone the verified event for the substrate
         // [`EventIngestDispatcher`] fan-out. Cloning is cheap and lets us hand
         // `store.insert` an owned `VerifiedEvent` while still feeding parsers
@@ -46,17 +41,35 @@ impl Kernel {
         // T105: store provenance is the *actual* URL the event came in on,
         // not the lane's bootstrap URL.
         let provenance = relay_url.to_string();
+        // Pre-compute the Arc<RawEvent> once for the dispatcher (avoids clone
+        // inside the dispatcher hot path when no dispatcher is set).
+        let raw_arc: std::sync::Arc<crate::store::RawEvent> =
+            std::sync::Arc::new(verified.raw().clone());
         match self
             .store
             .insert(verified, &provenance, self.ingest_received_at_ms())
         {
             Ok(outcome) => {
-                if raw_for_observer
-                    .as_ref()
-                    .is_some_and(|_| helpers::raw_tap_should_fire(&outcome))
+                // Dispatch to external event sinks (replaces old raw tap).
+                // `should_emit` preserves the DUPLICATE-inclusive outcome gate
+                // from `raw_tap_should_fire` (Inserted | Replaced | Duplicate |
+                // Ephemeral). The dispatcher's `all_idle_for_kind` fast-path
+                // avoids frame construction when no policy matches the kind.
+                if let Some(ingest_outcome) =
+                    crate::substrate::IngestOutcomeKind::from_insert_outcome(&outcome)
                 {
-                    if let Some(raw) = raw_for_observer.as_ref() {
-                        self.notify_raw_event_observers(raw, &provenance);
+                    if let Some(dispatcher) = self.external_event_sink_dispatcher() {
+                        if !dispatcher.all_idle_for_kind(event.kind) {
+                            let source_relay: Option<std::sync::Arc<str>> =
+                                Some(std::sync::Arc::from(provenance.as_str()));
+                            if let Some(frame) = crate::substrate::SignedEventFrame::build(
+                                std::sync::Arc::clone(&raw_arc),
+                                source_relay,
+                                ingest_outcome,
+                            ) {
+                                dispatcher.dispatch(frame);
+                            }
+                        }
                     }
                 }
                 // T131 — per-URL `RelayUsefulness` provenance accounting.

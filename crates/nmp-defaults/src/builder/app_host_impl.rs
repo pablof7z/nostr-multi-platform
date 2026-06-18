@@ -215,17 +215,17 @@ impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {
         app.set_publish_resolver_factory(factory);
     }
 
-    fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
+    fn set_external_event_sink_policy_factory<F>(&self, factory: F)
     where
         F: Fn(
                 nmp_core::substrate::RawEventForwardPolicyContext,
-            ) -> Vec<Arc<dyn nmp_core::substrate::RawEventForwardPolicy>>
+            ) -> Vec<Arc<dyn nmp_core::substrate::ExternalEventSinkPolicy>>
             + Send
             + Sync
             + 'static,
     {
         let app: &NmpApp = unsafe { &*self.app };
-        app.set_raw_event_forward_policy_factory(factory);
+        app.set_external_event_sink_policy_factory(factory);
     }
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
@@ -273,19 +273,6 @@ impl<S> EventObserverRegistrar for NmpAppBuilder<S> {
         app.swap_singleton_event_observer(new)
     }
 
-    fn register_raw_event_observer(
-        &self,
-        kinds: nmp_core::KindFilter,
-        observer: Arc<dyn nmp_core::RawEventObserver>,
-    ) -> nmp_core::RawEventObserverId {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.register_raw_event_observer(kinds, observer)
-    }
-
-    fn unregister_raw_event_observer(&self, id: nmp_core::RawEventObserverId) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.unregister_raw_event_observer(id);
-    }
 }
 
 impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {

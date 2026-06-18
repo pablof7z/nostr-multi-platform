@@ -15,7 +15,7 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::IngestParser;
-use nmp_core::{ActorCommand, ActorMail, CommandSender, RawEventObserver};
+use nmp_core::{ActorCommand, ActorMail, CommandSender};
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
@@ -159,7 +159,7 @@ fn local_backend_self_copy_files_under_recipient_peer() {
         .build(bob.public_key());
     let self_copy = nmp_nip59::gift_wrap_local(&bob, &bob.public_key(), &rumor, Timestamp::from(500))
         .expect("gift wrap");
-    proj.on_raw_event(KIND_GIFT_WRAP, &self_copy.as_json());
+    proj.parse(&verified(&self_copy));
 
     drive_decrypts(&rx, &Decryptor::Local(bob.secret_key().clone()));
 

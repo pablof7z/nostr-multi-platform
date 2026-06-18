@@ -82,9 +82,8 @@ impl Kernel {
         }
         self.events.insert(id.clone(), cached);
         self.notify_event_observers(&kernel_event);
-        if !self.raw_event_observers_idle_for_kind(raw.kind) {
-            self.notify_raw_event_observers(&raw, &relay_url);
-        }
+        // Step 2: raw observer tap removed from kernel; the dispatcher
+        // handles external event sinks from the persistence chokepoint.
         {
             let verified_for_dispatch =
                 crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());

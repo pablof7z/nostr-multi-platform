@@ -46,8 +46,8 @@ use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
 use nmp_core::substrate::{
-    ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, IngestParserRegistrar,
-    KernelReaderRegistrar, RawEventForwardPolicy, RelayConnectedHookRegistrar,
+    ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, ExternalEventSinkPolicy,
+    IngestParserRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
     RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
 };
 use nmp_coverage_gate::CoverageGate;
@@ -251,17 +251,15 @@ pub fn register_substrate(
         },
     );
 
-    // ── Raw-event forwarding policy ─────────────────────────────────────
+    // ── External event sink policy ─────────────────────────────────────
     //
-    // The kernel's raw-event forwarder is deliberately generic: it registers
-    // a policy as a `RawEventObserver`, wraps accepted events in
-    // `["EVENT", ...]`, and sends through the native pool. The
-    // replaceable-kind/indexer policy belongs in `nmp-router` beside the
-    // rest of the indexer-lane routing rules, so default composition injects
-    // it here. The factory is re-invoked on `Reset` with the rebuilt
-    // kernel's fresh store/provenance + indexer-relay handles.
-    app.set_raw_event_forward_policy_factory(|context| {
-        vec![Arc::new(IndexerRepublishPolicy::enabled(context)) as Arc<dyn RawEventForwardPolicy>]
+    // The dispatcher routes typed `SignedEventFrame`s to the injected policy
+    // objects. The replaceable-kind/indexer republish policy belongs in
+    // `nmp-router` beside the rest of the indexer-lane routing rules; default
+    // composition injects it here. The factory is re-invoked on `Reset` with
+    // the rebuilt kernel's fresh store/provenance + indexer-relay handles.
+    app.set_external_event_sink_policy_factory(|context| {
+        vec![Arc::new(IndexerRepublishPolicy::enabled(context)) as Arc<dyn ExternalEventSinkPolicy>]
     });
 
     // ── D2 coverage + NIP-77 sync hooks ─────────────────────────────────

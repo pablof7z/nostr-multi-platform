@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use super::{
     new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
-    new_lifecycle_observer_slot, new_raw_event_observer_slot, new_signer_state_slot, ActorChannels,
+    new_lifecycle_observer_slot, new_signer_state_slot, ActorChannels,
     ActorConfigSources, ActorMail, ActorRuntimeSlots, CommandSender, LifecycleObserverSlot,
 };
 
@@ -46,7 +46,6 @@ pub fn run_actor_with_lifecycle_observer(
     let runtime = ActorRuntimeSlots {
         lifecycle_observer,
         event_observers: new_event_observer_slot(),
-        raw_event_observers: new_raw_event_observer_slot(),
         snapshot_projections: crate::kernel::new_snapshot_projection_slot(),
         bunker_handshake: new_bunker_handshake_slot(),
         signer_state: new_signer_state_slot(),
@@ -60,6 +59,7 @@ pub fn run_actor_with_lifecycle_observer(
         routing_trace: Arc::new(Mutex::new(None)),
         active_account: crate::slots::new_active_account_slot(),
         event_store: crate::slots::new_event_store_slot(),
+        external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
     };
     let config = ActorConfigSources {
         storage_path: Arc::new(Mutex::new(None)),
@@ -76,7 +76,7 @@ pub fn run_actor_with_lifecycle_observer(
         bootstrap_self_kinds: Arc::new(Mutex::new(None)),
         routing_substrate: crate::slots::new_routing_substrate_slot(),
         publish_resolver: crate::slots::new_publish_resolver_slot(),
-        raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+        external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
         kernel_clock: crate::slots::new_kernel_clock_slot(),
     }
     .snapshot();

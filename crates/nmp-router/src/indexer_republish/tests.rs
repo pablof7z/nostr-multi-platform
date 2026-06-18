@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use nmp_core::slots::new_indexer_relays_slot;
 use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
-use nmp_core::substrate::{RawEventForwardPolicy, RawEventForwardPolicyContext};
+use nmp_core::substrate::{ExternalEventSinkPolicy, RawEventForwardPolicyContext};
+use nmp_core::substrate::external_event_sink::{
+    IngestOutcomeKind, SignedEventFrame, SinkDestination,
+};
 use nmp_core::RelayRole;
 
 use super::IndexerRepublishPolicy;
@@ -36,26 +39,48 @@ fn seed_store_with_provenance(store: &Arc<dyn EventStore>, raw: &RawEvent, sourc
         .expect("seed insert");
 }
 
+/// Build a minimal `SignedEventFrame` from a `RawEvent` and optional source relay URL.
+fn make_frame(raw: RawEvent, source: Option<&str>) -> SignedEventFrame {
+    SignedEventFrame::build(
+        Arc::new(raw),
+        source.map(Arc::from),
+        IngestOutcomeKind::Inserted,
+    )
+    .expect("frame build")
+}
+
+/// Extract relay URLs from destinations.
+fn relay_urls(dests: &[SinkDestination]) -> Vec<String> {
+    dests
+        .iter()
+        .filter_map(|d| match d {
+            SinkDestination::Relay(t) => Some(t.relay_url.clone()),
+        })
+        .collect()
+}
+
+/// Assert all destinations are Relay with Indexer role.
+fn all_indexer_role(dests: &[SinkDestination]) -> bool {
+    dests.iter().all(|d| match d {
+        SinkDestination::Relay(t) => t.relay_role == RelayRole::Indexer,
+    })
+}
+
 #[test]
 fn forwards_kind0_from_non_indexer_to_all_indexers() {
     let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&[
         "wss://indexer-a/",
         "wss://indexer-b/",
     ]));
-    let raw = make_raw(0, 0x01);
+    let frame = make_frame(make_raw(0, 0x01), Some("wss://content-relay/"));
 
-    let targets = policy.forward_targets(&raw, Some("wss://content-relay/"));
+    let dests = policy.destinations(&frame);
 
-    assert_eq!(targets.len(), 2);
-    assert!(targets
-        .iter()
-        .any(|target| target.relay_url == "wss://indexer-a/"));
-    assert!(targets
-        .iter()
-        .any(|target| target.relay_url == "wss://indexer-b/"));
-    assert!(targets
-        .iter()
-        .all(|target| target.relay_role == RelayRole::Indexer));
+    assert_eq!(dests.len(), 2);
+    let urls = relay_urls(&dests);
+    assert!(urls.contains(&"wss://indexer-a/".to_string()));
+    assert!(urls.contains(&"wss://indexer-b/".to_string()));
+    assert!(all_indexer_role(&dests));
 }
 
 #[test]
@@ -63,8 +88,8 @@ fn dedup_blocks_second_republish_of_same_event() {
     let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&["wss://indexer/"]));
     let raw = make_raw(3, 0x02);
 
-    let first = policy.forward_targets(&raw, Some("wss://content-relay/"));
-    let second = policy.forward_targets(&raw, Some("wss://content-relay/"));
+    let first = policy.destinations(&make_frame(raw.clone(), Some("wss://content-relay/")));
+    let second = policy.destinations(&make_frame(raw, Some("wss://content-relay/")));
 
     assert_eq!(first.len(), 1);
     assert!(second.is_empty());
@@ -83,9 +108,9 @@ fn skips_when_indexer_already_in_provenance() {
     let context = RawEventForwardPolicyContext::new(store, slot);
     let policy = IndexerRepublishPolicy::enabled(context);
 
-    let targets = policy.forward_targets(&raw, Some("wss://content-relay/"));
+    let dests = policy.destinations(&make_frame(raw, Some("wss://content-relay/")));
 
-    assert!(targets.is_empty());
+    assert!(dests.is_empty());
 }
 
 #[test]
@@ -94,11 +119,11 @@ fn skips_when_source_is_an_indexer() {
         "wss://indexer-a/",
         "wss://indexer-b/",
     ]));
-    let raw = make_raw(0, 0x04);
+    let frame = make_frame(make_raw(0, 0x04), Some("wss://indexer-a/"));
 
-    let targets = policy.forward_targets(&raw, Some("wss://indexer-a/"));
+    let dests = policy.destinations(&frame);
 
-    assert!(targets.is_empty());
+    assert!(dests.is_empty());
 }
 
 #[test]
@@ -106,10 +131,13 @@ fn skips_non_replaceable_kinds() {
     let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&["wss://indexer/"]));
 
     for kind in [1u32, 7, 5, 9_999, 20_000, 30_023, 40_000] {
-        let raw = make_raw(kind, 0x10 | (kind as u8 & 0x0f));
-        let targets = policy.forward_targets(&raw, Some("wss://content-relay/"));
+        let frame = make_frame(
+            make_raw(kind, 0x10 | (kind as u8 & 0x0f)),
+            Some("wss://content-relay/"),
+        );
+        let dests = policy.destinations(&frame);
         assert!(
-            targets.is_empty(),
+            dests.is_empty(),
             "non-replaceable kind {kind} must not forward"
         );
     }
@@ -118,21 +146,21 @@ fn skips_non_replaceable_kinds() {
 #[test]
 fn disabled_policy_is_a_noop() {
     let policy = IndexerRepublishPolicy::new(false, context_with_indexers(&["wss://indexer/"]));
-    let raw = make_raw(0, 0x05);
+    let frame = make_frame(make_raw(0, 0x05), Some("wss://content-relay/"));
 
-    let targets = policy.forward_targets(&raw, Some("wss://content-relay/"));
+    let dests = policy.destinations(&frame);
 
-    assert!(targets.is_empty());
+    assert!(dests.is_empty());
 }
 
 #[test]
 fn empty_indexer_set_short_circuits() {
     let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&[]));
-    let raw = make_raw(3, 0x06);
+    let frame = make_frame(make_raw(3, 0x06), Some("wss://content-relay/"));
 
-    let targets = policy.forward_targets(&raw, Some("wss://content-relay/"));
+    let dests = policy.destinations(&frame);
 
-    assert!(targets.is_empty());
+    assert!(dests.is_empty());
 }
 
 #[test]
@@ -141,9 +169,9 @@ fn different_indexers_are_independent_dedup_keys() {
         "wss://indexer-a/",
         "wss://indexer-b/",
     ]));
-    let raw = make_raw(0, 0x07);
+    let frame = make_frame(make_raw(0, 0x07), Some("wss://content-relay/"));
 
-    let targets = policy.forward_targets(&raw, Some("wss://content-relay/"));
+    let dests = policy.destinations(&frame);
 
-    assert_eq!(targets.len(), 2);
+    assert_eq!(dests.len(), 2);
 }

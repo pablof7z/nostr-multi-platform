@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::rules::{a5, a6, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d9};
+use crate::rules::{a6, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d9};
 
 /// True iff D9 should scan `path` — either the file is inside a protocol/
 /// substrate crate (`d9::file_in_scope`), or the caller opted-in via
@@ -224,20 +224,11 @@ pub(crate) fn d26_active_local_keys_in_scope(path: &Path, extra_scopes: &[String
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }
 
-/// True iff A5 should scan `path` — either the file is in the A5 workspace
-/// scope via `a5::file_in_scope` (which already exempts definition files and
-/// the doctrine-lint binary itself), or the caller opted-in via
-/// `--a5-extra-scope <fragment>` (the fixture smoke test uses this so a
+/// True iff A6 should scan `path` — either the file is in the A6 workspace
+/// scope via `a6::file_in_scope`, or the caller opted-in via
+/// `--a6-extra-scope <fragment>` (the fixture smoke test uses this so a
 /// staged fixture file under `target/` is reachable without faking a
 /// `crates/` layout). Mirrors `d17_file_in_scope`.
-pub(crate) fn a5_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if a5::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
 pub(crate) fn a6_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if a6::file_in_scope(path) {
         return true;

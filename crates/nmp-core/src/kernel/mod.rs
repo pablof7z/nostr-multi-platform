@@ -218,9 +218,7 @@ mod relay_score_tests;
 pub mod replaceable_ttl;
 // W2 — flush dirty score cells to the injected `RelayAuthorScoreStore`.
 // Called on actor idle; no-op when the map is clean or no store is set.
-mod raw_event_observer;
-#[cfg(test)]
-mod raw_event_observer_tests;
+mod external_event_sink;
 mod relay_score_flush;
 mod relay_score_lookup_impl;
 // W3 — score-update seam: edge-triggered hooks translate wire-frame outcomes
@@ -1204,13 +1202,14 @@ pub struct Kernel {
     /// `kernel/event_observer.rs`; `None` until the actor binds the
     /// shared `Arc<Mutex<…>>` via `set_event_observers_handle`.
     event_observers: Option<crate::actor::KernelEventObserverSlot>,
-    /// Raw signed-event tap slot. Integration lives in
-    /// `kernel/raw_event_observer.rs`; `None` until the actor binds the
-    /// shared `Arc<Mutex<…>>` via `set_raw_event_observers_handle`.
-    /// Delivers the verbatim flat NIP-01 signed event (`sig` included)
-    /// from the single all-kinds ingest point after the existing
-    /// Schnorr + id-hash gate. Generic capability (D0) — no protocol nouns.
-    raw_event_observers: Option<crate::actor::RawEventObserverSlot>,
+    /// External event sink dispatcher. Set once at actor start via
+    /// `set_external_event_sink_dispatcher`; the kernel calls
+    /// `dispatcher.dispatch(frame)` from the single all-kinds ingest
+    /// chokepoint (`kernel/ingest/persistence.rs`) for every event whose
+    /// outcome passes `ExternalEventSinkDispatcher::should_emit`.
+    /// Generic capability (D0) — no protocol nouns.
+    external_event_sink_dispatcher:
+        Option<crate::substrate::ExternalEventSinkDispatcher>,
     /// Host-extensible snapshot output slot. Integration lives in
     /// `kernel/snapshot_registry.rs`; `None` until the actor binds the
     /// shared `Arc<Mutex<…>>` via `set_snapshot_projection_handle`. Each
@@ -1986,7 +1985,7 @@ impl Kernel {
             queue_depth: None,
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
-            raw_event_observers: None,
+            external_event_sink_dispatcher: None,
             snapshot_projections: None,
             configured_relays_handle: None,
             indexer_relays_handle,

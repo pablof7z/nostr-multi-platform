@@ -149,7 +149,7 @@ pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at
 ///
 /// This unblocks integration tests that need to inject a real signed event (e.g.
 /// a kind:1059 gift-wrap from `nmp_nip59::gift_wrap`) through the kernel so
-/// registered `RawEventObserver`s (e.g. `DmInboxProjection`) see it exactly as
+/// registered `IngestParser`s (e.g. `DmInboxProjection`) see it exactly as
 /// production relay delivery would.
 ///
 /// Returns `true` on success, `false` if the JSON is malformed or Schnorr

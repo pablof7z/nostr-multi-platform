@@ -2,12 +2,13 @@
 //! `EventIngestDispatcher`.
 //!
 //! Regression guard for the PR-#1137 raw-tap retirement ladder regression:
-//! after the DM inbox and Marmot migrated from `RawEventObserver` to
+//! after the DM inbox and Marmot migrated from raw tap to
 //! `IngestParser`, the `ingest_pre_verified_event` test-support path
 //! (used by `ActorCommand::IngestPreVerifiedEvents` and therefore by
 //! `nmp_app_inject_signed_event_json`) silently missed every registered
 //! `IngestParser` because only `notify_raw_event_observers` was called —
 //! the `EventIngestDispatcher::dispatch` call was absent.
+//! The raw tap (`notify_raw_event_observers`) has since been fully removed.
 //!
 //! This test pins the contract directly at the kernel seam:
 //! `ingest_pre_verified_event` MUST dispatch to registered `IngestParser`s

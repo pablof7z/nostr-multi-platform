@@ -6,9 +6,9 @@ use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel::Kernel;
 use crate::slots::{
     ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, KernelClockSlot, MlsLocalNsecSlot,
-    PublishResolverFactory, PublishResolverSlot, RawEventForwardPolicyFactory,
-    RawEventForwardPolicySlot, RoutingSubstrateFactory, RoutingSubstrateSlot, RoutingTraceSlot,
-    StoragePathSlot,
+    ExternalEventSinkPolicyFactory, ExternalEventSinkPolicySlot,
+    PublishResolverFactory, PublishResolverSlot, RoutingSubstrateFactory, RoutingSubstrateSlot,
+    RoutingTraceSlot, StoragePathSlot,
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
@@ -20,7 +20,7 @@ use crate::update_envelope::UpdateFrameBytes;
 
 use super::{
     ActorMail, BunkerHandshakeSlot, CommandSender, KernelEventObserverSlot, LifecycleObserverSlot,
-    RawEventObserverSlot, SignerStateSlot,
+    SignerStateSlot,
 };
 
 pub struct ActorChannels {
@@ -32,7 +32,6 @@ pub struct ActorChannels {
 pub struct ActorRuntimeSlots {
     pub lifecycle_observer: LifecycleObserverSlot,
     pub event_observers: KernelEventObserverSlot,
-    pub raw_event_observers: RawEventObserverSlot,
     pub snapshot_projections: crate::kernel::SnapshotProjectionSlot,
     pub bunker_handshake: BunkerHandshakeSlot,
     pub signer_state: SignerStateSlot,
@@ -46,6 +45,7 @@ pub struct ActorRuntimeSlots {
     pub routing_trace: RoutingTraceSlot,
     pub active_account: ActiveAccountSlot,
     pub event_store: EventStoreSlot,
+    pub external_event_sink_dispatcher: crate::substrate::ExternalEventSinkDispatcherSlot,
 }
 
 pub struct ActorConfigSources {
@@ -63,7 +63,7 @@ pub struct ActorConfigSources {
     pub bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     pub routing_substrate: RoutingSubstrateSlot,
     pub publish_resolver: PublishResolverSlot,
-    pub raw_event_forward_policy: RawEventForwardPolicySlot,
+    pub external_event_sink_policy: ExternalEventSinkPolicySlot,
     pub kernel_clock: KernelClockSlot,
 }
 
@@ -137,8 +137,8 @@ impl ActorConfigSources {
                 .lock()
                 .ok()
                 .and_then(|guard| guard.as_ref().map(Arc::clone)),
-            raw_event_forward_policy: self
-                .raw_event_forward_policy
+            external_event_sink_policy: self
+                .external_event_sink_policy
                 .lock()
                 .ok()
                 .and_then(|guard| guard.as_ref().map(Arc::clone)),
@@ -166,7 +166,7 @@ pub struct ActorConfig {
     pub bootstrap_self_kinds: Option<Vec<u32>>,
     pub routing_substrate: Option<Arc<RoutingSubstrateFactory>>,
     pub publish_resolver: Option<Arc<PublishResolverFactory>>,
-    pub raw_event_forward_policy: Option<Arc<RawEventForwardPolicyFactory>>,
+    pub external_event_sink_policy: Option<Arc<ExternalEventSinkPolicyFactory>>,
     pub kernel_clock: Option<Arc<dyn crate::kernel::Clock>>,
 }
 
