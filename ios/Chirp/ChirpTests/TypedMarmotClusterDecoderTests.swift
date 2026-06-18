@@ -21,7 +21,7 @@ import FlatBuffers
 /// `*IdentityIsExact` cases pin the producer contract cheaply.
 ///
 /// `has_*` companion-bool semantics (`hasUnreadCount`/`hasLastMsgAt` on a group,
-/// `hasDTag`/`hasAgeSecs`/`hasAgeDisplay` on the key package,
+/// `hasDTag`/`hasAgeSecs` on the key package,
 /// `hasInvitesChipLabel` on the snapshot, `hasEpoch` on a message) are pinned to
 /// map `false → nil`, reproducing the JSON `null`-when-`None` shape regardless of
 /// the empty value slot — the parity the `MarmotStore.apply` `Equatable` compare
@@ -64,9 +64,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
                 ],
                 keyPackage: KeyPackageFixture(
                     published: true, dTag: "typed-d-tag", ageSecs: 4242,
-                    stale: false, ageDisplay: "70m old",
-                    subtitle: "Typed published key package",
-                    actionLabel: "Rotate key package"),
+                    stale: false, isRegistered: true),
                 cachedKpPubkeys: ["typedcached1", "typedcached2"],
                 invitesChipLabel: "1 invite",
                 isRegistered: true))
@@ -102,9 +100,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         XCTAssertEqual(snap.keyPackage.dTag, "typed-d-tag")
         XCTAssertEqual(snap.keyPackage.ageSecs, 4242)
         XCTAssertFalse(snap.keyPackage.stale)
-        XCTAssertEqual(snap.keyPackage.ageDisplay, "70m old")
-        XCTAssertEqual(snap.keyPackage.subtitle, "Typed published key package")
-        XCTAssertEqual(snap.keyPackage.actionLabel, "Rotate key package")
+        XCTAssertTrue(snap.keyPackage.isRegistered)
 
         XCTAssertEqual(snap.cachedKpPubkeys, ["typedcached1", "typedcached2"])
         XCTAssertEqual(snap.invitesChipLabel, "1 invite")
@@ -125,7 +121,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
                 pendingWelcomes: [],
                 keyPackage: KeyPackageFixture(
                     published: false, dTag: nil, ageSecs: nil, stale: false,
-                    ageDisplay: nil, subtitle: "", actionLabel: ""),
+                    isRegistered: false),
                 cachedKpPubkeys: [],
                 invitesChipLabel: nil,
                 isRegistered: false))
@@ -135,7 +131,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         XCTAssertEqual(snap.pendingWelcomes, [])
         XCTAssertNil(snap.keyPackage.dTag)
         XCTAssertNil(snap.keyPackage.ageSecs)
-        XCTAssertNil(snap.keyPackage.ageDisplay)
+        XCTAssertFalse(snap.keyPackage.isRegistered)
         XCTAssertNil(snap.invitesChipLabel)
         XCTAssertFalse(snap.isRegistered)
     }
@@ -252,13 +248,11 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         let dTag: String?
         let ageSecs: UInt64?
         let stale: Bool
-        let ageDisplay: String?
-        let subtitle: String
-        let actionLabel: String
+        let isRegistered: Bool
 
         static let empty = KeyPackageFixture(
             published: false, dTag: nil, ageSecs: nil, stale: false,
-            ageDisplay: nil, subtitle: "", actionLabel: "")
+            isRegistered: false)
     }
 
     private func buildMarmotSnapshot(
@@ -308,9 +302,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         let welcomesVec = fbb.createVector(ofOffsets: welcomeOffsets)
 
         let dTagOff = keyPackage.dTag.map { fbb.create(string: $0) } ?? Offset()
-        let ageDisplayOff = keyPackage.ageDisplay.map { fbb.create(string: $0) } ?? Offset()
-        let subtitleOff = fbb.create(string: keyPackage.subtitle)
-        let actionLabelOff = fbb.create(string: keyPackage.actionLabel)
         let keyPackageOff = nmp_marmot_KeyPackageStatus.createKeyPackageStatus(
             &fbb,
             published: keyPackage.published,
@@ -319,10 +310,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
             hasAgeSecs: keyPackage.ageSecs != nil,
             ageSecs: keyPackage.ageSecs ?? 0,
             stale: keyPackage.stale,
-            hasAgeDisplay: keyPackage.ageDisplay != nil,
-            ageDisplayOffset: ageDisplayOff,
-            subtitleOffset: subtitleOff,
-            actionLabelOffset: actionLabelOff)
+            isRegistered: keyPackage.isRegistered)
 
         let cachedVec = fbb.createVector(
             ofOffsets: cachedKpPubkeys.map { fbb.create(string: $0) })

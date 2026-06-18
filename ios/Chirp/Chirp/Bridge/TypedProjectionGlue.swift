@@ -706,12 +706,14 @@ enum TypedProjectionGlue {
     /// `projections["nmp.marmot.snapshot"]` path yields (V-107 / ADR-0039).
     /// Nested-vector copy: `groups` → `[MarmotGroup]`, `pendingWelcomes` →
     /// `[MarmotPendingWelcome]`, plus the `keyPackage` sub-table → `MarmotKeyPackage`.
-    /// The Rust projection owns ALL ordering and the pre-rendered §6/AP1 display
-    /// fields (`displayName`/`initials`/`subtitle`/`actionLabel`/`ageDisplay`/
-    /// `invitesChipLabel`) — the shell copies them verbatim and re-derives NOTHING
-    /// (thin-shell rule, ADR-0032). Every `has_*` companion bool reproduces the
-    /// JSON `null`-when-`None` semantics: `unreadCount`/`lastMsgAt` (`UInt32?`/
-    /// `UInt64?`), `dTag`/`ageSecs`/`ageDisplay` (`String?`/`UInt64?`),
+    /// The Rust projection sends RAW key-package state (`published`/`ageSecs`/
+    /// `stale`/`isRegistered`); the shell derives the subtitle / action-label /
+    /// age string itself (aim.md §2 — presentation formatting lives in the shell).
+    /// The free-form metadata fallbacks `displayName`/`initials`/`invitesChipLabel`
+    /// are still Rust-owned (empty-name fallbacks, not banned formatters). Every
+    /// `has_*` companion bool reproduces the JSON `null`-when-`None` semantics:
+    /// `unreadCount`/`lastMsgAt` (`UInt32?`/`UInt64?`), `dTag`/`ageSecs`
+    /// (`String?`/`UInt64?`),
     /// `invitesChipLabel` (`String?`) are `nil` when the companion is `false`,
     /// byte-identical to the JSON path. The wire's `orphanedCommitCount` /
     /// `keyringUnavailable` diagnostics are NOT carried by the Chirp domain type;
@@ -723,8 +725,7 @@ enum TypedProjectionGlue {
             MarmotKeyPackage(
                 published: kp.published, dTag: kp.hasDTag ? (kp.dTag ?? "") : nil,
                 ageSecs: kp.hasAgeSecs ? kp.ageSecs : nil, stale: kp.stale,
-                ageDisplay: kp.hasAgeDisplay ? (kp.ageDisplay ?? "") : nil,
-                subtitle: kp.subtitle ?? "", actionLabel: kp.actionLabel ?? ""
+                isRegistered: kp.isRegistered
             )
         } ?? .empty
         return MarmotSnapshot(

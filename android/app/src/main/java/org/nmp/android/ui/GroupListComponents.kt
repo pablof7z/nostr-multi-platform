@@ -77,14 +77,17 @@ internal fun KeyPackageRow(model: KernelModel, snapshot: MarmotSnapshot) {
     HorizontalDivider()
 }
 
-private fun bucketAge(secs: Long): String = when {
+internal fun bucketAge(secs: Long): String = when {
     secs < 60 -> "${secs}s old"
     secs < 3_600 -> "${secs / 60}m old"
     secs < 86_400 -> "${secs / 3_600}h old"
     else -> "${secs / 86_400}d old"
 }
 
-private fun keyPackageSubtitle(kp: MarmotKeyPackage): String {
+/// Shared shell-side key-package subtitle (aim.md §2 — presentation in the
+/// shell). Used by both `KeyPackageRow` (registered) and `GroupsScreen`'s
+/// not-registered empty state, so the copy lives in exactly one place.
+internal fun keyPackageSubtitle(kp: MarmotKeyPackage): String {
     if (!kp.isRegistered) return "Sign in with an nsec to enable"
     if (!kp.published) return "Not published"
     val parts = mutableListOf("Published")

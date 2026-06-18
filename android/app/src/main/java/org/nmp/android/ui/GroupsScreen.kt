@@ -163,7 +163,10 @@ private fun GroupListScreen(
             HorizontalDivider()
 
             if (!snapshot.isRegistered) {
-                NotRegisteredState(subtitle = snapshot.keyPackage.subtitle)
+                // Shell owns this copy now (aim.md §2 — presentation in the shell).
+                // keyPackageSubtitle() returns the not-registered prose when the
+                // key package's isRegistered flag is false.
+                NotRegisteredState(subtitle = keyPackageSubtitle(snapshot.keyPackage))
                 return@Column
             }
 

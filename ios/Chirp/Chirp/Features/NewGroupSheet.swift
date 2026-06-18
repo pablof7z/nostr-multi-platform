@@ -189,9 +189,10 @@ struct NewGroupSheet: View {
                 Button { create() } label: { Text("Create group") }
                     .disabled(createDisabled)
                 // When Marmot is not registered (bunker / no local nsec), surface
-                // the Rust-owned reason so the user knows how to unblock themselves.
+                // the reason so the user knows how to unblock themselves. The shell
+                // owns this copy now (aim.md §2 — presentation lives in the shell).
                 if kind == .privateGroup, !model.marmot.isRegistered {
-                    Text(model.marmot.snapshot.keyPackage.subtitle)
+                    Text("Sign in with an nsec to enable")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
