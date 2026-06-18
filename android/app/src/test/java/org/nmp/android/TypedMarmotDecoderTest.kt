@@ -74,18 +74,15 @@ class TypedMarmotDecoderTest {
         val welcome = PendingWelcomeRow.createPendingWelcomeRow(builder, wId, wGroup, wDisplay, wInviter)
         val welcomes = FbMarmotSnapshot.createPendingWelcomesVector(builder, intArrayOf(welcome))
 
-        // key package: published, no d_tag, age present.
-        val subtitle = builder.createString("Published 5d ago")
-        val actionLabel = builder.createString("Rotate key package")
+        // key package: published, no d_tag, age present. Raw fields only
+        // (aim.md §2): shells derive subtitle / action label from these.
         val kp = KeyPackageStatus.createKeyPackageStatus(
             builder,
             true, // published
             false, 0, // has_d_tag
             true, 432_000UL, // has_age_secs / age_secs
             true, // stale
-            false, 0, // has_age_display
-            subtitle,
-            actionLabel,
+            true, // is_registered
         )
 
         val cached = builder.createString(hex(0x05))
@@ -162,6 +159,7 @@ class TypedMarmotDecoderTest {
         assertTrue(snap.keyPackage.published)
         assertNull(snap.keyPackage.dTag) // has_d_tag == false → null
         assertEquals(432_000L, snap.keyPackage.ageSecs)
+        assertTrue(snap.keyPackage.isRegistered)
         assertEquals(listOf(hex(0x05)), snap.cachedKpPubkeys)
         assertEquals("1 invite", snap.invitesChipLabel)
         assertTrue(snap.isRegistered)

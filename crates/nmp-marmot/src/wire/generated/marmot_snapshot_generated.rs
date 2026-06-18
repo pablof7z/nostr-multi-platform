@@ -608,10 +608,7 @@ pub mod nmp {
             pub const VT_HAS_AGE_SECS: ::flatbuffers::VOffsetT = 10;
             pub const VT_AGE_SECS: ::flatbuffers::VOffsetT = 12;
             pub const VT_STALE: ::flatbuffers::VOffsetT = 14;
-            pub const VT_HAS_AGE_DISPLAY: ::flatbuffers::VOffsetT = 16;
-            pub const VT_AGE_DISPLAY: ::flatbuffers::VOffsetT = 18;
-            pub const VT_SUBTITLE: ::flatbuffers::VOffsetT = 20;
-            pub const VT_ACTION_LABEL: ::flatbuffers::VOffsetT = 22;
+            pub const VT_IS_REGISTERED: ::flatbuffers::VOffsetT = 16;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -629,19 +626,10 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<KeyPackageStatus<'bldr>> {
                 let mut builder = KeyPackageStatusBuilder::new(_fbb);
                 builder.add_age_secs(args.age_secs);
-                if let Some(x) = args.action_label {
-                    builder.add_action_label(x);
-                }
-                if let Some(x) = args.subtitle {
-                    builder.add_subtitle(x);
-                }
-                if let Some(x) = args.age_display {
-                    builder.add_age_display(x);
-                }
                 if let Some(x) = args.d_tag {
                     builder.add_d_tag(x);
                 }
-                builder.add_has_age_display(args.has_age_display);
+                builder.add_is_registered(args.is_registered);
                 builder.add_stale(args.stale);
                 builder.add_has_age_secs(args.has_age_secs);
                 builder.add_has_d_tag(args.has_d_tag);
@@ -717,50 +705,14 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn has_age_display(&self) -> bool {
+            pub fn is_registered(&self) -> bool {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<bool>(KeyPackageStatus::VT_HAS_AGE_DISPLAY, Some(false))
+                        .get::<bool>(KeyPackageStatus::VT_IS_REGISTERED, Some(false))
                         .unwrap()
-                }
-            }
-            #[inline]
-            pub fn age_display(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        KeyPackageStatus::VT_AGE_DISPLAY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn subtitle(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        KeyPackageStatus::VT_SUBTITLE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn action_label(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        KeyPackageStatus::VT_ACTION_LABEL,
-                        None,
-                    )
                 }
             }
         }
@@ -782,22 +734,7 @@ pub mod nmp {
                     .visit_field::<bool>("has_age_secs", Self::VT_HAS_AGE_SECS, false)?
                     .visit_field::<u64>("age_secs", Self::VT_AGE_SECS, false)?
                     .visit_field::<bool>("stale", Self::VT_STALE, false)?
-                    .visit_field::<bool>("has_age_display", Self::VT_HAS_AGE_DISPLAY, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "age_display",
-                        Self::VT_AGE_DISPLAY,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "subtitle",
-                        Self::VT_SUBTITLE,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "action_label",
-                        Self::VT_ACTION_LABEL,
-                        false,
-                    )?
+                    .visit_field::<bool>("is_registered", Self::VT_IS_REGISTERED, false)?
                     .finish();
                 Ok(())
             }
@@ -809,10 +746,7 @@ pub mod nmp {
             pub has_age_secs: bool,
             pub age_secs: u64,
             pub stale: bool,
-            pub has_age_display: bool,
-            pub age_display: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub subtitle: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub action_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub is_registered: bool,
         }
         impl<'a> Default for KeyPackageStatusArgs<'a> {
             #[inline]
@@ -824,10 +758,7 @@ pub mod nmp {
                     has_age_secs: false,
                     age_secs: 0,
                     stale: false,
-                    has_age_display: false,
-                    age_display: None,
-                    subtitle: None,
-                    action_label: None,
+                    is_registered: false,
                 }
             }
         }
@@ -870,32 +801,11 @@ pub mod nmp {
                     .push_slot::<bool>(KeyPackageStatus::VT_STALE, stale, false);
             }
             #[inline]
-            pub fn add_has_age_display(&mut self, has_age_display: bool) {
+            pub fn add_is_registered(&mut self, is_registered: bool) {
                 self.fbb_.push_slot::<bool>(
-                    KeyPackageStatus::VT_HAS_AGE_DISPLAY,
-                    has_age_display,
+                    KeyPackageStatus::VT_IS_REGISTERED,
+                    is_registered,
                     false,
-                );
-            }
-            #[inline]
-            pub fn add_age_display(&mut self, age_display: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    KeyPackageStatus::VT_AGE_DISPLAY,
-                    age_display,
-                );
-            }
-            #[inline]
-            pub fn add_subtitle(&mut self, subtitle: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    KeyPackageStatus::VT_SUBTITLE,
-                    subtitle,
-                );
-            }
-            #[inline]
-            pub fn add_action_label(&mut self, action_label: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    KeyPackageStatus::VT_ACTION_LABEL,
-                    action_label,
                 );
             }
             #[inline]
@@ -924,10 +834,7 @@ pub mod nmp {
                 ds.field("has_age_secs", &self.has_age_secs());
                 ds.field("age_secs", &self.age_secs());
                 ds.field("stale", &self.stale());
-                ds.field("has_age_display", &self.has_age_display());
-                ds.field("age_display", &self.age_display());
-                ds.field("subtitle", &self.subtitle());
-                ds.field("action_label", &self.action_label());
+                ds.field("is_registered", &self.is_registered());
                 ds.finish()
             }
         }

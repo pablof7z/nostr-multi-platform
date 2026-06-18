@@ -182,10 +182,7 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
     case hasAgeSecs = 10
     case ageSecs = 12
     case stale = 14
-    case hasAgeDisplay = 16
-    case ageDisplay = 18
-    case subtitle = 20
-    case actionLabel = 22
+    case isRegistered = 16
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -197,14 +194,8 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
   public var hasAgeSecs: Bool { let o = _accessor.offset(VTOFFSET.hasAgeSecs.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var ageSecs: UInt64 { let o = _accessor.offset(VTOFFSET.ageSecs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var stale: Bool { let o = _accessor.offset(VTOFFSET.stale.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var hasAgeDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasAgeDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var ageDisplay: String? { let o = _accessor.offset(VTOFFSET.ageDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var ageDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.ageDisplay.v) }
-  public var subtitle: String? { let o = _accessor.offset(VTOFFSET.subtitle.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var subtitleSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.subtitle.v) }
-  public var actionLabel: String? { let o = _accessor.offset(VTOFFSET.actionLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var actionLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.actionLabel.v) }
-  public static func startKeyPackageStatus(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
+  public var isRegistered: Bool { let o = _accessor.offset(VTOFFSET.isRegistered.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public static func startKeyPackageStatus(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 7) }
   public static func add(published: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: published, def: false,
    at: VTOFFSET.published.p) }
   public static func add(hasDTag: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasDTag, def: false,
@@ -215,11 +206,8 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
   public static func add(ageSecs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: ageSecs, def: 0, at: VTOFFSET.ageSecs.p) }
   public static func add(stale: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: stale, def: false,
    at: VTOFFSET.stale.p) }
-  public static func add(hasAgeDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAgeDisplay, def: false,
-   at: VTOFFSET.hasAgeDisplay.p) }
-  public static func add(ageDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: ageDisplay, at: VTOFFSET.ageDisplay.p) }
-  public static func add(subtitle: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: subtitle, at: VTOFFSET.subtitle.p) }
-  public static func add(actionLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: actionLabel, at: VTOFFSET.actionLabel.p) }
+  public static func add(isRegistered: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isRegistered, def: false,
+   at: VTOFFSET.isRegistered.p) }
   public static func endKeyPackageStatus(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createKeyPackageStatus(
     _ fbb: inout FlatBufferBuilder,
@@ -229,10 +217,7 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
     hasAgeSecs: Bool = false,
     ageSecs: UInt64 = 0,
     stale: Bool = false,
-    hasAgeDisplay: Bool = false,
-    ageDisplayOffset ageDisplay: Offset = Offset(),
-    subtitleOffset subtitle: Offset = Offset(),
-    actionLabelOffset actionLabel: Offset = Offset()
+    isRegistered: Bool = false
   ) -> Offset {
     let __start = nmp_marmot_KeyPackageStatus.startKeyPackageStatus(&fbb)
     nmp_marmot_KeyPackageStatus.add(published: published, &fbb)
@@ -241,10 +226,7 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
     nmp_marmot_KeyPackageStatus.add(hasAgeSecs: hasAgeSecs, &fbb)
     nmp_marmot_KeyPackageStatus.add(ageSecs: ageSecs, &fbb)
     nmp_marmot_KeyPackageStatus.add(stale: stale, &fbb)
-    nmp_marmot_KeyPackageStatus.add(hasAgeDisplay: hasAgeDisplay, &fbb)
-    nmp_marmot_KeyPackageStatus.add(ageDisplay: ageDisplay, &fbb)
-    nmp_marmot_KeyPackageStatus.add(subtitle: subtitle, &fbb)
-    nmp_marmot_KeyPackageStatus.add(actionLabel: actionLabel, &fbb)
+    nmp_marmot_KeyPackageStatus.add(isRegistered: isRegistered, &fbb)
     return nmp_marmot_KeyPackageStatus.endKeyPackageStatus(&fbb, start: __start)
   }
 
@@ -256,10 +238,7 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
     try _v.visit(field: VTOFFSET.hasAgeSecs.p, fieldName: "hasAgeSecs", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.ageSecs.p, fieldName: "ageSecs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.stale.p, fieldName: "stale", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.hasAgeDisplay.p, fieldName: "hasAgeDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.ageDisplay.p, fieldName: "ageDisplay", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.subtitle.p, fieldName: "subtitle", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.actionLabel.p, fieldName: "actionLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.isRegistered.p, fieldName: "isRegistered", required: false, type: Bool.self)
     _v.finish()
   }
 }

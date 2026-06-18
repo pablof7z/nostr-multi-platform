@@ -71,16 +71,40 @@ struct SettingsHubView: View {
 
 // ── Marmot key-package status row ─────────────────────────────────────────
 //
-// Surfaces the local MLS key-package state (subtitle + action label from
-// `nmp-marmot::projection`) and a publish / rotate action calling the
-// `publish_key_package` dispatch op. Key-package visibility lives in Settings,
-// not a top-level screen, per the milestone scope.
+// Surfaces the local MLS key-package state and a publish / rotate action
+// calling the `publish_key_package` dispatch op. Key-package visibility lives
+// in Settings, not a top-level screen, per the milestone scope.
+//
+// aim.md §2: Rust sends raw data only. Subtitle and button label are derived
+// here in the shell from the raw fields (isRegistered, published, ageSecs,
+// stale) rather than being pre-formatted by the backend.
 
 private struct MarmotKeyPackageRow: View {
     @EnvironmentObject private var model: KernelModel
 
-    private var snapshot: MarmotSnapshot { model.marmot.snapshot }
-    private var kp: MarmotKeyPackage { snapshot.keyPackage }
+    private var kp: MarmotKeyPackage { model.marmot.snapshot.keyPackage }
+
+    private var subtitle: String {
+        guard kp.isRegistered else { return "Sign in with an nsec to enable" }
+        guard kp.published else { return "Not published" }
+        var parts = ["Published"]
+        if let secs = kp.ageSecs {
+            parts.append(bucketAge(secs))
+        }
+        if kp.stale { parts.append("needs rotation") }
+        return parts.joined(separator: " · ")
+    }
+
+    private var actionLabel: String {
+        kp.published ? "Rotate key package" : "Publish key package"
+    }
+
+    private func bucketAge(_ secs: UInt64) -> String {
+        if secs < 60 { return "\(secs)s old" }
+        if secs < 3_600 { return "\(secs / 60)m old" }
+        if secs < 86_400 { return "\(secs / 3_600)h old" }
+        return "\(secs / 86_400)d old"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -93,7 +117,7 @@ private struct MarmotKeyPackageRow: View {
                         .font(.caption)
                 }
             }
-            Text(kp.subtitle)
+            Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("marmot-key-package-status")
@@ -107,9 +131,9 @@ private struct MarmotKeyPackageRow: View {
             Button {
                 model.marmot.publishKeyPackage()
             } label: {
-                Text(kp.actionLabel)
+                Text(actionLabel)
             }
-            .disabled(!snapshot.isRegistered)
+            .disabled(!kp.isRegistered)
             .accessibilityIdentifier("marmot-publish-key-package-button")
         }
     }

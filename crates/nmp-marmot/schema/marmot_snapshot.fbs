@@ -15,9 +15,9 @@ namespace nmp.marmot;
 //
 // Raw data only (aim.md §2): hex group ids / pubkeys, Unix-second timestamps,
 // raw counts. The few free-form metadata fallbacks already computed by the
-// projection (`display_name`, `initials`, `subtitle`, `invites_chip_label`,
-// `age_display`) are carried verbatim as the projection produced them — this
-// codec runs NO additional formatting on the encode path.
+// projection (`display_name`, `initials`, `invites_chip_label`) are carried
+// verbatim as the projection produced them — this codec runs NO additional
+// formatting on the encode path.
 //
 // Optional fields use the `has_x` presence-flag + value convention (the same
 // one used by content_tree.fbs / wallet_status.fbs / wot_bootstrap.fbs) so
@@ -26,7 +26,6 @@ namespace nmp.marmot;
 //   * MarmotGroupRow.last_msg_at:  Option<u64>      -> has_last_msg_at  + value
 //   * KeyPackageStatus.d_tag:      Option<String>   -> has_d_tag        + value
 //   * KeyPackageStatus.age_secs:   Option<u64>      -> has_age_secs     + value
-//   * KeyPackageStatus.age_display:Option<String>   -> has_age_display  + value
 //   * MarmotSnapshot.invites_chip_label: Option<String>
 //                                                   -> has_invites_chip_label + value
 //
@@ -61,8 +60,8 @@ table PendingWelcomeRow {
 }
 
 // KeyPackage publication health. Mirrors
-// `crate::projection::payload::KeyPackageStatus`. The string fields are
-// pre-rendered by the projection (aim.md §6 AP1) and carried verbatim.
+// `crate::projection::payload::KeyPackageStatus`. Raw data only (aim.md §2):
+// shells derive subtitle copy and button labels from these fields.
 table KeyPackageStatus {
   published:bool;
   has_d_tag:bool;           // Option<String> presence
@@ -70,10 +69,7 @@ table KeyPackageStatus {
   has_age_secs:bool;        // Option<u64> presence
   age_secs:uint64;          // seconds since most recent publication
   stale:bool;               // age_secs exceeds the 7-day rotation threshold
-  has_age_display:bool;     // Option<String> presence
-  age_display:string;       // bucketed age string ("12s old" / "5d old")
-  subtitle:string;          // full rendered subtitle (four-branch policy)
-  action_label:string;      // "Publish key package" / "Rotate key package"
+  is_registered:bool;       // built against a registered signing identity
 }
 
 /// One parked (deferred) op waiting for a peer's KP to arrive.

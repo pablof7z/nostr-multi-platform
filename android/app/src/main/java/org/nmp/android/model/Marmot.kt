@@ -52,8 +52,9 @@ data class MarmotPendingWelcome(
 }
 
 /**
- * KeyPackage publication health. `subtitle` / `ageDisplay` / `actionLabel` are
- * projection-provided product labels that the shell renders verbatim.
+ * KeyPackage publication health. Raw data only (aim.md §2): shells (Compose,
+ * SwiftUI) derive subtitle copy and button labels from these raw fields.
+ * No pre-formatted display strings live here.
  */
 @Serializable
 data class MarmotKeyPackage(
@@ -61,9 +62,8 @@ data class MarmotKeyPackage(
     @SerialName("d_tag") val dTag: String? = null,
     @SerialName("age_secs") val ageSecs: Long? = null,
     val stale: Boolean = false,
-    @SerialName("age_display") val ageDisplay: String? = null,
-    val subtitle: String = "",
-    @SerialName("action_label") val actionLabel: String = "",
+    /** `true` when built against a registered Marmot signing identity. */
+    @SerialName("is_registered") val isRegistered: Boolean = false,
 )
 
 /**

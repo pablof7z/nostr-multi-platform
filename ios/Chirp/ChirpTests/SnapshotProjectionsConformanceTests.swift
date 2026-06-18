@@ -131,8 +131,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             "key_package": {
               "published": false,
               "stale": false,
-              "subtitle": "",
-              "action_label": ""
+              "is_registered": false
             },
             "cached_kp_pubkeys": [],
             "is_registered": false
