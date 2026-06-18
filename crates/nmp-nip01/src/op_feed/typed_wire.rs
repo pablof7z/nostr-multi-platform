@@ -158,23 +158,11 @@ fn encode_reply_attribution<'bldr>(
     let author_display = encode_author_display(builder, &attr.author_display);
     let author_pubkey = builder.create_string(&attr.author_pubkey);
     let reply_event_id = builder.create_string(&attr.reply_event_id);
-    let author_display_name = attr
-        .author_display_name
-        .as_ref()
-        .map(|s| builder.create_string(s));
-    let author_picture_url = attr
-        .author_picture_url
-        .as_ref()
-        .map(|s| builder.create_string(s));
     fb::ReplyAttribution::create(
         builder,
         &fb::ReplyAttributionArgs {
             author_pubkey: Some(author_pubkey),
             author_display: Some(author_display),
-            has_author_display_name: attr.author_display_name.is_some(),
-            author_display_name,
-            has_author_picture_url: attr.author_picture_url.is_some(),
-            author_picture_url,
             reply_event_id: Some(reply_event_id),
             reply_created_at: attr.reply_created_at,
         },
@@ -186,7 +174,6 @@ fn encode_author_display<'bldr>(
     display: &AuthorDisplay,
 ) -> WIPOffset<tl::AuthorDisplay<'bldr>> {
     let name = display.name.as_ref().map(|s| builder.create_string(s));
-    let npub = display.npub.as_ref().map(|s| builder.create_string(s));
     let picture_url = display
         .picture_url
         .as_ref()
@@ -196,8 +183,6 @@ fn encode_author_display<'bldr>(
         &tl::AuthorDisplayArgs {
             has_name: display.name.is_some(),
             name,
-            has_npub: display.npub.is_some(),
-            npub,
             has_picture_url: display.picture_url.is_some(),
             picture_url,
         },
@@ -280,14 +265,6 @@ fn decode_reply_attribution(
             .ok_or("ReplyAttribution missing author_pubkey")?
             .to_string(),
         author_display,
-        author_display_name: optional_string(
-            attr.has_author_display_name(),
-            attr.author_display_name(),
-        ),
-        author_picture_url: optional_string(
-            attr.has_author_picture_url(),
-            attr.author_picture_url(),
-        ),
         reply_event_id: attr
             .reply_event_id()
             .ok_or("ReplyAttribution missing reply_event_id")?
@@ -299,7 +276,6 @@ fn decode_reply_attribution(
 fn decode_author_display(display: tl::AuthorDisplay<'_>) -> AuthorDisplay {
     AuthorDisplay {
         name: optional_string(display.has_name(), display.name()),
-        npub: optional_string(display.has_npub(), display.npub()),
         picture_url: optional_string(display.has_picture_url(), display.picture_url()),
     }
 }

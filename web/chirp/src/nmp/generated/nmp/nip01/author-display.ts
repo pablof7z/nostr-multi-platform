@@ -34,32 +34,20 @@ name(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasNpub():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-npub():string|null
-npub(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-npub(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 hasPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 pictureUrl():string|null
 pictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 pictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startAuthorDisplay(builder:flatbuffers.Builder) {
-  builder.startObject(6);
+  builder.startObject(4);
 }
 
 static addHasName(builder:flatbuffers.Builder, hasName:boolean) {
@@ -70,20 +58,12 @@ static addName(builder:flatbuffers.Builder, nameOffset:flatbuffers.Offset) {
   builder.addFieldOffset(1, nameOffset, 0);
 }
 
-static addHasNpub(builder:flatbuffers.Builder, hasNpub:boolean) {
-  builder.addFieldInt8(2, +hasNpub, +false);
-}
-
-static addNpub(builder:flatbuffers.Builder, npubOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, npubOffset, 0);
-}
-
 static addHasPictureUrl(builder:flatbuffers.Builder, hasPictureUrl:boolean) {
-  builder.addFieldInt8(4, +hasPictureUrl, +false);
+  builder.addFieldInt8(2, +hasPictureUrl, +false);
 }
 
 static addPictureUrl(builder:flatbuffers.Builder, pictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, pictureUrlOffset, 0);
+  builder.addFieldOffset(3, pictureUrlOffset, 0);
 }
 
 static endAuthorDisplay(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -91,12 +71,10 @@ static endAuthorDisplay(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createAuthorDisplay(builder:flatbuffers.Builder, hasName:boolean, nameOffset:flatbuffers.Offset, hasNpub:boolean, npubOffset:flatbuffers.Offset, hasPictureUrl:boolean, pictureUrlOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createAuthorDisplay(builder:flatbuffers.Builder, hasName:boolean, nameOffset:flatbuffers.Offset, hasPictureUrl:boolean, pictureUrlOffset:flatbuffers.Offset):flatbuffers.Offset {
   AuthorDisplay.startAuthorDisplay(builder);
   AuthorDisplay.addHasName(builder, hasName);
   AuthorDisplay.addName(builder, nameOffset);
-  AuthorDisplay.addHasNpub(builder, hasNpub);
-  AuthorDisplay.addNpub(builder, npubOffset);
   AuthorDisplay.addHasPictureUrl(builder, hasPictureUrl);
   AuthorDisplay.addPictureUrl(builder, pictureUrlOffset);
   return AuthorDisplay.endAuthorDisplay(builder);

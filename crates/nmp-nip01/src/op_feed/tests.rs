@@ -29,7 +29,7 @@ fn from_reply_requires_kind1_follow_and_reply_marker() {
     assert_eq!(attribution.author_pubkey(), ALICE);
     assert_eq!(attribution.reply_event_id(), REPLY_ID);
     assert_eq!(attribution.reply_created_at(), 10);
-    assert_eq!(attribution.author_display_name, None);
+    assert_eq!(attribution.author_display.name, None);
 
     // non-follow → None.
     assert!(
@@ -75,13 +75,13 @@ fn from_reply_mirrors_profile_then_refresh_updates_in_place() {
     let reply = reply_event(REPLY_ID, ALICE, 10, OP_ID);
     let mut attribution =
         Nip10ReplyAttribution::from_reply(&reply, &follow, &profile_for).expect("qualifies");
-    assert_eq!(attribution.author_display_name.as_deref(), Some("Alice A."));
+    assert_eq!(attribution.author_display.name.as_deref(), Some("Alice A."));
     assert_eq!(
-        attribution.author_picture_url.as_deref(),
+        attribution.author_display.picture_url.as_deref(),
         Some("https://example.com/a.png")
     );
 
-    // refresh_for_profile updates the mirrors in place without touching keys.
+    // refresh_for_profile updates author_display in place without touching keys.
     let newer = ProfileDisplay {
         display: Some("Alice Renamed".to_string()),
         picture_url: None,
@@ -90,10 +90,10 @@ fn from_reply_mirrors_profile_then_refresh_updates_in_place() {
     };
     attribution.refresh_for_profile(&newer);
     assert_eq!(
-        attribution.author_display_name.as_deref(),
+        attribution.author_display.name.as_deref(),
         Some("Alice Renamed")
     );
-    assert_eq!(attribution.author_picture_url, None);
+    assert_eq!(attribution.author_display.picture_url, None);
     assert_eq!(attribution.author_pubkey(), ALICE);
     assert_eq!(attribution.reply_event_id(), REPLY_ID);
 }
@@ -148,7 +148,7 @@ fn profile_refresh_updates_buffered_attribution() {
 
     let snap = h.snapshot();
     let attribution = &snap.cards[0].attribution[0];
-    assert_eq!(attribution.author_display_name.as_deref(), Some("Alice A."));
+    assert_eq!(attribution.author_display.name.as_deref(), Some("Alice A."));
 }
 
 #[test]

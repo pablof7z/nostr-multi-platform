@@ -37,8 +37,8 @@ class RepostAttribution : Table() {
                 null
             }
         }
-    val authorPubkeyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun authorPubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val authorPubkeyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun authorPubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val authorDisplay : nmp.nip01.AuthorDisplay? get() = authorDisplay(nmp.nip01.AuthorDisplay())
     fun authorDisplay(obj: nmp.nip01.AuthorDisplay) : nmp.nip01.AuthorDisplay? {
         val o = __offset(6)
@@ -62,8 +62,8 @@ class RepostAttribution : Table() {
                 null
             }
         }
-    val authorDisplayNameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun authorDisplayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val authorDisplayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun authorDisplayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val hasAuthorPictureUrl : Boolean
         get() {
             val o = __offset(12)
@@ -78,8 +78,8 @@ class RepostAttribution : Table() {
                 null
             }
         }
-    val authorPictureUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun authorPictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val authorPictureUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun authorPictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     val noteCreatedAt : ULong
         get() {
             val o = __offset(16)

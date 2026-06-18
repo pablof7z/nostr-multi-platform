@@ -42,8 +42,8 @@ class ThreadPointer : Table() {
                 null
             }
         }
-    val idAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun idInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val idAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun idInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val coord : String?
         get() {
             val o = __offset(8)
@@ -53,8 +53,8 @@ class ThreadPointer : Table() {
                 null
             }
         }
-    val coordAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun coordInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val coordAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun coordInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val uri : String?
         get() {
             val o = __offset(10)
@@ -64,8 +64,8 @@ class ThreadPointer : Table() {
                 null
             }
         }
-    val uriAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun uriInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val uriAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun uriInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val relay : String?
         get() {
             val o = __offset(12)
@@ -75,8 +75,8 @@ class ThreadPointer : Table() {
                 null
             }
         }
-    val relayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(12, 1)
-    fun relayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 12, 1)
+    val relayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun relayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
     val hasKindNum : Boolean
         get() {
             val o = __offset(14)

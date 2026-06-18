@@ -128,14 +128,14 @@ table NoteRelationCounts {
 // Author display (nmp_nip01::AuthorDisplay)
 // ---------------------------------------------------------------------------
 
-// All three are optional in the source (Option<String>). Absence is
+// Both fields are optional in the source (Option<String>). Absence is
 // meaningful (no kind:0 seen yet), so each has a `has_*` companion bool to
 // distinguish "absent" from "present empty string".
+// ADR-0032 / V-115: `npub` (bech32) has been removed — Rust must not encode
+// presentation-layer bech32 in projection types.
 table AuthorDisplay {
   has_name:bool;
   name:string;
-  has_npub:bool;
-  npub:string;
   has_picture_url:bool;
   picture_url:string;
 }

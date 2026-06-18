@@ -37,8 +37,8 @@ class ContentEventRenderEntry : Table() {
                 null
             }
         }
-    val keyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val id : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class ContentEventRenderEntry : Table() {
                 null
             }
         }
-    val idAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun idInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val idAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun idInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val authorPubkey : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class ContentEventRenderEntry : Table() {
                 null
             }
         }
-    val authorPubkeyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun authorPubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val authorPubkeyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun authorPubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val authorDisplay : nmp.nip01.AuthorDisplay? get() = authorDisplay(nmp.nip01.AuthorDisplay())
     fun authorDisplay(obj: nmp.nip01.AuthorDisplay) : nmp.nip01.AuthorDisplay? {
         val o = __offset(10)
@@ -89,8 +89,8 @@ class ContentEventRenderEntry : Table() {
                 null
             }
         }
-    val contentPreviewAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(16, 1)
-    fun contentPreviewInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 16, 1)
+    val contentPreviewAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun contentPreviewInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     fun contentTreeBytes(j: Int) : UByte {
         val o = __offset(18)
         return if (o != 0) {
@@ -103,8 +103,8 @@ class ContentEventRenderEntry : Table() {
         get() {
             val o = __offset(18); return if (o != 0) __vector_len(o) else 0
         }
-    val contentTreeBytesAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(18, 1)
-    fun contentTreeBytesInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 18, 1)
+    val contentTreeBytesAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
+    fun contentTreeBytesInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsContentEventRenderEntry(_bb: ByteBuffer): ContentEventRenderEntry = getRootAsContentEventRenderEntry(_bb, ContentEventRenderEntry())

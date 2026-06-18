@@ -37,8 +37,8 @@ class BlockEventId : Table() {
                 null
             }
         }
-    val idAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun idInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val idAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun idInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsBlockEventId(_bb: ByteBuffer): BlockEventId = getRootAsBlockEventId(_bb, BlockEventId())

@@ -41,7 +41,6 @@ fn content_tree() -> nmp_content::ContentTreeWire {
 fn full_display() -> AuthorDisplay {
     AuthorDisplay {
         name: Some("Alice".to_string()),
-        npub: Some("npub1alice".to_string()),
         picture_url: Some("https://example.com/a.png".to_string()),
     }
 }
@@ -101,12 +100,9 @@ fn attribution(byte: u8, with_display: bool) -> Nip10ReplyAttribution {
         } else {
             AuthorDisplay {
                 name: None,
-                npub: Some("npub1carol".to_string()),
                 picture_url: None,
             }
         },
-        author_display_name: with_display.then(|| "Alice".to_string()),
-        author_picture_url: with_display.then(|| "https://example.com/a.png".to_string()),
         reply_event_id: hex32(byte.wrapping_add(0x80)),
         reply_created_at: 1_700_000_900 + u64::from(byte),
     }

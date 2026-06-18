@@ -400,10 +400,8 @@ public struct nmp_nip01_AuthorDisplay: FlatBufferTable, FlatbuffersVectorInitial
   private enum VTOFFSET: VOffset {
     case hasName = 4
     case name = 6
-    case hasNpub = 8
-    case npub = 10
-    case hasPictureUrl = 12
-    case pictureUrl = 14
+    case hasPictureUrl = 8
+    case pictureUrl = 10
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -411,19 +409,13 @@ public struct nmp_nip01_AuthorDisplay: FlatBufferTable, FlatbuffersVectorInitial
   public var hasName: Bool { let o = _accessor.offset(VTOFFSET.hasName.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var name: String? { let o = _accessor.offset(VTOFFSET.name.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var nameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.name.v) }
-  public var hasNpub: Bool { let o = _accessor.offset(VTOFFSET.hasNpub.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var npub: String? { let o = _accessor.offset(VTOFFSET.npub.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var npubSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.npub.v) }
   public var hasPictureUrl: Bool { let o = _accessor.offset(VTOFFSET.hasPictureUrl.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var pictureUrl: String? { let o = _accessor.offset(VTOFFSET.pictureUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var pictureUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.pictureUrl.v) }
-  public static func startAuthorDisplay(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 6) }
+  public static func startAuthorDisplay(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
   public static func add(hasName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasName, def: false,
    at: VTOFFSET.hasName.p) }
   public static func add(name: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: name, at: VTOFFSET.name.p) }
-  public static func add(hasNpub: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasNpub, def: false,
-   at: VTOFFSET.hasNpub.p) }
-  public static func add(npub: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: npub, at: VTOFFSET.npub.p) }
   public static func add(hasPictureUrl: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasPictureUrl, def: false,
    at: VTOFFSET.hasPictureUrl.p) }
   public static func add(pictureUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pictureUrl, at: VTOFFSET.pictureUrl.p) }
@@ -432,16 +424,12 @@ public struct nmp_nip01_AuthorDisplay: FlatBufferTable, FlatbuffersVectorInitial
     _ fbb: inout FlatBufferBuilder,
     hasName: Bool = false,
     nameOffset name: Offset = Offset(),
-    hasNpub: Bool = false,
-    npubOffset npub: Offset = Offset(),
     hasPictureUrl: Bool = false,
     pictureUrlOffset pictureUrl: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip01_AuthorDisplay.startAuthorDisplay(&fbb)
     nmp_nip01_AuthorDisplay.add(hasName: hasName, &fbb)
     nmp_nip01_AuthorDisplay.add(name: name, &fbb)
-    nmp_nip01_AuthorDisplay.add(hasNpub: hasNpub, &fbb)
-    nmp_nip01_AuthorDisplay.add(npub: npub, &fbb)
     nmp_nip01_AuthorDisplay.add(hasPictureUrl: hasPictureUrl, &fbb)
     nmp_nip01_AuthorDisplay.add(pictureUrl: pictureUrl, &fbb)
     return nmp_nip01_AuthorDisplay.endAuthorDisplay(&fbb, start: __start)
@@ -451,8 +439,6 @@ public struct nmp_nip01_AuthorDisplay: FlatBufferTable, FlatbuffersVectorInitial
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.hasName.p, fieldName: "hasName", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.name.p, fieldName: "name", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasNpub.p, fieldName: "hasNpub", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.npub.p, fieldName: "npub", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.hasPictureUrl.p, fieldName: "hasPictureUrl", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.pictureUrl.p, fieldName: "pictureUrl", required: false, type: ForwardOffset<String>.self)
     _v.finish()

@@ -22,12 +22,8 @@ public struct nmp_nip01_ReplyAttribution: FlatBufferTable, FlatbuffersVectorInit
   private enum VTOFFSET: VOffset {
     case authorPubkey = 4
     case authorDisplay = 6
-    case hasAuthorDisplayName = 8
-    case authorDisplayName = 10
-    case hasAuthorPictureUrl = 12
-    case authorPictureUrl = 14
-    case replyEventId = 16
-    case replyCreatedAt = 18
+    case replyEventId = 8
+    case replyCreatedAt = 10
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -35,24 +31,12 @@ public struct nmp_nip01_ReplyAttribution: FlatBufferTable, FlatbuffersVectorInit
   public var authorPubkey: String? { let o = _accessor.offset(VTOFFSET.authorPubkey.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var authorPubkeySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorPubkey.v) }
   public var authorDisplay: nmp_nip01_AuthorDisplay? { let o = _accessor.offset(VTOFFSET.authorDisplay.v); return o == 0 ? nil : nmp_nip01_AuthorDisplay(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public var hasAuthorDisplayName: Bool { let o = _accessor.offset(VTOFFSET.hasAuthorDisplayName.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var authorDisplayName: String? { let o = _accessor.offset(VTOFFSET.authorDisplayName.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var authorDisplayNameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorDisplayName.v) }
-  public var hasAuthorPictureUrl: Bool { let o = _accessor.offset(VTOFFSET.hasAuthorPictureUrl.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var authorPictureUrl: String? { let o = _accessor.offset(VTOFFSET.authorPictureUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var authorPictureUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorPictureUrl.v) }
   public var replyEventId: String? { let o = _accessor.offset(VTOFFSET.replyEventId.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var replyEventIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.replyEventId.v) }
   public var replyCreatedAt: UInt64 { let o = _accessor.offset(VTOFFSET.replyCreatedAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startReplyAttribution(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
+  public static func startReplyAttribution(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
   public static func add(authorPubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkey, at: VTOFFSET.authorPubkey.p) }
   public static func add(authorDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorDisplay, at: VTOFFSET.authorDisplay.p) }
-  public static func add(hasAuthorDisplayName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAuthorDisplayName, def: false,
-   at: VTOFFSET.hasAuthorDisplayName.p) }
-  public static func add(authorDisplayName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorDisplayName, at: VTOFFSET.authorDisplayName.p) }
-  public static func add(hasAuthorPictureUrl: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAuthorPictureUrl, def: false,
-   at: VTOFFSET.hasAuthorPictureUrl.p) }
-  public static func add(authorPictureUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPictureUrl, at: VTOFFSET.authorPictureUrl.p) }
   public static func add(replyEventId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: replyEventId, at: VTOFFSET.replyEventId.p) }
   public static func add(replyCreatedAt: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: replyCreatedAt, def: 0, at: VTOFFSET.replyCreatedAt.p) }
   public static func endReplyAttribution(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
@@ -60,20 +44,12 @@ public struct nmp_nip01_ReplyAttribution: FlatBufferTable, FlatbuffersVectorInit
     _ fbb: inout FlatBufferBuilder,
     authorPubkeyOffset authorPubkey: Offset = Offset(),
     authorDisplayOffset authorDisplay: Offset = Offset(),
-    hasAuthorDisplayName: Bool = false,
-    authorDisplayNameOffset authorDisplayName: Offset = Offset(),
-    hasAuthorPictureUrl: Bool = false,
-    authorPictureUrlOffset authorPictureUrl: Offset = Offset(),
     replyEventIdOffset replyEventId: Offset = Offset(),
     replyCreatedAt: UInt64 = 0
   ) -> Offset {
     let __start = nmp_nip01_ReplyAttribution.startReplyAttribution(&fbb)
     nmp_nip01_ReplyAttribution.add(authorPubkey: authorPubkey, &fbb)
     nmp_nip01_ReplyAttribution.add(authorDisplay: authorDisplay, &fbb)
-    nmp_nip01_ReplyAttribution.add(hasAuthorDisplayName: hasAuthorDisplayName, &fbb)
-    nmp_nip01_ReplyAttribution.add(authorDisplayName: authorDisplayName, &fbb)
-    nmp_nip01_ReplyAttribution.add(hasAuthorPictureUrl: hasAuthorPictureUrl, &fbb)
-    nmp_nip01_ReplyAttribution.add(authorPictureUrl: authorPictureUrl, &fbb)
     nmp_nip01_ReplyAttribution.add(replyEventId: replyEventId, &fbb)
     nmp_nip01_ReplyAttribution.add(replyCreatedAt: replyCreatedAt, &fbb)
     return nmp_nip01_ReplyAttribution.endReplyAttribution(&fbb, start: __start)
@@ -83,10 +59,6 @@ public struct nmp_nip01_ReplyAttribution: FlatBufferTable, FlatbuffersVectorInit
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.authorPubkey.p, fieldName: "authorPubkey", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.authorDisplay.p, fieldName: "authorDisplay", required: false, type: ForwardOffset<nmp_nip01_AuthorDisplay>.self)
-    try _v.visit(field: VTOFFSET.hasAuthorDisplayName.p, fieldName: "hasAuthorDisplayName", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.authorDisplayName.p, fieldName: "authorDisplayName", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasAuthorPictureUrl.p, fieldName: "hasAuthorPictureUrl", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.authorPictureUrl.p, fieldName: "authorPictureUrl", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.replyEventId.p, fieldName: "replyEventId", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.replyCreatedAt.p, fieldName: "replyCreatedAt", required: false, type: UInt64.self)
     _v.finish()

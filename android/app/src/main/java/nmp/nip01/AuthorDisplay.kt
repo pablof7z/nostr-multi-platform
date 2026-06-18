@@ -42,14 +42,14 @@ class AuthorDisplay : Table() {
                 null
             }
         }
-    val nameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
-    val hasNpub : Boolean
+    val nameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val hasPictureUrl : Boolean
         get() {
             val o = __offset(8)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val npub : String?
+    val pictureUrl : String?
         get() {
             val o = __offset(10)
             return if (o != 0) {
@@ -58,24 +58,8 @@ class AuthorDisplay : Table() {
                 null
             }
         }
-    val npubAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun npubInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
-    val hasPictureUrl : Boolean
-        get() {
-            val o = __offset(12)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
-        }
-    val pictureUrl : String?
-        get() {
-            val o = __offset(14)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val pictureUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun pictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val pictureUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun pictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsAuthorDisplay(_bb: ByteBuffer): AuthorDisplay = getRootAsAuthorDisplay(_bb, AuthorDisplay())
@@ -83,23 +67,19 @@ class AuthorDisplay : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createAuthorDisplay(builder: FlatBufferBuilder, hasName: Boolean, nameOffset: Int, hasNpub: Boolean, npubOffset: Int, hasPictureUrl: Boolean, pictureUrlOffset: Int) : Int {
-            builder.startTable(6)
+        fun createAuthorDisplay(builder: FlatBufferBuilder, hasName: Boolean, nameOffset: Int, hasPictureUrl: Boolean, pictureUrlOffset: Int) : Int {
+            builder.startTable(4)
             addPictureUrl(builder, pictureUrlOffset)
-            addNpub(builder, npubOffset)
             addName(builder, nameOffset)
             addHasPictureUrl(builder, hasPictureUrl)
-            addHasNpub(builder, hasNpub)
             addHasName(builder, hasName)
             return endAuthorDisplay(builder)
         }
-        fun startAuthorDisplay(builder: FlatBufferBuilder) = builder.startTable(6)
+        fun startAuthorDisplay(builder: FlatBufferBuilder) = builder.startTable(4)
         fun addHasName(builder: FlatBufferBuilder, hasName: Boolean) = builder.addBoolean(0, hasName, false)
         fun addName(builder: FlatBufferBuilder, name: Int) = builder.addOffset(1, name, 0)
-        fun addHasNpub(builder: FlatBufferBuilder, hasNpub: Boolean) = builder.addBoolean(2, hasNpub, false)
-        fun addNpub(builder: FlatBufferBuilder, npub: Int) = builder.addOffset(3, npub, 0)
-        fun addHasPictureUrl(builder: FlatBufferBuilder, hasPictureUrl: Boolean) = builder.addBoolean(4, hasPictureUrl, false)
-        fun addPictureUrl(builder: FlatBufferBuilder, pictureUrl: Int) = builder.addOffset(5, pictureUrl, 0)
+        fun addHasPictureUrl(builder: FlatBufferBuilder, hasPictureUrl: Boolean) = builder.addBoolean(2, hasPictureUrl, false)
+        fun addPictureUrl(builder: FlatBufferBuilder, pictureUrl: Int) = builder.addOffset(3, pictureUrl, 0)
         fun endAuthorDisplay(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

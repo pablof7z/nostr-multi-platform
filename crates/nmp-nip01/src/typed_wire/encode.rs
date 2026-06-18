@@ -161,7 +161,6 @@ fn encode_author_display<'bldr>(
     display: &AuthorDisplay,
 ) -> WIPOffset<fb::AuthorDisplay<'bldr>> {
     let name = display.name.as_ref().map(|s| builder.create_string(s));
-    let npub = display.npub.as_ref().map(|s| builder.create_string(s));
     let picture_url = display
         .picture_url
         .as_ref()
@@ -171,8 +170,6 @@ fn encode_author_display<'bldr>(
         &fb::AuthorDisplayArgs {
             has_name: display.name.is_some(),
             name,
-            has_npub: display.npub.is_some(),
-            npub,
             has_picture_url: display.picture_url.is_some(),
             picture_url,
         },
@@ -242,7 +239,7 @@ fn encode_repost_attribution<'bldr>(
     // GH #920: `RepostAttribution` carries the reposter's raw pubkey +
     // `note_created_at` only — no denormalized display copy. The vestigial
     // wire slots (kept byte-identical pending the cross-language follow-up)
-    // get the absent shape: an npub-only fallback display + `has_* = false`.
+    // get the absent shape: a fallback display + `has_* = false`.
     let author_display = encode_author_display(
         builder,
         &AuthorDisplay::fallback(&attribution.author_pubkey),
@@ -281,7 +278,7 @@ pub(crate) fn encode_card<'bldr>(
     // generated bindings stay byte-identical (the coordinated cross-language
     // wire-slot removal rides with the iOS/Android follow-up), so the encoder
     // fills the now-vestigial slots with the absent shape: a fallback
-    // `AuthorDisplay` (npub-only, derived from the raw pubkey), empty preview,
+    // `AuthorDisplay`, empty preview,
     // `has_* = false`, and an empty `ContentRenderData`.
     let author_display =
         encode_author_display(builder, &AuthorDisplay::fallback(&card.author_pubkey));
