@@ -429,33 +429,30 @@ impl NmpApp {
         }
     }
 
-    /// Install the raw signed-event forwarding policy factory.
+    /// Install the external event sink policy factory.
     ///
-    /// The actor owns the generic observer + `Pool` send path. Production
-    /// composition installs policy objects here so reusable crates can decide
-    /// target relays using kernel-owned read handles without `nmp-core`
-    /// depending on those crates. MUST be called before `nmp_app_start`; actor
-    /// startup snapshots the factory and reuses it after `Reset`.
-    pub fn set_raw_event_forward_policy_factory<F>(&self, factory: F) -> NmpConfigStatus
+    /// Policies returned by this factory receive typed [`SignedEventFrame`]s
+    /// from the `ExternalEventSinkDispatcher` on a dedicated worker thread.
+    pub fn set_external_event_sink_policy_factory<F>(&self, factory: F) -> NmpConfigStatus
     where
         F: Fn(
                 nmp_core::substrate::RawEventForwardPolicyContext,
-            ) -> Vec<std::sync::Arc<dyn nmp_core::substrate::RawEventForwardPolicy>>
+            ) -> Vec<std::sync::Arc<dyn nmp_core::substrate::ExternalEventSinkPolicy>>
             + Send
             + Sync
             + 'static,
     {
         if let Err(status) = self.ensure_prestart_config(
-            "raw_event_forward_policy",
-            "raw_event_forward_policy",
-            "raw_event_forward_policy",
+            "external_event_sink_policy",
+            "external_event_sink_policy",
+            "external_event_sink_policy",
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.raw_event_forward_policy.lock() {
+        if let Ok(mut slot) = self.external_event_sink_policy.lock() {
             self.record_slot_decision(
-                "raw_event_forward_policy",
-                "raw_event_forward_policy",
+                "external_event_sink_policy",
+                "external_event_sink_policy",
                 slot.is_some(),
             );
             *slot = Some(std::sync::Arc::new(factory));

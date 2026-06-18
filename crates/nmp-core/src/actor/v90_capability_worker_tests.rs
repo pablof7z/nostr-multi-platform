@@ -159,9 +159,8 @@ fn dispatch_capability_result(
     let routing_trace_slot = Arc::new(Mutex::new(None));
     let event_store_slot = Arc::new(Mutex::new(None));
     let active_account_slot = crate::slots::new_active_account_slot();
-    let raw_event_forward_observer_ids =
-        crate::actor::raw_event_forwarder::new_raw_event_forward_observer_id_slot();
-    let raw_event_observers = commands::new_raw_event_observer_slot();
+    let external_event_sink_dispatcher =
+        crate::substrate::ExternalEventSinkDispatcher::new();
     let config = ActorConfigSources {
         storage_path: Arc::new(Mutex::new(None)),
         coverage_hook,
@@ -177,7 +176,7 @@ fn dispatch_capability_result(
         bootstrap_self_kinds: bootstrap_self_kinds_slot,
         routing_substrate: crate::slots::new_routing_substrate_slot(),
         publish_resolver: crate::slots::new_publish_resolver_slot(),
-        raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+        external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
         kernel_clock: crate::slots::new_kernel_clock_slot(),
     }
     .snapshot();
@@ -208,8 +207,7 @@ fn dispatch_capability_result(
         routing_trace_slot: &routing_trace_slot,
         event_store_slot: &event_store_slot,
         active_account_slot: &active_account_slot,
-        raw_event_forward_observer_ids: &raw_event_forward_observer_ids,
-        raw_event_observers_handle: &raw_event_observers,
+        external_event_sink_dispatcher: &external_event_sink_dispatcher,
     };
 
     dispatch_command(

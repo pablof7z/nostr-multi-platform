@@ -63,7 +63,6 @@ mod lifecycle;
 // the split (same precedent as `publish.rs` ← `identity.rs`).
 mod nip19_ffi;
 mod publish;
-mod raw_event_tap;
 mod relay_config;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
@@ -163,10 +162,6 @@ pub use nip19_ffi::nmp_app_encode_profile;
 // whitelists them).
 #[cfg(feature = "native")]
 pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
-#[cfg(feature = "native")]
-pub use raw_event_tap::{
-    nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
-};
 // V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
 // pointer is heap-owned and must be freed via `nmp_free_string`.
 pub use composition_report::nmp_app_composition_report;
@@ -245,11 +240,11 @@ pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wall
 use nmp_core::__ffi_internal::{
     default_registry, dispatch_capability, new_app_relay_slot, new_bunker_handshake_slot,
     new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
-    new_raw_event_observer_slot, new_signer_state_slot, new_snapshot_projection_slot,
-    register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
-    unregister_observer, unregister_raw_observer, ActionRegistry, ActorChannels,
+    new_signer_state_slot, new_snapshot_projection_slot,
+    register_rust_observer, run_actor_with_observers,
+    unregister_observer, ActionRegistry, ActorChannels,
     ActorConfigSources, ActorRuntimeSlots, CapabilityCallbackSlot, KernelEventObserverSlot,
-    LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
+    LifecycleObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
     DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
@@ -258,16 +253,18 @@ use nmp_core::__ffi_internal::{
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
     new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
-    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
+    new_external_event_sink_policy_slot, new_publish_resolver_slot,
+    new_routing_substrate_slot,
     new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
-    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, MlsLocalNsecSlot,
-    NostrConnectBootstrapRelaySlot, PublishResolverSlot, RawEventForwardPolicySlot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicySlot,
+    MlsLocalNsecSlot,
+    NostrConnectBootstrapRelaySlot, PublishResolverSlot,
     RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
+use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::{
-    ActorCommand, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
-    RawEventObserverId,
+    ActorCommand, KernelEventObserver, KernelEventObserverId,
 };
 use passive_start::{prestart_snapshot_frame, ActorStarter};
 use std::ffi::{c_char, c_uint, c_void, CStr};
@@ -429,16 +426,7 @@ pub struct NmpApp {
     /// through `ffi::event_observer::nmp_app_register_event_observer`. Both
     /// paths mutate the same `Mutex<…>` the actor reads.
     event_observers: KernelEventObserverSlot,
-    /// Raw signed-event tap slot. Shared `Arc` with the actor thread (and
-    /// thus the kernel, which `run_actor_with_observers` binds via
-    /// `set_raw_event_observers_handle`). Per-app crates reach this through
-    /// [`NmpApp::register_raw_event_observer`] /
-    /// [`NmpApp::unregister_raw_event_observer`]; the C-ABI variant goes
-    /// through `ffi::raw_event_tap::nmp_app_register_raw_event_observer`.
-    /// Both paths mutate the same `Mutex<…>` the actor reads. Delivers the
-    /// verbatim flat NIP-01 signed event (`sig` included), kind-filtered.
-    raw_event_observers: RawEventObserverSlot,
-    /// Singleton kernel-event observer-id slot used by per-app crates that
+/// Singleton kernel-event observer-id slot used by per-app crates that
     /// register exactly one auxiliary `KernelEventObserver` per app and want
     /// the registration to be idempotent across re-invokes — see
     /// [`Self::swap_singleton_event_observer`]. The per-app crate swaps the
@@ -595,10 +583,9 @@ pub struct NmpApp {
     /// strictly-increasing `created_at` on replaceable publishes without a
     /// wall-clock sleep (D8).
     kernel_clock: nmp_core::slots::KernelClockSlot,
-    /// Raw signed-event forwarding policy factory slot. The actor owns the
-    /// native pool send and reads this slot to install policy objects that
-    /// decide which accepted inbound signed events should be forwarded.
-    raw_event_forward_policy: RawEventForwardPolicySlot,
+    /// External event sink policy factory slot.  The dispatcher uses this
+    /// to route `SignedEventFrame`s via the new external-sink path.
+    external_event_sink_policy: ExternalEventSinkPolicySlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
@@ -854,13 +841,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // mutate the inner `Mutex` visible to both sides.
     let event_observers = new_event_observer_slot();
     let actor_event_observers = Arc::clone(&event_observers);
-    // Raw signed-event tap slot. Same shared-`Arc` pattern: the `NmpApp`
-    // keeps one clone (Rust + C-ABI registration entry points), the actor
-    // thread carries another for the kernel's tap path
-    // (`set_raw_event_observers_handle`).
-    let raw_event_observers = new_raw_event_observer_slot();
-    let actor_raw_event_observers = Arc::clone(&raw_event_observers);
-    // Per-app idempotency slot — tracks the previously-installed singleton
+// Per-app idempotency slot — tracks the previously-installed singleton
     // kernel-event observer id for a per-app crate that wants exactly one
     // auxiliary `KernelEventObserver` per app. NOT shared with the actor
     // thread — the actor never reads this; only the FFI side calls the swap
@@ -997,10 +978,17 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `Kernel::set_clock`.
     let kernel_clock: nmp_core::slots::KernelClockSlot = nmp_core::slots::new_kernel_clock_slot();
     let actor_kernel_clock = Arc::clone(&kernel_clock);
-    // Raw signed-event forwarding policy factory slot. Default `None`; the
-    // app template installs the indexer-republish policy through this seam.
-    let raw_event_forward_policy: RawEventForwardPolicySlot = new_raw_event_forward_policy_slot();
-    let actor_raw_event_forward_policy = Arc::clone(&raw_event_forward_policy);
+    let external_event_sink_policy: ExternalEventSinkPolicySlot = new_external_event_sink_policy_slot();
+    let actor_external_event_sink_policy = Arc::clone(&external_event_sink_policy);
+    let external_event_sink_dispatcher_slot = new_external_event_sink_dispatcher_slot();
+    // Publish a constructed (but not-yet-bound) dispatcher into the slot NOW,
+    // at app construction, so in-process relay-forwarding policies have a
+    // registry to attach to. The actor adopts THIS instance and only calls
+    // `bind_runtime` (spawns the worker) once the Pool exists.
+    if let Ok(mut guard) = external_event_sink_dispatcher_slot.lock() {
+        *guard = Some(nmp_core::substrate::ExternalEventSinkDispatcher::new());
+    }
+    let actor_external_event_sink_dispatcher_slot = Arc::clone(&external_event_sink_dispatcher_slot);
     let feed_registry = nmp_feed::new_feed_registry_slot();
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
@@ -1109,7 +1097,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         let runtime = ActorRuntimeSlots {
             lifecycle_observer: actor_lifecycle_observer,
             event_observers: actor_event_observers,
-            raw_event_observers: actor_raw_event_observers,
             snapshot_projections: actor_snapshot_projections,
             bunker_handshake: actor_bunker_handshake,
             signer_state: actor_signer_state,
@@ -1123,6 +1110,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             routing_trace: actor_routing_trace,
             active_account: actor_active_account,
             event_store: actor_event_store,
+            external_event_sink_dispatcher: actor_external_event_sink_dispatcher_slot,
         };
         let config = ActorConfigSources {
             storage_path: actor_storage_path,
@@ -1139,7 +1127,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             bootstrap_self_kinds: actor_bootstrap_self_kinds,
             routing_substrate: actor_routing_substrate,
             publish_resolver: actor_publish_resolver,
-            raw_event_forward_policy: actor_raw_event_forward_policy,
+            external_event_sink_policy: actor_external_event_sink_policy,
             kernel_clock: actor_kernel_clock,
         }
         .snapshot();
@@ -1242,7 +1230,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         capability_callback,
         lifecycle_observer,
         event_observers,
-        raw_event_observers,
         singleton_event_observer_id,
         configured_relays,
         initial_relays_for_start: Mutex::new(Vec::new()),
@@ -1256,7 +1243,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         routing_substrate,
         publish_resolver,
         kernel_clock,
-        raw_event_forward_policy,
+        external_event_sink_policy,
         pending_mls_autopublish,
         actor_starter: Mutex::new(Some(actor_starter)),
         startup_update_tx: Mutex::new(Some(startup_update_tx)),
@@ -1757,49 +1744,6 @@ impl NmpApp {
     #[must_use]
     pub(crate) fn event_observers_slot(&self) -> KernelEventObserverSlot {
         Arc::clone(&self.event_observers)
-    }
-
-    /// Register a typed Rust raw signed-event observer for **verbatim
-    /// forwarding only** (rule A5).
-    ///
-    /// The tap delivers the exact signed NIP-01 frame (`sig` included) for
-    /// every accepted live-ingest event whose kind matches the filter (empty
-    /// filter → all kinds). It fires on live ingest (including `Duplicate`
-    /// outcomes) and does **NOT** fire on cache-served replay.
-    ///
-    /// **To derive in-process state or projections, use
-    /// `register_ingest_parser` instead.** The `IngestParser` seam fires on
-    /// cache-served replay and supports slot-keyed replace for lifecycle-
-    /// managed singleton parsers. Use the raw tap exclusively when the `sig`
-    /// field must be forwarded verbatim to an external store or relay bridge
-    /// (e.g. the `hl` app's nostrdb mirror).
-    ///
-    /// Returns an opaque id required to unregister via
-    /// [`Self::unregister_raw_event_observer`]. D0 — `nmp-core` never names
-    /// the protocol; this seam is the generic verbatim-forwarding lane.
-    #[must_use]
-    pub fn register_raw_event_observer(
-        &self,
-        kinds: KindFilter,
-        observer: Arc<dyn RawEventObserver>,
-    ) -> RawEventObserverId {
-        register_rust_raw_observer(&self.raw_event_observers, kinds, observer)
-    }
-
-    /// Unregister a previously-registered raw observer. Idempotent;
-    /// unknown ids are silent no-ops (D6).
-    pub fn unregister_raw_event_observer(&self, id: RawEventObserverId) {
-        unregister_raw_observer(&self.raw_event_observers, id);
-    }
-
-    /// Clone of the raw signed-event tap slot. The `ffi::raw_event_tap`
-    /// FFI surface uses this to plug C-ABI registrations into the same
-    /// slot that backs the typed Rust API above. Crate-private — external
-    /// Rust callers go through [`Self::register_raw_event_observer`] /
-    /// [`Self::unregister_raw_event_observer`].
-    #[must_use]
-    pub(crate) fn raw_event_observers_slot(&self) -> RawEventObserverSlot {
-        Arc::clone(&self.raw_event_observers)
     }
 
     /// Atomically swap the per-app's singleton kernel-event observer-id slot:

@@ -56,6 +56,7 @@ mod profile_lookup;
 pub mod content_parser;
 pub mod placeholder;
 mod protocol;
+pub mod external_event_sink;
 mod raw_event_forwarding;
 mod relay_connected;
 mod relay_info;
@@ -131,9 +132,12 @@ pub use protocol::{
     NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts,
     ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
 };
-pub use raw_event_forwarding::{
-    RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
+pub use external_event_sink::{
+    dispatcher::{ExternalEventSinkDispatcher, ExternalEventSinkDispatcherSlot,
+        new_external_event_sink_dispatcher_slot},
+    ExternalEventSinkPolicy, IngestOutcomeKind, SignedEventFrame, SinkDestination,
 };
+pub use raw_event_forwarding::{RawEventForwardPolicyContext, RawEventForwardTarget};
 pub use relay_connected::{
     fan_relay_connected, install_relay_connected_hook, new_relay_connected_hook_slot,
     RelayConnectedHook, RelayConnectedHookSlot,

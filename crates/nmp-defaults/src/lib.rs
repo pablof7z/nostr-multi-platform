@@ -95,7 +95,7 @@
 //! [`AppHost`]: nmp_core::substrate::AppHost
 //! [`AppHost::set_routing_substrate`]: nmp_core::substrate::AppHost::set_routing_substrate
 //! [`AppHost::set_publish_resolver_factory`]: nmp_core::substrate::AppHost::set_publish_resolver_factory
-//! [`AppHost::set_raw_event_forward_policy_factory`]: nmp_core::substrate::AppHost::set_raw_event_forward_policy_factory
+//! [`AppHost::set_external_event_sink_policy_factory`]: nmp_core::substrate::AppHost::set_external_event_sink_policy_factory
 //! [`AppHost::set_coverage_hook`]: nmp_core::substrate::AppHost::set_coverage_hook
 //! [`CoverageGate`]: nmp_coverage_gate::CoverageGate
 

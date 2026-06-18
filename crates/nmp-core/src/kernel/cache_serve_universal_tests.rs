@@ -41,7 +41,7 @@
 
 use super::cache_serve_tests::{drain_cache_serves, hex_pk, simulate_cold_restart};
 use super::*;
-use crate::actor::{new_raw_event_observer_slot, register_rust_raw_observer, KindFilter, RawEventObserver};
+
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
@@ -84,40 +84,8 @@ impl IngestParser for CapturingIngestParser {
     }
 }
 
-/// A raw observer that records the kind of every event it receives.
-/// Used to verify kind:1059 events reach the raw tap after cache-serve.
-struct CapturingRawObserver {
-    seen_kinds: Mutex<Vec<u32>>,
-}
-
-impl CapturingRawObserver {
-    fn new() -> Arc<Self> {
-        Arc::new(Self {
-            seen_kinds: Mutex::new(Vec::new()),
-        })
-    }
-
-    fn seen(&self) -> Vec<u32> {
-        self.seen_kinds.lock().unwrap().clone()
-    }
-
-    fn clear(&self) {
-        self.seen_kinds.lock().unwrap().clear();
-    }
-}
-
-impl RawEventObserver for CapturingRawObserver {
-    fn on_raw_event(&self, kind: u32, _json: &str) {
-        self.seen_kinds.lock().unwrap().push(kind);
-    }
-
-    fn on_raw_event_with_source(&self, kind: u32, _json: &str, _source: Option<&str>) {
-        self.seen_kinds.lock().unwrap().push(kind);
-    }
-}
-
 /// Build a NIP-01 JSON `Value` for a signed event via `handle_event`-compatible
-/// format (same pattern as `raw_event_observer_tests::signed_event_value`).
+/// format (same pattern as the Nostr signing helpers in the test suite).
 fn signed_event_json(
     keys: &::nostr::Keys,
     kind: u32,
@@ -258,19 +226,9 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     let d_tag = "universal-test-article";
 
     // ── Phase 1: kernel with wired IngestParser for kind:1059 (E2) ───────────
-    // A raw observer is also wired so the Phase-1 sanity check (live ingest
-    // fires raw observers) can still run — the raw-observer path is NOT touched
-    // by this PR (it remains for chirp-tui / hl mirror on live relay delivery).
-    // The cache-serve E2 assertion uses the IngestParser seam exclusively
-    // (raw-tap PR-2 removed the dual fan-out from cache-serve).
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let dm_ingest_parser = CapturingIngestParser::new();
     kernel.register_ingest_parser(1059, dm_ingest_parser.clone());
-    let slot = new_raw_event_observer_slot();
-    let observer = CapturingRawObserver::new();
-    // kind:1059 only — confirms the live ingest raw tap still fires during seeding.
-    register_rust_raw_observer(&slot, KindFilter::from_kinds([1059u32]), observer.clone());
-    kernel.set_raw_event_observers_handle(slot);
 
     // Active account is the receiver (DM recipient and feed "self").
     kernel.active_account = Some(receiver_hex.clone());
@@ -369,14 +327,7 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
         kernel.events.contains_key(thread_id.as_str()),
         "Phase 1: thread reply must be in events cache (admitted via open interest)"
     );
-    // Raw observer received kind:1059 during seeding — sanity check that the
-    // live ingest raw tap still fires (chirp-tui / hl mirror path, NOT touched
-    // by this PR). The E2 cache-serve assertion uses the IngestParser seam.
-    let seen_on_seed = observer.seen();
-    assert!(
-        seen_on_seed.contains(&1059),
-        "Phase 1: raw observer must see kind:1059 on live seed ingest; got {seen_on_seed:?}"
-    );
+    // (raw observer tap removed from kernel in Step 2; dispatcher handles external sinks)
     // Long-form (kind:30023) goes through wildcard arm → store only (not events cache).
     // Verify it is NOT in the cache yet to make the Phase 4 assertion non-vacuous.
     assert!(
@@ -389,12 +340,10 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     // Clear in-memory caches (store persists — same in-process Arc<dyn EventStore>).
     // Reset seen lists so Phase 4 assertions reflect only cache-serve delivery.
     simulate_cold_restart(&mut kernel);
-    observer.clear();
     dm_ingest_parser.clear();
 
     assert!(kernel.events.is_empty(), "Phase 2: events cache must be empty after restart");
     assert!(kernel.timeline.is_empty(), "Phase 2: timeline must be empty after restart");
-    assert!(observer.seen().is_empty(), "Phase 2: observer must be cleared before serve");
     assert!(
         dm_ingest_parser.seen().is_empty(),
         "Phase 2: IngestParser seen list must be cleared before serve"

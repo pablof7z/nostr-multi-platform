@@ -335,16 +335,11 @@ pub(super) struct ActorContext<'a> {
     /// same slot, so the shared handle survives a state wipe — same contract
     /// as the routing-trace projection re-publish above.
     pub(super) active_account_slot: &'a crate::slots::ActiveAccountSlot,
-    /// Raw-event forwarding observer ids. Policies receive kernel handles,
-    /// so `Reset` unregisters observers pinned to the discarded kernel and
-    /// re-registers them against fresh handles.
-    pub(super) raw_event_forward_observer_ids:
-        &'a crate::actor::raw_event_forwarder::RawEventForwardObserverIdSlot,
-    /// Shared raw-event tap slot — held in the actor scope and threaded
-    /// through here so the `Reset` arm can re-register the pipeline
-    /// observer against the same `RawEventObserverSlot` (which itself
-    /// survives Reset via `take_raw_event_observers_handle_for_reset`).
-    pub(super) raw_event_observers_handle: &'a crate::actor::RawEventObserverSlot,
+/// Step-1 external event sink dispatcher.  Created once in
+    /// `run_actor_with_observers`; shared through context so `Reset` can
+    /// re-register policies against the rebuilt kernel.
+    pub(super) external_event_sink_dispatcher:
+        &'a crate::substrate::ExternalEventSinkDispatcher,
 }
 
 // Debt C — capability adapters for `ProtocolCommandContext`, extracted to
@@ -1221,11 +1216,6 @@ pub(super) fn dispatch_command(
             // surface and per-app crates; replacing it would silently
             // disconnect every registered observer.
             let event_observers_handle = ctx.kernel.take_event_observers_handle_for_reset();
-            // Preserve the raw signed-event tap slot across Reset for the
-            // same reason: the `Arc<Mutex<…>>` is shared with the FFI
-            // surface and per-app crates; replacing it would silently
-            // disconnect every registered raw observer.
-            let raw_event_observers_handle = ctx.kernel.take_raw_event_observers_handle_for_reset();
             // Preserve the snapshot-projection slot across Reset for the same
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface and
             // per-app crates; replacing it would silently drop every
@@ -1267,9 +1257,11 @@ pub(super) fn dispatch_command(
             if let Some(handle) = event_observers_handle {
                 ctx.kernel.set_event_observers_handle(handle);
             }
-            if let Some(handle) = raw_event_observers_handle {
-                ctx.kernel.set_raw_event_observers_handle(handle);
-            }
+            // Re-bind the dispatcher to the new kernel (the dispatcher itself
+            // survives Reset — it is Arc-based and its background thread is
+            // permanent; only the kernel reference needs updating).
+            ctx.kernel
+                .set_external_event_sink_dispatcher(ctx.external_event_sink_dispatcher.clone());
             if let Some(handle) = snapshot_projection_handle {
                 ctx.kernel.set_snapshot_projection_handle(handle);
             }
@@ -1300,10 +1292,8 @@ pub(super) fn dispatch_command(
             // registrations while keeping target selection out of core.
             crate::actor::raw_event_forwarder::register_raw_event_forward_policies_from_factory(
                 ctx.kernel,
-                ctx.raw_event_observers_handle,
-                ctx.pool,
-                ctx.raw_event_forward_observer_ids,
-                ctx.config.raw_event_forward_policy.clone(),
+                ctx.external_event_sink_dispatcher,
+                ctx.config.external_event_sink_policy.clone(),
             );
             *ctx.startup_sent = false;
             if *ctx.running {

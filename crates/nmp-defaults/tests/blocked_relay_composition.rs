@@ -16,7 +16,7 @@ use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
     CoverageHookRegistrar, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter, RawEventForwardPolicy, RawEventForwardPolicyContext,
+    MailboxCache, OutboxRouter,
     RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
     RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, RoutingTraceObserver,
@@ -115,15 +115,6 @@ impl RoutingFactoryRegistrar for CompositionSpy {
                 LocalWriteRelaysSlot,
                 ActiveAccountSlot,
             ) -> Arc<dyn OutboxResolver>
-            + Send
-            + Sync
-            + 'static,
-    {
-    }
-
-    fn set_raw_event_forward_policy_factory<F>(&self, _factory: F)
-    where
-        F: Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn RawEventForwardPolicy>>
             + Send
             + Sync
             + 'static,

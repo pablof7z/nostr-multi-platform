@@ -26,17 +26,6 @@ pub(super) fn raw_event_from_nostr(event: &NostrEvent) -> crate::store::RawEvent
     }
 }
 
-pub(super) fn raw_tap_should_fire(outcome: &crate::store::InsertOutcome) -> bool {
-    use crate::store::InsertOutcome;
-    matches!(
-        outcome,
-        InsertOutcome::Inserted { .. }
-            | InsertOutcome::Duplicate { .. }
-            | InsertOutcome::Replaced { .. }
-            | InsertOutcome::Ephemeral { .. }
-    )
-}
-
 /// Project a store [`crate::store::VerifiedEvent`] into the FFI-stable
 /// [`crate::substrate::KernelEvent`]. The sibling of
 /// [`kernel_event_from_nostr`] for callers that already hold a `VerifiedEvent`

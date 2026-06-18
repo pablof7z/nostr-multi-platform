@@ -42,7 +42,7 @@ use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
     CoverageHookRegistrar, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter, PublishTrace, RawEventForwardPolicy, RawEventForwardPolicyContext,
+    MailboxCache, OutboxRouter, PublishTrace,
     RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
     RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
     RoutedRelaySet, RoutingFactoryRegistrar, RoutingTraceObserver, SubscriptionTrace,
@@ -186,16 +186,6 @@ impl RoutingFactoryRegistrar for GateSpy {
             + 'static,
     {
         // Publish-resolver factory — no-op; not under test here.
-    }
-
-    fn set_raw_event_forward_policy_factory<F>(&self, _factory: F)
-    where
-        F: Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn RawEventForwardPolicy>>
-            + Send
-            + Sync
-            + 'static,
-    {
-        // Raw-event forward policy — no-op; not under test here.
     }
 
     fn set_nostrconnect_bootstrap_relay(&self, _url: String) {

@@ -16,6 +16,7 @@
 //! `CreateAccount` during onboarding.
 
 mod commands;
+pub mod kind_filter;
 // Tier-1 (closure-path) typed-projection codecs for the actor-owned NIP-46
 // built-ins `"bunker_handshake"` / `"nip46_onboarding"`. Native-only: the
 // `register_typed` registration site is in `run_actor_with_observers`
@@ -179,38 +180,10 @@ pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PH
 #[cfg(feature = "native")]
 pub use commands::KernelEventObserverRegistration;
 pub use commands::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
-// Raw signed-event tap — re-export the slot helpers (crate-private) so
-// `ffi/raw_event_tap.rs` and the actor entry point reach the shared slot,
-// and the public wire shapes so per-app Rust crates + Swift / Kotlin
-// bindings can register a verbatim signed-event observer. The two notify
-// helpers are consumed by `kernel/raw_event_observer.rs` whenever the
-// `RawEventObserverSlot` field exists — which is unconditional today, so
-// the re-export needs no gate.
-pub(crate) use commands::{notify_raw_observers, raw_observers_idle_for_kind};
-// `register_c_raw_observer` reaches `nmp-ffi` through
-// `nmp_core::__ffi_internal::register_c_raw_observer` (the C-ABI bridge
-// in `nmp-ffi/src/raw_event_tap.rs`). `__ffi_internal` is `#[cfg(feature =
-// "native")]`, so without `native` this `pub use` has no downstream consumer.
-#[cfg(feature = "native")]
-pub use commands::register_c_raw_observer;
-// Slot constructors / registration helpers reach `nmp-ffi` through
-// `nmp_core::__ffi_internal::*`; same `native` gate. The `RawEventObserverSlot`
-// type itself is consumed unconditionally by `kernel/raw_event_observer.rs`
-// (the kernel holds an `Option<RawEventObserverSlot>` field — see `kernel/mod.rs`
-// line 731), so it stays ungated.
-pub use commands::RawEventObserverSlot;
-#[cfg(feature = "native")]
-pub use commands::{
-    new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
-};
-// `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
-// are re-exported unconditionally from `lib.rs` (the typed observer surface
-// for per-app Rust crates and the FFI wire-shape). `RawEventObserverRegistration`
-// only reaches the outside world through `lib.rs::__ffi_internal`, which is
-// `#[cfg(feature = "native")]`; gate that one re-export to match.
-#[cfg(feature = "native")]
-pub use commands::RawEventObserverRegistration;
-pub use commands::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
+// `KindFilter` lives in `kind_filter.rs` (extracted so `external_event_sink`
+// can use it without the raw-observer module). Re-exported unconditionally
+// from `lib.rs` (used by per-app Rust crates and external_event_sink).
+pub use kind_filter::KindFilter;
 // NIP golden-tag conformance harness — re-exported up the (crate-private)
 // `actor` chain so the gated `pub use actor::ConformanceHarness` in `lib.rs`
 // reaches the `tests/nip_tag_conformance.rs` integration test. Gated on
@@ -1203,7 +1176,6 @@ pub fn run_actor_with_observers(
     let ActorRuntimeSlots {
         lifecycle_observer,
         event_observers,
-        raw_event_observers,
         snapshot_projections,
         bunker_handshake,
         signer_state,
@@ -1217,6 +1189,7 @@ pub fn run_actor_with_observers(
         routing_trace,
         active_account,
         event_store,
+        external_event_sink_dispatcher: dispatcher_slot,
     } = runtime;
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1277,27 +1250,48 @@ pub fn run_actor_with_observers(
     // `NmpApp::register_event_observer` to register typed observers.
     // Survives `Reset` the same way the drop counter does.
     kernel.set_event_observers_handle(Arc::clone(&event_observers));
-    // Bind the shared raw signed-event tap slot. The kernel calls
-    // `notify_raw_observers` from the single all-kinds ingest point
-    // (`kernel/ingest/mod.rs::handle_event`) after the event passes the
-    // existing Schnorr + id-hash gate, for any kind a registration filters
-    // on. Survives `Reset` the same way the event-observer slot does so
-    // external registrations stay live across a kernel rebuild.
-    kernel.set_raw_event_observers_handle(Arc::clone(&raw_event_observers));
+    // The ExternalEventSinkDispatcher replaces the raw-event-forwarder +
+    // pool-send inline path.  The dispatcher owns a bounded channel + worker
+    // thread (off the actor thread).  Policies are set via
+    // `register_raw_event_forward_policies_from_factory` below and re-installed
+    // after every `Reset`.
+    //
+    // Instance-identity fix: the dispatcher exists from app construction
+    // (zero-arg `new()`), so the FFI layer may already have published an
+    // instance into `dispatcher_slot` before this actor thread spawned. Adopt
+    // that published instance if present so the actor and any FFI handle share
+    // one dispatcher. Only if the slot is empty (non-FFI test harnesses) do we
+    // create + publish one.
+    let external_event_sink_dispatcher = {
+        let existing = dispatcher_slot
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        match existing {
+            Some(d) => d,
+            None => {
+                let d = crate::substrate::ExternalEventSinkDispatcher::new();
+                if let Ok(mut guard) = dispatcher_slot.lock() {
+                    *guard = Some(d.clone());
+                }
+                d
+            }
+        }
+    };
+    // Bind the live Pool and spawn the worker thread. Any frames that arrived
+    // before this point are retained on the bounded channel and processed as
+    // soon as the worker starts.
+    external_event_sink_dispatcher.bind_runtime(pool.clone());
+    // Bind the dispatcher to the kernel so `persistence.rs` can dispatch
+    // frames from the single all-kinds ingest chokepoint.
+    kernel.set_external_event_sink_dispatcher(external_event_sink_dispatcher.clone());
     // Raw signed-event forwarding policies are installed through a
-    // substrate factory. The actor contributes only the native pool sender
-    // and the live kernel handles the policies read; target selection and
-    // dedup live in the injected policy crate. The observer ids are tracked
-    // so `Reset` can unregister policies bound to the discarded kernel and
-    // re-register against fresh handles.
-    let raw_event_forward_observer_ids =
-        raw_event_forwarder::new_raw_event_forward_observer_id_slot();
+    // substrate factory.  The actor contributes only the live kernel
+    // handles; target selection and dedup live in the injected policy crate.
     raw_event_forwarder::register_raw_event_forward_policies_from_factory(
         &kernel,
-        &raw_event_observers,
-        &pool,
-        &raw_event_forward_observer_ids,
-        config.raw_event_forward_policy.clone(),
+        &external_event_sink_dispatcher,
+        config.external_event_sink_policy.clone(),
     );
     // Bind the shared snapshot-projection slot. The kernel runs every
     // host-registered projection closure in `make_update` and appends the
@@ -1564,8 +1558,7 @@ pub fn run_actor_with_observers(
                         routing_trace_slot: &routing_trace,
                         event_store_slot: &event_store,
                         active_account_slot: &active_account,
-                        raw_event_forward_observer_ids: &raw_event_forward_observer_ids,
-                        raw_event_observers_handle: &raw_event_observers,
+                        external_event_sink_dispatcher: &external_event_sink_dispatcher,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {

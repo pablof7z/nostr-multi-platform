@@ -338,14 +338,10 @@ pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE
 // `nmp_app_register_event_observer`.
 pub use actor::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
 
-// Raw signed-event tap surface exposed to per-app Rust crates. Apps
-// register typed `Arc<dyn RawEventObserver>`s (with a `KindFilter`) via
-// [`NmpApp::register_raw_event_observer`] to receive the verbatim flat
-// NIP-01 signed event (`sig` included). The FFI shape
-// (`RawEventObserverFn` etc.) is the C-ABI channel Swift / Kotlin bridges
-// use directly through `nmp_app_register_raw_event_observer`. Generic
-// capability (D0) — no protocol nouns.
-pub use actor::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
+// `KindFilter` is the per-registration kind filter used by `external_event_sink`
+// and any consumer that needs to match events by kind. Exported from the
+// canonical `actor::kind_filter` module.
+pub use actor::KindFilter;
 
 // ── Step 11 final — `nmp-ffi` re-export surface ────────────────────────────
 //
@@ -370,13 +366,13 @@ pub use actor::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserv
 pub mod __ffi_internal {
     pub use crate::actor::{
         has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
-        new_raw_event_observer_slot, new_signer_state_slot, nostrconnect_relay_url,
-        register_c_observer, register_c_raw_observer, register_rust_observer,
-        register_rust_raw_observer, run_actor_with_observers, unregister_observer,
-        unregister_raw_observer, ActorChannels, ActorConfigSources, ActorRuntimeSlots,
+        new_signer_state_slot, nostrconnect_relay_url,
+        register_c_observer, register_rust_observer,
+        run_actor_with_observers, unregister_observer,
+        ActorChannels, ActorConfigSources, ActorRuntimeSlots,
         KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
-        LifecycleObserverRegistration, LifecycleObserverSlot, RawEventObserverRegistration,
-        RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
+        LifecycleObserverRegistration, LifecycleObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
+        LIFECYCLE_PHASE_FOREGROUND,
     };
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
     // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
@@ -487,7 +483,6 @@ pub mod testing {
             let runtime = ActorRuntimeSlots {
                 lifecycle_observer: crate::actor::new_lifecycle_observer_slot(),
                 event_observers: crate::actor::new_event_observer_slot(),
-                raw_event_observers: crate::actor::new_raw_event_observer_slot(),
                 snapshot_projections: crate::kernel::new_snapshot_projection_slot(),
                 bunker_handshake: crate::actor::new_bunker_handshake_slot(),
                 signer_state: crate::actor::new_signer_state_slot(),
@@ -501,6 +496,7 @@ pub mod testing {
                 routing_trace: Arc::new(Mutex::new(None)),
                 active_account: crate::slots::new_active_account_slot(),
                 event_store: crate::slots::new_event_store_slot(),
+                external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
             };
             let config = ActorConfigSources {
                 storage_path: path_slot,
@@ -517,7 +513,7 @@ pub mod testing {
                 bootstrap_self_kinds: Arc::new(Mutex::new(None)),
                 routing_substrate: crate::slots::new_routing_substrate_slot(),
                 publish_resolver: crate::slots::new_publish_resolver_slot(),
-                raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+                external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
                 kernel_clock: crate::slots::new_kernel_clock_slot(),
             }
             .snapshot();

@@ -332,3 +332,168 @@ fn k2_blast_radius_crates_are_d21_clean() {
         let _ = code;
     }
 }
+
+// ─── no_raw_tap (raw event tap re-introduction guard) ─────────────────────────
+
+#[test]
+fn no_raw_tap_positive_fixture_fires() {
+    // The no_raw_tap rule is workspace-wide but exempts `nmp-testing/` and the
+    // doctrine-lint binary source.  To opt the fixture in, stage it under a
+    // fake `crates/nmp-fake-crate/src/` tree so `file_in_scope` resolves to
+    // `true` — mirroring the D21 approach above.
+    let workspace = workspace_root();
+    let crate_src = workspace
+        .join("target")
+        .join("doctrine_lint_no_raw_tap_pos")
+        .join("crates")
+        .join("nmp-fake-crate")
+        .join("src");
+    let _ = std::fs::remove_dir_all(
+        workspace
+            .join("target")
+            .join("doctrine_lint_no_raw_tap_pos"),
+    );
+    std::fs::create_dir_all(&crate_src).expect("create fake crate src dir");
+    let pos_src = workspace.join(fixture_path("no_raw_tap/pos.rs"));
+    std::fs::copy(&pos_src, crate_src.join("pos.rs")).expect("copy pos fixture");
+
+    let crate_src_str = crate_src.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
+    assert_eq!(
+        code, 1,
+        "no_raw_tap positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[no_raw_tap]"),
+        "no_raw_tap positive must emit >=1 no_raw_tap finding; stdout:\n{}",
+        stdout
+    );
+    // Both banned tokens planted in pos.rs must surface.
+    assert!(
+        stdout.contains("RawEventObserver"),
+        "no_raw_tap finding must name RawEventObserver; stdout:\n{}",
+        stdout
+    );
+}
+
+/// A bare `// doctrine-allow: no_raw_tap` (no reason) must NOT silence the rule —
+/// it routes through `allow::line_allows_with_reason` (parser unit-tested in `allow.rs`).
+#[test]
+fn no_raw_tap_bare_allow_does_not_silence() {
+    let src = workspace_root().join("target/doctrine_lint_no_raw_tap_bare/crates/fake/src");
+    let _ = std::fs::remove_dir_all(workspace_root().join("target/doctrine_lint_no_raw_tap_bare"));
+    std::fs::create_dir_all(&src).expect("create fake crate src");
+    std::fs::write(
+        src.join("bare.rs"),
+        "fn w() { app.register_raw_event_observer(f, o); } // doctrine-allow: no_raw_tap\n",
+    )
+    .expect("write fixture");
+    let (code, stdout, _) = run_lint(&["--path", &src.to_string_lossy()]);
+    assert_eq!(code, 1, "bare allow must NOT silence no_raw_tap; stdout:\n{stdout}");
+    assert!(stdout.contains("error[no_raw_tap]"), "finding must still fire; stdout:\n{stdout}");
+}
+
+#[test]
+fn no_raw_tap_negative_fixture_clean() {
+    // Stage neg.rs under a fake `crates/nmp-fake-crate/src/` tree so
+    // `file_in_scope` resolves to `true` — then assert zero findings.
+    let workspace = workspace_root();
+    let crate_src = workspace
+        .join("target")
+        .join("doctrine_lint_no_raw_tap_neg")
+        .join("crates")
+        .join("nmp-fake-crate")
+        .join("src");
+    let _ = std::fs::remove_dir_all(
+        workspace
+            .join("target")
+            .join("doctrine_lint_no_raw_tap_neg"),
+    );
+    std::fs::create_dir_all(&crate_src).expect("create fake crate src dir");
+    let neg_src = workspace.join(fixture_path("no_raw_tap/neg.rs"));
+    std::fs::copy(&neg_src, crate_src.join("neg.rs")).expect("copy neg fixture");
+
+    let crate_src_str = crate_src.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
+    assert_eq!(
+        code, 0,
+        "no_raw_tap negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[no_raw_tap]"),
+        "no_raw_tap negative must produce zero no_raw_tap findings; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn no_raw_tap_class_fixture_fires_without_named_token() {
+    // The CLASS check must catch a RENAMED below-seam per-event ingest tap (an
+    // `extern "C" fn(*mut c_void, *const c_char)` with a raw/event-tap intent
+    // token) even when it uses none of the literal banned names. Staged under a
+    // fake crate so it is in scope but OUTSIDE the external_event_sink module.
+    let workspace = workspace_root();
+    let crate_src = workspace
+        .join("target")
+        .join("doctrine_lint_no_raw_tap_class")
+        .join("crates")
+        .join("nmp-fake-crate")
+        .join("src");
+    let _ = std::fs::remove_dir_all(
+        workspace
+            .join("target")
+            .join("doctrine_lint_no_raw_tap_class"),
+    );
+    std::fs::create_dir_all(&crate_src).expect("create fake crate src dir");
+    let pos_src = workspace.join(fixture_path("no_raw_tap/pos_class.rs"));
+    std::fs::copy(&pos_src, crate_src.join("pos_class.rs")).expect("copy class fixture");
+
+    let crate_src_str = crate_src.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
+    assert_eq!(
+        code, 1,
+        "no_raw_tap CLASS positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[no_raw_tap]"),
+        "no_raw_tap CLASS positive must emit a finding for the renamed tap; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn no_raw_tap_covers_apps_scope() {
+    // This rule must cover apps/ too (an app could re-introduce a below-seam tap). Stage the named
+    // positive fixture under a fake `apps/` tree and assert it fires.
+    let workspace = workspace_root();
+    let app_src = workspace
+        .join("target")
+        .join("doctrine_lint_no_raw_tap_apps")
+        .join("apps")
+        .join("fake-app")
+        .join("src");
+    let _ = std::fs::remove_dir_all(
+        workspace
+            .join("target")
+            .join("doctrine_lint_no_raw_tap_apps"),
+    );
+    std::fs::create_dir_all(&app_src).expect("create fake app src dir");
+    let pos_src = workspace.join(fixture_path("no_raw_tap/pos.rs"));
+    std::fs::copy(&pos_src, app_src.join("pos.rs")).expect("copy pos fixture");
+
+    let app_src_str = app_src.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &app_src_str]);
+    assert_eq!(
+        code, 1,
+        "no_raw_tap must scan apps/ and exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[no_raw_tap]"),
+        "no_raw_tap must flag a banned token under apps/; stdout:\n{}",
+        stdout
+    );
+}

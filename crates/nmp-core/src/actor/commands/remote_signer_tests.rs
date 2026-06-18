@@ -792,7 +792,6 @@ fn snapshot_carries_nip46_onboarding_projection() {
         let runtime = ActorRuntimeSlots {
             lifecycle_observer: crate::actor::new_lifecycle_observer_slot(),
             event_observers: crate::actor::new_event_observer_slot(),
-            raw_event_observers: crate::actor::new_raw_event_observer_slot(),
             snapshot_projections,
             bunker_handshake: bunker_slot,
             signer_state: crate::actor::new_signer_state_slot(),
@@ -806,6 +805,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             routing_trace: Arc::new(std::sync::Mutex::new(None)),
             active_account: crate::slots::new_active_account_slot(),
             event_store: crate::slots::new_event_store_slot(),
+            external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
         };
         let config = ActorConfigSources {
             storage_path: Arc::new(std::sync::Mutex::new(None)),
@@ -832,7 +832,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             bootstrap_self_kinds: Arc::new(std::sync::Mutex::new(None)),
             routing_substrate: crate::slots::new_routing_substrate_slot(),
             publish_resolver: crate::slots::new_publish_resolver_slot(),
-            raw_event_forward_policy: crate::slots::new_raw_event_forward_policy_slot(),
+            external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
             kernel_clock: crate::slots::new_kernel_clock_slot(),
         }
         .snapshot();

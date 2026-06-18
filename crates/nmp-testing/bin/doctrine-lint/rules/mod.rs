@@ -2,7 +2,6 @@
 //! suggested)>` function that the driver calls per scanned line, and an
 //! `ID: &'static str` constant for `// doctrine-allow:` matching.
 
-pub mod a5;
 pub mod a6;
 pub mod d0;
 pub mod d10;
@@ -25,4 +24,5 @@ pub mod d6;
 pub mod d7;
 pub mod d8;
 pub mod d9;
+pub mod no_raw_tap_reintroduction;
 pub mod split_call;

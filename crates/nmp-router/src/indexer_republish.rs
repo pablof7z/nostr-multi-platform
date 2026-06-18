@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::slots::IndexerRelaysSlot;
 use nmp_core::store::{EventStore, RawEvent};
 use nmp_core::substrate::{
-    RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
+    ExternalEventSinkPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
+    SignedEventFrame, SinkDestination,
 };
 use nmp_core::{KindFilter, RelayRole};
 
@@ -99,16 +100,15 @@ impl IndexerRepublishPolicy {
     }
 }
 
-impl RawEventForwardPolicy for IndexerRepublishPolicy {
+impl ExternalEventSinkPolicy for IndexerRepublishPolicy {
     fn kind_filter(&self) -> KindFilter {
         Self::replaceable_kind_filter()
     }
 
-    fn forward_targets(
-        &self,
-        raw: &RawEvent,
-        source_relay_url: Option<&str>,
-    ) -> Vec<RawEventForwardTarget> {
+    fn destinations(&self, frame: &SignedEventFrame) -> Vec<SinkDestination> {
+        let raw = frame.raw.as_ref();
+        let source_relay_url = frame.source_relay.as_deref();
+
         if !self.enabled || !raw.is_replaceable() {
             return Vec::new();
         }
@@ -140,7 +140,10 @@ impl RawEventForwardPolicy for IndexerRepublishPolicy {
                 .map(|mut guard| guard.insert(key))
                 .unwrap_or(false);
             if should_forward {
-                targets.push(RawEventForwardTarget::new(target, RelayRole::Indexer));
+                targets.push(SinkDestination::Relay(RawEventForwardTarget::new(
+                    target,
+                    RelayRole::Indexer,
+                )));
             }
         }
         targets

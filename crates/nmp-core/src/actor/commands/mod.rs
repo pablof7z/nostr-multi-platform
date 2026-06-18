@@ -84,7 +84,6 @@ mod cipher;
 mod lifecycle;
 #[cfg(feature = "native")]
 mod publish;
-mod raw_event_observer;
 #[cfg(feature = "native")]
 mod relays;
 // V-41 — `zap` + `zap_lnurl` moved to
@@ -222,11 +221,6 @@ pub use event_observer::{new_event_observer_slot, unregister_observer};
 #[cfg(feature = "native")]
 pub use event_observer::KernelEventObserverRegistration;
 pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
-// Raw signed-event tap. Parallel to the kernel-event observer slot above
-// but delivers the verbatim flat NIP-01 signed event (`sig` included),
-// kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
-// up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
-// registration path reach the same `Arc<Mutex<…>>` the kernel taps.
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
@@ -238,33 +232,6 @@ pub(super) use publish::{
 // variant. The replacement (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`)
 // is a `ProtocolCommand` dispatched through `ActorCommand::Protocol`;
 // `nmp-core` no longer carries the entry point.
-pub(crate) use raw_event_observer::{notify_raw_observers, raw_observers_idle_for_kind};
-// `register_c_raw_observer` reaches `nmp-ffi` through
-// `nmp_core::__ffi_internal::register_c_raw_observer`. `__ffi_internal` is
-// `#[cfg(feature = "native")]`; mirror the gate so a `--no-default-features`
-// build does not see an unused re-export.
-#[cfg(feature = "native")]
-pub use raw_event_observer::register_c_raw_observer;
-// Slot constructor + Rust-side register/unregister helpers reach `nmp-ffi`
-// through `nmp_core::__ffi_internal::*` (same `native` gate). The
-// `RawEventObserverSlot` type itself is consumed unconditionally by
-// `kernel/raw_event_observer.rs` (the kernel holds an
-// `Option<RawEventObserverSlot>` field), so the slot type re-export stays
-// ungated.
-pub use raw_event_observer::RawEventObserverSlot;
-#[cfg(feature = "native")]
-pub use raw_event_observer::{
-    new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
-};
-// `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
-// are the typed observer surface re-exported unconditionally from `lib.rs`.
-// `RawEventObserverRegistration` reaches the outside world only through
-// `lib.rs::__ffi_internal` (`#[cfg(feature = "native")]`); gate it to match.
-#[cfg(feature = "native")]
-pub use raw_event_observer::RawEventObserverRegistration;
-pub use raw_event_observer::{
-    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-};
 // NIP golden-tag conformance harness — `pub` (not `pub(crate)`) so the gated
 // test-support re-export in `lib.rs` reaches the integration test outside the
 // crate. `commands` is itself crate-private, so non-test Rust code only sees

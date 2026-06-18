@@ -19,7 +19,7 @@ fn a6_positive_fixture_fires() {
     let tmp_str = tmp.to_string_lossy().into_owned();
     // A6 is workspace-wide but self-gates via file_in_scope (crates/ + apps/ only).
     // The staged fixture under `target/` falls outside that scope, so
-    // `--a6-extra-scope` opts it in (mirrors `--a5-extra-scope`).
+    // `--a6-extra-scope` opts it in (mirrors `--d17-extra-scope`).
     let (code, stdout, stderr) = run_lint(&[
         "--path",
         &tmp_str,

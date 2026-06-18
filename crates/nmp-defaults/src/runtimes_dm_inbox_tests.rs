@@ -36,12 +36,11 @@ fn gift_wrapped_dm(sender: &Keys, receiver: &PublicKey, content: &str, ts: u64) 
         .as_json()
 }
 
-/// Feed one gift-wrap envelope into the projection via its `RawEventObserver`
-/// interface, then drain the emitted port decrypts with `receiver_keys` (the
+/// Feed one gift-wrap envelope into the projection via `ingest_gift_wrap`,
+/// then drain the emitted port decrypts with `receiver_keys` (the
 /// active local account) so the chain completes and the message lands.
 fn feed_dm(proj: &DmInboxProjection, rx: &Receiver<ActorMail>, receiver_keys: &Keys, envelope: &str) {
-    use nmp_core::RawEventObserver as _;
-    proj.on_raw_event(KIND_GIFT_WRAP, envelope);
+    proj.ingest_gift_wrap(envelope, None);
     drive_decrypts(rx, receiver_keys);
 }
 

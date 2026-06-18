@@ -62,9 +62,11 @@ must not depend on another binding crate for business behavior.
 - Capability sockets and raw capability-result intake.
 - Session/account state and active-account switching.
 - Trait seams: `ActionModule`, `ProtocolCommand`, `IngestParser`,
-  `EventIngestDispatcher`, `KernelEventObserver`, `RawEventObserver`,
-  `OutboxRouter`, `MailboxCache`, `RawEventForwardPolicy`, and publish
-  resolver traits.
+  `EventIngestDispatcher`, `KernelEventObserver`, `ExternalEventSinkPolicy`
+  (the internal in-process relay-forwarding seam; replaces the retired
+  `RawEventObserver` / `RawEventForwardPolicy` pair — there is no native push
+  sink),
+  `OutboxRouter`, `MailboxCache`, and publish resolver traits.
 - Snapshot/update envelopes, projection registry, and generic transport
   machinery.
 - Shared display helpers as render-side utilities, not projection-builder

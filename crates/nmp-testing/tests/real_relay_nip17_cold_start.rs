@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 use std::sync::mpsc::{channel, Receiver};
 
-use nmp_core::{ActorCommand, ActorMail, CommandSender, RawEventObserver};
+use nmp_core::{ActorCommand, ActorMail, CommandSender};
 use nmp_nip17::DmInboxProjection;
 use nmp_nip59::{gift_wrap_local, KIND_GIFT_WRAP};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -308,11 +308,11 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     // ── PHASE 4: Projection decryption ─────────────────────────────────────
     //
     // Feed the raw EVENT JSON directly into Bob's fresh `DmInboxProjection`
-    // via `RawEventObserver::on_raw_event_with_source` — the projection's
-    // production ingest method. Note: this drives the projection directly;
-    // the full production path additionally traverses the kernel's
-    // Schnorr-verify + store-insert gate before `notify_raw_event_observers`
-    // fires (covered independently by `dm_inbox_full_round_trip_through_ffi`).
+    // via `ingest_gift_wrap` — the projection's production ingest method.
+    // Note: this drives the projection directly; the full production path
+    // additionally traverses the kernel's Schnorr-verify + store-insert gate
+    // before the IngestParser fires (covered independently by
+    // `dm_inbox_full_round_trip_through_ffi`).
     // The planner-compiled REQ + kind:10050 routing junction is NOT covered
     // here — see the F-02 closure-gate follow-up on issue #977.
     //
@@ -320,7 +320,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     // projection (the public API does not return a bool).
 
     let before_ingest = bob_projection.snapshot();
-    bob_projection.on_raw_event_with_source(KIND_GIFT_WRAP, &event_json, Some(relay_url));
+    bob_projection.ingest_gift_wrap(&event_json, Some(relay_url));
     // ADR-0050 §D6: drain the emitted port decrypts with Bob's local key.
     drive_local_decrypts(&bob_rx, &bob);
     let after_ingest = bob_projection.snapshot();

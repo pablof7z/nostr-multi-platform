@@ -278,27 +278,6 @@ pub fn erase_kernel_clock(
     clock
 }
 
-// ─── Raw-event forwarding policy factory ──────────────────────────────────
-//
-// Per-app raw signed-event forwarding policy factory. `nmp-core` owns the
-// generic dispatch seam and native pool send; reusable policy crates provide
-// the target-selection policy through this slot.
-pub type RawEventForwardPolicyFactory = dyn Fn(
-        crate::substrate::RawEventForwardPolicyContext,
-    ) -> Vec<Arc<dyn crate::substrate::RawEventForwardPolicy>>
-    + Send
-    + Sync;
-
-/// Slot wrapper for [`RawEventForwardPolicyFactory`]. `None` leaves the
-/// generic raw-event forwarder uninstalled.
-pub type RawEventForwardPolicySlot = Arc<Mutex<Option<Arc<RawEventForwardPolicyFactory>>>>;
-
-/// Construct a fresh, empty [`RawEventForwardPolicySlot`].
-#[must_use]
-pub fn new_raw_event_forward_policy_slot() -> RawEventForwardPolicySlot {
-    Arc::new(Mutex::new(None))
-}
-
 /// Typed slot for the singleton kernel-event observer id.
 ///
 /// Used by the idempotent `NmpApp::swap_singleton_event_observer` seam so
@@ -359,5 +338,32 @@ pub type NostrConnectBootstrapRelaySlot = Arc<Mutex<Option<String>>>;
 /// Construct a fresh, empty [`NostrConnectBootstrapRelaySlot`].
 #[must_use]
 pub fn new_nostrconnect_bootstrap_relay_slot() -> NostrConnectBootstrapRelaySlot {
+    Arc::new(Mutex::new(None))
+}
+
+// ─── External event sink policy factory ───────────────────────────────────────
+//
+// Factory slot for the single canonical external event sink policy path.
+// The dispatcher uses `ExternalEventSinkPolicy` objects produced by this
+// factory to route `SignedEventFrame`s to their destinations.
+
+/// Factory closure type for the external event sink dispatcher.
+///
+/// Receives a [`crate::substrate::RawEventForwardPolicyContext`] and returns a
+/// list of boxed [`crate::substrate::ExternalEventSinkPolicy`] objects.
+pub type ExternalEventSinkPolicyFactory = dyn Fn(
+        crate::substrate::RawEventForwardPolicyContext,
+    ) -> Vec<Arc<dyn crate::substrate::ExternalEventSinkPolicy>>
+    + Send
+    + Sync;
+
+/// Slot wrapper for [`ExternalEventSinkPolicyFactory`].
+/// `None` leaves the dispatcher without any policy — no frames are forwarded.
+pub type ExternalEventSinkPolicySlot =
+    Arc<Mutex<Option<Arc<ExternalEventSinkPolicyFactory>>>>;
+
+/// Construct a fresh, empty [`ExternalEventSinkPolicySlot`].
+#[must_use]
+pub fn new_external_event_sink_policy_slot() -> ExternalEventSinkPolicySlot {
     Arc::new(Mutex::new(None))
 }

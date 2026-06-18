@@ -33,11 +33,6 @@ impl Kernel {
                     return None;
                 }
             };
-        let raw_for_observer = if self.raw_event_observers_idle_for_kind(event.kind) {
-            None
-        } else {
-            Some(verified.raw().clone())
-        };
         // V-40 — clone the verified event for the substrate
         // [`EventIngestDispatcher`] fan-out. Cloning is cheap and lets us hand
         // `store.insert` an owned `VerifiedEvent` while still feeding parsers
@@ -46,17 +41,38 @@ impl Kernel {
         // T105: store provenance is the *actual* URL the event came in on,
         // not the lane's bootstrap URL.
         let provenance = relay_url.to_string();
+        // Clone the event into an `Arc` for the dispatcher ONLY when a sink
+        // policy is actually active for this kind — the common no-sink / idle-kind
+        // ingest path stays allocation-free. `verified` is moved into
+        // `store.insert` below, so this conditional clone must happen here.
+        let raw_arc: Option<std::sync::Arc<crate::store::RawEvent>> = self
+            .external_event_sink_dispatcher()
+            .filter(|dispatcher| !dispatcher.all_idle_for_kind(event.kind))
+            .map(|_| std::sync::Arc::new(verified.raw().clone()));
         match self
             .store
             .insert(verified, &provenance, self.ingest_received_at_ms())
         {
             Ok(outcome) => {
-                if raw_for_observer
-                    .as_ref()
-                    .is_some_and(|_| helpers::raw_tap_should_fire(&outcome))
-                {
-                    if let Some(raw) = raw_for_observer.as_ref() {
-                        self.notify_raw_event_observers(raw, &provenance);
+                // Dispatch to external event sinks (replaces old raw tap).
+                // `from_insert_outcome` preserves the DUPLICATE-inclusive outcome
+                // gate from `raw_tap_should_fire` (Inserted | Replaced | Duplicate
+                // | Ephemeral). `raw_arc` is `Some` only when a policy matched the
+                // kind (the `all_idle_for_kind` fast-path above), so the frame is
+                // built only when a sink will actually consume it.
+                if let (Some(ingest_outcome), Some(raw_arc), Some(dispatcher)) = (
+                    crate::substrate::IngestOutcomeKind::from_insert_outcome(&outcome),
+                    raw_arc,
+                    self.external_event_sink_dispatcher(),
+                ) {
+                    let source_relay: Option<std::sync::Arc<str>> =
+                        Some(std::sync::Arc::from(provenance.as_str()));
+                    if let Some(frame) = crate::substrate::SignedEventFrame::build(
+                        raw_arc,
+                        source_relay,
+                        ingest_outcome,
+                    ) {
+                        dispatcher.dispatch(frame);
                     }
                 }
                 // T131 — per-URL `RelayUsefulness` provenance accounting.
