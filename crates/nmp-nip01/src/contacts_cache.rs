@@ -61,7 +61,7 @@ use nmp_core::substrate::{ContactsLookup, ContactsView};
 /// In-memory NIP-02 kind:3 contact-list cache.
 ///
 /// One entry per author pubkey, valued by the parsed [`ContactsView`] (the
-/// capped follow set + the source event's `created_at` / `event_id`). Cheap to
+/// full follow set + the source event's `created_at` / `event_id`). Cheap to
 /// clone behind an `Arc`; grows only as kind:3 events arrive.
 ///
 /// Wrapped in `Arc` at composition time so the same handle is the writer

@@ -231,6 +231,64 @@ fn authors_kind_empty_authors_returns_nothing() {
     assert!(results.is_empty(), "empty authors must return nothing");
 }
 
+/// Single-author `AuthorKind` with an empty kind set returns nothing — same
+/// positive-selection contract as `AuthorsKind` (parity with the LMDB backend).
+#[test]
+fn author_kind_empty_kinds_returns_nothing() {
+    let store = MemEventStore::new();
+    let pk = make_pk(0x46);
+    let ev = RawEvent {
+        id: "46".repeat(32),
+        pubkey: pk_hex(0x46),
+        created_at: 1000,
+        kind: 1,
+        tags: vec![],
+        content: String::new(),
+        sig: "a".repeat(128),
+    };
+    store.insert(unchecked(ev), &"wss://r/".into(), 1000).unwrap();
+
+    let q = StoreQuery::AuthorKind {
+        author: pk,
+        kinds: vec![],
+        since: None,
+        until: None,
+    };
+    let results = store.query(&q, 100).unwrap();
+    assert!(results.is_empty(), "AuthorKind empty kinds must return nothing (not wildcard)");
+}
+
+/// Empty kinds set returns nothing — `AuthorsKind` is a positive selection,
+/// never a wildcard (parity with the LMDB backend; see the empty-set contract
+/// on `StoreQuery::AuthorsKind`).
+#[test]
+fn authors_kind_empty_kinds_returns_nothing() {
+    let store = MemEventStore::new();
+    let pk = make_pk(0x45);
+    let ev = RawEvent {
+        id: "45".repeat(32),
+        pubkey: pk_hex(0x45),
+        created_at: 1000,
+        kind: 1,
+        tags: vec![],
+        content: String::new(),
+        sig: "a".repeat(128),
+    };
+    store.insert(unchecked(ev), &"wss://r/".into(), 1000).unwrap();
+
+    let mut authors = BTreeSet::new();
+    authors.insert(pk);
+
+    let q = StoreQuery::AuthorsKind {
+        authors,
+        kinds: vec![],
+        since: None,
+        until: None,
+    };
+    let results = store.query(&q, 100).unwrap();
+    assert!(results.is_empty(), "empty kinds must return nothing (not wildcard)");
+}
+
 /// Cross-author dedup: same event ID inserted under two relay URLs must appear once.
 #[test]
 fn authors_kind_no_duplicate_event_ids() {

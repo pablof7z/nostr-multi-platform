@@ -108,11 +108,19 @@ pub(super) fn scan_by_author_kind<'a>(
     until: Option<u64>,
     limit: usize,
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let pk = PublicKey::from_slice(author).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
-    let mut f = Filter::new().author(pk);
-    if !kinds.is_empty() {
-        f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+    // Empty-set semantics (StoreQuery::AuthorKind doc): an empty kind set
+    // matches NOTHING — `AuthorKind` is a positive (author, kinds) selection,
+    // never an author-wildcard-over-all-kinds. The nostr-lmdb fork's `Filter`
+    // treats empty `kinds` as "any kind", so short-circuit here to stay
+    // byte-identical with MemEventStore (whose `kinds.contains` yields nothing
+    // for an empty set).
+    if kinds.is_empty() {
+        return Ok(Box::new(std::iter::empty::<Result<StoredEvent, StoreError>>()));
     }
+    let pk = PublicKey::from_slice(author).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
+    let mut f = Filter::new()
+        .author(pk)
+        .kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
     if let Some(s) = since {
         f = f.since(Timestamp::from_secs(s));
     }
@@ -131,14 +139,22 @@ pub(super) fn scan_by_authors_kind<'a>(
     until: Option<u64>,
     limit: usize,
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+    // Empty-set semantics (StoreQuery::AuthorsKind doc): an empty author set OR
+    // an empty kind set matches NOTHING — this is a positive selection, never a
+    // wildcard. The nostr-lmdb fork's `Filter` treats an empty `authors`/`kinds`
+    // as "no constraint" (matches all), so we must short-circuit here to stay
+    // byte-identical with MemEventStore (whose `contains` checks already yield
+    // nothing for an empty set).
+    if authors.is_empty() || kinds.is_empty() {
+        return Ok(Box::new(std::iter::empty::<Result<StoredEvent, StoreError>>()));
+    }
     let pks: Vec<PublicKey> = authors
         .iter()
         .map(|a| PublicKey::from_slice(a).map_err(|e| StoreError::Encoding(format!("pk: {e}"))))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut f = Filter::new().authors(pks);
-    if !kinds.is_empty() {
-        f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
-    }
+    let mut f = Filter::new()
+        .authors(pks)
+        .kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
     if let Some(s) = since {
         f = f.since(Timestamp::from_secs(s));
     }

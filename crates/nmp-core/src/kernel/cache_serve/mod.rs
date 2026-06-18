@@ -16,10 +16,12 @@
 //! ## Aggregate budget — chunked continuation (ADR §5, the #1085 lesson)
 //!
 //! `gc_step` (V-117 / #1085) did unbudgeted O(store) scans on the actor
-//! thread. The follow feed registers ONE single-author interest PER followed
-//! pubkey, so a per-interest budget alone is insufficient: a 300–500-follow
-//! cold start would still burst `follows × budget` events synchronously.
-//! Cache-serve therefore budgets at the **aggregate** level:
+//! thread. Even though the follow feed now registers ONE multi-author
+//! interest (#1497), a single cold-start serve over a 300–500-author
+//! `AuthorsKind` scan can still visit far more store events than one tick
+//! should run synchronously — and several feeds may enqueue at once. A
+//! per-interest budget alone is therefore insufficient; cache-serve budgets
+//! at the **aggregate** level:
 //!
 //! - `enqueue_cache_serve` only queues work — it never scans.
 //! - [`Kernel::run_cache_serve_step`] drains the queue under ONE shared
@@ -33,22 +35,24 @@
 //! ## Serve depth = 1× the consumer's visible window (ADR §4, owner-decided)
 //!
 //! Each interest is served at most `min(shape.limit, visible_limit)` events
-//! ([`Kernel::serve_depth_for_shape`]). `shape.limit` is the relay-wire
-//! backfill cap (e.g. the follow feed's `Some(1000)`), NOT the render
-//! window — the kernel's `visible_limit` (= the consumer's visible window,
-//! `DEFAULT_VISIBLE_LIMIT = 80` for the timeline) caps it because the
-//! snapshot cannot show more anyway.
+//! ([`Kernel::serve_depth_for_shape`]). `shape.limit` is the optional
+//! relay-wire backfill cap, NOT the render window; a tailing follow feed
+//! carries no limit (`None`, #1497), so its serve depth is just
+//! `visible_limit` — the consumer's visible window
+//! (`DEFAULT_VISIBLE_LIMIT = 80` for the timeline) — because the snapshot
+//! cannot show more anyway.
 //!
-//! For the per-follow case the WINDOW is the **feed's**, not per-author:
-//! the feed needs ~window newest events across ALL follows, not
-//! `follows × window`. Chosen mechanism (documented per review): newest-N
-//! per author, with an aggregate-window `since` floor — once the timeline
+//! The follow feed needs ~window newest events across ALL follows, not
+//! `follows × window`. Since #1497 that is ONE multi-author `AuthorsKind`
+//! scan (newest-first across the combined author set), drained to
+//! `visible_limit` depth — no per-author fan-out. The aggregate-window
+//! `since` floor still applies across resumed chunks: once the timeline
 //! already holds ≥ `visible_limit` entries, every subsequent timeline-bound
-//! query is floored at the window-edge `created_at`, so authors whose
-//! stored events cannot enter the visible window early-stop in the index
-//! scan. Events served before the floor rose stay in the timeline
-//! (bounded by `TIMELINE_CACHE_LIMIT`); the final visible window is exactly
-//! the newest-W superset regardless of serve order.
+//! query is floored at the window-edge `created_at`, so the scan early-stops
+//! once stored events can no longer enter the visible window. Events served
+//! before the floor rose stay in the timeline (bounded by
+//! `TIMELINE_CACHE_LIMIT`); the final visible window is exactly the newest-W
+//! superset regardless of serve order.
 //!
 //! ## Dedup safety
 //!
@@ -252,9 +256,10 @@ impl Kernel {
 
     /// Serve depth for one interest: 1× the consumer's visible window.
     ///
-    /// `shape.limit` is the relay-wire backfill cap (the follow feed carries
-    /// `Some(1000)`); the kernel's `visible_limit` is the consumer's render
-    /// window. The serve depth is the smaller of the two — serving past the
+    /// `shape.limit` is the optional relay-wire backfill cap (a tailing
+    /// follow feed carries none — `None`, #1497); the kernel's `visible_limit`
+    /// is the consumer's render window. The serve depth is the smaller of the
+    /// two (an absent `shape.limit` ⇒ just `visible_limit`) — serving past the
     /// visible window is wasted actor work (ADR §4, owner decision
     /// 2026-06-12: depth = 1× visible window).
     fn serve_depth_for_shape(&self, shape: &InterestShape) -> usize {

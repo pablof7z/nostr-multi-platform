@@ -15,6 +15,11 @@ use super::ids::{EventId, PubKey};
 #[derive(Clone, Debug)]
 pub enum StoreQuery {
     /// `idx_author_kind` — events by `author` with kind in `kinds`.
+    ///
+    /// Empty-kinds semantics (identical across `MemEventStore` and
+    /// `LmdbEventStore`): an empty `kinds` set matches **nothing** — this is a
+    /// positive `(author, kinds)` selection, never an author-wildcard over all
+    /// kinds.
     AuthorKind {
         author: PubKey,
         kinds: Vec<u32>,
@@ -23,6 +28,14 @@ pub enum StoreQuery {
     },
     /// `idx_author_kind` (multi-author) — events by any author in `authors` with kind in `kinds`,
     /// newest-first across the combined author set.
+    ///
+    /// Empty-set semantics (identical across `MemEventStore` and
+    /// `LmdbEventStore`): an empty `authors` set **or** an empty `kinds` set
+    /// matches **nothing** — this variant is a positive selection over a
+    /// concrete author set and kind set, never a wildcard. (Use [`StoreQuery::KindTime`]
+    /// for the no-author "any kind" global feed.) This mirrors the single-author
+    /// [`StoreQuery::AuthorKind`] contract, where an empty `kinds` likewise
+    /// matches nothing.
     AuthorsKind {
         authors: BTreeSet<PubKey>,
         kinds: Vec<u32>,

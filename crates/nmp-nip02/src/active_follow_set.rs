@@ -97,8 +97,8 @@
 //!
 //! # Sibling lifecycle divergence (NOT unified here)
 //!
-//! `ActiveFollowSet` and `FollowListProjection` derive the *same* capped
-//! membership but clear stale state on *different* triggers:
+//! `ActiveFollowSet` and `FollowListProjection` derive the *same* (uncapped,
+//! #1497) membership but clear stale state on *different* triggers:
 //!
 //! * `ActiveFollowSet` clears eagerly via [`Self::notify_account_changed`]
 //!   (the explicit account-change seam the composition root drives).
