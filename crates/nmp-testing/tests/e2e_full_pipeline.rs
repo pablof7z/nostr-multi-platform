@@ -200,7 +200,7 @@ fn kind3_update_rewires_subscriptions() {
     );
 
     // Register a tailing interest for alice.
-    lc.registry_mut().push(tailing_interest(1, &["alice"]));
+    lc.register_for_test(tailing_interest(1, &["alice"]));
 
     // Compile: alice's relay must receive a REQ.
     let frames1 = lc.recompile_and_diff(&mailboxes).expect("initial compile");
@@ -231,8 +231,7 @@ fn kind3_update_rewires_subscriptions() {
     );
 
     // Expand the interest to cover carol too (production view rebuild equivalent).
-    lc.registry_mut()
-        .push(tailing_interest(1, &["alice", "carol"]));
+    lc.register_for_test(tailing_interest(1, &["alice", "carol"]));
 
     // Fire the A11 FollowListChanged trigger — the canonical kind:3 rewire signal.
     lc.enqueue_trigger(CompileTrigger::FollowListChanged {
@@ -449,7 +448,7 @@ fn negentropy_skips_redundant_req() {
     warm_interest.shape.since = Some(1);
     let mut lc_warm = SubscriptionLifecycle::new();
     lc_warm.set_watermark_fn(Arc::new(|_shape, _relay: &str| Some(1700)));
-    lc_warm.registry_mut().push(warm_interest);
+    lc_warm.register_for_test(warm_interest);
     let frames_warm = lc_warm
         .recompile_and_diff(&mailboxes)
         .expect("warm compile");
@@ -469,7 +468,7 @@ fn negentropy_skips_redundant_req() {
     // Case 2: cold start (no watermark) → since=None stays None → REQ has no since field (full fetch).
     let mut lc_cold = SubscriptionLifecycle::new();
     lc_cold.set_watermark_fn(Arc::new(|_shape, _relay: &str| None));
-    lc_cold.registry_mut().push(alice_interest);
+    lc_cold.register_for_test(alice_interest);
     let frames_cold = lc_cold
         .recompile_and_diff(&mailboxes)
         .expect("cold compile");
@@ -528,7 +527,7 @@ fn auth_required_for_read_flow() {
         },
     );
 
-    lc.registry_mut().push(LogicalInterest {
+    lc.register_for_test(LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
         shape: InterestShape {
