@@ -303,33 +303,36 @@ pub(crate) struct SignerAppDescriptor {
     pub(crate) signer_kind: String,
 }
 
-/// Static signer-app probe table. Rust owns this list; the platform shell
-/// iterates it and uses its platform capability (e.g.
-/// `UIApplication.canOpenURL`) to detect which entry is installed, then
-/// renders the matching `display_label`.
+/// The NIP-46 `nostrconnect` onboarding probe table — **derived from the
+/// single Rust-owned [`crate::signer_catalog`]** (#1493 P9), no longer a
+/// hand-authored list. The platform shell iterates it and uses its platform
+/// capability (`UIApplication.canOpenURL`) to detect which entry is installed,
+/// then renders the matching `display_label`.
 ///
-/// D0: protocol-layer knowledge of which app schemes qualify as NIP-46
-/// signers must not live in the platform shell — schemes change as the
-/// ecosystem evolves (Nostr Signer, Primal, …) and that table is a
-/// protocol-substrate concern.
+/// This surface is the iOS onboarding catalog, so it is exactly the catalog
+/// entries that (a) are offered on iOS (`ios.is_some()`) and (b) speak NIP-46.
+/// A catalog entry offered only on Android, or one that speaks NIP-55 only,
+/// would be excluded here — it is not a `nostrconnect`/NIP-46 onboarding target.
+///
+/// D0: protocol-layer knowledge of which app schemes qualify as NIP-46 signers
+/// must not live in the platform shell — that catalog is a protocol-substrate
+/// concern, owned in `crate::signer_catalog`.
 fn signer_apps_table() -> Vec<SignerAppDescriptor> {
-    vec![
-        SignerAppDescriptor {
-            scheme: "nostrsigner://".to_string(),
-            display_label: "Nostr Signer".to_string(),
-            signer_kind: "nip46".to_string(),
-        },
-        SignerAppDescriptor {
-            scheme: "primal://".to_string(),
-            display_label: "Primal".to_string(),
-            signer_kind: "nip46".to_string(),
-        },
-        SignerAppDescriptor {
-            scheme: "nostrconnect://".to_string(),
-            display_label: "Signer App".to_string(),
-            signer_kind: "nip46".to_string(),
-        },
-    ]
+    use crate::signer_catalog::{known_signer_apps, SignerCapability};
+    known_signer_apps()
+        .iter()
+        .filter_map(|app| {
+            let ios = app.ios?;
+            if !app.speaks(SignerCapability::Nip46) {
+                return None;
+            }
+            Some(SignerAppDescriptor {
+                scheme: format!("{}://", ios.url_scheme),
+                display_label: app.display_label.to_string(),
+                signer_kind: SignerCapability::Nip46.as_token().to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Pre-computed NIP-46 onboarding read model — `projections["nip46_onboarding"]`.
