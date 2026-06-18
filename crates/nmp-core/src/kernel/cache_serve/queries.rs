@@ -36,15 +36,41 @@ use crate::store::StoreQuery;
 ///
 /// ## Coverage table (ADR §3, E1–E3)
 ///
-/// | Shape pattern | `StoreQuery` | Increment |
-/// |---|---|---|
-/// | 1 author + ≥1 kind | `AuthorKind` | E1 |
-/// | >1 author + ≥1 kind | one `AuthorsKind` (multi-author) | E1 (#1497) |
-/// | 0 authors + ≥1 kind + 0 tags + 0 addrs | `KindTime` | E1 |
-/// | `#p` single-value + kind:1059 only | `Ptag` (DM inbox) | E2 |
-/// | `#p` single-value + ≥1 kind (non-DM) | `Ptag` (mention) | E3 |
-/// | `#e` single-value + ≥1 kind | `Etag` (thread) | E3 |
-/// | `addresses` non-empty | `KindDtag` per coord | E3 |
+/// | Shape pattern | `StoreQuery` | LMDB index | Increment |
+/// |---|---|---|---|
+/// | 1 author + ≥1 kind | `AuthorKind` | `idx_author_kind` | E1 |
+/// | >1 author + ≥1 kind | one `AuthorsKind` (multi-author) | `idx_author_kind` (multi-scan) | E1 (#1497) |
+/// | 0 authors + ≥1 kind + 0 tags + 0 addrs | `KindTime` | `idx_kind_time` | E1 |
+/// | `#p` single-value + kind:1059 only | `Ptag` (DM inbox) | `idx_ptag_time` | E2 |
+/// | `#p` single-value + ≥1 kind (non-DM) | `Ptag` (mention) | `idx_ptag_time` | E3 |
+/// | `#e` single-value + ≥1 kind | `Etag` (thread) | `idx_etag_time` | E3 |
+/// | `addresses` non-empty | `KindDtag` per coord | `idx_kind_dtag_time` | E3 |
+///
+/// Note: `Etag` and `Ptag` carry no time cursor (`query_until_mut` /
+/// `query_since_mut` return `None` for those variants). This is intentional
+/// conservative over-serve: the relay fills the tail; the index has no
+/// time-bounded pagination on those paths.
+///
+/// ## Intentionally uncovered (tracked)
+///
+/// The following shapes return an empty vec — they are **not** accidental gaps
+/// but deliberate exceptions documented here for auditors:
+///
+/// - **Empty kinds (wildcard):** no safe bounded index — a kinds-wildcard scan
+///   would read unbounded data. Marked served immediately; relay delivers.
+/// - **Multi-key / multi-value tags:** single-key indexes cannot perform
+///   set-intersection in one scan (e.g. `#e` ∩ `#p`). Relay delivers in full.
+/// - **Event-ids-only shapes:** the pointer-loader hydrates on ingest; replaying
+///   via a store scan adds no value (each id returns at most one event).
+/// - **Unrecognized single tag keys (`#t`, `#a`, etc.):** not yet mapped per
+///   ADR-0045 E1–E3; relay serves. Tracked as post-v1 follow-up; deliberately
+///   out of scope, not a bug.
+/// - **Text / full-text search candidates:** no `StoreQuery` variant or FTS
+///   index exists; search shapes rely on relay NIP-50. Tracked as post-v1
+///   follow-up; not an accidental broad scan.
+///
+/// See `issue_1517_every_scope_shape_has_a_plan_or_tracked_exception` in
+/// `cache_serve_budget_tests` for the contract guard.
 pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<StoreQuery> {
     // Wildcard kinds: not covered (too broad, no safe bounded index).
     if shape.kinds.is_empty() {

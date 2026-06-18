@@ -86,6 +86,8 @@ mod cache_serve_all_kinds_dispatcher_tests;
 #[cfg(test)]
 mod cache_serve_budget_tests;
 #[cfg(test)]
+mod cache_serve_coverage_tests;
+#[cfg(test)]
 mod cache_serve_tests;
 #[cfg(test)]
 mod cache_serve_universal_tests;

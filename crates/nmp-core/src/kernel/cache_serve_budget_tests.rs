@@ -334,3 +334,4 @@ fn e3_structural_floored_implies_served() {
         "event-id shapes → no queries (not covered)"
     );
 }
+
