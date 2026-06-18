@@ -43,6 +43,10 @@ use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::IngestParser;
 use nostr::{Event, JsonUtil};
 
+use crate::interest::{
+    KIND_GIFT_WRAP, KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE,
+    KIND_MARMOT_KEY_PACKAGE_LEGACY, KIND_MARMOT_WELCOME,
+};
 use crate::projection::ops::ingest_signed_event_core;
 use crate::projection::state::MarmotProjection;
 
@@ -54,9 +58,18 @@ use crate::projection::state::MarmotProjection;
 /// - kind:444 — welcome rumor, admitted defensively (the wire welcome is
 ///   the kind:1059 gift-wrap, but accepting 444 costs nothing — the
 ///   shared core silently skips it).
+///
+/// Kind integers come from the `nmp-kinds` registry (via `crate::interest`),
+/// not literals — one source of truth shared with the publish/cache sites.
 // Used by the feature-gated `ffi` module and tests; not dead code.
 #[allow(dead_code)]
-pub(crate) const TAP_KINDS: [u32; 5] = [443, 444, 445, 1059, 30443];
+pub(crate) const TAP_KINDS: [u32; 5] = [
+    KIND_MARMOT_KEY_PACKAGE_LEGACY,
+    KIND_MARMOT_WELCOME,
+    KIND_MARMOT_GROUP_MESSAGE,
+    KIND_GIFT_WRAP,
+    KIND_MARMOT_KEY_PACKAGE,
+];
 
 /// Slot key used with `EventIngestDispatcher::replace_kind_parser`.
 /// Distinct from the NIP-17 `"nip17.dm_inbox"` slot so both parsers

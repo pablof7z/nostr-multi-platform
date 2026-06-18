@@ -17,7 +17,7 @@ use nmp_threading::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::kinds::KIND_SHORT_NOTE;
+use crate::kinds::KIND_SHORT_TEXT_NOTE;
 
 /// Pubkey alias mirroring the planner.
 pub type Pubkey = String;
@@ -94,7 +94,7 @@ impl ModularTimelineSpec {
     #[must_use]
     pub fn effective_kinds(&self) -> Vec<u32> {
         if self.kinds.is_empty() {
-            vec![KIND_SHORT_NOTE]
+            vec![KIND_SHORT_TEXT_NOTE]
         } else {
             self.kinds.clone()
         }

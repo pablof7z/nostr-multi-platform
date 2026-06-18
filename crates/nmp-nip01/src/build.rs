@@ -11,7 +11,7 @@ use nmp_core::tags::reply_tags;
 use serde::{Deserialize, Serialize};
 
 use crate::decode::NoteRecord;
-use crate::kinds::KIND_SHORT_NOTE;
+use crate::kinds::KIND_SHORT_TEXT_NOTE;
 
 /// Structured builder errors per **D6** — never cross FFI as panics.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -115,7 +115,7 @@ impl NoteBuilder {
 
         Ok(UnsignedEvent {
             pubkey: author.into(),
-            kind: KIND_SHORT_NOTE,
+            kind: KIND_SHORT_TEXT_NOTE,
             tags,
             content: self.content,
             created_at,
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn root_note_emits_no_e_or_p_tags() {
         let unsigned = Note::new("hello").build(AUTHOR, 0).unwrap();
-        assert_eq!(unsigned.kind, KIND_SHORT_NOTE);
+        assert_eq!(unsigned.kind, KIND_SHORT_TEXT_NOTE);
         assert_eq!(unsigned.content, "hello");
         assert!(unsigned.tags.is_empty());
     }

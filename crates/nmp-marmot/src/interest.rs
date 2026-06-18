@@ -13,17 +13,20 @@
 
 use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use nmp_core::stable_hash::stable_hash64;
-// KIND_GIFT_WRAP = 1059 from the canonical Layer-0 registry (via nmp-nip59
-// which re-exports from nmp-kinds). Eliminates the duplicate local definition
-// that caused the V-57 P2 duplication audit finding.
+// Kind integers from the canonical Layer-0 registry (`nmp-kinds`, reached via
+// nmp-nip59 / nmp-core). KIND_GIFT_WRAP = 1059; the Marmot key-package,
+// group-message, and welcome kinds were previously re-declared as literals in
+// several places (`interest.rs`, `service.rs` as u16, `projection/state.rs`,
+// `tap.rs`) — a u16/u32 type split flagged by the #1493 fragmentation audit.
+// They are now ONE canonical `u32` definition re-exported here for the rest of
+// the crate (these constants have no external importers). NOTE: the `ops.rs`
+// dispatch still matches on `event.kind.as_u16()` literals — left as-is to keep
+// that 500-LOC god-file from expanding over its file-size baseline.
+pub use nmp_core::kinds::{
+    KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY,
+    KIND_MARMOT_WELCOME,
+};
 pub use nmp_nip59::KIND_GIFT_WRAP;
-
-/// Marmot KeyPackage event kind (NIP-33 addressable). CURRENT spec.
-pub const KIND_KEY_PACKAGE: u32 = 30443;
-/// Marmot KeyPackage legacy kind. Dual-published through 2026-05-31.
-pub const KIND_KEY_PACKAGE_LEGACY: u32 = 443;
-/// Marmot group message / commit / proposal (MLS + MIP-03 outer layer).
-pub const KIND_GROUP_MESSAGE: u32 = 445;
 
 /// Stable, deterministic `InterestId` for a pubkey's gift-wrap inbox
 /// subscription. Same hash pattern as `follow_feed_interest_id` in the
@@ -82,7 +85,7 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
 #[must_use] 
 pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
     nmp_core::substrate::ViewDependencies {
-        kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],
+        kinds: vec![KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY],
         authors: vec![pubkey.to_string()],
         limit: Some(4),
         ..Default::default()
@@ -108,7 +111,7 @@ pub fn group_message_interests(
         .into_iter()
         .map(|relay_url| {
             nmp_core::substrate::ViewDependencies {
-                kinds: vec![KIND_GROUP_MESSAGE],
+                kinds: vec![KIND_MARMOT_GROUP_MESSAGE],
                 relay_pin: Some(relay_url.clone()),
                 limit: Some(200),
                 ..Default::default()
@@ -166,8 +169,8 @@ mod tests {
     fn key_package_lookup_interest_targets_peer_package_kinds() {
         let i = key_package_lookup_interest("peerpubkey");
         assert!(i.shape.authors.contains("peerpubkey"));
-        assert!(i.shape.kinds.contains(&KIND_KEY_PACKAGE));
-        assert!(i.shape.kinds.contains(&KIND_KEY_PACKAGE_LEGACY));
+        assert!(i.shape.kinds.contains(&KIND_MARMOT_KEY_PACKAGE));
+        assert!(i.shape.kinds.contains(&KIND_MARMOT_KEY_PACKAGE_LEGACY));
         assert_eq!(i.shape.limit, Some(4));
         assert!(i.shape.relay_pin.is_none());
         assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
@@ -184,7 +187,7 @@ mod tests {
         );
         assert_eq!(interests.len(), 2);
         for i in &interests {
-            assert!(i.shape.kinds.contains(&KIND_GROUP_MESSAGE));
+            assert!(i.shape.kinds.contains(&KIND_MARMOT_GROUP_MESSAGE));
             assert_eq!(i.shape.limit, Some(200));
             assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
             assert!(matches!(i.scope, InterestScope::Global));

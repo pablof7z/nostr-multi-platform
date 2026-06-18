@@ -89,12 +89,12 @@ pub fn build_history_event(record: &HistoryRecord, keys: &Keys) -> Result<EventB
         })?);
     }
 
-    Ok(EventBuilder::new(Kind::from(KIND_HISTORY), content).tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_HISTORY as u16), content).tags(tags))
 }
 
 /// Extract kind:7376 plain `e` tags marked as redeemed nutzap receipts.
 pub fn redeemed_nutzap_ids(event: &Event) -> Vec<EventId> {
-    if event.kind != Kind::from(KIND_HISTORY) {
+    if event.kind != Kind::from(KIND_HISTORY as u16) {
         return Vec::new();
     }
 

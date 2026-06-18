@@ -7,7 +7,7 @@ use nmp_core::substrate::{
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
-use crate::KIND_SHORT_NOTE;
+use crate::KIND_SHORT_TEXT_NOTE;
 
 pub const VISIBLE_NOTE_RELATIONS_LIMIT: u32 = 200;
 pub const VISIBLE_NOTE_RELATIONS_NAMESPACE: &str = "nmp.nip01.visible_note_relations";
@@ -21,7 +21,7 @@ pub fn visible_note_relations_interest_id(event_id: &str) -> InterestId {
 pub fn visible_note_relations_interest(event_id: &str) -> LogicalInterest {
     ViewDependencies {
         kinds: vec![
-            KIND_SHORT_NOTE,
+            KIND_SHORT_TEXT_NOTE,
             nmp_nip18::KIND_REPOST,
             7,
             nmp_nip57::KIND_ZAP_RECEIPT,

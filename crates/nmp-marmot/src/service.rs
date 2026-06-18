@@ -50,9 +50,10 @@ use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, RelayUrl, UnsignedEvent};
 use zeroize::Zeroizing;
 
-/// Marmot KeyPackage event kinds (kept local; mirrors `crate::interest`).
-const MLS_KEY_PACKAGE_KIND: u16 = 30443;
-const MLS_KEY_PACKAGE_KIND_LEGACY: u16 = 443;
+// Marmot KeyPackage event kinds — canonical `u32` integers from `nmp-kinds`
+// (via `crate::interest`). `Kind::Custom` wants a `u16`, so the build sites
+// cast at the call; the single source of truth is the registry, not a literal.
+use crate::interest::{KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY};
 
 /// Errors surfaced by the service. Wraps `mdk_core::Error` (kept opaque as a
 /// string so the error type does not leak MLS types across a future FFI
@@ -361,11 +362,12 @@ impl MarmotService {
             .mdk
             .create_key_package_for_event(&self.keys.public_key(), relays)?;
 
-        let event_30443 = EventBuilder::new(Kind::Custom(MLS_KEY_PACKAGE_KIND), content.clone())
-            .tags(tags_30443)
-            .sign_with_keys(&self.keys)
-            .map_err(|e| MarmotError::Nostr(e.to_string()))?;
-        let event_443 = EventBuilder::new(Kind::Custom(MLS_KEY_PACKAGE_KIND_LEGACY), content)
+        let event_30443 =
+            EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE as u16), content.clone())
+                .tags(tags_30443)
+                .sign_with_keys(&self.keys)
+                .map_err(|e| MarmotError::Nostr(e.to_string()))?;
+        let event_443 = EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE_LEGACY as u16), content)
             .tags(tags_443)
             .sign_with_keys(&self.keys)
             .map_err(|e| MarmotError::Nostr(e.to_string()))?;

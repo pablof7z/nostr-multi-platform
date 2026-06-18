@@ -24,7 +24,7 @@ use nmp_core::tags::parse_nip10;
 use nmp_feed::AttributionPayload;
 use serde::{Deserialize, Serialize};
 
-use crate::kinds::KIND_SHORT_NOTE;
+use crate::kinds::KIND_SHORT_TEXT_NOTE;
 use crate::profile_display::{AuthorDisplay, ProfileDisplay};
 
 /// Per-root attribution for a followed author's NIP-10 reply.
@@ -75,7 +75,7 @@ impl AttributionPayload for Nip10ReplyAttribution {
         follow: &dyn Fn(&str) -> bool,
         profile_for: &dyn Fn(&str) -> Option<Self::Profile>,
     ) -> Option<Self> {
-        if reply.kind != KIND_SHORT_NOTE {
+        if reply.kind != KIND_SHORT_TEXT_NOTE {
             return None;
         }
         if !follow(&reply.author) {

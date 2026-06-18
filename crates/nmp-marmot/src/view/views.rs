@@ -13,7 +13,7 @@ use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use super::shared::{EventAccumulator, EventAccumulatorDelta};
-use crate::interest::{KIND_GROUP_MESSAGE, KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY};
+use crate::interest::{KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY};
 
 // ─── GroupList ───────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ impl GroupListView {
         // KeyPackage stream (own publications, standard outbox — no pin) is the
         // structural trigger surface; group membership itself is MDK state.
         ViewDependencies {
-            kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],
+            kinds: vec![KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY],
             ..Default::default()
         }
     }
@@ -137,7 +137,7 @@ impl GroupMessagesView {
         // third lane). The structural surface declares the kind; `relay_pin`
         // declares the host affinity in the data model.
         ViewDependencies {
-            kinds: vec![KIND_GROUP_MESSAGE],
+            kinds: vec![KIND_MARMOT_GROUP_MESSAGE],
             relay_pin: Some(spec.group_relay_url.clone()),
             ..Default::default()
         }
@@ -233,7 +233,7 @@ impl KeyPackageLookupView {
     #[must_use] 
     pub fn dependencies(spec: &KeyPackageLookupSpec) -> ViewDependencies {
         ViewDependencies {
-            kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],
+            kinds: vec![KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY],
             authors: vec![spec.owner_pubkey.clone()],
             ..Default::default()
         }

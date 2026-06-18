@@ -9,7 +9,7 @@ use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::{parse_nip10, Nip10Refs};
 use serde::{Deserialize, Serialize};
 
-use crate::kinds::KIND_SHORT_NOTE;
+use crate::kinds::KIND_SHORT_TEXT_NOTE;
 
 /// Decoded NIP-01 short text note. Immutable per `kind-wrappers.md` §1 — no
 /// setters, no shared mutable wrapper (D4 violation). Apps that need a
@@ -85,7 +85,7 @@ fn decode_borrowed(
     tags: &[Vec<String>],
     content: &str,
 ) -> Option<NoteRecord> {
-    if kind != KIND_SHORT_NOTE {
+    if kind != KIND_SHORT_TEXT_NOTE {
         return None;
     }
     Some(NoteRecord {

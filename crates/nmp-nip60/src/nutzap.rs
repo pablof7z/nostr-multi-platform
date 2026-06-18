@@ -55,7 +55,7 @@ pub fn build_nutzap_info_event(info: &NutZapInfo, _keys: &Keys) -> Result<EventB
     if let Some(ref pk) = info.cashu_pubkey {
         tags.push(Tag::custom(TagKind::custom("pubkey"), [pk.as_str()]));
     }
-    Ok(EventBuilder::new(Kind::from(KIND_NUTZAP_INFO), "").tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_NUTZAP_INFO as u16), "").tags(tags))
 }
 
 /// Decode a kind:10019 event into [`NutZapInfo`].
@@ -195,7 +195,7 @@ pub fn build_nutzap_event(
     }
 
     let content = comment.unwrap_or("").to_string();
-    Ok(EventBuilder::new(Kind::from(KIND_NUTZAP), content).tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_NUTZAP as u16), content).tags(tags))
 }
 
 /// Decoded nutzap received by a user.

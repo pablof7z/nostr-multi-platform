@@ -523,7 +523,7 @@ pub struct Nip10ReplyAttribution {
 impl AttributionPayload for Nip10ReplyAttribution {
     type Profile = ProfileDisplay;
     fn from_reply(reply, follow, profile_for) -> Option<Self> {
-        if reply.kind != KIND_SHORT_NOTE { return None; }
+        if reply.kind != KIND_SHORT_TEXT_NOTE { return None; }
         if !follow(&reply.author) { return None; }
         let refs = parse_nip10(&reply.tags);
         if !refs.is_reply() { return None; }

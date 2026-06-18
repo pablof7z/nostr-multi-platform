@@ -302,7 +302,7 @@ fn thread_view_dependencies_advertises_e_tag_ref() {
         root_event: "RID".into(),
     };
     let deps = ThreadView::dependencies(&spec);
-    assert_eq!(deps.kinds, vec![KIND_SHORT_NOTE]);
+    assert_eq!(deps.kinds, vec![KIND_SHORT_TEXT_NOTE]);
     assert_eq!(deps.tag_refs, vec![("e".into(), "RID".into())]);
 }
 

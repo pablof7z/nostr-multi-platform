@@ -130,7 +130,7 @@ fn repost_supersedes_original_and_keeps_layout_to_one_block() {
     // supersession via `ParentResolver::supersedes`.
     let spec = ModularTimelineSpec {
         viewer: "me".into(),
-        kinds: vec![KIND_SHORT_NOTE, KIND_REPOST],
+        kinds: vec![KIND_SHORT_TEXT_NOTE, KIND_REPOST],
         authors: None,
         policy: ModulePolicy::default(),
     };
@@ -160,7 +160,7 @@ fn repost_arriving_before_original_suppresses_the_late_original() {
     // at the repost's slot.
     let spec = ModularTimelineSpec {
         viewer: "me".into(),
-        kinds: vec![KIND_SHORT_NOTE, KIND_REPOST],
+        kinds: vec![KIND_SHORT_TEXT_NOTE, KIND_REPOST],
         authors: None,
         policy: ModulePolicy::default(),
     };
@@ -200,7 +200,7 @@ fn effective_kinds_defaults_to_kind_1_when_empty() {
         authors: None,
         policy: ModulePolicy::default(),
     };
-    assert_eq!(spec.effective_kinds(), vec![KIND_SHORT_NOTE]);
+    assert_eq!(spec.effective_kinds(), vec![KIND_SHORT_TEXT_NOTE]);
 }
 
 #[test]
