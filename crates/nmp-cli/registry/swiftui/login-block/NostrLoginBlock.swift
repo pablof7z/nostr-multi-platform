@@ -78,12 +78,13 @@ public enum NostrSignerDetector {
     /// Ordered list of signers this detector knows about.
     /// All URL schemes here MUST also appear in Info.plist's
     /// `LSApplicationQueriesSchemes` — see the comment at the top of this file.
+    @MainActor
     public static let knownSigners: [NostrSignerInfo] = [
         NostrSignerInfo(kind: .amber, displayName: "Amber"),
         NostrSignerInfo(kind: .primal, displayName: "Primal"),
         NostrSignerInfo(
-            kind: .generic(name: "Nostr Signer", scheme: "nostrconnect"),
-            displayName: "Nostr Signer"
+            kind: .generic(name: "Nostr Connect", scheme: "nostrconnect"),
+            displayName: "Nostr Connect"
         ),
     ]
 

@@ -83,8 +83,8 @@ public enum NostrSignerDetector {
         NostrSignerInfo(kind: .amber, displayName: "Amber"),
         NostrSignerInfo(kind: .primal, displayName: "Primal"),
         NostrSignerInfo(
-            kind: .generic(name: "Nostr Signer", scheme: "nostrconnect"),
-            displayName: "Nostr Signer"
+            kind: .generic(name: "Nostr Connect", scheme: "nostrconnect"),
+            displayName: "Nostr Connect"
         ),
     ]
 

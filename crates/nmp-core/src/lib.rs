@@ -179,6 +179,7 @@ pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection o
 // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
 // (private); promoted here so the crate-private actor module can still name them after
 // the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
+pub mod signer_catalog;
 pub mod slots;
 pub mod subs;
 pub mod substrate;
