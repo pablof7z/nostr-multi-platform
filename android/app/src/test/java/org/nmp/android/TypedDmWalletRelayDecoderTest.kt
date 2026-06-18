@@ -98,6 +98,8 @@ class TypedDmWalletRelayDecoderTest {
         wireStatus: String = "ready",
         statusLabel: String? = "Ready",
         statusTone: String? = "active",
+        isReady: Boolean = true,
+        isConnected: Boolean = true,
     ): ByteArray {
         val builder = FlatBufferBuilder(256)
         val status = builder.createString(wireStatus)
@@ -120,7 +122,7 @@ class TypedDmWalletRelayDecoderTest {
             false, 0UL, // sats
             balanceDisplay != null, balDisp,
             npubShort,
-            true, true, // is_ready, is_connected
+            isReady, isConnected, // is_ready, is_connected
             false, 0u, // connection_state
             pkHex,
             labelOff,
@@ -142,6 +144,34 @@ class TypedDmWalletRelayDecoderTest {
         val out = requireNotNull(TypedWalletDecoder.decode(walletBuffer(null)))
         assertEquals("ready", out.status)
         assertNull(out.balanceDisplay) // has_balance_sats_display == false → null
+    }
+
+    @Test
+    fun walletSurfacesRustIsConnectedVerbatim() {
+        // #1493 P4: the shell must bind the Rust-computed `is_connected` flag
+        // rather than re-deriving connectedness from `statusTone` in Kotlin
+        // (native branch on a wire discriminant; D7). Decoder surfaces both
+        // values verbatim.
+        val connected = requireNotNull(
+            TypedWalletDecoder.decode(
+                walletBuffer(balanceDisplay = "5 sats", wireStatus = "ready", isConnected = true),
+            ),
+        )
+        assertTrue(connected.isConnected)
+
+        val disconnected = requireNotNull(
+            TypedWalletDecoder.decode(
+                walletBuffer(
+                    balanceDisplay = null,
+                    wireStatus = "disconnected",
+                    statusLabel = "Disconnected",
+                    statusTone = "inactive",
+                    isReady = false,
+                    isConnected = false,
+                ),
+            ),
+        )
+        assertFalse(disconnected.isConnected)
     }
 
     @Test

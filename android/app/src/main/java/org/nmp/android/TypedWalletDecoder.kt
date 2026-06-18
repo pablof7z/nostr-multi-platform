@@ -23,6 +23,12 @@ data class TypedWalletStrings(
     val statusLabel: String,
     /** ADR-0032 / #623: semantic tone — "active"|"warning"|"error"|"inactive". */
     val statusTone: String,
+    /** Rust-computed connected flag (`WalletStatus.is_connected`: status is
+     *  "connecting" or "ready"). The shell binds this verbatim — it must NOT
+     *  re-derive connectedness from `statusTone` (a native branch on a Rust
+     *  wire discriminant; D7 / thin-shell). Mirrors iOS, which gates on
+     *  `status.isConnected` (`WalletView.swift`). */
+    val isConnected: Boolean,
 )
 
 /**
@@ -77,6 +83,8 @@ object TypedWalletDecoder {
                 balanceDisplay = if (ws.hasBalanceSatsDisplay) ws.balanceSatsDisplay else null,
                 statusLabel = label,
                 statusTone = tone,
+                // Rust-computed: bound verbatim, never re-derived in Kotlin.
+                isConnected = ws.isConnected,
             )
         } catch (e: Exception) {
             Log.e(TAG, "NWST decode error: ${e.message} bytes=${bytes.size}")

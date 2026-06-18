@@ -48,6 +48,11 @@ data class SnapshotProjections(
     // wallet is configured on this snapshot tick.
     val walletLabel: String? = null,
     val walletTone: String? = null,
+    // Rust-computed connected flag (`WalletStatus.is_connected`). The shell binds
+    // it verbatim instead of deriving connectedness from `walletTone` (which would
+    // be a native branch on a Rust wire discriminant; D7). `null` when no wallet
+    // projection is present on this tick. Mirrors iOS `status.isConnected`.
+    val walletIsConnected: Boolean? = null,
     @SerialName("relay_role_options") val relayRoleOptions: List<RelayRoleOption> = emptyList(),
     @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
