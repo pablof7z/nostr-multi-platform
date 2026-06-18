@@ -84,30 +84,63 @@ fn classifier_display_no_sensitive_data() {
 
 // ─── map-full integration test ────────────────────────────────────────────────
 
-/// Open an LMDB store with a small map and insert events until
+/// Open an LMDB store with a small, fixed map and insert events until
 /// `StoreError::MapFull` is returned.  Asserts the typed variant rather than
 /// an `Io("...")` string.
 ///
-/// 1 MiB is large enough for LMDB to initialise all sub-dbs but small enough
-/// that ~100–300 signed events will exhaust it reliably.
+/// **Page-size-agnostic by construction.** The map is opened at a fixed size
+/// via `open_impl_with_limits` (no auto-grow), so writing more total bytes than
+/// the map can hold MUST raise `MDB_MAP_FULL`. To guarantee that on ANY OS page
+/// size (4 KiB on Linux CI, 16 KiB on macOS), each event carries a multi-KiB
+/// content payload and the loop cap is chosen so the cumulative payload provably
+/// exceeds the map size:
+///
+/// ```text
+///   LOOP_CAP * PER_EVENT_PAYLOAD_BYTES  >  MAP_SIZE_BYTES
+///   512      * 4096                     >  1_048_576
+///   2_097_152 (2 MiB)                   >  1_048_576 (1 MiB)
+/// ```
+///
+/// The earlier version inserted 300 tiny ("x") events into a 1 MiB map; on
+/// macOS's 16 KiB pages, page-rounding overhead happened to exhaust the map, but
+/// on Linux's 4 KiB pages those same tiny events fit inside 1 MiB and map-full
+/// never triggered — so CI failed at the final assert. Sizing the trigger by
+/// total payload bytes (not page-rounding luck) removes that page-size
+/// dependency entirely.
 #[test]
 fn insert_until_map_full() {
+    // Fixed map size with NO auto-grow: exceeding it must raise MDB_MAP_FULL.
+    const MAP_SIZE_BYTES: usize = 1024 * 1024; // 1 MiB
+    // Each event's `content` is this many bytes; the stored event (full JSON +
+    // index entries) is strictly larger, so this is a conservative lower bound
+    // on the bytes every insert commits to the map.
+    const PER_EVENT_PAYLOAD_BYTES: usize = 4096; // 4 KiB
+    // Generous cap that still guarantees the trigger; the loop breaks early once
+    // MapFull is seen, so this only bounds the worst case.
+    const LOOP_CAP: u64 = 512;
+    // Compile-time proof that cumulative payload exceeds the map size, so
+    // map-full is guaranteed on any page size: 512 * 4096 = 2 MiB > 1 MiB.
+    const _: () = assert!(
+        (LOOP_CAP as usize) * PER_EVENT_PAYLOAD_BYTES > MAP_SIZE_BYTES,
+        "loop cap * per-event payload must exceed the map size to guarantee MapFull on any page size",
+    );
+
     let dir = tempfile::tempdir().expect("tempdir");
-    // 1 MiB map — large enough to open all sub-dbs, small enough to fill up.
-    let store = open_impl_with_limits(dir.path(), 1024 * 1024, 126)
+    let store = open_impl_with_limits(dir.path(), MAP_SIZE_BYTES, 126)
         .expect("open with tiny map");
 
+    let content = "x".repeat(PER_EVENT_PAYLOAD_BYTES);
     let relay: String = "wss://test.relay/".into();
     let mut map_full_seen = false;
 
-    for i in 0u64..300 {
-        let raw = signed_event(1, 1_000_000 + i, "x", None);
+    for i in 0u64..LOOP_CAP {
+        let raw = signed_event(1, 1_000_000 + i, &content, None);
         match store.insert(verified(raw), &relay, 1_000_000_000) {
             Ok(_) => {}
             Err(StoreError::MapFull { map_size_bytes }) => {
                 assert_eq!(
                     map_size_bytes,
-                    1024 * 1024,
+                    MAP_SIZE_BYTES as u64,
                     "MapFull carries wrong map_size_bytes"
                 );
                 map_full_seen = true;
@@ -117,7 +150,10 @@ fn insert_until_map_full() {
         }
     }
 
-    assert!(map_full_seen, "expected StoreError::MapFull but never saw it after 300 inserts");
+    assert!(
+        map_full_seen,
+        "expected StoreError::MapFull but never saw it within {LOOP_CAP} inserts of {PER_EVENT_PAYLOAD_BYTES}-byte payloads",
+    );
 }
 
 // ─── reader-exhaustion integration test ──────────────────────────────────────
