@@ -116,10 +116,5 @@ pub fn register_mute_runtime(
         })
     });
 
-    let mute_for_proj = Arc::clone(&mute);
-    app.register_snapshot_projection("nmp.nip51.mute_list", move || {
-        mute_for_proj.snapshot_json()
-    });
-
     mute
 }

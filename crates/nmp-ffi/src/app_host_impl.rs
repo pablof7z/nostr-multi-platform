@@ -23,26 +23,6 @@ use nmp_core::substrate::{
 use super::*;
 
 impl SnapshotProjectionRegistrar for NmpApp {
-    fn register_snapshot_projection<K, F>(&self, key: K, f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        NmpApp::register_snapshot_projection(self, key, f);
-    }
-
-    fn register_snapshot_projection_gated<K, F>(
-        &self,
-        key: K,
-        gate: Arc<dyn nmp_core::ChangeGate>,
-        f: F,
-    ) where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        NmpApp::register_snapshot_projection_gated(self, key, gate, f);
-    }
-
     fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
     where
         K: Into<String>,

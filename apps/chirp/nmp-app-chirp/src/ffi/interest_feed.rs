@@ -417,8 +417,7 @@ mod tests {
 
     use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
     use nmp_core::WireProjectionState;
-    use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string};
-    use serde_json::Value;
+    use nmp_ffi::{nmp_app_free, nmp_app_new};
 
     #[test]
     fn keys_are_namespaced_per_consumer() {
@@ -494,12 +493,13 @@ mod tests {
 
         let pubkey_c = CString::new(pubkey.clone()).unwrap();
         nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
-        let snapshot = read_projection(app, &author_feed_key(&pubkey)).unwrap();
-        let ids = card_ids(&snapshot);
+        let ids = read_typed_card_ids(app, &author_feed_key(&pubkey))
+            .expect("author feed projection present after open");
         assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
 
         nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
-        assert!(read_projection(app, &author_feed_key(&pubkey)).is_none());
+        let gone = typed_projection_is_gone(app, &author_feed_key(&pubkey));
+        assert!(gone, "author feed projection must be gone after close");
         nmp_app_free(app);
     }
 
@@ -537,12 +537,13 @@ mod tests {
 
         let root_c = CString::new(root_id.clone()).unwrap();
         nmp_app_chirp_open_thread_feed(app, root_c.as_ptr());
-        let snapshot = read_projection(app, &thread_feed_key(&root_id)).unwrap();
-        let ids = card_ids(&snapshot);
+        let ids = read_typed_card_ids(app, &thread_feed_key(&root_id))
+            .expect("thread feed projection present after open");
         assert_eq!(ids, vec!["b2".repeat(32), root_id.clone()]);
 
         nmp_app_chirp_close_thread_feed(app, root_c.as_ptr());
-        assert!(read_projection(app, &thread_feed_key(&root_id)).is_none());
+        let gone = typed_projection_is_gone(app, &thread_feed_key(&root_id));
+        assert!(gone, "thread feed projection must be gone after close");
         nmp_app_free(app);
     }
 
@@ -626,25 +627,21 @@ mod tests {
             .unwrap();
     }
 
-    fn read_projection(app: *mut NmpApp, key: &str) -> Option<Value> {
-        let key = CString::new(key).unwrap();
-        let ptr = nmp_app_read_projection_json(app, key.as_ptr());
-        if ptr.is_null() {
-            return None;
-        }
-        let json = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_free_string(ptr);
-        serde_json::from_str(&json).ok()
+    /// Return the decoded op-feed card IDs for `key` via the typed sidecar lane,
+    /// or `None` when the key is absent / cleared. Replaces the deleted generic
+    /// JSON lane (rule A6).
+    fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
+        let app_ref: &NmpApp = unsafe { &*app };
+        let projections = app_ref.run_typed_snapshot_projections();
+        let entry = projections.iter().find(|p| p.key == key && !p.payload.is_empty())?;
+        let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()?;
+        Some(snapshot.cards.iter().map(|c| c.card.id.clone()).collect())
     }
 
-    fn card_ids(snapshot: &Value) -> Vec<String> {
-        snapshot["cards"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|card| card["card"]["id"].as_str().unwrap().to_string())
-            .collect()
+    /// Return `true` when the typed sidecar for `key` is absent or cleared.
+    fn typed_projection_is_gone(app: *mut NmpApp, key: &str) -> bool {
+        let app_ref: &NmpApp = unsafe { &*app };
+        let projections = app_ref.run_typed_snapshot_projections();
+        projections.iter().all(|p| p.key != key || p.payload.is_empty())
     }
 }

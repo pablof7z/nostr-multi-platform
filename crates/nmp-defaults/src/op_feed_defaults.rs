@@ -292,10 +292,15 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     // actor thread calls the closure under the registry's own mutex).
     let emission_state = Arc::new(Mutex::new(FeedEmissionState::new(incremental_apply)));
     app.register_typed_snapshot_projection(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, move || {
-        // ADR-0038 open-Q1 default: the typed sidecar mirrors the default
-        // window (matches the diagnostics-handle path); viewport-aware
-        // typed emit is a follow-up tied to the staged-removal close.
-        let snapshot = engine_for_typed.snapshot(&nmp_feed::FeedRequest::default());
+        // ADR-0038 — the typed sidecar MUST reflect the CURRENT window,
+        // including any pages revealed by prior `load_older` calls. Using
+        // `FeedRequest::default()` is lossless only on the first page; after
+        // `load_older` grows `window_limit` the default request would silently
+        // truncate the snapshot to the first page. `snapshot_current_window()`
+        // reads the live `window_limit` counter and issues the right-sized
+        // request, matching what the old JSON producer (deleted escape hatch #2)
+        // did via `FeedController::snapshot_json`.
+        let snapshot = engine_for_typed.snapshot_current_window();
         let payload = nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot);
         // Read this tick's frame identity lock-free (the kernel published it at
         // the top of `make_update`, before this closure runs).

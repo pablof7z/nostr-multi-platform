@@ -10,9 +10,10 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
-mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
 mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling module.
+mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
+mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
+mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
 
 const FIXTURE_ROOT: &str = "crates/nmp-testing/bin/doctrine-lint/fixtures";
 
@@ -1718,12 +1719,8 @@ fn a5_does_not_fire_in_definition_files() {
     let tap_path = "crates/nmp-ffi/src/raw_event_tap.rs";
     // Pass `--a5-extra-scope crates/nmp-ffi/src/raw_event_tap.rs` so A5 scope
     // is forced on — `file_is_exempt` must override it.
-    let (code, stdout, stderr) = run_lint(&[
-        "--path",
-        tap_path,
-        "--a5-extra-scope",
-        "raw_event_tap.rs",
-    ]);
+    let (code, stdout, stderr) =
+        run_lint(&["--path", tap_path, "--a5-extra-scope", "raw_event_tap.rs"]);
     // Exit code may be non-zero if other rules fire on the file — only A5 is
     // the load-bearing assertion here.
     assert!(

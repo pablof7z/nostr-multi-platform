@@ -739,33 +739,8 @@ pub(crate) struct KernelSnapshot {
     // of the snapshot-projection seam.
     //
     // D0: NIP-46 remote signing is an app noun — there is likewise NO typed
-    // `bunker_handshake` field. Handshake state is surfaced through the
-    // built-in `"bunker_handshake"` snapshot projection: a shell reads
-    // `projections.bunker_handshake` instead of a baked-in kernel field.
-    /// Host-registered and built-in projection data. Each host-registered
-    /// projection closure runs on every tick and appends a namespaced JSON
-    /// value under its key. Host keys are host-chosen (e.g. `"market.listings"`,
-    /// `"todo.items"`).
-    ///
-    /// `make_update` also inserts the kernel-owned built-in projections after
-    /// running the host closures: `"publish_queue"`, `"publish_outbox"`,
-    /// `"configured_relays"`, and `"relay_role_options"` — the publish /
-    /// relay-settings cluster (D0: relay/publish state is an app noun, not a
-    /// typed `KernelSnapshot` field); `"accounts"` /
-    /// `"active_account"` — the identity pair; and `"profile"`, `"timeline"`,
-    /// `"author_view"`, `"thread_view"`, `"inserted"`, `"updated"`,
-    /// `"removed"` — the views cluster (D0: social view state is an app noun).
-    /// A host projection that registers one of those reserved keys is
-    /// overwritten by the built-in value (built-in wins) so the kernel-owned
-    /// projections are always authoritative.
-    ///
-    /// This is the output-side counterpart to the action-registry seam: a
-    /// non-social app extends the snapshot with its own namespace WITHOUT
-    /// editing `KernelSnapshot`'s typed social fields. Append-only and
-    /// `skip_serializing_if` empty — a shell that predates this field simply
-    /// never sees the key (backwards compatible, D1).
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub(super) projections: std::collections::HashMap<String, serde_json::Value>,
+    // `bunker_handshake` field. Handshake state is surfaced as a typed
+    // FlatBuffers sidecar through the typed snapshot projection path.
 }
 
 // ── Claimed-event projection payload ──────────────────────────────────────────

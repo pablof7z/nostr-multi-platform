@@ -1,30 +1,13 @@
 //! FFI snapshot-projection registration entry point.
 //!
-//! [`nmp_app_register_snapshot_projection`] is the output-side counterpart to
-//! the action-registry seam (`NmpApp::register_action::<M>()`). Where the
-//! action seam lets a host *dispatch* a custom namespace, this seam lets a
-//! host *project* a custom namespace into every snapshot.
-//!
-//! # The seam
-//!
-//! `KernelSnapshot` is a sealed social wire schema. A host registers a
-//! **snapshot projector** — a C callback invoked on every snapshot tick whose
-//! returned JSON string is appended to `KernelSnapshot::projections` under a
-//! host-chosen key. A marketplace app registers `"market.listings"`, a todo
-//! app `"todo.items"` — each gets its own namespace WITHOUT editing
-//! `nmp-core`'s typed social fields.
-//!
-//! # Doctrine
-//!
-//! * **D6** — a null `app`, a null/empty/invalid `key`, or a null `projector`
-//!   is a silent no-op. A bad registration argument never crashes the host.
-//! * **D8** — the projector callback runs on the actor thread inside the
-//!   snapshot tick. It MUST be cheap and non-blocking; a blocking projector
-//!   stalls every subsequent snapshot.
+//! Provides the typed (FlatBuffers) registration seam ([`NmpApp::register_typed_snapshot_projection`])
+//! and C-ABI declaration surfaces for consumed projections and incremental-apply.
+//! The generic (`serde_json::Value`) lane has been removed; all projections use
+//! the typed FlatBuffers sidecar (ADR-0037).
 
 use std::ffi::{c_char, CStr};
 
-use super::{app_ref, c_string_argument, NmpApp};
+use super::{app_ref, NmpApp};
 
 // Issue #1283 / ADR-0034 — the `claimed_event_embeds` snapshot-projection
 // producer. A submodule of `snapshot` (both own snapshot-projection wiring);
@@ -34,34 +17,57 @@ use super::{app_ref, c_string_argument, NmpApp};
 #[path = "embed_sidecar.rs"]
 pub(crate) mod embed_sidecar;
 
-/// Host-supplied snapshot projector callback.
-///
-/// Called on every snapshot tick. Returns a NUL-terminated JSON C string
-/// contributed to the host's projection key, or `NULL` to contribute an empty
-/// JSON object. The returned pointer is read immediately and copied into an
-/// owned Rust value; the host owns its lifetime and may free or reuse it
-/// after the callback returns.
-///
-/// A non-JSON / un-parseable return is treated as JSON `null` (D6: a bad
-/// projector return is data, never a panic).
-pub type NmpSnapshotProjector = unsafe extern "C" fn() -> *const c_char;
-
 impl NmpApp {
     /// Register a typed FlatBuffers projection closure for a named projection key.
     ///
-    /// The typed sidecar is emitted alongside the existing generic `Value` tree in
+    /// The typed sidecar is emitted alongside the existing typed-projection set in
     /// every `SnapshotFrame` (ADR-0037). `f` runs on the actor thread on every
     /// tick — it MUST be non-blocking (D8) and returns `None` when there is no
     /// changed row to emit this tick. Under incremental apply, omission means
     /// retain the last decoded value; unregistering the key emits one `Cleared`
     /// row.
+    ///
+    /// ADR-0049 — records a truthful composition-ledger disposition:
+    /// - [`nmp_core::Disposition::Installed`] — first registration for this key.
+    /// - [`nmp_core::Disposition::ReplacedPrevious`] — a closure was already
+    ///   registered under this key; the new one wins (last-writer-wins).
+    ///
+    /// `DroppedLateWiring` is intentionally NEVER recorded here: the registry is
+    /// an `Arc<Mutex<SnapshotRegistry>>` that the actor reads on EVERY tick, so a
+    /// registration made after start goes live immediately — there is no "too late"
+    /// condition for typed snapshot projections.
     pub fn register_typed_snapshot_projection(
         &self,
         key: impl Into<String>,
         f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
+        use nmp_core::__ffi_internal::TypedAdmission;
+        let key = key.into();
         if let Ok(mut registry) = self.snapshot_projections.lock() {
-            registry.register_typed(key, f);
+            // ADR-0049 / Blocker C — derive the ledger disposition from the
+            // ACTUAL admission result returned by `register_typed` rather than
+            // from a pre-insertion key-presence check. This is the only way to
+            // distinguish a genuine `Installed` from a `DroppedFull` silent
+            // no-op when the registry is at the D5 cap.
+            let admission = registry.register_typed(key.clone(), f);
+            let disposition = match admission {
+                TypedAdmission::Inserted => Some(nmp_core::Disposition::Installed),
+                TypedAdmission::Replaced => Some(nmp_core::Disposition::ReplacedPrevious),
+                // D5 cap hit: the closure was silently dropped. Record a
+                // diagnostic via the ledger with a dedicated disposition so
+                // the host can observe the cap-induced drop at composition
+                // time (tracing::warn already fired inside `admit_keyed`).
+                TypedAdmission::DroppedFull => None,
+            };
+            if let Some(disp) = disposition {
+                self.composition_ledger.record(
+                    "typed_snapshot_projection",
+                    key.clone(),
+                    key,
+                    disp,
+                    None,
+                );
+            }
         }
     }
 
@@ -84,25 +90,15 @@ impl NmpApp {
             .unwrap_or_default()
     }
 
-    /// Run every registered **generic** (`Value`) projection closure and collect
-    /// the `key → JSON` map — the JSON-side counterpart to
-    /// [`Self::run_typed_snapshot_projections`].
-    ///
-    /// This is the same map the actor folds into a snapshot frame's generic
-    /// `payload:Value.projections` subtree on every tick. Exposing it as a
-    /// `&self` accessor lets the `payload:Value` → `typed_projections` migration
-    /// **prove producer-completeness**: any key present here but absent from
-    /// `run_typed_snapshot_projections()` is a generic projection whose typed
-    /// sidecar a consumer's `typed<K> ?? snapshot?.<k>` fallback would silently
-    /// hide — exactly the key that breaks if the JSON fallback is removed. A
-    /// closure returning `null` contributes nothing (same emit condition as its
-    /// paired typed closure). A poisoned registry mutex degrades to an empty
-    /// map (D6).
+    /// Return the set of typed projection keys currently registered — without
+    /// calling any closures. Use this in coverage-gate tests where you need to
+    /// verify that a projection key was registered regardless of whether it has
+    /// data to emit for the current state.
     #[must_use]
-    pub fn run_snapshot_projections(&self) -> std::collections::HashMap<String, serde_json::Value> {
+    pub fn registered_typed_projection_keys(&self) -> Vec<String> {
         self.snapshot_projections
             .lock()
-            .map(|registry| registry.run())
+            .map(|registry| registry.registered_typed_keys().map(String::from).collect())
             .unwrap_or_default()
     }
 
@@ -122,62 +118,6 @@ impl NmpApp {
             registry.register_tick_observer(f);
         }
     }
-}
-
-/// Register a host-supplied snapshot projector for `key` — the host-extensible
-/// snapshot-output seam.
-///
-/// This is the C-ABI counterpart to [`NmpApp::register_snapshot_projection`]:
-/// a host wires a snapshot namespace into the kernel **without editing
-/// `nmp-core`**. The bridge closure invokes `projector`, parses its returned
-/// JSON string, and the kernel appends the result under `key` in
-/// `KernelSnapshot::projections` on every tick.
-///
-/// The projection registry lives behind a shared `Arc<Mutex<…>>` slot bound
-/// onto the actor-thread-owned kernel; this call only takes `&NmpApp` (the
-/// mutation is a lock-and-push), so it is safe to call concurrently with a
-/// running actor. It is still intended as a host-init call.
-///
-/// A null `app`, a null/empty/invalid `key`, or a null `projector` is a
-/// silent no-op (D6: a bad registration argument never crashes the host).
-///
-/// # Safety
-/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
-/// `key` must be a valid UTF-8 NUL-terminated C string (or null).
-/// `projector`, when `Some`, must be a valid function pointer for the
-/// remaining lifetime of `app` — the registry retains it.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_register_snapshot_projection(
-    app: *mut NmpApp,
-    key: *const c_char,
-    projector: Option<NmpSnapshotProjector>,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(key) = c_string_argument(key) else {
-        return;
-    };
-    let Some(projector) = projector else {
-        return;
-    };
-    app.register_snapshot_projection(key, move || {
-        // SAFETY: `projector` is a valid function pointer per this symbol's
-        // safety contract.
-        let ptr = unsafe { projector() };
-        if ptr.is_null() {
-            // A NULL return contributes an empty JSON object.
-            return serde_json::Value::Object(serde_json::Map::new());
-        }
-        // SAFETY: a non-null return is, per the callback contract, a valid
-        // NUL-terminated C string live for the duration of this read. The
-        // bytes are copied immediately; the host retains ownership.
-        let json = unsafe { CStr::from_ptr(ptr) }.to_string_lossy();
-        // D6: an un-parseable projector return collapses to JSON `null`
-        // rather than panicking across the C ABI boundary.
-        serde_json::from_str(&json).unwrap_or(serde_json::Value::Null)
-    });
 }
 
 /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP cache-merge
@@ -300,81 +240,6 @@ mod tests {
     use nmp_core::TypedProjectionData;
     use std::ffi::CString;
 
-    /// A registered C projector contributes a parsed JSON value under its key.
-    /// Uses a `static` C string so the returned pointer outlives the call —
-    /// the real ABI contract only requires it live for the read.
-    extern "C" fn counter_projector() -> *const c_char {
-        // `c"…"` literal: a `'static` NUL-terminated C string, valid for the
-        // whole program — satisfies the projector-return lifetime contract.
-        c"{\"count\":42}".as_ptr()
-    }
-
-    /// A projector returning NULL contributes an empty JSON object.
-    extern "C" fn null_projector() -> *const c_char {
-        std::ptr::null()
-    }
-
-    #[test]
-    fn register_snapshot_projection_runs_c_projector() {
-        let app = nmp_app_new();
-        let key = CString::new("test.counter").unwrap();
-        nmp_app_register_snapshot_projection(app, key.as_ptr(), Some(counter_projector));
-        // SAFETY: `nmp_app_new` never returns null.
-        let app_ref = unsafe { &*app };
-        let projections = app_ref.run_snapshot_projections_for_test();
-        assert_eq!(
-            projections.get("test.counter").and_then(|v| v.get("count")),
-            Some(&serde_json::json!(42)),
-            "C projector return must be parsed under its key"
-        );
-        nmp_app_free(app);
-    }
-
-    #[test]
-    fn null_projector_return_contributes_empty_object() {
-        let app = nmp_app_new();
-        let key = CString::new("test.empty").unwrap();
-        nmp_app_register_snapshot_projection(app, key.as_ptr(), Some(null_projector));
-        // SAFETY: `nmp_app_new` never returns null.
-        let app_ref = unsafe { &*app };
-        let projections = app_ref.run_snapshot_projections_for_test();
-        assert_eq!(
-            projections.get("test.empty"),
-            Some(&serde_json::json!({})),
-            "a NULL projector return is an empty JSON object"
-        );
-        nmp_app_free(app);
-    }
-
-    #[test]
-    fn null_app_is_silent_noop() {
-        let key = CString::new("test.counter").unwrap();
-        // Must not panic / crash — D6.
-        nmp_app_register_snapshot_projection(
-            std::ptr::null_mut(),
-            key.as_ptr(),
-            Some(counter_projector),
-        );
-    }
-
-    #[test]
-    fn null_key_is_silent_noop() {
-        let app = nmp_app_new();
-        nmp_app_register_snapshot_projection(app, std::ptr::null(), Some(counter_projector));
-        // SAFETY: `nmp_app_new` never returns null.
-        let app_ref = unsafe { &*app };
-        // A null key must register nothing — the registry contains only the
-        // built-in `"wallet"` projection (`feature = "wallet"`), never the
-        // test's `test.counter` key.
-        assert!(
-            !app_ref
-                .run_snapshot_projections_for_test()
-                .contains_key("test.counter"),
-            "a null key must register nothing"
-        );
-        nmp_app_free(app);
-    }
-
     /// ADR-0053 — the C-ABI declaration seam unions keys into the registry's
     /// declared set (read back through the shared `NmpApp` registry clone).
     #[test]
@@ -424,25 +289,6 @@ mod tests {
         nmp_app_free(app);
     }
 
-    #[test]
-    fn null_projector_is_silent_noop() {
-        let app = nmp_app_new();
-        let key = CString::new("test.counter").unwrap();
-        nmp_app_register_snapshot_projection(app, key.as_ptr(), None);
-        // SAFETY: `nmp_app_new` never returns null.
-        let app_ref = unsafe { &*app };
-        // A null projector must register nothing — the registry never gains
-        // the test's `test.counter` key (the built-in `"wallet"` projection
-        // under `feature = "wallet"` may still be present).
-        assert!(
-            !app_ref
-                .run_snapshot_projections_for_test()
-                .contains_key("test.counter"),
-            "a null projector must register nothing"
-        );
-        nmp_app_free(app);
-    }
-
     /// ADR-0037 — the typed-projection registration seam is reachable through
     /// the narrow `SnapshotProjectionRegistrar` **trait** (was concrete-only on
     /// `NmpApp`), so a reusable protocol/feed crate that wires through
@@ -484,6 +330,149 @@ mod tests {
         assert_eq!(entry.schema_version, 1);
         assert_eq!(entry.file_identifier, "NFTS");
         assert_eq!(entry.payload, vec![0xde, 0xad, 0xbe, 0xef]);
+        nmp_app_free(app);
+    }
+
+    /// ADR-0049 / Blocker C — `register_typed_snapshot_projection` records a
+    /// truthful composition-ledger disposition:
+    /// - First registration for a key → `Installed`.
+    /// - Second registration for the same key → `ReplacedPrevious`.
+    /// - Over-cap new key → NO ledger entry (silent drop, not a false `Installed`).
+    /// - `DroppedLateWiring` is never recorded (the typed registry is live at all
+    ///   times — there is no "post-start drop" for it).
+    #[test]
+    fn typed_projection_records_composition_ledger_disposition() {
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null.
+        let app_ref = unsafe { &*app };
+
+        // First registration: Installed.
+        app_ref.register_typed_snapshot_projection("nmp.feed.home", || None);
+        let ledger_json = app_ref.composition_ledger().to_json();
+        let records = ledger_json["records"]
+            .as_array()
+            .expect("composition ledger must have a records array");
+        let first = records
+            .iter()
+            .find(|r| r["key"] == "nmp.feed.home")
+            .expect("ledger must contain an entry for nmp.feed.home after first registration");
+        assert_eq!(
+            first["seam"], "typed_snapshot_projection",
+            "seam must be typed_snapshot_projection"
+        );
+        // serde derives serialize `Disposition::Installed` as `"Installed"`.
+        assert_eq!(
+            first["disposition"], "Installed",
+            "first registration must record Installed"
+        );
+        assert!(
+            first.get("replaced").is_none() || first["replaced"].is_null(),
+            "Installed disposition must not carry a replaced field"
+        );
+
+        // Second registration for the same key: ReplacedPrevious.
+        app_ref.register_typed_snapshot_projection("nmp.feed.home", || None);
+        let ledger_json2 = app_ref.composition_ledger().to_json();
+        let records2 = ledger_json2["records"]
+            .as_array()
+            .expect("records array present");
+        let home_records: Vec<_> = records2
+            .iter()
+            .filter(|r| r["key"] == "nmp.feed.home")
+            .collect();
+        assert_eq!(
+            home_records.len(),
+            2,
+            "two registrations must produce two ledger entries"
+        );
+        let second = &home_records[1];
+        assert_eq!(
+            second["disposition"], "ReplacedPrevious",
+            "second registration for the same key must record ReplacedPrevious"
+        );
+
+        // Distinct key: separate Installed entry.
+        app_ref.register_typed_snapshot_projection("nmp.nip17.dm_inbox", || None);
+        let ledger_json3 = app_ref.composition_ledger().to_json();
+        let records3 = ledger_json3["records"]
+            .as_array()
+            .expect("records array present");
+        let dm = records3
+            .iter()
+            .find(|r| r["key"] == "nmp.nip17.dm_inbox")
+            .expect("dm_inbox entry must be in ledger");
+        assert_eq!(
+            dm["disposition"], "Installed",
+            "distinct key must record Installed, not ReplacedPrevious"
+        );
+
+        nmp_app_free(app);
+    }
+
+    /// Blocker C — over-cap new key must NOT produce a false `Installed` ledger
+    /// entry. The D5 ceiling is 64; when the 65th distinct key is registered
+    /// the registry drops it silently (`TypedAdmission::DroppedFull`) and the
+    /// caller must NOT record `Installed` for the ghost key.
+    #[test]
+    fn over_cap_typed_projection_does_not_record_installed() {
+        use nmp_core::__ffi_internal::MAX_SNAPSHOT_PROJECTIONS;
+
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null.
+        let app_ref = unsafe { &*app };
+
+        // Fill the registry to the exact cap with distinct keys.
+        for i in 0..MAX_SNAPSHOT_PROJECTIONS {
+            app_ref.register_typed_snapshot_projection(format!("nmp.test.key{i}"), || None);
+        }
+
+        // Verify the cap keys are in the ledger.
+        let ledger_before = app_ref.composition_ledger().to_json();
+        let records_before = ledger_before["records"].as_array().expect("records array");
+        let count_before = records_before.len();
+        assert_eq!(
+            count_before,
+            MAX_SNAPSHOT_PROJECTIONS,
+            "ledger must have exactly {MAX_SNAPSHOT_PROJECTIONS} entries after filling to cap"
+        );
+
+        // Now attempt to register one MORE distinct key — should be dropped.
+        let over_cap_key = "nmp.test.over_cap_key";
+        app_ref.register_typed_snapshot_projection(over_cap_key, || None);
+
+        // The over-cap key must NOT appear in the ledger.
+        let ledger_after = app_ref.composition_ledger().to_json();
+        let records_after = ledger_after["records"].as_array().expect("records array");
+        let has_over_cap_entry = records_after.iter().any(|r| r["key"] == over_cap_key);
+        assert!(
+            !has_over_cap_entry,
+            "an over-cap registration must NOT produce a ledger entry (no false Installed)"
+        );
+        assert_eq!(
+            records_after.len(),
+            MAX_SNAPSHOT_PROJECTIONS,
+            "ledger size must remain {MAX_SNAPSHOT_PROJECTIONS} after over-cap attempt"
+        );
+
+        // Replacing an existing key at cap IS still allowed and MUST record ReplacedPrevious.
+        let first_key = "nmp.test.key0";
+        app_ref.register_typed_snapshot_projection(first_key, || None);
+        let ledger_after_replace = app_ref.composition_ledger().to_json();
+        let records_after_replace = ledger_after_replace["records"].as_array().expect("records array");
+        let replaced_entries: Vec<_> = records_after_replace
+            .iter()
+            .filter(|r| r["key"] == first_key)
+            .collect();
+        assert_eq!(
+            replaced_entries.len(),
+            2,
+            "replacing an existing key at cap must produce two ledger entries"
+        );
+        assert_eq!(
+            replaced_entries[1]["disposition"], "ReplacedPrevious",
+            "second registration for an existing key at cap must record ReplacedPrevious"
+        );
+
         nmp_app_free(app);
     }
 }

@@ -12,7 +12,7 @@ import { DegradedRuntime } from "./degradedRuntime";
 import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 import { eventCorrelationId, protocolVersion } from "./protocol";
-import { chirpTimelineFromEnvelope, displayRows, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
+import { chirpTimelineFromEnvelope, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
 import { FrameKind, PanicFrame, RelayStatus, SnapshotFrame, UpdateFrame } from "./generated/nmp/transport";
 import { decodeUpdateFrameBytes, UpdateFrameDecodeError } from "./updateFrame";
 
@@ -230,34 +230,20 @@ describe("shared Chirp web semantics", () => {
     });
   });
 
-  it("renders rows from Rust snapshot envelopes instead of local feed fixtures", () => {
+  it("parses rev from a Rust snapshot envelope (generic projections map deleted)", () => {
+    // PR #1515 removed the generic JSON `projections` map from KernelSnapshot.
+    // `kernelSnapshotFromEnvelope` still extracts `rev`; any `projections` key
+    // in the payload is silently ignored (not a type error, just extra data).
     const kernel = kernelSnapshotFromEnvelope({
       t: "snapshot",
-      v: {
-        rev: 7,
-        projections: {
-          timeline: [
-            {
-              id: "note-a",
-              displayName: "alice",
-              content: "from shared timeline",
-            },
-          ],
-        },
-      },
+      v: { rev: 7 },
     });
-
     expect(kernel?.rev).toBe(7);
-    expect(displayRows(kernel, undefined)).toEqual([
-      {
-        id: "note-a",
-        displayName: "alice",
-        content: "from shared timeline",
-      },
-    ]);
   });
 
-  it("can fall back to the Chirp modular snapshot card shape", () => {
+  it("parses Chirp modular snapshot card shape via chirpTimelineFromEnvelope", () => {
+    // `displayRows` was deleted alongside `timelineFromKernel` (PR #1515).
+    // Callers that need Chirp cards use `chirpTimelineFromEnvelope` directly.
     const chirp = chirpTimelineFromEnvelope({
       chirpTimeline: {
         blocks: [{ Standalone: "note-a" }],
@@ -265,43 +251,33 @@ describe("shared Chirp web semantics", () => {
       },
     });
 
-    expect(displayRows(undefined, chirp)).toEqual([
-      {
-        id: "note-a",
-        authorPubkey: "abc",
-        content: "from chirp cards",
-        createdAt: undefined,
-      },
-    ]);
+    expect(chirp?.cards[0]).toMatchObject({ id: "note-a", author_pubkey: "abc" });
   });
 
-  it("projects iOS/TUI parity feature snapshots from shared Rust projections", () => {
-    const feature = featureSnapshotFromEnvelope({
-      t: "snapshot",
-      v: {
-        projections: {
-          accounts: [{ id: "alice", display_name: "Alice", npub: "npub1alice", is_active: true }],
-          active_account: "alice",
-          configured_relays: [{ url: "wss://relay.example", role: "both" }],
-          relay_diagnostics: [{ url: "wss://relay.example", role: "both,indexer", status: "configured" }],
-          wallet: { status: "ready", balance_msats: 21000 },
-          "nmp.nip17.dm_inbox": {
-            conversations: [{ peer_pubkey: "bob", messages: [{ id: "dm1", content: "hi", is_outgoing: false }] }],
-          },
-          "nmp.nip29.discovered_groups": {
-            groups: [{ host_relay_url: "wss://groups.example", group_id: "general", member_count: 3 }],
-          },
-          publish_outbox: [{ handle: "pub1", status_label: "pending", can_retry: true }],
-        },
-      },
-    });
+  it("featureSnapshotFromEnvelope returns the canonical zero-state constant (generic projections lane deleted)", () => {
+    // The generic JSON `projections` map was deleted in PR #1515 (escape hatch
+    // #2 eliminated). `featureSnapshotFromEnvelope` is now a constant-return
+    // with no dead helpers (dmFrom, groupsFrom, messagesFrom, projection).
+    // This test proves: (a) the function returns zero-state for any input, and
+    // (b) the same reference is returned regardless of the envelope value —
+    // proving no parsing happens inside.
+    const featureWithEnvelope = featureSnapshotFromEnvelope({ t: "snapshot", v: { rev: 1 } });
+    const featureWithUndefined = featureSnapshotFromEnvelope(undefined);
+    const featureWithNull = featureSnapshotFromEnvelope(null);
 
-    expect(feature.accounts[0]).toMatchObject({ id: "alice", display: "Alice", active: true });
-    expect(feature.dmConversations[0].latest).toBe("hi");
-    expect(feature.discoveredGroups[0]).toMatchObject({ groupId: "general", memberCount: 3 });
-    expect(feature.relayDiagnostics[0].status).toBe("configured");
-    expect(feature.wallet.balanceMsats).toBe(21000);
-    expect(feature.outbox[0].canRetry).toBe(true);
+    // All calls return identical state (same constant object).
+    expect(featureWithEnvelope).toBe(featureWithUndefined);
+    expect(featureWithEnvelope).toBe(featureWithNull);
+
+    // All fields are zero-state.
+    expect(featureWithEnvelope.accounts).toEqual([]);
+    expect(featureWithEnvelope.dmConversations).toEqual([]);
+    expect(featureWithEnvelope.discoveredGroups).toEqual([]);
+    expect(featureWithEnvelope.groupMessages).toEqual([]);
+    expect(featureWithEnvelope.relayDiagnostics).toEqual([]);
+    expect(featureWithEnvelope.outbox).toEqual([]);
+    expect(featureWithEnvelope.followCount).toBe(0);
+    expect(featureWithEnvelope.activeAccount).toBe("");
   });
 });
 

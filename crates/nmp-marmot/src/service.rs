@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 
 use mdk_core::key_packages::KeyPackageEventData;
 use mdk_core::prelude::{
-    group_types, message_types, welcome_types, GroupId, MessageProcessingResult,
+    group_types, welcome_types, GroupId, MessageProcessingResult,
     NostrGroupConfigData, UpdateGroupResult, MDK,
 };
 use mdk_core::MdkConfig;

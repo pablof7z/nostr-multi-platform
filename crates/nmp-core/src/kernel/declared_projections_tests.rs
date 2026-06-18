@@ -160,28 +160,43 @@ fn declared_set_gates_typed_sidecar_in_lockstep_with_json() {
     );
 }
 
-/// A Tier-1 host-registered projection is NOT gated by the declared set — it
-/// self-gates by registration. It surfaces even when the declared set is
-/// non-empty and does not name it.
+/// A Tier-1 host-registered typed projection is NOT gated by the declared set
+/// — it self-gates by registration. The typed sidecar entry surfaces even when
+/// the declared set is non-empty and does not name the host key.
 #[test]
 fn tier1_host_projection_is_not_gated_by_declared_set() {
+    use crate::update_envelope::TypedProjectionData;
     let (mut kernel, slot) = kernel_with_slot();
     {
         let mut registry = slot.lock().unwrap();
         // Declare a narrow Tier-2 set that does NOT include the host key.
         registry.declare_consumed_projections(["profile"]);
-        // Register a Tier-1 host projection (registration IS the declaration).
-        registry.register("market.listings", || serde_json::json!([{ "id": "a" }]));
+        // Register a Tier-1 typed host projection (registration IS the declaration).
+        registry.register_typed("market.listings", || {
+            Some(TypedProjectionData {
+                key: "market.listings".into(),
+                schema_id: "market".into(),
+                schema_version: 1,
+                file_identifier: "TEST".into(),
+                payload: vec![1u8],
+                ..Default::default()
+            })
+        });
     }
 
-    let projections = projections_json(&mut kernel);
+    // The typed sidecar carries the host key despite it being absent from the
+    // Tier-2 declared set — Tier-1 host projections self-gate by registration.
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+    let host_key = typed.iter().find(|t| t.key == "market.listings");
     assert!(
-        projections.contains_key("market.listings"),
-        "Tier-1 host projection self-gates by registration and is NOT subject to \
-         the Tier-2 declared-set gate; got keys {:?}",
-        projections.keys().collect::<Vec<_>>()
+        host_key.is_some(),
+        "Tier-1 typed host projection must surface in the typed sidecar regardless \
+         of the declared-set gate; typed keys: {:?}",
+        typed.iter().map(|t| &t.key).collect::<Vec<_>>()
     );
-    // The Tier-2 `profile` is declared → present; `relay_diagnostics` not → absent.
+    // The Tier-2 `profile` is declared → present in JSON map;
+    // `relay_diagnostics` not declared → absent.
+    let projections = projections_json(&mut kernel);
     assert!(projections.contains_key("profile"));
     assert!(!projections.contains_key("relay_diagnostics"));
 }

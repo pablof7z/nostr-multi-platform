@@ -474,12 +474,7 @@ pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen
 // field type).
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
-// `ChangeGate`: the opt-in per-projection change-gate trait. A host
-// (per-app crate) names this to pass its rev `Arc<AtomicU64>` as the gate to
-// the gated registration seam (`register_snapshot_projection_gated`), so a
-// projection whose inputs did not change is served from cache instead of being
-// re-run (and re-serialized) on every emit.
-pub use snapshot_registry::ChangeGate;
+
 // Typed slot wrappers + constructors. `AppRelaySlot` /
 // `AppRelayList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via

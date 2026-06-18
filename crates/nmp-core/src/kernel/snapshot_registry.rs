@@ -1,106 +1,21 @@
-//! Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
-//! seam.
+//! Host-extensible snapshot output — the typed FlatBuffers sidecar seam
+//! (ADR-0037).
 //!
-//! This is the output-side counterpart to the action-registry seam
-//! (`ActionRegistry::register::<M>()`). Where the action registry lets a host
-//! *dispatch* a custom namespace, the snapshot registry lets a host *project*
-//! a custom namespace into the snapshot every tick emits.
-//!
-//! ## The problem
-//!
-//! [`KernelSnapshot`](super::types::KernelSnapshot) is a sealed legacy wire
-//! schema — its built-in fields cannot grow a new app's domain state without
-//! editing `nmp-core`. A non-social app (marketplace, todo list, …) would
-//! otherwise receive only baked-in framework fields it cannot make sense of.
-//!
-//! ## The seam
-//!
-//! A host registers a **snapshot projection**: a closure that runs on every
-//! tick and produces a JSON value appended to the snapshot under a
-//! host-chosen key. A marketplace registers `"market.listings"`, a todo app
-//! registers `"todo.items"` — each gets its own namespace in
-//! `KernelSnapshot::projections` without touching the typed social fields.
-//!
-//! ## Threading
-//!
-//! The registry is stored behind a shared [`SnapshotProjectionSlot`]
-//! (`Arc<Mutex<…>>`), the same pattern as the kernel event observer slot:
-//!
-//! - the FFI / Rust registration path mutates the inner registry through one
-//!   `Arc` clone (during host init);
-//! - the actor thread carries another clone, binds it onto the kernel via
-//!   [`Kernel::set_snapshot_projection_handle`], and the kernel reads it
-//!   inside `make_update`.
-//!
-//! Because the box crosses thread boundaries it must be `Send + Sync`.
-//!
-//! ## D8 — non-blocking
-//!
-//! A projection closure runs on the actor thread **inside the snapshot
-//! tick**. It MUST be cheap and non-blocking — no I/O, no mutex waits, no
-//! relay round-trips. A blocking closure stalls every subsequent snapshot
-//! and freezes the host's update stream.
+//! Hosts register typed projection closures whose FlatBuffers bytes are
+//! carried in the snapshot frame's `typed_projections` sidecar.  The legacy
+//! generic (`serde_json::Value`) lane has been removed; only typed projections
+//! remain.
 
-use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 
 use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 
-/// A host-registered projection closure.
-///
-/// Takes no arguments — a snapshot tick is a pull, the kernel drives it — and
-/// returns the JSON value to append under the registered key. `Send + Sync`
-/// because the box lives behind an `Arc<Mutex<…>>` shared with the actor
-/// thread (D8: the closure itself must also be non-blocking).
-pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'static>;
-
-/// A monotonic **change gate** for a snapshot projection.
-///
-/// The defect this exists to fix: [`SnapshotRegistry::run`] previously called
-/// *every* registered projection closure on *every* `make_update`, with no
-/// per-projection change tracking. A multi-MB library serializer therefore
-/// re-ran on every unrelated kernel emit (an incoming relay event, a tick),
-/// pegging the actor thread on JSON serialization it could have skipped.
-///
-/// A gate lets a host declare "my inputs only changed when this counter
-/// advanced." The host bumps the counter (via its own shared `Arc<AtomicU64>`
-/// rev) whenever the projection's source data mutates. The registry remembers
-/// the last gate value it witnessed per key alongside the last value the closure
-/// produced; on the next `run`, if the gate value is unchanged, the registry
-/// returns the cached value WITHOUT invoking the closure (see
-/// [`SnapshotRegistry::register_gated`]).
-///
-/// The canonical gate is an [`AtomicU64`] rev counter — most consuming apps
-/// already maintain exactly such a rev — so [`AtomicU64`] implements this trait
-/// directly and an `Arc<AtomicU64>` can be passed as the gate. Custom gates
-/// (e.g. a content hash collapsed into a `u64`) implement the trait themselves.
-///
-/// `Send + Sync` because the gate is shared between the host (which bumps it)
-/// and the actor thread (which reads it through the registry).
-pub trait ChangeGate: Send + Sync + 'static {
-    /// The current gate value. A change in this value (relative to the value
-    /// witnessed on the previous `run`) marks the projection dirty; an
-    /// unchanged value lets the registry serve the cached projection output.
-    fn current(&self) -> u64;
-}
-
-impl ChangeGate for AtomicU64 {
-    fn current(&self) -> u64 {
-        self.load(Ordering::Acquire)
-    }
-}
-
-// `ProjectionEntry` — the per-key closure + change-gate memo machinery,
-// extracted to a submodule to keep this file within its LOC ceiling.
-mod entry;
-use entry::ProjectionEntry;
-
 /// A host-registered **typed** projection closure — the FlatBuffers-sidecar
-/// counterpart to [`ProjectionFn`].
+/// counterpart to the removed generic `ProjectionFn`.
 ///
-/// Where a [`ProjectionFn`] returns a generic `serde_json::Value` appended to
+/// Where the old `ProjectionFn` returned a generic `serde_json::Value` appended to
 /// `KernelSnapshot::projections`, a `TypedProjectionFn` returns opaque
 /// FlatBuffers bytes ([`TypedProjectionData`]) carried in the snapshot frame's
 /// `typed_projections` sidecar (ADR-0037). `nmp-core` never interprets those
@@ -120,7 +35,7 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 /// A host-registered **per-tick observer** closure — a no-result callback fired
 /// once on every snapshot tick.
 ///
-/// Unlike a [`ProjectionFn`] / [`TypedProjectionFn`] (which produce snapshot
+/// Unlike a [`TypedProjectionFn`] (which produces snapshot
 /// *data* under a key), a tick observer produces nothing: it is a pure per-tick
 /// side-effect seam for host-side reconcilers that need a "the kernel just
 /// ticked" callback but contribute no projection output (e.g. an active-account
@@ -142,6 +57,23 @@ pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 // within its LOC ceiling; the constants are part of the public D5 contract.
 pub mod bounds;
 use bounds::{admit_additive, admit_keyed};
+
+/// Result of a [`SnapshotRegistry::register_typed`] call (Blocker C).
+///
+/// Callers that record a composition-ledger disposition MUST derive it from
+/// this result rather than from a pre-insertion key-presence check, so the
+/// ledger stays truthful when the registry is at the D5 cap and silently drops
+/// a new-key registration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedAdmission {
+    /// A new key was accepted and the closure inserted.
+    Inserted,
+    /// An existing key was replaced (always allowed regardless of the cap).
+    Replaced,
+    /// A new key was rejected because the registry is at the
+    /// [`bounds::MAX_SNAPSHOT_PROJECTIONS`] ceiling (D5 loud no-op).
+    DroppedFull,
+}
 
 // ADR-0053 — the host-declared consumed-projection set. Extracted to a `pub`
 // submodule so the registry file stays within its LOC ceiling; the type is part
@@ -169,7 +101,6 @@ mod bounds_tests;
 /// snapshot tick, with only the last result surfacing in the output.
 #[derive(Default)]
 pub struct SnapshotRegistry {
-    projections: HashMap<String, ProjectionEntry>,
     typed_projections: HashMap<String, TypedProjectionFn>,
     /// One-shot `Cleared` rows for host-registered typed projections removed from
     /// the registry. Tier-1 keys are not in the built-in manifest, so Rung 3
@@ -225,6 +156,8 @@ pub struct SnapshotRegistry {
     frame_snapshot_epoch: Arc<AtomicU64>,
 }
 
+use std::collections::HashMap;
+
 impl SnapshotRegistry {
     /// Construct an empty registry.
     #[must_use]
@@ -232,123 +165,15 @@ impl SnapshotRegistry {
         Self::default()
     }
 
-    /// Register an **always-run** projection closure under `key`.
-    ///
-    /// `key` is the host-chosen snapshot namespace (e.g. `"market.listings"`).
-    /// Registering the same key twice replaces the first — last-writer-wins,
-    /// with no duplicate-closure CPU cost on subsequent ticks.
-    ///
-    /// The closure runs on **every** `run` (every `make_update` tick). When the
-    /// projection serializes a large structure that rarely changes, prefer
-    /// [`Self::register_gated`] to skip re-running it on ticks where its inputs
-    /// did not change.
-    ///
-    /// D5: if this is a **new** key and the registry already holds
-    /// [`MAX_SNAPSHOT_PROJECTIONS`] entries, the registration is silently
-    /// dropped and a `tracing::warn!` diagnostic is emitted (D6: no panic).
-    pub fn register(
-        &mut self,
-        key: impl Into<String>,
-        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
-    ) {
-        let key = key.into();
-        // D5: admit a new key only when below the ceiling; re-registering an
-        // existing key is always allowed (it just replaces the closure).
-        if !admit_keyed(
-            self.projections.len(),
-            self.projections.contains_key(&key),
-            &key,
-            "snapshot projection",
-        ) {
-            return;
-        }
-        self.projections
-            .insert(key, ProjectionEntry::ungated(Box::new(f)));
-    }
-
-    /// Register a **change-gated** projection closure under `key`.
-    ///
-    /// Identical to [`Self::register`] except the closure is only re-invoked
-    /// when `gate`'s value has advanced since the previous `run` for this key.
-    /// On a tick where the gate is unchanged, `run` returns the value the
-    /// closure last produced — cloned from a per-key memo — WITHOUT calling the
-    /// closure. This is the fix for the "re-serialize the whole library on every
-    /// emit" hot path (see [`ChangeGate`]).
-    ///
-    /// The natural `gate` is an `Arc<AtomicU64>` rev counter the host already
-    /// maintains, bumped whenever the projection's source data mutates
-    /// ([`AtomicU64`] implements [`ChangeGate`]). The first `run` always invokes
-    /// the closure (no memo yet) and records the gate value; thereafter an
-    /// unchanged gate serves the cache.
-    ///
-    /// Last-writer-wins by `key`, exactly like [`Self::register`]; re-registering
-    /// (gated or ungated) replaces the entry and discards any prior memo.
-    ///
-    /// D5: same [`MAX_SNAPSHOT_PROJECTIONS`] ceiling as [`Self::register`];
-    /// re-registering an existing key is always allowed.
-    pub fn register_gated(
-        &mut self,
-        key: impl Into<String>,
-        gate: Arc<dyn ChangeGate>,
-        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
-    ) {
-        let key = key.into();
-        if !admit_keyed(
-            self.projections.len(),
-            self.projections.contains_key(&key),
-            &key,
-            "snapshot projection",
-        ) {
-            return;
-        }
-        self.projections
-            .insert(key, ProjectionEntry::gated(gate, Box::new(f)));
-    }
-
-    /// Run every registered projection and collect the results into the map
-    /// that becomes [`KernelSnapshot::projections`](super::types::KernelSnapshot).
-    ///
-    /// D8: this is called on the actor thread inside `make_update`; each
-    /// closure must be non-blocking. Empty when nothing is registered — the
-    /// snapshot then `skip_serializing_if`s the `projections` key entirely.
-    ///
-    /// D6/D15: each host closure is invoked inside [`catch_unwind`] inside
-    /// [`ProjectionEntry::value_for_tick`] — a host projection is untrusted
-    /// plugin code, and this runs on the actor thread *inside* the snapshot
-    /// tick. An unguarded panic would unwind the actor thread; the actor's
-    /// outer `catch_unwind` would then catch a terminal `Panic` frame and the
-    /// kernel would be permanently dead. A panicking projection MUST never be
-    /// able to kill the kernel: its key is omitted from the map (the same
-    /// shape as an unregistered namespace), and every sibling projection in
-    /// the same tick still produces its value.
-    pub fn run(&self) -> HashMap<String, serde_json::Value> {
-        let mut out = HashMap::with_capacity(self.projections.len());
-        for (key, entry) in &self.projections {
-            // `value_for_tick` wraps every host-closure invocation in
-            // `catch_unwind` (D15) and returns `None` when the closure
-            // panicked. The panic is swallowed: the namespace is omitted,
-            // exactly as if the host had never registered it. The default
-            // panic hook still prints the payload, so the bug stays visible.
-            if let Some(value) = entry.value_for_tick() {
-                out.insert(key.clone(), value);
-            }
-        }
-        out
-    }
-
-    /// Drop the projection(s) registered under `key` from BOTH the generic
-    /// and typed registries.
+    /// Drop the projection(s) registered under `key` from the typed registry.
     ///
     /// Used by transient feeds (a visited profile / open thread) whose
     /// snapshot key must not outlive the screen: without this, the
     /// `register_feed`-installed closure keeps running on every 4 Hz tick and
     /// emits an empty subtree under a stale key forever (a leak — both wasted
-    /// CPU and a phantom key in every `KernelSnapshot`). Removing from both
-    /// maps keeps the generic/typed key space symmetric (a feed may have
-    /// registered a typed sidecar alongside its generic projection). Returns
-    /// `true` when at least one map held the key. Absent keys are a no-op.
+    /// CPU and a phantom key in every `KernelSnapshot`). Returns
+    /// `true` when the typed map held the key. Absent keys are a no-op.
     pub fn remove(&mut self, key: &str) -> bool {
-        let removed_generic = self.projections.remove(key).is_some();
         let removed_typed = self.typed_projections.remove(key).is_some();
         let clear_pending = self
             .pending_typed_clears
@@ -357,44 +182,64 @@ impl SnapshotRegistry {
         if removed_typed && !clear_pending {
             self.pending_typed_clears.push(key.to_string());
         }
-        removed_generic || removed_typed
+        removed_typed
+    }
+
+    /// Return the set of typed projection keys currently registered in the
+    /// registry — without running any closures.
+    ///
+    /// Intended for coverage-gate tests that need to verify that a key was
+    /// registered (regardless of whether its closure would return `Some` for
+    /// the current state). Production code should use [`Self::run_typed`].
+    #[must_use]
+    pub fn registered_typed_keys(&self) -> impl Iterator<Item = &str> {
+        self.typed_projections.keys().map(|k| k.as_str())
     }
 
     /// Register a **typed** projection closure under `key` — the
-    /// FlatBuffers-sidecar counterpart to [`Self::register`].
+    /// FlatBuffers-sidecar seam (ADR-0037).
     ///
-    /// `key` is the same host-chosen snapshot namespace used by [`Self::register`]
-    /// (e.g. `"nmp.feed.home"`); the typed and generic registries share the key
-    /// space so a host can choose, per key, whether to read the typed sidecar or
-    /// fall back to the generic `Value` subtree (ADR-0037 Commitment 4).
+    /// `key` is the host-chosen snapshot namespace (e.g. `"nmp.feed.home"`).
     /// Registering the same key twice replaces the first — last-writer-wins, with
     /// no duplicate-closure CPU cost on subsequent ticks.
     ///
-    /// D5: same [`MAX_SNAPSHOT_PROJECTIONS`] ceiling as [`Self::register`],
-    /// applied independently to the typed registry.  Re-registering an existing
-    /// key is always allowed.
+    /// D5: same [`MAX_SNAPSHOT_PROJECTIONS`](bounds::MAX_SNAPSHOT_PROJECTIONS) ceiling;
+    /// re-registering an existing key is always allowed.
+    ///
+    /// Returns a [`TypedAdmission`] describing what actually happened so the caller
+    /// can record a truthful composition-ledger disposition (Blocker C):
+    /// - [`TypedAdmission::Inserted`] — new key accepted (was absent, below the cap).
+    /// - [`TypedAdmission::Replaced`] — existing key replaced (always allowed).
+    /// - [`TypedAdmission::DroppedFull`] — new key rejected (registry is at the
+    ///   [`MAX_SNAPSHOT_PROJECTIONS`](bounds::MAX_SNAPSHOT_PROJECTIONS) ceiling).
     pub fn register_typed(
         &mut self,
         key: impl Into<String>,
         f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
-    ) {
+    ) -> TypedAdmission {
         let key = key.into();
+        let key_exists = self.typed_projections.contains_key(&key);
         if !admit_keyed(
             self.typed_projections.len(),
-            self.typed_projections.contains_key(&key),
+            key_exists,
             &key,
             "typed snapshot projection",
         ) {
-            return;
+            return TypedAdmission::DroppedFull;
         }
         self.pending_typed_clears.retain(|pending| pending != &key);
         self.typed_projections.insert(key, Box::new(f));
+        if key_exists {
+            TypedAdmission::Replaced
+        } else {
+            TypedAdmission::Inserted
+        }
     }
 
     /// Run every registered typed projection and collect the results into the
     /// vector that becomes the snapshot frame's `typed_projections` sidecar.
     ///
-    /// Mirrors [`Self::run`]: each closure runs on the actor thread inside
+    /// Mirrors the removed generic `run`: each closure runs on the actor thread inside
     /// `make_update`, so it must be non-blocking (D8). `None` means retain the
     /// prior value; removed keys emit one pending `Cleared` row. Closure panics
     /// are swallowed inside [`catch_unwind`] (D6).
@@ -429,14 +274,14 @@ impl SnapshotRegistry {
     /// Register a per-tick observer closure — a no-result callback fired once
     /// on every snapshot tick.
     ///
-    /// The generic, projection-free counterpart to [`Self::register`]: where a
-    /// projection produces snapshot data under a key, a tick observer produces
+    /// The generic, projection-free counterpart to [`Self::register_typed`]: where a
+    /// typed projection produces snapshot data under a key, a tick observer produces
     /// nothing — it is a pure per-tick side-effect seam (see [`TickObserverFn`]).
     /// Registrations are additive (no key, no replace-by-key); each fires on
     /// every tick. D8: the closure runs inside the snapshot tick and MUST be
     /// non-blocking.
     ///
-    /// D5: if the observer list already holds [`MAX_TICK_OBSERVERS`] entries the
+    /// D5: if the observer list already holds [`MAX_TICK_OBSERVERS`](bounds::MAX_TICK_OBSERVERS) entries the
     /// registration is a loud no-op (D6: `tracing::warn!`, no panic).
     pub fn register_tick_observer(&mut self, f: impl Fn() + Send + Sync + 'static) {
         if !admit_additive(self.tick_observers.len()) {
@@ -452,7 +297,7 @@ impl SnapshotRegistry {
 
     /// Run every registered per-tick observer.
     ///
-    /// Mirrors [`Self::run`]'s safety contract: each observer runs on the actor
+    /// Mirrors [`Self::run_typed`]'s safety contract: each observer runs on the actor
     /// thread inside `make_update`, so it must be non-blocking (D8). D6: each
     /// observer is invoked inside [`catch_unwind`] — a host tick observer is
     /// untrusted plugin code, and a panic here would otherwise unwind the actor
@@ -487,8 +332,8 @@ pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
     Arc::new(Mutex::new(SnapshotRegistry::new()))
 }
 
-// Kernel-side accessors over the shared slot (set/take handle, run generic +
-// typed projections, run tick observers, ADR-0053 declared-set snapshot) live in
+// Kernel-side accessors over the shared slot (set/take handle, run typed
+// projections, run tick observers, ADR-0053 declared-set snapshot) live in
 // the `kernel_access` submodule to keep this file within its LOC ceiling.
 mod kernel_access;
 

@@ -210,11 +210,7 @@ pub use kernel::{
 pub use kernel::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };
-// Opt-in per-projection change gate (perf): a host names this to pass its rev
-// `Arc<AtomicU64>` as the gate to `register_snapshot_projection_gated`, so an
-// unchanged projection is served from cache instead of being re-serialized on
-// every emit.
-pub use kernel::ChangeGate;
+
 // Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
 // `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
 // nameable across crates. Production installs nothing (the kernel keeps its
@@ -392,17 +388,19 @@ pub mod __ffi_internal {
     };
     pub use crate::kernel::{
         default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,
-        new_snapshot_projection_slot, routing_trace, ActionRegistry, ChangeGate, LifecyclePhase,
+        new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
         SnapshotProjectionSlot,
     };
-    // ADR-0037: the typed-projection closure type lives alongside the generic
-    // `ProjectionFn` in `snapshot_registry`; `nmp-ffi` reaches it through this
-    // internal surface to type the `register_typed_snapshot_projection` seam
-    // (the typed counterpart to `register_snapshot_projection`). That seam is
-    // now on the `AppHost` trait (`substrate::AppHost`), not only the concrete
-    // `NmpApp`, so reusable protocol/feed crates registering through `&impl
-    // AppHost` can wire typed projections for the JSON→typed snapshot migration.
+    // ADR-0037: the typed-projection closure type; `nmp-ffi` reaches it
+    // through this internal surface to type the
+    // `register_typed_snapshot_projection` seam on the `AppHost` trait.
     pub use crate::kernel::snapshot_registry::TypedProjectionFn;
+    // Blocker C: `nmp-ffi` reads the admission result to record a truthful
+    // composition-ledger disposition (Installed / Replaced / DroppedFull).
+    pub use crate::kernel::snapshot_registry::TypedAdmission;
+    // Blocker C test support: the D5 cap constant so the over-cap test can
+    // fill the registry to exactly the ceiling without hard-coding the value.
+    pub use crate::kernel::snapshot_registry::bounds::MAX_SNAPSHOT_PROJECTIONS;
     pub use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 }
 

@@ -2,7 +2,7 @@
 
 The NMP framework guards the kernel behind doctrine seams (D0–D8). Most app
 code should never need to cross these seams directly. This document catalogs
-the **five escape hatches** — production-level lanes that callers can use to
+the **four escape hatches** — production-level lanes that callers can use to
 reach below the framework guarantees — and explains when each is appropriate.
 
 Use these only when the framework's normal seams genuinely cannot serve your
@@ -23,8 +23,7 @@ event whose kind matches your filter, delivered on a dedicated drain thread.
 **Important: live ingest only.** The tap fires on live relay delivery
 (including `Duplicate` outcomes). It does **not** fire on cache-served replay.
 If you need your consumer to see both live events and events served from the
-local store on cold start, use `register_ingest_parser` (escape hatch #5 /
-rule A5) instead.
+local store on cold start, use `register_ingest_parser` (rule A5 / escape hatch #4) instead.
 
 **What it bypasses:**
 - D1 — subscription/planner routing is invisible; you receive events regardless
@@ -47,34 +46,10 @@ signatures. If you need to derive in-process state or projections, use
 - PR-3 (#1148) — chirp-tui debug raw-event cache moved to `IngestParser`.
 - PR-4 (this PR) — tap narrowed to verbatim-forwarding contract; `swap_dm_inbox_observer` dead surface deleted; lint backstop (rule A5) added.
 
----
-
-## 2. Snapshot Projector — `nmp_app_register_snapshot_projection`
-
-**Module:** `crates/nmp-ffi/src/snapshot.rs`
-**Rust API:** `NmpApp::register_snapshot_projection`
-**C ABI:** `nmp_app_register_snapshot_projection`
-
-**What it gives you:** A callback invoked on every snapshot tick. Your callback
-returns a JSON value that is appended to `KernelSnapshot::projections` under a
-host-chosen key. Use this for internal/diagnostic JSON projections; production
-host-rendered state should use a typed FlatBuffers projection sidecar.
-
-**What it bypasses:**
-- D3 — your projector runs outside the kernel's typed projection system; the
-  returned JSON is not validated against a schema and is appended verbatim.
-
-**When appropriate:** When your app crate holds state that must be snapshot-
-delivered to the host shell but that state is not owned by the kernel (e.g., a
-NIP-29 group-chat projection in `nmp-nip29`). Prefer typed `SnapshotProjector`
-trait implementations via the `ActionModule` registration path when possible.
-
-**Important:** The projector callback runs on the actor thread inside the
-snapshot tick — it MUST be cheap and non-blocking (D8).
 
 ---
 
-## 3. Action Module Seam — `NmpApp::register_action::<M>()`
+## 2. Action Module Seam — `NmpApp::register_action::<M>()`
 
 **Module:** `crates/nmp-core/src/app.rs`  
 **Rust API:** `NmpApp::register_action::<M>()` where `M: ActionModule`
@@ -94,7 +69,7 @@ See `docs/dispatch-actions.md` for the action namespace catalog.
 
 ---
 
-## 4. Test-Only Injectors — `nmp_app_inject_*`
+## 3. Test-Only Injectors — `nmp_app_inject_*`
 
 **Module:** `crates/nmp-ffi/src/testing.rs`
 **Gate:** `#[cfg(any(test, feature = "test-support"))]` — **never in production ABI**
@@ -111,7 +86,7 @@ prevents accidental inclusion.
 
 ---
 
-## 5. IngestParser — `register_ingest_parser` / `replace_ingest_parser`
+## 4. IngestParser — `register_ingest_parser` / `replace_ingest_parser`
 
 **Module:** `crates/nmp-core/src/kernel/ingest/mod.rs`  
 **Rust API:** `NmpApp::register_ingest_parser` / `NmpApp::replace_ingest_parser`  
@@ -172,11 +147,11 @@ build projections, accumulate per-kind views)?
     cache-served replay; supports slot-keyed lifecycle replace.
 
 Need custom state in every snapshot?
-  → snapshot projector (#2) or ActionModule snapshotProjector (#3)
+  → ActionModule snapshotProjector (#2)
 
 Need to handle a dispatch_action payload or publish Nostr events?
-  → ActionModule (#3)
+  → ActionModule (#2)
 
 Writing a test and need synthetic events without live relays?
-  → test-only injectors (#4)
+  → test-only injectors (#3)
 ```

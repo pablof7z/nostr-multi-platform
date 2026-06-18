@@ -298,6 +298,15 @@ where
         }
     }
 
+    /// Build the visible-window snapshot using the engine's current stored
+    /// window limit. This honors any prior `load_older` call that widened the
+    /// window beyond `DEFAULT_FEED_WINDOW_LIMIT`.
+    #[must_use]
+    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C, A> {
+        let limit = self.window_limit.load(Ordering::Relaxed);
+        self.snapshot(&FeedRequest::newest(limit))
+    }
+
     /// Build the visible-window snapshot: cards newest-first, windowed to the
     /// request limit (D5). Attribution vectors are raw (Q1).
     #[must_use]
@@ -376,14 +385,6 @@ where
     A: AttributionPayload + serde::Serialize,
     C: Clone + Send + Sync + serde::Serialize,
 {
-    fn snapshot_json(&self) -> serde_json::Value {
-        // Honor the window that `load_older` has grown so far, rather than the
-        // fixed default — otherwise callers could never see past the first page.
-        let limit = self.window_limit.load(Ordering::Relaxed);
-        serde_json::to_value(self.snapshot(&FeedRequest::newest(limit)))
-            .unwrap_or(serde_json::Value::Null)
-    }
-
     fn load_older(&self) -> bool {
         // Read the current window and total root count to decide whether there
         // are more roots to reveal. The engine holds all roots bounded by D5;

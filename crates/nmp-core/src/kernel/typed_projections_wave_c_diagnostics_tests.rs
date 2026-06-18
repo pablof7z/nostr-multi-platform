@@ -21,8 +21,9 @@
 //! 3. `relay_diagnostics` is unconditional and its captured struct maps
 //!    field-for-field through the typed sidecar.
 
+use super::public_typed_projections::{decode_action_lifecycle};
 use super::typed_projections::{
-    decode_action_lifecycle, decode_action_results, decode_action_stages, decode_relay_diagnostics,
+    decode_action_results, decode_action_stages, decode_relay_diagnostics,
     decode_signed_events, ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID,
     ACTION_LIFECYCLE_SCHEMA_VERSION, ACTION_RESULTS_FILE_IDENTIFIER, ACTION_RESULTS_SCHEMA_ID,
     ACTION_RESULTS_SCHEMA_VERSION, ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID,

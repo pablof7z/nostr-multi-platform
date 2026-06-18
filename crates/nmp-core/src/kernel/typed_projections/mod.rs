@@ -79,7 +79,7 @@ mod resolved_profiles_fb;
 // `builtins_diagnostics.rs`). These five are capture-once built-ins — their
 // producing accessors drain / mutate / format-against-now, so the typed path
 // reads a per-tick `Kernel`-field capture written at the JSON-insertion site.
-mod action_lifecycle_fb;
+pub(crate) mod action_lifecycle_fb;
 mod action_results_fb;
 mod action_stages_fb;
 mod builtins_diagnostics;
@@ -173,8 +173,8 @@ pub use resolved_profiles_fb::{
 // drained codecs' `model_from_json` parsers are called module-qualified
 // (`super::<mod>::model_from_json`) and so are not re-exported.
 pub(crate) use action_lifecycle_fb::{
-    encode_action_lifecycle, ActionLifecycleModel, ACTION_LIFECYCLE_FILE_IDENTIFIER,
-    ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
+    encode_action_lifecycle, ActionLifecycleModel,
+    ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
 };
 // Internal-only encoder; the publicly re-exported `action_results` names
 // (`ActionResultsModel` + the envelope constants) live in the PUBLIC block
@@ -206,12 +206,6 @@ pub use claimed_profiles_fb::decode_claimed_profiles;
 #[cfg(test)]
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
 pub use resolved_profiles_fb::decode_resolved_profiles;
-// Wave C action-lifecycle + relay-diagnostics cluster — action_lifecycle
-// remains test-only; action_stages, relay_diagnostics, and signed_events are
-// public (promoted for the typed-first migration, PR-B).
-#[cfg(test)]
-pub(crate) use action_lifecycle_fb::decode_action_lifecycle;
-
 // --- PUBLIC typed-projection decode surface --------------------------------
 //
 // The reachable, out-of-tree Rust API (re-exported through `kernel/mod.rs` ->

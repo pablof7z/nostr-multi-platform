@@ -365,27 +365,13 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // was deleted; Swift reads from this push projection on every SnapshotFrame.
     // Cheap: one lock + MDK SQLite reads, no re-decrypt.
     {
-        let snap_slot = Arc::clone(&projection_slot);
-        app_ref.register_snapshot_projection("nmp.marmot.snapshot", move || {
-            let guard = snap_slot.lock().ok();
-            let proj = guard.as_ref().and_then(|g| g.as_ref());
-            match proj {
-                Some(p) => serde_json::to_value(p.snapshot(now_secs()))
-                    .unwrap_or(serde_json::Value::Null),
-                None => serde_json::Value::Object(serde_json::Map::new()),
-            }
-        });
-
-        // Typed FlatBuffers sidecar (ADR-0037, Wave A) — emitted ALONGSIDE the
-        // generic `Value` projection above, never replacing it. A host with an
-        // `NMMS` decoder prefers this typed payload; an un-updated host falls
-        // back to the generic subtree. Purely additive: the dynamic
-        // registration above is unchanged and stays the source of truth. The
-        // trait→sidecar surface is proven generically by
+        // Typed FlatBuffers sidecar (ADR-0037, Wave A): host with an `NMMS`
+        // decoder prefers this typed payload. The trait→sidecar surface is
+        // proven generically by
         // `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`;
         // the marmot-specific encode/decode round-trip is proven in
         // `crate::wire::snapshot_fb::tests`. `None` when the slot is absent
-        // (account signed out), matching the dynamic closure's `None` branch.
+        // (account signed out).
         let typed_snap_slot = Arc::clone(&projection_slot);
         app_ref.register_typed_snapshot_projection("nmp.marmot.snapshot", move || {
             let guard = typed_snap_slot.lock().ok()?;
@@ -404,22 +390,10 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // inlined here) so it can be exercised by tests independently of the
     // closure. Cheap: one lock + MDK SQLite reads, no re-decrypt per tick.
     {
-        let msgs_slot = Arc::clone(&projection_slot);
-        app_ref.register_snapshot_projection("nmp.marmot.messages", move || {
-            let guard = msgs_slot.lock().ok();
-            let proj = guard.as_ref().and_then(|g| g.as_ref());
-            match proj {
-                Some(p) => p.messages_all_groups_json(DEFAULT_MESSAGE_PAGE),
-                None => serde_json::Value::Object(serde_json::Map::new()),
-            }
-        });
-
-        // Typed FlatBuffers sidecar (ADR-0037, Wave A) for the messages map —
-        // emitted ALONGSIDE the generic `Value` projection above, never
-        // replacing it. Drives the structured sibling `messages_all_groups`
-        // (the JSON `messages_all_groups_json` path is untouched). `None` when
-        // the slot is absent, matching the dynamic closure's `None` branch.
-        // Round-trip proven in `crate::wire::messages_fb::tests`.
+        // Typed FlatBuffers sidecar (ADR-0037, Wave A) for the messages map.
+        // Drives the structured `messages_all_groups` projection. `None` when
+        // the slot is absent. Round-trip proven in
+        // `crate::wire::messages_fb::tests`.
         let typed_msgs_slot = Arc::clone(&projection_slot);
         app_ref.register_typed_snapshot_projection("nmp.marmot.messages", move || {
             let guard = typed_msgs_slot.lock().ok()?;

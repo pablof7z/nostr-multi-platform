@@ -157,10 +157,9 @@ pub fn register_wallet(
     storage_path: Option<String>,
 ) -> WalletRuntimeHandle {
     // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
-    //    writer, D4), the others are captured below by the `"wallet"`
-    //    generic + typed snapshot projection closures.
+    //    writer, D4), the other is captured below by the typed snapshot
+    //    projection closure.
     let status_slot: WalletStatusSlot = new_wallet_status_slot();
-    let projection_slot = Arc::clone(&status_slot);
     let typed_projection_slot = Arc::clone(&status_slot);
 
     // 2. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
@@ -195,16 +194,7 @@ pub fn register_wallet(
         runtime: Arc::clone(&handle),
     }));
 
-    // 5. The `"wallet"` snapshot projection — reads `status_slot`.
-    app.register_snapshot_projection("wallet", move || match projection_slot.lock() {
-        Ok(slot) => slot
-            .as_ref()
-            .map(|status| serde_json::to_value(status).unwrap_or(serde_json::Value::Null))
-            .unwrap_or(serde_json::Value::Null),
-        Err(_) => serde_json::Value::Null,
-    });
-
-    // 6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
+    // 5/6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
     //    generic `Value` projection above, never replacing it.
     app.register_typed_snapshot_projection("wallet", move || {
         wallet_typed_projection(&typed_projection_slot)

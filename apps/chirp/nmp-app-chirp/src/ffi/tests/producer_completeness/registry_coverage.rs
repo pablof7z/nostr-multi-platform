@@ -148,13 +148,16 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
             .unwrap();
     nmp_app_chirp_register_group_chat(app, group_id.as_ptr());
 
-    // Runtime keyset: Tier-1 registry closures (the generic closures register
-    // unconditionally and emit `null` while idle, so `run()` reports every
-    // registered key regardless of state) ∪ the Tier-2 kernel built-ins.
+    // Runtime keyset: Tier-1 typed sidecar closures ∪ the Tier-2 kernel built-ins.
+    // Use `registered_typed_projection_keys()` (returns registered keys WITHOUT
+    // calling closures) rather than `run_typed_snapshot_projections()` (returns
+    // only keys whose closures emit Some for the current state). Projections for
+    // optional features (e.g. `bunker_handshake` with no active NIP-46 session)
+    // would be absent from the run output but are present in the registry.
     let app_ref: &NmpApp = unsafe { &*app };
     let mut runtime_keys: BTreeSet<String> = app_ref
-        .run_snapshot_projections()
-        .into_keys()
+        .registered_typed_projection_keys()
+        .into_iter()
         .collect();
     runtime_keys.extend(
         nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS

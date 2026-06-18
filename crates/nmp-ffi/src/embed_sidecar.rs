@@ -64,11 +64,7 @@ use nmp_core::{
     typed_projections::{decode_claimed_events, ClaimedEventRow, CLAIMED_EVENTS_SCHEMA_ID},
     TypedProjectionData,
 };
-use serde_json::Value;
-
-/// Snapshot-projection key both sidecars share (the typed FlatBuffer and the
-/// transitional JSON `Value` carry the identical resolved map under this key, so
-/// a host's `typed<K> ?? json<k>` fallback lines up).
+/// Snapshot-projection key for the typed FlatBuffer embed sidecar.
 const EMBED_SIDECAR_KEY: &str = "claimed_event_embeds";
 
 /// Shared slot that carries the latest resolved embed map
@@ -188,31 +184,6 @@ fn snapshot_map(slot: &EmbedSidecarSlot) -> BTreeMap<String, EmbeddedEventEnvelo
     slot.lock().ok().and_then(|g| g.clone()).unwrap_or_default()
 }
 
-/// Build the transitional JSON `Value` form of the embed sidecar from the slot.
-///
-/// Mirrors the Phase 0 wire shape (snake_case envelope keys so the iOS gallery
-/// `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase` maps them to the
-/// camelCase Swift properties; the `projection` sub-object keys stay camelCase
-/// via serde `rename_all`). Returns `Value::Object({})` for an empty/absent slot
-/// (D1: always present).
-pub(crate) fn read_embed_sidecar(slot: &EmbedSidecarSlot) -> Value {
-    let map = snapshot_map(slot);
-    let mut out = serde_json::Map::with_capacity(map.len());
-    for (primary_id, env) in &map {
-        let envelope = serde_json::json!({
-            "uri": env.uri,
-            "primary_id": env.primary_id,
-            "depth": env.render_context.depth,
-            "max_depth": env.render_context.max_depth,
-            "collapsed": env.collapsed,
-            "collapse_reason": env.collapse_reason,
-            "projection": env.projection,
-        });
-        out.insert(primary_id.clone(), envelope);
-    }
-    Value::Object(out)
-}
-
 /// Build the TYPED FlatBuffer (`NEMB`) form of the embed sidecar from the slot.
 ///
 /// Always returns a present [`TypedProjectionData`] — an empty map is a
@@ -259,9 +230,6 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
 pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedSidecarSlot) {
     use nmp_core::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
     use std::sync::atomic::Ordering;
-
-    let json_slot = Arc::clone(&slot);
-    app.register_snapshot_projection(EMBED_SIDECAR_KEY, move || read_embed_sidecar(&json_slot));
 
     // R6-S2: read capability + frame-identity handles once at registration time
     // (the NmpApp APIs acquire the registry lock internally).

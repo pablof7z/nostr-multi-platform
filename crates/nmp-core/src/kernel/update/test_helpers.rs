@@ -39,11 +39,22 @@ impl Kernel {
             self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
         }
         let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
-        let json = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
         let before_serialize = super::super::Instant::now();
         let typed = self.run_typed_projections();
         self.run_tick_observers();
+        // Drain and capture before merge so `captured_*` fields are set.
+        self.drain_and_capture_projections();
         let typed = self.merge_builtin_typed_projections(typed);
+        // Build the projections map and inject into the snapshot JSON so that
+        // test assertions reading snapshot["projections"]["key"] work.
+        let projections_map = self.build_projections_map();
+        let mut json = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                "projections".to_string(),
+                serde_json::to_value(&projections_map).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+            );
+        }
         // ADR-0055 Rung 2: stamp rev/state/epoch identical to the production path.
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
         self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
@@ -93,6 +104,8 @@ impl Kernel {
         // per-tick semantics.
         let _typed_host = self.run_typed_projections();
         self.run_tick_observers();
+        // Drain and capture before merge so `captured_*` fields are set.
+        self.drain_and_capture_projections();
         let _typed_merged = self.merge_builtin_typed_projections(_typed_host);
         // ADR-0055 Rung 2: keep the projection-rev tracker in the same state as
         // the production path so oracle-gated tests see consistent revs.
@@ -100,7 +113,17 @@ impl Kernel {
         self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
         let manifest = self.projection_manifest();
         rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
-        serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null)
+        // Build the projections map and inject into the snapshot JSON so that
+        // test assertions reading snapshot["projections"]["key"] work.
+        let projections_map = self.build_projections_map();
+        let mut json = serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null);
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                "projections".to_string(),
+                serde_json::to_value(&projections_map).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+            );
+        }
+        json
     }
 
     pub(crate) fn make_update_json_for_test(&mut self, running: bool) -> String {

@@ -230,22 +230,7 @@ impl Kernel {
             // field set — `snapshot_projections_with_publish_cluster` inserts
             // them into the same `projections` map under built-in keys.
             //
-            // Host-extensible snapshot output: run every host-registered
-            // projection closure and append its namespaced JSON value, then
-            // add the kernel-owned publish cluster. Empty (and
-            // `skip_serializing_if`'d off the wire) only when no host
-            // registered a projection AND the publish cluster contributes no
-            // keys — in practice the publish keys are always present, matching
-            // the old typed fields' always-emitted shape.
-            // D8: the host closures run on this actor thread inside the tick;
-            // `run_snapshot_projections` documents the non-blocking contract.
-            //
-            // D0: the views cluster (`profile`, `author_view`, `thread_view`) is
-            // folded into the same map. `profile_card()`, `author_view()`, and
-            // `thread_view()` read `&self` and are called inside the helper.
-            // Step 3A (#920): the follow-feed cluster (`timeline` / `inserted` /
-            // `updated` / `removed`) is no longer produced here.
-            projections: self.snapshot_projections_with_publish_cluster(),
+
         }
     }
 
@@ -301,6 +286,13 @@ impl Kernel {
         // each is wrapped in `catch_unwind` so a panicking observer can never
         // unwind the actor thread into a terminal `Panic` frame.
         self.run_tick_observers();
+        // Drain the per-tick drain-on-emit projections and capture their values
+        // for the typed FlatBuffers sidecar. Must run BEFORE
+        // `merge_builtin_typed_projections` so `captured_*` fields are fresh.
+        // This also drives the ADR-0055 Rung-1 `note_drain_emit` state machine
+        // for action_results / signed_events and the copy-mirror TTL machines
+        // for action_stages / action_lifecycle.
+        self.drain_and_capture_projections();
         // Wave C (ADR-0037): merge the kernel-owned (Tier-2) built-in typed
         // sidecars with the host-registered (Tier-1) ones. These read live
         // `&self` state, so — unlike a `register_typed` closure — they are

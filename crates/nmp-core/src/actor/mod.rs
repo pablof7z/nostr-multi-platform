@@ -141,10 +141,10 @@ pub use commands::{register_c_observer, LifecycleObserverRegistration};
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
-// `"bunker_handshake"` snapshot-projection closure.
+// `"bunker_handshake"` typed snapshot-projection closure.
 // V-01 Phase 1c: bunker types are native actor / FFI only.
 #[cfg(feature = "native")]
-pub(crate) use commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
+pub(crate) use commands::BunkerHandshakeSlot;
 // `nmp-ffi`'s `nmp_app_new` constructs the bunker-handshake slot before
 // handing it to the actor; promoted to `pub` for the extracted crate.
 #[cfg(feature = "native")]
@@ -1312,24 +1312,9 @@ pub fn run_actor_with_observers(
     // sign-in flow decodes. Registered here (the actor wiring site) rather than
     // on the FFI surface so every actor consumer — FFI or test — gets it.
     {
-        let projection_slot = Arc::clone(&bunker_handshake);
-        // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
-        // reading the SAME slot clone. Conditionally present: the builder
-        // returns `None` (no sidecar entry) when the slot is `None`, mirroring
-        // the generic closure's JSON `null` — see `typed_projections::
-        // bunker_handshake_typed`.
+        // Typed sidecar (ADR-0037).
         let typed_slot = Arc::clone(&bunker_handshake);
         if let Ok(mut registry) = snapshot_projections.lock() {
-            registry.register("bunker_handshake", move || {
-                // D6: a poisoned bunker-handshake mutex recovers via
-                // `into_inner` rather than panicking inside the snapshot tick.
-                let slot = projection_slot
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                slot.as_ref().map_or(serde_json::Value::Null, |dto| {
-                    serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
-                })
-            });
             registry.register_typed("bunker_handshake", move || {
                 typed_projections::bunker_handshake_typed(&typed_slot)
             });
@@ -1351,17 +1336,10 @@ pub fn run_actor_with_observers(
     // incremental-apply capability (exact byte equality, monotonic rev, freeze
     // guard on the same FrameIdentity the feed uses — one implementation, shared).
     {
-        let projection_slot = Arc::clone(&bunker_handshake);
-        // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
-        // reading the SAME slot via the SAME `build_nip46_onboarding_dto`.
-        // Always present (never JSON `null`): the static signer-app probe table
-        // is emitted even when idle, so the builder always returns `Some` — see
-        // `typed_projections::nip46_onboarding_typed`.
+        // Typed sidecar (ADR-0037).
         let typed_slot = Arc::clone(&bunker_handshake);
         // R6-S2: read the frame-identity and capability handles from the
-        // registry (one lock) before the registration lock below. D8: these
-        // reads are cheap — clones of existing `Arc` handles. D6: falls back to
-        // non-omitting handles if the mutex is poisoned.
+        // registry (one lock) before the registration lock below.
         let (
             nip46_onboarding_incremental_apply,
             nip46_onboarding_frame_session_id,
@@ -1384,10 +1362,6 @@ pub fn run_actor_with_observers(
             ),
         ));
         if let Ok(mut registry) = snapshot_projections.lock() {
-            registry.register("nip46_onboarding", move || {
-                let dto = build_nip46_onboarding_dto(&projection_slot);
-                serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
-            });
             let emission_state = Arc::clone(&nip46_onboarding_emission_state);
             let frame_session_id = Arc::clone(&nip46_onboarding_frame_session_id);
             let frame_snapshot_epoch = Arc::clone(&nip46_onboarding_frame_snapshot_epoch);
@@ -1425,20 +1399,9 @@ pub fn run_actor_with_observers(
     // `None` (no active remote signer session) → JSON `null`.
     // D0: remote-signer health is an app noun, not a typed `KernelSnapshot` field.
     {
-        let projection_slot = Arc::clone(&signer_state);
-        // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
-        // reading the SAME slot. Returns `None` while the slot is `None` (no
-        // active remote signer session) — mirroring the JSON closure's `null`.
+        // Typed sidecar (ADR-0037).
         let typed_slot = Arc::clone(&signer_state);
         if let Ok(mut registry) = snapshot_projections.lock() {
-            registry.register("signer_state", move || {
-                let slot = projection_slot
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                slot.as_ref().map_or(serde_json::Value::Null, |dto| {
-                    serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
-                })
-            });
             registry.register_typed("signer_state", move || {
                 typed_projections::signer_state_typed(&typed_slot)
             });

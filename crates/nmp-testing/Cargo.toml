@@ -46,6 +46,7 @@ nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip42 = { path = "../nmp-nip42" }
+nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip59 = { path = "../nmp-nip59" }
 # F-04 zap E2E harness (zap_e2e_nwc_roundtrip.rs) — the fake NIP-47 wallet

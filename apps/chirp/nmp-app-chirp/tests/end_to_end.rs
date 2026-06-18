@@ -18,7 +18,7 @@
 //! `kernel.ingest_pre_verified_event`, which fans out to observers without the
 //! `timeline_authors` store gate — so the engine sees every injected event).
 
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -42,10 +42,7 @@ fn register_app(app: *mut nmp_ffi::NmpApp) -> *mut ChirpHandle {
 }
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
-use nmp_ffi::{
-    nmp_app_free, nmp_app_load_older_feed, nmp_app_new, nmp_app_read_projection_json,
-    nmp_app_start, nmp_free_string,
-};
+use nmp_ffi::{nmp_app_free, nmp_app_load_older_feed, nmp_app_new, nmp_app_start};
 use nmp_nip01::DEFAULT_TIMELINE_WINDOW_LIMIT;
 
 // Serialize tests because `NmpApp` initialisation spawns process-global
@@ -64,16 +61,11 @@ fn raw_note(id: &str, author: &str, ts: u64, tags: Vec<Vec<String>>, content: &s
     }
 }
 
-fn feed_projection_for(app: *mut nmp_ffi::NmpApp) -> ChirpTimelineSnapshot {
-    let key = CString::new("nmp.feed.home").expect("static key has no nul");
-    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
-    assert!(!ptr.is_null(), "home feed projection returned null");
-    let json = unsafe { CStr::from_ptr(ptr) }
-        .to_str()
-        .expect("projection JSON is utf8")
-        .to_owned();
-    nmp_free_string(ptr);
-    serde_json::from_str(&json).expect("projection deserializes")
+fn feed_projection_for(handle: *mut ChirpHandle) -> ChirpTimelineSnapshot {
+    // The generic JSON lane is deleted (rule A6). Snapshot directly from the
+    // ChirpHandle's OpFeedEngine — the same data the typed FlatBuffers sidecar
+    // encodes and sends to Swift.
+    unsafe { &*handle }.snapshot()
 }
 
 fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
@@ -118,7 +110,7 @@ fn root_surfaces_and_unfollowed_reply_is_dropped() {
     // 250ms idle tick should be plenty even on a loaded CI machine.
     std::thread::sleep(Duration::from_millis(500));
 
-    let snap = feed_projection_for(app);
+    let snap = feed_projection_for(handle);
     assert_eq!(
         snap.cards.len(),
         1,
@@ -148,7 +140,7 @@ fn standalone_note_renders_as_root_card() {
     inject(app, vec![note]);
     std::thread::sleep(Duration::from_millis(500));
 
-    let snap = feed_projection_for(app);
+    let snap = feed_projection_for(handle);
     assert_eq!(snap.cards.len(), 1, "one root card");
     assert_eq!(snap.cards[0].card.id, id);
     assert!(snap.cards[0].attribution.is_empty());
@@ -182,7 +174,7 @@ fn snapshot_returns_default_window() {
     inject(app, events);
     std::thread::sleep(Duration::from_millis(500));
 
-    let snap = feed_projection_for(app);
+    let snap = feed_projection_for(handle);
     assert_eq!(
         snap.cards.len(),
         DEFAULT_TIMELINE_WINDOW_LIMIT,
@@ -203,7 +195,7 @@ fn snapshot_returns_default_window() {
     // in `root_indexed/engine/mod.rs::load_older`.
     let key = CString::new("nmp.feed.home").expect("static key has no nul");
     nmp_app_load_older_feed(app, key.as_ptr());
-    let after = feed_projection_for(app);
+    let after = feed_projection_for(handle);
     assert_eq!(
         after.cards.len(),
         total,

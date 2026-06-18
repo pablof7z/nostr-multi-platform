@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
 use nmp_core::{ActorCommand, ActorMail, CommandSender, RawEventObserver};
 use nmp_ffi::{
-    nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_read_projection_json,
-    nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_signin_nsec, nmp_app_start,
+    NmpApp,
 };
 use nmp_nip17::{DmInboxProjection, DmInboxSnapshot};
 use nostr::nips::nip19::ToBech32;
@@ -214,7 +214,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
 /// inbox's decrypt-port commands itself — the projection never sees `Keys`.
 #[test]
 fn dm_inbox_full_round_trip_through_ffi() {
-    use std::ffi::{CStr, CString};
+    use std::ffi::CString;
     use std::time::Duration;
 
     let app: *mut NmpApp = nmp_app_new();
@@ -252,26 +252,20 @@ fn dm_inbox_full_round_trip_through_ffi() {
     // Give the actor thread time to drain the ingest + decrypt port chain.
     std::thread::sleep(Duration::from_millis(500));
 
-    let key = CString::new("nmp.nip17.dm_inbox").expect("key must be NUL-free");
-    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
-    assert!(
-        !ptr.is_null(),
-        "nmp.nip17.dm_inbox projection must be registered after nmp_app_chirp_register_dm_inbox",
-    );
-    // SAFETY: ptr was returned by nmp_app_read_projection_json and is a
-    // heap-owned, NUL-terminated UTF-8 C string. Copy out before freeing.
-    let json_str = unsafe { CStr::from_ptr(ptr) }
-        .to_str()
-        .expect("projection JSON must be valid UTF-8")
-        .to_owned();
-    nmp_free_string(ptr);
+    // Decode via the typed FlatBuffers sidecar (generic JSON lane deleted — rule A6).
+    let app_ref: &NmpApp = unsafe { &*app };
+    let typed = app_ref.run_typed_snapshot_projections();
+    let entry = typed
+        .iter()
+        .find(|p| p.key == "nmp.nip17.dm_inbox" && !p.payload.is_empty())
+        .expect("nmp.nip17.dm_inbox typed projection must be present after nmp_app_chirp_register_dm_inbox");
 
-    let snapshot: DmInboxSnapshot = serde_json::from_str(&json_str)
-        .expect("nmp.nip17.dm_inbox projection must decode to DmInboxSnapshot");
+    let snapshot = nmp_nip17::wire::dm_inbox_fb::decode_dm_inbox_snapshot(&entry.payload)
+        .expect("nmp.nip17.dm_inbox payload must decode to DmInboxSnapshot");
     assert_eq!(
         snapshot.conversations.len(),
         1,
-        "exactly one conversation expected after one ingest, got {json_str}",
+        "exactly one conversation expected after one ingest",
     );
     let convo = &snapshot.conversations[0];
     assert_eq!(

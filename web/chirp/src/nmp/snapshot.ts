@@ -75,7 +75,10 @@ export type FeatureSnapshot = {
   authorProfile?: ProfileLine;
   thread?: ThreadLine;
 };
-export type KernelSnapshot = { rev?: number; projections?: Record<string, unknown> & { timeline?: TimelineItem[] } };
+// The generic JSON `projections` map was removed in PR #1515 (escape hatch #2
+// eliminated). `KernelSnapshot` no longer carries a `projections` field — all
+// projection data arrives through typed FlatBuffers sidecars.
+export type KernelSnapshot = { rev?: number };
 
 export function kernelSnapshotFromEnvelope(envelope: unknown): KernelSnapshot | undefined {
   const root = objectRecord(envelope);
@@ -87,28 +90,35 @@ export function kernelSnapshotFromEnvelope(envelope: unknown): KernelSnapshot | 
   return snapshot ? (snapshot as KernelSnapshot) : undefined;
 }
 
-export function featureSnapshotFromEnvelope(envelope: unknown): FeatureSnapshot {
-  const source = objectRecord(kernelSnapshotFromEnvelope(envelope)?.projections) ?? {};
-  return {
-    accounts: array(source.accounts).map(accountFrom),
-    activeAccount: str(source.active_account),
-    outbox: array(source.publish_outbox ?? source.publishOutbox).map(outboxFrom),
-    outboxSummary: summaryFrom(source.outbox_summary ?? source.outboxSummary),
-    configuredRelays: array(source.configured_relays ?? source.configuredRelays).map(relayEditFrom),
-    relayDiagnostics: array(source.relay_diagnostics ?? source.relayDiagnostics).map(relayDiagnosticFrom),
-    wallet: walletFrom(source.wallet),
-    dmConversations: dmFrom(source),
-    groupMessages: messagesFrom(projection(source, "nmp.nip29.group_chat")),
-    discoveredGroups: groupsFrom(source),
-    followCount: array(objectRecord(projection(source, "nmp.follow_list"))?.follows).length,
-    settingsHub: settingsHubFrom(source.settings_hub ?? source.settingsHub),
-    authorProfile: profileFrom(source.author_view ?? source.authorView),
-    thread: threadFrom(source.thread_view ?? source.threadView),
-  };
-}
+// Zero-state constant for the FeatureSnapshot — returned by
+// `featureSnapshotFromEnvelope` which is always called with `undefined` in
+// App.tsx. The generic JSON `projections` map was deleted in PR #1515
+// (escape hatch #2 eliminated); all projection data now arrives through the
+// typed FlatBuffers sidecar path. dmConversations, groupMessages,
+// discoveredGroups etc. stay empty here; callers that need real data must
+// decode the typed sidecar.
+const ZERO_FEATURE_SNAPSHOT: FeatureSnapshot = {
+  accounts: [],
+  activeAccount: "",
+  outbox: [],
+  outboxSummary: { title: "", subtitle: "" },
+  configuredRelays: [],
+  relayDiagnostics: [],
+  wallet: { status: "", relayUrl: "", walletNpub: "", balanceMsats: undefined },
+  dmConversations: [],
+  groupMessages: [],
+  discoveredGroups: [],
+  followCount: 0,
+  settingsHub: { title: "", subtitle: "" },
+  authorProfile: undefined,
+  thread: undefined,
+};
 
-export function timelineFromKernel(snapshot: KernelSnapshot | undefined): TimelineItem[] {
-  return Array.isArray(snapshot?.projections?.timeline) ? snapshot.projections.timeline : [];
+export function featureSnapshotFromEnvelope(_envelope: unknown): FeatureSnapshot {
+  // The generic JSON `projections` map no longer exists on the wire (PR #1515).
+  // This function always returns the zero-state FeatureSnapshot. Real projection
+  // data arrives through the typed FlatBuffers sidecar path.
+  return ZERO_FEATURE_SNAPSHOT;
 }
 
 export function chirpTimelineFromEnvelope(envelope: unknown): ChirpTimelineSnapshot | undefined {
@@ -122,11 +132,6 @@ export function chirpTimelineFromEnvelope(envelope: unknown): ChirpTimelineSnaps
     return undefined;
   }
   return { blocks: candidate.blocks, cards: candidate.cards as ChirpEventCard[] };
-}
-
-export function displayRows(kernel: KernelSnapshot | undefined, chirp: ChirpTimelineSnapshot | undefined): TimelineItem[] {
-  const timeline = timelineFromKernel(kernel);
-  return timeline.length > 0 ? timeline : (chirp?.cards.map(cardFromChirpEvent) ?? []);
 }
 
 /**
@@ -227,57 +232,6 @@ function walletFrom(value: unknown): WalletLine {
   };
 }
 
-function dmFrom(projections: Record<string, unknown>): DmConversationLine[] {
-  const inbox = objectRecord(projection(projections, "nmp.nip17.dm_inbox"));
-  return array(inbox?.conversations).map((value) => {
-    const row = objectRecord(value) ?? {};
-    const messages = messagesFrom(row);
-    // aim.md §2: backend ships raw hex peer_pubkey; the presentation
-    // layer abbreviates locally. Falls back to the raw hex when
-    // shorter than 16 chars.
-    const peerPubkey = first(row, "peer_pubkey", "peerPubkey");
-    const peerDisplay =
-      peerPubkey.length >= 16
-        ? `${peerPubkey.slice(0, 8)}…${peerPubkey.slice(-8)}`
-        : peerPubkey;
-    return {
-      peerPubkey,
-      peerDisplay,
-      latest: messages.length > 0 ? messages[messages.length - 1].content : "",
-      messages,
-    };
-  });
-}
-
-function messagesFrom(value: unknown): MessageLine[] {
-  const row = objectRecord(value);
-  return array(row?.messages).map((message) => {
-    const item = objectRecord(message) ?? {};
-    return {
-      id: str(item.id),
-      author: first(item, "sender_pubkey", "senderPubkey", "pubkey"),
-      content: str(item.content),
-      outgoing: bool(item.is_outgoing) || bool(item.isOutgoing),
-    };
-  });
-}
-
-function groupsFrom(projections: Record<string, unknown>): GroupLine[] {
-  const groups = objectRecord(projection(projections, "nmp.nip29.discovered_groups"));
-  return array(groups?.groups).map((value) => {
-    const row = objectRecord(value) ?? {};
-    const groupId = first(row, "group_id", "groupId");
-    return {
-      hostRelayUrl: first(row, "host_relay_url", "hostRelayUrl"),
-      groupId,
-      name: first(row, "name") || groupId,
-      about: str(row.about),
-      memberCount: num(row.member_count ?? row.memberCount) ?? 0,
-      open: bool(row.open),
-    };
-  });
-}
-
 function cardFromChirpEvent(card: ChirpEventCard): TimelineItem {
   // aim.md §2 — display_name is the kind:0 value (may be null until
   // kind:0 arrives). The card's nested `author_display` object's
@@ -345,10 +299,6 @@ function settingsHubFrom(value: unknown): SummaryLine {
                    count === 1 ? "1 relay" :
                    `${count} relays`;
   return { title: "Settings", subtitle };
-}
-
-function projection(value: Record<string, unknown>, key: string): unknown {
-  return value[key] ?? value[key.split("_").join("")];
 }
 
 function first(value: Record<string, unknown>, ...keys: string[]): string {

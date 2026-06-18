@@ -55,6 +55,7 @@ mod allow;
 mod braces;
 mod cli;
 mod event_flow_gates;
+mod header_scan_a6;
 mod report;
 mod rules;
 mod scope;
@@ -155,12 +156,17 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
         }
+
+        // A6 (banned schema-less snapshot lane) scans `.rs` + `.h` in `header_scan_a6.rs`.
+        if !header_scan_a6::scan_root_for_a6(root, &cfg, &mut all_findings) {
+            return ExitCode::from(2);
+        }
     }
 
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26"
+        "A5/A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }

@@ -3,10 +3,8 @@
 //! Extracted from `snapshot_registry.rs` to keep that file within its LOC
 //! ceiling. These are the methods `make_update` (and the `Reset` dispatch arm)
 //! call to read the host-extensible registry through the `Arc<Mutex<…>>` slot the
-//! actor binds onto the kernel: the generic + typed projection runs, the per-tick
+//! actor binds onto the kernel: the typed projection runs, the per-tick
 //! observers, and — ADR-0053 — the host-declared consumed-projection set.
-
-use std::collections::HashMap;
 
 use super::super::Kernel;
 use super::{DeclaredProjections, SnapshotProjectionSlot};
@@ -36,30 +34,12 @@ impl Kernel {
         self.snapshot_projections.take()
     }
 
-    /// Run every registered snapshot projection and return the namespaced
-    /// map appended to `KernelSnapshot::projections`.
-    ///
-    /// Empty (no allocation past the empty map) when no slot is bound, the
-    /// mutex is poisoned, or nothing is registered — D6: a projection
-    /// failure is data, never a panic at the boundary. Called from
-    /// `make_update`.
-    pub(in crate::kernel) fn run_snapshot_projections(&self) -> HashMap<String, serde_json::Value> {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|registry| registry.run())
-                .unwrap_or_default(),
-            None => HashMap::new(),
-        }
-    }
-
     /// Run every registered **typed** snapshot projection and return the vector
     /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0037).
     ///
     /// Empty when no slot is bound, the mutex is poisoned, or nothing is
     /// registered — D6: a projection failure is data, never a panic at the
-    /// boundary. Shares the slot (and therefore the registry) with
-    /// [`Self::run_snapshot_projections`]; called from `make_update`.
+    /// boundary. Called from `make_update`.
     pub(in crate::kernel) fn run_typed_projections(&self) -> Vec<TypedProjectionData> {
         match &self.snapshot_projections {
             Some(slot) => slot
@@ -75,7 +55,7 @@ impl Kernel {
     /// A no-op when no slot is bound or the mutex is poisoned — D6: an observer
     /// dispatch failure is silently absorbed, never a panic at the boundary.
     /// Shares the slot (and therefore the registry) with
-    /// [`Self::run_snapshot_projections`]; called from `make_update` on every
+    /// [`Self::run_typed_projections`]; called from `make_update` on every
     /// tick. The per-observer `catch_unwind` (D6) lives in
     /// [`SnapshotRegistry::run_tick_observers`](super::SnapshotRegistry::run_tick_observers).
     pub(in crate::kernel) fn run_tick_observers(&self) {
@@ -114,9 +94,8 @@ impl Kernel {
     /// the host's `ProjectionCache` resets on.
     ///
     /// MUST be called at the TOP of `make_update`, before ANY host projection
-    /// closure runs (generic projections run during `build_snapshot_struct`,
-    /// typed projections run in `run_typed_projections`) — so every closure
-    /// this tick sees the current values. `session_id` =
+    /// closure runs (typed projections run in `run_typed_projections`) — so every
+    /// closure this tick sees the current values. `session_id` =
     /// `TimingMilestones::started_unix_ms` (changes on Reset-rebuild);
     /// `snapshot_epoch` = `ProjectionRevTracker::epoch` (account-switch /
     /// schema bump). A no-op when no slot is bound or the mutex is poisoned

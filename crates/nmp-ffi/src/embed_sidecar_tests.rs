@@ -4,11 +4,10 @@
 use nmp_content::wire::decode_claimed_event_embeds;
 use nmp_content::{resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext};
 use nmp_core::typed_projections::ClaimedEventRow;
-use serde_json::Value;
 use std::collections::BTreeMap;
 
 use super::{
-    build_envelope, new_embed_sidecar_slot, read_embed_sidecar, read_embed_sidecar_typed,
+    build_envelope, new_embed_sidecar_slot, read_embed_sidecar_typed,
     row_to_kernel_event, EMBED_SIDECAR_KEY,
 };
 
@@ -132,17 +131,6 @@ fn resolve_unknown_kind_row_produces_unknown_projection() {
 }
 
 #[test]
-fn read_embed_sidecar_returns_empty_object_when_slot_is_none() {
-    let slot = new_embed_sidecar_slot();
-    let val = read_embed_sidecar(&slot);
-    assert_eq!(
-        val,
-        Value::Object(serde_json::Map::new()),
-        "empty slot must yield an empty JSON object"
-    );
-}
-
-#[test]
 fn embed_sidecar_json_shape_matches_expected_variant_tag() {
     let row = make_claimed_event_row(
         "aabbcc",
@@ -175,7 +163,10 @@ fn typed_sidecar_is_present_and_empty_when_slot_is_none() {
 }
 
 #[test]
-fn json_and_typed_sidecars_carry_the_same_resolved_map() {
+fn typed_sidecar_carries_the_expected_resolved_map() {
+    // The JSON lane was deleted in PR #1525 (escape hatch #2 eliminated).
+    // This test proves the typed FlatBuffers sidecar carries the correct
+    // resolved entries for all three supported embed kinds.
     let slot = new_embed_sidecar_slot();
     let ctx = RenderContext::new();
     let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
@@ -190,21 +181,13 @@ fn json_and_typed_sidecars_carry_the_same_resolved_map() {
     }
     *slot.lock().unwrap() = Some(map);
 
-    let json = read_embed_sidecar(&slot);
     let typed = read_embed_sidecar_typed(&slot);
     let decoded = decode_claimed_event_embeds(&typed.payload)
         .expect("typed sidecar must decode");
 
-    let json_obj = json.as_object().expect("json is an object");
-    assert_eq!(json_obj.len(), decoded.len(), "same number of entries");
+    assert_eq!(decoded.len(), 3, "three entries expected");
     for key in ["note", "art", "unk"] {
-        assert!(json_obj.contains_key(key), "JSON missing {key}");
         assert!(decoded.contains_key(key), "typed missing {key}");
-        assert_eq!(
-            json_obj[key]["primary_id"].as_str(),
-            Some(key),
-            "JSON primary_id mismatch for {key}"
-        );
         assert_eq!(decoded[key].primary_id, key, "typed primary_id mismatch for {key}");
     }
     assert!(matches!(decoded["note"].projection, EmbedKindProjection::ShortNote(_)));

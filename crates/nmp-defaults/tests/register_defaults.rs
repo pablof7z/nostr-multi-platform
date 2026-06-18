@@ -9,10 +9,7 @@
 
 use std::ffi::{CStr, CString};
 
-use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_read_projection_json,
-    nmp_free_string,
-};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_string};
 
 /// All action namespaces [`nmp_defaults::register_defaults`] is
 /// contracted to register.
@@ -97,20 +94,13 @@ fn register_defaults_wires_wot_bootstrap_projection() {
 
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
-    let key = CString::new("nmp.wot.bootstrap").unwrap();
-    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    // The generic JSON lane is deleted (rule A6). Check via the typed registry.
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
-        !raw.is_null(),
-        "WOT bootstrap projection was not registered"
+        typed_keys.contains(&"nmp.wot.bootstrap".to_string()),
+        "WOT bootstrap typed projection was not registered"
     );
-    let json = unsafe { CStr::from_ptr(raw) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_free_string(raw);
-    let parsed: serde_json::Value = serde_json::from_str(&json).expect("projection JSON");
-
-    assert_eq!(parsed["active_pubkey"], serde_json::Value::Null);
-    assert_eq!(parsed["bootstrap_requested"], false);
 
     nmp_app_free(app);
 }
@@ -123,23 +113,14 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
-    // The NIP-23 long-form projection is registered ONLY as a typed FlatBuffer
-    // in the `typed_projections` sidecar (`AppHost::register_typed_snapshot_projection`),
-    // NEVER in the generic JSON `projections` map (that map is being retired).
-    // `nmp_app_read_projection_json` runs ONLY the JSON registry, so a null
-    // return for this key is the direct proof the projection did not leak into
-    // the JSON map — the exact mistake that got the prior attempt rejected.
-    //
-    // (The positive proof that the typed payload is a well-formed, decodable
-    // `NL23` FlatBuffer lives in-crate next to the projection:
-    // `nmp_content::longform::tests` decodes `typed_projection().payload` back
-    // to the typed struct — the same posture the wallet / nip29 typed
-    // projections prove their payloads.)
-    let key = CString::new("nmp.nip23.articles").unwrap();
-    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    // The generic JSON lane is fully deleted (rule A6). The NIP-23 longform
+    // projection was already typed-only before this PR; that contract now holds
+    // trivially for all projections. Verify the typed projection IS registered.
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
-        raw.is_null(),
-        "longform projection must be typed-only — it must NOT appear in the JSON projections map"
+        typed_keys.contains(&"nmp.nip23.articles".to_string()),
+        "longform projection must be registered in the typed projection registry"
     );
 
     nmp_app_free(app);
@@ -149,18 +130,9 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
 /// projection: it was re-homed onto the generic per-tick observer seam
 /// (`AppHost::register_snapshot_tick_observer`) because it only diffs the active
 /// pubkey and enqueues `PushInterest` / `WithdrawInterest` — it produced no
-/// projection data (a `Value::Null` projection, the last NON-DATA abuse of the
-/// dynamic snapshot-projection registry). After the re-home,
-/// `"nmp.nip57.zap_subscription"` must NOT appear as a projection key at all.
-/// `nmp_app_read_projection_json` runs ONLY the JSON registry, so a null return
-/// for this key is the direct proof the reconciler left the registry entirely.
-///
-/// This is discriminating, NOT vacuous: `nmp_app_read_projection_json` returns a
-/// null pointer only for an ABSENT key — a key present with a `Value::Null`
-/// value (exactly what the old `register_snapshot_projection(... Null)` produced,
-/// since `SnapshotRegistry::run` inserts the Null) serializes to the string
-/// `"null"` and returns a NON-null pointer. So this assertion would have FAILED
-/// against the pre-re-home code and passes only because the key is now gone.
+/// projection data. After the re-home (and with the entire JSON lane deleted per
+/// rule A6 / PR #1525), `"nmp.nip57.zap_subscription"` must NOT appear in the
+/// typed projection registry at all.
 #[test]
 fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
     let app = nmp_app_new();
@@ -169,11 +141,12 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
-    let key = CString::new("nmp.nip57.zap_subscription").unwrap();
-    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    // The generic JSON lane is deleted (rule A6). Check the typed registry.
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
-        raw.is_null(),
-        "zap_subscription must NOT appear in the JSON projections map — it is a \
+        !typed_keys.contains(&"nmp.nip57.zap_subscription".to_string()),
+        "zap_subscription must NOT appear in the typed projections registry — it is a \
          per-tick observer now, not a projection"
     );
 
@@ -411,19 +384,16 @@ fn is_registered(app: *mut nmp_ffi::NmpApp, namespace: &str) -> bool {
     true
 }
 
-/// Read a JSON projection by key, returning `None` for an absent key (null
-/// pointer) and `Some(json)` for a present one.
+/// Check typed projection registry for key presence — replaces deleted JSON lane (rule A6).
 fn read_projection(app: *mut nmp_ffi::NmpApp, key: &str) -> Option<String> {
-    let key_c = CString::new(key).unwrap();
-    let raw = nmp_app_read_projection_json(app, key_c.as_ptr());
-    if raw.is_null() {
-        return None;
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let typed_keys = app_ref.registered_typed_projection_keys();
+    if typed_keys.contains(&key.to_string()) {
+        // Return a sentinel non-null string; callers using `.is_some()` / `.is_none()` still work.
+        Some(String::from("{}"))
+    } else {
+        None
     }
-    let json = unsafe { CStr::from_ptr(raw) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_free_string(raw);
-    Some(json)
 }
 
 fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
