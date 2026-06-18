@@ -41,7 +41,11 @@ impl super::super::Kernel {
                 .map(|entry| PublishQueueEntryRow {
                     event_id: entry.event_id.clone(),
                     kind: entry.kind,
-                    title: entry.title.clone(),
+                    // `title` was removed from the Rust `PublishQueueEntry` DTO
+                    // (doctrine §4.4: no pre-formatted English labels in kernel).
+                    // The wire field is kept for backward compat with older shells
+                    // that may read it; emit empty string (the glue ignores it).
+                    title: String::new(),
                     target_relays: entry.target_relays as u32,
                     status: entry.status.clone(),
                     can_retry: entry.can_retry,
@@ -79,12 +83,9 @@ impl super::super::Kernel {
                     handle: item.handle.clone(),
                     event_id: item.event_id.clone(),
                     kind: item.kind,
-                    title: item.title.clone(),
-                    preview: item.preview.clone(),
+                    content: item.content.clone(),
                     created_at: item.created_at,
                     status: item.status.clone(),
-                    status_label: item.status_label.clone(),
-                    system_image: item.system_image.clone(),
                     can_retry: item.can_retry,
                     target_relays: item.target_relays as u32,
                     relays: item
@@ -93,9 +94,7 @@ impl super::super::Kernel {
                         .map(|relay| PublishOutboxRelayRow {
                             relay_url: relay.relay_url.clone(),
                             status: relay.status.clone(),
-                            status_label: relay.status_label.clone(),
                             attempt: relay.attempt,
-                            attempt_label: relay.attempt_label.clone(),
                             message: relay.message.clone(),
                             relay_reason: relay.relay_reason.clone(),
                         })
@@ -114,12 +113,10 @@ impl super::super::Kernel {
         });
 
         // `outbox_summary` — encoded from the SAME `OutboxSummarySnapshot` the
-        // JSON path serialises (`outbox_summary_snapshot()`). The kernel owns
-        // both the counters AND the English `title`/`subtitle` strings.
+        // JSON path serialises (`outbox_summary_snapshot()`). The kernel emits
+        // raw per-status counters; shells derive display strings themselves.
         let dto = self.outbox_summary_snapshot();
         let outbox_summary = OutboxSummaryModel {
-            title: dto.title.clone(),
-            subtitle: dto.subtitle.clone(),
             total: dto.total,
             sending: dto.sending,
             retrying: dto.retrying,

@@ -83,6 +83,8 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         });
 
     // publish_outbox (key == schema_id == "publish_outbox")
+    // doctrine §4.4: title/preview/status_label removed from wire. TUI shell
+    // computes them from raw kind/content/status (same as iOS/Android shells).
     let outbox = find(nmp_core::typed_projections::PUBLISH_OUTBOX_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_publish_outbox(b).ok())
         .map(|m| {
@@ -90,16 +92,16 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
                 .into_iter()
                 .map(|row| OutboxLine {
                     handle: row.handle,
-                    title: row.title,
-                    status_label: row.status_label,
-                    preview: row.preview,
+                    title: outbox_kind_title(row.kind),
+                    status_label: outbox_status_label(&row.status),
+                    preview: outbox_preview(row.kind, &row.content),
                     can_retry: row.can_retry,
                     relays: row
                         .relays
                         .into_iter()
                         .map(|r| OutboxRelayLine {
                             relay_url: r.relay_url,
-                            status_label: r.status_label,
+                            status_label: outbox_relay_status_label(&r.status),
                             reason: r.relay_reason,
                             message: r.message,
                         })
@@ -110,11 +112,13 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .unwrap_or_default();
 
     // outbox_summary (key == schema_id == "outbox_summary")
+    // doctrine §4.4: title/subtitle removed from wire. TUI shell computes
+    // them from raw per-status counters.
     let outbox_summary = find(nmp_core::typed_projections::OUTBOX_SUMMARY_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_outbox_summary(b).ok())
         .map(|m| SummaryLine {
-            title: m.title,
-            subtitle: m.subtitle,
+            title: outbox_summary_title(m.total),
+            subtitle: outbox_summary_subtitle(m.total, m.sending, m.retrying, m.queued, m.failed),
         })
         .unwrap_or_default();
 
@@ -280,6 +284,93 @@ fn publish_history_from_queue(
         .collect()
 }
 
+// ── Publish-outbox shell-side presentation helpers ─────────────────────────
+//
+// doctrine §4.4: title/preview/status_label removed from the nmp-core wire.
+// The TUI shell computes them here from raw kind/content/status, mirroring the
+// iOS (`NotificationsView+OutboxRow.swift`) and Android display layers.
+
+fn outbox_kind_title(kind: u32) -> String {
+    match kind {
+        0 => "Profile",
+        1 => "Note",
+        3 => "Contacts",
+        7 => "Reaction",
+        10002 => "Relay list",
+        _ => "Event",
+    }
+    .to_string()
+}
+
+fn outbox_status_label(status: &str) -> String {
+    match status {
+        "sending" => "Sending",
+        "retrying" => "Retrying",
+        "queued" => "Queued",
+        "failed" => "Failed",
+        "pending" => "Pending",
+        other => other,
+    }
+    .to_string()
+}
+
+fn outbox_relay_status_label(status: &str) -> String {
+    match status {
+        "sending" => "Sending",
+        "ok" => "OK",
+        "retrying" => "Retrying",
+        "pending" => "Pending",
+        "failed" => "Failed",
+        other => other,
+    }
+    .to_string()
+}
+
+fn outbox_preview(kind: u32, content: &str) -> String {
+    // Encrypted kinds: hide content.
+    const KIND_LEGACY_DM: u32 = 4;
+    const KIND_LEGACY_VERSIONED_DM: u32 = 44;
+    const KIND_GIFT_WRAP: u32 = 1059;
+    if kind == KIND_LEGACY_DM || kind == KIND_LEGACY_VERSIONED_DM || kind == KIND_GIFT_WRAP {
+        return "Encrypted event content hidden".to_string();
+    }
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return "Event with no text content".to_string();
+    }
+    // Truncate to 180 chars with ellipsis — mirrors the Rust kernel's old
+    // `truncate(trimmed, 180)` helper now removed from nmp-core.
+    let mut preview: String = trimmed.chars().take(180).collect();
+    if trimmed.chars().count() > 180 {
+        preview.push('…');
+    }
+    preview
+}
+
+fn outbox_summary_title(total: u32) -> String {
+    if total == 0 {
+        return "Nothing waiting".to_string();
+    }
+    let suffix = if total == 1 { "" } else { "es" };
+    format!("{total} pending publish{suffix}")
+}
+
+fn outbox_summary_subtitle(total: u32, sending: u32, retrying: u32, queued: u32, failed: u32) -> String {
+    if total == 0 {
+        return "Your local outbox is clear.".to_string();
+    }
+    if retrying > 0 {
+        return format!("{retrying} waiting to retry, {sending} currently sending.");
+    }
+    if sending > 0 {
+        return format!("{sending} currently sending.");
+    }
+    if failed > 0 {
+        return format!("{failed} failed.");
+    }
+    let _ = queued;
+    "Waiting for relay connections.".to_string()
+}
 
 #[cfg(test)]
 #[path = "feature_snapshot_typed_roundtrip_tests.rs"]

@@ -251,7 +251,6 @@ impl Kernel {
                 self.push_publish_entry(super::PublishQueueEntry {
                     event_id: signed.id.clone(),
                     kind: signed.unsigned.kind,
-                    title: super::publish_outbox::publish_event_title(signed.unsigned.kind),
                     target_relays: 0,
                     can_retry: status == "pending_relays_unknown",
                     status,
@@ -300,7 +299,6 @@ impl Kernel {
         self.push_publish_entry(super::PublishQueueEntry {
             event_id: event_id.to_string(),
             kind,
-            title: super::publish_outbox::publish_event_title(kind),
             target_relays,
             status: "accepted_locally".to_string(),
             can_retry: false,

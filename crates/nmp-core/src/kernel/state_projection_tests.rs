@@ -239,17 +239,30 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     assert_eq!(outbox.len(), 1);
     assert_eq!(outbox[0]["handle"].as_str(), Some(signed.id.as_str()));
     assert_eq!(outbox[0]["kind"].as_u64(), Some(1));
-    assert_eq!(outbox[0]["title"].as_str(), Some("Note"));
+    // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`, `status_label`
+    // removed from the projection — shells own all presentation formatting.
+    assert!(
+        outbox[0].get("title").is_none(),
+        "title must be absent from projection (doctrine §4.4)"
+    );
+    assert!(
+        outbox[0].get("preview").is_none(),
+        "preview must be absent from projection (doctrine §4.4)"
+    );
+    assert!(
+        outbox[0].get("system_image").is_none(),
+        "system_image must be absent from projection (doctrine §4.4)"
+    );
+    assert!(
+        outbox[0].get("status_label").is_none(),
+        "status_label must be absent from projection (doctrine §4.4)"
+    );
+    // Raw content is emitted so shells can render their own kind-appropriate preview.
     assert_eq!(
-        outbox[0]["preview"].as_str(),
+        outbox[0]["content"].as_str(),
         Some("This note is still waiting for relays")
     );
     assert_eq!(outbox[0]["status"].as_str(), Some("sending"));
-    assert_eq!(outbox[0]["status_label"].as_str(), Some("Sending"));
-    // aim.md §4.4 / §6 anti-pattern: the SF Symbol name is pre-classified in
-    // Rust so the iOS shell never `switch`es on `kind` (a Nostr protocol
-    // concept). Kind 1 (text note) → `"text.bubble"`.
-    assert_eq!(outbox[0]["system_image"].as_str(), Some("text.bubble"));
     // RMP bible commandment #4: a row currently sending cannot be retried.
     // The kernel emits the decision; the shell binds it directly (no Swift
     // `if status != "sending"` branch).
@@ -278,16 +291,18 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
         outbox[0]["relays"][0]["relay_url"].as_str(),
         Some("wss://outbox.test")
     );
-    // Per-relay status label is pre-formatted (no Swift `.capitalized`).
-    assert_eq!(
-        outbox[0]["relays"][0]["status_label"].as_str(),
-        Some("Sending")
+    // ADR-0032 / doctrine §4.4: `status_label` and `attempt_label` removed —
+    // shells compute these from the raw `status` token and `attempt` counter.
+    assert!(
+        outbox[0]["relays"][0].get("status_label").is_none(),
+        "relay status_label must be absent (doctrine §4.4)"
     );
-    // attempt == 1 on first send → "try 1" badge text comes from Rust.
-    assert_eq!(
-        outbox[0]["relays"][0]["attempt_label"].as_str(),
-        Some("try 1")
+    assert!(
+        outbox[0]["relays"][0].get("attempt_label").is_none(),
+        "relay attempt_label must be absent (doctrine §4.4)"
     );
+    assert_eq!(outbox[0]["relays"][0]["status"].as_str(), Some("sending"));
+    assert_eq!(outbox[0]["relays"][0]["attempt"].as_u64(), Some(1));
 }
 
 /// Per-relay rationale ("why was this relay targeted?") threads from the
@@ -404,19 +419,22 @@ fn publish_outbox_omits_empty_relay_reason_from_json() {
     );
 }
 
-/// `outbox_summary` projects an empty-outbox headline + subtitle when nothing
-/// is pending. §6 anti-pattern #1: the shell binds `title` / `subtitle`
-/// strings directly — it never `.filter`-counts `publish_outbox` to derive
-/// them.
+/// `outbox_summary` projects raw per-status counters when nothing is pending.
+/// ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings are
+/// NOT emitted from the kernel — shells compute display strings from counters.
 #[test]
 fn outbox_summary_projects_empty_state_strings() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let snap = snapshot(&mut kernel);
     let summary = &snap["projections"]["outbox_summary"];
-    assert_eq!(summary["title"].as_str(), Some("Nothing waiting"));
-    assert_eq!(
-        summary["subtitle"].as_str(),
-        Some("Your local outbox is clear.")
+    // Doctrine §4.4: title and subtitle must NOT appear in the kernel projection.
+    assert!(
+        summary.get("title").is_none(),
+        "title must be absent from outbox_summary projection (doctrine §4.4)"
+    );
+    assert!(
+        summary.get("subtitle").is_none(),
+        "subtitle must be absent from outbox_summary projection (doctrine §4.4)"
     );
     assert_eq!(summary["total"].as_u64(), Some(0));
     assert_eq!(summary["sending"].as_u64(), Some(0));
@@ -425,9 +443,9 @@ fn outbox_summary_projects_empty_state_strings() {
     assert_eq!(summary["failed"].as_u64(), Some(0));
 }
 
-/// `outbox_summary` projects an "N pending publish(es)" headline and a per-status
-/// subtitle when rows are in flight. Pins the strings the kernel emits so a
-/// Swift refactor cannot quietly resurrect the §6 anti-pattern.
+/// `outbox_summary` projects raw per-status counters when rows are in flight.
+/// ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings are
+/// NOT emitted from the kernel — shells compute display strings from counters.
 #[test]
 fn outbox_summary_projects_sending_counters_and_strings() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -456,8 +474,15 @@ fn outbox_summary_projects_sending_counters_and_strings() {
 
     let snap = snapshot(&mut kernel);
     let summary = &snap["projections"]["outbox_summary"];
-    assert_eq!(summary["title"].as_str(), Some("1 pending publish"));
-    assert_eq!(summary["subtitle"].as_str(), Some("1 currently sending."));
+    // Doctrine §4.4: title and subtitle must NOT appear in the kernel projection.
+    assert!(
+        summary.get("title").is_none(),
+        "title must be absent from outbox_summary projection (doctrine §4.4)"
+    );
+    assert!(
+        summary.get("subtitle").is_none(),
+        "subtitle must be absent from outbox_summary projection (doctrine §4.4)"
+    );
     assert_eq!(summary["total"].as_u64(), Some(1));
     assert_eq!(summary["sending"].as_u64(), Some(1));
     assert_eq!(summary["retrying"].as_u64(), Some(0));

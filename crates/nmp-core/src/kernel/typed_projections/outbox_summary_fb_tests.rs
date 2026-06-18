@@ -1,11 +1,12 @@
 //! Round-trip proof for the `outbox_summary` Tier-2 typed codec.
+//!
+//! ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted English
+//! strings removed from the wire; only raw counters remain.
 
 use super::*;
 
 fn sample() -> OutboxSummaryModel {
     OutboxSummaryModel {
-        title: "3 pending publishes".to_string(),
-        subtitle: "1 waiting to retry, 2 currently sending.".to_string(),
         total: 3,
         sending: 2,
         retrying: 1,
@@ -19,16 +20,13 @@ fn encode_decode_round_trips() {
     let model = sample();
     let bytes = encode_outbox_summary(&model);
     let decoded = decode_outbox_summary(&bytes).expect("decode must succeed");
-    assert_eq!(decoded, model, "round-trip must preserve every counter + string");
+    assert_eq!(decoded, model, "round-trip must preserve every counter");
 }
 
 #[test]
 fn empty_summary_round_trips() {
-    // Mirrors the steady-state `total = 0` summary: the kernel still owns
-    // non-empty `title` / `subtitle` strings even when no publish is in flight.
+    // Steady-state `total = 0` summary: no in-flight publishes.
     let model = OutboxSummaryModel {
-        title: "Nothing waiting".to_string(),
-        subtitle: "Your local outbox is clear.".to_string(),
         ..OutboxSummaryModel::default()
     };
     let decoded = decode_outbox_summary(&encode_outbox_summary(&model)).expect("decode succeeds");

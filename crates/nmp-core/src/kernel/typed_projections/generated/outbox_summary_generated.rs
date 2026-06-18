@@ -26,22 +26,20 @@ impl<'a> ::flatbuffers::Follow<'a> for OutboxSummarySnapshot<'a> {
 }
 
 impl<'a> OutboxSummarySnapshot<'a> {
-  pub const VT_TITLE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_SUBTITLE: ::flatbuffers::VOffsetT = 6;
-  pub const VT_TOTAL: ::flatbuffers::VOffsetT = 8;
-  pub const VT_SENDING: ::flatbuffers::VOffsetT = 10;
-  pub const VT_RETRYING: ::flatbuffers::VOffsetT = 12;
-  pub const VT_QUEUED: ::flatbuffers::VOffsetT = 14;
-  pub const VT_FAILED: ::flatbuffers::VOffsetT = 16;
+  pub const VT_TOTAL: ::flatbuffers::VOffsetT = 4;
+  pub const VT_SENDING: ::flatbuffers::VOffsetT = 6;
+  pub const VT_RETRYING: ::flatbuffers::VOffsetT = 8;
+  pub const VT_QUEUED: ::flatbuffers::VOffsetT = 10;
+  pub const VT_FAILED: ::flatbuffers::VOffsetT = 12;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
     OutboxSummarySnapshot { _tab: table }
   }
   #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+  pub fn create<'bldr: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
     _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args OutboxSummarySnapshotArgs<'args>
+    args: &OutboxSummarySnapshotArgs
   ) -> ::flatbuffers::WIPOffset<OutboxSummarySnapshot<'bldr>> {
     let mut builder = OutboxSummarySnapshotBuilder::new(_fbb);
     builder.add_failed(args.failed);
@@ -49,26 +47,10 @@ impl<'a> OutboxSummarySnapshot<'a> {
     builder.add_retrying(args.retrying);
     builder.add_sending(args.sending);
     builder.add_total(args.total);
-    if let Some(x) = args.subtitle { builder.add_subtitle(x); }
-    if let Some(x) = args.title { builder.add_title(x); }
     builder.finish()
   }
 
 
-  #[inline]
-  pub fn title(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(OutboxSummarySnapshot::VT_TITLE, None)}
-  }
-  #[inline]
-  pub fn subtitle(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(OutboxSummarySnapshot::VT_SUBTITLE, None)}
-  }
   #[inline]
   pub fn total(&self) -> u32 {
     // Safety:
@@ -112,8 +94,6 @@ impl ::flatbuffers::Verifiable for OutboxSummarySnapshot<'_> {
     v: &mut ::flatbuffers::Verifier, pos: usize
   ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
     v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("title", Self::VT_TITLE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("subtitle", Self::VT_SUBTITLE, false)?
      .visit_field::<u32>("total", Self::VT_TOTAL, false)?
      .visit_field::<u32>("sending", Self::VT_SENDING, false)?
      .visit_field::<u32>("retrying", Self::VT_RETRYING, false)?
@@ -123,21 +103,17 @@ impl ::flatbuffers::Verifiable for OutboxSummarySnapshot<'_> {
     Ok(())
   }
 }
-pub struct OutboxSummarySnapshotArgs<'a> {
-    pub title: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub subtitle: Option<::flatbuffers::WIPOffset<&'a str>>,
+pub struct OutboxSummarySnapshotArgs {
     pub total: u32,
     pub sending: u32,
     pub retrying: u32,
     pub queued: u32,
     pub failed: u32,
 }
-impl<'a> Default for OutboxSummarySnapshotArgs<'a> {
+impl Default for OutboxSummarySnapshotArgs {
   #[inline]
   fn default() -> Self {
     OutboxSummarySnapshotArgs {
-      title: None,
-      subtitle: None,
       total: 0,
       sending: 0,
       retrying: 0,
@@ -152,14 +128,6 @@ pub struct OutboxSummarySnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator 
   start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
 }
 impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OutboxSummarySnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_title(&mut self, title: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(OutboxSummarySnapshot::VT_TITLE, title);
-  }
-  #[inline]
-  pub fn add_subtitle(&mut self, subtitle: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(OutboxSummarySnapshot::VT_SUBTITLE, subtitle);
-  }
   #[inline]
   pub fn add_total(&mut self, total: u32) {
     self.fbb_.push_slot::<u32>(OutboxSummarySnapshot::VT_TOTAL, total, 0);
@@ -198,8 +166,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OutboxSummarySnapshotBuilder<
 impl ::core::fmt::Debug for OutboxSummarySnapshot<'_> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
     let mut ds = f.debug_struct("OutboxSummarySnapshot");
-      ds.field("title", &self.title());
-      ds.field("subtitle", &self.subtitle());
       ds.field("total", &self.total());
       ds.field("sending", &self.sending());
       ds.field("retrying", &self.retrying());
@@ -293,4 +259,3 @@ pub fn finish_size_prefixed_outbox_summary_snapshot_buffer<'a, 'b, A: ::flatbuff
 }
 }  // pub mod kernel
 }  // pub mod nmp
-

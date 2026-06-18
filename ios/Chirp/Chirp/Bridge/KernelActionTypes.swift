@@ -234,25 +234,20 @@ struct ActionLifecycleSnapshot: Decodable, Equatable {
     let recentTerminal: [ActionLifecycleEntry]
 }
 
+/// One publish-outbox item. ADR-0032 / doctrine §4.4: presentation strings
+/// (`title`, `preview`, `statusLabel`, `systemImage`) have been removed from
+/// the wire. The shell computes display strings from the raw `kind`, `content`,
+/// and `status` fields. See `NotificationsView+OutboxRow.swift` for helpers.
 struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     let handle: String
     let eventId: String
     let kind: UInt32
-    let title: String
-    let preview: String
+    /// Raw event content — shell derives its own kind-appropriate preview.
+    let content: String
     // ADR-0032 / V-115: `createdAtDisplay` removed. Raw Unix-seconds timestamp;
     // shell formats with its own locale/TZ via `UInt64.relativeTimeFromUnixSeconds`.
     let createdAt: UInt64
     let status: String
-    /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
-    /// Doctrine §6 anti-pattern #1: the shell renders this verbatim — it
-    /// never `switch`es on `status` to choose a label string. Always non-empty.
-    let statusLabel: String
-    /// SF Symbol name pre-classified from the Nostr `kind` in Rust. The view
-    /// passes this directly to `Image(systemName:)` — it never branches on
-    /// `kind` to pick an icon (aim.md §4.4 / §6 anti-pattern: kind-number
-    /// switches in Swift). Always non-empty (default `"doc.text"`).
-    let systemImage: String
     /// Pre-decided "is the Retry button enabled" flag. The kernel owns the
     /// retry-policy rule ("a row already sending cannot be retried"); the
     /// shell binds this directly to `.disabled(!canRetry)` (RMP bible
@@ -266,18 +261,13 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     var id: String { handle }
 }
 
+/// One relay row within a publish-outbox item. ADR-0032 / doctrine §4.4:
+/// `statusLabel` and `attemptLabel` removed from the wire — the shell computes
+/// them from the raw `status` token and `attempt` counter.
 struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     let relayUrl: String
     let status: String
-    /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
-    /// Always non-empty — the shell renders this verbatim, never
-    /// `.capitalized`s the wire `status` key or switches on it.
-    let statusLabel: String
     let attempt: UInt32
-    /// Pre-formatted "try N" badge text — empty when `attempt == 0` so the
-    /// shell renders unconditionally (D1: best-effort rendering, no
-    /// `if attempt > 0` branch). When non-empty the shell renders it as-is.
-    let attemptLabel: String
     let message: String
     /// Pre-formatted English reason the relay was targeted — empty string on
     /// old kernels. Shell renders verbatim with no branching.
@@ -288,16 +278,14 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     var id: String { relayUrl }
 
     private enum CodingKeys: String, CodingKey {
-        case relayUrl, status, statusLabel, attempt, attemptLabel, message, relayReason
+        case relayUrl, status, attempt, message, relayReason
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         relayUrl = try c.decode(String.self, forKey: .relayUrl)
         status = try c.decode(String.self, forKey: .status)
-        statusLabel = try c.decode(String.self, forKey: .statusLabel)
         attempt = try c.decode(UInt32.self, forKey: .attempt)
-        attemptLabel = try c.decode(String.self, forKey: .attemptLabel)
         message = try c.decode(String.self, forKey: .message)
         relayReason = try c.decodeIfPresent(String.self, forKey: .relayReason) ?? ""
     }
@@ -309,30 +297,23 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     init(
         relayUrl: String,
         status: String,
-        statusLabel: String,
         attempt: UInt32,
-        attemptLabel: String,
         message: String,
         relayReason: String
     ) {
         self.relayUrl = relayUrl
         self.status = status
-        self.statusLabel = statusLabel
         self.attempt = attempt
-        self.attemptLabel = attemptLabel
         self.message = message
         self.relayReason = relayReason
     }
 }
 
-/// Pre-formatted outbox-summary header (title + subtitle) plus per-status
-/// counters. Doctrine §6 anti-pattern #1 ("Duplicated formatting logic
-/// across platforms") + RMP bible commandment #4 ("no native business
-/// logic"). The shell binds `title` / `subtitle` directly — it never
-/// `.filter`-counts `publishOutbox` to derive them.
+/// Per-status counters for the publish outbox. ADR-0032 / doctrine §4.4:
+/// `title` / `subtitle` pre-formatted strings removed from the wire — the
+/// shell computes display strings from the raw counters. See computed helpers
+/// in `NotificationsView.swift`.
 struct OutboxSummary: Decodable, Equatable {
-    let title: String
-    let subtitle: String
     let total: UInt32
     let sending: UInt32
     let retrying: UInt32
@@ -340,12 +321,8 @@ struct OutboxSummary: Decodable, Equatable {
     let failed: UInt32
 
     /// Empty-state fallback used when the snapshot predates the projection
-    /// (an older kernel build that ships no `outbox_summary` key). Mirrors
-    /// the Rust `outbox_summary_snapshot` empty-outbox shape so the shell
-    /// never has to reconstruct the strings.
+    /// (an older kernel build that ships no `outbox_summary` key).
     static let empty = OutboxSummary(
-        title: "Nothing waiting",
-        subtitle: "Your local outbox is clear.",
         total: 0,
         sending: 0,
         retrying: 0,

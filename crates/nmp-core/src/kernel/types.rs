@@ -289,23 +289,17 @@ pub(super) struct PublishOutboxItem {
     pub(super) handle: String,
     pub(super) event_id: String,
     pub(super) kind: u32,
-    pub(super) title: String,
-    pub(super) preview: String,
+    /// Raw verbatim content of the event being published. The shell formats
+    /// this for display (truncation, encrypted-content placeholder, etc.).
+    /// ADR-0032 / doctrine §4.4: presentation formatting lives in the shell,
+    /// not in the kernel. Replaces the removed `preview` / `title` /
+    /// `system_image` pre-formatted fields.
+    pub(super) content: String,
     /// Raw Unix-seconds creation timestamp. ADR-0032: projection sends raw
     /// epoch seconds; shells format for display with their own locale/TZ.
     /// Replaces the removed `created_at_display` wire field (V-115).
     pub(super) created_at: u64,
     pub(super) status: String,
-    /// Pre-formatted English label for `status` (e.g. `"Sending"`, `"Retrying"`).
-    /// Doctrine §6 anti-pattern #1: the shell renders this directly — it never
-    /// switches on `status` to choose a label string. Always non-empty.
-    pub(super) status_label: String,
-    /// SF Symbol name for the row icon, pre-classified from `kind`. The shell
-    /// renders this verbatim via `Image(systemName:)` so it never branches on
-    /// the Nostr kind number — `kind` is a protocol concept that belongs in
-    /// Rust (aim.md §4.4 / §6 anti-pattern: "kind-number switches in views").
-    /// Always non-empty (default `"doc.text"`).
-    pub(super) system_image: String,
     /// Pre-decided "is the Retry button enabled" flag. The kernel knows the
     /// retry-policy rule ("a row already sending cannot be retried"); the
     /// shell never reconstructs it. RMP bible commandment #4 — no native `if`
@@ -321,16 +315,7 @@ pub(super) struct PublishOutboxItem {
 pub(super) struct PublishOutboxRelay {
     pub(super) relay_url: String,
     pub(super) status: String,
-    /// Pre-formatted English label for `status` (e.g. `"Sending"`, `"Retrying"`).
-    /// Always non-empty — the shell never `.capitalized`s `status` or switches
-    /// on it to choose a label string.
-    pub(super) status_label: String,
     pub(super) attempt: u32,
-    /// Pre-formatted "try N" badge — empty string when `attempt` is zero so
-    /// the shell renders unconditionally (D1: best-effort rendering — no
-    /// `if attempt > 0` deciding whether to show the badge). When non-empty
-    /// the shell renders it as-is.
-    pub(super) attempt_label: String,
     pub(super) message: String,
     /// Pre-formatted "why was this relay targeted?" string, computed by the
     /// outbox resolver at publish time and carried verbatim through the
@@ -345,22 +330,15 @@ pub(super) struct PublishOutboxRelay {
     pub(super) relay_reason: String,
 }
 
-/// Pre-formatted outbox summary header for `NotificationsView` (and similar
-/// shells). The kernel owns the counters AND the user-facing English strings;
-/// the shell only binds the strings.
+/// Outbox summary counters for `NotificationsView` (and similar shells).
+/// The kernel owns the per-status counts; the shell derives any display
+/// strings (headline, subtitle) from these raw counts using its own locale.
 ///
-/// Doctrine §6 anti-pattern #1 ("Duplicated formatting logic across platforms")
-/// and RMP bible commandment #4 ("no native business logic"). The shell never
-/// counts `publish_outbox` entries by status to derive a subtitle; it reads
-/// `outbox_summary.subtitle` directly.
+/// ADR-0032 / doctrine §4.4: presentation formatting lives in the shell.
+/// The previously-emitted `title` / `subtitle` pre-formatted English strings
+/// have been removed; shells now compute them from the raw counters.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct OutboxSummarySnapshot {
-    /// Pre-formatted headline — e.g. `"Nothing waiting"`, `"3 pending
-    /// publishes"`, or `"1 pending publish"`. Always non-empty (D1).
-    pub(super) title: String,
-    /// Pre-formatted explanatory subtitle that decomposes per-status counts
-    /// into a single sentence. Always non-empty (D1).
-    pub(super) subtitle: String,
     pub(super) total: u32,
     pub(super) sending: u32,
     pub(super) retrying: u32,

@@ -26,18 +26,17 @@ namespace nmp.kernel;
 
 // One target relay of an in-flight publish — a field-for-field mirror of one
 // SERIALISED `PublishOutboxRelay`.
+// ADR-0032 / doctrine §4.4: `status_label` and `attempt_label` pre-formatted
+// English strings removed; shells derive them from the raw `status` token and
+// `attempt` counter.
 table PublishOutboxRelay {
   // Relay websocket URL.
   relay_url:string;
   // Per-relay status token (`"pending"` / `"sending"` / `"retrying"` / `"ok"`
   // / `"failed"`).
   status:string;
-  // Pre-formatted English label for `relay_status`. Always non-empty.
-  status_label:string;
   // Retry attempt counter (0 before the first retry).
   attempt:uint;
-  // Pre-formatted "try N" badge — empty until the first retry.
-  attempt_label:string;
   // Per-relay human-readable detail message.
   message:string;
   // Pre-formatted "why was this relay targeted?" string (raw hex pubkey
@@ -48,6 +47,9 @@ table PublishOutboxRelay {
 
 // One in-flight publish — a field-for-field mirror of one SERIALISED
 // `PublishOutboxItem`.
+// ADR-0032 / doctrine §4.4: `title`, `preview`, `status_label`, `system_image`
+// pre-formatted English/SF-Symbol strings removed; `content` (raw event content)
+// added so shells can render their own kind-appropriate preview.
 table PublishOutboxItem {
   // Opaque publish handle the host addresses retry/cancel commands to.
   handle:string;
@@ -55,18 +57,9 @@ table PublishOutboxItem {
   event_id:string;
   // Nostr event kind number.
   kind:uint;
-  // Pre-formatted English kind label (e.g. `"Note"`). Kernel-owned.
-  title:string;
-  // Pre-formatted content preview (or an encrypted/empty placeholder).
-  preview:string;
   // Row-level status token (`"sending"` / `"retrying"` / `"pending"` /
   // `"failed"` / `"queued"`).
   status:string;
-  // Pre-formatted English label for `status`. Always non-empty.
-  status_label:string;
-  // SF Symbol name for the row icon, pre-classified from `kind`. Always
-  // non-empty (default `"doc.text"`).
-  system_image:string;
   // Rust-owned Retry-button enablement decision.
   can_retry:bool;
   // Number of target relays (mirrors the JSON `usize`; `uint` is the widest
@@ -77,6 +70,9 @@ table PublishOutboxItem {
   // Raw Unix-seconds creation timestamp (V-115 / ADR-0032). Shells format
   // with their own locale and timezone.
   created_at:uint64;
+  // Raw verbatim event content. Shells format for display (truncation,
+  // encrypted-content placeholder, kind-specific preview, etc.).
+  content:string;
 }
 
 table PublishOutboxSnapshot {

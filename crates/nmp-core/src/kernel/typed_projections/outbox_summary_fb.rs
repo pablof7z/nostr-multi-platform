@@ -47,10 +47,10 @@ pub const OUTBOX_SUMMARY_SCHEMA_VERSION: u32 = 1;
 
 /// The `"outbox_summary"` read model — a field-for-field mirror of the
 /// SERIALISED [`OutboxSummarySnapshot`](crate::kernel::OutboxSummarySnapshot).
+/// ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings
+/// removed; shells derive display strings from the raw counters.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OutboxSummaryModel {
-    pub title: String,
-    pub subtitle: String,
     pub total: u32,
     pub sending: u32,
     pub retrying: u32,
@@ -65,13 +65,9 @@ pub struct OutboxSummaryModel {
 #[must_use]
 pub(crate) fn encode_outbox_summary(model: &OutboxSummaryModel) -> Vec<u8> {
     let mut fbb = FlatBufferBuilder::new();
-    let title = fbb.create_string(&model.title);
-    let subtitle = fbb.create_string(&model.subtitle);
     let root = fb::OutboxSummarySnapshot::create(
         &mut fbb,
         &fb::OutboxSummarySnapshotArgs {
-            title: Some(title),
-            subtitle: Some(subtitle),
             total: model.total,
             sending: model.sending,
             retrying: model.retrying,
@@ -96,8 +92,6 @@ pub fn decode_outbox_summary(bytes: &[u8]) -> Result<OutboxSummaryModel, String>
         .map_err(|e| format!("not a valid OutboxSummarySnapshot buffer: {e}"))?;
 
     Ok(OutboxSummaryModel {
-        title: root.title().unwrap_or_default().to_string(),
-        subtitle: root.subtitle().unwrap_or_default().to_string(),
         total: root.total(),
         sending: root.sending(),
         retrying: root.retrying(),

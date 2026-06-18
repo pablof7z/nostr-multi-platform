@@ -28,11 +28,9 @@ impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxRelay<'a> {
 impl<'a> PublishOutboxRelay<'a> {
   pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 4;
   pub const VT_STATUS: ::flatbuffers::VOffsetT = 6;
-  pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 8;
-  pub const VT_ATTEMPT: ::flatbuffers::VOffsetT = 10;
-  pub const VT_ATTEMPT_LABEL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 14;
-  pub const VT_RELAY_REASON: ::flatbuffers::VOffsetT = 16;
+  pub const VT_ATTEMPT: ::flatbuffers::VOffsetT = 8;
+  pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
+  pub const VT_RELAY_REASON: ::flatbuffers::VOffsetT = 12;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -46,9 +44,7 @@ impl<'a> PublishOutboxRelay<'a> {
     let mut builder = PublishOutboxRelayBuilder::new(_fbb);
     if let Some(x) = args.relay_reason { builder.add_relay_reason(x); }
     if let Some(x) = args.message { builder.add_message(x); }
-    if let Some(x) = args.attempt_label { builder.add_attempt_label(x); }
     builder.add_attempt(args.attempt);
-    if let Some(x) = args.status_label { builder.add_status_label(x); }
     if let Some(x) = args.status { builder.add_status(x); }
     if let Some(x) = args.relay_url { builder.add_relay_url(x); }
     builder.finish()
@@ -70,25 +66,11 @@ impl<'a> PublishOutboxRelay<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_STATUS, None)}
   }
   #[inline]
-  pub fn status_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_STATUS_LABEL, None)}
-  }
-  #[inline]
   pub fn attempt(&self) -> u32 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<u32>(PublishOutboxRelay::VT_ATTEMPT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn attempt_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_ATTEMPT_LABEL, None)}
   }
   #[inline]
   pub fn message(&self) -> Option<&'a str> {
@@ -114,9 +96,7 @@ impl ::flatbuffers::Verifiable for PublishOutboxRelay<'_> {
     v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_url", Self::VT_RELAY_URL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status_label", Self::VT_STATUS_LABEL, false)?
      .visit_field::<u32>("attempt", Self::VT_ATTEMPT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("attempt_label", Self::VT_ATTEMPT_LABEL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_reason", Self::VT_RELAY_REASON, false)?
      .finish();
@@ -126,9 +106,7 @@ impl ::flatbuffers::Verifiable for PublishOutboxRelay<'_> {
 pub struct PublishOutboxRelayArgs<'a> {
     pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub status_label: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub attempt: u32,
-    pub attempt_label: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub relay_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
@@ -138,9 +116,7 @@ impl<'a> Default for PublishOutboxRelayArgs<'a> {
     PublishOutboxRelayArgs {
       relay_url: None,
       status: None,
-      status_label: None,
       attempt: 0,
-      attempt_label: None,
       message: None,
       relay_reason: None,
     }
@@ -161,16 +137,8 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxRelayBuilder<'a,
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_STATUS, status);
   }
   #[inline]
-  pub fn add_status_label(&mut self, status_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_STATUS_LABEL, status_label);
-  }
-  #[inline]
   pub fn add_attempt(&mut self, attempt: u32) {
     self.fbb_.push_slot::<u32>(PublishOutboxRelay::VT_ATTEMPT, attempt, 0);
-  }
-  #[inline]
-  pub fn add_attempt_label(&mut self, attempt_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_ATTEMPT_LABEL, attempt_label);
   }
   #[inline]
   pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b  str>) {
@@ -200,9 +168,7 @@ impl ::core::fmt::Debug for PublishOutboxRelay<'_> {
     let mut ds = f.debug_struct("PublishOutboxRelay");
       ds.field("relay_url", &self.relay_url());
       ds.field("status", &self.status());
-      ds.field("status_label", &self.status_label());
       ds.field("attempt", &self.attempt());
-      ds.field("attempt_label", &self.attempt_label());
       ds.field("message", &self.message());
       ds.field("relay_reason", &self.relay_reason());
       ds.finish()
@@ -227,15 +193,12 @@ impl<'a> PublishOutboxItem<'a> {
   pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
   pub const VT_EVENT_ID: ::flatbuffers::VOffsetT = 6;
   pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
-  pub const VT_TITLE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_PREVIEW: ::flatbuffers::VOffsetT = 12;
-  pub const VT_STATUS: ::flatbuffers::VOffsetT = 14;
-  pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 16;
-  pub const VT_SYSTEM_IMAGE: ::flatbuffers::VOffsetT = 18;
-  pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 20;
-  pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 22;
-  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 24;
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 26;
+  pub const VT_STATUS: ::flatbuffers::VOffsetT = 10;
+  pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 12;
+  pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 14;
+  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 16;
+  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 18;
+  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 20;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -248,13 +211,10 @@ impl<'a> PublishOutboxItem<'a> {
   ) -> ::flatbuffers::WIPOffset<PublishOutboxItem<'bldr>> {
     let mut builder = PublishOutboxItemBuilder::new(_fbb);
     builder.add_created_at(args.created_at);
+    if let Some(x) = args.content { builder.add_content(x); }
     if let Some(x) = args.relays { builder.add_relays(x); }
     builder.add_target_relays(args.target_relays);
-    if let Some(x) = args.system_image { builder.add_system_image(x); }
-    if let Some(x) = args.status_label { builder.add_status_label(x); }
     if let Some(x) = args.status { builder.add_status(x); }
-    if let Some(x) = args.preview { builder.add_preview(x); }
-    if let Some(x) = args.title { builder.add_title(x); }
     builder.add_kind(args.kind);
     if let Some(x) = args.event_id { builder.add_event_id(x); }
     if let Some(x) = args.handle { builder.add_handle(x); }
@@ -285,39 +245,11 @@ impl<'a> PublishOutboxItem<'a> {
     unsafe { self._tab.get::<u32>(PublishOutboxItem::VT_KIND, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn title(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_TITLE, None)}
-  }
-  #[inline]
-  pub fn preview(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_PREVIEW, None)}
-  }
-  #[inline]
   pub fn status(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_STATUS, None)}
-  }
-  #[inline]
-  pub fn status_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_STATUS_LABEL, None)}
-  }
-  #[inline]
-  pub fn system_image(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_SYSTEM_IMAGE, None)}
   }
   #[inline]
   pub fn can_retry(&self) -> bool {
@@ -347,6 +279,13 @@ impl<'a> PublishOutboxItem<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<u64>(PublishOutboxItem::VT_CREATED_AT, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn content(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_CONTENT, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for PublishOutboxItem<'_> {
@@ -358,15 +297,12 @@ impl ::flatbuffers::Verifiable for PublishOutboxItem<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("handle", Self::VT_HANDLE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("event_id", Self::VT_EVENT_ID, false)?
      .visit_field::<u32>("kind", Self::VT_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("title", Self::VT_TITLE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("preview", Self::VT_PREVIEW, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status_label", Self::VT_STATUS_LABEL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("system_image", Self::VT_SYSTEM_IMAGE, false)?
      .visit_field::<bool>("can_retry", Self::VT_CAN_RETRY, false)?
      .visit_field::<u32>("target_relays", Self::VT_TARGET_RELAYS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>>>>("relays", Self::VT_RELAYS, false)?
      .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
      .finish();
     Ok(())
   }
@@ -375,15 +311,12 @@ pub struct PublishOutboxItemArgs<'a> {
     pub handle: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub kind: u32,
-    pub title: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub preview: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub status_label: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub system_image: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub can_retry: bool,
     pub target_relays: u32,
     pub relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>>>>,
     pub created_at: u64,
+    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for PublishOutboxItemArgs<'a> {
   #[inline]
@@ -392,15 +325,12 @@ impl<'a> Default for PublishOutboxItemArgs<'a> {
       handle: None,
       event_id: None,
       kind: 0,
-      title: None,
-      preview: None,
       status: None,
-      status_label: None,
-      system_image: None,
       can_retry: false,
       target_relays: 0,
       relays: None,
       created_at: 0,
+      content: None,
     }
   }
 }
@@ -423,24 +353,8 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxItemBuilder<'a, 
     self.fbb_.push_slot::<u32>(PublishOutboxItem::VT_KIND, kind, 0);
   }
   #[inline]
-  pub fn add_title(&mut self, title: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_TITLE, title);
-  }
-  #[inline]
-  pub fn add_preview(&mut self, preview: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_PREVIEW, preview);
-  }
-  #[inline]
   pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_STATUS, status);
-  }
-  #[inline]
-  pub fn add_status_label(&mut self, status_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_STATUS_LABEL, status_label);
-  }
-  #[inline]
-  pub fn add_system_image(&mut self, system_image: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_SYSTEM_IMAGE, system_image);
   }
   #[inline]
   pub fn add_can_retry(&mut self, can_retry: bool) {
@@ -457,6 +371,10 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxItemBuilder<'a, 
   #[inline]
   pub fn add_created_at(&mut self, created_at: u64) {
     self.fbb_.push_slot::<u64>(PublishOutboxItem::VT_CREATED_AT, created_at, 0);
+  }
+  #[inline]
+  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_CONTENT, content);
   }
   #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PublishOutboxItemBuilder<'a, 'b, A> {
@@ -479,15 +397,12 @@ impl ::core::fmt::Debug for PublishOutboxItem<'_> {
       ds.field("handle", &self.handle());
       ds.field("event_id", &self.event_id());
       ds.field("kind", &self.kind());
-      ds.field("title", &self.title());
-      ds.field("preview", &self.preview());
       ds.field("status", &self.status());
-      ds.field("status_label", &self.status_label());
-      ds.field("system_image", &self.system_image());
       ds.field("can_retry", &self.can_retry());
       ds.field("target_relays", &self.target_relays());
       ds.field("relays", &self.relays());
       ds.field("created_at", &self.created_at());
+      ds.field("content", &self.content());
       ds.finish()
   }
 }
@@ -672,4 +587,3 @@ pub fn finish_size_prefixed_publish_outbox_snapshot_buffer<'a, 'b, A: ::flatbuff
 }
 }  // pub mod kernel
 }  // pub mod nmp
-

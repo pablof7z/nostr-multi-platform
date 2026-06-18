@@ -3,8 +3,8 @@ use serde_json::Value;
 use crate::bridge::UpdatePayload;
 use crate::feature_snapshot_json::{
     accounts_from, configured_relays_from, dm_from, follow_count_from, groups_from, messages_from,
-    outbox_from, projection, publish_history_from, settings_hub_from, string_field, summary_from,
-    wallet_from,
+    outbox_from, outbox_summary_from, projection, publish_history_from, settings_hub_from,
+    string_field, summary_from, wallet_from,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -85,7 +85,7 @@ impl FeatureSnapshot {
             accounts: accounts_from(projections),
             active_account: string_field(projections, "active_account"),
             outbox: outbox_from(projections),
-            outbox_summary: summary_from(projections.get("outbox_summary")),
+            outbox_summary: outbox_summary_from(projections.get("outbox_summary")),
             history: publish_history_from(projections),
             configured_relays: configured_relays_from(projections),
             wallet: wallet_from(projections.get("wallet")),

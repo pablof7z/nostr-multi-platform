@@ -20,29 +20,21 @@ public struct nmp_kernel_OutboxSummarySnapshot: FlatBufferTable, FlatbuffersVect
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
 
   private enum VTOFFSET: VOffset {
-    case title = 4
-    case subtitle = 6
-    case total = 8
-    case sending = 10
-    case retrying = 12
-    case queued = 14
-    case failed = 16
+    case total = 4
+    case sending = 6
+    case retrying = 8
+    case queued = 10
+    case failed = 12
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
-  public var title: String? { let o = _accessor.offset(VTOFFSET.title.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var titleSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.title.v) }
-  public var subtitle: String? { let o = _accessor.offset(VTOFFSET.subtitle.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var subtitleSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.subtitle.v) }
   public var total: UInt32 { let o = _accessor.offset(VTOFFSET.total.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var sending: UInt32 { let o = _accessor.offset(VTOFFSET.sending.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var retrying: UInt32 { let o = _accessor.offset(VTOFFSET.retrying.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var queued: UInt32 { let o = _accessor.offset(VTOFFSET.queued.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var failed: UInt32 { let o = _accessor.offset(VTOFFSET.failed.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
-  public static func startOutboxSummarySnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 7) }
-  public static func add(title: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: title, at: VTOFFSET.title.p) }
-  public static func add(subtitle: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: subtitle, at: VTOFFSET.subtitle.p) }
+  public static func startOutboxSummarySnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 5) }
   public static func add(total: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: total, def: 0, at: VTOFFSET.total.p) }
   public static func add(sending: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: sending, def: 0, at: VTOFFSET.sending.p) }
   public static func add(retrying: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: retrying, def: 0, at: VTOFFSET.retrying.p) }
@@ -51,8 +43,6 @@ public struct nmp_kernel_OutboxSummarySnapshot: FlatBufferTable, FlatbuffersVect
   public static func endOutboxSummarySnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createOutboxSummarySnapshot(
     _ fbb: inout FlatBufferBuilder,
-    titleOffset title: Offset = Offset(),
-    subtitleOffset subtitle: Offset = Offset(),
     total: UInt32 = 0,
     sending: UInt32 = 0,
     retrying: UInt32 = 0,
@@ -60,8 +50,6 @@ public struct nmp_kernel_OutboxSummarySnapshot: FlatBufferTable, FlatbuffersVect
     failed: UInt32 = 0
   ) -> Offset {
     let __start = nmp_kernel_OutboxSummarySnapshot.startOutboxSummarySnapshot(&fbb)
-    nmp_kernel_OutboxSummarySnapshot.add(title: title, &fbb)
-    nmp_kernel_OutboxSummarySnapshot.add(subtitle: subtitle, &fbb)
     nmp_kernel_OutboxSummarySnapshot.add(total: total, &fbb)
     nmp_kernel_OutboxSummarySnapshot.add(sending: sending, &fbb)
     nmp_kernel_OutboxSummarySnapshot.add(retrying: retrying, &fbb)
@@ -72,8 +60,6 @@ public struct nmp_kernel_OutboxSummarySnapshot: FlatBufferTable, FlatbuffersVect
 
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
-    try _v.visit(field: VTOFFSET.title.p, fieldName: "title", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.subtitle.p, fieldName: "subtitle", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.total.p, fieldName: "total", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.sending.p, fieldName: "sending", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.retrying.p, fieldName: "retrying", required: false, type: UInt32.self)

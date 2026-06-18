@@ -35,13 +35,24 @@ pub(crate) fn outbox_from(projections: &Value) -> Vec<OutboxLine> {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .map(|row| OutboxLine {
-            handle: string_field(row, "handle"),
-            title: string_field(row, "title"),
-            status_label: first_nonempty(row, &["status_label", "statusLabel", "status"]),
-            preview: string_field(row, "preview"),
-            can_retry: bool_field(row, "can_retry") || bool_field(row, "canRetry"),
-            relays: relay_lines_from(row),
+        .map(|row| {
+            let kind = row
+                .get("kind")
+                .and_then(Value::as_u64)
+                .and_then(|k| u32::try_from(k).ok())
+                .unwrap_or_default();
+            let content = string_field(row, "content");
+            let status = first_nonempty(row, &["status"]);
+            // doctrine §4.4: title/preview/status_label removed from wire.
+            // JSON path computes from raw kind/content/status (mirrors typed path).
+            OutboxLine {
+                handle: string_field(row, "handle"),
+                title: json_outbox_kind_title(kind),
+                status_label: json_outbox_status_label(&status),
+                preview: json_outbox_preview(kind, &content),
+                can_retry: bool_field(row, "can_retry") || bool_field(row, "canRetry"),
+                relays: relay_lines_from(row),
+            }
         })
         .collect()
 }
@@ -101,11 +112,15 @@ pub(crate) fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .map(|r| OutboxRelayLine {
-            relay_url: string_field(r, "relay_url"),
-            status_label: first_nonempty(r, &["status_label", "statusLabel"]),
-            reason: string_field(r, "relay_reason"),
-            message: string_field(r, "message"),
+        .map(|r| {
+            let status = first_nonempty(r, &["status"]);
+            OutboxRelayLine {
+                relay_url: string_field(r, "relay_url"),
+                // doctrine §4.4: status_label removed from wire. Compute from status.
+                status_label: json_outbox_relay_status_label(&status),
+                reason: string_field(r, "relay_reason"),
+                message: string_field(r, "message"),
+            }
         })
         .collect()
 }
@@ -219,6 +234,46 @@ pub(crate) fn summary_from(value: Option<&Value>) -> SummaryLine {
     })
 }
 
+/// Parse `projections.outbox_summary` into a `SummaryLine`. doctrine §4.4:
+/// `title`/`subtitle` removed from wire — compute from raw per-status counters.
+pub(crate) fn outbox_summary_from(value: Option<&Value>) -> SummaryLine {
+    let Some(v) = value else {
+        return SummaryLine::default();
+    };
+    let total = u32_field(v, "total");
+    let sending = u32_field(v, "sending");
+    let retrying = u32_field(v, "retrying");
+    let queued = u32_field(v, "queued");
+    let failed = u32_field(v, "failed");
+    let title = if total == 0 {
+        "Nothing waiting".to_string()
+    } else {
+        let suffix = if total == 1 { "" } else { "es" };
+        format!("{total} pending publish{suffix}")
+    };
+    let subtitle = if total == 0 {
+        "Your local outbox is clear.".to_string()
+    } else if retrying > 0 {
+        format!("{retrying} waiting to retry, {sending} currently sending.")
+    } else if sending > 0 {
+        format!("{sending} currently sending.")
+    } else if failed > 0 {
+        format!("{failed} failed.")
+    } else {
+        let _ = queued;
+        "Waiting for relay connections.".to_string()
+    };
+    SummaryLine { title, subtitle }
+}
+
+fn u32_field(value: &Value, key: &str) -> u32 {
+    value
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or_default()
+}
+
 pub(crate) fn settings_hub_from(value: Option<&Value>) -> SummaryLine {
     let subtitle = value
         .and_then(|v| {
@@ -264,4 +319,64 @@ pub(crate) fn bool_field(value: &Value, key: &str) -> bool {
 
 pub(crate) fn number_field(value: &Value, key: &str) -> u64 {
     value.get(key).and_then(Value::as_u64).unwrap_or_default()
+}
+
+// ── Publish-outbox JSON-path presentation helpers ───────────────────────────
+//
+// doctrine §4.4: title/preview/status_label removed from the nmp-core wire.
+// The JSON path computes them from raw kind/content/status, mirroring the
+// typed path (`feature_snapshot_typed`) and the iOS/Android shells.
+
+fn json_outbox_kind_title(kind: u32) -> String {
+    match kind {
+        0 => "Profile",
+        1 => "Note",
+        3 => "Contacts",
+        7 => "Reaction",
+        10002 => "Relay list",
+        _ => "Event",
+    }
+    .to_string()
+}
+
+fn json_outbox_status_label(status: &str) -> String {
+    match status {
+        "sending" => "Sending",
+        "retrying" => "Retrying",
+        "queued" => "Queued",
+        "failed" => "Failed",
+        "pending" => "Pending",
+        other => other,
+    }
+    .to_string()
+}
+
+fn json_outbox_relay_status_label(status: &str) -> String {
+    match status {
+        "sending" => "Sending",
+        "ok" => "OK",
+        "retrying" => "Retrying",
+        "pending" => "Pending",
+        "failed" => "Failed",
+        other => other,
+    }
+    .to_string()
+}
+
+fn json_outbox_preview(kind: u32, content: &str) -> String {
+    const KIND_LEGACY_DM: u32 = 4;
+    const KIND_LEGACY_VERSIONED_DM: u32 = 44;
+    const KIND_GIFT_WRAP: u32 = 1059;
+    if kind == KIND_LEGACY_DM || kind == KIND_LEGACY_VERSIONED_DM || kind == KIND_GIFT_WRAP {
+        return "Encrypted event content hidden".to_string();
+    }
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return "Event with no text content".to_string();
+    }
+    let mut preview: String = trimmed.chars().take(180).collect();
+    if trimmed.chars().count() > 180 {
+        preview.push('…');
+    }
+    preview
 }

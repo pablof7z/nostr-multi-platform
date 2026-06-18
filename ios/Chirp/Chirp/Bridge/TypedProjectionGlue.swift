@@ -94,13 +94,10 @@ enum TypedProjectionGlue {
     /// Map the typed `outbox_summary` sidecar (`KOXS` /
     /// `nmp_kernel_OutboxSummarySnapshot`) to the `OutboxSummary` the JSON
     /// `projections.outbox_summary` path yields. Single-table field-for-field
-    /// copy — the kernel owns both the counters AND the pre-formatted
-    /// `title` / `subtitle` strings (§6 anti-pattern #1), so the shell binds
-    /// them verbatim.
+    /// copy of the raw per-status counters. ADR-0032 / doctrine §4.4:
+    /// `title` / `subtitle` removed from the wire; the shell computes them.
     static func outboxSummary(_ reader: nmp_kernel_OutboxSummarySnapshot) -> OutboxSummary {
         OutboxSummary(
-            title: reader.title ?? "",
-            subtitle: reader.subtitle ?? "",
             total: reader.total,
             sending: reader.sending,
             retrying: reader.retrying,
@@ -119,6 +116,9 @@ enum TypedProjectionGlue {
     /// `relayReason` is `skip_serializing_if = "String::is_empty"` on the wire —
     /// the JSON path drops the key (decoded as `""`); the buffer carries an empty
     /// string, so both paths yield the same `""` (parity-preserving).
+    /// ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`, `systemImage`
+    /// removed from the wire; the shell computes them (see helpers in
+    /// `NotificationsView+OutboxRow.swift`).
     static func publishOutbox(_ reader: nmp_kernel_PublishOutboxSnapshot) -> [PublishOutboxItem] {
         reader.items.map { item in
             // ADR-0032 / V-115: `createdAtDisplay`/`targetSummary` deprecated;
@@ -127,21 +127,16 @@ enum TypedProjectionGlue {
                 handle: item.handle ?? "",
                 eventId: item.eventId ?? "",
                 kind: item.kind,
-                title: item.title ?? "",
-                preview: item.preview ?? "",
+                content: item.content ?? "",
                 createdAt: item.createdAt,
                 status: item.status ?? "",
-                statusLabel: item.statusLabel ?? "",
-                systemImage: item.systemImage ?? "",
                 canRetry: item.canRetry,
                 targetRelays: Int(item.targetRelays),
                 relays: item.relays.map { relay in
                     PublishOutboxRelay(
                         relayUrl: relay.relayUrl ?? "",
                         status: relay.status ?? "",
-                        statusLabel: relay.statusLabel ?? "",
                         attempt: relay.attempt,
-                        attemptLabel: relay.attemptLabel ?? "",
                         message: relay.message ?? "",
                         relayReason: relay.relayReason ?? ""
                     )
