@@ -130,6 +130,14 @@ impl EventStore for LmdbEventStore {
         query_relay_index::list_events_seen_on(&self.inner, relay_url)
     }
 
+    fn relay_kind_coverage(&self, relay_url: &str) -> Result<Vec<u32>, StoreError> {
+        query_relay_index::relay_kind_coverage(&self.inner, relay_url)
+    }
+
+    fn relay_kind_count(&self, relay_url: &str, kind: u32) -> Result<u64, StoreError> {
+        query_relay_index::relay_kind_count(&self.inner, relay_url, kind)
+    }
+
     fn insert(
         &self,
         event: VerifiedEvent,

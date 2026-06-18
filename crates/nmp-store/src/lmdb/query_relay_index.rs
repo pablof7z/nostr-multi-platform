@@ -4,6 +4,7 @@
 //! The single entry point is re-exported from the `query` module so callers
 //! continue to use `query::list_events_seen_on`.
 
+use std::collections::BTreeSet;
 use std::ops::Bound;
 use std::sync::Arc;
 
@@ -39,4 +40,65 @@ pub(super) fn list_events_seen_on(
         }
     }
     Ok(out)
+}
+
+/// #1518 — the distinct kinds a relay has served, ascending.
+///
+/// O(events-on-relay): a prefix range scan over `nmp-relay-kind` for keys
+/// `relay_url || 0x00 || kind(BE4) || event_id(32)`.  A `BTreeSet` dedups and
+/// sorts the kinds (each event contributes one key per relay, so the same kind
+/// recurs once per event on the relay).
+pub(super) fn relay_kind_coverage(
+    inner: &Arc<Inner>,
+    relay_url: &str,
+) -> Result<Vec<u32>, StoreError> {
+    let txn = inner
+        .env
+        .read_txn()
+        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
+    let lo = provenance::relay_kind_relay_lo(relay_url);
+    let hi = provenance::relay_kind_relay_hi(relay_url);
+    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
+    let mut kinds: BTreeSet<u32> = BTreeSet::new();
+    for entry in inner
+        .relay_kind
+        .range(&txn, &range)
+        .map_err(|e| StoreError::Io(format!("relay_kind range: {e}")))?
+    {
+        let (k, _) = entry.map_err(|e| StoreError::Io(format!("relay_kind step: {e}")))?;
+        if let Some(kind) = provenance::relay_kind_kind_from_key(k, relay_url.len()) {
+            kinds.insert(kind);
+        }
+    }
+    Ok(kinds.into_iter().collect())
+}
+
+/// #1518 — how many distinct events of `kind` a relay has served.
+///
+/// O(events-of-kind-on-relay): a prefix range scan over `nmp-relay-kind` for
+/// the `relay_url || 0x00 || kind(BE4)` sub-range.  Each key is one
+/// `(relay, kind, event_id)` triple, so the count of keys is the count of
+/// distinct events of that kind on the relay.
+pub(super) fn relay_kind_count(
+    inner: &Arc<Inner>,
+    relay_url: &str,
+    kind: u32,
+) -> Result<u64, StoreError> {
+    let txn = inner
+        .env
+        .read_txn()
+        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
+    let lo = provenance::relay_kind_kind_lo(relay_url, kind);
+    let hi = provenance::relay_kind_kind_hi(relay_url, kind);
+    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
+    let mut count: u64 = 0;
+    for entry in inner
+        .relay_kind
+        .range(&txn, &range)
+        .map_err(|e| StoreError::Io(format!("relay_kind count range: {e}")))?
+    {
+        entry.map_err(|e| StoreError::Io(format!("relay_kind count step: {e}")))?;
+        count += 1;
+    }
+    Ok(count)
 }

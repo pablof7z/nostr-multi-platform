@@ -21,7 +21,7 @@ use std::collections::HashSet;
 // on wasm32 and to `std::time::Instant` on native (zero-cost re-export).
 use crate::time::Instant;
 
-use super::{access_remove, bytes_to_hex, relay_index_remove, MemEventStore, TOMBSTONE_MAX_AGE_SECS};
+use super::{access_remove, bytes_to_hex, relay_index_remove, relay_kind_remove_id, MemEventStore, TOMBSTONE_MAX_AGE_SECS};
 use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
@@ -69,6 +69,7 @@ pub(super) fn gc_step_with_pins(
         if let Some(ev) = st.events.remove(id_hex) {
             st.provenance.remove(id_hex);
             relay_index_remove(&mut *st, id_hex);
+            relay_kind_remove_id(&mut *st, id_hex);
             access_remove(&mut *st, id_hex);
             st.tombstones.insert(
                 id_hex.clone(),
@@ -144,6 +145,7 @@ pub(super) fn gc_step_with_pins(
             if st.events.remove(&id_hex).is_some() {
                 st.provenance.remove(&id_hex);
                 relay_index_remove(&mut *st, &id_hex);
+                relay_kind_remove_id(&mut *st, &id_hex);
                 access_remove(&mut *st, &id_hex);
                 report.lru_evicted += 1;
                 if let Some((author, kind, created_at, tags)) = evicted_fields {

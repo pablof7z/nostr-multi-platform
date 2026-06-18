@@ -49,6 +49,8 @@
 pub(super) mod domain;
 pub(super) mod gc;
 pub(super) mod insert;
+// NIP-09 (kind:5) deletion handler — extracted from insert.rs for the 500 LOC cap.
+pub(super) mod insert_kind5;
 pub(super) mod query;
 mod store_impl;
 #[cfg(test)]
@@ -102,6 +104,19 @@ pub(super) struct MemState {
     /// V-52: used by `EventStore::list_events_seen_on`.
     pub(super) relay_index: HashMap<RelayUrl, BTreeSet<String>>,
 
+    /// #1518 relay×kind presence index: relay_url → kind → BTreeSet<hex event_id>.
+    ///
+    /// Parity with the LMDB backend's `nmp-relay-kind` sub-db. Maintained
+    /// symmetrically with `provenance`/`relay_index` — every insert that records
+    /// a `ProvenanceEntry` for a non-private kind also records the
+    /// (relay_url, kind, event_id) triple here; every removal prunes it.
+    ///
+    /// Privacy-gated: NIP-04/17/59 kinds never enter (checked in
+    /// `relay_kind_add` via `crate::lmdb::provenance::is_relay_provenance_private`).
+    ///
+    /// Used by `EventStore::relay_kind_coverage` / `relay_kind_count`.
+    pub(super) relay_kind: HashMap<RelayUrl, HashMap<u32, BTreeSet<String>>>,
+
     /// F-TTL replaceable freshness: `ReplaceableKey` → `check_again_after_unix_ms`.
     ///
     /// Parity with the LMDB backend's `replaceable_freshness` sub-db so the
@@ -144,6 +159,7 @@ impl MemState {
             addr_tombstones: HashMap::new(),
             provenance: HashMap::new(),
             relay_index: HashMap::new(),
+            relay_kind: HashMap::new(),
             replaceable_freshness: HashMap::new(),
             coverage: HashMap::new(),
             domain_data: HashMap::new(),
@@ -297,6 +313,71 @@ pub(super) fn list_seen_on(st: &MemState, relay_url: &str) -> Vec<EventId> {
     ids.iter()
         .filter_map(|hex| super::types::hex_to_event_id(hex))
         .collect()
+}
+
+// ─── Relay×kind index helpers (#1518) ────────────────────────────────────────
+
+/// Add (relay_url, kind, event_id_hex) to the relay×kind index — privacy-gated.
+///
+/// A no-op for `is_relay_provenance_private(kind)` so a privacy-gated kind can
+/// never enter the index regardless of which insert path calls this. Idempotent
+/// (BTreeSet semantics).
+pub(super) fn relay_kind_add(st: &mut MemState, relay_url: &RelayUrl, kind: u32, id_hex: &str) {
+    if super::types::is_relay_provenance_private(kind) {
+        return;
+    }
+    st.relay_kind
+        .entry(relay_url.clone())
+        .or_default()
+        .entry(kind)
+        .or_default()
+        .insert(id_hex.to_string());
+}
+
+/// Remove event_id_hex from every (relay, kind) entry in the relay×kind index.
+///
+/// Mirrors `relay_index_remove`: called on every event removal so the index
+/// never carries a dangling reference. Empty kind- and relay-buckets are pruned
+/// to bound map growth.
+pub(super) fn relay_kind_remove_id(st: &mut MemState, id_hex: &str) {
+    let mut empty_relays: Vec<RelayUrl> = Vec::new();
+    for (url, kinds) in st.relay_kind.iter_mut() {
+        let mut empty_kinds: Vec<u32> = Vec::new();
+        for (kind, ids) in kinds.iter_mut() {
+            ids.remove(id_hex);
+            if ids.is_empty() {
+                empty_kinds.push(*kind);
+            }
+        }
+        for k in empty_kinds {
+            kinds.remove(&k);
+        }
+        if kinds.is_empty() {
+            empty_relays.push(url.clone());
+        }
+    }
+    for url in empty_relays {
+        st.relay_kind.remove(&url);
+    }
+}
+
+/// Distinct kinds seen on `relay_url`, ascending.
+pub(super) fn relay_kind_coverage(st: &MemState, relay_url: &str) -> Vec<u32> {
+    let Some(kinds) = st.relay_kind.get(relay_url) else {
+        return Vec::new();
+    };
+    let mut out: Vec<u32> = kinds.keys().copied().collect();
+    out.sort_unstable();
+    out
+}
+
+/// Count of distinct events of `kind` seen on `relay_url`.
+pub(super) fn relay_kind_count(st: &MemState, relay_url: &str, kind: u32) -> u64 {
+    st.relay_kind
+        .get(relay_url)
+        .and_then(|kinds| kinds.get(&kind))
+        .map(|ids| ids.len() as u64)
+        .unwrap_or(0)
 }
 
 // ─── LRU access helpers (V-60) ───────────────────────────────────────────────

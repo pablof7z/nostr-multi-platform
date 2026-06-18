@@ -82,6 +82,9 @@ mod tests_gc_stage1;
 // V-52 (#969) — relay-origin reverse index parity + persistence + backfill.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_relay_index;
+// #1518 — relay×kind presence index parity + persistence + backfill.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_relay_kind;
 // #1480 — production budget keeps durable LRU disabled; finite retention is explicit.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc_stage3;
@@ -192,6 +195,21 @@ mod inner {
         /// Backfilled once on store open for pre-V-52 databases — see
         /// `open.rs::backfill_relay_index`.
         pub(crate) relay_index: Database<Bytes, Bytes>,
+
+        /// #1518 relay×kind presence index (`nmp-relay-kind`): `relay_url ||
+        /// 0x00 || kind(BE4) || event_id(32)` → empty (presence-only).
+        ///
+        /// A derived projection of per-event provenance committed in the SAME
+        /// `RwTxn` as every provenance write — it tells the kernel which kinds
+        /// (and how many events of each) a relay has actually served, without
+        /// splitting store ownership.  Privacy-gated: NIP-04/17/59 kinds
+        /// (4/13/14/15/1059/1060) never enter the index (checked at write time
+        /// in `provenance::relay_kind_put`).
+        ///
+        /// Maintained by the same provenance write path as `relay_index`
+        /// (`provenance::upsert` / `provenance::delete`).  Backfilled once on
+        /// open for pre-#1518 databases — see `open.rs::backfill_relay_kind_index`.
+        pub(crate) relay_kind: Database<Bytes, Bytes>,
 
         /// K3 coverage ledger (ADR-0056 §3, Stage D1): `filter_hash || 0x1F ||
         /// relay_url` → `covered_through` (8-byte BE unix-seconds).
@@ -360,6 +378,12 @@ impl EventStore for LmdbEventStore {
         Err(Self::not_enabled())
     }
     fn list_events_seen_on(&self, _relay_url: &str) -> Result<Vec<EventId>, StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn relay_kind_coverage(&self, _relay_url: &str) -> Result<Vec<u32>, StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn relay_kind_count(&self, _relay_url: &str, _kind: u32) -> Result<u64, StoreError> {
         Err(Self::not_enabled())
     }
     fn insert(

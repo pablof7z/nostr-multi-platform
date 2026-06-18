@@ -318,6 +318,28 @@ pub trait EventStore: Send + Sync {
     /// store appear (every removal path prunes the reverse index).
     fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError>;
 
+    /// #1518 — the kinds a relay has actually served, ascending, deduplicated.
+    ///
+    /// Derived from the per-event provenance×kind projection both backends
+    /// maintain (`MemEventStore` keeps a `relay → kind → ids` map; the
+    /// `LmdbEventStore` keeps the `nmp-relay-kind` sub-db and scans the relay's
+    /// prefix range).  Privacy-gated kinds (NIP-04/17/59) never appear — they
+    /// are excluded at write time.  Default empty so a non-overriding backend
+    /// compiles unchanged; both shipped backends override it.
+    fn relay_kind_coverage(&self, _relay_url: &str) -> Result<Vec<u32>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// #1518 — how many distinct events of `kind` a relay has served.
+    ///
+    /// Same projection as [`relay_kind_coverage`](Self::relay_kind_coverage).
+    /// A privacy-gated kind always returns `0` (never indexed). Default `0` so a
+    /// non-overriding backend compiles unchanged; both shipped backends override
+    /// it.
+    fn relay_kind_count(&self, _relay_url: &str, _kind: u32) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
     // ─── Writes ──────────────────────────────────────────────────────────────
 
     /// The single insert path.

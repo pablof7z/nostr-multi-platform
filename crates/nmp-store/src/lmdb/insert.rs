@@ -139,9 +139,11 @@ pub(super) fn insert(
             let count = provenance::upsert(
                 inner.provenance,
                 inner.relay_index,
+                inner.relay_kind,
                 &mut txn,
                 &id_bytes,
                 source.clone(),
+                event.kind,
                 received_at_ms,
             )?;
             // Stamp LRU access for the newly stored event.
@@ -152,7 +154,16 @@ pub(super) fn insert(
             }
             if let Some((replaced_id, replaced_expiry)) = pre_existing {
                 // Replaced — also drop the replaced event's provenance + LRU entry.
-                provenance::delete(inner.provenance, inner.relay_index, &mut txn, &replaced_id)?;
+                // A replaceable supersession keeps the same kind, so the replaced
+                // event's kind equals the incoming `event.kind`.
+                provenance::delete(
+                    inner.provenance,
+                    inner.relay_index,
+                    inner.relay_kind,
+                    &mut txn,
+                    &replaced_id,
+                    event.kind,
+                )?;
                 gc::lru_delete(inner, &mut txn, &replaced_id)?;
                 // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
                 gc::expiry_index_delete_exact(inner, &mut txn, replaced_expiry, &replaced_id)?;
@@ -179,9 +190,11 @@ pub(super) fn insert(
             let count = provenance::upsert(
                 inner.provenance,
                 inner.relay_index,
+                inner.relay_kind,
                 &mut txn,
                 &id_bytes,
                 source.clone(),
+                event.kind,
                 received_at_ms,
             )?;
             InsertOutcome::Duplicate {
