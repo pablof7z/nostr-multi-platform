@@ -1,14 +1,15 @@
+import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
 
 // Relay — SwiftUI
-import nostrRelayListSwift from "../vendor/swiftui/relay-list/NostrRelayList.swift?raw";
-import nostrRelayListPreviewSwift from "../vendor/swiftui/relay-list/Examples/NostrRelayListPreview.swift?raw";
+const nostrRelayListSwift = nativeSource("registry/swiftui/relay-list/NostrRelayList.swift");
+const nostrRelayListPreviewSwift = nativeSource("registry/swiftui/relay-list/Examples/NostrRelayListPreview.swift");
 
 // Relay — Web (SolidJS)
 import nostrRelayListWeb from "../vendor/web/relay-list/NostrRelayList.tsx?raw";
 
 // Render Identity — SwiftUI
-import renderIdentifiableSwift from "../vendor/swiftui/render-identity/RenderIdentifiable.swift?raw";
+const renderIdentifiableSwift = nativeSource("registry/swiftui/render-identity/RenderIdentifiable.swift");
 
 export const relayComponents: Component[] = [
   {

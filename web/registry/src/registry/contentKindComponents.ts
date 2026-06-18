@@ -1,23 +1,24 @@
+import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
 import { webContentKind30023, webContentKind9802, webContentKindRegistry } from "./contentWeb";
 
-import tuiKindRegistryModRust from "../vendor/tui/content-kind-registry/mod.rs?raw";
-import tuiKindRendererRust from "../vendor/tui/content-kind-registry/kind_renderer.rs?raw";
-import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_registry.rs?raw";
-import tuiEmbedChromeRust from "../vendor/tui/content-kind-registry/embed_chrome_container.rs?raw";
-import tuiEmbeddedEventRust from "../vendor/tui/content-kind-registry/embedded_event.rs?raw";
+const tuiKindRegistryModRust = nativeSource("registry/tui/content-kind-registry/mod.rs");
+const tuiKindRendererRust = nativeSource("registry/tui/content-kind-registry/kind_renderer.rs");
+const tuiKindRegistryRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry.rs");
+const tuiEmbedChromeRust = nativeSource("registry/tui/content-kind-registry/embed_chrome_container.rs");
+const tuiEmbeddedEventRust = nativeSource("registry/tui/content-kind-registry/embedded_event.rs");
 
-import swiftuiEmbedKindProjectionSwift from "../vendor/swiftui/content-kind-registry/EmbedKindProjection.swift?raw";
-import swiftuiEmbedChromeContainerSwift from "../vendor/swiftui/content-kind-registry/EmbedChromeContainer.swift?raw";
-import swiftuiNostrKindRegistrySwift from "../vendor/swiftui/content-kind-registry/NostrKindRegistry.swift?raw";
-import swiftuiEmbeddedEventSwift from "../vendor/swiftui/content-kind-registry/EmbeddedEvent.swift?raw";
-import swiftuiProfileEmbedSwift from "../vendor/swiftui/content-kind-0/ProfileEmbed.swift?raw";
-import swiftuiArticleEmbedSwift from "../vendor/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
-import composeProfileCardKotlin from "../vendor/compose/content-kind-0/NostrProfileCard.kt?raw";
-import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/NostrArticleCard.kt?raw";
-import desktopProfileCardRust from "../vendor/desktop/content-kind-0/profile_card.rs?raw";
-import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
-import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
+const swiftuiEmbedKindProjectionSwift = nativeSource("registry/swiftui/content-kind-registry/EmbedKindProjection.swift");
+const swiftuiEmbedChromeContainerSwift = nativeSource("registry/swiftui/content-kind-registry/EmbedChromeContainer.swift");
+const swiftuiNostrKindRegistrySwift = nativeSource("registry/swiftui/content-kind-registry/NostrKindRegistry.swift");
+const swiftuiEmbeddedEventSwift = nativeSource("registry/swiftui/content-kind-registry/EmbeddedEvent.swift");
+const swiftuiProfileEmbedSwift = nativeSource("registry/swiftui/content-kind-0/ProfileEmbed.swift");
+const swiftuiArticleEmbedSwift = nativeSource("registry/swiftui/content-kind-30023/ArticleEmbed.swift");
+const composeProfileCardKotlin = nativeSource("registry/compose/content-kind-0/NostrProfileCard.kt");
+const composeArticleCardKotlin = nativeSource("registry/compose/content-kind-30023/NostrArticleCard.kt");
+const desktopProfileCardRust = nativeSource("registry/desktop/content-kind-0/profile_card.rs");
+const desktopArticleCardRust = nativeSource("registry/desktop/content-kind-30023/embed_article.rs");
+const swiftuiHighlightEmbedSwift = nativeSource("registry/swiftui/content-kind-9802/HighlightEmbed.swift");
 
 export const contentKindComponents: Component[] = [
   {

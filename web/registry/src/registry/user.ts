@@ -1,3 +1,4 @@
+import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
 import {
   webUserAvatar,
@@ -9,38 +10,38 @@ import {
 } from "./userWeb";
 
 // User profile — SwiftUI
-import profileWireSwift from "../vendor/swiftui/user-avatar/ProfileWire.swift?raw";
-import nostrProfileHostSwift from "../vendor/swiftui/user-avatar/NostrProfileHost.swift?raw";
-import nostrAvatarSwift from "../vendor/swiftui/user-avatar/NostrAvatar.swift?raw";
-import nostrProfileNameSwift from "../vendor/swiftui/user-name/NostrProfileName.swift?raw";
-import nostrNip05BadgeSwift from "../vendor/swiftui/user-nip05/NostrNip05Badge.swift?raw";
-import nostrNpubChipSwift from "../vendor/swiftui/user-npub/NostrNpubChip.swift?raw";
-import nostrUserCardSwift from "../vendor/swiftui/user-card/NostrUserCard.swift?raw";
+const profileWireSwift = nativeSource("registry/swiftui/user-avatar/ProfileWire.swift");
+const nostrProfileHostSwift = nativeSource("registry/swiftui/user-avatar/NostrProfileHost.swift");
+const nostrAvatarSwift = nativeSource("registry/swiftui/user-avatar/NostrAvatar.swift");
+const nostrProfileNameSwift = nativeSource("registry/swiftui/user-name/NostrProfileName.swift");
+const nostrNip05BadgeSwift = nativeSource("registry/swiftui/user-nip05/NostrNip05Badge.swift");
+const nostrNpubChipSwift = nativeSource("registry/swiftui/user-npub/NostrNpubChip.swift");
+const nostrUserCardSwift = nativeSource("registry/swiftui/user-card/NostrUserCard.swift");
 
 // User profile — Compose
-import profileWireKotlin from "../vendor/compose/user-avatar/ProfileWire.kt?raw";
-import nostrProfileHostKotlin from "../vendor/compose/user-avatar/NostrProfileHost.kt?raw";
-import nostrAvatarKotlin from "../vendor/compose/user-avatar/NostrAvatar.kt?raw";
-import nostrProfileNameKotlin from "../vendor/compose/user-name/NostrProfileName.kt?raw";
-import nostrNip05BadgeKotlin from "../vendor/compose/user-nip05/NostrNip05Badge.kt?raw";
-import nostrNpubChipKotlin from "../vendor/compose/user-npub/NostrNpubChip.kt?raw";
-import nostrUserCardKotlin from "../vendor/compose/user-card/NostrUserCard.kt?raw";
+const profileWireKotlin = nativeSource("registry/compose/user-avatar/ProfileWire.kt");
+const nostrProfileHostKotlin = nativeSource("registry/compose/user-avatar/NostrProfileHost.kt");
+const nostrAvatarKotlin = nativeSource("registry/compose/user-avatar/NostrAvatar.kt");
+const nostrProfileNameKotlin = nativeSource("registry/compose/user-name/NostrProfileName.kt");
+const nostrNip05BadgeKotlin = nativeSource("registry/compose/user-nip05/NostrNip05Badge.kt");
+const nostrNpubChipKotlin = nativeSource("registry/compose/user-npub/NostrNpubChip.kt");
+const nostrUserCardKotlin = nativeSource("registry/compose/user-card/NostrUserCard.kt");
 
 // User profile — Ratatui
-import profileWireRust from "../vendor/tui/user-core/profile_wire.rs?raw";
-import nostrAvatarRust from "../vendor/tui/user-avatar/nostr_avatar.rs?raw";
-import nostrProfileNameRust from "../vendor/tui/user-name/nostr_profile_name.rs?raw";
-import nostrNip05BadgeRust from "../vendor/tui/user-nip05/nostr_nip05_badge.rs?raw";
-import nostrNpubChipRust from "../vendor/tui/user-npub/nostr_npub_chip.rs?raw";
-import nostrUserCardRust from "../vendor/tui/user-card/nostr_user_card.rs?raw";
+const profileWireRust = nativeSource("registry/tui/user-core/profile_wire.rs");
+const nostrAvatarRust = nativeSource("registry/tui/user-avatar/nostr_avatar.rs");
+const nostrProfileNameRust = nativeSource("registry/tui/user-name/nostr_profile_name.rs");
+const nostrNip05BadgeRust = nativeSource("registry/tui/user-nip05/nostr_nip05_badge.rs");
+const nostrNpubChipRust = nativeSource("registry/tui/user-npub/nostr_npub_chip.rs");
+const nostrUserCardRust = nativeSource("registry/tui/user-card/nostr_user_card.rs");
 
 // User profile — Desktop (iced)
-import profileWireDesktopRust from "../vendor/desktop/user-core/profile_wire.rs?raw";
-import userAvatarDesktopRust from "../vendor/desktop/user-avatar/user_avatar.rs?raw";
-import userNameDesktopRust from "../vendor/desktop/user-name/user_name.rs?raw";
-import userNip05DesktopRust from "../vendor/desktop/user-nip05/user_nip05.rs?raw";
-import userNpubDesktopRust from "../vendor/desktop/user-npub/user_npub.rs?raw";
-import userCardDesktopRust from "../vendor/desktop/user-card/user_card.rs?raw";
+const profileWireDesktopRust = nativeSource("registry/desktop/user-core/profile_wire.rs");
+const userAvatarDesktopRust = nativeSource("registry/desktop/user-avatar/user_avatar.rs");
+const userNameDesktopRust = nativeSource("registry/desktop/user-name/user_name.rs");
+const userNip05DesktopRust = nativeSource("registry/desktop/user-nip05/user_nip05.rs");
+const userNpubDesktopRust = nativeSource("registry/desktop/user-npub/user_npub.rs");
+const userCardDesktopRust = nativeSource("registry/desktop/user-card/user_card.rs");
 
 export const userComponents: Component[] = [
   {

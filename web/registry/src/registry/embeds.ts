@@ -1,21 +1,22 @@
+import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
 
 // Embeds & Kinds — SwiftUI
 // embed-article and embed-highlight reuse the per-kind SwiftUI components from the
 // content-kind-* vendor dirs; embed-profile and embed-note have no vendor files yet.
-import swiftuiArticleEmbedSwift from "../vendor/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
-import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
+const swiftuiArticleEmbedSwift = nativeSource("registry/swiftui/content-kind-30023/ArticleEmbed.swift");
+const swiftuiHighlightEmbedSwift = nativeSource("registry/swiftui/content-kind-9802/HighlightEmbed.swift");
 
 // Embeds & Kinds — Compose (Android)
-import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/NostrArticleCard.kt?raw";
+const composeArticleCardKotlin = nativeSource("registry/compose/content-kind-30023/NostrArticleCard.kt");
 
 // Embeds & Kinds — Ratatui
 // The article and highlight embeds are rendered by the default renderers that ship
 // inline in the kind registry, identical to the content-kind-* TUI components.
-import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_registry.rs?raw";
+const tuiKindRegistryRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry.rs");
 
 // Embeds & Kinds — Desktop (iced)
-import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
+const desktopArticleCardRust = nativeSource("registry/desktop/content-kind-30023/embed_article.rs");
 
 // Embeds & Kinds — Web (SolidJS). Like SwiftUI, the embeds reuse the per-kind
 // content-* components: article → NostrArticleCard, highlight → NostrHighlightCard,
