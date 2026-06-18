@@ -70,7 +70,7 @@ fn cache_for(author: &str, relay: &str) -> InMemoryMailboxCache {
 #[test]
 fn t142_actor_idle_loop_drains_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.registry_mut().push(interest_for(1, "alice"));
+    lifecycle.register_for_test(interest_for(1, "alice"));
     lifecycle.set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = cache_for("alice", "wss://t142-test.example");
@@ -102,7 +102,7 @@ fn t142_follow_list_update_produces_wire_frames_e2e() {
     let mut lifecycle = SubscriptionLifecycle::new();
     let author = pubkey("bob");
 
-    lifecycle.registry_mut().push(interest_for(2, "bob"));
+    lifecycle.register_for_test(interest_for(2, "bob"));
     lifecycle.set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = cache_for("bob", "wss://bob-relay.example");
