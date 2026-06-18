@@ -100,6 +100,8 @@ mod relays;
 // runtime (publish / dm / relays helpers, `run_actor`, etc.). They share
 // the `native` gate with the modules they drive.
 #[cfg(all(test, feature = "native"))]
+mod open_contact_feed_prelogin_tests;
+#[cfg(all(test, feature = "native"))]
 mod registration_seed_follow_tests;
 #[cfg(all(test, feature = "native"))]
 mod remote_signer_tests;
