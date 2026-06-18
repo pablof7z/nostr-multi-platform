@@ -49,6 +49,8 @@
 pub(super) mod domain;
 pub(super) mod gc;
 pub(super) mod insert;
+// NIP-09 (kind:5) deletion handler — extracted from insert.rs for the 500 LOC cap.
+pub(super) mod insert_kind5;
 pub(super) mod query;
 mod store_impl;
 #[cfg(test)]
