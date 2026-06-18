@@ -265,4 +265,5 @@ impl LmdbEventStore {
             .count();
         Ok(count)
     }
+
 }

@@ -281,4 +281,100 @@ fn tombstone_max_merge_takes_newer_deleted_at() {
     assert!(tomb.sources.contains(&"wss://r2/".to_string()), "union r2");
 }
 
+// ─── Streaming query_visit tests (#1516) ─────────────────────────────────────
+
+/// Proves that materialization is lazy: breaking at the 10th event must not
+/// pay more than 10+1 conversions (the +1 accounts for one possible tie-group
+/// boundary read).
+#[test]
+fn streaming_visit_does_not_over_materialize() {
+    use nostr::prelude::*;
+
+    let (store, _dir) = open_tmp();
+    let keys = Keys::generate();
+
+    // 1 000 events, each with a distinct decreasing created_at so no ties.
+    for i in 0..1000u64 {
+        let ev = EventBuilder::text_note(format!("n={i}"))
+            .custom_created_at(Timestamp::from_secs(2_000_000 - i))
+            .sign_with_keys(&keys)
+            .unwrap();
+        let json = ev.try_as_json().unwrap();
+        let raw: RawEvent = serde_json::from_str(&json).unwrap();
+        store
+            .insert(verified(raw), &"wss://r/".into(), 2_000_000 - i)
+            .unwrap();
+    }
+
+    super::query::reset_conversion_count();
+
+    let q = StoreQuery::KindTime {
+        kinds: vec![1],
+        since: None,
+        until: None,
+    };
+    let mut visited = 0usize;
+    store
+        .query_visit(&q, 1000, &mut |_ev| {
+            visited += 1;
+            if visited >= 10 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .unwrap();
+
+    assert_eq!(visited, 10, "must visit exactly 10 events");
+    let conversions = super::query::conversion_count();
+    assert!(
+        conversions <= 11,
+        "streaming must convert at most 11 rows for a break-at-10 query (got {conversions})"
+    );
+}
+
+/// Events sharing the same `created_at` must be delivered id-ascending,
+/// matching the MemEventStore tie-break contract.
+#[test]
+fn tie_break_order_matches_mem() {
+    use nostr::prelude::*;
+
+    let (store, _dir) = open_tmp();
+    let keys = Keys::generate();
+
+    // Four events sharing the same created_at → ordering is id-asc only.
+    let mut expected_ids: Vec<String> = Vec::new();
+    for i in 0..4u32 {
+        let ev = EventBuilder::new(Kind::from(1u16), format!("tie-{i}"))
+            .custom_created_at(Timestamp::from_secs(5_000_000))
+            .sign_with_keys(&keys)
+            .unwrap();
+        expected_ids.push(ev.id.to_hex());
+        let json = ev.try_as_json().unwrap();
+        let raw: RawEvent = serde_json::from_str(&json).unwrap();
+        store
+            .insert(verified(raw), &"wss://r/".into(), 5_000_000)
+            .unwrap();
+    }
+    expected_ids.sort(); // id-asc is the tie-break
+
+    let q = StoreQuery::KindTime {
+        kinds: vec![1],
+        since: None,
+        until: None,
+    };
+    let mut got_ids: Vec<String> = Vec::new();
+    store
+        .query_visit(&q, 100, &mut |ev| {
+            got_ids.push(ev.raw.id.clone());
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+
+    assert_eq!(
+        got_ids, expected_ids,
+        "equal-created_at events must be delivered id-ascending (MemEventStore tie-break parity)"
+    );
+}
+
 // ─── addr_tombstone GC tests (S-2 fix) — see tests_addr_tombstone.rs ────────

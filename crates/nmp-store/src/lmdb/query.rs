@@ -18,6 +18,22 @@ use crate::events::EventIter;
 use crate::types::{EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, TombstoneRow};
 use crate::StoreError;
 
+// ─── Test-only conversion counter ────────────────────────────────────────────
+
+#[cfg(test)]
+static CONVERSION_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_conversion_count() {
+    CONVERSION_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub(crate) fn conversion_count() -> usize {
+    CONVERSION_COUNT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 // ─── Primary lookup ──────────────────────────────────────────────────────────
 
 pub(super) fn get_by_id(
@@ -98,6 +114,162 @@ fn run_filter(
     });
     out.truncate(limit);
     Ok(out)
+}
+
+// ─── Filter construction ─────────────────────────────────────────────────────
+
+/// Build a `nostr::Filter` for the given query.
+///
+/// Returns `None` for empty-set short-circuits (empty `kinds`, empty `authors`),
+/// indicating that the caller should visit nothing.
+fn build_filter(query: &StoreQuery) -> Option<Filter> {
+    match query {
+        StoreQuery::AuthorKind {
+            author,
+            kinds,
+            since,
+            until,
+        } => {
+            if kinds.is_empty() {
+                return None;
+            }
+            let pk = PublicKey::from_slice(author).ok()?;
+            let mut f = Filter::new()
+                .author(pk)
+                .kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+            if let Some(s) = since {
+                f = f.since(Timestamp::from_secs(*s));
+            }
+            if let Some(u) = until {
+                f = f.until(Timestamp::from_secs(*u));
+            }
+            Some(f)
+        }
+        StoreQuery::AuthorsKind {
+            authors,
+            kinds,
+            since,
+            until,
+        } => {
+            if authors.is_empty() || kinds.is_empty() {
+                return None;
+            }
+            let pks: Vec<PublicKey> = authors
+                .iter()
+                .filter_map(|a| PublicKey::from_slice(a).ok())
+                .collect();
+            if pks.len() != authors.len() {
+                return None;
+            }
+            let mut f = Filter::new()
+                .authors(pks)
+                .kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+            if let Some(s) = since {
+                f = f.since(Timestamp::from_secs(*s));
+            }
+            if let Some(u) = until {
+                f = f.until(Timestamp::from_secs(*u));
+            }
+            Some(f)
+        }
+        StoreQuery::KindTime {
+            kinds,
+            since,
+            until,
+        } => {
+            let mut f = Filter::new();
+            if !kinds.is_empty() {
+                f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+            }
+            if let Some(s) = since {
+                f = f.since(Timestamp::from_secs(*s));
+            }
+            if let Some(u) = until {
+                f = f.until(Timestamp::from_secs(*u));
+            }
+            Some(f)
+        }
+        StoreQuery::KindDtag {
+            kind,
+            d_tag,
+            since,
+            until,
+        } => {
+            let d_str = String::from_utf8_lossy(d_tag).into_owned();
+            let mut f = Filter::new()
+                .kind(Kind::from(*kind as u16))
+                .identifier(d_str);
+            if let Some(s) = since {
+                f = f.since(Timestamp::from_secs(*s));
+            }
+            if let Some(u) = until {
+                f = f.until(Timestamp::from_secs(*u));
+            }
+            Some(f)
+        }
+        StoreQuery::Etag { target, kinds } => {
+            let target = nostr::EventId::from_slice(target).ok()?;
+            let mut f = Filter::new().event(target);
+            if !kinds.is_empty() {
+                f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+            }
+            Some(f)
+        }
+        StoreQuery::Ptag { target, kinds } => {
+            let pk = PublicKey::from_slice(target).ok()?;
+            let mut f = Filter::new().pubkey(pk);
+            if !kinds.is_empty() {
+                f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+            }
+            Some(f)
+        }
+    }
+}
+
+/// Streaming backend for `query_visit`: converts events lazily, one row at a
+/// time from the cursor.  `ControlFlow::Break` stops conversions immediately —
+/// unlike the old `run_filter` approach that paid ~`limit` round-trips even if
+/// the visitor broke at row 1.
+///
+/// Ordering: the fork's BTreeSet delivers `(created_at desc, id asc)` which
+/// already matches the `MemEventStore` contract, so no tie-group reordering is
+/// needed.  We buffer a single tie-group only to respect the `limit` cap while
+/// preserving the guarantee that a partial group is still id-asc.
+fn run_filter_visit(
+    inner: &Arc<Inner>,
+    filter: Filter,
+    limit: usize,
+    visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
+) -> Result<(), StoreError> {
+    let txn = inner
+        .lmdb
+        .read_txn()
+        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
+    let filter = filter.limit(limit);
+    let iter = inner
+        .lmdb
+        .query(&txn, filter)
+        .map_err(|e| StoreError::Io(format!("query: {e}")))?;
+
+    let mut total_visited: usize = 0;
+
+    for ev_borrow in iter {
+        if total_visited >= limit {
+            break;
+        }
+        let owned: Event = ev_borrow.into_owned();
+        let raw = conv::nostr_to_raw(&owned)?;
+        #[cfg(test)]
+        CONVERSION_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let stored = conv::stored_from_raw(raw, 0);
+
+        total_visited += 1;
+        if let ControlFlow::Break(()) = visitor(&stored) {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) fn scan_by_author_kind<'a>(
@@ -308,49 +480,10 @@ pub(super) fn query_visit(
     if limit == 0 {
         return Ok(());
     }
-    let matched = match query {
-        StoreQuery::AuthorKind {
-            author,
-            kinds,
-            since,
-            until,
-        } => collect(scan_by_author_kind(
-            inner, author, kinds, *since, *until, limit,
-        )?)?,
-        StoreQuery::AuthorsKind {
-            authors,
-            kinds,
-            since,
-            until,
-        } => collect(scan_by_authors_kind(
-            inner, authors, kinds, *since, *until, limit,
-        )?)?,
-        StoreQuery::KindTime {
-            kinds,
-            since,
-            until,
-        } => collect(scan_by_kind_time(inner, kinds, *since, *until, limit)?)?,
-        StoreQuery::KindDtag {
-            kind,
-            d_tag,
-            since,
-            until,
-        } => collect(scan_by_kind_dtag(
-            inner, *kind, d_tag, *since, *until, limit,
-        )?)?,
-        StoreQuery::Etag { target, kinds } => collect(scan_by_etag(inner, target, kinds, limit)?)?,
-        StoreQuery::Ptag { target, kinds } => collect(scan_by_ptag(inner, target, kinds, limit)?)?,
-    };
-    for ev in matched.into_iter().take(limit) {
-        if let ControlFlow::Break(()) = visitor(&ev) {
-            break;
-        }
+    match build_filter(query) {
+        None => Ok(()), // empty-set short-circuit (empty kinds / authors)
+        Some(filter) => run_filter_visit(inner, filter, limit, visitor),
     }
-    Ok(())
-}
-
-fn collect<'a>(iter: Box<dyn EventIter + 'a>) -> Result<Vec<StoredEvent>, StoreError> {
-    iter.collect()
 }
 
 // ─── Tombstones ──────────────────────────────────────────────────────────────
