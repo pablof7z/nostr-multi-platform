@@ -23,7 +23,7 @@ use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::try_from_kernel_event;
-use crate::kinds::KIND_SHORT_NOTE;
+use crate::kinds::KIND_SHORT_TEXT_NOTE;
 
 // ─── RepliesView ─────────────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ impl RepliesView {
     #[must_use]
     pub fn dependencies(spec: &RepliesSpec) -> ViewDependencies {
         ViewDependencies {
-            kinds: vec![KIND_SHORT_NOTE],
+            kinds: vec![KIND_SHORT_TEXT_NOTE],
             tag_refs: vec![("e".into(), spec.target.clone())],
             ..Default::default()
         }
@@ -257,7 +257,7 @@ impl ThreadState {
     }
 
     fn insert(&mut self, event: &KernelEvent) -> Option<ThreadDelta> {
-        if event.kind != KIND_SHORT_NOTE {
+        if event.kind != KIND_SHORT_TEXT_NOTE {
             return None;
         }
         if self.by_id.contains_key(&event.id) {
@@ -418,7 +418,7 @@ impl ThreadView {
     #[must_use]
     pub fn dependencies(spec: &ThreadSpec) -> ViewDependencies {
         ViewDependencies {
-            kinds: vec![KIND_SHORT_NOTE],
+            kinds: vec![KIND_SHORT_TEXT_NOTE],
             tag_refs: vec![("e".into(), spec.root_event.clone())],
             ..Default::default()
         }

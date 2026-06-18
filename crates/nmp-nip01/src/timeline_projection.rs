@@ -16,7 +16,7 @@ use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
 
-use crate::kinds::KIND_SHORT_NOTE;
+use crate::kinds::KIND_SHORT_TEXT_NOTE;
 use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
@@ -258,7 +258,7 @@ impl RenderPayload {
             return Self {
                 content: String::new(),
                 tags: Vec::new(),
-                kind: KIND_SHORT_NOTE,
+                kind: KIND_SHORT_TEXT_NOTE,
                 author: None,
                 note_created_at: None,
             };

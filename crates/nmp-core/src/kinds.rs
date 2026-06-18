@@ -22,79 +22,12 @@
 //! protocol crates; nothing about a constant being declared here implies
 //! the kernel knows how to read or write the corresponding event.
 
+// The integer constants AND the NIP-01 `is_replaceable` /
+// `is_parameterized_replaceable` predicates both live in `nmp-kinds` (the
+// zero-dep Layer-0 crate) so there is exactly ONE definition of "replaceable"
+// in the workspace. A prior local copy here returned `true` for kind:1/6/7
+// (treating 0–9999 as replaceable) — the OPPOSITE of `nostr::Kind` and of the
+// `nmp-store` / `nmp-nostr-lmdb` predicates, a latent correctness hazard
+// (#1493). The single canonical definition removes the divergence; all
+// existing `nmp_core::kinds::is_replaceable` call sites resolve here unchanged.
 pub use nmp_kinds::*;
-
-/// Check whether a kind is a replaceable event (NIP-01).
-///
-/// Replaceable events have kind ranges:
-/// - Regular replaceable: 0–9999, 10000–19999
-/// - Parameterized replaceable: 20000–29999, 30000–39999
-///
-/// This function checks only the regular replaceable ranges.
-#[inline]
-pub fn is_replaceable(kind: u32) -> bool {
-    (kind <= 9999) || (kind >= 10000 && kind <= 19999)
-}
-
-/// Check whether a kind is a parameterized replaceable event (NIP-01).
-///
-/// Parameterized replaceable events have kind ranges: 20000–29999, 30000–39999.
-#[inline]
-pub fn is_parameterized_replaceable(kind: u32) -> bool {
-    (kind >= 20000 && kind <= 29999) || (kind >= 30000 && kind <= 39999)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_replaceable() {
-        // Regular replaceable ranges
-        assert!(is_replaceable(0), "kind:0 should be replaceable");
-        assert!(is_replaceable(1), "kind:1 should be replaceable");
-        assert!(is_replaceable(9999), "kind:9999 should be replaceable");
-        assert!(is_replaceable(10000), "kind:10000 should be replaceable");
-        assert!(is_replaceable(10002), "kind:10002 should be replaceable");
-        assert!(is_replaceable(19999), "kind:19999 should be replaceable");
-
-        // Non-replaceable ranges
-        assert!(!is_replaceable(20000), "kind:20000 should not be replaceable");
-        assert!(!is_replaceable(30000), "kind:30000 should not be replaceable");
-        assert!(!is_replaceable(40000), "kind:40000 should not be replaceable");
-    }
-
-    #[test]
-    fn test_is_parameterized_replaceable() {
-        // Parameterized replaceable ranges
-        assert!(is_parameterized_replaceable(20000), "kind:20000 should be parameterized replaceable");
-        assert!(is_parameterized_replaceable(20023), "kind:20023 should be parameterized replaceable");
-        assert!(is_parameterized_replaceable(29999), "kind:29999 should be parameterized replaceable");
-        assert!(is_parameterized_replaceable(30000), "kind:30000 should be parameterized replaceable");
-        assert!(is_parameterized_replaceable(30023), "kind:30023 should be parameterized replaceable");
-        assert!(is_parameterized_replaceable(39999), "kind:39999 should be parameterized replaceable");
-
-        // Non-parameterized replaceable ranges
-        assert!(!is_parameterized_replaceable(0), "kind:0 should not be parameterized replaceable");
-        assert!(!is_parameterized_replaceable(9999), "kind:9999 should not be parameterized replaceable");
-        assert!(!is_parameterized_replaceable(10000), "kind:10000 should not be parameterized replaceable");
-        assert!(!is_parameterized_replaceable(40000), "kind:40000 should not be parameterized replaceable");
-    }
-
-    #[test]
-    fn test_boundary_values() {
-        // Test boundaries explicitly
-        assert!(is_replaceable(9999));
-        assert!(!is_replaceable(10000) || is_replaceable(10000)); // 10000 is in second range
-        assert!(is_replaceable(10000), "kind:10000 is at boundary of second replaceable range");
-        assert!(!is_replaceable(19999) || is_replaceable(19999)); // 19999 is in second range
-        assert!(is_replaceable(19999), "kind:19999 is at boundary of second replaceable range");
-        assert!(!is_replaceable(20000), "kind:20000 starts parameterized range");
-
-        assert!(!is_parameterized_replaceable(19999), "kind:19999 is not parameterized");
-        assert!(is_parameterized_replaceable(20000), "kind:20000 starts parameterized range");
-        assert!(is_parameterized_replaceable(29999), "kind:29999 ends first parameterized range");
-        assert!(!is_parameterized_replaceable(30000) || is_parameterized_replaceable(30000)); // 30000 is in second range
-        assert!(is_parameterized_replaceable(30000), "kind:30000 starts second parameterized range");
-    }
-}

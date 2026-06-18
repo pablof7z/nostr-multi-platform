@@ -52,7 +52,7 @@ pub fn build_mint_announce_event(
     if let Some(d) = description {
         tags.push(Tag::custom(TagKind::custom("description"), [d]));
     }
-    EventBuilder::new(Kind::from(KIND_MINT_ANNOUNCE), "").tags(tags)
+    EventBuilder::new(Kind::from(KIND_MINT_ANNOUNCE as u16), "").tags(tags)
 }
 
 /// Decode a kind:38172 event into a [`MintAnnouncement`].
@@ -111,6 +111,6 @@ pub fn decode_mint_announce_event(event: &nostr::Event) -> Option<MintAnnounceme
 /// Returns a filter that will match kind:38172 events for the mint.
 pub fn mint_announce_filter(mint_url: &str) -> nostr::Filter {
     nostr::Filter::new()
-        .kind(nostr::Kind::from(KIND_MINT_ANNOUNCE))
+        .kind(nostr::Kind::from(KIND_MINT_ANNOUNCE as u16))
         .identifier(mint_url)
 }

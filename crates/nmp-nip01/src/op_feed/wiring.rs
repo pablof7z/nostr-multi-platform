@@ -144,7 +144,7 @@ pub fn register_op_feed(
     // it preserves display-refresh without reintroducing Bug 1.
     let event_gate: EventGate = Arc::new(|event: &KernelEvent| {
         event.kind == 0
-            || event.kind == crate::kinds::KIND_SHORT_NOTE
+            || event.kind == crate::kinds::KIND_SHORT_TEXT_NOTE
             || event.kind == nmp_nip18::KIND_REPOST
     });
 

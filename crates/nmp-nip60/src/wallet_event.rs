@@ -85,7 +85,7 @@ pub fn build_wallet_event(
         tags.push(Tag::custom(TagKind::custom("relay"), [relay.as_str()]));
     }
 
-    Ok(EventBuilder::new(Kind::from(KIND_WALLET), content).tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_WALLET as u16), content).tags(tags))
 }
 
 // ─── Decode ────────────────────────────────────────────────────────────────

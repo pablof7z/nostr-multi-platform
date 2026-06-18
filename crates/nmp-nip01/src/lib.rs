@@ -9,7 +9,7 @@
 //!
 //! ## Module layout
 //!
-//! - [`kinds`] — `KIND_SHORT_NOTE = 1`.
+//! - [`kinds`] — `KIND_SHORT_TEXT_NOTE = 1`.
 //! - [`decode`] — `NoteRecord` carrying `Nip10Refs` (parsed once at decode).
 //! - [`build`] — `Note::new(content).reply_to(parent).build(author, ts)`
 //!   producing an `UnsignedEvent` with NIP-10 marked tags via
@@ -82,7 +82,7 @@ pub use flat_feed::{
 pub use contacts_cache::ContactsCache;
 pub use kind0_parser::Kind0Parser;
 pub use kind3_parser::Kind3Parser;
-pub use kinds::KIND_SHORT_NOTE;
+pub use kinds::KIND_SHORT_TEXT_NOTE;
 pub use profile_cache::ProfileCache;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
