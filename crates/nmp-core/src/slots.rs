@@ -341,6 +341,32 @@ pub fn new_nostrconnect_bootstrap_relay_slot() -> NostrConnectBootstrapRelaySlot
     Arc::new(Mutex::new(None))
 }
 
+/// Typed slot for the host-supplied `nostrconnect://` permission request.
+///
+/// Written by the composition root via
+/// [`AppHost::set_nostrconnect_perms`](crate::substrate::AppHost::set_nostrconnect_perms)
+/// before `nmp_app_start`; read synchronously on the FFI thread when building
+/// the `nostrconnect://` URI. The stored `String` is the comma-joined NIP-46
+/// perm list in plain (NOT percent-encoded) form, e.g.
+/// `"sign_event:1,sign_event:7"` — the broker percent-encodes it when it
+/// assembles the `&perms=` query parameter.
+///
+/// `None` (the default) means NMP supplies NO perms: the handshake omits the
+/// `&perms=` parameter entirely. Which event kinds an app asks the signer to
+/// sign is leaf-app product policy, not framework policy (#1493), so the
+/// substrate ships no default — a protocol crate must not decide that apps only
+/// need `sign_event:1,7`.
+///
+/// D14: `Arc<Mutex<Option<String>>>` is NOT the banned `Arc<Mutex<Vec<…>>>`
+/// shape — same shape as [`NostrConnectBootstrapRelaySlot`] above.
+pub type NostrConnectPermsSlot = Arc<Mutex<Option<String>>>;
+
+/// Construct a fresh, empty [`NostrConnectPermsSlot`].
+#[must_use]
+pub fn new_nostrconnect_perms_slot() -> NostrConnectPermsSlot {
+    Arc::new(Mutex::new(None))
+}
+
 // ─── External event sink policy factory ───────────────────────────────────────
 //
 // Factory slot for the single canonical external event sink policy path.

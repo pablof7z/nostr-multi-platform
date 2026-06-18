@@ -372,6 +372,25 @@ fn register_defaults_with_accepts_custom_bootstrap_relay() {
     nmp_app_free(app);
 }
 
+/// A custom `nostrconnect_perms` is consumed without panic (#1493 P9). NMP ships
+/// no perm set by default — which event kinds an app requests is leaf-app
+/// product policy — so a leaf app supplies `Some(perms)` here. This guards the
+/// plumbing/consume path; the perms value surfaces only through the
+/// `nostrconnect://` URI built on the FFI thread.
+#[test]
+fn register_defaults_with_accepts_custom_nostrconnect_perms() {
+    let app = nmp_app_new();
+    let cfg = nmp_defaults::NmpDefaults {
+        nostrconnect_perms: Some("sign_event:1,sign_event:7".to_string()),
+        ..Default::default()
+    };
+    nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+    // Substrate + social still wired.
+    assert!(is_registered(app, "nmp.nip65.publish_relay_list"));
+    assert!(is_registered(app, "nmp.follow"));
+    nmp_app_free(app);
+}
+
 /// `true` when dispatching `namespace` does NOT surface an unknown-namespace
 /// error — i.e. the namespace is registered (it may still reject `{}` on input
 /// shape, which still proves registration).

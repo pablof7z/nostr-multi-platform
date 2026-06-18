@@ -87,4 +87,35 @@ impl NmpApp {
             NmpConfigStatus::Unavailable
         }
     }
+
+    /// Read the host-supplied NIP-46 perm request for a `nostrconnect://`
+    /// handshake. `None` means NMP supplies no perms (#1493): the broker omits
+    /// the `&perms=` URI parameter entirely. The returned string is the plain
+    /// (NOT percent-encoded) comma-joined NIP-46 perm list.
+    #[must_use]
+    pub fn nostrconnect_perms(&self) -> Option<String> {
+        self.nostrconnect_perms
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+    }
+
+    pub(crate) fn set_nostrconnect_perms(&self, perms: String) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "nostrconnect_perms",
+            "nostrconnect_perms",
+            "nostrconnect_perms",
+        ) {
+            return status;
+        }
+        if let Ok(mut guard) = self.nostrconnect_perms.lock() {
+            // ADR-0049 Part 2 — record the last-writer-wins decision for this
+            // slot (Installed / ReplacedPrevious / DroppedLateWiring).
+            self.record_slot_decision("nostrconnect_perms", "nostrconnect_perms", guard.is_some());
+            *guard = Some(perms);
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
+        }
+    }
 }

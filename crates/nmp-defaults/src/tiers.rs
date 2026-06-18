@@ -95,6 +95,20 @@ pub struct NmpDefaults {
     /// **Default:** `None`.
     pub nostrconnect_bootstrap_relay: Option<String>,
 
+    /// NIP-46 permission request advertised in client-initiated
+    /// `nostrconnect://` handshakes — which event kinds the app asks the signer
+    /// to sign (the plain, NOT percent-encoded, comma-joined NIP-46 perm list,
+    /// e.g. `"sign_event:1,sign_event:7"`). This is leaf-app PRODUCT policy, NOT
+    /// an `nmp-defaults` default (#1493): NMP, including this composition
+    /// library, owns no perm set. `None` means no perms are wired and a
+    /// `nostrconnect://` handshake omits the `&perms=` parameter entirely.
+    ///
+    /// A leaf app that wants to request perms sets `Some(perms)` here (or calls
+    /// `AppHost::set_nostrconnect_perms` after `register_defaults`).
+    ///
+    /// **Default:** `None`.
+    pub nostrconnect_perms: Option<String>,
+
     /// Wire the NIP-02 follow/unfollow/react action bundle **and** the WOT
     /// bootstrap runtime. The social graph layer. Disable for a non-social
     /// consumer that never follows, reacts, or computes web-of-trust.
@@ -133,6 +147,7 @@ impl Default for NmpDefaults {
         Self {
             coverage_gate: CoverageGate::default(),
             nostrconnect_bootstrap_relay: None,
+            nostrconnect_perms: None,
             social: true,
             dms: true,
             zaps: true,

@@ -201,6 +201,10 @@ impl RoutingFactoryRegistrar for NmpApp {
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         NmpApp::set_nostrconnect_bootstrap_relay(self, url);
     }
+
+    fn set_nostrconnect_perms(&self, perms: String) {
+        NmpApp::set_nostrconnect_perms(self, perms);
+    }
 }
 
 impl HostCapabilities for NmpApp {

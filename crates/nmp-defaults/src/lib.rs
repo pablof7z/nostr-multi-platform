@@ -189,6 +189,7 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
     let NmpDefaults {
         coverage_gate,
         nostrconnect_bootstrap_relay,
+        nostrconnect_perms,
         social,
         dms,
         zaps,
@@ -272,6 +273,22 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
     // like every other pre-start slot).
     if let Some(relay) = nostrconnect_bootstrap_relay {
         app.set_nostrconnect_bootstrap_relay(relay);
+    }
+
+    // ── NIP-46 perm request for client-initiated nostrconnect (#1493 P9) ────
+    //
+    // Which event kinds an app asks the signer to sign is leaf-app PRODUCT
+    // policy, so NMP (including this composition library) supplies NONE by
+    // default (#1493). Only wire the slot when the leaf app explicitly provided
+    // a perm set; otherwise leave it unset and let the handshake omit the
+    // `&perms=` parameter entirely.
+    //
+    // A per-app crate may also set this after calling `register_defaults` by
+    // invoking `AppHost::set_nostrconnect_perms` (last-writer-wins, like every
+    // other pre-start slot) — this is how Chirp wires its policy from
+    // `nmp-chirp-config`.
+    if let Some(perms) = nostrconnect_perms {
+        app.set_nostrconnect_perms(perms);
     }
 }
 
