@@ -62,6 +62,9 @@ mod lifecycle;
 // under the LOC ceiling; the `#[no_mangle]` symbol name is ABI-stable across
 // the split (same precedent as `publish.rs` ← `identity.rs`).
 mod nip19_ffi;
+// Issue #1554 — stateless NIP-21 / bare NIP-19 decode-to-wire helper.
+// Decode-only: no actor command, no view mutation, no app-specific policy.
+mod nip21_ffi;
 mod publish;
 mod relay_config;
 #[cfg(feature = "signer-broker")]
@@ -152,6 +155,8 @@ pub use lifecycle::{
 };
 #[cfg(feature = "native")]
 pub use nip19_ffi::nmp_app_encode_profile;
+#[cfg(feature = "native")]
+pub use nip21_ffi::nmp_nip21_decode_uri;
 // Publish-lifecycle control-plane FFI (retry/cancel). The one-door-per-
 // capability rule deleted the bespoke event-producing siblings
 // (`nmp_app_publish_signed_event` / `nmp_app_publish_signed_event_to` /

@@ -157,6 +157,13 @@ void nmp_app_chirp_close_home_feed(void *app);
 // any encode failure degrades to a copy of the raw input, never NULL.
 char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 
+// Stateless NIP-21 / bare NIP-19 decode helper. Accepts `nostr:` URIs and bare
+// bech32 profile/event/address entities, returning bounded JSON:
+//   {"ok":true,"target":"profile"|"event"|"address",...}
+// or an error object such as {"ok":false,"error":"nsec-forbidden"}.
+// The returned string is never NULL and MUST be freed via nmp_free_string.
+char *nmp_nip21_decode_uri(const char *input);
+
 // ── Publish lifecycle (control plane only) ───────────────────────────────
 //
 // PR-F (one door per capability) DELETED the bespoke event-producing
