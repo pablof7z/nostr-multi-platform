@@ -14,19 +14,28 @@
 //! - **`KernelEventObserver`** — the *ingest* side. `on_kernel_event` fires
 //!   once per accepted event on the actor thread; a projection accumulates the
 //!   facts it cares about into its own interior-mutable state.
-//! - **`register_snapshot_projection`** — the *output* side. A host registers
-//!   a no-argument closure that runs on every snapshot tick and returns a
-//!   `serde_json::Value` appended under a host-chosen key.
+//! - **`register_typed_snapshot_projection`** — the *output* side (ADR-0037).
+//!   A host registers a no-argument closure that runs on every snapshot tick
+//!   and returns a typed FlatBuffers sidecar (`TypedProjectionData`) under a
+//!   host-chosen key, or `None` when there is no changed row to emit.
 //!
 //! `GroupChatProjection` is built to sit on *both*: it implements
-//! `KernelEventObserver` for ingest, and exposes [`GroupChatProjection::snapshot_json`]
-//! — a cheap, non-blocking, no-argument read — so the host can register it as
+//! `KernelEventObserver` for ingest, and exposes [`GroupChatProjection::snapshot`]
+//! — a cheap, non-blocking, no-argument read — so the host can encode it into a
+//! typed sidecar and register it as
 //!
 //! ```ignore
 //! let projection = Arc::new(GroupChatProjection::new(group_id));
 //! let observer_id = app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 //! let snap = Arc::clone(&projection);
-//! app.register_snapshot_projection("nmp.nip29.group_chat", move || snap.snapshot_json());
+//! app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
+//!     let snapshot = snap.snapshot();
+//!     Some(nmp_core::TypedProjectionData {
+//!         key: "nmp.nip29.group_chat".to_string(),
+//!         payload: encode_group_chat_snapshot(&snapshot),
+//!         ..Default::default()
+//!     })
+//! });
 //! ```
 //!
 //! Wiring that closure is the host app composition crate's job (a separate

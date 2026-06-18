@@ -373,9 +373,9 @@ pub mod __ffi_internal {
     // the FFI layer can construct the channel without making `ActorMail` a
     // general API export.
     pub use crate::actor::ActorMail;
-    // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
-    // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
-    // registers it via `nmp_app_register_snapshot_projection("wallet", …)`.
+    // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to `nmp-nip47`.
+    // The host (per-app crate) constructs the slot itself and registers the typed
+    // `"wallet"` sidecar via `register_typed_snapshot_projection` (ADR-0037).
     pub use crate::app::KernelAction;
     pub use crate::capability_socket::{
         capability_error_envelope, dispatch_capability, new_capability_callback_slot,
