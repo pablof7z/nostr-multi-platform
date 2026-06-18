@@ -67,7 +67,7 @@ pub(super) fn lru_stamp(
     inner
         .lru_access
         .put(txn, id.as_slice(), &seq.to_be_bytes())
-        .map_err(|e| StoreError::Io(format!("lru_stamp: {e}")))
+        .map_err(|e| super::open_error::classify_heed_err(e, inner.map_size, inner.max_readers))
 }
 
 /// Remove the LRU entry for `id` from an existing write transaction.
