@@ -16,7 +16,7 @@ pub enum Nip60Error {
     Nip44(String),
     /// JSON parse error.
     Json(serde_json::Error),
-    /// Relay WebSocket error.
+    /// Relay-layer error surfaced by the kernel's publish/ingest pipeline.
     Relay(String),
     /// Wallet is not initialised (no mints configured).
     NotInitialised,

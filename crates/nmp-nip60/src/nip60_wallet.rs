@@ -1,5 +1,24 @@
-//! High-level NIP-60 wallet — ties together event encoding, Cashu mint HTTP
-//! client, relay I/O, and the `WalletBackend` trait implementation.
+//! High-level NIP-60 wallet — ties together event encoding, the Cashu mint
+//! HTTP client, and the `WalletBackend` trait implementation.
+//!
+//! # Relay I/O is the kernel's job
+//!
+//! This crate owns ZERO relay I/O. It never opens a socket and never hardcodes
+//! a relay URL. Instead it follows NMP's single-chokepoint doctrine:
+//!
+//! - **Reads** — the kernel fetches the wallet's events through its
+//!   `EventStore` / interest pipeline and hands them to this handle via the
+//!   `ingest_*` methods ([`Nip60WalletHandle::from_wallet_event`],
+//!   [`Nip60WalletHandle::ingest_token_events`],
+//!   [`Nip60WalletHandle::ingest_history_events`]).
+//! - **Writes** — every operation that needs to publish builds and signs the
+//!   event, then queues it in the handle's outbox. The kernel drains the
+//!   outbox via [`Nip60WalletHandle::take_outbox`] and publishes each event
+//!   through its `ActorCommand::Publish*` chokepoint.
+//!
+//! The `relays` field is wallet *metadata* (the relay URLs listed in the
+//! kind:17375 config) the kernel uses to scope its interests and publishes —
+//! it is not a connection handle.
 //!
 //! # Typical usage
 //!
@@ -8,37 +27,40 @@
 //! use nostr::Keys;
 //!
 //! let keys = Keys::generate();
-//! let mut wallet = Nip60WalletHandle::create_new(
+//! // Create a new wallet. The signed kind:17375 wallet event lands in the
+//! // outbox for the kernel to publish.
+//! let wallet = Nip60WalletHandle::create_new(
 //!     &keys,
 //!     "https://testnut.cashu.space",
-//!     vec!["wss://relay.damus.io".into()],
+//!     Vec::new(),
 //! ).expect("wallet creation");
 //!
+//! let to_publish = wallet.take_outbox();
 //! println!("balance: {} sat", wallet.balance_sats());
+//! println!("{} event(s) queued for the kernel to publish", to_publish.len());
 //! ```
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use nostr::{EventId, Filter, Keys, Kind, PublicKey};
-use tracing::{debug, info, warn};
+use nostr::{Event, EventId, Keys, PublicKey};
+use tracing::info;
 
 use crate::backend::{PayResult, WalletBackend, WalletError};
 use crate::cashu::client::{split_amount, MintClient, self as cashu_client};
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
 use crate::history_event::{build_history_event, redeemed_nutzap_ids, HistoryRecord};
-use crate::kinds::{KIND_HISTORY, KIND_NUTZAP_INFO, KIND_TOKEN, KIND_WALLET};
 use crate::nutzap::{
     build_nutzap_info_event, p2pk_secret, NutZapInfo, NutZapProof,
 };
-use crate::relay::{fetch_events, fetch_nip65_relays, publish_event};
 use crate::token_event::{build_token_event, decode_token_event, TokenRecord};
 use crate::wallet_event::{build_wallet_event, decode_wallet_event, WalletConfig};
 
 /// The in-memory NIP-60 wallet handle.
 ///
 /// Thread-safe via interior `Mutex`. All mutating operations lock briefly.
+/// Relay I/O is never performed here — see the module docs.
 #[derive(Clone)]
 pub struct Nip60WalletHandle {
     keys: Keys,
@@ -46,14 +68,17 @@ pub struct Nip60WalletHandle {
     tokens: Arc<Mutex<Vec<TokenRecord>>>,
     redeemed: Arc<Mutex<HashSet<EventId>>>,
     relays: Vec<String>,
+    /// Signed events awaiting publication by the kernel. Drained via
+    /// [`Self::take_outbox`].
+    outbox: Arc<Mutex<Vec<Event>>>,
 }
 
 impl Nip60WalletHandle {
     // ── Construction ───────────────────────────────────────────────────────
 
-    /// Create a brand-new NIP-60 wallet, publish the kind:17375 wallet event
-    /// and optionally publish a kind:10019 NutZap info event, then return
-    /// the wallet handle.
+    /// Create a brand-new NIP-60 wallet. Builds and signs the kind:17375
+    /// wallet event and queues it in the outbox for the kernel to publish,
+    /// then returns the wallet handle.
     pub fn create_new(
         keys: &Keys,
         mint_url: &str,
@@ -65,73 +90,51 @@ impl Nip60WalletHandle {
             .sign_with_keys(keys)
             .map_err(|e| Nip60Error::Event(format!("sign wallet event: {e}")))?;
 
-        // Publish wallet event to each relay.
-        for relay in &relays {
-            match publish_event(relay, &wallet_event) {
-                Ok(()) => info!("published wallet event to {relay}"),
-                Err(e) => warn!("failed to publish wallet event to {relay}: {e}"),
-            }
-        }
+        let handle = Self {
+            keys: keys.clone(),
+            config: Arc::new(Mutex::new(config)),
+            tokens: Arc::new(Mutex::new(Vec::new())),
+            redeemed: Arc::new(Mutex::new(HashSet::new())),
+            relays,
+            outbox: Arc::new(Mutex::new(Vec::new())),
+        };
+        handle.enqueue(wallet_event);
+        Ok(handle)
+    }
 
+    /// Build a wallet handle from a kind:17375 wallet event the kernel already
+    /// fetched from its store.
+    ///
+    /// The wallet's relay list comes exclusively from the event's own `relay`
+    /// tags. After construction, feed the wallet's token and history events
+    /// through [`Self::ingest_token_events`] and
+    /// [`Self::ingest_history_events`] to populate balance and redemption
+    /// state.
+    pub fn from_wallet_event(keys: &Keys, wallet_event: &Event) -> Result<Self, Nip60Error> {
+        let config = decode_wallet_event(wallet_event, keys.secret_key(), &keys.public_key())?;
+        let relays = config.relays.clone();
         Ok(Self {
             keys: keys.clone(),
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
             redeemed: Arc::new(Mutex::new(HashSet::new())),
             relays,
+            outbox: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
-    /// Load an existing NIP-60 wallet from bootstrap relays.
-    ///
-    /// Bootstrap relays are used ONLY to locate the most recent kind:17375 wallet
-    /// event. Once found, the wallet's relay list comes exclusively from the event's
-    /// own `relay` tags — not from the bootstrap relays. If the wallet event has no
-    /// relay tags, falls back to the user's NIP-65 relays from purplepag.es. If
-    /// neither is available the wallet operates with an empty relay list and relies
-    /// on an external outbox to route events.
-    pub fn load_from_relays(
-        keys: &Keys,
-        bootstrap_relays: &[String],
-    ) -> Result<Self, Nip60Error> {
-        let filter = Filter::new()
-            .kind(Kind::from(KIND_WALLET))
-            .author(keys.public_key())
-            .limit(1);
+    // ── Outbox (kernel publishes these) ─────────────────────────────────────
 
-        let mut wallet_events = Vec::new();
-        for relay in bootstrap_relays {
-            match fetch_events(relay, filter.clone()) {
-                Ok(evts) => wallet_events.extend(evts),
-                Err(e) => warn!("wallet fetch from {relay}: {e}"),
-            }
-        }
+    /// Queue a signed event for the kernel to publish through its
+    /// `ActorCommand::Publish*` chokepoint. This crate never opens a socket.
+    fn enqueue(&self, event: Event) {
+        self.outbox.lock().unwrap().push(event);
+    }
 
-        let wallet_event = wallet_events
-            .into_iter()
-            .max_by_key(|e| e.created_at)
-            .ok_or(Nip60Error::NotInitialised)?;
-        let config = decode_wallet_event(&wallet_event, keys.secret_key(), &keys.public_key())?;
-
-        // The wallet event's relay tags are authoritative. Fall back to NIP-65 only
-        // if the event has none. Never fall back to the bootstrap relays — those were
-        // just for discovery.
-        let effective_relays = if !config.relays.is_empty() {
-            config.relays.clone()
-        } else {
-            fetch_nip65_relays(&keys.public_key())
-        };
-
-        let handle = Self {
-            keys: keys.clone(),
-            config: Arc::new(Mutex::new(config)),
-            tokens: Arc::new(Mutex::new(Vec::new())),
-            redeemed: Arc::new(Mutex::new(HashSet::new())),
-            relays: effective_relays,
-        };
-        handle.refresh_tokens()?;
-        handle.refresh_redeemed_nutzaps()?;
-        Ok(handle)
+    /// Drain every event awaiting publication. The kernel calls this after an
+    /// operation and dispatches each event through its publish chokepoint.
+    pub fn take_outbox(&self) -> Vec<Event> {
+        std::mem::take(&mut *self.outbox.lock().unwrap())
     }
 
     // ── Balance ────────────────────────────────────────────────────────────
@@ -145,58 +148,35 @@ impl Nip60WalletHandle {
             .sum()
     }
 
-    // ── Token management ───────────────────────────────────────────────────
+    // ── Ingest (kernel-fetched events) ──────────────────────────────────────
 
-    /// Reload all token events from the wallet's relays.
-    pub fn refresh_tokens(&self) -> Result<(), Nip60Error> {
-        let filter = Filter::new()
-            .kind(Kind::from(KIND_TOKEN))
-            .author(self.keys.public_key());
-
-        let mut all_events = Vec::new();
-        for relay in &self.relays {
-            match fetch_events(relay, filter.clone()) {
-                Ok(evts) => all_events.extend(evts),
-                Err(e) => warn!("token fetch from {relay}: {e}"),
-            }
-        }
+    /// Replace the in-memory token set from kind:7375 token events the kernel
+    /// fetched through its store/interest pipeline.
+    pub fn ingest_token_events(&self, events: &[Event]) -> Result<(), Nip60Error> {
         // Deduplicate by event id.
+        let mut all_events: Vec<&Event> = events.iter().collect();
         all_events.sort_by_key(|e| e.id);
         all_events.dedup_by_key(|e| e.id);
 
         let mut records = Vec::new();
-        for evt in &all_events {
+        for evt in all_events {
             match decode_token_event(evt, self.keys.secret_key(), &self.keys.public_key()) {
                 Ok(r) => records.push(r),
-                Err(e) => warn!("skip malformed token event {}: {e}", evt.id),
+                Err(e) => tracing::warn!("skip malformed token event {}: {e}", evt.id),
             }
         }
         *self.tokens.lock().unwrap() = records;
         Ok(())
     }
 
-    /// Reload redeemed nutzap IDs from kind:7376 history events.
-    pub fn refresh_redeemed_nutzaps(&self) -> Result<(), Nip60Error> {
-        let filter = Filter::new()
-            .kind(Kind::from(KIND_HISTORY))
-            .author(self.keys.public_key());
-
-        let mut all_events = Vec::new();
-        for relay in &self.relays {
-            match fetch_events(relay, filter.clone()) {
-                Ok(evts) => all_events.extend(evts),
-                Err(e) => warn!("history fetch from {relay}: {e}"),
-            }
-        }
-        all_events.sort_by_key(|e| e.id);
-        all_events.dedup_by_key(|e| e.id);
-
+    /// Learn which nutzaps have already been redeemed from kind:7376 history
+    /// events the kernel fetched.
+    pub fn ingest_history_events(&self, events: &[Event]) {
         let mut redeemed = HashSet::new();
-        for event in &all_events {
+        for event in events {
             redeemed.extend(redeemed_nutzap_ids(event));
         }
         *self.redeemed.lock().unwrap() = redeemed;
-        Ok(())
     }
 
     /// Event IDs of nutzaps already redeemed by this wallet.
@@ -242,6 +222,9 @@ impl Nip60WalletHandle {
     /// paid yet — the caller is responsible for waiting and retrying (sleeping
     /// in library code violates D8). For testnut, invoices are auto-paid
     /// within milliseconds; a single short wait in the caller is sufficient.
+    ///
+    /// The new kind:7375 token event and kind:7376 history event are queued in
+    /// the outbox for the kernel to publish.
     pub fn complete_deposit(
         &self,
         deposit: &DepositRequest,
@@ -263,27 +246,20 @@ impl Nip60WalletHandle {
         let event = event_builder
             .sign_with_keys(&self.keys)
             .map_err(|e| Nip60Error::Event(format!("sign token event: {e}")))?;
-
-        for relay in &self.relays {
-            match publish_event(relay, &event) {
-                Ok(()) => debug!("published token event to {relay}"),
-                Err(e) => warn!("token event to {relay}: {e}"),
-            }
-        }
+        let token_event_id = event.id;
+        self.enqueue(event);
 
         // Update in-memory state.
         let mut record_with_id = record;
-        record_with_id.event_id = Some(event.id);
+        record_with_id.event_id = Some(token_event_id);
         self.tokens.lock().unwrap().push(record_with_id);
 
-        // Publish history event (direction: in).
+        // Queue history event (direction: in).
         let mut history = HistoryRecord::new_in(total);
-        history.created.push(event.id);
+        history.created.push(token_event_id);
         if let Ok(h_builder) = build_history_event(&history, &self.keys) {
             if let Ok(h_event) = h_builder.sign_with_keys(&self.keys) {
-                for relay in &self.relays {
-                    let _ = publish_event(relay, &h_event);
-                }
+                self.enqueue(h_event);
             }
         }
 
@@ -294,21 +270,20 @@ impl Nip60WalletHandle {
 
     /// Send a NutZap to a recipient.
     ///
-    /// 1. Looks up the recipient's kind:10019 NutZap info from their relays.
-    /// 2. Swaps proofs for P2PK-locked proofs at the mint.
-    /// 3. Publishes kind:9321 to the recipient's nutzap relays.
+    /// The caller supplies the recipient's kind:10019 NutZap info (which the
+    /// kernel fetched from its store). This method swaps proofs for
+    /// P2PK-locked proofs at the mint, then queues the kind:9321 nutzap event
+    /// in the outbox for the kernel to publish.
     ///
-    /// Returns the published nutzap event id.
+    /// Returns the queued nutzap event id.
     pub fn send_nutzap(
         &self,
         amount_sats: u64,
         recipient_pubkey: &PublicKey,
-        recipient_relays: &[String],
+        nutzap_info: &NutZapInfo,
         comment: Option<&str>,
         zapped_event_id: Option<&EventId>,
     ) -> Result<EventId, Nip60Error> {
-        // Look up recipient's NutZap info.
-        let nutzap_info = self.fetch_nutzap_info(recipient_pubkey, recipient_relays)?;
         let recipient_mint = nutzap_info
             .mints
             .first()
@@ -325,7 +300,7 @@ impl Nip60WalletHandle {
         let proofs = self.create_p2pk_proofs(amount_sats, &recipient_cashu_pubkey, &recipient_mint)?;
         let nutzap_proofs: Vec<NutZapProof> = proofs.into_iter().map(Into::into).collect();
 
-        // Build and publish nutzap event.
+        // Build and queue nutzap event.
         let nutzap_builder = crate::nutzap::build_nutzap_event(
             nutzap_proofs,
             &recipient_mint,
@@ -336,33 +311,21 @@ impl Nip60WalletHandle {
         let nutzap_event = nutzap_builder
             .sign_with_keys(&self.keys)
             .map_err(|e| Nip60Error::Event(format!("sign nutzap: {e}")))?;
-
-        // Publish to recipient's nutzap relays (plus our own).
-        let mut publish_relays: Vec<String> = nutzap_info.relays.clone();
-        for r in &self.relays {
-            if !publish_relays.contains(r) {
-                publish_relays.push(r.clone());
-            }
-        }
-        for relay in &publish_relays {
-            match publish_event(relay, &nutzap_event) {
-                Ok(()) => info!("published nutzap to {relay}"),
-                Err(e) => warn!("nutzap to {relay}: {e}"),
-            }
-        }
+        let nutzap_event_id = nutzap_event.id;
+        self.enqueue(nutzap_event);
 
         info!(
-            "sent nutzap: {} sat to {} ({} relays)",
+            "queued nutzap: {} sat to {}",
             amount_sats,
-            recipient_pubkey.to_hex(),
-            publish_relays.len()
+            recipient_pubkey.to_hex()
         );
-        Ok(nutzap_event.id)
+        Ok(nutzap_event_id)
     }
 
     // ── NutZap info (kind:10019) ───────────────────────────────────────────
 
-    /// Publish the user's kind:10019 NutZap info event.
+    /// Build the user's kind:10019 NutZap info event and queue it in the
+    /// outbox for the kernel to publish. Returns the queued event id.
     pub fn publish_nutzap_info(&self) -> Result<EventId, Nip60Error> {
         let config = self.config.lock().unwrap().clone();
         let cashu_pubkey = config.pubkey_hex()?;
@@ -375,13 +338,9 @@ impl Nip60WalletHandle {
         let event = builder
             .sign_with_keys(&self.keys)
             .map_err(|e| Nip60Error::Event(format!("sign nutzap info: {e}")))?;
-        for relay in &self.relays {
-            match publish_event(relay, &event) {
-                Ok(()) => info!("published nutzap info to {relay}"),
-                Err(e) => warn!("nutzap info to {relay}: {e}"),
-            }
-        }
-        Ok(event.id)
+        let event_id = event.id;
+        self.enqueue(event);
+        Ok(event_id)
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
@@ -394,50 +353,6 @@ impl Nip60WalletHandle {
             .first()
             .cloned()
             .ok_or(Nip60Error::NotInitialised)
-    }
-
-    fn fetch_nutzap_info(
-        &self,
-        recipient_pubkey: &PublicKey,
-        hint_relays: &[String],
-    ) -> Result<NutZapInfo, Nip60Error> {
-        let nutzap_filter = Filter::new()
-            .kind(Kind::from(KIND_NUTZAP_INFO))
-            .author(*recipient_pubkey)
-            .limit(1);
-
-        // 1. Discover the recipient's relay list via purplepag.es (NIP-65 indexer).
-        //    This is the correct approach: don't assume the recipient uses our relays.
-        let nip65_relays = fetch_nip65_relays(recipient_pubkey);
-
-        // 2. Build the search order: NIP-65 relays first, then any caller-supplied
-        //    hints, then our own relays as a last resort.
-        let mut search_relays: Vec<String> = nip65_relays;
-        for r in hint_relays {
-            if !search_relays.contains(r) {
-                search_relays.push(r.clone());
-            }
-        }
-        for r in &self.relays {
-            if !search_relays.contains(r) {
-                search_relays.push(r.clone());
-            }
-        }
-
-        for relay in &search_relays {
-            match fetch_events(relay, nutzap_filter.clone()) {
-                Ok(events) => {
-                    if let Some(evt) = events.into_iter().max_by_key(|e| e.created_at) {
-                        return Ok(crate::nutzap::decode_nutzap_info_event(&evt));
-                    }
-                }
-                Err(e) => warn!("fetch nutzap info from {relay}: {e}"),
-            }
-        }
-        Err(Nip60Error::MintDiscovery(format!(
-            "no kind:10019 found for {}",
-            recipient_pubkey.to_hex()
-        )))
     }
 
     fn create_p2pk_proofs(
@@ -532,7 +447,9 @@ impl Nip60WalletHandle {
         Ok((selected, total - amount_sats))
     }
 
-    /// Update token events after spending: delete spent events, save change.
+    /// Update token events after spending: queue a NIP-09 deletion for each
+    /// fully-spent token event, queue a change token event, and refresh
+    /// in-memory state. Queued events are published by the kernel.
     fn update_tokens_after_spend(
         &self,
         spent_proofs: &[Proof],
@@ -545,6 +462,7 @@ impl Nip60WalletHandle {
         let mut tokens = self.tokens.lock().unwrap();
         let mut destroyed_event_ids: Vec<EventId> = Vec::new();
         let mut new_tokens: Vec<TokenRecord> = Vec::new();
+        let mut queued: Vec<Event> = Vec::new();
 
         for record in tokens.drain(..) {
             let remaining: Vec<Proof> = record
@@ -555,12 +473,10 @@ impl Nip60WalletHandle {
             if remaining.is_empty() {
                 if let Some(id) = record.event_id {
                     destroyed_event_ids.push(id);
-                    // Publish deletion event (NIP-09 style — kind:5).
+                    // Queue deletion event (NIP-09 — kind:5).
                     if let Ok(del_builder) = self.build_delete_event(id) {
                         if let Ok(del_event) = del_builder.sign_with_keys(&self.keys) {
-                            for relay in &self.relays {
-                                let _ = publish_event(relay, &del_event);
-                            }
+                            queued.push(del_event);
                         }
                     }
                 }
@@ -574,29 +490,29 @@ impl Nip60WalletHandle {
             }
         }
 
-        // Publish change token event.
-        let _new_event_id = if !change_proofs.is_empty() {
+        // Queue change token event.
+        if !change_proofs.is_empty() {
             let change_record = TokenRecord::new(mint_url.to_string(), change_proofs.clone());
             let builder = build_token_event(&change_record, &self.keys)?;
             let event = builder
                 .sign_with_keys(&self.keys)
                 .map_err(|e| Nip60Error::Event(format!("sign change token: {e}")))?;
-            for relay in &self.relays {
-                let _ = publish_event(relay, &event);
-            }
             let id = event.id;
+            queued.push(event);
             new_tokens.push(TokenRecord {
                 mint_url: mint_url.to_string(),
                 proofs: change_proofs,
                 del: destroyed_event_ids.iter().map(|id| id.to_hex()).collect(),
                 event_id: Some(id),
             });
-            Some(id)
-        } else {
-            None
-        };
+        }
 
         *tokens = new_tokens;
+        drop(tokens);
+
+        for event in queued {
+            self.enqueue(event);
+        }
         Ok(())
     }
 
@@ -609,7 +525,8 @@ impl Nip60WalletHandle {
     // ── NutZap receive ─────────────────────────────────────────────────────
 
     /// Redeem a received nutzap: swap the P2PK proofs for fresh proofs and
-    /// publish a kind:7376 history event marking it as redeemed.
+    /// queue a kind:7375 token event plus a kind:7376 history event marking it
+    /// redeemed. Queued events are published by the kernel.
     pub fn redeem_nutzap(
         &self,
         nutzap: &crate::nutzap::ReceivedNutZap,
@@ -657,25 +574,21 @@ impl Nip60WalletHandle {
         let event = builder
             .sign_with_keys(&self.keys)
             .map_err(|e| Nip60Error::Event(format!("sign redeemed token: {e}")))?;
-        for relay in &self.relays {
-            let _ = publish_event(relay, &event);
-        }
         let new_event_id = event.id;
+        self.enqueue(event);
 
         // Update in-memory state.
         let mut record_with_id = record;
         record_with_id.event_id = Some(new_event_id);
         self.tokens.lock().unwrap().push(record_with_id);
 
-        // Publish history event.
+        // Queue history event.
         let mut history = HistoryRecord::new_in(total);
         history.created.push(new_event_id);
         history.redeemed.push(nutzap.event_id);
         if let Ok(h_builder) = build_history_event(&history, &self.keys) {
             if let Ok(h_event) = h_builder.sign_with_keys(&self.keys) {
-                for relay in &self.relays {
-                    let _ = publish_event(relay, &h_event);
-                }
+                self.enqueue(h_event);
             }
         }
         self.mark_redeemed_nutzap(nutzap.event_id);
@@ -691,127 +604,6 @@ impl Nip60WalletHandle {
     pub fn pubkey(&self) -> PublicKey {
         self.keys.public_key()
     }
-
-    // ── Relay health & sync ────────────────────────────────────────────────
-
-    /// Check the health of every relay in the wallet's relay list.
-    ///
-    /// For each relay: is it reachable? Does it have our wallet event?
-    /// How many token events (kind:7375) and history events (kind:7376) does it hold?
-    pub fn relay_health(&self) -> Vec<RelayStatus> {
-        let wallet_filter = Filter::new()
-            .kind(Kind::from(KIND_WALLET))
-            .author(self.keys.public_key())
-            .limit(1);
-        let token_filter = Filter::new()
-            .kind(Kind::from(KIND_TOKEN))
-            .author(self.keys.public_key());
-        let history_filter = Filter::new()
-            .kind(Kind::from(crate::kinds::KIND_HISTORY))
-            .author(self.keys.public_key());
-
-        self.relays
-            .iter()
-            .map(|relay| {
-                let wallet_event = fetch_events(relay, wallet_filter.clone())
-                    .map(|evts| !evts.is_empty())
-                    .unwrap_or(false);
-                let token_count = fetch_events(relay, token_filter.clone())
-                    .map(|evts| evts.len())
-                    .unwrap_or(0);
-                let history_count = fetch_events(relay, history_filter.clone())
-                    .map(|evts| evts.len())
-                    .unwrap_or(0);
-
-                // A relay is reachable if we could query it (even with 0 results).
-                let reachable = fetch_events(relay, wallet_filter.clone()).is_ok();
-                RelayStatus {
-                    url: relay.clone(),
-                    reachable,
-                    has_wallet_event: wallet_event,
-                    token_count,
-                    history_count,
-                }
-            })
-            .collect()
-    }
-
-    /// Republish all wallet events to every relay that is missing them.
-    ///
-    /// Returns one entry per relay with the number of events pushed to it.
-    /// Useful for repairing relay inconsistencies after a relay goes down and
-    /// comes back, or after adding a new relay to the wallet event's relay tags.
-    pub fn sync_to_relays(&self) -> Vec<RelaySyncResult> {
-        // Collect all events we own and want present on every relay.
-        let mut events_to_sync: Vec<nostr::Event> = Vec::new();
-
-        // kind:17375 — wallet config event.
-        {
-            let config = self.config.lock().unwrap();
-            if let Some(event_id) = config.event_id {
-                let filter = Filter::new().id(event_id);
-                // Fetch from whichever relay has it first.
-                for relay in &self.relays {
-                    if let Ok(evts) = fetch_events(relay, filter.clone()) {
-                        if let Some(e) = evts.into_iter().next() {
-                            events_to_sync.push(e);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // kind:7375 — token events.
-        {
-            let tokens = self.tokens.lock().unwrap();
-            let ids: Vec<nostr::EventId> = tokens
-                .iter()
-                .filter_map(|r| r.event_id)
-                .collect();
-            drop(tokens);
-            if !ids.is_empty() {
-                let filter = Filter::new().ids(ids);
-                for relay in &self.relays {
-                    if let Ok(evts) = fetch_events(relay, filter.clone()) {
-                        for e in evts {
-                            if !events_to_sync.iter().any(|x| x.id == e.id) {
-                                events_to_sync.push(e);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut results = Vec::new();
-        for relay in &self.relays {
-            let mut pushed = 0usize;
-
-            // Find out what this relay already has.
-            let present: std::collections::HashSet<nostr::EventId> = events_to_sync
-                .iter()
-                .filter(|e| {
-                    fetch_events(relay, Filter::new().id(e.id))
-                        .map(|evts| !evts.is_empty())
-                        .unwrap_or(false)
-                })
-                .map(|e| e.id)
-                .collect();
-
-            for event in &events_to_sync {
-                if !present.contains(&event.id) && publish_event(relay, event).is_ok() {
-                    pushed += 1;
-                }
-            }
-
-            results.push(RelaySyncResult {
-                url: relay.clone(),
-                events_pushed: pushed,
-            });
-        }
-        results
-    }
 }
 
 #[cfg(test)]
@@ -822,6 +614,15 @@ mod tests {
     fn empty_wallet() -> Nip60WalletHandle {
         Nip60WalletHandle::create_new(&Keys::generate(), "https://mint.example", Vec::new())
             .expect("wallet")
+    }
+
+    #[test]
+    fn create_new_queues_wallet_event_in_outbox() {
+        let wallet = empty_wallet();
+        let queued = wallet.take_outbox();
+        assert_eq!(queued.len(), 1, "kind:17375 wallet event should be queued");
+        // Outbox is drained on take.
+        assert!(wallet.take_outbox().is_empty());
     }
 
     #[test]
@@ -885,28 +686,6 @@ impl WalletBackend for Nip60WalletHandle {
     fn backend_type(&self) -> &'static str {
         "nip60"
     }
-}
-
-/// Health status of a single relay in the wallet's relay list.
-#[derive(Debug, Clone)]
-pub struct RelayStatus {
-    pub url: String,
-    /// Whether the relay responded to a query (reachable = true even if it has 0 events).
-    pub reachable: bool,
-    /// Whether the relay holds our kind:17375 wallet config event.
-    pub has_wallet_event: bool,
-    /// Number of kind:7375 token events found on this relay.
-    pub token_count: usize,
-    /// Number of kind:7376 history events found on this relay.
-    pub history_count: usize,
-}
-
-/// Result of pushing missing events to a single relay during a sync.
-#[derive(Debug, Clone)]
-pub struct RelaySyncResult {
-    pub url: String,
-    /// Number of events that were missing and successfully republished.
-    pub events_pushed: usize,
 }
 
 /// A pending deposit request (bolt11 invoice + quote id).

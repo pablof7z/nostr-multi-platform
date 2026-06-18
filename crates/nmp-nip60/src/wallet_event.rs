@@ -151,7 +151,7 @@ mod tests {
         let keys = Keys::generate();
         let config = WalletConfig::generate(
             vec!["https://testnut.cashu.space".into()],
-            vec!["wss://relay.damus.io".into()],
+            vec!["relay.example".into()],
         );
         let builder = build_wallet_event(&config, &keys).expect("build");
         let event = builder

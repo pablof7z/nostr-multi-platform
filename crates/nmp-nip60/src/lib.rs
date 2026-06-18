@@ -12,11 +12,15 @@
 //!   NutZap info event).
 //! - **NIP-88** — Cashu mint announcement (kind:38172) for mint discovery.
 //!
-//! # Relay selection (NIP-60 §relay-tags)
+//! # Relay I/O lives in the kernel, not here
 //!
-//! When loading or subscribing to wallet-related events:
-//! - If the wallet's kind:17375 includes `relay` tags → use ONLY those relays.
-//! - Otherwise → fall back to the user's NIP-65 relays (caller supplies these).
+//! This crate performs ZERO relay I/O — no sockets, no hardcoded relay URLs.
+//! The kernel fetches the wallet's events through its `EventStore` / interest
+//! pipeline and feeds them in via `Nip60WalletHandle::ingest_*`; events to
+//! publish are queued in the handle's outbox and drained by the kernel through
+//! its `ActorCommand::Publish*` chokepoint. The `relay` tags on the kind:17375
+//! config are surfaced as wallet metadata (`Nip60WalletHandle::relays`) so the
+//! kernel can scope its interests and publishes.
 //!
 //! # Cashu cryptography
 //!
@@ -36,7 +40,7 @@
 //! let wallet = Nip60WalletHandle::create_new(
 //!     &keys,
 //!     "https://testnut.cashu.space",
-//!     vec!["wss://relay.damus.io".into()],
+//!     Vec::new(),
 //! ).expect("wallet creation");
 //!
 //! // Initiate a deposit.
@@ -55,7 +59,6 @@ pub mod kinds;
 pub mod mint_announce;
 pub mod nip60_wallet;
 pub mod nutzap;
-pub mod relay;
 pub mod token_event;
 pub mod wallet_event;
 
@@ -65,7 +68,7 @@ pub use kinds::*;
 pub use mint_announce::{
     decode_mint_announce_event, mint_announce_filter, MintAnnouncement,
 };
-pub use nip60_wallet::{DepositRequest, Nip60WalletHandle, RelayStatus, RelaySyncResult};
+pub use nip60_wallet::{DepositRequest, Nip60WalletHandle};
 pub use nutzap::{
     build_nutzap_event, build_nutzap_info_event, decode_nutzap_event, decode_nutzap_info_event,
     p2pk_secret, verify_nutzap_dleq, NutZapInfo, NutZapProof, ReceivedNutZap,
