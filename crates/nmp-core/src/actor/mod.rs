@@ -1877,7 +1877,7 @@ pub fn run_actor_with_observers(
         // wake — no new sleep loop, no timer thread (D8 / "no polling").
         // An empty queue costs one bool check. Runs BEFORE the `flush_due`
         // emit below, so served events land in this tick's snapshot (D1).
-        if running && kernel.has_pending_cache_serves() {
+        if running && (kernel.has_pending_cache_serves() || kernel.has_cache_serve_wakeups()) {
             kernel.run_cache_serve_step();
         }
         // ── V-06 / #960: drain kernel-emitted NIP-42 AUTH signs ──────────

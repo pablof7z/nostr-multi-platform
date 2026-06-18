@@ -91,6 +91,8 @@ mod cache_serve_coverage_tests;
 mod cache_serve_tests;
 #[cfg(test)]
 mod cache_serve_universal_tests;
+#[cfg(test)]
+mod cache_serve_wakeup_tests;
 pub(crate) mod closed_reason;
 // K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
 #[cfg(test)]
@@ -1331,6 +1333,19 @@ pub struct Kernel {
     /// of per-follow interests never bursts unbounded synchronous work on the
     /// actor thread (the #1085 lesson at the aggregate level).
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
+    /// #1520 — event-driven cache-serve wakeup buffer.
+    ///
+    /// Each entry is a `completion_key` for an already-served interest whose
+    /// shape matched a newly-arrived live event. On the next actor tick
+    /// [`Kernel::drain_cache_serve_wakeups`] removes each key from
+    /// `served_interest_shapes` and re-enqueues the interest for a fresh
+    /// serve so the new event appears in subsequent snapshots.
+    ///
+    /// `BTreeSet<u64>` — bounded by the number of distinct interests (same
+    /// bound as `served_interest_shapes`). BTreeSet coalesces N rapid inserts
+    /// for the same interest to exactly ONE re-arm per actor turn (D8: no
+    /// unbounded channels, no timers).
+    pub(in crate::kernel) cache_serve_wakeups: std::collections::BTreeSet<u64>,
     snapshot_builder: flatbuffers::FlatBufferBuilder<'static>, // Rung 3 D3-6: reset+to_vec pattern
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
@@ -2003,6 +2018,7 @@ impl Kernel {
             last_gc_at_ms: None,
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
+            cache_serve_wakeups: std::collections::BTreeSet::new(),
             snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
