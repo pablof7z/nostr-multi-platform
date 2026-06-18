@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "Harness-read account fixtures for the sanity-gate sign-in-as-account path.",
+    "Copy to accounts.json (gitignored) and fill in a REAL high-follow account.",
+    "The follow-set correctness oracle needs >= 2000 follows (kind:3 p-tags);",
+    "if no account meets the threshold the oracle marks the fixture UNAVAILABLE",
+    "and SKIPs LOUD — it never dilutes the threshold.",
+    "NEVER commit a real nsec. Prefer a NIP-46 bunker or a throwaway read-only",
+    "account whose nsec you accept leaking to a local harness."
+  ],
+  "accounts": [
+    {
+      "name": "high-follow",
+      "npub": "npub1REPLACE_WITH_A_REAL_2K_FOLLOW_ACCOUNT",
+      "hex": "",
+      "nsec": "nsec1REPLACE_OR_LEAVE_BLANK_FOR_READONLY"
+    }
+  ]
+}

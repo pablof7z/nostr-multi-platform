@@ -1,0 +1,213 @@
+//! Real-kernel driver via the public `nmp_app_*` FFI.
+//!
+//! This is the sign-in-as-account path the brief asks for. Rather than editing
+//! firehose-bench (which drives the DEFAULT actor), this NEW driver uses the
+//! public FFI exactly as a native shell would:
+//!
+//!   nmp_app_new
+//!   → nmp_app_chirp_register(viewer)           // canonical NMP composition
+//!   → nmp_app_chirp_declare_consumed_projections
+//!   → nmp_app_signin_nsec(nsec, make_active=1)  // ← sign-in-as-account
+//!   → nmp_app_add_relay(url, "both")            // local nak or live relays
+//!   → nmp_app_set_update_callback(capture_cb)
+//!   → nmp_app_start(...)
+//!   → nmp_app_chirp_open_home_feed              // the real follow feed
+//!
+//! Update frames are captured into a `Mutex<CaptureState>` via the same
+//! `Box::into_raw` ctx pattern ffi-stress uses (`s7_feed_idle.rs`).
+//!
+//! D0: every symbol here is a real production FFI export (the inject_* test
+//! seam is used ONLY by the firehose phase for the local controlled corpus).
+
+use std::ffi::{c_void, CString};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use nmp_app_chirp::{
+    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle,
+};
+use nmp_core::decode_snapshot_envelope;
+use nmp_ffi::{
+    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_nsec,
+    nmp_app_start, NmpApp,
+};
+
+/// Visible/relay state distilled from each captured frame.
+#[derive(Clone, Debug, Default)]
+pub struct FrameRecord {
+    pub at_ms: u64,
+    pub visible_items: u64,
+    pub events_rx: u64,
+    pub note_events: u64,
+    pub connected: bool,
+    pub serialize_us: u64,
+}
+
+#[derive(Default)]
+pub struct CaptureState {
+    pub records: Vec<FrameRecord>,
+    start: Option<Instant>,
+}
+
+impl CaptureState {
+    fn elapsed_ms(&self) -> u64 {
+        self.start
+            .map(|s| s.elapsed().as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    pub fn latest(&self) -> Option<&FrameRecord> {
+        self.records.last()
+    }
+
+    pub fn peak_visible(&self) -> u64 {
+        self.records.iter().map(|r| r.visible_items).max().unwrap_or(0)
+    }
+
+    pub fn any_connected(&self) -> bool {
+        self.records.iter().any(|r| r.connected)
+    }
+}
+
+extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
+    if ctx.is_null() || payload.is_null() || payload_len == 0 {
+        return;
+    }
+    let ptr = ctx as *mut Mutex<CaptureState>;
+    // SAFETY: ctx is a live Box::into_raw-ed Mutex<CaptureState>.
+    let Ok(mut state) = (unsafe { &*ptr }).lock() else {
+        return;
+    };
+    if state.start.is_none() {
+        state.start = Some(Instant::now());
+    }
+    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
+    let at_ms = state.elapsed_ms();
+    if let Ok(env) = decode_snapshot_envelope(bytes) {
+        let connected = env
+            .relay_status
+            .as_ref()
+            .map(|s| s.connection == "connected")
+            .unwrap_or(false)
+            || env.relay_statuses.iter().any(|s| s.connection == "connected");
+        state.records.push(FrameRecord {
+            at_ms,
+            visible_items: env.visible_items,
+            events_rx: env.events_rx,
+            note_events: env.note_events,
+            connected,
+            serialize_us: env.serialize_us,
+        });
+    }
+}
+
+/// A live driven app. Holds the raw FFI handles + the capture ctx; tears them
+/// down in the correct order on drop.
+pub struct DrivenApp {
+    app: *mut NmpApp,
+    chirp: *mut ChirpHandle,
+    ctx: *mut Mutex<CaptureState>,
+    // Keep CStrings alive only as long as needed (FFI copies them).
+}
+
+impl DrivenApp {
+    /// Build, sign in as `nsec` (or ephemeral), connect `relays`, start, and
+    /// open the home feed. `viewer_hex` is the account's own pubkey (used by
+    /// chirp_register for self-inclusion + the follow-set oracle).
+    pub fn launch(nsec: Option<&str>, viewer_hex: Option<&str>, relays: &[String]) -> Self {
+        let app = nmp_app_new();
+
+        // Register the canonical Chirp composition (NIP-02/17/57/65 + routing).
+        let viewer_c = viewer_hex
+            .filter(|h| !h.is_empty())
+            .map(|h| CString::new(h).expect("viewer hex has no nul"));
+        let viewer_ptr = viewer_c
+            .as_ref()
+            .map(|c| c.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let mut chirp: *mut ChirpHandle = std::ptr::null_mut();
+        let _status = nmp_app_chirp_register(app, viewer_ptr, &mut chirp);
+
+        // Declare projection-consumption intent (ADR-0053) before start.
+        nmp_app_chirp_declare_consumed_projections(app);
+
+        // Sign in as the account (make_active = 1). Ephemeral if no nsec.
+        let nsec_owned = nsec.map(|s| s.to_string()).unwrap_or_else(generate_nsec);
+        if let Ok(c) = CString::new(nsec_owned) {
+            nmp_app_signin_nsec(app, c.as_ptr(), 1);
+        }
+
+        // Connect relays as `both` (read + write).
+        let role = CString::new("both").unwrap();
+        for url in relays {
+            if let Ok(c) = CString::new(url.as_str()) {
+                nmp_app_add_relay(app, c.as_ptr(), role.as_ptr());
+            }
+        }
+
+        // Wire the capture callback before start so no frame is missed.
+        let ctx = Box::into_raw(Box::new(Mutex::new(CaptureState::default())));
+        nmp_app_set_update_callback(app, ctx as *mut c_void, Some(capture_cb));
+
+        // Start: visible_limit 500 (TIMELINE_CACHE_LIMIT), emit 4 Hz (cold_start parity).
+        nmp_app_start(app, 0, 500, 4);
+        nmp_app_chirp_open_home_feed(app);
+
+        DrivenApp { app, chirp, ctx }
+    }
+
+    /// Borrow the capture state under its lock for reading.
+    pub fn with_state<R>(&self, f: impl FnOnce(&CaptureState) -> R) -> R {
+        // SAFETY: ctx is live until Drop.
+        let guard = unsafe { &*self.ctx }.lock().expect("capture lock");
+        f(&guard)
+    }
+
+    /// Block until `pred(&CaptureState)` holds or `timeout` elapses. Polls the
+    /// shared capture state (the actor pushes frames asynchronously). Returns
+    /// the elapsed ms when satisfied, or `None` on timeout.
+    pub fn wait_until(
+        &self,
+        timeout: Duration,
+        mut pred: impl FnMut(&CaptureState) -> bool,
+    ) -> Option<u64> {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if self.with_state(|s| pred(s)) {
+                return Some(self.with_state(|s| s.elapsed_ms()));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
+    pub fn raw(&self) -> *mut NmpApp {
+        self.app
+    }
+}
+
+impl Drop for DrivenApp {
+    fn drop(&mut self) {
+        // Detach the callback before reclaiming the ctx so no in-flight
+        // invocation dereferences freed memory (mirror ffi-stress teardown).
+        nmp_app_set_update_callback(self.app, std::ptr::null_mut(), None);
+        if !self.chirp.is_null() {
+            nmp_app_chirp_unregister(self.chirp);
+        }
+        nmp_app_free(self.app);
+        if !self.ctx.is_null() {
+            // SAFETY: we created it with Box::into_raw and the callback is detached.
+            drop(unsafe { Box::from_raw(self.ctx) });
+        }
+    }
+}
+
+/// Generate a fresh `nsec1…` for the ephemeral-account path.
+fn generate_nsec() -> String {
+    use nostr::{Keys, ToBech32};
+    Keys::generate()
+        .secret_key()
+        .to_bech32()
+        .unwrap_or_default()
+}
