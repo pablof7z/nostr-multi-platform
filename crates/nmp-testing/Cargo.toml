@@ -333,3 +333,11 @@ path = "tests/op_feed_doctrine_lint.rs"
 [[test]]
 name = "cross_platform_parity"
 path = "tests/cross_platform_parity.rs"
+
+# DX Scaffold Gate — empirical developer-experience assertions (docs/aim.md §1).
+# Turns the headline one-shot claim (init → compile → run with zero policy code)
+# into cargo-test-runnable hard gates.  Complements scripts/dx-probe/dx-probe.sh.
+# `cargo test -p nmp-testing --test dx_scaffold_gate`
+[[test]]
+name = "dx_scaffold_gate"
+path = "tests/dx_scaffold_gate.rs"
