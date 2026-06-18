@@ -7,7 +7,7 @@
     {
       "kind": "event_ref",
       "uri": {
-        "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
+        "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqs7dtwe",
         "kind": "address",
         "primary_id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:nostr-core",
         "relays": [],
