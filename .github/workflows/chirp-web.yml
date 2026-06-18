@@ -7,6 +7,12 @@ on:
       - ".github/workflows/chirp-web.yml"
       - "apps/chirp/nmp-app-chirp-web/**"
       - "crates/nmp-wasm/**"
+      # The wasm facade compiles nmp-core with `default-features = false` and
+      # nmp-network for wasm32. A wasm-reachability regression in either crate
+      # (e.g. #1552's native-only import in an always-compiled module) only
+      # surfaces here, so changes to them MUST run this job.
+      - "crates/nmp-core/**"
+      - "crates/nmp-network/**"
       - "web/chirp/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -16,6 +22,8 @@ on:
       - ".github/workflows/chirp-web.yml"
       - "apps/chirp/nmp-app-chirp-web/**"
       - "crates/nmp-wasm/**"
+      - "crates/nmp-core/**"
+      - "crates/nmp-network/**"
       - "web/chirp/**"
       - "Cargo.toml"
       - "Cargo.lock"
