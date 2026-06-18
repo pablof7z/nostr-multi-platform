@@ -19,7 +19,8 @@
 //! generic Nostr app needs to participate in the standard NMP composition:
 //!
 //! 1. **Action modules** for the common NIPs:
-//!    * `nmp.follow` / `nmp.unfollow` / `nmp.nip25.react` — [`nmp_nip02`]
+//!    * `nmp.follow` / `nmp.unfollow` — [`nmp_nip02`]
+//!    * `nmp.nip25.react` / `nmp.nip25.unreact` — [`nmp_nip25`]
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
 //!    * `nmp.nip57.zap` — [`nmp_nip57`]
 //!    * `nmp.nip65.publish_relay_list` — [`nmp_router`]
@@ -112,8 +113,8 @@ pub mod tiers;
 pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
-pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
+pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::register_mute_runtime;
 pub use tiers::{register_substrate, NmpDefaults};
 
@@ -205,10 +206,10 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
     // ── Social-feature defaults (toggleable) ─────────────────────────────
 
     if social {
-        // NIP-02: kind:3 follow/unfollow + kind:7 reactions. Originally lived
-        // as `ChirpFollowModule` / `ChirpUnfollowModule` / `ChirpReactModule`
-        // inside `nmp-app-chirp`; lifted into `nmp-nip02`.
-        nmp_nip02::register_actions(app);
+        // NIP-02: kind:3 follow/unfollow.
+        nmp_nip02::register_follow_actions(app);
+        // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
+        nmp_nip25::register_actions(app);
         // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
         nmp_wot::register_runtime(app);

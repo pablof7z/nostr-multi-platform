@@ -153,7 +153,16 @@ fn create_account_generates_fresh_active_key() {
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
     assert_eq!(kernel.account_snapshot().0.len(), 1);
     assert!(id.active_pubkey().is_some());
 }
@@ -175,7 +184,16 @@ fn create_account_empty_relays_keeps_preconfigured_relays() {
 
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
 
     // The pre-seeded relay set survives — empty onboarding relays do NOT clobber it.
     let rows = kernel.configured_relays_snapshot();
@@ -190,7 +208,16 @@ fn create_account_empty_relays_leaves_unseeded_kernel_empty() {
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
 
     assert!(
         kernel.configured_relays_snapshot().is_empty(),
@@ -203,7 +230,16 @@ fn create_account_launch_override_relay_gets_rust_owned_default_role() {
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays = vec![("wss://maestro.test/".to_string(), String::new())];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
 
     let rows = kernel.configured_relays_snapshot();
     assert_eq!(rows.len(), 1);
@@ -231,7 +267,14 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
         "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string(),
     ];
     let outbound = create_account(
-        &mut id, &mut kernel, false, &profile, &relays, &follows, false, true,
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &follows,
+        false,
+        true,
     );
     assert!(
         outbound.iter().any(|msg| msg.text.contains("\"kind\":0")),
@@ -336,7 +379,16 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
     let mut profile = std::collections::HashMap::new();
     profile.insert("name".to_string(), "Signup User".to_string());
     let relays = vec![("wss://signup-write.test".to_string(), "write".to_string())];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
 
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(), // ignored by signer; filled from active account
@@ -377,7 +429,16 @@ fn switch_active_flips_status_synchronously() {
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
     let first_id = kernel.account_snapshot().0[0].id.clone();
     let second_active = id.active_pubkey().unwrap();
     assert_ne!(first_id, second_active);
@@ -1202,16 +1263,15 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
         created_at: 1_700_000_000,
     };
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
-    let outbound =
-        publish_unsigned_event_to_relays(
-            &id,
-            &mut kernel,
-            unsigned,
-            relays,
-            None,
-            None,
-            &mut Vec::new(),
-        );
+    let outbound = publish_unsigned_event_to_relays(
+        &id,
+        &mut kernel,
+        unsigned,
+        relays,
+        None,
+        None,
+        &mut Vec::new(),
+    );
 
     assert!(
         outbound.is_empty(),
@@ -1327,260 +1387,9 @@ fn tags_of(event_json: &serde_json::Value) -> Vec<Vec<String>> {
         .collect()
 }
 
-#[test]
-fn react_builds_kind7_with_e_and_p_tags() {
-    // NIP-25 §1: a kind:7 reaction carries an `e` tag (the reacted-to event)
-    // AND a `p` tag (that event's author) so the author's relays route the
-    // reaction to their notification inbox. The target is seeded into the
-    // kernel read-cache with a known author distinct from the signer, so the
-    // emitted `p` tag's pubkey is unambiguous.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let target = "a".repeat(64);
-    let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
-    kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
-
-    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
-    assert!(!outbound.is_empty());
-    assert!(outbound[0].text.contains("\"kind\":7"));
-    assert!(outbound[0].text.contains(&target));
-    assert_eq!(kernel.publish_queue_snapshot().last().unwrap().kind, 7);
-
-    let event = last_published_event_json(&outbound);
-    let tags = tags_of(&event);
-    assert_eq!(
-        tags,
-        vec![
-            vec!["e".to_string(), target.clone()],
-            vec!["p".to_string(), target_author.to_string()],
-        ],
-        "reaction must carry an `e` tag for the target and a `p` tag for its author"
-    );
-}
-
 // Issue #1246 kind:3 full-edit follow tests live in the sibling child module
 // `tests_follow_kind3_fulledit` (declared at the bottom of this file) to keep
 // this file under the file-size hard cap.
-
-// ── react: account / id-validation / default-content gaps ──────────────────
-//
-// `react_builds_kind7_with_e_tag` above covers only the custom-emoji happy
-// path. These pin the three remaining branches in `publish::react`:
-// the no-account D6 toast, the malformed-id D6 toast, and the empty-reaction
-// → `"+"` default-content fallback (publish.rs:257-261).
-
-#[test]
-fn react_without_account_toasts_and_no_outbound() {
-    // D6: a missing active account is surfaced as a toast across FFI, never
-    // an exception. No EVENT frame, no publish-queue entry.
-    let (id, mut kernel) = fresh();
-    let target = "a".repeat(64);
-    let outbound = react(&id, &mut kernel, &target, "+", None, &mut Vec::new());
-    assert!(
-        outbound.is_empty(),
-        "react with no active account must produce no outbound frames"
-    );
-    assert!(kernel
-        .last_error_toast_snapshot()
-        .is_some_and(|t| t.contains("react") && t.contains("no active account")));
-    assert!(
-        kernel.publish_queue_snapshot().is_empty(),
-        "react with no active account must not enqueue a publish"
-    );
-}
-
-#[test]
-fn react_to_malformed_event_id_toasts_and_refuses() {
-    // The target must be a 64-hex event id. A malformed id is a user-visible
-    // error (D6 toast), not a silent no-op — and must not panic.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = react(
-        &id,
-        &mut kernel,
-        "not-a-real-event-id",
-        "+",
-        None,
-        &mut Vec::new(),
-    );
-    assert!(
-        outbound.is_empty(),
-        "react to a malformed event id must produce no outbound frames"
-    );
-    assert!(kernel
-        .last_error_toast_snapshot()
-        .is_some_and(|t| t.contains("react") && t.contains("malformed")));
-    assert!(
-        kernel.publish_queue_snapshot().is_empty(),
-        "react to a malformed event id must not enqueue a publish"
-    );
-}
-
-#[test]
-fn react_with_empty_reaction_defaults_to_plus() {
-    // An empty/whitespace reaction string falls back to the NIP-25 default
-    // `"+"` (a "like"). The emitted kind:7 must carry `"content":"+"`, not an
-    // empty string. The target is seeded so the NIP-25 `p` tag is also exercised.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let target = "a".repeat(64);
-    let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
-    kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
-
-    let outbound = react(&id, &mut kernel, &target, "   ", None, &mut Vec::new());
-    assert!(!outbound.is_empty(), "react must produce an EVENT frame");
-    let event = last_published_event_json(&outbound);
-    assert_eq!(event["kind"], 7, "reaction must be kind:7");
-    assert_eq!(
-        event["content"], "+",
-        "empty/whitespace reaction must default to the NIP-25 `+` like"
-    );
-    // NIP-25 §1: the reaction carries both an `e` tag for the target and a
-    // `p` tag naming the reacted-to event's author (notification routing).
-    let tags = tags_of(&event);
-    assert_eq!(
-        tags,
-        vec![
-            vec!["e".to_string(), target.clone()],
-            vec!["p".to_string(), target_author.to_string()],
-        ],
-        "react must emit an `e` tag for the target and a `p` tag for its author"
-    );
-}
-
-#[test]
-fn react_to_uncached_event_omits_p_tag_gracefully() {
-    // D6: when the reacted-to event is not in the kernel read-cache its author
-    // is unknown, so the `p` tag cannot be built. The reaction must still
-    // publish — degraded but valid NIP-25, with just the `e` tag — and must
-    // never panic. (The target id is a well-formed 64-hex id that is simply
-    // never seeded.)
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let target = "d".repeat(64);
-
-    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
-    assert!(
-        !outbound.is_empty(),
-        "react to an uncached event must still publish a kind:7"
-    );
-    let event = last_published_event_json(&outbound);
-    assert_eq!(event["kind"], 7, "reaction must be kind:7");
-    let tags = tags_of(&event);
-    assert_eq!(
-        tags,
-        vec![vec!["e".to_string(), target.clone()]],
-        "uncached target → reaction carries only the `e` tag, no `p` tag"
-    );
-}
-
-#[test]
-fn react_routes_to_reacted_to_author_inbox_relay() {
-    // NIP-25 §1 + NIP-65 inbox routing: a kind:7 reaction must not only *label*
-    // the reacted-to author with a `p` tag — it must *reach* that author. The
-    // publish engine derives `#p` recipients from the event's own tags
-    // (`engine::helpers::collect_p_tags`) and the `Nip65OutboxResolver` unions
-    // every recipient's kind:10002 READ relays (their inbox) into the publish
-    // target set. So a reaction whose author has a known kind:10002 must emit an
-    // outbound frame addressed to that author's inbox relay.
-    //
-    // The reactor's WRITE relays and the reacted-to author's READ (inbox)
-    // relay are deliberately disjoint URLs: an inbox-routed frame can only
-    // appear if the resolver actually consulted the recipient's kind:10002, so
-    // the assertion proves inbox routing rather than incidental outbox overlap.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel); // reactor → TEST_WRITE_RELAYS (write-marked)
-
-    let target = "a".repeat(64);
-    let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
-    kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
-
-    // Seed the reacted-to author's NIP-65 list with a READ-marked inbox relay.
-    // `seed_kind10002_for_test` only emits write-marked tags, so the kind:10002
-    // is injected directly with an explicit `"read"` marker — that is the relay
-    // the resolver routes the inbox copy to.
-    const AUTHOR_INBOX_RELAY: &str = "wss://reacted-author-inbox.test";
-    // Use the target_author pubkey as the event id — guaranteed valid hex (64
-    // hex chars).  The old string "cccck10002inbox" contained 'k', 'i', 'n'
-    // which are not valid hex characters; V-70 strengthened
-    // `is_structurally_valid()` to check hex chars, so that synthetic event
-    // was rejected as Malformed and never entered the store.
-    let k10002_id = target_author.to_string();
-    kernel.inject_replaceable_event(
-        &k10002_id,
-        target_author,
-        1_700_000_000,
-        10002,
-        vec![vec![
-            "r".to_string(),
-            AUTHOR_INBOX_RELAY.to_string(),
-            "read".to_string(),
-        ]],
-        "wss://seed",
-        1_700_000_000_000,
-    );
-
-    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
-
-    // The reaction must carry the `p` tag (NIP-25 §1) so the engine has a
-    // recipient to resolve at all.
-    let event = last_published_event_json(&outbound);
-    assert_eq!(
-        tags_of(&event),
-        vec![
-            vec!["e".to_string(), target.clone()],
-            vec!["p".to_string(), target_author.to_string()],
-        ],
-        "reaction must carry a `p` tag naming the reacted-to author for inbox routing"
-    );
-
-    // The decisive assertion: an EVENT frame went to the author's READ/inbox
-    // relay. This only happens if the NIP-65 resolver consulted the recipient's
-    // kind:10002 — the reactor's own write relays do not include this URL.
-    let routed_to_inbox = outbound
-        .iter()
-        .any(|m| m.relay_url == AUTHOR_INBOX_RELAY && m.text.starts_with("[\"EVENT\""));
-    assert!(
-        routed_to_inbox,
-        "reaction must be routed to the reacted-to author's NIP-65 inbox relay \
-         ({AUTHOR_INBOX_RELAY}); outbound relays: {:?}",
-        outbound.iter().map(|m| &m.relay_url).collect::<Vec<_>>()
-    );
-
-    // Sanity: the reactor's own outbox relays are still in the target set —
-    // inbox routing augments, never replaces, the author's NIP-65 write fanout.
-    for write_url in TEST_WRITE_RELAYS {
-        assert!(
-            outbound.iter().any(|m| &m.relay_url == write_url),
-            "reaction must still fan out to the reactor's NIP-65 write relay {write_url}"
-        );
-    }
-}
-
-#[test]
-fn react_to_uncached_author_skips_inbox_routing_gracefully() {
-    // D6: when the reacted-to event is uncached, `react` cannot build the `p`
-    // tag, so there is no recipient for the resolver to route an inbox copy
-    // to. The reaction must still publish to the reactor's own outbox relays —
-    // degraded but valid — and must not panic. This is the negative companion
-    // to `react_routes_to_reacted_to_author_inbox_relay`.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let target = "d".repeat(64); // well-formed id, never seeded → author uncached
-
-    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
-
-    assert!(
-        !outbound.is_empty(),
-        "react to an uncached event must still publish to the reactor's outbox"
-    );
-    for write_url in TEST_WRITE_RELAYS {
-        assert!(
-            outbound.iter().any(|m| &m.relay_url == write_url),
-            "uncached target → reaction still fans out to the reactor's write relay {write_url}"
-        );
-    }
-}
 
 // ── follow: unfollow / idempotency / account / pubkey-validation gaps ───────
 //

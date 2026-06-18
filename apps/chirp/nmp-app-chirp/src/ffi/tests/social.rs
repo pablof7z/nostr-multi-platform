@@ -1,4 +1,4 @@
-//! Social-verb migration proof: react / follow / unfollow are reachable
+//! Social-verb migration proof: react / unreact / follow / unfollow are reachable
 //! through the generic `dispatch_action` path after `nmp_app_chirp_register`.
 //!
 //! Plus the Wave A typed-`"nmp.follow_list"`-sidecar proof (ADR-0037): the
@@ -13,7 +13,7 @@ use super::super::nmp_app_chirp_unregister;
 use super::super::register::follow_list_typed_projection;
 use super::helpers::{dispatch, register_app};
 
-/// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the three social
+/// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the public social
 /// verbs are reachable through the generic `dispatch_action` path — each
 /// returns a 32-hex `correlation_id`, proving BOTH the host-registered
 /// module (consumed by `start()`) AND executor (consumed by `execute()`)
@@ -23,11 +23,16 @@ use super::helpers::{dispatch, register_app};
 fn social_verbs_dispatch_through_action_registry() {
     let app = nmp_app_new();
     let handle = register_app(app);
+    let event_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     for (namespace, body) in [
         (
             "nmp.nip25.react",
-            r#"{"target_event_id":"abc","reaction":"+"}"#,
+            r#"{"target_event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reaction":"+"}"#,
+        ),
+        (
+            "nmp.nip25.unreact",
+            r#"{"reaction_event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#,
         ),
         ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
         ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
@@ -41,7 +46,11 @@ fn social_verbs_dispatch_through_action_registry() {
     }
 
     // `nmp.nip25.react` defaults `reaction` to `"+"` when absent.
-    let parsed = dispatch(app, "nmp.nip25.react", r#"{"target_event_id":"abc"}"#);
+    let parsed = dispatch(
+        app,
+        "nmp.nip25.react",
+        &format!(r#"{{"target_event_id":"{event_id}"}}"#),
+    );
     assert!(
         parsed.get("correlation_id").is_some(),
         "nmp.nip25.react without reaction should default and succeed: {parsed}"

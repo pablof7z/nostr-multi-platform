@@ -181,12 +181,14 @@ pub fn action_spec_for_intent(intent: ChirpActionIntent) -> Result<ActionDispatc
             &content,
             reply_to.as_deref(),
         )),
-        ChirpActionIntent::BlockRelay { url, account_pubkey } => {
-            Ok(block_relay_spec(&url, &account_pubkey))
-        }
-        ChirpActionIntent::UnblockRelay { url, account_pubkey } => {
-            Ok(unblock_relay_spec(&url, &account_pubkey))
-        }
+        ChirpActionIntent::BlockRelay {
+            url,
+            account_pubkey,
+        } => Ok(block_relay_spec(&url, &account_pubkey)),
+        ChirpActionIntent::UnblockRelay {
+            url,
+            account_pubkey,
+        } => Ok(unblock_relay_spec(&url, &account_pubkey)),
     }
 }
 
@@ -245,6 +247,7 @@ pub fn react_spec(event_id: &str, reaction: &str) -> ActionDispatchSpec {
     let input = ReactAction {
         target_event_id: event_id.to_string(),
         reaction: reaction.to_string(),
+        target_author_pubkey: None,
     };
     typed_spec("nmp.nip25.react", &input)
 }

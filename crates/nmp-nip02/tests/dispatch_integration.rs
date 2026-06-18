@@ -1,6 +1,6 @@
-//! Integration test: prove `register_actions` wires all three social-graph
-//! namespaces against a real `NmpApp` and that each one round-trips through
-//! `nmp_app_dispatch_action`.
+//! Integration test: prove the compatibility `register_actions` helper wires
+//! follow/unfollow plus delegated NIP-25 reaction namespaces against a real
+//! `NmpApp` and that each one round-trips through `nmp_app_dispatch_action`.
 //!
 //! This is the migration-success contract — the same shape the chirp
 //! `social_verbs_dispatch_through_action_registry` test enforces, lifted
@@ -12,11 +12,7 @@ use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_strin
 
 /// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and return
 /// the parsed JSON result. The returned C string is freed.
-fn dispatch(
-    app: *mut nmp_ffi::NmpApp,
-    namespace: &str,
-    action_json: &str,
-) -> serde_json::Value {
+fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {
     let ns = CString::new(namespace).unwrap();
     let body = CString::new(action_json).unwrap();
     let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
@@ -27,14 +23,14 @@ fn dispatch(
     serde_json::from_str(&out).unwrap()
 }
 
-/// After `nmp_nip02::register_actions`, all three social verbs are
+/// After `nmp_nip02::register_actions`, the old public social bundle is
 /// reachable through the generic `dispatch_action` path. Each accepted
 /// dispatch returns a 32-hex `correlation_id`, proving BOTH the
 /// shape-validating module (consumed by `ActionRegistry::start`) AND the
 /// `ActorCommand`-enqueuing executor (consumed by `ActionRegistry::execute`)
 /// are wired under each namespace.
 #[test]
-fn register_actions_wires_all_three_social_verbs() {
+fn register_actions_wires_compat_social_bundle() {
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new must return a valid app");
     // SAFETY: `app` is a valid pointer from `nmp_app_new`; we hold the
@@ -44,10 +40,18 @@ fn register_actions_wires_all_three_social_verbs() {
         nmp_nip02::register_actions(&mut *app);
     }
 
+    let event_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     for (namespace, body) in [
         ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
         ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
-        ("nmp.nip25.react", r#"{"target_event_id":"abc","reaction":"+"}"#),
+        (
+            "nmp.nip25.react",
+            r#"{"target_event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reaction":"+"}"#,
+        ),
+        (
+            "nmp.nip25.unreact",
+            r#"{"reaction_event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#,
+        ),
     ] {
         let parsed = dispatch(app, namespace, body);
         let id = parsed
@@ -66,7 +70,11 @@ fn register_actions_wires_all_three_social_verbs() {
     }
 
     // `nmp.nip25.react` accepts a body missing `reaction` (defaults to "+").
-    let parsed = dispatch(app, "nmp.nip25.react", r#"{"target_event_id":"abc"}"#);
+    let parsed = dispatch(
+        app,
+        "nmp.nip25.react",
+        &format!(r#"{{"target_event_id":"{event_id}"}}"#),
+    );
     assert!(
         parsed.get("correlation_id").is_some(),
         "nmp.nip25.react without `reaction` should default to '+' and succeed: {parsed}"
