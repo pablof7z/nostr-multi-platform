@@ -6,6 +6,10 @@
 //! `BTreeSet`-backed `query` already produces newest-first ordering by
 //! `(created_at desc, id desc)`; the Mem invariant is `(created_at desc,
 //! id asc)`. We post-sort the materialized vec to match Mem's order.
+//!
+//! Streaming query helpers (`build_filter`, `run_filter_visit`, and the
+//! test-only conversion counter) live in `query_streaming` to stay within
+//! the 500-line file-size gate.
 
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
@@ -17,6 +21,11 @@ use super::{conv, gc, provenance, tombstones, Inner};
 use crate::events::EventIter;
 use crate::types::{EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, TombstoneRow};
 use crate::StoreError;
+
+use super::query_streaming::{build_filter, run_filter_visit};
+
+#[cfg(test)]
+pub(crate) use super::query_streaming::{conversion_count, reset_conversion_count};
 
 // ─── Primary lookup ──────────────────────────────────────────────────────────
 
@@ -308,49 +317,10 @@ pub(super) fn query_visit(
     if limit == 0 {
         return Ok(());
     }
-    let matched = match query {
-        StoreQuery::AuthorKind {
-            author,
-            kinds,
-            since,
-            until,
-        } => collect(scan_by_author_kind(
-            inner, author, kinds, *since, *until, limit,
-        )?)?,
-        StoreQuery::AuthorsKind {
-            authors,
-            kinds,
-            since,
-            until,
-        } => collect(scan_by_authors_kind(
-            inner, authors, kinds, *since, *until, limit,
-        )?)?,
-        StoreQuery::KindTime {
-            kinds,
-            since,
-            until,
-        } => collect(scan_by_kind_time(inner, kinds, *since, *until, limit)?)?,
-        StoreQuery::KindDtag {
-            kind,
-            d_tag,
-            since,
-            until,
-        } => collect(scan_by_kind_dtag(
-            inner, *kind, d_tag, *since, *until, limit,
-        )?)?,
-        StoreQuery::Etag { target, kinds } => collect(scan_by_etag(inner, target, kinds, limit)?)?,
-        StoreQuery::Ptag { target, kinds } => collect(scan_by_ptag(inner, target, kinds, limit)?)?,
-    };
-    for ev in matched.into_iter().take(limit) {
-        if let ControlFlow::Break(()) = visitor(&ev) {
-            break;
-        }
+    match build_filter(query) {
+        None => Ok(()), // empty-set short-circuit (empty kinds / authors)
+        Some(filter) => run_filter_visit(inner, filter, limit, visitor),
     }
-    Ok(())
-}
-
-fn collect<'a>(iter: Box<dyn EventIter + 'a>) -> Result<Vec<StoredEvent>, StoreError> {
-    iter.collect()
 }
 
 // ─── Tombstones ──────────────────────────────────────────────────────────────
