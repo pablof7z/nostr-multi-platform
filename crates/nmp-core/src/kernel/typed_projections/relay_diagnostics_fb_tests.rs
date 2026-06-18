@@ -12,21 +12,19 @@ fn sample() -> RelayDiagnosticsModel {
     RelayDiagnosticsModel {
         relays: vec![RelayRow {
             relay_url: "wss://relay.one".to_string(),
-            short_url: "relay.one".to_string(),
-            role_label: "Content".to_string(),
-            role_tone: "primary".to_string(),
-            connection_label: "Connected".to_string(),
+            role: "content".to_string(),
+            role_tone: "accent".to_string(),
+            connection: "connected".to_string(),
             connection_tone: "ok".to_string(),
-            auth_label: "OK".to_string(),
+            auth: "ok".to_string(),
             auth_tone: "ok".to_string(),
             total_sub_count: 3,
             active_sub_count: 2,
             eosed_sub_count: 1,
             total_events_rx: 1234,
-            total_events_display: "1.2K".to_string(),
             reconnect_count: 1,
-            bytes_rx_display: Some("4 KB".to_string()),
-            bytes_tx_display: None,
+            bytes_rx: 4096,
+            bytes_tx: 0,
             last_connected_ms: 1_700_000_003_000,
             last_event_ms: 0,
             last_notice: Some("rate limited".to_string()),
@@ -38,20 +36,19 @@ fn sample() -> RelayDiagnosticsModel {
             last_error: None,
             wire_subs: vec![WireSubRow {
                 wire_id: "ff".repeat(32),
-                short_wire_id: "ffffffff…".to_string(),
                 relay_url: "wss://relay.one".to_string(),
                 filter_summary: "kinds:[1]".to_string(),
-                state_label: "Open".to_string(),
+                state: "open".to_string(),
                 state_tone: "ok".to_string(),
-                consumer_count_label: "1 consumer".to_string(),
-                events_rx_display: Some("42".to_string()),
+                consumer_count: 1,
+                events_rx: 42,
                 eose_observed: true,
                 opened_ms: 1_700_000_000_000,
                 last_event_ms: 1_700_000_005_000,
                 eose_ms: 1_700_000_008_000,
                 close_reason: None,
             }],
-            discovery_kinds_label: "profile (0)".to_string(),
+            discovery_kinds: vec![0, 3, 10002],
             reasons: vec![],
             info: Some(InfoRow {
                 name: Some("Relay One".to_string()),
@@ -100,17 +97,36 @@ fn empty_snapshot_round_trips() {
     assert!(decoded.interests.is_empty());
 }
 
-/// Every `Option<String>` must round-trip None distinctly from `Some("")` — the
-/// `has_*` presence flags carry the distinction the JSON `null`-vs-`""` carries.
+/// bytes_rx/bytes_tx round-trip as u64 zeros when absent.
 #[test]
-fn none_options_distinct_from_empty_string() {
+fn bytes_raw_counters_round_trip() {
     let mut model = sample();
-    model.relays[0].bytes_tx_display = Some(String::new());
-    model.relays[0].last_error = None;
+    model.relays[0].bytes_rx = 0;
+    model.relays[0].bytes_tx = 128;
     let decoded =
         decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode succeeds");
-    assert_eq!(decoded.relays[0].bytes_tx_display, Some(String::new()));
-    assert_eq!(decoded.relays[0].last_error, None);
+    assert_eq!(decoded.relays[0].bytes_rx, 0);
+    assert_eq!(decoded.relays[0].bytes_tx, 128);
+}
+
+/// discovery_kinds round-trips as a Vec<u64>.
+#[test]
+fn discovery_kinds_round_trip() {
+    let mut model = sample();
+    model.relays[0].discovery_kinds = vec![0, 3, 10002, 10003];
+    let decoded =
+        decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode succeeds");
+    assert_eq!(decoded.relays[0].discovery_kinds, vec![0u64, 3, 10002, 10003]);
+}
+
+/// Empty discovery_kinds round-trips correctly.
+#[test]
+fn empty_discovery_kinds_round_trip() {
+    let mut model = sample();
+    model.relays[0].discovery_kinds = vec![];
+    let decoded =
+        decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode succeeds");
+    assert!(decoded.relays[0].discovery_kinds.is_empty());
 }
 
 #[test]

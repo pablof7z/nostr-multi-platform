@@ -1,7 +1,7 @@
-//! Relay diagnostics discovery-kind classification.
+//! Relay diagnostics discovery-kind extraction.
 //!
-//! Renderers receive a pre-classified label; shell UI does not parse REQ
-//! filter JSON or switch on Nostr discovery kind numbers.
+//! Returns raw kind numbers from open subscriptions on this relay. Shells
+//! format discovery kind lists for display — projection builders emit raw data.
 
 use serde_json::Value;
 
@@ -10,7 +10,9 @@ use super::WireSubscriptionStatus;
 const DISCOVERY_KINDS: &[u64] = &[0, 3, 10002];
 const DISCOVERY_LIST_RANGE: std::ops::RangeInclusive<u64> = 10000..=19999;
 
-pub(super) fn discovery_kinds_label_for_subs(subs: &[WireSubscriptionStatus]) -> String {
+/// Return deduplicated sorted discovery kind numbers from open wire
+/// subscriptions. Shells format for display (e.g. "profile (0), follows (3)").
+pub(super) fn discovery_kinds_for_subs(subs: &[WireSubscriptionStatus]) -> Vec<u64> {
     let mut found: Vec<u64> = subs
         .iter()
         .filter(|sub| subscription_is_discovery_visible(&sub.state))
@@ -19,25 +21,7 @@ pub(super) fn discovery_kinds_label_for_subs(subs: &[WireSubscriptionStatus]) ->
         .collect();
     found.sort_unstable();
     found.dedup();
-
-    if found.is_empty() {
-        "none".to_string()
-    } else {
-        found
-            .into_iter()
-            .map(|kind| format!("{} ({})", discovery_kind_label(kind), kind))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-fn discovery_kind_label(kind: u64) -> &'static str {
-    match kind {
-        0 => "profile",
-        3 => "follows",
-        10002 => "relay-list",
-        _ => "list",
-    }
+    found
 }
 
 fn is_discovery_kind(kind: u64) -> bool {
@@ -80,25 +64,22 @@ mod tests {
     }
 
     #[test]
-    fn discovery_kinds_label_classifies_open_filter_kinds() {
+    fn discovery_kinds_classifies_open_filter_kinds() {
         let subs = vec![
             wire_sub(r#"{"kinds":[0,3],"authors":["aa"]}"#, "open"),
             wire_sub(r#"{"kinds":[10002,10003],"authors":["bb"]}"#, "opening"),
         ];
 
-        assert_eq!(
-            discovery_kinds_label_for_subs(&subs),
-            "profile (0), follows (3), relay-list (10002), list (10003)"
-        );
+        assert_eq!(discovery_kinds_for_subs(&subs), vec![0, 3, 10002, 10003]);
     }
 
     #[test]
-    fn discovery_kinds_label_excludes_closed_and_non_discovery_subs() {
+    fn discovery_kinds_excludes_closed_and_non_discovery_subs() {
         let subs = vec![
             wire_sub(r#"{"kinds":[0]}"#, "closed"),
             wire_sub(r#"{"kinds":[1,6]}"#, "open"),
         ];
 
-        assert_eq!(discovery_kinds_label_for_subs(&subs), "none");
+        assert!(discovery_kinds_for_subs(&subs).is_empty());
     }
 }

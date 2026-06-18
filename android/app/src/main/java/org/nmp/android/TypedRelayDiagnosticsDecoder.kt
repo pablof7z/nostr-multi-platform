@@ -22,10 +22,10 @@ private const val TAG = "TypedRelayDiagnosticsDecoder"
  * `TypedRelayDiagnosticsDecoder` + `TypedProjectionGlue.relayDiagnostics`.
  *
  * Pure field-for-field map of the relay diagnostics tree (rows → wireSubs;
- * interests → relayUrls). Every `*Label`/`*Tone` string is Rust-precomputed
- * (ADR-0032 / V-14) so `RelayScreen` renders `connectionLabel`/`connectionTone`
- * verbatim and never branches on raw protocol tokens. `has_*`-companion optional
- * strings lift to `null` when absent (byte-faithful to the JSON path).
+ * interests → relayUrls). Raw values (role, connection, auth as lowercase
+ * strings; bytes as Long counters) are carried; display formatting is handled
+ * by the model's computed properties. `has_*`-companion optional strings lift
+ * to `null` when absent (byte-faithful to the JSON path).
  *
  * ADR-0037 Commitment 4: typed-FIRST with permanent fallback. Returns `null`
  * when the `KRDG` sidecar is absent / wrong schema / unverifiable, so the caller
@@ -78,23 +78,25 @@ object TypedRelayDiagnosticsDecoder {
             val sub = row.wireSubs(j) ?: continue
             wireSubs.add(mapWireSub(sub))
         }
+        val discoveryKinds = ArrayList<Long>(row.discoveryKindsLength)
+        for (k in 0 until row.discoveryKindsLength) {
+            discoveryKinds.add(row.discoveryKinds(k).toLong())
+        }
         return RelayDiagnosticsRow(
             relayUrl = row.relayUrl ?: "",
-            shortUrl = row.shortUrl ?: "",
-            roleLabel = row.roleLabel ?: "",
+            role = row.role ?: "",
             roleTone = row.roleTone ?: "",
-            connectionLabel = row.connectionLabel ?: "",
+            connection = row.connection ?: "",
             connectionTone = row.connectionTone ?: "",
-            authLabel = row.authLabel ?: "",
+            auth = row.auth ?: "",
             authTone = row.authTone ?: "",
             totalSubCount = row.totalSubCount.toInt(),
             activeSubCount = row.activeSubCount.toInt(),
             eosedSubCount = row.eosedSubCount.toInt(),
             totalEventsRx = row.totalEventsRx.toLong(),
-            totalEventsDisplay = row.totalEventsDisplay ?: "",
             reconnectCount = row.reconnectCount.toInt(),
-            bytesRxDisplay = if (row.hasBytesRxDisplay) row.bytesRxDisplay else null,
-            bytesTxDisplay = if (row.hasBytesTxDisplay) row.bytesTxDisplay else null,
+            bytesRx = row.bytesRx.toLong(),
+            bytesTx = row.bytesTx.toLong(),
             // aim.md §62: raw Unix-ms on wire; shells format at render time.
             lastConnectedMs = row.lastConnectedMs.toLong(),
             lastEventMs = row.lastEventMs.toLong(),
@@ -106,6 +108,7 @@ object TypedRelayDiagnosticsDecoder {
             // null` case), so table presence is the discriminator (no `has_info`
             // flag). Byte-faithful to the JSON path's `info: null`.
             info = row.info?.let(::mapInfo),
+            discoveryKinds = discoveryKinds,
         )
     }
 
@@ -131,13 +134,12 @@ object TypedRelayDiagnosticsDecoder {
 
     private fun mapWireSub(sub: FbWireSub): RelayDiagnosticsWireSub = RelayDiagnosticsWireSub(
         wireId = sub.wireId ?: "",
-        shortWireId = sub.shortWireId ?: "",
         relayUrl = sub.relayUrl ?: "",
         filterSummary = sub.filterSummary ?: "",
-        stateLabel = sub.stateLabel ?: "",
+        state = sub.state ?: "",
         stateTone = sub.stateTone ?: "",
-        consumerCountLabel = sub.consumerCountLabel ?: "",
-        eventsRxDisplay = if (sub.hasEventsRxDisplay) sub.eventsRxDisplay else null,
+        consumerCount = sub.consumerCount.toInt(),
+        eventsRx = sub.eventsRx.toLong(),
         eoseObserved = sub.eoseObserved,
         // aim.md §62: raw Unix-ms on wire; shells format at render time.
         openedMs = sub.openedMs.toLong(),

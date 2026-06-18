@@ -48,29 +48,8 @@ fn snapshot_is_byte_stable_without_intervening_event() {
     assert_eq!(
         first, second,
         "relay_diagnostics must serialize byte-identically when no relay \
-         event intervened (aim.md §62 — no clock churn in the projection)"
+         event intervened (no clock churn in the projection)"
     );
-}
-
-#[test]
-fn compact_count_buckets() {
-    assert_eq!(compact_count(0), "0");
-    assert_eq!(compact_count(42), "42");
-    assert_eq!(compact_count(999), "999");
-    assert_eq!(compact_count(1_000), "1K");
-    assert_eq!(compact_count(1_234), "1.2K");
-    assert_eq!(compact_count(1_000_000), "1M");
-    assert_eq!(compact_count(2_500_000), "2.5M");
-}
-
-#[test]
-fn short_relay_strips_scheme_and_trailing_slash() {
-    assert_eq!(short_relay_url("wss://relay.example/"), "relay.example");
-    assert_eq!(
-        short_relay_url("ws://relay.example/path"),
-        "relay.example/path"
-    );
-    assert_eq!(short_relay_url("relay.example"), "relay.example");
 }
 
 #[test]
@@ -100,14 +79,14 @@ fn snapshot_emits_one_row_per_known_relay() {
     ]);
     let snap = kernel.relay_diagnostics_snapshot();
     // Bootstrap roles (Content + Indexer) are always present.
-    let roles: Vec<_> = snap.relays.iter().map(|r| r.role_label.as_str()).collect();
+    let roles: Vec<_> = snap.relays.iter().map(|r| r.role.as_str()).collect();
     assert!(
-        roles.iter().any(|r| *r == "Content"),
-        "expected Content lane in roles {:?}",
+        roles.iter().any(|r| *r == "content" || *r == "both"),
+        "expected content/both lane in roles {:?}",
         roles
     );
     assert!(
-        roles.iter().any(|r| *r == "Indexer"),
+        roles.iter().any(|r| *r == "indexer"),
         "expected Indexer lane in roles {:?}",
         roles
     );
@@ -117,7 +96,6 @@ fn snapshot_emits_one_row_per_known_relay() {
         assert_eq!(row.active_sub_count, 0);
         assert_eq!(row.eosed_sub_count, 0);
         assert_eq!(row.total_events_rx, 0);
-        assert_eq!(row.total_events_display, "0");
     }
     // The interest snapshot includes the always-on lanes.
     assert!(snap.interests.iter().any(|i| i.key == "Timeline"));
@@ -150,11 +128,11 @@ fn snapshot_emits_every_transport_url_for_same_role() {
         .find(|row| row.relay_url == "wss://relay-b.test")
         .expect("diagnostics must include the second content socket URL");
 
-    assert_eq!(relay_a.role_label, "Content");
-    assert_eq!(relay_a.connection_label, "Connected");
-    assert_eq!(relay_b.role_label, "Content");
-    assert_eq!(relay_b.connection_label, "Connected");
-    assert_eq!(relay_b.bytes_tx_display.as_deref(), Some("128 B"));
+    assert_eq!(relay_a.role, "content");
+    assert_eq!(relay_a.connection, "connected");
+    assert_eq!(relay_b.role, "content");
+    assert_eq!(relay_b.connection, "connected");
+    assert_eq!(relay_b.bytes_tx, 128);
 }
 
 /// Ingesting N NOTICEs for a relay must produce `notice_count == N` and a
@@ -236,7 +214,6 @@ fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
 
     assert_eq!(row.total_sub_count, 0, "completed subs may be evicted");
     assert_eq!(row.total_events_rx, 1);
-    assert_eq!(row.total_events_display, "1");
 }
 
 #[test]

@@ -31,21 +31,19 @@ extension TypedProjectionGlue {
     ) -> RelayDiagnosticsRow {
         RelayDiagnosticsRow(
             relayUrl: row.relayUrl ?? "",
-            shortUrl: row.shortUrl ?? "",
-            roleLabel: row.roleLabel ?? "",
+            role: row.role ?? "",
             roleTone: row.roleTone ?? "",
-            connectionLabel: row.connectionLabel ?? "",
+            connection: row.connection ?? "",
             connectionTone: row.connectionTone ?? "",
-            authLabel: row.authLabel ?? "",
+            auth: row.auth ?? "",
             authTone: row.authTone ?? "",
             totalSubCount: row.totalSubCount,
             activeSubCount: row.activeSubCount,
             eosedSubCount: row.eosedSubCount,
             totalEventsRx: row.totalEventsRx,
-            totalEventsDisplay: row.totalEventsDisplay ?? "",
             reconnectCount: row.reconnectCount,
-            bytesRxDisplay: row.hasBytesRxDisplay ? (row.bytesRxDisplay ?? "") : nil,
-            bytesTxDisplay: row.hasBytesTxDisplay ? (row.bytesTxDisplay ?? "") : nil,
+            bytesRx: row.bytesRx,
+            bytesTx: row.bytesTx,
             lastConnectedMs: row.lastConnectedMs,
             lastEventMs: row.lastEventMs,
             lastNotice: row.hasLastNotice ? (row.lastNotice ?? "") : nil,
@@ -54,7 +52,8 @@ extension TypedProjectionGlue {
             lastError: row.hasLastError ? (row.lastError ?? "") : nil,
             wireSubs: row.wireSubs.map(relayDiagnosticsWireSub),
             info: row.info.map(relayDiagnosticsInfo),
-            reasons: row.reasons.map(relayConnectionReason)
+            reasons: row.reasons.map(relayConnectionReason),
+            discoveryKinds: row.discoveryKinds.map { $0 }
         )
     }
     // `relayDiagnosticsInfo` lives in TypedProjectionGlue+RelayDiagnosticsInfo.swift
@@ -88,13 +87,12 @@ extension TypedProjectionGlue {
     ) -> RelayDiagnosticsWireSub {
         RelayDiagnosticsWireSub(
             wireId: sub.wireId ?? "",
-            shortWireId: sub.shortWireId ?? "",
             relayUrl: sub.relayUrl ?? "",
             filterSummary: sub.filterSummary ?? "",
-            stateLabel: sub.stateLabel ?? "",
+            state: sub.state ?? "",
             stateTone: sub.stateTone ?? "",
-            consumerCountLabel: sub.consumerCountLabel ?? "",
-            eventsRxDisplay: sub.hasEventsRxDisplay ? (sub.eventsRxDisplay ?? "") : nil,
+            consumerCount: sub.consumerCount,
+            eventsRx: sub.eventsRx,
             eoseObserved: sub.eoseObserved,
             openedMs: sub.openedMs,
             lastEventMs: sub.lastEventMs,

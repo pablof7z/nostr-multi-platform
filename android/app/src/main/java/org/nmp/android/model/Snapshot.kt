@@ -83,10 +83,10 @@ data class SnapshotProjections(
     // parity with iOS); `null` when no remote-signer session is active.
     @SerialName("signer_state") val signerState: SignerState? = null,
     // Detailed relay diagnostics — `relay_diagnostics` (`KRDG`) sidecar, decoded
-    // by [TypedRelayDiagnosticsDecoder]. `null` when the sidecar is absent. Every
-    // label/tone is Rust-precomputed (ADR-0032) so the UI never branches on raw
-    // protocol strings; `RelayScreen` prefers `connectionLabel`/`connectionTone`
-    // here over the Tier-3 `relayStatuses` raw-string switch.
+    // by [TypedRelayDiagnosticsDecoder]. `null` when the sidecar is absent. Raw
+    // values are on the wire; the model carries computed display properties;
+    // `RelayScreen` uses `connectionLabel`/`connectionTone` (computed) to avoid
+    // branching on raw protocol strings.
     @SerialName("relay_diagnostics") val relayDiagnostics: RelayDiagnosticsSnapshot? = null,
     // #1283 / #1335 item 2: typed NEMB embed sidecar — decoded by
     // [TypedEmbedSidecarDecoder] from the `claimed_event_embeds` typed projection.
@@ -101,11 +101,10 @@ data class SnapshotProjections(
  * Detailed relay diagnostics — `projections["relay_diagnostics"]` (`KRDG`).
  * Android peer of iOS `RelayDiagnosticsSnapshot` (`TypedProjectionGlue`).
  *
- * Field-for-field mirror of the kernel projection. Every `*Label`/`*Tone`
- * string is Rust-precomputed (ADR-0032 / V-14) so the presentation layer
- * never branches on raw protocol tokens (thin-shell rule). `null` display
- * strings collapse to `""` here, byte-faithful to the typed wire's
- * `has_*`-companion semantics.
+ * Field-for-field mirror of the kernel projection. Raw values (role,
+ * connection, auth as lowercase strings; bytes as Long counters;
+ * discoveryKinds as List<Long>) are carried; display formatting is the
+ * shell's job via computed properties.
  */
 @Serializable
 data class RelayDiagnosticsSnapshot(
@@ -116,21 +115,24 @@ data class RelayDiagnosticsSnapshot(
 @Serializable
 data class RelayDiagnosticsRow(
     val relayUrl: String = "",
-    val shortUrl: String = "",
-    val roleLabel: String = "",
+    /** Raw role string from Rust (e.g. "content", "indexer", "both"). Shell formats. */
+    val role: String = "",
     val roleTone: String = "",
-    val connectionLabel: String = "",
+    /** Raw connection string from Rust (e.g. "connected", "closed"). Shell formats. */
+    val connection: String = "",
     val connectionTone: String = "",
-    val authLabel: String = "",
+    /** Raw auth string from Rust (e.g. "ok", "pending", "—"). Shell formats. */
+    val auth: String = "",
     val authTone: String = "",
     val totalSubCount: Int = 0,
     val activeSubCount: Int = 0,
     val eosedSubCount: Int = 0,
     val totalEventsRx: Long = 0,
-    val totalEventsDisplay: String = "",
     val reconnectCount: Int = 0,
-    val bytesRxDisplay: String? = null,
-    val bytesTxDisplay: String? = null,
+    /** Raw bytes received counter. Shell derives display string. */
+    val bytesRx: Long = 0,
+    /** Raw bytes transmitted counter. Shell derives display string. */
+    val bytesTx: Long = 0,
     // aim.md §62: raw Unix-ms on wire; shells format at render time.
     val lastConnectedMs: Long = 0,
     val lastEventMs: Long = 0,
@@ -142,7 +144,38 @@ data class RelayDiagnosticsRow(
     // wire carries this as an OPTIONAL child table (presence is the
     // discriminator — no `has_info` flag), and the JSON path as `info: null`.
     val info: RelayDiagnosticsInfo? = null,
-)
+    /** Raw kind numbers for discovery (NIP-65 etc). Shell formats for display. */
+    val discoveryKinds: List<Long> = emptyList(),
+) {
+    // Shell-side computed display helpers
+
+    /** URL without scheme and without trailing slash. */
+    val shortUrl: String get() {
+        var s = relayUrl
+        for (prefix in listOf("wss://", "ws://")) {
+            if (s.startsWith(prefix)) { s = s.removePrefix(prefix); break }
+        }
+        return s.trimEnd('/')
+    }
+
+    /** Title-cased role label (e.g. "content" → "Content"). */
+    val roleLabel: String get() = role.replaceFirstChar { it.uppercase() }
+
+    /** Title-cased connection label (e.g. "connected" → "Connected"). */
+    val connectionLabel: String get() = connection.replaceFirstChar { it.uppercase() }
+
+    /** Auth label: "—" passthrough; otherwise title-cased. */
+    val authLabel: String get() = if (auth == "—") "—" else auth.replaceFirstChar { it.uppercase() }
+
+    /** Compact formatted total events received. */
+    val totalEventsDisplay: String get() = compactCount(totalEventsRx)
+
+    /** Formatted bytes received when > 0; null otherwise. */
+    val bytesRxDisplay: String? get() = if (bytesRx > 0) formatBytes(bytesRx) else null
+
+    /** Formatted bytes transmitted when > 0; null otherwise. */
+    val bytesTxDisplay: String? get() = if (bytesTx > 0) formatBytes(bytesTx) else null
+}
 
 /**
  * ADR-0051 relay-information document (NIP-11), Android peer of iOS
@@ -174,20 +207,40 @@ data class RelayDiagnosticsInfo(
 @Serializable
 data class RelayDiagnosticsWireSub(
     val wireId: String = "",
-    val shortWireId: String = "",
     val relayUrl: String = "",
     val filterSummary: String = "",
-    val stateLabel: String = "",
+    /** Raw state string from Rust (e.g. "open", "closed", "pending"). Shell formats. */
+    val state: String = "",
     val stateTone: String = "",
-    val consumerCountLabel: String = "",
-    val eventsRxDisplay: String? = null,
+    /** Raw consumer count. Shell derives display string. */
+    val consumerCount: Int = 0,
+    /** Raw events received counter. Shell derives display string. */
+    val eventsRx: Long = 0,
     val eoseObserved: Boolean = false,
     // aim.md §62: raw Unix-ms on wire; shells format at render time.
     val openedMs: Long = 0,
     val lastEventMs: Long = 0,
     val eoseMs: Long = 0,
     val closeReason: String? = null,
-)
+) {
+    // Shell-side computed display helpers
+
+    /** Truncated wire ID for display (≤12 chars passthrough; longer → 8-char prefix + "…"). */
+    val shortWireId: String get() = if (wireId.length <= 12) wireId else "${wireId.take(8)}…"
+
+    /** Title-cased state label (e.g. "open" → "Open"). */
+    val stateLabel: String get() = state.replaceFirstChar { it.uppercase() }
+
+    /** Human-readable consumer count (empty when 0). */
+    val consumerCountLabel: String get() = when (consumerCount) {
+        0 -> ""
+        1 -> "1 consumer"
+        else -> "$consumerCount consumers"
+    }
+
+    /** Compact event count when > 0; null when zero. */
+    val eventsRxDisplay: String? get() = if (eventsRx > 0) compactCount(eventsRx) else null
+}
 
 @Serializable
 data class RelayDiagnosticsInterest(
@@ -482,3 +535,29 @@ data class UnknownProjectionEntry(
     val tags: List<List<String>> = emptyList(),
     @SerialName("alt_text") val altText: String? = null,
 )
+
+// ── Shell-side display helpers for relay diagnostics ─────────────────────────
+// These are file-private so they can be used by RelayDiagnosticsRow and
+// RelayDiagnosticsWireSub computed properties without polluting the public API.
+
+/** Compact count: < 1 000 → raw number; ≥ 1 000 → "1.2K" etc. */
+private fun compactCount(n: Long): String {
+    val d = n.toDouble()
+    return when {
+        d < 1_000.0 -> "$n"
+        d < 1_000_000.0 -> String.format("%.1fK", d / 1_000.0)
+        d < 1_000_000_000.0 -> String.format("%.1fM", d / 1_000_000.0)
+        else -> String.format("%.1fB", d / 1_000_000_000.0)
+    }
+}
+
+/** Human-readable binary byte count (KiB, MiB, GiB, …). */
+private fun formatBytes(bytes: Long): String {
+    val abs = if (bytes < 0) Long.MAX_VALUE else bytes
+    return when {
+        abs < 1024L -> "$bytes B"
+        abs < 1024L * 1024L -> String.format("%.1f KiB", bytes / 1024.0)
+        abs < 1024L * 1024L * 1024L -> String.format("%.1f MiB", bytes / (1024.0 * 1024.0))
+        else -> String.format("%.1f GiB", bytes / (1024.0 * 1024.0 * 1024.0))
+    }
+}
