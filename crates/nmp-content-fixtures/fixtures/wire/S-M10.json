@@ -7,7 +7,7 @@
     {
       "kind": "event_ref",
       "uri": {
-        "uri": "nostr:naddr1qqvkyctrddc8yetnwd6hyefdd9ej6cfdvejkzar4wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw4rsknd7m3",
+        "uri": "nostr:naddr1qqvkyctrddc8yetnwd6hyefdd9ej6cfdvejkzar4wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw4rsr0aj7n",
         "kind": "address",
         "primary_id": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:backpressure-is-a-feature",
         "relays": [],

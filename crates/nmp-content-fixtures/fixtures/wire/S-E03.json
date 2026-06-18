@@ -7,7 +7,7 @@
     {
       "kind": "event_ref",
       "uri": {
-        "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
+        "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242szyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwse02nsg",
         "kind": "event",
         "primary_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "relays": [
