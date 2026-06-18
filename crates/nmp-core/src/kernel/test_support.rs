@@ -161,7 +161,7 @@ impl Kernel {
                     // and enqueue the `Nip65Arrived` recompile trigger — exactly
                     // what `Kernel::on_mailbox_changed` does in production.
                     let parsed =
-                        parse_relay_list_to_substrate(&event.id, event.created_at, &event.tags);
+                        parse_relay_list_to_substrate(&event.tags);
                     let empty =
                         parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
                     let had_entry = self.mailbox_cache.known(&event.pubkey);

@@ -131,6 +131,7 @@ impl Kernel {
     /// but seeds the registered interest's `hints` with the NIP-19 relay TLVs
     /// embedded in the URI, so a stranger whose kind:10002 is on no indexer
     /// still resolves from the embedded relay (parity with `claim_event`).
+    #[cfg(test)] // only called from profile_claim_discovery_tests
     pub(crate) fn claim_profile_with_hints(
         &mut self,
         pubkey: String,

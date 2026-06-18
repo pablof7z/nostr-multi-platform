@@ -1,9 +1,11 @@
 use super::super::{
-    truncate, AccountSummary, Kernel, MentionProfilePayload, ProfileCard, StoredEvent, TimelineItem,
+    truncate, AccountSummary, Kernel, ProfileCard, StoredEvent,
 };
-use super::helpers::{
-    hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored, parse_repost_inner,
-};
+#[cfg(test)]
+use super::super::{MentionProfilePayload, TimelineItem};
+use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
+#[cfg(test)]
+use super::helpers::parse_repost_inner;
 use crate::substrate::ProfileView;
 
 impl Kernel {
@@ -65,6 +67,7 @@ impl Kernel {
             .cloned()
     }
 
+    #[cfg(test)] // only called from kernel/tests.rs
     pub(in crate::kernel) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
         let profile = self.profile_for_pubkey(&event.author);
         // aim.md §2: picture URL stays `Option<String>`. No identicon
@@ -233,39 +236,4 @@ impl Kernel {
     // thread_items(), thread_root_id() deleted. View state and item lists now
     // live in the per-app FlatFeed registered by nmp_app_chirp_open_author_feed
     // / nmp_app_chirp_open_thread_feed.
-
-    /// Build the `mention_profiles` projection from a slice of timeline
-    /// items. Maps `author_pubkey -> MentionProfilePayload` joining
-    /// against the kind:0 profile cache. First writer wins on collision
-    /// (mirroring the Swift `Dictionary(uniquingKeysWith:)` it replaces).
-    /// Per aim.md §2, every payload field that depends on kind:0 is
-    /// `Option<String>` — `None` when no kind:0 has arrived for this
-    /// author.
-    pub(in crate::kernel) fn mention_profiles_from_items(
-        &self,
-        items: &[TimelineItem],
-    ) -> std::collections::HashMap<String, MentionProfilePayload> {
-        let mut out: std::collections::HashMap<String, MentionProfilePayload> =
-            std::collections::HashMap::new();
-        for item in items {
-            out.entry(item.author_pubkey.clone()).or_insert_with(|| {
-                let profile = self.profile_for_pubkey(&item.author_pubkey);
-                let display_name = profile
-                    .as_ref()
-                    .map(|p| p.display.clone())
-                    .filter(|d| !d.is_empty());
-                let picture_url = profile
-                    .as_ref()
-                    .and_then(|p| p.picture_url.as_deref())
-                    .filter(|url| !url.is_empty())
-                    .map(str::to_owned);
-                MentionProfilePayload {
-                    pubkey: item.author_pubkey.clone(),
-                    display_name,
-                    picture_url,
-                }
-            });
-        }
-        out
-    }
 }

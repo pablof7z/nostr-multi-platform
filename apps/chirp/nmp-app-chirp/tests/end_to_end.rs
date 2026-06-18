@@ -195,21 +195,22 @@ fn snapshot_returns_default_window() {
     assert!(page.has_more);
     assert_eq!(page.total_blocks, total);
 
-    // `nmp_app_load_older_feed` is a no-op for the OP engine: its
-    // `FeedController::load_older` returns `false` and `snapshot_json` always
-    // serializes the default window (the engine holds every root bounded by D5
-    // but does not yet grow the request limit on load-older). The previous
-    // `ModularTimelineProjection` grew its window here; window-growth for the
-    // OP engine is a separate follow-up. Assert the no-op so the behaviour is
-    // pinned, not silently regressed.
+    // `nmp_app_load_older_feed` grows the OP engine window by one page
+    // (DEFAULT_FEED_WINDOW_LIMIT). With `total = DEFAULT_TIMELINE_WINDOW_LIMIT + 2`
+    // roots, the new limit (160) exceeds `total` (82), so the next snapshot
+    // returns all roots and `has_more` becomes false. The "window-growth as
+    // separate follow-up" TODO mentioned in the original test has since landed
+    // in `root_indexed/engine/mod.rs::load_older`.
     let key = CString::new("nmp.feed.home").expect("static key has no nul");
     nmp_app_load_older_feed(app, key.as_ptr());
     let after = feed_projection_for(app);
     assert_eq!(
         after.cards.len(),
-        DEFAULT_TIMELINE_WINDOW_LIMIT,
-        "window stays at the default after a no-op load-older"
+        total,
+        "after load-older the window grows to reveal all roots"
     );
+    let after_page = after.page.expect("window snapshot carries page metadata after load-older");
+    assert!(!after_page.has_more, "all roots visible after load-older — no more pages");
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);

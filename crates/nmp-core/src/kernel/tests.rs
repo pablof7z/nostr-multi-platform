@@ -84,30 +84,25 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
 
 #[test]
 fn parse_relay_list_splits_nip65_markers() {
-    let parsed = parse_relay_list(
-        "deadbeef",
-        123,
-        &[
-            vec![
-                "r".to_string(),
-                "wss://read.example".to_string(),
-                "read".to_string(),
-            ],
-            vec![
-                "r".to_string(),
-                "wss://write.example".to_string(),
-                "write".to_string(),
-            ],
-            vec!["r".to_string(), "wss://both.example".to_string()],
-            vec![
-                "r".to_string(),
-                "https://not-a-relay.example".to_string(),
-                "read".to_string(),
-            ],
+    let parsed = parse_relay_list(&[
+        vec![
+            "r".to_string(),
+            "wss://read.example".to_string(),
+            "read".to_string(),
         ],
-    );
+        vec![
+            "r".to_string(),
+            "wss://write.example".to_string(),
+            "write".to_string(),
+        ],
+        vec!["r".to_string(), "wss://both.example".to_string()],
+        vec![
+            "r".to_string(),
+            "https://not-a-relay.example".to_string(),
+            "read".to_string(),
+        ],
+    ]);
 
-    assert_eq!(parsed.created_at, 123);
     assert_eq!(parsed.read_relays, vec!["wss://read.example"]);
     assert_eq!(parsed.write_relays, vec!["wss://write.example"]);
     assert_eq!(parsed.both_relays, vec!["wss://both.example"]);

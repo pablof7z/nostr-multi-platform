@@ -420,7 +420,7 @@ impl Kernel {
         // `removed` / `visible`) was removed, so the perf line is gated on
         // `batch_events` alone and no longer reports the feed counters.
         if batch_events > 0 {
-            let mut line = format!(
+            let line = format!(
                 "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} \
                  make_update_us={} serialize_us={} event_to_emit_ms={} \
                  max_event_to_emit_ms={}",
@@ -440,13 +440,15 @@ impl Kernel {
             //   vs the previous tick. `wasted_bytes` = bytes spent re-serializing
             //   unchanged projections.
             #[cfg(any(test, feature = "test-support"))]
-            {
+            let line = {
+                let mut s = line;
                 let wasted_bytes = churn.total_bytes.saturating_sub(churn.changed_bytes);
-                line.push_str(&format!(
+                s.push_str(&format!(
                     " projection_count={} changed_projection_count={} wasted_bytes={}",
                     churn.total, churn.changed, wasted_bytes
                 ));
-            }
+                s
+            };
             self.log(line);
         }
         self.events_since_last_update = 0;

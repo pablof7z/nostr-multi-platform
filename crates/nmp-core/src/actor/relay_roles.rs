@@ -26,13 +26,6 @@ pub struct Nip65Role {
 }
 
 impl Nip65Role {
-    /// Default role when adding a relay: read + write, no indexer.
-    pub const BOTH: Self = Self {
-        read: true,
-        write: true,
-        indexer: false,
-    };
-
     /// Parse a raw, possibly-composite role string into typed flags.
     /// Empty string defaults to `BOTH`. Returns `None` for unrecognised tokens.
     pub fn parse(raw: &str) -> Option<Self> {
@@ -185,13 +178,6 @@ where
     rows.into_iter()
         .find(|(_, role)| has_role(role, "write"))
         .map(|(url, _)| url.to_string())
-}
-
-fn role_metadata(role: &str) -> Option<&'static RelayRoleMetadata> {
-    let canonical = canonical_relay_role(role)?;
-    RELAY_ROLE_METADATA
-        .iter()
-        .find(|metadata| metadata.value == canonical)
 }
 
 #[cfg(test)]

@@ -59,7 +59,6 @@
 //! between them is the `app_relays` slot — exactly the shape the
 //! substrate trait already exposes.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::Kernel;
@@ -135,10 +134,6 @@ pub(crate) enum BootstrapSeed {
     /// Indexer + content seeds combined (matches the historical
     /// [`Kernel::bootstrap_discovery_relays`] output).
     Discovery,
-    /// Indexer seeds only — discovery-direction kind:0 / kind:10002 probes
-    /// MUST NOT leak onto the shared content relay (cf. the pre-Debt-A
-    /// `author_indexer_relays` `INDEXER_RELAY_URL`-only fallback contract).
-    IndexerOnly,
 }
 
 impl Kernel {
@@ -148,9 +143,6 @@ impl Kernel {
     pub(crate) fn bootstrap_seed_urls(&self, seed: BootstrapSeed) -> Vec<String> {
         match seed {
             BootstrapSeed::Discovery => self.bootstrap_discovery_relays(),
-            BootstrapSeed::IndexerOnly => {
-                self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer)
-            }
         }
     }
 
@@ -244,151 +236,6 @@ impl Kernel {
             }
             Err(_) => Vec::new(),
         }
-    }
-
-    /// Outbox-direction subscription resolution — route a single author's
-    /// **write** set through the kernel's `outbox_router.route_publish`
-    /// (with a synthetic [`UnsignedEvent`] carrying the author + the
-    /// first of `kinds` as the kind discriminant). Returns the resolved
-    /// URL set (sorted + deduped). The router's trace observer fires
-    /// on success.
-    ///
-    /// The router's `route_subscription` shape resolves authors against
-    /// the **read** lane (the inbox direction — "subscribe where the
-    /// recipient reads"). Several kernel REQ-construction sites are
-    /// *outbox-direction* instead: they fetch events from where the
-    /// author *publishes*, not from where the recipient reads.
-    /// Examples:
-    ///
-    /// * `author_requests::author_requests` — kind:1/6 author notes: the
-    ///   author published those to their write relays (T105 outbox).
-    /// * `author_requests::profile_claim_request` — kind:0 profile: the
-    ///   author published their kind:0 to their write relays (D3 outbox
-    ///   discovery).
-    /// * `author_requests::author_requests` — kind:10002 NIP-65 probe:
-    ///   the author published their kind:10002 to their write relays.
-    ///
-    /// For these the kernel calls `route_publish` with a synthetic event
-    /// carrying the author's pubkey + the relevant kind so lane 1
-    /// returns the *write* set. The actual event content / tags are
-    /// immaterial — the router only reads `pubkey` and (in future
-    /// lane 6) `kind`. `seed` selects the cold-start bootstrap URL set
-    /// passed via `app_relays` (lane 7).
-    ///
-    /// `interest_id` is the stable [`InterestId`] the trace projection
-    /// surfaces. Because the underlying call is `route_publish` the
-    /// trace projection records a publish entry rather than a
-    /// subscription entry — that is the semantically honest record
-    /// ("the kernel asked the router 'where would `kind` from `author`
-    /// land?'"). The kernel still emits a REQ on the resolved relays;
-    /// the publish-trace classification refers to the *resolution
-    /// algorithm*, not the wire frame.
-    pub(crate) fn route_outbox_subscription_relays(
-        &self,
-        interest_id: u64,
-        author: &str,
-        kind: u32,
-        seed: BootstrapSeed,
-    ) -> Vec<String> {
-        let synthetic = UnsignedEvent {
-            pubkey: author.to_string(),
-            kind,
-            tags: vec![],
-            content: String::new(),
-            // `interest_id` is hashed from kernel-stable inputs; reusing
-            // it as the synthetic `created_at` keeps the call deterministic
-            // (the router doesn't read `created_at`, but logging /
-            // tracing might).
-            created_at: interest_id,
-        };
-        let app_relays = self.bootstrap_seed_urls(seed);
-        // V-50: see `route_subscription_relays` comment — indexer URLs
-        // populate lane 6 for discovery kinds. Outbox-direction
-        // kind:10002 / kind:0 fetches need this too: the synthetic
-        // event's `kind` field drives the lane check.
-        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
-        let blocked = self.snapshot_blocked_relays();
-        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
-        match self.outbox_router.route_publish(&synthetic, &ctx) {
-            Ok(routed) => {
-                let mut out: Vec<String> = routed.urls().cloned().collect();
-                sort_dedup(&mut out);
-                out
-            }
-            Err(_) => Vec::new(),
-        }
-    }
-
-    /// Partition `ids` by the original-event author's NIP-65 write
-    /// relays through the kernel's `outbox_router`. Used by thread
-    /// hydration (`maybe_open_thread_hydration`): each id is looked up
-    /// in `self.events`; if the author is found, a synthetic
-    /// [`UnsignedEvent`] is constructed (kind 1 — the kind threads
-    /// canonically carry) and the kernel's `outbox_router.route_publish`
-    /// is invoked so lane 1 (NIP-65 write set) resolves the author's
-    /// outbox relays. If the id is unknown (no event in the local
-    /// store) the bootstrap discovery seed serves the cold-start
-    /// lookup — the only socket we can ask "who wrote this id?" on
-    /// without violating D3.
-    ///
-    /// T121 / codex R1: thread hydration is the named exception to the
-    /// read-set algorithm — reply authors of course write to *their
-    /// own* relays, but routing reply-fetch to the root author's relays
-    /// is a deliberate compromise: it converges on whichever relays
-    /// already serve the thread context rather than fanning to every
-    /// participant. The router's `route_publish` shape (NIP-65 write
-    /// set) is the right tool for this — we feed a synthetic kind:1
-    /// `UnsignedEvent` per author to drive the publish-direction lane.
-    ///
-    /// Each id is added to every relay the router returns for its author.
-    /// Empty input yields an empty map (caller emits nothing). The
-    /// returned map keys are deterministic ([`BTreeMap`]) so plan-id
-    /// stability is preserved (D8).
-    pub(crate) fn partition_ids_via_router(&self, ids: &[String]) -> BTreeMap<String, Vec<String>> {
-        let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        let bootstrap_app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
-        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
-        let blocked = self.snapshot_blocked_relays();
-        for id in ids {
-            let relays = match self.events.get(id) {
-                Some(event) => {
-                    let synthetic = UnsignedEvent {
-                        pubkey: event.author.clone(),
-                        kind: 1,
-                        tags: vec![],
-                        content: String::new(),
-                        created_at: event.created_at,
-                    };
-                    let ctx = self.build_routing_context(
-                        &bootstrap_app_relays,
-                        &indexer_relays,
-                        &blocked,
-                    );
-                    match self.outbox_router.route_publish(&synthetic, &ctx) {
-                        Ok(routed) => {
-                            let mut out: Vec<String> = routed.urls().cloned().collect();
-                            sort_dedup(&mut out);
-                            out
-                        }
-                        // `Unroutable` means the author has no NIP-65 AND
-                        // no AppRelay seed was given (we passed the
-                        // discovery seed, so this branch is unreachable
-                        // in production — defensive vec to keep the loop
-                        // total).
-                        Err(_) => Vec::new(),
-                    }
-                }
-                None => bootstrap_app_relays.clone(),
-            };
-            for relay in relays {
-                by_relay.entry(relay).or_default().push(id.clone());
-            }
-        }
-        // Stable id order within each relay slice (plan-id stability / D8).
-        for ids in by_relay.values_mut() {
-            sort_dedup(ids);
-        }
-        by_relay
     }
 
     /// Resolve the relay URLs a downstream publisher (NIP-57 LN provider,

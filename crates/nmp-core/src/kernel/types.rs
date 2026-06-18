@@ -54,6 +54,8 @@ pub(super) struct StoredEvent {
 // invisible outside `nmp-core` (no `pub use` further up). Mirrors the
 // Stage 1 pattern used for `RelayStatus`, `Metrics`,
 // `WireSubscriptionStatus`, and `LogicalInterestStatus`.
+// Only constructed in tests and referenced by the codegen-schema feature.
+#[allow(dead_code)]
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct TimelineItem {
@@ -473,14 +475,10 @@ impl Default for RelayHealth {
 
 /// Cached kind:10002 relay list for an author.
 ///
-/// `event_id` is used as a tiebreak when two events share the same `created_at`:
-/// lexicographically smaller event id wins, mirroring the store's supersession
-/// logic.
+/// Supersession is enforced by the store before `ingest_relay_list` is called;
+/// the kernel-side cache holds only the resolved relay sets.
 #[derive(Clone, Debug, Default)]
 pub(super) struct AuthorRelayList {
-    /// Event id of the kind:10002 that produced this relay list.
-    pub(super) event_id: String,
-    pub(super) created_at: u64,
     pub(super) read_relays: Vec<String>,
     pub(super) write_relays: Vec<String>,
     pub(super) both_relays: Vec<String>,

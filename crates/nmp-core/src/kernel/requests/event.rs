@@ -79,8 +79,10 @@ impl Kernel {
         // routing kind:0 fetches through the indexer lane rather than
         // through this generic OneshotApi seam.
         // W5: carry author and relay hints from the URI TLV for claim-expansion.
-        let mut uri_author: Option<String> = None;
-        let mut uri_relay_hints: Vec<String> = Vec::new();
+        // Assigned unconditionally by the Event/Address match arms below;
+        // the Profile arm returns early so no initializer is needed here.
+        let uri_author: Option<String>;
+        let uri_relay_hints: Vec<String>;
         // F-TTL — only naddr URIs address a replaceable (addressable) identity
         // (kind, author-pubkey, d-tag). Captured here so it is in scope at the
         // cached-event branch below, where the TTL gate decides whether a

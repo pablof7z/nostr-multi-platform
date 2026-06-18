@@ -132,54 +132,9 @@ impl Kernel {
         }
     }
 
-    /// ADR-0055 Rung 3 — read whether the host has declared incremental-apply
-    /// capability for this kernel instance.
-    ///
-    /// Called once per tick in `make_update` to determine whether to pass
-    /// `enabled = true` to `rung3_omit::omit_unchanged`. When no slot is bound
-    /// or the mutex is poisoned the result is `false` — "full rows" (D6: a
-    /// gate-read failure degrades to safe behavior, never to data loss).
-    ///
-    /// Prefer `incremental_apply_state` when both this flag and the baseline-
-    /// pending latch are needed in the same tick (avoids a second lock
-    /// acquisition on the hot path — finding 6, issue #1390).
-    pub(in crate::kernel) fn incremental_apply_enabled(&self) -> bool {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|registry| registry.is_incremental_apply_enabled())
-                .unwrap_or(false),
-            None => false,
-        }
-    }
-
-    /// ADR-0055 Rung 3 (D3-5) — take the "baseline pending" latch.
-    ///
-    /// Returns `true` exactly once after `declare_incremental_apply` sets the
-    /// latch, clearing it atomically. The caller (`make_update`) MUST then call
-    /// `self.projection_rev_tracker.reset_last_emitted()` so the next frame is
-    /// a guaranteed full baseline for the newly-attached incremental host.
-    /// When no slot is bound or the mutex is poisoned, returns `false` (D6:
-    /// degrades safely to "no reset needed" — the tracker's initial state is
-    /// already a full baseline).
-    ///
-    /// Prefer `incremental_apply_state` when both the enabled flag and this
-    /// latch are needed in the same tick (avoids a second lock acquisition).
-    pub(in crate::kernel) fn take_incremental_apply_baseline_pending(&mut self) -> bool {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|mut registry| registry.take_incremental_apply_baseline_pending())
-                .unwrap_or(false),
-            None => false,
-        }
-    }
-
     /// ADR-0055 Rung 3 S1b (finding 6 / issue #1390) — read both the
     /// incremental-apply enabled flag and the baseline-pending latch in a
-    /// **single** mutex acquisition. Replaces the two separate per-tick
-    /// `incremental_apply_enabled()` + `take_incremental_apply_baseline_pending()`
-    /// calls in `make_update` that each locked the slot independently at 4 Hz.
+    /// **single** mutex acquisition.
     ///
     /// Returns `(enabled, baseline_pending)`:
     /// - `enabled`: whether the host has declared incremental-apply capability.

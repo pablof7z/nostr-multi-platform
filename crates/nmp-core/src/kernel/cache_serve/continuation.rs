@@ -32,16 +32,11 @@ pub(super) struct CollectedEvent {
     pub(super) tags: Vec<Vec<String>>,
     pub(super) content: String,
     /// Schnorr signature (lowercase hex, 128 chars). Preserved so the
-    /// `IngestParser` dispatcher path can reconstruct the verbatim signed
+    /// `project_accepted_event` fan-out can reconstruct the verbatim signed
     /// event without re-verification. The signature was verified at the
     /// original ingest gate (`VerifiedEvent::try_from_raw`) — replaying it
     /// here does not expand the trust boundary.
     pub(super) sig: String,
-    /// Whether this served event should be dispatched through
-    /// the `IngestParser` dispatcher in addition to `notify_event_observers`.
-    /// Set at collection time from the `PendingCacheServe::needs_ingest_parser_dispatch`
-    /// flag (which was derived at enqueue time from `shape_needs_ingest_parser_dispatch`).
-    pub(super) needs_ingest_parser_dispatch: bool,
 }
 
 impl Kernel {
@@ -97,7 +92,6 @@ impl Kernel {
                 let store = std::sync::Arc::clone(&self.store);
                 let events_cache = &self.events;
                 let serve_target = pending.remaining_depth;
-                let needs_ingest = pending.needs_ingest_parser_dispatch;
                 let _ = store.query_visit(&effective, visit_limit, &mut |ev| {
                     visited += 1;
                     last_visited_created_at = Some(ev.raw.created_at);
@@ -111,7 +105,6 @@ impl Kernel {
                             tags: ev.raw.tags.clone(),
                             content: ev.raw.content.clone(),
                             sig: ev.raw.sig.clone(),
-                            needs_ingest_parser_dispatch: needs_ingest,
                         });
                         if collected.len() >= serve_target {
                             return std::ops::ControlFlow::Break(());

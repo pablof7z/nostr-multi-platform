@@ -355,6 +355,7 @@ impl Kernel {
     ///
     /// Legacy entry point used by some call sites that have the primary_id
     /// but not the sub_id. Routes through the primary-id scan path.
+    #[cfg(test)] // only called from claim_expansion_tests
     pub(crate) fn on_claim_outcome_hit_by_primary_id(&mut self, primary_id: &str) {
         let Some(iid) = self
             .pending_claims
@@ -442,31 +443,6 @@ impl Kernel {
             self.claim_sub_index.retain(|_, v| *v != iid);
             self.pending_claims.remove(&iid);
         }
-    }
-
-    /// V-59 rung 1 (#4) — resolve the `primary_id` of a claim whose oneshot
-    /// `sub_id` just EOSE'd WITHOUT a match.
-    ///
-    /// Returns `Some(primary_id)` only when ALL of:
-    /// - `sub_id` maps to a live claim (`claim_sub_index` → `pending_claims`),
-    ///   which means no matching EVENT terminated it (a hit removes the entry
-    ///   via `on_claim_outcome_hit`), and
-    /// - the event is not already in the store (`!event_already_known`) — a
-    ///   late duplicate or a hit recorded on a sibling relay would otherwise
-    ///   make the EOSE a non-event.
-    ///
-    /// Read-only: the caller (`complete_unknown_oneshot`) performs the state
-    /// teardown so the single-writer discipline stays at one site.
-    pub(in crate::kernel) fn claim_primary_id_for_unmatched_sub(
-        &self,
-        sub_id: &str,
-    ) -> Option<String> {
-        let iid = self.claim_sub_index.get(sub_id)?;
-        let claim = self.pending_claims.get(iid)?;
-        if self.event_already_known(&claim.primary_id) {
-            return None;
-        }
-        Some(claim.primary_id.clone())
     }
 
     /// Looks up the author for a claim-expansion sub from the twin BTreeMaps.
