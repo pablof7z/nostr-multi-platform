@@ -180,6 +180,10 @@ source = "compose/login-block/ExternalSignerWire.kt"
 target = "Components/Auth/ExternalSignerWire.kt"
 role = "source"
 [[components.files]]
+source = "compose/login-block/KnownSigners.generated.kt"
+target = "Components/Auth/KnownSigners.generated.kt"
+role = "source"
+[[components.files]]
 source = "compose/login-block/AmberIntentCodec.kt"
 target = "Components/Auth/AmberIntentCodec.kt"
 role = "source"

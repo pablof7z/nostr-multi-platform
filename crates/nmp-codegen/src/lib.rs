@@ -55,6 +55,11 @@ pub mod projection_tier;
 // list so the kernel built-in key set is not hand-maintained and cannot drift
 // from what codegen decodes / the kernel emits.
 pub mod rust_builtin_keys;
+// #1493 P9 — generate the native known-signer detection lists (Kotlin
+// `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog JSON
+// (`nmp_core::signer_catalog` via `dump_signer_catalog`). Parses the catalog
+// into a LOCAL typed struct so `nmp-codegen` keeps its no-`nmp-core` posture.
+pub mod signer_catalog;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use projection_tier::{
@@ -63,6 +68,10 @@ pub use projection_tier::{
 };
 pub use rust_builtin_keys::{
     check_builtin_keys, generate_builtin_keys, render_builtin_keys, BuiltinKeysCheckOutcome,
+};
+pub use signer_catalog::{
+    check_signer_catalog, generate_signer_catalog, parse_catalog, render_kotlin_known_signers,
+    render_swift_known_signers, SignerApp, SignerCatalogCheckOutcome,
 };
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
 pub use swift_projection_cache::{

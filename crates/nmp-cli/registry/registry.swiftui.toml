@@ -173,6 +173,10 @@ dependencies = ["swiftui/content-core"]
 source = "swiftui/login-block/NostrLoginBlock.swift"
 target = "Components/Auth/NostrLoginBlock.swift"
 role = "source"
+[[components.files]]
+source = "swiftui/login-block/KnownSigners.generated.swift"
+target = "Components/Auth/KnownSigners.generated.swift"
+role = "source"
 
 [[components]]
 id = "swiftui/relay-list"

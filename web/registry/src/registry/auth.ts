@@ -3,11 +3,13 @@ import type { Component } from "./types";
 
 // Auth - SwiftUI
 const loginBlockSwift = nativeSource("registry/swiftui/login-block/NostrLoginBlock.swift");
+const loginBlockKnownSignersSwift = nativeSource("registry/swiftui/login-block/KnownSigners.generated.swift");
 
 // Auth - Compose (ADR-0048 Stage 2: NIP-55 login-block)
 const composeLoginBlockKotlin = nativeSource("registry/compose/login-block/NostrLoginBlock.kt");
 const composeExternalSignerBridgeKotlin = nativeSource("registry/compose/login-block/ExternalSignerCapabilityBridge.kt");
 const composeExternalSignerWireKotlin = nativeSource("registry/compose/login-block/ExternalSignerWire.kt");
+const composeKnownSignersKotlin = nativeSource("registry/compose/login-block/KnownSigners.generated.kt");
 const composeAmberIntentCodecKotlin = nativeSource("registry/compose/login-block/AmberIntentCodec.kt");
 
 // Auth - Web (SolidJS, NIP-07)
@@ -34,6 +36,12 @@ export const authComponents: Component[] = [
             target: "Components/Auth/NostrLoginBlock.swift",
             role: "source",
             content: loginBlockSwift,
+          },
+          {
+            source: "swiftui/login-block/KnownSigners.generated.swift",
+            target: "Components/Auth/KnownSigners.generated.swift",
+            role: "source",
+            content: loginBlockKnownSignersSwift,
           },
         ],
         screenshots: ["login-block-ios-gallery-preview.png"],
@@ -69,6 +77,12 @@ export const authComponents: Component[] = [
             target: "Components/Auth/ExternalSignerWire.kt",
             role: "source",
             content: composeExternalSignerWireKotlin,
+          },
+          {
+            source: "compose/login-block/KnownSigners.generated.kt",
+            target: "Components/Auth/KnownSigners.generated.kt",
+            role: "source",
+            content: composeKnownSignersKotlin,
           },
           {
             source: "compose/login-block/AmberIntentCodec.kt",

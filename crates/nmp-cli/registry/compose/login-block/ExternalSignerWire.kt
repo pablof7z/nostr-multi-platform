@@ -118,36 +118,10 @@ data class NostrSignerInfo(
     val installHint: String = "Install $displayName for one-tap sign-in",
 )
 
-/**
- * Ordered list of signers this detector knows about.
- *
- * Extend this list as new Android Nostr signer apps emerge. Each entry
- * whose `intentScheme` is NOT resolvable by `PackageManager` is silently
- * excluded from the detection result; only installed apps surface.
- *
- * All `intentScheme` values here MUST be mirrored in `<queries>` in
- * `AndroidManifest.xml`.
- */
-val KNOWN_NOSTR_SIGNERS: List<NostrSignerInfo> = listOf(
-    NostrSignerInfo(
-        displayName = "Amber",
-        intentScheme = "nostrsigner",
-        contentAuthority = "com.greenart7c3.nostrsigner",
-        packageName = "com.greenart7c3.nostrsigner",
-        installHint = "Install Amber for one-tap sign-in",
-    ),
-    // Primal registers the `primal://` scheme on Android (API 30+). It does
-    // not expose a ContentProvider fast-path (contentAuthority = null), so
-    // all operations go through the Intent round-trip. Its package name
-    // (`net.primal.android`) MUST appear in <queries> in AndroidManifest.xml.
-    NostrSignerInfo(
-        displayName = "Primal",
-        intentScheme = "primal",
-        contentAuthority = null,
-        packageName = "net.primal.android",
-        installHint = "Install Primal for one-tap sign-in",
-    ),
-)
+// `KNOWN_NOSTR_SIGNERS` is GENERATED from the Rust catalog
+// (nmp_core::signer_catalog) into the sibling file `KnownSigners.generated.kt`
+// in this same package — `detectInstalledSigners` below references it directly.
+// Edit the catalog + re-run `nmp gen signer-catalog`, never this file (#1493 P9).
 
 // ── Package-manager-based detection ──────────────────────────────────────────
 
