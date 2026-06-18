@@ -16,15 +16,15 @@
 //! This projection emits one `RelayDiagnosticsRow` per known relay URL with
 //! every roll-up the diagnostics screen needs (active / EOSE'd / total subs,
 //! cumulative events received, raw Unix-epoch-millisecond timestamps for
-//! `last_connected_at` and `last_event_at`, pre-formatted connection /
-//! auth / role labels) plus a per-wire-subscription enriched row with the
-//! same treatment for the detail screen.
+//! `last_connected_at` and `last_event_at`, raw connection / auth / role
+//! strings) plus a per-wire-subscription enriched row with the same treatment
+//! for the detail screen. Shells derive display strings from raw values.
 //!
 //! Timestamp fields (`last_connected_ms`, `last_event_ms`, `opened_ms`,
 //! `eose_ms`) carry Unix epoch milliseconds (u64). Shells format them as
 //! "Xs ago" / "Xm ago" etc. at render time via platform helpers
 //! (`relativeTimeFromUnixSeconds` on iOS, `formatRelativeTime` on Android).
-//! This satisfies aim.md §62: no `format_ago_*` inside projection builders.
+//! No `format_ago_*` inside projection builders.
 //!
 //! Emitted under the snapshot `projections` key
 //! [`RELAY_DIAGNOSTICS_PROJECTION_KEY`] (`"relay_diagnostics"`). The shell
@@ -41,11 +41,8 @@ mod notice;
 mod reasons;
 
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
-use discovery::discovery_kinds_label_for_subs;
-use format::{
-    auth_label, auth_tone, compact_count, connection_tone, format_bytes, interest_state_tone,
-    role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
-};
+use discovery::discovery_kinds_for_subs;
+use format::{auth_tone, connection_tone, interest_state_tone, role_tone, state_tone};
 pub(in crate::kernel) use info::RelayDiagnosticsInfo;
 pub(in crate::kernel) use notice::RelayDiagnosticsNotice;
 use reasons::{build_reasons, RelayConnectionReason};
@@ -61,29 +58,28 @@ pub(super) const RELAY_DIAGNOSTICS_PROJECTION_KEY: &str = "relay_diagnostics";
 /// One rolled-up row per known relay URL. Every aggregate (`active_sub_count`,
 /// `eosed_sub_count`, session `total_events_rx`) is computed here. Raw Unix
 /// epoch milliseconds are carried for timestamp fields; shells format them as
-/// "Xs ago" / "Xm ago" at render time (aim.md §62 — no format_ago_* inside
-/// projection builders).
+/// "Xs ago" / "Xm ago" at render time. No format_ago_* inside projection
+/// builders. Shells derive display strings from raw values.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct RelayDiagnosticsRow {
-    /// Canonical relay URL — stable list identity.
+    /// Canonical relay URL — stable list identity. Shells derive short URL
+    /// by stripping `ws[s]://` and trailing `/`.
     pub(super) relay_url: String,
-    /// Pre-formatted short URL (host[/path], `ws[s]://` stripped, trailing
-    /// `/` trimmed). The shell never re-derives.
-    pub(super) short_url: String,
-    /// Display label for the relay's role: `"Content"`, `"Indexer"`,
-    /// `"Wallet"`, `"Outbox"`. Always non-empty.
-    pub(super) role_label: String,
+    /// Raw role string: `"content"`, `"indexer"`, `"wallet"`, `"outbox"`, etc.
+    /// Shells title-case for display.
+    pub(super) role: String,
     /// Semantic role hue key — one of `"primary"`, `"write"`, `"accent"`,
     /// `"secondary"`. The shell maps it to a Color enum (UI styling is the
     /// shell's job; the *decision* of which class this row is in lives here).
     pub(super) role_tone: String,
-    /// Pre-formatted connection label: `"Connected"`, `"Reconnecting"`,
-    /// `"Disconnected"`, `"Unknown"`, etc.
-    pub(super) connection_label: String,
+    /// Raw connection string: `"connected"`, `"reconnecting"`,
+    /// `"disconnected"`, `"unknown"`, etc. Shells title-case for display.
+    pub(super) connection: String,
     /// Semantic connection hue: `"ok" | "warn" | "error" | "muted"`.
     pub(super) connection_tone: String,
-    /// Pre-formatted auth label: `"OK"`, `"Pending"`, `"Required"`, `"—"`.
-    pub(super) auth_label: String,
+    /// Raw auth string: `"ok"`, `"pending"`, `"required"`, `"—"`, etc.
+    /// Shells title-case for display (pass-through `"—"` as-is).
+    pub(super) auth: String,
     /// Semantic auth hue: `"ok" | "warn" | "muted"`.
     pub(super) auth_tone: String,
     /// Total wire subscriptions known to this relay.
@@ -97,15 +93,13 @@ pub(super) struct RelayDiagnosticsRow {
     /// completed one-shot subscription eviction; `wire_subs[*].events_rx`
     /// remains the per-sub detail.
     pub(super) total_events_rx: u64,
-    /// Pre-formatted total events (compact: `"1.2K"`, `"34"`).
-    pub(super) total_events_display: String,
     /// Reconnect attempts since process start.
     pub(super) reconnect_count: u32,
-    /// Pre-formatted "X bytes" / "Y KB" / "Z MB" label for `bytes_rx`, or
-    /// `None` when the counter is zero.
-    pub(super) bytes_rx_display: Option<String>,
-    /// Same for `bytes_tx`.
-    pub(super) bytes_tx_display: Option<String>,
+    /// Raw bytes received counter. Zero when no data yet.
+    /// Shells format as "X bytes" / "Y KB" / "Z MB" when > 0.
+    pub(super) bytes_rx: u64,
+    /// Raw bytes transmitted counter. Zero when no data yet.
+    pub(super) bytes_tx: u64,
     /// Unix epoch milliseconds of the last successful connect. `None` when
     /// the relay has never connected. Shells format as "Xs ago" at render time.
     pub(super) last_connected_ms: Option<u64>,
@@ -123,10 +117,10 @@ pub(super) struct RelayDiagnosticsRow {
     /// Per-wire-subscription detail rows (newest by sort id last — the
     /// kernel already sorts deterministically by `wire_id`).
     pub(super) wire_subs: Vec<RelayDiagnosticsWireSub>,
-    /// Pre-classified discovery kinds currently served by open wire
-    /// subscriptions on this relay. Shells render this directly; they do not
-    /// parse REQ filter JSON or switch on Nostr kind numbers.
-    pub(super) discovery_kinds_label: String,
+    /// Raw discovery kind numbers currently served by open wire subscriptions
+    /// on this relay (deduplicated, sorted). Shells format for display;
+    /// they do not parse REQ filter JSON.
+    pub(super) discovery_kinds: Vec<u64>,
     /// ADR-0051 — the relay's NIP-11 information document, once `nmp-nip11`
     /// has fetched it. `None` until the fetch resolves (or the relay serves
     /// no document). Apps read `info.name` / `info.icon` / … directly — no
@@ -142,26 +136,26 @@ pub(super) struct RelayDiagnosticsRow {
 
 /// Enriched per-subscription view for `WireSubscriptionDetailView` and the
 /// list rows on `RelayDetailView`. Timestamp fields carry Unix epoch
-/// milliseconds; shells format as "Xs ago" at render time (aim.md §62).
+/// milliseconds; shells format as "Xs ago" at render time.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct RelayDiagnosticsWireSub {
-    /// Full wire id (hex). Stable list identity.
+    /// Full wire id (hex). Stable list identity. Shells derive short id
+    /// by taking the first 8 chars + "…" when length > 12.
     pub(super) wire_id: String,
-    /// Pre-formatted short id (`"abcd1234…"`).
-    pub(super) short_wire_id: String,
     /// Owning relay URL.
     pub(super) relay_url: String,
     /// Filter prose, propagated unchanged from `WireSub.filter_summary`.
     pub(super) filter_summary: String,
-    /// Pre-formatted state label, e.g. `"Open"`, `"Pending"`, `"Closed"`.
-    pub(super) state_label: String,
+    /// Raw state string, e.g. `"open"`, `"pending"`, `"closed"`.
+    /// Shells title-case for display.
+    pub(super) state: String,
     /// Semantic state hue: `"ok" | "warn" | "muted" | "error"`.
     pub(super) state_tone: String,
-    /// Pre-formatted consumer-count label, e.g. `"1 consumer"`,
-    /// `"3 consumers"`. Empty string when zero consumers.
-    pub(super) consumer_count_label: String,
-    /// Pre-formatted events received (compact). `None` when zero.
-    pub(super) events_rx_display: Option<String>,
+    /// Raw consumer count. Shells format as `"N consumer(s)"` or empty
+    /// string when zero.
+    pub(super) consumer_count: u32,
+    /// Raw events received counter. Shells format as compact count when > 0.
+    pub(super) events_rx: u64,
     /// `true` iff EOSE has been observed.
     pub(super) eose_observed: bool,
     /// Unix epoch milliseconds when the subscription opened.
@@ -211,7 +205,7 @@ impl Kernel {
         // Fixed wall-clock anchor from kernel start (NO live clock read here):
         // raw ms-since-start markers are lifted to STABLE Unix-ms by adding it,
         // so an unchanged relay serializes byte-identically every 4 Hz tick (no
-        // per-second churn, no per-ms jitter). Shells format at render (§62).
+        // per-second churn, no per-ms jitter). Shells format at render time.
         let started_unix_ms = self.timing.started_unix_ms.unwrap_or(0);
 
         // Pre-compute statuses keyed by relay URL so each row can be filled
@@ -409,7 +403,7 @@ fn finish_row(
     let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
     let eosed_sub_count = subs.iter().filter(|s| s.eose_at_ms.is_some()).count() as u32;
     let total_events_rx = events_rx;
-    let discovery_kinds_label = discovery_kinds_label_for_subs(&subs);
+    let discovery_kinds = discovery_kinds_for_subs(&subs);
 
     let wire_subs = subs
         .into_iter()
@@ -417,30 +411,20 @@ fn finish_row(
         .collect();
 
     RelayDiagnosticsRow {
-        short_url: short_relay_url(&relay_url),
         relay_url,
-        role_label: role_label(role),
+        role: role.to_string(),
         role_tone: role_tone(role).to_string(),
-        connection_label: title_case(connection),
+        connection: connection.to_string(),
         connection_tone: connection_tone(connection).to_string(),
-        auth_label: auth_label(auth),
+        auth: auth.to_string(),
         auth_tone: auth_tone(auth).to_string(),
         total_sub_count,
         active_sub_count,
         eosed_sub_count,
         total_events_rx,
-        total_events_display: compact_count(total_events_rx),
         reconnect_count,
-        bytes_rx_display: if bytes_rx > 0 {
-            Some(format_bytes(bytes_rx))
-        } else {
-            None
-        },
-        bytes_tx_display: if bytes_tx > 0 {
-            Some(format_bytes(bytes_tx))
-        } else {
-            None
-        },
+        bytes_rx,
+        bytes_tx,
         last_connected_ms: last_connected_raw.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_event_ms: last_event_raw.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_notice,
@@ -448,29 +432,18 @@ fn finish_row(
         notices,
         last_error,
         wire_subs,
-        discovery_kinds_label,
+        discovery_kinds,
         info,
         reasons,
     }
 }
 
 fn build_wire_sub(s: WireSubscriptionStatus, started_unix_ms: u64) -> RelayDiagnosticsWireSub {
-    let consumer_count_label = match s.logical_consumer_count {
-        0 => String::new(),
-        1 => "1 consumer".to_string(),
-        n => format!("{n} consumers"),
-    };
-    let events_rx_display = if s.events_rx > 0 {
-        Some(compact_count(s.events_rx))
-    } else {
-        None
-    };
     RelayDiagnosticsWireSub {
-        short_wire_id: short_id(&s.wire_id),
-        state_label: title_case(&s.state),
+        state: s.state.clone(),
         state_tone: state_tone(&s.state).to_string(),
-        consumer_count_label,
-        events_rx_display,
+        consumer_count: s.logical_consumer_count,
+        events_rx: s.events_rx,
         eose_observed: s.eose_at_ms.is_some(),
         opened_ms: event_to_unix_ms(started_unix_ms, s.opened_at_ms).unwrap_or(started_unix_ms),
         last_event_ms: s

@@ -51,8 +51,8 @@ fn build_lines(relays: &[RelayRow], pane_width: usize) -> Vec<Line<'static>> {
 }
 
 fn relay_line(relay: &RelayRow, pane_width: usize) -> Line<'static> {
-    let (dot_char, dot_color) = status_dot(&relay.connection_label);
-    let count = relay.total_events_display.clone();
+    let (dot_char, dot_color) = status_dot(&relay.connection);
+    let count = compact_count(relay.total_events_rx);
     let count_len = count.chars().count();
 
     let dot_width = 2usize; // dot + space
@@ -60,7 +60,7 @@ fn relay_line(relay: &RelayRow, pane_width: usize) -> Line<'static> {
         .saturating_sub(dot_width)
         .saturating_sub(count_len)
         .saturating_sub(1);
-    let url = truncate(&relay.short_url, max_url_width);
+    let url = truncate(&short_relay_url(&relay.relay_url), max_url_width);
     let url_len = url.chars().count();
     let used = dot_width + url_len + 1 + count_len;
     let pad_len = pane_width.saturating_sub(used);
@@ -77,6 +77,26 @@ fn relay_line(relay: &RelayRow, pane_width: usize) -> Line<'static> {
         Span::styled(pad, Style::default()),
         Span::styled(count, Style::default().fg(DIM_TEXT)),
     ])
+}
+
+/// Strip the `ws[s]://` scheme and trailing `/` for a compact relay label.
+fn short_relay_url(url: &str) -> String {
+    url.strip_prefix("wss://")
+        .or_else(|| url.strip_prefix("ws://"))
+        .unwrap_or(url)
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// Compact integer formatter for event counts: `1234` → `"1.2K"`.
+fn compact_count(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
 }
 
 fn status_dot(connection_label: &str) -> (char, ratatui::style::Color) {

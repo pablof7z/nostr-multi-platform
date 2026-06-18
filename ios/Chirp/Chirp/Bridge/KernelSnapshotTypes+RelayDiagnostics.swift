@@ -4,10 +4,9 @@ import Foundation
 //
 // Mirror of `nmp-core::kernel::relay_diagnostics::RelayDiagnosticsSnapshot` —
 // the shape the `relay_diagnostics` built-in projection emits under the
-// snapshot key `"relay_diagnostics"`. The Rust projection pre-rolls every
-// aggregate (active / EOSE'd / total sub counts, total events_rx) and pre-
-// formats every display string (relative-time labels, role / connection /
-// auth labels + semantic tones).
+// snapshot key `"relay_diagnostics"`. The Rust projection emits raw values
+// (role, connection, auth as lowercase strings; bytes as u64 counters;
+// discoveryKinds as [UInt64]). Display formatting is the shell's job.
 //
 // Thin-shell rule: these are pure DTOs. The shell renders fields directly —
 // it does NOT filter / sort / reduce wireSubscriptions, does NOT compute
@@ -21,13 +20,13 @@ import Foundation
 /// Per-wire-subscription enriched row.
 struct RelayDiagnosticsWireSub: Decodable, Identifiable, Equatable {
     let wireId: String
-    let shortWireId: String
     let relayUrl: String
     let filterSummary: String
-    let stateLabel: String
+    /// Raw state string from Rust (e.g. "open", "closed", "pending"). Shell formats.
+    let state: String
     let stateTone: String
-    let consumerCountLabel: String
-    let eventsRxDisplay: String?
+    let consumerCount: UInt32
+    let eventsRx: UInt64
     let eoseObserved: Bool
     /// Unix epoch ms (0 = none); shell renders via `relativeTimeFromUnixSeconds`
     /// (ADR-0032). opened / last-event / EOSE timestamps.
@@ -36,6 +35,28 @@ struct RelayDiagnosticsWireSub: Decodable, Identifiable, Equatable {
     let eoseMs: UInt64
     let closeReason: String?
     var id: String { wireId }
+
+    // MARK: — Shell-side computed display helpers
+
+    /// Truncated wire ID for display (≤12 chars passthrough; longer → 8-char prefix + "…").
+    var shortWireId: String {
+        wireId.count <= 12 ? wireId : "\(wireId.prefix(8))…"
+    }
+
+    /// Title-cased state label (e.g. "open" → "Open").
+    var stateLabel: String { titleCase(state) }
+
+    /// Human-readable consumer count (empty when 0).
+    var consumerCountLabel: String {
+        switch consumerCount {
+        case 0: return ""
+        case 1: return "1 consumer"
+        default: return "\(consumerCount) consumers"
+        }
+    }
+
+    /// Compact event count when > 0; nil when zero.
+    var eventsRxDisplay: String? { eventsRx > 0 ? compactCount(eventsRx) : nil }
 }
 
 /// ADR-0051 relay-information document (NIP-11), mirror of the Rust
@@ -100,21 +121,23 @@ struct RelayConnectionReason: Decodable, Equatable {
 /// One rolled-up relay row.
 struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let relayUrl: String
-    let shortUrl: String
-    let roleLabel: String
+    /// Raw role string from Rust (e.g. "content", "indexer", "both"). Shell formats.
+    let role: String
     let roleTone: String
-    let connectionLabel: String
+    /// Raw connection string from Rust (e.g. "connected", "closed", "connecting"). Shell formats.
+    let connection: String
     let connectionTone: String
-    let authLabel: String
+    /// Raw auth string from Rust (e.g. "ok", "pending", "—"). Shell formats.
+    let auth: String
     let authTone: String
     let totalSubCount: UInt32
     let activeSubCount: UInt32
     let eosedSubCount: UInt32
     let totalEventsRx: UInt64
-    let totalEventsDisplay: String
     let reconnectCount: UInt32
-    let bytesRxDisplay: String?
-    let bytesTxDisplay: String?
+    /// Raw byte counters. Shell formats for display.
+    let bytesRx: UInt64
+    let bytesTx: UInt64
     /// Unix epoch ms (0 = none); shell renders via `relativeTimeFromUnixSeconds`.
     /// last-connect / last-event timestamps.
     let lastConnectedMs: UInt64
@@ -136,7 +159,50 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     /// compile or when no attribution is available. The `"blocked"` entry is
     /// always first when the relay is in the user's kind:10006 block list.
     let reasons: [RelayConnectionReason]
+    /// Raw kind numbers for discovery (NIP-65 etc). Shell formats for display.
+    let discoveryKinds: [UInt64]
     var id: String { relayUrl }
+
+    // MARK: — Shell-side computed display helpers
+
+    /// URL without scheme and without trailing slash (e.g. "wss://relay.damus.io/" → "relay.damus.io").
+    var shortUrl: String {
+        var s = relayUrl
+        for prefix in ["wss://", "ws://"] {
+            if s.hasPrefix(prefix) { s = String(s.dropFirst(prefix.count)); break }
+        }
+        if s.hasSuffix("/") { s = String(s.dropLast()) }
+        return s
+    }
+
+    /// Title-cased role label (e.g. "content" → "Content").
+    var roleLabel: String { titleCase(role) }
+
+    /// Title-cased connection label (e.g. "connected" → "Connected").
+    var connectionLabel: String { titleCase(connection) }
+
+    /// Auth label: "—" passthrough; otherwise title-cased (e.g. "ok" → "Ok").
+    var authLabel: String { auth == "—" ? "—" : titleCase(auth) }
+
+    /// Compact formatted total events received.
+    var totalEventsDisplay: String { compactCount(totalEventsRx) }
+
+    /// Formatted bytes received when > 0; nil otherwise.
+    var bytesRxDisplay: String? { bytesRx > 0 ? formatBytes(bytesRx) : nil }
+
+    /// Formatted bytes transmitted when > 0; nil otherwise.
+    var bytesTxDisplay: String? { bytesTx > 0 ? formatBytes(bytesTx) : nil }
+
+    /// Human-readable discovery kinds label derived from raw kind numbers.
+    /// Mirrors the former kernel `discovery_kinds_label_for_subs` output so the
+    /// rendered text is identical to what the projection used to emit: an empty
+    /// list renders as `"none"`, each kind as `"<name> (<kind>)"` joined by
+    /// `", "`.
+    var discoveryKindsLabel: String {
+        guard !discoveryKinds.isEmpty else { return "none" }
+        let parts = discoveryKinds.map { kindName(for: $0) }
+        return parts.joined(separator: ", ")
+    }
 }
 
 /// Logical interest with semantic tone pre-classified.
@@ -156,4 +222,58 @@ struct RelayDiagnosticsSnapshot: Decodable, Equatable {
     let interests: [RelayDiagnosticsInterest]
 
     static let empty = RelayDiagnosticsSnapshot(relays: [], interests: [])
+}
+
+// MARK: — Private shell formatting helpers
+
+/// Capitalize the first character; leave the rest as-is.
+private func titleCase(_ s: String) -> String {
+    guard let first = s.first else { return s }
+    return first.uppercased() + s.dropFirst()
+}
+
+/// Human-readable byte count. Mirrors the former kernel `format_bytes` helper
+/// exactly (1024-divisor magnitudes, `B` / `KB` / `MB` labels) so the rendered
+/// text is byte-identical to what the projection used to emit and matches the
+/// Android / TUI shells. `ByteCountFormatter` is deliberately NOT used — it is
+/// locale-dependent and emits `KB`/`MB` with different rounding.
+private func formatBytes(_ bytes: UInt64) -> String {
+    let kb = Double(bytes) / 1024.0
+    if kb < 1.0 {
+        return "\(bytes) B"
+    } else if kb < 1024.0 {
+        return String(format: "%.1f KB", kb)
+    } else {
+        return String(format: "%.1f MB", kb / 1024.0)
+    }
+}
+
+/// Compact count label. Mirrors the former kernel `compact_count`: < 1 000 →
+/// raw number; whole magnitudes drop the decimal (`1K`, not `1.0K`).
+private func compactCount(_ n: UInt64) -> String {
+    if n < 1_000 {
+        return "\(n)"
+    } else if n < 1_000_000 {
+        let v = Double(n) / 1_000
+        return v.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(UInt64(v))K" : String(format: "%.1fK", v)
+    } else if n < 1_000_000_000 {
+        let v = Double(n) / 1_000_000
+        return v.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(UInt64(v))M" : String(format: "%.1fM", v)
+    } else {
+        return String(format: "%.1fB", Double(n) / 1_000_000_000)
+    }
+}
+
+/// Friendly name for a discovery kind number. Mirrors the former kernel
+/// `discovery_kind_label`: `0`→profile, `3`→follows, `10002`→relay-list,
+/// every other (list-range) kind → `list`.
+private func kindName(for kind: UInt64) -> String {
+    switch kind {
+    case 0: return "profile (\(kind))"
+    case 3: return "follows (\(kind))"
+    case 10002: return "relay-list (\(kind))"
+    default: return "list (\(kind))"
+    }
 }

@@ -39,7 +39,7 @@ class RelayDiagnosticsRow : Table() {
         }
     val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
-    val shortUrl : String?
+    val role : String?
         get() {
             val o = __offset(6)
             return if (o != 0) {
@@ -48,9 +48,9 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val shortUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun shortUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
-    val roleLabel : String?
+    val roleAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun roleInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val roleTone : String?
         get() {
             val o = __offset(8)
             return if (o != 0) {
@@ -59,9 +59,9 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val roleLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun roleLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
-    val roleTone : String?
+    val roleToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun roleToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val connection : String?
         get() {
             val o = __offset(10)
             return if (o != 0) {
@@ -70,9 +70,9 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val roleToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun roleToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
-    val connectionLabel : String?
+    val connectionAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun connectionInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val connectionTone : String?
         get() {
             val o = __offset(12)
             return if (o != 0) {
@@ -81,9 +81,9 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val connectionLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
-    fun connectionLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
-    val connectionTone : String?
+    val connectionToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun connectionToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
+    val auth : String?
         get() {
             val o = __offset(14)
             return if (o != 0) {
@@ -92,9 +92,9 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val connectionToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
-    fun connectionToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
-    val authLabel : String?
+    val authAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun authInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
+    val authTone : String?
         get() {
             val o = __offset(16)
             return if (o != 0) {
@@ -103,77 +103,59 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val authLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
-    fun authLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
-    val authTone : String?
-        get() {
-            val o = __offset(18)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val authToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
-    fun authToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
+    val authToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun authToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val totalSubCount : UInt
         get() {
-            val o = __offset(20)
+            val o = __offset(18)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val activeSubCount : UInt
         get() {
-            val o = __offset(22)
+            val o = __offset(20)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val eosedSubCount : UInt
         get() {
-            val o = __offset(24)
+            val o = __offset(22)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val totalEventsRx : ULong
         get() {
-            val o = __offset(26)
+            val o = __offset(24)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val totalEventsDisplay : String?
-        get() {
-            val o = __offset(28)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val totalEventsDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(28, 1)
-    fun totalEventsDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 28, 1)
     val reconnectCount : UInt
         get() {
-            val o = __offset(30)
+            val o = __offset(26)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
-    val hasBytesRxDisplay : Boolean
+    val bytesRx : ULong
+        get() {
+            val o = __offset(28)
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
+        }
+    val bytesTx : ULong
+        get() {
+            val o = __offset(30)
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
+        }
+    val lastConnectedMs : ULong
         get() {
             val o = __offset(32)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val bytesRxDisplay : String?
+    val lastEventMs : ULong
         get() {
             val o = __offset(34)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val bytesRxDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(34, 1)
-    fun bytesRxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 34, 1)
-    val hasBytesTxDisplay : Boolean
+    val hasLastNotice : Boolean
         get() {
             val o = __offset(36)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val bytesTxDisplay : String?
+    val lastNotice : String?
         get() {
             val o = __offset(38)
             return if (o != 0) {
@@ -182,42 +164,16 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val bytesTxDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(38, 1)
-    fun bytesTxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 38, 1)
-    val lastConnectedMs : ULong
+    val lastNoticeAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(38, 1)
+    fun lastNoticeInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 38, 1)
+    val noticeCount : ULong
         get() {
             val o = __offset(40)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val lastEventMs : ULong
-        get() {
-            val o = __offset(42)
-            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
-        }
-    val hasLastNotice : Boolean
-        get() {
-            val o = __offset(44)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
-        }
-    val lastNotice : String?
-        get() {
-            val o = __offset(46)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val lastNoticeAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(46, 1)
-    fun lastNoticeInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 46, 1)
-    val noticeCount : ULong
-        get() {
-            val o = __offset(48)
-            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
-        }
     fun notices(j: Int) : nmp.kernel.RelayDiagnosticsNotice? = notices(nmp.kernel.RelayDiagnosticsNotice(), j)
     fun notices(obj: nmp.kernel.RelayDiagnosticsNotice, j: Int) : nmp.kernel.RelayDiagnosticsNotice? {
-        val o = __offset(50)
+        val o = __offset(42)
         return if (o != 0) {
             obj.__assign(__indirect(__vector(o) + j * 4), bb)
         } else {
@@ -226,27 +182,27 @@ class RelayDiagnosticsRow : Table() {
     }
     val noticesLength : Int
         get() {
-            val o = __offset(50); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(42); return if (o != 0) __vector_len(o) else 0
         }
     val hasLastError : Boolean
         get() {
-            val o = __offset(52)
+            val o = __offset(44)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val lastError : String?
         get() {
-            val o = __offset(54)
+            val o = __offset(46)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val lastErrorAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(54, 1)
-    fun lastErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 54, 1)
+    val lastErrorAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(46, 1)
+    fun lastErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 46, 1)
     fun wireSubs(j: Int) : nmp.kernel.RelayDiagnosticsWireSub? = wireSubs(nmp.kernel.RelayDiagnosticsWireSub(), j)
     fun wireSubs(obj: nmp.kernel.RelayDiagnosticsWireSub, j: Int) : nmp.kernel.RelayDiagnosticsWireSub? {
-        val o = __offset(56)
+        val o = __offset(48)
         return if (o != 0) {
             obj.__assign(__indirect(__vector(o) + j * 4), bb)
         } else {
@@ -255,31 +211,34 @@ class RelayDiagnosticsRow : Table() {
     }
     val wireSubsLength : Int
         get() {
-            val o = __offset(56); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(48); return if (o != 0) __vector_len(o) else 0
         }
     val info : nmp.kernel.RelayDiagnosticsInfo? get() = info(nmp.kernel.RelayDiagnosticsInfo())
     fun info(obj: nmp.kernel.RelayDiagnosticsInfo) : nmp.kernel.RelayDiagnosticsInfo? {
-        val o = __offset(58)
+        val o = __offset(50)
         return if (o != 0) {
             obj.__assign(__indirect(o + bb_pos), bb)
         } else {
             null
         }
     }
-    val discoveryKindsLabel : String?
-        get() {
-            val o = __offset(60)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
+    fun discoveryKinds(j: Int) : ULong {
+        val o = __offset(52)
+        return if (o != 0) {
+            bb.getLong(__vector(o) + j * 8).toULong()
+        } else {
+            0uL
         }
-    val discoveryKindsLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(60, 1)
-    fun discoveryKindsLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 60, 1)
+    }
+    val discoveryKindsLength : Int
+        get() {
+            val o = __offset(52); return if (o != 0) __vector_len(o) else 0
+        }
+    val discoveryKindsAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(52, 8)
+    fun discoveryKindsInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 52, 8)
     fun reasons(j: Int) : nmp.kernel.RelayConnectionReason? = reasons(nmp.kernel.RelayConnectionReason(), j)
     fun reasons(obj: nmp.kernel.RelayConnectionReason, j: Int) : nmp.kernel.RelayConnectionReason? {
-        val o = __offset(62)
+        val o = __offset(54)
         return if (o != 0) {
             obj.__assign(__indirect(__vector(o) + j * 4), bb)
         } else {
@@ -288,7 +247,7 @@ class RelayDiagnosticsRow : Table() {
     }
     val reasonsLength : Int
         get() {
-            val o = __offset(62); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(54); return if (o != 0) __vector_len(o) else 0
         }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
@@ -297,65 +256,57 @@ class RelayDiagnosticsRow : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createRelayDiagnosticsRow(builder: FlatBufferBuilder, relayUrlOffset: Int, shortUrlOffset: Int, roleLabelOffset: Int, roleToneOffset: Int, connectionLabelOffset: Int, connectionToneOffset: Int, authLabelOffset: Int, authToneOffset: Int, totalSubCount: UInt, activeSubCount: UInt, eosedSubCount: UInt, totalEventsRx: ULong, totalEventsDisplayOffset: Int, reconnectCount: UInt, hasBytesRxDisplay: Boolean, bytesRxDisplayOffset: Int, hasBytesTxDisplay: Boolean, bytesTxDisplayOffset: Int, lastConnectedMs: ULong, lastEventMs: ULong, hasLastNotice: Boolean, lastNoticeOffset: Int, noticeCount: ULong, noticesOffset: Int, hasLastError: Boolean, lastErrorOffset: Int, wireSubsOffset: Int, infoOffset: Int, discoveryKindsLabelOffset: Int, reasonsOffset: Int) : Int {
-            builder.startTable(30)
+        fun createRelayDiagnosticsRow(builder: FlatBufferBuilder, relayUrlOffset: Int, roleOffset: Int, roleToneOffset: Int, connectionOffset: Int, connectionToneOffset: Int, authOffset: Int, authToneOffset: Int, totalSubCount: UInt, activeSubCount: UInt, eosedSubCount: UInt, totalEventsRx: ULong, reconnectCount: UInt, bytesRx: ULong, bytesTx: ULong, lastConnectedMs: ULong, lastEventMs: ULong, hasLastNotice: Boolean, lastNoticeOffset: Int, noticeCount: ULong, noticesOffset: Int, hasLastError: Boolean, lastErrorOffset: Int, wireSubsOffset: Int, infoOffset: Int, discoveryKindsOffset: Int, reasonsOffset: Int) : Int {
+            builder.startTable(26)
             addNoticeCount(builder, noticeCount)
             addLastEventMs(builder, lastEventMs)
             addLastConnectedMs(builder, lastConnectedMs)
+            addBytesTx(builder, bytesTx)
+            addBytesRx(builder, bytesRx)
             addTotalEventsRx(builder, totalEventsRx)
             addReasons(builder, reasonsOffset)
-            addDiscoveryKindsLabel(builder, discoveryKindsLabelOffset)
+            addDiscoveryKinds(builder, discoveryKindsOffset)
             addInfo(builder, infoOffset)
             addWireSubs(builder, wireSubsOffset)
             addLastError(builder, lastErrorOffset)
             addNotices(builder, noticesOffset)
             addLastNotice(builder, lastNoticeOffset)
-            addBytesTxDisplay(builder, bytesTxDisplayOffset)
-            addBytesRxDisplay(builder, bytesRxDisplayOffset)
             addReconnectCount(builder, reconnectCount)
-            addTotalEventsDisplay(builder, totalEventsDisplayOffset)
             addEosedSubCount(builder, eosedSubCount)
             addActiveSubCount(builder, activeSubCount)
             addTotalSubCount(builder, totalSubCount)
             addAuthTone(builder, authToneOffset)
-            addAuthLabel(builder, authLabelOffset)
+            addAuth(builder, authOffset)
             addConnectionTone(builder, connectionToneOffset)
-            addConnectionLabel(builder, connectionLabelOffset)
+            addConnection(builder, connectionOffset)
             addRoleTone(builder, roleToneOffset)
-            addRoleLabel(builder, roleLabelOffset)
-            addShortUrl(builder, shortUrlOffset)
+            addRole(builder, roleOffset)
             addRelayUrl(builder, relayUrlOffset)
             addHasLastError(builder, hasLastError)
             addHasLastNotice(builder, hasLastNotice)
-            addHasBytesTxDisplay(builder, hasBytesTxDisplay)
-            addHasBytesRxDisplay(builder, hasBytesRxDisplay)
             return endRelayDiagnosticsRow(builder)
         }
-        fun startRelayDiagnosticsRow(builder: FlatBufferBuilder) = builder.startTable(30)
+        fun startRelayDiagnosticsRow(builder: FlatBufferBuilder) = builder.startTable(26)
         fun addRelayUrl(builder: FlatBufferBuilder, relayUrl: Int) = builder.addOffset(0, relayUrl, 0)
-        fun addShortUrl(builder: FlatBufferBuilder, shortUrl: Int) = builder.addOffset(1, shortUrl, 0)
-        fun addRoleLabel(builder: FlatBufferBuilder, roleLabel: Int) = builder.addOffset(2, roleLabel, 0)
-        fun addRoleTone(builder: FlatBufferBuilder, roleTone: Int) = builder.addOffset(3, roleTone, 0)
-        fun addConnectionLabel(builder: FlatBufferBuilder, connectionLabel: Int) = builder.addOffset(4, connectionLabel, 0)
-        fun addConnectionTone(builder: FlatBufferBuilder, connectionTone: Int) = builder.addOffset(5, connectionTone, 0)
-        fun addAuthLabel(builder: FlatBufferBuilder, authLabel: Int) = builder.addOffset(6, authLabel, 0)
-        fun addAuthTone(builder: FlatBufferBuilder, authTone: Int) = builder.addOffset(7, authTone, 0)
-        fun addTotalSubCount(builder: FlatBufferBuilder, totalSubCount: UInt) = builder.addInt(8, totalSubCount.toInt(), 0)
-        fun addActiveSubCount(builder: FlatBufferBuilder, activeSubCount: UInt) = builder.addInt(9, activeSubCount.toInt(), 0)
-        fun addEosedSubCount(builder: FlatBufferBuilder, eosedSubCount: UInt) = builder.addInt(10, eosedSubCount.toInt(), 0)
-        fun addTotalEventsRx(builder: FlatBufferBuilder, totalEventsRx: ULong) = builder.addLong(11, totalEventsRx.toLong(), 0)
-        fun addTotalEventsDisplay(builder: FlatBufferBuilder, totalEventsDisplay: Int) = builder.addOffset(12, totalEventsDisplay, 0)
-        fun addReconnectCount(builder: FlatBufferBuilder, reconnectCount: UInt) = builder.addInt(13, reconnectCount.toInt(), 0)
-        fun addHasBytesRxDisplay(builder: FlatBufferBuilder, hasBytesRxDisplay: Boolean) = builder.addBoolean(14, hasBytesRxDisplay, false)
-        fun addBytesRxDisplay(builder: FlatBufferBuilder, bytesRxDisplay: Int) = builder.addOffset(15, bytesRxDisplay, 0)
-        fun addHasBytesTxDisplay(builder: FlatBufferBuilder, hasBytesTxDisplay: Boolean) = builder.addBoolean(16, hasBytesTxDisplay, false)
-        fun addBytesTxDisplay(builder: FlatBufferBuilder, bytesTxDisplay: Int) = builder.addOffset(17, bytesTxDisplay, 0)
-        fun addLastConnectedMs(builder: FlatBufferBuilder, lastConnectedMs: ULong) = builder.addLong(18, lastConnectedMs.toLong(), 0)
-        fun addLastEventMs(builder: FlatBufferBuilder, lastEventMs: ULong) = builder.addLong(19, lastEventMs.toLong(), 0)
-        fun addHasLastNotice(builder: FlatBufferBuilder, hasLastNotice: Boolean) = builder.addBoolean(20, hasLastNotice, false)
-        fun addLastNotice(builder: FlatBufferBuilder, lastNotice: Int) = builder.addOffset(21, lastNotice, 0)
-        fun addNoticeCount(builder: FlatBufferBuilder, noticeCount: ULong) = builder.addLong(22, noticeCount.toLong(), 0)
-        fun addNotices(builder: FlatBufferBuilder, notices: Int) = builder.addOffset(23, notices, 0)
+        fun addRole(builder: FlatBufferBuilder, role: Int) = builder.addOffset(1, role, 0)
+        fun addRoleTone(builder: FlatBufferBuilder, roleTone: Int) = builder.addOffset(2, roleTone, 0)
+        fun addConnection(builder: FlatBufferBuilder, connection: Int) = builder.addOffset(3, connection, 0)
+        fun addConnectionTone(builder: FlatBufferBuilder, connectionTone: Int) = builder.addOffset(4, connectionTone, 0)
+        fun addAuth(builder: FlatBufferBuilder, auth: Int) = builder.addOffset(5, auth, 0)
+        fun addAuthTone(builder: FlatBufferBuilder, authTone: Int) = builder.addOffset(6, authTone, 0)
+        fun addTotalSubCount(builder: FlatBufferBuilder, totalSubCount: UInt) = builder.addInt(7, totalSubCount.toInt(), 0)
+        fun addActiveSubCount(builder: FlatBufferBuilder, activeSubCount: UInt) = builder.addInt(8, activeSubCount.toInt(), 0)
+        fun addEosedSubCount(builder: FlatBufferBuilder, eosedSubCount: UInt) = builder.addInt(9, eosedSubCount.toInt(), 0)
+        fun addTotalEventsRx(builder: FlatBufferBuilder, totalEventsRx: ULong) = builder.addLong(10, totalEventsRx.toLong(), 0)
+        fun addReconnectCount(builder: FlatBufferBuilder, reconnectCount: UInt) = builder.addInt(11, reconnectCount.toInt(), 0)
+        fun addBytesRx(builder: FlatBufferBuilder, bytesRx: ULong) = builder.addLong(12, bytesRx.toLong(), 0)
+        fun addBytesTx(builder: FlatBufferBuilder, bytesTx: ULong) = builder.addLong(13, bytesTx.toLong(), 0)
+        fun addLastConnectedMs(builder: FlatBufferBuilder, lastConnectedMs: ULong) = builder.addLong(14, lastConnectedMs.toLong(), 0)
+        fun addLastEventMs(builder: FlatBufferBuilder, lastEventMs: ULong) = builder.addLong(15, lastEventMs.toLong(), 0)
+        fun addHasLastNotice(builder: FlatBufferBuilder, hasLastNotice: Boolean) = builder.addBoolean(16, hasLastNotice, false)
+        fun addLastNotice(builder: FlatBufferBuilder, lastNotice: Int) = builder.addOffset(17, lastNotice, 0)
+        fun addNoticeCount(builder: FlatBufferBuilder, noticeCount: ULong) = builder.addLong(18, noticeCount.toLong(), 0)
+        fun addNotices(builder: FlatBufferBuilder, notices: Int) = builder.addOffset(19, notices, 0)
         fun createNoticesVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {
@@ -364,9 +315,9 @@ class RelayDiagnosticsRow : Table() {
             return builder.endVector()
         }
         fun startNoticesVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addHasLastError(builder: FlatBufferBuilder, hasLastError: Boolean) = builder.addBoolean(24, hasLastError, false)
-        fun addLastError(builder: FlatBufferBuilder, lastError: Int) = builder.addOffset(25, lastError, 0)
-        fun addWireSubs(builder: FlatBufferBuilder, wireSubs: Int) = builder.addOffset(26, wireSubs, 0)
+        fun addHasLastError(builder: FlatBufferBuilder, hasLastError: Boolean) = builder.addBoolean(20, hasLastError, false)
+        fun addLastError(builder: FlatBufferBuilder, lastError: Int) = builder.addOffset(21, lastError, 0)
+        fun addWireSubs(builder: FlatBufferBuilder, wireSubs: Int) = builder.addOffset(22, wireSubs, 0)
         fun createWireSubsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {
@@ -375,9 +326,18 @@ class RelayDiagnosticsRow : Table() {
             return builder.endVector()
         }
         fun startWireSubsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addInfo(builder: FlatBufferBuilder, info: Int) = builder.addOffset(27, info, 0)
-        fun addDiscoveryKindsLabel(builder: FlatBufferBuilder, discoveryKindsLabel: Int) = builder.addOffset(28, discoveryKindsLabel, 0)
-        fun addReasons(builder: FlatBufferBuilder, reasons: Int) = builder.addOffset(29, reasons, 0)
+        fun addInfo(builder: FlatBufferBuilder, info: Int) = builder.addOffset(23, info, 0)
+        fun addDiscoveryKinds(builder: FlatBufferBuilder, discoveryKinds: Int) = builder.addOffset(24, discoveryKinds, 0)
+        @kotlin.ExperimentalUnsignedTypes
+        fun createDiscoveryKindsVector(builder: FlatBufferBuilder, data: ULongArray) : Int {
+            builder.startVector(8, data.size, 8)
+            for (i in data.size - 1 downTo 0) {
+                builder.addLong(data[i].toLong())
+            }
+            return builder.endVector()
+        }
+        fun startDiscoveryKindsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(8, numElems, 8)
+        fun addReasons(builder: FlatBufferBuilder, reasons: Int) = builder.addOffset(25, reasons, 0)
         fun createReasonsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {

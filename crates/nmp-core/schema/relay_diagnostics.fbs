@@ -11,7 +11,7 @@ namespace nmp.kernel;
 // detail rows, every aggregate computed) under the JSON key `"relay_diagnostics"`.
 // This typed buffer is the host-visible update-frame representation. It is emitted in `SnapshotFrame.typed_projections` under the same key; absent or invalid bytes fail closed at the typed decoder boundary.
 //
-// ## Timestamp fields (aim.md §62 compliance)
+// ## Timestamp fields (no pre-formatted prose on the wire)
 //
 // Timestamp fields (`last_connected_ms`, `last_event_ms`, `opened_ms`,
 // `eose_ms`) carry Unix epoch milliseconds (ulong). Shells format them as
@@ -19,6 +19,13 @@ namespace nmp.kernel;
 // on iOS, `formatRelativeTime` on Android). The projection builder no longer
 // calls `format_ago_*` or reads `now` per-row; the snapshot bytes are stable
 // across 4 Hz ticks when relay state has not changed.
+//
+// ## Presentation formatting
+//
+// Raw values are emitted; shells derive display strings. For example:
+// `role` ("content") → shell title-cases to "Content";
+// `bytes_rx`/`bytes_tx` (ulong) → shell formats as "X KB" when > 0;
+// `discovery_kinds` ([ulong]) → shell formats kind list for display.
 //
 // ## Capture-once ownership
 //
@@ -33,10 +40,10 @@ namespace nmp.kernel;
 // as an explicit `has_*` flag.
 //
 // D0: a relay-diagnostics roll-up is generic transport telemetry — relay
-// connection / auth / role state, subscription counts, byte/event counters, and
-// pre-formatted display strings. No protocol-specific (NIP-NN) semantics. Generic
-// framework transport-diagnostics view, so kernel-owned and typed here. D6: the
-// decoder returns `Err(String)` on malformed input, never panics.
+// connection / auth / role state, subscription counts, byte/event counters.
+// No protocol-specific (NIP-NN) semantics. Generic framework transport-diagnostics
+// view, so kernel-owned and typed here. D6: the decoder returns `Err(String)` on
+// malformed input, never panics.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
@@ -47,26 +54,23 @@ namespace nmp.kernel;
 table RelayDiagnosticsWireSub {
   // Full wire id (hex) — stable list identity.
   wire_id:string;
-  // Pre-formatted short id (`"abcd1234…"`).
-  short_wire_id:string;
   // Owning relay URL.
   relay_url:string;
   // Filter prose, propagated unchanged from `WireSub.filter_summary`.
   filter_summary:string;
-  // Pre-formatted state label (`"Open"` / `"Pending"` / `"Closed"` / …).
-  state_label:string;
+  // Raw state string (`"open"` / `"pending"` / `"closed"` / …).
+  // Shells title-case for display.
+  state:string;
   // Semantic state hue (`"ok"` / `"warn"` / `"muted"` / `"error"`).
   state_tone:string;
-  // Pre-formatted consumer-count label (`"1 consumer"` / …); empty when zero.
-  consumer_count_label:string;
-  // Pre-formatted events received (compact); `has_events_rx_display == false`
-  // mirrors JSON `null` (zero events).
-  has_events_rx_display:bool;
-  events_rx_display:string;
+  // Raw consumer count. Shells format as "N consumer(s)" or empty when zero.
+  consumer_count:uint;
+  // Raw events received counter. Shells format as compact count when > 0.
+  events_rx:ulong;
   // True iff EOSE has been observed.
   eose_observed:bool;
   // Unix epoch milliseconds when the subscription opened. Shells format as
-  // "Xs ago" at render time (aim.md §62).
+  // "Xs ago" at render time.
   opened_ms:ulong;
   // Unix epoch milliseconds of the last event received; 0 when none.
   last_event_ms:ulong;
@@ -111,7 +115,7 @@ table RelayDiagnosticsInfo {
 
 // One entry in the per-relay bounded NOTICE log (mirror of `RelayDiagnosticsNotice`).
 // Ordered newest-first in the `notices` vector. `at_ms` carries wall-clock Unix
-// epoch milliseconds (aim.md §62 compliance — shells format as "Xs ago").
+// epoch milliseconds (shells format as "Xs ago").
 table RelayDiagnosticsNotice {
   // Wall-clock Unix epoch milliseconds when this NOTICE arrived.
   at_ms:ulong;
@@ -147,20 +151,22 @@ table RelayConnectionReason {
 
 // One rolled-up row per known relay URL (mirror of `RelayDiagnosticsRow`).
 table RelayDiagnosticsRow {
-  // Canonical relay URL — stable list identity.
+  // Canonical relay URL — stable list identity. Shells derive short URL
+  // by stripping `ws[s]://` and trailing `/`.
   relay_url:string;
-  // Pre-formatted short URL.
-  short_url:string;
-  // Display label for the relay's role (`"Content"` / `"Indexer"` / …).
-  role_label:string;
+  // Raw role string (`"content"` / `"indexer"` / `"wallet"` / `"outbox"` / …).
+  // Shells title-case for display.
+  role:string;
   // Semantic role hue (`"primary"` / `"write"` / `"accent"` / `"secondary"`).
   role_tone:string;
-  // Pre-formatted connection label (`"Connected"` / `"Reconnecting"` / …).
-  connection_label:string;
+  // Raw connection string (`"connected"` / `"reconnecting"` / `"disconnected"` / …).
+  // Shells title-case for display.
+  connection:string;
   // Semantic connection hue (`"ok"` / `"warn"` / `"error"` / `"muted"`).
   connection_tone:string;
-  // Pre-formatted auth label (`"OK"` / `"Pending"` / `"Required"` / `"—"`).
-  auth_label:string;
+  // Raw auth string (`"ok"` / `"pending"` / `"required"` / `"—"` / …).
+  // Shells title-case for display (pass through `"—"` as-is).
+  auth:string;
   // Semantic auth hue (`"ok"` / `"warn"` / `"muted"`).
   auth_tone:string;
   // Total wire subscriptions known to this relay.
@@ -171,18 +177,14 @@ table RelayDiagnosticsRow {
   eosed_sub_count:uint;
   // Session EVENT frames received on this relay URL.
   total_events_rx:ulong;
-  // Pre-formatted total events (compact: `"1.2K"` / `"34"`).
-  total_events_display:string;
   // Reconnect attempts since process start.
   reconnect_count:uint;
-  // Pre-formatted bytes-received label; absent when the counter is zero.
-  has_bytes_rx_display:bool;
-  bytes_rx_display:string;
-  // Pre-formatted bytes-transmitted label; absent when zero.
-  has_bytes_tx_display:bool;
-  bytes_tx_display:string;
+  // Raw bytes received. Shells format as "X KB" etc. when > 0.
+  bytes_rx:ulong;
+  // Raw bytes transmitted. Shells format as "X KB" etc. when > 0.
+  bytes_tx:ulong;
   // Unix epoch milliseconds of the last successful connect; 0 when the relay
-  // has never connected. Shells format as "Xs ago" at render time (aim.md §62).
+  // has never connected. Shells format as "Xs ago" at render time.
   last_connected_ms:ulong;
   // Unix epoch milliseconds of the last event received; 0 when none.
   last_event_ms:ulong;
@@ -192,7 +194,7 @@ table RelayDiagnosticsRow {
   // Total NOTICE frames received from this relay (session counter).
   notice_count:ulong;
   // Bounded NOTICE log (newest first, up to 32 entries). Each entry carries a
-  // wall-clock Unix-ms timestamp; shells format as "Xs ago" (aim.md §62).
+  // wall-clock Unix-ms timestamp; shells format as "Xs ago".
   notices:[RelayDiagnosticsNotice];
   // Most recent error prose; absent when none.
   has_last_error:bool;
@@ -202,9 +204,9 @@ table RelayDiagnosticsRow {
   // ADR-0051 — the relay's NIP-11 information document; null until
   // `nmp-nip11` has fetched it (or the relay serves no document).
   info:RelayDiagnosticsInfo;
-  // Pre-classified discovery kinds served by open wire subscriptions. Shells
-  // render this directly instead of parsing REQ filter JSON.
-  discovery_kinds_label:string;
+  // Raw discovery kind numbers from open wire subscriptions (deduplicated,
+  // sorted). Shells format for display (e.g. "profile (0), follows (3)").
+  discovery_kinds:[ulong];
   // Routing provenance reasons (SPLIT A, pre-block). Empty before the first
   // compile or when no attribution is available. The `"blocked"` entry is
   // always first when the relay is in the user's kind:10006 block list.

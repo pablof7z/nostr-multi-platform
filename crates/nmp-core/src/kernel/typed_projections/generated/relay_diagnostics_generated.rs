@@ -27,20 +27,18 @@ impl<'a> ::flatbuffers::Follow<'a> for RelayDiagnosticsWireSub<'a> {
 
 impl<'a> RelayDiagnosticsWireSub<'a> {
   pub const VT_WIRE_ID: ::flatbuffers::VOffsetT = 4;
-  pub const VT_SHORT_WIRE_ID: ::flatbuffers::VOffsetT = 6;
-  pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 8;
-  pub const VT_FILTER_SUMMARY: ::flatbuffers::VOffsetT = 10;
-  pub const VT_STATE_LABEL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_STATE_TONE: ::flatbuffers::VOffsetT = 14;
-  pub const VT_CONSUMER_COUNT_LABEL: ::flatbuffers::VOffsetT = 16;
-  pub const VT_HAS_EVENTS_RX_DISPLAY: ::flatbuffers::VOffsetT = 18;
-  pub const VT_EVENTS_RX_DISPLAY: ::flatbuffers::VOffsetT = 20;
-  pub const VT_EOSE_OBSERVED: ::flatbuffers::VOffsetT = 22;
-  pub const VT_OPENED_MS: ::flatbuffers::VOffsetT = 24;
-  pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 26;
-  pub const VT_EOSE_MS: ::flatbuffers::VOffsetT = 28;
-  pub const VT_HAS_CLOSE_REASON: ::flatbuffers::VOffsetT = 30;
-  pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 32;
+  pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+  pub const VT_FILTER_SUMMARY: ::flatbuffers::VOffsetT = 8;
+  pub const VT_STATE: ::flatbuffers::VOffsetT = 10;
+  pub const VT_STATE_TONE: ::flatbuffers::VOffsetT = 12;
+  pub const VT_CONSUMER_COUNT: ::flatbuffers::VOffsetT = 14;
+  pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 16;
+  pub const VT_EOSE_OBSERVED: ::flatbuffers::VOffsetT = 18;
+  pub const VT_OPENED_MS: ::flatbuffers::VOffsetT = 20;
+  pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 22;
+  pub const VT_EOSE_MS: ::flatbuffers::VOffsetT = 24;
+  pub const VT_HAS_CLOSE_REASON: ::flatbuffers::VOffsetT = 26;
+  pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 28;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -55,18 +53,16 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     builder.add_eose_ms(args.eose_ms);
     builder.add_last_event_ms(args.last_event_ms);
     builder.add_opened_ms(args.opened_ms);
+    builder.add_events_rx(args.events_rx);
     if let Some(x) = args.close_reason { builder.add_close_reason(x); }
-    if let Some(x) = args.events_rx_display { builder.add_events_rx_display(x); }
-    if let Some(x) = args.consumer_count_label { builder.add_consumer_count_label(x); }
+    builder.add_consumer_count(args.consumer_count);
     if let Some(x) = args.state_tone { builder.add_state_tone(x); }
-    if let Some(x) = args.state_label { builder.add_state_label(x); }
+    if let Some(x) = args.state { builder.add_state(x); }
     if let Some(x) = args.filter_summary { builder.add_filter_summary(x); }
     if let Some(x) = args.relay_url { builder.add_relay_url(x); }
-    if let Some(x) = args.short_wire_id { builder.add_short_wire_id(x); }
     if let Some(x) = args.wire_id { builder.add_wire_id(x); }
     builder.add_has_close_reason(args.has_close_reason);
     builder.add_eose_observed(args.eose_observed);
-    builder.add_has_events_rx_display(args.has_events_rx_display);
     builder.finish()
   }
 
@@ -77,13 +73,6 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_WIRE_ID, None)}
-  }
-  #[inline]
-  pub fn short_wire_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_SHORT_WIRE_ID, None)}
   }
   #[inline]
   pub fn relay_url(&self) -> Option<&'a str> {
@@ -100,11 +89,11 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_FILTER_SUMMARY, None)}
   }
   #[inline]
-  pub fn state_label(&self) -> Option<&'a str> {
+  pub fn state(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_STATE_LABEL, None)}
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_STATE, None)}
   }
   #[inline]
   pub fn state_tone(&self) -> Option<&'a str> {
@@ -114,25 +103,18 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_STATE_TONE, None)}
   }
   #[inline]
-  pub fn consumer_count_label(&self) -> Option<&'a str> {
+  pub fn consumer_count(&self) -> u32 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_CONSUMER_COUNT_LABEL, None)}
+    unsafe { self._tab.get::<u32>(RelayDiagnosticsWireSub::VT_CONSUMER_COUNT, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn has_events_rx_display(&self) -> bool {
+  pub fn events_rx(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsWireSub::VT_HAS_EVENTS_RX_DISPLAY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn events_rx_display(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_EVENTS_RX_DISPLAY, None)}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsWireSub::VT_EVENTS_RX, Some(0)).unwrap()}
   }
   #[inline]
   pub fn eose_observed(&self) -> bool {
@@ -185,14 +167,12 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsWireSub<'_> {
   ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
     v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("wire_id", Self::VT_WIRE_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("short_wire_id", Self::VT_SHORT_WIRE_ID, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_url", Self::VT_RELAY_URL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("filter_summary", Self::VT_FILTER_SUMMARY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("state_label", Self::VT_STATE_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("state", Self::VT_STATE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("state_tone", Self::VT_STATE_TONE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("consumer_count_label", Self::VT_CONSUMER_COUNT_LABEL, false)?
-     .visit_field::<bool>("has_events_rx_display", Self::VT_HAS_EVENTS_RX_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("events_rx_display", Self::VT_EVENTS_RX_DISPLAY, false)?
+     .visit_field::<u32>("consumer_count", Self::VT_CONSUMER_COUNT, false)?
+     .visit_field::<u64>("events_rx", Self::VT_EVENTS_RX, false)?
      .visit_field::<bool>("eose_observed", Self::VT_EOSE_OBSERVED, false)?
      .visit_field::<u64>("opened_ms", Self::VT_OPENED_MS, false)?
      .visit_field::<u64>("last_event_ms", Self::VT_LAST_EVENT_MS, false)?
@@ -205,14 +185,12 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsWireSub<'_> {
 }
 pub struct RelayDiagnosticsWireSubArgs<'a> {
     pub wire_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub short_wire_id: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub filter_summary: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub state_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub state_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub consumer_count_label: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_events_rx_display: bool,
-    pub events_rx_display: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub consumer_count: u32,
+    pub events_rx: u64,
     pub eose_observed: bool,
     pub opened_ms: u64,
     pub last_event_ms: u64,
@@ -225,14 +203,12 @@ impl<'a> Default for RelayDiagnosticsWireSubArgs<'a> {
   fn default() -> Self {
     RelayDiagnosticsWireSubArgs {
       wire_id: None,
-      short_wire_id: None,
       relay_url: None,
       filter_summary: None,
-      state_label: None,
+      state: None,
       state_tone: None,
-      consumer_count_label: None,
-      has_events_rx_display: false,
-      events_rx_display: None,
+      consumer_count: 0,
+      events_rx: 0,
       eose_observed: false,
       opened_ms: 0,
       last_event_ms: 0,
@@ -253,10 +229,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsWireSubBuilde
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_WIRE_ID, wire_id);
   }
   #[inline]
-  pub fn add_short_wire_id(&mut self, short_wire_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_SHORT_WIRE_ID, short_wire_id);
-  }
-  #[inline]
   pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_RELAY_URL, relay_url);
   }
@@ -265,24 +237,20 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsWireSubBuilde
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_FILTER_SUMMARY, filter_summary);
   }
   #[inline]
-  pub fn add_state_label(&mut self, state_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_STATE_LABEL, state_label);
+  pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_STATE, state);
   }
   #[inline]
   pub fn add_state_tone(&mut self, state_tone: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_STATE_TONE, state_tone);
   }
   #[inline]
-  pub fn add_consumer_count_label(&mut self, consumer_count_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_CONSUMER_COUNT_LABEL, consumer_count_label);
+  pub fn add_consumer_count(&mut self, consumer_count: u32) {
+    self.fbb_.push_slot::<u32>(RelayDiagnosticsWireSub::VT_CONSUMER_COUNT, consumer_count, 0);
   }
   #[inline]
-  pub fn add_has_events_rx_display(&mut self, has_events_rx_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsWireSub::VT_HAS_EVENTS_RX_DISPLAY, has_events_rx_display, false);
-  }
-  #[inline]
-  pub fn add_events_rx_display(&mut self, events_rx_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_EVENTS_RX_DISPLAY, events_rx_display);
+  pub fn add_events_rx(&mut self, events_rx: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsWireSub::VT_EVENTS_RX, events_rx, 0);
   }
   #[inline]
   pub fn add_eose_observed(&mut self, eose_observed: bool) {
@@ -327,14 +295,12 @@ impl ::core::fmt::Debug for RelayDiagnosticsWireSub<'_> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
     let mut ds = f.debug_struct("RelayDiagnosticsWireSub");
       ds.field("wire_id", &self.wire_id());
-      ds.field("short_wire_id", &self.short_wire_id());
       ds.field("relay_url", &self.relay_url());
       ds.field("filter_summary", &self.filter_summary());
-      ds.field("state_label", &self.state_label());
+      ds.field("state", &self.state());
       ds.field("state_tone", &self.state_tone());
-      ds.field("consumer_count_label", &self.consumer_count_label());
-      ds.field("has_events_rx_display", &self.has_events_rx_display());
-      ds.field("events_rx_display", &self.events_rx_display());
+      ds.field("consumer_count", &self.consumer_count());
+      ds.field("events_rx", &self.events_rx());
       ds.field("eose_observed", &self.eose_observed());
       ds.field("opened_ms", &self.opened_ms());
       ds.field("last_event_ms", &self.last_event_ms());
@@ -1125,35 +1091,31 @@ impl<'a> ::flatbuffers::Follow<'a> for RelayDiagnosticsRow<'a> {
 
 impl<'a> RelayDiagnosticsRow<'a> {
   pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 4;
-  pub const VT_SHORT_URL: ::flatbuffers::VOffsetT = 6;
-  pub const VT_ROLE_LABEL: ::flatbuffers::VOffsetT = 8;
-  pub const VT_ROLE_TONE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_CONNECTION_LABEL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_CONNECTION_TONE: ::flatbuffers::VOffsetT = 14;
-  pub const VT_AUTH_LABEL: ::flatbuffers::VOffsetT = 16;
-  pub const VT_AUTH_TONE: ::flatbuffers::VOffsetT = 18;
-  pub const VT_TOTAL_SUB_COUNT: ::flatbuffers::VOffsetT = 20;
-  pub const VT_ACTIVE_SUB_COUNT: ::flatbuffers::VOffsetT = 22;
-  pub const VT_EOSED_SUB_COUNT: ::flatbuffers::VOffsetT = 24;
-  pub const VT_TOTAL_EVENTS_RX: ::flatbuffers::VOffsetT = 26;
-  pub const VT_TOTAL_EVENTS_DISPLAY: ::flatbuffers::VOffsetT = 28;
-  pub const VT_RECONNECT_COUNT: ::flatbuffers::VOffsetT = 30;
-  pub const VT_HAS_BYTES_RX_DISPLAY: ::flatbuffers::VOffsetT = 32;
-  pub const VT_BYTES_RX_DISPLAY: ::flatbuffers::VOffsetT = 34;
-  pub const VT_HAS_BYTES_TX_DISPLAY: ::flatbuffers::VOffsetT = 36;
-  pub const VT_BYTES_TX_DISPLAY: ::flatbuffers::VOffsetT = 38;
-  pub const VT_LAST_CONNECTED_MS: ::flatbuffers::VOffsetT = 40;
-  pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 42;
-  pub const VT_HAS_LAST_NOTICE: ::flatbuffers::VOffsetT = 44;
-  pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 46;
-  pub const VT_NOTICE_COUNT: ::flatbuffers::VOffsetT = 48;
-  pub const VT_NOTICES: ::flatbuffers::VOffsetT = 50;
-  pub const VT_HAS_LAST_ERROR: ::flatbuffers::VOffsetT = 52;
-  pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 54;
-  pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 56;
-  pub const VT_INFO: ::flatbuffers::VOffsetT = 58;
-  pub const VT_DISCOVERY_KINDS_LABEL: ::flatbuffers::VOffsetT = 60;
-  pub const VT_REASONS: ::flatbuffers::VOffsetT = 62;
+  pub const VT_ROLE: ::flatbuffers::VOffsetT = 6;
+  pub const VT_ROLE_TONE: ::flatbuffers::VOffsetT = 8;
+  pub const VT_CONNECTION: ::flatbuffers::VOffsetT = 10;
+  pub const VT_CONNECTION_TONE: ::flatbuffers::VOffsetT = 12;
+  pub const VT_AUTH: ::flatbuffers::VOffsetT = 14;
+  pub const VT_AUTH_TONE: ::flatbuffers::VOffsetT = 16;
+  pub const VT_TOTAL_SUB_COUNT: ::flatbuffers::VOffsetT = 18;
+  pub const VT_ACTIVE_SUB_COUNT: ::flatbuffers::VOffsetT = 20;
+  pub const VT_EOSED_SUB_COUNT: ::flatbuffers::VOffsetT = 22;
+  pub const VT_TOTAL_EVENTS_RX: ::flatbuffers::VOffsetT = 24;
+  pub const VT_RECONNECT_COUNT: ::flatbuffers::VOffsetT = 26;
+  pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 28;
+  pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 30;
+  pub const VT_LAST_CONNECTED_MS: ::flatbuffers::VOffsetT = 32;
+  pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 34;
+  pub const VT_HAS_LAST_NOTICE: ::flatbuffers::VOffsetT = 36;
+  pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 38;
+  pub const VT_NOTICE_COUNT: ::flatbuffers::VOffsetT = 40;
+  pub const VT_NOTICES: ::flatbuffers::VOffsetT = 42;
+  pub const VT_HAS_LAST_ERROR: ::flatbuffers::VOffsetT = 44;
+  pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 46;
+  pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 48;
+  pub const VT_INFO: ::flatbuffers::VOffsetT = 50;
+  pub const VT_DISCOVERY_KINDS: ::flatbuffers::VOffsetT = 52;
+  pub const VT_REASONS: ::flatbuffers::VOffsetT = 54;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1168,33 +1130,29 @@ impl<'a> RelayDiagnosticsRow<'a> {
     builder.add_notice_count(args.notice_count);
     builder.add_last_event_ms(args.last_event_ms);
     builder.add_last_connected_ms(args.last_connected_ms);
+    builder.add_bytes_tx(args.bytes_tx);
+    builder.add_bytes_rx(args.bytes_rx);
     builder.add_total_events_rx(args.total_events_rx);
     if let Some(x) = args.reasons { builder.add_reasons(x); }
-    if let Some(x) = args.discovery_kinds_label { builder.add_discovery_kinds_label(x); }
+    if let Some(x) = args.discovery_kinds { builder.add_discovery_kinds(x); }
     if let Some(x) = args.info { builder.add_info(x); }
     if let Some(x) = args.wire_subs { builder.add_wire_subs(x); }
     if let Some(x) = args.last_error { builder.add_last_error(x); }
     if let Some(x) = args.notices { builder.add_notices(x); }
     if let Some(x) = args.last_notice { builder.add_last_notice(x); }
-    if let Some(x) = args.bytes_tx_display { builder.add_bytes_tx_display(x); }
-    if let Some(x) = args.bytes_rx_display { builder.add_bytes_rx_display(x); }
     builder.add_reconnect_count(args.reconnect_count);
-    if let Some(x) = args.total_events_display { builder.add_total_events_display(x); }
     builder.add_eosed_sub_count(args.eosed_sub_count);
     builder.add_active_sub_count(args.active_sub_count);
     builder.add_total_sub_count(args.total_sub_count);
     if let Some(x) = args.auth_tone { builder.add_auth_tone(x); }
-    if let Some(x) = args.auth_label { builder.add_auth_label(x); }
+    if let Some(x) = args.auth { builder.add_auth(x); }
     if let Some(x) = args.connection_tone { builder.add_connection_tone(x); }
-    if let Some(x) = args.connection_label { builder.add_connection_label(x); }
+    if let Some(x) = args.connection { builder.add_connection(x); }
     if let Some(x) = args.role_tone { builder.add_role_tone(x); }
-    if let Some(x) = args.role_label { builder.add_role_label(x); }
-    if let Some(x) = args.short_url { builder.add_short_url(x); }
+    if let Some(x) = args.role { builder.add_role(x); }
     if let Some(x) = args.relay_url { builder.add_relay_url(x); }
     builder.add_has_last_error(args.has_last_error);
     builder.add_has_last_notice(args.has_last_notice);
-    builder.add_has_bytes_tx_display(args.has_bytes_tx_display);
-    builder.add_has_bytes_rx_display(args.has_bytes_rx_display);
     builder.finish()
   }
 
@@ -1207,18 +1165,11 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_RELAY_URL, None)}
   }
   #[inline]
-  pub fn short_url(&self) -> Option<&'a str> {
+  pub fn role(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_SHORT_URL, None)}
-  }
-  #[inline]
-  pub fn role_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_ROLE_LABEL, None)}
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_ROLE, None)}
   }
   #[inline]
   pub fn role_tone(&self) -> Option<&'a str> {
@@ -1228,11 +1179,11 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_ROLE_TONE, None)}
   }
   #[inline]
-  pub fn connection_label(&self) -> Option<&'a str> {
+  pub fn connection(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_CONNECTION_LABEL, None)}
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_CONNECTION, None)}
   }
   #[inline]
   pub fn connection_tone(&self) -> Option<&'a str> {
@@ -1242,11 +1193,11 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_CONNECTION_TONE, None)}
   }
   #[inline]
-  pub fn auth_label(&self) -> Option<&'a str> {
+  pub fn auth(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_AUTH_LABEL, None)}
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_AUTH, None)}
   }
   #[inline]
   pub fn auth_tone(&self) -> Option<&'a str> {
@@ -1284,13 +1235,6 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<u64>(RelayDiagnosticsRow::VT_TOTAL_EVENTS_RX, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn total_events_display(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_TOTAL_EVENTS_DISPLAY, None)}
-  }
-  #[inline]
   pub fn reconnect_count(&self) -> u32 {
     // Safety:
     // Created from valid Table for this object
@@ -1298,32 +1242,18 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<u32>(RelayDiagnosticsRow::VT_RECONNECT_COUNT, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn has_bytes_rx_display(&self) -> bool {
+  pub fn bytes_rx(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsRow::VT_HAS_BYTES_RX_DISPLAY, Some(false)).unwrap()}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsRow::VT_BYTES_RX, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn bytes_rx_display(&self) -> Option<&'a str> {
+  pub fn bytes_tx(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_BYTES_RX_DISPLAY, None)}
-  }
-  #[inline]
-  pub fn has_bytes_tx_display(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsRow::VT_HAS_BYTES_TX_DISPLAY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn bytes_tx_display(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_BYTES_TX_DISPLAY, None)}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsRow::VT_BYTES_TX, Some(0)).unwrap()}
   }
   #[inline]
   pub fn last_connected_ms(&self) -> u64 {
@@ -1396,11 +1326,11 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelayDiagnosticsInfo>>(RelayDiagnosticsRow::VT_INFO, None)}
   }
   #[inline]
-  pub fn discovery_kinds_label(&self) -> Option<&'a str> {
+  pub fn discovery_kinds(&self) -> Option<::flatbuffers::Vector<'a, u64>> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS_LABEL, None)}
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u64>>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS, None)}
   }
   #[inline]
   pub fn reasons(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayConnectionReason<'a>>>> {
@@ -1418,23 +1348,19 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
   ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
     v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_url", Self::VT_RELAY_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("short_url", Self::VT_SHORT_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("role_label", Self::VT_ROLE_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("role", Self::VT_ROLE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("role_tone", Self::VT_ROLE_TONE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("connection_label", Self::VT_CONNECTION_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("connection", Self::VT_CONNECTION, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("connection_tone", Self::VT_CONNECTION_TONE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("auth_label", Self::VT_AUTH_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("auth", Self::VT_AUTH, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("auth_tone", Self::VT_AUTH_TONE, false)?
      .visit_field::<u32>("total_sub_count", Self::VT_TOTAL_SUB_COUNT, false)?
      .visit_field::<u32>("active_sub_count", Self::VT_ACTIVE_SUB_COUNT, false)?
      .visit_field::<u32>("eosed_sub_count", Self::VT_EOSED_SUB_COUNT, false)?
      .visit_field::<u64>("total_events_rx", Self::VT_TOTAL_EVENTS_RX, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("total_events_display", Self::VT_TOTAL_EVENTS_DISPLAY, false)?
      .visit_field::<u32>("reconnect_count", Self::VT_RECONNECT_COUNT, false)?
-     .visit_field::<bool>("has_bytes_rx_display", Self::VT_HAS_BYTES_RX_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("bytes_rx_display", Self::VT_BYTES_RX_DISPLAY, false)?
-     .visit_field::<bool>("has_bytes_tx_display", Self::VT_HAS_BYTES_TX_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("bytes_tx_display", Self::VT_BYTES_TX_DISPLAY, false)?
+     .visit_field::<u64>("bytes_rx", Self::VT_BYTES_RX, false)?
+     .visit_field::<u64>("bytes_tx", Self::VT_BYTES_TX, false)?
      .visit_field::<u64>("last_connected_ms", Self::VT_LAST_CONNECTED_MS, false)?
      .visit_field::<u64>("last_event_ms", Self::VT_LAST_EVENT_MS, false)?
      .visit_field::<bool>("has_last_notice", Self::VT_HAS_LAST_NOTICE, false)?
@@ -1445,7 +1371,7 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_error", Self::VT_LAST_ERROR, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayDiagnosticsWireSub>>>>("wire_subs", Self::VT_WIRE_SUBS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<RelayDiagnosticsInfo>>("info", Self::VT_INFO, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("discovery_kinds_label", Self::VT_DISCOVERY_KINDS_LABEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u64>>>("discovery_kinds", Self::VT_DISCOVERY_KINDS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayConnectionReason>>>>("reasons", Self::VT_REASONS, false)?
      .finish();
     Ok(())
@@ -1453,23 +1379,19 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
 }
 pub struct RelayDiagnosticsRowArgs<'a> {
     pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub short_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub role_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub role: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub role_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub connection_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub connection: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub connection_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub auth_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub auth: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub auth_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub total_sub_count: u32,
     pub active_sub_count: u32,
     pub eosed_sub_count: u32,
     pub total_events_rx: u64,
-    pub total_events_display: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub reconnect_count: u32,
-    pub has_bytes_rx_display: bool,
-    pub bytes_rx_display: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_bytes_tx_display: bool,
-    pub bytes_tx_display: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub bytes_rx: u64,
+    pub bytes_tx: u64,
     pub last_connected_ms: u64,
     pub last_event_ms: u64,
     pub has_last_notice: bool,
@@ -1480,7 +1402,7 @@ pub struct RelayDiagnosticsRowArgs<'a> {
     pub last_error: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub wire_subs: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayDiagnosticsWireSub<'a>>>>>,
     pub info: Option<::flatbuffers::WIPOffset<RelayDiagnosticsInfo<'a>>>,
-    pub discovery_kinds_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub discovery_kinds: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u64>>>,
     pub reasons: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayConnectionReason<'a>>>>>,
 }
 impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
@@ -1488,23 +1410,19 @@ impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
   fn default() -> Self {
     RelayDiagnosticsRowArgs {
       relay_url: None,
-      short_url: None,
-      role_label: None,
+      role: None,
       role_tone: None,
-      connection_label: None,
+      connection: None,
       connection_tone: None,
-      auth_label: None,
+      auth: None,
       auth_tone: None,
       total_sub_count: 0,
       active_sub_count: 0,
       eosed_sub_count: 0,
       total_events_rx: 0,
-      total_events_display: None,
       reconnect_count: 0,
-      has_bytes_rx_display: false,
-      bytes_rx_display: None,
-      has_bytes_tx_display: false,
-      bytes_tx_display: None,
+      bytes_rx: 0,
+      bytes_tx: 0,
       last_connected_ms: 0,
       last_event_ms: 0,
       has_last_notice: false,
@@ -1515,7 +1433,7 @@ impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
       last_error: None,
       wire_subs: None,
       info: None,
-      discovery_kinds_label: None,
+      discovery_kinds: None,
       reasons: None,
     }
   }
@@ -1531,28 +1449,24 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsRowBuilder<'a
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_RELAY_URL, relay_url);
   }
   #[inline]
-  pub fn add_short_url(&mut self, short_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_SHORT_URL, short_url);
-  }
-  #[inline]
-  pub fn add_role_label(&mut self, role_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_ROLE_LABEL, role_label);
+  pub fn add_role(&mut self, role: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_ROLE, role);
   }
   #[inline]
   pub fn add_role_tone(&mut self, role_tone: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_ROLE_TONE, role_tone);
   }
   #[inline]
-  pub fn add_connection_label(&mut self, connection_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_CONNECTION_LABEL, connection_label);
+  pub fn add_connection(&mut self, connection: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_CONNECTION, connection);
   }
   #[inline]
   pub fn add_connection_tone(&mut self, connection_tone: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_CONNECTION_TONE, connection_tone);
   }
   #[inline]
-  pub fn add_auth_label(&mut self, auth_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_AUTH_LABEL, auth_label);
+  pub fn add_auth(&mut self, auth: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_AUTH, auth);
   }
   #[inline]
   pub fn add_auth_tone(&mut self, auth_tone: ::flatbuffers::WIPOffset<&'b  str>) {
@@ -1575,28 +1489,16 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsRowBuilder<'a
     self.fbb_.push_slot::<u64>(RelayDiagnosticsRow::VT_TOTAL_EVENTS_RX, total_events_rx, 0);
   }
   #[inline]
-  pub fn add_total_events_display(&mut self, total_events_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_TOTAL_EVENTS_DISPLAY, total_events_display);
-  }
-  #[inline]
   pub fn add_reconnect_count(&mut self, reconnect_count: u32) {
     self.fbb_.push_slot::<u32>(RelayDiagnosticsRow::VT_RECONNECT_COUNT, reconnect_count, 0);
   }
   #[inline]
-  pub fn add_has_bytes_rx_display(&mut self, has_bytes_rx_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsRow::VT_HAS_BYTES_RX_DISPLAY, has_bytes_rx_display, false);
+  pub fn add_bytes_rx(&mut self, bytes_rx: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsRow::VT_BYTES_RX, bytes_rx, 0);
   }
   #[inline]
-  pub fn add_bytes_rx_display(&mut self, bytes_rx_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_BYTES_RX_DISPLAY, bytes_rx_display);
-  }
-  #[inline]
-  pub fn add_has_bytes_tx_display(&mut self, has_bytes_tx_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsRow::VT_HAS_BYTES_TX_DISPLAY, has_bytes_tx_display, false);
-  }
-  #[inline]
-  pub fn add_bytes_tx_display(&mut self, bytes_tx_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_BYTES_TX_DISPLAY, bytes_tx_display);
+  pub fn add_bytes_tx(&mut self, bytes_tx: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsRow::VT_BYTES_TX, bytes_tx, 0);
   }
   #[inline]
   pub fn add_last_connected_ms(&mut self, last_connected_ms: u64) {
@@ -1639,8 +1541,8 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsRowBuilder<'a
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelayDiagnosticsInfo>>(RelayDiagnosticsRow::VT_INFO, info);
   }
   #[inline]
-  pub fn add_discovery_kinds_label(&mut self, discovery_kinds_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS_LABEL, discovery_kinds_label);
+  pub fn add_discovery_kinds(&mut self, discovery_kinds: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , u64>>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_DISCOVERY_KINDS, discovery_kinds);
   }
   #[inline]
   pub fn add_reasons(&mut self, reasons: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<RelayConnectionReason<'b >>>>) {
@@ -1665,23 +1567,19 @@ impl ::core::fmt::Debug for RelayDiagnosticsRow<'_> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
     let mut ds = f.debug_struct("RelayDiagnosticsRow");
       ds.field("relay_url", &self.relay_url());
-      ds.field("short_url", &self.short_url());
-      ds.field("role_label", &self.role_label());
+      ds.field("role", &self.role());
       ds.field("role_tone", &self.role_tone());
-      ds.field("connection_label", &self.connection_label());
+      ds.field("connection", &self.connection());
       ds.field("connection_tone", &self.connection_tone());
-      ds.field("auth_label", &self.auth_label());
+      ds.field("auth", &self.auth());
       ds.field("auth_tone", &self.auth_tone());
       ds.field("total_sub_count", &self.total_sub_count());
       ds.field("active_sub_count", &self.active_sub_count());
       ds.field("eosed_sub_count", &self.eosed_sub_count());
       ds.field("total_events_rx", &self.total_events_rx());
-      ds.field("total_events_display", &self.total_events_display());
       ds.field("reconnect_count", &self.reconnect_count());
-      ds.field("has_bytes_rx_display", &self.has_bytes_rx_display());
-      ds.field("bytes_rx_display", &self.bytes_rx_display());
-      ds.field("has_bytes_tx_display", &self.has_bytes_tx_display());
-      ds.field("bytes_tx_display", &self.bytes_tx_display());
+      ds.field("bytes_rx", &self.bytes_rx());
+      ds.field("bytes_tx", &self.bytes_tx());
       ds.field("last_connected_ms", &self.last_connected_ms());
       ds.field("last_event_ms", &self.last_event_ms());
       ds.field("has_last_notice", &self.has_last_notice());
@@ -1692,7 +1590,7 @@ impl ::core::fmt::Debug for RelayDiagnosticsRow<'_> {
       ds.field("last_error", &self.last_error());
       ds.field("wire_subs", &self.wire_subs());
       ds.field("info", &self.info());
-      ds.field("discovery_kinds_label", &self.discovery_kinds_label());
+      ds.field("discovery_kinds", &self.discovery_kinds());
       ds.field("reasons", &self.reasons());
       ds.finish()
   }

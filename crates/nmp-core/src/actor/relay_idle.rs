@@ -84,7 +84,7 @@ mod tests {
             .as_array()?
             .iter()
             .find(|row| row["relay_url"].as_str() == Some(relay_url))
-            .and_then(|row| row["connection_label"].as_str())
+            .and_then(|row| row["connection"].as_str())
             .map(str::to_string)
     }
 
@@ -178,7 +178,7 @@ mod tests {
         connected_urls.insert(key.clone());
         assert_eq!(
             diagnostic_connection(&snapshot(&mut kernel), key.as_str()).as_deref(),
-            Some("Connected")
+            Some("connected")
         );
 
         let now = Instant::now();
@@ -203,7 +203,7 @@ mod tests {
 
         assert_eq!(
             diagnostic_connection(&snapshot(&mut kernel), key.as_str()).as_deref(),
-            Some("Closed"),
+            Some("closed"),
             "idle eviction must not leave diagnostics connected"
         );
         assert!(

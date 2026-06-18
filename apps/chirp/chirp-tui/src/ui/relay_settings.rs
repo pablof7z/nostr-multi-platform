@@ -14,7 +14,9 @@ use crate::ui::colors::{
 
 mod format;
 use format::{
-    append_wrapped, empty_dash, format_ms_ago, label_line, short_relay_url, status_dot, truncate,
+    append_wrapped, compact_count, consumer_count_label, discovery_kinds_label, empty_dash,
+    format_bytes, format_ms_ago, label_line, short_relay_url, short_wire_id, status_dot, title_case,
+    truncate,
 };
 
 pub(super) fn render_relay_list(frame: &mut Frame, area: Rect, state: &AppState, active: bool) {
@@ -82,10 +84,10 @@ fn relay_list_lines(state: &AppState, pane_width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
     for (idx, relay) in state.relays.iter().enumerate() {
-        let role = if relay.role_label.is_empty() {
+        let role = if relay.role.is_empty() {
             "Other".to_string()
         } else {
-            relay.role_label.clone()
+            title_case(&relay.role)
         };
         if let Some((_, rows)) = groups.iter_mut().find(|(label, _)| label == &role) {
             rows.push(idx);
@@ -121,12 +123,12 @@ fn append_relay_row(
     configured: Option<String>,
 ) {
     let bg = if selected { SELECTED_BG } else { LIST_BG };
-    let (dot, dot_color) = status_dot(&relay.connection_label);
+    let (dot, dot_color) = status_dot(&relay.connection);
     let marker = if selected { "\u{2503} " } else { "  " };
-    let count = format!("{} ev", relay.total_events_display);
+    let count = format!("{} ev", compact_count(relay.total_events_rx));
     let count_len = count.chars().count();
     let url_max = pane_width.saturating_sub(4 + count_len);
-    let url = truncate(&relay.short_url, url_max);
+    let url = truncate(&short_relay_url(&relay.relay_url), url_max);
     let pad_len = pane_width.saturating_sub(4 + url.chars().count() + count_len);
     lines.push(Line::from(vec![
         Span::styled(marker.to_string(), Style::default().fg(ACCENT_CYAN).bg(bg)),
@@ -143,7 +145,7 @@ fn append_relay_row(
         zero_count_label(relay).map_or_else(String::new, |label| format!(" · {label}"));
     let status = format!(
         "    {} · {}/{} subs{}{}",
-        empty_dash(&relay.connection_label),
+        empty_dash(&title_case(&relay.connection)),
         relay.active_sub_count,
         relay.total_sub_count,
         cfg,
@@ -157,7 +159,7 @@ fn append_relay_row(
     // V-51 Phase 3 acceptance criterion 2: for Indexer relays show which
     // discovery kinds they are currently serving (or "none" when no discovery
     // REQ is open).
-    if relay.role_label.eq_ignore_ascii_case("indexer") {
+    if relay.role.eq_ignore_ascii_case("indexer") {
         let disc_line = indexer_discovery_kinds_label(relay);
         let disc_text = format!("    discovery: {disc_line}");
         lines.push(Line::from(Span::styled(
@@ -173,20 +175,21 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
         truncate(&relay.relay_url, pane_width),
         Style::default().fg(BODY_TEXT).add_modifier(Modifier::BOLD),
     )));
-    lines.push(label_line("role", &empty_dash(&relay.role_label)));
+    lines.push(label_line("role", &empty_dash(&title_case(&relay.role))));
     if let Some(role) = configured_role(state, relay) {
         lines.push(label_line("configured", &role));
     }
     lines.push(label_line(
         "connection",
-        &empty_dash(&relay.connection_label),
+        &empty_dash(&title_case(&relay.connection)),
     ));
-    lines.push(label_line("auth", &empty_dash(&relay.auth_label)));
+    lines.push(label_line("auth", &empty_dash(&title_case(&relay.auth))));
     lines.push(label_line(
         "events",
         &format!(
             "{} session EVENTs ({})",
-            relay.total_events_rx, relay.total_events_display
+            relay.total_events_rx,
+            compact_count(relay.total_events_rx)
         ),
     ));
     lines.push(label_line(
@@ -203,7 +206,7 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
         lines.push(label_line("zero-ev", label));
     }
     // V-51 Phase 3: indexer relay discovery-kind targeting.
-    if relay.role_label.eq_ignore_ascii_case("indexer") {
+    if relay.role.eq_ignore_ascii_case("indexer") {
         lines.push(label_line(
             "discovery",
             &indexer_discovery_kinds_label(relay),
@@ -213,8 +216,8 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
         "traffic",
         &format!(
             "rx {} · tx {} · reconnects {}",
-            relay.bytes_rx_display.as_deref().unwrap_or("0 B"),
-            relay.bytes_tx_display.as_deref().unwrap_or("0 B"),
+            format_bytes(relay.bytes_rx),
+            format_bytes(relay.bytes_tx),
             relay.reconnect_count
         ),
     ));
@@ -254,13 +257,13 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
 }
 
 fn append_wire_sub(lines: &mut Vec<Line<'static>>, sub: &RelayWireSubRow, pane_width: usize) {
-    let events = sub.events_rx_display.as_deref().unwrap_or("0");
+    let events = compact_count(sub.events_rx);
     let header = format!(
         "  {}  {}  {} ev  {}",
-        empty_dash(&sub.short_wire_id),
-        empty_dash(&sub.state_label),
+        empty_dash(&short_wire_id(&sub.wire_id)),
+        empty_dash(&title_case(&sub.state)),
         events,
-        empty_dash(&sub.consumer_count_label)
+        empty_dash(&consumer_count_label(sub.consumer_count))
     );
     lines.push(Line::from(Span::styled(
         truncate(&header, pane_width),
@@ -309,7 +312,7 @@ pub(crate) fn zero_count_label(relay: &RelayRow) -> Option<&'static str> {
     // label matches the RELAY_OK bucket. Crucially, "Disconnected" must NOT
     // be treated as connected even though it contains "connected" as a
     // substring — we check for "disconnected" first.
-    let lower = relay.connection_label.to_ascii_lowercase();
+    let lower = relay.connection.to_ascii_lowercase();
     if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") {
         return None;
     }
@@ -337,16 +340,15 @@ pub(crate) fn zero_count_label(relay: &RelayRow) -> Option<&'static str> {
 }
 
 pub(crate) fn indexer_discovery_kinds_label(relay: &RelayRow) -> String {
-    if relay.discovery_kinds_label.is_empty() {
-        "none".to_string()
-    } else {
-        relay.discovery_kinds_label.clone()
-    }
+    discovery_kinds_label(&relay.discovery_kinds)
 }
 
 fn why_text(state: &AppState, relay: &RelayRow) -> String {
     let configured = configured_role(state, relay);
-    let mut parts = vec![format!("{} runtime lane", empty_dash(&relay.role_label))];
+    let mut parts = vec![format!(
+        "{} runtime lane",
+        empty_dash(&title_case(&relay.role))
+    )];
     if let Some(role) = configured {
         parts.push(format!("configured app relay ({role})"));
     }
@@ -366,7 +368,7 @@ fn configured_role(state: &AppState, relay: &RelayRow) -> Option<String> {
         .configured_relays
         .iter()
         .find(|row| {
-            short_relay_url(&row.url).eq_ignore_ascii_case(&relay.short_url)
+            short_relay_url(&row.url).eq_ignore_ascii_case(&short_relay_url(&relay.relay_url))
                 || row.url.eq_ignore_ascii_case(&relay.relay_url)
         })
         .map(|row| relay_role_display_label(&row.role))
@@ -399,7 +401,7 @@ mod tests {
         total_events_rx: u64,
     ) -> RelayRow {
         RelayRow {
-            connection_label: "Connected".to_string(),
+            connection: "connected".to_string(),
             total_sub_count,
             active_sub_count,
             eosed_sub_count,
@@ -444,7 +446,7 @@ mod tests {
     #[test]
     fn zero_count_none_when_not_connected() {
         let relay = RelayRow {
-            connection_label: "Disconnected".to_string(),
+            connection: "disconnected".to_string(),
             total_sub_count: 0,
             active_sub_count: 0,
             eosed_sub_count: 0,
@@ -457,9 +459,9 @@ mod tests {
     // ── indexer_discovery_kinds_label ─────────────────────────────────────
 
     #[test]
-    fn indexer_none_when_projection_label_empty() {
+    fn indexer_none_when_discovery_kinds_empty() {
         let relay = RelayRow {
-            role_label: "Indexer".to_string(),
+            role: "indexer".to_string(),
             ..RelayRow::default()
         };
         assert_eq!(indexer_discovery_kinds_label(&relay), "none");
@@ -468,11 +470,11 @@ mod tests {
     #[test]
     fn indexer_shows_projected_discovery_kinds_without_parsing_filters() {
         let relay = RelayRow {
-            role_label: "Indexer".to_string(),
-            discovery_kinds_label: "profile (0), follows (3), relay-list (10002)".to_string(),
+            role: "indexer".to_string(),
+            discovery_kinds: vec![0, 3, 10002],
             wire_subs: vec![RelayWireSubRow {
                 filter_summary: r#"{"kinds":[1,6]}"#.to_string(),
-                state_label: "Open".to_string(),
+                state: "open".to_string(),
                 ..RelayWireSubRow::default()
             }],
             ..RelayRow::default()

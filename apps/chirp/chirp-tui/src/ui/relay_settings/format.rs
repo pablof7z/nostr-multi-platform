@@ -102,6 +102,112 @@ pub(super) fn format_ms_ago(ms: u64) -> String {
     nmp_core::display::format_ago_secs(now_secs, then_secs)
 }
 
+/// Title-case a raw lowercase token for display (e.g. `"connected"` →
+/// `"Connected"`). The kernel emits raw tokens; presentation formatting lives
+/// in the render layer. A `"—"` em-dash sentinel (used for "no auth") passes
+/// through unchanged.
+pub(super) fn title_case(value: &str) -> String {
+    if value == "\u{2014}" {
+        return value.to_string();
+    }
+    value
+        .split(' ')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_uppercase().collect::<String>()
+                        + &chars.as_str().to_ascii_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Compact integer formatter for event counts: `1234` → `"1.2K"`,
+/// `1_500_000` → `"1.5M"`, small values pass through unchanged. Mirrors the
+/// former kernel `compact_count`: whole magnitudes drop the decimal (`1K`,
+/// not `1.0K`) so the rendered text matches the iOS / Android shells.
+pub(super) fn compact_count(n: u64) -> String {
+    let magnitude = |v: f64, suffix: char| -> String {
+        if v.fract() == 0.0 {
+            format!("{}{suffix}", v as u64)
+        } else {
+            format!("{v:.1}{suffix}")
+        }
+    };
+    if n >= 1_000_000 {
+        magnitude(n as f64 / 1_000_000.0, 'M')
+    } else if n >= 1_000 {
+        magnitude(n as f64 / 1_000.0, 'K')
+    } else {
+        n.to_string()
+    }
+}
+
+/// Human byte-size formatter: `0` → `"0 B"`, `1536` → `"1.5 KB"`,
+/// scaling through KB / MB / GB.
+pub(super) fn format_bytes(n: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let f = n as f64;
+    if f >= GB {
+        format!("{:.1} GB", f / GB)
+    } else if f >= MB {
+        format!("{:.1} MB", f / MB)
+    } else if f >= KB {
+        format!("{:.1} KB", f / KB)
+    } else {
+        format!("{n} B")
+    }
+}
+
+/// Consumer-count phrase: `0` → `""`, `1` → `"1 consumer"`,
+/// `N` → `"N consumers"`.
+pub(super) fn consumer_count_label(n: u32) -> String {
+    match n {
+        0 => String::new(),
+        1 => "1 consumer".to_string(),
+        _ => format!("{n} consumers"),
+    }
+}
+
+/// Short wire id: ≤12 chars passes through whole; longer is truncated to the
+/// first 8 chars plus an ellipsis.
+pub(super) fn short_wire_id(wire_id: &str) -> String {
+    if wire_id.chars().count() <= 12 {
+        wire_id.to_string()
+    } else {
+        let head: String = wire_id.chars().take(8).collect();
+        format!("{head}\u{2026}")
+    }
+}
+
+/// Format raw discovery kind numbers for display, replicating the label
+/// mapping the kernel projection used to embed: each kind as `"label (kind)"`
+/// joined by `", "`. Empty list → `"none"`.
+pub(super) fn discovery_kinds_label(kinds: &[u64]) -> String {
+    if kinds.is_empty() {
+        return "none".to_string();
+    }
+    kinds
+        .iter()
+        .map(|&kind| {
+            let label = match kind {
+                0 => "profile",
+                3 => "follows",
+                10002 => "relay-list",
+                _ => "list",
+            };
+            format!("{label} ({kind})")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 pub(super) fn empty_dash(value: &str) -> String {
     if value.is_empty() {
         "-".to_string()

@@ -39,7 +39,7 @@ class RelayDiagnosticsWireSub : Table() {
         }
     val wireIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun wireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
-    val shortWireId : String?
+    val relayUrl : String?
         get() {
             val o = __offset(6)
             return if (o != 0) {
@@ -48,9 +48,9 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val shortWireIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun shortWireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
-    val relayUrl : String?
+    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val filterSummary : String?
         get() {
             val o = __offset(8)
             return if (o != 0) {
@@ -59,9 +59,9 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
-    val filterSummary : String?
+    val filterSummaryAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun filterSummaryInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val state : String?
         get() {
             val o = __offset(10)
             return if (o != 0) {
@@ -70,9 +70,9 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val filterSummaryAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun filterSummaryInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
-    val stateLabel : String?
+    val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val stateTone : String?
         get() {
             val o = __offset(12)
             return if (o != 0) {
@@ -81,82 +81,54 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val stateLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
-    fun stateLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
-    val stateTone : String?
+    val stateToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
+    val consumerCount : UInt
         get() {
             val o = __offset(14)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
+            return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
-    val stateToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
-    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
-    val consumerCountLabel : String?
+    val eventsRx : ULong
         get() {
             val o = __offset(16)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val consumerCountLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
-    fun consumerCountLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
-    val hasEventsRxDisplay : Boolean
+    val eoseObserved : Boolean
         get() {
             val o = __offset(18)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val eventsRxDisplay : String?
-        get() {
-            val o = __offset(20)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val eventsRxDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(20, 1)
-    fun eventsRxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 20, 1)
-    val eoseObserved : Boolean
-        get() {
-            val o = __offset(22)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
-        }
     val openedMs : ULong
         get() {
-            val o = __offset(24)
+            val o = __offset(20)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val lastEventMs : ULong
         get() {
-            val o = __offset(26)
+            val o = __offset(22)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val eoseMs : ULong
         get() {
-            val o = __offset(28)
+            val o = __offset(24)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val hasCloseReason : Boolean
         get() {
-            val o = __offset(30)
+            val o = __offset(26)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val closeReason : String?
         get() {
-            val o = __offset(32)
+            val o = __offset(28)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val closeReasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(32, 1)
-    fun closeReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 32, 1)
+    val closeReasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(28, 1)
+    fun closeReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 28, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelayDiagnosticsWireSub(_bb: ByteBuffer): RelayDiagnosticsWireSub = getRootAsRelayDiagnosticsWireSub(_bb, RelayDiagnosticsWireSub())
@@ -164,41 +136,37 @@ class RelayDiagnosticsWireSub : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createRelayDiagnosticsWireSub(builder: FlatBufferBuilder, wireIdOffset: Int, shortWireIdOffset: Int, relayUrlOffset: Int, filterSummaryOffset: Int, stateLabelOffset: Int, stateToneOffset: Int, consumerCountLabelOffset: Int, hasEventsRxDisplay: Boolean, eventsRxDisplayOffset: Int, eoseObserved: Boolean, openedMs: ULong, lastEventMs: ULong, eoseMs: ULong, hasCloseReason: Boolean, closeReasonOffset: Int) : Int {
-            builder.startTable(15)
+        fun createRelayDiagnosticsWireSub(builder: FlatBufferBuilder, wireIdOffset: Int, relayUrlOffset: Int, filterSummaryOffset: Int, stateOffset: Int, stateToneOffset: Int, consumerCount: UInt, eventsRx: ULong, eoseObserved: Boolean, openedMs: ULong, lastEventMs: ULong, eoseMs: ULong, hasCloseReason: Boolean, closeReasonOffset: Int) : Int {
+            builder.startTable(13)
             addEoseMs(builder, eoseMs)
             addLastEventMs(builder, lastEventMs)
             addOpenedMs(builder, openedMs)
+            addEventsRx(builder, eventsRx)
             addCloseReason(builder, closeReasonOffset)
-            addEventsRxDisplay(builder, eventsRxDisplayOffset)
-            addConsumerCountLabel(builder, consumerCountLabelOffset)
+            addConsumerCount(builder, consumerCount)
             addStateTone(builder, stateToneOffset)
-            addStateLabel(builder, stateLabelOffset)
+            addState(builder, stateOffset)
             addFilterSummary(builder, filterSummaryOffset)
             addRelayUrl(builder, relayUrlOffset)
-            addShortWireId(builder, shortWireIdOffset)
             addWireId(builder, wireIdOffset)
             addHasCloseReason(builder, hasCloseReason)
             addEoseObserved(builder, eoseObserved)
-            addHasEventsRxDisplay(builder, hasEventsRxDisplay)
             return endRelayDiagnosticsWireSub(builder)
         }
-        fun startRelayDiagnosticsWireSub(builder: FlatBufferBuilder) = builder.startTable(15)
+        fun startRelayDiagnosticsWireSub(builder: FlatBufferBuilder) = builder.startTable(13)
         fun addWireId(builder: FlatBufferBuilder, wireId: Int) = builder.addOffset(0, wireId, 0)
-        fun addShortWireId(builder: FlatBufferBuilder, shortWireId: Int) = builder.addOffset(1, shortWireId, 0)
-        fun addRelayUrl(builder: FlatBufferBuilder, relayUrl: Int) = builder.addOffset(2, relayUrl, 0)
-        fun addFilterSummary(builder: FlatBufferBuilder, filterSummary: Int) = builder.addOffset(3, filterSummary, 0)
-        fun addStateLabel(builder: FlatBufferBuilder, stateLabel: Int) = builder.addOffset(4, stateLabel, 0)
-        fun addStateTone(builder: FlatBufferBuilder, stateTone: Int) = builder.addOffset(5, stateTone, 0)
-        fun addConsumerCountLabel(builder: FlatBufferBuilder, consumerCountLabel: Int) = builder.addOffset(6, consumerCountLabel, 0)
-        fun addHasEventsRxDisplay(builder: FlatBufferBuilder, hasEventsRxDisplay: Boolean) = builder.addBoolean(7, hasEventsRxDisplay, false)
-        fun addEventsRxDisplay(builder: FlatBufferBuilder, eventsRxDisplay: Int) = builder.addOffset(8, eventsRxDisplay, 0)
-        fun addEoseObserved(builder: FlatBufferBuilder, eoseObserved: Boolean) = builder.addBoolean(9, eoseObserved, false)
-        fun addOpenedMs(builder: FlatBufferBuilder, openedMs: ULong) = builder.addLong(10, openedMs.toLong(), 0)
-        fun addLastEventMs(builder: FlatBufferBuilder, lastEventMs: ULong) = builder.addLong(11, lastEventMs.toLong(), 0)
-        fun addEoseMs(builder: FlatBufferBuilder, eoseMs: ULong) = builder.addLong(12, eoseMs.toLong(), 0)
-        fun addHasCloseReason(builder: FlatBufferBuilder, hasCloseReason: Boolean) = builder.addBoolean(13, hasCloseReason, false)
-        fun addCloseReason(builder: FlatBufferBuilder, closeReason: Int) = builder.addOffset(14, closeReason, 0)
+        fun addRelayUrl(builder: FlatBufferBuilder, relayUrl: Int) = builder.addOffset(1, relayUrl, 0)
+        fun addFilterSummary(builder: FlatBufferBuilder, filterSummary: Int) = builder.addOffset(2, filterSummary, 0)
+        fun addState(builder: FlatBufferBuilder, state: Int) = builder.addOffset(3, state, 0)
+        fun addStateTone(builder: FlatBufferBuilder, stateTone: Int) = builder.addOffset(4, stateTone, 0)
+        fun addConsumerCount(builder: FlatBufferBuilder, consumerCount: UInt) = builder.addInt(5, consumerCount.toInt(), 0)
+        fun addEventsRx(builder: FlatBufferBuilder, eventsRx: ULong) = builder.addLong(6, eventsRx.toLong(), 0)
+        fun addEoseObserved(builder: FlatBufferBuilder, eoseObserved: Boolean) = builder.addBoolean(7, eoseObserved, false)
+        fun addOpenedMs(builder: FlatBufferBuilder, openedMs: ULong) = builder.addLong(8, openedMs.toLong(), 0)
+        fun addLastEventMs(builder: FlatBufferBuilder, lastEventMs: ULong) = builder.addLong(9, lastEventMs.toLong(), 0)
+        fun addEoseMs(builder: FlatBufferBuilder, eoseMs: ULong) = builder.addLong(10, eoseMs.toLong(), 0)
+        fun addHasCloseReason(builder: FlatBufferBuilder, hasCloseReason: Boolean) = builder.addBoolean(11, hasCloseReason, false)
+        fun addCloseReason(builder: FlatBufferBuilder, closeReason: Int) = builder.addOffset(12, closeReason, 0)
         fun endRelayDiagnosticsWireSub(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

@@ -21,41 +21,34 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
 
   private enum VTOFFSET: VOffset {
     case wireId = 4
-    case shortWireId = 6
-    case relayUrl = 8
-    case filterSummary = 10
-    case stateLabel = 12
-    case stateTone = 14
-    case consumerCountLabel = 16
-    case hasEventsRxDisplay = 18
-    case eventsRxDisplay = 20
-    case eoseObserved = 22
-    case openedMs = 24
-    case lastEventMs = 26
-    case eoseMs = 28
-    case hasCloseReason = 30
-    case closeReason = 32
+    case relayUrl = 6
+    case filterSummary = 8
+    case state = 10
+    case stateTone = 12
+    case consumerCount = 14
+    case eventsRx = 16
+    case eoseObserved = 18
+    case openedMs = 20
+    case lastEventMs = 22
+    case eoseMs = 24
+    case hasCloseReason = 26
+    case closeReason = 28
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
   public var wireId: String? { let o = _accessor.offset(VTOFFSET.wireId.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var wireIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.wireId.v) }
-  public var shortWireId: String? { let o = _accessor.offset(VTOFFSET.shortWireId.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var shortWireIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.shortWireId.v) }
   public var relayUrl: String? { let o = _accessor.offset(VTOFFSET.relayUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var relayUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.relayUrl.v) }
   public var filterSummary: String? { let o = _accessor.offset(VTOFFSET.filterSummary.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var filterSummarySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.filterSummary.v) }
-  public var stateLabel: String? { let o = _accessor.offset(VTOFFSET.stateLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var stateLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.stateLabel.v) }
+  public var state: String? { let o = _accessor.offset(VTOFFSET.state.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var stateSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.state.v) }
   public var stateTone: String? { let o = _accessor.offset(VTOFFSET.stateTone.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var stateToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.stateTone.v) }
-  public var consumerCountLabel: String? { let o = _accessor.offset(VTOFFSET.consumerCountLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var consumerCountLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.consumerCountLabel.v) }
-  public var hasEventsRxDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasEventsRxDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var eventsRxDisplay: String? { let o = _accessor.offset(VTOFFSET.eventsRxDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var eventsRxDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.eventsRxDisplay.v) }
+  public var consumerCount: UInt32 { let o = _accessor.offset(VTOFFSET.consumerCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var eventsRx: UInt64 { let o = _accessor.offset(VTOFFSET.eventsRx.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var eoseObserved: Bool { let o = _accessor.offset(VTOFFSET.eoseObserved.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var openedMs: UInt64 { let o = _accessor.offset(VTOFFSET.openedMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var lastEventMs: UInt64 { let o = _accessor.offset(VTOFFSET.lastEventMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
@@ -63,17 +56,14 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   public var hasCloseReason: Bool { let o = _accessor.offset(VTOFFSET.hasCloseReason.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var closeReason: String? { let o = _accessor.offset(VTOFFSET.closeReason.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var closeReasonSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.closeReason.v) }
-  public static func startRelayDiagnosticsWireSub(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 15) }
+  public static func startRelayDiagnosticsWireSub(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 13) }
   public static func add(wireId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: wireId, at: VTOFFSET.wireId.p) }
-  public static func add(shortWireId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortWireId, at: VTOFFSET.shortWireId.p) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(filterSummary: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: filterSummary, at: VTOFFSET.filterSummary.p) }
-  public static func add(stateLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stateLabel, at: VTOFFSET.stateLabel.p) }
+  public static func add(state: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: state, at: VTOFFSET.state.p) }
   public static func add(stateTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stateTone, at: VTOFFSET.stateTone.p) }
-  public static func add(consumerCountLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: consumerCountLabel, at: VTOFFSET.consumerCountLabel.p) }
-  public static func add(hasEventsRxDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasEventsRxDisplay, def: false,
-   at: VTOFFSET.hasEventsRxDisplay.p) }
-  public static func add(eventsRxDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: eventsRxDisplay, at: VTOFFSET.eventsRxDisplay.p) }
+  public static func add(consumerCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: consumerCount, def: 0, at: VTOFFSET.consumerCount.p) }
+  public static func add(eventsRx: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: eventsRx, def: 0, at: VTOFFSET.eventsRx.p) }
   public static func add(eoseObserved: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: eoseObserved, def: false,
    at: VTOFFSET.eoseObserved.p) }
   public static func add(openedMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: openedMs, def: 0, at: VTOFFSET.openedMs.p) }
@@ -86,14 +76,12 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   public static func createRelayDiagnosticsWireSub(
     _ fbb: inout FlatBufferBuilder,
     wireIdOffset wireId: Offset = Offset(),
-    shortWireIdOffset shortWireId: Offset = Offset(),
     relayUrlOffset relayUrl: Offset = Offset(),
     filterSummaryOffset filterSummary: Offset = Offset(),
-    stateLabelOffset stateLabel: Offset = Offset(),
+    stateOffset state: Offset = Offset(),
     stateToneOffset stateTone: Offset = Offset(),
-    consumerCountLabelOffset consumerCountLabel: Offset = Offset(),
-    hasEventsRxDisplay: Bool = false,
-    eventsRxDisplayOffset eventsRxDisplay: Offset = Offset(),
+    consumerCount: UInt32 = 0,
+    eventsRx: UInt64 = 0,
     eoseObserved: Bool = false,
     openedMs: UInt64 = 0,
     lastEventMs: UInt64 = 0,
@@ -103,14 +91,12 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   ) -> Offset {
     let __start = nmp_kernel_RelayDiagnosticsWireSub.startRelayDiagnosticsWireSub(&fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(wireId: wireId, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(shortWireId: shortWireId, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(relayUrl: relayUrl, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(filterSummary: filterSummary, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(stateLabel: stateLabel, &fbb)
+    nmp_kernel_RelayDiagnosticsWireSub.add(state: state, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(stateTone: stateTone, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(consumerCountLabel: consumerCountLabel, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(hasEventsRxDisplay: hasEventsRxDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(eventsRxDisplay: eventsRxDisplay, &fbb)
+    nmp_kernel_RelayDiagnosticsWireSub.add(consumerCount: consumerCount, &fbb)
+    nmp_kernel_RelayDiagnosticsWireSub.add(eventsRx: eventsRx, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(eoseObserved: eoseObserved, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(openedMs: openedMs, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(lastEventMs: lastEventMs, &fbb)
@@ -123,14 +109,12 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.wireId.p, fieldName: "wireId", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.shortWireId.p, fieldName: "shortWireId", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.relayUrl.p, fieldName: "relayUrl", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.filterSummary.p, fieldName: "filterSummary", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.stateLabel.p, fieldName: "stateLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.state.p, fieldName: "state", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.stateTone.p, fieldName: "stateTone", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.consumerCountLabel.p, fieldName: "consumerCountLabel", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasEventsRxDisplay.p, fieldName: "hasEventsRxDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.eventsRxDisplay.p, fieldName: "eventsRxDisplay", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.consumerCount.p, fieldName: "consumerCount", required: false, type: UInt32.self)
+    try _v.visit(field: VTOFFSET.eventsRx.p, fieldName: "eventsRx", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.eoseObserved.p, fieldName: "eoseObserved", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.openedMs.p, fieldName: "openedMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.lastEventMs.p, fieldName: "lastEventMs", required: false, type: UInt64.self)
@@ -461,68 +445,56 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
 
   private enum VTOFFSET: VOffset {
     case relayUrl = 4
-    case shortUrl = 6
-    case roleLabel = 8
-    case roleTone = 10
-    case connectionLabel = 12
-    case connectionTone = 14
-    case authLabel = 16
-    case authTone = 18
-    case totalSubCount = 20
-    case activeSubCount = 22
-    case eosedSubCount = 24
-    case totalEventsRx = 26
-    case totalEventsDisplay = 28
-    case reconnectCount = 30
-    case hasBytesRxDisplay = 32
-    case bytesRxDisplay = 34
-    case hasBytesTxDisplay = 36
-    case bytesTxDisplay = 38
-    case lastConnectedMs = 40
-    case lastEventMs = 42
-    case hasLastNotice = 44
-    case lastNotice = 46
-    case noticeCount = 48
-    case notices = 50
-    case hasLastError = 52
-    case lastError = 54
-    case wireSubs = 56
-    case info = 58
-    case discoveryKindsLabel = 60
-    case reasons = 62
+    case role = 6
+    case roleTone = 8
+    case connection = 10
+    case connectionTone = 12
+    case auth = 14
+    case authTone = 16
+    case totalSubCount = 18
+    case activeSubCount = 20
+    case eosedSubCount = 22
+    case totalEventsRx = 24
+    case reconnectCount = 26
+    case bytesRx = 28
+    case bytesTx = 30
+    case lastConnectedMs = 32
+    case lastEventMs = 34
+    case hasLastNotice = 36
+    case lastNotice = 38
+    case noticeCount = 40
+    case notices = 42
+    case hasLastError = 44
+    case lastError = 46
+    case wireSubs = 48
+    case info = 50
+    case discoveryKinds = 52
+    case reasons = 54
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
   public var relayUrl: String? { let o = _accessor.offset(VTOFFSET.relayUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var relayUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.relayUrl.v) }
-  public var shortUrl: String? { let o = _accessor.offset(VTOFFSET.shortUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var shortUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.shortUrl.v) }
-  public var roleLabel: String? { let o = _accessor.offset(VTOFFSET.roleLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var roleLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.roleLabel.v) }
+  public var role: String? { let o = _accessor.offset(VTOFFSET.role.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var roleSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.role.v) }
   public var roleTone: String? { let o = _accessor.offset(VTOFFSET.roleTone.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var roleToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.roleTone.v) }
-  public var connectionLabel: String? { let o = _accessor.offset(VTOFFSET.connectionLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var connectionLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.connectionLabel.v) }
+  public var connection: String? { let o = _accessor.offset(VTOFFSET.connection.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var connectionSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.connection.v) }
   public var connectionTone: String? { let o = _accessor.offset(VTOFFSET.connectionTone.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var connectionToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.connectionTone.v) }
-  public var authLabel: String? { let o = _accessor.offset(VTOFFSET.authLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var authLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authLabel.v) }
+  public var auth: String? { let o = _accessor.offset(VTOFFSET.auth.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var authSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.auth.v) }
   public var authTone: String? { let o = _accessor.offset(VTOFFSET.authTone.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var authToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authTone.v) }
   public var totalSubCount: UInt32 { let o = _accessor.offset(VTOFFSET.totalSubCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var activeSubCount: UInt32 { let o = _accessor.offset(VTOFFSET.activeSubCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var eosedSubCount: UInt32 { let o = _accessor.offset(VTOFFSET.eosedSubCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var totalEventsRx: UInt64 { let o = _accessor.offset(VTOFFSET.totalEventsRx.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var totalEventsDisplay: String? { let o = _accessor.offset(VTOFFSET.totalEventsDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var totalEventsDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.totalEventsDisplay.v) }
   public var reconnectCount: UInt32 { let o = _accessor.offset(VTOFFSET.reconnectCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
-  public var hasBytesRxDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasBytesRxDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var bytesRxDisplay: String? { let o = _accessor.offset(VTOFFSET.bytesRxDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var bytesRxDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.bytesRxDisplay.v) }
-  public var hasBytesTxDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasBytesTxDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var bytesTxDisplay: String? { let o = _accessor.offset(VTOFFSET.bytesTxDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var bytesTxDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.bytesTxDisplay.v) }
+  public var bytesRx: UInt64 { let o = _accessor.offset(VTOFFSET.bytesRx.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var bytesTx: UInt64 { let o = _accessor.offset(VTOFFSET.bytesTx.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var lastConnectedMs: UInt64 { let o = _accessor.offset(VTOFFSET.lastConnectedMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var lastEventMs: UInt64 { let o = _accessor.offset(VTOFFSET.lastEventMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var hasLastNotice: Bool { let o = _accessor.offset(VTOFFSET.hasLastNotice.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
@@ -535,30 +507,24 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var lastErrorSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastError.v) }
   public var wireSubs: FlatbufferVector<nmp_kernel_RelayDiagnosticsWireSub> { return _accessor.vector(at: VTOFFSET.wireSubs.v, byteSize: 4) }
   public var info: nmp_kernel_RelayDiagnosticsInfo? { let o = _accessor.offset(VTOFFSET.info.v); return o == 0 ? nil : nmp_kernel_RelayDiagnosticsInfo(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public var discoveryKindsLabel: String? { let o = _accessor.offset(VTOFFSET.discoveryKindsLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var discoveryKindsLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.discoveryKindsLabel.v) }
+  public var discoveryKinds: FlatbufferVector<UInt64> { return _accessor.vector(at: VTOFFSET.discoveryKinds.v, byteSize: 8) }
+  public func withUnsafePointerToDiscoveryKinds<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.discoveryKinds.v, body: body) }
   public var reasons: FlatbufferVector<nmp_kernel_RelayConnectionReason> { return _accessor.vector(at: VTOFFSET.reasons.v, byteSize: 4) }
-  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 30) }
+  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 26) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
-  public static func add(shortUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortUrl, at: VTOFFSET.shortUrl.p) }
-  public static func add(roleLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: roleLabel, at: VTOFFSET.roleLabel.p) }
+  public static func add(role: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: role, at: VTOFFSET.role.p) }
   public static func add(roleTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: roleTone, at: VTOFFSET.roleTone.p) }
-  public static func add(connectionLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: connectionLabel, at: VTOFFSET.connectionLabel.p) }
+  public static func add(connection: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: connection, at: VTOFFSET.connection.p) }
   public static func add(connectionTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: connectionTone, at: VTOFFSET.connectionTone.p) }
-  public static func add(authLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authLabel, at: VTOFFSET.authLabel.p) }
+  public static func add(auth: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: auth, at: VTOFFSET.auth.p) }
   public static func add(authTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authTone, at: VTOFFSET.authTone.p) }
   public static func add(totalSubCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: totalSubCount, def: 0, at: VTOFFSET.totalSubCount.p) }
   public static func add(activeSubCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: activeSubCount, def: 0, at: VTOFFSET.activeSubCount.p) }
   public static func add(eosedSubCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: eosedSubCount, def: 0, at: VTOFFSET.eosedSubCount.p) }
   public static func add(totalEventsRx: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: totalEventsRx, def: 0, at: VTOFFSET.totalEventsRx.p) }
-  public static func add(totalEventsDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: totalEventsDisplay, at: VTOFFSET.totalEventsDisplay.p) }
   public static func add(reconnectCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: reconnectCount, def: 0, at: VTOFFSET.reconnectCount.p) }
-  public static func add(hasBytesRxDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasBytesRxDisplay, def: false,
-   at: VTOFFSET.hasBytesRxDisplay.p) }
-  public static func add(bytesRxDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: bytesRxDisplay, at: VTOFFSET.bytesRxDisplay.p) }
-  public static func add(hasBytesTxDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasBytesTxDisplay, def: false,
-   at: VTOFFSET.hasBytesTxDisplay.p) }
-  public static func add(bytesTxDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: bytesTxDisplay, at: VTOFFSET.bytesTxDisplay.p) }
+  public static func add(bytesRx: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: bytesRx, def: 0, at: VTOFFSET.bytesRx.p) }
+  public static func add(bytesTx: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: bytesTx, def: 0, at: VTOFFSET.bytesTx.p) }
   public static func add(lastConnectedMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: lastConnectedMs, def: 0, at: VTOFFSET.lastConnectedMs.p) }
   public static func add(lastEventMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: lastEventMs, def: 0, at: VTOFFSET.lastEventMs.p) }
   public static func add(hasLastNotice: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastNotice, def: false,
@@ -571,29 +537,25 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public static func add(lastError: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastError, at: VTOFFSET.lastError.p) }
   public static func addVectorOf(wireSubs: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: wireSubs, at: VTOFFSET.wireSubs.p) }
   public static func add(info: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: info, at: VTOFFSET.info.p) }
-  public static func add(discoveryKindsLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: discoveryKindsLabel, at: VTOFFSET.discoveryKindsLabel.p) }
+  public static func addVectorOf(discoveryKinds: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: discoveryKinds, at: VTOFFSET.discoveryKinds.p) }
   public static func addVectorOf(reasons: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: reasons, at: VTOFFSET.reasons.p) }
   public static func endRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createRelayDiagnosticsRow(
     _ fbb: inout FlatBufferBuilder,
     relayUrlOffset relayUrl: Offset = Offset(),
-    shortUrlOffset shortUrl: Offset = Offset(),
-    roleLabelOffset roleLabel: Offset = Offset(),
+    roleOffset role: Offset = Offset(),
     roleToneOffset roleTone: Offset = Offset(),
-    connectionLabelOffset connectionLabel: Offset = Offset(),
+    connectionOffset connection: Offset = Offset(),
     connectionToneOffset connectionTone: Offset = Offset(),
-    authLabelOffset authLabel: Offset = Offset(),
+    authOffset auth: Offset = Offset(),
     authToneOffset authTone: Offset = Offset(),
     totalSubCount: UInt32 = 0,
     activeSubCount: UInt32 = 0,
     eosedSubCount: UInt32 = 0,
     totalEventsRx: UInt64 = 0,
-    totalEventsDisplayOffset totalEventsDisplay: Offset = Offset(),
     reconnectCount: UInt32 = 0,
-    hasBytesRxDisplay: Bool = false,
-    bytesRxDisplayOffset bytesRxDisplay: Offset = Offset(),
-    hasBytesTxDisplay: Bool = false,
-    bytesTxDisplayOffset bytesTxDisplay: Offset = Offset(),
+    bytesRx: UInt64 = 0,
+    bytesTx: UInt64 = 0,
     lastConnectedMs: UInt64 = 0,
     lastEventMs: UInt64 = 0,
     hasLastNotice: Bool = false,
@@ -604,28 +566,24 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     lastErrorOffset lastError: Offset = Offset(),
     wireSubsVectorOffset wireSubs: Offset = Offset(),
     infoOffset info: Offset = Offset(),
-    discoveryKindsLabelOffset discoveryKindsLabel: Offset = Offset(),
+    discoveryKindsVectorOffset discoveryKinds: Offset = Offset(),
     reasonsVectorOffset reasons: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_RelayDiagnosticsRow.startRelayDiagnosticsRow(&fbb)
     nmp_kernel_RelayDiagnosticsRow.add(relayUrl: relayUrl, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(shortUrl: shortUrl, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(roleLabel: roleLabel, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(role: role, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(roleTone: roleTone, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(connectionLabel: connectionLabel, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(connection: connection, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(connectionTone: connectionTone, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(authLabel: authLabel, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(auth: auth, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(authTone: authTone, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(totalSubCount: totalSubCount, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(activeSubCount: activeSubCount, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(eosedSubCount: eosedSubCount, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(totalEventsRx: totalEventsRx, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(totalEventsDisplay: totalEventsDisplay, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(reconnectCount: reconnectCount, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(hasBytesRxDisplay: hasBytesRxDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(bytesRxDisplay: bytesRxDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(hasBytesTxDisplay: hasBytesTxDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(bytesTxDisplay: bytesTxDisplay, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(bytesRx: bytesRx, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(bytesTx: bytesTx, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(lastConnectedMs: lastConnectedMs, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(lastEventMs: lastEventMs, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(hasLastNotice: hasLastNotice, &fbb)
@@ -636,7 +594,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     nmp_kernel_RelayDiagnosticsRow.add(lastError: lastError, &fbb)
     nmp_kernel_RelayDiagnosticsRow.addVectorOf(wireSubs: wireSubs, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(info: info, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(discoveryKindsLabel: discoveryKindsLabel, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.addVectorOf(discoveryKinds: discoveryKinds, &fbb)
     nmp_kernel_RelayDiagnosticsRow.addVectorOf(reasons: reasons, &fbb)
     return nmp_kernel_RelayDiagnosticsRow.endRelayDiagnosticsRow(&fbb, start: __start)
   }
@@ -644,23 +602,19 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.relayUrl.p, fieldName: "relayUrl", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.shortUrl.p, fieldName: "shortUrl", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.roleLabel.p, fieldName: "roleLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.role.p, fieldName: "role", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.roleTone.p, fieldName: "roleTone", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.connectionLabel.p, fieldName: "connectionLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.connection.p, fieldName: "connection", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.connectionTone.p, fieldName: "connectionTone", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.authLabel.p, fieldName: "authLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.auth.p, fieldName: "auth", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.authTone.p, fieldName: "authTone", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.totalSubCount.p, fieldName: "totalSubCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.activeSubCount.p, fieldName: "activeSubCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.eosedSubCount.p, fieldName: "eosedSubCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.totalEventsRx.p, fieldName: "totalEventsRx", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.totalEventsDisplay.p, fieldName: "totalEventsDisplay", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.reconnectCount.p, fieldName: "reconnectCount", required: false, type: UInt32.self)
-    try _v.visit(field: VTOFFSET.hasBytesRxDisplay.p, fieldName: "hasBytesRxDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.bytesRxDisplay.p, fieldName: "bytesRxDisplay", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasBytesTxDisplay.p, fieldName: "hasBytesTxDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.bytesTxDisplay.p, fieldName: "bytesTxDisplay", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.bytesRx.p, fieldName: "bytesRx", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.bytesTx.p, fieldName: "bytesTx", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.lastConnectedMs.p, fieldName: "lastConnectedMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.lastEventMs.p, fieldName: "lastEventMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.hasLastNotice.p, fieldName: "hasLastNotice", required: false, type: Bool.self)
@@ -671,7 +625,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     try _v.visit(field: VTOFFSET.lastError.p, fieldName: "lastError", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.wireSubs.p, fieldName: "wireSubs", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_RelayDiagnosticsWireSub>, nmp_kernel_RelayDiagnosticsWireSub>>.self)
     try _v.visit(field: VTOFFSET.info.p, fieldName: "info", required: false, type: ForwardOffset<nmp_kernel_RelayDiagnosticsInfo>.self)
-    try _v.visit(field: VTOFFSET.discoveryKindsLabel.p, fieldName: "discoveryKindsLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.discoveryKinds.p, fieldName: "discoveryKinds", required: false, type: ForwardOffset<Vector<UInt64, UInt64>>.self)
     try _v.visit(field: VTOFFSET.reasons.p, fieldName: "reasons", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_RelayConnectionReason>, nmp_kernel_RelayConnectionReason>>.self)
     _v.finish()
   }

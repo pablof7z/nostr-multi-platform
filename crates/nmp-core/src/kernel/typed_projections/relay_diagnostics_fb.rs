@@ -67,13 +67,15 @@ pub const RELAY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WireSubRow {
     pub wire_id: String,
-    pub short_wire_id: String,
     pub relay_url: String,
     pub filter_summary: String,
-    pub state_label: String,
+    /// Raw state string. Shells title-case for display.
+    pub state: String,
     pub state_tone: String,
-    pub consumer_count_label: String,
-    pub events_rx_display: Option<String>,
+    /// Raw consumer count. Shells format for display.
+    pub consumer_count: u32,
+    /// Raw events received counter. Shells format as compact count when > 0.
+    pub events_rx: u64,
     pub eose_observed: bool,
     /// Unix epoch milliseconds when the subscription opened. 0 when unknown.
     pub opened_ms: u64,
@@ -88,21 +90,24 @@ pub struct WireSubRow {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RelayRow {
     pub relay_url: String,
-    pub short_url: String,
-    pub role_label: String,
+    /// Raw role string. Shells title-case for display.
+    pub role: String,
     pub role_tone: String,
-    pub connection_label: String,
+    /// Raw connection string. Shells title-case for display.
+    pub connection: String,
     pub connection_tone: String,
-    pub auth_label: String,
+    /// Raw auth string. Shells title-case for display.
+    pub auth: String,
     pub auth_tone: String,
     pub total_sub_count: u32,
     pub active_sub_count: u32,
     pub eosed_sub_count: u32,
     pub total_events_rx: u64,
-    pub total_events_display: String,
     pub reconnect_count: u32,
-    pub bytes_rx_display: Option<String>,
-    pub bytes_tx_display: Option<String>,
+    /// Raw bytes received. Shells format as "X KB" etc. when > 0.
+    pub bytes_rx: u64,
+    /// Raw bytes transmitted. Shells format as "X KB" etc. when > 0.
+    pub bytes_tx: u64,
     /// Unix epoch milliseconds of the last successful connect; 0 when never connected.
     pub last_connected_ms: u64,
     /// Unix epoch milliseconds of the last event received; 0 when none.
@@ -112,7 +117,8 @@ pub struct RelayRow {
     pub notices: Vec<NoticeRow>,
     pub last_error: Option<String>,
     pub wire_subs: Vec<WireSubRow>,
-    pub discovery_kinds_label: String,
+    /// Raw discovery kind numbers (deduplicated, sorted). Shells format for display.
+    pub discovery_kinds: Vec<u64>,
     /// ADR-0051 — the relay's NIP-11 information document; `None` until fetched.
     pub info: Option<InfoRow>,
     /// Routing provenance reasons (SPLIT A, pre-block). Empty before the first
@@ -161,26 +167,21 @@ fn create_wire_sub<'a>(
     row: &WireSubRow,
 ) -> WIPOffset<fb::RelayDiagnosticsWireSub<'a>> {
     let wire_id = fbb.create_string(&row.wire_id);
-    let short_wire_id = fbb.create_string(&row.short_wire_id);
     let relay_url = fbb.create_string(&row.relay_url);
     let filter_summary = fbb.create_string(&row.filter_summary);
-    let state_label = fbb.create_string(&row.state_label);
+    let state = fbb.create_string(&row.state);
     let state_tone = fbb.create_string(&row.state_tone);
-    let consumer_count_label = fbb.create_string(&row.consumer_count_label);
-    let events_rx_display = row.events_rx_display.as_ref().map(|v| fbb.create_string(v));
     let close_reason = row.close_reason.as_ref().map(|v| fbb.create_string(v));
     fb::RelayDiagnosticsWireSub::create(
         fbb,
         &fb::RelayDiagnosticsWireSubArgs {
             wire_id: Some(wire_id),
-            short_wire_id: Some(short_wire_id),
             relay_url: Some(relay_url),
             filter_summary: Some(filter_summary),
-            state_label: Some(state_label),
+            state: Some(state),
             state_tone: Some(state_tone),
-            consumer_count_label: Some(consumer_count_label),
-            has_events_rx_display: row.events_rx_display.is_some(),
-            events_rx_display,
+            consumer_count: row.consumer_count,
+            events_rx: row.events_rx,
             eose_observed: row.eose_observed,
             opened_ms: row.opened_ms,
             last_event_ms: row.last_event_ms,
@@ -252,40 +253,32 @@ fn create_relay_row<'a>(
     let notices = fbb.create_vector(&notice_offsets);
     let info = row.info.as_ref().map(|i| create_info(fbb, i));
     let relay_url = fbb.create_string(&row.relay_url);
-    let short_url = fbb.create_string(&row.short_url);
-    let role_label = fbb.create_string(&row.role_label);
+    let role = fbb.create_string(&row.role);
     let role_tone = fbb.create_string(&row.role_tone);
-    let connection_label = fbb.create_string(&row.connection_label);
+    let connection = fbb.create_string(&row.connection);
     let connection_tone = fbb.create_string(&row.connection_tone);
-    let auth_label = fbb.create_string(&row.auth_label);
+    let auth = fbb.create_string(&row.auth);
     let auth_tone = fbb.create_string(&row.auth_tone);
-    let total_events_display = fbb.create_string(&row.total_events_display);
-    let bytes_rx_display = row.bytes_rx_display.as_ref().map(|v| fbb.create_string(v));
-    let bytes_tx_display = row.bytes_tx_display.as_ref().map(|v| fbb.create_string(v));
     let last_notice = row.last_notice.as_ref().map(|v| fbb.create_string(v));
     let last_error = row.last_error.as_ref().map(|v| fbb.create_string(v));
-    let discovery_kinds_label = fbb.create_string(&row.discovery_kinds_label);
+    let discovery_kinds = fbb.create_vector(&row.discovery_kinds);
     fb::RelayDiagnosticsRow::create(
         fbb,
         &fb::RelayDiagnosticsRowArgs {
             relay_url: Some(relay_url),
-            short_url: Some(short_url),
-            role_label: Some(role_label),
+            role: Some(role),
             role_tone: Some(role_tone),
-            connection_label: Some(connection_label),
+            connection: Some(connection),
             connection_tone: Some(connection_tone),
-            auth_label: Some(auth_label),
+            auth: Some(auth),
             auth_tone: Some(auth_tone),
             total_sub_count: row.total_sub_count,
             active_sub_count: row.active_sub_count,
             eosed_sub_count: row.eosed_sub_count,
             total_events_rx: row.total_events_rx,
-            total_events_display: Some(total_events_display),
             reconnect_count: row.reconnect_count,
-            has_bytes_rx_display: row.bytes_rx_display.is_some(),
-            bytes_rx_display,
-            has_bytes_tx_display: row.bytes_tx_display.is_some(),
-            bytes_tx_display,
+            bytes_rx: row.bytes_rx,
+            bytes_tx: row.bytes_tx,
             last_connected_ms: row.last_connected_ms,
             last_event_ms: row.last_event_ms,
             has_last_notice: row.last_notice.is_some(),
@@ -296,7 +289,7 @@ fn create_relay_row<'a>(
             last_error,
             wire_subs: Some(wire_subs),
             info,
-            discovery_kinds_label: Some(discovery_kinds_label),
+            discovery_kinds: Some(discovery_kinds),
             reasons: Some(reasons),
         },
     )
@@ -390,13 +383,12 @@ fn opt(s: Option<&str>) -> Option<String> {
 fn wire_sub_from_fb(row: fb::RelayDiagnosticsWireSub<'_>) -> WireSubRow {
     WireSubRow {
         wire_id: row.wire_id().unwrap_or_default().to_string(),
-        short_wire_id: row.short_wire_id().unwrap_or_default().to_string(),
         relay_url: row.relay_url().unwrap_or_default().to_string(),
         filter_summary: row.filter_summary().unwrap_or_default().to_string(),
-        state_label: row.state_label().unwrap_or_default().to_string(),
+        state: row.state().unwrap_or_default().to_string(),
         state_tone: row.state_tone().unwrap_or_default().to_string(),
-        consumer_count_label: row.consumer_count_label().unwrap_or_default().to_string(),
-        events_rx_display: row.has_events_rx_display().then(|| opt(row.events_rx_display())).flatten(),
+        consumer_count: row.consumer_count(),
+        events_rx: row.events_rx(),
         eose_observed: row.eose_observed(),
         opened_ms: row.opened_ms(),
         last_event_ms: row.last_event_ms(),
@@ -423,23 +415,24 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
     let notices = row.notices()
         .map(|v| v.iter().map(notice_from_fb).collect())
         .unwrap_or_default();
+    let discovery_kinds = row.discovery_kinds()
+        .map(|v| v.iter().collect())
+        .unwrap_or_default();
     RelayRow {
         relay_url: row.relay_url().unwrap_or_default().to_string(),
-        short_url: row.short_url().unwrap_or_default().to_string(),
-        role_label: row.role_label().unwrap_or_default().to_string(),
+        role: row.role().unwrap_or_default().to_string(),
         role_tone: row.role_tone().unwrap_or_default().to_string(),
-        connection_label: row.connection_label().unwrap_or_default().to_string(),
+        connection: row.connection().unwrap_or_default().to_string(),
         connection_tone: row.connection_tone().unwrap_or_default().to_string(),
-        auth_label: row.auth_label().unwrap_or_default().to_string(),
+        auth: row.auth().unwrap_or_default().to_string(),
         auth_tone: row.auth_tone().unwrap_or_default().to_string(),
         total_sub_count: row.total_sub_count(),
         active_sub_count: row.active_sub_count(),
         eosed_sub_count: row.eosed_sub_count(),
         total_events_rx: row.total_events_rx(),
-        total_events_display: row.total_events_display().unwrap_or_default().to_string(),
         reconnect_count: row.reconnect_count(),
-        bytes_rx_display: row.has_bytes_rx_display().then(|| opt(row.bytes_rx_display())).flatten(),
-        bytes_tx_display: row.has_bytes_tx_display().then(|| opt(row.bytes_tx_display())).flatten(),
+        bytes_rx: row.bytes_rx(),
+        bytes_tx: row.bytes_tx(),
         last_connected_ms: row.last_connected_ms(),
         last_event_ms: row.last_event_ms(),
         last_notice: row.has_last_notice().then(|| opt(row.last_notice())).flatten(),
@@ -447,7 +440,7 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         notices,
         last_error: row.has_last_error().then(|| opt(row.last_error())).flatten(),
         wire_subs,
-        discovery_kinds_label: row.discovery_kinds_label().unwrap_or_default().to_string(),
+        discovery_kinds,
         info: row.info().map(info_from_fb),
         reasons,
     }

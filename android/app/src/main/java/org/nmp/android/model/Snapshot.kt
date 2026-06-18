@@ -83,10 +83,10 @@ data class SnapshotProjections(
     // parity with iOS); `null` when no remote-signer session is active.
     @SerialName("signer_state") val signerState: SignerState? = null,
     // Detailed relay diagnostics — `relay_diagnostics` (`KRDG`) sidecar, decoded
-    // by [TypedRelayDiagnosticsDecoder]. `null` when the sidecar is absent. Every
-    // label/tone is Rust-precomputed (ADR-0032) so the UI never branches on raw
-    // protocol strings; `RelayScreen` prefers `connectionLabel`/`connectionTone`
-    // here over the Tier-3 `relayStatuses` raw-string switch.
+    // by [TypedRelayDiagnosticsDecoder]. `null` when the sidecar is absent. Raw
+    // values are on the wire; the model carries computed display properties;
+    // `RelayScreen` uses `connectionLabel`/`connectionTone` (computed) to avoid
+    // branching on raw protocol strings.
     @SerialName("relay_diagnostics") val relayDiagnostics: RelayDiagnosticsSnapshot? = null,
     // #1283 / #1335 item 2: typed NEMB embed sidecar — decoded by
     // [TypedEmbedSidecarDecoder] from the `claimed_event_embeds` typed projection.
@@ -95,108 +95,6 @@ data class SnapshotProjections(
     // DECODE-ONLY: the kernel resolves embed projections; this shell is D0-clean.
     @SerialName("claimed_event_embeds") val claimedEventEmbeds: Map<String, EmbedEnvelopeEntry> = emptyMap(),
     @SerialName("nmp.follow_list") val followList: FollowListSnapshot = FollowListSnapshot(),
-)
-
-/**
- * Detailed relay diagnostics — `projections["relay_diagnostics"]` (`KRDG`).
- * Android peer of iOS `RelayDiagnosticsSnapshot` (`TypedProjectionGlue`).
- *
- * Field-for-field mirror of the kernel projection. Every `*Label`/`*Tone`
- * string is Rust-precomputed (ADR-0032 / V-14) so the presentation layer
- * never branches on raw protocol tokens (thin-shell rule). `null` display
- * strings collapse to `""` here, byte-faithful to the typed wire's
- * `has_*`-companion semantics.
- */
-@Serializable
-data class RelayDiagnosticsSnapshot(
-    val relays: List<RelayDiagnosticsRow> = emptyList(),
-    val interests: List<RelayDiagnosticsInterest> = emptyList(),
-)
-
-@Serializable
-data class RelayDiagnosticsRow(
-    val relayUrl: String = "",
-    val shortUrl: String = "",
-    val roleLabel: String = "",
-    val roleTone: String = "",
-    val connectionLabel: String = "",
-    val connectionTone: String = "",
-    val authLabel: String = "",
-    val authTone: String = "",
-    val totalSubCount: Int = 0,
-    val activeSubCount: Int = 0,
-    val eosedSubCount: Int = 0,
-    val totalEventsRx: Long = 0,
-    val totalEventsDisplay: String = "",
-    val reconnectCount: Int = 0,
-    val bytesRxDisplay: String? = null,
-    val bytesTxDisplay: String? = null,
-    // aim.md §62: raw Unix-ms on wire; shells format at render time.
-    val lastConnectedMs: Long = 0,
-    val lastEventMs: Long = 0,
-    val lastNotice: String? = null,
-    val lastError: String? = null,
-    val wireSubs: List<RelayDiagnosticsWireSub> = emptyList(),
-    // ADR-0051 — the relay's NIP-11 information document. `null` until
-    // `nmp-nip11` has fetched it (or the relay serves no document); the typed
-    // wire carries this as an OPTIONAL child table (presence is the
-    // discriminator — no `has_info` flag), and the JSON path as `info: null`.
-    val info: RelayDiagnosticsInfo? = null,
-)
-
-/**
- * ADR-0051 relay-information document (NIP-11), Android peer of iOS
- * `RelayDiagnosticsInfo`. Field-for-field mirror of the kernel projection
- * (`crates/nmp-core/src/kernel/relay_diagnostics.rs::RelayDiagnosticsInfo`).
- *
- * Every `Option<String>` collapses to `null` when absent (byte-faithful to the
- * typed wire's `has_*`-companion semantics and the JSON path's `null`). The
- * three `limitation` booleans are tri-state (`null` = the relay did not
- * advertise the limitation). `supportedNips` is a possibly-empty list. The
- * presentation layer renders these directly — no HTTP, no JSON, no NIP-11
- * awareness (thin-shell rule).
- */
-@Serializable
-data class RelayDiagnosticsInfo(
-    val name: String? = null,
-    val description: String? = null,
-    val icon: String? = null,
-    val pubkey: String? = null,
-    val contact: String? = null,
-    val software: String? = null,
-    val version: String? = null,
-    @SerialName("supported_nips") val supportedNips: List<Int> = emptyList(),
-    @SerialName("payment_required") val paymentRequired: Boolean? = null,
-    @SerialName("auth_required") val authRequired: Boolean? = null,
-    @SerialName("restricted_writes") val restrictedWrites: Boolean? = null,
-)
-
-@Serializable
-data class RelayDiagnosticsWireSub(
-    val wireId: String = "",
-    val shortWireId: String = "",
-    val relayUrl: String = "",
-    val filterSummary: String = "",
-    val stateLabel: String = "",
-    val stateTone: String = "",
-    val consumerCountLabel: String = "",
-    val eventsRxDisplay: String? = null,
-    val eoseObserved: Boolean = false,
-    // aim.md §62: raw Unix-ms on wire; shells format at render time.
-    val openedMs: Long = 0,
-    val lastEventMs: Long = 0,
-    val eoseMs: Long = 0,
-    val closeReason: String? = null,
-)
-
-@Serializable
-data class RelayDiagnosticsInterest(
-    val key: String = "",
-    val state: String = "",
-    val stateTone: String = "",
-    val refcount: Int = 0,
-    val cacheCoverage: String = "",
-    val relayUrls: List<String> = emptyList(),
 )
 
 /**
@@ -482,3 +380,4 @@ data class UnknownProjectionEntry(
     val tags: List<List<String>> = emptyList(),
     @SerialName("alt_text") val altText: String? = null,
 )
+
