@@ -208,6 +208,7 @@ fn cancel_is_signal_only_does_not_block_on_join() {
             generation: 0,
             relay: Arc::clone(&relay),
             cancel: Arc::new(AtomicBool::new(false)),
+            cancel_tx: crossbeam_channel::bounded::<()>(1).0,
             handshake_thread: None,
             dispatcher_thread: Some(dispatcher),
             transport: BrokerTransport::new(
@@ -323,6 +324,7 @@ fn stale_worker_install_is_rejected_by_generation_guard() {
             generation: g_a,
             relay: Arc::clone(&relay_a),
             cancel: Arc::new(AtomicBool::new(false)),
+            cancel_tx: crossbeam_channel::bounded::<()>(1).0,
             handshake_thread: None,
             dispatcher_thread: None,
             transport: BrokerTransport::new(relay_a, Keys::generate(), Keys::generate().public_key()),
@@ -352,6 +354,7 @@ fn stale_worker_install_is_rejected_by_generation_guard() {
             generation: g_b,
             relay: Arc::clone(&relay_b),
             cancel: Arc::new(AtomicBool::new(false)),
+            cancel_tx: crossbeam_channel::bounded::<()>(1).0,
             handshake_thread: None,
             dispatcher_thread: None,
             transport: transport_b,

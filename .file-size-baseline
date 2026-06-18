@@ -89,8 +89,6 @@ crates/nmp-planner/src/lattice/mod.rs	652
 crates/nmp-router/src/nip65_resolver/tests.rs	552
 crates/nmp-router/src/router.rs	712
 crates/nmp-router/src/router/tests_v75.rs	522
-crates/nmp-signer-broker/src/handshake.rs	551
-crates/nmp-signer-broker/src/handshake/tests.rs	715
 crates/nmp-signer-broker/src/relay_client.rs	608
 crates/nmp-signers/src/signers/nip46/handle/tests.rs	622
 crates/nmp-signers/src/signers/nip55/tests.rs	1333
