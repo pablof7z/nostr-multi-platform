@@ -69,6 +69,17 @@ impl Kernel {
         );
         if canonical {
             self.project_accepted_event(&verified);
+            // Arm cache-serve wakeups for already-served interests matching this
+            // event (#1520 — event-driven re-arm so live inserts surface in cache
+            // projections without waiting for a full re-serve from the store).
+            let raw = verified.raw();
+            self.note_store_insert(
+                &raw.id,
+                &raw.pubkey,
+                raw.kind,
+                raw.created_at,
+                &raw.tags,
+            );
         }
 
         // Timeline read-cache projection — LIVE-path specific. The cache-serve

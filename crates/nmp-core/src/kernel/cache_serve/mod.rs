@@ -89,6 +89,7 @@
 
 pub(super) mod continuation;
 pub(super) mod queries;
+pub(super) mod wakeup;
 
 pub(in crate::kernel) use queries::{
     completion_key_for_interest, query_since_mut, query_until_mut,
@@ -345,8 +346,14 @@ impl Kernel {
     /// first snapshot after an open carries store data (D1). Work beyond the
     /// budget stays queued with a resume cursor and continues next tick.
     ///
+    /// Drains `cache_serve_wakeups` first so re-armed interests enter the queue
+    /// before the budget loop starts (#1520 — event-driven wakeups).
+    ///
     /// Returns the number of events fed into projections this step.
     pub(crate) fn run_cache_serve_step(&mut self) -> usize {
+        // Drain event-driven wakeups first so re-armed interests are enqueued
+        // before the budget loop starts (#1520).
+        self.drain_cache_serve_wakeups();
         if self.pending_cache_serves.is_empty() {
             return 0;
         }
@@ -376,13 +383,15 @@ impl Kernel {
         total_served
     }
 
-    /// Clear the served-interest completion set AND the pending serve queue.
+    /// Clear the served-interest completion set, the pending serve queue, AND
+    /// the event-driven wakeup buffer.
     ///
     /// Must be called on account-switch / kernel reset so the next identity's
-    /// interests get a fresh serve and the prior identity's queued serves do
-    /// not keep draining.
+    /// interests get a fresh serve and the prior identity's queued serves and
+    /// armed wakeups do not keep draining.
     pub(in crate::kernel) fn clear_served_interest_shapes(&mut self) {
         self.served_interest_shapes.clear();
         self.pending_cache_serves.clear();
+        self.cache_serve_wakeups.clear();
     }
 }
