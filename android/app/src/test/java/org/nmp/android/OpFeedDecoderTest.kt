@@ -61,8 +61,13 @@ class OpFeedDecoderTest {
         assertEquals(1, root.card.kind)
         assertEquals(1_700_000_500L, root.card.createdAt)
         assertEquals("a thread root", root.card.content)
-        assertEquals("a thread root", root.card.contentPreview)
-        // root_card() has absent display mirrors (has_* == false).
+        // GH #920: the card encoder no longer denormalizes a render preview;
+        // `encode_card` writes an empty `content_preview` slot and the
+        // presentation layer derives the preview from `content`. The decoder
+        // surfaces the empty wire value verbatim.
+        assertEquals("", root.card.contentPreview)
+        // GH #920: the card encoder fills author display with the absent
+        // fallback (`has_* == false`); the card carries no denormalized name.
         assertNull(root.card.authorDisplayName)
         assertNull(root.card.authorPictureUrl)
         // V-85: contentTree is now populated via the native NFCT decoder.
@@ -87,8 +92,10 @@ class OpFeedDecoderTest {
         val repost = snapshot.cards[1]
         assertEquals(hex32(0x09), repost.card.id)
         assertEquals(6, repost.card.kind)
-        assertEquals("Alice", repost.card.authorDisplayName)
-        assertEquals("https://example.com/a.png", repost.card.authorPictureUrl)
+        // GH #920: the card-level author display is the absent fallback (the
+        // attribution table is the populated display surface, not the card).
+        assertNull(repost.card.authorDisplayName)
+        assertNull(repost.card.authorPictureUrl)
         assertTrue(repost.attribution.isEmpty())
 
         // Page reconstructed from the embedded NFWM feed-window sub-buffer.
