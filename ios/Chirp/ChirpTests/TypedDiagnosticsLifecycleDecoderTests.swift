@@ -35,24 +35,36 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertEqual(snap.relays.count, 1)
         let row = snap.relays[0]
         XCTAssertEqual(row.relayUrl, "wss://typed-diag.example")
-        XCTAssertEqual(row.shortUrl, "typed-diag")
-        XCTAssertEqual(row.roleLabel, "Typed Content")
+        // Raw decoded fields (aim.md §62: no pre-formatted strings on wire).
+        XCTAssertEqual(row.role, "content")
         XCTAssertEqual(row.roleTone, "primary")
-        XCTAssertEqual(row.connectionLabel, "Typed Connected")
+        XCTAssertEqual(row.connection, "connected")
         XCTAssertEqual(row.connectionTone, "ok")
-        XCTAssertEqual(row.authLabel, "Typed OK")
+        XCTAssertEqual(row.auth, "ok")
         XCTAssertEqual(row.authTone, "ok")
+        // Shell-side computed display labels derived from the raw fields above.
+        XCTAssertEqual(row.shortUrl, "typed-diag.example")
+        XCTAssertEqual(row.roleLabel, "Content")
+        XCTAssertEqual(row.connectionLabel, "Connected")
+        XCTAssertEqual(row.authLabel, "Ok")
         XCTAssertEqual(row.totalSubCount, 7)
         XCTAssertEqual(row.activeSubCount, 5)
         XCTAssertEqual(row.eosedSubCount, 3)
         XCTAssertEqual(row.totalEventsRx, 4242)
-        XCTAssertEqual(row.totalEventsDisplay, "4.2K (typed)")
+        XCTAssertEqual(row.totalEventsDisplay, "4.2K")
         XCTAssertEqual(row.reconnectCount, 2)
-        // `has_*` present → carried string; absent → nil. Proves the typed
-        // path distinguishes nil-vs-empty exactly like the JSON `null`.
-        XCTAssertEqual(row.bytesRxDisplay, "12 KB (typed)")
+        // Raw byte counters; the shell renders `bytesRxDisplay` (> 0 → string)
+        // and `bytesTxDisplay` (0 → nil) from them.
+        XCTAssertEqual(row.bytesRx, 12_288)
+        XCTAssertEqual(row.bytesTx, 0)
+        // Lock the exact rendered byte label (12288 / 1024 = 12.0 KB) so the
+        // `KB`-vs-`KiB` cross-shell parity can't silently regress.
+        XCTAssertEqual(row.bytesRxDisplay, "12.0 KB")
         XCTAssertNil(row.bytesTxDisplay)
-        // Raw Unix-ms timestamps (aim.md §62: no pre-formatted strings on wire).
+        // Raw discovery kind numbers; the shell derives `discoveryKindsLabel`.
+        XCTAssertEqual(row.discoveryKinds, [0, 10002])
+        XCTAssertEqual(row.discoveryKindsLabel, "profile (0), relay-list (10002)")
+        // Raw Unix-ms timestamps; shells format as "Xs ago" at render time.
         XCTAssertEqual(row.lastConnectedMs, 1_700_000_003_000)
         XCTAssertEqual(row.lastEventMs, 0)
         XCTAssertNil(row.lastNotice)
@@ -61,13 +73,16 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertEqual(row.wireSubs.count, 1)
         let sub = row.wireSubs[0]
         XCTAssertEqual(sub.wireId, "typed-wire-1")
-        XCTAssertEqual(sub.shortWireId, "tw1…")
         XCTAssertEqual(sub.relayUrl, "wss://typed-diag.example")
         XCTAssertEqual(sub.filterSummary, "typed filter")
-        XCTAssertEqual(sub.stateLabel, "Typed Open")
+        // Raw decoded fields + shell-side computed labels.
+        XCTAssertEqual(sub.state, "open")
+        XCTAssertEqual(sub.stateLabel, "Open")
         XCTAssertEqual(sub.stateTone, "ok")
-        XCTAssertEqual(sub.consumerCountLabel, "1 consumer (typed)")
-        XCTAssertEqual(sub.eventsRxDisplay, "34 (typed)")
+        XCTAssertEqual(sub.consumerCount, 1)
+        XCTAssertEqual(sub.consumerCountLabel, "1 consumer")
+        XCTAssertEqual(sub.eventsRx, 34)
+        XCTAssertEqual(sub.eventsRxDisplay, "34")
         XCTAssertTrue(sub.eoseObserved)
         // Raw Unix-ms timestamps — rendered by the shell at display time.
         XCTAssertEqual(sub.openedMs, 1_700_000_060_000)
@@ -257,28 +272,25 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
     private func buildRelayDiagnostics() -> Data {
         var fbb = FlatBufferBuilder(initialSize: 2048)
 
-        // Nested wire-sub: `events_rx_display` present; `last_event` / `eose` /
-        // `close_reason` absent (zero sentinel = "never observed").
-        // aim.md §62: raw Unix-ms on wire, no pre-formatted strings.
+        // Nested wire-sub: raw `state` / `consumer_count` / `events_rx`; the
+        // shell derives `stateLabel` / `consumerCountLabel` / `eventsRxDisplay`
+        // from these. `last_event` / `eose` / `close_reason` absent (zero
+        // sentinel = "never observed"). aim.md §62: raw values on wire, no
+        // pre-formatted strings.
         let subWireId = fbb.create(string: "typed-wire-1")
-        let subShort = fbb.create(string: "tw1…")
         let subRelayUrl = fbb.create(string: "wss://typed-diag.example")
         let subFilter = fbb.create(string: "typed filter")
-        let subStateLabel = fbb.create(string: "Typed Open")
+        let subState = fbb.create(string: "open")
         let subStateTone = fbb.create(string: "ok")
-        let subConsumer = fbb.create(string: "1 consumer (typed)")
-        let subEventsRx = fbb.create(string: "34 (typed)")
         let sub = nmp_kernel_RelayDiagnosticsWireSub.createRelayDiagnosticsWireSub(
             &fbb,
             wireIdOffset: subWireId,
-            shortWireIdOffset: subShort,
             relayUrlOffset: subRelayUrl,
             filterSummaryOffset: subFilter,
-            stateLabelOffset: subStateLabel,
+            stateOffset: subState,
             stateToneOffset: subStateTone,
-            consumerCountLabelOffset: subConsumer,
-            hasEventsRxDisplay: true,
-            eventsRxDisplayOffset: subEventsRx,
+            consumerCount: 1,
+            eventsRx: 34,
             eoseObserved: true,
             openedMs: 1_700_000_060_000,
             lastEventMs: 0,
@@ -286,44 +298,43 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
             hasCloseReason: false)
         let wireSubsVec = fbb.createVector(ofOffsets: [sub])
 
-        // Relay row: `bytes_rx` / `last_connected` / `last_error` present;
-        // `bytes_tx` / `last_event` / `last_notice` absent (zero = never).
+        // Relay row: raw `role` / `connection` / `auth` strings; raw `bytes_rx`
+        // counter (> 0 so the shell's `bytesRxDisplay` renders); `bytes_tx` = 0
+        // (→ `bytesTxDisplay` nil). `last_connected` / `last_error` present;
+        // `last_event` / `last_notice` absent (zero = never). `discovery_kinds`
+        // carries raw kind numbers the shell renders via `discoveryKindsLabel`.
         let relayUrl = fbb.create(string: "wss://typed-diag.example")
-        let shortUrl = fbb.create(string: "typed-diag")
-        let roleLabel = fbb.create(string: "Typed Content")
+        let role = fbb.create(string: "content")
         let roleTone = fbb.create(string: "primary")
-        let connLabel = fbb.create(string: "Typed Connected")
+        let connection = fbb.create(string: "connected")
         let connTone = fbb.create(string: "ok")
-        let authLabel = fbb.create(string: "Typed OK")
+        let auth = fbb.create(string: "ok")
         let authTone = fbb.create(string: "ok")
-        let totalEventsDisplay = fbb.create(string: "4.2K (typed)")
-        let bytesRx = fbb.create(string: "12 KB (typed)")
         let lastError = fbb.create(string: "typed boom")
+        let discoveryKindsVec = fbb.createVector([UInt64(0), UInt64(10002)])
         let row = nmp_kernel_RelayDiagnosticsRow.createRelayDiagnosticsRow(
             &fbb,
             relayUrlOffset: relayUrl,
-            shortUrlOffset: shortUrl,
-            roleLabelOffset: roleLabel,
+            roleOffset: role,
             roleToneOffset: roleTone,
-            connectionLabelOffset: connLabel,
+            connectionOffset: connection,
             connectionToneOffset: connTone,
-            authLabelOffset: authLabel,
+            authOffset: auth,
             authToneOffset: authTone,
             totalSubCount: 7,
             activeSubCount: 5,
             eosedSubCount: 3,
             totalEventsRx: 4242,
-            totalEventsDisplayOffset: totalEventsDisplay,
             reconnectCount: 2,
-            hasBytesRxDisplay: true,
-            bytesRxDisplayOffset: bytesRx,
-            hasBytesTxDisplay: false,
+            bytesRx: 12_288,
+            bytesTx: 0,
             lastConnectedMs: 1_700_000_003_000,
             lastEventMs: 0,
             hasLastNotice: false,
             hasLastError: true,
             lastErrorOffset: lastError,
-            wireSubsVectorOffset: wireSubsVec)
+            wireSubsVectorOffset: wireSubsVec,
+            discoveryKindsVectorOffset: discoveryKindsVec)
         let relaysVec = fbb.createVector(ofOffsets: [row])
 
         // Interest row with a 2-element relay-url string vector.
@@ -395,32 +406,28 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         }
 
         let relayUrl = fbb.create(string: "wss://typed-info.example")
-        let shortUrl = fbb.create(string: "typed-info")
-        let roleLabel = fbb.create(string: "Typed Content")
+        let role = fbb.create(string: "content")
         let roleTone = fbb.create(string: "primary")
-        let connLabel = fbb.create(string: "Typed Connected")
+        let connection = fbb.create(string: "connected")
         let connTone = fbb.create(string: "ok")
-        let authLabel = fbb.create(string: "Typed OK")
+        let auth = fbb.create(string: "ok")
         let authTone = fbb.create(string: "ok")
-        let totalEventsDisplay = fbb.create(string: "0 (typed)")
         let row = nmp_kernel_RelayDiagnosticsRow.createRelayDiagnosticsRow(
             &fbb,
             relayUrlOffset: relayUrl,
-            shortUrlOffset: shortUrl,
-            roleLabelOffset: roleLabel,
+            roleOffset: role,
             roleToneOffset: roleTone,
-            connectionLabelOffset: connLabel,
+            connectionOffset: connection,
             connectionToneOffset: connTone,
-            authLabelOffset: authLabel,
+            authOffset: auth,
             authToneOffset: authTone,
             totalSubCount: 0,
             activeSubCount: 0,
             eosedSubCount: 0,
             totalEventsRx: 0,
-            totalEventsDisplayOffset: totalEventsDisplay,
             reconnectCount: 0,
-            hasBytesRxDisplay: false,
-            hasBytesTxDisplay: false,
+            bytesRx: 0,
+            bytesTx: 0,
             lastConnectedMs: 0,
             lastEventMs: 0,
             hasLastNotice: false,

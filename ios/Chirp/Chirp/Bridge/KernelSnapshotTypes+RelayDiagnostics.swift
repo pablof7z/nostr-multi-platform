@@ -194,8 +194,12 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     var bytesTxDisplay: String? { bytesTx > 0 ? formatBytes(bytesTx) : nil }
 
     /// Human-readable discovery kinds label derived from raw kind numbers.
+    /// Mirrors the former kernel `discovery_kinds_label_for_subs` output so the
+    /// rendered text is identical to what the projection used to emit: an empty
+    /// list renders as `"none"`, each kind as `"<name> (<kind>)"` joined by
+    /// `", "`.
     var discoveryKindsLabel: String {
-        guard !discoveryKinds.isEmpty else { return "" }
+        guard !discoveryKinds.isEmpty else { return "none" }
         let parts = discoveryKinds.map { kindName(for: $0) }
         return parts.joined(separator: ", ")
     }
@@ -228,29 +232,48 @@ private func titleCase(_ s: String) -> String {
     return first.uppercased() + s.dropFirst()
 }
 
-/// Human-readable byte count (binary: KiB, MiB, GiB, …).
+/// Human-readable byte count. Mirrors the former kernel `format_bytes` helper
+/// exactly (1024-divisor magnitudes, `B` / `KB` / `MB` labels) so the rendered
+/// text is byte-identical to what the projection used to emit and matches the
+/// Android / TUI shells. `ByteCountFormatter` is deliberately NOT used — it is
+/// locale-dependent and emits `KB`/`MB` with different rounding.
 private func formatBytes(_ bytes: UInt64) -> String {
-    ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .binary)
-}
-
-/// Compact count label: < 1 000 → raw number; ≥ 1 000 → "1.2K" etc.
-private func compactCount(_ n: UInt64) -> String {
-    let d = Double(n)
-    switch d {
-    case ..<1_000: return "\(n)"
-    case ..<1_000_000: return String(format: "%.1fK", d / 1_000)
-    case ..<1_000_000_000: return String(format: "%.1fM", d / 1_000_000)
-    default: return String(format: "%.1fB", d / 1_000_000_000)
+    let kb = Double(bytes) / 1024.0
+    if kb < 1.0 {
+        return "\(bytes) B"
+    } else if kb < 1024.0 {
+        return String(format: "%.1f KB", kb)
+    } else {
+        return String(format: "%.1f MB", kb / 1024.0)
     }
 }
 
-/// Friendly name for a discovery kind number.
+/// Compact count label. Mirrors the former kernel `compact_count`: < 1 000 →
+/// raw number; whole magnitudes drop the decimal (`1K`, not `1.0K`).
+private func compactCount(_ n: UInt64) -> String {
+    if n < 1_000 {
+        return "\(n)"
+    } else if n < 1_000_000 {
+        let v = Double(n) / 1_000
+        return v.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(UInt64(v))K" : String(format: "%.1fK", v)
+    } else if n < 1_000_000_000 {
+        let v = Double(n) / 1_000_000
+        return v.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(UInt64(v))M" : String(format: "%.1fM", v)
+    } else {
+        return String(format: "%.1fB", Double(n) / 1_000_000_000)
+    }
+}
+
+/// Friendly name for a discovery kind number. Mirrors the former kernel
+/// `discovery_kind_label`: `0`→profile, `3`→follows, `10002`→relay-list,
+/// every other (list-range) kind → `list`.
 private func kindName(for kind: UInt64) -> String {
     switch kind {
-    case 0: return "profile (0)"
-    case 3: return "follows (3)"
-    case 10002: return "relay list (10002)"
-    case 10003: return "bookmarks (10003)"
-    default: return "kind:\(kind)"
+    case 0: return "profile (\(kind))"
+    case 3: return "follows (\(kind))"
+    case 10002: return "relay-list (\(kind))"
+    default: return "list (\(kind))"
     }
 }

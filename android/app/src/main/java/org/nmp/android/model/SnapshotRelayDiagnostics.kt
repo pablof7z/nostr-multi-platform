@@ -164,22 +164,30 @@ data class RelayDiagnosticsInterest(
 
 /** Compact count: < 1 000 → raw number; ≥ 1 000 → "1.2K" etc. */
 internal fun compactCount(n: Long): String {
+    // Mirrors the former kernel `compact_count`: whole magnitudes drop the
+    // decimal (`1K`, not `1.0K`) so the rendered text matches iOS / TUI.
+    fun magnitude(v: Double, suffix: String): String =
+        if (v % 1.0 == 0.0) "${v.toLong()}$suffix" else String.format("%.1f%s", v, suffix)
     val d = n.toDouble()
     return when {
         d < 1_000.0 -> "$n"
-        d < 1_000_000.0 -> String.format("%.1fK", d / 1_000.0)
-        d < 1_000_000_000.0 -> String.format("%.1fM", d / 1_000_000.0)
+        d < 1_000_000.0 -> magnitude(d / 1_000.0, "K")
+        d < 1_000_000_000.0 -> magnitude(d / 1_000_000.0, "M")
         else -> String.format("%.1fB", d / 1_000_000_000.0)
     }
 }
 
-/** Human-readable binary byte count (KiB, MiB, GiB, …). */
+/**
+ * Human-readable byte count. Mirrors the former kernel `format_bytes` helper
+ * exactly (1024-divisor magnitudes, `B` / `KB` / `MB` labels) so the Android
+ * diagnostics text stays byte-identical to what the projection used to emit and
+ * matches the iOS / TUI shells (cross-shell parity).
+ */
 internal fun formatBytes(bytes: Long): String {
-    val abs = if (bytes < 0) Long.MAX_VALUE else bytes
+    val kb = bytes / 1024.0
     return when {
-        abs < 1024L -> "$bytes B"
-        abs < 1024L * 1024L -> String.format("%.1f KiB", bytes / 1024.0)
-        abs < 1024L * 1024L * 1024L -> String.format("%.1f MiB", bytes / (1024.0 * 1024.0))
-        else -> String.format("%.1f GiB", bytes / (1024.0 * 1024.0 * 1024.0))
+        kb < 1.0 -> "$bytes B"
+        kb < 1024.0 -> String.format("%.1f KB", kb)
+        else -> String.format("%.1f MB", kb / 1024.0)
     }
 }

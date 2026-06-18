@@ -127,12 +127,21 @@ pub(super) fn title_case(value: &str) -> String {
 }
 
 /// Compact integer formatter for event counts: `1234` → `"1.2K"`,
-/// `1_500_000` → `"1.5M"`, small values pass through unchanged.
+/// `1_500_000` → `"1.5M"`, small values pass through unchanged. Mirrors the
+/// former kernel `compact_count`: whole magnitudes drop the decimal (`1K`,
+/// not `1.0K`) so the rendered text matches the iOS / Android shells.
 pub(super) fn compact_count(n: u64) -> String {
+    let magnitude = |v: f64, suffix: char| -> String {
+        if v.fract() == 0.0 {
+            format!("{}{suffix}", v as u64)
+        } else {
+            format!("{v:.1}{suffix}")
+        }
+    };
     if n >= 1_000_000 {
-        format!("{:.1}M", n as f64 / 1_000_000.0)
+        magnitude(n as f64 / 1_000_000.0, 'M')
     } else if n >= 1_000 {
-        format!("{:.1}K", n as f64 / 1_000.0)
+        magnitude(n as f64 / 1_000.0, 'K')
     } else {
         n.to_string()
     }

@@ -114,7 +114,9 @@ class TypedRelayDiagnosticsDecoderTest {
         val row = out.relays[0]
         assertEquals(4096L, row.bytesRx)
         assertEquals(0L, row.bytesTx)
-        assertTrue(row.bytesRxDisplay != null)  // > 0 → formatted string
+        // Lock the exact rendered label (4096 / 1024 = 4.0 KB) so the
+        // `KB`-vs-`KiB` cross-shell parity can't silently regress.
+        assertEquals("4.0 KB", row.bytesRxDisplay)
         assertNull(row.bytesTxDisplay)           // 0 → null
     }
 
@@ -264,7 +266,8 @@ class TypedRelayDiagnosticsDecoderTest {
     /** Buffer with discoveryKinds = [0, 3, 10002]. */
     private fun diagnosticsBufferWithDiscoveryKinds(): ByteArray {
         val b = FlatBufferBuilder(512)
-        val kindsVec = RelayDiagnosticsRow.createDiscoveryKindsVector(b, longArrayOf(0L, 3L, 10002L))
+        @OptIn(ExperimentalUnsignedTypes::class)
+        val kindsVec = RelayDiagnosticsRow.createDiscoveryKindsVector(b, ulongArrayOf(0uL, 3uL, 10002uL))
         val relayUrl = b.createString("wss://relay.example.com")
         val role = b.createString("indexer")
         val roleTone = b.createString("accent")
