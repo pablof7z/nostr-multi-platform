@@ -12,9 +12,9 @@
 //! (`EventIngestDispatcher::is_interested(kind)`) so ANY registered parser
 //! — including future ones — causes cache-serve dispatch without code changes.
 
-pub(super) mod kind0;
-pub(super) mod kind1;
-pub(super) mod replaceables;
+pub(super) mod tests_kind0;
+pub(super) mod tests_kind1;
+pub(super) mod tests_replaceables;
 
 use super::cache_serve_tests::{
     drain_cache_serves, hex_pk, seed_events, signed_note, simulate_cold_restart,

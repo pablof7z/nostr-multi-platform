@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "xcodebuildmcp-cli": {
+      "source": "cameroncooke/xcodebuildmcp",
+      "sourceType": "github",
+      "skillPath": "skills/xcodebuildmcp-cli/SKILL.md",
+      "computedHash": "4bdeb5d978bf410d4e99a7b89dda396e49ef457945633174f7f9ad0eff056cfb"
+    }
+  }
+}
