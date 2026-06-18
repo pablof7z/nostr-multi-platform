@@ -220,11 +220,6 @@ name = "nmp-gallery-desktop"
 path = "apps/nmp-gallery/desktop"
 reason = "gallery reference desktop (egui) application"
 
-# nmp-wallet-poc is PARKED alongside its dependency nmp-nip60 — excluded from
-# the default workspace (top-level Cargo.toml [workspace] exclude, issue #1250).
-# Not a workspace member, so it must not be classified here. Re-add when #1001
-# enters scope (together with nmp-nip60).
-
 [[private_packages]]
 name = "chirp-desktop"
 path = "apps/chirp/chirp-desktop"

@@ -33,7 +33,9 @@ must adapt the one C-ABI signature change below before bumping their pinned rev.
 - `nmp-blossom` (un-parked in #1428 as a v1 workspace member) is now classified
   as a public crate in `release/nmp-release.toml`, clearing the pre-existing
   release-manifest CI red ("workspace packages missing from release manifest:
-  nmp-blossom"). `nmp-nip60` / `nmp-wallet-poc` remain parked and excluded.
+  nmp-blossom"). `nmp-nip60` remains parked and excluded; the `nmp-wallet-poc`
+  app was deleted (it was a standalone direct-relay PoC consuming nip60's now-removed
+  private WebSocket stack — to be rebuilt kernel-integrated at #1001, tracked in #1508).
 
 ## nmp-v0.7.1
 
