@@ -87,7 +87,6 @@ pub fn wire_group_chat(app: &NmpApp, group_id: GroupId) {
         })
     });
 
-    app.register_snapshot_projection("nmp.nip29.group_chat", move || projection.snapshot_json());
 }
 
 /// Wire a [`DiscoveredGroupsProjection`] for `relay_url` into `app`.
@@ -130,9 +129,6 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
         })
     });
 
-    app.register_snapshot_projection("nmp.nip29.discovered_groups", move || {
-        projection.snapshot_json()
-    });
 }
 
 /// Wire the crate-owned NIP-29 group-create defaults projection into `app`.
@@ -170,9 +166,6 @@ pub fn wire_group_defaults(app: &NmpApp) {
         })
     });
 
-    app.register_snapshot_projection("nmp.nip29.group_defaults", || {
-        GroupDefaultsProjection::new().snapshot_json()
-    });
 }
 
 /// Register the NIP-29 action namespaces against `app`'s action registry.

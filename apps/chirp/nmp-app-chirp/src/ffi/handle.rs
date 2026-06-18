@@ -73,6 +73,9 @@ impl ChirpHandle {
     /// repointed the handle from the old `ModularTimelineProjection` to the
     /// `OpFeedEngine`; callers such as the REPL use this directly.
     pub fn snapshot(&self) -> crate::ChirpTimelineSnapshot {
-        self.engine.snapshot(&nmp_feed::FeedRequest::default())
+        // Use `snapshot_current_window()` to respect the engine's `window_limit`
+        // (updated by `load_older`). `FeedRequest::default()` would hardcode
+        // `DEFAULT_FEED_WINDOW_LIMIT` and ignore any load-older window growth.
+        self.engine.snapshot_current_window()
     }
 }

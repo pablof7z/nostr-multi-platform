@@ -132,3 +132,13 @@ pub use crate::actor::typed_projections::{
     Nip46OnboardingModel, SignerAppRow, SignerStateModel, BUNKER_HANDSHAKE_SCHEMA_ID,
     NIP46_ONBOARDING_SCHEMA_ID, SIGNER_STATE_SCHEMA_ID,
 };
+// action_lifecycle — test-support only. The Tier-2 built-in decoder is not
+// part of the default public surface (it is only needed in test helpers that
+// read the typed sidecar after the generic JSON lane was removed).
+// Import directly from the codec module (bypassing the pub(crate) re-export
+// layer in typed_projections/mod.rs) so the public re-export here is valid.
+#[cfg(any(test, feature = "test-support"))]
+pub use super::typed_projections::action_lifecycle_fb::{
+    decode_action_lifecycle, ActionLifecycleModel, LifecycleEntryRow,
+    ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
+};

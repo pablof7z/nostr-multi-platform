@@ -446,56 +446,7 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     );
 }
 
-#[test]
-fn snapshot_carries_bunker_handshake_value() {
-    // D0: NIP-46 bunker handshake is an app noun surfaced via the built-in
-    // `"bunker_handshake"` snapshot projection (registered in `nmp_app_new`),
-    // NOT a typed `KernelSnapshot` field. This test reproduces that wiring at
-    // the kernel level: a projection closure reads the identity runtime's
-    // shared slot and the kernel collects it into `projections` on emit.
-    let bunker_slot = new_bunker_handshake_slot();
-    let id = IdentityRuntime::new(
-        Arc::clone(&bunker_slot),
-        crate::actor::new_signer_state_slot(),
-    );
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Register the `"bunker_handshake"` projection exactly as `nmp_app_new`
-    // does — a closure reading the shared slot — and bind it onto the kernel.
-    let projections = crate::kernel::new_snapshot_projection_slot();
-    {
-        let projection_slot = Arc::clone(&bunker_slot);
-        projections
-            .lock()
-            .expect("registry lock")
-            .register("bunker_handshake", move || {
-                let slot = projection_slot.lock().unwrap_or_else(|e| e.into_inner());
-                slot.as_ref()
-                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
-                    .unwrap_or(serde_json::Value::Null)
-            });
-    }
-    kernel.set_snapshot_projection_handle(projections);
-
-    bunker_handshake_progress(
-        &id,
-        &mut kernel,
-        "connecting".to_string(),
-        Some("dialing wss://r.example".to_string()),
-    );
-    let snapshot = kernel.make_update_value_for_test(true);
-    assert!(
-        snapshot
-            .get("projections")
-            .and_then(|projections| projections.get("bunker_handshake"))
-            .is_some(),
-        "snapshot must carry the bunker_handshake projection key: {snapshot}"
-    );
-    assert_eq!(
-        snapshot["projections"]["bunker_handshake"]["stage"],
-        serde_json::json!("connecting")
-    );
-}
 
 #[test]
 fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
@@ -514,15 +465,8 @@ fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
 
     let projections = crate::kernel::new_snapshot_projection_slot();
     {
-        let generic_slot = Arc::clone(&bunker_slot);
         let typed_slot = Arc::clone(&bunker_slot);
         let mut registry = projections.lock().expect("registry lock");
-        registry.register("bunker_handshake", move || {
-            let slot = generic_slot.lock().unwrap_or_else(|e| e.into_inner());
-            slot.as_ref()
-                .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
-                .unwrap_or(serde_json::Value::Null)
-        });
         registry.register_typed("bunker_handshake", move || {
             crate::actor::typed_projections::bunker_handshake_typed(&typed_slot)
         });
@@ -567,13 +511,8 @@ fn frame_carries_nip46_onboarding_typed_sidecar_always() {
 
     let projections = crate::kernel::new_snapshot_projection_slot();
     {
-        let generic_slot = Arc::clone(&bunker_slot);
         let typed_slot = Arc::clone(&bunker_slot);
         let mut registry = projections.lock().expect("registry lock");
-        registry.register("nip46_onboarding", move || {
-            let dto = crate::actor::commands::build_nip46_onboarding_dto(&generic_slot);
-            serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
-        });
         registry.register_typed("nip46_onboarding", move || {
             crate::actor::typed_projections::nip46_onboarding_typed(&typed_slot)
         });
@@ -624,49 +563,32 @@ fn signer_state_projection_reflects_transitions() {
         projections
             .lock()
             .expect("registry lock")
-            .register("signer_state", move || {
-                let s = slot.lock().unwrap_or_else(|e| e.into_inner());
-                s.as_ref()
-                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
-                    .unwrap_or(serde_json::Value::Null)
+            .register_typed("signer_state", move || {
+                crate::actor::typed_projections::signer_state_typed(&slot)
             });
     }
     kernel.set_snapshot_projection_handle(projections);
 
-    // 1. Initial state: projection key is null (no active remote-signer session).
-    let snapshot = kernel.make_update_value_for_test(true);
-    assert_eq!(
-        snapshot["projections"]["signer_state"],
-        serde_json::Value::Null,
-        "idle slot must project null: {snapshot}"
+    // 1. Initial state: projection key is absent (no active remote-signer session).
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+    assert!(
+        !typed.iter().any(|t| t.key == "signer_state"),
+        "idle slot must not produce a signer_state typed sidecar entry"
     );
 
     // 2. Simulate the broker reporting "connected" after handshake completes.
     // ADR-0048 D6: "connected" is mapped to "ready" in the unified SignerStateDto.
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
-    let snapshot = kernel.make_update_value_for_test(true);
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["state"],
-        serde_json::json!("ready"),
-        "connected transition must surface as 'ready' in projection: {snapshot}"
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["signer_kind"],
-        serde_json::json!("nip46"),
-        "the NIP-46 broker path must stamp signer_kind=nip46"
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["is_ready"],
-        serde_json::json!(true)
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["is_reconnecting"],
-        serde_json::json!(false)
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["is_failed"],
-        serde_json::json!(false)
-    );
+    let (_v, typed) = kernel.make_update_typed_for_test(true);
+    let entry = typed.iter().find(|t| t.key == "signer_state")
+        .expect("signer_state typed sidecar present after connected");
+    let dto = crate::actor::typed_projections::decode_signer_state(&entry.payload)
+        .expect("signer_state decodes");
+    assert_eq!(dto.state, "ready", "connected transition must surface as 'ready'");
+    assert_eq!(dto.signer_kind, "nip46", "NIP-46 broker path must stamp signer_kind=nip46");
+    assert!(dto.is_ready);
+    assert!(!dto.is_reconnecting);
+    assert!(!dto.is_failed);
 
     // 3. Simulate a relay flap → "reconnecting".
     bunker_connection_state_changed(
@@ -675,20 +597,14 @@ fn signer_state_projection_reflects_transitions() {
         "reconnecting".to_string(),
         Some("connection reset by peer".to_string()),
     );
-    let snapshot = kernel.make_update_value_for_test(true);
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["state"],
-        serde_json::json!("reconnecting"),
-        "relay flap must project reconnecting: {snapshot}"
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["is_reconnecting"],
-        serde_json::json!(true)
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["reason"],
-        serde_json::json!("connection reset by peer")
-    );
+    let (_v, typed) = kernel.make_update_typed_for_test(true);
+    let entry = typed.iter().find(|t| t.key == "signer_state")
+        .expect("signer_state typed sidecar present after reconnecting");
+    let dto = crate::actor::typed_projections::decode_signer_state(&entry.payload)
+        .expect("signer_state decodes");
+    assert_eq!(dto.state, "reconnecting", "relay flap must project reconnecting");
+    assert!(dto.is_reconnecting);
+    assert_eq!(dto.reason.as_deref(), Some("connection reset by peer"));
 
     // 4. Simulate a permanent failure → "failed".
     bunker_connection_state_changed(
@@ -697,20 +613,14 @@ fn signer_state_projection_reflects_transitions() {
         "failed".to_string(),
         Some("403 Forbidden".to_string()),
     );
-    let snapshot = kernel.make_update_value_for_test(true);
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["state"],
-        serde_json::json!("failed"),
-        "permanent failure must project failed: {snapshot}"
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["is_failed"],
-        serde_json::json!(true)
-    );
-    assert_eq!(
-        snapshot["projections"]["signer_state"]["reason"],
-        serde_json::json!("403 Forbidden")
-    );
+    let (_v, typed) = kernel.make_update_typed_for_test(true);
+    let entry = typed.iter().find(|t| t.key == "signer_state")
+        .expect("signer_state typed sidecar present after failed");
+    let dto = crate::actor::typed_projections::decode_signer_state(&entry.payload)
+        .expect("signer_state decodes");
+    assert_eq!(dto.state, "failed", "permanent failure must project failed");
+    assert!(dto.is_failed);
+    assert_eq!(dto.reason.as_deref(), Some("403 Forbidden"));
 }
 
 #[test]
@@ -866,27 +776,14 @@ fn snapshot_carries_nip46_onboarding_projection() {
 
     let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
     let bunker_slot = crate::actor::new_bunker_handshake_slot();
-    // Replicate the wiring `nmp_app_new` does for the two NIP-46 projections.
+    // Wire the two NIP-46 typed projections exactly as the actor does.
     {
-        let slot = Arc::clone(&bunker_slot);
+        let typed_slot = Arc::clone(&bunker_slot);
         snapshot_projections
             .lock()
             .expect("registry lock")
-            .register("bunker_handshake", move || {
-                let s = slot.lock().unwrap_or_else(|e| e.into_inner());
-                s.as_ref()
-                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
-                    .unwrap_or(serde_json::Value::Null)
-            });
-    }
-    {
-        let slot = Arc::clone(&bunker_slot);
-        snapshot_projections
-            .lock()
-            .expect("registry lock")
-            .register("nip46_onboarding", move || {
-                let dto = crate::actor::build_nip46_onboarding_dto(&slot);
-                serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
+            .register_typed("nip46_onboarding", move || {
+                crate::actor::typed_projections::nip46_onboarding_typed(&typed_slot)
             });
     }
 

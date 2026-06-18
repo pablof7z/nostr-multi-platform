@@ -4,8 +4,6 @@
 //! Split out of `app_host/mod.rs` (D6 work) to keep that file under the 500-LOC
 //! hard ceiling — this is the single largest narrow registration concern.
 
-use std::sync::Arc;
-
 use crate::update_envelope::TypedProjectionData;
 
 /// Error returned by [`SnapshotProjectionRegistrar::declare_incremental_apply`]
@@ -33,42 +31,6 @@ pub enum IncrementalApplyError {
 /// declaration, and the incremental-apply / frame-identity handles a producer
 /// captures to keep its omit-memory in lockstep with the host cache.
 pub trait SnapshotProjectionRegistrar {
-    fn register_snapshot_projection<K, F>(&self, key: K, f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static;
-
-    /// Register a **change-gated** snapshot projection — the perf-aware
-    /// counterpart to [`Self::register_snapshot_projection`].
-    ///
-    /// Identical to the ungated variant except the closure is only re-invoked
-    /// when `gate`'s value has advanced since the previous snapshot tick for
-    /// this `key`. On a tick where the gate is unchanged, the registry returns
-    /// the value the closure last produced (cloned from a per-key memo) WITHOUT
-    /// calling the closure.
-    ///
-    /// This is the fix for the "re-serialize the whole app library to JSON on
-    /// every emit" hot path: the registry previously ran every projection on
-    /// every `make_update`, so any unrelated kernel emit (an incoming relay
-    /// event, a tick) forced a multi-MB serializer to re-run. A host passes the
-    /// `Arc<AtomicU64>` rev it already bumps on data mutation as the `gate`, and
-    /// the serializer only runs when the rev advances.
-    ///
-    /// `gate` is any [`ChangeGate`](crate::kernel::ChangeGate); an
-    /// `Arc<AtomicU64>` rev counter is the canonical choice
-    /// ([`AtomicU64`](std::sync::atomic::AtomicU64) implements `ChangeGate`).
-    /// Last-writer-wins by `key`, exactly like the ungated variant. Like the
-    /// generic closure, `f` runs on the actor thread inside the snapshot tick —
-    /// it MUST be non-blocking (D8).
-    fn register_snapshot_projection_gated<K, F>(
-        &self,
-        key: K,
-        gate: Arc<dyn crate::kernel::ChangeGate>,
-        f: F,
-    ) where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static;
-
     /// Register a **typed** FlatBuffers projection closure under `key` — the
     /// typed-sidecar counterpart to [`Self::register_snapshot_projection`]
     /// (ADR-0037). The closure returns the projection's opaque, host-declared

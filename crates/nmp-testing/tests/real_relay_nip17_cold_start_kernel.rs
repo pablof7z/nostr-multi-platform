@@ -77,7 +77,7 @@
 //!   -- nip17_cold_start_receive_through_real_kernel --ignored --nocapture
 //! ```
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_void, CString};
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -85,8 +85,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_read_projection_json,
-    nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
+    nmp_app_signin_nsec, nmp_app_start, NmpApp,
 };
 use nmp_nip59::gift_wrap_local;
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -238,30 +238,22 @@ fn uninstall_update_signal() {
     }
 }
 
-/// Read the `"nmp.nip17.dm_inbox"` snapshot projection from the live kernel.
-fn dm_inbox_snapshot(app: *mut NmpApp) -> Option<serde_json::Value> {
-    let key = CString::new("nmp.nip17.dm_inbox").expect("static key has no nul");
-    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
-    if ptr.is_null() {
-        return None;
-    }
-    // SAFETY: non-null pointer returned by the FFI; copied before freeing.
-    let json = unsafe { CStr::from_ptr(ptr) }
-        .to_str()
-        .ok()
-        .map(str::to_owned);
-    nmp_free_string(ptr);
-    json.and_then(|s| serde_json::from_str(&s).ok())
+/// Read the `"nmp.nip17.dm_inbox"` typed FlatBuffers projection from the live kernel.
+/// The generic JSON lane is deleted (rule A6).
+fn dm_inbox_snapshot(app: *mut NmpApp) -> Option<nmp_nip17::DmInboxSnapshot> {
+    let app_ref: &NmpApp = unsafe { &*app };
+    let projections = app_ref.run_typed_snapshot_projections();
+    let entry = projections.iter().find(|p| p.key == "nmp.nip17.dm_inbox" && !p.payload.is_empty())?;
+    nmp_nip17::wire::dm_inbox_fb::decode_dm_inbox_snapshot(&entry.payload).ok()
 }
 
 /// Extract the single conversation's first message `(peer_pubkey, content)`
-/// from a `DmInboxSnapshot` JSON value, if a decrypted message is present.
-fn first_message(snapshot: &serde_json::Value) -> Option<(String, String)> {
-    let convos = snapshot.get("conversations")?.as_array()?;
-    let convo = convos.first()?;
-    let peer = convo.get("peer_pubkey")?.as_str()?.to_owned();
-    let msg = convo.get("messages")?.as_array()?.first()?;
-    let content = msg.get("content")?.as_str()?.to_owned();
+/// from a `DmInboxSnapshot` struct, if a decrypted message is present.
+fn first_message(snapshot: &nmp_nip17::DmInboxSnapshot) -> Option<(String, String)> {
+    let convo = snapshot.conversations.first()?;
+    let peer = convo.peer_pubkey.clone();
+    let msg = convo.messages.first()?;
+    let content = msg.content.clone();
     Some((peer, content))
 }
 

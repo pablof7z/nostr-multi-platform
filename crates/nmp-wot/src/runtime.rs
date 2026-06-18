@@ -33,20 +33,9 @@ pub fn register_runtime(
     if let Some(previous) = app.swap_singleton_event_observer(Some(observer_id)) {
         app.unregister_event_observer(previous);
     }
-    // The generic `Value` projection stays authoritative (source of truth).
-    let typed_runtime = Arc::clone(&runtime);
-    app.register_snapshot_projection("nmp.wot.bootstrap", move || runtime.snapshot_json());
-
-    // The typed FlatBuffers sidecar (Wave A of the typed-snapshot migration,
-    // ADR-0037) — emitted ALONGSIDE the generic `Value` projection above, never
-    // replacing it. A host with an `NWBS` decoder prefers this typed payload; an
-    // un-updated host falls back to the generic subtree. Purely additive. The
-    // trait→sidecar surface is proven generically by
-    // `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`;
-    // this crate only depends on the narrow typed-snapshot-projection registrar
-    // trait (not the full `AppHost`), never on the C-ABI crate.
+    // Typed FlatBuffers sidecar (ADR-0037).
     app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
-        typed_runtime.snapshot_typed()
+        runtime.snapshot_typed()
     });
 }
 

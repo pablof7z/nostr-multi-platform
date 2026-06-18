@@ -186,7 +186,7 @@ pub use signer_broker::{
 #[allow(unused_imports)]
 pub use snapshot::{
     nmp_app_consume_all_builtin_projections, nmp_app_declare_consumed_projections,
-    nmp_app_declare_incremental_apply, nmp_app_register_snapshot_projection,
+    nmp_app_declare_incremental_apply,
 };
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
@@ -218,7 +218,6 @@ pub use timeline::{
 pub use testing::{
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
     nmp_app_inject_signed_events, nmp_app_read_projection_churn_stats,
-    nmp_app_read_projection_json,
 };
 // ADR-0052 §D3 — rung 5.3 per-app signer-port oracle seam.
 #[cfg(any(test, feature = "test-support"))]
@@ -642,14 +641,12 @@ pub struct NmpApp {
     /// recorded as `DroppedLateWiring`. A plain `AtomicBool`
     /// (single-flag, lock-free; same posture as `pending_mls_autopublish`).
     started: AtomicBool,
-    /// Host-extensible snapshot output registry — the output-side counterpart
+    /// Host-extensible typed snapshot output registry — the output-side counterpart
     /// to `action_registry`. Shared `Arc<Mutex<…>>` with the actor thread
     /// (bound onto the kernel via `set_snapshot_projection_handle`): a host
-    /// registers a projection closure through
-    /// [`Self::register_snapshot_projection`] / the C-ABI
-    /// `nmp_app_register_snapshot_projection`, and the kernel runs every
-    /// registered closure in `make_update`, appending the result to
-    /// `KernelSnapshot::projections`. Unlike `action_registry`, this is NOT
+    /// registers a typed FlatBuffers projection closure through
+    /// [`Self::register_typed_snapshot_projection`], and the kernel runs every
+    /// registered closure in `make_update`. Unlike `action_registry`, this is NOT
     /// queried on the FFI thread — it fires from inside the actor tick, hence
     /// the shared-`Arc` slot rather than a plain owned field.
     snapshot_projections: SnapshotProjectionSlot,
@@ -1468,76 +1465,6 @@ impl NmpApp {
     /// `KernelSnapshot::projections` under `key`. A marketplace app registers
     /// `"market.listings"`, a todo app registers `"todo.items"` — each gets
     /// its own snapshot namespace WITHOUT editing `nmp-core`'s sealed social
-    /// `KernelSnapshot` fields.
-    ///
-    /// Unlike [`Self::register_action`], this does NOT require `&mut self`:
-    /// the registry lives behind a shared `Arc<Mutex<…>>` and the mutation is
-    /// a lock-and-push. It is still intended as a host-init call.
-    ///
-    /// D8 — the closure runs on the actor thread inside the snapshot tick. It
-    /// MUST be cheap and non-blocking (no I/O, no mutex waits): a blocking
-    /// closure stalls every subsequent snapshot and freezes the host's
-    /// update stream. A poisoned registry mutex is a silent no-op (D6).
-    pub fn register_snapshot_projection(
-        &self,
-        key: impl Into<String>,
-        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
-    ) {
-        if let Ok(mut registry) = self.snapshot_projections.lock() {
-            let key = key.into();
-            // ADR-0049 Part 2 — record the projection registration. A pre-start
-            // call is `Installed`; a post-start call is dropped by the actor
-            // (it reads the projection registry handle once) and recorded as
-            // `DroppedLateWiring`. Keyed by the projection key.
-            let disposition = if self.started.load(Ordering::SeqCst) {
-                nmp_core::Disposition::DroppedLateWiring
-            } else {
-                nmp_core::Disposition::Installed
-            };
-            self.composition_ledger.record(
-                "snapshot_projection",
-                key.clone(),
-                "host_snapshot_projection",
-                disposition,
-                None,
-            );
-            registry.register(key, f);
-        }
-    }
-
-    // ADR-0053 / Workstream-E4 — the `NmpApp` projection-consumption-intent
-    // methods (`declare_consumed_projections`, `consume_all_builtin_projections`,
-    // `consumed_projections_are_undeclared`, `consumed_projections_are_narrowing`)
-    // live in `crate::declared_projections` (god-file relief).
-
-    /// Register a **change-gated** snapshot projection — the perf-aware
-    /// counterpart to [`Self::register_snapshot_projection`].
-    ///
-    /// The closure is only re-invoked when `gate`'s value has advanced since the
-    /// previous snapshot tick for this `key`; on an unchanged-gate tick the
-    /// registry serves the value the closure last produced from a per-key memo
-    /// WITHOUT calling the closure. This is the fix for the "re-serialize the
-    /// whole library on every emit" hot path — the registry otherwise runs every
-    /// projection on every `make_update`, so any unrelated kernel emit forces a
-    /// multi-MB serializer to re-run.
-    ///
-    /// `gate` is any [`nmp_core::ChangeGate`]; an `Arc<AtomicU64>` rev counter
-    /// the host already bumps on data mutation is the canonical choice
-    /// (`AtomicU64` implements `ChangeGate`). Like
-    /// [`Self::register_snapshot_projection`] this takes `&self` (the mutation is
-    /// a lock-and-insert) and is intended as a host-init call. D8 — the closure
-    /// runs on the actor thread inside the snapshot tick; it MUST be non-blocking.
-    /// A poisoned registry mutex is a silent no-op (D6).
-    pub fn register_snapshot_projection_gated(
-        &self,
-        key: impl Into<String>,
-        gate: std::sync::Arc<dyn nmp_core::ChangeGate>,
-        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
-    ) {
-        if let Ok(mut registry) = self.snapshot_projections.lock() {
-            registry.register_gated(key, gate, f);
-        }
-    }
 
     /// Register a reusable feed surface. The controller owns ordering,
     /// viewport state, paging, and render payload selection; native shells
@@ -1550,7 +1477,6 @@ impl NmpApp {
         let key = key.into();
         self.feed_registry
             .register(key.clone(), std::sync::Arc::clone(&controller));
-        self.register_snapshot_projection(key, move || controller.snapshot_json());
     }
 
     #[must_use]
@@ -1670,20 +1596,7 @@ impl NmpApp {
         self.action_registry.set_result_observer(f);
     }
 
-    /// Test-only: run every registered snapshot projection directly against
-    /// the app's shared registry, bypassing the actor/kernel tick. The
-    /// end-to-end `make_update`-driven proof lives in the kernel test module
-    /// (`kernel/snapshot_registry_tests.rs`); this helper lets the FFI
-    /// registration tests assert the C-callback bridge in isolation.
-    #[cfg(test)]
-    pub(crate) fn run_snapshot_projections_for_test(
-        &self,
-    ) -> std::collections::HashMap<String, serde_json::Value> {
-        self.snapshot_projections
-            .lock()
-            .map(|registry| registry.run())
-            .unwrap_or_default()
-    }
+
 
     /// Test-only: run every registered **typed** snapshot projection directly
     /// against the app's shared registry, bypassing the actor/kernel tick. The

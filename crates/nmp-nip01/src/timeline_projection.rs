@@ -472,10 +472,6 @@ impl ModularTimelineProjection {
 }
 
 impl nmp_feed::FeedController for ModularTimelineProjection {
-    fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.snapshot_current_window()).unwrap_or(serde_json::Value::Null)
-    }
-
     fn load_older(&self) -> bool {
         self.load_older_window()
     }

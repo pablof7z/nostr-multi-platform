@@ -4,7 +4,6 @@ use std::{
 };
 
 pub trait FeedController: Send + Sync {
-    fn snapshot_json(&self) -> serde_json::Value;
     fn load_older(&self) -> bool;
 }
 
@@ -59,9 +58,6 @@ mod tests {
 
     struct StubController(bool);
     impl FeedController for StubController {
-        fn snapshot_json(&self) -> serde_json::Value {
-            serde_json::Value::Null
-        }
         fn load_older(&self) -> bool {
             self.0
         }

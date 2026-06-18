@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 pub(crate) const USAGE: &str =
     "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
-     [--a5-extra-scope <fragment>] \
+     [--a5-extra-scope <fragment>] [--a6-extra-scope <fragment>] \
      [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
      [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] \
      [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] \
@@ -20,6 +20,7 @@ pub(crate) struct Config {
     pub(crate) explicit_paths: Vec<PathBuf>,
     pub(crate) allow_findings: bool,
     pub(crate) a5_extra_scopes: Vec<String>,
+    pub(crate) a6_extra_scopes: Vec<String>,
     pub(crate) d8_extra_scopes: Vec<String>,
     pub(crate) d9_extra_scopes: Vec<String>,
     pub(crate) d10_extra_scopes: Vec<String>,
@@ -65,6 +66,12 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
                 args,
                 &mut i,
                 "--a5-extra-scope requires a path fragment",
+            )?,
+            "--a6-extra-scope" => push_required(
+                &mut cfg.a6_extra_scopes,
+                args,
+                &mut i,
+                "--a6-extra-scope requires a path fragment",
             )?,
             "--d8-extra-scope" => push_required(
                 &mut cfg.d8_extra_scopes,

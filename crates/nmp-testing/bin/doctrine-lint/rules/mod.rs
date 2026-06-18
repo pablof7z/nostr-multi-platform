@@ -3,6 +3,7 @@
 //! `ID: &'static str` constant for `// doctrine-allow:` matching.
 
 pub mod a5;
+pub mod a6;
 pub mod d0;
 pub mod d10;
 pub mod d11;

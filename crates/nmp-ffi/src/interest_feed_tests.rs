@@ -23,9 +23,6 @@ use crate::{nmp_app_free, nmp_app_new};
 struct StubFeed;
 
 impl FeedController for StubFeed {
-    fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::json!({ "cards": [] })
-    }
     fn load_older(&self) -> bool {
         // A live controller under this key returns `true`; once unregistered,
         // `load_older_feed` finds no controller and returns `false`.

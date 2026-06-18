@@ -170,7 +170,6 @@ pub extern "C" fn nmp_app_chirp_register(
         app_ref.register_typed_snapshot_projection("nmp.nip57.zaps", move || {
             zaps_typed_projection(&typed_zaps_proj)
         });
-        app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
     }
 
     // #626: wire the crate-owned NIP-29 group-create defaults projection so the
@@ -443,7 +442,6 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nmp.follow_list", move || projection.snapshot_json());
 }
 
 /// Build the typed `"nmp.nip57.zaps"` sidecar entry from the live zaps

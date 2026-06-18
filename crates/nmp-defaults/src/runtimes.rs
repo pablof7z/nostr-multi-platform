@@ -105,9 +105,6 @@ pub fn register_dm_runtime(
         })
     });
 
-    app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || {
-        controller.snapshot_json()
-    });
 }
 
 fn register_inbox_projection(
@@ -201,7 +198,6 @@ fn register_inbox_projection(
         })
     });
 
-    app.register_snapshot_projection("nmp.nip17.dm_inbox", move || projection.snapshot_json());
 }
 
 /// Lifecycle controller for the DM inbox projection.

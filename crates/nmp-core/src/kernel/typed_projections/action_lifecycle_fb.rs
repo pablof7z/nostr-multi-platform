@@ -44,27 +44,29 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const ACTION_LIFECYCLE_SCHEMA_ID: &str = "action_lifecycle";
+pub const ACTION_LIFECYCLE_SCHEMA_ID: &str = "action_lifecycle";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const ACTION_LIFECYCLE_FILE_IDENTIFIER: &[u8; 4] = b"KALC";
+pub const ACTION_LIFECYCLE_FILE_IDENTIFIER: &[u8; 4] = b"KALC";
 /// Wire schema version. Bump on any breaking change to `action_lifecycle.fbs`.
-pub(crate) const ACTION_LIFECYCLE_SCHEMA_VERSION: u32 = 1;
+pub const ACTION_LIFECYCLE_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one SERIALISED `LifecycleEntry` row.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct LifecycleEntryRow {
-    pub(crate) correlation_id: String,
-    pub(crate) stage: String,
+#[cfg_attr(any(test, feature = "test-support"), derive(serde::Serialize))]
+pub struct LifecycleEntryRow {
+    pub correlation_id: String,
+    pub stage: String,
     /// `Failed { reason }`'s reason, lifted as a sibling of `stage`.
-    pub(crate) reason: Option<String>,
+    pub reason: Option<String>,
 }
 
 /// The `"action_lifecycle"` read model — the `{ in_flight, recent_terminal }`
 /// shape.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ActionLifecycleModel {
-    pub(crate) in_flight: Vec<LifecycleEntryRow>,
-    pub(crate) recent_terminal: Vec<LifecycleEntryRow>,
+#[cfg_attr(any(test, feature = "test-support"), derive(serde::Serialize))]
+pub struct ActionLifecycleModel {
+    pub in_flight: Vec<LifecycleEntryRow>,
+    pub recent_terminal: Vec<LifecycleEntryRow>,
 }
 
 /// Build an [`ActionLifecycleModel`] by PARSING the captured `action_lifecycle`
@@ -163,8 +165,8 @@ pub(crate) fn encode_action_lifecycle(model: &ActionLifecycleModel) -> Vec<u8> {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_action_lifecycle`])
 /// back into an [`ActionLifecycleModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_action_lifecycle(bytes: &[u8]) -> Result<ActionLifecycleModel, String> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn decode_action_lifecycle(bytes: &[u8]) -> Result<ActionLifecycleModel, String> {
     if bytes.len() < 8 || !fb::action_lifecycle_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KALC file identifier".to_string());
     }
@@ -179,7 +181,7 @@ pub(crate) fn decode_action_lifecycle(bytes: &[u8]) -> Result<ActionLifecycleMod
 
 /// Decode an optional generated `[LifecycleEntry]` vector into a
 /// `Vec<LifecycleEntryRow>`.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn decode_entries(
     fb_entries: Option<
         flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fb::LifecycleEntry<'_>>>,
@@ -197,7 +199,7 @@ fn decode_entries(
 
 /// Decode this module's generated `LifecycleEntry` table into a
 /// [`LifecycleEntryRow`].
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn lifecycle_entry_from_fb(row: fb::LifecycleEntry<'_>) -> LifecycleEntryRow {
     LifecycleEntryRow {
         correlation_id: row.correlation_id().unwrap_or_default().to_string(),

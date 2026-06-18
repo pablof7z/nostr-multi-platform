@@ -297,21 +297,6 @@ uint8_t nmp_app_is_alive(void *app);
 // (`nmp.publish`, NIP-02, NIP-17, NIP-57, NIP-65); `nmp-app-chirp` adds
 // Chirp's NIP-29/Marmot app surfaces on top.
 //
-// `nmp_app_register_snapshot_projection` is the OUTPUT-side counterpart to
-// the action registration seam.  `KernelSnapshot` is a sealed social wire
-// schema; a non-social app (marketplace, todo list, …) cannot extend it.
-// This seam lets a host register a `projector` callback invoked on every
-// snapshot tick whose returned JSON string is appended to the snapshot under
-// a host-chosen `key` (e.g. `"market.listings"`, `"todo.items"`) inside a
-// `projections` object — WITHOUT editing nmp-core's typed social fields.
-// The `projector` returns a NUL-terminated JSON string, or NULL to contribute
-// an empty object; an un-parseable return becomes JSON `null` (D6).  A null
-// `app`/`key`/`projector` is a silent no-op (D6).  D8 — the projector runs on
-// the actor thread inside the snapshot tick; it MUST be cheap and
-// non-blocking (no I/O, no waits), or every subsequent snapshot stalls.
-// A shell that predates this field never sees the `projections` key (it is
-// omitted from the JSON when empty — backwards compatible).
-//
 // `nmp_app_register_action_result_observer` is the PUSH-side counterpart to
 // the snapshot-projection (pull) output seam.  After `nmp_app_dispatch_action`
 // accepts an action and its executor returns success, the registered
@@ -343,9 +328,6 @@ void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver 
 // unknown id is a silent no-op (D6). Dispatch is non-blocking: this only
 // enqueues an actor command (D8).
 void nmp_app_ack_action_stage(void *app, const char *correlation_id);
-typedef const char *(*NmpSnapshotProjector)(void);
-void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
-
 // ADR-0053 — host-declared projection subscriptions. The OUTPUT-side sibling of
 // the relay push_interest lattice: a host declares, ONCE at app init, the static
 // set of Tier-2 kernel-owned built-in projection keys it consumes (the union of
@@ -357,7 +339,7 @@ void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapsho
 // narrows the built-ins to its members, skipping the producer work (notably the
 // `relay_diagnostics` roll-up) for everything else. Additive (multiple calls
 // union). Tier-1 host projections registered via
-// `nmp_app_register_snapshot_projection` are NOT gated by this — registration
+// Tier-1 host typed projections are NOT gated by this — registration
 // already declares their consumption. Call before `nmp_app_start`. A null `app`,
 // a null `keys`, or `len == 0` is a silent no-op; individual null entries are
 // skipped (D6).

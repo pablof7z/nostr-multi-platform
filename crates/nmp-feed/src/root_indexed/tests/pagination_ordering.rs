@@ -52,21 +52,19 @@ fn load_older_paginates_past_default_window() {
         h.ingest(&root_event(&format!("op{i}"), "bob", 1000 + i, "body"));
     }
 
-    // First snapshot via snapshot_json is bounded to DEFAULT_FEED_WINDOW_LIMIT (80).
-    let json_val = h.engine.snapshot_json();
-    let cards = json_val["cards"].as_array().expect("cards array");
-    assert_eq!(cards.len(), 80, "initial snapshot bounded to 80");
-    assert_eq!(json_val["page"]["has_more"], true, "older roots remain");
+    // First snapshot is bounded to DEFAULT_FEED_WINDOW_LIMIT (80).
+    let snap = h.engine.snapshot_current_window();
+    assert_eq!(snap.cards.len(), 80, "initial snapshot bounded to 80");
+    assert_eq!(snap.page.as_ref().unwrap().has_more, true, "older roots remain");
 
     // load_older grows the window and reports more was revealed.
     let more = h.engine.load_older();
     assert!(more, "load_older must return true when older roots exist");
 
-    // snapshot_json now honors the grown window: all 120 roots.
-    let json_after = h.engine.snapshot_json();
-    let cards_after = json_after["cards"].as_array().expect("cards array");
+    // snapshot now honors the grown window: all 120 roots.
+    let snap_after = h.engine.snapshot_current_window();
     assert_eq!(
-        cards_after.len(),
+        snap_after.cards.len(),
         120,
         "snapshot after load_older shows all 120 roots"
     );

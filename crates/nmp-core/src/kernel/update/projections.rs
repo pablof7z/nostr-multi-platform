@@ -1,9 +1,8 @@
 use super::super::{ClaimedEventDto, Kernel, MentionProfilePayload, ProfileCard};
 
-// Canonical list of the kernel-owned (Tier-2) built-in projection keys —
-// every key [`Kernel::snapshot_projections_with_publish_cluster`] can insert
-// into the snapshot `projections` map (the registry-closure Tier-1 keys are
-// NOT listed here; they are introspectable via the live `SnapshotRegistry`).
+// Canonical list of the kernel-owned (Tier-2) built-in projection keys.
+// The registry-closure Tier-1 keys are NOT listed here; they are introspectable
+// via the live `SnapshotRegistry`.
 //
 // This is the single source of truth for "which projection keys does the
 // kernel itself produce". Two consumers depend on it staying exact:
@@ -39,52 +38,75 @@ use super::super::{ClaimedEventDto, Kernel, MentionProfilePayload, ProfileCard};
 include!("builtin_projection_keys.generated.rs");
 
 impl Kernel {
-    /// Collect the snapshot `projections` map: every host-registered
-    /// projection closure plus the kernel-owned built-in projections (the
-    /// publish / relay-settings cluster, the identity pair, and the remaining
-    /// static view-support cluster).
+    /// Drain the per-tick drain-on-emit projections and capture their values for
+    /// the typed FlatBuffers sidecar (`diagnostics_cluster_typed_projections`).
     ///
-    /// D0: `publish_queue`, `publish_outbox`, `configured_relays`, and
-    /// `relay_role_options` are app-shaped relay/publish state; `accounts` /
-    /// `active_account` are identity output; and `profile` /
-    /// `mention_profiles` / `claimed_*` / `resolved_profiles` are view-support
-    /// output — none are protocol-neutral kernel primitives, so none carry a
-    /// typed `KernelSnapshot` field. Unlike the host-registered `"wallet"` /
-    /// `"bunker_handshake"` projections (which read actor-runtime slots through
-    /// a no-arg closure), these are kernel-owned, so they cannot be expressed as
-    /// a `SnapshotRegistry` closure — they are inserted here directly after the
-    /// host closures run.
+    /// Must be called once per emit tick, BEFORE `merge_builtin_typed_projections`,
+    /// so the `captured_*` fields are fresh when the typed path reads them.
     ///
-    /// `profile_card()` reads `&self` and is called inside this helper.
+    /// The drain methods (`take_action_results_projection`,
+    /// `take_signed_events_projection`) also drive the ADR-0055 Rung-1
+    /// `note_drain_emit` state machine — they MUST run each tick so the rev
+    /// tracker sees the correct `Changed` / `Cleared` / `Unchanged` transitions.
+    /// The copy-based projections (`action_stages`, `action_lifecycle`) run their
+    /// TTL sweep and `note_copy_emit` machine here as well.
+    pub(in crate::kernel) fn drain_and_capture_projections(&mut self) {
+        let declared = self.declared_projections_snapshot();
+
+        // `action_results` — drain-on-emit. Always drain (keeps the source
+        // bounded); capture only when declared (ADR-0053).
+        let action_results = self.take_action_results_projection();
+        self.captured_action_results =
+            (declared.permits("action_results") && !action_results.is_null())
+                .then(|| action_results);
+
+        // `signed_events` — drain-on-emit. Same pattern.
+        let signed_events = self.take_signed_events_projection();
+        self.captured_signed_events =
+            (declared.permits("signed_events") && !signed_events.is_null())
+                .then(|| signed_events);
+
+        // `action_stages` — copy (TTL mirror). TTL sweep + Cleared machine MUST
+        // run each tick; capture only when declared.
+        let action_stages = self.action_stages_projection();
+        self.captured_action_stages =
+            (declared.permits("action_stages") && !action_stages.is_null())
+                .then(|| action_stages);
+
+        // `action_lifecycle` — copy (TTL mirror). Same pattern.
+        let action_lifecycle = self.action_lifecycle_projection();
+        self.captured_action_lifecycle =
+            (declared.permits("action_lifecycle") && !action_lifecycle.is_null())
+                .then(|| action_lifecycle);
+
+        // `relay_diagnostics` — unconditional snapshot once declared.
+        // ADR-0053: the whole roll-up is skipped when undeclared.
+        if declared.permits("relay_diagnostics") {
+            self.captured_relay_diagnostics = Some(self.relay_diagnostics_snapshot());
+        } else {
+            self.captured_relay_diagnostics = None;
+        }
+    }
+
+    /// Build the JSON `projections` map for a single emit tick.
     ///
-    /// Step 3A (issue #920) and V-112 (ADR-0042): the follow-feed projection
-    /// cluster (`timeline` / `inserted` / `updated` / `removed`) and the
-    /// built-in `author_view` / `thread_view` projections are no longer
-    /// inserted here. App-owned feeds use dynamic Tier-1 `nmp.feed.*` typed
-    /// sidecars registered outside this helper.
+    /// Assembles the kernel-owned Tier-2 built-in projections into one
+    /// `HashMap<String, serde_json::Value>`.
     ///
-    /// Built-in keys win on collision: a host that registers `"publish_queue"`,
-    /// `"publish_outbox"`, `"configured_relays"`, `"relay_role_options"`,
-    /// `"settings_hub"`, `"accounts"`, `"active_account"`, or `"profile"` is
-    /// overwritten so the kernel-owned value stays authoritative.
+    /// **Callers must call `drain_and_capture_projections()` BEFORE this method**
+    /// so the drain-based entries read from `captured_*` fields without a
+    /// second drain.
     ///
-    /// D5: dynamic view-dependent feed keys are Tier-1 registrations. Closing a
-    /// view removes its key from the registry; built-in Tier-2 keys here are
-    /// static support projections. A serialization failure degrades to a stable
-    /// empty value — D6: never a panic at the snapshot boundary.
-    pub(super) fn snapshot_projections_with_publish_cluster(
+    /// D0: no `KernelSnapshot.projections` field — this map is assembled
+    /// transiently on each emit. The typed FlatBuffers sidecar is the production
+    /// wire path; this map is used by test helpers that read JSON.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(in crate::kernel) fn build_projections_map(
         &mut self,
     ) -> std::collections::HashMap<String, serde_json::Value> {
-        let mut projections = self.run_snapshot_projections();
-        // ADR-0053 — snapshot the host-declared consumed-projection set ONCE
-        // this tick. `permits(key)` returns `true` for every key when the set is
-        // empty (no narrowing) and only for declared members otherwise. Each
-        // Tier-2 built-in below is gated on it; a gated-out key skips its
-        // producer entirely (no serialize, no roll-up). The captured-value
-        // built-ins (`action_*`, `relay_diagnostics`) gate at the capture site,
-        // so the Tier-2 typed sidecar path naturally omits them (its `if let
-        // Some(..)` sees `None`) — keeping the ADR-0037 JSON/typed parity.
+        let mut projections = std::collections::HashMap::new();
         let declared = self.declared_projections_snapshot();
+
         if declared.permits("publish_queue") {
             projections.insert(
                 "publish_queue".to_string(),
@@ -95,13 +117,10 @@ impl Kernel {
         if declared.permits("publish_outbox") {
             projections.insert(
                 "publish_outbox".to_string(),
-                serde_json::to_value(self.publish_outbox_items()).unwrap_or(serde_json::Value::Null),
+                serde_json::to_value(self.publish_outbox_items())
+                    .unwrap_or(serde_json::Value::Null),
             );
         }
-        // D0: outbox header summary — `OutboxSummarySnapshot`. The kernel owns
-        // the per-status counters AND the English `title` / `subtitle`
-        // strings (§6 anti-pattern #1); shells bind the strings verbatim
-        // instead of `.filter`-counting `publish_outbox` to derive them.
         if declared.permits("outbox_summary") {
             projections.insert(
                 "outbox_summary".to_string(),
@@ -123,94 +142,33 @@ impl Kernel {
                     .unwrap_or(serde_json::Value::Null),
             );
         }
-        // Settings-hub view projection. Raw relay count — the host formats any
-        // pluralization string (aim.md §6/AP1 forbids the shell from owning that).
         if declared.permits("settings_hub") {
             projections.insert(
                 "settings_hub".to_string(),
                 serde_json::json!({ "relay_count": self.configured_relays_snapshot().len() }),
             );
         }
-        // Direction review #29: drain EVERY terminal that settled since the
-        // last emit into the `action_results` array. The host can clear a
-        // per-action spinner (published / failed / cancelled) without polling.
-        // If two actions settled in the same tick the host sees both, so no
-        // spinner hangs. This key is absent in steady state (drain returns
-        // `Null` -> not inserted) and a `[{correlation_id, status, error}, ...]`
-        // array whenever any action settled this tick. The host resolves each
-        // spinner by correlation_id.
-        // ADR-0053: ALWAYS drain (draining keeps the source bounded; the
-        // declared set is static, so an undeclared `action_results` would never
-        // be consumed and discarding it is correct). Capture + insert only when
-        // declared — gating the capture makes the Tier-2 typed sidecar omit it
-        // too (its `if let Some(..)` sees `None`).
-        let action_results = self.take_action_results_projection();
-        let emit_action_results = declared.permits("action_results") && !action_results.is_null();
-        // Wave C (ADR-0037): capture the DRAINED value ONCE this tick so the
-        // Tier-2 typed sidecar (`builtin_typed_projections`) encodes from the
-        // exact same array WITHOUT re-invoking the draining accessor.
-        // `Some` iff the JSON key is inserted below; `None` resets any prior
-        // tick's capture (present-iff-present, no stale carryover).
-        self.captured_action_results = emit_action_results.then(|| action_results.clone());
-        if emit_action_results {
-            projections.insert("action_results".to_string(), action_results);
+        // Drain-based projections — read from `captured_*` fields set by
+        // `drain_and_capture_projections()`. Must not re-invoke draining
+        // accessors here to avoid a double-drain.
+        if let Some(ar) = &self.captured_action_results {
+            projections.insert("action_results".to_string(), ar.clone());
         }
-        // D13 sign-and-return: drain every `SignEventForReturn` result that
-        // settled since the last emit into the `signed_events` projection,
-        // keyed by `correlation_id`. The host's `signEventForReturn`
-        // continuation resumes the moment its id appears here. Same
-        // `Null -> omit key` + drain-once convention as `action_results`; the
-        // host reads each id exactly once. Absent in steady state.
-        // ADR-0053: always drain; capture + insert only when declared.
-        let signed_events = self.take_signed_events_projection();
-        let emit_signed_events = declared.permits("signed_events") && !signed_events.is_null();
-        // Wave C: capture the DRAINED value once (see `action_results` above).
-        self.captured_signed_events = emit_signed_events.then(|| signed_events.clone());
-        if emit_signed_events {
-            projections.insert("signed_events".to_string(), signed_events);
+        if let Some(se) = &self.captured_signed_events {
+            projections.insert("signed_events".to_string(), se.clone());
         }
-        // Snapshot mirror of every in-flight action's lifecycle stages,
-        // keyed by `correlation_id`. Unlike `action_results` (drain on emit),
-        // `action_stages` is a *copy* — the same correlation_id reappears on
-        // every tick until the host calls `nmp_app_ack_action_stage`. The host
-        // renders a progress indicator from the latest stage in each id's
-        // history and clears it on the terminal stage (`Accepted` / `Failed`)
-        // before acking. Absent in steady state (`Null` -> not inserted).
-        let action_stages = self.action_stages_projection();
-        let emit_action_stages = declared.permits("action_stages") && !action_stages.is_null();
-        // Wave C: capture once. This accessor is a `&self` COPY, but the
-        // `action_results` drain above records terminals into this mirror within
-        // the same tick, so capturing here reads the exact value the JSON key
-        // carries (uniform with the four genuinely-drained built-ins).
-        self.captured_action_stages = emit_action_stages.then(|| action_stages.clone());
-        if emit_action_stages {
-            projections.insert("action_stages".to_string(), action_stages);
+        if let Some(as_) = &self.captured_action_stages {
+            projections.insert("action_stages".to_string(), as_.clone());
         }
-        // V5 thin-shell display projection. `action_lifecycle` collapses the
-        // per-stage history `action_stages` carries into the host's
-        // `{in_flight, recent_terminal}` shape, with TTL-based eviction of
-        // terminals (no host ack required). Absent in steady state — same
-        // `Null -> omit key` convention as `action_results` / `action_stages`.
-        // The mutable borrow runs the tracker's TTL sweep on every emit so a
-        // quiet kernel still prunes expired terminals. ADR-0053: the accessor is
-        // always called (the TTL sweep must run regardless of declaration);
-        // capture + insert only when declared.
-        let action_lifecycle = self.action_lifecycle_projection();
-        let emit_action_lifecycle =
-            declared.permits("action_lifecycle") && !action_lifecycle.is_null();
-        // Wave C: capture once. `action_lifecycle_projection()` is `&mut self`
-        // (it runs the TTL sweep), so it MUST NOT be re-invoked for the typed
-        // path — capture the produced value here instead.
-        self.captured_action_lifecycle = emit_action_lifecycle.then(|| action_lifecycle.clone());
-        if emit_action_lifecycle {
-            projections.insert("action_lifecycle".to_string(), action_lifecycle);
+        if let Some(al) = &self.captured_action_lifecycle {
+            projections.insert("action_lifecycle".to_string(), al.clone());
         }
-        // D0: identity output. `accounts_enriched()` returns `AccountSummary`
-        // records patched with kind:0 picture_url / display_name so the toolbar
-        // avatar and accounts list show real profile data. `active_account` is
-        // still sourced from the raw snapshot (it is just a pubkey string).
-        // ADR-0053: `accounts_enriched()` (a kind:0 patch over the account list)
-        // runs only when `accounts` is declared.
+        if let Some(rd) = &self.captured_relay_diagnostics {
+            projections.insert(
+                "relay_diagnostics".to_string(),
+                serde_json::to_value(rd).unwrap_or(serde_json::Value::Null),
+            );
+        }
         if declared.permits("accounts") {
             let enriched = self.accounts_enriched();
             projections.insert(
@@ -226,115 +184,37 @@ impl Kernel {
                 serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
             );
         }
-        // D0: view-support cluster. `profile` is the active-account profile
-        // card; app-owned author/thread feeds are dynamic Tier-1 keys.
-        //
-        // Step 3A (issue #920): the follow-feed cluster (`timeline` /
-        // `inserted` / `updated` / `removed`) is no longer produced here — the
-        // kernel no longer derives a per-tick `visible_items()` list.
-        //
-        // Serialization failures degrade to `null` as before —
-        // D6: never a panic at the snapshot boundary.
         if declared.permits("profile") {
             projections.insert(
                 "profile".to_string(),
                 serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
             );
         }
-        // V-112 (ADR-0042): author_view / thread_view projection inserts deleted.
-        // Diagnostics-screen projection. Pre-rolls the relay + wire-sub
-        // arrays into one struct with every aggregate (active / EOSE'd /
-        // total sub counts, total events_rx) and every display string
-        // (relative-time labels, connection / auth / role labels) already
-        // computed. Replaces the §4.5 "no derived state" + §6 anti-
-        // pattern #1 + §"Where do views live?" violations the three iOS
-        // diagnostics views used to commit. See the
-        // `kernel/relay_diagnostics.rs` module doc for the exact bible
-        // references. Serialization failure degrades to JSON null so the
-        // key still appears (mirrors the publish cluster's contract).
-        // Wave C: build the diagnostics roll-up ONCE this tick. The accessor
-        // pre-formats wall-clock-relative "Xs ago" labels against an internal
-        // `now`, so calling it a second time for the typed sidecar could
-        // straddle a one-second bucket and diverge from this JSON form. The JSON
-        // is serialised from the captured struct; the typed path
-        // (`builtin_typed_projections`) maps the SAME captured instance.
-        //
-        // ADR-0053 — THE headline gate. `relay_diagnostics_snapshot()` is the
-        // most expensive Tier-2 roll-up (every relay row + wire-sub + relative
-        // labels). When the host does not declare `"relay_diagnostics"` the whole
-        // roll-up is skipped, the JSON key is omitted, and `captured_*` stays
-        // `None` so the typed sidecar omits it too. A debug-only diagnostics
-        // screen no longer costs every host serialize+encode+decode 4×/sec.
-        if declared.permits("relay_diagnostics") {
-            let relay_diagnostics = self.relay_diagnostics_snapshot();
-            projections.insert(
-                "relay_diagnostics".to_string(),
-                serde_json::to_value(&relay_diagnostics).unwrap_or(serde_json::Value::Null),
-            );
-            self.captured_relay_diagnostics = Some(relay_diagnostics);
-        } else {
-            // Reset any prior tick's capture so the typed sidecar omits it.
-            self.captured_relay_diagnostics = None;
-        }
-        // `mention_profiles` — retained derived view key. V-112 deleted the
-        // built-in author/thread item sources, so the accessor emits `{}` until
-        // a future producer owns concrete mention inputs. Empty map is a D1
-        // value, not projection absence.
         if declared.permits("mention_profiles") {
-            let mention_profiles = self.mention_profiles();
             projections.insert(
                 "mention_profiles".to_string(),
-                serde_json::to_value(&mention_profiles)
+                serde_json::to_value(&self.mention_profiles())
                     .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
             );
         }
-        // `claimed_profiles` projection — keyed by pubkey for every currently
-        // claimed UI profile. This is the reference-first component path:
-        // native registry components call `claim_profile(pubkey, consumer)`,
-        // the kernel owns relay/cache policy, and the next snapshot exposes the
-        // claimed profile card here. Missing kind:0 data still emits a
-        // placeholder card so components can render an honest fallback
-        // immediately and refine in place when the profile arrives.
         if declared.permits("claimed_profiles") {
-            let claimed_profiles = self.claimed_profiles();
             projections.insert(
                 "claimed_profiles".to_string(),
-                serde_json::to_value(&claimed_profiles)
+                serde_json::to_value(&self.claimed_profiles())
                     .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
             );
         }
-        // `claimed_events` projection — keyed by `primary_id` (hex64 event
-        // id for nevent/note URIs; `kind:pubkey:d_tag` coordinate for
-        // naddr URIs). Built by walking the current `event_claims` set
-        // and looking each key up against `self.events` via
-        // `lookup_for_primary_id`. Missing entries are silently absent —
-        // the host renders the URI as-is until the event arrives (D1
-        // best-effort; D8 push semantics on the next snapshot tick).
-        //
-        // BTreeMap for deterministic key ordering (snapshot diff
-        // stability across ticks); serialisation degrades to `{}` on
-        // failure, mirroring `mention_profiles`.
         if declared.permits("claimed_events") {
-            let claimed_events = self.claimed_events();
             projections.insert(
                 "claimed_events".to_string(),
-                serde_json::to_value(&claimed_events)
+                serde_json::to_value(&self.claimed_events())
                     .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
             );
         }
-        // `resolved_profiles` — pre-merged profile map for all consumers.
-        // Precedence: claimed_profiles (highest) → mention_profiles
-        // (only-if-absent). Shipping the merge once here lets every shell
-        // delete its per-platform merge code
-        // (e.g. the TUI `LiveProfileMap` three-step ingest) and just read this
-        // key. Always present as `{}` when empty (D1); BTreeMap for
-        // deterministic key ordering (snapshot diff stability), mirroring
-        // `claimed_profiles` / `claimed_events`.
         if declared.permits("resolved_profiles") {
-            let resolved_profiles = self.resolved_profiles();
             projections.insert(
                 "resolved_profiles".to_string(),
-                serde_json::to_value(&resolved_profiles)
+                serde_json::to_value(&self.resolved_profiles())
                     .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
             );
         }

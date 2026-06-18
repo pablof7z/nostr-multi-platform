@@ -195,16 +195,7 @@ pub fn register_wallet(
         runtime: Arc::clone(&handle),
     }));
 
-    // 5. The `"wallet"` snapshot projection — reads `status_slot`.
-    app.register_snapshot_projection("wallet", move || match projection_slot.lock() {
-        Ok(slot) => slot
-            .as_ref()
-            .map(|status| serde_json::to_value(status).unwrap_or(serde_json::Value::Null))
-            .unwrap_or(serde_json::Value::Null),
-        Err(_) => serde_json::Value::Null,
-    });
-
-    // 6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
+    // 5/6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
     //    generic `Value` projection above, never replacing it.
     app.register_typed_snapshot_projection("wallet", move || {
         wallet_typed_projection(&typed_projection_slot)

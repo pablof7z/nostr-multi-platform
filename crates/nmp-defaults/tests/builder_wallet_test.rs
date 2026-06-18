@@ -16,8 +16,7 @@
 //! `nmp-testing/tests/k2_two_instance_wallet_isolation.rs`.)
 
 use nmp_defaults::{NmpAppBuilder, RunConfig};
-use nmp_ffi::{nmp_app_free, nmp_app_read_projection_json, nmp_app_stop, nmp_free_string};
-use std::ffi::{CStr, CString};
+use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 /// `.with_wallet()` wires the wallet stack during config and type-state-advances
 /// to `start()`. After start the `"wallet"` snapshot projection is registered
@@ -35,21 +34,12 @@ fn with_wallet_wires_stack_before_start() {
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() after with_wallet() returned null");
 
-    // The `"wallet"` projection is registered by the step (it returns `null`
-    // until a wallet connects, but the key resolves — an un-wired app returns a
-    // null pointer for an unregistered projection key).
-    let key = CString::new("wallet").unwrap();
-    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
+    // The generic JSON lane is deleted (rule A6). Check the typed registry.
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
-        !ptr.is_null(),
-        "with_wallet() must register the \"wallet\" snapshot projection"
-    );
-    // The value is JSON `null` (no wallet connected yet) — confirm it parses.
-    let json = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_free_string(ptr);
-    assert!(
-        serde_json::from_str::<serde_json::Value>(&json).is_ok(),
-        "the wallet projection must be valid JSON, got: {json}"
+        typed_keys.contains(&"wallet".to_string()),
+        "with_wallet() must register the \"wallet\" typed snapshot projection"
     );
 
     nmp_app_stop(app);
@@ -72,10 +62,10 @@ fn with_wallet_composes_with_register_defaults_and_storage() {
     assert!(!app.is_null());
     // Per-instance (ADR-0052 rung 5.2): the wallet projection resolves on THIS
     // app regardless of which test ran first — no shared global.
-    let key = CString::new("wallet").unwrap();
-    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
-    assert!(!ptr.is_null(), "wallet projection must be registered");
-    nmp_free_string(ptr);
+    // The generic JSON lane is deleted (rule A6). Check the typed registry.
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let typed_keys = app_ref.registered_typed_projection_keys();
+    assert!(typed_keys.contains(&"wallet".to_string()), "wallet projection must be registered");
     nmp_app_stop(app);
     nmp_app_free(app);
 }

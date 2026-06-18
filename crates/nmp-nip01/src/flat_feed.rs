@@ -178,11 +178,6 @@ impl KernelEventObserver for FlatFeed {
 }
 
 impl FeedController for FlatFeed {
-    fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.snapshot(&FeedRequest::default()))
-            .unwrap_or(serde_json::Value::Null)
-    }
-
     fn load_older(&self) -> bool {
         // All admitted rows are held in memory bounded by D5 retention; "load
         // older" widens the snapshot request limit at the call site rather than
@@ -336,25 +331,21 @@ mod tests {
         KernelEventObserver::on_kernel_event(&*feed, &ev("a1", "alice", 1, 100, vec![]));
         KernelEventObserver::on_kernel_event(&*feed, &ev("b1", "bob", 1, 101, vec![]));
         // Only alice's note rendered (predicate gate honoured at the observer
-        // entry point), and it surfaces in the FeedController snapshot.
+        // entry point), and it surfaces in the FlatFeed snapshot.
         assert_eq!(feed.len(), 1);
-        let value = FeedController::snapshot_json(&*feed);
-        let cards = value["cards"].as_array().unwrap();
-        assert_eq!(cards.len(), 1);
-        assert_eq!(cards[0]["card"]["id"], "a1");
+        let snap = feed.snapshot(&nmp_feed::FeedRequest::default());
+        assert_eq!(snap.cards.len(), 1);
+        assert_eq!(snap.cards[0].card.id, "a1");
     }
 
     #[test]
     fn feed_controller_emits_home_feed_wire_shape() {
-        // The snapshot_json must be the same RootFeedSnapshot shape the home
+        // The snapshot must produce the RootFeedSnapshot shape the home
         // feed emits, so the existing Swift `nmp.feed.home` reader decodes it.
         let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
         feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
-        let value = FeedController::snapshot_json(&*feed);
-        assert!(value.get("cards").and_then(|c| c.as_array()).is_some());
-        let cards = value["cards"].as_array().unwrap();
-        assert_eq!(cards.len(), 1);
-        assert!(cards[0].get("card").is_some());
-        assert!(cards[0]["attribution"].as_array().unwrap().is_empty());
+        let snap = feed.snapshot(&nmp_feed::FeedRequest::default());
+        assert_eq!(snap.cards.len(), 1);
+        assert!(snap.cards[0].attribution.is_empty());
     }
 }

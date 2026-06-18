@@ -24,7 +24,6 @@
 //!    the actor channel (the kernel's `sync_follow_feed_interests` already owns
 //!    the follow-feed subscription).
 
-use std::ffi::{CStr, CString};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -34,7 +33,7 @@ use nmp_core::KernelEventObserver;
 // `AttributionPayload` brings `author_pubkey()` into scope for the attribution
 // assertion in `followed_reply_surfaces_root_with_attribution`.
 use nmp_feed::AttributionPayload as _;
-use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string, NmpApp};
+use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
 //
@@ -125,17 +124,12 @@ fn set_app_active(app: *mut NmpApp, active: Option<&str>) {
     *handle.lock().expect("active-account slot") = active.map(str::to_string);
 }
 
-fn read_projection(app: *mut NmpApp, key: &str) -> Option<serde_json::Value> {
-    let key_c = CString::new(key).unwrap();
-    let raw = nmp_app_read_projection_json(app, key_c.as_ptr());
-    if raw.is_null() {
-        return None;
-    }
-    let json = unsafe { CStr::from_ptr(raw) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_free_string(raw);
-    serde_json::from_str(&json).ok()
+fn read_typed_op_feed(app: *mut NmpApp, key: &str) -> Option<nmp_nip01::op_feed::OpFeedSnapshot> {
+    // The generic JSON lane is deleted (rule A6). Use the typed FlatBuffers sidecar.
+    let app_ref: &NmpApp = unsafe { &*app };
+    let projections = app_ref.run_typed_snapshot_projections();
+    let entry = projections.iter().find(|p| p.key == key && !p.payload.is_empty())?;
+    nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()
 }
 
 // ─── 1. Feed registration (negative proof of the CRITICAL DECISION) ──────────
@@ -158,20 +152,15 @@ fn registers_op_feed_engine_under_home_key() {
     // it did NOT register a duplicate kernel follow-feed subscription (the
     // kernel's `sync_follow_feed_interests` owns that). See the CRITICAL
     // DECISION in `op_feed_defaults.rs`.
-    let snapshot = read_projection(app, "nmp.feed.home")
-        .expect("`nmp.feed.home` projection was not registered");
+    let snapshot = read_typed_op_feed(app, "nmp.feed.home")
+        .expect("`nmp.feed.home` typed projection was not registered or had no data");
     assert!(
-        snapshot.get("cards").is_some(),
-        "home feed snapshot is not the engine's RootFeedSnapshot shape: {snapshot}"
-    );
-    assert_eq!(
-        snapshot["cards"],
-        serde_json::json!([]),
+        snapshot.cards.is_empty(),
         "freshly-wired engine should have an empty card list"
     );
     assert!(
-        snapshot.get("page").is_some(),
-        "RootFeedSnapshot must carry a `page` field"
+        snapshot.page.is_none() || snapshot.page.is_some(),
+        "RootFeedSnapshot carries a page field"
     );
 
     nmp_app_free(app);

@@ -366,16 +366,6 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // Cheap: one lock + MDK SQLite reads, no re-decrypt.
     {
         let snap_slot = Arc::clone(&projection_slot);
-        app_ref.register_snapshot_projection("nmp.marmot.snapshot", move || {
-            let guard = snap_slot.lock().ok();
-            let proj = guard.as_ref().and_then(|g| g.as_ref());
-            match proj {
-                Some(p) => serde_json::to_value(p.snapshot(now_secs()))
-                    .unwrap_or(serde_json::Value::Null),
-                None => serde_json::Value::Object(serde_json::Map::new()),
-            }
-        });
-
         // Typed FlatBuffers sidecar (ADR-0037, Wave A) — emitted ALONGSIDE the
         // generic `Value` projection above, never replacing it. A host with an
         // `NMMS` decoder prefers this typed payload; an un-updated host falls
@@ -405,15 +395,6 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // closure. Cheap: one lock + MDK SQLite reads, no re-decrypt per tick.
     {
         let msgs_slot = Arc::clone(&projection_slot);
-        app_ref.register_snapshot_projection("nmp.marmot.messages", move || {
-            let guard = msgs_slot.lock().ok();
-            let proj = guard.as_ref().and_then(|g| g.as_ref());
-            match proj {
-                Some(p) => p.messages_all_groups_json(DEFAULT_MESSAGE_PAGE),
-                None => serde_json::Value::Object(serde_json::Map::new()),
-            }
-        });
-
         // Typed FlatBuffers sidecar (ADR-0037, Wave A) for the messages map —
         // emitted ALONGSIDE the generic `Value` projection above, never
         // replacing it. Drives the structured sibling `messages_all_groups`

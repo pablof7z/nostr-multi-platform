@@ -260,9 +260,6 @@ pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedS
     use nmp_core::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
     use std::sync::atomic::Ordering;
 
-    let json_slot = Arc::clone(&slot);
-    app.register_snapshot_projection(EMBED_SIDECAR_KEY, move || read_embed_sidecar(&json_slot));
-
     // R6-S2: read capability + frame-identity handles once at registration time
     // (the NmpApp APIs acquire the registry lock internally).
     let incremental_apply = app.incremental_apply_handle();

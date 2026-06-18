@@ -66,10 +66,10 @@ use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
 use rules::{
-    a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
+    a5, a6, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
 };
 use scope::{
-    a5_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
+    a5_file_in_scope, a6_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
     d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
     d9_file_in_scope, is_doctrine_lint_source,
@@ -132,6 +132,7 @@ fn main() -> ExitCode {
             if let Err(e) = scan_one_file(
                 path,
                 &cfg.a5_extra_scopes,
+                &cfg.a6_extra_scopes,
                 &cfg.d8_extra_scopes,
                 &cfg.d9_extra_scopes,
                 &cfg.d10_extra_scopes,
@@ -160,7 +161,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26"
+        "A5/A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -213,6 +214,7 @@ fn finish(
 fn scan_one_file(
     path: &Path,
     a5_extra_scopes: &[String],
+    a6_extra_scopes: &[String],
     d8_extra_scopes: &[String],
     d9_extra_scopes: &[String],
     d10_extra_scopes: &[String],
@@ -233,6 +235,7 @@ fn scan_one_file(
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
     let a5_in_scope = a5_file_in_scope(path, a5_extra_scopes);
+    let a6_in_scope = a6_file_in_scope(path, a6_extra_scopes);
     let d0_exempt = d0::file_is_exempt(path);
     let d6_test_file = d6::file_is_test_only(path);
     let d7_in_scope = d7::file_in_scope(path);
@@ -342,6 +345,24 @@ fn scan_one_file(
                 }
                 findings.push(report::Finding {
                     rule: a5::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // A6 — in-repo use of the deleted schema-less JSON snapshot-projection lane.
+        // Workspace-wide scope (same as A5). Test-only files and #[cfg(test)] bodies exempt.
+        // Skipped in --workspace-d8 (no-polling sweep only).
+        if !workspace_d8 && a6_in_scope && !d6_test_file && !sl.in_test_cfg {
+            for (col, msg, suggested) in a6::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, a6::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: a6::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,
