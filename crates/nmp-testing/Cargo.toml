@@ -78,6 +78,13 @@ tempfile = "3"
 # pipe/dup2 to intercept the NMP_CLAIM_LOG structured output from actor threads.
 libc = "0.2"
 
+# Issue #1522 -- LMDB query_visit baseline measurement before PR #1516.
+# Requires lmdb-backend: cargo run -p nmp-testing --features lmdb-backend --bin cache-baseline
+[[bin]]
+name = "cache-baseline"
+path = "bin/cache_baseline.rs"
+required-features = ["lmdb-backend"]
+
 [[bin]]
 name = "reactivity-bench"
 path = "bin/reactivity-bench/main.rs"
@@ -101,6 +108,13 @@ path = "bin/ffi-stress/main.rs"
 [[bin]]
 name = "doctrine-lint"
 path = "bin/doctrine-lint/main.rs"
+
+# Issue #1522 -- LMDB cache query_visit regression fixtures (baseline before #1516).
+# cargo test -p nmp-testing --features lmdb-backend --test store_cache_baseline
+[[test]]
+name = "store_cache_baseline"
+path = "tests/store_cache_baseline.rs"
+required-features = ["lmdb-backend"]
 
 # Doctrine-lint smoke test — runs the binary against fixtures under
 # bin/doctrine-lint/fixtures/ and asserts pass/fail per rule.
