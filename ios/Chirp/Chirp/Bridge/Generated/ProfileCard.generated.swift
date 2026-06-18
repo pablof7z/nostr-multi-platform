@@ -19,14 +19,14 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
 
   private enum VTOFFSET: VOffset {
     case pubkey = 4
-    case hasDisplayName = 8
-    case displayName = 10
-    case hasPictureUrl = 12
-    case pictureUrl = 14
-    case nip05 = 16
-    case about = 18
-    case hasLnurl = 20
-    case lnurl = 22
+    case hasDisplayName = 6
+    case displayName = 8
+    case hasPictureUrl = 10
+    case pictureUrl = 12
+    case nip05 = 14
+    case about = 16
+    case hasLnurl = 18
+    case lnurl = 20
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -46,7 +46,7 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
   public var hasLnurl: Bool { let o = _accessor.offset(VTOFFSET.hasLnurl.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var lnurl: String? { let o = _accessor.offset(VTOFFSET.lnurl.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var lnurlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lnurl.v) }
-  public static func startProfileCard(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
+  public static func startProfileCard(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 9) }
   public static func add(pubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pubkey, at: VTOFFSET.pubkey.p) }
   public static func add(hasDisplayName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasDisplayName, def: false,
    at: VTOFFSET.hasDisplayName.p) }

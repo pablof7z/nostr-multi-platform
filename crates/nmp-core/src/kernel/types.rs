@@ -291,7 +291,7 @@ pub(super) struct PublishOutboxItem {
     pub(super) preview: String,
     /// Raw Unix-seconds creation timestamp. ADR-0032: projection sends raw
     /// epoch seconds; shells format for display with their own locale/TZ.
-    /// Replaces the deprecated `created_at_display` string (V-115).
+    /// Replaces the removed `created_at_display` wire field (V-115).
     pub(super) created_at: u64,
     pub(super) status: String,
     /// Pre-formatted English label for `status` (e.g. `"Sending"`, `"Retrying"`).

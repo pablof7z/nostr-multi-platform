@@ -130,8 +130,8 @@ object TypedProfilesDecoder {
      */
     private fun mapProfileCard(card: FbProfileCard): ProfileCard = ProfileCard(
         pubkey = card.pubkey ?: "",
-        // ADR-0032 / V-115: `npub` deprecated in schema; always empty string here.
-        // Callers encode bech32 host-side when needed.
+        // V-115 / ADR-0032: `npub` removed from profile_card.fbs; bech32
+        // encoding is host-side via KernelBridge.encodeProfile.
         npub = "",
         displayName = if (card.hasDisplayName) card.displayName else null,
         pictureUrl = if (card.hasPictureUrl) card.pictureUrl else null,

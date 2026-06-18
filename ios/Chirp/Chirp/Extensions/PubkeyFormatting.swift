@@ -92,8 +92,8 @@ private func relativeFormatter() -> RelativeDateTimeFormatter {
 
 extension UInt64 {
     /// Render this value (interpreted as Unix seconds since epoch) as a
-    /// short relative-time label ("3s ago", "5m ago"). Replaces the
-    /// kernel-emitted `created_at_display` strings (ADR-0032).
+    /// short relative-time label ("3s ago", "5m ago"). Shells format the
+    /// raw `created_at` Unix seconds with their own locale (ADR-0032).
     var relativeTimeFromUnixSeconds: String {
         let date = Date(timeIntervalSince1970: TimeInterval(self))
         return relativeFormatter().localizedString(for: date, relativeTo: Date())

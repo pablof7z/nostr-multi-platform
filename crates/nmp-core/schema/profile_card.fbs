@@ -43,10 +43,6 @@ namespace nmp.kernel;
 table ProfileCard {
   // Hex pubkey.
   pubkey:string;
-  // V-115 / ADR-0032: `npub` deprecated — projection sends raw hex pubkey
-  // only; shells encode bech32 via `nmp_app_encode_profile` or equivalent.
-  // Slot retained for wire compatibility with un-updated hosts.
-  npub:string (deprecated);
   // Display name from kind:0; `has_display_name == false` mirrors JSON `null`.
   has_display_name:bool;
   display_name:string;

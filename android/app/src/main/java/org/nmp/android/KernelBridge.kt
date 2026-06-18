@@ -384,9 +384,9 @@ class KernelBridge {
      * kind:10002 relay hints are cached, else `npub1…`). Wraps the existing
      * `nmp_app_encode_profile` C-ABI symbol — no new NMP C-ABI surface.
      *
-     * ADR-0032 / V-115: replaces the deprecated `ProfileCard.npub` field that
-     * the projection no longer sends. Hosts call this to derive the display
-     * identifier on their side.
+     * V-115 / ADR-0032: replaces the removed `ProfileCard.npub` field
+     * (fully deleted from profile_card.fbs). Hosts call this to derive the
+     * display identifier on their side.
      *
      * D6: returns `null` for a null/dead handle or a malformed pubkey. The
      * caller falls back to its own short-hex rendering in that case.

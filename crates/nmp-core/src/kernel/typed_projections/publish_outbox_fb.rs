@@ -60,8 +60,9 @@ pub struct PublishOutboxRelayRow {
 /// One in-flight publish — a field-for-field mirror of the SERIALISED
 /// [`PublishOutboxItem`](crate::kernel::PublishOutboxItem).
 ///
-/// V-115 / ADR-0032: `created_at_display` and `target_summary` removed;
-/// `created_at` (raw Unix-seconds u64) added. Shells format for display.
+/// V-115 / ADR-0032: `created_at_display` and `target_summary` fully
+/// removed from the schema. `created_at` (raw Unix-seconds u64) carries
+/// the timestamp; shells format with their own locale.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PublishOutboxItemRow {
     pub handle: String,
@@ -133,10 +134,9 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
             let status = fbb.create_string(&item.status);
             let status_label = fbb.create_string(&item.status_label);
             let system_image = fbb.create_string(&item.system_image);
-            // ADR-0032 / V-115: `created_at_display` and `target_summary`
-            // are deprecated in the schema; flatc removes them from
-            // `PublishOutboxItemArgs`. Pass raw `created_at` in the new
-            // uint64 field; the deprecated vtable slots stay 0/null.
+            // V-115 / ADR-0032: `created_at_display` and `target_summary`
+            // removed from schema (fully deleted, not tombstoned). Pass raw
+            // `created_at` (uint64) so shells format with their own locale.
             fb::PublishOutboxItem::create(
                 &mut fbb,
                 &fb::PublishOutboxItemArgs {
@@ -197,8 +197,8 @@ pub fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String>
                     });
                 }
             }
-            // ADR-0032 / V-115: `created_at_display` and `target_summary`
-            // deprecated; decode `created_at` (raw uint64) from the new slot.
+            // V-115 / ADR-0032: `created_at_display` and `target_summary`
+            // removed from schema; decode `created_at` (raw uint64).
             items.push(PublishOutboxItemRow {
                 handle: item.handle().unwrap_or_default().to_string(),
                 event_id: item.event_id().unwrap_or_default().to_string(),
