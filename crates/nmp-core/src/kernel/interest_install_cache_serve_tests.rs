@@ -76,10 +76,10 @@ fn push_interest_serves_store_on_install() {
     // dispatch arm calls — unified front-door with Replace policy.
     let interest = author_kind1_interest(1, &author);
     {
-        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
         let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.register_interest(identity, interest, InterestWrite::Replace, "push-interest");
+        kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
 
@@ -125,9 +125,9 @@ fn ensure_interest_serves_store_on_newly_installed() {
     let identity = sub_id(42);
     let interest = author_kind1_interest(42, &author);
     let newly = {
-        use crate::kernel::cache_serve::InterestWrite;
-        let reg = kernel.register_interest(identity, interest, InterestWrite::EnsureAbsent, "ensure-interest");
-        reg.newly_installed
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
+        let outcomes = kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::EnsureAbsent }], "ensure-interest");
+        outcomes[0].newly_installed
     };
     assert!(newly, "must be newly installed");
     drain_cache_serves(&mut kernel, 10);
@@ -166,9 +166,9 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     let identity_1 = sub_id(100);
     let interest_1 = author_kind1_interest(100, &author);
     let newly_1 = {
-        use crate::kernel::cache_serve::InterestWrite;
-        let reg = kernel.register_interest(identity_1, interest_1, InterestWrite::EnsureAbsent, "ensure-interest");
-        reg.newly_installed
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
+        let outcomes = kernel.register_interest(&[InterestRegistration { identity: identity_1, interest: interest_1, policy: InterestWrite::EnsureAbsent }], "ensure-interest");
+        outcomes[0].newly_installed
     };
     assert!(newly_1);
     drain_cache_serves(&mut kernel, 10);
@@ -183,9 +183,9 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     let identity_2 = sub_id(100);
     let interest_2 = author_kind1_interest(100, &author);
     let newly_2 = {
-        use crate::kernel::cache_serve::InterestWrite;
-        let reg = kernel.register_interest(identity_2, interest_2, InterestWrite::EnsureAbsent, "ensure-interest");
-        reg.newly_installed
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
+        let outcomes = kernel.register_interest(&[InterestRegistration { identity: identity_2, interest: interest_2, policy: InterestWrite::EnsureAbsent }], "ensure-interest");
+        outcomes[0].newly_installed
     };
     assert!(
         !newly_2,
@@ -270,10 +270,10 @@ fn two_session_push_interest_kp_regression() {
     // `ActorCommand::PushInterest` arm makes (Replace policy).
     let interest = kp_interest(999, &receiver_hex);
     {
-        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
         let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.register_interest(identity, interest, InterestWrite::Replace, "push-interest");
+        kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
 
@@ -323,10 +323,10 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     // First serve — in-memory events are already present; cache-serve skips them.
     let interest = author_kind1_interest(50, &author);
     {
-        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
         let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.register_interest(identity, interest, InterestWrite::Replace, "push-interest");
+        kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
     // Events already in memory → serve skips → no additional dispatches.
@@ -346,10 +346,10 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     // This must NOT panic and must NOT deliver duplicate events (in-memory dedup).
     let interest_2 = author_kind1_interest(51, &author);
     {
-        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
         let identity = SubIdentity::from_legacy_interest(&interest_2);
-        kernel.register_interest(identity, interest_2, InterestWrite::Replace, "push-interest");
+        kernel.register_interest(&[InterestRegistration { identity, interest: interest_2, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
 
@@ -421,5 +421,73 @@ fn open_uri_serves_store_for_resolved_target() {
          event ({meta_id}) after open_uri installs the profile interest; \
          got {:?}",
         parser.seen_ids()
+    );
+}
+
+/// PROFILE-CLAIM STORE-FIRST (Phase C regression):
+///
+/// `register_profile_claim_interest` routes through the unified front-door
+/// (`register_interest` with Replace policy). This test proves that a stored
+/// kind:0 metadata event populates the ProfileCache on a cold-cache kernel
+/// immediately after `claim_profile` — no relay delivery needed.
+///
+/// Regression guard: before Phase C the profile-claim path called bare
+/// `set_sub` without a cache-serve enqueue, so a stored kind:0 was invisible
+/// on relaunch (the "timeline shows only pubkeys after relaunch" bug).
+///
+/// Setup: after seeding, the profile_lookup is swapped to a FRESH empty
+/// TestProfileCache (+ matching TestKind0Parser) so `profile_lookup().profile(P)`
+/// is genuinely None before the claim — faithfully simulating a process restart
+/// where the in-memory ProfileCache is empty but the on-disk store is warm.
+#[test]
+fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
+    use crate::kernel::ProfileLiveness;
+    use crate::substrate::{ProfileLookup, TestKind0Parser, TestProfileCache};
+
+    let base_ts: u64 = 1_770_000_000;
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
+
+    // ── Phase 1: seed a kind:0 event into the store via live ingest ──────────
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let meta_id = seed_kind0_event(&mut kernel, &keys, base_ts);
+
+    // ── Phase 2: cold restart — clear in-memory event caches ─────────────────
+    simulate_cold_restart(&mut kernel);
+    assert!(kernel.events.is_empty(), "events cache must be empty after restart");
+
+    // Swap to a fresh, empty ProfileCache — faithfully simulates process restart
+    // where the in-memory profile lookup is cold (the store is warm).
+    let cold_cache = std::sync::Arc::new(TestProfileCache::new());
+    kernel.set_profile_lookup(std::sync::Arc::clone(&cold_cache) as std::sync::Arc<dyn ProfileLookup>);
+    // Register a matching kind:0 parser that writes INTO the new cold cache,
+    // so that cache-serve events populate it (the live pipeline is unchanged).
+    kernel.register_ingest_parser(0, std::sync::Arc::new(TestKind0Parser::new(std::sync::Arc::clone(&cold_cache))));
+
+    // Pre-condition: cold cache is genuinely empty.
+    assert!(
+        cold_cache.profile(&author).is_none(),
+        "Pre-condition: cold profile cache must not contain the author"
+    );
+
+    // ── Phase 3: claim the profile — routes through register_interest(Replace) ─
+    // cold_cache.contains(&author) == false → want_register = true → front-door
+    // fires, cache-serve enqueued. No relay connected, no wire event injected.
+    kernel.claim_profile(
+        author.clone(),
+        "test-consumer".to_string(),
+        false, // can_send
+        false, // force
+        ProfileLiveness::CacheOk,
+    );
+    drain_cache_serves(&mut kernel, 10);
+
+    // ── Phase 4: cold_cache must now have P — served from the store ───────────
+    assert!(
+        cold_cache.profile(&author).is_some(),
+        "PROFILE-CLAIM STORE-FIRST FAIL: profile_lookup().profile(P) must be Some \
+         after claim_profile installs the kind:0 interest and the cache-serve \
+         runs from the store; got None. This is the cold-cache kind:0 bug \
+         (timeline shows only pubkeys after relaunch)."
     );
 }

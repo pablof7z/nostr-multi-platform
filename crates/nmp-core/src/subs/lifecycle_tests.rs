@@ -15,14 +15,10 @@ use crate::planner::{
 fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()
 }
-
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-    let t = RegistryWriteToken::for_test();
-    let identity = SubIdentity::from_legacy_interest(&interest);
-    reg.apply(&t, InterestWrite::Replace, identity, interest);
+    let _ = reg.apply(&RegistryWriteToken::for_test(), InterestWrite::Replace, SubIdentity::from_legacy_interest(&interest), interest);
 }
-
 /// Single-author follow interest (kind:1 timeline).
 fn follow(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {

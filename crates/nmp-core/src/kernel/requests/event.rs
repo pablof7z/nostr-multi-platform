@@ -272,9 +272,11 @@ impl Kernel {
         let (token, interest_id, identity, interest) =
             self.oneshot.prepare(InterestScope::Global, shape, initial_hints);
         self.register_interest(
-            identity,
-            interest,
-            crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
             "oneshot-event-claim",
         );
         self.pending_discovery_oneshots

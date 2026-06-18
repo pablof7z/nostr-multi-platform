@@ -113,9 +113,11 @@ fn open_uri(kernel: &mut Kernel, uri: String) -> KernelUpdate {
     // live filter (§3.3) and re-serving a completed shape is a no-op. The
     // newly-installed return is unused here; the side effect is what matters.
     let _ = kernel.register_interest(
-        identity,
-        interest,
-        crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+        &[crate::kernel::cache_serve::InterestRegistration {
+            identity,
+            interest,
+            policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+        }],
         "open-uri",
     );
 

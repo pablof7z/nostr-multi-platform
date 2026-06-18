@@ -34,7 +34,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::kernel::cache_serve::{InterestRegistration, InterestWrite, RegistryWriteToken};
+use crate::kernel::cache_serve::{InterestWrite, RegistrationOutcome, RegistryWriteToken};
 use crate::planner::{InterestId, LogicalInterest};
 use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
@@ -96,13 +96,13 @@ impl InterestRegistry {
         policy: InterestWrite,
         identity: SubIdentity,
         interest: LogicalInterest,
-    ) -> InterestRegistration {
+    ) -> RegistrationOutcome {
         let shared = identity.shared();
         match policy {
             InterestWrite::EnsureAbsent => {
                 if let Some(slot) = self.slots.get_mut(&shared) {
                     slot.owners.insert(identity.owner);
-                    InterestRegistration {
+                    RegistrationOutcome {
                         newly_installed: false,
                         changed: false,
                     }
@@ -110,7 +110,7 @@ impl InterestRegistry {
                     let mut owners = std::collections::BTreeSet::new();
                     owners.insert(identity.owner);
                     self.slots.insert(shared, Slot { interest, owners });
-                    InterestRegistration {
+                    RegistrationOutcome {
                         newly_installed: true,
                         changed: true,
                     }
@@ -121,7 +121,7 @@ impl InterestRegistry {
                     let changed = plan_relevant_change(&slot.interest, &interest);
                     slot.owners.insert(identity.owner);
                     slot.interest = interest;
-                    InterestRegistration {
+                    RegistrationOutcome {
                         newly_installed: false,
                         changed,
                     }
@@ -129,7 +129,7 @@ impl InterestRegistry {
                     let mut owners = std::collections::BTreeSet::new();
                     owners.insert(identity.owner);
                     self.slots.insert(shared, Slot { interest, owners });
-                    InterestRegistration {
+                    RegistrationOutcome {
                         newly_installed: true,
                         changed: true,
                     }

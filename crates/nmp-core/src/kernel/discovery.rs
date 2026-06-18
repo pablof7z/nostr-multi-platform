@@ -227,9 +227,11 @@ impl Kernel {
             let (token, interest_id, identity, interest) =
                 self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
-                identity,
-                interest,
-                crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
                 "oneshot-discovery-events",
             );
             // PD-033-C Stage 1 bridge: stash the token by interest_id. The
@@ -271,9 +273,11 @@ impl Kernel {
             let (token, interest_id, identity, interest) =
                 self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
-                identity,
-                interest,
-                crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
                 "oneshot-discovery-profiles",
             );
             // PD-033-C Stage 1 bridge (see twin comment in events arm).

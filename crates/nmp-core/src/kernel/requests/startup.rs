@@ -191,9 +191,11 @@ impl Kernel {
         // Unified front-door: Replace so an account switch swaps the author
         // in-place (store-serve + recompile trigger both fire when changed).
         self.register_interest(
-            identity,
-            interest,
-            crate::kernel::cache_serve::InterestWrite::Replace,
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
             "bootstrap-oneshot-discovery",
         );
     }
@@ -249,9 +251,11 @@ impl Kernel {
         // Unified front-door: Replace so an account switch swaps the author
         // in-place (store-serve + recompile trigger both fire when changed).
         self.register_interest(
-            identity,
-            interest,
-            crate::kernel::cache_serve::InterestWrite::Replace,
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
             "bootstrap-self-kinds",
         );
     }

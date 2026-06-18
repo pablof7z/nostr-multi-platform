@@ -114,9 +114,9 @@ pub(crate) enum InterestWrite {
     Replace,
 }
 
-/// Outcome of a unified registration (diagnostics + caller branching).
+/// Outcome of a single-item registration (diagnostics + caller branching).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct InterestRegistration {
+pub(crate) struct RegistrationOutcome {
     /// The `(scope, key)` slot was absent and the interest was installed.
     pub newly_installed: bool,
     /// A plan-relevant field changed (`EnsureAbsent` ⇒ always equals
@@ -125,10 +125,17 @@ pub(crate) struct InterestRegistration {
     pub changed: bool,
 }
 
+/// One interest to register through the front-door.
+pub(crate) struct InterestRegistration {
+    pub identity: crate::subs::SubIdentity,
+    pub interest: crate::planner::LogicalInterest,
+    pub policy: InterestWrite,
+}
+
 /// Capability token proving the caller is the unified interest front-door.
 ///
 /// The field is private to this module so ONLY `cache_serve` can mint one
-/// (via [`Kernel::register_interest`] / [`Kernel::register_interests_batch`]).
+/// (via [`Kernel::register_interest`]).
 /// [`crate::subs::InterestRegistry::apply`] requires `&RegistryWriteToken`,
 /// so no other module can mutate the registry's interest set.
 ///
@@ -189,76 +196,43 @@ pub(super) struct PendingCacheServe {
 impl Kernel {
     // ─── Unified registration front-door ─────────────────────────────────────
 
-    /// THE single production front-door for registering an interest in events.
+    /// THE single production front-door for registering interests in events.
     ///
-    /// Store-first by construction: on a newly-installed or plan-changed
-    /// registration it ALWAYS (a) performs the store-cache serve
-    /// (`enqueue_interest_cache_serve`, which enqueues AND drains one aggregate
-    /// chunk synchronously so the first snapshot after install carries store data
-    /// — the D1 guarantee) AND (b) enqueues the recompile trigger so the wire
-    /// REQ (the refinement half) follows. A caller can NEVER register an interest
-    /// without store-serving it — the serve is not optional and not the caller's
-    /// job (ADR-0045 R2.1 single-mechanism; R3 store-first additive).
+    /// Accepts a slice of [`InterestRegistration`] items (N=1 is the degenerate
+    /// single-item case; N>1 is the batched case — one coalesced drain for all).
     ///
-    /// `policy` preserves the two legitimate semantics (see [`InterestWrite`]).
-    /// `reason` labels the recompile trigger for diagnostics.
+    /// Store-first by construction: for each changed item it enqueues the
+    /// store-cache serve DEFERRED (no per-item drain), then — if ANY item
+    /// changed — enqueues ONE coalesced `InvalidateCompile` trigger and drains
+    /// ONE aggregate-budget chunk synchronously so the first snapshot after
+    /// install carries store data (D1 guarantee). A caller can NEVER register
+    /// an interest without store-serving it (ADR-0045 R2.1 single-mechanism;
+    /// R3 store-first additive).
+    ///
+    /// `reason` labels the single coalesced recompile trigger for diagnostics.
+    /// Returns one [`RegistrationOutcome`] per input item, in order.
     pub(crate) fn register_interest(
         &mut self,
-        identity: crate::subs::SubIdentity,
-        interest: crate::planner::LogicalInterest,
-        policy: InterestWrite,
+        items: &[InterestRegistration],
         reason: &'static str,
-    ) -> InterestRegistration {
-        let serve_key = identity.key;
-        let serve_shape = interest.shape.clone();
+    ) -> Vec<RegistrationOutcome> {
         let token = RegistryWriteToken::new();
-        let reg = self
-            .lifecycle
-            .registry_mut()
-            .apply(&token, policy, identity, interest);
-        if reg.changed {
-            self.lifecycle
-                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
-                    reason: crate::subs::InvalidateReason::External(reason.to_string()),
-                });
-            self.enqueue_interest_cache_serve(&serve_key, &serve_shape);
-        }
-        reg
-    }
-
-    /// Batch front-door: register N interests under ONE trailing synchronous
-    /// drain. Same mechanism as [`Kernel::register_interest`], batched — NOT a
-    /// parallel path.
-    ///
-    /// Enqueues each serve DEFERRED (no per-item drain), enqueues ONE coalesced
-    /// recompile trigger, then drains ONE aggregate-budget chunk for the whole
-    /// batch (ADR-0045 §5 anti-burst). A 300–500-follow cold start drains once,
-    /// not per author.
-    ///
-    /// `policy` applies to all items. `reason` labels the single coalesced
-    /// recompile trigger.
-    pub(crate) fn register_interests_batch<I>(
-        &mut self,
-        items: I,
-        policy: InterestWrite,
-        reason: &'static str,
-    ) where
-        I: IntoIterator<Item = (crate::subs::SubIdentity, crate::planner::LogicalInterest)>,
-    {
-        let token = RegistryWriteToken::new();
+        let mut outcomes = Vec::with_capacity(items.len());
         let mut any_changed = false;
-        for (identity, interest) in items {
-            let serve_key = identity.key;
-            let serve_shape = interest.shape.clone();
-            let reg = self
-                .lifecycle
-                .registry_mut()
-                .apply(&token, policy, identity, interest);
-            if reg.changed {
+        for item in items {
+            let serve_key = item.identity.key;
+            let serve_shape = item.interest.shape.clone();
+            let outcome = self.lifecycle.registry_mut().apply(
+                &token,
+                item.policy,
+                item.identity.clone(),
+                item.interest.clone(),
+            );
+            if outcome.changed {
                 any_changed = true;
-                // Deferred: no drain here — batch drains once at the end.
                 self.enqueue_interest_cache_serve_deferred(&serve_key, &serve_shape);
             }
+            outcomes.push(outcome);
         }
         if any_changed {
             self.lifecycle
@@ -267,6 +241,7 @@ impl Kernel {
                 });
             self.run_cache_serve_step();
         }
+        outcomes
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────

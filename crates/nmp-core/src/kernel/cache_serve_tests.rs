@@ -89,42 +89,6 @@ pub(super) fn seed_events(
     ids
 }
 
-/// Register a `LogicalInterest` (from `shape`) into the live interest registry
-/// under `sub_key`, WITHOUT enqueuing or draining a cache-serve.
-///
-/// Production install paths register the interest before serving; tests that
-/// drive `enqueue_cache_serve` directly (to control budget orchestration) use
-/// this to install the matching registry slot without the synchronous drain
-/// `open_interest_sub` would perform.
-pub(super) fn register_interest_for_test(
-    kernel: &mut Kernel,
-    sub_key: crate::subs::SubKey,
-    shape: &crate::planner::InterestShape,
-) {
-    use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
-    use crate::subs::sub_key::{SubIdentity, SubOwnerKey, SubScope};
-
-    let interest = LogicalInterest {
-        scope: InterestScope::Global,
-        shape: shape.clone(),
-        lifecycle: InterestLifecycle::Tailing,
-        ..LogicalInterest::default()
-    };
-    let identity = SubIdentity::new(
-        SubOwnerKey::new("cache-serve-test-owner"),
-        sub_key,
-        SubScope::Global,
-    );
-    {
-        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-        let t = RegistryWriteToken::for_test();
-        kernel
-            .lifecycle_mut()
-            .registry_mut()
-            .apply(&t, InterestWrite::Replace, identity, interest);
-    }
-}
-
 /// Clear `kernel.events` and `kernel.timeline` to simulate a cold second
 /// launch (store persisted, in-memory caches empty).
 pub(super) fn simulate_cold_restart(kernel: &mut Kernel) {

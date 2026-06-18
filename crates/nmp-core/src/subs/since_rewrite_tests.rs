@@ -33,7 +33,7 @@ fn push_legacy(reg: &mut super::InterestRegistry, interest: LogicalInterest) {
     use super::SubIdentity;
     let t = RegistryWriteToken::for_test();
     let identity = SubIdentity::from_legacy_interest(&interest);
-    reg.apply(&t, InterestWrite::Replace, identity, interest);
+    let _ = reg.apply(&t, InterestWrite::Replace, identity, interest);
 }
 
 fn timeline_interest(id: u64, author: &str) -> LogicalInterest {

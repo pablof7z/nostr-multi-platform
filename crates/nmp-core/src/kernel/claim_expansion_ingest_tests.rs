@@ -365,7 +365,7 @@ mod production_ingest_tests {
             shape,
             Vec::new(),
         );
-        kernel.register_interest(identity, interest, crate::kernel::cache_serve::InterestWrite::EnsureAbsent, "claim-expand-oneshot");
+        kernel.register_interest(&[crate::kernel::cache_serve::InterestRegistration { identity, interest, policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent }], "claim-expand-oneshot");
 
         let oneshot_before = kernel.test_oneshot_in_flight();
         assert_eq!(

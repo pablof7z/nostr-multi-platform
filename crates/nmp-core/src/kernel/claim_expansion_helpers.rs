@@ -169,9 +169,11 @@ impl Kernel {
             // recompile fires (emits W7 hint REQs); shape unchanged ⇒ same
             // completion key ⇒ serve is an idempotent no-op (safe; §5 safety).
             self.register_interest(
-                identity,
-                updated_interest,
-                crate::kernel::cache_serve::InterestWrite::Replace,
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest: updated_interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::Replace,
+                }],
                 "claim-expansion-phase2",
             );
         }

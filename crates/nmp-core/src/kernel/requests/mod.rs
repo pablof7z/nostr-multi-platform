@@ -393,9 +393,11 @@ impl Kernel {
             let (_token, interest_id, identity, interest) =
                 self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
-                identity,
-                interest,
-                crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
                 "reverify-oneshot",
             );
             // Bridge: planner emits the REQ for this interest_id; the bridge in

@@ -133,7 +133,7 @@ impl Kernel {
         // so `should_store_event` / `ingest_timeline_event` gate correctly.
         // `timeline_authors` is a denormalized read-cache over the M2 registry
         // (D4: the registry is the single source of truth; this is a projection).
-        // Must be set BEFORE register_interests_batch so enqueue_cache_serve's
+        // Must be set BEFORE register_interest so enqueue_cache_serve's
         // `timeline_bound` flag is computed against the updated author set.
         self.timeline_authors = authors.into_iter().collect();
 
@@ -141,16 +141,19 @@ impl Kernel {
         // planner-interest-id key) — matches what drop_slot_by_key used above.
         let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
 
-        // ADR-0045 E1 — unified batch front-door: register + serve in one call.
+        // ADR-0045 E1 — unified front-door: register + serve in one call.
         // The collapsed shape maps to ONE `StoreQuery::AuthorsKind`, so a
         // 300–500-follow cold start drains via one multi-author scan, not per
         // author (D1: first snapshot after install carries store data).
         //
         // ADR-0057 — the `pre_kind3_buffer` is DELETED; cache-serve here
         // surfaces prior stored events for any newly-added follows.
-        self.register_interests_batch(
-            std::iter::once((identity, interest)),
-            crate::kernel::cache_serve::InterestWrite::Replace,
+        self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
             "follow-list-changed",
         );
         self.follow_feed_interest_ids.insert(interest_id);

@@ -1325,9 +1325,11 @@ pub(super) fn dispatch_command(
             // matches what WithdrawInterest reconstructs for teardown.
             let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
             ctx.kernel.register_interest(
-                identity,
-                interest,
-                crate::kernel::cache_serve::InterestWrite::Replace,
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::Replace,
+                }],
                 "push-interest",
             );
             Some(Vec::new())
@@ -1350,9 +1352,11 @@ pub(super) fn dispatch_command(
             // Unified front-door — register-if-absent (EnsureAbsent). Store-serve
             // + recompile trigger fire only when the interest is newly installed.
             ctx.kernel.register_interest(
-                identity,
-                interest,
-                crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                &[crate::kernel::cache_serve::InterestRegistration {
+                    identity,
+                    interest,
+                    policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+                }],
                 "ensure-interest",
             );
             Some(Vec::new())

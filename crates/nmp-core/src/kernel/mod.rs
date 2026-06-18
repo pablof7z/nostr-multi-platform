@@ -2498,13 +2498,15 @@ impl Kernel {
     ) -> bool {
         // Unified front-door (EnsureAbsent = register-if-absent). Store-serve +
         // recompile trigger fire only when the interest is newly installed.
-        let reg = self.register_interest(
-            identity,
-            interest,
-            crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+        let outcomes = self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
             "open-interest",
         );
-        reg.newly_installed
+        outcomes[0].newly_installed
     }
 
     /// M2 (ADR-0042) — detach one owner from a generic feed interest and, when

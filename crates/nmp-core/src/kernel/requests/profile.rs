@@ -275,9 +275,11 @@ impl Kernel {
         // the wire. Store-serve is also triggered (fixing the kind:0 cold-start
         // bug: consequence §5a of the design doc).
         self.register_interest(
-            identity,
-            interest,
-            crate::kernel::cache_serve::InterestWrite::Replace,
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::Replace,
+            }],
             "profile-claim",
         );
     }
