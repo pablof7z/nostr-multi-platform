@@ -48,7 +48,8 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{coverage, provenance, tombstones, Inner};
+use super::{coverage, ingest_log, provenance, tombstones, Inner};
+use crate::ingest_log::DeleteReason;
 use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
@@ -204,6 +205,16 @@ pub(super) fn gc_step(
                         sources: vec![],
                         origin: TombstoneOrigin::NIP40Expiry,
                     },
+                )?;
+                // ADR-0058 §3: emit Nip40Expiry log entry inside this txn (D4).
+                ingest_log::append_deleted(
+                    inner.ingest_log,
+                    inner.ingest_meta,
+                    &mut txn,
+                    id,
+                    *id,
+                    DeleteReason::Nip40Expiry,
+                    now_secs * 1000,
                 )?;
                 report.expired_reaped += 1;
                 if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
@@ -475,6 +486,9 @@ pub(super) fn gc_step(
                 .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
         }
     }
+
+    // ADR-0058 §3: trim the ingest log to DEFAULT_LOG_MAX_ENTRIES.
+    let _ = ingest_log::gc_trim(inner.ingest_log, inner.ingest_meta, &inner.env);
 
     finish(start, report)
 }

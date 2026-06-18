@@ -28,6 +28,7 @@ mod events;
 pub(crate) mod interaction;
 mod lmdb;
 mod mem;
+pub mod ingest_log;
 // D20 — wasm-safe time shim. All wasm-reachable code in this crate that
 // needs `Instant` imports from here instead of directly from `std::time`.
 pub(crate) mod time;
@@ -35,6 +36,7 @@ pub mod types;
 
 pub use domain_migration::{DomainMigration, MigrationTx};
 pub use events::{DomainHandle, DomainScanIter, EventIter, EventStore};
+pub use ingest_log::{DeleteReason, LogOp, PullGap, PullPage, ScanLogResult, StoreLogEntry};
 pub use lmdb::LmdbEventStore;
 // W2 — relay-author-score encode/decode helpers. Gated on `lmdb-backend`
 // because the implementation is LMDB-specific. Callers that build

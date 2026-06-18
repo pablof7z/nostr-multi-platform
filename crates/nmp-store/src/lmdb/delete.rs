@@ -12,7 +12,8 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{gc, provenance, Inner};
+use super::{gc, ingest_log, provenance, Inner};
+use crate::ingest_log::DeleteReason;
 use crate::types::{DeleteFilter, EventId};
 use crate::StoreError;
 
@@ -86,6 +87,16 @@ fn by_ids(
                 tags,
             )?;
         }
+        // ADR-0058 §3: emit AdminPurge log entry for semantic deletion.
+        ingest_log::append_deleted(
+            inner.ingest_log,
+            inner.ingest_meta,
+            txn,
+            &id,
+            id,
+            DeleteReason::AdminPurge,
+            0,
+        )?;
         n += 1;
     }
     Ok(n)
@@ -127,6 +138,16 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
                 tags,
             )?;
         }
+        // ADR-0058 §3: emit AdminPurge log entry.
+        ingest_log::append_deleted(
+            inner.ingest_log,
+            inner.ingest_meta,
+            txn,
+            &id,
+            id,
+            DeleteReason::AdminPurge,
+            0,
+        )?;
     }
     Ok(n)
 }
@@ -172,6 +193,16 @@ fn by_kind_range(
                 tags,
             )?;
         }
+        // ADR-0058 §3: emit AdminPurge log entry.
+        ingest_log::append_deleted(
+            inner.ingest_log,
+            inner.ingest_meta,
+            txn,
+            &id,
+            id,
+            DeleteReason::AdminPurge,
+            0,
+        )?;
     }
     Ok(n)
 }

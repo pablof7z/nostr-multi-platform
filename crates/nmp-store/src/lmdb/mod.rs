@@ -63,6 +63,9 @@ mod open;
 // LMDB-error classifier: heed/MdbError → typed StoreError variants (#1521).
 #[cfg(feature = "lmdb-backend")]
 mod open_error;
+// ADR-0058 §4 — ingest-log LMDB helpers.
+#[cfg(feature = "lmdb-backend")]
+mod ingest_log;
 
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod test_fixtures;
@@ -103,6 +106,9 @@ mod tests_interaction_counters;
 // #1521 — typed LMDB health diagnostics: classifier unit tests + integration tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_health_diag;
+// ADR-0058 step-1 — ingest-log smoke tests.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_ingest_log;
 
 use std::path::{Path, PathBuf};
 
@@ -265,6 +271,12 @@ mod inner {
         /// detected on open, causing reads to fall back to
         /// `TargetInteractionCounts::default()` (forward-compat safeguard).
         pub(crate) interaction_counters_usable: bool,
+
+        // ── ADR-0058 §4 ingest-log sub-dbs ───────────────────────────────────────
+        /// Ingest-log store: seq(8 BE) → JSON(LogEntryPersist).
+        pub(crate) ingest_log: Database<Bytes, Bytes>,
+        /// Ingest-log metadata: "last_seq" / "gc_floor" → u64 BE.
+        pub(crate) ingest_meta: Database<Bytes, Bytes>,
 
         // ── GC scan state (V-117 fixes) ───────────────────────────────────────
         /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that

@@ -13,6 +13,8 @@ use super::{
     relay_kind_remove_id, upsert_provenance, MemState,
 };
 use super::ic::{ic_decrement, ic_increment};
+use super::ingest_log;
+use crate::ingest_log::DeleteReason;
 use crate::types::{InsertOutcome, RawEvent, RelayUrl, StoredEvent, TombstoneOrigin, TombstoneRow};
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -47,6 +49,14 @@ pub(super) fn handle_kind5_insert(
             access_remove(st, &target_hex);
             // Issue #1519: decrement counter for removed event.
             ic_decrement(st, ic_kind, &ic_tags);
+            // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted target.
+            ingest_log::emit_deleted(
+                st,
+                kind5_id_bytes,
+                target_id,
+                DeleteReason::Nip09,
+                kind5_at * 1000,
+            );
             merge_tombstone(
                 &mut st.tombstones,
                 target_hex,
@@ -112,6 +122,14 @@ pub(super) fn handle_kind5_insert(
                     .raw
                     .id_bytes()
                     .expect("stored event has valid hex id");
+                // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted a-tag target.
+                ingest_log::emit_deleted(
+                    st,
+                    kind5_id_bytes,
+                    target_id,
+                    DeleteReason::Nip09,
+                    kind5_at * 1000,
+                );
                 merge_tombstone(
                     &mut st.tombstones,
                     target_hex,
@@ -132,6 +150,8 @@ pub(super) fn handle_kind5_insert(
     // Capture kind+tags before move (kind:5 is not a counter kind — no-op, but uniform).
     let k5_ic_kind = event.kind;
     let k5_ic_tags = event.tags.clone();
+    // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+    let raw_for_log = event.clone();
     st.events.insert(
         kind5_id_hex.clone(),
         StoredEvent {
@@ -149,6 +169,14 @@ pub(super) fn handle_kind5_insert(
     };
     relay_index_add(st, source, &kind5_id_hex);
     relay_kind_add(st, source, 5, &kind5_id_hex);
+    // ADR-0058 §3: emit Inserted log entry for the kind:5 event itself.
+    ingest_log::emit_inserted(
+        st,
+        kind5_id_bytes,
+        raw_for_log,
+        source,
+        received_at_ms,
+    );
     InsertOutcome::Inserted {
         id: kind5_id_bytes,
         sources_after,

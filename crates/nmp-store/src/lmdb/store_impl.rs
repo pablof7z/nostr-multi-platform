@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
 use super::{
-    coverage, delete, domain, dump as dump_mod, gc, insert, query, query_relay_index,
+    coverage, delete, domain, dump as dump_mod, gc, ingest_log, insert, query, query_relay_index,
     LmdbEventStore,
 };
 use crate::events::{DomainHandle, EventIter, EventStore};
@@ -15,6 +15,7 @@ use crate::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
 };
+use crate::ingest_log::ScanLogResult;
 use crate::DomainMigration;
 use crate::StoreError;
 
@@ -257,6 +258,31 @@ impl EventStore for LmdbEventStore {
             }
         }
     }
+    // ─── Ingest log (ADR-0058 §3, step 1) ────────────────────────────────────────
+
+    fn latest_ingest_seq(&self) -> Result<u64, StoreError> {
+        ingest_log::latest_seq(self.inner.ingest_meta, &self.inner.env)
+    }
+
+    fn oldest_available_seq(&self) -> Result<Option<u64>, StoreError> {
+        ingest_log::oldest_seq(self.inner.ingest_log, self.inner.ingest_meta, &self.inner.env)
+    }
+
+    fn scan_log_since_seq(
+        &self,
+        after_seq: u64,
+        limit: usize,
+    ) -> Result<ScanLogResult, StoreError> {
+        ingest_log::scan_since(
+            self.inner.ingest_log,
+            self.inner.ingest_meta,
+            &self.inner.env,
+            after_seq,
+            limit,
+        )
+    }
+
+
 }
 
 // ─── Test-only helpers ────────────────────────────────────────────────────────

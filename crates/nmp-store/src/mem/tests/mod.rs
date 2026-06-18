@@ -15,3 +15,5 @@ mod query_visit_tests;
 mod authors_kind_tests;
 mod relay_index_tests;
 mod relay_kind_tests;
+
+mod ingest_log_tests;

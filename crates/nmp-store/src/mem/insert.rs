@@ -14,10 +14,13 @@ use std::sync::Arc;
 use super::{access_remove, access_stamp, bytes_to_hex, relay_index_add, relay_index_remove, relay_kind_add, relay_kind_remove_id, upsert_provenance, MemEventStore, MemState};
 use super::ic::{ic_decrement, ic_increment};
 use super::insert_kind5;
+use super::ingest_log;
+use crate::ingest_log::DeleteReason;
 use crate::types::{
     DeleteFilter, InsertOutcome, RawEvent, RejectReason, RelayUrl, StoredEvent, TombstoneOrigin,
 };
 use crate::StoreError;
+use crate::types::hex_to_event_id;
 
 // ─── Public entry points ─────────────────────────────────────────────────────
 
@@ -175,6 +178,7 @@ pub(super) fn delete_by_filter(
             .map(|(id, _)| id.clone())
             .collect(),
     };
+    let emit_purge = !matches!(filter, DeleteFilter::ByRelayOnly(_));
     let count = ids_to_remove.len();
     for id in ids_to_remove {
         // Capture kind+tags before removal for counter decrement.
@@ -187,6 +191,19 @@ pub(super) fn delete_by_filter(
         // Issue #1519: decrement counter for deleted event.
         if let Some((ik, ref it)) = ic_data {
             ic_decrement(&mut *st, ik, it);
+        }
+        // ADR-0058 §3: emit AdminPurge log entry for semantic deletions.
+        // ByRelayOnly is a retention removal (no log); others are admin purges.
+        if emit_purge {
+            if let Some(event_id) = hex_to_event_id(&id) {
+                ingest_log::emit_deleted(
+                    &mut *st,
+                    event_id,
+                    event_id,
+                    DeleteReason::AdminPurge,
+                    0,
+                );
+            }
         }
     }
     Ok(count)
@@ -272,6 +289,8 @@ fn handle_supersession(
             // Capture kind+tags before moving event into StoredEvent.
             let new_ic_kind = event.kind;
             let new_ic_tags = event.tags.clone();
+            // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+            let raw_for_log = event.clone();
             st.events.insert(
                 id_hex.clone(),
                 StoredEvent {
@@ -286,6 +305,15 @@ fn handle_supersession(
             upsert_provenance(p, source.clone(), received_at_ms);
             relay_index_add(st, source, &id_hex);
             relay_kind_add(st, source, kind, &id_hex);
+            // ADR-0058 §3: emit Replaced log entry.
+            ingest_log::emit_replaced(
+                st,
+                new_id,
+                replaced_id,
+                raw_for_log,
+                source,
+                received_at_ms,
+            );
             InsertOutcome::Replaced {
                 new_id,
                 replaced_id,
@@ -302,6 +330,8 @@ fn handle_supersession(
         // Capture kind+tags before moving event into StoredEvent.
         let ic_kind = event.kind;
         let ic_tags = event.tags.clone();
+        // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+        let raw_for_log = event.clone();
         st.events.insert(
             id_hex.clone(),
             StoredEvent {
@@ -319,6 +349,14 @@ fn handle_supersession(
         };
         relay_index_add(st, source, &id_hex);
         relay_kind_add(st, source, kind, &id_hex);
+        // ADR-0058 §3: emit Inserted log entry.
+        ingest_log::emit_inserted(
+            st,
+            id_bytes,
+            raw_for_log,
+            source,
+            received_at_ms,
+        );
         InsertOutcome::Inserted {
             id: id_bytes,
             sources_after,
@@ -353,6 +391,8 @@ fn handle_normal_insert(
     // Capture kind+tags before moving event into StoredEvent.
     let ic_kind = event.kind;
     let ic_tags = event.tags.clone();
+    // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+    let raw_for_log = event.clone();
     st.events.insert(
         id_hex.clone(),
         StoredEvent {
@@ -370,6 +410,14 @@ fn handle_normal_insert(
     };
     relay_index_add(st, source, &id_hex);
     relay_kind_add(st, source, kind, &id_hex);
+    // ADR-0058 §3: emit Inserted log entry.
+    ingest_log::emit_inserted(
+        st,
+        id_bytes,
+        raw_for_log,
+        source,
+        received_at_ms,
+    );
     InsertOutcome::Inserted {
         id: id_bytes,
         sources_after,
