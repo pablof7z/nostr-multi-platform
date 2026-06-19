@@ -142,6 +142,8 @@ pub(super) fn gc_step(
                 .env
                 .write_txn()
                 .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
+            // ADR-0058 §6 step-4: snapshot retention claims once for this reap txn.
+            let retention_claims = inner.retention_claims_snapshot();
             for (index_key, id) in &to_reap {
                 // Load the event before deletion to capture the freshness key
                 // (Bug-2 fix: stale replaceable_freshness must be cleaned) and
@@ -223,6 +225,7 @@ pub(super) fn gc_step(
                     now_secs * 1000,
                     inner.map_size,
                     inner.max_readers,
+                    &retention_claims,
                 )?;
                 report.expired_reaped += 1;
                 if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {

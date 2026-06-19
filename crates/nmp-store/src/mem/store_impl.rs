@@ -352,4 +352,20 @@ impl EventStore for MemEventStore {
             has_more,
         }))
     }
+
+    fn replace_log_retention_claims(&self, claims: &[crate::ingest_log::LogRetentionClaim]) {
+        // Single-writer (kernel) wholesale replace, under the SAME mutex as the
+        // ingest log so the next append-time trim sees a consistent claim set.
+        // A poisoned lock here is non-fatal: a missed claim update only means
+        // the next trim uses the prior set (it can never over-prune a row a
+        // live cursor still needs within one append, and the consumer degrades
+        // to an explicit PullGap, never a silent skip).
+        match self.state.lock() {
+            Ok(mut st) => st.retention_claims = claims.to_vec(),
+            Err(e) => tracing::warn!(
+                error = %e,
+                "replace_log_retention_claims: MemState lock poisoned (claims not updated)"
+            ),
+        }
+    }
 }

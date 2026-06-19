@@ -25,7 +25,8 @@ use heed::{Database, RoTxn, RwTxn};
 
 use super::open_error::classify_heed_err;
 use crate::ingest_log::{
-    DeleteReason, LogOp, PullGap, PullPage, ScanLogResult, StoreLogEntry, DEFAULT_LOG_MAX_ENTRIES,
+    DeleteReason, LogOp, LogRetentionClaim, PullGap, PullPage, ScanLogResult, StoreLogEntry,
+    DEFAULT_LOG_MAX_ENTRIES,
 };
 use crate::types::{EventId, RawEvent, RelayUrl};
 use crate::StoreError;
@@ -80,6 +81,7 @@ pub(super) fn append_inserted(
     received_at_ms: u64,
     map_size: usize,
     max_readers: u32,
+    claims: &[LogRetentionClaim],
 ) -> Result<u64, StoreError> {
     let seq = next_seq(ingest_meta, txn, map_size, max_readers)?;
     let entry = LogEntryPersist {
@@ -92,7 +94,15 @@ pub(super) fn append_inserted(
     };
     write_entry(ingest_log, txn, seq, &entry, map_size, max_readers)?;
     // BLOCKING 4: trim inside the same txn so the log is never unbounded.
-    trim_in_txn(ingest_log, ingest_meta, txn, seq, map_size, max_readers)?;
+    trim_in_txn(
+        ingest_log,
+        ingest_meta,
+        txn,
+        seq,
+        map_size,
+        max_readers,
+        claims,
+    )?;
     Ok(seq)
 }
 
@@ -107,6 +117,7 @@ pub(super) fn append_replaced(
     received_at_ms: u64,
     map_size: usize,
     max_readers: u32,
+    claims: &[LogRetentionClaim],
 ) -> Result<u64, StoreError> {
     let seq = next_seq(ingest_meta, txn, map_size, max_readers)?;
     let entry = LogEntryPersist {
@@ -119,7 +130,15 @@ pub(super) fn append_replaced(
     };
     write_entry(ingest_log, txn, seq, &entry, map_size, max_readers)?;
     // BLOCKING 4: trim inside the same txn so the log is never unbounded.
-    trim_in_txn(ingest_log, ingest_meta, txn, seq, map_size, max_readers)?;
+    trim_in_txn(
+        ingest_log,
+        ingest_meta,
+        txn,
+        seq,
+        map_size,
+        max_readers,
+        claims,
+    )?;
     Ok(seq)
 }
 
@@ -133,6 +152,7 @@ pub(super) fn append_deleted(
     received_at_ms: u64,
     map_size: usize,
     max_readers: u32,
+    claims: &[LogRetentionClaim],
 ) -> Result<u64, StoreError> {
     let seq = next_seq(ingest_meta, txn, map_size, max_readers)?;
     let entry = LogEntryPersist {
@@ -145,7 +165,15 @@ pub(super) fn append_deleted(
     };
     write_entry(ingest_log, txn, seq, &entry, map_size, max_readers)?;
     // BLOCKING 4: trim inside the same txn so the log is never unbounded.
-    trim_in_txn(ingest_log, ingest_meta, txn, seq, map_size, max_readers)?;
+    trim_in_txn(
+        ingest_log,
+        ingest_meta,
+        txn,
+        seq,
+        map_size,
+        max_readers,
+        claims,
+    )?;
     Ok(seq)
 }
 
@@ -284,14 +312,23 @@ fn decode_entry(v: &[u8]) -> Result<LogEntryPersist, StoreError> {
     Ok(persist)
 }
 
-/// Trim the ingest log to at most `DEFAULT_LOG_MAX_ENTRIES` inside the
-/// caller's write txn.
+/// Trim the ingest log inside the caller's write txn, advancing `gc_floor` to
+/// the normal retention floor capped by any still-eligible `Protected`-cursor
+/// claim (ADR-0058 §6, step-4).
 ///
 /// BLOCKING 4: append-time trim means the log is ALWAYS bounded immediately
 /// after each append — no separate GC pass required. The `gc_floor` advance is
 /// committed atomically with the append so gap-contract invariants hold:
 /// `scan_since(after_seq < gc_floor)` returns `Gap { first_available_seq =
 /// gc_floor + 1 }`.
+///
+/// CRITICAL (step-4): claim eligibility is computed HERE against the per-append
+/// `latest_seq` — NOT from a precomputed bare floor. Once a protected cursor's
+/// lag exceeds its `max_lag_entries`, its claim is filtered out at this trim,
+/// `gc_floor` advances normally, and that cursor later gets an explicit
+/// `PullGap` (D5: a stuck consumer cannot pin the log unbounded). `claims` is a
+/// snapshot threaded from the append call so the trim sees a consistent set
+/// within this event `RwTxn`.
 fn trim_in_txn(
     ingest_log: Database<Bytes, Bytes>,
     ingest_meta: Database<Bytes, Bytes>,
@@ -299,14 +336,26 @@ fn trim_in_txn(
     latest_seq: u64,
     map_size: usize,
     max_readers: u32,
+    claims: &[LogRetentionClaim],
 ) -> Result<(), StoreError> {
     let floor = read_u64(ingest_meta, txn, KEY_GC_FLOOR)?;
-    let retained = latest_seq.saturating_sub(floor);
-    if retained <= DEFAULT_LOG_MAX_ENTRIES {
+
+    let normal_floor = latest_seq.saturating_sub(DEFAULT_LOG_MAX_ENTRIES);
+    // Slowest still-eligible protected cursor (min after_seq among claims whose
+    // lag is still within bound). Eligibility uses the CURRENT latest_seq.
+    let protected_floor = claims
+        .iter()
+        .filter(|c| latest_seq.saturating_sub(c.after_seq) <= c.max_lag_entries)
+        .map(|c| c.after_seq)
+        .min();
+    let target_floor = match protected_floor {
+        Some(p) => normal_floor.min(p),
+        None => normal_floor,
+    };
+    let new_floor = floor.max(target_floor);
+    if new_floor <= floor {
         return Ok(());
     }
-    let to_prune = retained - DEFAULT_LOG_MAX_ENTRIES;
-    let new_floor = floor + to_prune;
 
     let lo = (floor + 1).to_be_bytes();
     let hi_ex = (new_floor + 1).to_be_bytes();
@@ -335,7 +384,14 @@ fn trim_in_txn(
     // the trimmed range (entries may have been absent). The gap contract requires
     // gc_floor to equal new_floor so scan_since returns the correct
     // first_available_seq = gc_floor + 1 regardless of physical key presence.
-    write_u64(ingest_meta, txn, KEY_GC_FLOOR, new_floor, map_size, max_readers)?;
+    write_u64(
+        ingest_meta,
+        txn,
+        KEY_GC_FLOOR,
+        new_floor,
+        map_size,
+        max_readers,
+    )?;
     Ok(())
 }
 

@@ -117,6 +117,9 @@ mod tests_ingest_log;
 // ADR-0058 fix-verification (split for 500-LOC cap).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_ingest_log_fixes;
+// ADR-0058 §6 step-4 — Protected-cursor log-retention tests.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_retention;
 
 use std::path::{Path, PathBuf};
 
@@ -152,7 +155,6 @@ pub(crate) use inner::Inner;
 // Internal sub-db / env handles extracted to inner.rs for the 500-LOC cap.
 #[cfg(feature = "lmdb-backend")]
 mod inner;
-
 
 // ─── LmdbEventStore ──────────────────────────────────────────────────────────
 

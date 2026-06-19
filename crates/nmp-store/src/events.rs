@@ -533,6 +533,19 @@ pub trait EventStore: Send + Sync {
         limit: usize,
     ) -> Result<crate::ingest_log::ScanLogResult, StoreError>;
 
+    /// Replace the whole `Protected`-cursor log-retention claim set (ADR-0058
+    /// §6, step-4).
+    ///
+    /// The kernel is the single writer: after every pull-cursor
+    /// register/advance/unregister it rebuilds the claim set from its registry
+    /// and publishes it here, replacing the previous set wholesale. Claims are
+    /// VOLATILE (never persisted) — they pin the seq-keyed log GC floor to the
+    /// slowest still-eligible protected cursor at append-time trim.
+    ///
+    /// Default no-op so non-ingest-log backends compile unchanged; both shipped
+    /// ingest-log backends (`MemEventStore`, `LmdbEventStore`) override it.
+    fn replace_log_retention_claims(&self, _claims: &[crate::ingest_log::LogRetentionClaim]) {}
+
     // ─── Export ──────────────────────────────────────────────────────────────
 
     /// Dump all store contents in the requested format.

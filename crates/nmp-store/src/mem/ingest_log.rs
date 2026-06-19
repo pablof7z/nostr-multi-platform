@@ -38,17 +38,53 @@ pub(super) fn log_append(
     seq
 }
 
-/// Trim the log to at most `DEFAULT_LOG_MAX_ENTRIES`, advancing the GC floor.
+/// Trim the log, advancing the GC floor (ADR-0058 §6, step-4).
 ///
-/// Called after every `log_append` so the log is never unbounded (ADR-0058 R2.4).
+/// Called after every `log_append` so the log is never unbounded (ADR-0058
+/// R2.4). The floor target is the normal retention floor
+/// (`latest_seq - DEFAULT_LOG_MAX_ENTRIES`), capped by the slowest still-eligible
+/// `Protected`-cursor claim so its unconsumed rows survive.
+///
+/// CRITICAL (step-4): eligibility is computed HERE against the current
+/// `latest_seq` (`st.ingest_seq`) — NOT from a precomputed bare floor. Once a
+/// protected cursor's lag exceeds its `max_lag_entries`, its claim is filtered
+/// out at this trim, the floor advances normally, and that cursor later gets an
+/// explicit `PullGap` (D5: a stuck consumer cannot pin the log unbounded).
 pub(super) fn log_gc_trim(st: &mut MemState) {
-    while st.ingest_log.len() as u64 > DEFAULT_LOG_MAX_ENTRIES {
-        if let Some((seq, _)) = st.ingest_log.pop_first() {
-            st.log_gc_floor = seq;
-        } else {
-            break;
-        }
+    let latest_seq = st.ingest_seq;
+    let normal_floor = latest_seq.saturating_sub(DEFAULT_LOG_MAX_ENTRIES);
+
+    // Slowest still-eligible protected cursor (min after_seq among claims whose
+    // lag is still within bound). Eligibility uses the CURRENT latest_seq.
+    let protected_floor = st
+        .retention_claims
+        .iter()
+        .filter(|c| latest_seq.saturating_sub(c.after_seq) <= c.max_lag_entries)
+        .map(|c| c.after_seq)
+        .min();
+
+    let target_floor = match protected_floor {
+        Some(p) => normal_floor.min(p),
+        None => normal_floor,
+    };
+    let new_floor = st.log_gc_floor.max(target_floor);
+
+    if new_floor <= st.log_gc_floor {
+        return;
     }
+    // Delete log rows with `current_gc_floor < seq <= new_floor`.
+    let to_remove: Vec<u64> = st
+        .ingest_log
+        .range((
+            std::ops::Bound::Excluded(st.log_gc_floor),
+            std::ops::Bound::Included(new_floor),
+        ))
+        .map(|(seq, _)| *seq)
+        .collect();
+    for seq in to_remove {
+        st.ingest_log.remove(&seq);
+    }
+    st.log_gc_floor = new_floor;
 }
 
 /// Emit an `Inserted` log entry (for a new distinct event).

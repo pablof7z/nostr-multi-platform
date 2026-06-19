@@ -3,10 +3,13 @@
 //! Extracted from `mod.rs` to keep that file under the 500-LOC hard cap.
 
 use std::sync::atomic::AtomicU64;
+use std::sync::RwLock;
 
 use heed::types::Bytes;
 use heed::{Database, Env};
 use nmp_nostr_lmdb::Lmdb;
+
+use crate::ingest_log::LogRetentionClaim;
 
 /// Internal storage handles shared by every method.
 ///
@@ -148,6 +151,38 @@ pub struct Inner {
     /// Value 0 means "never run" (correct: a 90-day tombstone age threshold
     /// means nothing is purgeable in the first hour anyway).
     pub(crate) gc_last_tombstone_purge_secs: AtomicU64,
+
+    /// VOLATILE `Protected`-cursor log-retention claims (ADR-0058 §6, step-4).
+    ///
+    /// Held in memory only — cursor registrations are non-durable, so their
+    /// retention claims are non-durable too (never written to `nmp-ingest-meta`).
+    /// Written wholesale by `EventStore::replace_log_retention_claims` (kernel =
+    /// single writer). Each event mutation snapshots this (clones the `Vec`) and
+    /// passes it into the append-time `trim_in_txn` so the trim sees a consistent
+    /// set within the event `RwTxn`.
+    pub(crate) retention_claims: RwLock<Vec<LogRetentionClaim>>,
+}
+
+impl Inner {
+    /// Snapshot the current retention-claim set (ADR-0058 §6, step-4).
+    ///
+    /// Cloned once per event mutation and threaded into `trim_in_txn` so the
+    /// append-time trim sees a consistent claim set within the event `RwTxn`
+    /// (the serializing invariant is the write txn, not actor single-threading).
+    /// A poisoned lock is non-fatal — fall back to an empty set (normal trim,
+    /// the consumer degrades to an explicit `PullGap`, never a silent skip).
+    pub(crate) fn retention_claims_snapshot(&self) -> Vec<LogRetentionClaim> {
+        match self.retention_claims.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "retention_claims lock poisoned; trimming with empty claim set"
+                );
+                Vec::new()
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for Inner {

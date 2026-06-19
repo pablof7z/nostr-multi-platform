@@ -57,8 +57,8 @@ pub(super) fn open_impl_with_limits(
 
     let env = Lmdb::open_env(path, map_size, max_readers, NMP_ADDITIONAL_DBS)
         .map_err(|e| classify_store_err(e, map_size, max_readers))?;
-    let lmdb = Lmdb::with_env(env.clone())
-        .map_err(|e| classify_store_err(e, map_size, max_readers))?;
+    let lmdb =
+        Lmdb::with_env(env.clone()).map_err(|e| classify_store_err(e, map_size, max_readers))?;
 
     // Open NMP sub-dbs on the shared env in one write txn (atomic with the
     // upstream schema). The local closure keeps the call sites DRY.
@@ -105,8 +105,7 @@ pub(super) fn open_impl_with_limits(
             .iter(&txn)
             .map_err(|e| classify_heed_err(e, map_size, max_readers))?
         {
-            let (_, v) =
-                entry.map_err(|e| classify_heed_err(e, map_size, max_readers))?;
+            let (_, v) = entry.map_err(|e| classify_heed_err(e, map_size, max_readers))?;
             if v.len() >= 8 {
                 let seq = u64::from_be_bytes(v[..8].try_into().unwrap());
                 if seq > max_seq {
@@ -174,6 +173,8 @@ pub(super) fn open_impl_with_limits(
             ingest_log: ingest_log_db,
             ingest_meta: ingest_meta_db,
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
+            // ADR-0058 §6 step-4: volatile, never persisted — empty on every open.
+            retention_claims: std::sync::RwLock::new(Vec::new()),
         }),
     })
 }
@@ -449,7 +450,13 @@ fn backfill_relay_kind_index(
         .map_err(|e| StoreError::Io(format!("relay-kind backfill write_txn: {e}")))?;
     for (relay_url, kind, id) in entries {
         super::provenance::relay_kind_put(
-            relay_kind, &mut txn, &relay_url, kind, &id, map_size, max_readers,
+            relay_kind,
+            &mut txn,
+            &relay_url,
+            kind,
+            &id,
+            map_size,
+            max_readers,
         )?;
     }
     domain_versions
