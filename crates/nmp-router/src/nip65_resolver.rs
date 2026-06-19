@@ -47,12 +47,13 @@ use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::publish::{
     OutboxResolver, PublishTarget, RelaySelectionReason, RelayUrl, ResolvedRelay,
 };
-use nmp_core::substrate::BlockedRelaySet;
 use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use nmp_core::store::{EventStore, PubKey, StoredEvent};
+use nmp_core::substrate::BlockedRelaySet;
+use nmp_kinds::ptags_are_recipients;
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
@@ -238,18 +239,26 @@ impl OutboxResolver for Nip65OutboxResolver {
             }
         }
 
-        // 4. Recipient read-relays — union for every `#p` tag, but only for
-        // small recipient sets. At 15+ distinct p-tagged pubkeys the event is
-        // broadcast-ish enough that recipient inbox fan-out becomes noisy.
-        if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
+        // 4. Recipient read-relays — union for every `#p` tag, but ONLY when the
+        // kind's `#p` tags semantically denote message recipients (people to notify),
+        // AND only for small recipient sets. At 15+ distinct p-tagged pubkeys the
+        // event is broadcast-ish enough that recipient inbox fan-out becomes noisy.
+        //
+        // Replaceable and addressable events (kind:0, kind:3, kind:10000–19999,
+        // kind:30000–39999) use `#p` tags to list follows, mutes, or list members
+        // (SUBJECTS), NOT to address a message to those pubkeys. Routing a kind:3
+        // contact list to every followee's inbox relay is incorrect; those pubkeys
+        // are subjects of the list, not intended receivers of the publish. The
+        // `ptags_are_recipients` predicate captures this semantic distinction
+        // without a hardcoded kind allowlist, derived purely from the NIP-01
+        // replaceable / addressable classification.
+        if ptags_are_recipients(kind) && p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
             for p in p_tags {
                 if let Some((_writes, reads)) = self.lookup_kind10002(p) {
                     for url in reads {
                         out.push(ResolvedRelay {
                             url,
-                            reason: RelaySelectionReason::RecipientInbox {
-                                pubkey: p.clone(),
-                            },
+                            reason: RelaySelectionReason::RecipientInbox { pubkey: p.clone() },
                         });
                     }
                 }
