@@ -52,6 +52,10 @@ mod sign_event_for_return_tests;
 // transient-feed teardown-seam tests.
 mod event_observer;
 mod feed;
+// ADR-0061 — generic, app-agnostic feed C-ABI (descriptor open + viewport
+// intent). Additive alongside `feed.rs` (`nmp_app_load_older_feed`), which is
+// deleted in a later migration PR.
+mod feed_surface;
 mod identity;
 #[cfg(test)]
 #[path = "interest_feed_tests.rs"]
@@ -138,6 +142,9 @@ pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callbac
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
+// ADR-0061 — generic feed surface verbs (additive; old app-named symbols kept).
+#[cfg(feature = "native")]
+pub use feed_surface::{nmp_app_close_feed, nmp_app_open_feed, nmp_app_set_feed_viewport};
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
@@ -674,6 +681,16 @@ pub struct NmpApp {
     /// surfaces here; shells report viewport intent through generic feed FFI
     /// instead of app-specific cursor/window APIs.
     feed_registry: nmp_feed::FeedRegistrySlot,
+    /// ADR-0061 — canonical, app-agnostic feed surface. Descriptor-keyed open
+    /// feeds plus the viewport-driven pagination policy NMP owns (Option B:
+    /// auto-extend from declared viewport). The composition root installs feed
+    /// profiles + descriptor openers here; the generic `nmp_app_open_feed` /
+    /// `nmp_app_close_feed` / `nmp_app_set_feed_viewport` C-ABI route through it.
+    /// It drives the SAME `nmp_feed::PullFeedController` the `feed_registry`
+    /// holds — no parallel paging mechanism. Not shared with the actor thread
+    /// (the open / viewport read path is FFI-synchronous on the calling thread,
+    /// like `feed_registry`).
+    feed_surface: nmp_feed::FeedSurfaceSlot,
     /// Per-open feed → ingest-observer bookkeeping for *transient* feeds (a
     /// visited profile / open thread registered through
     /// [`Self::register_feed_with_observer`]). The home feed is NOT here — it
@@ -1049,6 +1066,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     }
     let actor_external_event_sink_dispatcher_slot = Arc::clone(&external_event_sink_dispatcher_slot);
     let feed_registry = nmp_feed::new_feed_registry_slot();
+    let feed_surface = nmp_feed::new_feed_surface_slot();
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
@@ -1351,6 +1369,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // `nmp_app_register_snapshot_projection` during init.
         snapshot_projections,
         feed_registry,
+        feed_surface,
         // Per-open transient-feed observer bookkeeping; empty until the first
         // `register_feed_with_observer` (a visited profile / open thread).
         interest_feed_observers: Mutex::new(std::collections::HashMap::new()),
@@ -1554,6 +1573,41 @@ impl NmpApp {
     #[must_use]
     pub fn load_older_feed(&self, key: &str) -> bool {
         let changed = self.feed_registry.load_older(key);
+        if changed {
+            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+        }
+        changed
+    }
+
+    /// ADR-0061 — the canonical feed surface (descriptor open + viewport
+    /// intent). Composition roots install profiles + openers here; the generic
+    /// feed C-ABI routes through it.
+    #[must_use]
+    pub fn feed_surface(&self) -> &nmp_feed::FeedSurface {
+        &self.feed_surface
+    }
+
+    /// ADR-0061 — open a feed by canonical descriptor JSON. Returns ONLY the
+    /// deterministic key (ADR-0039: data stays push-only); `None` on a malformed
+    /// descriptor. Idempotent in the surface.
+    #[must_use]
+    pub fn open_feed(&self, descriptor_json: &str) -> Option<nmp_feed::FeedHandle> {
+        self.feed_surface.open(descriptor_json)
+    }
+
+    /// ADR-0061 — forget an open feed's viewport bookkeeping. The bound
+    /// controller's render registration (owned by the composition root) is
+    /// untouched.
+    pub fn close_feed(&self, key: &str) -> bool {
+        self.feed_surface.close(key)
+    }
+
+    /// ADR-0061 — report viewport facts. NMP owns the decision to drive the
+    /// existing pull pager (Option B). When the drain progresses, re-emit by
+    /// marking the snapshot changed — exactly as [`Self::load_older_feed`] does.
+    #[must_use]
+    pub fn set_feed_viewport(&self, key: &str, intent: nmp_feed::FeedViewportIntent) -> bool {
+        let changed = self.feed_surface.set_viewport(key, intent);
         if changed {
             self.send_cmd(ActorCommand::MarkChangedSinceEmit);
         }

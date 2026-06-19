@@ -446,5 +446,8 @@ fn recent_routing_decisions_returns_schema_versioned_json() {
     assert_eq!(value["subscriptions"].as_array().unwrap().len(), 0);
 }
 
+// ADR-0061 feed-surface worker tests live in `tests/feed_surface.rs` to keep
+// this file under the 500-LOC hard cap (AGENTS.md).
+
 // PR-1 acceptance test (kernel-authored snapshot) lives in snapshot_protocol.rs
 // to keep this file under the 500-LOC hard cap (AGENTS.md).

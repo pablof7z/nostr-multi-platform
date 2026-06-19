@@ -18,6 +18,13 @@ crate-type = ["cdylib", "rlib"]
 # wire NmpApp into WasmRuntime using a WASM-compatible transport
 # (web_sys::WebSocket + IndexedDB store).
 nmp-core = { path = "../nmp-core", default-features = false }
+# ADR-0061 — the canonical feed surface (descriptor canonicalization + the
+# viewport-driven controller). Pure logic over `nmp-core` (default-features
+# off), so it carries no native-only code onto wasm32. The web worker holds a
+# `FeedSurface` and routes its open/close/viewport operations through the SAME
+# canonicalization the native C-ABI uses, so the web key == the native key for
+# the same descriptor.
+nmp-feed = { path = "../nmp-feed" }
 # Step 8 phase A: the `relay_protocol` constants moved from
 # `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the
 # pure-Rust `native = false` slice of nmp-network (no tungstenite/mio/rustls).

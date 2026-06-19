@@ -313,6 +313,26 @@ void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCall
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
 void nmp_app_load_older_feed(void *app, const char *feed_key);
+// ADR-0061 — canonical, app-agnostic feed surface (descriptor open + viewport
+// intent). Additive alongside the per-shape app-named open/close verbs and
+// `nmp_app_load_older_feed` (deleted in a later migration PR).
+//
+// `nmp_app_open_feed` opens a feed by canonical descriptor JSON
+// (`{"profile":"notes","source":{"homeFollowSet":{}},"scope":"activeAccount"}`,
+// or `author` / `thread` / `tag` / `interestShape` sources). It returns a
+// heap-owned NUL-terminated feed-key string the caller MUST free via
+// `nmp_free_string`, or NULL on a null `app` / non-UTF-8 / malformed descriptor.
+// The key is deterministic (the same descriptor always yields the same key) and
+// carries NO state — projection data still arrives only through the snapshot
+// push (ADR-0039).
+char *nmp_app_open_feed(void *app, const char *descriptor_json);
+// Forget a feed's viewport bookkeeping. Idempotent; an unknown key is a no-op.
+void nmp_app_close_feed(void *app, const char *feed_key);
+// Report raw viewport facts (`{"firstVisible":N,"lastVisible":N,"renderedLen":N}`).
+// NMP owns the pagination decision (Option B: auto-extend from declared
+// viewport) and drives the existing pull pager; the shell branches on nothing.
+// Null / malformed input is a silent no-op (D6).
+void nmp_app_set_feed_viewport(void *app, const char *feed_key, const char *viewport_json);
 typedef void (*NmpActionResultObserver)(const char *result_json);
 void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);
 // PR-G: ack a `correlation_id` in the `action_stages` snapshot mirror so the

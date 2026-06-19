@@ -7,6 +7,7 @@
 mod pager;
 mod pull_controller;
 mod registry;
+pub mod surface;
 pub mod typed_wire;
 mod root_indexed;
 mod types;
@@ -20,6 +21,12 @@ pub use pull_controller::{
     ClosureInterestShape, FeedAdvance, FeedApply, PullFeedController, PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
+pub use surface::{
+    canonical_descriptor_json, canonical_feed_key, new_feed_surface_slot, parse_descriptor,
+    FeedDescriptor, FeedHandle, FeedKey, FeedOpener, FeedPagePolicy, FeedProfile, FeedProfileId,
+    FeedRenderer, FeedScope, FeedSource, FeedSurface, FeedSurfaceSlot, FeedViewportIntent,
+    OpenedFeed, TailState,
+};
 pub use root_indexed::{
     AttributionPayload, CardBuilder, ClaimRequest, ClaimSink, EventGate, EventLookup,
     FollowPredicate, ProfileDetector, RootCard, RootFeedSnapshot, RootIndexedFeed,

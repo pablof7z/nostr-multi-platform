@@ -109,6 +109,14 @@ pub struct WasmRuntime {
     /// `start()` fills it; `stop()` clears it. `wasm32`-only.
     #[cfg(target_arch = "wasm32")]
     tick_interval: Option<gloo_timers::callback::Interval>,
+    /// ADR-0061 — the canonical feed surface. The web worker holds one and
+    /// routes `OpenFeed` / `CloseFeed` / `SetFeedViewport` through it with the
+    /// SAME descriptor canonicalization the native C-ABI uses, so the web key ==
+    /// the native key for a given descriptor. The web composition root installs
+    /// profiles + openers here (mirroring `register_op_feed_defaults`); until it
+    /// does, `set_viewport` is inert and `open` still returns the deterministic
+    /// key (the shell-migration PR wires the web feed binding).
+    feed_surface: nmp_feed::FeedSurface,
 }
 
 impl Default for WasmRuntime {
@@ -125,6 +133,7 @@ impl Default for WasmRuntime {
             handlers_slot: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             tick_interval: None,
+            feed_surface: nmp_feed::FeedSurface::default(),
         }
     }
 }
@@ -214,8 +223,77 @@ impl WasmRuntime {
                 })])
             }
             WorkerRequest::SetSigner(request) => Ok(self.set_signer(request)),
+            WorkerRequest::OpenFeed {
+                descriptor,
+                correlation_id,
+            } => Ok(self.open_feed(descriptor, correlation_id)),
+            WorkerRequest::CloseFeed {
+                key,
+                correlation_id,
+            } => Ok(self.close_feed(&key, correlation_id)),
+            WorkerRequest::SetFeedViewport {
+                key,
+                viewport,
+                correlation_id,
+            } => Ok(self.set_feed_viewport(&key, viewport, correlation_id)),
             WorkerRequest::Stop { correlation_id } => self.stop(correlation_id),
         }
+    }
+
+    /// ADR-0061 — the web worker's canonical feed surface. The web composition
+    /// root installs feed profiles + descriptor openers here (mirroring
+    /// `register_op_feed_defaults` on native).
+    #[must_use]
+    pub fn feed_surface(&self) -> &nmp_feed::FeedSurface {
+        &self.feed_surface
+    }
+
+    /// ADR-0061 — open a feed by canonical descriptor. Replies with the
+    /// deterministic key (web key == native key). Returns only the handle —
+    /// projection data stays push-only (ADR-0039).
+    fn open_feed(
+        &mut self,
+        descriptor: nmp_feed::FeedDescriptor,
+        correlation_id: String,
+    ) -> Vec<WorkerEvent> {
+        // Route through the same JSON open path the C-ABI uses so the key is
+        // byte-identical across platforms.
+        let key = match serde_json::to_string(&descriptor)
+            .ok()
+            .and_then(|json| self.feed_surface.open(&json))
+        {
+            Some(handle) => handle.key.0,
+            None => nmp_feed::canonical_feed_key(&descriptor).0,
+        };
+        vec![WorkerEvent::FeedOpened {
+            feed_key: key,
+            correlation_id,
+        }]
+    }
+
+    /// ADR-0061 — forget a feed's viewport bookkeeping.
+    fn close_feed(&mut self, key: &str, correlation_id: String) -> Vec<WorkerEvent> {
+        let _ = self.feed_surface.close(key);
+        vec![WorkerEvent::ActionAccepted {
+            action_type: "nmp.feed.close".to_string(),
+            correlation_id,
+        }]
+    }
+
+    /// ADR-0061 — report viewport facts. NMP owns the pagination decision; the
+    /// grown projection (once the web feed binding lands) rides the existing
+    /// snapshot/update channel.
+    fn set_feed_viewport(
+        &mut self,
+        key: &str,
+        viewport: nmp_feed::FeedViewportIntent,
+        correlation_id: String,
+    ) -> Vec<WorkerEvent> {
+        let _ = self.feed_surface.set_viewport(key, viewport);
+        vec![WorkerEvent::ActionAccepted {
+            action_type: "nmp.feed.viewport".to_string(),
+            correlation_id,
+        }]
     }
 
     fn start(&mut self, config: StartConfig) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {

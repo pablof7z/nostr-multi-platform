@@ -312,7 +312,12 @@ pub fn register_op_feed_defaults(
     {
         let controller: Arc<dyn FeedController> =
             PullFeedController::new(provider, pull, apply, advance);
-        app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
+        let key = nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY;
+        app.register_feed(key, Arc::clone(&controller));
+        // ADR-0061 — bind the home feed into the canonical feed surface (the
+        // `{1,6}` kinds move into a Rust `FeedProfile`; the opener REUSES the
+        // controller registered above — no parallel paging path).
+        install_home_feed_surface(app.feed_surface(), controller, &contact_feed_kinds);
     }
 
     // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
@@ -484,6 +489,10 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
         Err(_) => None,
     }
 }
+
+#[path = "op_feed_defaults/surface_binding.rs"]
+mod surface_binding;
+pub use surface_binding::{install_home_feed_surface, HOME_FEED_PROFILE_ID};
 
 #[cfg(test)]
 #[path = "op_feed_defaults/tests.rs"]

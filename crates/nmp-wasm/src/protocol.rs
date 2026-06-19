@@ -24,6 +24,27 @@ pub enum WorkerRequest {
     /// `kind`: `"nip07"` — the only kind wired in Stage 3b. Other kinds
     /// return [`WorkerEvent::CapabilityFailure`] with `unsupported_signer_kind`.
     SetSigner(SetSigner),
+    /// ADR-0061 — open a feed by canonical descriptor. The worker computes the
+    /// deterministic feed key with the SAME `nmp_feed::surface` canonicalization
+    /// the native C-ABI uses (web key == native key) and replies with
+    /// [`WorkerEvent::FeedOpened`]. Returns only the handle — projection data
+    /// still flows through the snapshot/update channel (ADR-0039).
+    OpenFeed {
+        descriptor: nmp_feed::FeedDescriptor,
+        correlation_id: String,
+    },
+    /// ADR-0061 — forget an open feed's viewport bookkeeping.
+    CloseFeed {
+        key: String,
+        correlation_id: String,
+    },
+    /// ADR-0061 — report raw viewport facts. NMP owns the pagination decision
+    /// (Option B); the grown projection rides the existing push channel.
+    SetFeedViewport {
+        key: String,
+        viewport: nmp_feed::FeedViewportIntent,
+        correlation_id: String,
+    },
     Stop {
         correlation_id: String,
     },
@@ -223,6 +244,13 @@ pub enum WorkerEvent {
     },
     ActionAccepted {
         action_type: String,
+        correlation_id: String,
+    },
+    /// ADR-0061 — reply to [`WorkerRequest::OpenFeed`] carrying the
+    /// deterministic feed key. The key equals the native C-ABI key for the same
+    /// descriptor.
+    FeedOpened {
+        feed_key: String,
         correlation_id: String,
     },
     UpdateBytes {
