@@ -50,7 +50,7 @@ pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindC
 pub use projection::{
     DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupChatMessage,
     GroupChatProjection, GroupChatSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
-    DEFAULT_PUBLIC_GROUP_RELAY_URL,
+    JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use register::register_actions;
 pub use wire::discovered_groups_fb::{
@@ -58,13 +58,17 @@ pub use wire::discovered_groups_fb::{
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION,
 };
+pub use wire::group_chat_fb::{
+    decode_group_chat_snapshot, encode_group_chat_snapshot, GROUP_CHAT_FILE_IDENTIFIER,
+    GROUP_CHAT_SCHEMA_ID, GROUP_CHAT_SCHEMA_VERSION,
+};
 pub use wire::group_defaults_fb::{
     decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,
     GROUP_DEFAULTS_SCHEMA_ID, GROUP_DEFAULTS_SCHEMA_VERSION,
 };
-pub use wire::group_chat_fb::{
-    decode_group_chat_snapshot, encode_group_chat_snapshot, GROUP_CHAT_FILE_IDENTIFIER,
-    GROUP_CHAT_SCHEMA_ID, GROUP_CHAT_SCHEMA_VERSION,
+pub use wire::joined_groups_fb::{
+    decode_joined_groups_snapshot, encode_joined_groups_snapshot, JOINED_GROUPS_FILE_IDENTIFIER,
+    JOINED_GROUPS_SCHEMA_ID, JOINED_GROUPS_SCHEMA_VERSION,
 };
 
 #[cfg(test)]

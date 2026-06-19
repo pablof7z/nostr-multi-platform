@@ -1,0 +1,28 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers wire for `nmp_nip29::projection::JoinedGroupsSnapshot`,
+// schema_id "nmp.nip29.joined_groups". The serde snapshot remains the
+// authoritative Rust shape; this sidecar mirrors it for typed host decoders.
+
+table JoinedGroup {
+  group_id:string;
+  host_relay_url:string;
+  name:string;
+  picture:string;
+  about:string;
+  member_count:uint32;
+  admin_count:uint32;
+  public:bool;
+  open:bool;
+  is_member:bool;
+  is_admin:bool;
+}
+
+table JoinedGroupsSnapshot {
+  schema_version:uint32 = 1;
+  active_pubkey:string;
+  groups:[JoinedGroup];
+}
+
+root_type JoinedGroupsSnapshot;
+file_identifier "NJGS";

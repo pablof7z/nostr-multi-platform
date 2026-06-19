@@ -23,12 +23,13 @@ use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 
 use crate::action::{
-    CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction, PostChatMessageAction,
-    ReactInGroupAction,
+    CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
+    PostChatMessageAction, PutUserAction, ReactInGroupAction,
 };
 use crate::group_id::GroupId;
 use crate::projection::{
     DiscoveredGroupsProjection, GroupChatProjection, GroupDefaultsProjection,
+    JoinedGroupsProjection,
 };
 
 /// Wire a [`GroupChatProjection`] for `group_id` into `app`.
@@ -86,7 +87,6 @@ pub fn wire_group_chat(app: &NmpApp, group_id: GroupId) {
             ..Default::default()
         })
     });
-
 }
 
 /// Wire a [`DiscoveredGroupsProjection`] for `relay_url` into `app`.
@@ -128,7 +128,48 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
             ..Default::default()
         })
     });
+}
 
+/// Wire the active account's joined-groups projection into `app`.
+///
+/// If `host_relay_url` is non-empty, the projection is scoped to that host
+/// relay. If it is empty, the projection derives host identity from
+/// `KernelEvent.relay_provenance` and ignores events that carry no provenance.
+/// The read model is exposed under `"nmp.nip29.joined_groups"` as a typed
+/// FlatBuffers sidecar (`NJGS`).
+pub fn wire_joined_groups(app: &NmpApp, active_pubkey: String, host_relay_url: String) {
+    if active_pubkey.is_empty() {
+        return;
+    }
+    let projection = if host_relay_url.is_empty() {
+        Arc::new(JoinedGroupsProjection::new(active_pubkey))
+    } else {
+        Arc::new(JoinedGroupsProjection::new_for_host(
+            active_pubkey,
+            host_relay_url,
+        ))
+    };
+    let observer_id =
+        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    if observer_id.0 == 0 {
+        return;
+    }
+
+    let projection_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.nip29.joined_groups", move || {
+        let snapshot = projection_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip29.joined_groups".to_string(),
+            schema_id: crate::wire::joined_groups_fb::JOINED_GROUPS_SCHEMA_ID.to_string(),
+            schema_version: crate::wire::joined_groups_fb::JOINED_GROUPS_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                crate::wire::joined_groups_fb::JOINED_GROUPS_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: crate::wire::joined_groups_fb::encode_joined_groups_snapshot(&snapshot),
+            ..Default::default()
+        })
+    });
 }
 
 /// Wire the crate-owned NIP-29 group-create defaults projection into `app`.
@@ -165,7 +206,6 @@ pub fn wire_group_defaults(app: &NmpApp) {
             ..Default::default()
         })
     });
-
 }
 
 /// Register the NIP-29 action namespaces against `app`'s action registry.
@@ -176,6 +216,8 @@ pub fn wire_group_defaults(app: &NmpApp) {
 /// - `nmp.nip29.create_public_group`
 /// - `nmp.nip29.discover`
 /// - `nmp.nip29.join`
+/// - `nmp.nip29.put_user`
+/// - `nmp.nip29.create_invite`
 ///
 /// Must be called before `nmp_app_start` — the registry is write-locked
 /// after the actor loop starts. Requires `&mut NmpApp` because registration
@@ -186,4 +228,6 @@ pub fn register_actions(app: &mut NmpApp) {
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
+    app.register_action(PutUserAction);
+    app.register_action(CreateInviteAction);
 }
