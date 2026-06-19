@@ -418,3 +418,52 @@ process, condensed:
   optimization for events the store still held, not the mirror's source of truth; the mirror
   **never** deletes on retention eviction. The store emits the kind:5's own `Inserted` row but
   no `Deleted` row for an already-absent target (§3, §5, §6, §8 step-5).
+
+## 10. Step-2 kernel pull service — design decisions
+
+Ratified after a codex design pass on steps 2–3. Step 2 adds the kernel service
+layer + `InterestShape` scoping over the step-1 store primitive; no FFI yet.
+
+- **Scope evaluation.** `GlobalLog` reads `scan_log_since_seq` directly.
+  `InterestShape` is a **bounded post-filter over the same GlobalLog scan** (no
+  per-shape index): pull a page by ascending seq, drop rows that do not match the
+  shape (via the existing `shape_to_store_queries` predicate), bounded by a
+  **scan budget** so an unmatched run can never do unbounded work. Shapes the
+  predicate cannot express are **rejected**, never broad-scanned (D5).
+- **Empty filtered pages still advance `next_after_seq`.** An `InterestShape`
+  cursor must traverse non-matching rows to move its global seq cursor forward;
+  returning an empty page with an advanced `next_after_seq` is correct and is
+  *not* a gap.
+- **`InterestShape` delete-row contract (load-bearing).** A `Deleted` log row
+  carries only `target_id`, **not** the removed event's kind/author/tags, so it
+  cannot be shape-filtered without speculatively enriching every log row — a D5
+  violation the primitive explicitly refuses (§5). Therefore: **`InterestShape`
+  pull yields only positive `Inserted`/`Replaced` rows; semantic `Deleted` rows
+  are `GlobalLog`-only.** This serves the real consumers — the `hl` mirror reads
+  `GlobalLog` (it needs deletes); the UI feed (`load_older`, step 6) needs only
+  positive rows and already applies deletes through its **push projection** (the
+  ADR-0039 seam, §6.1). If a future scoped consumer genuinely needs scoped
+  deletes, that is a separate issue/ADR with its own enrichment cost — do not
+  burden this primitive now.
+- **Wake (step 3) generalizes #1520, no parallel path.** One actor-owned
+  store-wakeup module holds both the cache-serve wake set and the pull wake set
+  (`BTreeMap<PullCursorId, latest_seq>`, coalesced), fed from the same
+  post-store-mutation chokepoint. On append, arm one wake per registered cursor
+  with `after_seq < latest_seq`. `InterestShape` cursors may wake on rows they
+  will filter out — necessary so they advance over non-matches and never see a
+  false gap; bounded by a max-cursor cap and coalesced (D8, edge-triggered).
+- **FFI (step 3).** `pull_page` is a **synchronous read-only** call (mirrors the
+  existing `event_by_id` pattern); register/advance/unregister are fire-and-forget
+  actor commands. Lock order: read cursor-registry snapshot → clone cursor meta,
+  release; read `EventStoreSlot` → clone store handle, release; then open the
+  store read txn / mem lock and scan. **Never hold a store txn across a callback,
+  projection publish, actor dispatch, or registry mutation** (re-entrancy /
+  lock-order safety). C-ABI hard-caps entry count and total raw bytes per call.
+  This adds **no** projection-pull accessor — ADR-0039 is preserved (§6.1).
+- **Crash recovery.** Kernel cursor registrations are **not durable**; the
+  consumer's persisted `after_seq` (written only after fully applying a page) is
+  the source of truth. On restart it re-registers `consumer_id + scope + mode`
+  with that `after_seq`; the first pull returns a page or an explicit `PullGap`.
+  A `GlobalLog` gap ⇒ mirror incomplete ⇒ resync. An `InterestShape` gap is a
+  *global-log* gap (not proof matching rows were lost) ⇒ "scoped continuity not
+  provable" ⇒ consumer rebases its scoped state.
