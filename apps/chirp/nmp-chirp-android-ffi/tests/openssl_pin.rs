@@ -23,7 +23,7 @@ const CARGO_LOCK: &str = include_str!("../Cargo.lock");
 fn manifest_pins_openssl_src_to_pre_pq_line() {
     assert!(
         CARGO_TOML.contains("openssl-src = { version = \"=300.4.2\""),
-        "crates/nmp-android-ffi/Cargo.toml must pin openssl-src to =300.4.2 \
+        "apps/chirp/nmp-chirp-android-ffi/Cargo.toml must pin openssl-src to =300.4.2 \
          (OpenSSL 3.4.1, the last pre-ml_kem line that cross-compiles for \
          x86_64-linux-android under NDK 26) — see #1218",
     );

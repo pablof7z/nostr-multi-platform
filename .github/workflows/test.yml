@@ -5,7 +5,7 @@ name: test
 # supply-chain) lint and audit but never compile or run the test suite.
 #
 # Excluded crates (do not build on a bare `ubuntu-latest` runner):
-#   - nmp-android-ffi : standalone `[workspace]` table, not a parent member.
+#   - nmp-chirp-android-ffi : standalone `[workspace]` table, not a parent member.
 #   - nmp-app-chirp   : app crate tests compile separately below with
 #                       no default features so host-only optional stacks do
 #                       not enter the workspace-wide lane.
@@ -53,7 +53,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: cargo test (default features)
-        run: cargo test --workspace --exclude nmp-android-ffi --exclude nmp-app-chirp --exclude nmp-gallery-desktop
+        run: cargo test --workspace --exclude nmp-chirp-android-ffi --exclude nmp-app-chirp --exclude nmp-gallery-desktop
 
       # Issue #1553 — compile app-crate test targets that the workspace lane
       # intentionally excludes. `--no-run` is enough to catch E0560-class wire
@@ -104,12 +104,12 @@ jobs:
       # compile breaks in the JNI glue without requiring a cross-compiled .so
       # or an emulator.
       #
-      # Host-target check only (same posture as `nmp-android-ffi` below).
+      # Host-target check only (same posture as `nmp-chirp-android-ffi` below).
       - name: cargo check (nmp-app-gallery --features android-ffi)
         run: cargo check -p nmp-app-gallery --features android-ffi
 
   android-ffi:
-    # ADR-0048 Stage 2 — nmp-android-ffi host test gate (advances #1124).
+    # ADR-0048 Stage 2 — nmp-chirp-android-ffi host test gate (advances #1124).
     #
     # The crate has its own `[workspace]` table, so `cargo build/test
     # --workspace` from the repo root never touches it — a Rust-level break
@@ -139,12 +139,12 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            crates/nmp-android-ffi/target
-          key: ${{ runner.os }}-cargo-android-ffi-${{ hashFiles('crates/nmp-android-ffi/Cargo.lock') }}
+            apps/chirp/nmp-chirp-android-ffi/target
+          key: ${{ runner.os }}-cargo-android-ffi-${{ hashFiles('apps/chirp/nmp-chirp-android-ffi/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-android-ffi-
 
-      - name: cargo test (nmp-android-ffi standalone workspace)
-        run: cd crates/nmp-android-ffi && cargo test
+      - name: cargo test (nmp-chirp-android-ffi standalone workspace)
+        run: cd apps/chirp/nmp-chirp-android-ffi && cargo test
 
       # Marmot-feature host compile gate.
       #
@@ -160,8 +160,8 @@ jobs:
       # NDK-only failures — most notably #1218, where the vendored OpenSSL
       # `providers/ml_kem` source failed to cross-compile for
       # `x86_64-linux-android` under NDK 26 while the host build stayed green.
-      - name: cargo check (nmp-android-ffi --features marmot)
-        run: cd crates/nmp-android-ffi && cargo check --features marmot
+      - name: cargo check (nmp-chirp-android-ffi --features marmot)
+        run: cd apps/chirp/nmp-chirp-android-ffi && cargo check --features marmot
 
       # Real NDK cross-compile gate — closes the #1218 blind spot.
       #
@@ -190,5 +190,5 @@ jobs:
       # passthrough needed.
       - name: cargo ndk cross-compile (x86_64, --features marmot)
         run: |
-          cd crates/nmp-android-ffi
+          cd apps/chirp/nmp-chirp-android-ffi
           cargo ndk -t x86_64 -o ./jniLibs-ci build --release --features marmot

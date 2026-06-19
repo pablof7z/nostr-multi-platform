@@ -2,7 +2,7 @@
 //!
 //! Seeding policy lives in Rust, not in the Swift/Kotlin shell (D7 /
 //! thin-shell principle). This is the iOS analogue of the Android
-//! `nmp-android-ffi::relay_seeding` glue: both wrap
+//! `nmp-chirp-android-ffi::relay_seeding` glue: both wrap
 //! [`nmp_chirp_config::chirp_default_relay_bootstrap`] so the relay default set
 //! has ONE source of truth (`apps/chirp/nmp-chirp-config`). Before this module
 //! existed the iOS shell (`RelaySeeding.swift`) hardcoded its own relay URLs,

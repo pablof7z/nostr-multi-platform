@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 
 const KOTLIN_BRIDGE: &str =
-    include_str!("../../../android/app/src/main/java/org/nmp/android/KernelBridge.kt");
+    include_str!("../../../../android/app/src/main/java/org/nmp/android/KernelBridge.kt");
 const LIB_RS: &str = include_str!("../src/lib.rs");
 const ACTION_RS: &str = include_str!("../src/action.rs");
 const PLATFORM_RS: &str = include_str!("../src/platform.rs");
@@ -51,7 +51,7 @@ fn android_bridge_declares_parity_jni_symbols() {
         let rust_symbol = format!("Java_org_nmp_android_KernelBridge_native{method}");
         assert!(
             rust.contains(&rust_symbol),
-            "nmp-android-ffi is missing {rust_symbol}",
+            "nmp-chirp-android-ffi is missing {rust_symbol}",
         );
     }
 }

@@ -12,7 +12,7 @@ npm_cli_package = "@nmp/cli"
 npm_publish_mode = "trusted-publishing"
 
 required_gates = [
-  "cargo test --workspace --exclude nmp-android-ffi --exclude nmp-app-chirp",
+  "cargo test --workspace --exclude nmp-chirp-android-ffi --exclude nmp-app-chirp",
   "cargo test -p nmp-testing --test doctrine_lint_smoke",
   "bash ci/check-release-manifest.sh",
   "bash ci/release-package-dry-run.sh",
@@ -202,9 +202,9 @@ name = "nmp-wot"
 path = "crates/nmp-wot"
 
 [[private_packages]]
-name = "nmp-android-ffi"
-path = "crates/nmp-android-ffi"
-reason = "standalone Android/JNI workspace; versioned from the same tag but not published through root cargo package dry-run"
+name = "nmp-chirp-android-ffi"
+path = "apps/chirp/nmp-chirp-android-ffi"
+reason = "Chirp-owned Android JNI cdylib; standalone workspace, not published through root cargo package dry-run"
 
 [[private_packages]]
 name = "nmp-app-chirp"

@@ -20,8 +20,8 @@ name: native-tests
 #   Phase 3: ChirpUITests (XCUITest) nightly on macOS + booted simulator —
 #                        see `.github/workflows/ios-ui-nightly.yml`.
 #
-# Why path-filtered: `android/**` and `crates/nmp-android-ffi/**` are the obvious
-# Android triggers; `ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
+# Why path-filtered: `android/**` and `apps/chirp/nmp-chirp-android-ffi/**` are
+# the obvious Android triggers; `ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
 # `crates/nmp-codegen/**` and `crates/nmp-core/**` are included on both because
 # the nmp-core projection types are the single source of truth the native
 # decoders mirror — a change there is precisely when the consumer tests must run.
@@ -36,7 +36,7 @@ on:
       - ".github/workflows/native-tests.yml"
       - "android/**"
       - "apps/nmp-gallery/android/**"
-      - "crates/nmp-android-ffi/**"
+      - "apps/chirp/nmp-chirp-android-ffi/**"
       - "crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
@@ -48,7 +48,7 @@ on:
       - ".github/workflows/native-tests.yml"
       - "android/**"
       - "apps/nmp-gallery/android/**"
-      - "crates/nmp-android-ffi/**"
+      - "apps/chirp/nmp-chirp-android-ffi/**"
       - "crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
