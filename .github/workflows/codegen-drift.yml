@@ -24,10 +24,14 @@ name: codegen-drift
 #   kotlin-flatc-drift          nmp_update.fbs (transport)
 #                               + every nmp.kernel root schema (kernel, #1288)
 #                                                         (Kotlin, 25.2.10)
-#   typescript-flatc-drift      transport + feed + KRPR   (TS,     25.9.23)
+#   typescript-flatc-drift      transport + feed + KRPR
+#                               + KRDG, for every checked-in web TS tree
+#                                                         (TS,     25.9.23)
 #   marmot-{rust,swift,kotlin}-flatc-drift
 #                               marmot_{snapshot,messages}.fbs (#1240)
-# Each gate's script prints exact regenerate-locally instructions on failure.
+# Regenerate all checked-in flatc bindings locally with:
+#   bash ci/regenerate-flatbuffers.sh
+# Each gate prints that single entrypoint on failure.
 
 on:
   push:
@@ -176,14 +180,15 @@ jobs:
             android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex \
           || { echo "golden fixture copies diverged — regenerate BOTH via tier3_golden_fixture_matches_encoder"; exit 1; }
 
-  # Issue #1209 — TypeScript flatc transport-binding drift gate. The checked-in
-  # TS bindings at web/chirp/src/nmp/generated/nmp/ must be byte-identical to a
-  # fresh `flatc --ts` run over nmp_update.fbs, with flatc pinned to the
-  # Web/TypeScript runtime pin (25.9.23, distinct from the Rust+Swift pin of
-  # 25.12.19 and the Kotlin pin of 25.2.10). Regenerate locally per the
-  # instructions in ci/check-ts-flatc-drift.sh.
+  # Issue #1209 + #1512 — TypeScript flatc drift gate. Every checked-in web TS
+  # tree (web/chirp today, plus web/nmp-gallery when that tree exists on a
+  # branch) must be byte-identical to a fresh `flatc --ts` run over the
+  # transport/feed/KRPR/KRDG schemas, with flatc pinned to the Web/TypeScript
+  # runtime pin (25.9.23, distinct from the Rust+Swift pin of 25.12.19 and the
+  # Kotlin pin of 25.2.10). Regenerate locally with
+  # `bash ci/regenerate-flatbuffers.sh`.
   typescript-flatc-drift:
-    name: TypeScript flatc drift (web/chirp/src/nmp/generated/nmp/ vs nmp_update.fbs)
+    name: TypeScript flatc drift (web TS generated trees vs schemas)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

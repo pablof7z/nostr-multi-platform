@@ -4,6 +4,8 @@
 #
 # The checked-in TypeScript bindings at
 #   web/chirp/src/nmp/generated/nmp/
+# and, when present on a branch,
+#   web/nmp-gallery/src/nmp/generated/nmp/
 # cover eight schemas in four groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
 #   feed        — crates/nmp-nip01/schema/op_feed.fbs
@@ -16,44 +18,30 @@
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
-# This script regenerates ALL seven schemas with the PINNED flatc version into
-# one temp dir and fails on any file difference so checked-in bindings can
-# never drift from the schemas. The version is intentionally different from the
+# This script regenerates ALL schemas with the PINNED flatc version into one
+# temp dir and fails on any file difference so checked-in bindings can never
+# drift from the schemas. The version is intentionally different from the
 # Rust+Swift pin (25.12.19) and the Kotlin pin (25.2.10); see the comment at
 # the top of crates/nmp-core/schema/nmp_update.fbs for the rationale.
 #
-# Usage: ci/check-ts-flatc-drift.sh
+# Usage:
+#   ci/check-ts-flatc-drift.sh
+#   ci/check-ts-flatc-drift.sh --write
 # Requires: flatc 25.9.23 on PATH.
 #
 # To regenerate after an intentional schema change:
-#   1. Install flatc 25.9.23 (https://github.com/google/flatbuffers/releases/tag/v25.9.23).
-#   2. # Transport bindings:
-#      flatc --ts -o web/chirp/src/nmp/generated/ \
-#          crates/nmp-core/schema/nmp_update.fbs
-#   3. # Feed schema bindings (must be one invocation — op_feed.fbs alone yields
-#      # broken barrel imports because timeline_snapshot.fbs is not generated):
-#      flatc --ts -o web/chirp/src/nmp/generated/ \
-#          -I crates/nmp-nip01/schema \
-#          crates/nmp-nip01/schema/timeline_snapshot.fbs \
-#          crates/nmp-nip01/schema/op_feed.fbs \
-#          crates/nmp-content/schema/content_tree.fbs \
-#          crates/nmp-feed/schema/feed_home.fbs
-#   4. # KRPR schema bindings (profile_card.fbs must be listed explicitly —
-#      # resolved_profiles.fbs includes it via `include "profile_card.fbs"`;
-#      # without --gen-all flatc only emits profile-card.ts when it is a root
-#      # argument, not when it is reached via include):
-#      flatc --ts -o web/chirp/src/nmp/generated/ \
-#          -I crates/nmp-core/schema \
-#          crates/nmp-core/schema/profile_card.fbs \
-#          crates/nmp-core/schema/resolved_profiles.fbs
-#   5. # KRDG schema bindings (relay_diagnostics — self-contained, no includes):
-#      flatc --ts -o web/chirp/src/nmp/generated/ \
-#          -I crates/nmp-core/schema \
-#          crates/nmp-core/schema/relay_diagnostics.fbs
-#   6. Verify the output with this script.
-#      (requires flatc 25.9.23 — the Web/TypeScript runtime pin)
+#   bash ci/regenerate-flatbuffers.sh
 
 set -euo pipefail
+
+MODE="${1:---check}"
+case "${MODE}" in
+--check|--write) ;;
+*)
+    echo "ts-flatc-drift: unknown mode '${MODE}' (--check|--write)" >&2
+    exit 2
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -73,7 +61,11 @@ KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
 )
 KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
-CHECKED_IN_DIR="${REPO_ROOT}/web/chirp/src/nmp/generated/nmp"
+CHECKED_IN_ROOTS=("${REPO_ROOT}/web/chirp/src/nmp/generated")
+GALLERY_TS_ROOT="${REPO_ROOT}/web/nmp-gallery/src/nmp/generated"
+if [[ -d "${GALLERY_TS_ROOT}" ]]; then
+    CHECKED_IN_ROOTS+=("${GALLERY_TS_ROOT}")
+fi
 
 # ── flatc availability + version guard ──────────────────────────────────────
 
@@ -134,31 +126,36 @@ flatc --ts -o "${TMP_DIR}" \
 
 GENERATED_DIR="${TMP_DIR}/nmp"
 
-if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
+if [[ "${MODE}" == "--write" ]]; then
+    for checked_in_root in "${CHECKED_IN_ROOTS[@]}"; do
+        mkdir -p "${checked_in_root}"
+        rm -rf "${checked_in_root}/nmp"
+        cp -R "${GENERATED_DIR}" "${checked_in_root}/nmp"
+        echo "ts-flatc-drift: wrote ${checked_in_root#${REPO_ROOT}/}/nmp (flatc ${EXPECTED_FLATC_VERSION})"
+    done
+    exit 0
+fi
+
+drift=0
+for checked_in_root in "${CHECKED_IN_ROOTS[@]}"; do
+    checked_in_dir="${checked_in_root}/nmp"
+    if [[ ! -d "${checked_in_dir}" ]]; then
+        echo "ts-flatc-drift: checked-in TypeScript binding dir missing: ${checked_in_dir#${REPO_ROOT}/}" >&2
+        drift=$((drift + 1))
+        continue
+    fi
+    if ! diff -r "${checked_in_dir}" "${GENERATED_DIR}"; then
+        echo "ts-flatc-drift: ${checked_in_dir#${REPO_ROOT}/} drifted from a fresh flatc run." >&2
+        drift=$((drift + 1))
+    fi
+done
+
+if [[ "${drift}" -ne 0 ]]; then
     echo "" >&2
     echo "ts-flatc-drift: checked-in TypeScript bindings differ from a fresh" >&2
     echo "'flatc --ts' run. Regenerate with:" >&2
-    echo "  # Transport:" >&2
-    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
-    echo "      crates/nmp-core/schema/nmp_update.fbs" >&2
-    echo "  # Feed schemas (one invocation):" >&2
-    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
-    echo "      -I crates/nmp-nip01/schema \\" >&2
-    echo "      crates/nmp-nip01/schema/timeline_snapshot.fbs \\" >&2
-    echo "      crates/nmp-nip01/schema/op_feed.fbs \\" >&2
-    echo "      crates/nmp-content/schema/content_tree.fbs \\" >&2
-    echo "      crates/nmp-feed/schema/feed_home.fbs" >&2
-    echo "  # KRPR schemas:" >&2
-    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
-    echo "      -I crates/nmp-core/schema \\" >&2
-    echo "      crates/nmp-core/schema/profile_card.fbs \\" >&2
-    echo "      crates/nmp-core/schema/resolved_profiles.fbs" >&2
-    echo "  # KRDG schema:" >&2
-    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
-    echo "      -I crates/nmp-core/schema \\" >&2
-    echo "      crates/nmp-core/schema/relay_diagnostics.fbs" >&2
-    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Web/TypeScript runtime pin)" >&2
+    echo "  bash ci/regenerate-flatbuffers.sh" >&2
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG bindings in sync)"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
