@@ -12,7 +12,7 @@
 
 use std::collections::HashSet;
 
-use nmp_core::store::GcBudget;
+use nmp_store::GcBudget;
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 

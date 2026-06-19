@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-use nmp_core::planner::MailboxSnapshot;
+use nmp_planner::MailboxSnapshot;
 use serde_json::{json, Value};
 use tungstenite::Message;
 

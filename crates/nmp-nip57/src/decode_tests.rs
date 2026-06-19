@@ -7,7 +7,7 @@
 //! `amount_from_embedded_request` helpers unchanged.
 
 use super::*;
-use nmp_core::store::{RawEvent, StoredEvent};
+use nmp_store::{RawEvent, StoredEvent};
 use std::sync::Arc;
 
 fn make_stored(kind: u32, tags: Vec<Vec<String>>) -> StoredEvent {

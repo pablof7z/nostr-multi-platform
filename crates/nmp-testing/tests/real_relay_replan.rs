@@ -5,7 +5,7 @@
 //!
 //! We fetch a **real, live kind:3** contact list from a public relay, extract
 //! its `p`-tagged followee set, and feed that set through the kernel's
-//! in-process subscription compiler (`nmp_core::planner::SubscriptionCompiler`).
+//! in-process subscription compiler (`nmp_planner::SubscriptionCompiler`).
 //! We then mutate the followee set exactly as a fresher kind:3 would (drop one
 //! followee, add one new pubkey), recompile, and assert the recompiled plan's
 //! REQ filter author-set differs from the original *by exactly that delta* and
@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 use common::{
     report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, PURPLEPAG_ES, PRIMAL_RELAY,
 };
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot, Pubkey, SubscriptionCompiler,
 };
@@ -312,7 +312,7 @@ fn kind3_change_forces_subscription_replan() {
     let body = format!(
         "Fetched a **real live kind:3** for `{author_name}` from `{relay}`, \
          extracted **{original_count}** `p`-tag followees, and ran them \
-         through `nmp_core::planner::SubscriptionCompiler::compile` (the \
+         through `nmp_planner::SubscriptionCompiler::compile` (the \
          in-process kernel subscription compiler).\n\n\
          ## Planner API exercised\n\n\
          - `InterestShape::timeline_for(followees)` → tailing kind:[1,6] \

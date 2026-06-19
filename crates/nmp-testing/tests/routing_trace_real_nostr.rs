@@ -51,10 +51,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, PURPLEPAG_ES, NOS_LOL};
-use nmp_core::planner::{
+use nmp_planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::{
     BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutingContext, RoutingSource,
     SessionKeySet,

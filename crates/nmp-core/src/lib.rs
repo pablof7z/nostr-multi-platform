@@ -97,47 +97,39 @@ mod kernel_reducer;
 pub mod kinds;
 pub mod nip19;
 pub mod nip21;
-/// Subscription compiler.
-///
-/// Step 9 of the crate-boundary migration extracted the implementation into
-/// the standalone [`nmp_planner`] crate. This module re-exports the public
-/// surface so existing `use nmp_core::planner::*` import sites compile
-/// unchanged.
-pub mod planner {
-    pub use nmp_planner::compiler::{
-        CompileContext, EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot,
-        SubscriptionCompiler,
-    };
+// Subscription compiler — internal path for nmp-core consumers.
+// External callers must depend on `nmp-planner` directly and use
+// `nmp_planner::*`; the `nmp_core::planner` re-export path is deleted
+// (#1608, D0/D3: facades leak planner internals into the app-facing surface).
+// Only items actively used by nmp-core internals are re-exported here; the
+// old catch-all list is trimmed so unused-import warnings become impossible.
+pub(crate) mod planner {
+    pub use nmp_planner::compiler::{MailboxCache, MailboxSnapshot, SubscriptionCompiler};
     pub use nmp_planner::interest::{
         bounded_search_query, HintSource, InterestId, InterestLifecycle, InterestScope,
-        InterestShape, LogicalInterest, NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
-        MAX_SEARCH_QUERY_CHARS,
+        InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayHint, RelayUrl,
     };
-    pub use nmp_planner::lattice::{merge, MergeOutcome};
-    pub use nmp_planner::plan::{
-        canonical_filter_hash, CompiledPlan, HintOrigin, InterestAttribution, PlannerError,
-        RelayAttribution, RelayPlan, RoutingSource, SubShape, UserConfiguredCategory,
-    };
-    pub use nmp_planner::selection::apply_selection;
+    // Test-only: `InMemoryMailboxCache` and `PTagRouting` are only referenced
+    // in `#[cfg(test)]` modules inside nmp-core; gate them so the production
+    // build stays warning-free under `-D warnings`.
+    #[cfg(test)]
+    pub use nmp_planner::compiler::InMemoryMailboxCache;
+    #[cfg(test)]
+    pub use nmp_planner::interest::PTagRouting;
+    pub use nmp_planner::plan::{canonical_filter_hash, CompiledPlan, PlannerError, RelayAttribution, SubShape};
     // W4 — warm-relay score lookup seam + lookup-aware selection.
     pub use nmp_planner::selection::apply_selection_with_lookup;
-    pub use nmp_planner::selection::relay_score_lookup::{
-        NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup,
-        WARM_THRESHOLD as PLANNER_WARM_THRESHOLD,
-    };
-
-    // A small number of in-tree call sites reach into the submodule
-    // namespaces directly (`nmp_core::planner::compiler::*`,
-    // `nmp_core::planner::interest::*`, etc.). Re-expose those module
-    // paths so the migration is a pure compile-only no-op.
-    pub use nmp_planner::{compiler, interest, lattice, plan, selection};
+    // Internal call sites that reach into `interest::EventId` and similar
+    // sub-module items that aren't re-exported at the planner crate root.
+    pub use nmp_planner::interest;
 }
 /// V-52 — single-relay browsing via the `nmp.browse_relay` action namespace.
 ///
-/// Exposes [`browse::BrowseRelayAction`] and [`browse::BrowseRelayModule`] so
-/// a host can subscribe to one relay without NIP-65 fan-out. The module builds
-/// a [`planner::LogicalInterest`] with `relay_pin = Some(url)` and dispatches
-/// `ActorCommand::PushInterest` — no `actor/mod.rs` modifications required.
+/// Manual relay-bypass path (D3 explicit opt-out): builds a
+/// [`nmp_planner::interest::LogicalInterest`] with `relay_pin = Some(url)` and
+/// dispatches `ActorCommand::PushInterest`. This is not a standard app path —
+/// the host must explicitly register [`browse::BrowseRelayModule`] and the
+/// caller must supply a validated relay URL. NIP-65 fan-out is suppressed.
 pub mod browse;
 pub mod publish;
 mod relay;
@@ -154,25 +146,16 @@ mod transport;
 // `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
 // §5 step 7 for the migration brief.
 pub mod remote_signer;
-/// Deterministic 64-bit hash helper — the seed for every plan-id,
-/// interest-id, and content-addressed projection key.
-///
-/// Moved into [`nmp_planner::stable_hash`] in step 9 of the crate-boundary
-/// migration (the planner is the only foundation crate that *cannot* depend
-/// on `nmp-core`). This module is a thin re-export so `use
-/// nmp_core::stable_hash::stable_hash64` import sites compile unchanged.
-pub mod stable_hash {
+// Deterministic 64-bit hash helper — internal path for nmp-core.
+// External callers must depend on `nmp-planner` directly and use
+// `nmp_planner::stable_hash::stable_hash64` (#1608, compat facade deleted).
+pub(crate) mod stable_hash {
     pub use nmp_planner::stable_hash::*;
 }
-/// Event-storage abstraction.
-///
-/// Step 9 of the crate-boundary migration extracted the implementation into
-/// the standalone [`nmp_store`] crate. This module is a thin re-export so
-/// existing `use nmp_core::store::*` import sites compile unchanged. The
-/// substrate-side `DomainMigration` / `MigrationTx` types moved with the
-/// store; they are re-exported through both `nmp_core::store::*` (via
-/// `nmp_store`'s root) and `nmp_core::substrate::*` (legacy path).
-pub mod store {
+// Event-storage abstraction — internal path for nmp-core.
+// External callers must depend on `nmp-store` directly and use
+// `nmp_store::*` (#1608, compat facade deleted).
+pub(crate) mod store {
     pub use nmp_store::*;
 }
 pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
@@ -313,10 +296,15 @@ pub mod typed_projections {
 // command) can name it — chiefly in tests that drive the continuation directly.
 pub use actor::{ActorCommand, CipherContinuation, SignContinuation, SignerSource};
 // ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
-// the single command-send handle (replaces the bare `mpsc::Sender<ActorCommand>`
-// once handed to host code / workers); `ActorMail` is the inbox item;
+// the single command-send handle passed to relay-connected hooks, DM inbox
+// chains, and similar substrate seams that post commands from worker threads.
 // `CommandSendError` is `send`'s error (mpsc-`SendError` parity).
-pub use actor::{ActorMail, CommandSendError, CommandSender};
+// `ActorMail` is the raw inbox discriminant — test-support only (#1608: not
+// part of the stable public API; external code that needs a test channel
+// should use `nmp_core::testing::spawn_actor()` instead).
+pub use actor::{CommandSendError, CommandSender};
+#[cfg(any(test, feature = "test-support"))]
+pub use actor::ActorMail;
 
 // Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
 // re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
@@ -379,6 +367,12 @@ pub mod __ffi_internal {
         LifecycleObserverRegistration, LifecycleObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
         LIFECYCLE_PHASE_FOREGROUND,
     };
+    // `ActorMail` is the raw inbox discriminant used by `nmp-ffi::nmp_app_new`
+    // to create the mpsc channel that feeds the actor thread. Not part of the
+    // stable public surface (#1608); exposed only through this sealed seam so
+    // the FFI layer can construct the channel without making `ActorMail` a
+    // general API export.
+    pub use crate::actor::ActorMail;
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
     // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
     // registers it via `nmp_app_register_snapshot_projection("wallet", …)`.

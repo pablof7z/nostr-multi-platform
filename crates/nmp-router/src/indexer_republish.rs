@@ -8,7 +8,7 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::IndexerRelaysSlot;
-use nmp_core::store::{EventStore, RawEvent};
+use nmp_store::{EventStore, RawEvent};
 use nmp_core::substrate::{
     ExternalEventSinkPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
     SignedEventFrame, SinkDestination,

@@ -28,7 +28,7 @@
 use std::sync::Arc;
 
 use nmp_core::kinds::KIND_RELAY_LIST;
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, MailboxCache, ParsedRelayList};
 
 use crate::canonical::canonicalize_relay_url;
@@ -126,7 +126,7 @@ fn sort_dedup(v: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::store::RawEvent;
+    use nmp_store::RawEvent;
 
     fn evt(pubkey: &str, kind: u32, tags: Vec<Vec<String>>) -> VerifiedEvent {
         VerifiedEvent::from_raw_unchecked(RawEvent {

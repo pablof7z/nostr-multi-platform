@@ -2,7 +2,7 @@
 //!
 //! See `docs/design/lmdb/tests/migration.md` §2.12.
 
-use nmp_core::store::StoreError;
+use nmp_store::StoreError;
 use nmp_core::substrate::{DomainMigration, MigrationTx};
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::StoreHarness;

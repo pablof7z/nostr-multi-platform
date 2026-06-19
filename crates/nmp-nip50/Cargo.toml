@@ -11,6 +11,9 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-planner for bounded_search_query / InterestShape —
+# the nmp_core::planner compat facade is deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
 nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use nmp_core::substrate::ViewDependencies;
 
 use crate::group_id::GroupId;
@@ -79,7 +79,7 @@ pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
 /// id and the REQ filter is identical).
 #[must_use] 
 pub fn relay_discovery_interest(host_relay_url: &str) -> LogicalInterest {
-    let id = InterestId(nmp_core::stable_hash::stable_hash64((
+    let id = InterestId(nmp_planner::stable_hash::stable_hash64((
         "nip29.discover",
         host_relay_url,
     )));

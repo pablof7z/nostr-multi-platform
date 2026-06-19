@@ -11,7 +11,7 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_nip29::register::wire_group_discovery;
 use nmp_nip29::{
     decode_discovered_groups_snapshot, DISCOVERED_GROUPS_FILE_IDENTIFIER,

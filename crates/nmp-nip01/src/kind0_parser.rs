@@ -28,7 +28,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, ProfileView};
 use serde_json::{Map, Value};
 
@@ -122,7 +122,7 @@ fn string_field(raw_fields: &Map<String, Value>, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::store::RawEvent;
+    use nmp_store::RawEvent;
     use nmp_core::substrate::{EventIngestDispatcher, ProfileLookup};
 
     fn evt(pubkey: &str, id: &str, kind: u32, created_at: u64, content: &str) -> VerifiedEvent {

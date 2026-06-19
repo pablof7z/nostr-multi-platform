@@ -249,7 +249,7 @@ impl ChainDriver {
         self
     }
 
-    fn publishes(&self) -> Vec<(&nmp_core::store::RawEvent, &PublishTarget, &Option<String>)> {
+    fn publishes(&self) -> Vec<(&nmp_store::RawEvent, &PublishTarget, &Option<String>)> {
         self.terminals
             .iter()
             .filter_map(|c| match c {
@@ -735,7 +735,7 @@ fn self_copy_failure_surfaces_toast_only_not_action_failure() {
 
 /// Rebuild a `nostr::Event` from the kernel `RawEvent` the publish step carries,
 /// so a test can unwrap it. The publish path forwards the event verbatim.
-fn raw_to_nostr_event(raw: &nmp_core::store::RawEvent) -> nostr::Event {
+fn raw_to_nostr_event(raw: &nmp_store::RawEvent) -> nostr::Event {
     let json = serde_json::json!({
         "id": raw.id,
         "pubkey": raw.pubkey,

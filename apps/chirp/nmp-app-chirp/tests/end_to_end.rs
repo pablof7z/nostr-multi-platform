@@ -40,7 +40,7 @@ fn register_app(app: *mut nmp_ffi::NmpApp) -> *mut ChirpHandle {
     assert!(!handle.is_null());
     handle
 }
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
 use nmp_ffi::{nmp_app_free, nmp_app_load_older_feed, nmp_app_new, nmp_app_start};
 use nmp_nip01::DEFAULT_TIMELINE_WINDOW_LIMIT;

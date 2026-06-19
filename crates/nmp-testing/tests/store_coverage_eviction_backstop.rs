@@ -21,7 +21,7 @@
 
 #![cfg(feature = "lmdb-backend")]
 
-use nmp_core::store::{CoverageGuard, GcBudget};
+use nmp_store::{CoverageGuard, GcBudget};
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
 

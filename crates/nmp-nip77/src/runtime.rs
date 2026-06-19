@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use nmp_core::planner::InterestLifecycle;
+use nmp_planner::InterestLifecycle;
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage};
 use nmp_coverage_gate::{CoverageGate, FilterFanout};

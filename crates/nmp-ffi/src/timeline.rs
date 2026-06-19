@@ -56,7 +56,7 @@ pub extern "C" fn nmp_app_open_interest(
     // rather than silently registering nothing. The dispatch arm re-parses and
     // treats `None` as a no-op, but surfacing the error here gives the host a
     // visible signal that its filter string was rejected.
-    if nmp_core::planner::InterestShape::from_filter_json(&filter_json).is_none() {
+    if nmp_planner::InterestShape::from_filter_json(&filter_json).is_none() {
         app.send_cmd(ActorCommand::ShowToast {
             message: "open_interest: malformed filter JSON".to_string(),
         });

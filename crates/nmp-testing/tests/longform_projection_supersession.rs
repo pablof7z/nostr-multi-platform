@@ -22,7 +22,7 @@
 
 use nmp_content::wire::longform_fb::decode_longform_articles;
 use nmp_content::{LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
-use nmp_core::store::InsertOutcome;
+use nmp_store::InsertOutcome;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
@@ -39,7 +39,7 @@ fn article_tags(d_tag: &str, title: &str, summary: &str, image: &str) -> Vec<Vec
 
 /// Convert the store's winning `StoredEvent` into the substrate `KernelEvent`
 /// the kernel hands its observers (mirrors `nmp_store_to_kernel_stored`).
-fn kernel_event_from_stored(stored: &nmp_core::store::StoredEvent) -> KernelEvent {
+fn kernel_event_from_stored(stored: &nmp_store::StoredEvent) -> KernelEvent {
     KernelEvent {
         id: stored.raw.id.clone(),
         author: stored.raw.pubkey.clone(),
@@ -56,7 +56,7 @@ fn kernel_event_from_stored(stored: &nmp_core::store::StoredEvent) -> KernelEven
 /// fan-out-eligible insert. The store returns the *winner*, so an observer fed
 /// this way can never see a superseded loser.
 fn fan_out_winner(
-    store: &dyn nmp_core::store::EventStore,
+    store: &dyn nmp_store::EventStore,
     projection: &LongformProjection,
     author_hex: &str,
     d_tag: &str,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use nmp_core::slots::new_indexer_relays_slot;
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::{ExternalEventSinkPolicy, RawEventForwardPolicyContext};
 use nmp_core::substrate::external_event_sink::{
     IngestOutcomeKind, SignedEventFrame, SinkDestination,

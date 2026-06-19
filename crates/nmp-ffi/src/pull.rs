@@ -43,7 +43,7 @@
 
 use std::num::NonZeroUsize;
 
-use nmp_core::store::{EventStore, LogOp, ScanLogResult, StoreLogEntry};
+use nmp_store::{EventStore, LogOp, ScanLogResult, StoreLogEntry};
 use nmp_core::{pull_page_over, PullCursorId, PullError, PullLimits};
 
 use crate::NmpApp;
@@ -283,7 +283,7 @@ fn encode_gap(requested_after_seq: u64, first_available_seq: u64) -> Vec<u8> {
 /// the cap it cannot be represented within the promised bound, so this returns
 /// `Err(error::RAW_TOO_LARGE)` rather than silently overshooting (D5).
 fn encode_page(
-    page: nmp_core::store::PullPage,
+    page: nmp_store::PullPage,
     raw_byte_cap: usize,
 ) -> Result<Vec<u8>, u32> {
     let latest_seq = page.latest_seq;
@@ -362,8 +362,8 @@ fn encode_entry(buf: &mut Vec<u8>, entry: &StoreLogEntry, raw_json: Option<&[u8]
     buf.extend_from_slice(&entry.received_at_ms.to_le_bytes());
 }
 
-fn encode_delete_reason(reason: &nmp_core::store::DeleteReason) -> u8 {
-    use nmp_core::store::DeleteReason;
+fn encode_delete_reason(reason: &nmp_store::DeleteReason) -> u8 {
+    use nmp_store::DeleteReason;
     match reason {
         DeleteReason::Nip09 => 0,
         DeleteReason::Nip40Expiry => 1,

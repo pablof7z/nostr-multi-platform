@@ -45,6 +45,12 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
+# Direct dep on nmp-planner for InterestShape — the nmp_core::planner compat
+# facade is deleted (#1608).
+nmp-planner = { path = "../../../crates/nmp-planner" }
+# Direct dep on nmp-store for PullPage / ScanLogResult / EventStore /
+# StoreQuery / StoredEvent — the nmp_core::store compat facade is deleted (#1608).
+nmp-store = { path = "../../../crates/nmp-store" }
 # `nmp-ffi` owns the `NmpApp` C-ABI handle and the shared native C-ABI
 # symbols, including the NIP-46 broker adapter. Chirp's `nmp_app_chirp_register`
 # takes `*mut NmpApp`; the per-app crate names the handle + the FFI symbols

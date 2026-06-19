@@ -14,7 +14,7 @@
 //! action through the actor:
 //!
 //! * For `nmp.publish` / [`PublishAction::Publish`], the validated signed
-//!   event is converted to a [`nmp_core::store::RawEvent`] and handed to the
+//!   event is converted to a [`nmp_store::RawEvent`] and handed to the
 //!   actor via [`ActorCommand::PublishSignedEvent`] — the same actor command
 //!   the (now-deleted) bespoke `nmp_app_publish_signed_event*` FFI symbols
 //!   used to use, plus the workspace-internal

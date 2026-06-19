@@ -9,6 +9,13 @@ description = "Reusable bounded Nostr feed windowing, cursor paging, and feed co
 [dependencies]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-planner for InterestShape / RelayHint — the
+# nmp_core::planner compat facade is deleted (#1608).
+nmp-planner = { path = "../nmp-planner", default-features = false }
+# Direct dep on nmp-store for LogOp / ScanLogResult / StoreLogEntry / PullPage
+# / PullGap / RawEvent / DeleteReason — the nmp_core::store compat facade is
+# deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 nmp-threading = { path = "../nmp-threading" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

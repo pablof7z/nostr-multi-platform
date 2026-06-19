@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use nmp_core::planner::{
+use nmp_planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 
@@ -28,7 +28,7 @@ pub const WOT_BOOTSTRAP_KINDS: [u32; 4] = [
 /// Stable single-slot id for the active account's WOT bootstrap fetch.
 #[must_use]
 pub fn active_follow_graph_interest_id() -> InterestId {
-    InterestId(nmp_core::stable_hash::stable_hash64(
+    InterestId(nmp_planner::stable_hash::stable_hash64(
         "wot.follow_graph.active",
     ))
 }
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn large_wot_bootstrap_interest_opens_nip77() {
-        use nmp_core::planner::InterestLifecycle;
+        use nmp_planner::InterestLifecycle;
         use nmp_core::substrate::{ReqFrameContext, ReqFrameInterceptor};
         use nmp_core::{Kernel, RelayRole};
 

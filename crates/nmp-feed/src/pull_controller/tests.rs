@@ -11,8 +11,8 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::InterestShape;
-use nmp_core::store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
+use nmp_planner::InterestShape;
+use nmp_store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
 

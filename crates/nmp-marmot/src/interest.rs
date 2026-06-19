@@ -11,8 +11,8 @@
 //!
 //! The raw-event tap then drives accepted signed events into `MarmotService`.
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
-use nmp_core::stable_hash::stable_hash64;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_planner::stable_hash::stable_hash64;
 // Kind integers from the canonical Layer-0 registry (`nmp-kinds`, reached via
 // nmp-nip59 / nmp-core). KIND_GIFT_WRAP = 1059; the Marmot key-package,
 // group-message, and welcome kinds were previously re-declared as literals in
@@ -72,7 +72,7 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     };
     deps.into_logical_interest(
         giftwrap_interest_id(pubkey),
-        nmp_core::planner::InterestScope::Account(pubkey.to_string()),
+        nmp_planner::InterestScope::Account(pubkey.to_string()),
         InterestLifecycle::Tailing,
     )
 }

@@ -63,7 +63,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
         "0000000000000000000000000000000000000000000000000000000000000008",
     ];
 
-    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
+    let events: Vec<nmp_store::VerifiedEvent> = (0..count as u64)
         .map(|i| {
             // 64-hex event ID derived from prefix + index.
             let raw_id = format!("{prefix}{i:0>16x}");
@@ -72,7 +72,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
             let pubkey = POOL[(i as usize) % POOL.len()].to_string();
             let created_at = base_created_at.saturating_add(i);
             let content = format!("harness event {i}");
-            let raw = nmp_core::store::RawEvent {
+            let raw = nmp_store::RawEvent {
                 id,
                 pubkey,
                 created_at,
@@ -84,7 +84,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
                 // FFI ABI.  Use inject_signed_events for full Schnorr verify path.
                 sig: "0".repeat(128),
             };
-            nmp_core::store::VerifiedEvent::from_raw_unchecked(raw)
+            nmp_store::VerifiedEvent::from_raw_unchecked(raw)
         })
         .collect();
 
@@ -111,14 +111,14 @@ pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at
 
     // Single fixture key: generate once, sign all events.
     let keys = Keys::generate();
-    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
+    let events: Vec<nmp_store::VerifiedEvent> = (0..count as u64)
         .filter_map(|i| {
             let ts = Timestamp::from(base_created_at.saturating_add(i));
             let nostr_event = EventBuilder::text_note(format!("signed harness event {i}"))
                 .custom_created_at(ts)
                 .sign_with_keys(&keys)
                 .ok()?;
-            let raw = nmp_core::store::RawEvent {
+            let raw = nmp_store::RawEvent {
                 id: nostr_event.id.to_hex(),
                 pubkey: nostr_event.pubkey.to_hex(),
                 created_at: nostr_event.created_at.as_secs(),
@@ -132,7 +132,7 @@ pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at
                 sig: nostr_event.sig.to_string(),
             };
             // try_from_raw: full Schnorr + id-hash verification.
-            nmp_core::store::VerifiedEvent::try_from_raw(raw).ok()
+            nmp_store::VerifiedEvent::try_from_raw(raw).ok()
         })
         .collect();
 
@@ -180,7 +180,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         Ok(e) => e,
         Err(_) => return false,
     };
-    let raw = nmp_core::store::RawEvent {
+    let raw = nmp_store::RawEvent {
         id: nostr_event.id.to_hex(),
         pubkey: nostr_event.pubkey.to_hex(),
         created_at: nostr_event.created_at.as_secs(),
@@ -194,7 +194,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         sig: nostr_event.sig.to_string(),
     };
     // Full Schnorr + id-hash verification — real events only.
-    let verified = match nmp_core::store::VerifiedEvent::try_from_raw(raw) {
+    let verified = match nmp_store::VerifiedEvent::try_from_raw(raw) {
         Ok(v) => v,
         Err(_) => return false,
     };
@@ -276,14 +276,14 @@ pub extern "C" fn nmp_app_inject_unpinned_events_for_gc(
     // Separate fixture key: this filler corpus is intentionally NOT authored by
     // the caller, so a caller-author store scan can isolate pinned survivors.
     let keys = Keys::generate();
-    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
+    let events: Vec<nmp_store::VerifiedEvent> = (0..count as u64)
         .filter_map(|i| {
             let ts = Timestamp::from(base_created_at.saturating_add(i));
             let nostr_event = EventBuilder::text_note(format!("gc-unpinned filler {i}"))
                 .custom_created_at(ts)
                 .sign_with_keys(&keys)
                 .ok()?;
-            let raw = nmp_core::store::RawEvent {
+            let raw = nmp_store::RawEvent {
                 id: nostr_event.id.to_hex(),
                 pubkey: nostr_event.pubkey.to_hex(),
                 created_at: nostr_event.created_at.as_secs(),
@@ -296,7 +296,7 @@ pub extern "C" fn nmp_app_inject_unpinned_events_for_gc(
                 content: nostr_event.content.clone(),
                 sig: nostr_event.sig.to_string(),
             };
-            nmp_core::store::VerifiedEvent::try_from_raw(raw).ok()
+            nmp_store::VerifiedEvent::try_from_raw(raw).ok()
         })
         .collect();
     let accepted = events.len() as u32;
@@ -410,7 +410,7 @@ pub extern "C" fn nmp_app_read_author_event_ids(
     };
 
     // Parse hex pubkey → 32-byte `PubKey` (the store key type).
-    let pubkey_bytes: nmp_core::store::PubKey = match nostr::PublicKey::from_hex(author_hex) {
+    let pubkey_bytes: nmp_store::PubKey = match nostr::PublicKey::from_hex(author_hex) {
         Ok(pk) => {
             let mut bytes = [0u8; 32];
             bytes.copy_from_slice(pk.as_bytes());

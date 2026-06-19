@@ -12,7 +12,7 @@
 //! encode the correct NIP-19 URI shape — `Event` → `nevent`, `Address` →
 //! `naddr`, `External` → terminal (never emitted as a `Claim`).
 
-use nmp_core::planner::RelayHint;
+use nmp_planner::RelayHint;
 use nmp_threading::pointer::ThreadPointer;
 
 /// A hydration request the engine emits through its construction-time sink.

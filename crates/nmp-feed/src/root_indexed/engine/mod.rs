@@ -32,7 +32,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use nmp_core::planner::RelayHint;
+use nmp_planner::RelayHint;
 use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_threading::{pointer::ThreadPointer, ParentResolver};
 

@@ -163,7 +163,7 @@ fn cold_open_profile_view_full_pipeline() {
 // rewiring.  The actor's update channel is opaque to outbound REQs.
 #[test]
 fn kind3_update_rewires_subscriptions() {
-    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+    use nmp_planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
         InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{AccountId, CompileTrigger, SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
@@ -398,7 +398,7 @@ fn publish_roundtrip_via_outbox() {
 // This test pins the working, shipping coverage narrowing mechanism instead.
 #[test]
 fn negentropy_skips_redundant_req() {
-    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+    use nmp_planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
         InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
@@ -505,7 +505,7 @@ fn negentropy_skips_redundant_req() {
 // BEFORE the compile so the `partition()` path captures the REQs.
 #[test]
 fn auth_required_for_read_flow() {
-    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+    use nmp_planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
         InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{RelayAuthState, SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
@@ -596,7 +596,7 @@ fn auth_required_for_read_flow() {
 // contract stress-test.
 #[test]
 fn monotonic_rev_under_concurrent_dispatch() {
-    use nmp_core::store::{RawEvent, VerifiedEvent};
+    use nmp_store::{RawEvent, VerifiedEvent};
     use nmp_core::testing::{spawn_actor, ActorCommand};
     use nmp_core::{decode_update_frame, UpdateEnvelope};
     use std::sync::Arc;

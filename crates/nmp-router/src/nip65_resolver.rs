@@ -51,7 +51,7 @@ use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use nmp_core::store::{EventStore, PubKey, StoredEvent};
+use nmp_store::{EventStore, PubKey, StoredEvent};
 use nmp_core::substrate::BlockedRelaySet;
 use nmp_kinds::ptags_are_recipients;
 

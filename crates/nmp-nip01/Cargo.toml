@@ -9,6 +9,12 @@ description = "NIP-01 short text notes (kind:1) relation surface as an NMP proto
 [dependencies]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-planner for stable_hash64 / InterestShape — the
+# nmp_core::stable_hash/planner compat facades are deleted (#1608).
+nmp-planner = { path = "../nmp-planner", default-features = false }
+# Direct dep on nmp-store for VerifiedEvent / RawEvent / StoredEvent —
+# the nmp_core::store compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }

@@ -50,7 +50,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet, IngestParser};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 
@@ -190,7 +190,7 @@ fn parse_blocked_relay_list(tags: &[Vec<String>]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::store::RawEvent;
+    use nmp_store::RawEvent;
     use nmp_core::substrate::EventIngestDispatcher;
     use std::sync::Arc;
 

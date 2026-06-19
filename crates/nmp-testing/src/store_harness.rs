@@ -6,7 +6,7 @@
 //!
 //! See `docs/design/lmdb/tests.md` §1 for the harness specification.
 
-use nmp_core::store::{EventId, EventStore, InsertOutcome, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventId, EventStore, InsertOutcome, MemEventStore, RawEvent, VerifiedEvent};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ─── Known test keys ─────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ impl StoreHarness {
     /// `nmp-testing`, and parallel tests get a fresh path per call.
     #[cfg(feature = "lmdb-backend")]
     pub fn lmdb() -> Self {
-        use nmp_core::store::LmdbEventStore;
+        use nmp_store::LmdbEventStore;
         use std::sync::atomic::{AtomicU64, Ordering as AOrdering};
         use std::time::{SystemTime, UNIX_EPOCH};
         static COUNTER: AtomicU64 = AtomicU64::new(0);

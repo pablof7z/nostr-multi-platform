@@ -16,7 +16,7 @@
 use nmp_core::relay_score::ClaimOutcome;
 
 fn lmdb_capacity_available(path: &std::path::Path) -> bool {
-    match nmp_core::store::LmdbEventStore::open(path) {
+    match nmp_store::LmdbEventStore::open(path) {
         Ok(store) => {
             drop(store);
             true

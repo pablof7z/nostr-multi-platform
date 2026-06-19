@@ -2,7 +2,7 @@
 //!
 //! Asserts (1) the expected scenario count, (2) every signed fixture event
 //! verifies with full Schnorr + id-hash via the real
-//! `nmp_core::store::VerifiedEvent::try_from_raw`, (3) every embed-bearing
+//! `nmp_store::VerifiedEvent::try_from_raw`, (3) every embed-bearing
 //! segment either resolves in the scenario's `embeds` map or is a
 //! deliberate D1 fallback, and (4) the recursion guard actually fired for
 //! the depth/cycle scenarios.
@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use nmp_content_fixtures::build_bundle;
 use nmp_content_fixtures::dto::{EmbedEntry, ScenarioDto, SegmentDto};
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 
 const EXPECTED_SCENARIOS: usize = 43; // +5 F-CR-12 (S-M10…S-M14)
 

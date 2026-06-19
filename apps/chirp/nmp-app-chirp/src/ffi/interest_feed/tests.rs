@@ -4,7 +4,7 @@
 use super::*;
 use std::ffi::{CStr, CString};
 
-use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::WireProjectionState;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
@@ -42,7 +42,7 @@ fn feed_filter_json_parses_as_a_valid_interest_shape() {
         feed_filter_json("#e", "root1"),
     ] {
         assert!(
-            nmp_core::planner::InterestShape::from_filter_json(&json).is_some(),
+            nmp_planner::InterestShape::from_filter_json(&json).is_some(),
             "filter must parse: {json}"
         );
     }

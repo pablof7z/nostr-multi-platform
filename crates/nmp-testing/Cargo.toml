@@ -17,6 +17,14 @@ real-relay = []
 
 [dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
+# LogicalInterest / CompiledPlan / RelayPlan / RelayAttribution — the
+# nmp_core::planner compat facade is deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
+# Direct dep on nmp-store for RawEvent / VerifiedEvent / EventStore /
+# InsertOutcome / MemEventStore — the nmp_core::store compat facade is
+# deleted (#1608). The lib src (store_harness.rs) uses these types.
+nmp-store = { path = "../nmp-store" }
 # C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
 # `nmp-core::ffi` in step 11-final. The `ffi-stress` harness binary
 # reaches the symbols through here.
@@ -43,6 +51,12 @@ nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp" }
 # verify+store gate → DmInboxProjection) runs end-to-end against a live relay.
 nmp-defaults = { path = "../nmp-defaults" }
 nmp-core = { path = "../nmp-core" }
+# Direct dev dep on nmp-planner for InterestId / InterestLifecycle / etc. in
+# integration tests — nmp_core::planner compat facade deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
+# Direct dev dep on nmp-store for RawEvent / VerifiedEvent / EventStore in
+# integration tests — nmp_core::store compat facade deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 # dx_login_timeline_gate.rs — the canonical DX worked example (aim.md §1 proof).
 # `harness` pulls in the headless host driver that drives login → following
 # timeline → live update through the real kernel.

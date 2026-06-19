@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::LogicalInterest;
+use nmp_planner::LogicalInterest;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{
     EventObserverRegistrar, HostCapabilities, KernelEvent, SnapshotProjectionRegistrar,

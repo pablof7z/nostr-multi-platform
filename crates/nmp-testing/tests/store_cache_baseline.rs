@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 
-use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
+use nmp_store::{EventStore, StoreQuery, StoredEvent};
 use nmp_testing::store_harness::{hex_to_id, StoreHarness, ALICE_HEX, ALICE_PUBKEY, BOB_HEX};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

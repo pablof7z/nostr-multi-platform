@@ -11,7 +11,7 @@
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.4
 //! Doctrine: D8 (plan-id stability avoids redundant recompilation).
 
-use nmp_core::planner::{
+use nmp_planner::{
     CompileContext, InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
     InterestShape, LogicalInterest, MailboxSnapshot, SubscriptionCompiler,
 };

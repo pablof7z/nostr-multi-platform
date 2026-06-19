@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest,
 };
@@ -53,8 +53,8 @@ fn interest(id: u64, authors: &[&str], lifecycle: InterestLifecycle) -> LogicalI
 fn mailboxes_for(
     authors: &[&str],
     write_relays: &[&str],
-) -> Vec<(String, nmp_core::planner::MailboxSnapshot)> {
-    use nmp_core::planner::MailboxSnapshot;
+) -> Vec<(String, nmp_planner::MailboxSnapshot)> {
+    use nmp_planner::MailboxSnapshot;
     authors
         .iter()
         .map(|a| {
@@ -77,7 +77,7 @@ fn mailboxes_for(
 /// kernel passes its `KernelMailboxes` adapter, but here the
 /// `InMemoryMailboxCache` is the polymorphism seam.
 fn cache_with(author: &str, write_relays: &[&str]) -> InMemoryMailboxCache {
-    use nmp_core::planner::MailboxSnapshot;
+    use nmp_planner::MailboxSnapshot;
     let mut c = InMemoryMailboxCache::new();
     c.put(
         pubkey(author),
@@ -94,7 +94,7 @@ fn cache_with(author: &str, write_relays: &[&str]) -> InMemoryMailboxCache {
 
 #[test]
 fn compile_plan_to_wire_frames_emits_one_req_per_sub_shape() {
-    use nmp_core::planner::{InMemoryMailboxCache, SubscriptionCompiler};
+    use nmp_planner::{InMemoryMailboxCache, SubscriptionCompiler};
 
     let mut cache = InMemoryMailboxCache::new();
     for (pk, mb) in mailboxes_for(&["alice", "bob"], &["wss://relay.damus.io"]) {
@@ -149,7 +149,7 @@ fn compile_plan_to_wire_frames_emits_one_req_per_sub_shape() {
 
 #[test]
 fn plan_diff_closes_removed_subs_and_opens_added_subs() {
-    use nmp_core::planner::{InMemoryMailboxCache, SubscriptionCompiler};
+    use nmp_planner::{InMemoryMailboxCache, SubscriptionCompiler};
 
     let mut cache = InMemoryMailboxCache::new();
     for (pk, mb) in mailboxes_for(&["alice", "bob", "carol"], &["wss://relay.damus.io"]) {

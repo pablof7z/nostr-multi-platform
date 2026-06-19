@@ -13,7 +13,7 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 use nmp_core::substrate::{
     BlockedRelaySet, LaneOutcome, MailboxCache, ParsedRelayList, RouteAttempt, RoutingLane,
     SessionKeySet,

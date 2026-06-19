@@ -18,6 +18,14 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 # own `native` passthrough feature (default-on, so existing builds are
 # unchanged); wasm consumers depend with `default-features = false`.
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
+# InterestShape / LogicalInterest / HintSource — the nmp_core::planner compat
+# facade is deleted (#1608). nmp-planner is a Layer-2 foundation crate; it is
+# already in the dep graph through nmp-core.
+nmp-planner = { path = "../nmp-planner", default-features = false }
+# Direct dep on nmp-store for EventStore / VerifiedEvent / RawEvent / StoredEvent
+# / MemEventStore / PubKey — the nmp_core::store compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 # Layer-0 kind-constant registry — re-exports KIND_BLOCKED_RELAYS
 # so this crate no longer duplicates that value (V-57).
 nmp-kinds = { path = "../nmp-kinds" }

@@ -15,6 +15,13 @@ description = "NIP-17 private direct messages — kind:14 chat-message rumor bui
 # `nmp.nip17.send` action implements, plus the app-neutral `AppHost`
 # registration seam.
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
+# LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
+# deleted (#1608). nmp-planner is already in the dep graph through nmp-core.
+nmp-planner = { path = "../nmp-planner" }
+# Direct dep on nmp-store for RawEvent / VerifiedEvent — the nmp_core::store
+# compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 # Layer-0 kind-constant registry — re-exports KIND_DM_RELAY_LIST
 # so this crate no longer duplicates that value (V-57).
 nmp-kinds = { path = "../nmp-kinds" }

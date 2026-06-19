@@ -8,6 +8,10 @@ description = "Client-side web-of-trust primitives for NMP: follow/mute graph sc
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
+# LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
+# deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
 # Typed FlatBuffers sidecar codec for the `nmp.wot.bootstrap` snapshot
 # projection (ADR-0037). Workspace-pinned to 25.12.19, enforced by
 # ci/check-flatbuffers-version-pins.sh.

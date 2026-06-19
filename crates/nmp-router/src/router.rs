@@ -33,7 +33,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::planner::{HintSource, LogicalInterest};
+use nmp_planner::{HintSource, LogicalInterest};
 use nmp_core::substrate::{
     truncate_event_id, AppRelayMode, Direction, LaneOutcome, OutboxRouter, PublishTrace,
     RouteAttempt, RoutedRelaySet, RoutingContext, RoutingError, RoutingLane, RoutingSource,

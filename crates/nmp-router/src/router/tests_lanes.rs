@@ -16,7 +16,7 @@
 use super::*;
 use std::sync::Arc;
 
-use nmp_core::planner::{
+use nmp_planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, RelayHint,
 };
 use nmp_core::substrate::{BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet};

@@ -5,8 +5,8 @@
 //! rather than reaching into `runtime_tests` private items.
 
 use negentropy::{Id, Negentropy, NegentropyStorageVector};
-use nmp_core::planner::{InterestId, InterestLifecycle};
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_planner::{InterestId, InterestLifecycle};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage, RelayRole};
 use nmp_coverage_gate::CoverageGate;

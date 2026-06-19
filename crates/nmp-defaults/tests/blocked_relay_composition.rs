@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_core::store::{EventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, RawEvent, VerifiedEvent};
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,

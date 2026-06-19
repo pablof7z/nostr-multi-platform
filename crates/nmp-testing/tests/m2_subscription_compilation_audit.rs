@@ -15,7 +15,7 @@
 
 // Import through the planner's public API surface — submodule paths are
 // pub(crate) and must not be named from an external crate.
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot, NaddrCoord, SubscriptionCompiler,
 };

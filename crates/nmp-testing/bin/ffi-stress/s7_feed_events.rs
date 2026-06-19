@@ -10,7 +10,7 @@
 //! `ActorCommand::IngestPreVerifiedEvents` (the test-support path, cfg-gated in
 //! `nmp-core`); `VerifiedEvent::from_raw_unchecked` is the test-support bypass.
 
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
 use nmp_ffi::NmpApp;
 

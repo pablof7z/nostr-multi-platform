@@ -19,7 +19,7 @@ use nmp_core::publish::{OutboxResolver, PublishTarget, RelaySelectionReason, Res
 use nmp_core::slots::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::BlockedRelaySet;
 
 /// Empty blocked-relay set — the common case for tests that don't exercise

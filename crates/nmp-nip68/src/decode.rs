@@ -1,6 +1,6 @@
 //! Decoder half - immutable records from NIP-68 kind:20 picture events.
 
-use nmp_core::store::StoredEvent;
+use nmp_store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
 use serde::{Deserialize, Serialize};
 

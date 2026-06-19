@@ -47,7 +47,7 @@
 use std::ffi::c_char;
 use std::sync::Arc;
 
-use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
+use nmp_store::{EventStore, StoreQuery, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{ClosureInterestShape, PullFeedController};

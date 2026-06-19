@@ -292,8 +292,8 @@ fn nostr_unsigned_to_substrate(unsigned: &nostr::UnsignedEvent) -> UnsignedEvent
 /// Convert a signed `nostr::Event` (the kind:1059 gift-wrap) to the kernel's
 /// flat `RawEvent`. The signature and id are carried through verbatim — the
 /// signed-event publish path verifies them and forwards the event unchanged.
-fn nostr_event_to_raw(event: &nostr::Event) -> nmp_core::store::RawEvent {
-    nmp_core::store::RawEvent {
+fn nostr_event_to_raw(event: &nostr::Event) -> nmp_store::RawEvent {
+    nmp_store::RawEvent {
         id: event.id.to_hex(),
         pubkey: event.pubkey.to_hex(),
         created_at: event.created_at.as_secs(),

@@ -44,7 +44,7 @@ use std::sync::Arc;
 
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_core::store::EventStore;
+use nmp_store::EventStore;
 use nmp_core::substrate::{
     ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, ExternalEventSinkPolicy,
     IngestParserRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,

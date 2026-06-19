@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::Arc;
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 use nmp_core::substrate::{BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet};
 
 use crate::InMemoryMailboxCache;
@@ -266,7 +266,7 @@ fn trace_observer_fires_on_success_and_skips_unroutable() {
     // 2. Successful subscription with a non-default interest id.
     let c = ctx(&*cache, &blocked, &app);
     let mut interest = interest_for(&["alice"]);
-    interest.id = nmp_core::planner::InterestId(42);
+    interest.id = nmp_planner::InterestId(42);
     let _ = router.route_subscription(&interest, &c).unwrap();
     // 3. Unroutable publish (no cache, no app-relay) — observer MUST NOT fire.
     let empty_cache = InMemoryMailboxCache::new();

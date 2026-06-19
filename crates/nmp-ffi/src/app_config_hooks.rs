@@ -7,7 +7,7 @@ use crate::{NmpApp, NmpConfigStatus};
 impl NmpApp {
     /// Install the D2 coverage-gate hook. MUST be called before
     /// [`nmp_app_start`]. The hook is a closure that receives a
-    /// [`nmp_core::planner::CompiledPlan`] after M2 compile and may mutate it
+    /// [`nmp_planner::CompiledPlan`] after M2 compile and may mutate it
     /// (e.g. prune relays or mark sub-shapes for negentropy). See
     /// [`crate::subs::PlanCoverageHook`].
     ///
