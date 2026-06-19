@@ -44,6 +44,11 @@ fn main() {
             Phase::MemorySoak => phases::run_memory_soak(&mut report, &args),
             Phase::Firehose => phases::run_firehose(&mut report, &args),
             Phase::Correctness => oracle::run_correctness(&mut report, &args),
+            Phase::Reactive => phases::run_reactive(&mut report, &args),
+            Phase::Resilience => phases::run_resilience(&mut report, &args),
+            Phase::Privacy => phases::run_privacy(&mut report, &args),
+            Phase::FfiBounds => phases::run_ffi_bounds(&mut report, &args),
+            Phase::GcSoundness => phases::run_gc_soundness(&mut report, &args),
             Phase::All => unreachable!("expand() removes All"),
         }
     }

@@ -42,6 +42,13 @@ pub struct FrameRecord {
     pub note_events: u64,
     pub connected: bool,
     pub serialize_us: u64,
+    /// Raw FlatBuffers frame size in bytes (the payload that crossed FFI).
+    /// Used by the FFI-boundedness oracle to assert the frame stays bounded
+    /// as the underlying store grows.
+    pub frame_bytes: u64,
+    /// Open wire subscriptions on this frame: (relay_url, state). Used by the
+    /// resilience sub-leak oracle (no dangling `open` sub after views close).
+    pub wire_subs: Vec<(String, String)>,
 }
 
 #[derive(Default)]
@@ -68,6 +75,19 @@ impl CaptureState {
     pub fn any_connected(&self) -> bool {
         self.records.iter().any(|r| r.connected)
     }
+
+    /// Peak raw FFI frame size observed (bytes). Bounded-frame oracle reads this.
+    pub fn peak_frame_bytes(&self) -> u64 {
+        self.records.iter().map(|r| r.frame_bytes).max().unwrap_or(0)
+    }
+
+    /// Count of subscriptions in the `open` state on the latest frame.
+    pub fn latest_open_sub_count(&self) -> usize {
+        self.records
+            .last()
+            .map(|r| r.wire_subs.iter().filter(|(_, s)| s == "open").count())
+            .unwrap_or(0)
+    }
 }
 
 extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
@@ -91,6 +111,11 @@ extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
             .map(|s| s.connection == "connected")
             .unwrap_or(false)
             || env.relay_statuses.iter().any(|s| s.connection == "connected");
+        let wire_subs = env
+            .wire_subscriptions
+            .iter()
+            .map(|w| (w.relay_url.clone(), w.state.clone()))
+            .collect();
         state.records.push(FrameRecord {
             at_ms,
             visible_items: env.visible_items,
@@ -98,6 +123,8 @@ extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
             note_events: env.note_events,
             connected,
             serialize_us: env.serialize_us,
+            frame_bytes: payload_len as u64,
+            wire_subs,
         });
     }
 }
@@ -184,6 +211,29 @@ impl DrivenApp {
 
     pub fn raw(&self) -> *mut NmpApp {
         self.app
+    }
+
+    /// `true` iff the kernel actor thread is still alive (panic-safety oracle).
+    pub fn is_alive(&self) -> bool {
+        nmp_ffi::nmp_app_is_alive(self.app) != 0
+    }
+
+    /// Read the kernel's recent routing-decisions ledger as parsed JSON. Used by
+    /// the privacy + outbox-routing oracles to inspect `publishes[]` targets
+    /// (kind / urls) and `subscriptions[]` without scraping the churning store.
+    pub fn routing_decisions(&self) -> Option<serde_json::Value> {
+        let ptr = nmp_ffi::nmp_app_recent_routing_decisions(self.app);
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: ptr is a heap-owned NUL-terminated string from the FFI; we
+        // copy it out and then free it via the matching FFI free.
+        let json = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_str()
+            .ok()
+            .and_then(|s| serde_json::from_str(s).ok());
+        nmp_ffi::nmp_free_string(ptr);
+        json
     }
 }
 

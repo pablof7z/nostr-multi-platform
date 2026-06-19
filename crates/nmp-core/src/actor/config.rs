@@ -67,6 +67,13 @@ pub struct ActorConfigSources {
     pub publish_resolver: PublishResolverSlot,
     pub external_event_sink_policy: ExternalEventSinkPolicySlot,
     pub kernel_clock: KernelClockSlot,
+    /// Test-support durable-LRU ceiling for GC.  Set by
+    /// `nmp_app_configure_gc_budget` before start; `None` (the default)
+    /// preserves `GcBudget::production()` (`max_total_events = usize::MAX`,
+    /// LRU disabled). Always `None` in production builds — applied to the
+    /// kernel only through the `#[cfg(test-support)]`-gated
+    /// `Kernel::set_gc_budget_ceiling` method in `apply_to_kernel`.
+    pub gc_budget_ceiling: Option<usize>,
 }
 
 impl ActorConfigSources {
@@ -149,6 +156,7 @@ impl ActorConfigSources {
                 .lock()
                 .ok()
                 .and_then(|guard| guard.as_ref().map(Arc::clone)),
+            gc_budget_ceiling: self.gc_budget_ceiling,
         }
     }
 }
@@ -170,6 +178,9 @@ pub struct ActorConfig {
     pub publish_resolver: Option<Arc<PublishResolverFactory>>,
     pub external_event_sink_policy: Option<Arc<ExternalEventSinkPolicyFactory>>,
     pub kernel_clock: Option<Arc<dyn crate::kernel::Clock>>,
+    /// Test-support only — see `ActorConfigSources::gc_budget_ceiling`.
+    /// Always `None` in production builds.
+    pub gc_budget_ceiling: Option<usize>,
 }
 
 impl ActorConfig {
@@ -218,6 +229,13 @@ impl ActorConfig {
             kernel
                 .lifecycle_mut()
                 .set_req_frame_interceptor(Arc::clone(interceptor));
+        }
+        // Test-support: install the configured GC budget ceiling (if any) so
+        // `derive_store_gc_inputs` opts into durable LRU eviction for this
+        // session. No-op in production builds.
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(ceiling) = self.gc_budget_ceiling {
+            kernel.set_gc_budget_ceiling(ceiling);
         }
     }
 }

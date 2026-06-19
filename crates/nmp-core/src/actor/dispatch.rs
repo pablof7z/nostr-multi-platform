@@ -1657,6 +1657,37 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::IngestPreVerifiedEventsForSubId { sub_id, events, ack } => {
+            // Same plumbing as `IngestPreVerifiedEvents`, but the sub-id is
+            // caller-chosen. A sub-id NOT starting with `diag-firehose-` skips
+            // the `self.timeline.push_back` in `ingest_pre_verified_event`, so
+            // the injected events are NOT timeline-pinned and stay eviction-
+            // eligible (the corpus a GC oracle needs).
+            for verified in events {
+                ctx.kernel.ingest_pre_verified_event(
+                    crate::relay::RelayRole::Content,
+                    &sub_id,
+                    verified,
+                );
+            }
+            ctx.kernel.sort_timeline_deferred();
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            // Settled: batch ingested + timeline re-sorted. Ack so the caller can
+            // proceed to GC against a known state (no fixed sleep).
+            let _ = ack.send(());
+            Some(Vec::new())
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::TriggerGcStep { ack } => {
+            // Force one GC pass immediately (bypasses the 60-second wall-clock gate).
+            // Identical to the idle-tick path: RAM eviction then store LRU step.
+            ctx.kernel.run_gc_step();
+            // Settled: RAM eviction + store LRU step done, eviction counters
+            // updated. Ack so the caller reads a deterministic, settled state.
+            let _ = ack.send(());
+            Some(Vec::new())
+        }
     }
 }
 

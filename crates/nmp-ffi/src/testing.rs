@@ -202,6 +202,260 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
     true
 }
 
+/// Test-support — configure a durable LRU budget ceiling before `nmp_app_start`.
+///
+/// Sets the `max_total_events` ceiling used by `Kernel::derive_store_gc_inputs`
+/// when the kernel runs its 60-second GC pass.  Must be called before
+/// `nmp_app_start`; calls after start are a no-op (returns
+/// `NmpConfigStatus::AlreadyStarted`).
+///
+/// Production default (`usize::MAX`, LRU disabled) is never touched — only this
+/// test-support path enables bounded LRU eviction.
+///
+/// Return values mirror `NmpConfigStatus`:
+///  - 0 = Ok
+///  - 1 = NullApp
+///  - 2 = AlreadyStarted
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_configure_gc_budget(app: *mut NmpApp, max_events: u64) -> u32 {
+    use super::prestart_config::NmpConfigStatus;
+    let Some(app) = app_ref(app) else {
+        return NmpConfigStatus::NullApp.code();
+    };
+    if let Err(status) = app.ensure_prestart_config(
+        "gc_budget",
+        "gc_budget_ceiling",
+        "nmp_app_configure_gc_budget",
+    ) {
+        return status.code();
+    }
+    if let Ok(mut guard) = app.gc_budget_ceiling.lock() {
+        *guard = Some(max_events as usize);
+    }
+    NmpConfigStatus::Ok.code()
+}
+
+/// Test-support — ingest `count` real Schnorr-signed kind:1 events under an
+/// UN-PINNED sub-id, then BLOCK until the actor finishes the batch.
+///
+/// Unlike `nmp_app_inject_signed_event_json` (which routes through the
+/// `"diag-firehose-stress"` sub-id and pins every event into `self.timeline`),
+/// this routes through `ActorCommand::IngestPreVerifiedEventsForSubId` under the
+/// `"gc-oracle-unpinned"` sub-id. That sub-id does NOT start with
+/// `diag-firehose-`, so `ingest_pre_verified_event` skips the
+/// `self.timeline.push_back`: the injected events land in the RAM cache and the
+/// durable store but are NOT timeline-pinned — they are eviction-eligible, which
+/// is exactly what a GC oracle needs to observe a real eviction.
+///
+/// The events are signed with a freshly generated key (NOT the caller's author),
+/// so an author-scoped store scan of the caller's own key returns only the
+/// caller's pinned events, never this filler corpus.
+///
+/// Returns the number of events accepted (signed + verified + enqueued). Blocks
+/// on the ingest ack so the corpus is SETTLED on return — no fixed sleep.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_inject_unpinned_events_for_gc(
+    app: *mut NmpApp,
+    base_created_at: u64,
+    count: u32,
+) -> u32 {
+    use nostr::{EventBuilder, Keys, Timestamp};
+
+    let Some(app) = app_ref(app) else {
+        return 0;
+    };
+
+    // Separate fixture key: this filler corpus is intentionally NOT authored by
+    // the caller, so a caller-author store scan can isolate pinned survivors.
+    let keys = Keys::generate();
+    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
+        .filter_map(|i| {
+            let ts = Timestamp::from(base_created_at.saturating_add(i));
+            let nostr_event = EventBuilder::text_note(format!("gc-unpinned filler {i}"))
+                .custom_created_at(ts)
+                .sign_with_keys(&keys)
+                .ok()?;
+            let raw = nmp_core::store::RawEvent {
+                id: nostr_event.id.to_hex(),
+                pubkey: nostr_event.pubkey.to_hex(),
+                created_at: nostr_event.created_at.as_secs(),
+                kind: nostr_event.kind.as_u16() as u32,
+                tags: nostr_event
+                    .tags
+                    .iter()
+                    .map(|t| t.as_slice().to_vec())
+                    .collect(),
+                content: nostr_event.content.clone(),
+                sig: nostr_event.sig.to_string(),
+            };
+            nmp_core::store::VerifiedEvent::try_from_raw(raw).ok()
+        })
+        .collect();
+    let accepted = events.len() as u32;
+
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+    app.send_cmd(ActorCommand::IngestPreVerifiedEventsForSubId {
+        sub_id: "gc-oracle-unpinned".to_string(),
+        events,
+        ack: ack_tx,
+    });
+    // Block until the actor has ingested + re-sorted the whole batch (settled).
+    let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
+    accepted
+}
+
+/// Test-support — force one immediate GC pass outside the 60-second tick, then
+/// BLOCK until the pass has fully completed.
+///
+/// Sends `ActorCommand::TriggerGcStep { ack }` to the kernel actor, which runs
+/// `Kernel::run_gc_step()` (RAM-tier eviction + store-tier LRU step) and then
+/// acks. This call blocks on that ack, so on return the cumulative eviction
+/// counters read by `nmp_app_read_ram_eviction_stats` reflect a SETTLED GC pass
+/// — no `std::thread::sleep` + polling guesswork.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_trigger_gc_step(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+    app.send_cmd(ActorCommand::TriggerGcStep { ack: ack_tx });
+    // Block until the GC pass is settled (RAM eviction + store LRU step done).
+    let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
+}
+
+/// Test-support — read cumulative RAM and durable-store LRU eviction counters.
+///
+/// Both counters start at 0 at process start and only increase.  Take a
+/// snapshot before and after a measurement window to compute per-window deltas.
+///
+/// - `out_ram_evicted`  → cumulative count of events evicted from the kernel's
+///   RAM-tier `self.events` cache (`Kernel::evict_events_cache`).
+/// - `out_lru_evicted`  → cumulative count of events LRU-deleted from the
+///   durable store (`Kernel::run_gc_step` → `gc_step_with_pins_and_coverage`).
+///   Always 0 when using the in-memory store (no LMDB configured).
+///
+/// Either output pointer may be null (the corresponding counter is skipped).
+/// Thread-safe (backed by `AtomicU64 + Relaxed` loads).
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
+/// production FFI ABI.
+#[no_mangle]
+pub extern "C" fn nmp_app_read_ram_eviction_stats(
+    out_ram_evicted: *mut u64,
+    out_lru_evicted: *mut u64,
+) {
+    use std::sync::atomic::Ordering;
+    if !out_ram_evicted.is_null() {
+        // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+        unsafe {
+            *out_ram_evicted =
+                nmp_core::testing::PROCESS_RAM_EVENTS_EVICTED.load(Ordering::Relaxed);
+        }
+    }
+    if !out_lru_evicted.is_null() {
+        // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+        unsafe {
+            *out_lru_evicted =
+                nmp_core::testing::PROCESS_STORE_LRU_EVICTED.load(Ordering::Relaxed);
+        }
+    }
+}
+
+/// Test-support — return the event IDs (and author pubkey) of stored kind:1
+/// events for the given author, as a JSON array string.
+///
+/// Scans the event store (in-memory or LMDB depending on configuration) for
+/// kind:1 events authored by `pubkey_hex`, newest-first, up to `limit` events.
+/// Returns a heap-allocated NUL-terminated JSON string `[{"id":"…","author":"…"},…]`,
+/// or `null` on error (null app pointer, empty pubkey, store not yet published).
+/// The caller MUST free the string via `nmp_free_string`.
+///
+/// This is Seam 1 (`nmp_app_read_feed_authors`): it exposes the set of event
+/// ids the store holds for a given author so the reactive oracle can assert
+/// `corpus_ids ⊆ stored_ids` without scraping the churning RAM cache.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_read_author_event_ids(
+    app: *mut NmpApp,
+    pubkey_hex: *const c_char,
+    limit: u32,
+) -> *mut c_char {
+    use std::ffi::CString;
+
+    let Some(app) = app_ref(app) else {
+        return std::ptr::null_mut();
+    };
+    if pubkey_hex.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+    let author_hex = match unsafe { CStr::from_ptr(pubkey_hex) }.to_str() {
+        Ok(s) if !s.is_empty() => s,
+        _ => return std::ptr::null_mut(),
+    };
+
+    // Parse hex pubkey → 32-byte `PubKey` (the store key type).
+    let pubkey_bytes: nmp_core::store::PubKey = match nostr::PublicKey::from_hex(author_hex) {
+        Ok(pk) => {
+            let mut bytes = [0u8; 32];
+            bytes.copy_from_slice(pk.as_bytes());
+            bytes
+        }
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    // Borrow the event store via the publish-back slot.
+    let store = match app.event_store_handle().lock() {
+        Ok(guard) => match guard.as_ref().map(|s| std::sync::Arc::clone(s)) {
+            Some(s) => s,
+            None => return std::ptr::null_mut(),
+        },
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let scan_limit = if limit == 0 { 2000 } else { limit as usize };
+    let iter = match store.scan_by_author_kind(
+        &pubkey_bytes,
+        &[1u32],
+        None,
+        None,
+        scan_limit,
+    ) {
+        Ok(it) => it,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    // Collect results into a JSON array of {"id":"…","author":"…"} objects.
+    let mut entries: Vec<String> = Vec::new();
+    for result in iter {
+        if let Ok(ev) = result {
+            entries.push(format!(
+                r#"{{"id":"{}","author":"{}"}}"#,
+                ev.raw.id, ev.raw.pubkey
+            ));
+        }
+    }
+    let json = format!("[{}]", entries.join(","));
+    CString::new(json)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
 /// ADR-0055 Rung 0 — read cumulative per-projection churn counters.
 ///
 /// Returns the process-lifetime totals of typed projections serialized and
