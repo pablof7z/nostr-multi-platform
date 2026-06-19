@@ -62,9 +62,11 @@ fn inserted(seq: u64, id: &str, created_at: u64) -> StoreLogEntry {
 fn deleted(seq: u64, _target: &str) -> StoreLogEntry {
     StoreLogEntry {
         seq,
+        // D0: nmp-feed names zero protocol tokens — use the non-NIP-named
+        // AdminPurge reason (the pager skips every Deleted row regardless).
         op: LogOp::Deleted {
             target_id: id32(seq as u8),
-            reason: nmp_core::store::DeleteReason::Nip09,
+            reason: nmp_core::store::DeleteReason::AdminPurge,
         },
         event_id: id32(0xff),
         raw_event: None,
