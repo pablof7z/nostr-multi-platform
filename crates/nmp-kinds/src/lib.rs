@@ -108,6 +108,12 @@ pub const KIND_ZAP_REQUEST: u32 = 9734;
 /// invoice settles. Decode-only — clients never construct kind:9735 directly.
 pub const KIND_ZAP_RECEIPT: u32 = 9735;
 
+// ─── NIP-78 — arbitrary custom app data ───────────────────────────────────
+
+/// NIP-78 arbitrary custom app data (kind:30078). Addressable by
+/// `(pubkey, kind, d-tag)`; content and non-`d` tags are app-defined.
+pub const KIND_APP_DATA: u32 = 30078;
+
 // ─── NIP-17 — DM relay list ───────────────────────────────────────────────
 
 /// NIP-17 § 2 DM-relay list (kind:10050). The relays a user wants to

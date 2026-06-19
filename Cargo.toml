@@ -32,6 +32,7 @@ members = [
     "crates/nmp-nip59-decrypt-only",
     "apps/nmp-gallery/nmp-app-gallery",
     "crates/nmp-nip77",
+    "crates/nmp-nip78",
     "crates/nmp-wot",
     "crates/nmp-substrate-defaults",
     "crates/nmp-defaults",
