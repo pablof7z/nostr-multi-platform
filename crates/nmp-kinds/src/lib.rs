@@ -126,6 +126,10 @@ pub const KIND_DM_RELAY_LIST: u32 = 10050;
 /// pubkeys (`p` tags) and event ids (`e` tags).
 pub const KIND_MUTE_LIST: u32 = 10000;
 
+/// NIP-51 global bookmark list (kind:10003). Public items are raw bookmark
+/// references such as `["e", <event-id>]` and `["a", <kind:pubkey:d>]`.
+pub const KIND_BOOKMARK_LIST: u32 = 10_003;
+
 // ─── NIP-51 § kind:10006 — blocked relays ────────────────────────────────
 
 /// NIP-51 blocked relays list (kind:10006). The relays a user explicitly

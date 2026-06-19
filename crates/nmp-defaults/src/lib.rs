@@ -24,6 +24,7 @@
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
 //!    * `nmp.nip57.zap` — [`nmp_nip57`]
 //!    * `nmp.nip65.publish_relay_list` — [`nmp_router`]
+//!    * `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark` — [`nmp_nip51`]
 //! 2. **Ingest parsers** for the kinds NMP knows how to decode into
 //!    substrate caches:
 //!    * kind:10050 → [`nmp_nip17::DmRelayCache`] (wired inside
@@ -115,7 +116,7 @@ pub mod topic_articles;
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
-pub use runtimes::register_mute_runtime;
+pub use runtimes::{register_bookmark_runtime, register_mute_runtime};
 pub use tiers::{register_substrate, NmpDefaults};
 
 /// Wire the canonical NMP composition into `app`.
@@ -224,6 +225,11 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
         // `set_suppression` seam) should call [`register_mute_runtime`]
         // directly instead of relying on this path.
         let _ = runtimes::register_mute_runtime(app);
+        // NIP-51 kind:10003 global bookmarks. Registers the active-account
+        // observer and the add/remove bookmark action modules against the same
+        // read model, so writes merge the latest observed list instead of
+        // overwriting it through PublishRaw.
+        let _ = runtimes::register_bookmark_runtime(app);
     }
 
     if dms {

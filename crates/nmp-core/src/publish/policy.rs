@@ -37,9 +37,9 @@
 //!   *expressed*, not a behaviour change.
 
 use crate::kinds::{
-    is_parameterized_replaceable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_CHAT_MESSAGE,
-    KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST, KIND_PROFILE_METADATA,
-    KIND_RELAY_LIST,
+    is_parameterized_replaceable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST,
+    KIND_CHAT_MESSAGE, KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST,
+    KIND_PROFILE_METADATA, KIND_RELAY_LIST,
 };
 
 /// Typed behaviour class for a kind on the publish/outbox path.
@@ -91,6 +91,11 @@ pub(crate) enum ReservedKind {
     /// (follow-list merge; a raw payload would silently overwrite the follow
     /// set).
     Contacts,
+    /// kind:10003 NIP-51 global bookmark list — owned by
+    /// `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark`
+    /// (read-modify-write merge; a raw payload would silently overwrite the
+    /// reserved list).
+    Bookmarks,
 }
 
 impl ReservedKind {
@@ -102,8 +107,14 @@ impl ReservedKind {
             Self::Profile => {
                 "use PublishProfile (not PublishRaw) for kind:0 profile updates".to_string()
             }
-            Self::Contacts => "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+            Self::Contacts => {
+                "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
                  not PublishRaw (the actor owns the follow-list state)"
+                    .to_string()
+            }
+            Self::Bookmarks => "kind:10003 bookmark list must be modified via \
+                 nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+                 (the NIP-51 builder owns the list merge)"
                 .to_string(),
         }
     }
@@ -124,6 +135,9 @@ pub(crate) fn classify_publish_behavior(kind: u32) -> PublishBehavior {
     }
     if kind == KIND_CONTACT_LIST {
         return PublishBehavior::ReservedBuilderOnly(ReservedKind::Contacts);
+    }
+    if kind == KIND_BOOKMARK_LIST {
+        return PublishBehavior::ReservedBuilderOnly(ReservedKind::Bookmarks);
     }
 
     // 2. Private / encrypted envelopes — fail closed (Explicit-only, D10).

@@ -122,9 +122,10 @@ pub enum PublishAction {
     ///
     /// # Restrictions
     ///
-    /// kind:0 (profile) and kind:3 (contacts) have dedicated variants that
-    /// apply protocol-specific processing (kind:0: field validation, kind:3:
-    /// follow-list merge). `PublishRaw` rejects these kinds to prevent
+    /// Reserved replaceable lists such as kind:0 (profile), kind:3
+    /// (contacts), and kind:10003 (NIP-51 bookmarks) have dedicated variants
+    /// or per-NIP action modules that apply protocol-specific validation and
+    /// read-modify-write merging. `PublishRaw` rejects these kinds to prevent
     /// accidental data loss from bypassing that processing.
     ///
     /// # Signer selection
@@ -237,11 +238,8 @@ impl ActionModule for PublishModule {
                 // empty `Explicit` target — that would Auto-route it to public
                 // relays. Reject at dispatch time so the host gets a clean
                 // error; the engine chokepoint is the deeper structural twin.
-                validate_publish_routing(
-                    event.unsigned.kind,
-                    target_is_explicit_nonempty(&target),
-                )
-                .map_err(ActionRejection::Invalid)?;
+                validate_publish_routing(event.unsigned.kind, target_is_explicit_nonempty(&target))
+                    .map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             PublishAction::PublishProfile { fields } => {
@@ -260,11 +258,12 @@ impl ActionModule for PublishModule {
             PublishAction::PublishRaw { kind, target, .. } => {
                 // Workstream C one-door: a raw app publish may not emit a kind
                 // reserved to a dedicated typed builder (kind:0 → PublishProfile,
-                // kind:3 → nmp.follow/unfollow), which would bypass the builder's
-                // protocol-specific processing. The reserved set + the rejection
-                // wording live in the publish-policy classification table, not as
-                // scattered `if kind == N` literals here (D0). The guard consults
-                // the table and surfaces the table's reason verbatim.
+                // kind:3 → nmp.follow/unfollow, kind:10003 → NIP-51 bookmark
+                // builders), which would bypass the builder's protocol-specific
+                // processing. The reserved set + the rejection wording live in the
+                // publish-policy classification table, not as scattered
+                // `if kind == N` literals here (D0). The guard consults the table
+                // and surfaces the table's reason verbatim.
                 if let Some(reserved) = classify_publish_behavior(kind).reserved_builder() {
                     return Err(ActionRejection::Invalid(reserved.raw_publish_rejection()));
                 }

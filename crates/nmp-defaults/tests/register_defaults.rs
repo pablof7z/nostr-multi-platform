@@ -25,6 +25,9 @@ const EXPECTED_NAMESPACES: &[&str] = &[
     "nmp.nip57.zap",
     // NIP-65 — relay-list publish (absorbed into nmp-router).
     "nmp.nip65.publish_relay_list",
+    // NIP-51 — global bookmark list read-modify-write builders.
+    "nmp.nip51.add_bookmark",
+    "nmp.nip51.remove_bookmark",
 ];
 
 #[test]
