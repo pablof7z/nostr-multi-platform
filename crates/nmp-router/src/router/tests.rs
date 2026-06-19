@@ -1,12 +1,8 @@
 use super::*;
 use std::sync::Arc;
 
-use nmp_core::planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape,
-};
-use nmp_core::substrate::{
-    BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet,
-};
+use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet};
 
 use crate::InMemoryMailboxCache;
 
@@ -41,7 +37,6 @@ fn interest_for(authors: &[&str]) -> LogicalInterest {
 fn ctx<'a>(
     cache: &'a dyn MailboxCache,
     blocked: &'a BlockedRelaySet,
-    explicit: Option<&'a [String]>,
     app_relays: &'a [String],
 ) -> RoutingContext<'a> {
     RoutingContext {
@@ -52,7 +47,6 @@ fn ctx<'a>(
         },
         mailbox_cache: cache,
         blocked_relays: blocked,
-        explicit_targets: explicit,
     }
 }
 
@@ -71,7 +65,6 @@ fn ctx_with_indexers<'a>(
         },
         mailbox_cache: cache,
         blocked_relays: blocked,
-        explicit_targets: None,
     }
 }
 
@@ -91,37 +84,19 @@ fn interest_for_kinds(authors: &[&str], kinds: &[u32]) -> LogicalInterest {
 }
 
 #[test]
-fn publish_explicit_targets_skips_generic_algorithm() {
-    let cache = InMemoryMailboxCache::new();
-    let blocked = BlockedRelaySet::new();
-    let explicit = vec!["wss://forced.example".to_string()];
-    let app = vec!["wss://app.example".to_string()];
-    let c = ctx(&cache, &blocked, Some(&explicit), &app);
-
-    let router = GenericOutboxRouter::new();
-    let r = router.route_publish(&unsigned(), &c).unwrap();
-    let urls: Vec<&String> = r.urls().collect();
-
-    assert_eq!(urls, vec![&"wss://forced.example".to_string()]);
-    // AppRelay was configured but explicit_targets shortcut it.
-    for sources in r.relays.values() {
-        for s in sources {
-            assert!(matches!(s, RoutingSource::ClassRouted { .. }));
-        }
-    }
-}
-
-#[test]
 fn publish_uses_nip65_write_set() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(pubkey(), ParsedRelayList {
-        write: vec!["wss://w.example".into()],
-        both: vec!["wss://b.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        pubkey(),
+        ParsedRelayList {
+            write: vec!["wss://w.example".into()],
+            both: vec!["wss://b.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
-    let c = ctx(&*cache, &blocked, None, &app);
+    let c = ctx(&*cache, &blocked, &app);
 
     let router = GenericOutboxRouter::new();
     let r = router.route_publish(&unsigned(), &c).unwrap();
@@ -134,7 +109,9 @@ fn publish_uses_nip65_write_set() {
     for sources in r.relays.values() {
         assert!(sources.iter().any(|s| matches!(
             s,
-            RoutingSource::Nip65 { direction: Direction::Write }
+            RoutingSource::Nip65 {
+                direction: Direction::Write
+            }
         )));
     }
 }
@@ -144,7 +121,7 @@ fn publish_app_relay_fallback_when_no_nip65() {
     let cache = InMemoryMailboxCache::new();
     let blocked = BlockedRelaySet::new();
     let app = vec!["wss://app.example".to_string()];
-    let c = ctx(&cache, &blocked, None, &app);
+    let c = ctx(&cache, &blocked, &app);
 
     let router = GenericOutboxRouter::new();
     let r = router.route_publish(&unsigned(), &c).unwrap();
@@ -153,7 +130,9 @@ fn publish_app_relay_fallback_when_no_nip65() {
     for sources in r.relays.values() {
         assert!(sources.iter().any(|s| matches!(
             s,
-            RoutingSource::AppRelay { mode: AppRelayMode::Fallback }
+            RoutingSource::AppRelay {
+                mode: AppRelayMode::Fallback
+            }
         )));
     }
 }
@@ -163,7 +142,7 @@ fn publish_unroutable_when_no_nip65_and_no_app_relay() {
     let cache = InMemoryMailboxCache::new();
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
-    let c = ctx(&cache, &blocked, None, &app);
+    let c = ctx(&cache, &blocked, &app);
 
     let router = GenericOutboxRouter::new();
     let err = router.route_publish(&unsigned(), &c).unwrap_err();
@@ -173,14 +152,17 @@ fn publish_unroutable_when_no_nip65_and_no_app_relay() {
 #[test]
 fn publish_drops_blocked_relays() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(pubkey(), ParsedRelayList {
-        write: vec!["wss://blocked.example".into(), "wss://ok.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        pubkey(),
+        ParsedRelayList {
+            write: vec!["wss://blocked.example".into(), "wss://ok.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let mut blocked = BlockedRelaySet::new();
     blocked.insert("wss://blocked.example".into());
     let app: Vec<String> = vec![];
-    let c = ctx(&*cache, &blocked, None, &app);
+    let c = ctx(&*cache, &blocked, &app);
 
     let router = GenericOutboxRouter::new();
     let r = router.route_publish(&unsigned(), &c).unwrap();
@@ -191,17 +173,23 @@ fn publish_drops_blocked_relays() {
 #[test]
 fn subscribe_uses_nip65_read_set_for_each_author() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert("alice".into(), ParsedRelayList {
-        read: vec!["wss://alice-r.example".into()],
-        ..ParsedRelayList::default()
-    });
-    cache.upsert("bob".into(), ParsedRelayList {
-        both: vec!["wss://bob-b.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        "alice".into(),
+        ParsedRelayList {
+            read: vec!["wss://alice-r.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
+    cache.upsert(
+        "bob".into(),
+        ParsedRelayList {
+            both: vec!["wss://bob-b.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
-    let c = ctx(&*cache, &blocked, None, &app);
+    let c = ctx(&*cache, &blocked, &app);
 
     let router = GenericOutboxRouter::new();
     let r = router
@@ -213,31 +201,11 @@ fn subscribe_uses_nip65_read_set_for_each_author() {
 }
 
 #[test]
-fn subscribe_explicit_targets_shortcuts() {
-    let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert("alice".into(), ParsedRelayList {
-        read: vec!["wss://from-cache.example".into()],
-        ..ParsedRelayList::default()
-    });
-    let blocked = BlockedRelaySet::new();
-    let explicit = vec!["wss://override.example".to_string()];
-    let app: Vec<String> = vec![];
-    let c = ctx(&*cache, &blocked, Some(&explicit), &app);
-
-    let router = GenericOutboxRouter::new();
-    let r = router
-        .route_subscription(&interest_for(&["alice"]), &c)
-        .unwrap();
-    let urls: Vec<&String> = r.urls().collect();
-    assert_eq!(urls, vec![&"wss://override.example".to_string()]);
-}
-
-#[test]
 fn subscribe_unroutable_when_no_lane_resolves() {
     let cache = InMemoryMailboxCache::new();
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
-    let c = ctx(&cache, &blocked, None, &app);
+    let c = ctx(&cache, &blocked, &app);
 
     let router = GenericOutboxRouter::new();
     let err = router
@@ -273,37 +241,36 @@ impl RoutingTraceObserver for TestObserver {
 
 #[test]
 fn trace_observer_fires_on_success_and_skips_unroutable() {
-    // Two route_publish calls and one route_subscription against a single
+    // One route_publish call and one route_subscription against a single
     // router+observer instance. Asserts the observer fires once per
     // successful call (with the right trace payload), and NOT at all when
     // the router returns Unroutable.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(pubkey(), ParsedRelayList {
-        write: vec!["wss://w.example".into()],
-        read: vec!["wss://r.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        pubkey(),
+        ParsedRelayList {
+            write: vec!["wss://w.example".into()],
+            read: vec!["wss://r.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
     let obs = Arc::new(TestObserver::default());
     let router = GenericOutboxRouter::new()
         .with_trace_observer(obs.clone() as Arc<dyn RoutingTraceObserver>);
 
-    // 1. Successful publish — explicit_targets unset.
-    let c = ctx(&*cache, &blocked, None, &app);
+    // 1. Successful publish.
+    let c = ctx(&*cache, &blocked, &app);
     let _ = router.route_publish(&unsigned(), &c).unwrap();
-    // 2. Successful publish — explicit_targets set.
-    let explicit = vec!["wss://forced.example".to_string()];
-    let c = ctx(&*cache, &blocked, Some(&explicit), &app);
-    let _ = router.route_publish(&unsigned(), &c).unwrap();
-    // 3. Successful subscription with a non-default interest id.
-    let c = ctx(&*cache, &blocked, None, &app);
+    // 2. Successful subscription with a non-default interest id.
+    let c = ctx(&*cache, &blocked, &app);
     let mut interest = interest_for(&["alice"]);
     interest.id = nmp_core::planner::InterestId(42);
     let _ = router.route_subscription(&interest, &c).unwrap();
-    // 4. Unroutable publish (no cache, no app-relay) — observer MUST NOT fire.
+    // 3. Unroutable publish (no cache, no app-relay) — observer MUST NOT fire.
     let empty_cache = InMemoryMailboxCache::new();
-    let c = ctx(&empty_cache, &blocked, None, &app);
+    let c = ctx(&empty_cache, &blocked, &app);
     let _ = router
         .route_publish(
             &UnsignedEvent {
@@ -315,17 +282,14 @@ fn trace_observer_fires_on_success_and_skips_unroutable() {
         .unwrap_err();
 
     let pubs = obs.publishes.lock().unwrap();
-    assert_eq!(pubs.len(), 2, "two publish successes only");
+    assert_eq!(pubs.len(), 1, "one publish success only");
     assert_eq!(pubs[0].0.kind, 1);
     assert_eq!(pubs[0].0.author, pubkey());
-    assert!(!pubs[0].0.explicit_targets_set);
-    assert!(pubs[1].0.explicit_targets_set);
 
     let subs = obs.subscriptions.lock().unwrap();
     assert_eq!(subs.len(), 1);
     assert_eq!(subs[0].interest_id, 42);
     assert_eq!(subs[0].authors_count, 1);
-    assert!(!subs[0].explicit_targets_set);
 }
 
 // ─── V-50: lane 6 (Indexer always-on for discovery kinds) ────────────────
@@ -391,10 +355,13 @@ fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
     // RoutingSource::Indexer — so a newer kind:10002 published on a
     // different relay is structurally reachable.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert("alice".into(), ParsedRelayList {
-        read: vec!["wss://stale.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        "alice".into(),
+        ParsedRelayList {
+            read: vec!["wss://stale.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
     let indexers = vec!["wss://indexer.example".to_string()];
@@ -418,7 +385,9 @@ fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
     let stale_sources = r.relays.get(&stale).unwrap();
     assert!(stale_sources.iter().any(|s| matches!(
         s,
-        RoutingSource::Nip65 { direction: Direction::Read }
+        RoutingSource::Nip65 {
+            direction: Direction::Read
+        }
     )));
     let indexer_sources = r.relays.get(&indexer).unwrap();
     assert!(indexer_sources.contains(&RoutingSource::Indexer));
@@ -430,10 +399,13 @@ fn route_publish_includes_indexer_lane_for_discovery_kinds() {
     // kind:3, etc.) hits the indexer in addition to the author's
     // NIP-65 write set.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(pubkey(), ParsedRelayList {
-        write: vec!["wss://w.example".into()],
-        ..ParsedRelayList::default()
-    });
+    cache.upsert(
+        pubkey(),
+        ParsedRelayList {
+            write: vec!["wss://w.example".into()],
+            ..ParsedRelayList::default()
+        },
+    );
     let blocked = BlockedRelaySet::new();
     let app: Vec<String> = vec![];
     let indexers = vec!["wss://indexer.example".to_string()];
@@ -451,7 +423,10 @@ fn route_publish_includes_indexer_lane_for_discovery_kinds() {
         assert!(r.relays[&i].contains(&RoutingSource::Indexer));
     }
     // Non-discovery kind:1 — lane 6 must NOT fire.
-    let evt = UnsignedEvent { kind: 1, ..unsigned() };
+    let evt = UnsignedEvent {
+        kind: 1,
+        ..unsigned()
+    };
     let c = ctx_with_indexers(&*cache, &blocked, &app, &indexers);
     let r = router.route_publish(&evt, &c).unwrap();
     let urls: std::collections::BTreeSet<&String> = r.urls().collect();

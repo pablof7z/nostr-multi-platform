@@ -111,8 +111,8 @@ a concrete router dependency.
 
 ## 5. Routing Contract
 
-Routing is one generic algorithm plus one explicit-target override. NIP crates
-do not register routing rules.
+Routing is one generic automatic algorithm. NIP crates do not register routing
+rules, and the outbox router does not carry a manual relay override seam.
 
 The generic router may consult:
 
@@ -122,11 +122,12 @@ The generic router may consult:
 - Session read/write/app/indexer relay configuration.
 - Relay hints, provenance, p-tag inbox hints, and blocked-relay state.
 
-When a protocol module already knows the correct relay set, it passes
-`RoutingContext::explicit_targets`. The router then skips the generic algorithm
-and returns those relays after blocked-relay filtering. This keeps NIP-17 DM
-relay lists, NIP-29 group host relays, and Marmot MLS group relays inside their
-own crates instead of adding per-NIP branches to routing.
+When a publish flow already knows the correct relay set, it uses
+`PublishTarget::Explicit { relays }` in the publish engine. That path is the
+single explicit-relay mechanism for NIP-17 DM relay lists, NIP-29 group host
+relays, Marmot MLS group relays, and other audited D3 opt-outs. The outbox
+router remains the automatic routing seam rather than a second explicit
+publish path.
 
 The router never owns socket lifecycle. It returns relay decisions; the actor
 uses `nmp-network` to open and send.

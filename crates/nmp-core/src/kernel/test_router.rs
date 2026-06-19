@@ -19,14 +19,10 @@
 //! kept in-crate.
 //!
 //! The lanes implemented below mirror lanes 1, 2 (hint), 4
-//! (UserConfigured), 5 (ClassRouted attribution on `explicit_targets`), 6
-//! (discovery indexer), and 7 (AppRelay fallback) of
-//! `nmp_router::GenericOutboxRouter` — the same coverage as production
-//! routing. Lane 3 (Provenance) is subscribe-only and is also covered.
-//! Lane 5 attributes `ClassRouted{Other("explicit"), Explicit}` for BOTH
-//! publish and subscribe (no per-kind classification — see #1493: the
-//! generic router dropped its per-NIP kind→class table). This is an
-//! acknowledged minor algorithm duplication;
+//! (UserConfigured), 6 (discovery indexer), and 7 (AppRelay fallback)
+//! of `nmp_router::GenericOutboxRouter` — the same coverage as
+//! production routing. Lane 3 (Provenance) is subscribe-only and is
+//! also covered. This is an acknowledged minor algorithm duplication;
 //! Debt B's full elimination still holds for production code, where
 //! composition installs `nmp_router::GenericOutboxRouter` via
 //! `NmpApp::set_routing_substrate` -> `Kernel::set_routing`. Both routers
@@ -95,12 +91,6 @@ impl OutboxRouter for TestOutboxRouter {
         evt: &UnsignedEvent,
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
-        if let Some(explicit) = ctx.explicit_targets {
-            // Lane 5 — attribute `ClassRouted{Other("explicit"), Explicit}`,
-            // kind-agnostic (no per-NIP classification; mirrors the generic
-            // router after #1493).
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
-        }
         let mut out = RoutedRelaySet::new();
         // Lane 1 — author's NIP-65 write set.
         if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
@@ -172,12 +162,6 @@ impl OutboxRouter for TestOutboxRouter {
         interest: &LogicalInterest,
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
-        if let Some(explicit) = ctx.explicit_targets {
-            // Lane 5 — the substrate's generic explicit-set (attributes via
-            // `EventClass::Other("explicit")`). The generic router does the
-            // same for both publish and subscribe (#1493).
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
-        }
         let mut out = RoutedRelaySet::new();
         // Lane 1 — each author's NIP-65 read set.
         for author in &interest.shape.authors {

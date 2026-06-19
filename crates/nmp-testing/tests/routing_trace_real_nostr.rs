@@ -267,7 +267,6 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
         },
         mailbox_cache: &*cache,
         blocked_relays: &blocked,
-        explicit_targets: None,
     };
     let interest = interest_for_pablo();
     let routed = router
@@ -285,10 +284,6 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
     let entry = &snap[0];
     assert_eq!(entry.trace.interest_id, interest.id.0);
     assert_eq!(entry.trace.authors_count, 1);
-    assert!(
-        !entry.trace.explicit_targets_set,
-        "we did not set explicit_targets — observer must reflect that"
-    );
 
     // 7. The actual property: every resolved URL is attributed to the
     //    Nip65/Read lane, and none to AppRelay/Fallback.

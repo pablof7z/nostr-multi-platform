@@ -30,8 +30,8 @@
 //! * The DM-inbox lookup ([`Kernel::recipient_dm_relays`]) stays — it reads
 //!   the injected [`DmInboxRelayLookup`] handle (V-40); the kernel does
 //!   not know the wire shape of a kind:10050 event and the router does not
-//!   consult the DM-inbox cache. The gift-wrap publish path
-//!   (`nmp-nip17`) wires kind:10050 relays through `explicit_targets`.
+//!   consult the DM-inbox cache. The gift-wrap publish path (`nmp-nip17`)
+//!   uses `PublishTarget::Explicit` with the kind:10050 relay set.
 //! * The [`KernelMailboxes`] adapter is unchanged — it bridges the
 //!   substrate [`SubstrateMailboxCache`] + [`DmInboxRelayLookup`] handles
 //!   to the planner's [`PlannerMailboxCache`] trait.
@@ -104,7 +104,7 @@ impl Kernel {
     /// an empty list" branches, so the gift-wrap publish path fails
     /// closed in both cases (the contract NIP-17 § 2 requires). The
     /// router never sees this — DM gift-wrap routes via
-    /// `explicit_targets` in `nmp-nip17::dm_send`.
+    /// `PublishTarget::Explicit` in `nmp-nip17::dm_send`.
     pub(crate) fn recipient_dm_relays(&self, pubkey: &str) -> Option<Vec<String>> {
         self.dm_inbox_relays_arc().dm_inbox_relays(pubkey)
     }
@@ -173,7 +173,6 @@ impl Kernel {
             },
             mailbox_cache: &*self.mailbox_cache,
             blocked_relays: blocked,
-            explicit_targets: None,
         }
     }
 

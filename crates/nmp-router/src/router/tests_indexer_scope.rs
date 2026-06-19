@@ -50,7 +50,6 @@ fn ctx<'a>(
         },
         mailbox_cache: cache,
         blocked_relays: blocked,
-        explicit_targets: None,
     }
 }
 

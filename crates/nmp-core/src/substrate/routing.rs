@@ -63,8 +63,6 @@ pub enum EventClass {
 /// How the router resolved a NIP-51 class to a relay set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ClassRoutingPath {
-    /// Caller populated `RoutingContext::explicit_targets`.
-    Explicit,
     /// Resolved from a NIP-51 list event.
     Nip51,
 }
@@ -155,25 +153,12 @@ pub struct SessionKeySet<'a> {
 
 // ─── RoutingContext ──────────────────────────────────────────────────────────
 
-/// Per-call context the kernel passes into the router. Crucially carries the
-/// `explicit_targets` override seam (spec §3.4): when populated by a NIP
-/// crate's action, the generic algorithm is skipped and the override URLs
-/// are returned, attributed to the `ClassRouted` lane (minus blocked-relay
-/// hits).
+/// Per-call context the kernel passes into the router.
 pub struct RoutingContext<'a> {
     pub active_account: Option<&'a Pubkey>,
     pub session_keys: SessionKeySet<'a>,
     pub mailbox_cache: &'a dyn MailboxCache,
     pub blocked_relays: &'a BlockedRelaySet,
-
-    /// The override seam. When `Some`, the router's generic algorithm is
-    /// skipped entirely and these URLs are returned attributed to
-    /// [`RoutingSource::ClassRouted`] (minus blocked-relay post-filter
-    /// hits). Populated by `nmp-nip17::dm_send` (recipient's kind:10050
-    /// write set), `nmp-nip29` action modules (group's host relay), and
-    /// `nmp-marmot` actions (MLS group relay). The router has no idea what
-    /// NIP populated the field; it only knows it is present.
-    pub explicit_targets: Option<&'a [RelayUrl]>,
 }
 
 // ─── RoutedRelaySet ──────────────────────────────────────────────────────────
@@ -203,30 +188,6 @@ impl RoutedRelaySet {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Build from an explicit-targets slice (§3.2): every URL attributed to
-    /// [`RoutingSource::ClassRouted`] with `via = Explicit`, blocked URLs
-    /// dropped.
-    #[must_use]
-    pub fn from_explicit(urls: &[RelayUrl], blocked: &BlockedRelaySet) -> Self {
-        let mut relays = BTreeMap::new();
-        for url in urls {
-            if blocked.contains(url) {
-                continue;
-            }
-            relays
-                .entry(url.clone())
-                .or_insert_with(BTreeSet::new)
-                .insert(RoutingSource::ClassRouted {
-                    class: EventClass::Other(String::from("explicit")),
-                    via: ClassRoutingPath::Explicit,
-                });
-        }
-        Self {
-            relays,
-            kind_overrides: BTreeMap::new(),
-        }
     }
 
     /// Insert `url` attributed to `source` (additive; multiple sources for
@@ -277,9 +238,8 @@ impl RoutedRelaySet {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RoutingError {
-    /// Author has no NIP-65 AND no AppRelay AND no other lane applied AND no
-    /// `explicit_targets` were provided. Kernel surfaces as the
-    /// `CompiledPlan::unroutable_authors` toast.
+    /// Author has no NIP-65 AND no AppRelay AND no other lane applied.
+    /// Kernel surfaces as the `CompiledPlan::unroutable_authors` toast.
     Unroutable(Pubkey),
 }
 
@@ -297,8 +257,7 @@ impl std::error::Error for RoutingError {}
 
 /// Substrate trait. Implemented by `nmp-router` (single generic algorithm).
 /// NIP crates do **not** implement this trait and do **not** register
-/// routing rules; they shape decisions per-call by populating
-/// [`RoutingContext::explicit_targets`].
+/// routing rules.
 pub trait OutboxRouter: Send + Sync {
     /// Resolve relays for publishing an event. The kernel calls this BEFORE
     /// signing — `evt` is the unsigned event so the router can read its
