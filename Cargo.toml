@@ -37,6 +37,7 @@ members = [
     "crates/nmp-wot",
     "crates/nmp-substrate-defaults",
     "crates/nmp-defaults",
+    "crates/nmp-example-login-timeline",
     "crates/nmp-ffi",
     "crates/nmp-network",
     "crates/nmp-nostr-lmdb",
