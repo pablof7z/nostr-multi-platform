@@ -269,9 +269,44 @@ but that is **out of scope** for this change.
   reference for Rust callers, and the spec-conformant ports for
   Swift / Kotlin / TypeScript are an explicit follow-up.
 
+## Amendments
+
+### 2026-06-19 — signer_state / bunker_handshake precompute removed (#1493 P9 / #1580)
+
+After this ADR was accepted, **#1099** added pre-computed English display
+strings to the signer projections — `SignerStateDto::status_label` /
+`status_tone` and `BunkerHandshakeDto::stage_label` (produced by
+`actor/commands/signer_state_label.rs`'s `signer_state_label_and_tone` and the
+`stage_label_for` helper). Those fields were a **regression of this doctrine**:
+prose like `"Connecting to bunker relays…"` / `"Signer unavailable"` and the
+`"active"`/`"warning"` tone strings are exactly the presentation formatting this
+ADR moved out of the kernel (and `aim.md` §2 forbids). The code comments that
+justified them cited "ADR-0032 / #1099" — a *miscitation*: this ADR mandates the
+opposite. (The ADR-0048 `SignerStateDto` sketch never included those fields.)
+
+**#1580 (#1493 P9)** removed them, bringing `signer_state` and
+`bunker_handshake` into line with this doctrine:
+
+- `signer_state.fbs`: removed `status_label`, `status_tone`.
+- `bunker_handshake.fbs`: removed `stage_label`.
+- Deleted `actor/commands/signer_state_label.rs` and `stage_label_for`.
+
+The wire keeps the **raw semantic tokens** (`signer_kind`, `state`, `stage`, the
+`is_*` flags). The iOS (`SignerStateTone`) and Android
+(`TypedSignerStateDecoder.deriveStatusLabel`/`deriveStatusTone`) shells derive
+the label + tone from those tokens via a shared, parity-consistent mapping — the
+no-iOS/Android-divergence concern is preserved by keeping the two mappings
+identical, not by precomputing in core. `nip46_onboarding` carried no prose and
+was unchanged. (`status_tone` was redundant precompute: it is 1:1 derivable from
+the `state` enum the shell already has, so it was removed rather than kept as a
+token.)
+
 ## References
 
 - `docs/aim.md` §2 (post-`ec8decad`) — the current canonical doctrine
   statement.
 - Commit `ec8decad` — `doctrine: backend sends raw data, presentation
   layers format`.
+- #1099 — added the signer `status_label`/`status_tone` precompute (the
+  regression amended above).
+- #1580 (#1493 P9) — removed it; signer/bunker labels now derive in the shells.
