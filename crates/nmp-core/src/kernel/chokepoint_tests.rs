@@ -461,8 +461,8 @@ fn local_kind1_note_read_your_writes_before_relay_ack() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
     kernel.active_account = Some(author.clone());
-    // The compiled acquisition set includes kind:1 so the timeline projection
-    // fires; the author is the active account, which
+    // The host declares kind:1 as a follow-feed kind (Chirp's home feed) so the
+    // timeline projection fires; the author is the active account, which
     // `ingest_contacts`-style follow logic keeps in `timeline_authors`.
     kernel.set_follow_feed_kinds([1u32].into_iter().collect());
     kernel.timeline_authors.insert(author.clone());
