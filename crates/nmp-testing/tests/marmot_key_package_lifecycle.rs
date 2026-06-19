@@ -26,14 +26,13 @@ fn key_package_lifecycle_publish_validate_create_group_join() {
     let alice = harness::service_at(&alice_dir.db_path("alice"), alice_keys.clone());
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
-    // ── Step 1: Bob publishes a KeyPackage (dual kind:30443 + legacy 443) ────
+    // ── Step 1: Bob publishes a KeyPackage (kind:30443 only; legacy 443 retired) ─
     let bob_kp = bob
         .publish_key_package(harness::test_relays())
         .expect("bob publish_key_package");
 
-    // Contract: dual-publish events are both present and have correct kinds.
+    // Contract: event is the correct kind.
     assert_eq!(bob_kp.event_30443.kind, Kind::Custom(30443));
-    assert_eq!(bob_kp.event_443.kind, Kind::Custom(443));
     // Contract: d_tag is non-empty (required for relay-side replacement on rotation).
     assert!(!bob_kp.d_tag.is_empty(), "d_tag must be non-empty");
     // Contract: hash_ref is non-empty (lifecycle tracking).
@@ -126,24 +125,3 @@ fn key_package_lifecycle_publish_validate_create_group_join() {
     assert_eq!(bob_group.mls_group_id, group_id);
 }
 
-/// Verify the legacy kind:443 event from publish_key_package also validates.
-#[test]
-fn key_package_legacy_kind_443_validates() {
-    let bob_keys = Keys::generate();
-    let alice_keys = Keys::generate();
-
-    let alice_dir = harness::TestDir::new();
-    let bob_dir = harness::TestDir::new();
-
-    let alice = harness::service_at(&alice_dir.db_path("alice"), alice_keys.clone());
-    let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
-
-    let bob_kp = bob
-        .publish_key_package(harness::test_relays())
-        .expect("bob publish kp");
-
-    // Legacy kind:443 must also parse successfully.
-    alice
-        .validate_peer_key_package(&bob_kp.event_443)
-        .expect("alice validates legacy kind:443");
-}
