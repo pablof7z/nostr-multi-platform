@@ -110,10 +110,14 @@ pub(super) fn handle_kind5_insert(
         let addr_key = format!("{tgt_kind_str}:{tgt_pk}:{tgt_dtag}");
 
         // BLOCKING 3: split addressable vs regular-replaceable target matching.
-        // Parity: lmdb/insert_kind5.rs:168 (is_addressable) vs :230 (is_replaceable).
+        // Parity: lmdb/insert_kind5.rs:168 (coord.kind.is_addressable()) vs
+        //         :230 (coord.kind.is_replaceable()).
         // Addressable: kinds 30000-39999 (carry a d-tag that disambiguates instances).
-        // Regular replaceable: e.g. 0, 3, 10000-19999 (a-tag coord has empty d-tag).
-        let is_addressable_kind = (30000u32..40000).contains(&tgt_kind);
+        // Regular replaceable: kind 0, 3, 10000-19999 (a-tag coord has empty d-tag).
+        // Neither: a-tag coordinate cannot target that kind — skip deletion entirely.
+        let is_addressable_kind = (30000u32..=39999).contains(&tgt_kind);
+        let is_replaceable_kind =
+            tgt_kind == 0 || tgt_kind == 3 || (10000u32..=19999).contains(&tgt_kind);
 
         let to_delete: Vec<String> = st
             .events
@@ -127,9 +131,12 @@ pub(super) fn handle_kind5_insert(
                         ev.raw
                             .d_tag()
                             .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == tgt_dtag)
-                    } else {
+                    } else if is_replaceable_kind {
                         // Regular replaceable: kind+pubkey only — no d-tag required.
                         true
+                    } else {
+                        // Neither addressable nor replaceable — a-tag cannot target it.
+                        false
                     }
             })
             .map(|(id, _)| id.clone())

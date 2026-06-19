@@ -16,7 +16,7 @@ use crate::LmdbEventStore;
 
 use super::test_fixtures::{open_tmp, signed_event, signed_event_with_keys, verified};
 
-const RELAY: &str = "wss://test/";
+const TEST_RELAY: &str = "wss://test/";
 
 // ── BLOCKING 1: duplicate kind:5 ─────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ fn lmdb_kind5_duplicate_emits_no_new_seq_or_log_row() {
 
     let target = signed_event_with_keys(&keys, 1, 500, "doomed", None);
     store
-        .insert(verified(target.clone()), &RELAY.into(), 500_000)
+        .insert(verified(target.clone()), &TEST_RELAY.into(), 500_000)
         .unwrap();
 
     use nostr::prelude::*;
@@ -46,7 +46,7 @@ fn lmdb_kind5_duplicate_emits_no_new_seq_or_log_row() {
     let k5_raw: crate::types::RawEvent = serde_json::from_str(&k5_json).expect("parse");
 
     store
-        .insert(verified(k5_raw.clone()), &RELAY.into(), 600_000)
+        .insert(verified(k5_raw.clone()), &TEST_RELAY.into(), 600_000)
         .unwrap();
     let seq_after_first = store.latest_ingest_seq().unwrap();
     let log_count_after_first = match store.scan_log_since_seq(0, 10_000).unwrap() {
@@ -56,7 +56,7 @@ fn lmdb_kind5_duplicate_emits_no_new_seq_or_log_row() {
 
     // Re-deliver the identical kind:5.
     store
-        .insert(verified(k5_raw), &RELAY.into(), 601_000)
+        .insert(verified(k5_raw), &TEST_RELAY.into(), 601_000)
         .unwrap();
 
     assert_eq!(
@@ -90,7 +90,7 @@ fn lmdb_kind5_atag_regular_replaceable_removes_target_and_logs() {
     let profile = signed_event_with_keys(&keys, 0, 100, "my profile", None);
     let profile_id = profile.id_bytes().expect("valid hex");
     store
-        .insert(verified(profile), &RELAY.into(), 100_000)
+        .insert(verified(profile), &TEST_RELAY.into(), 100_000)
         .unwrap();
 
     let pubkey_hex = keys.public_key().to_hex();
@@ -103,7 +103,7 @@ fn lmdb_kind5_atag_regular_replaceable_removes_target_and_logs() {
     let k5_json = k5.try_as_json().expect("json");
     let k5_raw: crate::types::RawEvent = serde_json::from_str(&k5_json).expect("parse");
     store
-        .insert(verified(k5_raw), &RELAY.into(), 200_000)
+        .insert(verified(k5_raw), &TEST_RELAY.into(), 200_000)
         .unwrap();
 
     assert!(
@@ -159,7 +159,7 @@ fn lmdb_append_time_trim_advances_gc_floor() {
     // First insert: seq = DEFAULT_LOG_MAX_ENTRIES (retained == DEFAULT, no trim yet).
     let ev1 = signed_event(1, 1000, "first", None);
     store
-        .insert(verified(ev1), &RELAY.into(), 1_000_000)
+        .insert(verified(ev1), &TEST_RELAY.into(), 1_000_000)
         .unwrap();
     assert_eq!(store.latest_ingest_seq().unwrap(), DEFAULT_LOG_MAX_ENTRIES);
     assert_eq!(
@@ -171,7 +171,7 @@ fn lmdb_append_time_trim_advances_gc_floor() {
     // Second insert: seq = DEFAULT_LOG_MAX_ENTRIES + 1 → triggers trim.
     let ev2 = signed_event(1, 2000, "second", None);
     store
-        .insert(verified(ev2), &RELAY.into(), 2_000_000)
+        .insert(verified(ev2), &TEST_RELAY.into(), 2_000_000)
         .unwrap();
     assert_eq!(
         store.latest_ingest_seq().unwrap(),
@@ -219,7 +219,7 @@ fn lmdb_persisted_format_version_and_stable_names() {
 
     let ev = signed_event(1, 1000, "format test", None);
     store
-        .insert(verified(ev), &RELAY.into(), 1_000_000)
+        .insert(verified(ev), &TEST_RELAY.into(), 1_000_000)
         .unwrap();
 
     let inner = store.inner_for_test();

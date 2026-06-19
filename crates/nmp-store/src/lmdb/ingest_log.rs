@@ -306,21 +306,25 @@ fn trim_in_txn(
     // Collect all keys to delete first (shared borrow of txn via range iterator),
     // then delete them (mutable borrow of txn). The block ensures the iterator
     // — and its borrow — is dropped before the mutable borrows below.
-    let keys_to_delete: Vec<Vec<u8>> = {
-        ingest_log
-            .range(&*txn, &range_bounds)
-            .map_err(|e| StoreError::Io(format!("ingest_log trim range: {e}")))?
-            .filter_map(|r| r.ok().map(|(k, _)| k.to_vec()))
-            .collect()
-    };
+    // D6 (fail-loud): propagate every cursor-step error — no .ok() swallow.
+    let keys_to_delete: Vec<Vec<u8>> = ingest_log
+        .range(&*txn, &range_bounds)
+        .map_err(|e| StoreError::Io(format!("ingest_log trim range: {e}")))?
+        .map(|r| {
+            r.map_err(|e| StoreError::Io(format!("ingest_log trim step: {e}")))
+                .map(|(k, _)| k.to_vec())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     for k in &keys_to_delete {
         ingest_log
             .delete(txn, k.as_slice())
             .map_err(|e| StoreError::Io(format!("ingest_log trim delete: {e}")))?;
     }
-    if !keys_to_delete.is_empty() {
-        write_u64(ingest_meta, txn, KEY_GC_FLOOR, new_floor)?;
-    }
+    // Always advance gc_floor to new_floor — even if no physical keys were in
+    // the trimmed range (entries may have been absent). The gap contract requires
+    // gc_floor to equal new_floor so scan_since returns the correct
+    // first_available_seq = gc_floor + 1 regardless of physical key presence.
+    write_u64(ingest_meta, txn, KEY_GC_FLOOR, new_floor)?;
     Ok(())
 }
 

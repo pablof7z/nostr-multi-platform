@@ -221,3 +221,67 @@ fn kind5_atag_regular_replaceable_removes_target_and_logs() {
         ScanLogResult::Gap(_) => panic!("expected Page"),
     }
 }
+
+// ── Fix 1: a-tag with non-replaceable kind removes nothing ───────────────────
+
+/// A kind:5 with an a-tag coord `1:<pubkey>:` (kind:1 is neither addressable
+/// nor regular-replaceable) MUST NOT remove any event and MUST NOT emit any
+/// Deleted log row for that target.
+/// Parity: lmdb/insert_kind5.rs — neither is_addressable() nor is_replaceable()
+/// branch is entered, so no deletion occurs.
+#[test]
+fn kind5_atag_non_replaceable_kind_removes_nothing() {
+    let store = MemEventStore::new();
+    let pk_hex = "07".repeat(32);
+
+    // Insert a kind:1 event with the matching pubkey.
+    let target = RawEvent {
+        id: "cc".repeat(32),
+        pubkey: pk_hex.clone(),
+        created_at: 100,
+        kind: 1,
+        tags: vec![],
+        content: String::new(),
+        sig: "a".repeat(128),
+    };
+    let target_id = target.id_bytes().unwrap();
+    store
+        .insert(unchecked(target), &RELAY.to_string(), 100_000)
+        .unwrap();
+    let seq_after_insert = store.latest_ingest_seq().unwrap();
+
+    // kind:5 with a-tag "1:<pk>:" — kind:1 is not addressable or replaceable.
+    let addr = format!("1:{pk_hex}:");
+    let k5 = make_kind5_atag(0x23, 0x07, 200, addr);
+    store
+        .insert(unchecked(k5), &RELAY.to_string(), 200_000)
+        .unwrap();
+
+    // Target must still be present.
+    assert!(
+        store
+            .state
+            .lock()
+            .unwrap()
+            .events
+            .contains_key(&"cc".repeat(32)),
+        "Fix 1: kind:1 event must NOT be removed by kind:5 a-tag (non-replaceable kind)"
+    );
+
+    // No Deleted log entry for the kind:1 target.
+    match store.scan_log_since_seq(seq_after_insert, 100).unwrap() {
+        ScanLogResult::Page(page) => {
+            let deleted_for_target = page.entries.iter().any(|e| {
+                matches!(
+                    &e.op,
+                    LogOp::Deleted { target_id: tid, .. } if *tid == target_id
+                )
+            });
+            assert!(
+                !deleted_for_target,
+                "Fix 1: must NOT emit any Deleted log entry for non-replaceable kind:1 target"
+            );
+        }
+        ScanLogResult::Gap(_) => panic!("expected Page"),
+    }
+}
