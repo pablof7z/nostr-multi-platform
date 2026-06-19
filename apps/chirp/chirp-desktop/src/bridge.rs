@@ -37,10 +37,8 @@ use nmp_ffi::{
 use serde_json::Value;
 use std::ffi::c_void;
 
-unsafe extern "C" {
-    fn nmp_app_wallet_connect(app: *mut c_void, uri: *const std::ffi::c_char);
-    fn nmp_app_wallet_disconnect(app: *mut c_void);
-}
+// #1607: nmp_app_wallet_{connect,disconnect} deleted from the C ABI.
+// Wallet operations now route through nmp_app_dispatch_action (D11).
 
 // ---------------------------------------------------------------------------
 // Update bridge (mirrors chirp-tui/src/bridge.rs)
@@ -286,26 +284,27 @@ impl AppRuntime {
     // Wallet actions (NIP-47 NWC)
     // ------------------------------------------------------------------
 
+    // ── NIP-47 wallet commands (#1607 — dispatch_action seam) ──────────────
+    //
+    // The bespoke nmp_app_wallet_{connect,disconnect} C-ABI symbols were
+    // deleted (D11 — one action door). Both operations now route through
+    // nmp_app_dispatch_action.
+
     pub fn wallet_connect(&self, nwc_uri: &str) -> Result<String, String> {
         if self.app.is_null() {
             return Err("runtime app is not available".to_string());
         }
-        let uri = CString::new(nwc_uri)
-            .map_err(|_| "NWC URI contains NUL byte".to_string())?;
-        unsafe {
-            nmp_app_wallet_connect(self.app.cast(), uri.as_ptr());
-        }
-        Ok("wallet_connected".to_string())
+        let action = serde_json::json!({ "Connect": { "uri": nwc_uri } });
+        let action_json = serde_json::to_string(&action)
+            .map_err(|e| format!("serialize wallet.connect action: {e}"))?;
+        self.dispatch_action("nmp.wallet.connect", &action_json)
     }
 
     pub fn wallet_disconnect(&self) -> Result<String, String> {
         if self.app.is_null() {
             return Err("runtime app is not available".to_string());
         }
-        unsafe {
-            nmp_app_wallet_disconnect(self.app.cast());
-        }
-        Ok("wallet_disconnected".to_string())
+        self.dispatch_action("nmp.wallet.disconnect", "\"Disconnect\"")
     }
 
     // ------------------------------------------------------------------

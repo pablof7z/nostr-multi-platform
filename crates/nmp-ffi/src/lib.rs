@@ -92,11 +92,14 @@ mod composition_report;
 mod snapshot;
 mod storage;
 mod timeline;
-// V-38: the `nmp_app_wallet_*` FFI symbols stay here as thin shims that
-// route through `nmp_app_dispatch_action` for the `nmp.wallet.*` namespaces.
-// The wallet runtime + the action modules + the `nmp-nwc` dep all live in
-// `crates/nmp-nip47`; this module ships zero protocol code.
-mod wallet;
+// #1607: `mod wallet` deleted. The bespoke `nmp_app_wallet_*` FFI shims
+// (`nmp_app_wallet_connect`, `nmp_app_wallet_disconnect`,
+// `nmp_app_wallet_pay_invoice`) are gone. Callers use
+// `nmp_app_dispatch_action("nmp.wallet.connect"|"nmp.wallet.disconnect"|
+// "nmp.wallet.pay_invoice", action_json)` directly. The bolt11 double-tap
+// guard moved into `nmp_nip47::action::WalletPayInvoiceModule` (owned by
+// value, ADR-0052 rung 5.2) and the `inflight_bolt11` field was removed
+// from `NmpApp`.
 
 #[cfg(any(test, feature = "test-support"))]
 mod testing;
@@ -236,11 +239,8 @@ pub use signer_ports_test_support::{
 // were historically gated here; they are lifecycle essentials every native app
 // needs and are now included unconditionally in the `native` block above.
 // The android-ffi identity block is intentionally removed.
-// V-38: wallet FFI shims re-exported on native (default) so iOS/desktop
-// callers and the Android JNI shim both pick them up via the standard
-// `nmp_app_*` re-export pattern.
-#[cfg(feature = "native")]
-pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
+// #1607: `nmp_app_wallet_{connect,disconnect,pay_invoice}` deleted — callers
+// use `nmp_app_dispatch_action` directly (D11 — one publish door).
 
 // Step 11 final — the FFI shell was extracted from `nmp-core::ffi` into
 // this crate (`nmp-ffi`). nmp-core re-exports the items the shell reaches
@@ -825,31 +825,6 @@ pub struct NmpApp {
     /// no `actor_*` clone. `None` (the default) means "no relay hints known",
     /// which the encoder treats as the npub fallback.
     mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
-    /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
-    /// already accepted for `pay_invoice` but for which the kind:23195
-    /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
-    /// string — a same-invoice retap maps to the same key, and the FFI
-    /// short-circuits before constructing a second
-    /// `ActorCommand::WalletPayInvoice`.
-    ///
-    /// Lives entirely in the FFI layer (no actor coupling): expiry is wall-
-    /// clock based — entries older than [`wallet::INFLIGHT_BOLT11_TTL`] are
-    /// swept at every `nmp_app_wallet_pay_invoice` call, so a legitimate retry
-    /// after the TTL passes through. The TTL is sized for "the NWC response
-    /// is in flight" — long enough to absorb relay round-trip jitter, short
-    /// enough that a wallet that never responds does not block the user
-    /// forever.
-    ///
-    /// D14: `Mutex<HashMap<…>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape
-    /// the rule disciplines (a `HashMap` is not a `Vec`, and the slot is not
-    /// shared with the actor — no `Arc`). The simpler primitive is correct
-    /// here: nothing on the actor side reads or writes this slot, so the
-    /// `Arc` clone would be dead shared ownership.
-    ///
-    /// V-38: stays in `nmp-core::ffi` (a generic dedup guard, no protocol
-    /// content) so the wallet pay-invoice FFI shim can short-circuit a
-    /// same-bolt11 retap before it crosses into `nmp-nip47`.
-    pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
     /// Test-support GC budget ceiling.  Set by `nmp_app_configure_gc_budget`
     /// before `nmp_app_start`; actor startup snapshots it into
     /// `ActorConfigSources::gc_budget_ceiling`.  `None` (the default) preserves
@@ -1405,11 +1380,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // crate wires the SAME `InMemoryMailboxCache` it gives the routing
         // factory + Kind10002Parser through `set_mailbox_cache_reader`.
         mailbox_cache_reader: Mutex::new(None),
-        // V-38: NIP-47 wallet `pay_invoice` double-tap guard. The state is
-        // still in `NmpApp` (a generic UI dedup primitive, no protocol
-        // content); the wallet runtime that consumes the dispatched action
-        // moved to `crates/nmp-nip47`.
-        inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
         // Test-support GC budget ceiling — None (production default = LRU disabled)
         // until `nmp_app_configure_gc_budget` is called before start.
         #[cfg(any(test, feature = "test-support"))]

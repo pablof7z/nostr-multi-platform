@@ -151,9 +151,9 @@ impl Kernel {
     ///
     /// Callers pass `Some(id)` whenever the underlying action carried a
     /// dispatched `correlation_id` — every FFI-originated `pay_invoice` does
-    /// today (post-V3 the C-ABI symbol `nmp_app_wallet_pay_invoice` is a
-    /// thin wrapper that routes through `nmp_app_dispatch_action`'s
-    /// `nmp.wallet.pay_invoice` namespace). `None` is reserved for
+    /// today (callers route through `nmp_app_dispatch_action` with namespace
+    /// `nmp.wallet.pay_invoice` — the bespoke C-ABI symbol was removed in
+    /// #1607). `None` is reserved for
     /// actor-internal auto-dispatched payments where nothing is waiting on an
     /// id.
     //

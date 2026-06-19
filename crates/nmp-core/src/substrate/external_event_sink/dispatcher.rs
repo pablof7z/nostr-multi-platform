@@ -121,12 +121,35 @@ impl ExternalEventSinkDispatcher {
     /// Replace the registered policy list. Each policy's `KindFilter` is
     /// precomputed ONCE here (hot path never recomputes — fixes the per-event
     /// ~10k-entry `BTreeSet` rebuild in `IndexerRepublishPolicy::kind_filter`).
+    ///
+    /// # Kind-filter gate (#1607)
+    ///
+    /// Policies that return an empty (match-all) [`KindFilter`] are silently
+    /// dropped and a `tracing::error!` is emitted. An empty filter was the
+    /// raw-event-tap escape hatch that bypassed projection/action guarantees
+    /// with no backpressure constraints. Requiring a non-empty explicit kind
+    /// list enforces that each consumer declares its intent: this prevents
+    /// unbounded cross-subscription fan-out when many consumers register. A
+    /// policy that genuinely needs all kinds must enumerate them explicitly via
+    /// `KindFilter::from_kinds([0..=u32::MAX])` — the code will not lie for it.
     pub fn set_policies(&self, policies: Vec<Arc<dyn ExternalEventSinkPolicy>>) {
         let registered: Vec<RegisteredPolicy> = policies
             .into_iter()
-            .map(|policy| {
-                let kind_filter = Arc::new(policy.kind_filter());
-                RegisteredPolicy { policy, kind_filter }
+            .filter_map(|policy| {
+                let kind_filter = policy.kind_filter();
+                if kind_filter.is_all() {
+                    tracing::error!(
+                        "ExternalEventSinkPolicy rejected: kind_filter() returned an \
+                         empty (match-all) KindFilter. All-kind raw-tap policies are \
+                         banned (#1607 D5/D7). Declare explicit kinds via \
+                         KindFilter::from_kinds([…])."
+                    );
+                    return None;
+                }
+                Some(RegisteredPolicy {
+                    policy,
+                    kind_filter: Arc::new(kind_filter),
+                })
             })
             .collect();
         if let Ok(mut guard) = self.policies.lock() {

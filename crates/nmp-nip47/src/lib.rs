@@ -54,6 +54,7 @@ pub use register::{register_wallet, wallet_typed_projection};
 pub use action::{
     WalletAction, WalletConnectAction, WalletConnectModule, WalletDisconnectAction,
     WalletDisconnectModule, WalletPayInvoiceModule,
+    INFLIGHT_BOLT11_TTL,
 };
 pub use payment_store::{FsPaymentStore, PaymentRecord, PaymentState, PaymentStoreError};
 pub use protocol::{

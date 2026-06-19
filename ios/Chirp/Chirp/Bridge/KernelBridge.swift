@@ -682,26 +682,45 @@ final class KernelHandle {
     }
 
     // ── NIP-47 Wallet Connect ─────────────────────────────────────────────
+    //
+    // #1607: the bespoke nmp_app_wallet_* FFI symbols were deleted (D11 —
+    // one action door). All three operations now route through
+    // nmp_app_dispatch_action. The bolt11 double-tap guard lives inside
+    // WalletPayInvoiceModule (nmp-nip47); a duplicate tap returns a
+    // Conflict rejection which is surfaced as a DispatchResult.failure below
+    // rather than a silent no-op. The caller (WalletViewModel) may check
+    // the DispatchResult and choose to present user-visible feedback.
 
-    func walletConnect(uri: String) {
-        uri.withCString { nmp_app_wallet_connect(raw, $0) }
+    /// Connect a NIP-47 wallet. Errors (invalid URI scheme) arrive as
+    /// `DispatchResult.failure`; the kernel also emits a `ShowToast` actor
+    /// command that surfaces through `last_error_toast` in the snapshot.
+    @discardableResult
+    func walletConnect(uri: String) -> DispatchResult {
+        dispatchAction(namespace: "nmp.wallet.connect",
+                       body: ["Connect": ["uri": uri]])
     }
 
-    func walletDisconnect() {
-        nmp_app_wallet_disconnect(raw)
+    /// Disconnect the current NIP-47 wallet (fire-and-forget).
+    @discardableResult
+    func walletDisconnect() -> DispatchResult {
+        dispatchRawAction(namespace: "nmp.wallet.disconnect",
+                          bodyJson: "\"Disconnect\"")
     }
 
-    func walletPayInvoice(bolt11: String, amountMsats: UInt64?) {
-        bolt11.withCString { bPtr in
-            if let amount = amountMsats {
-                let amountStr = String(amount)
-                amountStr.withCString { aPtr in
-                    nmp_app_wallet_pay_invoice(raw, bPtr, aPtr)
-                }
-            } else {
-                nmp_app_wallet_pay_invoice(raw, bPtr, nil)
-            }
+    /// Pay a Lightning invoice. Returns a `DispatchResult` with the
+    /// correlation_id so the caller can drive a payment-progress spinner.
+    /// A duplicate bolt11 tap within the TTL window returns
+    /// `DispatchResult.failure("payment already in progress…")`.
+    @discardableResult
+    func walletPayInvoice(bolt11: String, amountMsats: UInt64?) -> DispatchResult {
+        var body: [String: Any] = ["bolt11": bolt11]
+        if let amount = amountMsats {
+            body["amount_msats"] = amount
+        } else {
+            body["amount_msats"] = NSNull()
         }
+        return dispatchAction(namespace: "nmp.wallet.pay_invoice",
+                              body: ["PayInvoice": body])
     }
 
     // ── T118 / G3 — iOS scenePhase → kernel lifecycle bridge ─────────────

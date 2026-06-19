@@ -122,6 +122,29 @@
         assert_eq!(f.raw.kind, 1);
     }
 
+    /// A policy that returns an empty (match-all) KindFilter is silently dropped
+    /// at registration time (#1607 — all-kind raw-tap policies are banned).
+    #[test]
+    fn all_kind_filter_policy_is_rejected_at_registration() {
+        struct AllKindsPolicy;
+        impl ExternalEventSinkPolicy for AllKindsPolicy {
+            fn kind_filter(&self) -> KindFilter {
+                KindFilter::default() // empty = match all — banned
+            }
+            fn destinations(&self, _frame: &SignedEventFrame) -> Vec<SinkDestination> {
+                unreachable!("all-kind policy must never be dispatched")
+            }
+        }
+
+        let d = ExternalEventSinkDispatcher::new();
+        d.bind_runtime(make_pool());
+        d.set_policies(vec![Arc::new(AllKindsPolicy) as Arc<dyn ExternalEventSinkPolicy>]);
+
+        // The policy should have been rejected: dispatching any kind returns false.
+        let dispatched = dispatch_one(&d, 1, 200, "cc", IngestOutcomeKind::Inserted);
+        assert!(!dispatched, "rejected all-kind policy must not receive any frame");
+    }
+
     /// A panicking policy does not kill the worker: a healthy capture policy on
     /// the SAME frame still receives it, and a later frame is still delivered.
     #[test]

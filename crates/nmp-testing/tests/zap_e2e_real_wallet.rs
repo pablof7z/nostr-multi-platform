@@ -16,11 +16,12 @@ use std::ffi::{CStr, CString};
 use std::time::{Duration, Instant};
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_dispatch_action, nmp_app_free, nmp_app_start, nmp_app_wallet_connect,
+    nmp_app_add_relay, nmp_app_dispatch_action, nmp_app_free, nmp_app_start,
     nmp_free_string,
 };
 use nmp_app_chirp::nmp_app_chirp_unregister;
 use nostr::{Keys, ToBech32};
+use serde_json;
 
 use zap_e2e_common::{
     build_app_signed_in, install_emit_signal, install_rustls_provider, read_projection,
@@ -101,8 +102,17 @@ fn real_wallet_zap_e2e() {
     }
     nmp_app_start(app, 0, 200, 4);
 
-    let uri_c = CString::new(nwc_uri_str).expect("nwc uri NUL-free");
-    nmp_app_wallet_connect(app, uri_c.as_ptr());
+    // #1607: use nmp_app_dispatch_action directly — nmp_app_wallet_connect deleted.
+    let action_json = serde_json::to_string(&serde_json::json!({
+        "Connect": { "uri": nwc_uri_str }
+    }))
+    .expect("connect action JSON must serialize");
+    let ns = CString::new("nmp.wallet.connect").expect("namespace NUL-free");
+    let body = CString::new(action_json).expect("action_json NUL-free");
+    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
+    if !ptr.is_null() {
+        nmp_free_string(ptr);
+    }
 
     // Wait for the real wallet to report ready.
     let connect_deadline = Instant::now() + Duration::from_secs(30);
