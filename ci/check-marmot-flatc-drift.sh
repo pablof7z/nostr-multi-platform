@@ -22,6 +22,7 @@
 #   ci/check-marmot-flatc-drift.sh rust     # flatc --rust   + rustfmt, 25.12.19
 #   ci/check-marmot-flatc-drift.sh swift    # flatc --swift  (rename), 25.12.19
 #   ci/check-marmot-flatc-drift.sh kotlin   # flatc --kotlin (dir diff), 25.2.10
+#   ci/check-marmot-flatc-drift.sh <mode> --write
 #
 # Each mode fails on any byte/file difference so the schemas and the checked-in
 # bindings can never drift apart again.
@@ -33,6 +34,15 @@ if [[ -z "${MODE}" ]]; then
     echo "check-marmot-flatc-drift: missing mode argument (rust|swift|kotlin)" >&2
     exit 2
 fi
+WRITE=0
+case "${2:-}" in
+"") ;;
+--write) WRITE=1 ;;
+*)
+    echo "check-marmot-flatc-drift: unknown option '${2}' (--write)" >&2
+    exit 2
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -68,21 +78,28 @@ rust)
     trap 'rm -rf "${TMP_DIR}"' EXIT
 
     drift=0
+    written=0
     for stem in marmot_snapshot marmot_messages; do
         flatc --rust -o "${TMP_DIR}" "${REPO_ROOT}/crates/nmp-marmot/schema/${stem}.fbs"
         rustfmt --edition 2021 "${TMP_DIR}/${stem}_generated.rs"
         checked_in="${REPO_ROOT}/crates/nmp-marmot/src/wire/generated/${stem}_generated.rs"
+        if [[ "${WRITE}" -eq 1 ]]; then
+            cp "${TMP_DIR}/${stem}_generated.rs" "${checked_in}"
+            written=$((written + 1))
+            continue
+        fi
         if ! diff -u "${checked_in}" "${TMP_DIR}/${stem}_generated.rs"; then
             echo "" >&2
             echo "marmot-flatc-drift: ${stem}_generated.rs drifted from a fresh" >&2
             echo "'flatc --rust' + rustfmt run over ${stem}.fbs. Regenerate with:" >&2
-            echo "  flatc --rust -o crates/nmp-marmot/src/wire/generated/ \\" >&2
-            echo "      crates/nmp-marmot/schema/${stem}.fbs" >&2
-            echo "  rustfmt --edition 2021 \\" >&2
-            echo "      crates/nmp-marmot/src/wire/generated/${stem}_generated.rs" >&2
+            echo "  bash ci/regenerate-flatbuffers.sh" >&2
             drift=$((drift + 1))
         fi
     done
+    if [[ "${WRITE}" -eq 1 ]]; then
+        echo "marmot-flatc-drift: wrote ${written} Rust bindings (flatc 25.12.19)"
+        exit 0
+    fi
     if [[ "${drift}" -ne 0 ]]; then
         exit 1
     fi
@@ -106,6 +123,7 @@ swift)
     )
 
     drift=0
+    written=0
     for entry in "${MAPPINGS[@]}"; do
         IFS='|' read -r stem checked_in_name <<<"${entry}"
         out_subdir="${TMP_DIR}/${stem}"
@@ -118,16 +136,24 @@ swift)
         # flatc output to the checked-in name before diffing.
         mv "${fresh}" "${renamed}"
 
+        if [[ "${WRITE}" -eq 1 ]]; then
+            cp "${renamed}" "${GENERATED_DIR}/${checked_in_name}"
+            written=$((written + 1))
+            continue
+        fi
+
         if ! diff -u "${GENERATED_DIR}/${checked_in_name}" "${renamed}"; then
             echo "" >&2
             echo "marmot-flatc-drift: ${checked_in_name} drifted from a fresh" >&2
             echo "'flatc --swift' run over ${stem}.fbs. Regenerate with:" >&2
-            echo "  flatc --swift -o /tmp/marmot-swift crates/nmp-marmot/schema/${stem}.fbs" >&2
-            echo "  cp /tmp/marmot-swift/${stem}_generated.swift \\" >&2
-            echo "      ios/Chirp/Chirp/Bridge/Generated/${checked_in_name}" >&2
+            echo "  bash ci/regenerate-flatbuffers.sh" >&2
             drift=$((drift + 1))
         fi
     done
+    if [[ "${WRITE}" -eq 1 ]]; then
+        echo "marmot-flatc-drift: wrote ${written} Swift bindings (flatc 25.12.19)"
+        exit 0
+    fi
     if [[ "${drift}" -ne 0 ]]; then
         exit 1
     fi
@@ -145,14 +171,19 @@ kotlin)
     flatc --kotlin -o "${TMP_DIR}" "${SNAPSHOT_SCHEMA}" "${MESSAGES_SCHEMA}"
     GENERATED_DIR="${TMP_DIR}/nmp/marmot"
 
+    if [[ "${WRITE}" -eq 1 ]]; then
+        rm -rf "${CHECKED_IN_DIR}"
+        mkdir -p "$(dirname "${CHECKED_IN_DIR}")"
+        cp -R "${GENERATED_DIR}" "${CHECKED_IN_DIR}"
+        echo "marmot-flatc-drift: wrote Kotlin bindings (flatc 25.2.10)"
+        exit 0
+    fi
+
     if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
         echo "" >&2
         echo "marmot-flatc-drift: checked-in Kotlin marmot bindings differ from a" >&2
         echo "fresh 'flatc --kotlin' run over the marmot schemas. Regenerate with:" >&2
-        echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
-        echo "      crates/nmp-marmot/schema/marmot_snapshot.fbs \\" >&2
-        echo "      crates/nmp-marmot/schema/marmot_messages.fbs" >&2
-        echo "(requires flatc 25.2.10 — the Kotlin runtime pin)" >&2
+        echo "  bash ci/regenerate-flatbuffers.sh" >&2
         exit 1
     fi
     echo "marmot-flatc-drift: OK kotlin (flatc 25.2.10, bindings in sync)"

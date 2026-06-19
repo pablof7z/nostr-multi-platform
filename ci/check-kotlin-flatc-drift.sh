@@ -26,28 +26,24 @@
 # 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs`, so a new nmp.kernel
 # projection schema is gated automatically the moment it is added.
 #
-# Usage: ci/check-kotlin-flatc-drift.sh
+# Usage:
+#   ci/check-kotlin-flatc-drift.sh
+#   ci/check-kotlin-flatc-drift.sh --write
 # Requires: flatc 25.2.10 on PATH.
 #
 # To regenerate after an intentional schema change:
-#   1. Install flatc 25.2.10 (https://github.com/google/flatbuffers/releases/tag/v25.2.10).
-#   2. # Transport binding:
-#      flatc --kotlin -o android/app/src/main/java/ \
-#          crates/nmp-core/schema/nmp_update.fbs
-#      # Kernel bindings (every nmp.kernel root schema; -I lets cross-schema
-#      # includes resolve):
-#      flatc --kotlin -o android/app/src/main/java/ \
-#          -I crates/nmp-core/schema \
-#          $(grep -l 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs)
-#      # Embed sidecar binding:
-#      flatc --kotlin -o android/app/src/main/java/ \
-#          crates/nmp-content/schema/embed_sidecar.fbs
-#      # NIP-02 follow-list binding:
-#      flatc --kotlin -o android/app/src/main/java/ \
-#          crates/nmp-nip02/schema/follow_list.fbs
-#   3. Verify the output with this script.
+#   bash ci/regenerate-flatbuffers.sh
 
 set -euo pipefail
+
+MODE="${1:---check}"
+case "${MODE}" in
+--check|--write) ;;
+*)
+    echo "kotlin-flatc-drift: unknown mode '${MODE}' (--check|--write)" >&2
+    exit 2
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -94,14 +90,16 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 flatc --kotlin -o "${TMP_DIR}" "${SCHEMA}"
 GENERATED_DIR="${TMP_DIR}/nmp/transport"
 
-if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
+if [[ "${MODE}" == "--write" ]]; then
+    rm -rf "${CHECKED_IN_DIR}"
+    mkdir -p "$(dirname "${CHECKED_IN_DIR}")"
+    cp -R "${GENERATED_DIR}" "${CHECKED_IN_DIR}"
+elif ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
     echo "" >&2
     echo "kotlin-flatc-drift: checked-in Kotlin transport bindings differ from a" >&2
     echo "fresh 'flatc --kotlin' run over crates/nmp-core/schema/nmp_update.fbs." >&2
     echo "Regenerate with:" >&2
-    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
-    echo "      crates/nmp-core/schema/nmp_update.fbs" >&2
-    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
+    echo "  bash ci/regenerate-flatbuffers.sh" >&2
     exit 1
 fi
 
@@ -132,6 +130,22 @@ fi
 flatc --kotlin -o "${TMP_DIR}" -I "${KERNEL_SCHEMA_DIR}" "${KERNEL_SCHEMAS[@]}"
 KERNEL_GENERATED_DIR="${TMP_DIR}/nmp/kernel"
 
+if [[ "${MODE}" == "--write" ]]; then
+    kernel_written=0
+    kernel_removed=0
+    for checked_in in "${KERNEL_CHECKED_IN_DIR}"/*.kt; do
+        base="$(basename "${checked_in}")"
+        fresh="${KERNEL_GENERATED_DIR}/${base}"
+        if [[ -f "${fresh}" ]]; then
+            cp "${fresh}" "${checked_in}"
+            kernel_written=$((kernel_written + 1))
+        else
+            rm -f "${checked_in}"
+            kernel_removed=$((kernel_removed + 1))
+        fi
+    done
+fi
+
 kernel_drift=0
 kernel_checked=0
 for checked_in in "${KERNEL_CHECKED_IN_DIR}"/*.kt; do
@@ -156,12 +170,7 @@ if [[ "${kernel_drift}" -ne 0 ]]; then
     echo "" >&2
     echo "kotlin-flatc-drift: ${kernel_drift} kernel binding(s) drifted from a fresh" >&2
     echo "'flatc --kotlin' run over the nmp.kernel root schemas. Regenerate with:" >&2
-    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
-    echo "      -I crates/nmp-core/schema \\" >&2
-    echo "      \$(grep -l 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs)" >&2
-    echo "then keep only the .kt files Android actually wires (the gate diffs the" >&2
-    echo "checked-in subset, not every emitted table)." >&2
-    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
+    echo "  bash ci/regenerate-flatbuffers.sh" >&2
     exit 1
 fi
 
@@ -178,6 +187,16 @@ EMBED_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/embed"
 flatc --kotlin -o "${TMP_DIR}" "${EMBED_SCHEMA}"
 EMBED_GENERATED_DIR="${TMP_DIR}/nmp/embed"
 
+if [[ "${MODE}" == "--write" ]]; then
+    rm -rf "${EMBED_CHECKED_IN_DIR}"
+    mkdir -p "$(dirname "${EMBED_CHECKED_IN_DIR}")"
+    cp -R "${EMBED_GENERATED_DIR}" "${EMBED_CHECKED_IN_DIR}"
+    embed_checked=0
+    for checked_in in "${EMBED_CHECKED_IN_DIR}"/*.kt; do
+        [[ -f "${checked_in}" ]] || continue
+        embed_checked=$((embed_checked + 1))
+    done
+else
 embed_drift=0
 embed_checked=0
 if [[ -d "${EMBED_CHECKED_IN_DIR}" ]]; then
@@ -211,6 +230,7 @@ if [[ "${embed_drift}" -ne 0 ]]; then
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
     exit 1
 fi
+fi
 
 # ── NIP-02 follow-list binding — nmp.nip02 namespace ───────────────────────
 #
@@ -224,6 +244,16 @@ NIP02_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/nip02"
 flatc --kotlin -o "${TMP_DIR}" "${NIP02_SCHEMA}"
 NIP02_GENERATED_DIR="${TMP_DIR}/nmp/nip02"
 
+if [[ "${MODE}" == "--write" ]]; then
+    rm -rf "${NIP02_CHECKED_IN_DIR}"
+    mkdir -p "$(dirname "${NIP02_CHECKED_IN_DIR}")"
+    cp -R "${NIP02_GENERATED_DIR}" "${NIP02_CHECKED_IN_DIR}"
+    nip02_checked=0
+    for checked_in in "${NIP02_CHECKED_IN_DIR}"/*.kt; do
+        [[ -f "${checked_in}" ]] || continue
+        nip02_checked=$((nip02_checked + 1))
+    done
+else
 nip02_drift=0
 nip02_checked=0
 if [[ -d "${NIP02_CHECKED_IN_DIR}" ]]; then
@@ -257,5 +287,10 @@ if [[ "${nip02_drift}" -ne 0 ]]; then
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
     exit 1
 fi
+fi
 
-echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed + ${nip02_checked} NIP-02 bindings in sync)"
+if [[ "${MODE}" == "--write" ]]; then
+    echo "kotlin-flatc-drift: wrote transport + ${kernel_written} kernel (removed ${kernel_removed}) + ${embed_checked} embed + ${nip02_checked} NIP-02 bindings (flatc ${EXPECTED_FLATC_VERSION})"
+else
+    echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed + ${nip02_checked} NIP-02 bindings in sync)"
+fi

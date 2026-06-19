@@ -21,16 +21,28 @@
 # same bytes renamed to `<RootType>.generated.swift` (PascalCase, dotted). This
 # script maps each schema to its checked-in PascalCase file explicitly.
 #
-# Usage: ci/check-swift-flatc-drift.sh
+# Usage:
+#   ci/check-swift-flatc-drift.sh
+#   ci/check-swift-flatc-drift.sh --write
 # Requires: flatc 25.12.19 on PATH.
 
 set -euo pipefail
+
+MODE="${1:---check}"
+case "${MODE}" in
+--check|--write) ;;
+*)
+    echo "swift-flatc-drift: unknown mode '${MODE}' (--check|--write)" >&2
+    exit 2
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 EXPECTED_FLATC_VERSION="25.12.19"
 GENERATED_DIR="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/Generated"
+mkdir -p "${GENERATED_DIR}"
 
 if ! command -v flatc >/dev/null 2>&1; then
     echo "swift-flatc-drift: flatc not found on PATH (need ${EXPECTED_FLATC_VERSION})" >&2
@@ -105,11 +117,6 @@ for entry in "${MAPPINGS[@]}"; do
         drift_count=$((drift_count + 1))
         continue
     fi
-    if [[ ! -f "${checked_in}" ]]; then
-        echo "swift-flatc-drift: checked-in Swift binding missing: ${checked_in_name}" >&2
-        drift_count=$((drift_count + 1))
-        continue
-    fi
 
     # One subdir per schema so identically-named outputs (and an `include`'s
     # extra emitted module, e.g. op_feed → timeline_snapshot_generated.swift)
@@ -127,13 +134,24 @@ for entry in "${MAPPINGS[@]}"; do
         continue
     fi
 
+    if [[ "${MODE}" == "--write" ]]; then
+        cp "${fresh}" "${checked_in}"
+        checked=$((checked + 1))
+        continue
+    fi
+
+    if [[ ! -f "${checked_in}" ]]; then
+        echo "swift-flatc-drift: checked-in Swift binding missing: ${checked_in_name}" >&2
+        drift_count=$((drift_count + 1))
+        continue
+    fi
+
     if ! diff -u "${checked_in}" "${fresh}"; then
         echo "" >&2
         echo "swift-flatc-drift: ${checked_in_name} drifted from a fresh" >&2
         echo "'flatc --swift' run over ${schema_rel}." >&2
         echo "Regenerate with:" >&2
-        echo "  flatc --swift -o /tmp/swift-gen ${schema_rel}" >&2
-        echo "  cp /tmp/swift-gen/${flatc_name} ios/Chirp/Chirp/Bridge/Generated/${checked_in_name}" >&2
+        echo "  bash ci/regenerate-flatbuffers.sh" >&2
         echo "" >&2
         drift_count=$((drift_count + 1))
         continue
@@ -145,6 +163,11 @@ done
 if [[ "${drift_count}" -ne 0 ]]; then
     echo "swift-flatc-drift: FAIL — ${drift_count} binding(s) drifted (${checked} in sync)" >&2
     exit 1
+fi
+
+if [[ "${MODE}" == "--write" ]]; then
+    echo "swift-flatc-drift: wrote ${checked} Swift bindings (flatc ${EXPECTED_FLATC_VERSION})"
+    exit 0
 fi
 
 echo "swift-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, ${checked} Swift bindings in sync)"
