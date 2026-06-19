@@ -29,6 +29,9 @@ pub(crate) mod domain;
 mod dump;
 #[cfg(feature = "lmdb-backend")]
 mod gc;
+// Phase 3+3b tombstone purge extracted from gc.rs for the 500-LOC hard cap.
+#[cfg(feature = "lmdb-backend")]
+mod gc_tombstones;
 // Secondary-index maintenance primitives (LRU / expiry-index / freshness-key)
 // extracted from gc.rs for the 500-LOC cap; re-exported via `gc::`.
 #[cfg(feature = "lmdb-backend")]
@@ -44,9 +47,9 @@ mod provenance;
 mod query;
 // Streaming helpers extracted from query.rs to stay within the 500-LOC gate.
 #[cfg(feature = "lmdb-backend")]
-mod query_streaming;
-#[cfg(feature = "lmdb-backend")]
 mod query_relay_index;
+#[cfg(feature = "lmdb-backend")]
+mod query_streaming;
 #[cfg(feature = "lmdb-backend")]
 mod store_impl;
 #[cfg(feature = "lmdb-backend")]
@@ -85,7 +88,9 @@ mod relay_scores_tests;
 // V-117 GC budget / resumable-cursor / tombstone-gate tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc;
-// #1090 Stage-1 — derived pin set for gc_step.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_gc_bulk_delete; // test 10 (bulk delete expiry-index cleanup).
+                          // #1090 Stage-1 — derived pin set for gc_step.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc_stage1;
 // V-52 (#969) — relay-origin reverse index parity + persistence + backfill.
@@ -109,6 +114,9 @@ mod tests_health_diag;
 // ADR-0058 step-1 — ingest-log smoke tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_ingest_log;
+// ADR-0058 fix-verification (split for 500-LOC cap).
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_ingest_log_fixes;
 
 use std::path::{Path, PathBuf};
 
@@ -487,6 +495,19 @@ impl EventStore for LmdbEventStore {
         _limit: usize,
         _visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
     ) -> Result<(), StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn latest_ingest_seq(&self) -> Result<u64, StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn oldest_available_seq(&self) -> Result<Option<u64>, StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn scan_log_since_seq(
+        &self,
+        _after_seq: u64,
+        _limit: usize,
+    ) -> Result<crate::ingest_log::ScanLogResult, StoreError> {
         Err(Self::not_enabled())
     }
 }

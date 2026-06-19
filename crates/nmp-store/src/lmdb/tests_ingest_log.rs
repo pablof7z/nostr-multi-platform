@@ -8,6 +8,11 @@
 //!   - LMDB reopen → seq continuity (last_seq persists across close/open)
 //!   - Bounded GC → oldest_available_seq advances; scan below floor → PullGap
 //!   - LRU eviction emits no log row
+//! New (fix verification):
+//!   - Duplicate kind:5 → no new seq, no new log row (BLOCKING 1)
+//!   - a-tag regular-replaceable target → removed + Deleted{Nip09} (BLOCKING 3)
+//!   - Append-time trim: after DEFAULT_LOG_MAX_ENTRIES+N appends, gc_floor advanced (BLOCKING 4)
+//!   - Persisted format: round-trip + version field present + stable variant names (SHOULD-FIX 6)
 
 #![cfg(feature = "lmdb-backend")]
 
@@ -121,7 +126,10 @@ fn replaced_op_carries_correct_replaced_id() {
             assert_eq!(rep.seq, 2);
             match &rep.op {
                 LogOp::Replaced { replaced_id } => {
-                    assert_eq!(*replaced_id, old_id, "replaced_id must reference the old event");
+                    assert_eq!(
+                        *replaced_id, old_id,
+                        "replaced_id must reference the old event"
+                    );
                 }
                 other => panic!("expected Replaced, got {other:?}"),
             }
@@ -186,9 +194,13 @@ fn lmdb_reopen_seq_continuity() {
     let seq_before_close = {
         let store = LmdbEventStore::open(&path).expect("open");
         let ev1 = signed_event(1, 1000, "first", None);
-        store.insert(verified(ev1), &RELAY.into(), 1_000_000).unwrap();
+        store
+            .insert(verified(ev1), &RELAY.into(), 1_000_000)
+            .unwrap();
         let ev2 = signed_event(1, 2000, "second", None);
-        store.insert(verified(ev2), &RELAY.into(), 2_000_000).unwrap();
+        store
+            .insert(verified(ev2), &RELAY.into(), 2_000_000)
+            .unwrap();
         store.latest_ingest_seq().unwrap()
     };
     assert_eq!(seq_before_close, 2);
@@ -203,7 +215,9 @@ fn lmdb_reopen_seq_continuity() {
 
     // Third insert must get seq=3.
     let ev3 = signed_event(1, 3000, "third", None);
-    store2.insert(verified(ev3), &RELAY.into(), 3_000_000).unwrap();
+    store2
+        .insert(verified(ev3), &RELAY.into(), 3_000_000)
+        .unwrap();
     assert_eq!(
         store2.latest_ingest_seq().unwrap(),
         3,
@@ -247,7 +261,10 @@ fn bounded_gc_raises_floor_and_scan_below_returns_gap() {
     match gap_result {
         ScanLogResult::Gap(gap) => {
             assert_eq!(gap.requested_after_seq, 0);
-            assert_eq!(gap.first_available_seq, 2, "first_available = gc_floor+1 = 2");
+            assert_eq!(
+                gap.first_available_seq, 2,
+                "first_available = gc_floor+1 = 2"
+            );
         }
         ScanLogResult::Page(_) => panic!("expected Gap when after_seq < gc_floor"),
     }
@@ -268,7 +285,9 @@ fn lru_eviction_emits_no_log_row() {
     let (store, _dir) = open_tmp();
 
     let ev = signed_event(1, 1000, "lru test", None);
-    store.insert(verified(ev), &RELAY.into(), 1_000_000).unwrap();
+    store
+        .insert(verified(ev), &RELAY.into(), 1_000_000)
+        .unwrap();
     let seq_before = store.latest_ingest_seq().unwrap();
     assert_eq!(seq_before, 1);
 

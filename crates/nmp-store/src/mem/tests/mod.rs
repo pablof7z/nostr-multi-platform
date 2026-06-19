@@ -10,10 +10,12 @@
 //!   relay_index_tests  — V-52 relay-origin reverse-index invariants
 //!   relay_kind_tests   — #1518 relay×kind presence-index invariants
 
+mod authors_kind_tests;
 mod insert_tests;
 mod query_visit_tests;
-mod authors_kind_tests;
 mod relay_index_tests;
 mod relay_kind_tests;
 
 mod ingest_log_tests;
+// Fix-verification tests (split for 500-LOC cap).
+mod ingest_log_fix_tests;

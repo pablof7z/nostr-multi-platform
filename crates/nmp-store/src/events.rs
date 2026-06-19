@@ -522,33 +522,18 @@ pub trait EventStore: Send + Sync {
     }
 
     // ─── Ingest log (ADR-0058 §3, step 1) ────────────────────────────────────────
-
     /// The highest seq allocated so far (0 if the log is empty).
-    fn latest_ingest_seq(&self) -> Result<u64, StoreError> {
-        Ok(0)
-    }
-
+    fn latest_ingest_seq(&self) -> Result<u64, StoreError>;
     /// The lowest seq still available in the log, or `None` if the log is empty.
-    fn oldest_available_seq(&self) -> Result<Option<u64>, StoreError> {
-        Ok(None)
-    }
-
+    fn oldest_available_seq(&self) -> Result<Option<u64>, StoreError>;
     /// Scan log entries with `seq > after_seq`, ascending, up to `limit`.
     fn scan_log_since_seq(
         &self,
         after_seq: u64,
-        _limit: usize,
-    ) -> Result<crate::ingest_log::ScanLogResult, StoreError> {
-        use crate::ingest_log::{PullPage, ScanLogResult};
-        Ok(ScanLogResult::Page(PullPage {
-            entries: vec![],
-            next_after_seq: after_seq,
-            latest_seq: 0,
-            has_more: false,
-        }))
-    }
+        limit: usize,
+    ) -> Result<crate::ingest_log::ScanLogResult, StoreError>;
 
-        // ─── Export ──────────────────────────────────────────────────────────────
+    // ─── Export ──────────────────────────────────────────────────────────────
 
     /// Dump all store contents in the requested format.
     fn dump(

@@ -7,6 +7,7 @@
 //!   - NIP-09 → kind:5 Inserted + Deleted{Nip09} per removed target
 //!   - Bounded GC → oldest_available_seq advances; scan below floor → PullGap
 //!   - LRU eviction emits no log row
+//! Fix-verification tests live in `ingest_log_fix_tests.rs` (500-LOC cap split).
 
 use crate::events::EventStore;
 use crate::ingest_log::{DeleteReason, LogOp, ScanLogResult};
@@ -110,11 +111,7 @@ fn duplicate_arrival_emits_no_log_entry() {
     store
         .insert(unchecked(ev.clone()), &RELAY.to_string(), 1_000_000)
         .unwrap();
-    assert_eq!(
-        store.latest_ingest_seq().unwrap(),
-        1,
-        "first insert seq=1"
-    );
+    assert_eq!(store.latest_ingest_seq().unwrap(), 1, "first insert seq=1");
 
     // Duplicate re-delivery.
     store
@@ -248,7 +245,10 @@ fn bounded_gc_raises_floor_and_scan_below_returns_gap() {
     let ok_result = store.scan_log_since_seq(1, 100).unwrap();
     match ok_result {
         ScanLogResult::Page(page) => {
-            assert!(page.entries.is_empty(), "no entries above floor when log is empty");
+            assert!(
+                page.entries.is_empty(),
+                "no entries above floor when log is empty"
+            );
         }
         ScanLogResult::Gap(_) => panic!("scan from gc_floor must not return Gap"),
     }

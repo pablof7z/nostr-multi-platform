@@ -202,23 +202,41 @@ impl EventStore for MemEventStore {
     ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
         let st = self.lock()?;
         let target_hex = super::bytes_to_hex(target);
-        let replies = st.interaction_counters
-            .get(&(target_hex.clone(), crate::interaction::CounterKind::Reply as u8))
+        let replies = st
+            .interaction_counters
+            .get(&(
+                target_hex.clone(),
+                crate::interaction::CounterKind::Reply as u8,
+            ))
             .copied()
             .unwrap_or(0);
-        let reactions = st.interaction_counters
-            .get(&(target_hex.clone(), crate::interaction::CounterKind::Reaction as u8))
+        let reactions = st
+            .interaction_counters
+            .get(&(
+                target_hex.clone(),
+                crate::interaction::CounterKind::Reaction as u8,
+            ))
             .copied()
             .unwrap_or(0);
-        let reposts = st.interaction_counters
-            .get(&(target_hex.clone(), crate::interaction::CounterKind::Repost as u8))
+        let reposts = st
+            .interaction_counters
+            .get(&(
+                target_hex.clone(),
+                crate::interaction::CounterKind::Repost as u8,
+            ))
             .copied()
             .unwrap_or(0);
-        let zaps = st.interaction_counters
+        let zaps = st
+            .interaction_counters
             .get(&(target_hex, crate::interaction::CounterKind::Zap as u8))
             .copied()
             .unwrap_or(0);
-        Ok(crate::TargetInteractionCounts { replies, reactions, reposts, zaps })
+        Ok(crate::TargetInteractionCounts {
+            replies,
+            reactions,
+            reposts,
+            zaps,
+        })
     }
 
     // ─── F-TTL replaceable freshness ───────────────────────────────────────────
@@ -309,9 +327,18 @@ impl EventStore for MemEventStore {
             }));
         }
 
+        // SHOULD-FIX 5: guard against u64::MAX overflow before BTreeMap range.
+        let Some(start_seq) = after_seq.checked_add(1) else {
+            return Ok(ScanLogResult::Page(PullPage {
+                entries: vec![],
+                next_after_seq: after_seq,
+                latest_seq: latest,
+                has_more: false,
+            }));
+        };
         let entries: Vec<_> = st
             .ingest_log
-            .range((after_seq + 1)..)
+            .range(start_seq..)
             .take(limit)
             .map(|(_, e)| e.clone())
             .collect();
@@ -325,6 +352,4 @@ impl EventStore for MemEventStore {
             has_more,
         }))
     }
-
-
 }
