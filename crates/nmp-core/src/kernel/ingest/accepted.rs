@@ -77,6 +77,14 @@ impl Kernel {
             // `project_accepted_event` fan-out that violates D4 single-fire (it
             // re-notifies observers for an event already delivered live).
             self.reconcile_read_cache_on_replace(&outcome, &verified);
+            let relay_count = match &outcome {
+                InsertOutcome::Inserted { sources_after, .. } => Some(*sources_after),
+                InsertOutcome::Replaced { .. } => Some(1),
+                _ => None,
+            };
+            if let Some(relay_count) = relay_count {
+                self.cache_event_for_matching_open_interest(&event, relay_count);
+            }
             // Arm BOTH store-wakeup arms for this mutation (ADR-0058 §10): the
             // #1520 cache-serve re-arm for already-served interests matching this
             // event (so live inserts surface in cache projections without a full

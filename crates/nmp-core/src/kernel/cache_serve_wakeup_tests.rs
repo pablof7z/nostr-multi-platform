@@ -6,12 +6,40 @@
 //! ignore interests that are not yet fully served or have been withdrawn.
 
 use super::*;
+use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::substrate::KernelEvent;
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use super::cache_serve_tests::{drain_cache_serves, hex_pk, signed_note};
-use super::interest_install_cache_serve_support::{author_kind1_interest, sub_id};
+use super::interest_install_cache_serve_support::{
+    author_kind1_interest, kp_interest, seed_kp_event, sub_id,
+};
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
+
+struct CountingObserver {
+    count: AtomicU32,
+}
+
+impl CountingObserver {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            count: AtomicU32::new(0),
+        })
+    }
+
+    fn count(&self) -> u32 {
+        self.count.load(Ordering::SeqCst)
+    }
+}
+
+impl KernelEventObserver for CountingObserver {
+    fn on_kernel_event(&self, _event: &KernelEvent) {
+        self.count.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 // ─── 1. Wakeup on insert ─────────────────────────────────────────────────────
 
@@ -82,6 +110,65 @@ fn wake_registration_before_insert() {
     assert!(
         kernel.events.contains_key(ev_id.as_str()),
         "newly inserted event must be served from store after wakeup: {ev_id}"
+    );
+}
+
+/// Issue #1575 regression: an already-served non-timeline interest whose
+/// first matching event arrives live must not double-notify observers when a
+/// wakeup re-serve scans the store.
+#[test]
+fn first_inserted_non_timeline_event_dedups_wakeup_reserve() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let receiver_keys = ::nostr::Keys::generate();
+    let receiver_hex = receiver_keys.public_key().to_hex();
+    let publisher_keys = ::nostr::Keys::generate();
+    let base_ts: u64 = 1_780_000_000;
+
+    let slot = new_event_observer_slot();
+    let observer = CountingObserver::new();
+    register_rust_observer(&slot, observer.clone());
+    kernel.set_event_observers_handle(slot);
+    kernel.active_account = Some(receiver_hex.clone());
+
+    let interest = kp_interest(1_575, &receiver_hex);
+    let shape = interest.shape.clone();
+    let identity = sub_id(1_575);
+    let key = identity.key;
+    kernel.register_interest(
+        &[InterestRegistration {
+            identity,
+            interest,
+            policy: InterestWrite::EnsureAbsent,
+        }],
+        "test",
+    );
+    drain_cache_serves(&mut kernel, 4);
+    let ckey = crate::kernel::cache_serve::completion_key_for_interest(&key, &shape);
+    assert!(kernel.served_interest_shapes.contains(&ckey));
+    assert_eq!(observer.count(), 0, "empty initial serve must not notify");
+
+    let event_id = seed_kp_event(&mut kernel, &publisher_keys, &receiver_hex, base_ts);
+    assert_eq!(observer.count(), 1, "live Inserted event must notify once");
+    assert!(
+        kernel.events.contains_key(event_id.as_str()),
+        "live non-timeline event matching an active interest must enter the \
+         projection cache so cache-serve can dedup it"
+    );
+    assert!(
+        kernel.store_wakeups.cache_serve.contains(&ckey),
+        "live insert must arm the served-interest wakeup"
+    );
+
+    kernel.run_cache_serve_step();
+
+    assert_eq!(
+        observer.count(),
+        1,
+        "wakeup re-serve must not double-notify an already observed event"
+    );
+    assert!(
+        kernel.served_interest_shapes.contains(&ckey),
+        "completion key must be restored after the wakeup serve drains"
     );
 }
 
@@ -168,12 +255,18 @@ fn closed_view_release_drops_wakeups() {
     // Insert a matching event to arm the wakeup.
     let ev = signed_note(&keys, "wakeup then close", 1_700_000_001);
     kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.test/", "test-sub", ev);
-    assert!(kernel.store_wakeups.cache_serve.contains(&ckey), "wakeup must be armed");
+    assert!(
+        kernel.store_wakeups.cache_serve.contains(&ckey),
+        "wakeup must be armed"
+    );
 
     // Drop the owner (simulates view close). This is the sole owner, so the
     // slot (and its live interest) must be removed.
     let removed = kernel.lifecycle.registry_mut().drop_owner(&identity);
-    assert!(removed, "dropping the sole owner must remove the interest slot");
+    assert!(
+        removed,
+        "dropping the sole owner must remove the interest slot"
+    );
 
     // Now drain wakeups. The interest is no longer in the registry, so
     // drain_cache_serve_wakeups must silently skip re-enqueue.

@@ -222,6 +222,35 @@ impl Kernel {
             || self.matches_active_open_interest(event)
     }
 
+    /// Cache an accepted non-timeline event when an active generic interest
+    /// owns it, so cache-serve wakeup replays dedup against the same projection
+    /// fact the live observer fan-out just exposed.
+    pub(in crate::kernel) fn cache_event_for_matching_open_interest(
+        &mut self,
+        event: &NostrEvent,
+        relay_count: u32,
+    ) {
+        if self.events.contains_key(&event.id) || !self.matches_active_open_interest(event) {
+            return;
+        }
+
+        let cached = StoredEvent {
+            id: event.id.clone(),
+            author: event.pubkey.clone(),
+            kind: event.kind,
+            created_at: event.created_at,
+            tags: event.tags.clone(),
+            content: event.content.clone(),
+            relay_count,
+        };
+        self.metric_stored_events = self.metric_stored_events.saturating_add(1);
+        if cached.kind == 1 {
+            self.metric_note_events = self.metric_note_events.saturating_add(1);
+        }
+        self.events.insert(cached.id.clone(), cached);
+        self.cached_estimated_store_bytes.set(None);
+    }
+
     /// ADR-0042 §5.1 — does `event` satisfy the wire filter of any active
     /// registered interest? Drives the generalised `should_store_event`
     /// admission clause for generic `open_interest` feeds.
