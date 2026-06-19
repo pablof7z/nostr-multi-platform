@@ -28,9 +28,9 @@
 //!   `Option::is_some` in the router so the no-projection-installed path
 //!   stays zero-alloc.
 
+use crate::time::{SystemTime, UNIX_EPOCH};
 use std::collections::{BTreeSet, VecDeque};
 use std::sync::RwLock;
-use crate::time::{SystemTime, UNIX_EPOCH};
 
 use crate::substrate::{
     PublishTrace, RoutedRelaySet, RoutingPubkey as Pubkey, RoutingRelayUrl as RelayUrl,
@@ -218,7 +218,6 @@ mod tests {
             kind,
             author: "alice".into(),
             event_id_short: None,
-            explicit_targets_set: false,
             attempts: vec![],
         }
     }
@@ -228,7 +227,6 @@ mod tests {
             interest_id: id,
             kinds: vec![1],
             authors_count: 1,
-            explicit_targets_set: false,
             attempts: vec![],
         }
     }
@@ -238,8 +236,8 @@ mod tests {
         r.add(
             url.into(),
             RoutingSource::ClassRouted {
-                class: EventClass::Other("explicit".into()),
-                via: ClassRoutingPath::Explicit,
+                class: EventClass::Wiki,
+                via: ClassRoutingPath::Nip51,
             },
         );
         r
@@ -441,7 +439,6 @@ mod tests {
             },
             mailbox_cache: &*kernel.mailbox_cache_arc(),
             blocked_relays: &blocked,
-            explicit_targets: None,
         };
 
         let routed = kernel.outbox_router().route_publish(&evt, &ctx).unwrap();
@@ -455,7 +452,6 @@ mod tests {
                 kind: 1,
                 author: ALICE.to_string(),
                 event_id_short: crate::substrate::truncate_event_id(None),
-                explicit_targets_set: false,
                 attempts: vec![],
             },
             &routed,

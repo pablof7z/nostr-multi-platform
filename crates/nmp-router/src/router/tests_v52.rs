@@ -10,8 +10,7 @@
 //!
 //! Routing invariants 1 and 2 are exercised via the planner compiler directly
 //! (the relay_pin is enforced there by case_e_relay_pinned, not by the
-//! GenericOutboxRouter). The router tests show that the router's generic
-//! algorithm is bypassed by the explicit_targets path (lane 5).
+//! GenericOutboxRouter).
 //!
 //! Store invariants are tested in `nmp-store/src/mem/tests.rs`.
 

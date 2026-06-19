@@ -70,9 +70,9 @@ fn empty_payload() -> *mut c_char {
 ///   "schema_version": 1,
 ///   "capacity": 64,
 ///   "publishes":     [ { at_ms, kind, author, event_id_short,
-///                        explicit_targets_set, urls: [ {url, lanes: [...]} ] } ],
+///                        lane_attempts, urls: [ {url, lanes: [...]} ] } ],
 ///   "subscriptions": [ { at_ms, interest_id, kinds, authors_count,
-///                        explicit_targets_set, urls: [...] } ]
+///                        lane_attempts, urls: [...] } ]
 /// }
 /// ```
 ///

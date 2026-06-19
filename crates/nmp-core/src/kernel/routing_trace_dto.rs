@@ -22,7 +22,6 @@
 //!       "kind": 1,
 //!       "author": "<hex pubkey>",
 //!       "event_id_short": "abcdef012345",
-//!       "explicit_targets_set": false,
 //!       "lane_attempts": [
 //!         { "lane": "Nip65",   "outcome": { "kind": "Empty" } },
 //!         { "lane": "Hint",    "outcome": { "kind": "Empty" } },
@@ -42,7 +41,6 @@
 //!       "interest_id": 7,
 //!       "kinds": [1, 6, 7],
 //!       "authors_count": 5,
-//!       "explicit_targets_set": false,
 //!       "lane_attempts": [
 //!         { "lane": "Nip65", "outcome": { "kind": "Matched", "count": 3 } }
 //!       ],
@@ -58,15 +56,14 @@
 //! ```
 //!
 //! `kind`-tagged lane objects match the existing pretty-printer's grammar
-//! (`Nip65/Write`, `ClassRouted/Other(explicit)/Explicit`, etc.) — the
+//! (`Nip65/Write`, `ClassRouted/Wiki/Nip51`, etc.) — the
 //! routing-trace integration test
 //! (`crates/nmp-testing/tests/routing_trace_real_nostr.rs`, `#[ignore]`'d)
 //! already pins that grammar; the JSON serialisation re-uses the same labels
 //! so the Swift / TypeScript decoders agree with the human-readable form.
 //!
 //! `lane_attempts` is the V-75 extension: one entry per lane that ran in
-//! the generic algorithm. Empty array when `explicit_targets_set` is true.
-//! Lane names match [`crate::substrate::RoutingLane`] variant names;
+//! the generic algorithm. Lane names match [`crate::substrate::RoutingLane`] variant names;
 //! `AppRelayFallback` is the sentinel for "all prior lanes were empty and
 //! Lane 7 fired".
 //!
@@ -127,7 +124,6 @@ fn publish_entry_to_json(entry: &PublishTraceEntry) -> Value {
         "kind": entry.trace.kind,
         "author": entry.trace.author,
         "event_id_short": entry.trace.event_id_short,
-        "explicit_targets_set": entry.trace.explicit_targets_set,
         "lane_attempts": attempts_to_json(&entry.trace.attempts),
         "urls": urls_to_json(&entry.urls),
     })
@@ -139,7 +135,6 @@ fn subscription_entry_to_json(entry: &SubscriptionTraceEntry) -> Value {
         "interest_id": entry.trace.interest_id,
         "kinds": entry.trace.kinds,
         "authors_count": entry.trace.authors_count,
-        "explicit_targets_set": entry.trace.explicit_targets_set,
         "lane_attempts": attempts_to_json(&entry.trace.attempts),
         "urls": urls_to_json(&entry.urls),
     })
@@ -232,7 +227,6 @@ fn user_configured_category_str(c: UserConfiguredCategory) -> &'static str {
 
 fn class_routing_path_str(p: ClassRoutingPath) -> &'static str {
     match p {
-        ClassRoutingPath::Explicit => "Explicit",
         ClassRoutingPath::Nip51 => "Nip51",
     }
 }
@@ -284,7 +278,6 @@ mod tests {
                 kind: 1,
                 author: "alice".into(),
                 event_id_short: Some("abcdef012345".into()),
-                explicit_targets_set: false,
                 attempts: vec![],
             },
             &make_routed(
@@ -301,7 +294,6 @@ mod tests {
         assert_eq!(e["kind"], 1);
         assert_eq!(e["author"], "alice");
         assert_eq!(e["event_id_short"], "abcdef012345");
-        assert_eq!(e["explicit_targets_set"], false);
         let url = &e["urls"][0];
         assert_eq!(url["url"], "wss://r.example/");
         assert_eq!(url["lanes"][0]["kind"], "Nip65");
@@ -316,7 +308,6 @@ mod tests {
                 interest_id: 42,
                 kinds: vec![1, 6, 7],
                 authors_count: 3,
-                explicit_targets_set: true,
                 attempts: vec![],
             },
             &make_routed("wss://r.example/", Src::Indexer),
@@ -328,7 +319,6 @@ mod tests {
         assert_eq!(e["interest_id"], 42);
         assert_eq!(e["kinds"], json!([1, 6, 7]));
         assert_eq!(e["authors_count"], 3);
-        assert_eq!(e["explicit_targets_set"], true);
         assert_eq!(e["urls"][0]["lanes"][0]["kind"], "Indexer");
     }
 
@@ -340,23 +330,21 @@ mod tests {
                 kind: 30023,
                 author: "alice".into(),
                 event_id_short: None,
-                explicit_targets_set: true,
                 attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",
                 Src::ClassRouted {
-                    class: EventClass::Other("explicit".into()),
-                    via: ClassRoutingPath::Explicit,
+                    class: EventClass::Wiki,
+                    via: ClassRoutingPath::Nip51,
                 },
             ),
         );
         let v = projection_to_json(&p);
         let lane = &v["publishes"][0]["urls"][0]["lanes"][0];
         assert_eq!(lane["kind"], "ClassRouted");
-        assert_eq!(lane["class"]["kind"], "Other");
-        assert_eq!(lane["class"]["name"], "explicit");
-        assert_eq!(lane["via"], "Explicit");
+        assert_eq!(lane["class"]["kind"], "Wiki");
+        assert_eq!(lane["via"], "Nip51");
     }
 
     #[test]
@@ -416,7 +404,6 @@ mod tests {
                 kind: 7,
                 author: "bob".into(),
                 event_id_short: Some("00aabbccddee".into()),
-                explicit_targets_set: false,
                 attempts: vec![],
             },
             &make_routed(
@@ -445,7 +432,6 @@ mod tests {
                 kind: 1,
                 author: "alice".into(),
                 event_id_short: None,
-                explicit_targets_set: false,
                 attempts: vec![
                     RouteAttempt {
                         lane: RoutingLane::Nip65,
@@ -461,22 +447,29 @@ mod tests {
                     },
                 ],
             },
-            &make_routed("wss://app.example/", Src::AppRelay { mode: AppRelayMode::Fallback }),
+            &make_routed(
+                "wss://app.example/",
+                Src::AppRelay {
+                    mode: AppRelayMode::Fallback,
+                },
+            ),
         );
         p.on_subscription(
             SubscriptionTrace {
                 interest_id: 7,
                 kinds: vec![1],
                 authors_count: 1,
-                explicit_targets_set: false,
-                attempts: vec![
-                    RouteAttempt {
-                        lane: RoutingLane::Nip65,
-                        outcome: LaneOutcome::Matched { count: 3 },
-                    },
-                ],
+                attempts: vec![RouteAttempt {
+                    lane: RoutingLane::Nip65,
+                    outcome: LaneOutcome::Matched { count: 3 },
+                }],
             },
-            &make_routed("wss://r.example/", Src::Nip65 { direction: Direction::Read }),
+            &make_routed(
+                "wss://r.example/",
+                Src::Nip65 {
+                    direction: Direction::Read,
+                },
+            ),
         );
 
         let v = projection_to_json(&p);
@@ -520,7 +513,10 @@ mod tests {
             (RoutingLane::AppRelayFallback, "AppRelayFallback"),
         ];
         for (lane, expected) in cases {
-            let a = RouteAttempt { lane, outcome: LaneOutcome::Empty };
+            let a = RouteAttempt {
+                lane,
+                outcome: LaneOutcome::Empty,
+            };
             let v = attempt_to_json(&a);
             assert_eq!(
                 v["lane"].as_str().unwrap(),

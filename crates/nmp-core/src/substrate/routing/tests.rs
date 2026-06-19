@@ -62,17 +62,12 @@ impl OutboxRouter for UnroutableRouter {
     }
 }
 
-fn ctx_with<'a>(
-    cache: &'a dyn MailboxCache,
-    blocked: &'a BlockedRelaySet,
-    explicit: Option<&'a [RelayUrl]>,
-) -> RoutingContext<'a> {
+fn ctx_with<'a>(cache: &'a dyn MailboxCache, blocked: &'a BlockedRelaySet) -> RoutingContext<'a> {
     RoutingContext {
         active_account: None,
         session_keys: SessionKeySet::default(),
         mailbox_cache: cache,
         blocked_relays: blocked,
-        explicit_targets: explicit,
     }
 }
 
@@ -120,41 +115,10 @@ fn mailbox_cache_known_default_uses_read_or_write_presence() {
 }
 
 #[test]
-fn routed_relay_set_from_explicit_attributes_class_routed() {
-    let urls: Vec<RelayUrl> = vec!["wss://a.example".into(), "wss://b.example".into()];
-    let blocked = BlockedRelaySet::new();
-    let routed = RoutedRelaySet::from_explicit(&urls, &blocked);
-
-    assert_eq!(routed.urls().count(), 2);
-    for sources in routed.relays.values() {
-        assert_eq!(sources.len(), 1);
-        let s = sources.iter().next().unwrap();
-        assert!(matches!(
-            s,
-            RoutingSource::ClassRouted {
-                via: ClassRoutingPath::Explicit,
-                ..
-            }
-        ));
-    }
-}
-
-#[test]
-fn routed_relay_set_from_explicit_drops_blocked() {
-    let urls: Vec<RelayUrl> = vec!["wss://a.example".into(), "wss://b.example".into()];
-    let mut blocked = BlockedRelaySet::new();
-    blocked.insert("wss://a.example".into());
-
-    let routed = RoutedRelaySet::from_explicit(&urls, &blocked);
-    let resolved: Vec<&RelayUrl> = routed.urls().collect();
-    assert_eq!(resolved, vec![&"wss://b.example".to_string()]);
-}
-
-#[test]
 fn outbox_router_dyn_dispatch_compiles_and_returns_error() {
     let cache = TestMailboxCache::default();
     let blocked = BlockedRelaySet::new();
-    let ctx = ctx_with(&cache, &blocked, None);
+    let ctx = ctx_with(&cache, &blocked);
 
     let router: &dyn OutboxRouter = &UnroutableRouter;
     let evt = unsigned("alice", 1);

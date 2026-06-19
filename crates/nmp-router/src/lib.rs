@@ -9,15 +9,9 @@
 //! 2. [`Kind10002Parser`] — an [`nmp_core::substrate::IngestParser`] that
 //!    decodes kind:10002 tags and upserts into the cache.
 //! 3. [`GenericOutboxRouter`] — the single generic
-//!    [`nmp_core::substrate::OutboxRouter`] impl. Ships the
-//!    `explicit_targets` override path AND all seven generic lanes from
-//!    spec §3.1: lane 1 NIP-65 write/read sets, lane 2 event-tag hints,
-//!    lane 3 provenance (subscribe-only), lane 4 user-configured
-//!    active-account read/write, lane 5 class-routed (explicit-targets
-//!    override seam), lane 6 always-on indexer for discovery kinds, and
-//!    lane 7 AppRelay fallback. (Lanes 2–6 were once stubbed as `// TODO
-//!    §3.1 lane X` insertion points; that follow-on work has since
-//!    landed — see the per-lane doc comments on [`GenericOutboxRouter`].)
+//!    [`nmp_core::substrate::OutboxRouter`] impl. Ships the generic
+//!    algorithm (NIP-65 write/read sets, hints, provenance,
+//!    user-configured relays, indexers, and AppRelay fallback).
 //! 4. [`publish_relay_list::PublishRelayListAction`] — the
 //!    `nmp.nip65.publish_relay_list` action module, absorbed from the
 //!    (deleted) `nmp-nip65` crate at step 3. Routing owns kind:10002

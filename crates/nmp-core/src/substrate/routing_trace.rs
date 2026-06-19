@@ -23,9 +23,7 @@
 //! lane-order. Each record identifies the lane and its outcome (`Matched {
 //! count }` or `Empty`). Together they let the V-51 inspector show the
 //! empty-cause chain — e.g. "NIP-65 empty, Hint empty, UserConfigured empty →
-//! AppRelayFallback resolved 1 relay". The `explicit_targets` short-circuit
-//! path (Lane 5 / ClassRouted) skips all generic lanes; `attempts` is empty
-//! in that case.
+//! AppRelayFallback resolved 1 relay".
 //!
 //! ## Allocation contract (D8)
 //!
@@ -122,8 +120,7 @@ pub struct RouteAttempt {
 /// from data it had on the stack.
 ///
 /// `attempts` is the V-75 extension: one [`RouteAttempt`] per lane that ran
-/// during the generic algorithm, in lane-order. Empty when
-/// `explicit_targets_set` is `true` (the generic algorithm was skipped).
+/// during the generic algorithm, in lane-order.
 #[derive(Clone, Debug)]
 pub struct PublishTrace {
     /// Event kind (`UnsignedEvent::kind`). Always present.
@@ -134,14 +131,9 @@ pub struct PublishTrace {
     /// where the id has not yet been computed (publish-side: the router runs
     /// BEFORE signing per `OutboxRouter` doc-comment).
     pub event_id_short: Option<String>,
-    /// Whether `RoutingContext::explicit_targets` was populated, i.e. whether
-    /// the §3.4 override seam fired. When `true` the resolved relay set is
-    /// the explicit-targets list (minus blocked-relay hits); when `false` the
-    /// resolved set came from the generic algorithm.
-    pub explicit_targets_set: bool,
-    /// Per-lane attempt records for the generic algorithm (V-75). Empty when
-    /// `explicit_targets_set` is `true`. Ordered lane 1 → lane 7; the last
-    /// entry is `AppRelayFallback` when Lane 7 fired.
+    /// Per-lane attempt records for the generic algorithm (V-75). Ordered
+    /// lane 1 → lane 7; the last entry is `AppRelayFallback` when Lane 7
+    /// fired.
     pub attempts: Vec<RouteAttempt>,
 }
 
@@ -149,8 +141,7 @@ pub struct PublishTrace {
 /// from data it had on the stack.
 ///
 /// `attempts` is the V-75 extension: one [`RouteAttempt`] per lane that ran
-/// during the generic algorithm, in lane-order. Empty when
-/// `explicit_targets_set` is `true`.
+/// during the generic algorithm, in lane-order.
 #[derive(Clone, Debug)]
 pub struct SubscriptionTrace {
     /// The opaque interest id (`LogicalInterest::id.0`).
@@ -163,12 +154,9 @@ pub struct SubscriptionTrace {
     /// `RoutingSource::Nip65 { direction: Read }` attribution already tells
     /// the consumer which author drove which URL.
     pub authors_count: usize,
-    /// Whether `RoutingContext::explicit_targets` was populated (see
-    /// [`PublishTrace::explicit_targets_set`]).
-    pub explicit_targets_set: bool,
-    /// Per-lane attempt records for the generic algorithm (V-75). Empty when
-    /// `explicit_targets_set` is `true`. Ordered lane 1 → lane 7; the last
-    /// entry is `AppRelayFallback` when Lane 7 fired.
+    /// Per-lane attempt records for the generic algorithm (V-75). Ordered
+    /// lane 1 → lane 7; the last entry is `AppRelayFallback` when Lane 7
+    /// fired.
     pub attempts: Vec<RouteAttempt>,
 }
 
@@ -239,7 +227,6 @@ mod tests {
             kind: 1,
             author: "alice".into(),
             event_id_short: Some("abcdef012345".into()),
-            explicit_targets_set: false,
             attempts: vec![],
         };
         let _ = t.clone();
@@ -252,7 +239,6 @@ mod tests {
             interest_id: 42,
             kinds: vec![1, 6, 7],
             authors_count: 5,
-            explicit_targets_set: true,
             attempts: vec![],
         };
         let _ = t.clone();

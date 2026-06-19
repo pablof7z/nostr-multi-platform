@@ -248,7 +248,6 @@ mod tests {
             },
             mailbox_cache: &cache,
             blocked_relays: &blocked,
-            explicit_targets: None,
         };
         let router = EmptyOutboxRouter::new();
         let err = router
@@ -270,7 +269,6 @@ mod tests {
             },
             mailbox_cache: &cache,
             blocked_relays: &blocked,
-            explicit_targets: None,
         };
         let router = EmptyOutboxRouter::new();
         let err = router
