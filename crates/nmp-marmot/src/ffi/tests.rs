@@ -109,7 +109,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
         })
         .unwrap();
     assert_eq!(r["ok"], json!(true), "publish_key_package: {r}");
-    assert!(r["events"].as_array().unwrap().len() == 2);
+    assert!(r["events"].as_array().unwrap().len() == 1); // kind:443 retired; only kind:30443
 
     // Snapshot now shows key_package.published == true.
     let snap = proj.snapshot(1_000);
