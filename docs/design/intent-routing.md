@@ -117,10 +117,8 @@ pub enum RoutingFamily {
 pub struct InterestShape {
     // ... existing fields unchanged ...
 
-    /// NIP-50 search string. When `Some`, the planner routes via search
-    /// relays (kind:10007) and emits the `search` field on the wire
-    /// filter. Refuses to merge with shapes that have a different
-    /// `search` value (new merge Rule 10).
+    /// NIP-50 search string. Emits `search` on the wire filter and refuses
+    /// merges with different search values (merge Rule 10).
     pub search: Option<String>,
 
     /// Optional class hint set by the consumer. When `None`, the planner
@@ -131,8 +129,8 @@ pub struct InterestShape {
 }
 ```
 
-Both fields are `Option` so existing call sites keep working with
-`InterestShape { ..Default::default() }`.
+Both fields are `Option`; `search` is substrate-only, while NIP-50 query
+parsing, views, ranking, and projection live in the owning search module.
 
 ### 3.3 Extended `OutboxResolver`
 
@@ -199,8 +197,6 @@ would classify away from `Other`.
 ### 3.5 Search FFI surface
 
 ```rust
-// nmp-core::search
-
 pub enum SearchScope {
     /// kind:0 events. Cache-side: scans name, display_name, about, nip05.
     Users,
@@ -376,6 +372,9 @@ This keeps the working set bounded by active view lifetimes.
 | 10050       | DM (NIP-17)                | decoded only; routing deferred         | no         | no          |
 | 30002       | named — see §5.1           | not consumed in v1                     | n/a        | n/a         |
 
+Kind:10007 parsing/projection are owned by `nmp-nip51`; the router consumes
+facts and does not parse NIP-51 list events.
+
 ### 5.1 Kind:30002 named relay sets — deferred
 
 Named sets are addressable per `d` tag. No canonical convention maps `d`
@@ -501,7 +500,8 @@ user's kind:10007 list — no cap. No NIP-11 `supported_nips` probing;
 relays that don't implement NIP-50 surface as zero-result lanes in the
 per-relay diagnostic. If kind:10007 is missing/empty, fall back to
 `DefaultRelayLists::search`; if that's also empty, only cache results
-are returned.
+are returned. Until cache indexing lands, search-bearing shapes are
+relay-served only and deliberately uncovered by cache-serve.
 
 ## 8. Migration / rollout plan
 

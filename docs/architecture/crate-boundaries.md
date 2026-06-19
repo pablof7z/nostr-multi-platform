@@ -76,6 +76,13 @@ must not depend on another binding crate for business behavior.
 action bodies, or app-specific nouns. If an existing protocol-shaped exception
 remains, it belongs in a GitHub issue with a code citation and removal path.
 
+NIP-50 search follows the same split: core/planner may carry the generic
+bounded `search` wire-filter field, filter serialization, merge equality,
+diagnostics, and cache-coverage refusal. Query semantics, app-facing search
+actions/views, ranking, and result projection belong to an owning search
+crate/module such as `nmp-nip50`. NIP-51 kind:10007 relay-list facts belong to
+`nmp-nip51`, not to the generic router.
+
 ---
 
 ## 4. Router Ownership

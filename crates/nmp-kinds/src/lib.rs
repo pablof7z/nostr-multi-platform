@@ -132,6 +132,10 @@ pub const KIND_MUTE_LIST: u32 = 10000;
 /// refuses to publish to or receive events from. Tag shape: `["relay", <wss-url>]`.
 pub const KIND_BLOCKED_RELAYS: u32 = 10_006;
 
+/// NIP-51 search relays list (kind:10007). The relays a user prefers for
+/// NIP-50 search requests. Tag shape: `["relay", <wss-url>]`.
+pub const KIND_SEARCH_RELAYS: u32 = 10_007;
+
 // ─── Blossom (BUD-02) — blob-server upload authorization ───────────────────
 
 /// Blossom BUD-01/BUD-02 authorization event (kind:24242). A short-lived,
@@ -220,6 +224,7 @@ mod tests {
         assert!(is_replaceable(41), "kind:41 NIP-28 channel metadata");
         assert!(is_replaceable(10_000), "kind:10000 mute list");
         assert!(is_replaceable(10_002), "kind:10002 relay list");
+        assert!(is_replaceable(10_007), "kind:10007 search relays");
         assert!(is_replaceable(19_999), "kind:19999 end of range");
 
         // The DIVERGENT-bug cases: notes/reposts/reactions are NOT replaceable.

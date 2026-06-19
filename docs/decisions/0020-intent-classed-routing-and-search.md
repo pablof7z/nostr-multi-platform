@@ -12,6 +12,19 @@
 > resident classifier driven by event kind and NIP-51 lists, plus a
 > per-author dimension for publisher-keyed classes.
 
+> **2026-06-19 amendment (Issue #1561):** the accepted ownership split is
+> narrowed before implementation. `nmp-planner` / `nmp-core` own only generic
+> wire-filter and routing substrate: the bounded `InterestShape.search` field,
+> filter serialization, merge equality, class-routed planning primitives,
+> diagnostics, and local-store coverage refusal when no FTS index exists.
+> NIP-50 query semantics, app-facing search actions/views, result ranking, and
+> search-hit projection belong to an owning protocol/search module such as
+> `nmp-nip50`, not to `nmp-core::search`. NIP-51 kind:10007 relay-list parsing
+> and active-account routing facts belong to `nmp-nip51`. The earlier
+> `nmp-core::search` wording below is therefore historical design shorthand
+> for the search surface, not permission for protocol-specific search behavior
+> to live in the kernel.
+
 ## Context
 
 Two requests motivated this ADR, both surfaced 2026-05-18 with a user-pushed
@@ -46,11 +59,15 @@ already does.
 The fourteen calls below are the v1 contract. The companion design doc
 spells out the types, the planner integration, and the five-phase rollout.
 
-**(1) Add NIP-50 search as a first-class kernel feature.** New
-`search: Option<String>` field on `InterestShape`, a `SearchScope` /
-`SearchTargets` FFI surface, lazy text indexing of the existing cache for
-synchronous cache-first results, and per-call relay selection driven by
-the user's NIP-51 kind:10007 list when present.
+**(1) Add NIP-50 search through a protocol-owner split.** New bounded
+`search: Option<String>` field on `InterestShape` is a generic wire-filter
+primitive owned by the planner/core substrate. A `SearchScope` /
+`SearchTargets` FFI surface, query semantics, result projection/ranking, and
+cache-first behavior belong to the owning search module (expected:
+`nmp-nip50`) and must consume substrate primitives rather than place NIP-50
+policy in `nmp-core`. Per-call relay selection is driven by the user's
+NIP-51 kind:10007 list when present; parsing that list is owned by
+`nmp-nip51`.
 
 **(2) Add `EventClass` as a kernel-resident classification.** Built-in
 kind → class table: PublicNote / Profile / RelayList / LongForm / Draft

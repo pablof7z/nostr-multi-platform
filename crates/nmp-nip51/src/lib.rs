@@ -1,24 +1,28 @@
-//! `nmp-nip51` — NIP-51 mute-list adapter for the NMP substrate.
+//! `nmp-nip51` — NIP-51 list projections for the NMP substrate.
 //!
 //! # Scope
 //!
-//! NIP-51 specifies a family of "curated set" event kinds. This crate
-//! implements the **kind:10000 public mute list** only — the v1 safety
-//! requirement. Post-v1 NIP-51 kinds (kind:10001 pin list, kind:10003
-//! bookmarks, etc.) are out of scope.
+//! NIP-51 specifies a family of "curated set" event kinds. This crate owns
+//! parsing and projection of the NIP-51 list events that NMP consumes. It does
+//! not own planner/router policy; it exposes facts for substrate owners to use.
 //!
 //! | Wire kind | Name          | NIP    | Status   |
 //! |-----------|---------------|--------|----------|
 //! | 10000     | Public mute   | NIP-51 | Shipped  |
-//! | 10001+    | Other lists   | NIP-51 | Post-v1  |
+//! | 10007     | Search relays | NIP-51 | Shipped as active-account facts |
+//! | 10001+    | Other lists   | NIP-51 | Post-v1 unless named above |
 //!
 //! # Architecture
 //!
-//! The crate exposes one type, [`MuteListProjection`], which is both a
+//! The crate exposes [`MuteListProjection`], which is both a
 //! [`nmp_core::KernelEventObserver`] (the write side — ingest kind:10000
 //! events) and a [`nmp_core::substrate::SuppressionLookup`] implementation
 //! (the read side — answer "is this author/event muted?" queries from the
 //! timeline projection).
+//!
+//! It also exposes [`SearchRelayListProjection`], a kind:10007 active-account
+//! relay-list projection. Search query semantics and ranking stay with the
+//! owning search module; this crate only parses `["relay", <url>]` facts.
 //!
 //! The substrate-generic [`SuppressionLookup`] trait lives in `nmp-core` so
 //! `nmp-nip01`'s `ModularTimelineProjection` can depend on it without creating
@@ -57,9 +61,11 @@
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 
 pub mod projection;
+pub mod search_relays;
 pub mod wire;
 
 pub use projection::{MuteListProjection, MuteListSnapshot};
+pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use wire::mute_list_fb::{
     decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
     MUTE_LIST_SCHEMA_VERSION,

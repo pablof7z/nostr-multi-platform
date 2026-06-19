@@ -26,7 +26,6 @@ use super::super::hex_to_pubkey_bytes;
 use crate::planner::InterestShape;
 use crate::store::StoreQuery;
 
-
 /// Map an `InterestShape` to the `StoreQuery` variants this seam covers.
 ///
 /// Returns an empty vec when the shape has no mapping (not covered by any
@@ -65,13 +64,20 @@ use crate::store::StoreQuery;
 /// - **Unrecognized single tag keys (`#t`, `#a`, etc.):** not yet mapped per
 ///   ADR-0045 E1–E3; relay serves. Tracked as post-v1 follow-up; deliberately
 ///   out of scope, not a bug.
-/// - **Text / full-text search candidates:** no `StoreQuery` variant or FTS
-///   index exists; search shapes rely on relay NIP-50. Tracked as post-v1
-///   follow-up; not an accidental broad scan.
+/// - **Text / full-text search candidates:** shapes with `search` set always
+///   return empty. There is no `StoreQuery` variant or FTS index; search shapes
+///   rely on relay NIP-50. Tracked as post-v1 follow-up; not an accidental
+///   broad scan.
 ///
 /// See `issue_1517_every_scope_shape_has_a_plan_or_tracked_exception` in
 /// `cache_serve_budget_tests` for the contract guard.
 pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<StoreQuery> {
+    // Relay NIP-50 only for now. Do not degrade a search+kind shape into
+    // KindTime/AuthorKind local replay; that would serve non-search results.
+    if shape.search.is_some() {
+        return Vec::new();
+    }
+
     // Wildcard kinds: not covered (too broad, no safe bounded index).
     if shape.kinds.is_empty() {
         return Vec::new();
@@ -190,7 +196,7 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
 /// Derive the completion key for an interest.
 ///
 /// A stable hash of the interest's `SubKey` + the shape's content fields
-/// (authors, kinds, tags, addresses). `since/until/limit` and pure routing
+/// (authors, kinds, tags, addresses, search). `since/until/limit` and pure routing
 /// metadata are excluded — a shape that widens its time window should not
 /// retrigger a full re-serve (the watermark+relay refinement handles the delta).
 pub(in crate::kernel) fn completion_key_for_interest(
@@ -213,7 +219,7 @@ pub(in crate::kernel) fn completion_key_for_interest(
         .iter()
         .map(|c| (c.kind, c.pubkey.as_str(), c.d_tag.as_str()))
         .collect();
-    stable_hash64((sub_key, &authors, &kinds, &tags, &addresses))
+    stable_hash64((sub_key, &authors, &kinds, &tags, &addresses, &shape.search))
 }
 
 /// Mutable access to a query's `until` cursor — `None` for variants without

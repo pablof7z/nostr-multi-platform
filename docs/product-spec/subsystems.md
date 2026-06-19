@@ -173,6 +173,7 @@ The ledger is general, not relay-only. It can represent local optimistic commit,
 | Contacts | `pubkey` | parsed kind-3 follow list, with per-followee metadata |
 | Mailboxes | `pubkey` | parsed kind-10002 |
 | Mutes | `pubkey` | parsed kind-10000 |
+| Search | `query`, scope | cache-first hits plus relay NIP-50 hits via user/default search relays; protocol semantics owned by the search module |
 | Blossom servers | `pubkey` | parsed kind-10063 |
 | Timeline | `filter` (kind, authors, hashtags, time window) | sorted slice with pagination cursor |
 | Thread | `root_event_id` | tree with per-node metadata |
