@@ -1,3 +1,11 @@
+//! Chirp-owned Android JNI delivery surface (`nmp-chirp-android-ffi`).
+//!
+//! This crate is the Layer-6 cdylib for the Chirp Android app. It depends
+//! explicitly on `nmp-app-chirp` and `nmp-chirp-config` (Chirp operator
+//! policy); those are intentional Chirp-only deps that belong here, not in a
+//! generic framework crate (issue #1611, D0, `docs/architecture/crate-boundaries.md`
+//! §10).
+//!
 //! JNI shim: Android ⇄ the nmp-core kernel via Rust-path function calls.
 //!
 //! Doctrine: no business logic or cached state here (D5/D8) — pure transport.
@@ -180,12 +188,12 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClose(
     }
 }
 
-/// JNI export name kept stable (Kotlin calls `nativeOpenTimeline`).
-/// Body updated to call the Chirp home-feed wrapper (`HOME_FEED_KINDS = [1,6]`
-/// defined in `nmp_app_chirp::ffi::interest_feed`) instead of the deleted
-/// `nmp_app_open_timeline` (ADR-0042 amendment 2026-06-12).
+/// Open the Chirp home feed (kind:1 + kind:6). Calls the Chirp wrapper
+/// (`HOME_FEED_KINDS = [1,6]` defined in `nmp_app_chirp::ffi::interest_feed`).
+/// Renamed from `nativeOpenTimeline` → `nativeOpenHomeFeed` when ownership
+/// moved to `nmp-chirp-android-ffi` (issue #1611, D0).
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenHomeFeed(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,

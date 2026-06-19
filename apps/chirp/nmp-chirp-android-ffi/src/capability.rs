@@ -156,7 +156,6 @@ pub(crate) fn call_sync_handler(slot: &CapabilityHandlerSlot, request_json: &str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     /// Verifies that `call_sync_handler` with no registered handler returns `None`.
     #[test]

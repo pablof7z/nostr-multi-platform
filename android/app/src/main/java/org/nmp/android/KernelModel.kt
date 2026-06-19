@@ -175,8 +175,9 @@ class KernelModel : ViewModel() {
         } ?: Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
     }
 
-    fun openTimeline() {
-        bridge.openTimeline()
+    /** Open the Chirp home feed (kind:1 + kind:6). */
+    fun openHomeFeed() {
+        bridge.openHomeFeed()
     }
 
     /** Report Android lifecycle foreground to Rust. */
@@ -303,10 +304,10 @@ class KernelModel : ViewModel() {
 
     /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace).
      *
-     *  No imperative post-identity `openTimeline()`: the home-feed interest is
+     *  No imperative post-identity `openHomeFeed()`: the home-feed interest is
      *  registered by the view that renders it (`TimelineScreen` →
-     *  `LaunchedEffect { model.openTimeline() }`), exactly as on iOS
-     *  (`HomeFeedView.task { model.openTimeline() }`). The kernel now persists
+     *  `LaunchedEffect { model.openHomeFeed() }`), exactly as on iOS
+     *  (`HomeFeedView.task { model.openHomeFeed() }`). The kernel now persists
      *  the host-declared follow-feed kinds even before an account exists
      *  (#1493 P4 / `open_contact_feed`), so the sign-in reconcile re-registers
      *  the feed without the shell re-declaring it. Driving it from the identity
@@ -338,13 +339,13 @@ class KernelModel : ViewModel() {
         bridge.nostrConnectUri(relayUrl, callbackScheme)
 
     /** Create a new local account with the given display name.
-     *  See [signInNsec] re: no imperative post-identity `openTimeline()`. */
+     *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */
     fun createAccount(displayName: String) {
         bridge.createLocalAccount(displayName)
     }
 
     /** Switch the active account (direct C-ABI — no ActionModule for switch namespace).
-     *  See [signInNsec] re: no imperative post-identity `openTimeline()`. */
+     *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */
     fun switchAccount(pubkey: String) {
         bridge.switchAccount(pubkey)
     }

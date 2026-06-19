@@ -64,7 +64,7 @@ nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["signer-broker"] }
 # app crate; it is the single source of truth for Chirp's relay defaults so the
 # iOS/Android/web shells never hardcode relay URLs (D7 / thin-shell). The
 # `nmp_app_chirp_seed_*` FFI symbols below wrap `chirp_default_relay_bootstrap`,
-# mirroring the Android `nmp-android-ffi::relay_seeding` glue.
+# mirroring the Android `nmp-chirp-android-ffi::relay_seeding` glue.
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-defaults = { path = "../../../crates/nmp-defaults" }
 nmp-feed = { path = "../../../crates/nmp-feed" }

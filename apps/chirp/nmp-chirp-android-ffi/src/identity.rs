@@ -23,7 +23,9 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::jlong;
 use jni::JNIEnv;
 
-use crate::{jstring_to_cstring, session_arc};
+#[cfg(feature = "marmot")]
+use crate::jstring_to_cstring;
+use crate::session_arc;
 
 /// Register a synchronous Kotlin capability handler for all non-`external_signer`
 /// namespaces (e.g. Android Keystore keyring). The `handler` object must
@@ -154,7 +156,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeIdentityRestore(
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
 
     use crate::session::{insert_session, remove_session, Session};
 

@@ -25,7 +25,7 @@
 //!   Wraps `nmp_chirp_config::chirp_default_relay_bootstrap` so the relay
 //!   default set has ONE source of truth and the Swift/Kotlin shells never
 //!   hardcode relay URLs (D7). iOS analogue of the Android
-//!   `nmp-android-ffi::relay_seeding` glue.
+//!   `nmp-chirp-android-ffi::relay_seeding` glue.
 //! - `nmp_app_chirp_identity_restore`,
 //!   `nmp_app_chirp_identity_sign_in_nsec`, and
 //!   `nmp_app_chirp_identity_remove_account` — Chirp-owned identity wrappers

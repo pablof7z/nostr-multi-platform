@@ -116,7 +116,7 @@ fun RememberProfileClaim(pubkey: String, consumerId: String) {
 @Composable
 fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     LaunchedEffect(model) {
-        model.openTimeline()
+        model.openHomeFeed()
     }
     val s by model.state.collectAsStateWithLifecycle()
     val snapshotCount by model.snapshotCount.collectAsStateWithLifecycle()

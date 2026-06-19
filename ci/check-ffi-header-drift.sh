@@ -113,7 +113,7 @@ FFI_FILE_ROOTS=(
     # Chirp relay-bootstrap seeding (nmp_app_chirp_seed_default_relays /
     # nmp_app_chirp_seed_relays_from_json): wraps nmp-chirp-config so the
     # Swift shell stops hardcoding relay URLs (D7). iOS analogue of the
-    # Android nmp-android-ffi::relay_seeding glue.
+    # Android nmp-chirp-android-ffi::relay_seeding glue.
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/relay_seeding.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
     # Native action-envelope builder (nmp_app_chirp_action_spec): the symbol

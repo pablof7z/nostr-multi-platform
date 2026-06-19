@@ -28,7 +28,7 @@ use jni::JNIEnv;
 use crate::{jstring_to_cstring, session_arc, Session};
 
 // Re-exported by `nmp-app-chirp` under its `marmot` feature (forwarded here by
-// the `nmp-android-ffi/marmot` feature). Reached through the Rust path for
+// the `nmp-chirp-android-ffi/marmot` feature). Reached through the Rust path for
 // symbol retention (see module doc).
 #[cfg(feature = "marmot")]
 use nmp_app_chirp::{nmp_marmot_register_active, nmp_marmot_unregister, MarmotHandle};

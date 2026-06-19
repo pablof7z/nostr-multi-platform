@@ -81,8 +81,9 @@ class KernelBridge {
 
     fun isAlive(): Boolean = handle != 0L && nativeIsAlive(handle)
 
-    fun openTimeline() {
-        if (handle != 0L) nativeOpenTimeline(handle)
+    /** Open the Chirp home feed (kind:1 + kind:6). */
+    fun openHomeFeed() {
+        if (handle != 0L) nativeOpenHomeFeed(handle)
     }
 
     fun createLocalAccount(displayName: String = "Android User") {
@@ -448,7 +449,7 @@ class KernelBridge {
     private external fun nativeNew(): Long
     private external fun nativeSetStoragePath(handle: Long, path: String): Int
     private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
-    private external fun nativeOpenTimeline(handle: Long)
+    private external fun nativeOpenHomeFeed(handle: Long)
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)
     private external fun nativeStop(handle: Long)
     private external fun nativeClose(handle: Long)

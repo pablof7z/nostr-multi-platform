@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::{Session, insert_session, remove_session};
+use super::Session;
 
 /// Verify that `on_update` does NOT hold `push_listener` while invoking the
 /// listener's `push()` method.
