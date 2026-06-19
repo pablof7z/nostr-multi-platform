@@ -12,6 +12,21 @@ fun interface KernelUpdateListener {
 }
 
 /**
+ * Push callback for NIP-55 external-signer requests (issue #1612 — D8
+ * no-polling; replaces the deleted `nativeNextSignerRequest` blocking drain).
+ *
+ * Rust invokes [onSignerRequest] from whichever thread dispatches the
+ * `external_signer` capability (a native background thread), NOT the Android
+ * main thread. The NIP-55 launch Intent must run on the main thread, so
+ * implementations marshal there themselves. [requestJson] is one
+ * `ExternalSignerRequest` JSON for `ExternalSignerCapabilityBridge.handleJson`.
+ * Mirrors the Chirp `KernelSignerRequestListener`.
+ */
+fun interface KernelSignerRequestListener {
+    fun onSignerRequest(requestJson: String)
+}
+
+/**
  * Thin JNI wrapper around `libnmp_app_gallery.so` — the gallery-specific
  * Rust shim that links the SAME `nmp-core` kernel that Chirp / iOS consume.
  *
@@ -108,21 +123,37 @@ class KernelBridge {
     /**
      * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to `signerPackage`
      * (null = let the OS resolver pick). Rust builds the `get_public_key` +
-     * permission-batch request; it surfaces on [nextSignerRequest].
+     * permission-batch request and dispatches it through the capability socket;
+     * the request is pushed to the registered [KernelSignerRequestListener]
+     * (see [setSignerRequestListener]).
      */
     fun signInNip55(signerPackage: String?) {
         if (handle != 0L) nativeSignInNip55(handle, signerPackage)
     }
 
     /**
-     * ADR-0048 Stage 2 — blocking timed drain of the outbound NIP-55
-     * capability-request channel (the signer request twin):
-     * `null` = idle tick, a `String` = one `ExternalSignerRequest` JSON for
-     * `ExternalSignerCapabilityBridge.handleJson`, [IllegalStateException]
-     * = channel closed (STOP polling).
+     * ADR-0048 Stage 2 / issue #1612 — register a push listener for outbound
+     * NIP-55 capability requests (D8 — no polling; replaces the deleted
+     * `nativeNextSignerRequest` blocking drain).
+     *
+     * [listener] receives each `ExternalSignerRequest` JSON on the Rust
+     * capability-dispatch thread — a native background thread, NOT the main
+     * thread. The NIP-55 launch Intent requires the main thread, so the
+     * implementation must marshal there itself. Pass a new listener to swap;
+     * call [clearSignerRequestListener] on teardown before [free]. D6: a
+     * null/dead handle is a no-op.
      */
-    fun nextSignerRequest(timeoutMs: Long = 30_000L): String? =
-        if (handle != 0L) nativeNextSignerRequest(handle, timeoutMs) else null
+    fun setSignerRequestListener(listener: KernelSignerRequestListener) {
+        if (handle != 0L) nativeSetSignerRequestListener(handle, listener)
+    }
+
+    /**
+     * Deregister the push listener set by [setSignerRequestListener]. Safe to
+     * call when none is registered. D6: a null/dead handle is a no-op.
+     */
+    fun clearSignerRequestListener() {
+        if (handle != 0L) nativeClearSignerRequestListener(handle)
+    }
 
     /**
      * ADR-0048 Stage 2 — report a raw `ExternalSignerResponse` JSON back to
@@ -154,7 +185,8 @@ class KernelBridge {
     private external fun nativeClearUpdateListener(handle: Long)
     private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
     private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
-    private external fun nativeNextSignerRequest(handle: Long, timeoutMs: Long): String?
+    private external fun nativeSetSignerRequestListener(handle: Long, listener: KernelSignerRequestListener)
+    private external fun nativeClearSignerRequestListener(handle: Long)
     private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
 
     companion object {
