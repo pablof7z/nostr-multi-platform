@@ -6,6 +6,7 @@ use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::is_hex_pubkey;
+use nmp_core::substrate::RoutingFactoryRegistrar;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
@@ -106,6 +107,11 @@ pub extern "C" fn nmp_app_chirp_register(
     // borrow further down is taken only after this exclusive borrow is
     // dropped.
     nmp_defaults::register_defaults(unsafe { &mut *app });
+
+    // #1493 P9 — Chirp's `nostrconnect://` NIP-46 perm policy (leaf-app product
+    // policy; NMP owns no default), set at this single pre-start chokepoint.
+    let perms = nmp_chirp_config::chirp_nostrconnect_perms().to_string();
+    RoutingFactoryRegistrar::set_nostrconnect_perms(unsafe { &*app }, perms);
 
     // Chirp-specific: register the NIP-29 group-chat `ActionModule`s
     // against the kernel. Lives in this crate (not the template) because

@@ -23,7 +23,17 @@ const NOSTRCONNECT_CLIENT_NAME: &str = "nmp";
 impl BunkerBroker {
     /// Begin the signer-initiated (`nostrconnect://`) handshake and return the
     /// URI immediately so native code can render the QR code.
-    pub fn start_nostrconnect_handshake(self: &Arc<Self>, relay_url: String) -> String {
+    /// `perms` is the APP-SUPPLIED NIP-46 permission request (#1493 P9), a plain
+    /// (NOT percent-encoded) comma-joined perm list such as
+    /// `"sign_event:1,sign_event:7"`. When `Some`, it is appended as a
+    /// percent-encoded `&perms=` query parameter; when `None`, the parameter is
+    /// omitted entirely — the broker (a protocol crate) supplies no default kind
+    /// set of its own.
+    pub fn start_nostrconnect_handshake(
+        self: &Arc<Self>,
+        relay_url: String,
+        perms: Option<String>,
+    ) -> String {
         self.cancel();
 
         let local_keys = Keys::generate();
@@ -35,9 +45,16 @@ impl BunkerBroker {
             .collect();
         let encoded_relay = crate::uri_encode::percent_encode_query_value(&relay_url);
         let name = NOSTRCONNECT_CLIENT_NAME;
-        let uri = format!(
-            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name={name}&perms=sign_event%3A1%2Csign_event%3A7"
+        let mut uri = format!(
+            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name={name}"
         );
+        // #1493 P9 — perms are app-supplied. Append the `&perms=` parameter only
+        // when the host registered one; otherwise omit it entirely (NMP owns no
+        // perm policy).
+        if let Some(perms) = perms.as_deref() {
+            uri.push_str("&perms=");
+            uri.push_str(&crate::uri_encode::percent_encode_query_value(perms));
+        }
 
         // Fresh generation for this session — strictly newer than anything the
         // just-cancelled (detached) worker carries. See `broker.rs::generation`.

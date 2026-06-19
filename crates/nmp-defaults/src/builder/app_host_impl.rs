@@ -232,6 +232,11 @@ impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_nostrconnect_bootstrap_relay(url);
     }
+
+    fn set_nostrconnect_perms(&self, perms: String) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.set_nostrconnect_perms(perms);
+    }
 }
 
 impl<S> HostCapabilities for NmpAppBuilder<S> {

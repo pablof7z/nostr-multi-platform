@@ -193,6 +193,10 @@ impl RoutingFactoryRegistrar for GateSpy {
             "the bootstrap relay is wired by register_defaults_with, not register_substrate"
         );
     }
+
+    fn set_nostrconnect_perms(&self, _perms: String) {
+        unreachable!("the nostrconnect perms are wired by register_defaults_with, not register_substrate");
+    }
 }
 
 /// A `CompiledPlan` with `n` distinct per-relay entries (the hook only reads

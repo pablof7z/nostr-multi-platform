@@ -24,7 +24,7 @@
 //!
 //! ## Architecture
 //!
-//! The broker calls `start_nostrconnect_handshake(relay_url) -> String` which:
+//! The broker calls `start_nostrconnect_handshake(relay_url, perms) -> String` which:
 //! - Generates ephemeral keypair + secret.
 //! - Returns the `nostrconnect://` URI immediately.
 //! - Spawns a worker that subscribes to the relay and awaits the signer's
@@ -67,7 +67,8 @@ fn nostrconnect_happy_path_emits_add_remote_signer() {
     // the relay-subscription worker. The mock will parse the URI and act as
     // the signer app.
     let relay_url = mock.ws_url();
-    let uri = broker.start_nostrconnect_handshake(relay_url);
+    // #1493 P9 — perms are app-supplied; pass a representative request.
+    let uri = broker.start_nostrconnect_handshake(relay_url, Some("sign_event:1".to_string()));
 
     assert!(
         uri.starts_with("nostrconnect://"),
@@ -104,7 +105,7 @@ fn nostrconnect_wrong_secret_fails_handshake() {
     let broker = broker_for_actor(CommandSender::new(actor_inbox_tx));
 
     let relay_url = mock.ws_url();
-    let uri = broker.start_nostrconnect_handshake(relay_url);
+    let uri = broker.start_nostrconnect_handshake(relay_url, Some("sign_event:1".to_string()));
 
     // Send a connect with a clearly wrong secret (all zeros).
     mock.connect_with_wrong_secret(&uri, "0000000000000000");

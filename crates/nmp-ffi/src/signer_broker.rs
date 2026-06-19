@@ -141,7 +141,12 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
     let Some(broker) = app_ref(app).and_then(NmpApp::signer_broker) else {
         return std::ptr::null_mut();
     };
-    let mut uri = broker.start_nostrconnect_handshake(relay);
+    // #1493 P9 — the NIP-46 perm request is APP-SUPPLIED. NMP supplies no
+    // default: when the host registered none, `perms` is `None` and the broker
+    // omits the `&perms=` parameter entirely rather than baking in a
+    // framework-chosen kind set.
+    let perms = app_ref(app).and_then(NmpApp::nostrconnect_perms);
+    let mut uri = broker.start_nostrconnect_handshake(relay, perms);
     if let Some(scheme) = callback {
         uri.push_str("&callback=");
         uri.push_str(&percent_encode_query_value(scheme));

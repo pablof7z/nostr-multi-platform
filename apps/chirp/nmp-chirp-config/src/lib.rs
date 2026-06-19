@@ -55,3 +55,16 @@ pub const CHIRP_DEFAULT_FOLLOWS: &[&str] = &[
 pub fn chirp_default_follows() -> &'static [&'static str] {
     CHIRP_DEFAULT_FOLLOWS
 }
+
+/// NIP-46 permission request Chirp advertises in client-initiated
+/// `nostrconnect://` handshakes — the plain (NOT percent-encoded) comma-joined
+/// perm list. This is Chirp PRODUCT policy, not NMP framework policy (#1493):
+/// Chirp publishes kind:1 notes and kind:7 reactions, so it asks the remote
+/// signer for exactly those two `sign_event` perms. NMP (the broker / core /
+/// defaults) names no perm set of its own; only this leaf-app config does.
+pub const CHIRP_NOSTRCONNECT_PERMS: &str = "sign_event:1,sign_event:7";
+
+#[must_use]
+pub fn chirp_nostrconnect_perms() -> &'static str {
+    CHIRP_NOSTRCONNECT_PERMS
+}

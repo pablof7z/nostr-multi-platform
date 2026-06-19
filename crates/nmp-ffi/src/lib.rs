@@ -258,12 +258,13 @@ use nmp_core::__ffi_internal::{
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
     new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
+    new_nostrconnect_perms_slot,
     new_external_event_sink_policy_slot, new_publish_resolver_slot,
     new_routing_substrate_slot,
     new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
     ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicySlot,
     MlsLocalNsecSlot,
-    NostrConnectBootstrapRelaySlot, PublishResolverSlot,
+    NostrConnectBootstrapRelaySlot, NostrConnectPermsSlot, PublishResolverSlot,
     RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
@@ -479,6 +480,20 @@ pub struct NmpApp {
     /// `Arc<Mutex<Vec<…>>>` shape. The slot is not shared with the actor
     /// thread — no actor clone is handed to `run_actor_with_observers`.
     nostrconnect_bootstrap_relay: NostrConnectBootstrapRelaySlot,
+    /// #1493 P9 — host-supplied NIP-46 permission request for client-initiated
+    /// `nostrconnect://` handshakes (which event kinds the app asks the signer
+    /// to sign).
+    ///
+    /// Written by the composition root (via [`AppHost::set_nostrconnect_perms`])
+    /// before `nmp_app_start`; read on the FFI thread when
+    /// [`NmpApp::nostrconnect_perms`] is called. `None` (the default) means NMP
+    /// supplies NO perms — the handshake omits the `&perms=` parameter entirely.
+    /// The perm set is leaf-app product policy, not framework policy (#1493).
+    ///
+    /// D14: `Arc<Mutex<Option<String>>>` is NOT the banned `Arc<Mutex<Vec<…>>>`
+    /// shape — same shape as `nostrconnect_bootstrap_relay`. The slot is not
+    /// shared with the actor thread.
+    nostrconnect_perms: NostrConnectPermsSlot,
     /// Raw bech32 nsec (`nsec1…`) for app crates that need local key material
     /// for MLS (ADR-0025 exception; only the nmp-marmot crate holds the D13
     /// doctrine-allow). The actor thread writes this after every identity
@@ -911,6 +926,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // (the read path is FFI-synchronous on the calling thread).
     let nostrconnect_bootstrap_relay: NostrConnectBootstrapRelaySlot =
         new_nostrconnect_bootstrap_relay_slot();
+    // #1493 P9 — host-supplied NIP-46 perm request for client-initiated
+    // `nostrconnect://` handshakes. Default `None`; the leaf app (e.g. Chirp,
+    // via `nmp_app_chirp_register`) writes its product policy via
+    // `NmpApp::set_nostrconnect_perms` before `nmp_app_start`. NMP supplies no
+    // default (#1493). Like the bootstrap-relay slot this is NOT shared with the
+    // actor thread (the read path is FFI-synchronous on the calling thread).
+    let nostrconnect_perms: NostrConnectPermsSlot = new_nostrconnect_perms_slot();
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
     let mls_local_nsec: MlsLocalNsecSlot = new_mls_local_nsec_slot();
@@ -1239,6 +1261,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         configured_relays,
         initial_relays_for_start: Mutex::new(Vec::new()),
         nostrconnect_bootstrap_relay,
+        nostrconnect_perms,
         mls_local_nsec,
         active_local_keys,
         active_account_handle,

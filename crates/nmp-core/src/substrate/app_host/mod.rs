@@ -272,6 +272,19 @@ pub trait RoutingFactoryRegistrar {
     /// substrate surfaces a typed error rather than silently using a hardcoded
     /// URL (V-65 / D0).
     fn set_nostrconnect_bootstrap_relay(&self, url: String);
+
+    /// Register the host-supplied NIP-46 permission request advertised in
+    /// client-initiated `nostrconnect://` handshakes.
+    ///
+    /// Must be called before `nmp_app_start`. `perms` is the comma-joined
+    /// NIP-46 perm list in plain (NOT percent-encoded) form, e.g.
+    /// `"sign_event:1,sign_event:7"`; the substrate percent-encodes it when it
+    /// assembles the `&perms=` query parameter. Which event kinds an app asks
+    /// the signer to sign is leaf-app product policy, not framework policy
+    /// (#1493): NMP (including the composition library) supplies NO default, and
+    /// when no perms are registered the handshake omits the `&perms=` parameter
+    /// entirely rather than baking in a framework-chosen kind set.
+    fn set_nostrconnect_perms(&self, perms: String);
 }
 
 /// Read-only host capability accessors — the active account identity, the

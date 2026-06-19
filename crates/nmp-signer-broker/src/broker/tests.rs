@@ -47,7 +47,11 @@ fn noop_relay_shutdown_is_a_noop() {
 #[test]
 fn start_nostrconnect_handshake_returns_well_formed_uri() {
     let (broker, _rx) = test_broker();
-    let uri = broker.start_nostrconnect_handshake("not-a-url".to_string());
+    // #1493 P9 — the perm request is app-supplied. Pass the canonical Chirp
+    // policy (kind:1 notes + kind:7 reactions) and assert it round-trips
+    // percent-encoded into the `&perms=` parameter.
+    let uri =
+        broker.start_nostrconnect_handshake("not-a-url".to_string(), Some("sign_event:1,sign_event:7".to_string()));
     broker.cancel();
 
     assert!(
@@ -86,9 +90,34 @@ fn start_nostrconnect_handshake_returns_well_formed_uri() {
         query.contains("name=nmp"),
         "uri must carry a protocol-neutral client name (D0): {query:?}"
     );
+    // App-supplied perms are present and percent-encoded (`:` -> %3A,
+    // `,` -> %2C); the broker bakes in NO kind set of its own.
+    let perms_param = query
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("perms="))
+        .expect("uri must carry the app-supplied perms param");
+    assert_eq!(
+        perms_param, "sign_event%3A1%2Csign_event%3A7",
+        "perms must be the percent-encoded app-supplied value: {perms_param:?}"
+    );
+}
+
+#[test]
+fn start_nostrconnect_handshake_omits_perms_when_app_supplies_none() {
+    // #1493 P9 — when the host supplies no perm policy, NMP omits the `&perms=`
+    // parameter entirely rather than falling back to a framework-chosen set.
+    let (broker, _rx) = test_broker();
+    let uri = broker.start_nostrconnect_handshake("not-a-url".to_string(), None);
+    broker.cancel();
+
+    let query = uri
+        .strip_prefix("nostrconnect://")
+        .and_then(|s| s.split_once('?'))
+        .map(|(_, q)| q)
+        .expect("uri must carry a query string");
     assert!(
-        query.contains("perms="),
-        "uri must request perms: {query:?}"
+        !query.contains("perms="),
+        "uri must omit perms when none are supplied: {query:?}"
     );
 }
 

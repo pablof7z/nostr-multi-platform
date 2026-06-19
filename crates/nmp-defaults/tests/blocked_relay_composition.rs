@@ -124,6 +124,10 @@ impl RoutingFactoryRegistrar for CompositionSpy {
     fn set_nostrconnect_bootstrap_relay(&self, _url: String) {
         unreachable!("register_substrate does not set the nostrconnect bootstrap relay");
     }
+
+    fn set_nostrconnect_perms(&self, _perms: String) {
+        unreachable!("register_substrate does not set the nostrconnect perms");
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
