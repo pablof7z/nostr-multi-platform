@@ -313,9 +313,16 @@ enum TypedProjectionGlue {
         ProfileCard(
             pubkey: card.pubkey ?? "",
             displayName: card.hasDisplayName ? (card.displayName ?? "") : nil,
+            name: card.hasName ? (card.name ?? "") : nil,
+            rawDisplayName: card.hasRawDisplayName ? (card.rawDisplayName ?? "") : nil,
+            displayNameCamel: card.hasDisplayNameCamel ? (card.displayNameCamel ?? "") : nil,
             pictureUrl: card.hasPictureUrl ? (card.pictureUrl ?? "") : nil,
+            banner: card.hasBanner ? (card.banner ?? "") : nil,
+            website: card.hasWebsite ? (card.website ?? "") : nil,
             nip05: card.nip05 ?? "",
             about: card.about ?? "",
+            lud16: card.hasLud16 ? (card.lud16 ?? "") : nil,
+            lud06: card.hasLud06 ? (card.lud06 ?? "") : nil,
             lnurl: card.hasLnurl ? (card.lnurl ?? "") : nil
         )
     }

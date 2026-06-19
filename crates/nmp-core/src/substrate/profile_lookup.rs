@@ -27,6 +27,8 @@
 
 use std::sync::Arc;
 
+use serde_json::{Map, Value};
+
 /// Protocol-neutral view of a cached kind:0 profile.
 ///
 /// Carries the raw kind:0 fields the kernel projects, with `Option`/empty-string
@@ -44,15 +46,32 @@ pub struct ProfileView {
     /// Verbatim display-name value (`display_name` / `displayName` / `name`,
     /// first non-empty wins). Empty string when the metadata carried none.
     pub display: String,
+    /// Raw `name` field from kind:0, when present.
+    pub name: Option<String>,
+    /// Raw snake-case `display_name` field from kind:0, when present.
+    pub raw_display_name: Option<String>,
+    /// Raw camel-case `displayName` field from kind:0, when present.
+    pub display_name_camel: Option<String>,
     /// Raw picture URL, or `None` when absent / not `http`-prefixed.
     pub picture_url: Option<String>,
+    /// Raw `banner` field from kind:0, when present.
+    pub banner: Option<String>,
+    /// Raw `website` field from kind:0, when present.
+    pub website: Option<String>,
     /// NIP-05 identifier, empty string when absent.
     pub nip05: String,
     /// About / bio text, empty string when absent.
     pub about: String,
+    /// Raw NIP-57 lightning address (`lud16`), when present.
+    pub lud16: Option<String>,
+    /// Raw NIP-57 LNURL-pay value (`lud06`), when present.
+    pub lud06: Option<String>,
     /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`), `None` when
     /// neither is present (or both are empty).
     pub lnurl: Option<String>,
+    /// Full kind:0 JSON object, used only inside Rust to preserve unknown
+    /// third-party fields when publishing profile edits.
+    pub raw_fields: Map<String, Value>,
 }
 
 /// Lookup + eviction contract over a per-pubkey kind:0 profile cache.
@@ -207,9 +226,20 @@ impl ProfileLookup for TestProfileCache {
                     .map(|p| {
                         p.event_id.len()
                             + p.display.len()
+                            + p.name.as_ref().map_or(0, String::len)
+                            + p.raw_display_name.as_ref().map_or(0, String::len)
+                            + p.display_name_camel.as_ref().map_or(0, String::len)
                             + p.picture_url.as_ref().map_or(0, String::len)
+                            + p.banner.as_ref().map_or(0, String::len)
+                            + p.website.as_ref().map_or(0, String::len)
                             + p.nip05.len()
                             + p.about.len()
+                            + p.lud16.as_ref().map_or(0, String::len)
+                            + p.lud06.as_ref().map_or(0, String::len)
+                            + p.raw_fields
+                                .iter()
+                                .map(|(k, v)| k.len() + v.to_string().len())
+                                .sum::<usize>()
                             + 96
                     })
                     .sum()
@@ -286,23 +316,19 @@ impl crate::substrate::IngestParser for TestKind0Parser {
 /// same cache shape as production without depending on `nmp-nip01`.
 #[cfg(any(test, feature = "test-support"))]
 fn parse_kind0_content(event_id: &str, created_at: u64, content: &str) -> ProfileView {
-    #[derive(Default, serde::Deserialize)]
-    struct ProfileContent {
-        name: Option<String>,
-        display_name: Option<String>,
-        #[serde(rename = "displayName")]
-        display_name_camel: Option<String>,
-        picture: Option<String>,
-        nip05: Option<String>,
-        about: Option<String>,
-        lud16: Option<String>,
-        lud06: Option<String>,
-    }
-    let parsed = serde_json::from_str::<ProfileContent>(content).unwrap_or_default();
-    let display = parsed
-        .display_name
-        .or(parsed.display_name_camel)
-        .or(parsed.name)
+    let raw_fields = serde_json::from_str::<Map<String, Value>>(content).unwrap_or_default();
+    let name = string_field(&raw_fields, "name");
+    let raw_display_name = string_field(&raw_fields, "display_name");
+    let display_name_camel = string_field(&raw_fields, "displayName");
+    let picture = string_field(&raw_fields, "picture");
+    let nip05 = string_field(&raw_fields, "nip05");
+    let about = string_field(&raw_fields, "about");
+    let lud16 = string_field(&raw_fields, "lud16");
+    let lud06 = string_field(&raw_fields, "lud06");
+    let display = raw_display_name
+        .clone()
+        .or_else(|| display_name_camel.clone())
+        .or_else(|| name.clone())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_default();
@@ -310,14 +336,29 @@ fn parse_kind0_content(event_id: &str, created_at: u64, content: &str) -> Profil
         event_id: event_id.to_string(),
         created_at,
         display,
-        picture_url: parsed.picture.filter(|value| value.starts_with("http")),
-        nip05: parsed.nip05.unwrap_or_default(),
-        about: parsed.about.unwrap_or_default(),
-        lnurl: parsed
-            .lud16
+        name,
+        raw_display_name,
+        display_name_camel,
+        picture_url: picture.filter(|value| value.starts_with("http")),
+        banner: string_field(&raw_fields, "banner"),
+        website: string_field(&raw_fields, "website"),
+        nip05: nip05.unwrap_or_default(),
+        about: about.unwrap_or_default(),
+        lud16: lud16.clone(),
+        lud06: lud06.clone(),
+        lnurl: lud16
             .filter(|s| !s.trim().is_empty())
-            .or_else(|| parsed.lud06.filter(|s| !s.trim().is_empty())),
+            .or_else(|| lud06.filter(|s| !s.trim().is_empty())),
+        raw_fields,
     }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn string_field(raw_fields: &Map<String, Value>, key: &str) -> Option<String> {
+    raw_fields
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 #[cfg(test)]

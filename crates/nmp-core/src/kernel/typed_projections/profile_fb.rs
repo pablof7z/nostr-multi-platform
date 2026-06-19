@@ -47,7 +47,7 @@ pub const PROFILE_SCHEMA_ID: &str = "profile";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const PROFILE_FILE_IDENTIFIER: &[u8; 4] = b"KPRF";
 /// Wire schema version. Bump on any breaking change to `profile.fbs`.
-pub const PROFILE_SCHEMA_VERSION: u32 = 1;
+pub const PROFILE_SCHEMA_VERSION: u32 = 2;
 
 /// A field-for-field mirror of one [`ProfileCard`](crate::kernel) — the shared
 /// row type the `profile` and `author_view` codecs both encode (into their own
@@ -58,9 +58,16 @@ pub struct ProfileCardModel {
     pub pubkey: String,
     pub npub: String,
     pub display_name: Option<String>,
+    pub name: Option<String>,
+    pub raw_display_name: Option<String>,
+    pub display_name_camel: Option<String>,
     pub picture_url: Option<String>,
+    pub banner: Option<String>,
+    pub website: Option<String>,
     pub nip05: String,
     pub about: String,
+    pub lud16: Option<String>,
+    pub lud06: Option<String>,
     pub lnurl: Option<String>,
 }
 
@@ -85,8 +92,21 @@ fn create_profile_card<'a>(
         .picture_url
         .as_ref()
         .map(|value| fbb.create_string(value));
+    let name = card.name.as_ref().map(|value| fbb.create_string(value));
+    let raw_display_name = card
+        .raw_display_name
+        .as_ref()
+        .map(|value| fbb.create_string(value));
+    let display_name_camel = card
+        .display_name_camel
+        .as_ref()
+        .map(|value| fbb.create_string(value));
+    let banner = card.banner.as_ref().map(|value| fbb.create_string(value));
+    let website = card.website.as_ref().map(|value| fbb.create_string(value));
     let nip05 = fbb.create_string(&card.nip05);
     let about = fbb.create_string(&card.about);
+    let lud16 = card.lud16.as_ref().map(|value| fbb.create_string(value));
+    let lud06 = card.lud06.as_ref().map(|value| fbb.create_string(value));
     let lnurl = card.lnurl.as_ref().map(|value| fbb.create_string(value));
     pc::ProfileCard::create(
         fbb,
@@ -100,6 +120,20 @@ fn create_profile_card<'a>(
             about: Some(about),
             has_lnurl: card.lnurl.is_some(),
             lnurl,
+            has_name: card.name.is_some(),
+            name,
+            has_raw_display_name: card.raw_display_name.is_some(),
+            raw_display_name,
+            has_display_name_camel: card.display_name_camel.is_some(),
+            display_name_camel,
+            has_banner: card.banner.is_some(),
+            banner,
+            has_website: card.website.is_some(),
+            website,
+            has_lud16: card.lud16.is_some(),
+            lud16,
+            has_lud06: card.lud06.is_some(),
+            lud06,
         },
     )
 }
@@ -130,11 +164,32 @@ pub fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
         display_name: card
             .has_display_name()
             .then(|| card.display_name().unwrap_or_default().to_string()),
+        name: card
+            .has_name()
+            .then(|| card.name().unwrap_or_default().to_string()),
+        raw_display_name: card
+            .has_raw_display_name()
+            .then(|| card.raw_display_name().unwrap_or_default().to_string()),
+        display_name_camel: card
+            .has_display_name_camel()
+            .then(|| card.display_name_camel().unwrap_or_default().to_string()),
         picture_url: card
             .has_picture_url()
             .then(|| card.picture_url().unwrap_or_default().to_string()),
+        banner: card
+            .has_banner()
+            .then(|| card.banner().unwrap_or_default().to_string()),
+        website: card
+            .has_website()
+            .then(|| card.website().unwrap_or_default().to_string()),
         nip05: card.nip05().unwrap_or_default().to_string(),
         about: card.about().unwrap_or_default().to_string(),
+        lud16: card
+            .has_lud16()
+            .then(|| card.lud16().unwrap_or_default().to_string()),
+        lud06: card
+            .has_lud06()
+            .then(|| card.lud06().unwrap_or_default().to_string()),
         lnurl: card
             .has_lnurl()
             .then(|| card.lnurl().unwrap_or_default().to_string()),

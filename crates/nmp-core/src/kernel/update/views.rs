@@ -1,11 +1,9 @@
-use super::super::{
-    truncate, AccountSummary, Kernel, ProfileCard, StoredEvent,
-};
+use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
 #[cfg(test)]
 use super::super::{MentionProfilePayload, TimelineItem};
-use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
 #[cfg(test)]
 use super::helpers::parse_repost_inner;
+use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
 use crate::substrate::ProfileView;
 
 impl Kernel {
@@ -176,7 +174,12 @@ impl Kernel {
         ProfileCard {
             pubkey: pubkey.to_string(),
             display_name,
+            name: profile.as_ref().and_then(|p| p.name.clone()),
+            raw_display_name: profile.as_ref().and_then(|p| p.raw_display_name.clone()),
+            display_name_camel: profile.as_ref().and_then(|p| p.display_name_camel.clone()),
             picture_url,
+            banner: profile.as_ref().and_then(|p| p.banner.clone()),
+            website: profile.as_ref().and_then(|p| p.website.clone()),
             nip05: profile
                 .as_ref()
                 .map(|profile| profile.nip05.clone())
@@ -188,11 +191,13 @@ impl Kernel {
             // NIP-57 — pre-extracted lightning address / LNURL from
             // kind:0 (lud16 preferred over lud06). `None` when no
             // kind:0 has arrived OR the metadata had no lnurl.
+            lud16: profile.as_ref().and_then(|p| p.lud16.clone()),
+            lud06: profile.as_ref().and_then(|p| p.lud06.clone()),
             lnurl: profile.as_ref().and_then(|p| p.lnurl.clone()),
         }
     }
 
-    pub(super) fn profile_for_pubkey(&self, pubkey: &str) -> Option<ProfileView> {
+    pub(crate) fn profile_for_pubkey(&self, pubkey: &str) -> Option<ProfileView> {
         // ADR-0057 PR 2 — profiles are capability-owned (`nmp_nip01::ProfileCache`
         // behind `Arc<dyn ProfileLookup>`). The cache uses interior mutability so
         // this read hands back an owned `ProfileView` (no borrow leaks out of the

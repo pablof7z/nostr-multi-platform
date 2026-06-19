@@ -162,11 +162,25 @@ pub struct ProfileCard {
     #[serde(default)]
     pub display_name: Option<String>,
     #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub raw_display_name: Option<String>,
+    #[serde(default)]
+    pub display_name_camel: Option<String>,
+    #[serde(default)]
     pub picture_url: Option<String>,
+    #[serde(default)]
+    pub banner: Option<String>,
+    #[serde(default)]
+    pub website: Option<String>,
     #[serde(default)]
     pub nip05: String,
     #[serde(default)]
     pub about: String,
+    #[serde(default)]
+    pub lud16: Option<String>,
+    #[serde(default)]
+    pub lud06: Option<String>,
     #[serde(default)]
     pub lnurl: Option<String>,
 }

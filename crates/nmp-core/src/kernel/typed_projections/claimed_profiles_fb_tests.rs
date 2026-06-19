@@ -8,7 +8,12 @@ fn card(pubkey: &str, named: bool) -> ProfileCardModel {
         // ADR-0032 / V-115: `npub` deprecated; always empty after decode.
         npub: String::new(),
         display_name: named.then(|| "Alice".to_string()),
+        name: named.then(|| "alice".to_string()),
+        raw_display_name: named.then(|| "Alice".to_string()),
+        display_name_camel: named.then(|| "Alice Camel".to_string()),
         picture_url: named.then(|| "https://example.com/a.png".to_string()),
+        banner: named.then(|| "https://example.com/banner.png".to_string()),
+        website: named.then(|| "https://alice.example".to_string()),
         nip05: if named {
             "alice@example.com".to_string()
         } else {
@@ -19,6 +24,8 @@ fn card(pubkey: &str, named: bool) -> ProfileCardModel {
         } else {
             String::new()
         },
+        lud16: named.then(|| "alice@ln.example".to_string()),
+        lud06: named.then(|| "lnurl1abc".to_string()),
         lnurl: named.then(|| "lnurl1abc".to_string()),
     }
 }
@@ -62,7 +69,14 @@ fn placeholder_card_keeps_none_options() {
         decode_claimed_profiles(&encode_claimed_profiles(&model)).expect("decode succeeds");
     let got = &decoded.entries[0].1;
     assert_eq!(got.display_name, None);
+    assert_eq!(got.name, None);
+    assert_eq!(got.raw_display_name, None);
+    assert_eq!(got.display_name_camel, None);
     assert_eq!(got.picture_url, None);
+    assert_eq!(got.banner, None);
+    assert_eq!(got.website, None);
+    assert_eq!(got.lud16, None);
+    assert_eq!(got.lud06, None);
     assert_eq!(got.lnurl, None);
 }
 

@@ -8,7 +8,12 @@ fn card(pubkey: &str, named: bool) -> ProfileCardModel {
         // ADR-0032 / V-115: `npub` deprecated; always empty after decode.
         npub: String::new(),
         display_name: named.then(|| "Bob".to_string()),
+        name: named.then(|| "bob".to_string()),
+        raw_display_name: named.then(|| "Bob".to_string()),
+        display_name_camel: named.then(|| "Bob Camel".to_string()),
         picture_url: named.then(|| "https://example.com/b.png".to_string()),
+        banner: named.then(|| "https://example.com/banner.png".to_string()),
+        website: named.then(|| "https://bob.example".to_string()),
         nip05: if named {
             "bob@example.com".to_string()
         } else {
@@ -19,6 +24,8 @@ fn card(pubkey: &str, named: bool) -> ProfileCardModel {
         } else {
             String::new()
         },
+        lud16: named.then(|| "bob@ln.example".to_string()),
+        lud06: named.then(|| "lnurl1def".to_string()),
         lnurl: named.then(|| "lnurl1def".to_string()),
     }
 }

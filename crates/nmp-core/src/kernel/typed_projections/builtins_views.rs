@@ -25,9 +25,16 @@ fn profile_card_model(card: &super::super::ProfileCard) -> ProfileCardModel {
         // now shell-side. Pass empty string; the FlatBuffers slot is deprecated.
         npub: String::new(),
         display_name: card.display_name.clone(),
+        name: card.name.clone(),
+        raw_display_name: card.raw_display_name.clone(),
+        display_name_camel: card.display_name_camel.clone(),
         picture_url: card.picture_url.clone(),
+        banner: card.banner.clone(),
+        website: card.website.clone(),
         nip05: card.nip05.clone(),
         about: card.about.clone(),
+        lud16: card.lud16.clone(),
+        lud06: card.lud06.clone(),
         lnurl: card.lnurl.clone(),
     }
 }

@@ -31,9 +31,16 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     private static let fullCard = CardFields(
         pubkey: "typedpubkey00",
         displayName: "Typed Display",
+        name: "typed",
+        rawDisplayName: "Typed Display",
+        displayNameCamel: "Typed Camel",
         pictureUrl: "https://typed.example/pic.png",
+        banner: "https://typed.example/banner.png",
+        website: "https://typed.example",
         nip05: "typed@example.com",
         about: "typed about text",
+        lud16: "typed@ln.example",
+        lud06: "lnurl1typed",
         lnurl: "typed@walletofsatoshi.com")
 
     // MARK: - profile (KPRF)
@@ -48,7 +55,7 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let envelope = TypedProjectionEnvelope(
             key: TypedProfileDecoder.key,
             schemaId: TypedProfileDecoder.schemaId,
-            schemaVersion: 1,
+            schemaVersion: 2,
             fileIdentifier: TypedProfileDecoder.fileIdentifier,
             payload: buildProfile(Self.fullCard))
 
@@ -67,7 +74,7 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let envelope = TypedProjectionEnvelope(
             key: TypedProfileDecoder.key,
             schemaId: "not.profile",
-            schemaVersion: 1,
+            schemaVersion: 2,
             fileIdentifier: TypedProfileDecoder.fileIdentifier,
             payload: buildProfile(Self.fullCard))
         XCTAssertNil(TypedProfileDecoder.decode(from: [envelope]))
@@ -115,7 +122,7 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let envelope = TypedProjectionEnvelope(
             key: TypedClaimedProfilesDecoder.key,
             schemaId: TypedClaimedProfilesDecoder.schemaId,
-            schemaVersion: 1,
+            schemaVersion: 2,
             fileIdentifier: TypedClaimedProfilesDecoder.fileIdentifier,
             payload: buildProfileMap(buildClaimedProfiles, [("pkA", a), ("pkB", b)]))
 
@@ -134,7 +141,7 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let envelope = TypedProjectionEnvelope(
             key: TypedClaimedProfilesDecoder.key,
             schemaId: "not.claimed_profiles",
-            schemaVersion: 1,
+            schemaVersion: 2,
             fileIdentifier: TypedClaimedProfilesDecoder.fileIdentifier,
             payload: buildProfileMap(buildClaimedProfiles, [("pk", .simple(pubkey: "pk", display: "x"))]))
         XCTAssertNil(TypedClaimedProfilesDecoder.decode(from: [envelope]))
@@ -169,7 +176,7 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let envelope = TypedProjectionEnvelope(
             key: TypedResolvedProfilesDecoder.key,
             schemaId: TypedResolvedProfilesDecoder.schemaId,
-            schemaVersion: 1,
+            schemaVersion: 2,
             fileIdentifier: TypedResolvedProfilesDecoder.fileIdentifier,
             payload: buildProfileMap(buildResolvedProfiles, [("pk1", a)]))
 
@@ -206,10 +213,45 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     struct CardFields {
         let pubkey: String
         let displayName: String?
+        let name: String?
+        let rawDisplayName: String?
+        let displayNameCamel: String?
         let pictureUrl: String?
+        let banner: String?
+        let website: String?
         let nip05: String
         let about: String
+        let lud16: String?
+        let lud06: String?
         let lnurl: String?
+
+        init(pubkey: String,
+             displayName: String?,
+             name: String? = nil,
+             rawDisplayName: String? = nil,
+             displayNameCamel: String? = nil,
+             pictureUrl: String?,
+             banner: String? = nil,
+             website: String? = nil,
+             nip05: String,
+             about: String,
+             lud16: String? = nil,
+             lud06: String? = nil,
+             lnurl: String?) {
+            self.pubkey = pubkey
+            self.displayName = displayName
+            self.name = name
+            self.rawDisplayName = rawDisplayName
+            self.displayNameCamel = displayNameCamel
+            self.pictureUrl = pictureUrl
+            self.banner = banner
+            self.website = website
+            self.nip05 = nip05
+            self.about = about
+            self.lud16 = lud16
+            self.lud06 = lud06
+            self.lnurl = lnurl
+        }
 
         static func simple(pubkey: String, display: String) -> CardFields {
             CardFields(
@@ -222,9 +264,16 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
                              file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(card.pubkey, fields.pubkey, file: file, line: line)
         XCTAssertEqual(card.displayName, fields.displayName, file: file, line: line)
+        XCTAssertEqual(card.name, fields.name, file: file, line: line)
+        XCTAssertEqual(card.rawDisplayName, fields.rawDisplayName, file: file, line: line)
+        XCTAssertEqual(card.displayNameCamel, fields.displayNameCamel, file: file, line: line)
         XCTAssertEqual(card.pictureUrl, fields.pictureUrl, file: file, line: line)
+        XCTAssertEqual(card.banner, fields.banner, file: file, line: line)
+        XCTAssertEqual(card.website, fields.website, file: file, line: line)
         XCTAssertEqual(card.nip05, fields.nip05, file: file, line: line)
         XCTAssertEqual(card.about, fields.about, file: file, line: line)
+        XCTAssertEqual(card.lud16, fields.lud16, file: file, line: line)
+        XCTAssertEqual(card.lud06, fields.lud06, file: file, line: line)
         XCTAssertEqual(card.lnurl, fields.lnurl, file: file, line: line)
     }
 
@@ -233,9 +282,16 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     private func encodeCard(_ fbb: inout FlatBufferBuilder, _ c: CardFields) -> Offset {
         let pubkeyOff = fbb.create(string: c.pubkey)
         let displayOff = c.displayName.map { fbb.create(string: $0) } ?? Offset()
+        let nameOff = c.name.map { fbb.create(string: $0) } ?? Offset()
+        let rawDisplayOff = c.rawDisplayName.map { fbb.create(string: $0) } ?? Offset()
+        let displayCamelOff = c.displayNameCamel.map { fbb.create(string: $0) } ?? Offset()
         let pictureOff = c.pictureUrl.map { fbb.create(string: $0) } ?? Offset()
+        let bannerOff = c.banner.map { fbb.create(string: $0) } ?? Offset()
+        let websiteOff = c.website.map { fbb.create(string: $0) } ?? Offset()
         let nip05Off = fbb.create(string: c.nip05)
         let aboutOff = fbb.create(string: c.about)
+        let lud16Off = c.lud16.map { fbb.create(string: $0) } ?? Offset()
+        let lud06Off = c.lud06.map { fbb.create(string: $0) } ?? Offset()
         let lnurlOff = c.lnurl.map { fbb.create(string: $0) } ?? Offset()
         return nmp_kernel_ProfileCard.createProfileCard(
             &fbb,
@@ -247,7 +303,21 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
             nip05Offset: nip05Off,
             aboutOffset: aboutOff,
             hasLnurl: c.lnurl != nil,
-            lnurlOffset: lnurlOff)
+            lnurlOffset: lnurlOff,
+            hasName: c.name != nil,
+            nameOffset: nameOff,
+            hasRawDisplayName: c.rawDisplayName != nil,
+            rawDisplayNameOffset: rawDisplayOff,
+            hasDisplayNameCamel: c.displayNameCamel != nil,
+            displayNameCamelOffset: displayCamelOff,
+            hasBanner: c.banner != nil,
+            bannerOffset: bannerOff,
+            hasWebsite: c.website != nil,
+            websiteOffset: websiteOff,
+            hasLud16: c.lud16 != nil,
+            lud16Offset: lud16Off,
+            hasLud06: c.lud06 != nil,
+            lud06Offset: lud06Off)
     }
 
     private func buildProfile(_ c: CardFields) -> Data {

@@ -57,4 +57,20 @@ table ProfileCard {
   // `has_lnurl == false` mirrors JSON `null`.
   has_lnurl:bool;
   lnurl:string;
+  // Raw app-neutral kind:0 fields. These are append-only additions; derived
+  // display_name above remains the presentation-ready first-non-empty field.
+  has_name:bool;
+  name:string;
+  has_raw_display_name:bool;
+  raw_display_name:string;
+  has_display_name_camel:bool;
+  display_name_camel:string;
+  has_banner:bool;
+  banner:string;
+  has_website:bool;
+  website:string;
+  has_lud16:bool;
+  lud16:string;
+  has_lud06:bool;
+  lud06:string;
 }

@@ -8,9 +8,16 @@ fn populated() -> ProfileCardModel {
         // ADR-0032 / V-115: `npub` deprecated; always empty in codec round-trips.
         npub: String::new(),
         display_name: Some("Alice".to_string()),
+        name: Some("alice".to_string()),
+        raw_display_name: Some("Alice".to_string()),
+        display_name_camel: Some("Alice Camel".to_string()),
         picture_url: Some("https://img/alice.png".to_string()),
+        banner: Some("https://img/banner.png".to_string()),
+        website: Some("https://alice.example".to_string()),
         nip05: "alice@example.com".to_string(),
         about: "hello".to_string(),
+        lud16: Some("alice@ln.example".to_string()),
+        lud06: Some("lnurl1abc".to_string()),
         lnurl: Some("alice@walletofsatoshi.com".to_string()),
     }
 }
@@ -21,9 +28,16 @@ fn placeholder() -> ProfileCardModel {
         pubkey: String::new(),
         npub: String::new(),
         display_name: None,
+        name: None,
+        raw_display_name: None,
+        display_name_camel: None,
         picture_url: None,
+        banner: None,
+        website: None,
         nip05: String::new(),
         about: "Waiting for kind:0 from indexer".to_string(),
+        lud16: None,
+        lud06: None,
         lnurl: None,
     }
 }
@@ -43,7 +57,14 @@ fn placeholder_card_round_trips_with_all_options_none() {
     let decoded = decode_profile(&bytes).expect("decode must succeed");
     assert_eq!(decoded, model);
     assert!(decoded.display_name.is_none());
+    assert!(decoded.name.is_none());
+    assert!(decoded.raw_display_name.is_none());
+    assert!(decoded.display_name_camel.is_none());
     assert!(decoded.picture_url.is_none());
+    assert!(decoded.banner.is_none());
+    assert!(decoded.website.is_none());
+    assert!(decoded.lud16.is_none());
+    assert!(decoded.lud06.is_none());
     assert!(decoded.lnurl.is_none());
 }
 

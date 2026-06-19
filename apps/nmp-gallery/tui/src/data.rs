@@ -21,8 +21,7 @@ use ratatui_image::protocol::Protocol;
 
 use crate::{
     content_render_data::ContentRenderData, content_tree_wire::ContentTreeWire,
-    live::GalleryTypedSnapshot,
-    profile_wire::ProfileWire,
+    live::GalleryTypedSnapshot, profile_wire::ProfileWire,
 };
 
 /// Real Nostr references shared by every NmpGallery host.
@@ -165,7 +164,6 @@ impl LiveProfileMap {
             .entry(pubkey.to_string())
             .or_insert_with(|| profile_wire_for_pubkey(pubkey))
     }
-
 }
 
 /// Build a name-less `ProfileWire` for `pubkey`: identity fields only
@@ -187,7 +185,9 @@ pub fn profile_wire_for_pubkey(pubkey: &str) -> ProfileWire {
 /// Normalise an optional string: `None` and empty/whitespace-only strings
 /// all become `None`; non-empty trimmed values become `Some`.
 fn non_empty(s: Option<&str>) -> Option<String> {
-    s.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+    s.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 impl GalleryData {
@@ -269,8 +269,10 @@ fn tree_for_content(content: &str) -> Result<ContentTreeWire, String> {
 #[cfg(test)]
 mod live_profile_map_tests {
     use super::*;
-    use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel, ResolvedProfilesModel};
     use crate::live::GalleryTypedSnapshot;
+    use nmp_core::typed_projections::{
+        ClaimedEventsModel, ProfileCardModel, ResolvedProfilesModel,
+    };
 
     fn typed_snapshot_with_profile(pubkey: &str, card: ProfileCardModel) -> GalleryTypedSnapshot {
         GalleryTypedSnapshot {
@@ -296,6 +298,7 @@ mod live_profile_map_tests {
             nip05: "name@example.com".to_string(),
             about: "merged once in the kernel".to_string(),
             lnurl: None,
+            ..Default::default()
         };
         let snapshot = typed_snapshot_with_profile(pubkey, card);
 
@@ -304,7 +307,10 @@ mod live_profile_map_tests {
 
         let wire = map.resolve(pubkey);
         assert_eq!(wire.display_name.as_deref(), Some("Resolved Name"));
-        assert_eq!(wire.picture_url.as_deref(), Some("https://example.com/a.png"));
+        assert_eq!(
+            wire.picture_url.as_deref(),
+            Some("https://example.com/a.png")
+        );
         assert_eq!(wire.nip05.as_deref(), Some("name@example.com"));
         assert_eq!(wire.about.as_deref(), Some("merged once in the kernel"));
     }

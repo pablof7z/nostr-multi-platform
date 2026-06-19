@@ -539,8 +539,8 @@ use types::TimelineItem;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
     MentionProfilePayload, Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
-    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent,
-    TimingMilestones, WireSub, WireSubscriptionState, WireSubscriptionStatus, MAX_NOTICE_LOG,
+    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimingMilestones,
+    WireSub, WireSubscriptionState, WireSubscriptionStatus, MAX_NOTICE_LOG,
 };
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
@@ -1210,8 +1210,7 @@ pub struct Kernel {
     /// chokepoint (`kernel/ingest/persistence.rs`) for every event whose
     /// outcome passes `ExternalEventSinkDispatcher::should_emit`.
     /// Generic capability (D0) — no protocol nouns.
-    external_event_sink_dispatcher:
-        Option<crate::substrate::ExternalEventSinkDispatcher>,
+    external_event_sink_dispatcher: Option<crate::substrate::ExternalEventSinkDispatcher>,
     /// Host-extensible snapshot output slot. Integration lives in
     /// `kernel/snapshot_registry.rs`; `None` until the actor binds the
     /// shared `Arc<Mutex<…>>` via `set_snapshot_projection_handle`. Each
@@ -2654,6 +2653,23 @@ impl Kernel {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
         self.active_account = Some(pubkey.into());
+    }
+
+    /// Test seam for crate-level command tests that need a cached kind:0
+    /// profile without fabricating a full signed event through the ingest
+    /// chokepoint. Production profile writes still flow through the injected
+    /// kind:0 parser; this reaches only the test cache installed by
+    /// [`Kernel::new`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn seed_profile_kind0_for_test(
+        &self,
+        pubkey: &str,
+        event_id: &str,
+        created_at: u64,
+        content: &str,
+    ) -> bool {
+        self.test_profile_cache
+            .ingest_kind0(pubkey, event_id, created_at, content)
     }
 
     /// Read-only access to the injected [`OutboxRouter`].

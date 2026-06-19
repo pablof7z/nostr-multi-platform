@@ -343,12 +343,26 @@ struct ProfileCard: Decodable, Equatable {
     /// first non-empty wins). `nil` when no kind:0 has arrived yet —
     /// presentation layer renders its own fallback.
     let displayName: String?
+    /// Raw `name` field from kind:0, when present.
+    let name: String?
+    /// Raw snake-case `display_name` field from kind:0, when present.
+    let rawDisplayName: String?
+    /// Raw camel-case `displayName` field from kind:0, when present.
+    let displayNameCamel: String?
     /// Picture URL from kind:0. `nil` when no kind:0 has arrived yet or
     /// the metadata carries no `picture` field — presentation layer
     /// chooses a placeholder strategy.
     let pictureUrl: String?
+    /// Raw `banner` field from kind:0, when present.
+    let banner: String?
+    /// Raw `website` field from kind:0, when present.
+    let website: String?
     let nip05: String
     let about: String
+    /// Raw `lud16` lightning address from kind:0.
+    let lud16: String?
+    /// Raw `lud06` LNURL field from kind:0.
+    let lud06: String?
     /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
     /// from kind:0. `nil` when the user has no lightning address or their
     /// kind:0 hasn't arrived. The zap button is shown only when this is

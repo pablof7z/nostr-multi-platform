@@ -63,9 +63,16 @@ final class ProfileNameFallbackTests: XCTestCase {
         ProfileCard(
             pubkey: pubkey,
             displayName: displayName,
+            name: nil,
+            rawDisplayName: nil,
+            displayNameCamel: nil,
             pictureUrl: nil,
+            banner: nil,
+            website: nil,
             nip05: "",
             about: "",
+            lud16: nil,
+            lud06: nil,
             lnurl: nil)
     }
 

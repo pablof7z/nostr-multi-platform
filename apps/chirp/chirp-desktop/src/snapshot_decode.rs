@@ -49,9 +49,16 @@ fn profile_card_value(card: &nmp_core::typed_projections::ProfileCardModel) -> s
         "pubkey": card.pubkey,
         "npub": card.npub,
         "display_name": card.display_name,
+        "name": card.name,
+        "raw_display_name": card.raw_display_name,
+        "display_name_camel": card.display_name_camel,
         "picture_url": card.picture_url,
+        "banner": card.banner,
+        "website": card.website,
         "nip05": card.nip05,
         "about": card.about,
+        "lud16": card.lud16,
+        "lud06": card.lud06,
         "lnurl": card.lnurl,
     })
 }
@@ -79,9 +86,16 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             pubkey: m.pubkey,
             npub: m.npub,
             display_name: m.display_name,
+            name: m.name,
+            raw_display_name: m.raw_display_name,
+            display_name_camel: m.display_name_camel,
             picture_url: m.picture_url,
+            banner: m.banner,
+            website: m.website,
             nip05: m.nip05,
             about: m.about,
+            lud16: m.lud16,
+            lud06: m.lud06,
             lnurl: m.lnurl,
         })
         .unwrap_or_default();

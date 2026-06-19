@@ -111,7 +111,6 @@ fn snapshot_carries_advancing_last_tick_ms() {
     );
 }
 
-
 // V-112 (ADR-0042): d5_view_dependent_keys_absent_when_no_view_open deleted —
 // author_view / thread_view projection bounding is removed with those projections.
 // The open_author / open_thread methods and AuthorViewState / ThreadViewState are
@@ -148,7 +147,7 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
         created_at: 1_700_000_000,
         kind: 0,
         tags: vec![],
-        content: r#"{"display_name":"Satoshi","nip05":"sat@example.com","about":"hi there","picture":"https://example.com/sat.png"}"#
+        content: r#"{"name":"sat","display_name":"Satoshi","displayName":"Satoshi Camel","nip05":"sat@example.com","about":"hi there","picture":"https://example.com/sat.png","banner":"https://example.com/banner.png","website":"https://satoshi.example","lud16":"sat@ln.example","lud06":"lnurl1sat"}"#
             .to_string(),
         sig: String::new(),
     };
@@ -161,16 +160,23 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
         Some("Satoshi"),
         "kind:0 display_name must be projected into profile.display_name",
     );
+    assert_eq!(card["name"].as_str(), Some("sat"));
+    assert_eq!(card["raw_display_name"].as_str(), Some("Satoshi"));
+    assert_eq!(card["display_name_camel"].as_str(), Some("Satoshi Camel"));
     assert_eq!(
         card["picture_url"].as_str(),
         Some("https://example.com/sat.png"),
         "kind:0 picture must be projected into profile.picture_url",
     );
+    assert_eq!(card["banner"].as_str(), Some("https://example.com/banner.png"));
+    assert_eq!(card["website"].as_str(), Some("https://satoshi.example"));
     assert_eq!(
         card["nip05"].as_str(),
         Some("sat@example.com"),
         "kind:0 nip05 must be projected into profile.nip05",
     );
+    assert_eq!(card["lud16"].as_str(), Some("sat@ln.example"));
+    assert_eq!(card["lud06"].as_str(), Some("lnurl1sat"));
     // The diagnostic profile counter must agree.
     assert_eq!(
         after["metrics"]["profile_events"].as_u64(),
@@ -497,7 +503,6 @@ fn outbox_summary_projects_sending_counters_and_strings() {
 // author_view_carries_note_count_display_string — all deleted.
 // author_view projection and profile_action_for() removed from kernel.
 
-
 /// V-115 / ADR-0032: projection sends raw hex pubkey only; shells encode
 /// bech32 and any abbreviation host-side. `npub` must be ABSENT from the
 /// JSON projection.
@@ -523,7 +528,6 @@ fn profile_card_carries_raw_pubkey_without_npub() {
         "npub_short field was removed by aim.md §2 — shells own abbreviation"
     );
 }
-
 
 // V-112 (ADR-0042): mention_profiles_projection_carries_each_author_in_author_view
 // deleted — mention_profiles now comes from claimed_profiles (component-owned claiming).

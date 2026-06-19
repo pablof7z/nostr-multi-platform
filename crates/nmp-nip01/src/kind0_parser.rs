@@ -30,29 +30,12 @@ use std::sync::Arc;
 
 use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, ProfileView};
-use serde::Deserialize;
+use serde_json::{Map, Value};
 
 use crate::profile_cache::ProfileCache;
 
 /// NIP-01 — the kind number for profile-metadata events.
 const KIND_PROFILE_METADATA: u32 = 0;
-
-/// Subset of the kind:0 JSON object the cache projects. Mirrors the kernel's
-/// former `ProfileContent` deserializer exactly.
-#[derive(Default, Deserialize)]
-struct ProfileContent {
-    name: Option<String>,
-    display_name: Option<String>,
-    #[serde(rename = "displayName")]
-    display_name_camel: Option<String>,
-    picture: Option<String>,
-    nip05: Option<String>,
-    about: Option<String>,
-    /// NIP-57 lightning address (`user@domain`). Preferred over `lud06`.
-    lud16: Option<String>,
-    /// NIP-57 LNURL-pay bech32 (`lnurl1…`). Used when `lud16` is absent.
-    lud06: Option<String>,
-}
 
 /// The kind:0 ingest parser. Constructed with a shared `Arc<ProfileCache>`
 /// handle — the same `Arc` the kernel holds as its `Arc<dyn ProfileLookup>`,
@@ -92,11 +75,19 @@ impl IngestParser for Kind0Parser {
 /// Decode a kind:0 `content` JSON object into a [`ProfileView`]. Verbatim port
 /// of the kernel's former `parse_profile`.
 fn parse_profile_view(event_id: &str, created_at: u64, content: &str) -> ProfileView {
-    let parsed = serde_json::from_str::<ProfileContent>(content).unwrap_or_default();
-    let display = parsed
-        .display_name
-        .or(parsed.display_name_camel)
-        .or(parsed.name)
+    let raw_fields = serde_json::from_str::<Map<String, Value>>(content).unwrap_or_default();
+    let name = string_field(&raw_fields, "name");
+    let raw_display_name = string_field(&raw_fields, "display_name");
+    let display_name_camel = string_field(&raw_fields, "displayName");
+    let picture = string_field(&raw_fields, "picture");
+    let nip05 = string_field(&raw_fields, "nip05");
+    let about = string_field(&raw_fields, "about");
+    let lud16 = string_field(&raw_fields, "lud16");
+    let lud06 = string_field(&raw_fields, "lud06");
+    let display = raw_display_name
+        .clone()
+        .or_else(|| display_name_camel.clone())
+        .or_else(|| name.clone())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_default();
@@ -104,14 +95,28 @@ fn parse_profile_view(event_id: &str, created_at: u64, content: &str) -> Profile
         event_id: event_id.to_string(),
         created_at,
         display,
-        picture_url: parsed.picture.filter(|value| value.starts_with("http")),
-        nip05: parsed.nip05.unwrap_or_default(),
-        about: parsed.about.unwrap_or_default(),
-        lnurl: parsed
-            .lud16
+        name,
+        raw_display_name,
+        display_name_camel,
+        picture_url: picture.filter(|value| value.starts_with("http")),
+        banner: string_field(&raw_fields, "banner"),
+        website: string_field(&raw_fields, "website"),
+        nip05: nip05.unwrap_or_default(),
+        about: about.unwrap_or_default(),
+        lud16: lud16.clone(),
+        lud06: lud06.clone(),
+        lnurl: lud16
             .filter(|s| !s.trim().is_empty())
-            .or_else(|| parsed.lud06.filter(|s| !s.trim().is_empty())),
+            .or_else(|| lud06.filter(|s| !s.trim().is_empty())),
+        raw_fields,
     }
+}
+
+fn string_field(raw_fields: &Map<String, Value>, key: &str) -> Option<String> {
+    raw_fields
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -151,9 +156,28 @@ mod tests {
         assert_eq!(v.picture_url.as_deref(), Some("https://img.example/a.png"));
         assert_eq!(v.nip05, "alice@example.com");
         assert_eq!(v.about, "hi");
+        assert_eq!(v.raw_display_name.as_deref(), Some("Alice"));
         assert_eq!(v.lnurl.as_deref(), Some("alice@ln.example"));
+        assert_eq!(v.lud16.as_deref(), Some("alice@ln.example"));
         assert_eq!(v.event_id, "aa");
         assert_eq!(v.created_at, 100);
+    }
+
+    #[test]
+    fn captures_app_neutral_raw_fields_and_unknowns() {
+        let cache = Arc::new(ProfileCache::new());
+        let parser = Kind0Parser::new(Arc::clone(&cache));
+        let content = r#"{"name":"alice","displayName":"Alice C","banner":"nostr:bad","website":"https://example.com","unknown_app_field":{"x":1}}"#;
+        assert!(parser.parse_event(&evt("alice", "aa", 0, 100, content)));
+        let v = cache.profile("alice").expect("cached");
+        assert_eq!(v.name.as_deref(), Some("alice"));
+        assert_eq!(v.display_name_camel.as_deref(), Some("Alice C"));
+        assert_eq!(v.banner.as_deref(), Some("nostr:bad"));
+        assert_eq!(v.website.as_deref(), Some("https://example.com"));
+        assert_eq!(
+            v.raw_fields.get("unknown_app_field"),
+            Some(&serde_json::json!({"x":1}))
+        );
     }
 
     #[test]
@@ -164,7 +188,13 @@ mod tests {
         parser.parse_event(&evt("a", "1", 0, 1, r#"{"display_name":" D ","name":"N"}"#));
         assert_eq!(cache.profile("a").expect("cached").display, "D");
         // displayName (camel) used when display_name absent
-        parser.parse_event(&evt("b", "1", 0, 1, r#"{"displayName":"Camel","name":"N"}"#));
+        parser.parse_event(&evt(
+            "b",
+            "1",
+            0,
+            1,
+            r#"{"displayName":"Camel","name":"N"}"#,
+        ));
         assert_eq!(cache.profile("b").expect("cached").display, "Camel");
         // name used when neither present
         parser.parse_event(&evt("c", "1", 0, 1, r#"{"name":"Nm"}"#));
@@ -175,7 +205,13 @@ mod tests {
     fn non_http_picture_filtered() {
         let cache = Arc::new(ProfileCache::new());
         let parser = Kind0Parser::new(Arc::clone(&cache));
-        parser.parse_event(&evt("a", "1", 0, 1, r#"{"picture":"data:image/png;base64,x"}"#));
+        parser.parse_event(&evt(
+            "a",
+            "1",
+            0,
+            1,
+            r#"{"picture":"data:image/png;base64,x"}"#,
+        ));
         assert!(cache.profile("a").expect("cached").picture_url.is_none());
     }
 
@@ -183,8 +219,17 @@ mod tests {
     fn lud06_used_when_lud16_absent_or_empty() {
         let cache = Arc::new(ProfileCache::new());
         let parser = Kind0Parser::new(Arc::clone(&cache));
-        parser.parse_event(&evt("a", "1", 0, 1, r#"{"lud16":"  ","lud06":"lnurl1abc"}"#));
-        assert_eq!(cache.profile("a").expect("cached").lnurl.as_deref(), Some("lnurl1abc"));
+        parser.parse_event(&evt(
+            "a",
+            "1",
+            0,
+            1,
+            r#"{"lud16":"  ","lud06":"lnurl1abc"}"#,
+        ));
+        assert_eq!(
+            cache.profile("a").expect("cached").lnurl.as_deref(),
+            Some("lnurl1abc")
+        );
     }
 
     #[test]
