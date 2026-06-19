@@ -62,6 +62,13 @@ pub const KIND_CHAT_MESSAGE: u32 = 14;
 /// without the call sites carrying a magic literal.
 pub const KIND_CHANNEL_METADATA: u32 = 41;
 
+// ─── NIP-68 — picture-first feeds ───────────────────────────────────────────
+
+/// NIP-68 picture-first feed event (kind:20). Carries one or more externally
+/// hosted images through NIP-92 `imeta` tags. Decode/build logic lives in
+/// `nmp-nip68`; this constant is only Layer-0 vocabulary.
+pub const KIND_PICTURE_EVENT: u32 = 20;
+
 // ─── Marmot (MLS over Nostr, MIP-00..03) — group-messaging kinds ───────────
 
 /// Marmot KeyPackage event (kind:30443, NIP-33 addressable). Current spec.

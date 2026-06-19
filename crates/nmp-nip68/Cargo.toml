@@ -1,0 +1,15 @@
+[package]
+name = "nmp-nip68"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-68 picture-first feed primitives for NMP: kind:20 PictureEventRecord decoder, NIP-92 imeta parser, and PicturePostBuilder blueprint."
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-kinds = { path = "../nmp-kinds" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
