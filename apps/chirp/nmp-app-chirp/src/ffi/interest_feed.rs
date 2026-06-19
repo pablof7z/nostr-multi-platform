@@ -50,6 +50,7 @@ use std::sync::Arc;
 use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
+use nmp_feed::{ClosureInterestShape, PullFeedController};
 use nmp_ffi::{
     nmp_app_close_contact_feed, nmp_app_close_interest, nmp_app_open_contact_feed,
     nmp_app_open_interest, NmpApp,
@@ -59,7 +60,7 @@ use nmp_nip01::op_feed::{
 };
 use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
 
-use super::helpers::c_string_opt;
+use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_shape};
 
 /// The note-kind policy for both the author and thread flat feeds: kind:1
 /// (text note) + kind:6 (repost). Defined ONCE so the `open_interest` filter
@@ -89,33 +90,12 @@ fn thread_feed_key(event_id_hex: &str) -> String {
     format!("nmp.feed.thread.{event_id_hex}")
 }
 
-/// Register the typed `NOFS` op-feed sidecar for a dynamic author/thread feed
-/// ALONGSIDE the generic `Value` projection that `register_feed_with_observer`
-/// already installed.
-///
-/// A [`FlatFeed`] snapshot is a
-/// [`RootFeedSnapshot`](nmp_feed::RootFeedSnapshot)`<TimelineEventCard,
-/// Nip10ReplyAttribution>` — the SAME wire shape the home feed emits
-/// (`nmp_nip01::OpFeedSnapshot`), so it encodes through the existing
-/// [`encode_op_feed_snapshot`] with NO new `.fbs` schema. The sidecar is keyed
-/// by the SAME dynamic key (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`)
-/// under the op-feed schema id (`nmp.nip01.opfeed`), exactly as
-/// [`nmp_defaults::register_op_feed_defaults`] does for `nmp.feed.home`. A
-/// host with a `NOFS` decoder prefers this typed payload; an un-updated host
-/// falls back to the generic `Value` subtree (ADR-0037 Commitment 4). Additive.
-///
-/// Teardown: [`NmpApp::unregister_feed`] removes the generic AND the typed
-/// projection by key, so [`nmp_app_chirp_close_author_feed`] /
-/// [`nmp_app_chirp_close_thread_feed`] need no extra step.
-///
-/// Known waste, deferred (mirrors `register_op_feed_defaults`): this closure
-/// snapshots the feed again on the same tick the generic `FeedController` path
-/// snapshots it (two window materializations per 4 Hz tick). Not load-bearing
-/// for correctness; the feed is bounded by D5 retention.
+/// Register the typed NOFS op-feed sidecar alongside the generic `Value`
+/// projection that `register_feed_with_observer` already installed. Uses the
+/// same `encode_op_feed_snapshot` wire shape as the home feed (no new schema).
+/// Teardown via `unregister_feed` covers both lanes — no extra step needed.
 fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
     app.register_typed_snapshot_projection(key.clone(), move || {
-        // `FeedRequest::default()` is the SAME window `FlatFeed::snapshot_json` uses,
-        // so the typed and JSON payloads are byte-for-byte the same feed.
         let snapshot = feed.snapshot(&nmp_feed::FeedRequest::default());
         Some(nmp_core::TypedProjectionData {
             key: key.clone(),
@@ -167,7 +147,15 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     let feed = FlatFeed::new(author_feed_predicate(pubkey.clone(), FEED_KINDS.to_vec()));
     seed_author_feed_from_store(app_ref, &feed, &pubkey);
     let key = author_feed_key(&pubkey);
-    app_ref.register_feed_with_observer(key.clone(), feed.clone(), feed.clone());
+    // B1: drain store history by ingest seq via PullFeedController (FlatFeed = push observer).
+    let pk_for_shape = pubkey.clone();
+    let provider = Arc::new(ClosureInterestShape::new(move || author_feed_shape(&pk_for_shape, &FEED_KINDS)));
+    let pull = make_pull_fn(app_ref.event_store_handle());
+    let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
+    let advance: nmp_feed::FeedAdvance = Arc::new(|| ());
+    if let Some(pull_ctrl) = PullFeedController::new(provider, pull, apply, advance) {
+        app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
+    }
     register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
@@ -226,7 +214,15 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     let feed = FlatFeed::new(thread_feed_predicate(root_id.clone(), FEED_KINDS.to_vec()));
     seed_thread_feed_from_store(app_ref, &feed, &root_id);
     let key = thread_feed_key(&root_id);
-    app_ref.register_feed_with_observer(key.clone(), feed.clone(), feed.clone());
+    // B1: pull the reply tail (#e-covered shape); root-by-id seeded above.
+    let root_for_shape = root_id.clone();
+    let provider = Arc::new(ClosureInterestShape::new(move || thread_feed_shape(&root_for_shape, &FEED_KINDS)));
+    let pull = make_pull_fn(app_ref.event_store_handle());
+    let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
+    let advance: nmp_feed::FeedAdvance = Arc::new(|| ());
+    if let Some(pull_ctrl) = PullFeedController::new(provider, pull, apply, advance) {
+        app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
+    }
     register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
