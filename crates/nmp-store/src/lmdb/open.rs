@@ -16,16 +16,31 @@ use super::relay_scores;
 use super::LmdbEventStore;
 use crate::StoreError;
 
+/// Production map size: 32 GB on 64-bit.  Referenced by the error classifier
+/// so that `ReaderExhaustion`/`MapFull` diagnostics carry the exact limit used.
+pub(super) const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
+
+/// Maximum concurrent LMDB readers in the production configuration.
+pub(super) const MAX_READERS: u32 = 126;
+
 /// Open or create an LMDB store at `path`.
 ///
 /// Shared-env design: `Lmdb::with_env` opens the upstream 11 sub-dbs on the
 /// provided `Env`; we create 11 additional NMP sub-dbs on the same transaction
 /// so all writes are atomic.
 pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
-    // 32 GB on 64-bit; the upstream default. The fork's `with_env` wraps the
-    // 11 internal sub-dbs; we reserve 9 additional for NMP-side data.
-    const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
-    const MAX_READERS: u32 = 126;
+    open_impl_with_limits(path, MAP_SIZE, MAX_READERS)
+}
+
+/// Test-only seam: open with custom map_size / max_readers so that tests can
+/// trigger `MapFull` / `ReaderExhaustion` without large allocations or long
+/// waits.  Production code always calls `open_impl` which uses the constants.
+pub(super) fn open_impl_with_limits(
+    path: &Path,
+    map_size: usize,
+    max_readers: u32,
+) -> Result<LmdbEventStore, StoreError> {
+    use super::open_error::{classify_heed_err, classify_store_err};
     // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
     // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1),
@@ -40,22 +55,23 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
-    let env = Lmdb::open_env(path, MAP_SIZE, MAX_READERS, NMP_ADDITIONAL_DBS)
-        .map_err(|e| StoreError::Io(format!("open_env: {e}")))?;
-    let lmdb = Lmdb::with_env(env.clone()).map_err(|e| StoreError::Io(format!("with_env: {e}")))?;
+    let env = Lmdb::open_env(path, map_size, max_readers, NMP_ADDITIONAL_DBS)
+        .map_err(|e| classify_store_err(e, map_size, max_readers))?;
+    let lmdb = Lmdb::with_env(env.clone())
+        .map_err(|e| classify_store_err(e, map_size, max_readers))?;
 
     // Open NMP sub-dbs on the shared env in one write txn (atomic with the
     // upstream schema). The local closure keeps the call sites DRY.
     let mut txn = env
         .write_txn()
-        .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))?;
     let open =
         |name: &str, txn: &mut heed::RwTxn| -> Result<heed::Database<Bytes, Bytes>, StoreError> {
             env.database_options()
                 .types::<Bytes, Bytes>()
                 .name(name)
                 .create(txn)
-                .map_err(|e| StoreError::Io(format!("open {name}: {e}")))
+                .map_err(|e| classify_heed_err(e, map_size, max_readers))
         };
     let provenance = open("nmp-provenance", &mut txn)?;
     let tombstones = open("nmp-tombstones", &mut txn)?;
@@ -84,9 +100,10 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
         let mut max_seq: u64 = 0;
         for entry in lru_access
             .iter(&txn)
-            .map_err(|e| StoreError::Io(format!("lru iter: {e}")))?
+            .map_err(|e| classify_heed_err(e, map_size, max_readers))?
         {
-            let (_, v) = entry.map_err(|e| StoreError::Io(format!("lru entry: {e}")))?;
+            let (_, v) =
+                entry.map_err(|e| classify_heed_err(e, map_size, max_readers))?;
             if v.len() >= 8 {
                 let seq = u64::from_be_bytes(v[..8].try_into().unwrap());
                 if seq > max_seq {
@@ -98,7 +115,7 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     };
 
     txn.commit()
-        .map_err(|e| StoreError::Io(format!("commit init: {e}")))?;
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))?;
 
     // V-118 — one-time backfill: populate the expiry index for any events that
     // were stored before the index existed (pre-V-118 databases).  Gated by
@@ -116,7 +133,15 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // (pre-#1518 databases).  Gated by the domain_versions key so the scan runs
     // exactly once.  Must run AFTER the relay-index backfill is irrelevant to
     // ordering — it reads provenance + events independently.
-    backfill_relay_kind_index(&env, &lmdb, provenance, relay_kind, domain_versions)?;
+    backfill_relay_kind_index(
+        &env,
+        &lmdb,
+        provenance,
+        relay_kind,
+        domain_versions,
+        map_size,
+        max_readers,
+    )?;
 
     // Issue #1519 — interaction-counter schema init.
     let interaction_counters_usable =
@@ -127,6 +152,8 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
         inner: Arc::new(Inner {
             env,
             lmdb,
+            map_size,
+            max_readers,
             provenance,
             tombstones,
             addr_tombstones,
@@ -179,6 +206,14 @@ fn backfill_expiry_index(
     expiry_index: Database<Bytes, Bytes>,
     domain_versions: Database<Bytes, Bytes>,
 ) -> Result<(), StoreError> {
+    // Convenience: map any write error in this migration to MigrationFailed.
+    let migration_err = |_e: heed::Error| StoreError::MigrationFailed {
+        namespace: "nmp-expiry-index".into(),
+        from: 0,
+        to: 1,
+        reason: "backfill write failed (lmdb-io)".into(),
+    };
+
     // O(1) gate — skip the full-store scan if the migration already ran.
     {
         let txn = env
@@ -215,23 +250,20 @@ fn backfill_expiry_index(
     };
 
     // Write index entries + version key in a single atomic transaction.
-    let mut txn = env
-        .write_txn()
-        .map_err(|e| StoreError::Io(format!("backfill write_txn: {e}")))?;
+    let mut txn = env.write_txn().map_err(migration_err)?;
     for (id, exp) in entries {
         let mut key = [0u8; 40];
         key[..8].copy_from_slice(&exp.to_be_bytes());
         key[8..].copy_from_slice(&id);
         expiry_index
             .put(&mut txn, &key, &[])
-            .map_err(|e| StoreError::Io(format!("backfill put: {e}")))?;
+            .map_err(migration_err)?;
     }
     // Mark migration as done — this is the gate key checked on subsequent opens.
     domain_versions
         .put(&mut txn, EXPIRY_INDEX_BACKFILL_KEY, &1u32.to_be_bytes())
-        .map_err(|e| StoreError::Io(format!("backfill version put: {e}")))?;
-    txn.commit()
-        .map_err(|e| StoreError::Io(format!("backfill commit: {e}")))?;
+        .map_err(migration_err)?;
+    txn.commit().map_err(migration_err)?;
     Ok(())
 }
 
@@ -258,6 +290,14 @@ fn backfill_relay_index(
     relay_index: Database<Bytes, Bytes>,
     domain_versions: Database<Bytes, Bytes>,
 ) -> Result<(), StoreError> {
+    // Convenience: map any write error in this migration to MigrationFailed.
+    let migration_err = |_e: heed::Error| StoreError::MigrationFailed {
+        namespace: "nmp-relay-index".into(),
+        from: 0,
+        to: 1,
+        reason: "backfill write failed (lmdb-io)".into(),
+    };
+
     // O(1) gate — skip the full provenance scan if the migration already ran.
     {
         let txn = env
@@ -297,20 +337,17 @@ fn backfill_relay_index(
     };
 
     // Write index entries + version key in a single atomic transaction.
-    let mut txn = env
-        .write_txn()
-        .map_err(|e| StoreError::Io(format!("relay backfill write_txn: {e}")))?;
+    let mut txn = env.write_txn().map_err(migration_err)?;
     for (relay_url, id) in entries {
         let key = super::provenance::relay_index_key(&relay_url, &id);
         relay_index
             .put(&mut txn, &key, &[])
-            .map_err(|e| StoreError::Io(format!("relay backfill put: {e}")))?;
+            .map_err(migration_err)?;
     }
     domain_versions
         .put(&mut txn, RELAY_INDEX_BACKFILL_KEY, &1u32.to_be_bytes())
-        .map_err(|e| StoreError::Io(format!("relay backfill version put: {e}")))?;
-    txn.commit()
-        .map_err(|e| StoreError::Io(format!("relay backfill commit: {e}")))?;
+        .map_err(migration_err)?;
+    txn.commit().map_err(migration_err)?;
     Ok(())
 }
 
@@ -331,12 +368,15 @@ const RELAY_KIND_BACKFILL_KEY: &[u8] = b"nmp-relay-kind";
 /// relay in its provenance list, skipping privacy-gated kinds (checked inside
 /// `provenance::relay_kind_put`).  The event's kind comes from the primary
 /// store (one query over all events to build an `id → kind` map).
+#[allow(clippy::too_many_arguments)]
 fn backfill_relay_kind_index(
     env: &Env,
     lmdb: &Lmdb,
     provenance: Database<Bytes, Bytes>,
     relay_kind: Database<Bytes, Bytes>,
     domain_versions: Database<Bytes, Bytes>,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
     // O(1) gate — skip the full scan if the migration already ran.
     {
@@ -403,7 +443,9 @@ fn backfill_relay_kind_index(
         .write_txn()
         .map_err(|e| StoreError::Io(format!("relay-kind backfill write_txn: {e}")))?;
     for (relay_url, kind, id) in entries {
-        super::provenance::relay_kind_put(relay_kind, &mut txn, &relay_url, kind, &id)?;
+        super::provenance::relay_kind_put(
+            relay_kind, &mut txn, &relay_url, kind, &id, map_size, max_readers,
+        )?;
     }
     domain_versions
         .put(&mut txn, RELAY_KIND_BACKFILL_KEY, &1u32.to_be_bytes())

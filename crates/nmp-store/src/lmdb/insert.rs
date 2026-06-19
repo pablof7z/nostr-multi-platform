@@ -12,6 +12,7 @@ use nostr_database::FlatBufferBuilder;
 use nostr_database::RejectedReason;
 
 use super::{conv, gc, provenance, tombstones, Inner};
+use super::open_error::{classify_heed_err, classify_store_err};
 use crate::types::{EventId, InsertOutcome, RawEvent, RejectReason, RelayUrl, TombstoneOrigin};
 use crate::StoreError;
 
@@ -61,7 +62,7 @@ pub(super) fn insert(
     let mut txn = inner
         .env
         .write_txn()
-        .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
+        .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
 
     // 4. Per-id tombstone check (NMP-side).
     if let Some(tomb) = tombstones::get(inner.tombstones, &txn, &id_bytes)? {
@@ -75,7 +76,7 @@ pub(super) fn insert(
         };
         if applies {
             txn.commit()
-                .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+                .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
             return Ok(InsertOutcome::Tombstoned {
                 id: id_bytes,
                 kind5_event_id: tomb.kind5_event_id,
@@ -98,7 +99,7 @@ pub(super) fn insert(
             if let Some(tomb) = tombstones::get_addr(inner.addr_tombstones, &txn, &key)? {
                 if tomb.deleted_at >= event.created_at {
                     txn.commit()
-                        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+                        .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
                     return Ok(InsertOutcome::Tombstoned {
                         id: id_bytes,
                         kind5_event_id: tomb.kind5_event_id,
@@ -113,7 +114,7 @@ pub(super) fn insert(
     if event.kind == 5 {
         let outcome = super::insert_kind5::handle_kind5(inner, &mut txn, event, source, received_at_ms)?;
         txn.commit()
-            .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+            .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
         return Ok(outcome);
     }
 
@@ -127,10 +128,17 @@ pub(super) fn insert(
 
     // 9. Delegate to fork's save_event_with_txn (atomic event + index update).
     let mut fbb = FlatBufferBuilder::with_capacity(4096);
+    // This is the bulk event `put` — the LMDB write most likely to raise
+    // `MDB_MAP_FULL` once the map is exhausted. Route the fork error through the
+    // typed classifier (NOT a stringly `Io`) so map-full / reader-exhaustion
+    // surface as their typed `StoreError` health variants (#1521). A prior
+    // `StoreError::Io("save_event_with_txn: ...")` swallowed MapFull here, which
+    // is page-size dependent (it surfaced at commit on 16 KiB-page hosts but at
+    // this `put` on 4 KiB-page hosts), making the diagnostic look "flaky".
     let status = inner
         .lmdb
         .save_event_with_txn(&mut txn, &mut fbb, &nostr_ev)
-        .map_err(|e| StoreError::Io(format!("save_event_with_txn: {e}")))?;
+        .map_err(|e| classify_store_err(e, inner.map_size, inner.max_readers))?;
 
     // 10. Map fork status → InsertOutcome.
     let outcome = match status {
@@ -145,6 +153,8 @@ pub(super) fn insert(
                 source.clone(),
                 event.kind,
                 received_at_ms,
+                inner.map_size,
+                inner.max_readers,
             )?;
             // Stamp LRU access for the newly stored event.
             gc::lru_stamp(inner, &mut txn, &id_bytes)?;
@@ -208,6 +218,8 @@ pub(super) fn insert(
                 source.clone(),
                 event.kind,
                 received_at_ms,
+                inner.map_size,
+                inner.max_readers,
             )?;
             InsertOutcome::Duplicate {
                 id: id_bytes,
@@ -256,7 +268,7 @@ pub(super) fn insert(
     };
 
     txn.commit()
-        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+        .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
     Ok(outcome)
 }
 

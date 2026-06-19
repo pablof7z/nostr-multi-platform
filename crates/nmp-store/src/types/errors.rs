@@ -49,6 +49,18 @@ pub enum StoreError {
         reason: String,
     },
     UnknownNamespace(String),
+    /// LMDB reader slot exhausted; max_readers configured at store open.
+    /// D6/no-secrets: no private event content in this message.
+    ReaderExhaustion { max_readers: u32 },
+    /// LMDB map full; configured map_size at store open.
+    /// D6/no-secrets: no private event content in this message.
+    MapFull { map_size_bytes: u64 },
+    /// LMDB environment-level corruption or invalid state.
+    /// D6/no-secrets: no private event content in this message.
+    CorruptEnv(String),
+    /// LMDB binary version mismatch.
+    /// D6/no-secrets: no private event content in this message.
+    VersionMismatch { detail: String },
 }
 
 impl std::fmt::Display for StoreError {
@@ -62,6 +74,13 @@ impl std::fmt::Display for StoreError {
             Self::MigrationFailed { namespace, from, to, reason } =>
                 write!(f, "schema migration failed: {namespace} v{from}->{to}: {reason}"),
             Self::UnknownNamespace(s) => write!(f, "unknown namespace: {s}"),
+            Self::ReaderExhaustion { max_readers } =>
+                write!(f, "lmdb reader slot exhausted (max_readers={max_readers})"),
+            Self::MapFull { map_size_bytes } =>
+                write!(f, "lmdb map full (map_size_bytes={map_size_bytes})"),
+            Self::CorruptEnv(s) => write!(f, "lmdb environment corrupted or invalid: {s}"),
+            Self::VersionMismatch { detail } =>
+                write!(f, "lmdb binary version mismatch: {detail}"),
         }
     }
 }

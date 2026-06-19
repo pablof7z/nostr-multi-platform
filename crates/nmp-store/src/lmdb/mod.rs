@@ -60,6 +60,9 @@ mod interaction_counters;
 // Sub-db + env open logic extracted for LOC budget.
 #[cfg(feature = "lmdb-backend")]
 mod open;
+// LMDB-error classifier: heed/MdbError → typed StoreError variants (#1521).
+#[cfg(feature = "lmdb-backend")]
+mod open_error;
 
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod test_fixtures;
@@ -97,6 +100,9 @@ mod tests_secondary_index;
 // Issue #1519 — interaction-counter sidecar tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_interaction_counters;
+// #1521 — typed LMDB health diagnostics: classifier unit tests + integration tests.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_health_diag;
 
 use std::path::{Path, PathBuf};
 
@@ -145,6 +151,14 @@ mod inner {
     pub struct Inner {
         pub(crate) env: Env,
         pub(crate) lmdb: Lmdb,
+        /// Map size used when the env was opened.  Stored so that runtime
+        /// write errors can produce `StoreError::MapFull { map_size_bytes }`
+        /// carrying the exact limit (#1521 / D6-no-secrets).
+        pub(crate) map_size: usize,
+        /// Max concurrent readers used when the env was opened.  Stored so
+        /// that runtime read-txn errors can produce
+        /// `StoreError::ReaderExhaustion { max_readers }` (#1521 / D6-no-secrets).
+        pub(crate) max_readers: u32,
         /// Per-id provenance: event_id (32 bytes) → bincode(Vec<ProvenanceEntry>).
         pub(crate) provenance: Database<Bytes, Bytes>,
         /// Per-id tombstones with full metadata (NMP-side).

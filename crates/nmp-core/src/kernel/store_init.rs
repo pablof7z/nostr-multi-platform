@@ -64,6 +64,12 @@ pub(super) fn build_event_store(storage_path: Option<&str>) -> (EventStoreBundle
                     // stderr write; the caller stores this on
                     // `Kernel::store_open_failure` and emits it through the
                     // snapshot channel.
+                    //
+                    // `e.to_string()` now produces a typed classification string
+                    // (D6/no-secrets per StoreError Display constraints, #1521):
+                    // ReaderExhaustion, MapFull, CorruptEnv, VersionMismatch, and
+                    // MigrationFailed each emit bounded fixed-text + numeric limits
+                    // only — never paths, event content, pubkeys, or secrets.
                     return (
                         EventStoreBundle {
                             store: Arc::new(MemEventStore::new()),
