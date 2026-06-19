@@ -19,17 +19,12 @@ use serde_json::{json, Value};
 use crate::runtime::AppRuntime;
 use crate::Result;
 
+// #1607: nmp_app_wallet_{connect,disconnect,pay_invoice} deleted from the C ABI.
+// All wallet operations now route through nmp_app_dispatch_action (D11).
 unsafe extern "C" {
     fn nmp_app_remove_account(app: *mut c_void, identity_id: *const std::ffi::c_char);
     fn nmp_app_signin_bunker(app: *mut c_void, uri: *const std::ffi::c_char, make_active: u8);
     fn nmp_app_switch_active(app: *mut c_void, identity_id: *const std::ffi::c_char);
-    fn nmp_app_wallet_connect(app: *mut c_void, uri: *const std::ffi::c_char);
-    fn nmp_app_wallet_disconnect(app: *mut c_void);
-    fn nmp_app_wallet_pay_invoice(
-        app: *mut c_void,
-        bolt11: *const std::ffi::c_char,
-        amount_msats_or_null: *const std::ffi::c_char,
-    );
 }
 
 impl AppRuntime {
@@ -133,30 +128,32 @@ impl AppRuntime {
         })
     }
 
+    // ── NIP-47 wallet commands (#1607 — dispatch_action seam) ───────────────
+    //
+    // The bespoke nmp_app_wallet_{connect,disconnect,pay_invoice} C-ABI symbols
+    // were deleted (D11 — one action door). All three operations now route
+    // through `dispatch_action`. The bolt11 double-tap guard moved into
+    // `WalletPayInvoiceModule` in nmp-nip47.
+
     pub fn wallet_connect(&self, uri: &str) -> Result<()> {
-        self.with_cstr(uri, |c| unsafe {
-            nmp_app_wallet_connect(self.app_ptr().cast(), c.as_ptr())
-        })
+        let action = json!({ "Connect": { "uri": uri } });
+        let action_json = serde_json::to_string(&action)
+            .map_err(|e| format!("serialize wallet.connect action: {e}"))?;
+        self.dispatch_action("nmp.wallet.connect", &action_json)
+            .map(|_| ())
     }
 
     pub fn wallet_disconnect(&self) {
-        unsafe { nmp_app_wallet_disconnect(self.app_ptr().cast()) };
+        let _ = self.dispatch_action("nmp.wallet.disconnect", "\"Disconnect\"");
     }
 
     pub fn wallet_pay_invoice(&self, bolt11: &str, amount_msats: Option<&str>) -> Result<()> {
-        let bolt11 = CString::new(bolt11).map_err(|_| "invoice contains NUL byte".to_string())?;
-        let amount = amount_msats
-            .map(CString::new)
-            .transpose()
-            .map_err(|_| "amount contains NUL byte".to_string())?;
-        unsafe {
-            nmp_app_wallet_pay_invoice(
-                self.app_ptr().cast(),
-                bolt11.as_ptr(),
-                amount.as_ref().map_or(ptr::null(), |a| a.as_ptr()),
-            );
-        }
-        Ok(())
+        let amount: Option<u64> = amount_msats.and_then(|s| s.parse().ok());
+        let action = json!({ "PayInvoice": { "bolt11": bolt11, "amount_msats": amount } });
+        let action_json = serde_json::to_string(&action)
+            .map_err(|e| format!("serialize wallet.pay_invoice action: {e}"))?;
+        self.dispatch_action("nmp.wallet.pay_invoice", &action_json)
+            .map(|_| ())
     }
 
     pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String> {

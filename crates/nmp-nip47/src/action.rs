@@ -10,6 +10,17 @@
 //! `ActorCommand::WalletPayInvoice` variant (deleted in V-38). It emits
 //! `ActorCommand::Protocol(Box::new(WalletPayInvoiceCommand{...}))` so the
 //! kernel ships no NIP-47 nouns in its `ActorCommand` enum (D0).
+//!
+//! #1607 — the bolt11 double-tap dedup guard that previously lived in the
+//! FFI layer (`nmp-ffi::wallet::NmpApp::inflight_bolt11`) was moved into
+//! [`WalletPayInvoiceModule`]. The guard is per-module-instance (ADR-0052 rung
+//! 5.2: owned by value, no process-global), so two `NmpApp` instances in one
+//! process dedup independently. The FFI shims `nmp_app_wallet_*` were deleted;
+//! callers use `nmp_app_dispatch_action("nmp.wallet.*", …)` directly.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +31,16 @@ use crate::protocol::{
     WalletConnectCommand, WalletDisconnectCommand, WalletPayInvoiceCommand,
 };
 use crate::runtime::WalletRuntimeHandle;
+
+/// Time-to-live for an `inflight_bolt11` entry — the wall-clock window during
+/// which a same-invoice retap is rejected as a UI double-tap before it is
+/// dispatched through the action seam.
+///
+/// 60 s is sized for "the NWC response is in flight": long enough to absorb
+/// relay round-trip jitter, short enough that a wallet that never responds
+/// does not lock the user out of retrying. The `WalletRuntime` owns a separate
+/// `PENDING_PAYMENT_TTL_SECS` (90 s) guard for the on-wire dedup window.
+pub const INFLIGHT_BOLT11_TTL: Duration = Duration::from_secs(60);
 
 /// User-initiated wallet intents dispatchable through
 /// `nmp_app_dispatch_action` under the `nmp.wallet.pay_invoice` namespace.
@@ -161,15 +182,48 @@ impl ActionModule for WalletDisconnectModule {
 /// ADR-0052 rung 5.2: owns its per-app `WalletRuntimeHandle` by value, so the
 /// pay request reaches THIS app's wallet runtime (no process-global). This is
 /// what makes two `NmpApp` instances pay through independent wallets.
+///
+/// #1607: the UI-layer bolt11 double-tap guard (`inflight_bolt11`) that
+/// previously lived in `nmp-ffi::NmpApp` is now owned here by value —
+/// the same ADR-0052 rung 5.2 principle that removed the wallet runtime
+/// process-global. Two `NmpApp` instances therefore dedup independently;
+/// neither can observe the other's in-flight invoices.
 pub struct WalletPayInvoiceModule {
     pub runtime: WalletRuntimeHandle,
+    /// UI-layer bolt11 dedup guard: bolt11 strings accepted since the last
+    /// sweep. A same-invoice retap within [`INFLIGHT_BOLT11_TTL`] is rejected
+    /// by [`Self::start`] before the action reaches the actor, preventing
+    /// the user from double-tapping the Pay button. Entries are swept
+    /// lazily on each `start` call. D6: a poisoned mutex collapses to
+    /// "let the send through" (no user-visible lockout on poison).
+    inflight_bolt11: Mutex<HashMap<String, Instant>>,
 }
 
 impl WalletPayInvoiceModule {
     /// Construct the module bound to `runtime` (the per-app handle).
     #[must_use]
     pub fn new(runtime: WalletRuntimeHandle) -> Self {
-        Self { runtime }
+        Self {
+            runtime,
+            inflight_bolt11: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Returns `true` if `bolt11` is currently in-flight and the call should
+    /// be treated as a duplicate tap. Sweeps expired entries on every call
+    /// (D8 — no sleep/loop). D6: a poisoned mutex is treated as "not a
+    /// duplicate" so the user is never locked out by a poisoned guard.
+    fn is_duplicate_tap(&self, bolt11: &str) -> bool {
+        let Ok(mut guard) = self.inflight_bolt11.lock() else {
+            return false; // D6: poisoned mutex → let through
+        };
+        let now = Instant::now();
+        guard.retain(|_, started| now.duration_since(*started) < INFLIGHT_BOLT11_TTL);
+        if guard.contains_key(bolt11) {
+            return true;
+        }
+        guard.insert(bolt11.to_string(), now);
+        false
     }
 }
 
@@ -179,16 +233,27 @@ impl ActionModule for WalletPayInvoiceModule {
     type Action = WalletAction;
 
     /// Validate the action shape. `bolt11` must be non-empty.
+    ///
+    /// Also enforces the UI-layer double-tap guard: a same-`bolt11` retap
+    /// within [`INFLIGHT_BOLT11_TTL`] of the first is rejected with
+    /// `ActionRejection::Busy` so the host can surface a "payment in progress"
+    /// state rather than a user-visible error. The guard is per-module-instance
+    /// (no process-global) and sweeps expired entries lazily on each call (D8).
     fn start(
         &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
-        match action {
+        match &action {
             WalletAction::PayInvoice { bolt11, .. } => {
                 if bolt11.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "wallet pay_invoice requires a non-empty bolt11 invoice".to_string(),
+                    ));
+                }
+                if self.is_duplicate_tap(bolt11) {
+                    return Err(ActionRejection::Conflict(
+                        "payment already in progress for this invoice".to_string(),
                     ));
                 }
                 Ok(())
@@ -414,5 +479,88 @@ mod tests {
             }
             other => panic!("expected ActorCommand::Protocol, got {other:?}"),
         }
+    }
+
+    // ── Double-tap guard tests (#1607) ────────────────────────────────────
+
+    /// The first dispatch of a bolt11 is accepted; the second within TTL is
+    /// rejected as Conflict.
+    #[test]
+    fn same_bolt11_twice_second_is_conflict() {
+        let module = WalletPayInvoiceModule::new(handle());
+        let bolt11 = "lnbc100n1p0doubletap".to_string();
+
+        let first = module.start(&mut ctx(), WalletAction::PayInvoice {
+            bolt11: bolt11.clone(),
+            amount_msats: None,
+        });
+        assert!(first.is_ok(), "first tap must be accepted");
+
+        let second = module.start(&mut ctx(), WalletAction::PayInvoice {
+            bolt11,
+            amount_msats: None,
+        });
+        match second {
+            Err(ActionRejection::Conflict(msg)) => {
+                assert!(
+                    msg.contains("already in progress"),
+                    "conflict message should describe the state: {msg}"
+                );
+            }
+            other => panic!("expected Conflict rejection for duplicate bolt11, got {other:?}"),
+        }
+    }
+
+    /// Different bolt11 strings are independent — both pass.
+    #[test]
+    fn different_bolt11_strings_both_pass() {
+        let module = WalletPayInvoiceModule::new(handle());
+
+        module
+            .start(&mut ctx(), WalletAction::PayInvoice {
+                bolt11: "lnbc100n1p0aaaa".to_string(),
+                amount_msats: None,
+            })
+            .expect("first invoice must be accepted");
+
+        module
+            .start(&mut ctx(), WalletAction::PayInvoice {
+                bolt11: "lnbc200n1p0bbbb".to_string(),
+                amount_msats: None,
+            })
+            .expect("second distinct invoice must be accepted");
+    }
+
+    /// After the TTL the same bolt11 is accepted again.
+    #[test]
+    fn expired_inflight_entry_allows_retry() {
+        let module = WalletPayInvoiceModule::new(handle());
+        let bolt11 = "lnbc500n1p0expired";
+
+        module
+            .start(&mut ctx(), WalletAction::PayInvoice {
+                bolt11: bolt11.to_string(),
+                amount_msats: None,
+            })
+            .expect("first tap must be accepted");
+
+        // Backdate the entry so it appears expired.
+        {
+            let mut guard = module.inflight_bolt11.lock().unwrap();
+            let backdated = Instant::now()
+                .checked_sub(INFLIGHT_BOLT11_TTL + Duration::from_secs(1))
+                .expect("Instant::checked_sub(61s) must succeed");
+            if let Some(v) = guard.get_mut(bolt11) {
+                *v = backdated;
+            }
+        }
+
+        // After expiry the retry passes.
+        module
+            .start(&mut ctx(), WalletAction::PayInvoice {
+                bolt11: bolt11.to_string(),
+                amount_msats: None,
+            })
+            .expect("retry after TTL must be accepted");
     }
 }

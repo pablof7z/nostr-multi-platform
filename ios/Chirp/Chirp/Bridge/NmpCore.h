@@ -196,11 +196,12 @@ typedef void (*NmpEventObserverCallback)(void *context, const char *event_json);
 uint64_t nmp_app_register_event_observer(void *app, void *context, NmpEventObserverCallback callback);
 void nmp_app_unregister_event_observer(void *app, uint64_t id);
 
-// NIP-47 Nostr Wallet Connect. All fire-and-forget (D6); outcomes arrive via
-// the snapshot's `wallet_status` and `last_error_toast` fields.
-void nmp_app_wallet_connect(void *app, const char *uri);
-void nmp_app_wallet_disconnect(void *app);
-void nmp_app_wallet_pay_invoice(void *app, const char *bolt11, const char *amount_msats_or_null);
+// #1607: nmp_app_wallet_{connect,disconnect,pay_invoice} deleted.
+// iOS callers use nmp_app_dispatch_action with the wallet action namespaces:
+//   nmp_app_dispatch_action(app, "nmp.wallet.connect",    "{\"Connect\":{\"uri\":\"…\"}}")
+//   nmp_app_dispatch_action(app, "nmp.wallet.disconnect", "\"Disconnect\"")
+//   nmp_app_dispatch_action(app, "nmp.wallet.pay_invoice","{\"PayInvoice\":{\"bolt11\":\"…\",\"amount_msats\":null}}")
+// The bolt11 double-tap guard now lives in WalletPayInvoiceModule (nmp-nip47).
 
 // T118 / G3 — iOS scenePhase → kernel lifecycle bridge. ChirpApp observes
 // `@Environment(\.scenePhase)` and reports `.active` / `.background` here;

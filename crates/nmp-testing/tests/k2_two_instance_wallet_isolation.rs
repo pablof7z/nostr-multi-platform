@@ -40,7 +40,8 @@ use nmp_app_chirp::{
     nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
 };
 use nmp_ffi::{
-    nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_app_start, nmp_app_wallet_connect, NmpApp,
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_new,
+    nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
 };
 use nostr::{Keys, SecretKey, ToBech32};
 
@@ -67,6 +68,9 @@ fn build_chirp_app() -> (*mut NmpApp, *mut ChirpHandle) {
 
 /// Dispatch `nmp.wallet.connect` for `app` against a wallet whose service
 /// pubkey is `wallet_pubkey_hex`, pointed at a (never-dialed) relay URL.
+///
+/// #1607: uses `nmp_app_dispatch_action("nmp.wallet.connect", …)` directly
+/// — the deleted `nmp_app_wallet_connect` bespoke symbol is gone (D11).
 fn connect_wallet(app: *mut NmpApp, wallet_pubkey_hex: &str) {
     // A throwaway client secret — only its syntactic validity matters; the
     // relay is never dialed in this test, so no handshake occurs.
@@ -76,8 +80,18 @@ fn connect_wallet(app: *mut NmpApp, wallet_pubkey_hex: &str) {
         "ws://127.0.0.1:1/never-dialed",
         &client_secret_hex,
     );
-    let uri_c = CString::new(uri).expect("uri NUL-free");
-    nmp_app_wallet_connect(app, uri_c.as_ptr());
+    let action_json = serde_json::to_string(&serde_json::json!({
+        "Connect": { "uri": uri }
+    }))
+    .expect("connect action JSON must serialize");
+    let ns = CString::new("nmp.wallet.connect").expect("namespace NUL-free");
+    let body = CString::new(action_json).expect("action_json NUL-free");
+    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
+    if !ptr.is_null() {
+        // SAFETY: nmp_app_dispatch_action returns a heap-allocated NUL-terminated
+        // C string that must be freed with nmp_free_string.
+        nmp_free_string(ptr);
+    }
 }
 
 /// The connected wallet pubkey reported by an app's `"wallet"` projection,
