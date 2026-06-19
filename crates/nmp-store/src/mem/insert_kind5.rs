@@ -110,14 +110,18 @@ pub(super) fn handle_kind5_insert(
         let addr_key = format!("{tgt_kind_str}:{tgt_pk}:{tgt_dtag}");
 
         // BLOCKING 3: split addressable vs regular-replaceable target matching.
-        // Parity: lmdb/insert_kind5.rs:168 (coord.kind.is_addressable()) vs
-        //         :230 (coord.kind.is_replaceable()).
-        // Addressable: kinds 30000-39999 (carry a d-tag that disambiguates instances).
-        // Regular replaceable: kind 0, 3, 10000-19999 (a-tag coord has empty d-tag).
-        // Neither: a-tag coordinate cannot target that kind — skip deletion entirely.
-        let is_addressable_kind = (30000u32..=39999).contains(&tgt_kind);
-        let is_replaceable_kind =
-            tgt_kind == 0 || tgt_kind == 3 || (10000u32..=19999).contains(&tgt_kind);
+        // Parity by construction: use the SAME nostr predicates LMDB uses
+        // (lmdb/insert_kind5.rs:168 `coord.kind.is_addressable()` / :230
+        // `coord.kind.is_replaceable()`) instead of hand-rolled ranges — the
+        // hand-rolled set silently dropped kind 41 (ChannelMetadata), which
+        // `Kind::is_replaceable()` includes, so a kind:5 a-tag targeting a
+        // kind:41 event removed/logged on LMDB but not Mem. Single source of
+        // truth for the kind classification removes that class of divergence.
+        // A kind that is neither addressable nor replaceable cannot be the
+        // target of an a-tag coordinate — skip deletion entirely.
+        let tgt_kind_obj = nostr::Kind::from(tgt_kind as u16);
+        let is_addressable_kind = tgt_kind_obj.is_addressable();
+        let is_replaceable_kind = tgt_kind_obj.is_replaceable();
 
         let to_delete: Vec<String> = st
             .events

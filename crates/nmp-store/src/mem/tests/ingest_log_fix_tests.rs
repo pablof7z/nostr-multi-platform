@@ -222,6 +222,68 @@ fn kind5_atag_regular_replaceable_removes_target_and_logs() {
     }
 }
 
+/// Regression for the kind-set divergence codex caught: `Kind::is_replaceable()`
+/// (the predicate LMDB uses) includes kind 41 (ChannelMetadata), which the old
+/// hand-rolled Mem range `0 || 3 || 10000..=19999` silently excluded. With Mem
+/// now calling the same nostr predicate, a kind:5 a-tag `41:<pubkey>:` MUST
+/// remove + log the kind:41 target, matching LMDB.
+#[test]
+fn kind5_atag_channel_metadata_kind41_removes_target_and_logs() {
+    let store = MemEventStore::new();
+
+    let pk_hex = "09".repeat(32);
+    let target = RawEvent {
+        id: "bb".repeat(32),
+        pubkey: pk_hex.clone(),
+        created_at: 100,
+        kind: 41,
+        tags: vec![],
+        content: String::new(),
+        sig: "a".repeat(128),
+    };
+    let target_id = target.id_bytes().unwrap();
+    store
+        .insert(unchecked(target), &RELAY.to_string(), 100_000)
+        .unwrap();
+
+    let addr = format!("41:{pk_hex}:");
+    let k5 = make_kind5_atag(0x24, 0x09, 200, addr);
+    store
+        .insert(unchecked(k5), &RELAY.to_string(), 200_000)
+        .unwrap();
+
+    assert!(
+        !store
+            .state
+            .lock()
+            .unwrap()
+            .events
+            .contains_key(&"bb".repeat(32)),
+        "kind:41 (ChannelMetadata, replaceable) target must be removed by kind:5 a-tag"
+    );
+
+    match store.scan_log_since_seq(0, 100).unwrap() {
+        ScanLogResult::Page(page) => {
+            let deleted = page
+                .entries
+                .iter()
+                .filter(|e| {
+                    matches!(
+                        &e.op,
+                        LogOp::Deleted { reason: DeleteReason::Nip09, target_id: tid }
+                        if *tid == target_id
+                    )
+                })
+                .count();
+            assert_eq!(
+                deleted, 1,
+                "must emit exactly one Deleted{{Nip09}} for the kind:41 target (LMDB parity)"
+            );
+        }
+        ScanLogResult::Gap(_) => panic!("expected Page"),
+    }
+}
+
 // ── Fix 1: a-tag with non-replaceable kind removes nothing ───────────────────
 
 /// A kind:5 with an a-tag coord `1:<pubkey>:` (kind:1 is neither addressable
