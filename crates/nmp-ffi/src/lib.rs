@@ -843,7 +843,7 @@ pub struct NmpApp {
 pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // ADR-0050 §D3a — one waking inbox of `ActorMail`. `command_tx` is the host
     // `CommandSender` (stored on `NmpApp`); the actor receives on `command_rx`.
-    let (inbox_tx, command_rx) = mpsc::channel::<nmp_core::ActorMail>();
+    let (inbox_tx, command_rx) = mpsc::channel::<nmp_core::__ffi_internal::ActorMail>();
     let command_tx = nmp_core::CommandSender::new(inbox_tx);
     let (update_tx, update_rx) = mpsc::channel();
     let update_callback = new_update_callback_slot();

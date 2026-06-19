@@ -14,7 +14,7 @@ use std::sync::Arc;
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
 use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
 use nmp_core::slots::new_indexer_relays_slot;
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::BlockedRelaySet;
 
 fn no_block() -> BlockedRelaySet {

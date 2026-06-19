@@ -4870,6 +4870,7 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-nip92-types",
+ "nmp-store",
  "serde",
 ]
 

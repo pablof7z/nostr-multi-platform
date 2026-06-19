@@ -101,32 +101,27 @@ pub mod nip21;
 // External callers must depend on `nmp-planner` directly and use
 // `nmp_planner::*`; the `nmp_core::planner` re-export path is deleted
 // (#1608, D0/D3: facades leak planner internals into the app-facing surface).
+// Only items actively used by nmp-core internals are re-exported here; the
+// old catch-all list is trimmed so unused-import warnings become impossible.
 pub(crate) mod planner {
-    pub use nmp_planner::compiler::{
-        CompileContext, EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot,
-        SubscriptionCompiler,
-    };
+    pub use nmp_planner::compiler::{MailboxCache, MailboxSnapshot, SubscriptionCompiler};
     pub use nmp_planner::interest::{
         bounded_search_query, HintSource, InterestId, InterestLifecycle, InterestScope,
-        InterestShape, LogicalInterest, NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
-        MAX_SEARCH_QUERY_CHARS,
+        InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayHint, RelayUrl,
     };
-    pub use nmp_planner::lattice::{merge, MergeOutcome};
-    pub use nmp_planner::plan::{
-        canonical_filter_hash, CompiledPlan, HintOrigin, InterestAttribution, PlannerError,
-        RelayAttribution, RelayPlan, RoutingSource, SubShape, UserConfiguredCategory,
-    };
-    pub use nmp_planner::selection::apply_selection;
+    // Test-only: `InMemoryMailboxCache` and `PTagRouting` are only referenced
+    // in `#[cfg(test)]` modules inside nmp-core; gate them so the production
+    // build stays warning-free under `-D warnings`.
+    #[cfg(test)]
+    pub use nmp_planner::compiler::InMemoryMailboxCache;
+    #[cfg(test)]
+    pub use nmp_planner::interest::PTagRouting;
+    pub use nmp_planner::plan::{canonical_filter_hash, CompiledPlan, PlannerError, RelayAttribution, SubShape};
     // W4 — warm-relay score lookup seam + lookup-aware selection.
     pub use nmp_planner::selection::apply_selection_with_lookup;
-    pub use nmp_planner::selection::relay_score_lookup::{
-        NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup,
-        WARM_THRESHOLD as PLANNER_WARM_THRESHOLD,
-    };
-
-    // Internal call sites that reach into the submodule namespaces directly
-    // (`crate::planner::compiler::*`, `crate::planner::interest::*`, etc.).
-    pub use nmp_planner::{compiler, interest, lattice, plan, selection};
+    // Internal call sites that reach into `interest::EventId` and similar
+    // sub-module items that aren't re-exported at the planner crate root.
+    pub use nmp_planner::interest;
 }
 /// V-52 — single-relay browsing via the `nmp.browse_relay` action namespace.
 ///
@@ -372,6 +367,12 @@ pub mod __ffi_internal {
         LifecycleObserverRegistration, LifecycleObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
         LIFECYCLE_PHASE_FOREGROUND,
     };
+    // `ActorMail` is the raw inbox discriminant used by `nmp-ffi::nmp_app_new`
+    // to create the mpsc channel that feeds the actor thread. Not part of the
+    // stable public surface (#1608); exposed only through this sealed seam so
+    // the FFI layer can construct the channel without making `ActorMail` a
+    // general API export.
+    pub use crate::actor::ActorMail;
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
     // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
     // registers it via `nmp_app_register_snapshot_projection("wallet", …)`.

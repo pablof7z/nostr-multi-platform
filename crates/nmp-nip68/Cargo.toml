@@ -8,6 +8,9 @@ description = "NIP-68 picture-first feed primitives for NMP: kind:20 PictureEven
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-store for StoredEvent / RawEvent — the nmp_core::store
+# compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip92-types = { path = "../nmp-nip92-types" }
 serde = { workspace = true, features = ["derive"] }

@@ -1,5 +1,5 @@
 use super::*;
-use nmp_core::store::{RawEvent, StoredEvent};
+use nmp_store::{RawEvent, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use std::sync::Arc;
 
