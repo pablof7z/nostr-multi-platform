@@ -202,12 +202,6 @@ public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiab
 // The `CodingKeys` enum below uses post-`.convertFromSnakeCase` raw values
 // (the iOS shell's `KernelHandle.decode` sets that strategy). Cases whose
 // raw value matches the Swift property name carry no explicit literal.
-//
-// #1610: removed five JSON-era vestigial sidecar-less fields:
-//   `lastActionResult`, `timeline`, `inserted`, `updated`, `removed`.
-// The typed feed is `homeFeed` (via `nmp.feed.home`); action results are
-// `actionResults`. The coverage gate in nmp-codegen prevents future
-// sidecar-less entries.
 struct SnapshotProjections: Decodable, Equatable {
     let wallet: WalletStatusData?
     let bunkerHandshake: BunkerHandshake?
