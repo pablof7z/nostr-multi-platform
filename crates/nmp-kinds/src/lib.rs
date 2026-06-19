@@ -216,6 +216,30 @@ pub fn is_parameterized_replaceable(kind: u32) -> bool {
     (30_000..40_000).contains(&kind)
 }
 
+/// Whether an event's `#p` tags denote message **recipients** (people to
+/// notify) rather than **subjects** (list members / follows / mutes).
+///
+/// Only recipient-kinds get recipient-inbox fan-out on the outbox publish path.
+/// Replaceable and addressable events use `#p` tags to identify list members,
+/// followees, or mute targets — NOT to address a message to those pubkeys. Routing
+/// a kind:3 contact list to every followee's inbox relay is wrong; the followees
+/// are subjects of the list, not its intended receivers.
+///
+/// The predicate is deliberately derived from the NIP-01 replaceable / addressable
+/// classification: all replaceable (kind:0, kind:3, kind:41, kind:10000–19999) and
+/// all addressable (kind:30000–39999) events carry subject-p-tags, not recipient-p-tags.
+/// This avoids a hardcoded kind allowlist that would bit-rot as new list/set kinds
+/// are defined by future NIPs.
+///
+/// Regular (non-replaceable, non-addressable) events — kind:1, kind:7, kind:9321,
+/// kind:1059, etc. — use `#p` tags to mention or address people, so they still
+/// fan out to those people's inbox relays.
+#[inline]
+#[must_use]
+pub fn ptags_are_recipients(kind: u32) -> bool {
+    !(is_replaceable(kind) || is_parameterized_replaceable(kind))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +283,55 @@ mod tests {
         assert!(!is_parameterized_replaceable(3));
         assert!(!is_parameterized_replaceable(10_000));
         assert!(!is_parameterized_replaceable(40_000));
+    }
+
+    #[test]
+    fn ptags_are_recipients_classifies_lists_as_subjects() {
+        // Replaceable list/discovery kinds — p-tags are SUBJECTS, not recipients.
+        assert!(
+            !ptags_are_recipients(3),
+            "kind:3 contact list p-tags are followees (subjects)"
+        );
+        assert!(
+            !ptags_are_recipients(0),
+            "kind:0 profile (no p-tags, but still replaceable)"
+        );
+        assert!(
+            !ptags_are_recipients(10_000),
+            "kind:10000 mute list p-tags are muted pubkeys (subjects)"
+        );
+        assert!(
+            !ptags_are_recipients(10_002),
+            "kind:10002 relay list — replaceable, no recipient p-tags"
+        );
+        assert!(
+            !ptags_are_recipients(41),
+            "kind:41 NIP-28 channel metadata — replaceable"
+        );
+
+        // Addressable list/set kinds — p-tags are SUBJECTS, not recipients.
+        assert!(
+            !ptags_are_recipients(30_000),
+            "kind:30000 follow set p-tags are list members (subjects)"
+        );
+        assert!(
+            !ptags_are_recipients(30_023),
+            "kind:30023 long-form article — addressable"
+        );
+        assert!(!ptags_are_recipients(39_999), "end of addressable range");
+
+        // Regular (non-replaceable, non-addressable) events — p-tags ARE recipients.
+        assert!(
+            ptags_are_recipients(1),
+            "kind:1 short text note mentions are recipients"
+        );
+        assert!(
+            ptags_are_recipients(7),
+            "kind:7 reaction — recipient fan-out enabled"
+        );
+        assert!(
+            ptags_are_recipients(1059),
+            "kind:1059 gift-wrap — recipient routing (via Explicit, but semantics correct)"
+        );
     }
 }
