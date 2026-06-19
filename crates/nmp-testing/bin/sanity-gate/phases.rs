@@ -16,6 +16,17 @@ use crate::report::{GateRow, SanityReport, Verdict};
 mod firehose;
 pub use firehose::run_firehose;
 
+mod reactive;
+pub use reactive::run_reactive;
+mod resilience;
+pub use resilience::run_resilience;
+mod privacy;
+pub use privacy::run_privacy;
+mod ffi_bounds;
+pub use ffi_bounds::run_ffi_bounds;
+mod gc_soundness;
+pub use gc_soundness::run_gc_soundness;
+
 /// Wait-for-connect budget (mirrors firehose live `WARMUP_TIMEOUT`).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 

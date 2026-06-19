@@ -50,6 +50,19 @@ pub mod gates {
     /// Load-older (paginate back) latency. No firehose constant exists; this
     /// is a NEW absolute gate at the same order as filled-timeline.
     pub const LOAD_OLDER_GATE_MS: f64 = 5_000.0;
+
+    // ── robustness-oracle gates (families 1/4) ─────────────────────────────
+    /// Reactive wire-to-visible latency ceiling: from injecting a batch of
+    /// matching events through the verify→store→wakeup→project→emit path until
+    /// every one is reflected in the view's projection. Absolute, not a delta.
+    /// Generous because it covers the FULL reactive pipeline (not a single tick)
+    /// and runs on CI hardware; a wakeup-storm/poll regression blows past it.
+    pub const WIRE_TO_VISIBLE_GATE_MS: f64 = 10_000.0;
+    /// FFI frame-boundedness ceiling (ADR-0044 "the full store never crosses
+    /// FFI"): the raw FlatBuffers snapshot frame must stay below this regardless
+    /// of how large the underlying store grows. A frame that scales with store
+    /// size is the unbounded-projection bug this gate hunts.
+    pub const FRAME_BYTES_GATE: f64 = 4_000_000.0;
 }
 
 /// How many distinct timeline items a "filled" cold-start requires. Matches the
@@ -68,6 +81,19 @@ pub enum Phase {
     Firehose,
     /// Correctness oracles under load (follow-set, dedup, supersession).
     Correctness,
+    /// Reactive-correctness oracles (missed-update, wire-to-visible latency,
+    /// no-double-emit) — robustness family 1.
+    Reactive,
+    /// Relay-resilience / chaos oracles (render-from-store on dead relay,
+    /// sub-leak, outbox routing) — robustness family 2.
+    Resilience,
+    /// Privacy / security oracles (gift-wrap never republished, unverified
+    /// events rejected, pre-verified bypass test-gated) — robustness family 3.
+    Privacy,
+    /// FFI-boundedness + panic-safety oracles — robustness family 4.
+    FfiBounds,
+    /// GC coverage-hole soundness oracle (LRU opt-in) — robustness family 5.
+    GcSoundness,
     /// All of the above in sequence.
     All,
 }
@@ -80,6 +106,11 @@ impl Phase {
             Phase::MemorySoak => "memory_soak",
             Phase::Firehose => "firehose",
             Phase::Correctness => "correctness",
+            Phase::Reactive => "reactive",
+            Phase::Resilience => "resilience",
+            Phase::Privacy => "privacy",
+            Phase::FfiBounds => "ffi_bounds",
+            Phase::GcSoundness => "gc_soundness",
             Phase::All => "all",
         }
     }
@@ -91,6 +122,11 @@ impl Phase {
             "memory_soak" => Phase::MemorySoak,
             "firehose" => Phase::Firehose,
             "correctness" => Phase::Correctness,
+            "reactive" => Phase::Reactive,
+            "resilience" => Phase::Resilience,
+            "privacy" => Phase::Privacy,
+            "ffi_bounds" => Phase::FfiBounds,
+            "gc_soundness" => Phase::GcSoundness,
             "all" => Phase::All,
             _ => return None,
         })
@@ -104,6 +140,11 @@ impl Phase {
                 Phase::IdleSoak,
                 Phase::Firehose,
                 Phase::Correctness,
+                Phase::Reactive,
+                Phase::Resilience,
+                Phase::Privacy,
+                Phase::FfiBounds,
+                Phase::GcSoundness,
                 Phase::MemorySoak,
             ],
             other => vec![other],
@@ -222,7 +263,8 @@ pub fn print_help() {
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20[--viewer-hex HEX] [--follow-count N] [--soak-secs S] \\\n\
          \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20[--run-id ID] [--os-metrics PATH] [--fail-on-gate]\n\
          \n\
-         PHASES: cold_start | idle_soak | memory_soak | firehose | correctness | all\n\
+         PHASES: cold_start | idle_soak | memory_soak | firehose | correctness |\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20 reactive | resilience | privacy | ffi_bounds | gc_soundness | all\n\
          \n\
          Drives the real kernel via the public nmp_app_* FFI (sign-in-as-account,\n\
          add relay, chirp home feed). Reads in-process numbers via the existing\n\
