@@ -3,13 +3,10 @@ package org.nmp.gallery.bridge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -66,14 +63,12 @@ class GalleryModel : ViewModel() {
         isLenient = true
     }
 
-    private var signerJob: Job? = null
-
     /**
      * ADR-0048 Stage 2 — the activity-owned NIP-55 host adapter
-     * (`ExternalSignerCapabilityBridge.handleJson`). The signer drain loop
-     * hands each Rust-built request to this handler on Main (Intent launches
-     * require the main thread). Null = no activity registered; the request
-     * is dropped and degrades to a Rust-side timeout (D6).
+     * (`ExternalSignerCapabilityBridge.handleJson`). The push listener
+     * hops each Rust-built request to Main (Intent launches require the
+     * main thread). Null = no activity registered; the request is dropped
+     * and degrades to a Rust-side timeout (D6).
      */
     @Volatile
     private var externalSignerHandler: ((requestJson: String) -> Unit)? = null
@@ -84,7 +79,12 @@ class GalleryModel : ViewModel() {
         // Issue #614 — push model (D8 no-polling): the kernel invokes this
         // callback on its update-listener thread for every snapshot frame.
         bridge.setUpdateListener { raw -> applyFrame(raw) }
-        startSignerDrain()
+        // Issue #1612 — push model (D8 no-polling): the kernel invokes this
+        // callback on the capability-dispatch thread whenever a NIP-55 signer
+        // request is dispatched, replacing the deleted blocking drain loop.
+        bridge.setSignerRequestListener { requestJson ->
+            dispatchSignerRequestToMain(requestJson)
+        }
     }
 
     /** Register the activity-owned NIP-55 request handler. */
@@ -140,31 +140,15 @@ class GalleryModel : ViewModel() {
         bridge.dispatchAction(action, payload)
 
     /**
-     * ADR-0048 Stage 2 — drain Rust-built NIP-55 capability requests and
-     * hand them to the activity-registered bridge on Main. Blocking timed
-     * drain (D8 — no busy polling); the update-frame path is now a push
-     * callback (issue #614).
+     * Hop a pushed NIP-55 request (ADR-0048 Stage 2 / #1612) onto the main
+     * thread before handing it to the activity-owned handler — the NIP-55
+     * launch Intent requires the main thread. Rust invokes the listener on its
+     * native capability-dispatch thread.
      */
-    private fun startSignerDrain() {
-        signerJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val requestJson = try {
-                    bridge.nextSignerRequest(timeoutMs = 30_000L)
-                } catch (e: IllegalStateException) {
-                    android.util.Log.i("GalleryModel", "signer channel closed: ${e.message}")
-                    break
-                } ?: continue
-                val handler = externalSignerHandler
-                if (handler == null) {
-                    android.util.Log.w(
-                        "GalleryModel",
-                        "NIP-55 request dropped: no capability bridge registered",
-                    )
-                    continue
-                }
-                withContext(Dispatchers.Main) { handler(requestJson) }
-            }
-        }
+    private fun dispatchSignerRequestToMain(requestJson: String) {
+        externalSignerHandler?.let { handler ->
+            viewModelScope.launch(Dispatchers.Main) { handler(requestJson) }
+        } ?: android.util.Log.w("GalleryModel", "NIP-55 request dropped: no capability bridge registered")
     }
 
     /**
@@ -225,8 +209,9 @@ class GalleryModel : ViewModel() {
         // is delivered into a torn-down ViewModel. `free()` also quiesces and
         // clears the listener Rust-side; this is the explicit-ownership step.
         bridge.clearUpdateListener()
-        signerJob?.cancel()
-        signerJob = null
+        // Issue #1612 — deregister the signer-request push listener on teardown.
+        // No reader coroutine to join.
+        bridge.clearSignerRequestListener()
         bridge.stop()
         bridge.free()
         super.onCleared()
