@@ -158,6 +158,7 @@ fn dispatch_capability_result(
     let bootstrap_self_kinds_slot = Arc::new(Mutex::new(None));
     let routing_trace_slot = Arc::new(Mutex::new(None));
     let event_store_slot = Arc::new(Mutex::new(None));
+    let pull_cursor_registry_slot = crate::slots::new_pull_cursor_registry_handle_slot();
     let active_account_slot = crate::slots::new_active_account_slot();
     let external_event_sink_dispatcher =
         crate::substrate::ExternalEventSinkDispatcher::new();
@@ -206,6 +207,7 @@ fn dispatch_capability_result(
         config: &config,
         routing_trace_slot: &routing_trace_slot,
         event_store_slot: &event_store_slot,
+        pull_cursor_registry_slot: &pull_cursor_registry_slot,
         active_account_slot: &active_account_slot,
         external_event_sink_dispatcher: &external_event_sink_dispatcher,
     };

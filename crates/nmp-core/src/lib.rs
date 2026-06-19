@@ -206,6 +206,9 @@ pub use kernel::{
     read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel, ProfileLiveness,
     KERNEL_BUILTIN_PROJECTION_KEYS,
 };
+pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
+pub use kernel::pull_cursor::{PullCursorId, PullCursorMode};
+pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};
 // ADR-0049 — the composition ledger (explain-the-composition surface) and its
 // record types. Re-exported at the crate root so `nmp-ffi` (the C-ABI host) and
 // downstream composition crates can name them without reaching into `kernel`.
@@ -498,6 +501,7 @@ pub mod testing {
                 routing_trace: Arc::new(Mutex::new(None)),
                 active_account: crate::slots::new_active_account_slot(),
                 event_store: crate::slots::new_event_store_slot(),
+                pull_cursor_registry: crate::slots::new_pull_cursor_registry_handle_slot(),
                 external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
             };
             let config = ActorConfigSources {

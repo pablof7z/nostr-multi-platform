@@ -99,7 +99,7 @@ pub type KernelPullResult = ScanLogResult;
 ///    loop stops early at `max_entries`; the store's `next_after_seq` is
 ///    used as-is when the loop ran to exhaustion or when a `PullGap` is
 ///    returned.
-pub(crate) fn pull_page_over(
+pub fn pull_page_over(
     store: &dyn EventStore,
     scope: PullScope,
     after_seq: u64,

@@ -7,8 +7,8 @@ use crate::kernel::Kernel;
 use crate::slots::{
     ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, KernelClockSlot, MlsLocalNsecSlot,
     ExternalEventSinkPolicyFactory, ExternalEventSinkPolicySlot,
-    PublishResolverFactory, PublishResolverSlot, RoutingSubstrateFactory, RoutingSubstrateSlot,
-    RoutingTraceSlot, StoragePathSlot,
+    PublishResolverFactory, PublishResolverSlot, PullCursorRegistryHandleSlot,
+    RoutingSubstrateFactory, RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
@@ -45,6 +45,8 @@ pub struct ActorRuntimeSlots {
     pub routing_trace: RoutingTraceSlot,
     pub active_account: ActiveAccountSlot,
     pub event_store: EventStoreSlot,
+    /// ADR-0058 step 3b — publish-back of the kernel's pull-cursor registry.
+    pub pull_cursor_registry: PullCursorRegistryHandleSlot,
     pub external_event_sink_dispatcher: crate::substrate::ExternalEventSinkDispatcherSlot,
 }
 

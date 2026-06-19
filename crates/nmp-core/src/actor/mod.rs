@@ -1197,6 +1197,7 @@ pub fn run_actor_with_observers(
         routing_trace,
         active_account,
         event_store,
+        pull_cursor_registry,
         external_event_sink_dispatcher: dispatcher_slot,
     } = runtime;
     // Dual-channel design: relay events get their own dedicated channel.
@@ -1243,6 +1244,12 @@ pub fn run_actor_with_observers(
     }
     if let Ok(mut guard) = event_store.lock() {
         *guard = Some(kernel.event_store_handle());
+    }
+    // ADR-0058 step 3b — publish the kernel's pull-cursor registry handle so the
+    // synchronous FFI `pull_page` path can snapshot a registration. Re-published
+    // on `Reset` (see dispatch.rs) the same way the event-store handle is.
+    if let Ok(mut guard) = pull_cursor_registry.lock() {
+        *guard = Some(kernel.pull_cursor_registry_handle());
     }
     config.apply_to_kernel(&mut kernel);
     // G-S4 — bind the actor command-channel depth counter so it surfaces on
@@ -1562,6 +1569,7 @@ pub fn run_actor_with_observers(
                         config: &config,
                         routing_trace_slot: &routing_trace,
                         event_store_slot: &event_store,
+                        pull_cursor_registry_slot: &pull_cursor_registry,
                         active_account_slot: &active_account,
                         external_event_sink_dispatcher: &external_event_sink_dispatcher,
                     };

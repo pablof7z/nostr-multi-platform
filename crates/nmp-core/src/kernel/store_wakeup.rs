@@ -122,10 +122,8 @@ impl Kernel {
     /// longer behind; an un-advanced cursor is deliberately re-woken next frame
     /// so it drains rather than sleep-rechecks.
     ///
-    /// The transport emission of this batch (`nmp.pull.wake` sidecar) is step 3b
-    /// — `make_update` will call this before `merge_builtin_typed_projections`.
-    /// Used by tests today; `allow(dead_code)` holds until the emit seam lands.
-    #[allow(dead_code)]
+    /// The transport emission of this batch (`nmp.pull.wake` sidecar) lands in
+    /// `make_update` just before `merge_builtin_typed_projections` (step 3b).
     pub(in crate::kernel) fn drain_pull_wakes(&mut self) -> Vec<(PullCursorId, u64)> {
         if self.store_wakeups.pull.is_empty() {
             return Vec::new();
