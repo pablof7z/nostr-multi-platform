@@ -118,7 +118,8 @@ P0 = ships before Twitter clone (M11-ish). P1 = follow-up protocol crates. P2 = 
 | 9802 | `Highlight`, `HighlightBuilder` | `nmp-nip84` (new) | **P1** |
 | 9 / 11 / 39000-39003 | Group chat / discussion / metadata | `nmp-nip29` (exists) | **P0** records/modules done; ingest decoders pending §6 |
 | 10000 / 10003 / 10007 NIP-51 shipped lists; 10001 / 30000-39999 follow-ups | `MuteList`, `BookmarkList`, `SearchRelayList`, `InterestList`, `RelayFeedList`, … | `nmp-nip51` | **P1** |
-| 20, 21, 22 | `Image`, `Video`, `ShortVideo` | `nmp-nip68` / `nmp-nip71` | **P2** |
+| 20 | `PictureEvent`, NIP-68 image-constrained `ImageMeta`, `PicturePostBuilder` | `nmp-nip68` over shared `nmp-nip92-types` `imeta` | **P2 — pulled forward by Olas** |
+| 21, 22 | `Video`, `ShortVideo` | `nmp-nip71` | **P2** |
 | 31234 | `Draft` | `nmp-nip37` | **P2** |
 | 10063 | `BlossomList` | `nmp-blossom` | **P2** |
 | 7375, 17375, 9321, 10019 | Cashu token, wallet, nutzap, nutzap-info | `nmp-nip60` / `nmp-nip61` | **P2** |
@@ -200,7 +201,7 @@ NDK's pattern is **TypeScript-shaped**: dynamic dispatch through a runtime class
 |---|---|---|
 | **Phase 1 (now / M11-ish)** | `DomainModule::ingest_kinds` + `decode_and_route` hook; kernel dispatch table; extraction of profile/contacts/relay_list/timeline ingest from `nmp-core` into nascent `nmp-nip01`/`nip02`/`nip65`. | Kernel team. ~400 LOC kernel-side. |
 | **Phase 2 (M12-13)** | `nmp-nip23::Article{,Builder}`, `nmp-nip51` list family, `nmp-nip17` DM wrappers. Twitter clone consumes them. | Per-NIP crate authors. |
-| **Phase 3 (post-v1)** | `nmp-nip54::Wiki`, `nmp-nip84::Highlight`, `nmp-nip68/71` image/video, `nmp-nip37::Draft`, `nmp-nip60/61` cashu/nutzap. App-core wrappers grow alongside their apps. | Protocol authors as needs arise. |
+| **Phase 3 (post-v1)** | `nmp-nip54::Wiki`, `nmp-nip84::Highlight`, `nmp-nip71` video, `nmp-nip37::Draft`, `nmp-nip60/61` cashu/nutzap. `nmp-nip68` picture-event decode/build was pulled forward by Olas as a real consuming app, without changing the kernel or feed-opening seams. App-core wrappers grow alongside their apps. | Protocol authors as needs arise. |
 
 Each phase ships behind real apps, never speculatively. NDK's mistake is the inverse — `wrap.ts` registers 30+ wrappers that any single app uses ~3 of.
 
@@ -240,6 +241,7 @@ Each phase ships behind real apps, never speculatively. NDK's mistake is the inv
 | Decode kind 9802 with `h` tag (group highlight) vs without (web highlight) | Two modules, two decoders, two namespaces. `nmp-nip29::GroupHighlightModule` owns h-tagged; `nmp-nip84::HighlightModule` owns the rest. D4 discriminator. |
 | Use NIP-51 global bookmarks but not lists generally | Depend on `nmp-nip51` and consume `BookmarkListProjection` plus `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark`. The shipped slice is kind:10003 raw facts and safe read-modify-write builders; kind:30003 bookmark sets and app-specific vault organization stay out of NMP until a consuming app justifies them. |
 | Get "wrap this raw event into its typed form" in one call | **Not a kernel API.** The caller knows which module they care about; module-private decoders are the call. NDK's `wrapEvent` (`wrap.ts:78-128`) is what we explicitly don't ship. |
+| Decode or publish a NIP-68 picture post | Use `nmp_nip68::try_from_event` / `try_from_kernel_event` and `PicturePostBuilder`. Shared NIP-92 `imeta` parsing/building lives below it in `nmp-nip92-types` so future media NIPs do not import `nmp-nip68`. Open feeds with the existing generic `open_interest` filter `{"kinds":[20]}`; publish via the existing action ledger / `PublishRaw` path. No `nmp_app_open_nip68_feed` C-ABI is added. |
 
 ## 12. Open questions (for orchestrator)
 

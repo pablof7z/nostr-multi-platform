@@ -143,7 +143,7 @@ Three-arc plan: **kernel infrastructure first, product modules second, then scaf
 | 10. Product views/content | Profile, contacts, threads, reactions, timelines, search, parsed content nodes | Product views are pure projections; platform shells do not parse Nostr content |
 | 11. Messaging | NIP-17/NIP-44/NIP-59, conversation store, background decrypt crate | Missing DM inbox relays fail closed; module owns no separate relay pool or persistence engine |
 | 12. Wallet/nutzaps | NIP-47 first, then zaps, Cashu, nutzaps, proof/token state | Wallet state is durable and ledger-driven |
-| 13. Blossom | Upload/download, hashing, auth events, progress, URL healing, imeta | Blossom is a capability-driven action module |
+| 13. Blossom | Upload/download, hashing, auth events, progress, URL healing, NIP-92 `imeta` composition through `nmp-nip92-types` | Blossom is a capability-driven action module |
 | 14. WoT | Follow graph monitor, local rank/filter, trust diagnostics | Threshold changes filter locally without refetching the graph |
 
 ### Arc 3 — App Scaffolding, Proof, And Product Release
