@@ -20,7 +20,7 @@ pub use interest::{
     KIND_PROFILE, KIND_RELAY_LIST, WOT_BOOTSTRAP_KINDS,
 };
 pub use runtime::{register_runtime, WotBootstrapRuntime, WotBootstrapSnapshot};
-pub use score::{TrustDecision, WotGraph};
+pub use score::{TrustDecision, WotGraph, WotGraphStats};
 pub use wire::typed_fb::{
     decode_wot_bootstrap, encode_wot_bootstrap, FILE_IDENTIFIER as WOT_BOOTSTRAP_FILE_IDENTIFIER,
     SCHEMA_ID as WOT_BOOTSTRAP_SCHEMA_ID, SCHEMA_VERSION as WOT_BOOTSTRAP_SCHEMA_VERSION,

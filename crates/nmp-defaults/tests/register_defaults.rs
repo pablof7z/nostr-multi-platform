@@ -109,6 +109,59 @@ fn register_defaults_wires_wot_bootstrap_projection() {
 }
 
 #[test]
+fn register_defaults_with_handles_returns_wot_runtime_when_social_is_enabled() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    let handles = nmp_defaults::register_defaults_with_handles(
+        unsafe { &mut *app },
+        nmp_defaults::NmpDefaults::default(),
+    );
+
+    assert!(
+        handles.wot.is_some(),
+        "default social composition must return the installed WOT runtime handle"
+    );
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    assert!(
+        app_ref
+            .registered_typed_projection_keys()
+            .contains(&"nmp.wot.bootstrap".to_string()),
+        "handle-returning entry point must preserve WOT bootstrap projection registration"
+    );
+
+    nmp_app_free(app);
+}
+
+#[test]
+fn register_defaults_with_handles_omits_wot_runtime_when_social_is_disabled() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    let handles = nmp_defaults::register_defaults_with_handles(
+        unsafe { &mut *app },
+        nmp_defaults::NmpDefaults {
+            social: false,
+            ..Default::default()
+        },
+    );
+
+    assert!(
+        handles.wot.is_none(),
+        "social:false must not install or return the WOT runtime handle"
+    );
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    assert!(
+        !app_ref
+            .registered_typed_projection_keys()
+            .contains(&"nmp.wot.bootstrap".to_string()),
+        "social:false must not register the WOT bootstrap projection"
+    );
+
+    nmp_app_free(app);
+}
+
+#[test]
 fn register_defaults_longform_is_typed_only_not_in_json_map() {
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new returned null");

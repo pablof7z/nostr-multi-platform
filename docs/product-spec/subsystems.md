@@ -250,13 +250,24 @@ Post-v1 content rendering contract: protocol-aware content parsing lives in Rust
 
 ### 7.7 Web of Trust
 
-`nmp-wot` ships as an optional subsystem (gated by `AppConfig.wot_enabled`). On enable:
+`nmp-wot` ships as an optional subsystem (gated by `AppConfig.wot_enabled` or by the
+default social composition). On enable:
 
 - Loads the active account's follow graph to a configurable depth (default 2).
-- Computes per-pubkey trust scores (default algorithm: simple in-degree weighted by depth; pluggable via a trait).
-- Exposes a global filter: when on, every view applies the score threshold before emitting; pubkeys below the threshold are tagged but rendered with a "low trust" UI hint (the renderer chooses; the payload exposes the score).
+- Maintains the reusable follow/mute graph used for trust reads.
+- Computes per-pubkey trust decisions: signed score, hide recommendation, and
+  reason bucket. The read surface also supports batch scoring, mutual-follow
+  evidence, and graph-size diagnostics.
+- Lets external app crates keep the default runtime handle returned by
+  `nmp_defaults::register_defaults_with_handles` so app-specific feed policy
+  can filter or annotate payloads in Rust without duplicating graph state.
+- Exposes a global filter: when on, every view applies the score threshold
+  before emitting; pubkeys below the threshold are tagged but rendered with a
+  "low trust" UI hint (the renderer chooses; the payload exposes the score).
 
-Computation is incremental; updates to follow lists update scores without recomputing from scratch.
+Computation is incremental; updates to follow and mute lists update scores
+without recomputing from scratch. Native shells do not score or filter Nostr
+authors themselves; they render the already filtered or annotated Rust payload.
 
 ### 7.8 Sync engine (live REQ plus NIP-77 backfill)
 

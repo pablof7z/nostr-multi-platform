@@ -2,6 +2,7 @@
 //! switching, and the typed-snapshot sidecar (Wave A, ADR-0037).
 
 use super::*;
+use crate::interest::KIND_MUTE_LIST;
 use nmp_core::planner::InterestLifecycle;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nostr::Keys;
@@ -54,6 +55,36 @@ fn contact_event(event_author: &str, follows: usize) -> KernelEvent {
     }
 }
 
+fn contact_event_with_pubkeys(event_author: &str, follows: &[&str]) -> KernelEvent {
+    KernelEvent {
+        id: nmp_core::substrate::EventId::from("2".repeat(64)),
+        author: event_author.to_string(),
+        kind: KIND_CONTACT_LIST,
+        created_at: 1_000,
+        tags: follows
+            .iter()
+            .map(|pubkey| vec!["p".to_string(), (*pubkey).to_string()])
+            .collect(),
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+fn mute_event(event_author: &str, mutes: &[&str]) -> KernelEvent {
+    KernelEvent {
+        id: nmp_core::substrate::EventId::from("3".repeat(64)),
+        author: event_author.to_string(),
+        kind: KIND_MUTE_LIST,
+        created_at: 1_000,
+        tags: mutes
+            .iter()
+            .map(|pubkey| vec!["p".to_string(), (*pubkey).to_string()])
+            .collect(),
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
 /// Finding C — bunker (remote-signer-only) accounts must activate WOT
 /// bootstrap. The kernel writes the active pubkey into `ActiveAccountSlot`
 /// for every backend, including bunker, while the local-keys slot stays
@@ -70,7 +101,10 @@ fn bunker_only_account_activates_wot_bootstrap() {
 
     runtime.on_kernel_event(&contact_event(&active, 8));
 
-    let cmd = unwrap_mail(rx.recv().expect("bunker account must still push WOT bootstrap"));
+    let cmd = unwrap_mail(
+        rx.recv()
+            .expect("bunker account must still push WOT bootstrap"),
+    );
     let ActorCommand::PushInterest(interest) = cmd else {
         panic!("expected PushInterest for a bunker-only account");
     };
@@ -175,4 +209,65 @@ fn typed_and_json_projections_emit_in_lockstep() {
     // pubkey present, zero counts), so the typed sidecar must also emit.
     assert!(!runtime.snapshot_json().is_null());
     assert!(runtime.snapshot_typed().is_some());
+}
+
+#[test]
+fn runtime_read_handle_scores_the_ingested_graph() {
+    let keys = Keys::generate();
+    let active = keys.public_key().to_hex();
+    let alice = author(10);
+    let bob = author(11);
+    let candidate = author(12);
+    let muted = author(13);
+    let unknown = author(14);
+    let (tx, _rx) = wot_channel();
+    let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
+
+    runtime.on_kernel_event(&contact_event_with_pubkeys(&active, &[&alice, &bob]));
+    runtime.on_kernel_event(&contact_event_with_pubkeys(&alice, &[&candidate]));
+    runtime.on_kernel_event(&contact_event_with_pubkeys(&bob, &[&candidate]));
+    runtime.on_kernel_event(&mute_event(&active, &[&muted]));
+
+    let decision = runtime
+        .score(&active, &candidate)
+        .expect("runtime lock should not be poisoned");
+    assert_eq!(decision.score, 20);
+    assert_eq!(decision.reason, "second-degree");
+    assert!(!decision.hide);
+
+    let strict = runtime
+        .score_with_minimum_score(&active, &candidate, 30)
+        .expect("runtime lock should not be poisoned");
+    assert!(strict.hide);
+
+    let muted_decision = runtime
+        .score(&active, &muted)
+        .expect("runtime lock should not be poisoned");
+    assert_eq!(muted_decision.reason, "muted-by-self");
+    assert!(muted_decision.hide);
+
+    let candidates = vec![candidate.clone(), muted.clone(), unknown.clone()];
+    let batch = runtime
+        .batch_score(&active, &candidates)
+        .expect("runtime lock should not be poisoned");
+    assert_eq!(
+        batch.iter().map(|d| d.reason).collect::<Vec<_>>(),
+        vec!["second-degree", "muted-by-self", "unknown"]
+    );
+
+    assert_eq!(
+        runtime
+            .mutual_follows(&active, &candidate)
+            .expect("runtime lock should not be poisoned"),
+        vec![alice, bob]
+    );
+    assert_eq!(
+        runtime
+            .graph_stats()
+            .expect("runtime lock should not be poisoned"),
+        WotGraphStats {
+            follow_authors: 3,
+            mute_authors: 1,
+        }
+    );
 }

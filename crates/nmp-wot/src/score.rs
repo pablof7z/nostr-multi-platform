@@ -30,6 +30,16 @@ pub struct TrustDecision {
     pub reason: &'static str,
 }
 
+/// Small read-model diagnostic for callers that need to distinguish an empty
+/// graph from a populated graph whose candidate is merely unknown.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct WotGraphStats {
+    /// Distinct authors with known contact lists.
+    pub follow_authors: usize,
+    /// Distinct authors with known mute lists.
+    pub mute_authors: usize,
+}
+
 impl WotGraph {
     /// Ingest a kind:3 contact-list event.
     pub fn ingest_follow_list(&mut self, author: &str, tags: &[Vec<String>]) {
@@ -61,30 +71,119 @@ impl WotGraph {
     /// Score `candidate` from `viewer`'s perspective.
     #[must_use]
     pub fn score(&self, viewer: &str, candidate: &str) -> TrustDecision {
+        let scored = self.score_parts(viewer, candidate);
+        let hide = scored.self_muted || scored.score <= AUTO_HIDE_SCORE;
+        TrustDecision {
+            score: scored.score,
+            hide,
+            reason: scored.reason,
+        }
+    }
+
+    /// Score `candidate`, hiding anything below `minimum_score`.
+    ///
+    /// This is the configurable-threshold variant apps use for product presets
+    /// such as "close" or "open". A self-mute always hides, regardless of the
+    /// threshold; otherwise the threshold is an inclusive pass floor
+    /// (`score < minimum_score` hides).
+    #[must_use]
+    pub fn score_with_minimum_score(
+        &self,
+        viewer: &str,
+        candidate: &str,
+        minimum_score: i32,
+    ) -> TrustDecision {
+        let scored = self.score_parts(viewer, candidate);
+        let hide = scored.self_muted || scored.score < minimum_score;
+        TrustDecision {
+            score: scored.score,
+            hide,
+            reason: scored.reason,
+        }
+    }
+
+    /// Score a batch of candidates using the default hide policy.
+    #[must_use]
+    pub fn batch_score<'a, I>(&self, viewer: &str, candidates: I) -> Vec<TrustDecision>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        candidates
+            .into_iter()
+            .map(|candidate| self.score(viewer, candidate))
+            .collect()
+    }
+
+    /// Score a batch of candidates with a configurable minimum-score floor.
+    #[must_use]
+    pub fn batch_score_with_minimum_score<'a, I>(
+        &self,
+        viewer: &str,
+        candidates: I,
+        minimum_score: i32,
+    ) -> Vec<TrustDecision>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        candidates
+            .into_iter()
+            .map(|candidate| self.score_with_minimum_score(viewer, candidate, minimum_score))
+            .collect()
+    }
+
+    /// Pubkeys followed by `viewer` who also follow `candidate`.
+    ///
+    /// Returned in deterministic pubkey order so callers can safely snapshot,
+    /// diff, and test the result without another sorting pass.
+    #[must_use]
+    pub fn mutual_follows(&self, viewer: &str, candidate: &str) -> Vec<String> {
+        let Some(follows) = self.follows_by_author.get(viewer) else {
+            return Vec::new();
+        };
+        follows
+            .iter()
+            .filter(|followed| {
+                self.follows_by_author
+                    .get(*followed)
+                    .is_some_and(|their_follows| their_follows.contains(candidate))
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// True when `viewer` directly follows `candidate`.
+    #[must_use]
+    pub fn directly_follows(&self, viewer: &str, candidate: &str) -> bool {
+        self.follows_by_author
+            .get(viewer)
+            .is_some_and(|follows| follows.contains(candidate))
+    }
+
+    fn score_parts(&self, viewer: &str, candidate: &str) -> ScoredParts {
         if viewer == candidate {
-            return TrustDecision {
+            return ScoredParts {
                 score: SELF_SCORE,
-                hide: false,
                 reason: "self",
+                self_muted: false,
             };
         }
 
         let viewer_follows = self.follows_by_author.get(viewer);
         let viewer_mutes = self.mutes_by_author.get(viewer);
         if viewer_mutes.is_some_and(|mutes| mutes.contains(candidate)) {
-            return TrustDecision {
+            return ScoredParts {
                 score: SELF_MUTE_SCORE,
-                hide: true,
                 reason: "muted-by-self",
+                self_muted: true,
             };
         }
 
         let direct = viewer_follows.is_some_and(|follows| follows.contains(candidate));
         if direct {
-            return TrustDecision {
+            return ScoredParts {
                 score: DIRECT_FOLLOW_SCORE,
-                hide: false,
                 reason: "direct-follow",
+                self_muted: false,
             };
         }
 
@@ -112,8 +211,8 @@ impl WotGraph {
             }
         }
 
-        let hide = score <= AUTO_HIDE_SCORE;
-        let reason = if hide {
+        let default_hide = score <= AUTO_HIDE_SCORE;
+        let reason = if default_hide {
             "muted-by-followed"
         } else if second_degree > 0 {
             "second-degree"
@@ -123,10 +222,10 @@ impl WotGraph {
             "unknown"
         };
 
-        TrustDecision {
+        ScoredParts {
             score,
-            hide,
             reason,
+            self_muted: false,
         }
     }
 
@@ -141,6 +240,21 @@ impl WotGraph {
     pub fn mute_author_count(&self) -> usize {
         self.mutes_by_author.len()
     }
+
+    /// Current graph size counters.
+    #[must_use]
+    pub fn stats(&self) -> WotGraphStats {
+        WotGraphStats {
+            follow_authors: self.follow_author_count(),
+            mute_authors: self.mute_author_count(),
+        }
+    }
+}
+
+struct ScoredParts {
+    score: i32,
+    reason: &'static str,
+    self_muted: bool,
 }
 
 fn p_tags(tags: &[Vec<String>]) -> BTreeSet<String> {
@@ -156,58 +270,5 @@ fn p_tags(tags: &[Vec<String>]) -> BTreeSet<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn author(n: u16) -> String {
-        format!("{n:064x}")
-    }
-
-    fn p(pubkey: &str) -> Vec<String> {
-        vec!["p".to_string(), pubkey.to_string()]
-    }
-
-    #[test]
-    fn direct_follows_beat_second_degree() {
-        let me = author(1);
-        let direct = author(2);
-        let indirect = author(3);
-
-        let mut graph = WotGraph::default();
-        graph.ingest_follow_list(&me, &[p(&direct)]);
-        graph.ingest_follow_list(&direct, &[p(&indirect)]);
-
-        assert_eq!(graph.score(&me, &direct).score, DIRECT_FOLLOW_SCORE);
-        assert_eq!(graph.score(&me, &indirect).score, SECOND_DEGREE_SCORE);
-    }
-
-    #[test]
-    fn many_followed_mutes_hide_unfollowed_candidate() {
-        let me = author(1);
-        let candidate = author(9);
-        let alice = author(2);
-        let bob = author(3);
-
-        let mut graph = WotGraph::default();
-        graph.ingest_follow_list(&me, &[p(&alice), p(&bob)]);
-        graph.ingest_mute_list(&alice, &[p(&candidate)]);
-        graph.ingest_mute_list(&bob, &[p(&candidate)]);
-
-        let decision = graph.score(&me, &candidate);
-        assert_eq!(decision.score, -50);
-        assert!(decision.hide);
-        assert_eq!(decision.reason, "muted-by-followed");
-    }
-
-    #[test]
-    fn self_mute_overrides_everything() {
-        let me = author(1);
-        let candidate = author(2);
-
-        let mut graph = WotGraph::default();
-        graph.ingest_follow_list(&me, &[p(&candidate)]);
-        graph.ingest_mute_list(&me, &[p(&candidate)]);
-
-        assert_eq!(graph.score(&me, &candidate).reason, "muted-by-self");
-    }
-}
+#[path = "score_tests.rs"]
+mod tests;

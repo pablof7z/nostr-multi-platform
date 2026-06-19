@@ -12,12 +12,16 @@ use serde::Serialize;
 use crate::interest::{
     active_follow_graph_interest_id, follow_graph_interest, is_hex_pubkey, KIND_CONTACT_LIST,
 };
-use crate::score::WotGraph;
+use crate::score::{TrustDecision, WotGraph, WotGraphStats};
 
 /// Register the WOT graph observer and bootstrap controller.
+///
+/// Returns the installed runtime so app crates can read trust scores from the
+/// exact graph maintained by the observer. Existing composition roots may
+/// ignore the handle when they only need the bootstrap side effects.
 pub fn register_runtime(
     app: &(impl HostCapabilities + EventObserverRegistrar + SnapshotProjectionRegistrar),
-) {
+) -> Option<Arc<WotBootstrapRuntime>> {
     let runtime = Arc::new(WotBootstrapRuntime::new(
         // Pubkey-only identity (Finding C): the WOT bootstrap needs the active
         // account's pubkey, never its secret key — read the slot the kernel
@@ -28,15 +32,17 @@ pub fn register_runtime(
     let observer_id =
         app.register_event_observer(Arc::clone(&runtime) as Arc<dyn KernelEventObserver>);
     if observer_id == KernelEventObserverId(0) {
-        return;
+        return None;
     }
     if let Some(previous) = app.swap_singleton_event_observer(Some(observer_id)) {
         app.unregister_event_observer(previous);
     }
     // Typed FlatBuffers sidecar (ADR-0037).
+    let projection_runtime = Arc::clone(&runtime);
     app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
-        runtime.snapshot_typed()
+        projection_runtime.snapshot_typed()
     });
+    Some(runtime)
 }
 
 /// Runtime controller that watches kind:3/kind:10000 arrivals and emits the
@@ -138,13 +144,80 @@ impl WotBootstrapRuntime {
         Some(crate::wire::typed_fb::typed_projection(&snapshot))
     }
 
+    /// Score one candidate with the default NMP trust policy.
+    #[must_use]
+    pub fn score(&self, viewer: &str, candidate: &str) -> Option<TrustDecision> {
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.graph.score(viewer, candidate))
+    }
+
+    /// Score one candidate with a caller-supplied minimum-score floor.
+    #[must_use]
+    pub fn score_with_minimum_score(
+        &self,
+        viewer: &str,
+        candidate: &str,
+        minimum_score: i32,
+    ) -> Option<TrustDecision> {
+        self.state.lock().ok().map(|state| {
+            state
+                .graph
+                .score_with_minimum_score(viewer, candidate, minimum_score)
+        })
+    }
+
+    /// Score multiple candidates with the default NMP trust policy.
+    #[must_use]
+    pub fn batch_score(&self, viewer: &str, candidates: &[String]) -> Option<Vec<TrustDecision>> {
+        self.state.lock().ok().map(|state| {
+            candidates
+                .iter()
+                .map(|candidate| state.graph.score(viewer, candidate))
+                .collect()
+        })
+    }
+
+    /// Score multiple candidates with a caller-supplied minimum-score floor.
+    #[must_use]
+    pub fn batch_score_with_minimum_score(
+        &self,
+        viewer: &str,
+        candidates: &[String],
+        minimum_score: i32,
+    ) -> Option<Vec<TrustDecision>> {
+        self.state.lock().ok().map(|state| {
+            candidates
+                .iter()
+                .map(|candidate| {
+                    state
+                        .graph
+                        .score_with_minimum_score(viewer, candidate, minimum_score)
+                })
+                .collect()
+        })
+    }
+
+    /// Pubkeys followed by `viewer` who also follow `candidate`.
+    #[must_use]
+    pub fn mutual_follows(&self, viewer: &str, candidate: &str) -> Option<Vec<String>> {
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.graph.mutual_follows(viewer, candidate))
+    }
+
+    /// Current graph size counters.
+    #[must_use]
+    pub fn graph_stats(&self) -> Option<WotGraphStats> {
+        self.state.lock().ok().map(|state| state.graph.stats())
+    }
+
     fn active_pubkey(&self) -> Option<String> {
         // Identity straight from the pubkey slot — already a hex string, so no
         // keypair derivation. `None` on a poisoned lock or no signed-in account.
-        self.active_pubkey
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone())
+        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
     }
 
     fn reconcile_active_follows(&self, author: &str, follows: BTreeSet<String>) {
