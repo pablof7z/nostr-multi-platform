@@ -1528,9 +1528,11 @@ impl NmpApp {
     /// feed).
     ///
     /// This does everything `register_feed` does — registers the
-    /// [`nmp_feed::FeedController`] under `key` and installs its
-    /// `snapshot_json` as a snapshot projection — AND additionally plugs
-    /// `observer` into the kernel's [`KernelEventObserver`] registry so the
+    /// [`nmp_feed::FeedController`] under `key` in the feed registry (the
+    /// render payload is emitted by a separately-registered typed snapshot
+    /// projection, e.g. `register_typed_feed_sidecar`, not by this call) — AND
+    /// additionally plugs `observer` into the kernel's
+    /// [`KernelEventObserver`] registry so the
     /// feed receives ingested events, **tracking the returned observer id
     /// under `key`** so [`Self::unregister_feed`] can revoke it. The caller
     /// typically passes the same `Arc<FlatFeed>` as both `controller` and

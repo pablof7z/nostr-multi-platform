@@ -28,6 +28,7 @@
 //! `nmp.feed.thread.<id>`).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::InterestShape;
@@ -35,6 +36,7 @@ use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
     FeedController, FeedCursor, FeedInterestShape, FeedPage, FeedRequest, RootCard, RootFeedSnapshot,
+    DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT,
 };
 
 use crate::{Nip10ReplyAttribution, TimelineEventCard};
@@ -75,6 +77,15 @@ pub struct FlatFeed {
     /// is not enough: pull needs a *covered* `InterestShape` (D5).
     interest: Option<InterestShape>,
     state: Mutex<FlatFeedState>,
+    /// The render-viewport limit — how many of the `(created_at, id)`-sorted
+    /// rows [`Self::snapshot_current_window`] emits. Starts at
+    /// `DEFAULT_FEED_WINDOW_LIMIT` (the first page) and grows one page per
+    /// [`Self::grow_visible_window`] call, capped at `MAX_FEED_WINDOW_LIMIT`
+    /// (D5). This mirrors the OP engine's `window_limit`
+    /// (`root_indexed/engine`); without it a `load_older` pull would ingest
+    /// older rows that stay BELOW the emitted first page forever (they sort
+    /// after the newest page), so the user would never see them.
+    visible_limit: AtomicUsize,
 }
 
 impl FlatFeed {
@@ -90,6 +101,7 @@ impl FlatFeed {
             predicate,
             interest: None,
             state: Mutex::new(FlatFeedState::default()),
+            visible_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
         })
     }
 
@@ -107,6 +119,7 @@ impl FlatFeed {
             predicate,
             interest,
             state: Mutex::new(FlatFeedState::default()),
+            visible_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
         })
     }
 
@@ -190,6 +203,46 @@ impl FlatFeed {
         }
     }
 
+    /// Grow the **render viewport** by one page, revealing more of the
+    /// `(created_at, id)`-sorted rows already ingested.
+    ///
+    /// ADR-0058 §8 step-6B: the viewport step of the single pull paging path,
+    /// mirroring the OP engine's `grow_visible_window`
+    /// (`root_indexed/engine`). It is called ONLY by
+    /// [`nmp_feed::PullFeedController`] (via the host's `advance` closure) after
+    /// a successful seq-ordered pull drain has ingested a page of (possibly
+    /// older) rows through [`KernelEventObserver::on_kernel_event`]. It is a
+    /// pure viewport widening over ALREADY-ingested rows — NOT a second pull or
+    /// completeness path: it never reads the store, never sorts, never touches
+    /// the cursor. Display order is unchanged.
+    ///
+    /// Returns `true` when the viewport actually grew (there were more rows to
+    /// reveal and the `MAX_FEED_WINDOW_LIMIT` ceiling was not yet hit), `false`
+    /// when everything is already visible or the cap is reached (D5).
+    pub fn grow_visible_window(&self) -> bool {
+        let total = self.state.lock().map(|st| st.rows.len()).unwrap_or(0);
+        let current = self.visible_limit.load(Ordering::Relaxed);
+        if current >= total || current >= MAX_FEED_WINDOW_LIMIT {
+            return false;
+        }
+        let new_limit = (current + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
+        self.visible_limit.store(new_limit, Ordering::Relaxed);
+        true
+    }
+
+    /// Build the visible-window snapshot using the feed's current render
+    /// viewport limit. This honors any prior [`Self::grow_visible_window`] call
+    /// that widened the viewport beyond `DEFAULT_FEED_WINDOW_LIMIT`, so rows
+    /// revealed by `load_older` are emitted (the typed sidecar reads this, not a
+    /// fixed `FeedRequest::default()`).
+    #[must_use]
+    pub fn snapshot_current_window(
+        &self,
+    ) -> RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution> {
+        let limit = self.visible_limit.load(Ordering::Relaxed);
+        self.snapshot(&FeedRequest::newest(limit))
+    }
+
     /// Number of rows currently held (drives the host's `noteCountDisplay`
     /// composition — the count the deleted `author_view.noteCountDisplay`
     /// formatted).
@@ -213,8 +266,10 @@ impl KernelEventObserver for FlatFeed {
 
 impl FeedInterestShape for FlatFeed {
     /// The feed's covered pull interest, or `None` to fail closed (ADR-0058 §8
-    /// 6B). The host hands the feed to a `nmp_feed::PullFeedController`, which
-    /// refuses to construct on `None` (projection-only fallback, no broad-scan).
+    /// 6B). The host pairs the feed with a `nmp_feed::PullFeedController`, which
+    /// is constructed UNCONDITIONALLY; its `load_older` re-reads this shape on
+    /// every call and fails closed (returns `false`, no pull, no broad-scan)
+    /// whenever it yields `None`.
     fn interest_shape(&self) -> Option<InterestShape> {
         self.interest.clone()
     }
@@ -298,169 +353,5 @@ pub fn thread_feed_predicate(root_id: String, kinds: Vec<u32>) -> FlatFeedPredic
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn ev(
-        id: &str,
-        author: &str,
-        kind: u32,
-        created_at: u64,
-        tags: Vec<Vec<String>>,
-    ) -> KernelEvent {
-        KernelEvent {
-            id: id.to_string(),
-            author: author.to_string(),
-            kind,
-            created_at,
-            tags,
-            content: format!("note {id}"),
-            relay_provenance: Vec::new(),
-        }
-    }
-
-    fn etag(id: &str) -> Vec<String> {
-        vec!["e".to_string(), id.to_string()]
-    }
-
-    #[test]
-    fn author_feed_admits_only_that_author_and_kinds() {
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
-        feed.ingest(&ev("a2", "alice", 6, 101, vec![])); // repost — admitted
-        feed.ingest(&ev("a3", "alice", 7, 102, vec![])); // reaction — rejected
-        feed.ingest(&ev("b1", "bob", 1, 103, vec![])); // other author — rejected
-        assert_eq!(feed.len(), 2);
-        let snap = feed.snapshot(&FeedRequest::default());
-        // Newest-first: a2 (101) before a1 (100).
-        assert_eq!(snap.cards.len(), 2);
-        assert_eq!(snap.cards[0].card.id, "a2");
-        assert_eq!(snap.cards[1].card.id, "a1");
-        // Flat feed never carries attribution.
-        assert!(snap.cards.iter().all(|c| c.attribution.is_empty()));
-    }
-
-    #[test]
-    fn author_feed_includes_replies_to_others_as_top_level_rows() {
-        // The exact case RootIndexedFeed cannot express: alice's reply to bob's
-        // note is a top-level row in alice's profile, not attribution under bob.
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        feed.ingest(&ev("reply", "alice", 1, 200, vec![etag("bobs_root")]));
-        assert_eq!(feed.len(), 1);
-        assert_eq!(
-            feed.snapshot(&FeedRequest::default()).cards[0].card.id,
-            "reply"
-        );
-    }
-
-    #[test]
-    fn thread_feed_admits_root_by_id_and_referrers_by_etag() {
-        let feed = FlatFeed::new(thread_feed_predicate("root".to_string(), vec![1, 6]));
-        feed.ingest(&ev("root", "alice", 1, 100, vec![])); // root — by id
-        feed.ingest(&ev("reply1", "bob", 1, 101, vec![etag("root")])); // referrer
-        feed.ingest(&ev("reply2", "carol", 1, 102, vec![etag("other")])); // unrelated
-        feed.ingest(&ev("react", "dave", 7, 103, vec![etag("root")])); // wrong kind
-        assert_eq!(feed.len(), 2);
-        let ids: Vec<_> = feed
-            .snapshot(&FeedRequest::default())
-            .cards
-            .iter()
-            .map(|c| c.card.id.clone())
-            .collect();
-        assert_eq!(ids, vec!["reply1".to_string(), "root".to_string()]);
-    }
-
-    #[test]
-    fn reingest_same_id_refreshes_not_duplicates() {
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
-        feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
-        assert_eq!(feed.len(), 1);
-    }
-
-    #[test]
-    fn snapshot_windows_to_request_limit_with_cursor() {
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        for i in 0..5u64 {
-            feed.ingest(&ev(&format!("a{i}"), "alice", 1, 100 + i, vec![]));
-        }
-        let snap = feed.snapshot(&FeedRequest::newest(2));
-        assert_eq!(snap.cards.len(), 2);
-        let page = snap.page.expect("page");
-        assert!(page.has_more);
-        assert_eq!(page.total_blocks, 5);
-        assert!(page.next_cursor.is_some());
-    }
-
-    #[test]
-    fn on_kernel_event_observer_entrypoint_renders_matching_event() {
-        // The load-bearing seam: in production the kernel admits an
-        // open_interest-matched event into `self.events` and then calls
-        // `notify_event_observers` → `FlatFeed::on_kernel_event` (NOT the
-        // private `ingest`). `event_observer_tests.rs` proves the kernel fires
-        // `on_kernel_event` once per accepted ingest; this proves the FlatFeed
-        // observer entry point forwards through the predicate + render path, so
-        // the full chain (admission → fan-out → snapshot) holds end-to-end.
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        // Drive via the KernelEventObserver trait method, exactly as
-        // `notify_event_observers` does.
-        KernelEventObserver::on_kernel_event(&*feed, &ev("a1", "alice", 1, 100, vec![]));
-        KernelEventObserver::on_kernel_event(&*feed, &ev("b1", "bob", 1, 101, vec![]));
-        // Only alice's note rendered (predicate gate honoured at the observer
-        // entry point), and it surfaces in the FlatFeed snapshot.
-        assert_eq!(feed.len(), 1);
-        let snap = feed.snapshot(&nmp_feed::FeedRequest::default());
-        assert_eq!(snap.cards.len(), 1);
-        assert_eq!(snap.cards[0].card.id, "a1");
-    }
-
-    #[test]
-    fn bare_flat_feed_fails_closed_no_pull_interest() {
-        // ADR-0058 §8 6B: a `FlatFeed::new` has no covered pull interest, so it
-        // fails closed — a `PullFeedController` would refuse to construct and the
-        // feed renders projection-only.
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        assert!(feed.interest_shape().is_none(), "bare flat feed fails closed");
-    }
-
-    #[test]
-    fn author_feed_shape_is_a_covered_authors_kind_interest() {
-        let shape = author_feed_shape("alice".to_string(), vec![1, 6]);
-        assert_eq!(shape.authors, BTreeSet::from(["alice".to_string()]));
-        assert_eq!(shape.kinds, BTreeSet::from([1, 6]));
-        assert!(shape.tags.is_empty(), "author feed is authors+kinds only");
-        // A feed built with_interest surfaces the shape to the pull controller.
-        let feed = FlatFeed::with_interest(
-            author_feed_predicate("alice".to_string(), vec![1, 6]),
-            Some(shape.clone()),
-        );
-        assert_eq!(feed.interest_shape(), Some(shape));
-    }
-
-    #[test]
-    fn thread_feed_shape_is_a_covered_etag_reply_tail() {
-        let shape = thread_feed_shape("root".to_string(), vec![1, 6]);
-        assert_eq!(shape.kinds, BTreeSet::from([1, 6]));
-        assert_eq!(
-            shape.tags.get("e"),
-            Some(&BTreeSet::from(["root".to_string()])),
-            "thread shape pages the #e reply tail; the root rides the claim path"
-        );
-        assert!(shape.authors.is_empty());
-        assert!(
-            shape.event_ids.is_empty(),
-            "root-by-id is event-id-only (uncovered) — never folded into the pull shape"
-        );
-    }
-
-    #[test]
-    fn feed_controller_emits_home_feed_wire_shape() {
-        // The snapshot must produce the RootFeedSnapshot shape the home
-        // feed emits, so the existing Swift `nmp.feed.home` reader decodes it.
-        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-        feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
-        let snap = feed.snapshot(&nmp_feed::FeedRequest::default());
-        assert_eq!(snap.cards.len(), 1);
-        assert!(snap.cards[0].attribution.is_empty());
-    }
-}
+#[path = "flat_feed/tests.rs"]
+mod tests;
