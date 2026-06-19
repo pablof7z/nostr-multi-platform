@@ -285,8 +285,11 @@ pub fn register_op_feed_defaults(
         // empty ⇒ provider returns None ⇒ load_older fails closed. After an
         // account switch the slot holds the new pubkey without re-registering.
         let account_slot = active_account_slot.clone();
+        // Invalid app-declared primary kinds (for example `6` or `16`) fail
+        // closed: no acquisition shape, no broad scan.
         let kinds: BTreeSet<u32> =
-            nmp_nip18::acquisition_kinds_for_primary(primary_feed_kinds.iter().copied());
+            nmp_nip18::try_acquisition_kinds_for_primary(primary_feed_kinds.iter().copied())
+                .unwrap_or_default();
         Arc::new(ClosureInterestShape::new(move || {
             live_contact_feed_shape(&account_slot, &follow_set, &kinds)
         }))

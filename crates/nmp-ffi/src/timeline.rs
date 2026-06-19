@@ -279,10 +279,11 @@ pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTre
     let mut set = std::collections::BTreeSet::new();
     for element in &arr {
         match element.as_u64().and_then(|n| u32::try_from(n).ok()) {
-            Some(k) => {
+            Some(k) if !nmp_nip18::is_repost_kind(k) => {
                 set.insert(k);
             }
-            None => return None, // first invalid element → bail
+            None => return None,    // first invalid element → bail
+            Some(_) => return None, // repost wrappers are derived, not primary
         }
     }
     Some(set)
@@ -318,7 +319,16 @@ pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, primary_kinds_json
             return;
         }
     };
-    let kinds = nmp_nip18::acquisition_kinds_for_primary(primary_kinds);
+    let kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
+        Ok(kinds) => kinds,
+        Err(_) => {
+            app.send_cmd(nmp_core::ActorCommand::ShowToast {
+                message: "open_contact_feed: primary kinds must not include repost wrappers"
+                    .to_string(),
+            });
+            return;
+        }
+    };
 
     app.send_cmd(nmp_core::ActorCommand::OpenContactFeed { kinds });
 }
@@ -408,6 +418,12 @@ mod kinds_parse_tests {
             result.is_none(),
             "a value > u32::MAX must cause parse_primary_kinds_json to return None (was silently wrapping)"
         );
+    }
+
+    #[test]
+    fn repost_wrapper_primary_kinds_are_rejected() {
+        assert!(parse_primary_kinds_json("[1, 6]").is_none());
+        assert!(parse_primary_kinds_json("[16]").is_none());
     }
 
     #[test]

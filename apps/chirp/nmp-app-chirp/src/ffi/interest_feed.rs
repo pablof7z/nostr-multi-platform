@@ -72,7 +72,8 @@ use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_
 pub(crate) const FEED_PRIMARY_KINDS: [u32; 1] = [1];
 
 fn feed_acquisition_kinds() -> Vec<u32> {
-    nmp_nip18::acquisition_kinds_for_primary(FEED_PRIMARY_KINDS)
+    nmp_nip18::try_acquisition_kinds_for_primary(FEED_PRIMARY_KINDS)
+        .expect("Chirp primary feed kinds must not include repost wrappers")
         .into_iter()
         .collect()
 }

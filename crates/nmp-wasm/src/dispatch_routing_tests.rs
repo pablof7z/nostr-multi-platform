@@ -211,6 +211,29 @@ fn interest_dispatch_rejects_malformed_contact_feed_kind() {
 }
 
 #[test]
+fn interest_dispatch_rejects_repost_wrappers_as_primary_contact_feed_kinds() {
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.open_contact_feed".to_string(),
+        payload: serde_json::json!({"kinds": [1, 6]}),
+        correlation_id: "x".to_string(),
+    };
+    assert!(
+        interest_dispatch_from_action(&action).is_none(),
+        "apps must declare primary kinds only; kind 6 is derived from primary kind 1"
+    );
+
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.open_contact_feed".to_string(),
+        payload: serde_json::json!({"kinds": [16]}),
+        correlation_id: "x".to_string(),
+    };
+    assert!(
+        interest_dispatch_from_action(&action).is_none(),
+        "kind 16 is derived for non-kind-1 primary feeds, never declared as primary"
+    );
+}
+
+#[test]
 fn interest_dispatch_parses_close_contact_feed() {
     let action = ActionDispatch {
         action_type: "nmp.kernel.close_contact_feed".to_string(),

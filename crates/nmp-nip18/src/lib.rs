@@ -20,6 +20,14 @@ pub const fn is_repost_kind(kind: u32) -> bool {
     kind == KIND_REPOST || kind == KIND_GENERIC_REPOST
 }
 
+/// Error returned when an app-declared primary feed kind is not actually primary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrimaryKindError {
+    /// Repost wrapper kinds are acquisition mechanics derived from primary
+    /// content kinds. Apps must not declare them as primary content.
+    RepostWrapper { kind: u32 },
+}
+
 /// Compile app-declared primary feed kinds into acquisition kinds.
 ///
 /// Apps declare the content kinds they want to render. Repost wrapper kinds are
@@ -30,15 +38,33 @@ pub fn acquisition_kinds_for_primary<I>(primary_kinds: I) -> BTreeSet<u32>
 where
     I: IntoIterator<Item = u32>,
 {
+    try_acquisition_kinds_for_primary(primary_kinds)
+        .expect("primary feed kinds must not include repost wrapper kinds")
+}
+
+/// Try to compile app-declared primary feed kinds into acquisition kinds.
+///
+/// This is the boundary-safe variant for FFI/WASM/user input. It rejects kind
+/// `6` and kind `16` as primary kinds so apps cannot keep saying "I render
+/// `[1, 6]`"; they must say "I render `[1]`" and let this crate derive the
+/// wrapper acquisition kinds.
+pub fn try_acquisition_kinds_for_primary<I>(
+    primary_kinds: I,
+) -> Result<BTreeSet<u32>, PrimaryKindError>
+where
+    I: IntoIterator<Item = u32>,
+{
     let mut kinds = BTreeSet::new();
     let mut needs_kind6 = false;
     let mut needs_kind16 = false;
 
     for kind in primary_kinds {
+        if is_repost_kind(kind) {
+            return Err(PrimaryKindError::RepostWrapper { kind });
+        }
         kinds.insert(kind);
         match kind {
             1 => needs_kind6 = true,
-            KIND_REPOST | KIND_GENERIC_REPOST => {}
             _ => needs_kind16 = true,
         }
     }
@@ -50,7 +76,7 @@ where
         kinds.insert(KIND_GENERIC_REPOST);
     }
 
-    kinds
+    Ok(kinds)
 }
 
 /// Decoded inner event embedded in a repost `content` field.
@@ -181,9 +207,23 @@ mod tests {
     }
 
     #[test]
-    fn wrapper_kinds_do_not_recursively_add_wrappers() {
-        let kinds = acquisition_kinds_for_primary([1, KIND_REPOST]);
-        assert_eq!(kinds, BTreeSet::from([1, KIND_REPOST]));
+    fn wrapper_kinds_are_rejected_as_primary_feed_kinds() {
+        assert_eq!(
+            try_acquisition_kinds_for_primary([1, KIND_REPOST]),
+            Err(PrimaryKindError::RepostWrapper { kind: KIND_REPOST })
+        );
+        assert_eq!(
+            try_acquisition_kinds_for_primary([KIND_GENERIC_REPOST]),
+            Err(PrimaryKindError::RepostWrapper {
+                kind: KIND_GENERIC_REPOST,
+            })
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "primary feed kinds must not include repost wrapper kinds")]
+    fn infallible_acquisition_panics_on_wrapper_primary_kind() {
+        let _ = acquisition_kinds_for_primary([1, KIND_REPOST]);
     }
 
     #[test]

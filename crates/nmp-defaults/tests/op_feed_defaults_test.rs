@@ -168,6 +168,29 @@ fn registers_op_feed_engine_under_home_key() {
     nmp_app_free(app);
 }
 
+#[test]
+fn register_defaults_rejects_repost_wrappers_as_primary_feed_kinds() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    set_app_active(app, Some(ALICE));
+    let app_ref = unsafe { &*app };
+    let _defaults = nmp_defaults::register_op_feed_defaults(
+        app_ref,
+        ALICE.to_string(),
+        vec![nmp_nip18::KIND_REPOST],
+    );
+
+    assert!(
+        !app_ref.load_older_feed("nmp.feed.home"),
+        "kind 6 is a derived acquisition wrapper, not primary content; \
+         invalid primary declarations must fail closed"
+    );
+
+    nmp_app_free(app);
+}
+
 // ─── 2. Attribution path through the returned engine ─────────────────────────
 
 #[test]
