@@ -12,8 +12,10 @@
 //!    projection MUST reach >= K visible items (count-complete: corpus ⊆ view).
 //!  - WIRE-TO-VISIBLE LATENCY: the time from first inject to all-visible MUST
 //!    stay under an absolute ceiling — a wakeup-storm/poll regression blows it.
-//!  - NO-DOUBLE-EMIT: re-injecting the identical corpus adds NO new rows (the
-//!    store dedups by id; the projection does not double-serve).
+//!  - NO-DUPLICATE-STORED-ROW: re-injecting the identical corpus adds NO new
+//!    stored rows (the store dedups by id — re-injecting N already-stored events
+//!    grows the stored ROW COUNT by 0). This is a store-row-count assertion, not
+//!    an emit/projection claim, so the gate is named for exactly that property.
 //!
 //! SEAM 1: `nmp_app_read_author_event_ids` (test-support, now wired) exposes the
 //! set of stored event ids for a given author so `corpus_ids ⊆ stored_ids` can
@@ -168,15 +170,19 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
         ));
     }
 
-    // (c) NO-DOUBLE-EMIT — a REAL, self-contained dedup assertion on the STORE
-    //     id-set (not the projection). The prior version compared peak_visible
-    //     before/after the duplicate inject; whenever the projection half
-    //     SKIPped (self not in the home feed), that was a vacuous 0→0 pass. Fix:
-    //     read the stored author-id SET BEFORE and AFTER re-injecting the
-    //     identical corpus and assert the set does NOT grow — a correct store
-    //     dedups by id, so a duplicate id can add no new row. No relay, no
-    //     projection dependency; hard PASS/FAIL (or SKIP-LOUD if the read seam
-    //     returns nothing, never a 0→0 pass).
+    // (c) NO-DUPLICATE-STORED-ROW — a REAL, self-contained dedup assertion on
+    //     the stored ROW COUNT (not an id-set, not the projection). The prior
+    //     version collected the read seam's rows into a HashSet and compared SET
+    //     sizes — but a set hides a duplicate row with the same id, so a store
+    //     that double-stored an event would still PASS (it was an id-set-growth
+    //     oracle, not a no-duplicate-row oracle). Fix: read the stored ROW LIST
+    //     (the seam emits one entry per stored row, duplicates preserved) BEFORE
+    //     and AFTER re-injecting the identical corpus, and assert the row COUNT
+    //     does NOT grow — re-injecting N already-stored events adds 0 rows when
+    //     the store truly dedups by id. A duplicate stored row would grow the
+    //     count and FAIL this gate. No relay, no projection dependency; hard
+    //     PASS/FAIL (or SKIP-LOUD if the read seam returns nothing, never a 0→0
+    //     pass).
     let corpus_ids: std::collections::HashSet<String> = corpus
         .iter()
         .filter_map(|json| {
@@ -186,7 +192,9 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
         })
         .collect();
 
-    let read_stored_ids = || -> std::collections::HashSet<String> {
+    // Returns one id per stored ROW (duplicates preserved → true row count),
+    // NOT a deduped set. This is the signal that catches a double-stored row.
+    let read_stored_rows = || -> Vec<String> {
         let pk_cstr = std::ffi::CString::new(pubkey_hex.as_str()).ok();
         let json_ptr = pk_cstr
             .as_ref()
@@ -208,48 +216,52 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
                     })
                     .unwrap_or_default()
             }
-            _ => std::collections::HashSet::new(),
+            _ => Vec::new(),
         }
     };
 
-    // Snapshot the stored id-set, re-inject the identical corpus, snapshot again.
-    let stored_before = read_stored_ids();
+    // Snapshot the stored ROW COUNT, re-inject the identical corpus, snapshot
+    // again. The seam preserves one row per stored event, so the Vec LENGTH is
+    // the actual stored row count for this author (a duplicate row would make
+    // the length grow even though the id set would not).
+    let rows_before = read_stored_rows();
     for json in &corpus {
         if let Ok(c) = std::ffi::CString::new(json.as_str()) {
             let _ = nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr());
         }
     }
     std::thread::sleep(Duration::from_secs(2));
-    let stored_after = read_stored_ids();
+    let rows_after = read_stored_rows();
 
-    if stored_before.is_empty() && stored_after.is_empty() {
+    if rows_before.is_empty() && rows_after.is_empty() {
         report.push(GateRow::unmeasured(
-            "reactive-no-double-emit",
+            "reactive-no-duplicate-stored-row",
             phase,
-            "nmp_app_read_author_event_ids (before/after re-inject)",
-            "stored author-id SET must not grow on duplicate ids",
-            "0 new stored ids",
+            "nmp_app_read_author_event_ids (row COUNT before/after re-inject)",
+            "stored ROW COUNT must not grow on re-injected duplicate ids",
+            "0 new stored rows",
             Verdict::SkipRelayMiss,
-            "store-read seam returned no author ids for the injected corpus — cannot assert the \
-             id-set dedup invariant this run (SKIP LOUD; never a 0→0 vacuous pass)",
+            "store-read seam returned no author rows for the injected corpus — cannot assert the \
+             row-count dedup invariant this run (SKIP LOUD; never a 0→0 vacuous pass)",
         ));
     } else {
-        let grew = stored_after.len().saturating_sub(stored_before.len());
+        let grew = rows_after.len().saturating_sub(rows_before.len());
         report.push(
             GateRow::max(
-                "reactive-no-double-emit",
+                "reactive-no-duplicate-stored-row",
                 phase,
-                "nmp_app_read_author_event_ids (before/after re-inject)",
-                "stored author-id SET growth on duplicate ids",
+                "nmp_app_read_author_event_ids (row COUNT before/after re-inject)",
+                "stored ROW COUNT growth on re-injected duplicate ids",
                 grew as f64,
                 0.0,
-                "extra-stored-ids",
+                "extra-stored-rows",
             )
             .with_note(&format!(
-                "re-injected the identical {injected}-event corpus; stored author-id set \
-                 {}→{} (must not grow — the store dedups by id; a duplicate id adds no row)",
-                stored_before.len(),
-                stored_after.len()
+                "re-injected the identical {injected}-event corpus; stored ROW count \
+                 {}→{} (must not grow — the store dedups by id; a re-injected event adds no row; \
+                 a double-stored row would grow the count and FAIL this gate)",
+                rows_before.len(),
+                rows_after.len()
             )),
         );
     }
@@ -257,9 +269,10 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
     // (d) id-subset check: every injected event id must be readable from the
     //     store for the author we signed as. Hard pass/fail: if any corpus id is
     //     missing the reactive pipeline dropped or never persisted it.
+    let stored_ids_after: std::collections::HashSet<String> = rows_after.iter().cloned().collect();
     let missing_count = corpus_ids
         .iter()
-        .filter(|id| !stored_after.contains(*id))
+        .filter(|id| !stored_ids_after.contains(*id))
         .count();
     report.push(
         GateRow::max(
@@ -272,10 +285,10 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
             "missing-ids",
         )
         .with_note(&format!(
-            "corpus={} ids, stored={} ids, missing={} \
+            "corpus={} ids, stored={} rows, missing={} \
              (seam 1: nmp_app_read_author_event_ids)",
             corpus_ids.len(),
-            stored_after.len(),
+            rows_after.len(),
             missing_count,
         )),
     );

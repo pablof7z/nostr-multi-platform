@@ -82,9 +82,9 @@ pub enum Phase {
     /// Correctness oracles under load (follow-set, dedup, supersession).
     Correctness,
     /// Reactive-correctness oracles (missed-update, wire-to-visible latency,
-    /// no-double-emit) — robustness family 1.
+    /// no-duplicate-stored-row) — robustness family 1.
     Reactive,
-    /// Relay-resilience / chaos oracles (render-from-store on dead relay,
+    /// Relay-resilience / chaos oracles (store-serves-while-relay-dead,
     /// sub-leak, outbox routing) — robustness family 2.
     Resilience,
     /// Privacy / security oracles (gift-wrap never republished, unverified

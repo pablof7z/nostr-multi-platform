@@ -6,10 +6,14 @@
 //! `wire_subscriptions` rows + the routing-decisions ledger — no store scraping.
 //!
 //! Falsifiable hypotheses:
-//!  - RENDER-FROM-STORE: against a DEAD relay (connection refused) the actor
-//!    MUST keep emitting frames and stay alive (it renders from the store; it
-//!    does not wedge waiting on the wire). Absolute: frames keep flowing + the
-//!    actor thread is alive after the window.
+//!  - STORE-SERVES-WHILE-RELAY-DEAD: against a DEAD relay (connection refused)
+//!    a known locally-seeded corpus MUST remain readable from the STORE (served
+//!    from local state, not the wire), and the actor MUST stay alive. This is a
+//!    store-serve assertion, NOT a render/projection claim — the typed snapshot
+//!    envelope exposes only `visible_items` (a count) with no per-item author
+//!    hex and no `nmp_app_read_feed_authors` seam, so the rendered rows cannot
+//!    be checked for the seeded ids; the gate is named for exactly the property
+//!    it proves (store-readable off-wire), not "render-from-store".
 //!  - SUB-LEAK: after a view that opened wire subscriptions is closed, NO
 //!    subscription may remain in the `open` state (auto-close on claim-drop).
 //!  - OUTBOX ROUTING (NIP-65): reads route to the author's WRITE relays — read
@@ -48,13 +52,22 @@ pub fn run_resilience(report: &mut SanityReport, args: &Args) {
     );
 }
 
-/// RENDER-FROM-STORE: against a DEAD relay, a known locally-seeded item must be
-/// readable from the STORE (rendered from local state, not the wire), AND the
-/// actor must stay live. The prior version only proved frame/actor LIVENESS — it
-/// never seeded a store item, so it did not actually prove "renders from a
-/// populated store". Fix: sign in as a known key, inject a self-authored corpus
-/// while the only relay is dead, then assert every seeded id is store-readable
-/// via `nmp_app_read_author_event_ids` WHILE the relay is down.
+/// STORE-SERVES-WHILE-RELAY-DEAD: against a DEAD relay, a known locally-seeded
+/// item must be readable from the STORE (served from local state, not the wire),
+/// AND the actor must stay live. The prior version only proved frame/actor
+/// LIVENESS — it never seeded a store item. An earlier strengthening seeded a
+/// corpus and proved store-readability, but the gate was NAMED
+/// "render-from-store" while only proving STORE-READABLE — it never asserted the
+/// seeded ids appear in the rendered projection, so a render-ignores-store
+/// regression would still PASS. That render assertion is not reachable here: the
+/// typed snapshot envelope carries only `visible_items` (a count, no per-item
+/// author hex) and there is no `nmp_app_read_feed_authors` seam, so the rendered
+/// rows cannot be checked for the seeded ids, and self-authored notes do not
+/// reliably surface in the home feed anyway (the reactive phase documents the
+/// same no-self-include limitation). Honest fix: NAME the gate for exactly the
+/// property it proves — `resilience-store-serves-while-relay-dead` — and assert
+/// only that every seeded id is store-readable via `nmp_app_read_author_event_ids`
+/// WHILE the relay is down. No "render" claim.
 fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
     let dead = DEAD_RELAY.to_string();
     // Known key so we can read our own seeded events back out of the store.
@@ -126,21 +139,22 @@ fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
         // No seed accepted — without a populated store the render assertion
         // would be vacuous. SKIP LOUD rather than pass on an empty store.
         report.push(GateRow::unmeasured(
-            "resilience-render-from-store",
+            "resilience-store-serves-while-relay-dead",
             phase,
             "nmp_app_inject_signed_event_json + nmp_app_read_author_event_ids (dead relay)",
             "seeded ids readable from the store while the relay is dead",
             "all seeded ids store-readable",
             Verdict::SkipRelayMiss,
-            "no seed event was accepted into the store — cannot assert render-from-store this \
+            "no seed event was accepted into the store — cannot assert store-serve-while-dead this \
              run (SKIP LOUD, never a vacuous pass)",
         ));
     } else {
         // Every seeded id must be store-readable WHILE the relay is dead: the
-        // app serves it from the populated store, not the wire.
+        // app serves it from the populated store, not the wire. (This is a
+        // store-serve assertion, NOT a render/projection claim — see the fn doc.)
         report.push(
             GateRow::max(
-                "resilience-render-from-store",
+                "resilience-store-serves-while-relay-dead",
                 phase,
                 "nmp_app_read_author_event_ids (dead relay)",
                 "seeded ids missing from the store while the relay is dead",
@@ -150,8 +164,8 @@ fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
             )
             .with_note(&format!(
                 "dead relay {DEAD_RELAY}: seeded {} self-authored notes off-wire; {} store-readable, \
-                 {missing} missing — the populated store renders the seeded items with NO live \
-                 relay; actor_alive={alive}",
+                 {missing} missing — the populated store SERVES the seeded items with NO live \
+                 relay (store-readable, not a render/projection claim); actor_alive={alive}",
                 seed_ids.len(),
                 stored_ids.len(),
             )),
