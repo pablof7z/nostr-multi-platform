@@ -11,7 +11,7 @@ use nmp_nostr_lmdb::SaveEventStatus;
 use nostr_database::FlatBufferBuilder;
 use nostr_database::RejectedReason;
 
-use super::{conv, gc, provenance, tombstones, Inner};
+use super::{conv, gc, ingest_log, provenance, tombstones, Inner};
 use super::open_error::{classify_heed_err, classify_store_err};
 use crate::types::{EventId, InsertOutcome, RawEvent, RejectReason, RelayUrl, TombstoneOrigin};
 use crate::StoreError;
@@ -197,11 +197,36 @@ pub(super) fn insert(
                         .delete_freshness(&mut txn, &freshness_key)
                         .map_err(|e| StoreError::Io(format!("delete_freshness: {e}")))?;
                 }
+                // ADR-0058 §3: emit Replaced log entry inside this txn (D4).
+                ingest_log::append_replaced(
+                    inner.ingest_log,
+                    inner.ingest_meta,
+                    &mut txn,
+                    &id_bytes,
+                    replaced_id,
+                    event.clone(),
+                    source,
+                    received_at_ms,
+                    inner.map_size,
+                    inner.max_readers,
+                )?;
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
                     replaced_id,
                 }
             } else {
+                // ADR-0058 §3: emit Inserted log entry inside this txn (D4).
+                ingest_log::append_inserted(
+                    inner.ingest_log,
+                    inner.ingest_meta,
+                    &mut txn,
+                    &id_bytes,
+                    event.clone(),
+                    source,
+                    received_at_ms,
+                    inner.map_size,
+                    inner.max_readers,
+                )?;
                 InsertOutcome::Inserted {
                     id: id_bytes,
                     sources_after: count,

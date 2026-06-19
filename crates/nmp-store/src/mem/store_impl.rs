@@ -8,6 +8,7 @@ use std::ops::ControlFlow;
 
 use super::{domain, gc, insert, query, MemEventStore};
 use crate::events::{DomainHandle, EventIter, EventStore};
+use crate::ingest_log::{PullGap, PullPage, ScanLogResult};
 use crate::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
@@ -201,23 +202,41 @@ impl EventStore for MemEventStore {
     ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
         let st = self.lock()?;
         let target_hex = super::bytes_to_hex(target);
-        let replies = st.interaction_counters
-            .get(&(target_hex.clone(), crate::interaction::CounterKind::Reply as u8))
+        let replies = st
+            .interaction_counters
+            .get(&(
+                target_hex.clone(),
+                crate::interaction::CounterKind::Reply as u8,
+            ))
             .copied()
             .unwrap_or(0);
-        let reactions = st.interaction_counters
-            .get(&(target_hex.clone(), crate::interaction::CounterKind::Reaction as u8))
+        let reactions = st
+            .interaction_counters
+            .get(&(
+                target_hex.clone(),
+                crate::interaction::CounterKind::Reaction as u8,
+            ))
             .copied()
             .unwrap_or(0);
-        let reposts = st.interaction_counters
-            .get(&(target_hex.clone(), crate::interaction::CounterKind::Repost as u8))
+        let reposts = st
+            .interaction_counters
+            .get(&(
+                target_hex.clone(),
+                crate::interaction::CounterKind::Repost as u8,
+            ))
             .copied()
             .unwrap_or(0);
-        let zaps = st.interaction_counters
+        let zaps = st
+            .interaction_counters
             .get(&(target_hex, crate::interaction::CounterKind::Zap as u8))
             .copied()
             .unwrap_or(0);
-        Ok(crate::TargetInteractionCounts { replies, reactions, reposts, zaps })
+        Ok(crate::TargetInteractionCounts {
+            replies,
+            reactions,
+            reposts,
+            zaps,
+        })
     }
 
     // ─── F-TTL replaceable freshness ───────────────────────────────────────────
@@ -279,5 +298,58 @@ impl EventStore for MemEventStore {
             .filter(|((fh, _relay), _v)| fh == filter_hash)
             .map(|((_fh, relay), v)| (relay.clone(), *v))
             .collect()
+    }
+    // ─── Ingest log (ADR-0058 §3, step 1) ────────────────────────────────────────
+
+    fn latest_ingest_seq(&self) -> Result<u64, crate::StoreError> {
+        Ok(self.lock()?.ingest_seq)
+    }
+
+    fn oldest_available_seq(&self) -> Result<Option<u64>, crate::StoreError> {
+        let st = self.lock()?;
+        Ok(st.ingest_log.keys().next().copied())
+    }
+
+    fn scan_log_since_seq(
+        &self,
+        after_seq: u64,
+        limit: usize,
+    ) -> Result<ScanLogResult, crate::StoreError> {
+        let st = self.lock()?;
+        let latest = st.ingest_seq;
+        let gc_floor = st.log_gc_floor;
+
+        // Gap check: consumer has fallen behind the GC floor.
+        if gc_floor > 0 && after_seq < gc_floor {
+            return Ok(ScanLogResult::Gap(PullGap {
+                requested_after_seq: after_seq,
+                first_available_seq: gc_floor + 1,
+            }));
+        }
+
+        // SHOULD-FIX 5: guard against u64::MAX overflow before BTreeMap range.
+        let Some(start_seq) = after_seq.checked_add(1) else {
+            return Ok(ScanLogResult::Page(PullPage {
+                entries: vec![],
+                next_after_seq: after_seq,
+                latest_seq: latest,
+                has_more: false,
+            }));
+        };
+        let entries: Vec<_> = st
+            .ingest_log
+            .range(start_seq..)
+            .take(limit)
+            .map(|(_, e)| e.clone())
+            .collect();
+
+        let next_after_seq = entries.last().map(|e| e.seq).unwrap_or(after_seq);
+        let has_more = next_after_seq < latest;
+        Ok(ScanLogResult::Page(PullPage {
+            entries,
+            next_after_seq,
+            latest_seq: latest,
+            has_more,
+        }))
     }
 }

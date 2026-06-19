@@ -52,6 +52,7 @@ pub(super) mod ic;
 pub(super) mod insert;
 // NIP-09 (kind:5) deletion handler — extracted from insert.rs for the 500 LOC cap.
 pub(super) mod insert_kind5;
+pub(super) mod ingest_log;
 pub(super) mod query;
 mod store_impl;
 #[cfg(test)]
@@ -137,6 +138,17 @@ pub(super) struct MemState {
     /// Domain schema versions.
     pub(super) domain_versions: HashMap<&'static str, u32>,
 
+    // ─── Ingest log (ADR-0058 §3) ───────────────────────────────────────────────
+    /// Monotonic ingest sequence counter. Starts at 0 (no entries); first real seq is 1.
+    /// D4: incremented only inside the MemState mutex.
+    pub(super) ingest_seq: u64,
+
+    /// In-memory ingest log: seq → StoreLogEntry. Bounded to DEFAULT_LOG_MAX_ENTRIES.
+    pub(super) ingest_log: std::collections::BTreeMap<u64, crate::ingest_log::StoreLogEntry>,
+
+    /// GC floor: the lowest seq that has been trimmed. Entries ≤ this value are gone.
+    pub(super) log_gc_floor: u64,
+
     // ─── LRU access tracking (V-60) ──────────────────────────────────────────
     /// Monotonically-increasing counter.  Incremented by one on every insert
     /// and every point-read (get_by_id).  Using a counter rather than wall-clock
@@ -177,6 +189,9 @@ impl MemState {
             access_seq: 0,
             access_index: HashMap::new(),
             interaction_counters: HashMap::new(),
+            ingest_seq: 0,
+            ingest_log: std::collections::BTreeMap::new(),
+            log_gc_floor: 0,
         }
     }
 

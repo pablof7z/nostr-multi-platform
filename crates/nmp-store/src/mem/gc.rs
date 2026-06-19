@@ -21,7 +21,12 @@ use std::collections::HashSet;
 // on wasm32 and to `std::time::Instant` on native (zero-cost re-export).
 use crate::time::Instant;
 
-use super::{access_remove, bytes_to_hex, relay_index_remove, relay_kind_remove_id, MemEventStore, TOMBSTONE_MAX_AGE_SECS};
+use super::ingest_log;
+use super::{
+    access_remove, bytes_to_hex, relay_index_remove, relay_kind_remove_id, MemEventStore,
+    TOMBSTONE_MAX_AGE_SECS,
+};
+use crate::ingest_log::DeleteReason;
 use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
@@ -67,7 +72,10 @@ pub(super) fn gc_step_with_pins(
 
     for id_hex in &expired_ids {
         // Capture kind+tags BEFORE removal for counter decrement.
-        let ic_data = st.events.get(id_hex).map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
+        let ic_data = st
+            .events
+            .get(id_hex)
+            .map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
         if let Some(ev) = st.events.remove(id_hex) {
             st.provenance.remove(id_hex);
             relay_index_remove(&mut *st, id_hex);
@@ -77,17 +85,27 @@ pub(super) fn gc_step_with_pins(
             if let Some((ik, ref it)) = ic_data {
                 super::ic::ic_decrement(&mut *st, ik, it);
             }
+            // ev.raw is a stored (verified) event — id_bytes() is guaranteed Some.
+            let target_id = ev.raw.id_bytes().expect("stored event has valid hex id");
             st.tombstones.insert(
                 id_hex.clone(),
                 TombstoneRow {
-                    // ev.raw is a stored (verified) event — id_bytes() is guaranteed Some.
-                    target_id: ev.raw.id_bytes().expect("stored event has valid hex id"),
+                    target_id,
                     kind5_event_id: None,
                     deleter_pubkey: None,
                     deleted_at: now_secs,
                     sources: vec![],
                     origin: TombstoneOrigin::NIP40Expiry,
                 },
+            );
+            // BLOCKING 2: emit Deleted(Nip40Expiry) — parity with lmdb/gc.rs:209-218.
+            // carrier == target (no kind:5 here; the event expires itself).
+            ingest_log::emit_deleted(
+                &mut *st,
+                target_id,
+                target_id,
+                DeleteReason::Nip40Expiry,
+                now_secs * 1000,
             );
             report.expired_reaped += 1;
         }
@@ -149,7 +167,10 @@ pub(super) fn gc_step_with_pins(
                 })
             };
             // Capture kind+tags BEFORE removal for counter decrement.
-            let ic_data = st.events.get(&id_hex).map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
+            let ic_data = st
+                .events
+                .get(&id_hex)
+                .map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
             if st.events.remove(&id_hex).is_some() {
                 st.provenance.remove(&id_hex);
                 relay_index_remove(&mut *st, &id_hex);
@@ -314,8 +335,7 @@ mod tests {
             max_duration_ms: 10_000,
             max_total_events: usize::MAX,
         };
-        let report =
-            gc_step_with_pins(&store, budget, now_secs, &HashSet::new(), &[]).unwrap();
+        let report = gc_step_with_pins(&store, budget, now_secs, &HashSet::new(), &[]).unwrap();
 
         let st = store.lock().unwrap();
         assert!(
@@ -346,8 +366,7 @@ mod tests {
             max_duration_ms: 10_000,
             max_total_events: usize::MAX,
         };
-        let report =
-            gc_step_with_pins(&store, budget, now_secs, &HashSet::new(), &[]).unwrap();
+        let report = gc_step_with_pins(&store, budget, now_secs, &HashSet::new(), &[]).unwrap();
 
         let st = store.lock().unwrap();
         assert!(

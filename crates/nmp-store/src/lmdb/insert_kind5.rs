@@ -26,7 +26,8 @@ use std::sync::Arc;
 use heed::RwTxn;
 use nostr_database::FlatBufferBuilder;
 
-use super::{conv, gc, provenance, tombstones, Inner};
+use super::{conv, gc, ingest_log, provenance, tombstones, Inner};
+use crate::ingest_log::DeleteReason;
 use crate::types::{InsertOutcome, RawEvent, RelayUrl};
 use crate::StoreError;
 
@@ -120,6 +121,18 @@ pub(super) fn handle_kind5(
                     )?;
                 }
             }
+            // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted target.
+            ingest_log::append_deleted(
+                inner.ingest_log,
+                inner.ingest_meta,
+                txn,
+                &kind5_id,
+                target_id_bytes,
+                DeleteReason::Nip09,
+                received_at_ms,
+                inner.map_size,
+                inner.max_readers,
+            )?;
         }
     }
 
@@ -193,6 +206,18 @@ pub(super) fn handle_kind5(
                                 &existing_tags,
                             )?;
                         }
+                        // ADR-0058 §3: emit Deleted(Nip09) for the a-tag addressable target.
+                        ingest_log::append_deleted(
+                            inner.ingest_log,
+                            inner.ingest_meta,
+                            txn,
+                            &kind5_id,
+                            existing_id,
+                            DeleteReason::Nip09,
+                            received_at_ms,
+                            inner.map_size,
+                            inner.max_readers,
+                        )?;
                     }
                 }
                 // Delete the replaceable_freshness row for this coordinate so stale
@@ -244,6 +269,18 @@ pub(super) fn handle_kind5(
                                 &existing_tags,
                             )?;
                         }
+                        // ADR-0058 §3: emit Deleted(Nip09) for the a-tag replaceable target.
+                        ingest_log::append_deleted(
+                            inner.ingest_log,
+                            inner.ingest_meta,
+                            txn,
+                            &kind5_id,
+                            existing_id,
+                            DeleteReason::Nip09,
+                            received_at_ms,
+                            inner.map_size,
+                            inner.max_readers,
+                        )?;
                     }
                 }
                 // Delete the replaceable_freshness row (Bug-2 fix).
@@ -332,6 +369,18 @@ pub(super) fn handle_kind5(
             &event.tags,
         )?;
     }
+    // ADR-0058 §3: emit Inserted log entry for the kind:5 event itself.
+    ingest_log::append_inserted(
+        inner.ingest_log,
+        inner.ingest_meta,
+        txn,
+        &kind5_id,
+        event,
+        source,
+        received_at_ms,
+        inner.map_size,
+        inner.max_readers,
+    )?;
     Ok(InsertOutcome::Inserted {
         id: kind5_id,
         sources_after: count,

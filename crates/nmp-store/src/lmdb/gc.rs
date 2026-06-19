@@ -48,12 +48,10 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{coverage, provenance, tombstones, Inner};
+use super::{coverage, gc_tombstones, ingest_log, provenance, tombstones, Inner};
+use crate::ingest_log::DeleteReason;
 use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
-
-/// Mirrored from `mem/mod.rs:75`.
-const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 3600;
 
 /// Phase-3/3b tombstone scan runs at most once per hour (V-117).
 ///
@@ -151,13 +149,15 @@ pub(super) fn gc_step(
                 let (freshness_key, kind, event_tags) = match inner
                     .lmdb
                     .get_event_by_id(&txn, id)
-                    .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
-                {
+                    .map_err(|e| {
+                    StoreError::Io(format!("get_by_id: {e}"))
+                })? {
                     Some(ev) => {
                         let owned = ev.into_owned();
                         let fk = freshness_key_from_event(&owned);
                         let kind = owned.kind.as_u16() as u32;
-                        let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                        let tags: Vec<Vec<String>> =
+                            owned.tags.iter().map(|t| t.clone().to_vec()).collect();
                         (fk, kind, Some(tags))
                     }
                     None => (None, 0, None),
@@ -174,7 +174,14 @@ pub(super) fn gc_step(
                     .lmdb
                     .delete(&mut txn, f)
                     .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-                provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, &mut txn, id, kind)?;
+                provenance::delete(
+                    inner.provenance,
+                    inner.relay_index,
+                    inner.relay_kind,
+                    &mut txn,
+                    id,
+                    kind,
+                )?;
                 lru_delete(inner, &mut txn, id)?;
                 // Bug-2 fix: delete stale replaceable_freshness row.
                 if let Some(fk) = freshness_key {
@@ -204,6 +211,18 @@ pub(super) fn gc_step(
                         sources: vec![],
                         origin: TombstoneOrigin::NIP40Expiry,
                     },
+                )?;
+                // ADR-0058 §3: emit Nip40Expiry log entry inside this txn (D4).
+                ingest_log::append_deleted(
+                    inner.ingest_log,
+                    inner.ingest_meta,
+                    &mut txn,
+                    id,
+                    *id,
+                    DeleteReason::Nip40Expiry,
+                    now_secs * 1000,
+                    inner.map_size,
+                    inner.max_readers,
                 )?;
                 report.expired_reaped += 1;
                 if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
@@ -257,8 +276,7 @@ pub(super) fn gc_step(
                     .iter(&txn)
                     .map_err(|e| StoreError::Io(format!("lru iter: {e}")))?
                 {
-                    let (k, val) =
-                        entry.map_err(|e| StoreError::Io(format!("lru entry: {e}")))?;
+                    let (k, val) = entry.map_err(|e| StoreError::Io(format!("lru entry: {e}")))?;
                     if k.len() == 32 && val.len() >= 8 {
                         let mut id = [0u8; 32];
                         id.copy_from_slice(k);
@@ -294,43 +312,46 @@ pub(super) fn gc_step(
                     // K3 Stage D3 backstop.
                     // Use the write txn for the read (heed RwTxn derefs to
                     // RoTxn; mirrors the pattern in delete.rs:by_ids).
-                    let (expiry, freshness_key, guard_fields, kind, event_tags) =
-                        match inner.lmdb.get_event_by_id(&txn, id)
-                            .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
-                        {
-                            None => (None, None, None, 0, None),
-                            Some(ev) => {
-                                let owned = ev.into_owned();
-                                let exp = owned.tags.expiration().map(|ts| ts.as_secs());
-                                let fk = freshness_key_from_event(&owned);
-                                let kind = owned.kind.as_u16() as u32;
-                                let tags: Vec<Vec<String>> = owned
-                                    .tags
-                                    .iter()
-                                    .map(|t| t.clone().to_vec())
-                                    .collect();
-                                let gf = if guards.is_empty() {
-                                    None
-                                } else {
-                                    Some((
-                                        owned.pubkey.to_hex(),
-                                        kind,
-                                        owned.created_at.as_secs(),
-                                        tags.clone(),
-                                    ))
-                                };
-                                (exp, fk, gf, kind, Some(tags))
-                            }
-                        };
-                    let f = Filter::new().id(
-                        nostr::EventId::from_slice(id)
-                            .map_err(|e| StoreError::Encoding(format!("id: {e}")))?,
-                    );
+                    let (expiry, freshness_key, guard_fields, kind, event_tags) = match inner
+                        .lmdb
+                        .get_event_by_id(&txn, id)
+                        .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
+                    {
+                        None => (None, None, None, 0, None),
+                        Some(ev) => {
+                            let owned = ev.into_owned();
+                            let exp = owned.tags.expiration().map(|ts| ts.as_secs());
+                            let fk = freshness_key_from_event(&owned);
+                            let kind = owned.kind.as_u16() as u32;
+                            let tags: Vec<Vec<String>> =
+                                owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                            let gf = if guards.is_empty() {
+                                None
+                            } else {
+                                Some((
+                                    owned.pubkey.to_hex(),
+                                    kind,
+                                    owned.created_at.as_secs(),
+                                    tags.clone(),
+                                ))
+                            };
+                            (exp, fk, gf, kind, Some(tags))
+                        }
+                    };
+                    let f = Filter::new().id(nostr::EventId::from_slice(id)
+                        .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
                     inner
                         .lmdb
                         .delete(&mut txn, f)
                         .map_err(|e| StoreError::Io(format!("lru evict del: {e}")))?;
-                    provenance::delete(inner.provenance, inner.relay_index, inner.relay_kind, &mut txn, id, kind)?;
+                    provenance::delete(
+                        inner.provenance,
+                        inner.relay_index,
+                        inner.relay_kind,
+                        &mut txn,
+                        id,
+                        kind,
+                    )?;
                     lru_delete(inner, &mut txn, id)?;
                     // V-118: clean expiry-index using the known expiry timestamp.
                     expiry_index_delete_exact(inner, &mut txn, expiry, id)?;
@@ -346,10 +367,9 @@ pub(super) fn gc_step(
                     // Bug-2 fix: delete stale replaceable_freshness row so a
                     // re-fetch after eviction is not wrongly skipped.
                     if let Some(fk) = freshness_key {
-                        inner
-                            .lmdb
-                            .delete_freshness(&mut txn, &fk)
-                            .map_err(|e| StoreError::Io(format!("lru evict delete_freshness: {e}")))?;
+                        inner.lmdb.delete_freshness(&mut txn, &fk).map_err(|e| {
+                            StoreError::Io(format!("lru evict delete_freshness: {e}"))
+                        })?;
                     }
                     // K3 Stage D3: record the evicted-below-floor timestamp per
                     // matching guard so the row is lowered before this txn commits.
@@ -368,7 +388,12 @@ pub(super) fn gc_step(
                     }
                     report.lru_evicted += 1;
                     if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
-                        coverage::lower_guards_in_txn(inner, &mut txn, guards, &min_evicted_covered)?;
+                        coverage::lower_guards_in_txn(
+                            inner,
+                            &mut txn,
+                            guards,
+                            &min_evicted_covered,
+                        )?;
                         txn.commit()
                             .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
                         return finish(start, report);
@@ -383,7 +408,7 @@ pub(super) fn gc_step(
         }
     }
 
-    // ── Phase 3: Purge old tombstones ─────────────────────────────────────
+    // ── Phase 3 + 3b: Purge old tombstones and address tombstones ────────────
     //
     // V-117 fix: gate Phase 3 and 3b behind a wall-clock heuristic.
     //
@@ -395,11 +420,10 @@ pub(super) fn gc_step(
     // Gate: run at most once per GC_TOMBSTONE_PURGE_INTERVAL_SECS using the
     // caller-injected `now_secs` (D7-safe).  The `gc_last_tombstone_purge_secs`
     // field on `Inner` tracks when the scan last ran.
-    let last_purge = inner
-        .gc_last_tombstone_purge_secs
-        .load(Ordering::Relaxed);
-    let purge_due =
-        now_secs.saturating_sub(last_purge) >= GC_TOMBSTONE_PURGE_INTERVAL_SECS;
+    //
+    // Implementation extracted to `gc_tombstones.rs` for the 500-LOC cap.
+    let last_purge = inner.gc_last_tombstone_purge_secs.load(Ordering::Relaxed);
+    let purge_due = now_secs.saturating_sub(last_purge) >= GC_TOMBSTONE_PURGE_INTERVAL_SECS;
 
     if purge_due {
         // Mark the purge as starting now so that even if we bail early (budget)
@@ -407,73 +431,7 @@ pub(super) fn gc_step(
         inner
             .gc_last_tombstone_purge_secs
             .store(now_secs, Ordering::Relaxed);
-
-        {
-            let mut txn = inner
-                .env
-                .write_txn()
-                .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-            let mut stale_keys: Vec<Vec<u8>> = Vec::new();
-            for entry in inner
-                .tombstones
-                .iter(&txn)
-                .map_err(|e| StoreError::Io(format!("tomb iter: {e}")))?
-            {
-                let (k, v) = entry.map_err(|e| StoreError::Io(format!("tomb step: {e}")))?;
-                let row = tombstones::decode_row(v)?;
-                if now_secs.saturating_sub(row.deleted_at) > TOMBSTONE_MAX_AGE_SECS {
-                    stale_keys.push(k.to_vec());
-                }
-            }
-            report.tombstones_purged = stale_keys.len();
-            for k in stale_keys {
-                inner
-                    .tombstones
-                    .delete(&mut txn, &k)
-                    .map_err(|e| StoreError::Io(format!("tomb del: {e}")))?;
-            }
-            txn.commit()
-                .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
-        }
-
-        // ── Phase 3b: Purge old address tombstones ─────────────────────────
-        //
-        // addr_tombstones guard param-replaceable re-inserts when an event arrives
-        // after the kind:5 `a`-tag delete that covered its coordinate.  The gate is
-        // `tomb.deleted_at >= event.created_at` — so any new version with a HIGHER
-        // created_at bypasses the gate regardless of whether the tombstone is present.
-        // A purged addr tombstone therefore only allows stale copies (created_at <=
-        // the original delete timestamp) to re-enter, which is identical to the
-        // class of stale re-deliveries the per-id tombstone policy already accepts
-        // after 90 days.  Safety: same retention argument as id-tombstones.
-        {
-            let mut txn = inner
-                .env
-                .write_txn()
-                .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-            let mut stale_addr_keys: Vec<Vec<u8>> = Vec::new();
-            for entry in inner
-                .addr_tombstones
-                .iter(&txn)
-                .map_err(|e| StoreError::Io(format!("addr-tomb iter: {e}")))?
-            {
-                let (k, v) =
-                    entry.map_err(|e| StoreError::Io(format!("addr-tomb step: {e}")))?;
-                let row = tombstones::decode_row(v)?;
-                if now_secs.saturating_sub(row.deleted_at) > TOMBSTONE_MAX_AGE_SECS {
-                    stale_addr_keys.push(k.to_vec());
-                }
-            }
-            report.addr_tombstones_purged = stale_addr_keys.len();
-            for k in stale_addr_keys {
-                inner
-                    .addr_tombstones
-                    .delete(&mut txn, &k)
-                    .map_err(|e| StoreError::Io(format!("addr-tomb del: {e}")))?;
-            }
-            txn.commit()
-                .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
-        }
+        gc_tombstones::purge_tombstones(inner, now_secs, &mut report)?;
     }
 
     finish(start, report)
@@ -484,4 +442,3 @@ fn finish(start: std::time::Instant, mut report: GcReport) -> Result<GcReport, S
     report.duration_ms = start.elapsed().as_millis() as u32;
     Ok(report)
 }
-

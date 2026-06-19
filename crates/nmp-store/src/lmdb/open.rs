@@ -51,7 +51,7 @@ pub(super) fn open_impl_with_limits(
     // Stage 3 (dead persisted-watermark machinery had zero production callers);
     // the K3 coverage ledger below is its purpose-built, actually-read successor
     // (ADR-0056 §2.1 / §3 — re-created, not re-activated).
-    const NMP_ADDITIONAL_DBS: u32 = 12;
+    const NMP_ADDITIONAL_DBS: u32 = 14;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -93,6 +93,9 @@ pub(super) fn open_impl_with_limits(
     let coverage = open("nmp-coverage", &mut txn)?;
     // Issue #1519 — interaction-counter sidecar.
     let interaction_counters = open("nmp-interaction-counters", &mut txn)?;
+    // ADR-0058 §4 — ingest-log sub-dbs.
+    let ingest_log_db = open("nmp-ingest-log", &mut txn)?;
+    let ingest_meta_db = open("nmp-ingest-meta", &mut txn)?;
 
     // Initialise the in-memory seq counter from the max persisted value so
     // a crash-restart never reuses sequence numbers.
@@ -168,6 +171,8 @@ pub(super) fn open_impl_with_limits(
             coverage,
             interaction_counters,
             interaction_counters_usable,
+            ingest_log: ingest_log_db,
+            ingest_meta: ingest_meta_db,
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
         }),
     })
