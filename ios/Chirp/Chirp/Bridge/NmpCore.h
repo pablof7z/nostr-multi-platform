@@ -668,4 +668,31 @@ void nmp_marmot_unregister(void *handle);
 /// raw-event tap and appear in `cached_kp_pubkeys`.
 void nmp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
 
+// ADR-0058 §3 (step 3b) — synchronous read-only pull-page surface.
+//
+// Owned heap buffer returned by `nmp_app_pull_page`. The page/gap/error result
+// is binary (it carries raw event JSON and may contain NUL bytes), so it is not
+// a C string. Release it EXACTLY once via `nmp_free_bytes` — the buffer belongs
+// to the Rust allocator; mixing with the host `free(3)` is undefined behaviour.
+typedef struct NmpOwnedBytes {
+    uint8_t *ptr;
+    uintptr_t len;
+    uintptr_t cap;
+} NmpOwnedBytes;
+
+// Synchronously drain one page of the kernel ingest log for a registered pull
+// cursor. `max_entries` is clamped to [1, 512]; cumulative raw bytes are bounded
+// by min(max_total_raw_bytes, 4 MiB). A null app, unknown cursor, or unavailable
+// store returns a serialized Error variant — never NULL, never a panic (D6).
+// The result encoding (Page / Gap / Error) is documented in
+// `crates/nmp-ffi/src/pull.rs`.
+struct NmpOwnedBytes nmp_app_pull_page(const void *app,
+                                       uint64_t cursor_id,
+                                       uint32_t max_entries,
+                                       uint32_t max_total_raw_bytes);
+
+// Release a buffer returned by `nmp_app_pull_page`. Passing a NULL `ptr` is a
+// no-op (D6).
+void nmp_free_bytes(struct NmpOwnedBytes bytes);
+
 #endif

@@ -66,6 +66,8 @@ mod nip19_ffi;
 // Decode-only: no actor command, no view mutation, no app-specific policy.
 mod nip21_ffi;
 mod publish;
+// ADR-0058 §3 (step 3b) — synchronous read-only pull-page C-ABI surface.
+pub mod pull;
 mod relay_config;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
@@ -260,12 +262,13 @@ use nmp_core::slots::{
     new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
     new_nostrconnect_perms_slot,
     new_external_event_sink_policy_slot, new_publish_resolver_slot,
-    new_routing_substrate_slot,
+    new_pull_cursor_registry_handle_slot, new_routing_substrate_slot,
     new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
     ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicySlot,
     MlsLocalNsecSlot,
     NostrConnectBootstrapRelaySlot, NostrConnectPermsSlot, PublishResolverSlot,
-    RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
+    PullCursorRegistryHandleSlot, RoutingSubstrateSlot, RoutingTraceSlot,
+    SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
 use nmp_core::subs::PlanCoverageHook;
@@ -554,6 +557,13 @@ pub struct NmpApp {
     /// "no card". Substrate-generic: an event id maps to a `KernelEvent` with no
     /// NIP noun (D0). `None` before `nmp_app_start` (the cold-start state).
     event_store_handle: EventStoreSlot,
+    /// ADR-0058 step 3b — the kernel's pull-cursor registry handle, published
+    /// back by the actor right after kernel construction (and re-published on
+    /// `Reset`), same publish-back contract as `event_store_handle`. The
+    /// synchronous [`nmp_app_pull_page`](crate::pull::nmp_app_pull_page) read
+    /// path snapshots a `PullCursorRegistration` through this slot before
+    /// touching the store. `None` before `nmp_app_start`.
+    pull_cursor_registry: PullCursorRegistryHandleSlot,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. The C-ABI setter writes through this slot; actor
@@ -963,6 +973,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // Publish-back (kernel-built store), NOT the V-82 hand-down pattern.
     let event_store_handle: EventStoreSlot = new_event_store_slot();
     let actor_event_store = Arc::clone(&event_store_handle);
+    // ADR-0058 step 3b — pull-cursor registry publish-back slot. The `NmpApp`
+    // keeps one `Arc` clone (read by `nmp_app_pull_page`); the actor carries the
+    // matching clone and publishes `kernel.pull_cursor_registry_handle()` into
+    // it after kernel construction (and re-publishes on `Reset`).
+    let pull_cursor_registry: PullCursorRegistryHandleSlot =
+        new_pull_cursor_registry_handle_slot();
+    let actor_pull_cursor_registry = Arc::clone(&pull_cursor_registry);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
     // requests during start/sign-in/create/switch/remove.
@@ -1137,6 +1154,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             routing_trace: actor_routing_trace,
             active_account: actor_active_account,
             event_store: actor_event_store,
+            pull_cursor_registry: actor_pull_cursor_registry,
             external_event_sink_dispatcher: actor_external_event_sink_dispatcher_slot,
         };
         let config = ActorConfigSources {
@@ -1266,6 +1284,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         active_local_keys,
         active_account_handle,
         event_store_handle,
+        pull_cursor_registry,
         storage_path,
         routing_trace,
         routing_substrate,
@@ -1916,6 +1935,17 @@ impl NmpApp {
     #[must_use]
     pub fn event_store_handle(&self) -> EventStoreSlot {
         Arc::clone(&self.event_store_handle)
+    }
+
+    /// ADR-0058 step 3b — clone of the kernel's pull-cursor registry handle slot.
+    ///
+    /// Returns the SAME `Arc<Mutex<Option<PullCursorRegistrySlot>>>` the actor
+    /// publishes the kernel's registry into after construction (and re-publishes
+    /// on `Reset`). The synchronous [`crate::pull::nmp_app_pull_page`] path reads
+    /// through it. `None` inside the slot until the actor builds the kernel.
+    #[must_use]
+    pub fn pull_cursor_registry_handle(&self) -> PullCursorRegistryHandleSlot {
+        Arc::clone(&self.pull_cursor_registry)
     }
 
     /// V-83 — synchronous event-by-id read against the kernel's event store.
