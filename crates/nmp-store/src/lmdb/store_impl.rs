@@ -10,7 +10,8 @@ use super::{
     coverage, delete, domain, dump as dump_mod, gc, ingest_log, insert, query, query_relay_index,
     LmdbEventStore,
 };
-use crate::events::{DomainHandle, EventIter, EventStore};
+use crate::domain_handle::DomainHandle;
+use crate::events::{EventIter, EventStore};
 use crate::ingest_log::ScanLogResult;
 use crate::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,

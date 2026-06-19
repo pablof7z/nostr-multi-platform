@@ -7,7 +7,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
 use super::{domain, gc, insert, query, MemEventStore};
-use crate::events::{DomainHandle, EventIter, EventStore};
+use crate::domain_handle::DomainHandle;
+use crate::events::{EventIter, EventStore};
 use crate::ingest_log::{PullGap, PullPage, ScanLogResult};
 use crate::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,

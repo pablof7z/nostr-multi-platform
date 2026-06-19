@@ -126,12 +126,14 @@ use std::path::{Path, PathBuf};
 use super::StoreError;
 
 #[cfg(not(feature = "lmdb-backend"))]
-use super::events::{DomainHandle, EventIter, EventStore};
+use super::events::{EventIter, EventStore};
 #[cfg(not(feature = "lmdb-backend"))]
 use super::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
 };
+#[cfg(not(feature = "lmdb-backend"))]
+use crate::domain_handle::DomainHandle;
 #[cfg(not(feature = "lmdb-backend"))]
 use crate::DomainMigration;
 #[cfg(not(feature = "lmdb-backend"))]

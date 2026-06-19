@@ -23,6 +23,7 @@
 //!
 //! See `docs/design/lmdb/trait.md` for the full design specification.
 
+mod domain_handle;
 mod domain_migration;
 mod events;
 pub mod ingest_log;
@@ -34,8 +35,9 @@ mod mem;
 pub(crate) mod time;
 pub mod types;
 
+pub use domain_handle::{DomainHandle, DomainScanIter};
 pub use domain_migration::{DomainMigration, MigrationTx};
-pub use events::{DomainHandle, DomainScanIter, EventIter, EventStore};
+pub use events::{EventIter, EventStore};
 pub use ingest_log::{
     DeleteReason, LogOp, LogRetentionClaim, PullGap, PullPage, ScanLogResult, StoreLogEntry,
 };

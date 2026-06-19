@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use super::Inner;
-use crate::events::{DomainHandle, DomainHandleInner};
+use crate::domain_handle::{DomainHandle, DomainHandleInner};
 use crate::DomainMigration;
 use crate::StoreError;
 
