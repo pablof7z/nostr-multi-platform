@@ -1,69 +1,60 @@
-//! Robustness family 5 — GC COVERAGE-HOLE SOUNDNESS (deeper than "RSS is flat").
+//! Robustness family 5 — GC SOUNDNESS (deeper than "RSS is flat").
 //!
-//! Hypothesis: with LRU eviction EXPLICITLY enabled (a `GcBudget` with a durable
-//! ceiling — production default is `usize::MAX`, so eviction is effectively off
-//! and the oracle must opt in), eviction MUST NEVER strand an event that an
-//! active interest still needs (the coverage-ledger pin concern). "Bounded but
-//! wrong" is the dangerous case the RSS gates miss.
+//! A prior version of this oracle measured the WRONG thing. It injected its
+//! corpus through `nmp_app_inject_signed_event_json`, which routes every event
+//! under the `"diag-firehose-stress"` sub-id — and that sub-id PINS each event
+//! into `self.timeline`. Timeline membership protects an event from BOTH RAM-
+//! cache eviction (`evict_events_cache`) and durable-LRU eviction
+//! (`derive_store_pin_set`). So the corpus was never eviction-eligible:
+//! `ram_delta == 0` / `lru_delta == 0` were the EXPECTED, correct product
+//! behaviour, yet the oracle read them as a pass-by-luck / vacuous gate. The GC
+//! product path was correct all along — it simply was never exercised.
 //!
-//! Both seams are now wired:
-//! 1. `nmp_app_configure_gc_budget` (pre-start) — opts into bounded LRU ceiling.
-//! 2. `nmp_app_trigger_gc_step` — forces an immediate GC pass.
-//! 3. `nmp_app_read_ram_eviction_stats` — reads cumulative eviction counters.
+//! This rewrite fixes the ORACLE:
 //!
-//! The GC pass covers TWO eviction tiers:
-//! - RAM tier (`Kernel::evict_events_cache`): events removed from `self.events`
-//!   HashMap when > `EVENTS_RAM_HWM` (1 000) unpinned events accumulate.
-//!   Measured by `PROCESS_RAM_EVENTS_EVICTED`.
-//! - Store tier (LRU LMDB deletion): events deleted from the durable store when
-//!   the store event count exceeds `max_total_events`.  Measured by
-//!   `PROCESS_STORE_LRU_EVICTED`.  Always 0 for the in-memory store backend.
-//!
-//! The `gc-lru-opt-in` oracle exercises the RAM-tier eviction (always available
-//! regardless of backend) by injecting more than `EVENTS_RAM_HWM` events, then
-//! triggering a GC pass and asserting the eviction counter rose.
-//!
-//! The `gc-no-stranded-coverage` oracle verifies the pin invariant: after the
-//! same GC pass, events that match an open active interest (and are therefore
-//! pinned) must STILL be readable from the store — i.e. not evicted.
+//! 1. UN-PINNED corpus. `nmp_app_inject_unpinned_events_for_gc` routes the
+//!    filler corpus through `ActorCommand::IngestPreVerifiedEventsForSubId`
+//!    under the `"gc-oracle-unpinned"` sub-id, which does NOT push into
+//!    `self.timeline`. The events are therefore eviction-eligible in both tiers.
+//! 2. Acked barriers (no fixed sleep). Both the un-pinned ingest and
+//!    `nmp_app_trigger_gc_step` block on a one-shot actor ack, so every counter
+//!    is read against a SETTLED state.
+//! 3. Three real gates against one settled GC pass:
+//!    - `gc-ram-cache-eviction`: assert `ram_delta > 0` (RAM hot-cache eviction
+//!      fired once the cache exceeded `EVENTS_RAM_HWM = 1000`).
+//!    - `gc-durable-lru-opt-in`: with a finite `GcBudget` ceiling of 50, assert
+//!      `lru_delta > 0` (the `MemEventStore` Phase-2 durable LRU deleted rows).
+//!    - `gc-no-stranded-coverage`: FIRST prove an eviction occurred, THEN assert
+//!      every PINNED (timeline-pinned, oldest-`created_at`) event survived in the
+//!      store: `pinned_ids ⊆ stored_readable_ids`. A stranded pinned event is a
+//!      real FAIL, surfaced as a finding.
 
-use std::time::Duration;
+use std::collections::HashSet;
 
 use nostr::{EventBuilder, JsonUtil, Keys, ToBech32};
 
 use nmp_ffi::{
-    nmp_app_configure_gc_budget, nmp_app_read_author_event_ids, nmp_app_read_ram_eviction_stats,
-    nmp_app_trigger_gc_step, nmp_free_string,
+    nmp_app_configure_gc_budget, nmp_app_inject_signed_event_json,
+    nmp_app_inject_unpinned_events_for_gc, nmp_app_read_author_event_ids,
+    nmp_app_read_ram_eviction_stats, nmp_app_trigger_gc_step, nmp_free_string,
 };
 
 use crate::config::{Args, Phase};
 use crate::report::{GateRow, SanityReport, Verdict};
 
-/// Number of kind:1 events to inject (must exceed `EVENTS_RAM_HWM = 1 000`).
-const GC_BATCH: u64 = 1_200;
-/// RAM HWM from `nmp-core` — kept as a named constant for clarity.
+/// Number of UN-PINNED filler events (must exceed `EVENTS_RAM_HWM = 1000` so RAM
+/// eviction fires, and exceed the durable ceiling so LRU eviction fires).
+const GC_UNPINNED_BATCH: u32 = 1_200;
+/// Number of PINNED (timeline) events — the oldest `created_at`, so they are the
+/// first durable-LRU candidates and would be evicted but for the pin.
+const GC_PINNED_COUNT: u64 = 10;
+/// RAM HWM from `nmp-core` (`EVENTS_RAM_HWM`) — named here for the note text.
 const EVENTS_RAM_HWM: u64 = 1_000;
-/// GC budget ceiling (lower than `GC_BATCH`) used to opt into bounded LRU.
+/// Finite durable LRU ceiling, well below the corpus size, to opt into Phase-2
+/// store eviction (`GcBudget::with_durable_event_ceiling`).
 const GC_BUDGET_CEILING: u64 = 50;
-/// How long to wait after `nmp_app_trigger_gc_step` for the pass to complete.
-const GC_SETTLE_MS: u64 = 2_000;
 
 pub fn run_gc_soundness(report: &mut SanityReport, _args: &Args) {
-    let phase = Phase::GcSoundness.as_str();
-
-    // ── Build a fresh keypair so every injected event is self-authored ─────
-    let keys = Keys::generate();
-    let nsec = keys.secret_key().to_bech32().unwrap_or_default();
-    let pubkey_hex = keys.public_key().to_hex();
-
-    // ── Construct the app with a bounded GC budget (BEFORE start) ──────────
-    //
-    // We call `nmp_app_configure_gc_budget` before `DrivenApp::launch` (which
-    // calls `nmp_app_start`).  However, `DrivenApp::launch` is an opaque
-    // builder that handles start internally.  To work around this, we build a
-    // minimal app manually: `nmp_app_new` → configure_gc_budget → inject events
-    // → trigger GC → check counters. The `DrivenApp` helper is only used for
-    // the relay-connected path; the GC oracle is self-contained and relay-free.
     use nmp_app_chirp::{
         nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_register,
         nmp_app_chirp_unregister, ChirpHandle,
@@ -71,74 +62,93 @@ pub fn run_gc_soundness(report: &mut SanityReport, _args: &Args) {
     use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_app_start};
     use std::ffi::CString;
 
+    let phase = Phase::GcSoundness.as_str();
+
+    // Oracle keypair: every PINNED event is self-authored so the author-scoped
+    // store scan isolates pinned survivors (the un-pinned filler uses a separate
+    // key inside the FFI, never this author).
+    let keys = Keys::generate();
+    let nsec = keys.secret_key().to_bech32().unwrap_or_default();
+    let pubkey_hex = keys.public_key().to_hex();
+
     let app = nmp_app_new();
 
-    // Register canonical Chirp composition (provides home + author feeds).
     let pk_c = CString::new(pubkey_hex.as_str()).unwrap();
     let mut chirp: *mut ChirpHandle = std::ptr::null_mut();
     nmp_app_chirp_register(app, pk_c.as_ptr(), &mut chirp);
     nmp_app_chirp_declare_consumed_projections(app);
 
-    // Sign in as the injected key.
     if let Ok(nsec_c) = CString::new(nsec.as_str()) {
         nmp_app_signin_nsec(app, nsec_c.as_ptr(), 1);
     }
 
-    // ── Seam 2: configure a bounded GC budget ceiling BEFORE start ─────────
+    // ── Opt into a finite durable LRU ceiling BEFORE start ──────────────────
     let configure_status = nmp_app_configure_gc_budget(app, GC_BUDGET_CEILING);
     if configure_status != 0 {
-        report.push(GateRow::unmeasured(
-            "gc-lru-opt-in",
-            phase,
-            "nmp_app_configure_gc_budget",
-            "pre-start GC budget ceiling",
-            "configure_status == 0 (Ok)",
-            Verdict::Blocked,
-            &format!(
-                "nmp_app_configure_gc_budget returned status={configure_status} (expected 0=Ok); \
-                 seam was added but rejected the pre-start call — check AlreadyStarted guard"
-            ),
-        ));
-        if !chirp.is_null() { nmp_app_chirp_unregister(chirp); }
+        for gate in [
+            "gc-ram-cache-eviction",
+            "gc-durable-lru-opt-in",
+            "gc-no-stranded-coverage",
+        ] {
+            report.push(GateRow::unmeasured(
+                gate,
+                phase,
+                "nmp_app_configure_gc_budget",
+                "pre-start GC budget ceiling",
+                "configure_status == 0 (Ok)",
+                Verdict::Blocked,
+                &format!(
+                    "nmp_app_configure_gc_budget returned status={configure_status} (expected 0); \
+                     cannot exercise GC — pre-start guard rejected the call"
+                ),
+            ));
+        }
+        if !chirp.is_null() {
+            nmp_app_chirp_unregister(chirp);
+        }
         nmp_app_free(app);
         return;
     }
 
-    // Start the actor (NOW the GC ceiling is locked in).
     nmp_app_start(app, 0, 500, 4);
 
-    // ── Snapshot eviction counters BEFORE inject ────────────────────────────
+    // ── Eviction counters BEFORE inject ─────────────────────────────────────
     let mut ram_before: u64 = 0;
     let mut lru_before: u64 = 0;
     nmp_app_read_ram_eviction_stats(&mut ram_before, &mut lru_before);
 
-    // ── Inject GC_BATCH self-authored kind:1 events ─────────────────────────
+    // ── Inject the PINNED corpus (oldest timestamps, timeline-pinned) ───────
+    // These flow through `nmp_app_inject_signed_event_json` → the
+    // `diag-firehose-stress` sub-id → `self.timeline.push_back`, so they are
+    // pinned in BOTH tiers. Oldest `created_at` ⇒ first LRU candidates.
     let base_ts = crate::report::now_unix();
-    let mut accepted: u64 = 0;
-    for i in 0..GC_BATCH {
+    let mut pinned_ids: Vec<String> = Vec::new();
+    for i in 0..GC_PINNED_COUNT {
         let ts = nostr::Timestamp::from(base_ts + i);
-        let ev = EventBuilder::text_note(format!("gc-oracle event {i}"))
+        if let Ok(ev) = EventBuilder::text_note(format!("gc-oracle pinned {i}"))
             .custom_created_at(ts)
             .sign_with_keys(&keys)
-            .ok()
-            .map(|e: nostr::Event| e.as_json());
-        if let Some(json) = ev {
-            if let Ok(c) = CString::new(json) {
-                if nmp_ffi::nmp_app_inject_signed_event_json(app, c.as_ptr()) {
-                    accepted += 1;
+        {
+            let ev: nostr::Event = ev;
+            let id_hex = ev.id.to_hex();
+            if let Ok(c) = CString::new(ev.as_json()) {
+                if nmp_app_inject_signed_event_json(app, c.as_ptr()) {
+                    pinned_ids.push(id_hex);
                 }
             }
         }
     }
 
-    // Give the actor a moment to process all ingest commands before GC fires.
-    std::thread::sleep(Duration::from_millis(500));
+    // ── Inject the UN-PINNED filler (newer timestamps) — acked barrier ──────
+    // Routed under `gc-oracle-unpinned`, so NOT timeline-pinned ⇒ evictable.
+    let unpinned_base_ts = base_ts + 1_000;
+    let unpinned_accepted =
+        nmp_app_inject_unpinned_events_for_gc(app, unpinned_base_ts, GC_UNPINNED_BATCH);
 
-    // ── Seam 2b: force an immediate GC pass ─────────────────────────────────
+    // ── Force a settled GC pass — acked barrier (no sleep) ──────────────────
     nmp_app_trigger_gc_step(app);
-    std::thread::sleep(Duration::from_millis(GC_SETTLE_MS));
 
-    // ── Seam 3: read eviction counters AFTER GC ─────────────────────────────
+    // ── Eviction counters AFTER GC ──────────────────────────────────────────
     let mut ram_after: u64 = 0;
     let mut lru_after: u64 = 0;
     nmp_app_read_ram_eviction_stats(&mut ram_after, &mut lru_after);
@@ -146,78 +156,123 @@ pub fn run_gc_soundness(report: &mut SanityReport, _args: &Args) {
     let ram_delta = ram_after.saturating_sub(ram_before);
     let lru_delta = lru_after.saturating_sub(lru_before);
 
-    // gc-lru-opt-in: at least one eviction tier must have fired.
-    // With in-memory store, lru_delta is always 0; ram_delta must be > 0
-    // since we injected GC_BATCH > EVENTS_RAM_HWM events.
-    let any_evicted = ram_delta + lru_delta;
-    let expected_ram_evictions = GC_BATCH.saturating_sub(EVENTS_RAM_HWM);
+    // ── Read the post-GC store survivors for the oracle author ──────────────
+    let stored_ids: HashSet<String> = {
+        let pk = CString::new(pubkey_hex.as_str()).ok();
+        pk.map(|pk| nmp_app_read_author_event_ids(app, pk.as_ptr(), 0))
+            .and_then(|ptr| {
+                if ptr.is_null() {
+                    return None;
+                }
+                let parsed = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                    .to_str()
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+                nmp_free_string(ptr);
+                parsed
+            })
+            .and_then(|v| {
+                v.as_array().map(|arr| {
+                    arr.iter()
+                        .filter_map(|e| e.get("id").and_then(|i| i.as_str()).map(String::from))
+                        .collect()
+                })
+            })
+            .unwrap_or_default()
+    };
+
+    // ── Gate 1: RAM hot-cache eviction fired ────────────────────────────────
     report.push(
         GateRow::min(
-            "gc-lru-opt-in",
+            "gc-ram-cache-eviction",
             phase,
-            "nmp_app_configure_gc_budget + nmp_app_trigger_gc_step + nmp_app_read_ram_eviction_stats",
-            "evictions fired after GC with bounded budget",
-            any_evicted as f64,
+            "nmp_app_inject_unpinned_events_for_gc + nmp_app_trigger_gc_step (acked)",
+            "PROCESS_RAM_EVENTS_EVICTED delta after settled GC",
+            ram_delta as f64,
             1.0,
-            "evicted-events",
+            "ram-evicted",
         )
         .with_note(&format!(
-            "injected={accepted} events; ram_delta={ram_delta} (expected≈{expected_ram_evictions}); \
-             lru_delta={lru_delta} (0=in-memory store); \
-             gc_budget_ceiling={GC_BUDGET_CEILING} events"
+            "unpinned_injected={unpinned_accepted}; pinned_injected={}; \
+             ram_cache_hwm={EVENTS_RAM_HWM}; ram_delta={ram_delta}; \
+             un-pinned corpus made the RAM cache exceed the HWM so eviction could fire",
+            pinned_ids.len()
         )),
     );
 
-    // gc-no-stranded-coverage: events that were ACCEPTED must still be
-    // readable from the store after GC.  The kernel's active-interest pin set
-    // protects events matching open interests from RAM eviction.  We verify
-    // the weaker invariant: the store is still internally consistent — we can
-    // scan events by author and get back at least some of what we injected.
-    // (The full "evicted ∩ pinned == ∅" is upheld by construction in
-    // `evict_events_cache`, which excludes all view-pinned events from the
-    // candidate pool before removing any; this oracle confirms the seam is
-    // wired and the scan path is functional post-GC.)
-    let pk_for_scan = CString::new(pubkey_hex.as_str()).ok();
-    let stored_count: u64 = pk_for_scan
-        .map(|pk| nmp_app_read_author_event_ids(app, pk.as_ptr(), 0))
-        .and_then(|ptr| {
-            if ptr.is_null() {
-                return None;
-            }
-            let count = unsafe { std::ffi::CStr::from_ptr(ptr) }
-                .to_str()
-                .ok()
-                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-                .and_then(|v| v.as_array().map(|arr| arr.len() as u64));
-            nmp_free_string(ptr);
-            count
-        })
-        .unwrap_or(0);
-
-    // After GC with a RAM HWM of 1000 and GC_BATCH=1200 injected events, the
-    // store scan (which reads from the durable store, NOT the RAM cache) should
-    // return all accepted events regardless of RAM eviction — LMDB is the
-    // authoritative copy and RAM eviction never deletes from it.
-    // For the in-memory backend, `MemEventStore` is also separate from the RAM
-    // cache, so events persisted there survive RAM-cache eviction too.
+    // ── Gate 2: durable LRU eviction fired (finite ceiling) ─────────────────
     report.push(
         GateRow::min(
-            "gc-no-stranded-coverage",
+            "gc-durable-lru-opt-in",
             phase,
-            "nmp_app_read_author_event_ids after GC + nmp_app_read_ram_eviction_stats",
-            "store-readable events after GC (evicted ∩ store-readable = sound)",
-            stored_count as f64,
+            "nmp_app_configure_gc_budget(50) + nmp_app_trigger_gc_step (acked)",
+            "PROCESS_STORE_LRU_EVICTED delta (GcReport.lru_evicted) after settled GC",
+            lru_delta as f64,
             1.0,
-            "events-in-store",
+            "lru-evicted",
         )
         .with_note(&format!(
-            "accepted={accepted}; stored_after_gc={stored_count}; ram_delta={ram_delta}; \
-             lru_delta={lru_delta}; invariant: RAM eviction never deletes from durable store \
-             (evict_events_cache removes from self.events HashMap only)"
+            "durable_ceiling={GC_BUDGET_CEILING}; corpus={}+{unpinned_accepted}; \
+             lru_delta={lru_delta}; MemEventStore performs Phase-2 LRU deletion when \
+             max_total_events is finite (mem/gc.rs) — NOT excused as in-memory",
+            pinned_ids.len()
         )),
     );
 
-    // Teardown.
+    // ── Gate 3: no stranding — prove eviction, then prove pins survived ─────
+    let eviction_occurred = ram_delta + lru_delta > 0;
+    let present: Vec<&String> = pinned_ids
+        .iter()
+        .filter(|id| stored_ids.contains(*id))
+        .collect();
+    let stranded: Vec<&String> = pinned_ids
+        .iter()
+        .filter(|id| !stored_ids.contains(*id))
+        .collect();
+    let all_pinned_present = stranded.is_empty() && !pinned_ids.is_empty();
+
+    let verdict = if eviction_occurred && all_pinned_present {
+        Verdict::Pass
+    } else {
+        Verdict::Fail
+    };
+    if !stranded.is_empty() {
+        report.finding(format!(
+            "GC SOUNDNESS FAIL: {} pinned event(s) STRANDED (evicted despite the pin): {:?}",
+            stranded.len(),
+            stranded
+        ));
+    }
+    if !eviction_occurred {
+        report.finding(
+            "GC SOUNDNESS: no eviction fired (ram_delta=0 AND lru_delta=0) after an \
+             un-pinned corpus + acked GC — real product finding, the no-stranding \
+             invariant is unproven (vacuous)."
+                .to_string(),
+        );
+    }
+    report.push(GateRow {
+        gate: "gc-no-stranded-coverage".to_string(),
+        phase: phase.to_string(),
+        tool: "nmp_app_read_author_event_ids after settled GC".to_string(),
+        hook: "pinned_ids ⊆ stored_readable_ids (after a proven eviction)".to_string(),
+        threshold: "eviction>0 AND all pinned readable".to_string(),
+        measured: Some(format!(
+            "{}/{} pinned readable; evicted={} (ram={ram_delta},lru={lru_delta})",
+            present.len(),
+            pinned_ids.len(),
+            ram_delta + lru_delta
+        )),
+        verdict,
+        note: Some(format!(
+            "store_survivors_for_author={}; pinned timeline events have the OLDEST \
+             created_at (first LRU candidates) yet must survive durable eviction; \
+             stranded={:?}",
+            stored_ids.len(),
+            stranded
+        )),
+    });
+
     if !chirp.is_null() {
         nmp_app_chirp_unregister(chirp);
     }

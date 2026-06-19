@@ -239,13 +239,87 @@ pub extern "C" fn nmp_app_configure_gc_budget(app: *mut NmpApp, max_events: u64)
     NmpConfigStatus::Ok.code()
 }
 
-/// Test-support — force one immediate GC pass outside the 60-second tick.
+/// Test-support — ingest `count` real Schnorr-signed kind:1 events under an
+/// UN-PINNED sub-id, then BLOCK until the actor finishes the batch.
 ///
-/// Sends `ActorCommand::TriggerGcStep` to the kernel actor, which runs
-/// `Kernel::run_gc_step()` between its next two mailbox messages.  The call
-/// returns immediately; the GC pass runs asynchronously on the actor thread.
+/// Unlike `nmp_app_inject_signed_event_json` (which routes through the
+/// `"diag-firehose-stress"` sub-id and pins every event into `self.timeline`),
+/// this routes through `ActorCommand::IngestPreVerifiedEventsForSubId` under the
+/// `"gc-oracle-unpinned"` sub-id. That sub-id does NOT start with
+/// `diag-firehose-`, so `ingest_pre_verified_event` skips the
+/// `self.timeline.push_back`: the injected events land in the RAM cache and the
+/// durable store but are NOT timeline-pinned — they are eviction-eligible, which
+/// is exactly what a GC oracle needs to observe a real eviction.
 ///
-/// Use `std::thread::sleep` + counter polling to wait for the pass to complete.
+/// The events are signed with a freshly generated key (NOT the caller's author),
+/// so an author-scoped store scan of the caller's own key returns only the
+/// caller's pinned events, never this filler corpus.
+///
+/// Returns the number of events accepted (signed + verified + enqueued). Blocks
+/// on the ingest ack so the corpus is SETTLED on return — no fixed sleep.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_inject_unpinned_events_for_gc(
+    app: *mut NmpApp,
+    base_created_at: u64,
+    count: u32,
+) -> u32 {
+    use nostr::{EventBuilder, Keys, Timestamp};
+
+    let Some(app) = app_ref(app) else {
+        return 0;
+    };
+
+    // Separate fixture key: this filler corpus is intentionally NOT authored by
+    // the caller, so a caller-author store scan can isolate pinned survivors.
+    let keys = Keys::generate();
+    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
+        .filter_map(|i| {
+            let ts = Timestamp::from(base_created_at.saturating_add(i));
+            let nostr_event = EventBuilder::text_note(format!("gc-unpinned filler {i}"))
+                .custom_created_at(ts)
+                .sign_with_keys(&keys)
+                .ok()?;
+            let raw = nmp_core::store::RawEvent {
+                id: nostr_event.id.to_hex(),
+                pubkey: nostr_event.pubkey.to_hex(),
+                created_at: nostr_event.created_at.as_secs(),
+                kind: nostr_event.kind.as_u16() as u32,
+                tags: nostr_event
+                    .tags
+                    .iter()
+                    .map(|t| t.as_slice().to_vec())
+                    .collect(),
+                content: nostr_event.content.clone(),
+                sig: nostr_event.sig.to_string(),
+            };
+            nmp_core::store::VerifiedEvent::try_from_raw(raw).ok()
+        })
+        .collect();
+    let accepted = events.len() as u32;
+
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+    app.send_cmd(ActorCommand::IngestPreVerifiedEventsForSubId {
+        sub_id: "gc-oracle-unpinned".to_string(),
+        events,
+        ack: ack_tx,
+    });
+    // Block until the actor has ingested + re-sorted the whole batch (settled).
+    let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
+    accepted
+}
+
+/// Test-support — force one immediate GC pass outside the 60-second tick, then
+/// BLOCK until the pass has fully completed.
+///
+/// Sends `ActorCommand::TriggerGcStep { ack }` to the kernel actor, which runs
+/// `Kernel::run_gc_step()` (RAM-tier eviction + store-tier LRU step) and then
+/// acks. This call blocks on that ack, so on return the cumulative eviction
+/// counters read by `nmp_app_read_ram_eviction_stats` reflect a SETTLED GC pass
+/// — no `std::thread::sleep` + polling guesswork.
 ///
 /// D0: gated on `cfg(any(test, feature = "test-support"))`. Not part of the
 /// production FFI ABI.
@@ -255,7 +329,10 @@ pub extern "C" fn nmp_app_trigger_gc_step(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::TriggerGcStep);
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
+    app.send_cmd(ActorCommand::TriggerGcStep { ack: ack_tx });
+    // Block until the GC pass is settled (RAM eviction + store LRU step done).
+    let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
 }
 
 /// Test-support — read cumulative RAM and durable-store LRU eviction counters.

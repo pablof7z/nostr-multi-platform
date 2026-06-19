@@ -220,8 +220,9 @@ pub use timeline::{
 pub use testing::{
     nmp_app_configure_gc_budget, nmp_app_inject_pre_verified_events,
     nmp_app_inject_signed_event_json, nmp_app_inject_signed_events,
-    nmp_app_read_author_event_ids, nmp_app_read_projection_churn_stats,
-    nmp_app_read_ram_eviction_stats, nmp_app_trigger_gc_step,
+    nmp_app_inject_unpinned_events_for_gc, nmp_app_read_author_event_ids,
+    nmp_app_read_projection_churn_stats, nmp_app_read_ram_eviction_stats,
+    nmp_app_trigger_gc_step,
 };
 // ADR-0052 §D3 — rung 5.3 per-app signer-port oracle seam.
 #[cfg(any(test, feature = "test-support"))]
