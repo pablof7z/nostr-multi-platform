@@ -1765,30 +1765,29 @@ fn snapshot_json_carries_new_projections() {
         !relay_rows.is_empty(),
         "configured_relays projection must have entries"
     );
-    // D0: the views cluster (`profile`, `timeline`, `author_view`,
-    // `inserted`, `updated`, `removed`) is no longer a typed `KernelSnapshot`
-    // field set — all are kernel-owned built-in entries in the same `projections`
-    // map. D5: `timeline`, `inserted`, `updated`, `removed` are present only
-    // when `follow_feed_kinds` is non-empty (the shell has called
-    // `nmp_app_chirp_open_home_feed`). `profile` is always present.
+    // D0: the views cluster (`profile`) is a kernel-owned built-in entry in
+    // the `projections` map. `profile` is always present.
     // V-112 (ADR-0042): `author_view` / `thread_view` deleted from projections.
+    // #1610: `timeline`, `inserted`, `updated`, `removed` removed from the
+    // codegen registry (JSON-era vestigials; typed feed ships via `nmp.feed.home`).
+    // These asserts confirm the kernel never emits those legacy keys.
     assert!(projections.get("profile").is_some());
-    // `timeline` and deltas are absent — no open_contact_feed call above.
+    // Kernel never emits the JSON-era timeline/delta keys (#1610).
     assert!(
         projections.get("timeline").is_none(),
-        "D5: timeline must be absent before open_contact_feed"
+        "#1610: timeline must never appear in projections (removed JSON-era key)"
     );
     assert!(
         projections.get("inserted").is_none(),
-        "D5: inserted must be absent before open_contact_feed"
+        "#1610: inserted must never appear in projections (removed JSON-era key)"
     );
     assert!(
         projections.get("updated").is_none(),
-        "D5: updated must be absent before open_contact_feed"
+        "#1610: updated must never appear in projections (removed JSON-era key)"
     );
     assert!(
         projections.get("removed").is_none(),
-        "D5: removed must be absent before open_contact_feed"
+        "#1610: removed must never appear in projections (removed JSON-era key)"
     );
     // V-112 (ADR-0042): `author_view` / `thread_view` deleted from snapshot.
     // `retarget_timeline` no longer calls `kernel.open_author()`.
@@ -2033,10 +2032,8 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         "close_contact_feed must clear timeline_authors"
     );
 
-    // D5 symmetry: take a snapshot after close and assert that the timeline /
-    // delta-projection cluster is absent — mirroring the pre-open assertions
-    // at tests.rs:1932-1950.  The headline design claim is that D5 gating is
-    // symmetric: the cluster appears on open and disappears again on close.
+    // Confirm that the kernel never emits the JSON-era timeline/delta keys
+    // (#1610 removed them from the registry; they were never produced post-V-112).
     let post_close_json = kernel.make_update_json_for_test(true);
     let post_close: serde_json::Value =
         serde_json::from_str(&post_close_json).expect("post-close snapshot must be valid JSON");
@@ -2045,19 +2042,19 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         .expect("snapshot must carry the projections map");
     assert!(
         post_projections.get("timeline").is_none(),
-        "D5: timeline must be absent after close_contact_feed"
+        "#1610: timeline must never appear in projections (removed JSON-era key)"
     );
     assert!(
         post_projections.get("inserted").is_none(),
-        "D5: inserted must be absent after close_contact_feed"
+        "#1610: inserted must never appear in projections (removed JSON-era key)"
     );
     assert!(
         post_projections.get("updated").is_none(),
-        "D5: updated must be absent after close_contact_feed"
+        "#1610: updated must never appear in projections (removed JSON-era key)"
     );
     assert!(
         post_projections.get("removed").is_none(),
-        "D5: removed must be absent after close_contact_feed"
+        "#1610: removed must never appear in projections (removed JSON-era key)"
     );
 }
 

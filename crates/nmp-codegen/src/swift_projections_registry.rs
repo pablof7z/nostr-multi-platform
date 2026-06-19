@@ -96,17 +96,17 @@ pub struct SnapshotProjectionEntry {
     /// file_identifier)` triple to locate + verify the buffer, plus the name
     /// of the `flatc --swift` reader struct to decode it.
     ///
-    /// `None` for the handful of registry keys whose JSON projection has NO
-    /// typed sidecar counterpart on the wire today:
-    /// - `last_action_result` — sticky scalar; no dedicated sidecar (the
-    ///   per-tick `action_results` array carries the typed form instead).
-    /// - `timeline` / `inserted` / `updated` / `removed` — the per-tick
-    ///   timeline-delta arrays have no standalone typed sidecar; the typed
-    ///   feed ships via `nmp.feed.home` (`OpFeedSnapshot`).
+    /// Every entry in the registry MUST have `typed_sidecar: Some(...)`.
+    /// A `None` value means the projection has no typed wire form and is
+    /// therefore a JSON-era vestigial that should be removed from the registry.
+    /// The `typed_sidecar_coverage_gate` test in `swift_projections_registry_tests.rs`
+    /// enforces this invariant and will fail if any entry has `None`.
     ///
-    /// The renderer skips `None` entries entirely — it never emits a typed
-    /// decoder that references a non-existent sidecar OR a `flatc` Swift
-    /// reader type that is not present in the Chirp target.
+    /// `swift_reader_type: None` inside a `Some(TypedSidecar { ... })` is the
+    /// acceptable interim state: the typed FlatBuffer sidecar exists on the wire
+    /// but the `flatc --swift` binding has not yet been checked into the Chirp
+    /// target. The generator skips those entries (no Swift decoder emitted) but
+    /// they remain in the registry because the WIRE form is canonical.
     pub typed_sidecar: Option<TypedSidecar>,
 }
 
@@ -161,9 +161,14 @@ pub struct TypedSidecar {
 /// order. Order is load-bearing (the generated file is byte-diffed against
 /// the committed copy by the `codegen-drift` CI gate).
 ///
-/// This slice has 36 entries (locked by `registry_size_is_locked`). Adding or
+/// This slice has 31 entries (locked by `registry_size_is_locked`). Adding or
 /// removing a member here changes the generated Swift — the CI gate will refuse
 /// stale output until the regenerated file is committed.
+///
+/// #1610: removed the five JSON-era vestigial sidecar-less entries —
+/// `timeline`, `inserted`, `updated`, `removed`, and `last_action_result`.
+/// The coverage gate (`typed_sidecar_coverage_gate` test) now enforces that
+/// every future entry carries `typed_sidecar: Some(...)` — no JSON-only slots.
 pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     // Built-in NWC wallet projection. `projections["wallet"]`.
     SnapshotProjectionEntry {
@@ -382,10 +387,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         }),
     },
     // Action lifecycle cluster — see kernel/update.rs::snapshot_projections_with_publish_cluster.
-    // `action_results` is a per-tick drain; `last_action_result` is the
-    // sticky scalar for backward compat; `action_stages` is the
+    // `action_results` is a per-tick drain; `action_stages` is the
     // per-correlation_id stage mirror; `action_lifecycle` is the V5
     // collapsed view (`in_flight` + `recent_terminal` w/ TTL eviction).
+    // `last_action_result` (the deprecated sticky scalar) was removed in #1610:
+    // `action_results` is the canonical typed source.
     SnapshotProjectionEntry {
         json_key: "action_results",
         swift_field: "actionResults",
@@ -400,15 +406,6 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // `LastActionResult` Swift type. See `TypedProjectionGlue.actionResults`.
             swift_reader_type: Some("nmp_kernel_ActionResultsSnapshot"),
         }),
-    },
-    SnapshotProjectionEntry {
-        json_key: "last_action_result",
-        swift_field: "lastActionResult",
-        swift_type: "LastActionResult",
-        // No dedicated typed sidecar — the sticky scalar reuses the per-tick
-        // `action_results` array's typed form; the JSON `payload` path is the
-        // only wire form for this key.
-        typed_sidecar: None,
     },
     SnapshotProjectionEntry {
         json_key: "action_stages",
@@ -443,9 +440,10 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_ActionLifecycleSnapshot"),
         }),
     },
-    // D0 views cluster — `profile`, `timeline` (V-112: author_view / thread_view
-    // deleted), plus the per-tick `inserted` / `updated` / `removed`
-    // timeline deltas.
+    // D0 views cluster — `profile` (typed). V-112 (ADR-0042): author_view /
+    // thread_view deleted. #1610: the JSON-era `timeline`, `inserted`,
+    // `updated`, `removed` per-tick delta slots deleted — the typed feed ships
+    // via `nmp.feed.home` (`OpFeedSnapshot`) which is the canonical typed form.
     SnapshotProjectionEntry {
         json_key: "profile",
         swift_field: "profile",
@@ -463,15 +461,6 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         }),
     },
     SnapshotProjectionEntry {
-        json_key: "timeline",
-        swift_field: "timeline",
-        swift_type: "[TimelineItem]",
-        // No standalone typed sidecar — the typed feed ships via
-        // `nmp.feed.home` (`OpFeedSnapshot`); this generic timeline array has
-        // only the JSON `payload` wire form.
-        typed_sidecar: None,
-    },
-    SnapshotProjectionEntry {
         json_key: "nmp.feed.home",
         swift_field: "homeFeed",
         swift_type: "ChirpTimelineSnapshot",
@@ -487,32 +476,6 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             file_identifier: "NOFS",
             swift_reader_type: None,
         }),
-    },
-    // V-112 (ADR-0042): author_view (KAVW, AuthorProfileSnapshot) and
-    // thread_view (KTVW, ThreadView) entries deleted — typed sidecars removed
-    // with AuthorViewState / ThreadViewState. KernelTypes.generated.swift still
-    // has these fields as optionals (JSON fallback, always nil now); the generated
-    // Swift files AuthorView.generated.swift / ThreadView.generated.swift are deleted.
-    SnapshotProjectionEntry {
-        json_key: "inserted",
-        swift_field: "inserted",
-        swift_type: "[TimelineItem]",
-        // Per-tick timeline delta — no standalone typed sidecar (JSON only).
-        typed_sidecar: None,
-    },
-    SnapshotProjectionEntry {
-        json_key: "updated",
-        swift_field: "updated",
-        swift_type: "[TimelineItem]",
-        // Per-tick timeline delta — no standalone typed sidecar (JSON only).
-        typed_sidecar: None,
-    },
-    SnapshotProjectionEntry {
-        json_key: "removed",
-        swift_field: "removed",
-        swift_type: "[String]",
-        // Per-tick timeline delta — no standalone typed sidecar (JSON only).
-        typed_sidecar: None,
     },
     // Host-registered dotted-key projections. The `.` in the JSON key is
     // opaque to `.convertFromSnakeCase` (it splits on `_` only), so the
