@@ -183,13 +183,7 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
         ]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-        &no_block(),
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &[RECIPIENT_HEX.to_string()], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     assert!(urls.contains("wss://author-write.example"));
     assert!(urls.contains("wss://recipient-read.example"));
@@ -219,13 +213,7 @@ fn nip65_resolver_skips_recipient_reads_at_p_tag_threshold() {
     let recipients = threshold_recipients();
 
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &recipients,
-        &PublishTarget::Auto,
-        1,
-        &no_block(),
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
 
     assert!(urls.contains("wss://author-write.example"));
@@ -262,13 +250,7 @@ fn nip65_resolver_keeps_discovery_indexers_when_p_tag_threshold_skips_inboxes() 
         indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
 
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &recipients,
-        &PublishTarget::Auto,
-        3,
-        &no_block(),
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 3, &no_block());
     let urls = urls_of(&out);
 
     assert!(urls.contains("wss://author-write.example"));
@@ -332,13 +314,7 @@ fn nip65_resolver_unmarked_tag_is_both() {
         vec![vec!["r".into(), "wss://recipient-both.example".into()]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-        &no_block(),
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &[RECIPIENT_HEX.to_string()], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     // Unmarked counts as both → write goes here.
     assert!(urls.contains("wss://both.example"));
@@ -455,13 +431,7 @@ fn resolve_returns_inbox_relay_reason_for_p_tags() {
         ]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-        &no_block(),
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &[RECIPIENT_HEX.to_string()], &PublishTarget::Auto, 1, &no_block());
     let reason = find_reason(&out, "wss://recipient-read.example")
         .expect("recipient read relay must be present");
     match reason {
@@ -498,11 +468,7 @@ fn resolve_fail_closed_when_kind10002_has_only_read_relays_non_discovery() {
     store_kind10002(
         store.as_ref(),
         AUTHOR_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://read-only.example".into(),
-            "read".into(),
-        ]],
+        vec![vec!["r".into(), "wss://read-only.example".into(), "read".into()]],
     );
     // Active account + non-empty local_write_relays — the fallback must NOT fire.
     let resolver = Nip65OutboxResolver::with_local_relays(
@@ -558,7 +524,10 @@ fn resolve_local_write_fallback_fires_when_no_kind10002_at_all() {
 fn resolve_returns_explicit_relay_reason() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
-    let explicit = vec!["wss://a.example".to_string(), "wss://b.example".to_string()];
+    let explicit = vec![
+        "wss://a.example".to_string(),
+        "wss://b.example".to_string(),
+    ];
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
@@ -575,216 +544,4 @@ fn resolve_returns_explicit_relay_reason() {
             Some(RelaySelectionReason::Explicit)
         ));
     }
-}
-
-// ─── ptags_are_recipients gate — list/discovery kinds must NOT fan out ──────
-//
-// Regression suite for GitHub issue #1631: kind:3 (contact lists) and other
-// replaceable/addressable list events were wrongly routing to the inbox read
-// relays of every p-tagged pubkey. The `ptags_are_recipients` semantic gate
-// fixes this: only regular (non-replaceable, non-addressable) kinds trigger
-// the step-4 inbox fan-out.
-
-/// kind:3 contact list — the author's followees are SUBJECTS, not recipients.
-/// Even with fewer than RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD followees, the
-/// followee's read relay must NOT appear in the resolve output.
-#[test]
-fn kind3_does_not_fan_out_to_followee_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
-        AUTHOR_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://author-write.example".into(),
-            "write".into(),
-        ]],
-    );
-    store_kind10002(
-        store.as_ref(),
-        RECIPIENT_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://followee-read.example".into(),
-            "read".into(),
-        ]],
-    );
-    let resolver = mk_resolver(store);
-    // kind=3, one followee — below threshold, but ptags_are_recipients(3) == false
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        3,
-        &no_block(),
-    );
-    let urls = urls_of(&out);
-    assert!(
-        urls.contains("wss://author-write.example"),
-        "author write relay must be present"
-    );
-    assert!(
-        !urls.contains("wss://followee-read.example"),
-        "kind:3 contact list must NOT fan out to followee inbox relay — \
-         followees are list subjects, not message recipients"
-    );
-}
-
-/// kind:10000 mute list — the muted pubkeys are SUBJECTS, not recipients.
-#[test]
-fn kind10000_mute_list_does_not_fan_out_to_subject_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
-        AUTHOR_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://author-write.example".into(),
-            "write".into(),
-        ]],
-    );
-    store_kind10002(
-        store.as_ref(),
-        RECIPIENT_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://muted-read.example".into(),
-            "read".into(),
-        ]],
-    );
-    let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        10_000,
-        &no_block(),
-    );
-    let urls = urls_of(&out);
-    assert!(urls.contains("wss://author-write.example"));
-    assert!(
-        !urls.contains("wss://muted-read.example"),
-        "kind:10000 mute list must NOT fan out to muted pubkey's inbox relay"
-    );
-}
-
-/// kind:30000 follow set (NIP-51 addressable) — list members are SUBJECTS.
-/// Proves the gate covers the full addressable range, not just regular-replaceable.
-#[test]
-fn kind30000_follow_set_does_not_fan_out_to_subject_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
-        AUTHOR_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://author-write.example".into(),
-            "write".into(),
-        ]],
-    );
-    store_kind10002(
-        store.as_ref(),
-        RECIPIENT_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://member-read.example".into(),
-            "read".into(),
-        ]],
-    );
-    let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        30_000,
-        &no_block(),
-    );
-    let urls = urls_of(&out);
-    assert!(urls.contains("wss://author-write.example"));
-    assert!(
-        !urls.contains("wss://member-read.example"),
-        "kind:30000 follow set (addressable) must NOT fan out to list-member inbox relay"
-    );
-}
-
-/// kind:0 profile metadata — replaceable, any p-tag is a subject, not a recipient.
-#[test]
-fn kind0_profile_does_not_fan_out_to_ptag_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
-        AUTHOR_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://author-write.example".into(),
-            "write".into(),
-        ]],
-    );
-    store_kind10002(
-        store.as_ref(),
-        RECIPIENT_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://ptag-read.example".into(),
-            "read".into(),
-        ]],
-    );
-    let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        0,
-        &no_block(),
-    );
-    let urls = urls_of(&out);
-    assert!(urls.contains("wss://author-write.example"));
-    assert!(
-        !urls.contains("wss://ptag-read.example"),
-        "kind:0 profile metadata must NOT fan out to p-tagged pubkey's inbox relay"
-    );
-}
-
-/// Positive pin — kind:1 short text note with a mention STILL fans out to the
-/// mentioned pubkey's read relays. This locks the recipient-semantics path so
-/// the new gate cannot accidentally break regular note routing.
-#[test]
-fn kind1_mention_still_fans_out_to_mentioned_pubkey_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
-        AUTHOR_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://author-write.example".into(),
-            "write".into(),
-        ]],
-    );
-    store_kind10002(
-        store.as_ref(),
-        RECIPIENT_HEX,
-        vec![vec![
-            "r".into(),
-            "wss://mention-read.example".into(),
-            "read".into(),
-        ]],
-    );
-    let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-        &no_block(),
-    );
-    let urls = urls_of(&out);
-    assert!(
-        urls.contains("wss://author-write.example"),
-        "author write relay must be present for kind:1"
-    );
-    assert!(
-        urls.contains("wss://mention-read.example"),
-        "kind:1 mention MUST fan out to mentioned pubkey's inbox relay — \
-         p-tags on regular events are message recipients"
-    );
 }

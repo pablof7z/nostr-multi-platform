@@ -366,3 +366,7 @@ mod tests;
 #[cfg(test)]
 #[path = "nip65_resolver/blocked_tests.rs"]
 mod blocked_tests;
+
+#[cfg(test)]
+#[path = "nip65_resolver/ptags_recipient_tests.rs"]
+mod ptags_recipient_tests;
