@@ -1073,3 +1073,83 @@ public struct nmp_transport_UpdateFrame: FlatBufferTable, FlatbuffersVectorIniti
   }
 }
 
+public struct nmp_transport_PullWake: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NMPU" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_PullWake.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case cursorId = 4
+    case latestSeq = 6
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var cursorId: UInt64 { let o = _accessor.offset(VTOFFSET.cursorId.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var latestSeq: UInt64 { let o = _accessor.offset(VTOFFSET.latestSeq.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public static func startPullWake(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public static func add(cursorId: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: cursorId, def: 0, at: VTOFFSET.cursorId.p) }
+  public static func add(latestSeq: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: latestSeq, def: 0, at: VTOFFSET.latestSeq.p) }
+  public static func endPullWake(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createPullWake(
+    _ fbb: inout FlatBufferBuilder,
+    cursorId: UInt64 = 0,
+    latestSeq: UInt64 = 0
+  ) -> Offset {
+    let __start = nmp_transport_PullWake.startPullWake(&fbb)
+    nmp_transport_PullWake.add(cursorId: cursorId, &fbb)
+    nmp_transport_PullWake.add(latestSeq: latestSeq, &fbb)
+    return nmp_transport_PullWake.endPullWake(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.cursorId.p, fieldName: "cursorId", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.latestSeq.p, fieldName: "latestSeq", required: false, type: UInt64.self)
+    _v.finish()
+  }
+}
+
+public struct nmp_transport_PullWakeBatch: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NMPU" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_PullWakeBatch.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case wakes = 4
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var wakes: FlatbufferVector<nmp_transport_PullWake> { return _accessor.vector(at: VTOFFSET.wakes.v, byteSize: 4) }
+  public static func startPullWakeBatch(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 1) }
+  public static func addVectorOf(wakes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: wakes, at: VTOFFSET.wakes.p) }
+  public static func endPullWakeBatch(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createPullWakeBatch(
+    _ fbb: inout FlatBufferBuilder,
+    wakesVectorOffset wakes: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_transport_PullWakeBatch.startPullWakeBatch(&fbb)
+    nmp_transport_PullWakeBatch.addVectorOf(wakes: wakes, &fbb)
+    return nmp_transport_PullWakeBatch.endPullWakeBatch(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.wakes.p, fieldName: "wakes", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_transport_PullWake>, nmp_transport_PullWake>>.self)
+    _v.finish()
+  }
+}
+

@@ -8,6 +8,8 @@ export { Metrics } from './transport/metrics.js';
 export { NegentropySyncStats } from './transport/negentropy-sync-stats.js';
 export { PanicFrame } from './transport/panic-frame.js';
 export { ProjectionPresenceState } from './transport/projection-presence-state.js';
+export { PullWake } from './transport/pull-wake.js';
+export { PullWakeBatch } from './transport/pull-wake-batch.js';
 export { RelayStatus } from './transport/relay-status.js';
 export { SnapshotFrame } from './transport/snapshot-frame.js';
 export { TypedPayload } from './transport/typed-payload.js';

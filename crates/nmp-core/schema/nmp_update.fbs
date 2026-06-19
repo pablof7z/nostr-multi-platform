@@ -228,5 +228,22 @@ table UpdateFrame {
   panic:PanicFrame;
 }
 
+// ADR-0058 §4 — pull-cursor wake sidecar. One coalesced `{cursor_id, latest_seq}`
+// row per registered cursor whose `after_seq` is behind the store head. Carried
+// as the opaque payload of the `nmp.pull.wake` TypedProjection (schema_id
+// "nmp.pull.wake", version 1). The wake is a SIGNAL, not event data — no scope,
+// no consumer id, no event ids, no raw bytes (ADR-0058 §4). The batch wrapper is
+// transport grouping only. Encoded standalone (no file_identifier — the single
+// `NMPU` identifier belongs to UpdateFrame), so the payload bytes are a bare
+// finished `PullWakeBatch`.
+table PullWake {
+  cursor_id:ulong;
+  latest_seq:ulong;
+}
+
+table PullWakeBatch {
+  wakes:[PullWake];
+}
+
 root_type UpdateFrame;
 file_identifier "NMPU";
