@@ -33,6 +33,15 @@ fn embedded_request(pubkey: &str, amount_msats: u64) -> String {
     )
 }
 
+fn embedded_request_with_id(id: &str, pubkey: &str, amount_msats: u64) -> String {
+    format!(
+        r#"{{"id":"{id}","pubkey":"{pk}","tags":[["amount","{amt}"]]}}"#,
+        id = id,
+        pk = pubkey,
+        amt = amount_msats
+    )
+}
+
 #[test]
 fn rejects_non_9735() {
     assert!(try_from_event(&make_stored(9734, vec![])).is_none());
@@ -51,11 +60,25 @@ fn extracts_recipient_and_optional_event_target() {
         vec!["e".into(), "ZAPPED_NOTE".into()],
     ];
     let r = try_from_event(&make_stored(9735, tags)).unwrap();
+    assert_eq!(r.provider_pubkey, "b".repeat(64));
     assert_eq!(r.recipient_pubkey, "alice");
     assert_eq!(r.zapped_event_id.as_deref(), Some("ZAPPED_NOTE"));
     assert!(r.zapped_address.is_none());
     assert!(r.sender_pubkey.is_none());
     assert!(r.amount_msats.is_none());
+}
+
+#[test]
+fn embedded_request_id_is_extracted_for_provider_validation() {
+    let tags = vec![
+        vec!["p".into(), "recipient".into()],
+        vec![
+            "description".into(),
+            embedded_request_with_id("zap-request-1", "embedded_sender", 1000),
+        ],
+    ];
+    let r = try_from_event(&make_stored(9735, tags)).unwrap();
+    assert_eq!(r.zap_request_id.as_deref(), Some("zap-request-1"));
 }
 
 #[test]
@@ -73,7 +96,10 @@ fn uppercase_p_tag_wins_over_embedded_request() {
 fn embedded_request_pubkey_fills_sender_when_no_uppercase_p() {
     let tags = vec![
         vec!["p".into(), "recipient".into()],
-        vec!["description".into(), embedded_request("embedded_sender", 1000)],
+        vec![
+            "description".into(),
+            embedded_request("embedded_sender", 1000),
+        ],
     ];
     let r = try_from_event(&make_stored(9735, tags)).unwrap();
     assert_eq!(r.sender_pubkey.as_deref(), Some("embedded_sender"));
@@ -197,7 +223,10 @@ fn addressable_target_a_tag_is_extracted() {
         vec!["a".into(), "30023:authorpk:my-article".into()],
     ];
     let r = try_from_event(&make_stored(9735, tags)).unwrap();
-    assert_eq!(r.zapped_address.as_deref(), Some("30023:authorpk:my-article"));
+    assert_eq!(
+        r.zapped_address.as_deref(),
+        Some("30023:authorpk:my-article")
+    );
     assert!(r.zapped_event_id.is_none());
 }
 
@@ -314,10 +343,7 @@ fn uppercase_p_sender_survives_a_contradicted_description() {
         vec!["description".into(), embedded_request("forged_sender", 999)],
     ];
     let r = try_from_event(&make_stored(9735, tags)).unwrap();
-    assert_eq!(
-        r.sender_pubkey.as_deref(),
-        Some("provider_attested_sender")
-    );
+    assert_eq!(r.sender_pubkey.as_deref(), Some("provider_attested_sender"));
     assert_eq!(r.amount_msats, Some(50_000_000));
 }
 
@@ -347,8 +373,7 @@ fn forged_sender_with_mismatched_amount_still_distrusted_with_mixed_type_tags() 
     // bolt11 settles 50_000_000.  It also prepends `null` to the tags array
     // hoping to suppress amount extraction.  The forgery guard must still
     // fire: embedded sender must be dropped, bolt11 amount used.
-    let description =
-        r#"{"pubkey":"forged_sender","tags":[null,["amount","999"]]}"#;
+    let description = r#"{"pubkey":"forged_sender","tags":[null,["amount","999"]]}"#;
     let tags = vec![
         vec!["p".into(), "recipient".into()],
         vec!["bolt11".into(), "lnbc500u1pvj...".into()], // 50_000_000 msat
