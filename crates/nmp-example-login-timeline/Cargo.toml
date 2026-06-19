@@ -3,6 +3,9 @@ name = "nmp-example-login-timeline"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# Private DX worked example — never published to crates.io (it is a proof
+# artifact, declared under [[private_packages]] in release/nmp-release.toml).
+publish = false
 description = "Canonical DX worked example: login → following-timeline render → live update, a thin shell over NMP that touches zero relay/cache/subscription code (proves docs/aim.md §1)."
 
 [dependencies]

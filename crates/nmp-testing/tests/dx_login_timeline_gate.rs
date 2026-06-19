@@ -24,8 +24,11 @@
 //! | G1   | After login + follow, ≥1 following-timeline row renders (the followed   |
 //! |      | author's note), decoded from the Rust-owned typed projection            |
 //! | G2   | A live event from the followed author surfaces as a NEW row, no refresh |
-//! | G3   | Follow set is load-bearing: a followed (self) reply attributes to a     |
-//! |      | root; a non-followed reply does not — i.e. it is a *following* timeline  |
+//! | G3   | Follow set is load-bearing for ATTRIBUTION: a followed (self) reply     |
+//! |      | attributes to a root; a non-followed stranger's reply does NOT           |
+//! |      | attribute and does NOT surface as its own row. A feed that ignored the   |
+//! |      | follow set (treated every author as followed — the "global feed"         |
+//! |      | regression) would attribute the stranger, so this assertion FAILS on it  |
 //! | G6   | The example's shell (`lib.rs`) has zero relay/cache/sub/replaceable LOC  |
 //!
 //! # Invocation
@@ -101,11 +104,39 @@ fn g1_g2_login_renders_row_then_live_update_adds_row() {
 // G3: the follow set is load-bearing — this is a FOLLOWING timeline
 // ---------------------------------------------------------------------------
 
-/// Proves the rendered timeline is gated by the follow set, not a global feed:
-/// a reply from a FOLLOWED author (here the signed-in account itself, which is
+/// Proves the follow set is load-bearing for the engine's OP-centric
+/// attribution — the one "is this a *following* timeline?" axis this synthetic
+/// harness can observe.
+///
+/// A reply from a FOLLOWED author (here the signed-in account itself, which is
 /// self-included in its own follow set) attributes to the root; a reply from a
-/// NON-followed stranger does not attribute at all. If the feed were global,
-/// both replies would attribute equally.
+/// NON-followed stranger does NOT attribute at all, and does NOT surface as its
+/// own row. These are the decisive, FALSIFIABLE assertions: if the feed ignored
+/// the follow set and treated every author as followed (the "global feed"
+/// regression), the stranger's reply WOULD attribute and this gate would FAIL.
+///
+/// ## Why NOT a "standalone non-followed root is absent" assertion
+///
+/// Root-AUTHOR following (a standalone note from someone you don't follow never
+/// appearing) is NOT enforced in the feed engine — by design. `RootIndexedFeed`
+/// admits every root it observes; the follow gate for root admission is the
+/// kernel's ingest-layer relevance filter (the active account's
+/// `timeline_authors`), and a non-followed root only reaches the engine at all
+/// via explicit `claim_event` hydration when a FOLLOWED reply references it
+/// (see `docs/perf/op-centric-feed-architecture.md` §B and the engine's
+/// `crates/nmp-feed/src/root_indexed/engine/ingest.rs::ingest_root`).
+///
+/// This harness seeds events through the synthetic-injection seam
+/// (`nmp_app_inject_signed_event_json` → `IngestPreVerifiedEvents`), which fans
+/// every injected event out to observers UNCONDITIONALLY — it deliberately
+/// bypasses the kernel `timeline_authors` relevance gate (that is its whole
+/// purpose: a stand-in for "events arriving from relays"). So a standalone
+/// non-followed root injected here DOES render — exactly as the intentional
+/// `standalone_note_renders_as_root_card` test in `nmp-app-chirp` asserts. An
+/// "absent" assertion would therefore be UNSATISFIABLE through this seam and
+/// would be testing the kernel acquisition/relevance layer, not the OP-feed
+/// following contract this gate exists to prove. Root-relevance following is a
+/// kernel-ingest / subscription concern, proved by its own kernel tests.
 #[test]
 fn g3_follow_set_is_load_bearing_for_attribution() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
@@ -148,13 +179,37 @@ fn g3_follow_set_is_load_bearing_for_attribution() {
          (attribution={:?}, expected to contain viewer {viewer_hex})",
         root_row.attribution_pubkeys
     );
+    // The decisive, FALSIFIABLE proof that the follow set is load-bearing: the
+    // NON-followed stranger's reply must NOT attribute to the root. A feed that
+    // ignored the follow set (treated every author as followed — i.e. a global
+    // feed) would run the same attribution path for the stranger and this would
+    // contain the stranger's pubkey, FAILING the gate. (Verified by reasoning:
+    // attribution is gated in `RootIndexedFeed::ingest` on `follow(author)`;
+    // forcing that predicate to `true` for all authors makes the stranger
+    // attribute and trips this assertion.)
     assert!(
         !root_row
             .attribution_pubkeys
             .contains(&stranger.public_key().to_hex()),
         "G3 DX GAP: a NON-followed reply must NOT attribute — this would mean the \
-         feed is global, not a following timeline (attribution={:?})",
+         feed ignores the follow set (a GLOBAL feed), not a following timeline \
+         (attribution={:?})",
         root_row.attribution_pubkeys
+    );
+
+    // Reinforcing assertion on the SAME axis: a non-followed reply is dropped by
+    // the engine, so it never surfaces as its own row either. Neither the
+    // stranger's pubkey nor the stranger's reply body may appear as a rendered
+    // card. (Belt-and-suspenders against a regression that rendered dropped
+    // replies as standalone rows.)
+    assert!(
+        !rows.iter().any(|r| r.author_pubkey == stranger.public_key().to_hex()
+            || r.content.contains("I am not followed")),
+        "G3 DX GAP: a NON-followed reply surfaced as its own timeline row — the \
+         follow set is not gating the engine. Rendered rows: {:?}",
+        rows.iter()
+            .map(|r| (r.author_pubkey.as_str(), r.content.as_str()))
+            .collect::<Vec<_>>()
     );
 }
 

@@ -155,12 +155,18 @@ impl DemoApp {
         render_home_rows(self.ffi())
     }
 
-    /// Block on kernel update ticks, re-rendering on each, until `pred` holds or
-    /// the deadline elapses; returns the last-read rows either way.
+    /// Block on kernel update ticks, re-rendering on each REAL tick, until `pred`
+    /// holds or the deadline elapses; returns the last-read rows either way.
     ///
-    /// D8-compliant: the steady state is a blocking `recv_timeout` on the
-    /// kernel's update channel, NOT a sleep+poll loop. The per-recv timeout only
-    /// bounds a hung actor.
+    /// D8-compliant *and* load-bearing on the callback path: the projection is
+    /// re-read ONLY on a genuine update tick (`Ok(())` — the kernel's update
+    /// callback actually fired). A `recv_timeout` Timeout does NOT re-read: a
+    /// silent re-read on timeout would degrade this into a poll and MASK a
+    /// broken/missing update-callback path, letting the reactive (G2) proof pass
+    /// even if the kernel never delivered a single tick. By only advancing `last`
+    /// on a real tick, a dead callback path leaves `last` at its pre-loop value,
+    /// `pred` never becomes satisfied through a tick, and the live-update gate
+    /// correctly FAILS.
     pub fn rows_when(
         &self,
         timeout: Duration,
@@ -174,12 +180,19 @@ impl DemoApp {
         while Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match self.ticks.recv_timeout(remaining.min(Duration::from_secs(1))) {
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // A REAL kernel update tick fired: only now do we re-read the
+                // projection. The reactive proof depends on this callback path.
+                Ok(()) => {
                     last = self.rows();
                     if pred(&last) {
                         return last;
                     }
                 }
+                // No tick in this slice. Do NOT silently re-read (that would
+                // mask a dead callback path); keep waiting for a genuine tick
+                // until the deadline. If none ever comes, we return the stale
+                // pre-loop `last`, and the caller's predicate fails.
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return last,
             }
         }
