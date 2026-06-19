@@ -156,7 +156,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeIdentityRestore(
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
 
     use crate::session::{insert_session, remove_session, Session};
 
