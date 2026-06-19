@@ -206,15 +206,32 @@ impl FeedPullPager {
             };
 
             let rows = page.entries.len();
+            let old_after_seq = self.after_seq;
             let advanced = page.next_after_seq > self.after_seq;
             for entry in &page.entries {
                 if let Some(ev) = raw_to_kernel_event(entry) {
                     events.push(ev);
                 }
             }
+            // The cursor advances to the page's next_after_seq (a valid kernel
+            // page never moves it backward; assert that loudly in debug). The
+            // `.max` is a release-mode floor so a malformed page can never
+            // rewind the cursor.
+            debug_assert!(
+                page.next_after_seq >= self.after_seq,
+                "pull page next_after_seq moved the cursor backward"
+            );
             // Advance the cursor ONLY after the page is processed.
             self.after_seq = page.next_after_seq.max(self.after_seq);
-            scanned = scanned.saturating_add(rows);
+            // Count VISITED log rows toward the scan budget — the seq delta, NOT
+            // the number of returned (matching) entries. An InterestShape page
+            // can advance over a long run of non-matching / Deleted rows and
+            // return `entries == []` with `has_more == true`; counting only
+            // returned entries would let one drain walk the whole log and defeat
+            // the per-drain budget (D5). The seq space is dense (one seq per log
+            // row), so `next_after_seq - old_after_seq` is the rows visited.
+            let visited = self.after_seq.saturating_sub(old_after_seq);
+            scanned = scanned.saturating_add(visited as usize);
 
             // Caught up: nothing more to drain (covers the empty-but-advancing
             // final page — it terminates, it does not poll).

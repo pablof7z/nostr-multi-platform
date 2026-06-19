@@ -103,30 +103,72 @@ fn display_sorted(events: &[KernelEvent]) -> Vec<String> {
 #[test]
 fn test_late_old_event_not_skipped() {
     let mut pager = FeedPullPager::new(&RealShapeFeed).expect("real shape");
-    // seq 1,2 are recent; seq 3 is an OLD event (created_at=10) that arrived
-    // late — its created_at is behind the others but its seq is ahead.
-    let page = one_page(
-        vec![
-            inserted(1, "recent_a", 1_000),
-            inserted(2, "recent_b", 1_100),
-            inserted(3, "late_old", 10),
-        ],
-        3,
-        3,
-    );
-    let mut once = Some(page);
-    let out = pager.drain(|_after| once.take().expect("pulled once"));
 
-    let ids: Vec<&str> = out.events.iter().map(|e| e.id.as_str()).collect();
-    // The late-old event is present — NOT skipped despite its old created_at.
-    assert!(
-        ids.contains(&"late_old"),
-        "late old event must be drained by seq, got {ids:?}"
+    // Drain 1: the recent events at seq 1,2 — the cursor advances PAST them.
+    let mut first = Some(one_page(
+        vec![inserted(1, "recent_a", 1_000), inserted(2, "recent_b", 1_100)],
+        2,
+        2,
+    ));
+    let out1 = pager.drain(|_after| first.take().expect("first page"));
+    assert_eq!(out1.stop, DrainStop::Exhausted);
+    assert_eq!(pager.after_seq(), 2, "cursor advanced past the recent events");
+
+    // NOW an OLD event (created_at=10, far behind the display cursor) arrives
+    // LATE and lands at seq 3 — AHEAD of the cursor in ingest order. A
+    // `created_at` cursor would have skipped it (its timestamp is behind the
+    // already-displayed window); a seq cursor sees it on the NEXT drain.
+    let mut second = Some(one_page(vec![inserted(3, "late_old", 10)], 3, 3));
+    let out2 = pager.drain(|after| {
+        assert_eq!(after, 2, "second drain resumes from the seq-2 cursor");
+        second.take().expect("second page")
+    });
+
+    let ids: Vec<&str> = out2.events.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(
+        ids, ["late_old"],
+        "the late-arriving old-created_at event is drained by seq, not skipped"
     );
-    // Drain order is ingest-seq order: late_old comes LAST (highest seq).
-    assert_eq!(ids, ["recent_a", "recent_b", "late_old"]);
     assert_eq!(pager.after_seq(), 3);
-    assert_eq!(out.stop, DrainStop::Exhausted);
+    assert_eq!(out2.stop, DrainStop::Exhausted);
+}
+
+/// A long run of empty-but-advancing pages (`entries == []`, `next_after_seq >
+/// after_seq`, `has_more == true` — the kernel scanned non-matching / Deleted
+/// rows and matched nothing) MUST be bounded by the scan budget. Counting only
+/// returned entries would let one `drain` walk the whole log; counting VISITED
+/// seqs bounds it (D5).
+#[test]
+fn test_empty_advancing_pages_hit_scan_budget() {
+    // Small budget so the test is cheap; a huge `latest` the empty pages chase.
+    let budget = 20usize;
+    let mut pager = FeedPullPager::new(&RealShapeFeed)
+        .expect("real shape")
+        .with_budgets(8, budget);
+
+    let mut calls = 0u32;
+    let out = pager.drain(|after| {
+        calls += 1;
+        // Each call advances the cursor by 5 seqs but matches nothing, with the
+        // store always claiming far more remains (has_more = true forever).
+        ScanLogResult::Page(PullPage {
+            entries: vec![],
+            next_after_seq: after + 5,
+            latest_seq: 1_000_000,
+            has_more: true,
+        })
+    });
+
+    assert_eq!(out.stop, DrainStop::ScanBudget, "must stop at the scan budget");
+    assert!(out.events.is_empty(), "no positive rows matched");
+    // Bounded: it visited ~budget seqs, NOT the million-row log. ceil(20/5)=4
+    // pulls → after_seq ~20, far below `latest`.
+    assert!(
+        pager.after_seq() <= (budget as u64) + 5,
+        "drain must be bounded by the scan budget, advanced to {}",
+        pager.after_seq()
+    );
+    assert!(calls <= 5, "bounded number of pulls, got {calls}");
 }
 
 /// An empty-but-advancing page (cursor moved over non-matching rows, store
