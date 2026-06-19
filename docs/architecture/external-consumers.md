@@ -13,8 +13,58 @@ for independent, non-social applications.
 | App | Description | Evidence |
 |-----|-------------|----------|
 | **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); pins `nmp-core`, `nmp-ffi`, `nmp-defaults`, `nmp-signer-broker`, `nmp-blossom`, `nmp-nip02` by git rev from `github.com/pablof7z/nostr-multi-platform` (bumped to **nmp-v0.7.0 / rev `ce0097cde`** on 2026-06-14, the keystone-series release — ADR-0050/0052/0056). Carries a local `[patch]` redirecting `nmp-blossom` to a `/tmp/nmp-at-<rev>/` extraction because blossom is parked out of the NMP cargo workspace (post-v1 dead island). Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. Fully on the post-keystone API (register-by-value `ActionModule`, `nmp_defaults::register_defaults`, per-app signer ports). |
-| **hl** | Highlighter app | `~/Work/hl` (external workspace). Does **not** pin by git rev — uses local `path` deps to `../../../nostr-multi-platform/crates/*` (nmp-core, nmp-ffi, nmp-defaults, nmp-signers, nmp-nip11, nmp-nip29, nmp-blossom, nmp-content, nmp-kinds), so it tracks whatever the monorepo checkout is at. On the post-keystone API (`NmpAppBuilder`, by-value `register_action`). **Migration note:** the raw event tap (`RawEventObserver` / `nmp_app_register_raw_event_observer`) it used for the nostrdb mirror is retired, and the speculative push-sink replacement is gone too. `hl`'s nostrdb mirror will migrate to the forthcoming bounded **pull-cursor** consumption API (a store ingest-log cursor). Until that lands it has no live-delivery FFI (tracked as follow-up). |
+| **hl** | Highlighter app | `~/Work/hl` (external workspace). Does **not** pin by git rev — uses local `path` deps to `../../../nostr-multi-platform/crates/*` (nmp-core, nmp-ffi, nmp-defaults, nmp-signers, nmp-nip11, nmp-nip29, nmp-blossom, nmp-content, nmp-kinds), so it tracks whatever the monorepo checkout is at. On the post-keystone API (`NmpAppBuilder`, by-value `register_action`). **Migration note:** the raw event tap (`RawEventObserver` / `nmp_app_register_raw_event_observer`) it used for the nostrdb mirror is retired, and the speculative push-sink replacement (`nmp_app_register_event_sink` / retain-until-ack / `created_at` resync) is gone too. `hl`'s nostrdb mirror migrates to the **pull cursor** (ADR-0058). See the **Host mirror consumption contract** section below. The in-repo boundary is locked: `no_raw_tap_reintroduction` prevents either deleted shape from reappearing. |
 | **win-the-day** | — | **NOT an NMP consumer as checked out** (`~/Work/win-the-day-app`, 2026-06-14): pure SwiftUI/Watch app, zero Rust / zero `nmp-*` linkage (only `secp256k1.swift` + a `nostrsigner` URL scheme). Previously listed here as an "owner-operated NMP app"; the local checkout shows no NMP dependency. **Owner: reconcile — either a different app was intended, or it was never wired to NMP.** |
+
+---
+
+## Host mirror consumption contract (ADR-0058)
+
+An out-of-tree app that needs a complete, durable copy of the event log (e.g.
+`hl`'s nostrdb mirror) uses the **pull cursor**, not a push callback. The
+canonical contract, in order:
+
+1. **Register** a `GlobalLog` cursor in `Protected { max_lag_entries }` mode
+   via `AdvancePullCursor` (or the FFI equivalent once step 3 of the ladder
+   lands). The cursor persists only its `consumer_id` + `scope` + `mode` +
+   `after_seq` — restart re-registers with the persisted `after_seq`.
+
+2. **Receive** the `nmp.pull.wake { cursor_id, latest_seq }` typed projection
+   (ADR-0037). This is level-triggered: it re-fires while
+   `after_seq < latest_seq`. Rust exposes `decode_pull_wake_batch` in
+   `crates/nmp-core/src/kernel/pull_wake.rs`; platform-specific host decoder
+   glue belongs with the first in-repo consumer (not here — `hl` is
+   out-of-tree).
+
+3. **Drain** by calling `nmp_app_pull_page` (synchronous, read-only) until
+   `has_more == false` or a budget is exhausted. Each `PullPage` carries
+   `next_after_seq / latest_seq / has_more`.
+
+4. **Apply** each `StoreLogEntry` to the mirror store:
+   - `Inserted` / `Replaced` → upsert the event into the mirror store.
+   - `Deleted { Nip09 | Nip40Expiry | AdminPurge }` → advisory signal; a
+     durable mirror MUST also apply NIP-09 from every kind:5 `Inserted` row
+     and NIP-40 from the `expiration` tag on its held events (the store may
+     have retention-evicted a target before a kind:5 arrived, emitting no
+     `Deleted` row — the mirror still acts because it holds the kind:5 itself).
+
+5. **Persist** `after_seq` (the `next_after_seq` from the last page) to
+   durable storage **after** fully applying the page. This is the crash-recovery
+   source of truth; the kernel cursor registration is not durable.
+
+6. **Advance** the cursor via `AdvancePullCursor(consumer_id, after_seq)` so
+   the kernel can release the log-GC floor pin up to this position.
+
+**Mirror-as-semantic-superset invariant:** the mirror keeps events the
+producing store retention-evicted and never deletes its copy on a retention
+eviction — only on a semantic NIP-09 / NIP-40 / AdminPurge delete. See
+ADR-0058 §5 for the full contract.
+
+**What is NOT the mirror API:**
+- `nmp_app_register_event_sink` / ack-callback / retain-until-ack — this was
+  the #1552-deleted native push sink. It is permanently gone.
+- `ExternalEventSinkPolicy` / `ExternalEventSinkDispatcher` — these are the
+  in-process relay-forwarding policy, not an external consumer API.
 
 ---
 

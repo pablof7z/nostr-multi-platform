@@ -28,13 +28,20 @@ Two distinct needs the tap conflated are now served separately:
   inbound frames — including `Duplicate` outcomes with source-relay provenance —
   out to relay targets on a background worker thread. The only in-repo consumer
   is `IndexerRepublishPolicy`. It is not exposed over the FFI.
-- **External per-event consumption** (e.g. the `hl` app's nostrdb mirror) will
-  read through the store via a **bounded, backpressured pull cursor** (a store
-  ingest-log cursor — forthcoming work), never a kernel push callback. Until
-  that lands there is no live-delivery FFI for external mirrors.
+- **External per-event consumption** (e.g. the `hl` app's nostrdb mirror)
+  reads through the store via the **bounded, backpressured pull cursor**
+  (ADR-0058). The canonical contract is: register a `GlobalLog` cursor in
+  `Protected { max_lag_entries }` mode → receive `nmp.pull.wake` →
+  call `nmp_app_pull_page` → apply the page → persist `after_seq` →
+  `AdvancePullCursor`. See `docs/architecture/external-consumers.md` for the
+  full mirror consumption contract and the mirror-as-semantic-superset
+  invariants (NIP-09 / NIP-40 applied by the mirror itself, never on
+  retention evictions).
 
-The lint rule `no_raw_tap_reintroduction` mechanically prevents the tap's
-symbols from reappearing.
+The lint rule `no_raw_tap_reintroduction` mechanically prevents both the
+raw-tap symbols and the #1552-deleted native push C-ABI sink symbols
+(`nmp_app_register_event_sink`, `retain_until_ack`, `event_sink_watermark`,
+etc.) from reappearing.
 
 ---
 
@@ -122,8 +129,8 @@ slot silently replaces the first. Use namespaced slot names (e.g.
 **When appropriate:** Whenever you need to derive in-process state from
 inbound events — decrypt gift-wraps, build projections, accumulate per-kind
 views. This is the **preferred in-process consumption path**; an external store
-mirror that needs verbatim signed frames will use the forthcoming bounded
-store pull cursor instead.
+mirror that needs verbatim signed frames uses the pull cursor (ADR-0058) —
+see `docs/architecture/external-consumers.md`.
 
 **What it bypasses:**
 - D3 — your parser runs outside the kernel's typed projection dispatch; the
@@ -148,7 +155,10 @@ gift-wraps, build projections, accumulate per-kind views)?
 
 Need verbatim signed frames in an external store/relay-bridge mirror
 (e.g. an out-of-tree nostrdb mirror)?
-  → the forthcoming bounded store pull cursor (no live-delivery FFI yet).
+  → pull cursor (ADR-0058): GlobalLog cursor in Protected { max_lag_entries }
+    mode → nmp.pull.wake → nmp_app_pull_page → apply page → persist
+    after_seq → AdvancePullCursor.
+    See docs/architecture/external-consumers.md for the full contract.
 
 Need custom state in every snapshot?
   → typed sidecar via register_typed_snapshot_projection (ADR-0037),
