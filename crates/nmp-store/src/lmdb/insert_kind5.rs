@@ -130,6 +130,8 @@ pub(super) fn handle_kind5(
                 target_id_bytes,
                 DeleteReason::Nip09,
                 received_at_ms,
+                inner.map_size,
+                inner.max_readers,
             )?;
         }
     }
@@ -213,6 +215,8 @@ pub(super) fn handle_kind5(
                             existing_id,
                             DeleteReason::Nip09,
                             received_at_ms,
+                            inner.map_size,
+                            inner.max_readers,
                         )?;
                     }
                 }
@@ -274,6 +278,8 @@ pub(super) fn handle_kind5(
                             existing_id,
                             DeleteReason::Nip09,
                             received_at_ms,
+                            inner.map_size,
+                            inner.max_readers,
                         )?;
                     }
                 }
@@ -372,6 +378,8 @@ pub(super) fn handle_kind5(
         event,
         source,
         received_at_ms,
+        inner.map_size,
+        inner.max_readers,
     )?;
     Ok(InsertOutcome::Inserted {
         id: kind5_id,

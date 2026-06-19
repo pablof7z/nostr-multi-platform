@@ -96,6 +96,8 @@ fn by_ids(
             id,
             DeleteReason::AdminPurge,
             0,
+            inner.map_size,
+            inner.max_readers,
         )?;
         n += 1;
     }
@@ -147,6 +149,8 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
             id,
             DeleteReason::AdminPurge,
             0,
+            inner.map_size,
+            inner.max_readers,
         )?;
     }
     Ok(n)
@@ -202,6 +206,8 @@ fn by_kind_range(
             id,
             DeleteReason::AdminPurge,
             0,
+            inner.map_size,
+            inner.max_readers,
         )?;
     }
     Ok(n)

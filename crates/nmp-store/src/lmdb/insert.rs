@@ -207,6 +207,8 @@ pub(super) fn insert(
                     event.clone(),
                     source,
                     received_at_ms,
+                    inner.map_size,
+                    inner.max_readers,
                 )?;
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
@@ -222,6 +224,8 @@ pub(super) fn insert(
                     event.clone(),
                     source,
                     received_at_ms,
+                    inner.map_size,
+                    inner.max_readers,
                 )?;
                 InsertOutcome::Inserted {
                     id: id_bytes,

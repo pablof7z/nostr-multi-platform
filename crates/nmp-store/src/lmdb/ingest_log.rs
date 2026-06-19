@@ -23,6 +23,7 @@
 use heed::types::Bytes;
 use heed::{Database, RoTxn, RwTxn};
 
+use super::open_error::classify_heed_err;
 use crate::ingest_log::{
     DeleteReason, LogOp, PullGap, PullPage, ScanLogResult, StoreLogEntry, DEFAULT_LOG_MAX_ENTRIES,
 };
@@ -60,10 +61,12 @@ struct LogEntryPersist {
 pub(super) fn next_seq(
     ingest_meta: Database<Bytes, Bytes>,
     txn: &mut RwTxn,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<u64, StoreError> {
     let current = read_u64(ingest_meta, txn, KEY_LAST_SEQ)?;
     let seq = current + 1;
-    write_u64(ingest_meta, txn, KEY_LAST_SEQ, seq)?;
+    write_u64(ingest_meta, txn, KEY_LAST_SEQ, seq, map_size, max_readers)?;
     Ok(seq)
 }
 
@@ -75,8 +78,10 @@ pub(super) fn append_inserted(
     raw_event: RawEvent,
     source_relay: &RelayUrl,
     received_at_ms: u64,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<u64, StoreError> {
-    let seq = next_seq(ingest_meta, txn)?;
+    let seq = next_seq(ingest_meta, txn, map_size, max_readers)?;
     let entry = LogEntryPersist {
         version: 1,
         op: LogOp::Inserted,
@@ -85,9 +90,9 @@ pub(super) fn append_inserted(
         source_relay: Some(source_relay.clone()),
         received_at_ms,
     };
-    write_entry(ingest_log, txn, seq, &entry)?;
+    write_entry(ingest_log, txn, seq, &entry, map_size, max_readers)?;
     // BLOCKING 4: trim inside the same txn so the log is never unbounded.
-    trim_in_txn(ingest_log, ingest_meta, txn, seq)?;
+    trim_in_txn(ingest_log, ingest_meta, txn, seq, map_size, max_readers)?;
     Ok(seq)
 }
 
@@ -100,8 +105,10 @@ pub(super) fn append_replaced(
     raw_event: RawEvent,
     source_relay: &RelayUrl,
     received_at_ms: u64,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<u64, StoreError> {
-    let seq = next_seq(ingest_meta, txn)?;
+    let seq = next_seq(ingest_meta, txn, map_size, max_readers)?;
     let entry = LogEntryPersist {
         version: 1,
         op: LogOp::Replaced { replaced_id },
@@ -110,9 +117,9 @@ pub(super) fn append_replaced(
         source_relay: Some(source_relay.clone()),
         received_at_ms,
     };
-    write_entry(ingest_log, txn, seq, &entry)?;
+    write_entry(ingest_log, txn, seq, &entry, map_size, max_readers)?;
     // BLOCKING 4: trim inside the same txn so the log is never unbounded.
-    trim_in_txn(ingest_log, ingest_meta, txn, seq)?;
+    trim_in_txn(ingest_log, ingest_meta, txn, seq, map_size, max_readers)?;
     Ok(seq)
 }
 
@@ -124,8 +131,10 @@ pub(super) fn append_deleted(
     target_id: EventId,
     reason: DeleteReason,
     received_at_ms: u64,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<u64, StoreError> {
-    let seq = next_seq(ingest_meta, txn)?;
+    let seq = next_seq(ingest_meta, txn, map_size, max_readers)?;
     let entry = LogEntryPersist {
         version: 1,
         op: LogOp::Deleted { target_id, reason },
@@ -134,9 +143,9 @@ pub(super) fn append_deleted(
         source_relay: None,
         received_at_ms,
     };
-    write_entry(ingest_log, txn, seq, &entry)?;
+    write_entry(ingest_log, txn, seq, &entry, map_size, max_readers)?;
     // BLOCKING 4: trim inside the same txn so the log is never unbounded.
-    trim_in_txn(ingest_log, ingest_meta, txn, seq)?;
+    trim_in_txn(ingest_log, ingest_meta, txn, seq, map_size, max_readers)?;
     Ok(seq)
 }
 
@@ -288,6 +297,8 @@ fn trim_in_txn(
     ingest_meta: Database<Bytes, Bytes>,
     txn: &mut RwTxn,
     latest_seq: u64,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
     let floor = read_u64(ingest_meta, txn, KEY_GC_FLOOR)?;
     let retained = latest_seq.saturating_sub(floor);
@@ -318,13 +329,13 @@ fn trim_in_txn(
     for k in &keys_to_delete {
         ingest_log
             .delete(txn, k.as_slice())
-            .map_err(|e| StoreError::Io(format!("ingest_log trim delete: {e}")))?;
+            .map_err(|e| classify_heed_err(e, map_size, max_readers))?;
     }
     // Always advance gc_floor to new_floor — even if no physical keys were in
     // the trimmed range (entries may have been absent). The gap contract requires
     // gc_floor to equal new_floor so scan_since returns the correct
     // first_available_seq = gc_floor + 1 regardless of physical key presence.
-    write_u64(ingest_meta, txn, KEY_GC_FLOOR, new_floor)?;
+    write_u64(ingest_meta, txn, KEY_GC_FLOOR, new_floor, map_size, max_readers)?;
     Ok(())
 }
 
@@ -353,9 +364,15 @@ fn write_u64(
     txn: &mut RwTxn,
     key: &[u8],
     value: u64,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
+    // The ingest-log write shares the event's RwTxn, so a full map surfaces
+    // here too. Classify it (MDB_MAP_FULL -> StoreError::MapFull) exactly like
+    // the event write path (insert.rs) instead of leaking an untyped Io string
+    // — #1521's typed-MapFull guarantee must hold for every writer in the txn.
     db.put(txn, key, &value.to_be_bytes())
-        .map_err(|e| StoreError::Io(format!("ingest_meta put: {e}")))
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))
 }
 
 fn write_entry(
@@ -363,10 +380,12 @@ fn write_entry(
     txn: &mut RwTxn,
     seq: u64,
     entry: &LogEntryPersist,
+    map_size: usize,
+    max_readers: u32,
 ) -> Result<(), StoreError> {
     let key = seq.to_be_bytes();
     let value = serde_json::to_vec(entry)
         .map_err(|e| StoreError::Encoding(format!("ingest_log encode: {e}")))?;
     db.put(txn, &key, &value)
-        .map_err(|e| StoreError::Io(format!("ingest_log put: {e}")))
+        .map_err(|e| classify_heed_err(e, map_size, max_readers))
 }

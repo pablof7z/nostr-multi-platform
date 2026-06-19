@@ -221,6 +221,8 @@ pub(super) fn gc_step(
                     *id,
                     DeleteReason::Nip40Expiry,
                     now_secs * 1000,
+                    inner.map_size,
+                    inner.max_readers,
                 )?;
                 report.expired_reaped += 1;
                 if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
