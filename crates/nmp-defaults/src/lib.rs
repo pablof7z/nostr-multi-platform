@@ -119,6 +119,18 @@ pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{register_bookmark_runtime, register_mute_runtime};
 pub use tiers::{register_substrate, NmpDefaults};
 
+/// Runtime read handles installed by [`register_defaults_with_handles`].
+///
+/// Most apps can ignore these and use [`register_defaults`]. App crates that
+/// own product projections can keep the handles they need without re-registering
+/// runtime observers or duplicating graph state.
+#[derive(Clone, Default)]
+pub struct NmpDefaultRuntimeHandles {
+    /// Web-of-trust bootstrap/scoring runtime, present when
+    /// [`NmpDefaults::social`] is true and observer installation succeeds.
+    pub wot: Option<Arc<nmp_wot::WotBootstrapRuntime>>,
+}
+
 /// Wire the canonical NMP composition into `app`.
 ///
 /// **Call this exactly once**, before `nmp_app_start`. It is NOT idempotent:
@@ -168,7 +180,19 @@ pub use tiers::{register_substrate, NmpDefaults};
 /// social features or override the coverage policy / bootstrap relay calls
 /// [`register_defaults_with`].
 pub fn register_defaults(app: &mut impl AppHost) {
-    register_defaults_with(app, NmpDefaults::default());
+    let _ = register_defaults_with_handles(app, NmpDefaults::default());
+}
+
+/// Wire the canonical NMP composition and return runtime read handles.
+///
+/// This is the entry point for app-core crates that need to consume a default
+/// runtime directly while preserving the same one-time registration semantics as
+/// [`register_defaults`].
+pub fn register_defaults_with_handles(
+    app: &mut impl AppHost,
+    defaults: NmpDefaults,
+) -> NmpDefaultRuntimeHandles {
+    register_defaults_inner(app, defaults)
 }
 
 /// Wire the canonical NMP composition into `app`, parameterised by `defaults`.
@@ -187,6 +211,13 @@ pub fn register_defaults(app: &mut impl AppHost) {
 ///
 /// See [`NmpDefaults`] for the full field set and each field's default.
 pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
+    let _ = register_defaults_with_handles(app, defaults);
+}
+
+fn register_defaults_inner(
+    app: &mut impl AppHost,
+    defaults: NmpDefaults,
+) -> NmpDefaultRuntimeHandles {
     let NmpDefaults {
         coverage_gate,
         nostrconnect_bootstrap_relay,
@@ -196,6 +227,7 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
         zaps,
         longform,
     } = defaults;
+    let mut handles = NmpDefaultRuntimeHandles::default();
 
     // ── Substrate tier (always on — correctness, not preference) ─────────
     //
@@ -214,7 +246,7 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
         nmp_nip25::register_actions(app);
         // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
-        nmp_wot::register_runtime(app);
+        handles.wot = nmp_wot::register_runtime(app);
         // NIP-51 mute-list observer: installs `MuteListProjection` as a
         // `KernelEventObserver` for kind:10000 and registers the
         // `"nmp.nip51.mute_list"` diagnostic snapshot projection. The
@@ -296,6 +328,8 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
     if let Some(perms) = nostrconnect_perms {
         app.set_nostrconnect_perms(perms);
     }
+
+    handles
 }
 
 /// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection

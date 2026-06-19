@@ -281,6 +281,15 @@ Rationale vs. opaque `ViewHandle` reference types:
 
 `ViewSpec` is an enum of supported view kinds. v1 covers the primitive view protocol plus minimal built-in views for testing: raw filter, event detail, and timeline-like bounded list. The long-term product catalog covers profile, contacts, mailboxes, mutes, blossom-servers, timeline, thread, replies, reactions, conversation-list, conversation, zap-history, wallet-balance, wot-rank, and search. Each maps to a typed payload variant.
 
+Before `wot-rank` is a standalone typed view, app-core crates that need trust
+reads use the default runtime handle rather than re-parsing the graph. The
+handle returned by `nmp_defaults::register_defaults_with_handles` exposes the
+installed `nmp_wot::WotBootstrapRuntime` for per-pubkey score/hide/reason
+decisions, batch scoring, mutual-follow evidence, and graph-size diagnostics.
+External consumers such as Olas apply product-specific feed thresholds in their
+Rust app crate against that handle; platform wrappers provide user input and
+render the resulting payloads but do not own the scoring policy.
+
 Optimization escape hatch: a future `ViewHandle` opaque type can be added as an opt-in for very high-rate views (e.g., NIP-77 sync progress) where round-tripping through `AppUpdate` is wasteful. v1 does not ship this.
 
 ---
