@@ -96,12 +96,8 @@ use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
 /// Page size used by the `nmp.marmot.messages` push projection and
 /// [`MarmotHandle::messages_rust`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
-
-/// The `keyring-core` user/key-id for the Marmot MLS SQLite DB encryption
-/// key. This is the GENERIC key name; the service-id (the "namespace" that
-/// scopes the key to a specific app) is caller-supplied so that different apps
-/// using `nmp-marmot` maintain isolated keyring entries. `pub(crate)` so
-/// `credential_store` can build the probe account-id.
+/// Generic key-id for the MLS SQLite DB encryption key in the keyring.
+/// The service-id (app-scoped namespace) is caller-supplied (D0 #1606).
 pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
 /// Clearable slot for the two Marmot push-projection closures (ADR-0039).
@@ -287,13 +283,8 @@ fn now_secs() -> u64 {
 ///   In that case `keyring_unavailable = true` is set on the projection so
 ///   the snapshot surfaces the diagnostic to the host.
 ///
-/// ## `keyring_service_id`
-///
-/// The keyring service-id is the namespace that scopes the Marmot MLS DB
-/// encryption key to this specific app. It MUST be app-owned (e.g. Chirp
-/// passes `"nmp.chirp.marmot"` from its config; a future second app would
-/// pass its own id). Hardcoding a Chirp-specific id in the reusable crate
-/// violated D0 (#1606) — the fix is this parameter.
+/// `keyring_service_id` — app-owned namespace for the MLS DB encryption key
+/// (D0 #1606: the reusable crate must not embed a Chirp-specific string).
 pub(crate) fn register_with_keys(
     app: *mut NmpApp,
     keys: Keys,
@@ -497,11 +488,8 @@ pub(crate) fn register_with_keys(
 /// * `db_dir` — the app-support directory; the DB is created at
 ///   `<db_dir>/marmot-mls-state.sqlite` (owned by this crate). NULL →
 ///   null handle.
-/// * `keyring_service_id` — the keyring service-id scoping the MLS DB
-///   encryption key to this specific app. Must be a non-empty, slash-free
-///   ASCII string (e.g. `"nmp.chirp.marmot"` for Chirp). NULL or empty →
-///   null handle. This MUST be app-owned — the caller, not this reusable
-///   crate, owns the namespace.
+/// * `keyring_service_id` — app-owned namespace for the MLS DB encryption
+///   key (non-empty; NULL or empty → null handle).
 ///
 /// Returns a non-null `*mut MarmotHandle` on success; `null` on any
 /// failure (D6).
@@ -539,9 +527,8 @@ pub extern "C" fn nmp_marmot_register(
 /// success; `null` if no local account is active, `db_dir` is NULL, or
 /// `keyring_service_id` is NULL/empty (D6).
 ///
-/// * `keyring_service_id` — the keyring service-id scoping the MLS DB
-///   encryption key to this specific app. Must be app-owned and non-empty
-///   (see [`nmp_marmot_register`] for details).
+/// * `keyring_service_id` — app-owned namespace for the MLS DB encryption key;
+///   non-empty (see [`nmp_marmot_register`]).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_marmot_register_active(

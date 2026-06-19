@@ -523,9 +523,8 @@ fn key_package_cache_round_trips() {
     assert!(listed.contains(&bob.pubkey().to_hex()));
     assert!(!listed.contains(&carol.pubkey().to_hex()));
 
-    // Re-caching the same author overwrites silently (newest wins). We cache
-    // the same kind:30443 event a second time — sufficient to prove the
-    // overwrite-not-duplicate contract (event_443 was removed 2026-05-31).
+    // Re-caching the same author overwrites silently (newest wins; kind:30443
+    // only — event_443 removed 2026-05-31).
     alice.service.cache_key_package(bob_kp.event_30443.clone());
     assert_eq!(
         alice.service.cached_key_packages(&[bob.pubkey()]).len(),

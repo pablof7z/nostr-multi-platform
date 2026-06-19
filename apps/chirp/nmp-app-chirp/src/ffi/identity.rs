@@ -3,13 +3,19 @@
 //! These symbols preserve Chirp's native ABI while keeping the reusable
 //! `nmp-marmot` crate free of Chirp-specific symbol names.
 
-use std::ffi::{c_char, CString};
+use std::ffi::c_char;
 
-use nmp_chirp_config::CHIRP_MARMOT_KEYRING_SERVICE_ID;
 use nmp_ffi::{nmp_app_remove_account, nmp_app_signin_nsec, NmpApp};
 use nmp_marmot::ffi::{nmp_marmot_register, nmp_marmot_register_active, MarmotHandle};
 
 use super::helpers::c_string_opt;
+
+/// NUL-terminated service id for the Marmot MLS DB encryption key. Matches
+/// `CHIRP_MARMOT_KEYRING_SERVICE_ID` in `nmp-chirp-config`. Defined as a
+/// `&CStr` literal here so callers never allocate and D6 is trivially
+/// satisfied — a `&'static CStr` cannot fail.
+const CHIRP_MARMOT_SVC_CSTR: &std::ffi::CStr =
+    c"nmp.chirp.marmot";
 
 /// Rust-owned Chirp identity bootstrap: restore a persisted local secret
 /// through the actor-owned session store and register Marmot. `test_nsec`
@@ -27,11 +33,9 @@ pub extern "C" fn nmp_app_chirp_identity_restore(
     }
     if !test_nsec.is_null() {
         nmp_app_signin_nsec(app, test_nsec, 1);
-        let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID).expect("static str is valid CString");
-        return nmp_marmot_register(app, test_nsec, db_dir, svc.as_ptr());
+        return nmp_marmot_register(app, test_nsec, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr());
     }
-    let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID).expect("static str is valid CString");
-    nmp_marmot_register_active(app, db_dir, svc.as_ptr())
+    nmp_marmot_register_active(app, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
 }
 
 /// Rust-owned nsec sign-in: sign in through the actor-owned identity reducer
@@ -47,8 +51,7 @@ pub extern "C" fn nmp_app_chirp_identity_sign_in_nsec(
         return std::ptr::null_mut();
     }
     nmp_app_signin_nsec(app, secret, 1);
-    let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID).expect("static str is valid CString");
-    nmp_marmot_register(app, secret, db_dir, svc.as_ptr())
+    nmp_marmot_register(app, secret, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
 }
 
 /// Rust-owned removal policy: remove the identity through the kernel actor.

@@ -10,6 +10,7 @@ use nmp_app_chirp::{
     nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_open_tag_feed, nmp_app_nostrconnect_uri,
     nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec, zap_spec,
 };
+use nmp_chirp_config::CHIRP_MARMOT_KEYRING_SERVICE_ID;
 use nmp_ffi::{
     nmp_app_cancel_publish, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
     nmp_free_string,
@@ -271,7 +272,9 @@ impl AppRuntime {
         }
         let dir = CString::new(marmot_db_dir())
             .map_err(|_| "marmot DB path contains NUL byte".to_string())?;
-        let handle = nmp_marmot_register_active(self.app_ptr(), dir.as_ptr());
+        let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID)
+            .map_err(|_| "marmot service id contains NUL byte".to_string())?;
+        let handle = nmp_marmot_register_active(self.app_ptr(), dir.as_ptr(), svc.as_ptr());
         if handle.is_null() {
             return Err("no active Marmot identity".to_string());
         }
