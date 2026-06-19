@@ -27,12 +27,15 @@
 //! [`FeedController`] under its own snapshot key (`nmp.feed.author.<pk>` /
 //! `nmp.feed.thread.<id>`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
+use nmp_core::planner::InterestShape;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
-use nmp_feed::{FeedController, FeedCursor, FeedPage, FeedRequest, RootCard, RootFeedSnapshot};
+use nmp_feed::{
+    FeedController, FeedCursor, FeedInterestShape, FeedPage, FeedRequest, RootCard, RootFeedSnapshot,
+};
 
 use crate::{Nip10ReplyAttribution, TimelineEventCard};
 
@@ -63,15 +66,46 @@ struct FlatFeedState {
 /// [`RootFeedSnapshot`] (empty `attribution`).
 pub struct FlatFeed {
     predicate: FlatFeedPredicate,
+    /// The feed's pull interest, or `None` to fail closed.
+    ///
+    /// ADR-0058 §8 step-6B: a `Some(shape)` lets the host wire this feed to the
+    /// seq-ordered pull pager (`nmp_feed::PullFeedController`) so `load_older`
+    /// drains older notes. `None` is the fail-closed signal — the feed renders
+    /// from its push projection only and never broad-scans. The predicate alone
+    /// is not enough: pull needs a *covered* `InterestShape` (D5).
+    interest: Option<InterestShape>,
     state: Mutex<FlatFeedState>,
 }
 
 impl FlatFeed {
     /// Construct a flat feed admitting events for which `predicate` is `true`.
+    ///
+    /// The feed has **no** pull interest (`interest_shape() == None`), so a host
+    /// that registers it without a pull controller gets projection-only
+    /// `load_older` — the historical, fail-closed behaviour. Use
+    /// [`Self::with_interest`] to make it pull-pageable.
     #[must_use]
     pub fn new(predicate: FlatFeedPredicate) -> Arc<Self> {
         Arc::new(Self {
             predicate,
+            interest: None,
+            state: Mutex::new(FlatFeedState::default()),
+        })
+    }
+
+    /// Construct a flat feed with both its admission predicate and a covered
+    /// pull [`InterestShape`] (e.g. [`author_feed_shape`] / [`thread_feed_shape`]).
+    ///
+    /// The host pairs this with `nmp_feed::PullFeedController` (built over the
+    /// app's `feed_pull_fn`) so `load_older` drains older matching notes by
+    /// ingest seq; the predicate still gates ingest and display order stays
+    /// `(created_at, id)`. Pass `None` to fail closed (equivalent to
+    /// [`Self::new`]).
+    #[must_use]
+    pub fn with_interest(predicate: FlatFeedPredicate, interest: Option<InterestShape>) -> Arc<Self> {
+        Arc::new(Self {
+            predicate,
+            interest,
             state: Mutex::new(FlatFeedState::default()),
         })
     }
@@ -177,14 +211,56 @@ impl KernelEventObserver for FlatFeed {
     }
 }
 
+impl FeedInterestShape for FlatFeed {
+    /// The feed's covered pull interest, or `None` to fail closed (ADR-0058 §8
+    /// 6B). The host hands the feed to a `nmp_feed::PullFeedController`, which
+    /// refuses to construct on `None` (projection-only fallback, no broad-scan).
+    fn interest_shape(&self) -> Option<InterestShape> {
+        self.interest.clone()
+    }
+}
+
 impl FeedController for FlatFeed {
     fn load_older(&self) -> bool {
-        // All admitted rows are held in memory bounded by D5 retention; "load
-        // older" widens the snapshot request limit at the call site rather than
-        // advancing a paging cursor in the feed itself. Mirrors the
-        // RootIndexedFeed `FeedController::load_older` no-op.
+        // Projection-only fallback (ADR-0058 §8 6B). The single pull paging path
+        // is `nmp_feed::PullFeedController`, which the host wires around this
+        // feed when [`FlatFeed::with_interest`] gave it a covered shape; the
+        // controller (NOT this method) drives the seq-ordered drain. A bare
+        // `FlatFeed` registered without that controller has no covered interest,
+        // so it fails closed here: all admitted rows are already held in memory
+        // bounded by D5 retention, and there is no `created_at` window-grow
+        // paging in the feed itself.
         false
     }
+}
+
+/// Build the **author-feed** pull [`InterestShape`]: `{authors:[pk], kinds}` —
+/// the covered E1 `AuthorsKind` shape the kernel pull substrate maps to
+/// `idx_kind_author_time` (ADR-0045). Pair with [`author_feed_predicate`] and a
+/// `nmp_feed::PullFeedController` so `load_older` drains older notes by that
+/// author. The `{1,6}` kind policy lives in the host that calls this helper.
+#[must_use]
+pub fn author_feed_shape(author: String, kinds: Vec<u32>) -> InterestShape {
+    InterestShape::timeline_for(
+        BTreeSet::from([author]),
+        kinds.into_iter().collect::<BTreeSet<u32>>(),
+    )
+}
+
+/// Build the **thread-feed reply-tail** pull [`InterestShape`]:
+/// `{kinds, #e:[root]}` — the covered E2 `Etag` shape. This pages the *replies*
+/// that reference `root_id` via `#e`; the root note itself is an event-id-only
+/// interest that the pull substrate does not cover, so it stays hydrated through
+/// the existing claim path (ADR-0058 §8 6B). Pair with [`thread_feed_predicate`]
+/// (which still admits the root by id) and a `nmp_feed::PullFeedController`.
+#[must_use]
+pub fn thread_feed_shape(root_id: String, kinds: Vec<u32>) -> InterestShape {
+    let mut shape = InterestShape {
+        kinds: kinds.into_iter().collect::<BTreeSet<u32>>(),
+        ..Default::default()
+    };
+    shape.tags.insert("e".to_string(), BTreeSet::from([root_id]));
+    shape
 }
 
 /// Build an **author-feed** predicate: a host-chosen kind set authored by one
@@ -336,6 +412,45 @@ mod tests {
         let snap = feed.snapshot(&nmp_feed::FeedRequest::default());
         assert_eq!(snap.cards.len(), 1);
         assert_eq!(snap.cards[0].card.id, "a1");
+    }
+
+    #[test]
+    fn bare_flat_feed_fails_closed_no_pull_interest() {
+        // ADR-0058 §8 6B: a `FlatFeed::new` has no covered pull interest, so it
+        // fails closed — a `PullFeedController` would refuse to construct and the
+        // feed renders projection-only.
+        let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+        assert!(feed.interest_shape().is_none(), "bare flat feed fails closed");
+    }
+
+    #[test]
+    fn author_feed_shape_is_a_covered_authors_kind_interest() {
+        let shape = author_feed_shape("alice".to_string(), vec![1, 6]);
+        assert_eq!(shape.authors, BTreeSet::from(["alice".to_string()]));
+        assert_eq!(shape.kinds, BTreeSet::from([1, 6]));
+        assert!(shape.tags.is_empty(), "author feed is authors+kinds only");
+        // A feed built with_interest surfaces the shape to the pull controller.
+        let feed = FlatFeed::with_interest(
+            author_feed_predicate("alice".to_string(), vec![1, 6]),
+            Some(shape.clone()),
+        );
+        assert_eq!(feed.interest_shape(), Some(shape));
+    }
+
+    #[test]
+    fn thread_feed_shape_is_a_covered_etag_reply_tail() {
+        let shape = thread_feed_shape("root".to_string(), vec![1, 6]);
+        assert_eq!(shape.kinds, BTreeSet::from([1, 6]));
+        assert_eq!(
+            shape.tags.get("e"),
+            Some(&BTreeSet::from(["root".to_string()])),
+            "thread shape pages the #e reply tail; the root rides the claim path"
+        );
+        assert!(shape.authors.is_empty());
+        assert!(
+            shape.event_ids.is_empty(),
+            "root-by-id is event-id-only (uncovered) — never folded into the pull shape"
+        );
     }
 
     #[test]

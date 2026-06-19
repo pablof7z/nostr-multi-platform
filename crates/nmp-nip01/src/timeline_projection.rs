@@ -431,17 +431,6 @@ impl ModularTimelineProjection {
         }
     }
 
-    pub fn load_older_window(&self) -> bool {
-        let Ok(mut inner) = self.inner.lock() else {
-            return false;
-        };
-        let blocks = sorted_projection_blocks(&inner);
-        let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
-        let mut window = std::mem::take(&mut inner.window);
-        let changed = window.load_older(&visible_blocks, &inner.cards);
-        inner.window = window;
-        changed
-    }
 
     #[must_use]
     pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
@@ -468,12 +457,6 @@ impl ModularTimelineProjection {
                     .min(u64::MAX as u128) as u64,
             }),
         }
-    }
-}
-
-impl nmp_feed::FeedController for ModularTimelineProjection {
-    fn load_older(&self) -> bool {
-        self.load_older_window()
     }
 }
 

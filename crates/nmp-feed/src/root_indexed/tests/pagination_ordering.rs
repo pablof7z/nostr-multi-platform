@@ -43,9 +43,11 @@ fn older_repost_does_not_regress_order() {
 }
 
 #[test]
-fn load_older_paginates_past_default_window() {
-    use crate::FeedController;
-
+fn grow_visible_window_reveals_past_default_window() {
+    // 6B: the engine is no longer a `FeedController`; the render viewport is
+    // grown by `grow_visible_window`, which `PullFeedController` calls after a
+    // pull drain ingests a page. Drive that viewport step directly to prove it
+    // reveals roots one page at a time, capped at the total root count.
     let h = Harness::new(&["alice"]);
     // Insert more roots than the default window (80).
     for i in 0..120u64 {
@@ -57,23 +59,23 @@ fn load_older_paginates_past_default_window() {
     assert_eq!(snap.cards.len(), 80, "initial snapshot bounded to 80");
     assert_eq!(snap.page.as_ref().unwrap().has_more, true, "older roots remain");
 
-    // load_older grows the window and reports more was revealed.
-    let more = h.engine.load_older();
-    assert!(more, "load_older must return true when older roots exist");
+    // Growing the viewport reveals more and reports it grew.
+    let more = h.engine.grow_visible_window();
+    assert!(more, "grow_visible_window must return true when older roots exist");
 
-    // snapshot now honors the grown window: all 120 roots.
+    // snapshot now honors the grown viewport: all 120 roots.
     let snap_after = h.engine.snapshot_current_window();
     assert_eq!(
         snap_after.cards.len(),
         120,
-        "snapshot after load_older shows all 120 roots"
+        "snapshot after grow_visible_window shows all 120 roots"
     );
 
-    // Fully revealed → load_older returns false.
-    let no_more = h.engine.load_older();
+    // Fully revealed → grow_visible_window returns false.
+    let no_more = h.engine.grow_visible_window();
     assert!(
         !no_more,
-        "load_older must return false when all roots are visible"
+        "grow_visible_window must return false when all roots are visible"
     );
 }
 

@@ -138,12 +138,15 @@
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
+use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use nmp_core::planner::InterestShape;
 use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::substrate::KernelEvent;
 use nmp_core::{ActorCommand, KernelEventObserver};
-use nmp_feed::FeedController;
+use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{
@@ -198,7 +201,11 @@ pub struct OpFeedDefaults {
 /// Like [`crate::register_defaults`], call before `nmp_app_start`: the engine
 /// and the follow-set observer must be visible to the kernel when the first
 /// event arrives.
-pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults {
+pub fn register_op_feed_defaults(
+    app: &NmpApp,
+    viewer: Pubkey,
+    contact_feed_kinds: Vec<u32>,
+) -> OpFeedDefaults {
     // ── 1. Follow-set producer ───────────────────────────────────────────
     //
     // Constructed over the kernel's active-account slot exposed by `NmpApp`.
@@ -245,13 +252,70 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     });
 
     // ── 4. Construct the engine ──────────────────────────────────────────
-    let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup, claim_sink);
+    let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup, claim_sink);
 
     // ── 5. Register the engine (ingest + output) ─────────────────────────
     let engine_observer: Arc<dyn KernelEventObserver> = engine.clone();
     let _engine_observer_id = app.register_event_observer(engine_observer);
-    let engine_feed: Arc<dyn FeedController> = engine.clone();
-    app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, engine_feed);
+
+    // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
+    //
+    // `load_older` is no longer a `created_at` window-grow on the engine (that
+    // parallel path was deleted in 6B — the engine is no longer a
+    // `FeedController`). It is now a synchronous, on-demand pull drain over the
+    // kernel's ingest log, via `nmp_feed::PullFeedController`:
+    //
+    //   * **interest** — a LIVE, fail-closed `InterestShape` recomputed on every
+    //     `load_older`: the active account's follow set + the active user as
+    //     `authors`, under the host-declared `contact_feed_kinds`. This is the
+    //     same collapsed follow-feed shape the kernel registers for M2
+    //     (`sync_follow_feed_interests`). Empty kinds or an empty author set ⇒
+    //     `None` ⇒ no pull controller is registered ⇒ the feed renders from its
+    //     pushed typed projection only (fail closed, never a broad-scan; D5).
+    //   * **pull** — `app.feed_pull_fn()`, an in-process read over the kernel
+    //     event store (NOT a new host pull accessor; ADR-0039 §6.1 preserved).
+    //   * **apply** — the engine's own `KernelEventObserver` ingest path, so a
+    //     drained page deduplicates and projects exactly like live push ingest.
+    //   * **advance** — `grow_visible_window`, the render-viewport step that
+    //     reveals the just-ingested `(created_at, id)`-sorted roots one page at a
+    //     time. Completeness rides ingest seq; display order is unchanged.
+    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
+        let follow_set = follow_set.clone();
+        let viewer = viewer.clone();
+        let kinds: BTreeSet<u32> = contact_feed_kinds.iter().copied().collect();
+        Arc::new(ClosureInterestShape::new(move || {
+            if kinds.is_empty() {
+                return None; // host declared no contact-feed kinds ⇒ fail closed
+            }
+            let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
+            if !viewer.is_empty() {
+                authors.insert(viewer.clone());
+            }
+            if authors.is_empty() {
+                return None; // no signed-in account / no follows ⇒ fail closed
+            }
+            Some(InterestShape::timeline_for(authors, kinds.clone()))
+        }))
+    };
+    let pull = app.feed_pull_fn();
+    let apply: FeedApply = {
+        let engine = Arc::clone(&engine);
+        Arc::new(move |event: &KernelEvent| engine.on_kernel_event(event))
+    };
+    let advance: FeedAdvance = {
+        let engine = Arc::clone(&engine);
+        Arc::new(move || {
+            engine.grow_visible_window();
+        })
+    };
+    // Fail closed: on `None` (no covered interest shape) register NO controller.
+    // The feed still renders through the typed projection (registered below);
+    // `nmp_app_load_older_feed` simply finds no controller and no-ops — never a
+    // broad-scan.
+    if let Some(controller) = PullFeedController::new(provider, pull, apply, advance) {
+        let controller: Arc<dyn FeedController> = controller;
+        app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
+    }
 
     // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //

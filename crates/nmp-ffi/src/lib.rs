@@ -1969,6 +1969,69 @@ impl NmpApp {
         event_by_id_from_store(&self.event_store_handle, id)
     }
 
+    /// ADR-0058 §8 step-6B — the in-process pull seam a feed's
+    /// [`nmp_feed::PullFeedController`] drains on `load_older`.
+    ///
+    /// Returns a plain Rust closure `(scope, after_seq) -> page` that reads the
+    /// kernel's published [`EventStore`](nmp_core::store::EventStore) directly
+    /// via [`nmp_core::pull_page_over`]. This is **not** a new C-ABI symbol and
+    /// **not** a projection accessor: it reads the raw ingest log exactly as the
+    /// existing [`crate::pull::nmp_app_pull_page`] door does (ADR-0039 §6.1
+    /// preserved — no host projection-pull accessor is added). The composition
+    /// root hands this to `PullFeedController`; the host never sees it.
+    ///
+    /// Lock discipline mirrors `nmp_app_pull_page`: clone the store `Arc` under
+    /// the slot lock, release it, then run the read against the clone. On an
+    /// unavailable store (pre-`nmp_app_start` / poisoned) or an unsupported /
+    /// erroring scope the closure returns an **empty, exhausted page** so the
+    /// pager drain terminates and the feed fails closed (no broad-scan, no poll).
+    #[must_use]
+    pub fn feed_pull_fn(&self) -> nmp_feed::PullFn {
+        use std::num::NonZeroUsize;
+        use nmp_core::store::{PullPage, ScanLogResult};
+        use nmp_core::{pull_page_over, PullLimits};
+
+        let slot = Arc::clone(&self.event_store_handle);
+        // One match entry per visible row; a generous per-call scan window. The
+        // pager's own cross-call scan budget bounds total work (D5).
+        let max_entries =
+            NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE).unwrap_or(NonZeroUsize::MIN);
+        let max_scan = NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE.saturating_mul(8))
+            .unwrap_or(NonZeroUsize::MIN);
+        let limits = PullLimits {
+            max_entries,
+            max_scan_entries: max_scan,
+        };
+
+        std::sync::Arc::new(move |scope: nmp_core::PullScope, after_seq: u64| {
+            // Fail-closed terminator: an empty page at the requested cursor with
+            // `has_more == false` ⇒ the drain stops as `Exhausted`, applies and
+            // grows nothing, and `load_older` returns false (projection-only).
+            let exhausted = || {
+                ScanLogResult::Page(PullPage {
+                    entries: Vec::new(),
+                    next_after_seq: after_seq,
+                    latest_seq: after_seq,
+                    has_more: false,
+                })
+            };
+            let store = {
+                let Ok(guard) = slot.lock() else {
+                    return exhausted();
+                };
+                match guard.as_ref() {
+                    Some(s) => Arc::clone(s),
+                    None => return exhausted(),
+                }
+            }; // slot lock released before the store read
+            match pull_page_over(store.as_ref(), scope, after_seq, limits) {
+                Ok(result) => result,
+                // Unsupported shape / store error ⇒ fail closed, never broad-scan.
+                Err(_) => exhausted(),
+            }
+        })
+    }
+
     /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]
     /// (`Arc`).
     ///
