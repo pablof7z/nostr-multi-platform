@@ -117,18 +117,23 @@ mod tests_ingest_log;
 // ADR-0058 fix-verification (split for 500-LOC cap).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_ingest_log_fixes;
+// ADR-0058 §6 step-4 — Protected-cursor log-retention tests.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_retention;
 
 use std::path::{Path, PathBuf};
 
 use super::StoreError;
 
 #[cfg(not(feature = "lmdb-backend"))]
-use super::events::{DomainHandle, EventIter, EventStore};
+use super::events::{EventIter, EventStore};
 #[cfg(not(feature = "lmdb-backend"))]
 use super::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
 };
+#[cfg(not(feature = "lmdb-backend"))]
+use crate::domain_handle::DomainHandle;
 #[cfg(not(feature = "lmdb-backend"))]
 use crate::DomainMigration;
 #[cfg(not(feature = "lmdb-backend"))]
@@ -152,7 +157,6 @@ pub(crate) use inner::Inner;
 // Internal sub-db / env handles extracted to inner.rs for the 500-LOC cap.
 #[cfg(feature = "lmdb-backend")]
 mod inner;
-
 
 // ─── LmdbEventStore ──────────────────────────────────────────────────────────
 

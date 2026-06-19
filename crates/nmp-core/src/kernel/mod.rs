@@ -94,6 +94,9 @@ mod store_wakeup;
 mod pull_tests;
 #[cfg(test)]
 mod pull_cursor_wake_tests;
+// ADR-0058 §6 step-4 — Protected-cursor retention claim publish wiring.
+#[cfg(test)]
+mod pull_cursor_retention_tests;
 #[cfg(test)]
 mod cache_serve_all_kinds_dispatcher_tests;
 #[cfg(test)]

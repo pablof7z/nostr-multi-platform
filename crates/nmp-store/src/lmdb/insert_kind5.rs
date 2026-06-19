@@ -27,17 +27,21 @@ use heed::RwTxn;
 use nostr_database::FlatBufferBuilder;
 
 use super::{conv, gc, ingest_log, provenance, tombstones, Inner};
-use crate::ingest_log::DeleteReason;
+use crate::ingest_log::{DeleteReason, LogRetentionClaim};
 use crate::types::{InsertOutcome, RawEvent, RelayUrl};
 use crate::StoreError;
 
 /// Mem-parity kind:5 handling.
+///
+/// `claims` is the retention-claim snapshot for this event txn (ADR-0058 §6
+/// step-4), threaded into every append-time trim.
 pub(super) fn handle_kind5(
     inner: &Arc<Inner>,
     txn: &mut RwTxn,
     event: RawEvent,
     source: &RelayUrl,
     received_at_ms: u64,
+    claims: &[LogRetentionClaim],
 ) -> Result<InsertOutcome, StoreError> {
     use nostr::prelude::*;
 
@@ -63,7 +67,8 @@ pub(super) fn handle_kind5(
                 let is_self = owned.pubkey.as_bytes().as_slice() == kind5_pubkey.as_slice();
                 let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
                 let kind = owned.kind.as_u16() as u32;
-                let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                let tags: Vec<Vec<String>> =
+                    owned.tags.iter().map(|t| t.clone().to_vec()).collect();
                 (is_self, true, expiry, kind, Some(tags))
             }
             None => (true, false, None, 0, None), // Not stored — tombstone for future arrivals.
@@ -132,6 +137,7 @@ pub(super) fn handle_kind5(
                 received_at_ms,
                 inner.map_size,
                 inner.max_readers,
+                claims,
             )?;
         }
     }
@@ -181,7 +187,8 @@ pub(super) fn handle_kind5(
                         existing_id.copy_from_slice(owned.id.as_bytes());
                         let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
                         let existing_kind = owned.kind.as_u16() as u32;
-                        let existing_tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                        let existing_tags: Vec<Vec<String>> =
+                            owned.tags.iter().map(|t| t.clone().to_vec()).collect();
                         inner
                             .lmdb
                             .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
@@ -217,6 +224,7 @@ pub(super) fn handle_kind5(
                             received_at_ms,
                             inner.map_size,
                             inner.max_readers,
+                            claims,
                         )?;
                     }
                 }
@@ -244,7 +252,8 @@ pub(super) fn handle_kind5(
                         existing_id.copy_from_slice(owned.id.as_bytes());
                         let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
                         let existing_kind = owned.kind.as_u16() as u32;
-                        let existing_tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
+                        let existing_tags: Vec<Vec<String>> =
+                            owned.tags.iter().map(|t| t.clone().to_vec()).collect();
                         inner
                             .lmdb
                             .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
@@ -280,6 +289,7 @@ pub(super) fn handle_kind5(
                             received_at_ms,
                             inner.map_size,
                             inner.max_readers,
+                            claims,
                         )?;
                     }
                 }
@@ -380,6 +390,7 @@ pub(super) fn handle_kind5(
         received_at_ms,
         inner.map_size,
         inner.max_readers,
+        claims,
     )?;
     Ok(InsertOutcome::Inserted {
         id: kind5_id,

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::MemEventStore;
-use crate::events::{DomainHandle, DomainHandleInner};
+use crate::domain_handle::{DomainHandle, DomainHandleInner};
 use crate::DomainMigration;
 use crate::StoreError;
 

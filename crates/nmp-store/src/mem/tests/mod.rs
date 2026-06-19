@@ -19,3 +19,5 @@ mod relay_kind_tests;
 mod ingest_log_tests;
 // Fix-verification tests (split for 500-LOC cap).
 mod ingest_log_fix_tests;
+// ADR-0058 §6 step-4 — Protected-cursor log-retention trim tests.
+mod retention_tests;

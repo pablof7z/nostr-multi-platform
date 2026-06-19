@@ -8,6 +8,29 @@ use crate::types::{EventId, RawEvent, RelayUrl};
 /// Default maximum ingest-log entries retained per backend (ADR-0058 R2.4).
 pub const DEFAULT_LOG_MAX_ENTRIES: u64 = 10_000;
 
+/// A `Protected`-cursor log-retention claim (ADR-0058 §6, step-4).
+///
+/// VOLATILE — never persisted. Cursor registrations are non-durable, so their
+/// retention claims are non-durable too. The kernel is the single writer of the
+/// claim set and replaces it wholesale via
+/// [`crate::EventStore::replace_log_retention_claims`].
+///
+/// A claim pins the log GC floor to `after_seq` (so the slowest protected
+/// cursor's unconsumed rows survive) **only while** the cursor's lag stays
+/// within `max_lag_entries`. Eligibility is recomputed at every append-time
+/// trim against the current `latest_seq`: once
+/// `latest_seq - after_seq > max_lag_entries` the claim is filtered OUT, the
+/// floor advances normally, and the cursor later receives an explicit
+/// `PullGap` (D5: a stuck consumer cannot pin the log unbounded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogRetentionClaim {
+    /// The protected cursor's consumed position. Rows with `seq > after_seq`
+    /// are pinned (not pruned) while the claim is eligible.
+    pub after_seq: u64,
+    /// Maximum lag (in seq units) before the claim is dropped.
+    pub max_lag_entries: u64,
+}
+
 /// Why an event was semantically removed (ADR-0058 §3 Rev 3).
 ///
 /// LRU eviction and `delete_by_filter(ByRelayOnly)` emit NO row — those are

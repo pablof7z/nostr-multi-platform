@@ -51,8 +51,8 @@ pub(super) mod gc;
 pub(super) mod ic;
 pub(super) mod insert;
 // NIP-09 (kind:5) deletion handler — extracted from insert.rs for the 500 LOC cap.
-pub(super) mod insert_kind5;
 pub(super) mod ingest_log;
+pub(super) mod insert_kind5;
 pub(super) mod query;
 mod store_impl;
 #[cfg(test)]
@@ -149,6 +149,15 @@ pub(super) struct MemState {
     /// GC floor: the lowest seq that has been trimmed. Entries ≤ this value are gone.
     pub(super) log_gc_floor: u64,
 
+    /// VOLATILE `Protected`-cursor log-retention claims (ADR-0058 §6, step-4).
+    ///
+    /// Held under the SAME mutex as `ingest_log` / `log_gc_floor` / `ingest_seq`,
+    /// so the append-time trim reads a consistent claim set within the same
+    /// locked write the seq was allocated in. Written wholesale by
+    /// `EventStore::replace_log_retention_claims` (kernel = single writer);
+    /// never persisted.
+    pub(super) retention_claims: Vec<crate::ingest_log::LogRetentionClaim>,
+
     // ─── LRU access tracking (V-60) ──────────────────────────────────────────
     /// Monotonically-increasing counter.  Incremented by one on every insert
     /// and every point-read (get_by_id).  Using a counter rather than wall-clock
@@ -192,6 +201,7 @@ impl MemState {
             ingest_seq: 0,
             ingest_log: std::collections::BTreeMap::new(),
             log_gc_floor: 0,
+            retention_claims: Vec::new(),
         }
     }
 

@@ -10,12 +10,13 @@ use super::{
     coverage, delete, domain, dump as dump_mod, gc, ingest_log, insert, query, query_relay_index,
     LmdbEventStore,
 };
-use crate::events::{DomainHandle, EventIter, EventStore};
+use crate::domain_handle::DomainHandle;
+use crate::events::{EventIter, EventStore};
+use crate::ingest_log::ScanLogResult;
 use crate::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
 };
-use crate::ingest_log::ScanLogResult;
 use crate::DomainMigration;
 use crate::StoreError;
 
@@ -224,7 +225,8 @@ impl EventStore for LmdbEventStore {
         // D6 graceful degrade: a coverage-write failure must never block ingest
         // or the EOSE/NEG-DONE path. A missed write only means the Stage D2 read
         // falls back to the presence floor for this shape — never a wrong floor.
-        if let Err(e) = coverage::record_coverage(&self.inner, filter_hash, relay, covered_through) {
+        if let Err(e) = coverage::record_coverage(&self.inner, filter_hash, relay, covered_through)
+        {
             tracing::warn!("K3 coverage: record_coverage failed (ignored): {e}");
         }
     }
@@ -265,7 +267,11 @@ impl EventStore for LmdbEventStore {
     }
 
     fn oldest_available_seq(&self) -> Result<Option<u64>, StoreError> {
-        ingest_log::oldest_seq(self.inner.ingest_log, self.inner.ingest_meta, &self.inner.env)
+        ingest_log::oldest_seq(
+            self.inner.ingest_log,
+            self.inner.ingest_meta,
+            &self.inner.env,
+        )
     }
 
     fn scan_log_since_seq(
@@ -282,7 +288,19 @@ impl EventStore for LmdbEventStore {
         )
     }
 
-
+    fn replace_log_retention_claims(&self, claims: &[crate::ingest_log::LogRetentionClaim]) {
+        // ADR-0058 §6 step-4: single-writer (kernel) wholesale replace of the
+        // VOLATILE claim set. A poisoned lock is non-fatal — a missed update only
+        // means the next append-time trim uses the prior set; the consumer
+        // degrades to an explicit PullGap, never a silent skip.
+        match self.inner.retention_claims.write() {
+            Ok(mut g) => *g = claims.to_vec(),
+            Err(e) => tracing::warn!(
+                error = %e,
+                "replace_log_retention_claims: retention_claims lock poisoned (claims not updated)"
+            ),
+        }
+    }
 }
 
 // ─── Test-only helpers ────────────────────────────────────────────────────────
@@ -306,5 +324,4 @@ impl LmdbEventStore {
             .count();
         Ok(count)
     }
-
 }

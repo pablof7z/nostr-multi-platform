@@ -11,8 +11,8 @@ use nmp_nostr_lmdb::SaveEventStatus;
 use nostr_database::FlatBufferBuilder;
 use nostr_database::RejectedReason;
 
-use super::{conv, gc, ingest_log, provenance, tombstones, Inner};
 use super::open_error::{classify_heed_err, classify_store_err};
+use super::{conv, gc, ingest_log, provenance, tombstones, Inner};
 use crate::types::{EventId, InsertOutcome, RawEvent, RejectReason, RelayUrl, TombstoneOrigin};
 use crate::StoreError;
 
@@ -64,6 +64,10 @@ pub(super) fn insert(
         .write_txn()
         .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
 
+    // ADR-0058 §6 step-4: snapshot the retention claims once for this event txn
+    // so every append-time trim within it sees a consistent set.
+    let retention_claims = inner.retention_claims_snapshot();
+
     // 4. Per-id tombstone check (NMP-side).
     if let Some(tomb) = tombstones::get(inner.tombstones, &txn, &id_bytes)? {
         let applies = match tomb.origin {
@@ -112,7 +116,14 @@ pub(super) fn insert(
 
     // 6. Kind:5 — special handling, then fall through to fork's normal save.
     if event.kind == 5 {
-        let outcome = super::insert_kind5::handle_kind5(inner, &mut txn, event, source, received_at_ms)?;
+        let outcome = super::insert_kind5::handle_kind5(
+            inner,
+            &mut txn,
+            event,
+            source,
+            received_at_ms,
+            &retention_claims,
+        )?;
         txn.commit()
             .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
         return Ok(outcome);
@@ -209,6 +220,7 @@ pub(super) fn insert(
                     received_at_ms,
                     inner.map_size,
                     inner.max_readers,
+                    &retention_claims,
                 )?;
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
@@ -226,6 +238,7 @@ pub(super) fn insert(
                     received_at_ms,
                     inner.map_size,
                     inner.max_readers,
+                    &retention_claims,
                 )?;
                 InsertOutcome::Inserted {
                     id: id_bytes,
@@ -312,7 +325,10 @@ fn freshness_key_for(event: &RawEvent) -> Option<nmp_nostr_lmdb::ReplaceableKey>
             pubkey: pubkey_arr,
         })
     } else if event.is_param_replaceable() {
-        let d_tag = event.d_tag().map(|d| String::from_utf8_lossy(&d).into_owned()).unwrap_or_default();
+        let d_tag = event
+            .d_tag()
+            .map(|d| String::from_utf8_lossy(&d).into_owned())
+            .unwrap_or_default();
         Some(nmp_nostr_lmdb::ReplaceableKey::Parameterized {
             kind,
             pubkey: pubkey_arr,

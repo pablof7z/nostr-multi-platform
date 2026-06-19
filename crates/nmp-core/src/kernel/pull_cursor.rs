@@ -107,6 +107,26 @@ impl PullCursorRegistry {
     fn iter_seqs(&self) -> impl Iterator<Item = (PullCursorId, u64)> + '_ {
         self.by_id.values().map(|r| (r.cursor_id, r.after_seq))
     }
+
+    /// Build the `Protected`-cursor log-retention claim set (ADR-0058 §6,
+    /// step-4). `GapAllowed` cursors publish nothing; each `Protected` cursor
+    /// publishes `(after_seq, max_lag_entries)`. The kernel forwards this to
+    /// `EventStore::replace_log_retention_claims` after every registry mutation
+    /// (it is the single writer of the claim set).
+    fn retention_claims(&self) -> Vec<crate::store::LogRetentionClaim> {
+        self.by_id
+            .values()
+            .filter_map(|r| match r.mode {
+                PullCursorMode::Protected { max_lag_entries } => {
+                    Some(crate::store::LogRetentionClaim {
+                        after_seq: r.after_seq,
+                        max_lag_entries,
+                    })
+                }
+                PullCursorMode::GapAllowed => None,
+            })
+            .collect()
+    }
 }
 
 // The three command methods + their wake helper are live via the actor
@@ -139,6 +159,21 @@ impl Kernel {
             // Caught up — clear any stale pending wake so it is not re-emitted.
             self.store_wakeups.pull.remove(&cursor_id);
         }
+    }
+
+    /// Rebuild the `Protected`-cursor retention claims from the registry and
+    /// publish them to the store (ADR-0058 §6, step-4).
+    ///
+    /// The kernel is the single writer of the claim set: this is called after
+    /// EVERY register / advance / unregister so the store's append-time log trim
+    /// always pins to the current slowest still-eligible protected cursor.
+    fn publish_retention_claims(&self) {
+        let registry = Arc::clone(&self.pull_cursor_registry);
+        let claims = {
+            let reg = registry.read().expect("pull cursor registry poisoned");
+            reg.retention_claims()
+        };
+        self.store.replace_log_retention_claims(&claims);
     }
 
     /// Register (or replace) a pull cursor — `ActorCommand::RegisterPullCursor`.
@@ -184,6 +219,8 @@ impl Kernel {
             );
         }
         self.update_pull_wake(cursor_id, after_seq);
+        // ADR-0058 §6 step-4: republish the protected-cursor retention claims.
+        self.publish_retention_claims();
     }
 
     /// Monotonically advance a cursor — `ActorCommand::AdvancePullCursor`.
@@ -191,11 +228,7 @@ impl Kernel {
     /// `after_seq = max(old, new)`. An unknown cursor id is a silent no-op
     /// (the consumer may have unregistered concurrently). Re-arms an immediate
     /// wake when the cursor is still behind the store head.
-    pub(crate) fn advance_pull_cursor(
-        &mut self,
-        cursor_id: PullCursorId,
-        after_seq: u64,
-    ) {
+    pub(crate) fn advance_pull_cursor(&mut self, cursor_id: PullCursorId, after_seq: u64) {
         let new_after = {
             let registry = Arc::clone(&self.pull_cursor_registry);
             let mut reg = registry.write().expect("pull cursor registry poisoned");
@@ -206,6 +239,9 @@ impl Kernel {
             row.after_seq
         };
         self.update_pull_wake(cursor_id, new_after);
+        // ADR-0058 §6 step-4: an advanced protected cursor moves its claim's
+        // after_seq forward — republish so the log floor can follow it.
+        self.publish_retention_claims();
     }
 
     /// Unregister a cursor — `ActorCommand::UnregisterPullCursor`.
@@ -222,6 +258,8 @@ impl Kernel {
                 .remove(&cursor_id);
         }
         self.store_wakeups.pull.remove(&cursor_id);
+        // ADR-0058 §6 step-4: a withdrawn protected cursor drops its claim.
+        self.publish_retention_claims();
     }
 
     /// Re-arm every registered cursor still behind the store head — the
