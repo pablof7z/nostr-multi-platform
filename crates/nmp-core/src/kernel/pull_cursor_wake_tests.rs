@@ -162,6 +162,35 @@ fn advance_no_wake_when_caught_up() {
     );
 }
 
+/// Regression: advancing to head must CLEAR the pending wake immediately, so the
+/// next drain emits NO stale duplicate. Before the fix, `advance` left the entry
+/// that a prior drain re-armed, and the next drain emitted one ghost wake.
+#[test]
+fn advance_to_head_clears_wake_no_stale_duplicate_drain() {
+    let mut k = new_kernel();
+    seed(&k, 1, 1000);
+    let latest = seed(&k, 2, 2000);
+
+    register(&mut k, 1, 0);
+    // First drain emits the wake and re-arms (cursor still behind head).
+    let first = k.drain_pull_wakes();
+    assert_eq!(first, vec![(PullCursorId(1), latest)], "first drain emits the wake");
+    assert_eq!(pull_wake(&k, 1), Some(latest), "re-armed while still behind");
+
+    // Consumer advances to head: the pending wake must be cleared right away.
+    k.advance_pull_cursor(PullCursorId(1), latest);
+    assert_eq!(
+        pull_wake(&k, 1),
+        None,
+        "advance-to-head must clear the pending wake immediately (no-double-count)"
+    );
+    // The next drain must therefore be empty — no ghost/duplicate wake.
+    assert!(
+        k.drain_pull_wakes().is_empty(),
+        "a caught-up cursor must not produce a stale duplicate wake on the next drain"
+    );
+}
+
 // ─── 4. Unregister removes pending wake ──────────────────────────────────────
 
 #[test]
@@ -189,7 +218,7 @@ fn coalescing_many_appends_one_latest_seq_per_cursor() {
     let mut latest = 0u64;
     for i in 0..5u8 {
         latest = seed(&k, i, 1000 + i as u64);
-        k.note_store_mutation(&hex64(i), &hex64(0xAA), 1, 1000 + i as u64, &[]);
+        k.note_store_mutation(&hex64(i), &hex64(0xAA), 1, 1000 + i as u64, &[], true);
     }
 
     assert_eq!(k.store_wakeups.pull.len(), 1, "5 appends must coalesce to 1 wake entry");
@@ -202,7 +231,7 @@ fn note_store_mutation_arms_every_behind_cursor() {
     register(&mut k, 1, 0);
     register(&mut k, 2, 0);
     let latest = seed(&k, 1, 1000);
-    k.note_store_mutation(&hex64(1), &hex64(0xAA), 1, 1000, &[]);
+    k.note_store_mutation(&hex64(1), &hex64(0xAA), 1, 1000, &[], true);
 
     assert_eq!(pull_wake(&k, 1), Some(latest));
     assert_eq!(pull_wake(&k, 2), Some(latest));
@@ -246,7 +275,7 @@ fn no_spontaneous_wake_without_an_arm() {
     let latest = seed(&k, 1, 1000);
 
     // No cursors registered: a store mutation arms no pull wake.
-    k.note_store_mutation(&hex64(1), &hex64(0xAA), 1, 1000, &[]);
+    k.note_store_mutation(&hex64(1), &hex64(0xAA), 1, 1000, &[], true);
     assert!(k.store_wakeups.pull.is_empty(), "no cursor → no pull wake from a mutation");
 
     // A caught-up cursor: repeated drains never spontaneously produce a wake

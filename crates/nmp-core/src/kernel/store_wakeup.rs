@@ -76,6 +76,7 @@ impl Kernel {
         kind: u32,
         created_at: u64,
         tags: &[Vec<String>],
+        store_log_advanced: bool,
     ) {
         // ── cache-serve arm (#1520 — byte-for-byte preserved) ─────────────────
         // Snapshot the active interests so we can borrow self.served_interest_shapes
@@ -94,14 +95,20 @@ impl Kernel {
         }
 
         // ── pull arm (ADR-0058) ───────────────────────────────────────────────
-        // Only do store work when a cursor is actually registered.
-        let any_cursor = !self
-            .pull_cursor_registry
-            .read()
-            .expect("pull cursor registry poisoned")
-            .is_empty();
-        if any_cursor {
-            self.rearm_pull_wakes_still_behind();
+        // Only arm pull wakes when the ingest log actually advanced
+        // (`Inserted | Replaced`). Ephemerals match interests for the cache-serve
+        // arm above but are never stored and never advance `latest_ingest_seq`,
+        // so they must not trigger a pull re-arm (ADR §3: wakes ride log append).
+        // Also skip the store read entirely when no cursor is registered.
+        if store_log_advanced {
+            let any_cursor = !self
+                .pull_cursor_registry
+                .read()
+                .expect("pull cursor registry poisoned")
+                .is_empty();
+            if any_cursor {
+                self.rearm_pull_wakes_still_behind();
+            }
         }
     }
 

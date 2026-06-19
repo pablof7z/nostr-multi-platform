@@ -83,12 +83,19 @@ impl Kernel {
             // re-serve), and the pull-cursor wake for any registered cursor whose
             // `after_seq` is now behind the advanced ingest log.
             let raw = verified.raw();
+            // The ingest log advances only for stored events (Inserted | Replaced);
+            // ephemerals are never stored, so they must not arm a pull wake.
+            let store_log_advanced = matches!(
+                outcome,
+                InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
+            );
             self.note_store_mutation(
                 &raw.id,
                 &raw.pubkey,
                 raw.kind,
                 raw.created_at,
                 &raw.tags,
+                store_log_advanced,
             );
         }
 

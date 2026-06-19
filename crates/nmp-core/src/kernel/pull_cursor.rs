@@ -116,22 +116,28 @@ impl PullCursorRegistry {
 // feature-conditional liveness rather than masking genuine dead code.
 #[allow(dead_code)]
 impl Kernel {
-    /// Arm a pull wake for `cursor_id` when it is behind the store head.
+    /// Reconcile this cursor's pull wake against the store head.
     ///
     /// Coalesced: the wake map holds at most one entry per cursor, set to the
-    /// latest observed `latest_ingest_seq` (max of any prior value). A store
-    /// read error is non-fatal — the wake simply is not armed this call.
-    fn arm_pull_wake_if_behind(&mut self, cursor_id: PullCursorId, after_seq: u64) {
+    /// latest observed `latest_ingest_seq` (max of any prior value). When the
+    /// cursor has caught up (`after_seq >= latest`) any **existing** pending
+    /// wake is REMOVED — otherwise an advance-to-head would leave a stale entry
+    /// that the next `drain_pull_wakes` emits as a duplicate (no-double-count
+    /// contract). A store read error is non-fatal — the map is left unchanged.
+    fn update_pull_wake(&mut self, cursor_id: PullCursorId, after_seq: u64) {
         let latest = match self.store.latest_ingest_seq() {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!(error = %e, "latest_ingest_seq failed; pull wake not armed");
+                tracing::warn!(error = %e, "latest_ingest_seq failed; pull wake not reconciled");
                 return;
             }
         };
         if after_seq < latest {
             let entry = self.store_wakeups.pull.entry(cursor_id).or_insert(0);
             *entry = (*entry).max(latest);
+        } else {
+            // Caught up — clear any stale pending wake so it is not re-emitted.
+            self.store_wakeups.pull.remove(&cursor_id);
         }
     }
 
@@ -177,7 +183,7 @@ impl Kernel {
                 },
             );
         }
-        self.arm_pull_wake_if_behind(cursor_id, after_seq);
+        self.update_pull_wake(cursor_id, after_seq);
     }
 
     /// Monotonically advance a cursor — `ActorCommand::AdvancePullCursor`.
@@ -199,7 +205,7 @@ impl Kernel {
             row.after_seq = row.after_seq.max(after_seq);
             row.after_seq
         };
-        self.arm_pull_wake_if_behind(cursor_id, new_after);
+        self.update_pull_wake(cursor_id, new_after);
     }
 
     /// Unregister a cursor — `ActorCommand::UnregisterPullCursor`.

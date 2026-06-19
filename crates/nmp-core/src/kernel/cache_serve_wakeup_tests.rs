@@ -16,7 +16,7 @@ use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 // ─── 1. Wakeup on insert ─────────────────────────────────────────────────────
 
 /// Register interest → drain initial serve → assert completion key present →
-/// insert matching event → call note_store_insert → run_cache_serve_step →
+/// insert matching event → call note_store_mutation → run_cache_serve_step →
 /// assert the new event appears in the events cache (i.e. cache-serve ran for
 /// it) and the completion key is re-recorded.
 #[test]
@@ -59,10 +59,10 @@ fn wake_registration_before_insert() {
     let ev_id = ev.id.clone();
     kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.test/", "test-sub", ev);
 
-    // The ingest path fires note_store_insert, which should have armed a wakeup.
+    // The ingest path fires note_store_mutation, which should have armed a wakeup.
     assert!(
         kernel.store_wakeups.cache_serve.contains(&ckey),
-        "note_store_insert must arm a wakeup for the already-served interest"
+        "note_store_mutation must arm a wakeup for the already-served interest"
     );
 
     // Simulate one actor tick: run_cache_serve_step drains wakeups first.
@@ -197,7 +197,7 @@ fn closed_view_release_drops_wakeups() {
 // ─── 4. Coalesce many inserts to one re-arm ──────────────────────────────────
 
 /// N inserts in one actor turn without an intervening run_cache_serve_step →
-/// cache_serve_wakeups must have ≤1 entry per interest (BTreeSet coalesces).
+/// store_wakeups.cache_serve must have ≤1 entry per interest (BTreeSet coalesces).
 #[test]
 fn coalesce_many_inserts_one_rearm() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -243,7 +243,7 @@ fn coalesce_many_inserts_one_rearm() {
 /// Register interest → DO NOT drain serves (interest still in pending queue) →
 /// insert matching event → assert pending serve is not duplicated.
 ///
-/// Rationale: `note_store_insert` only arms wakeups for interests already in
+/// Rationale: `note_store_mutation` only arms wakeups for interests already in
 /// `served_interest_shapes`. An interest still pending in the continuation
 /// queue is not yet served, so it must not gain an extra wakeup entry.
 #[test]
