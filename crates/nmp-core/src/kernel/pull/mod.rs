@@ -20,7 +20,7 @@ use std::num::NonZeroUsize;
 
 use crate::kernel::Kernel;
 use crate::planner::InterestShape;
-use crate::store::{PullPage, ScanLogResult, StoreError};
+use crate::store::{EventStore, PullPage, ScanLogResult, StoreError};
 use crate::store::{LogOp, StoreLogEntry};
 use predicate::raw_matches_shape;
 
@@ -68,69 +68,85 @@ impl From<StoreError> for PullError {
 /// Return type of `Kernel::pull_page` — a normal `ScanLogResult` (Page or Gap).
 pub type KernelPullResult = ScanLogResult;
 
+// ─── Free function (testable core) ───────────────────────────────────────────
+
+/// Scan the ingest log from `after_seq` (exclusive), returning up to
+/// `limits.max_entries` matching rows.
+///
+/// This is the behavior-preserving extracted body of `Kernel::pull_page`.
+/// `Kernel::pull_page` delegates here; tests inject a fake store directly.
+///
+/// ## GlobalLog
+///
+/// Direct pass-through to `store.scan_log_since_seq(after_seq,
+/// limits.max_entries)`. Includes Inserted, Replaced, and Deleted rows.
+/// Propagates `PullGap` unchanged.
+///
+/// ## InterestShape
+///
+/// 1. Compiles the shape to `StoreQuery`s; rejects with
+///    `PullError::UnsupportedInterestShape` if the shape produces no
+///    queries.
+/// 2. Calls `scan_log_since_seq(after_seq, limits.max_scan_entries)`.
+/// 3. Visits rows ascending by seq, counting towards two budgets:
+///    - **scan budget** (`max_scan_entries`): every row visited counts,
+///      even skipped Deleted rows.
+///    - **entry limit** (`max_entries`): only matching
+///      Inserted/Replaced rows count.
+/// 4. `next_after_seq` is set to the **last visited row's seq** when the
+///    loop stops early at `max_entries`; the store's `next_after_seq` is
+///    used as-is when the loop ran to exhaustion or when a `PullGap` is
+///    returned.
+pub(crate) fn pull_page_over(
+    store: &dyn EventStore,
+    scope: PullScope,
+    after_seq: u64,
+    limits: PullLimits,
+) -> Result<KernelPullResult, PullError> {
+    match scope {
+        PullScope::GlobalLog => {
+            let result = store.scan_log_since_seq(after_seq, limits.max_entries.get())?;
+            Ok(result)
+        }
+
+        PullScope::InterestShape(shape) => {
+            // Step 1: compile the shape — reject unsupported shapes.
+            let queries = shape_to_store_queries(&shape);
+            if queries.is_empty() {
+                return Err(PullError::UnsupportedInterestShape);
+            }
+
+            // Step 2: scan the global log up to the scan budget.
+            let scan_result =
+                store.scan_log_since_seq(after_seq, limits.max_scan_entries.get())?;
+
+            // Propagate a real gap unchanged (ADR §10: gap contract).
+            let page = match scan_result {
+                ScanLogResult::Gap(gap) => return Ok(ScanLogResult::Gap(gap)),
+                ScanLogResult::Page(p) => p,
+            };
+
+            // Steps 3–4: filter the page.
+            filter_page(page, &queries, &shape, limits.max_entries.get())
+        }
+    }
+}
+
 // ─── Kernel impl ─────────────────────────────────────────────────────────────
 
 impl Kernel {
     /// Scan the ingest log from `after_seq` (exclusive), returning up to
     /// `limits.max_entries` matching rows.
     ///
-    /// ## GlobalLog
-    ///
-    /// Direct pass-through to `store.scan_log_since_seq(after_seq,
-    /// limits.max_entries)`. Includes Inserted, Replaced, and Deleted rows.
-    /// Propagates `PullGap` unchanged.
-    ///
-    /// ## InterestShape
-    ///
-    /// 1. Compiles the shape to `StoreQuery`s; rejects with
-    ///    `PullError::UnsupportedInterestShape` if the shape produces no
-    ///    queries.
-    /// 2. Calls `scan_log_since_seq(after_seq, limits.max_scan_entries)`.
-    /// 3. Visits rows ascending by seq, counting towards two budgets:
-    ///    - **scan budget** (`max_scan_entries`): every row visited counts,
-    ///      even skipped Deleted rows.
-    ///    - **entry limit** (`max_entries`): only matching
-    ///      Inserted/Replaced rows count.
-    /// 4. `next_after_seq` is set to the **last visited row's seq** when the
-    ///    loop stops early at `max_entries`; the store's `next_after_seq` is
-    ///    used as-is when the loop ran to exhaustion or when a `PullGap` is
-    ///    returned.
+    /// Delegates to [`pull_page_over`] with this kernel's store. See that
+    /// function for the full semantics.
     pub fn pull_page(
         &self,
         scope: PullScope,
         after_seq: u64,
         limits: PullLimits,
     ) -> Result<KernelPullResult, PullError> {
-        match scope {
-            PullScope::GlobalLog => {
-                let result = self
-                    .store
-                    .scan_log_since_seq(after_seq, limits.max_entries.get())?;
-                Ok(result)
-            }
-
-            PullScope::InterestShape(shape) => {
-                // Step 1: compile the shape — reject unsupported shapes.
-                let queries = shape_to_store_queries(&shape);
-                if queries.is_empty() {
-                    return Err(PullError::UnsupportedInterestShape);
-                }
-
-                // Step 2: scan the global log up to the scan budget.
-                let scan_result = self
-                    .store
-                    .scan_log_since_seq(after_seq, limits.max_scan_entries.get())?;
-
-                // Propagate a real gap unchanged (ADR §10: gap contract).
-                let page = match scan_result {
-                    ScanLogResult::Gap(gap) => return Ok(ScanLogResult::Gap(gap)),
-                    ScanLogResult::Page(p) => p,
-                };
-
-                // Steps 3–4: filter the page.
-                filter_page(page, &queries, &shape, limits.max_entries.get())
-            }
-        }
+        pull_page_over(&*self.store, scope, after_seq, limits)
     }
 }
 

@@ -252,29 +252,158 @@ fn entry_limit_does_not_advance_past_unprocessed_matches() {
     assert!(p.has_more);
 }
 
-/// PullGap is propagated unchanged by both GlobalLog and InterestShape.
+// ─── GapStore fake ───────────────────────────────────────────────────────────
+
+/// Test-only `EventStore` that always returns `ScanLogResult::Gap` from
+/// `scan_log_since_seq`. Every other required method panics with
+/// `unimplemented!` so the test fails loudly if the kernel accidentally
+/// reaches a non-log path.
+#[cfg(test)]
+mod gap_store {
+    use std::collections::{BTreeSet, HashSet};
+    use std::ops::ControlFlow;
+
+    use crate::store::{
+        DeleteFilter, DomainHandle, DomainMigration, DumpFormat, DumpStats, EventId,
+        EventIter, EventStore, GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey,
+        PullGap, RelayUrl, ScanLogResult, StoreError, StoredEvent, TombstoneRow,
+        VerifiedEvent,
+    };
+
+    pub(super) struct GapStore;
+
+    impl EventStore for GapStore {
+        fn get_by_id(&self, _id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_by_author_kind<'a>(
+            &'a self, _author: &PubKey, _kinds: &[u32],
+            _since: Option<u64>, _until: Option<u64>, _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_by_authors_kind<'a>(
+            &'a self, _authors: &BTreeSet<PubKey>, _kinds: &[u32],
+            _since: Option<u64>, _until: Option<u64>, _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn get_param_replaceable(
+            &self, _pubkey: &PubKey, _kind: u32, _d_tag: &[u8],
+        ) -> Result<Option<StoredEvent>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_by_kind_dtag<'a>(
+            &'a self, _kind: u32, _d_tag: &[u8],
+            _since: Option<u64>, _until: Option<u64>, _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_by_etag<'a>(
+            &'a self, _target: &EventId, _kinds: &[u32], _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_by_ptag<'a>(
+            &'a self, _target: &PubKey, _kinds: &[u32], _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_by_kind_time<'a>(
+            &'a self, _kinds: &[u32],
+            _since: Option<u64>, _until: Option<u64>, _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_expiring_before<'a>(
+            &'a self, _unix_seconds: u64, _limit: usize,
+        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn tombstones_for(&self, _target: &EventId) -> Result<Vec<TombstoneRow>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn list_tombstones<'a>(
+            &'a self,
+        ) -> Result<Box<dyn Iterator<Item = Result<TombstoneRow, StoreError>> + Send + 'a>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn provenance_for(&self, _id: &EventId) -> Result<Vec<ProvenanceEntry>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn list_events_seen_on(&self, _relay_url: &str) -> Result<Vec<EventId>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn insert(
+            &self, _event: VerifiedEvent, _source: &RelayUrl, _received_at_ms: u64,
+        ) -> Result<InsertOutcome, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn delete_by_filter(&self, _filter: DeleteFilter) -> Result<usize, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn gc_step_with_pins(
+            &self, _budget: GcBudget, _now_secs: u64, _pins: &HashSet<EventId>,
+        ) -> Result<GcReport, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn domain_open(&self, _namespace: &'static str) -> Result<DomainHandle, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn run_migrations(
+            &self, _namespace: &'static str, _target_version: u32,
+            _migrations: &[DomainMigration],
+        ) -> Result<(), StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn latest_ingest_seq(&self) -> Result<u64, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn oldest_available_seq(&self) -> Result<Option<u64>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+        fn scan_log_since_seq(
+            &self, after_seq: u64, _limit: usize,
+        ) -> Result<ScanLogResult, StoreError> {
+            Ok(ScanLogResult::Gap(PullGap {
+                requested_after_seq: after_seq,
+                first_available_seq: after_seq + 100,
+            }))
+        }
+        fn dump(
+            &self, _out: &mut dyn std::io::Write, _format: DumpFormat,
+        ) -> Result<DumpStats, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
+    }
+}
+
+/// `PullGap` is propagated unchanged by both `GlobalLog` and `InterestShape`.
 ///
-/// Uses `MemEventStore::simulate_log_gap` to advance the GC floor without
-/// inserting 10 000+ events.
+/// Uses a test-only `GapStore` fake (implements `EventStore`, returns
+/// `ScanLogResult::Gap` from `scan_log_since_seq`, panics on every other
+/// method). Calls `pull_page_over` directly so the gap flows through the
+/// real kernel logic with no store-mutating helpers.
 #[test]
 fn pull_gap_propagates_for_global_and_interest() {
-    use crate::store::MemEventStore;
-    use std::sync::Arc;
+    use crate::kernel::pull::pull_page_over;
+    use gap_store::GapStore;
 
-    let store: Arc<MemEventStore> = Arc::new(MemEventStore::new());
-    for i in 0u8..5 {
-        let r = raw(i, 0xAA, 1, 1000 + i as u64);
-        store.insert(unchecked(r), &RELAY.to_string(), 0).unwrap();
-    }
-    // Simulate GC: advance log floor to 3, creating a gap for after_seq=0.
-    store.simulate_log_gap(3);
+    // GlobalLog: gap must propagate.
+    let result = pull_page_over(&GapStore, PullScope::GlobalLog, 0, lim(10, 10));
+    assert!(matches!(result, Ok(ScanLogResult::Gap(_))),
+            "GlobalLog must propagate Gap; got {:?}", result);
 
-    // Verify the store itself returns Gap for after_seq < floor.
-    assert!(matches!(store.scan_log_since_seq(0, 100).unwrap(), ScanLogResult::Gap(_)),
-            "store must return Gap when after_seq < floor");
-    // Verify scan from floor returns Page (not a gap).
-    assert!(matches!(store.scan_log_since_seq(3, 100).unwrap(), ScanLogResult::Page(_)),
-            "scan from floor must return Page");
-    // The filter_page function propagates Gap unchanged (covered by above + filter_page
-    // code review — end-to-end with injected store tested in nmp-testing).
+    // InterestShape: gap must propagate (shape must be non-empty to reach scan).
+    let result = pull_page_over(
+        &GapStore,
+        PullScope::InterestShape(shape_ak(0xAA, [1u32])),
+        0,
+        lim(10, 10),
+    );
+    assert!(matches!(result, Ok(ScanLogResult::Gap(_))),
+            "InterestShape must propagate Gap; got {:?}", result);
 }

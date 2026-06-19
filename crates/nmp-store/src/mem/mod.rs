@@ -226,23 +226,6 @@ impl MemEventStore {
     pub(super) fn lock(&self) -> Result<std::sync::MutexGuard<'_, MemState>, StoreError> {
         self.state.lock().map_err(|e| StoreError::Io(e.to_string()))
     }
-
-    /// Set the ingest-log GC floor directly, simulating a gap scenario.
-    ///
-    /// This trims all log entries below the new floor so that
-    /// `scan_log_since_seq(after_seq < floor)` returns a `PullGap`.
-    ///
-    /// Only compiled under `#[cfg(any(test, feature = "test-support"))]`.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn simulate_log_gap(&self, floor: u64) {
-        let mut st = self.state.lock().unwrap();
-        // Remove all entries at or below the new floor.
-        st.ingest_log.retain(|&seq, _| seq > floor);
-        if floor > st.log_gc_floor {
-            st.log_gc_floor = floor;
-        }
-    }
-
 }
 
 impl Default for MemEventStore {
