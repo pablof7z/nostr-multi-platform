@@ -206,7 +206,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // also registers the `ActiveFollowSet` as its own observer for kind:3
     // ingest and on `NmpApp`'s identity-change observer so sign-in, switch,
     // logout, and reset proactively clear stale OP-feed state.
-    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, viewer);
+    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, viewer, vec![1, 6]);
 
     // ADR-0037 typed sidecar for nmp.feed.home IS wired:
     // `register_op_feed_defaults` step 5b (nmp-defaults

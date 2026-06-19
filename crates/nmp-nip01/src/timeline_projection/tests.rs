@@ -191,8 +191,15 @@ fn window_snapshot_includes_visible_quote_cards() {
     );
 }
 
+/// ADR-0058 §8 6B removed the legacy `created_at` window-grow `load_older`
+/// path from `ModularTimelineProjection` (the test-only, OP-feed-superseded
+/// modular timeline): completeness now rides the seq-ordered pull pager
+/// (`nmp_feed::PullFeedController`), and there is exactly one paging path. The
+/// projection still windows its snapshot to the default limit; the deleted
+/// `current_window_state_loads_older_inside_projection` test asserted the
+/// removed grow behaviour and no longer applies.
 #[test]
-fn current_window_state_loads_older_inside_projection() {
+fn current_window_state_bounds_snapshot_to_default_limit() {
     let proj = ModularTimelineProjection::new(&spec());
     let total = DEFAULT_TIMELINE_WINDOW_LIMIT + 2;
     for idx in 0..total {
@@ -201,15 +208,11 @@ fn current_window_state_loads_older_inside_projection() {
     }
 
     let first = proj.snapshot_current_window();
-
     assert_eq!(first.blocks.len(), DEFAULT_TIMELINE_WINDOW_LIMIT);
-    assert!(first.page.as_ref().expect("page").has_more);
-
-    assert!(proj.load_older_window());
-    let expanded = proj.snapshot_current_window();
-
-    assert_eq!(expanded.blocks.len(), total);
-    assert!(!expanded.page.expect("page").has_more);
+    assert!(
+        first.page.as_ref().expect("page").has_more,
+        "snapshot is bounded to the default window; older rows ride the pull pager"
+    );
 }
 
 #[test]

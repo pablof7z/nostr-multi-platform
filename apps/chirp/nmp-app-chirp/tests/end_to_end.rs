@@ -187,22 +187,28 @@ fn snapshot_returns_default_window() {
     assert!(page.has_more);
     assert_eq!(page.total_blocks, total);
 
-    // `nmp_app_load_older_feed` grows the OP engine window by one page
-    // (DEFAULT_FEED_WINDOW_LIMIT). With `total = DEFAULT_TIMELINE_WINDOW_LIMIT + 2`
-    // roots, the new limit (160) exceeds `total` (82), so the next snapshot
-    // returns all roots and `has_more` becomes false. The "window-growth as
-    // separate follow-up" TODO mentioned in the original test has since landed
-    // in `root_indexed/engine/mod.rs::load_older`.
+    // ADR-0058 §8 6B + B1 fail-closed: `load_older` on the home feed is no
+    // longer the OP engine's `created_at` window-grow (that path was deleted —
+    // the engine is no longer a `FeedController`). It is now the
+    // `PullFeedController`, whose live provider proves a signed-in active
+    // account FIRST and fails closed (`None`) when there is none. These tests
+    // run with NO account, so `load_older` must NOT grow the window: it returns
+    // false (no covered interest ⇒ no pull, no broad-scan; D5). Growth on a
+    // covered shape is proved by `nmp-defaults/tests/pull_feed_seq1_e2e.rs`.
     let key = CString::new("nmp.feed.home").expect("static key has no nul");
     nmp_app_load_older_feed(app, key.as_ptr());
     let after = feed_projection_for(handle);
     assert_eq!(
         after.cards.len(),
-        total,
-        "after load-older the window grows to reveal all roots"
+        DEFAULT_TIMELINE_WINDOW_LIMIT,
+        "no signed-in account ⇒ load_older fails closed ⇒ window unchanged"
     );
     let after_page = after.page.expect("window snapshot carries page metadata after load-older");
-    assert!(!after_page.has_more, "all roots visible after load-older — no more pages");
+    assert!(
+        after_page.has_more,
+        "fail-closed load_older did not reveal more roots — page still has_more"
+    );
+    assert_eq!(after_page.total_blocks, total);
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);

@@ -5,6 +5,7 @@
 //! and generic feed-controller registration.
 
 mod pager;
+mod pull_controller;
 mod registry;
 pub mod typed_wire;
 mod root_indexed;
@@ -14,6 +15,9 @@ mod window;
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
+};
+pub use pull_controller::{
+    ClosureInterestShape, FeedAdvance, FeedApply, PullFeedController, PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use root_indexed::{

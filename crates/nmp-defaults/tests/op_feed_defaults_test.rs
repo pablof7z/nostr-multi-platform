@@ -33,7 +33,6 @@ use nmp_core::KernelEventObserver;
 // `AttributionPayload` brings `author_pubkey()` into scope for the attribution
 // assertion in `followed_reply_surfaces_root_with_attribution`.
 use nmp_feed::AttributionPayload as _;
-use nmp_feed::FeedController as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
@@ -144,7 +143,7 @@ fn registers_op_feed_engine_under_home_key() {
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     set_app_active(app, Some(ALICE));
     let _defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string());
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]);
 
     // The engine's `RootFeedSnapshot` shape is `{ cards, page, metrics }`.
     // `ModularTimelineProjection` would emit a `ChirpTimelineSnapshot`
@@ -180,7 +179,7 @@ fn followed_reply_surfaces_root_with_attribution() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
 
     // ALICE (a follow, via self-inclusion) replies to BOB's not-yet-seen OP.
     let reply = reply_event(REPLY_ID, ALICE, 200, OP_ID);
@@ -316,7 +315,7 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
 
     let snapshot = engine.snapshot(&nmp_feed::FeedRequest::default());
     assert!(
@@ -332,11 +331,12 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
 /// Regression guard for escape hatch #2 elimination (PR #1525).
 ///
 /// The deleted JSON producer (`FeedController::snapshot_json`) used
-/// `snapshot_current_window()` internally — it honored any prior `load_older`
-/// call that had grown `window_limit`. The replacement typed sidecar MUST do
-/// the same. This test proves it: after ingesting more than the default window
-/// (80 events) and calling `load_older()`, the typed sidecar decoded from the
-/// app's projection must contain more than 80 cards.
+/// `snapshot_current_window()` internally — it honored any prior viewport grow.
+/// The replacement typed sidecar MUST do the same. This test proves it: after
+/// ingesting more than the default window (80 events) and growing the render
+/// viewport one page (`grow_visible_window`, the step `PullFeedController` runs
+/// after a pull drain ingests a page — ADR-0058 §8 6B), the typed sidecar
+/// decoded from the app's projection must contain more than 80 cards.
 #[test]
 fn load_older_typed_sidecar_reflects_grown_window() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
@@ -346,7 +346,7 @@ fn load_older_typed_sidecar_reflects_grown_window() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string());
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]);
     let engine = &defaults.engine;
 
     // Ingest 90 root events from ALICE (the viewer, so all are in-feed).
@@ -366,26 +366,26 @@ fn load_older_typed_sidecar_reflects_grown_window() {
         observer.on_kernel_event(&ev);
     }
 
-    // Before load_older: typed sidecar should have exactly 80 cards (default window).
+    // Before growing: typed sidecar should have exactly 80 cards (default window).
     let before = read_typed_op_feed(app, "nmp.feed.home")
         .expect("typed sidecar must be present after events");
     assert_eq!(
         before.cards.len(),
         80,
-        "before load_older: sidecar must be bounded to the default window (80)"
+        "before grow: sidecar must be bounded to the default window (80)"
     );
 
-    // load_older grows window_limit to 160 (or total count, whichever is smaller).
-    let had_more = engine.load_older();
-    assert!(had_more, "load_older must return true when older events exist");
+    // grow_visible_window grows the viewport to 160 (or total count if smaller).
+    let had_more = engine.grow_visible_window();
+    assert!(had_more, "grow_visible_window must return true when older events exist");
 
-    // After load_older: typed sidecar must reflect the grown window — all 90 cards.
+    // After growing: typed sidecar must reflect the grown viewport — all 90 cards.
     let after = read_typed_op_feed(app, "nmp.feed.home")
-        .expect("typed sidecar must still be present after load_older");
+        .expect("typed sidecar must still be present after the viewport grew");
     assert_eq!(
         after.cards.len(),
         90,
-        "after load_older: typed sidecar must reflect the grown window (all 90 events, not just 80)"
+        "after grow: typed sidecar must reflect the grown viewport (all 90 events, not just 80)"
     );
 
     nmp_app_free(app);

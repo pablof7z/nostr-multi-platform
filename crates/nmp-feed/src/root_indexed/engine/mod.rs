@@ -40,7 +40,7 @@ use crate::root_indexed::attribution::AttributionPayload;
 use crate::root_indexed::card::{RootCard, RootFeedSnapshot};
 use crate::root_indexed::claim::ClaimRequest;
 use crate::types::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
-use crate::{FeedController, FeedCursor, FeedPage, FeedRequest};
+use crate::{FeedCursor, FeedPage, FeedRequest};
 
 /// The per-event ingest state machine lives in a sibling file to keep both
 /// under the 500-LOC ceiling; it is a continuation `impl` on `RootIndexedFeed`.
@@ -153,11 +153,18 @@ where
     /// pending attributions; the counter exists so a consumer (and the V-81
     /// test) can observe "release seen, pending intact".
     released_signals_seen: AtomicU64,
-    /// Current visible-window limit, grown by `load_older` each call.
-    /// Starts at `DEFAULT_FEED_WINDOW_LIMIT`; grows by one page per `load_older`
-    /// call so the caller can reveal progressively older roots. Held outside the
-    /// `Mutex` (a plain monotone counter) so `snapshot_json` can read it without
-    /// taking the state lock twice.
+    /// Current visible-window limit — the **render viewport**, grown one page at
+    /// a time by [`Self::grow_visible_window`].
+    ///
+    /// ADR-0058 §8 step-6B: this is a pure render-ordering viewport, NOT a paging
+    /// source of truth. Completeness rides the ingest-seq pull pager
+    /// (`crate::PullFeedController`); the engine is no longer itself a
+    /// `FeedController`. The viewport grows only as a *consequence* of a
+    /// successful pull drain (the controller's `advance` step), revealing the
+    /// `(created_at, id)`-sorted roots the pull ingested. There is no standalone
+    /// `created_at` window-grow `load_older` path anymore — it was deleted in 6B.
+    /// Held outside the `Mutex` (a plain monotone counter) so `snapshot_current_window`
+    /// can read it without taking the state lock twice.
     window_limit: AtomicUsize,
 }
 
@@ -298,9 +305,37 @@ where
         }
     }
 
-    /// Build the visible-window snapshot using the engine's current stored
-    /// window limit. This honors any prior `load_older` call that widened the
-    /// window beyond `DEFAULT_FEED_WINDOW_LIMIT`.
+    /// Grow the **render viewport** by one page, revealing more of the
+    /// `(created_at, id)`-sorted roots already ingested.
+    ///
+    /// ADR-0058 §8 step-6B: this is the viewport step of the single pull paging
+    /// path — it is called ONLY by [`crate::PullFeedController`] after a
+    /// successful seq-ordered pull drain has ingested a page of (possibly older)
+    /// events through [`nmp_core::KernelEventObserver::on_kernel_event`]. It is
+    /// NOT a standalone `created_at` window-grow `load_older` (that parallel path
+    /// was deleted in 6B; the engine is no longer a `FeedController`).
+    ///
+    /// Returns `true` when the viewport actually grew (there were more roots to
+    /// reveal and the hard ceiling was not yet hit), `false` when everything is
+    /// already visible or the cap is reached.
+    pub fn grow_visible_window(&self) -> bool {
+        let total = self
+            .state
+            .lock()
+            .map(|st| st.roots.len())
+            .unwrap_or(0);
+        let current_limit = self.window_limit.load(Ordering::Relaxed);
+        if current_limit >= total || current_limit >= MAX_FEED_WINDOW_LIMIT {
+            return false;
+        }
+        let new_limit = (current_limit + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
+        self.window_limit.store(new_limit, Ordering::Relaxed);
+        true
+    }
+
+    /// Build the visible-window snapshot using the engine's current render
+    /// viewport limit. This honors any prior [`Self::grow_visible_window`] call
+    /// that widened the viewport beyond `DEFAULT_FEED_WINDOW_LIMIT`.
     #[must_use]
     pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C, A> {
         let limit = self.window_limit.load(Ordering::Relaxed);
@@ -376,34 +411,6 @@ where
 {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.ingest(event);
-    }
-}
-
-impl<R, A, C> FeedController for RootIndexedFeed<R, A, C>
-where
-    R: ParentResolver,
-    A: AttributionPayload + serde::Serialize,
-    C: Clone + Send + Sync + serde::Serialize,
-{
-    fn load_older(&self) -> bool {
-        // Read the current window and total root count to decide whether there
-        // are more roots to reveal. The engine holds all roots bounded by D5;
-        // pagination widens the visible window one page at a time.
-        let Ok(st) = self.state.lock() else {
-            return false;
-        };
-        let total = st.roots.len();
-        drop(st);
-        let current_limit = self.window_limit.load(Ordering::Relaxed);
-        if current_limit >= total || current_limit >= MAX_FEED_WINDOW_LIMIT {
-            // Already showing everything (or at the hard window ceiling) —
-            // nothing more to reveal.
-            return false;
-        }
-        // Grow the window by one page, clamped to the hard ceiling.
-        let new_limit = (current_limit + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
-        self.window_limit.store(new_limit, Ordering::Relaxed);
-        true
     }
 }
 

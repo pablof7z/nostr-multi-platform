@@ -32,30 +32,6 @@ impl FeedWindowState {
         )
     }
 
-    pub fn load_older<B, C, S>(&mut self, blocks: &[B], cards: &S) -> bool
-    where
-        B: FeedBlock,
-        C: FeedCard,
-        S: FeedCardStore<C>,
-    {
-        let total_blocks = blocks.len();
-        let current_end = self.current_end(blocks, cards);
-        if current_end >= total_blocks || current_end >= MAX_FEED_WINDOW_LIMIT {
-            return false;
-        }
-        let next_end = current_end
-            .saturating_add(DEFAULT_FEED_WINDOW_LIMIT)
-            .min(total_blocks)
-            .min(MAX_FEED_WINDOW_LIMIT);
-        if next_end == current_end {
-            return false;
-        }
-        self.oldest_visible = blocks
-            .get(next_end - 1)
-            .map(|block| block_cursor(block, cards));
-        true
-    }
-
     fn current_end<B, C, S>(&self, blocks: &[B], cards: &S) -> usize
     where
         B: FeedBlock,

@@ -50,6 +50,7 @@ use std::sync::Arc;
 use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
+use nmp_feed::{ClosureInterestShape, PullFeedController};
 use nmp_ffi::{
     nmp_app_close_contact_feed, nmp_app_close_interest, nmp_app_open_contact_feed,
     nmp_app_open_interest, NmpApp,
@@ -59,7 +60,7 @@ use nmp_nip01::op_feed::{
 };
 use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
 
-use super::helpers::c_string_opt;
+use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_shape};
 
 /// The note-kind policy for both the author and thread flat feeds: kind:1
 /// (text note) + kind:6 (repost). Defined ONCE so the `open_interest` filter
@@ -89,34 +90,17 @@ fn thread_feed_key(event_id_hex: &str) -> String {
     format!("nmp.feed.thread.{event_id_hex}")
 }
 
-/// Register the typed `NOFS` op-feed sidecar for a dynamic author/thread feed
-/// ALONGSIDE the generic `Value` projection that `register_feed_with_observer`
-/// already installed.
-///
-/// A [`FlatFeed`] snapshot is a
-/// [`RootFeedSnapshot`](nmp_feed::RootFeedSnapshot)`<TimelineEventCard,
-/// Nip10ReplyAttribution>` — the SAME wire shape the home feed emits
-/// (`nmp_nip01::OpFeedSnapshot`), so it encodes through the existing
-/// [`encode_op_feed_snapshot`] with NO new `.fbs` schema. The sidecar is keyed
-/// by the SAME dynamic key (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`)
-/// under the op-feed schema id (`nmp.nip01.opfeed`), exactly as
-/// [`nmp_defaults::register_op_feed_defaults`] does for `nmp.feed.home`. A
-/// host with a `NOFS` decoder prefers this typed payload; an un-updated host
-/// falls back to the generic `Value` subtree (ADR-0037 Commitment 4). Additive.
-///
-/// Teardown: [`NmpApp::unregister_feed`] removes the generic AND the typed
-/// projection by key, so [`nmp_app_chirp_close_author_feed`] /
-/// [`nmp_app_chirp_close_thread_feed`] need no extra step.
-///
-/// Known waste, deferred (mirrors `register_op_feed_defaults`): this closure
-/// snapshots the feed again on the same tick the generic `FeedController` path
-/// snapshots it (two window materializations per 4 Hz tick). Not load-bearing
-/// for correctness; the feed is bounded by D5 retention.
+/// Register the typed NOFS op-feed sidecar alongside the generic `Value`
+/// projection that `register_feed_with_observer` already installed. Uses the
+/// same `encode_op_feed_snapshot` wire shape as the home feed (no new schema).
+/// Teardown via `unregister_feed` covers both lanes — no extra step needed.
 fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
     app.register_typed_snapshot_projection(key.clone(), move || {
-        // `FeedRequest::default()` is the SAME window `FlatFeed::snapshot_json` uses,
-        // so the typed and JSON payloads are byte-for-byte the same feed.
-        let snapshot = feed.snapshot(&nmp_feed::FeedRequest::default());
+        // Emit the CURRENT viewport, including rows revealed by prior
+        // `load_older` drains (the `advance` closure grows it). A fixed
+        // `FeedRequest::default()` would cap the sidecar at the first page, so
+        // pulled older rows would ingest but never become user-visible.
+        let snapshot = feed.snapshot_current_window();
         Some(nmp_core::TypedProjectionData {
             key: key.clone(),
             schema_id: OP_FEED_SCHEMA_ID.to_string(),
@@ -167,7 +151,19 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     let feed = FlatFeed::new(author_feed_predicate(pubkey.clone(), FEED_KINDS.to_vec()));
     seed_author_feed_from_store(app_ref, &feed, &pubkey);
     let key = author_feed_key(&pubkey);
-    app_ref.register_feed_with_observer(key.clone(), feed.clone(), feed.clone());
+    // B1: drain store history by ingest seq via PullFeedController (FlatFeed = push observer).
+    // PullFeedController::new always succeeds; load_older fails closed if the
+    // provider returns None (which cannot happen here — pubkey is always valid).
+    let pk_for_shape = pubkey.clone();
+    let provider = Arc::new(ClosureInterestShape::new(move || author_feed_shape(&pk_for_shape, &FEED_KINDS)));
+    let pull = make_pull_fn(app_ref.event_store_handle());
+    let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
+    // After a drained page is ingested, grow the render viewport so the newly-
+    // pulled older rows become user-visible in the emitted sidecar (they sort
+    // below the first page). Viewport-only — no second pull.
+    let advance: nmp_feed::FeedAdvance = { let f = feed.clone(); Arc::new(move || { f.grow_visible_window(); }) };
+    let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
+    app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
@@ -226,7 +222,18 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     let feed = FlatFeed::new(thread_feed_predicate(root_id.clone(), FEED_KINDS.to_vec()));
     seed_thread_feed_from_store(app_ref, &feed, &root_id);
     let key = thread_feed_key(&root_id);
-    app_ref.register_feed_with_observer(key.clone(), feed.clone(), feed.clone());
+    // B1: pull the reply tail (#e-covered shape); root-by-id seeded above.
+    // PullFeedController::new always succeeds; load_older fails closed if the
+    // provider returns None (which cannot happen here — root_id is always valid).
+    let root_for_shape = root_id.clone();
+    let provider = Arc::new(ClosureInterestShape::new(move || thread_feed_shape(&root_for_shape, &FEED_KINDS)));
+    let pull = make_pull_fn(app_ref.event_store_handle());
+    let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
+    // Viewport grow after each drained page — reveals the newly-pulled reply
+    // tail in the emitted sidecar (viewport-only, no second pull).
+    let advance: nmp_feed::FeedAdvance = { let f = feed.clone(); Arc::new(move || { f.grow_visible_window(); }) };
+    let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
+    app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
@@ -411,237 +418,5 @@ fn hex32(value: &str) -> Option<[u8; 32]> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::{CStr, CString};
-
-    use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
-    use nmp_core::WireProjectionState;
-    use nmp_ffi::{nmp_app_free, nmp_app_new};
-
-    #[test]
-    fn keys_are_namespaced_per_consumer() {
-        assert_eq!(author_feed_key("abc"), "nmp.feed.author.abc");
-        assert_eq!(thread_feed_key("def"), "nmp.feed.thread.def");
-        assert_eq!(author_consumer("abc"), "author-abc");
-        assert_eq!(thread_consumer("def"), "thread-def");
-    }
-
-    #[test]
-    fn filter_json_carries_the_feed_kinds_and_dimension() {
-        // The {1,6} policy in the filter MUST match FEED_KINDS (the predicate
-        // source), or the kernel admits events the feed drops / vice versa.
-        assert_eq!(FEED_KINDS, [1, 6]);
-        assert_eq!(
-            feed_filter_json("authors", "abc"),
-            r#"{"kinds":[1,6],"authors":["abc"]}"#
-        );
-        // `r##"…"##` — the inner `"#e"` contains a `"#` sequence that would
-        // terminate a single-hash raw string early.
-        assert_eq!(
-            feed_filter_json("#e", "root1"),
-            r##"{"kinds":[1,6],"#e":["root1"]}"##
-        );
-    }
-
-    #[test]
-    fn feed_filter_json_parses_as_a_valid_interest_shape() {
-        // Guards the hand-built JSON against the kernel-side parser the open
-        // path feeds it into — a malformed filter would be silently rejected.
-        for json in [
-            feed_filter_json("authors", "abc"),
-            feed_filter_json("#e", "root1"),
-        ] {
-            assert!(
-                nmp_core::planner::InterestShape::from_filter_json(&json).is_some(),
-                "filter must parse: {json}"
-            );
-        }
-    }
-
-    #[test]
-    fn author_feed_open_seeds_cached_kind1_and_close_removes_projection() {
-        let app = nmp_app_new();
-        assert!(!app.is_null());
-        let store = Arc::new(MemEventStore::new());
-        let pubkey = "11".repeat(32);
-        insert_raw(
-            &store,
-            RawEvent {
-                id: "a1".repeat(32),
-                pubkey: pubkey.clone(),
-                created_at: 10,
-                kind: 1,
-                tags: vec![],
-                content: "older".into(),
-                sig: "a".repeat(128),
-            },
-        );
-        insert_raw(
-            &store,
-            RawEvent {
-                id: "a2".repeat(32),
-                pubkey: pubkey.clone(),
-                created_at: 20,
-                kind: 1,
-                tags: vec![],
-                content: "newer".into(),
-                sig: "a".repeat(128),
-            },
-        );
-        install_store(app, store);
-
-        let pubkey_c = CString::new(pubkey.clone()).unwrap();
-        nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
-        let ids = read_typed_card_ids(app, &author_feed_key(&pubkey))
-            .expect("author feed projection present after open");
-        assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
-
-        nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
-        let gone = typed_projection_is_gone(app, &author_feed_key(&pubkey));
-        assert!(gone, "author feed projection must be gone after close");
-        nmp_app_free(app);
-    }
-
-    #[test]
-    fn thread_feed_open_seeds_cached_root_and_replies() {
-        let app = nmp_app_new();
-        assert!(!app.is_null());
-        let store = Arc::new(MemEventStore::new());
-        let root_id = "b1".repeat(32);
-        insert_raw(
-            &store,
-            RawEvent {
-                id: root_id.clone(),
-                pubkey: "22".repeat(32),
-                created_at: 10,
-                kind: 1,
-                tags: vec![],
-                content: "root".into(),
-                sig: "a".repeat(128),
-            },
-        );
-        insert_raw(
-            &store,
-            RawEvent {
-                id: "b2".repeat(32),
-                pubkey: "33".repeat(32),
-                created_at: 20,
-                kind: 1,
-                tags: vec![vec!["e".into(), root_id.clone()]],
-                content: "reply".into(),
-                sig: "a".repeat(128),
-            },
-        );
-        install_store(app, store);
-
-        let root_c = CString::new(root_id.clone()).unwrap();
-        nmp_app_chirp_open_thread_feed(app, root_c.as_ptr());
-        let ids = read_typed_card_ids(app, &thread_feed_key(&root_id))
-            .expect("thread feed projection present after open");
-        assert_eq!(ids, vec!["b2".repeat(32), root_id.clone()]);
-
-        nmp_app_chirp_close_thread_feed(app, root_c.as_ptr());
-        let gone = typed_projection_is_gone(app, &thread_feed_key(&root_id));
-        assert!(gone, "thread feed projection must be gone after close");
-        nmp_app_free(app);
-    }
-
-    #[test]
-    fn author_feed_open_emits_typed_op_feed_sidecar_and_close_removes_it() {
-        let app = nmp_app_new();
-        assert!(!app.is_null());
-        let store = Arc::new(MemEventStore::new());
-        let pubkey = "11".repeat(32);
-        insert_raw(
-            &store,
-            RawEvent {
-                id: "a1".repeat(32),
-                pubkey: pubkey.clone(),
-                created_at: 10,
-                kind: 1,
-                tags: vec![],
-                content: "older".into(),
-                sig: "a".repeat(128),
-            },
-        );
-        insert_raw(
-            &store,
-            RawEvent {
-                id: "a2".repeat(32),
-                pubkey: pubkey.clone(),
-                created_at: 20,
-                kind: 1,
-                tags: vec![],
-                content: "newer".into(),
-                sig: "a".repeat(128),
-            },
-        );
-        install_store(app, store);
-
-        let pubkey_c = CString::new(pubkey.clone()).unwrap();
-        nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
-
-        let key = author_feed_key(&pubkey);
-        let app_ref = unsafe { &*app };
-        let typed = app_ref.run_typed_snapshot_projections();
-        let entry = typed.iter().find(|p| p.key == key).expect("typed sidecar");
-
-        assert_eq!(entry.schema_id, OP_FEED_SCHEMA_ID);
-        assert_eq!(entry.schema_version, OP_FEED_SCHEMA_VERSION);
-        assert_eq!(entry.file_identifier, "NOFS");
-
-        let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload)
-            .expect("typed payload decodes as a NOFS op-feed snapshot");
-        let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
-        assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
-
-        nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
-        let typed_after = app_ref.run_typed_snapshot_projections();
-        let clear = typed_after
-            .iter()
-            .find(|p| p.key == key)
-            .expect("Cleared row");
-        assert_eq!(clear.state, WireProjectionState::Cleared);
-        assert!(clear.payload.is_empty());
-        let typed_again = app_ref.run_typed_snapshot_projections();
-        assert!(
-            typed_again.iter().all(|p| p.key != key),
-            "typed Cleared row must be one-shot"
-        );
-        nmp_app_free(app);
-    }
-
-    fn install_store(app: *mut NmpApp, store: Arc<MemEventStore>) {
-        let app_ref = unsafe { &*app };
-        *app_ref.event_store_handle().lock().unwrap() = Some(store);
-    }
-
-    fn insert_raw(store: &MemEventStore, raw: RawEvent) {
-        store
-            .insert(
-                VerifiedEvent::from_raw_unchecked(raw),
-                &"wss://seed.example/".to_string(),
-                1_000,
-            )
-            .unwrap();
-    }
-
-    /// Return the decoded op-feed card IDs for `key` via the typed sidecar lane,
-    /// or `None` when the key is absent / cleared. Replaces the deleted generic
-    /// JSON lane (rule A6).
-    fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
-        let app_ref: &NmpApp = unsafe { &*app };
-        let projections = app_ref.run_typed_snapshot_projections();
-        let entry = projections.iter().find(|p| p.key == key && !p.payload.is_empty())?;
-        let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()?;
-        Some(snapshot.cards.iter().map(|c| c.card.id.clone()).collect())
-    }
-
-    /// Return `true` when the typed sidecar for `key` is absent or cleared.
-    fn typed_projection_is_gone(app: *mut NmpApp, key: &str) -> bool {
-        let app_ref: &NmpApp = unsafe { &*app };
-        let projections = app_ref.run_typed_snapshot_projections();
-        projections.iter().all(|p| p.key != key || p.payload.is_empty())
-    }
-}
+#[path = "interest_feed/tests.rs"]
+mod tests;

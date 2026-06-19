@@ -138,12 +138,15 @@
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
+use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use nmp_core::planner::InterestShape;
 use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::substrate::KernelEvent;
 use nmp_core::{ActorCommand, KernelEventObserver};
-use nmp_feed::FeedController;
+use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{
@@ -198,7 +201,11 @@ pub struct OpFeedDefaults {
 /// Like [`crate::register_defaults`], call before `nmp_app_start`: the engine
 /// and the follow-set observer must be visible to the kernel when the first
 /// event arrives.
-pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults {
+pub fn register_op_feed_defaults(
+    app: &NmpApp,
+    viewer: Pubkey,
+    contact_feed_kinds: Vec<u32>,
+) -> OpFeedDefaults {
     // ── 1. Follow-set producer ───────────────────────────────────────────
     //
     // Constructed over the kernel's active-account slot exposed by `NmpApp`.
@@ -245,13 +252,68 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     });
 
     // ── 4. Construct the engine ──────────────────────────────────────────
-    let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup, claim_sink);
+    let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup, claim_sink);
 
     // ── 5. Register the engine (ingest + output) ─────────────────────────
     let engine_observer: Arc<dyn KernelEventObserver> = engine.clone();
     let _engine_observer_id = app.register_event_observer(engine_observer);
-    let engine_feed: Arc<dyn FeedController> = engine.clone();
-    app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, engine_feed);
+
+    // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
+    //
+    // `load_older` is no longer a `created_at` window-grow on the engine (that
+    // parallel path was deleted in 6B — the engine is no longer a
+    // `FeedController`). It is now a synchronous, on-demand pull drain over the
+    // kernel's ingest log, via `nmp_feed::PullFeedController`:
+    //
+    //   * **interest** — a LIVE, fail-closed `InterestShape` recomputed on every
+    //     `load_older`: the active account's follow set + the active user as
+    //     `authors`, under the host-declared `contact_feed_kinds`. This is the
+    //     same collapsed follow-feed shape the kernel registers for M2
+    //     (`sync_follow_feed_interests`). The controller is registered
+    //     UNCONDITIONALLY (below); the provider proves a LIVE active account
+    //     FIRST and yields `None` on empty kinds or no signed-in account, so a
+    //     `load_older` after logout/switch fails closed (no pull, never a
+    //     broad-scan; D5) even while a stale follow set lingers.
+    //   * **pull** — `app.feed_pull_fn()`, an in-process read over the kernel
+    //     event store (NOT a new host pull accessor; ADR-0039 §6.1 preserved).
+    //   * **apply** — the engine's own `KernelEventObserver` ingest path, so a
+    //     drained page deduplicates and projects exactly like live push ingest.
+    //   * **advance** — `grow_visible_window`, the render-viewport step that
+    //     reveals the just-ingested `(created_at, id)`-sorted roots one page at a
+    //     time. Completeness rides ingest seq; display order is unchanged.
+    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
+        let follow_set = follow_set.clone();
+        // B2: capture the live active-account SLOT (not the registration-time
+        // viewer pubkey) so the closure reads the CURRENT signed-in account on
+        // every load_older call. After logout the slot holds None ⇒ authors is
+        // empty ⇒ provider returns None ⇒ load_older fails closed. After an
+        // account switch the slot holds the new pubkey without re-registering.
+        let account_slot = active_account_slot.clone();
+        let kinds: BTreeSet<u32> = contact_feed_kinds.iter().copied().collect();
+        Arc::new(ClosureInterestShape::new(move || {
+            live_contact_feed_shape(&account_slot, &follow_set, &kinds)
+        }))
+    };
+    let pull = app.feed_pull_fn();
+    let apply: FeedApply = {
+        let engine = Arc::clone(&engine);
+        Arc::new(move |event: &KernelEvent| engine.on_kernel_event(event))
+    };
+    let advance: FeedAdvance = {
+        let engine = Arc::clone(&engine);
+        Arc::new(move || {
+            engine.grow_visible_window();
+        })
+    };
+    // B2: register UNCONDITIONALLY — PullFeedController no longer requires an
+    // initial shape. The provider re-reads the live shape on every load_older;
+    // None from the provider fails closed (no pull, no broad-scan). A controller
+    // registered before sign-in becomes active as soon as the user signs in.
+    {
+        let controller: Arc<dyn FeedController> =
+            PullFeedController::new(provider, pull, apply, advance);
+        app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
+    }
 
     // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //
@@ -386,6 +448,34 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults
     OpFeedDefaults { engine, follow_set }
 }
 
+/// Build the LIVE contact-feed pull [`InterestShape`], or `None` to fail closed.
+///
+/// B1 — race-free fail-close. The active-account slot is read **first**: on
+/// logout / account-switch the actor can null the slot BEFORE the async identity
+/// observer clears [`ActiveFollowSet`]
+/// (`crates/nmp-ffi/src/lib.rs` `update_listener`), so a synchronous
+/// `load_older` can observe `slot == None` while `follow_set.follows()` is still
+/// stale. Reading the slot first means no live active account ⇒ `None` ⇒ no
+/// shape ⇒ no pull (never a stale-viewer pull, never a broad-scan; D5). Only
+/// when there IS a live active account do we form the shape from
+/// `viewer = active account pubkey` + its follows; the viewer is always a member
+/// (self-inclusion), so the author set is never empty.
+fn live_contact_feed_shape(
+    account_slot: &ActiveAccountSlot,
+    follow_set: &ActiveFollowSet,
+    kinds: &BTreeSet<u32>,
+) -> Option<InterestShape> {
+    if kinds.is_empty() {
+        return None; // host declared no contact-feed kinds ⇒ fail closed
+    }
+    // Prove a LIVE active account BEFORE touching the (possibly stale) follow
+    // set. `None` here is the logout/switch fail-closed path.
+    let viewer = read_active(account_slot)?;
+    let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
+    authors.insert(viewer);
+    Some(InterestShape::timeline_for(authors, kinds.clone()))
+}
+
 /// Read the active account's hex pubkey from the slot, or `None` when no
 /// account is signed in or the lock is poisoned (D6).
 fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
@@ -394,3 +484,7 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
         Err(_) => None,
     }
 }
+
+#[cfg(test)]
+#[path = "op_feed_defaults/tests.rs"]
+mod tests;

@@ -77,7 +77,8 @@ pub mod visible_relations;
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
 pub use flat_feed::{
-    author_feed_predicate, thread_feed_predicate, FlatFeed, FlatFeedPredicate,
+    author_feed_predicate, author_feed_shape, thread_feed_predicate, thread_feed_shape, FlatFeed,
+    FlatFeedPredicate,
 };
 pub use contacts_cache::ContactsCache;
 pub use kind0_parser::Kind0Parser;

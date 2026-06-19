@@ -19,10 +19,12 @@
 //!
 //! ## Fail-closed interest
 //!
-//! A feed that cannot express its interest as a real [`InterestShape`] returns
-//! `None` from [`FeedInterestShape::interest_shape`]; [`FeedPullPager::new`]
-//! then returns `None`. There is **no** broad-scan fallback — a pager simply
-//! does not exist without a real shape (D5).
+//! A feed that cannot express its interest returns `None` from
+//! [`FeedInterestShape::interest_shape`]. [`FeedPullPager::new`] (for direct
+//! pager use) also returns `None`. When the pager is used via
+//! [`PullFeedController`] the controller is registered unconditionally; it
+//! re-reads the live shape on every `load_older` and returns `false` silently
+//! when the provider yields `None` — never a broad-scan (D5).
 //!
 //! ## On-demand, not wake-driven
 //!
@@ -123,12 +125,18 @@ pub struct DrainOutcome {
 
 /// A feed-owned, on-demand seq pager over the kernel pull substrate.
 ///
-/// Holds the feed's [`InterestShape`] and a `GapAllowed` seq cursor
-/// (`after_seq`). [`FeedPullPager::drain`] is called synchronously on the
-/// scroll action; it advances `after_seq` only after a page is processed.
+/// Holds an optional [`InterestShape`] snapshot (for diagnostics / direct
+/// pager tests) and a `GapAllowed` seq cursor (`after_seq`).
+/// [`FeedPullPager::drain`] is called synchronously on the scroll action; it
+/// advances `after_seq` only after a page is processed.
+///
+/// When constructed via [`FeedPullPager::at_start`] no shape is stored: the
+/// pager acts as a pure seq cursor. [`PullFeedController`] uses this path so
+/// the controller can be registered **before** sign-in — `load_older` reads
+/// the live shape from the provider on every call and fails closed if `None`.
 #[derive(Clone, Debug)]
 pub struct FeedPullPager {
-    shape: InterestShape,
+    shape: Option<InterestShape>,
     after_seq: u64,
     page_size: usize,
     scan_budget: usize,
@@ -136,16 +144,33 @@ pub struct FeedPullPager {
 
 impl FeedPullPager {
     /// Construct a pager from a feed's interest seam, or `None` if the feed
-    /// fails closed (its interest is not a real `InterestShape`).
+    /// fails closed (its interest is not a real `InterestShape`). Use this
+    /// for direct pager tests that need to inspect the stored shape.
     #[must_use]
     pub fn new(provider: &dyn FeedInterestShape) -> Option<Self> {
         let shape = provider.interest_shape()?;
         Some(Self {
-            shape,
+            shape: Some(shape),
             after_seq: 0,
             page_size: DEFAULT_PULL_PAGE_SIZE,
             scan_budget: DEFAULT_PULL_SCAN_BUDGET,
         })
+    }
+
+    /// Construct a cursor-only pager starting at `seq` with no stored shape.
+    ///
+    /// Used by [`PullFeedController`], which re-reads the live shape on every
+    /// `load_older` call via its provider. This allows the controller to be
+    /// registered unconditionally — before an account is signed in — and begin
+    /// pulling as soon as the provider yields a real shape.
+    #[must_use]
+    pub fn at_start() -> Self {
+        Self {
+            shape: None,
+            after_seq: 0,
+            page_size: DEFAULT_PULL_PAGE_SIZE,
+            scan_budget: DEFAULT_PULL_SCAN_BUDGET,
+        }
     }
 
     /// Override page size / scan budget (clamped to the hard ceiling).
@@ -156,16 +181,17 @@ impl FeedPullPager {
         self
     }
 
-    /// The feed's interest shape.
+    /// The stored interest shape, if any. `None` for cursor-only pagers
+    /// created via [`FeedPullPager::at_start`].
     #[must_use]
-    pub fn shape(&self) -> &InterestShape {
-        &self.shape
+    pub fn shape(&self) -> Option<&InterestShape> {
+        self.shape.as_ref()
     }
 
-    /// The pull scope to hand the kernel: `InterestShape` (never `GlobalLog`).
+    /// The pull scope to hand the kernel, if a shape is stored.
     #[must_use]
-    pub fn pull_scope(&self) -> PullScope {
-        PullScope::InterestShape(self.shape.clone())
+    pub fn pull_scope(&self) -> Option<PullScope> {
+        self.shape.as_ref().map(|s| PullScope::InterestShape(s.clone()))
     }
 
     /// The cursor's current seq position (last fully-consumed seq).
