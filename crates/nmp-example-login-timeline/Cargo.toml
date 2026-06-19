@@ -1,0 +1,39 @@
+[package]
+name = "nmp-example-login-timeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Private DX worked example — never published to crates.io (it is a proof
+# artifact, declared under [[private_packages]] in release/nmp-release.toml).
+publish = false
+description = "Canonical DX worked example: login → following-timeline render → live update, a thin shell over NMP that touches zero relay/cache/subscription code (proves docs/aim.md §1)."
+
+[dependencies]
+# The composition-root library (ADR-0046): `register_defaults` +
+# `register_op_feed_defaults` are the two framework calls the shell makes.
+nmp-defaults = { path = "../nmp-defaults" }
+# The `NmpApp` handle the shell reads the typed projection from, and (in the
+# harness) the C-ABI login surface.
+nmp-ffi = { path = "../nmp-ffi" }
+# Kernel substrate — the `AppHost` trait `register` takes.
+nmp-core = { path = "../nmp-core" }
+# The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
+nmp-nip01 = { path = "../nmp-nip01" }
+
+# Harness-only dep (headless host driver). Pulled in ONLY under the `harness`
+# feature so the doctrine-clean shell (`lib.rs`) never links test-support.
+# `nostr` signs the seed corpus the harness injects through the kernel.
+nostr = { version = "0.44", features = ["std"], optional = true }
+
+[features]
+# `harness` enables the headless host driver (`harness` module) and the
+# `examples/login_timeline.rs` binary. It turns on `nmp-ffi`'s `test-support`
+# feature so the headless host can use the synthetic-injection seam
+# (`nmp_app_inject_signed_event_json`) — the sanctioned test-only path
+# (docs/escape-hatches.md). A real platform shell ships WITHOUT this feature and
+# receives events from the kernel's relay transport instead.
+harness = ["nmp-ffi/test-support", "dep:nostr"]
+
+[[example]]
+name = "login_timeline"
+required-features = ["harness"]

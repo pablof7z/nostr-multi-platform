@@ -4564,6 +4564,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-example-login-timeline"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-defaults",
+ "nmp-ffi",
+ "nmp-nip01",
+ "nostr",
+]
+
+[[package]]
 name = "nmp-feed"
 version = "0.8.0"
 dependencies = [
@@ -4973,6 +4984,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-defaults",
+ "nmp-example-login-timeline",
  "nmp-ffi",
  "nmp-marmot",
  "nmp-nip01",

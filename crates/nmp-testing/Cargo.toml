@@ -43,6 +43,10 @@ nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp" }
 # verify+store gate → DmInboxProjection) runs end-to-end against a live relay.
 nmp-defaults = { path = "../nmp-defaults" }
 nmp-core = { path = "../nmp-core" }
+# dx_login_timeline_gate.rs — the canonical DX worked example (aim.md §1 proof).
+# `harness` pulls in the headless host driver that drives login → following
+# timeline → live update through the real kernel.
+nmp-example-login-timeline = { path = "../nmp-example-login-timeline", features = ["harness"] }
 # longform_projection_supersession.rs — drives the typed NIP-23
 # `LongformProjection` against the real event store to prove kernel-resolved
 # kind:30023 supersession (param-replaceable C2) reaches the typed projection.
