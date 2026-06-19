@@ -83,8 +83,15 @@ mod claimed_events_raw_author_tests;
 pub(crate) mod cache_serve;
 // ADR-0058 §10, step 2 — kernel pull service over GlobalLog + InterestShape.
 pub(crate) mod pull;
+// ADR-0058 §10, step 3a — non-durable pull-cursor registry + actor commands.
+pub(crate) mod pull_cursor;
+// ADR-0058 §10, step 3a — single actor-owned store-wakeup subsystem
+// (generalizes the #1520 cache-serve wakeup; carries the pull wake arm too).
+mod store_wakeup;
 #[cfg(test)]
 mod pull_tests;
+#[cfg(test)]
+mod pull_cursor_wake_tests;
 #[cfg(test)]
 mod cache_serve_all_kinds_dispatcher_tests;
 #[cfg(test)]
@@ -1336,19 +1343,23 @@ pub struct Kernel {
     /// of per-follow interests never bursts unbounded synchronous work on the
     /// actor thread (the #1085 lesson at the aggregate level).
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
-    /// #1520 — event-driven cache-serve wakeup buffer.
+    /// ADR-0058 §10 — the single actor-owned store-wakeup subsystem.
     ///
-    /// Each entry is a `completion_key` for an already-served interest whose
-    /// shape matched a newly-arrived live event. On the next actor tick
-    /// [`Kernel::drain_cache_serve_wakeups`] removes each key from
-    /// `served_interest_shapes` and re-enqueues the interest for a fresh
-    /// serve so the new event appears in subsequent snapshots.
+    /// Carries BOTH wake arms: the #1520 cache-serve re-arm set (already-served
+    /// interest completion keys a live insert re-armed) AND the pull-cursor
+    /// wakes (`cursor_id -> latest_seq`, coalesced). Armed at the one ingest
+    /// chokepoint ([`Kernel::note_store_mutation`]); drained on the existing
+    /// actor cadence. There is no separate `pull_wakeups` field, no channel, no
+    /// callback, no timer (D8: no polling).
+    pub(in crate::kernel) store_wakeups: store_wakeup::StoreWakeups,
+    /// ADR-0058 §10, step 3a — non-durable pull-cursor registry.
     ///
-    /// `BTreeSet<u64>` — bounded by the number of distinct interests (same
-    /// bound as `served_interest_shapes`). BTreeSet coalesces N rapid inserts
-    /// for the same interest to exactly ONE re-arm per actor turn (D8: no
-    /// unbounded channels, no timers).
-    pub(in crate::kernel) cache_serve_wakeups: std::collections::BTreeSet<u64>,
+    /// Actor-written (the three `RegisterPullCursor` / `AdvancePullCursor` /
+    /// `UnregisterPullCursor` dispatch arms); FFI-read-only (step 3b
+    /// `pull_page` snapshots a registration on another thread). The
+    /// consumer-persisted `after_seq` is the durable source of truth — this
+    /// registry is rebuilt by host re-registration after a restart.
+    pub(in crate::kernel) pull_cursor_registry: pull_cursor::PullCursorRegistrySlot,
     snapshot_builder: flatbuffers::FlatBufferBuilder<'static>, // Rung 3 D3-6: reset+to_vec pattern
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
@@ -2021,7 +2032,10 @@ impl Kernel {
             last_gc_at_ms: None,
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
-            cache_serve_wakeups: std::collections::BTreeSet::new(),
+            store_wakeups: store_wakeup::StoreWakeups::new(),
+            pull_cursor_registry: std::sync::Arc::new(std::sync::RwLock::new(
+                pull_cursor::PullCursorRegistry::new(),
+            )),
             snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };

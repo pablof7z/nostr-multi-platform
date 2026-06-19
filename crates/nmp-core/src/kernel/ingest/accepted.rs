@@ -77,16 +77,25 @@ impl Kernel {
             // `project_accepted_event` fan-out that violates D4 single-fire (it
             // re-notifies observers for an event already delivered live).
             self.reconcile_read_cache_on_replace(&outcome, &verified);
-            // Arm cache-serve wakeups for already-served interests matching this
-            // event (#1520 — event-driven re-arm so live inserts surface in cache
-            // projections without waiting for a full re-serve from the store).
+            // Arm BOTH store-wakeup arms for this mutation (ADR-0058 §10): the
+            // #1520 cache-serve re-arm for already-served interests matching this
+            // event (so live inserts surface in cache projections without a full
+            // re-serve), and the pull-cursor wake for any registered cursor whose
+            // `after_seq` is now behind the advanced ingest log.
             let raw = verified.raw();
-            self.note_store_insert(
+            // The ingest log advances only for stored events (Inserted | Replaced);
+            // ephemerals are never stored, so they must not arm a pull wake.
+            let store_log_advanced = matches!(
+                outcome,
+                InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
+            );
+            self.note_store_mutation(
                 &raw.id,
                 &raw.pubkey,
                 raw.kind,
                 raw.created_at,
                 &raw.tags,
+                store_log_advanced,
             );
         }
 

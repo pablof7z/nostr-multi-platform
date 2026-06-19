@@ -1,6 +1,6 @@
 //! Tests for event-driven cache-serve wakeups (#1520).
 //!
-//! Verifies that `note_store_insert` + `drain_cache_serve_wakeups` re-arm
+//! Verifies that `note_store_mutation` + `drain_cache_serve_wakeups` re-arm
 //! already-served interests when a matching live event arrives, coalesce
 //! multiple rapid inserts to a single re-arm per actor turn, and correctly
 //! ignore interests that are not yet fully served or have been withdrawn.
@@ -16,7 +16,7 @@ use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 // ─── 1. Wakeup on insert ─────────────────────────────────────────────────────
 
 /// Register interest → drain initial serve → assert completion key present →
-/// insert matching event → call note_store_insert → run_cache_serve_step →
+/// insert matching event → call note_store_mutation → run_cache_serve_step →
 /// assert the new event appears in the events cache (i.e. cache-serve ran for
 /// it) and the completion key is re-recorded.
 #[test]
@@ -50,7 +50,7 @@ fn wake_registration_before_insert() {
         "completion key must be in served_interest_shapes after initial serve"
     );
     assert!(
-        kernel.cache_serve_wakeups.is_empty(),
+        kernel.store_wakeups.cache_serve.is_empty(),
         "no wakeups before any insert"
     );
 
@@ -59,10 +59,10 @@ fn wake_registration_before_insert() {
     let ev_id = ev.id.clone();
     kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.test/", "test-sub", ev);
 
-    // The ingest path fires note_store_insert, which should have armed a wakeup.
+    // The ingest path fires note_store_mutation, which should have armed a wakeup.
     assert!(
-        kernel.cache_serve_wakeups.contains(&ckey),
-        "note_store_insert must arm a wakeup for the already-served interest"
+        kernel.store_wakeups.cache_serve.contains(&ckey),
+        "note_store_mutation must arm a wakeup for the already-served interest"
     );
 
     // Simulate one actor tick: run_cache_serve_step drains wakeups first.
@@ -75,7 +75,7 @@ fn wake_registration_before_insert() {
     );
     // Wakeup buffer must be drained.
     assert!(
-        kernel.cache_serve_wakeups.is_empty(),
+        kernel.store_wakeups.cache_serve.is_empty(),
         "wakeup buffer must be empty after run_cache_serve_step"
     );
     // The event must be visible in the read cache (served from the store).
@@ -105,7 +105,7 @@ fn insert_before_registration() {
 
     // No wakeups yet — nothing is in served_interest_shapes.
     assert!(
-        kernel.cache_serve_wakeups.is_empty(),
+        kernel.store_wakeups.cache_serve.is_empty(),
         "no wakeup must be armed before any interest is registered"
     );
 
@@ -168,7 +168,7 @@ fn closed_view_release_drops_wakeups() {
     // Insert a matching event to arm the wakeup.
     let ev = signed_note(&keys, "wakeup then close", 1_700_000_001);
     kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.test/", "test-sub", ev);
-    assert!(kernel.cache_serve_wakeups.contains(&ckey), "wakeup must be armed");
+    assert!(kernel.store_wakeups.cache_serve.contains(&ckey), "wakeup must be armed");
 
     // Drop the owner (simulates view close). This is the sole owner, so the
     // slot (and its live interest) must be removed.
@@ -180,7 +180,7 @@ fn closed_view_release_drops_wakeups() {
     kernel.drain_cache_serve_wakeups();
 
     assert!(
-        kernel.cache_serve_wakeups.is_empty(),
+        kernel.store_wakeups.cache_serve.is_empty(),
         "wakeup buffer must be drained"
     );
     // pending_cache_serves must not have gained a new entry for the dead interest.
@@ -197,7 +197,7 @@ fn closed_view_release_drops_wakeups() {
 // ─── 4. Coalesce many inserts to one re-arm ──────────────────────────────────
 
 /// N inserts in one actor turn without an intervening run_cache_serve_step →
-/// cache_serve_wakeups must have ≤1 entry per interest (BTreeSet coalesces).
+/// store_wakeups.cache_serve must have ≤1 entry per interest (BTreeSet coalesces).
 #[test]
 fn coalesce_many_inserts_one_rearm() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -231,11 +231,11 @@ fn coalesce_many_inserts_one_rearm() {
 
     // The wakeup set must contain exactly one entry for this interest.
     assert_eq!(
-        kernel.cache_serve_wakeups.len(),
+        kernel.store_wakeups.cache_serve.len(),
         1,
         "5 rapid inserts for the same interest must coalesce to exactly 1 wakeup entry"
     );
-    assert!(kernel.cache_serve_wakeups.contains(&ckey));
+    assert!(kernel.store_wakeups.cache_serve.contains(&ckey));
 }
 
 // ─── 5. Mid-replay insert does not duplicate the pending serve ────────────────
@@ -243,7 +243,7 @@ fn coalesce_many_inserts_one_rearm() {
 /// Register interest → DO NOT drain serves (interest still in pending queue) →
 /// insert matching event → assert pending serve is not duplicated.
 ///
-/// Rationale: `note_store_insert` only arms wakeups for interests already in
+/// Rationale: `note_store_mutation` only arms wakeups for interests already in
 /// `served_interest_shapes`. An interest still pending in the continuation
 /// queue is not yet served, so it must not gain an extra wakeup entry.
 #[test]
@@ -299,7 +299,7 @@ fn replay_chunk_no_wakeup_reenqueue() {
     if !already_served {
         // Interest still pending: no wakeup must be armed.
         assert!(
-            !kernel.cache_serve_wakeups.contains(&ckey),
+            !kernel.store_wakeups.cache_serve.contains(&ckey),
             "a still-pending interest must not gain a wakeup on insert"
         );
         // Pending queue must not have gained duplicate entries.
