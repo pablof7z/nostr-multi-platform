@@ -29,6 +29,7 @@ use super::cache_serve::queries::shape_to_store_queries;
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 /// What portion of the ingest log to scan.
+#[derive(Clone, Debug)]
 pub enum PullScope {
     /// The entire ingest log — delivers Inserted, Replaced, **and** Deleted rows.
     GlobalLog,
@@ -38,6 +39,7 @@ pub enum PullScope {
 }
 
 /// Bounds controlling a single `pull_page` call.
+#[derive(Clone, Copy, Debug)]
 pub struct PullLimits {
     /// Maximum number of matching entries to return.
     pub max_entries: NonZeroUsize,

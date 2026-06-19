@@ -89,6 +89,9 @@
 
 pub(super) mod continuation;
 pub(super) mod queries;
+// #1520 cache-serve wakeup DRAIN — kept inside the cache_serve module so it can
+// reach the module-sealed `enqueue_interest_cache_serve_deferred`. The wake ARM
+// + the `StoreWakeups` owner live in `kernel::store_wakeup` (ADR-0058 §10).
 pub(super) mod wakeup;
 
 pub(in crate::kernel) use queries::{
@@ -346,8 +349,8 @@ impl Kernel {
     /// first snapshot after an open carries store data (D1). Work beyond the
     /// budget stays queued with a resume cursor and continues next tick.
     ///
-    /// Drains `cache_serve_wakeups` first so re-armed interests enter the queue
-    /// before the budget loop starts (#1520 — event-driven wakeups).
+    /// Drains `store_wakeups.cache_serve` first so re-armed interests enter the
+    /// queue before the budget loop starts (#1520 — event-driven wakeups).
     ///
     /// Returns the number of events fed into projections this step.
     pub(crate) fn run_cache_serve_step(&mut self) -> usize {
@@ -392,6 +395,6 @@ impl Kernel {
     pub(in crate::kernel) fn clear_served_interest_shapes(&mut self) {
         self.served_interest_shapes.clear();
         self.pending_cache_serves.clear();
-        self.cache_serve_wakeups.clear();
+        self.store_wakeups.cache_serve.clear();
     }
 }

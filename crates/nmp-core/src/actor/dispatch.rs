@@ -1349,6 +1349,39 @@ pub(super) fn dispatch_command(
             }
             Some(Vec::new())
         }
+        ActorCommand::RegisterPullCursor {
+            cursor_id,
+            consumer_id,
+            scope,
+            mode,
+            after_seq,
+            limits,
+        } => {
+            ctx.kernel.register_pull_cursor(
+                crate::kernel::pull_cursor::PullCursorId(cursor_id),
+                consumer_id,
+                scope,
+                mode,
+                after_seq,
+                limits,
+            );
+            Some(Vec::new())
+        }
+        ActorCommand::AdvancePullCursor {
+            cursor_id,
+            after_seq,
+        } => {
+            ctx.kernel.advance_pull_cursor(
+                crate::kernel::pull_cursor::PullCursorId(cursor_id),
+                after_seq,
+            );
+            Some(Vec::new())
+        }
+        ActorCommand::UnregisterPullCursor { cursor_id } => {
+            ctx.kernel
+                .unregister_pull_cursor(crate::kernel::pull_cursor::PullCursorId(cursor_id));
+            Some(Vec::new())
+        }
         ActorCommand::OpenInterest {
             filter_json,
             consumer_id,
