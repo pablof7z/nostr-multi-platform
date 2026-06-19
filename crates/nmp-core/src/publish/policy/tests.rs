@@ -11,13 +11,13 @@
 
 use super::*;
 use crate::kinds::{
-    KIND_BLOCKED_RELAYS, KIND_CHAT_MESSAGE, KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP,
-    KIND_MUTE_LIST, KIND_PROFILE_METADATA, KIND_REACTION, KIND_RELAY_LIST, KIND_SHORT_TEXT_NOTE,
+    KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST, KIND_CHAT_MESSAGE, KIND_CONTACT_LIST,
+    KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST, KIND_PROFILE_METADATA, KIND_REACTION,
+    KIND_RELAY_LIST, KIND_SHORT_TEXT_NOTE,
 };
 
-/// The reserved-builder kinds (kind:0 / kind:3) — the exact set the old
-/// `if kind == 0` / `if kind == 3` guards in `action.rs` enforced — must
-/// classify as `ReservedBuilderOnly` and surface the matching builder.
+/// The reserved-builder kinds must classify as `ReservedBuilderOnly` and
+/// surface the matching builder.
 #[test]
 fn reserved_builder_kinds_are_classified_reserved() {
     assert_eq!(
@@ -30,8 +30,12 @@ fn reserved_builder_kinds_are_classified_reserved() {
         PublishBehavior::ReservedBuilderOnly(ReservedKind::Contacts),
         "kind:3 contacts is reserved to nmp.follow / nmp.unfollow"
     );
+    assert_eq!(
+        classify_publish_behavior(KIND_BOOKMARK_LIST),
+        PublishBehavior::ReservedBuilderOnly(ReservedKind::Bookmarks),
+        "kind:10003 bookmarks are reserved to NIP-51 bookmark builders"
+    );
 
-    // `reserved_builder()` returns the typed reason for exactly these kinds.
     assert_eq!(
         classify_publish_behavior(KIND_PROFILE_METADATA).reserved_builder(),
         Some(ReservedKind::Profile)
@@ -39,6 +43,10 @@ fn reserved_builder_kinds_are_classified_reserved() {
     assert_eq!(
         classify_publish_behavior(KIND_CONTACT_LIST).reserved_builder(),
         Some(ReservedKind::Contacts)
+    );
+    assert_eq!(
+        classify_publish_behavior(KIND_BOOKMARK_LIST).reserved_builder(),
+        Some(ReservedKind::Bookmarks)
     );
 }
 
@@ -59,6 +67,12 @@ fn reserved_kind_rejection_messages_are_preserved() {
         "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
          not PublishRaw (the actor owns the follow-list state)",
     );
+    assert_eq!(
+        ReservedKind::Bookmarks.raw_publish_rejection(),
+        "kind:10003 bookmark list must be modified via \
+         nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+         (the NIP-51 builder owns the list merge)",
+    );
 }
 
 /// Private envelope kinds (gift-wrap kind:1059, sealed chat kind:14) classify
@@ -77,7 +91,10 @@ fn private_envelope_kinds_fail_closed() {
         "kind:14 sealed chat message must fail closed"
     );
     // A private kind is never reserved-builder and never public-routable.
-    assert_eq!(classify_publish_behavior(KIND_GIFT_WRAP).reserved_builder(), None);
+    assert_eq!(
+        classify_publish_behavior(KIND_GIFT_WRAP).reserved_builder(),
+        None
+    );
 }
 
 /// Discovery-indexable replaceables route normally but are recorded as
@@ -90,6 +107,7 @@ fn discovery_indexable_kinds_are_classified() {
         KIND_MUTE_LIST,
         KIND_BLOCKED_RELAYS,
         10_000,
+        10_004,
         12_345,
         19_999,
     ] {
@@ -114,9 +132,9 @@ fn public_kinds_are_routable() {
         KIND_SHORT_TEXT_NOTE, // kind:1
         KIND_REACTION,        // kind:7
         9_999,                // upper non-list replaceable
-        30_023,              // NIP-23 long-form (addressable)
-        39_999,              // upper addressable
-        65_000,              // arbitrary custom app kind
+        30_023,               // NIP-23 long-form (addressable)
+        39_999,               // upper addressable
+        65_000,               // arbitrary custom app kind
     ] {
         assert_eq!(
             classify_publish_behavior(kind),
@@ -131,11 +149,11 @@ fn public_kinds_are_routable() {
     }
 }
 
-/// Exactly the two reserved kinds (and no others across a wide sweep) gate a
-/// raw publish — locks the reserved set so a future edit can't silently widen
-/// or shrink it without updating this assertion.
+/// Exactly the reserved kinds (and no others across a wide sweep) gate a raw
+/// publish — locks the reserved set so a future edit can't silently widen or
+/// shrink it without updating this assertion.
 #[test]
-fn only_two_kinds_are_reserved_across_full_sweep() {
+fn only_expected_kinds_are_reserved_across_full_sweep() {
     let mut reserved: Vec<u32> = Vec::new();
     for kind in 0u32..=40_000 {
         if classify_publish_behavior(kind).reserved_builder().is_some() {
@@ -144,8 +162,8 @@ fn only_two_kinds_are_reserved_across_full_sweep() {
     }
     assert_eq!(
         reserved,
-        vec![KIND_PROFILE_METADATA, KIND_CONTACT_LIST],
-        "exactly kind:0 and kind:3 are reserved-builder-only"
+        vec![KIND_PROFILE_METADATA, KIND_CONTACT_LIST, KIND_BOOKMARK_LIST],
+        "exactly kind:0, kind:3, and kind:10003 are reserved-builder-only"
     );
 }
 
@@ -248,13 +266,14 @@ const BANNED_GUARD_CONSTANTS: &[&str] = &[
     "KIND_CHAT_MESSAGE",
     "KIND_PROFILE_METADATA",
     "KIND_CONTACT_LIST",
+    "KIND_BOOKMARK_LIST",
 ];
 
 /// The policy-bearing kind integers (reserved-builder + private envelope) that,
 /// used as a routing guard in ANY shape — `==`, `match` arm, `matches!`,
 /// `.contains` — re-introduce the scattered-literal anti-pattern. The only
 /// legal place to compare a publish kind against these is `policy.rs`.
-const BANNED_KIND_LITERALS: &[&str] = &["0", "3", "14", "1059"];
+const BANNED_KIND_LITERALS: &[&str] = &["0", "3", "14", "1059", "10003"];
 
 /// Does this code line contain a `kind`-bearing token? (`kind`, `raw.kind`,
 /// `signed.unsigned.kind`, `event.unsigned.kind`, …) — used to scope the
@@ -332,7 +351,10 @@ fn kind_policy_guard_violation(code_line: &str) -> Option<String> {
     // Shape D: `matches!(<kind-expr>, <banned literal/constant>)`.
     if normalized.contains("matches!(") && mentions_kind(&normalized) {
         if let Some(found) = banned_token_present(&normalized) {
-            return Some(format!("matches!-on-kind ({found}) in `{}`", code_line.trim()));
+            return Some(format!(
+                "matches!-on-kind ({found}) in `{}`",
+                code_line.trim()
+            ));
         }
     }
 
@@ -372,7 +394,11 @@ fn banned_token_present(normalized: &str) -> Option<String> {
             // (so `KIND_NIP14` or an identifier ending in the digits is not a
             // false hit) and the literal to be adjacent to a pattern operator
             // (`=>`, `|`, `,`, `(`, `&`) — the contexts a kind guard uses.
-            let prev_char = if start == 0 { None } else { Some(bytes[start - 1]) };
+            let prev_char = if start == 0 {
+                None
+            } else {
+                Some(bytes[start - 1])
+            };
             let alpha_prefix = prev_char.is_some_and(|c| c.is_ascii_alphabetic() || c == b'_');
             if prev_ok && next_ok && !alpha_prefix {
                 return Some((*lit).to_string());
@@ -483,7 +509,8 @@ fn gate_detector_fires_on_evasion_shapes() {
 
     // NO false positives on legitimate routing-surface shapes:
     assert!(
-        kind_policy_guard_violation("PublishAction::PublishRaw { kind, target, .. } => {").is_none(),
+        kind_policy_guard_violation("PublishAction::PublishRaw { kind, target, .. } => {")
+            .is_none(),
         "an enum-variant match arm that merely binds `kind` is not a policy guard"
     );
     assert!(
@@ -491,7 +518,8 @@ fn gate_detector_fires_on_evasion_shapes() {
         "a struct field `created_at: 0` is not a kind guard (no `kind` token)"
     );
     assert!(
-        kind_policy_guard_violation("let unsigned = UnsignedEvent { kind, tags, content };").is_none(),
+        kind_policy_guard_violation("let unsigned = UnsignedEvent { kind, tags, content };")
+            .is_none(),
         "constructing an event with a `kind` field is not a guard"
     );
     assert!(

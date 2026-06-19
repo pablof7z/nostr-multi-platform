@@ -6,11 +6,12 @@
 //! parsing and projection of the NIP-51 list events that NMP consumes. It does
 //! not own planner/router policy; it exposes facts for substrate owners to use.
 //!
-//! | Wire kind | Name          | NIP    | Status   |
-//! |-----------|---------------|--------|----------|
-//! | 10000     | Public mute   | NIP-51 | Shipped  |
-//! | 10007     | Search relays | NIP-51 | Shipped as active-account facts |
-//! | 10001+    | Other lists   | NIP-51 | Post-v1 unless named above |
+//! | Wire kind | Name             | NIP    | Status   |
+//! |-----------|------------------|--------|----------|
+//! | 10000     | Public mute      | NIP-51 | Shipped  |
+//! | 10003     | Global bookmarks | NIP-51 | Shipped as raw projection + safe RMW builders |
+//! | 10007     | Search relays    | NIP-51 | Shipped as active-account facts |
+//! | 10001+    | Other lists      | NIP-51 | Post-v1 unless named above |
 //!
 //! # Architecture
 //!
@@ -23,6 +24,12 @@
 //! It also exposes [`SearchRelayListProjection`], a kind:10007 active-account
 //! relay-list projection. Search query semantics and ranking stay with the
 //! owning search module; this crate only parses `["relay", <url>]` facts.
+//!
+//! It also exposes [`BookmarkListProjection`] plus
+//! [`AddBookmarkAction`] / [`RemoveBookmarkAction`] for the active account's
+//! kind:10003 global bookmark list. The projection stays raw: event ids,
+//! address coordinates, URLs, hashtags, and NIP-51 metadata. App-specific
+//! vault organization, privacy language, and UI flows stay in app crates.
 //!
 //! The substrate-generic [`SuppressionLookup`] trait lives in `nmp-core` so
 //! `nmp-nip01`'s `ModularTimelineProjection` can depend on it without creating
@@ -60,10 +67,16 @@
 //! require `nmp-wot` to depend on `nmp-nip51` — a legal Layer-4 sibling edge
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 
+pub mod bookmarks;
 pub mod projection;
 pub mod search_relays;
 pub mod wire;
 
+pub use bookmarks::{
+    build_bookmark_list_event, register_bookmark_actions, AddBookmarkAction, BookmarkItem,
+    BookmarkListMetadata, BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput,
+    RemoveBookmarkAction,
+};
 pub use projection::{MuteListProjection, MuteListSnapshot};
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use wire::mute_list_fb::{

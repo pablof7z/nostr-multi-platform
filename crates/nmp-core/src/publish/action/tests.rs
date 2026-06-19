@@ -28,7 +28,8 @@ fn explicit_publish_target_requires_non_empty_relays() {
         target: PublishTarget::Explicit { relays: Vec::new() },
         signer_pubkey: None,
     };
-    let err = PublishModule.start(&mut ctx(), action)
+    let err = PublishModule
+        .start(&mut ctx(), action)
         .expect_err("empty explicit target must fail closed");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("at least one relay")));
 }
@@ -42,7 +43,8 @@ fn explicit_publish_target_rejects_malformed_relay_url() {
             relays: vec!["https://relay.example".to_string()],
         },
     };
-    let err = PublishModule.start(&mut ctx(), action)
+    let err = PublishModule
+        .start(&mut ctx(), action)
         .expect_err("malformed explicit relay must be rejected");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("ws:// or wss://")));
 }
@@ -58,7 +60,9 @@ fn explicit_publish_target_accepts_valid_relay_url() {
         },
         signer_pubkey: None,
     };
-    PublishModule.start(&mut ctx(), action).expect("valid explicit target should pass validation");
+    PublishModule
+        .start(&mut ctx(), action)
+        .expect("valid explicit target should pass validation");
 }
 
 #[test]
@@ -73,7 +77,9 @@ fn publish_raw_rejects_kind_0_to_protect_profile_path() {
         target: PublishTarget::Auto,
         signer_pubkey: None,
     };
-    let err = PublishModule.start(&mut ctx(), action).expect_err("PublishRaw must reject kind:0");
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("PublishRaw must reject kind:0");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("PublishProfile")));
 }
 
@@ -90,8 +96,25 @@ fn publish_raw_rejects_kind_3_pending_dedicated_path() {
         target: PublishTarget::Auto,
         signer_pubkey: None,
     };
-    let err = PublishModule.start(&mut ctx(), action).expect_err("PublishRaw must reject kind:3");
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("PublishRaw must reject kind:3");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("kind:3")));
+}
+
+#[test]
+fn publish_raw_rejects_kind_10003_to_protect_bookmark_builder() {
+    let action = PublishAction::PublishRaw {
+        kind: 10003,
+        tags: vec![vec!["e".to_string(), "a".repeat(64)]],
+        content: String::new(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("PublishRaw must reject kind:10003");
+    assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("nmp.nip51.add_bookmark")));
 }
 
 #[test]
@@ -107,7 +130,8 @@ fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
         target: PublishTarget::Auto,
         signer_pubkey: None,
     };
-    PublishModule.start(&mut ctx(), action)
+    PublishModule
+        .start(&mut ctx(), action)
         .expect("valid PublishRaw with Auto target should pass validation");
 }
 
@@ -220,7 +244,8 @@ fn publish_raw_propagates_explicit_target_validation_failure() {
         target: PublishTarget::Explicit { relays: Vec::new() },
         signer_pubkey: None,
     };
-    let err = PublishModule.start(&mut ctx(), action)
+    let err = PublishModule
+        .start(&mut ctx(), action)
         .expect_err("empty explicit target must fail closed for PublishRaw too");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("at least one relay")));
 }
