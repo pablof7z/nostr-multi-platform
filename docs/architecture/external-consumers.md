@@ -76,6 +76,17 @@ process (cutting a tag, bumping `Cargo.toml` workspace version, updating
 and the release scripts under `release/`. Consumers update their pin to a new
 rev when they want to pick up framework changes.
 
+### Pre-v1 compatibility stance
+
+External consumers are conformance evidence, not an API freeze. Before v1, a
+consumer pinning a git rev accepts that the next rev may remove, rename, or
+reshape public symbols when the current surface is legacy, duplicative,
+example-named, or architecturally wrong. NMP does not keep aliases, wrappers,
+fallback wire tags, or deprecated schema slots solely to avoid updating a
+pre-v1 consumer. The correct response to a real consumer break is to migrate the
+consumer to the cleaner framework surface and, when the break reveals a missing
+generic capability, fix that capability in NMP.
+
 ### BREAKING rename — `nmp-app-template` → `nmp-defaults` (ADR-0046, 2026-06-12)
 
 ADR-0046 ("composition is a library, not a generator") renamed the

@@ -112,12 +112,9 @@ callback-per-dispatch.
 - **IndexedDB persistence is not yet wired.** The kernel still runs in memory
   and resets on page reload. This is not a design decision — it is follow-on
   work (see `docs/wasm-surface.md` §7).
-- **`#[serde(rename = "chirp_action")]` on `WorkerRequest::AppAction`** is a
-  residual Chirp-ism in the wire format. The type tag serialises as
-  `"chirp_action"` on the wire today. Renaming it to a framework-neutral tag
-  (e.g. `"app_action"`) is a breaking wire change requiring coordination with
-  existing hosts; it is flagged here for a future cleanup, not fixed in this
-  ADR.
+- **`WorkerRequest::AppAction` uses the framework-neutral `"app_action"` tag.**
+  A generic delivery surface must not preserve an example-app wire name for
+  compatibility.
 
 ## Alternatives considered
 

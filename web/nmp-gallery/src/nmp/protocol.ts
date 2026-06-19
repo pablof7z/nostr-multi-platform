@@ -18,7 +18,7 @@ export type WorkerRequest =
       correlation_id: string;
     }
   | {
-      type: "chirp_action";
+      type: "app_action";
       action: ChirpAction;
       correlation_id: string;
     }

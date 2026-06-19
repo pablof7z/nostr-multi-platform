@@ -7,6 +7,18 @@ Eleven principles in total. Every API decision answers to at least one; conflict
 
 **Two kinds.** D0–D5 and D10 are *policy* doctrines — they govern what the framework promises and forbids. D6–D9 are *substrate invariants* — they govern how the runtime is implemented underneath. Both are equally binding, but they answer different review questions: policy doctrines ask "does this API make the wrong thing easy?" and substrate invariants ask "does this implementation break something the kernel must own, such as FFI boundaries, state propagation, hot-path cost, or time?"
 
+**Pre-v1 interface cleanup.** Until v1, NMP optimizes for the clean permanent
+interface, not for preserving old call sites. If an exported Rust API, FFI
+symbol, JNI method, wasm wire tag, projection key, schema field, generated
+binding, CLI command, or documented contract is legacy, example-named,
+duplicative, or architecturally wrong, the default fix is to rename, remove, or
+replace it in place. Do not keep aliases, wrappers, compatibility trees, old
+wire tags, dead parameters, deprecated schema slots, or app/example names in a
+generic surface merely to avoid breaking a pre-v1 consumer. A real external
+consumer is evidence for what the framework must support correctly; it is not a
+veto over clean architecture. The only exception is a staged GitHub issue with a
+specific deletion gate and deadline.
+
 ---
 
 ## D0. The framework core knows nothing about your app's domain
@@ -82,6 +94,9 @@ This rules out:
 - The same fact showing different values in different parts of the UI.
 - Cache invalidation logic in app code.
 - State that can drift between the local store and the on-screen view.
+- Durable docs that preserve obsolete contracts, old wire tags, completed
+  migration plans, or example names after the source of truth has moved. Git
+  history and closed issues keep history; current docs state current truth.
 
 *Implementation detail: Five layers exist (durable event store, in-memory working set, view payloads, gossip cache, platform reactive shadow), each a mechanical derivation of the one above. The actor owns recomputation; the platform only receives derived state.*
 

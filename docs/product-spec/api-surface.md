@@ -6,7 +6,21 @@
 
 One opaque handle, one callback, one dispatch function. Relay routing, cache invalidation, subscription lifecycle, signing orchestration — all invisible by design. This is what the developer sees; the kernel owns everything else.
 
-The concrete FFI API is per-app generated. `nmp-core` defines kernel primitives and extension traits; `nmp gen modules` composes the selected kernel, protocol modules, and app modules into a generated `nmp-app-<name>` crate that exposes closed typed enums to Swift/Kotlin/TypeScript.
+External interface policy: every public surface must earn its place before v1.
+FFI symbols, JNI methods, wasm wire tags, FlatBuffers fields, projection keys,
+action namespaces, generated bindings, CLI commands, and docs are cleaned in
+place when the design improves. NMP does not retain pre-v1 compatibility shims,
+dead parameters, legacy aliases, generic JSON fallbacks, deprecated schema
+slots, or app/example names in framework-level APIs solely to protect old
+callers. App-owned wrappers may contain the app name; framework-level contracts
+must use framework or domain names.
+
+The concrete app API is composed by the app's Rust composition root.
+`nmp-core` defines kernel primitives and extension traits; reusable NMP modules
+register actions, projections, capabilities, and runtime hooks through typed
+library seams. Leaf app crates call `nmp_defaults::register_defaults` and then
+register app-specific modules/policy. The deleted `nmp gen modules` path does
+not define the current API surface.
 
 ### 6.1 The App handle
 
@@ -91,7 +105,7 @@ pub enum AppAction {
     Kernel(nmp_core::KernelAction),
     Nip01(nmp_nip01::Action),
     Nip10(nmp_nip10::Action),
-    Twitter(twitter_core::Action),
+    App(app_core::Action),
 }
 ```
 
@@ -263,8 +277,8 @@ Decision captured here for `aim.md` §7.2 and §7.3:
 
 The component-facing API on each platform is *not* `ViewId`-based. Per ADR-0005, generated wrappers (`useProfile(pubkey)`, `@Profile`, `rememberProfile(pubkey)`, etc.) expose a refcounted, domain-keyed surface that translates component mount/unmount into `OpenView`/`CloseView` dispatches and writes incoming payloads into typed domain-keyed dictionaries on the platform side. App developers think in domain concepts; the framework handles subscription lifecycle and refcounted sharing behind the wrapper.
 
-Dynamic FlatFeed-backed views, such as Chirp author and thread screens, are
-owned by the app crate that registers them. Opening a screen installs a
+Dynamic FlatFeed-backed views, such as app-owned author and thread screens, are
+owned by the leaf app crate that registers them. Opening a screen installs a
 `FlatFeed`, its event observer, and a typed sidecar under a concrete key
 (`nmp.feed.author.<pubkey>` or `nmp.feed.thread.<event_id>`), then opens the
 matching `open_interest` for relay admission. Closing the screen unregisters
