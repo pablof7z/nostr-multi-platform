@@ -21,6 +21,7 @@ pub mod kinds;
 // LNURL-pay HTTP worker: uses `ureq` + `std::thread::spawn` — native only.
 #[cfg(feature = "native")]
 pub mod lnurl;
+pub mod pending;
 pub mod projection;
 pub mod view;
 pub mod wire;
@@ -31,7 +32,11 @@ pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
 pub use interests::{self_zap_receipts_interest, self_zap_receipts_interest_id};
 pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
 #[cfg(feature = "native")]
-pub use lnurl::{sign_zap_request, FetchLnurlInvoiceCommand};
+pub use lnurl::{sign_zap_request, FetchLnurlInvoiceCommand, LnurlInvoice};
+pub use pending::{
+    active_pending_zap_registry, new_pending_zap_registry, try_from_kernel_event_validated,
+    PendingZapRegistry, PendingZapRegistryHandle, ZapReceiptProviderMismatch,
+};
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 pub use wire::typed_fb::{

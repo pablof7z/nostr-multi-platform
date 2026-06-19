@@ -10,7 +10,7 @@
 //! - `bolt11` (LN invoice — amount in the HRP is the authoritative number).
 //! - `preimage` (optional).
 //! - `description` (the embedded kind:9734 zap request as JSON, used as
-//!   sender + fallback amount source).
+//!   sender + fallback amount source + zap-request id).
 //!
 //! ## Receipt integrity — what this decoder enforces
 //!
@@ -46,11 +46,16 @@ use crate::kinds::KIND_ZAP_RECEIPT;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZapReceiptRecord {
     pub event_id: String,
+    /// Kind:9735 event author. For locally tracked zap requests this must
+    /// match the LNURL-pay endpoint's advertised `nostrPubkey`.
+    pub provider_pubkey: String,
     pub recipient_pubkey: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zapped_event_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zapped_address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zap_request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sender_pubkey: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -62,19 +67,26 @@ pub struct ZapReceiptRecord {
     pub created_at: u64,
 }
 
-#[must_use] 
+#[must_use]
 pub fn try_from_event(event: &StoredEvent) -> Option<ZapReceiptRecord> {
     let raw = event.raw.as_ref();
-    decode_borrowed(&raw.id, raw.kind, raw.created_at, &raw.tags)
+    decode_borrowed(&raw.id, &raw.pubkey, raw.kind, raw.created_at, &raw.tags)
 }
 
-#[must_use] 
+#[must_use]
 pub fn try_from_kernel_event(event: &KernelEvent) -> Option<ZapReceiptRecord> {
-    decode_borrowed(&event.id, event.kind, event.created_at, &event.tags)
+    decode_borrowed(
+        &event.id,
+        &event.author,
+        event.kind,
+        event.created_at,
+        &event.tags,
+    )
 }
 
 fn decode_borrowed(
     id: &str,
+    author: &str,
     kind: u32,
     created_at: u64,
     tags: &[Vec<String>],
@@ -91,8 +103,8 @@ fn decode_borrowed(
     let preimage = first_tag_value(tags, "preimage").map(str::to_string);
 
     let description = first_tag_value(tags, "description");
-    let parsed_request: Option<serde_json::Value> = description
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+    let parsed_request: Option<serde_json::Value> =
+        description.and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
 
     // The two independent amount sources.
     let bolt11_amount = bolt11.as_deref().and_then(bolt11::amount_msats);
@@ -123,6 +135,12 @@ fn decode_borrowed(
             .map(str::to_string)
     };
     let sender_pubkey = upper_sender.or(embedded_sender);
+    let zap_request_id = parsed_request
+        .as_ref()
+        .and_then(|v| v.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string);
 
     // Amount precedence: bolt11 HRP (authoritative — the LN provider settled
     // exactly that); else the embedded zap-request's `amount` tag (millisats
@@ -132,9 +150,11 @@ fn decode_borrowed(
 
     Some(ZapReceiptRecord {
         event_id: id.to_string(),
+        provider_pubkey: author.to_string(),
         recipient_pubkey,
         zapped_event_id,
         zapped_address,
+        zap_request_id,
         sender_pubkey,
         amount_msats,
         bolt11,
@@ -152,9 +172,13 @@ fn amount_from_embedded_request(req: Option<&serde_json::Value>) -> Option<u64> 
         // `["amount","<msats>"]` entry and let a forged receipt bypass the
         // amount-mismatch guard.
         let Some(arr) = t.as_array() else { continue };
-        let Some(key) = arr.first().and_then(|v| v.as_str()) else { continue };
+        let Some(key) = arr.first().and_then(|v| v.as_str()) else {
+            continue;
+        };
         if key == "amount" {
-            let Some(s) = arr.get(1).and_then(|v| v.as_str()) else { continue };
+            let Some(s) = arr.get(1).and_then(|v| v.as_str()) else {
+                continue;
+            };
             return s.parse::<u64>().ok();
         }
     }

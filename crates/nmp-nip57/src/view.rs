@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
-use crate::decode::try_from_kernel_event;
 use crate::kinds::KIND_ZAP_RECEIPT;
+use crate::pending::try_from_kernel_event_validated;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ZapsSpec {
@@ -54,7 +54,7 @@ pub struct ZapsState {
 
 impl ZapsState {
     fn insert(&mut self, event: &KernelEvent) -> Option<ZapsDelta> {
-        let record = try_from_kernel_event(event)?;
+        let record = try_from_kernel_event_validated(event)?;
         if record.zapped_event_id.as_deref() != Some(self.target.as_str()) {
             return None;
         }
