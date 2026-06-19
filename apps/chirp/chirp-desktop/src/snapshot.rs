@@ -305,8 +305,6 @@ pub struct BunkerHandshakeStatus {
     #[serde(default)]
     pub stage: String,
     #[serde(default)]
-    pub stage_label: String,
-    #[serde(default)]
     pub is_in_flight: bool,
     #[serde(default)]
     pub is_terminal_success: bool,
@@ -329,10 +327,6 @@ pub struct SignerStatus {
     pub is_ready: bool,
     #[serde(default)]
     pub is_failed: bool,
-    #[serde(default)]
-    pub status_label: String,
-    #[serde(default)]
-    pub status_tone: String,
     #[serde(default)]
     pub reason: Option<String>,
 }

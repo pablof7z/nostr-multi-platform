@@ -51,8 +51,9 @@ fn bunker_handshake_present_and_decodes_when_slot_some() {
     assert!(!decoded.is_idle);
     assert!(!decoded.is_failed);
     assert!(!decoded.is_terminal_success);
-    // `stage_label` is pre-formatted server-side (D1: never empty).
-    assert!(!decoded.stage_label.is_empty());
+    // #1493 P9: the raw `stage` token is on the wire; the shell derives the
+    // display label, so there is no `stage_label` field to assert here.
+    assert_eq!(decoded.stage, "connecting");
 }
 
 #[test]
@@ -182,9 +183,9 @@ fn signer_state_present_and_decodes_when_slot_some() {
     assert!(!decoded.is_unavailable);
     assert!(!decoded.is_failed);
     assert_eq!(decoded.reason, None);
-    // ADR-0032 / #1099: Rust-precomputed label/tone flow through the typed wire.
-    assert_eq!(decoded.status_label, "Waiting for approval…");
-    assert_eq!(decoded.status_tone, "warning");
+    // #1493 P9: only the raw `state` token + flags are on the wire; the shell
+    // derives the "Waiting for approval…" label / tone.
+    assert_eq!(decoded.state, "awaiting_approval");
 }
 
 #[test]
@@ -203,6 +204,6 @@ fn signer_state_typed_mirrors_json_for_nip46_degraded_state() {
     assert_eq!(decoded.state, "reconnecting");
     assert!(decoded.is_reconnecting);
     assert_eq!(decoded.reason.as_deref(), Some("connection reset by peer"));
-    assert_eq!(decoded.status_label, "Reconnecting…");
-    assert_eq!(decoded.status_tone, "warning");
+    // #1493 P9: shell derives the "Reconnecting…" label / tone from `state`.
+    assert_eq!(decoded.state, "reconnecting");
 }

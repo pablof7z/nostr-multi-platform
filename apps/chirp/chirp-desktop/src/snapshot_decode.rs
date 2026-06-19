@@ -205,8 +205,6 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
                 "state": m.state,
                 "is_ready": m.is_ready,
                 "is_failed": m.is_failed,
-                "status_label": m.status_label,
-                "status_tone": m.status_tone,
                 "reason": m.reason,
             }),
         );
@@ -221,7 +219,6 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             nmp_core::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID.to_string(),
             serde_json::json!({
                 "stage": m.stage,
-                "stage_label": m.stage_label,
                 "is_in_flight": m.is_in_flight,
                 "is_terminal_success": m.is_terminal_success,
                 "is_failed": m.is_failed,
@@ -361,17 +358,14 @@ mod signer_projection_decode_tests {
             "state": "ready",
             "is_ready": true,
             "is_failed": false,
-            "status_label": "Connected",
-            "status_tone": "active",
             "reason": null,
         });
         let status: SignerStatus = serde_json::from_value(v)
             .expect("SignerStatus must deserialize from the signer_state projection JSON");
         assert_eq!(status.signer_kind, "nip46");
+        assert_eq!(status.state, "ready");
         assert!(status.is_ready);
         assert!(!status.is_failed);
-        assert_eq!(status.status_label, "Connected");
-        assert_eq!(status.status_tone, "active");
         assert!(status.reason.is_none());
     }
 
@@ -381,7 +375,6 @@ mod signer_projection_decode_tests {
     fn bunker_handshake_json_materialises_into_snapshot_type() {
         let v = serde_json::json!({
             "stage": "waiting_for_approval",
-            "stage_label": "Waiting for approval",
             "is_in_flight": true,
             "is_terminal_success": false,
             "is_failed": false,
@@ -409,7 +402,6 @@ mod signer_projection_decode_tests {
     fn bunker_handshake_terminal_success_surfaces_correctly() {
         let v = serde_json::json!({
             "stage": "complete",
-            "stage_label": "Connected!",
             "is_in_flight": false,
             "is_terminal_success": true,
             "is_failed": false,

@@ -35,8 +35,6 @@ impl<'a> SignerState<'a> {
   pub const VT_IS_RECONNECTING: ::flatbuffers::VOffsetT = 16;
   pub const VT_IS_UNAVAILABLE: ::flatbuffers::VOffsetT = 18;
   pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 20;
-  pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 22;
-  pub const VT_STATUS_TONE: ::flatbuffers::VOffsetT = 24;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -48,8 +46,6 @@ impl<'a> SignerState<'a> {
     args: &'args SignerStateArgs<'args>
   ) -> ::flatbuffers::WIPOffset<SignerState<'bldr>> {
     let mut builder = SignerStateBuilder::new(_fbb);
-    if let Some(x) = args.status_tone { builder.add_status_tone(x); }
-    if let Some(x) = args.status_label { builder.add_status_label(x); }
     if let Some(x) = args.reason { builder.add_reason(x); }
     if let Some(x) = args.state { builder.add_state(x); }
     if let Some(x) = args.signer_kind { builder.add_signer_kind(x); }
@@ -126,20 +122,6 @@ impl<'a> SignerState<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(SignerState::VT_IS_FAILED, Some(false)).unwrap()}
   }
-  #[inline]
-  pub fn status_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_STATUS_LABEL, None)}
-  }
-  #[inline]
-  pub fn status_tone(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_STATUS_TONE, None)}
-  }
 }
 
 impl ::flatbuffers::Verifiable for SignerState<'_> {
@@ -157,8 +139,6 @@ impl ::flatbuffers::Verifiable for SignerState<'_> {
      .visit_field::<bool>("is_reconnecting", Self::VT_IS_RECONNECTING, false)?
      .visit_field::<bool>("is_unavailable", Self::VT_IS_UNAVAILABLE, false)?
      .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status_label", Self::VT_STATUS_LABEL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status_tone", Self::VT_STATUS_TONE, false)?
      .finish();
     Ok(())
   }
@@ -173,8 +153,6 @@ pub struct SignerStateArgs<'a> {
     pub is_reconnecting: bool,
     pub is_unavailable: bool,
     pub is_failed: bool,
-    pub status_label: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub status_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for SignerStateArgs<'a> {
   #[inline]
@@ -189,8 +167,6 @@ impl<'a> Default for SignerStateArgs<'a> {
       is_reconnecting: false,
       is_unavailable: false,
       is_failed: false,
-      status_label: None,
-      status_tone: None,
     }
   }
 }
@@ -237,14 +213,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SignerStateBuilder<'a, 'b, A>
     self.fbb_.push_slot::<bool>(SignerState::VT_IS_FAILED, is_failed, false);
   }
   #[inline]
-  pub fn add_status_label(&mut self, status_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerState::VT_STATUS_LABEL, status_label);
-  }
-  #[inline]
-  pub fn add_status_tone(&mut self, status_tone: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerState::VT_STATUS_TONE, status_tone);
-  }
-  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SignerStateBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     SignerStateBuilder {
@@ -271,8 +239,6 @@ impl ::core::fmt::Debug for SignerState<'_> {
       ds.field("is_reconnecting", &self.is_reconnecting());
       ds.field("is_unavailable", &self.is_unavailable());
       ds.field("is_failed", &self.is_failed());
-      ds.field("status_label", &self.status_label());
-      ds.field("status_tone", &self.status_tone());
       ds.finish()
   }
 }

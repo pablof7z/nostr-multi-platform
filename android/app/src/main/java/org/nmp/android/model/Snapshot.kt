@@ -266,10 +266,17 @@ data class SignerState(
     @SerialName("is_reconnecting") val isReconnecting: Boolean = false,
     @SerialName("is_unavailable") val isUnavailable: Boolean = false,
     @SerialName("is_failed") val isFailed: Boolean = false,
-    /** Rust-precomputed display label (ADR-0032 / #1099) — rendered verbatim. */
-    @SerialName("status_label") val statusLabel: String = "",
-    /** Rust-precomputed tone — "active"|"warning"|"error"|"inactive". */
-    @SerialName("status_tone") val statusTone: String = "",
+    /**
+     * Shell-derived display label (#1493 P9) — NOT on the wire. Populated by
+     * [org.nmp.android.TypedSignerStateDecoder] from the raw `state` token and
+     * rendered verbatim by `SignerStateRow`.
+     */
+    val statusLabel: String = "",
+    /**
+     * Shell-derived tone (#1493 P9) — "active"|"warning"|"error"|"inactive".
+     * Populated by [org.nmp.android.TypedSignerStateDecoder] from `state`.
+     */
+    val statusTone: String = "",
 )
 
 // ── Typed embed sidecar domain models (#1283 / #1335 item 2) ─────────────────

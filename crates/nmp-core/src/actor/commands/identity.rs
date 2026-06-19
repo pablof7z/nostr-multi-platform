@@ -32,10 +32,12 @@ use crate::util::sort_dedup;
 /// Doctrine §6 anti-pattern #1 (duplicated formatting logic across platforms) +
 /// RMP bible commandment #4 (no native business logic): the DTO carries
 /// pre-computed boolean flags (`is_idle`, `is_in_flight`, `is_failed`,
-/// `is_terminal_success`, `can_cancel`) and a pre-formatted English
-/// `stage_label` so shells render fields directly instead of string-matching
-/// on `stage`. The raw `stage` token stays on the wire as a stable diagnostic
-/// key but no shell switches on it.
+/// `is_terminal_success`, `can_cancel`) so shells branch on a single flag
+/// instead of string-matching on `stage`. The raw `stage` token stays on the
+/// wire as the stable key; shells render it (and derive the display label) but
+/// no shell switches on it to drive control flow. Per #1493 P9 (labels-to-shells,
+/// mirrors #1568) the English `stage_label` was removed from the wire — shells
+/// derive the label from the raw `stage` token themselves.
 ///
 /// `Deserialize` is retained so Swift codegen / round-trip tests can decode it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,11 +69,6 @@ pub struct BunkerHandshakeDto {
     /// neither idle nor failed. Shells gate the visibility of a cancel button
     /// on this without reconstructing the rule from `stage` checks.
     pub(crate) can_cancel: bool,
-    /// Pre-formatted English label for `stage` (e.g. `"Connecting to bunker
-    /// relays…"`, `"Awaiting bunker approval…"`, `"Connected"`,
-    /// `"Bunker handshake failed"`). Always non-empty (D1); shells render this
-    /// directly instead of mapping `stage` tokens to display strings.
-    pub(crate) stage_label: String,
 }
 
 impl BunkerHandshakeDto {
@@ -89,7 +86,6 @@ impl BunkerHandshakeDto {
         let is_failed = matches!(kind, BunkerStageKind::Failed);
         let is_terminal_success = matches!(kind, BunkerStageKind::Ready);
         let can_cancel = is_in_flight;
-        let stage_label = stage_label_for(kind, &stage);
         Self {
             stage,
             message,
@@ -98,24 +94,7 @@ impl BunkerHandshakeDto {
             is_failed,
             is_terminal_success,
             can_cancel,
-            stage_label,
         }
-    }
-}
-
-/// Pre-formatted English label for a handshake stage. `Unknown` falls back to
-/// the raw wire token so an unrecognized stage still renders something
-/// non-empty (D1) instead of an empty string. The known wire tokens use the
-/// same prose AccountsView.swift used to derive from a `switch` block — the
-/// strings move server-side once.
-fn stage_label_for(kind: BunkerStageKind, raw_stage: &str) -> String {
-    match kind {
-        BunkerStageKind::Idle => "Idle".to_string(),
-        BunkerStageKind::Connecting => "Connecting to bunker relays…".to_string(),
-        BunkerStageKind::AwaitingPubkey => "Awaiting bunker approval…".to_string(),
-        BunkerStageKind::Ready => "Connected".to_string(),
-        BunkerStageKind::Failed => "Bunker handshake failed".to_string(),
-        BunkerStageKind::Unknown => raw_stage.to_string(),
     }
 }
 
@@ -185,26 +164,20 @@ pub struct SignerStateDto {
     /// `true` when `state == "failed"` (permanent error — rejected / mismatch /
     /// relay handshake failed). Host prompts re-auth.
     pub(crate) is_failed: bool,
-    /// Pre-computed display label (ADR-0032 / #1099) — shells render verbatim,
-    /// never switching on `state`. See [`signer_state_label_and_tone`].
-    pub(crate) status_label: String,
-    /// Pre-computed tone: "active"|"warning"|"error"|"inactive" (ADR-0032 /
-    /// #1099). Shells map tone → colour/icon with no `state`-string knowledge.
-    pub(crate) status_tone: String,
 }
 
 impl SignerStateDto {
     /// Construct from a signer kind + state wire token + optional reason,
-    /// pre-computing all derived boolean flags plus the display label/tone, so
-    /// shells never reconstruct flags or display strings from `state` (AP1).
+    /// pre-computing all derived boolean flags so shells never reconstruct flags
+    /// from `state` (AP1). Display strings (label/tone) are NOT pre-computed:
+    /// per #1493 P9 (labels-to-shells, mirrors #1568) the shells derive the
+    /// English label and semantic tone from the raw `state` token themselves.
     pub(crate) fn new(signer_kind: String, state: String, reason: Option<String>) -> Self {
-        use super::signer_state_label::signer_state_label_and_tone;
         let is_ready = state == "ready";
         let is_awaiting_approval = state == "awaiting_approval";
         let is_reconnecting = state == "reconnecting";
         let is_unavailable = state == "unavailable";
         let is_failed = state == "failed";
-        let (status_label, status_tone) = signer_state_label_and_tone(&state);
         Self {
             signer_kind,
             state,
@@ -214,8 +187,6 @@ impl SignerStateDto {
             is_reconnecting,
             is_unavailable,
             is_failed,
-            status_label,
-            status_tone,
         }
     }
 

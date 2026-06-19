@@ -46,8 +46,7 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
                 isInFlight: true,
                 isFailed: false,
                 isTerminalSuccess: false,
-                canCancel: true,
-                stageLabel: "Typed: Connecting to bunker relays…"))
+                canCancel: true))
 
         let dto = try XCTUnwrap(
             TypedBunkerHandshakeDecoder.decode(from: [envelope]),
@@ -61,7 +60,9 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
         XCTAssertEqual(dto.isFailed, false)
         XCTAssertEqual(dto.isTerminalSuccess, false)
         XCTAssertEqual(dto.canCancel, true)
-        XCTAssertEqual(dto.stageLabel, "Typed: Connecting to bunker relays…")
+        // #1493 P9: an unrecognized stage token falls through to the raw token
+        // in the shell-derived `stageLabel` (no `stage_label` on the wire).
+        XCTAssertEqual(dto.stageLabel, "typed_connecting")
     }
 
     /// `has_message == false` (no status text) → nil message, reproducing the
@@ -76,11 +77,12 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
                     isInFlight: false,
                     isFailed: false,
                     isTerminalSuccess: true,
-                    canCancel: false,
-                    stageLabel: "Connected")))
+                    canCancel: false)))
         XCTAssertNil(dto.message)
         XCTAssertEqual(dto.stage, "ready")
         XCTAssertEqual(dto.isTerminalSuccess, true)
+        // #1493 P9: label is shell-derived from the raw `stage` token.
+        XCTAssertEqual(dto.stageLabel, "Connected")
     }
 
     func testAbsentBunkerHandshakeSidecarFallsBack() {
@@ -95,8 +97,7 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
             fileIdentifier: TypedBunkerHandshakeDecoder.fileIdentifier,
             payload: buildBunkerHandshake(
                 stage: "idle", message: nil, isIdle: true, isInFlight: false,
-                isFailed: false, isTerminalSuccess: false, canCancel: false,
-                stageLabel: "Idle"))
+                isFailed: false, isTerminalSuccess: false, canCancel: false))
         XCTAssertNil(TypedBunkerHandshakeDecoder.decode(from: [envelope]))
     }
 
@@ -226,13 +227,11 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
         isInFlight: Bool,
         isFailed: Bool,
         isTerminalSuccess: Bool,
-        canCancel: Bool,
-        stageLabel: String
+        canCancel: Bool
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 256)
         let stageOff = fbb.create(string: stage)
         let messageOff = message.map { fbb.create(string: $0) } ?? Offset()
-        let labelOff = fbb.create(string: stageLabel)
         let root = nmp_kernel_BunkerHandshake.createBunkerHandshake(
             &fbb,
             stageOffset: stageOff,
@@ -242,8 +241,7 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
             isInFlight: isInFlight,
             isFailed: isFailed,
             isTerminalSuccess: isTerminalSuccess,
-            canCancel: canCancel,
-            stageLabelOffset: labelOff)
+            canCancel: canCancel)
         nmp_kernel_BunkerHandshake.finish(&fbb, end: root)
         return fbb.data
     }

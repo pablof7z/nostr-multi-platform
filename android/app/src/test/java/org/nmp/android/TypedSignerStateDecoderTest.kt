@@ -17,9 +17,9 @@ import org.junit.Test
  *  - absent sidecar → null;
  *  - wrong file identifier → null;
  *  - a hand-crafted KSST buffer decodes to the correct domain fields;
- *  - precomputed statusLabel/statusTone are carried verbatim;
  *  - the isReady flag is set correctly;
- *  - pre-#1099 buffers (no label/tone) derive label/tone from the raw state.
+ *  - #1493 P9: the English label / semantic tone are NOT on the wire — the
+ *    decoder derives them from the raw `state` token (labels-to-shells).
  */
 @OptIn(ExperimentalUnsignedTypes::class)
 class TypedSignerStateDecoderTest {
@@ -55,7 +55,9 @@ class TypedSignerStateDecoderTest {
     }
 
     @Test
-    fun precomputedLabelAndToneAreCarried() {
+    fun labelAndToneAreShellDerivedFromState() {
+        // #1493 P9: the wire carries only the raw `state` token; the decoder is
+        // the shell renderer that derives the English label + semantic tone.
         val out = requireNotNull(TypedSignerStateDecoder.decode(readyBuffer()))
         assertEquals("Connected", out.statusLabel)
         assertEquals("active", out.statusTone)
@@ -69,6 +71,7 @@ class TypedSignerStateDecoderTest {
         assertTrue(out.isAwaitingApproval)
         assertFalse(out.isReady)
         assertEquals("approve in Amber", out.reason)
+        // Shell-derived from `state` (#1493 P9).
         assertEquals("Waiting for approval…", out.statusLabel)
         assertEquals("warning", out.statusTone)
     }
@@ -88,12 +91,11 @@ class TypedSignerStateDecoderTest {
     }
 
     @Test
-    fun preNumberedBufferDerivesLabelAndTone() {
-        // A buffer that predates #1099 carries no status_label/status_tone; the
-        // decoder must derive them from the raw state token (D1 backward compat).
-        val out = requireNotNull(TypedSignerStateDecoder.decode(failedNoLabelBuffer()))
+    fun failedStateDerivesErrorLabelAndTone() {
+        val out = requireNotNull(TypedSignerStateDecoder.decode(failedBuffer()))
         assertEquals("failed", out.state)
         assertTrue(out.isFailed)
+        // Shell-derived from `state` (#1493 P9).
         assertEquals("Connection failed", out.statusLabel)
         assertEquals("error", out.statusTone)
     }
@@ -104,14 +106,10 @@ class TypedSignerStateDecoderTest {
         val b = FlatBufferBuilder(256)
         val signerKind = b.createString("nip46")
         val state = b.createString("ready")
-        val statusLabel = b.createString("Connected")
-        val statusTone = b.createString("active")
         SignerState.startSignerState(b)
         SignerState.addSignerKind(b, signerKind)
         SignerState.addState(b, state)
         SignerState.addIsReady(b, true)
-        SignerState.addStatusLabel(b, statusLabel)
-        SignerState.addStatusTone(b, statusTone)
         val off = SignerState.endSignerState(b)
         SignerState.finishSignerStateBuffer(b, off)
         return b.sizedByteArray()
@@ -122,23 +120,18 @@ class TypedSignerStateDecoderTest {
         val signerKind = b.createString("nip55")
         val state = b.createString("awaiting_approval")
         val reason = b.createString("approve in Amber")
-        val statusLabel = b.createString("Waiting for approval…")
-        val statusTone = b.createString("warning")
         SignerState.startSignerState(b)
         SignerState.addSignerKind(b, signerKind)
         SignerState.addState(b, state)
         SignerState.addHasReason(b, true)
         SignerState.addReason(b, reason)
         SignerState.addIsAwaitingApproval(b, true)
-        SignerState.addStatusLabel(b, statusLabel)
-        SignerState.addStatusTone(b, statusTone)
         val off = SignerState.endSignerState(b)
         SignerState.finishSignerStateBuffer(b, off)
         return b.sizedByteArray()
     }
 
-    /** Pre-#1099 buffer: state + flags but no status_label / status_tone. */
-    private fun failedNoLabelBuffer(): ByteArray {
+    private fun failedBuffer(): ByteArray {
         val b = FlatBufferBuilder(256)
         val signerKind = b.createString("nip46")
         val state = b.createString("failed")

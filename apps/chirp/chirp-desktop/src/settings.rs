@@ -133,12 +133,15 @@ impl DesktopApp {
                 // Live handshake progress from the kernel's typed sidecar.
                 let handshake: Option<BunkerHandshakeStatus> = snap.projection("bunker_handshake");
                 if let Some(ref hs) = handshake {
+                    // #1493 P9: the English stage label is derived in the shell
+                    // from the raw `stage` token (Rust no longer pre-computes it).
+                    let in_flight_label = desktop_stage_label(&hs.stage);
                     let (label, color) = if hs.is_terminal_success {
                         ("Connected!", Color32::from_rgb(74, 222, 128))
                     } else if hs.is_failed {
                         ("Failed", Color32::from_rgb(248, 113, 113))
                     } else if hs.is_in_flight {
-                        (hs.stage_label.as_str(), Color32::from_rgb(249, 115, 22))
+                        (in_flight_label.as_str(), Color32::from_rgb(249, 115, 22))
                     } else {
                         ("Waiting…", Color32::from_rgb(148, 163, 184))
                     };
@@ -160,14 +163,17 @@ impl DesktopApp {
             // Signer state — shown when a remote signer is active (NIP-46/NIP-55).
             let signer: Option<SignerStatus> = snap.projection("signer_state");
             if let Some(ref ss) = signer {
-                let tone_color = match ss.status_tone.as_str() {
+                // #1493 P9: shell derives the label + tone from the raw `state`
+                // token (Rust no longer pre-computes status_label/status_tone).
+                let (status_label, status_tone) = desktop_signer_label_and_tone(&ss.state);
+                let tone_color = match status_tone {
                     "active" => Color32::from_rgb(74, 222, 128),
                     "warning" => Color32::from_rgb(251, 191, 36),
                     "error" => Color32::from_rgb(248, 113, 113),
                     _ => Color32::from_rgb(148, 163, 184),
                 };
                 ui.label(
-                    RichText::new(format!("Signer: {}", ss.status_label))
+                    RichText::new(format!("Signer: {status_label}"))
                         .color(tone_color)
                         .small(),
                 );
@@ -440,5 +446,36 @@ impl DesktopApp {
 
         ui.add_space(8.0);
         ui.label(format!("Snapshot revision: {}", snap.rev));
+    }
+}
+
+// ── Shell-side label derivation (#1493 P9 — labels-to-shells) ────────────────
+//
+// The kernel emits raw `stage` / `state` tokens; the desktop shell renders the
+// English here (mirrors the deleted Rust `stage_label_for` /
+// `signer_state_label_and_tone`, and the iOS/Android shell derivations).
+
+/// English label for a bunker-handshake `stage` token.
+fn desktop_stage_label(stage: &str) -> String {
+    match stage {
+        "idle" => "Idle",
+        "connecting" => "Connecting to bunker relays…",
+        "awaiting_pubkey" => "Awaiting bunker approval…",
+        "ready" => "Connected",
+        "failed" => "Bunker handshake failed",
+        other => other,
+    }
+    .to_string()
+}
+
+/// English label + semantic tone for a signer `state` token.
+fn desktop_signer_label_and_tone(state: &str) -> (&'static str, &'static str) {
+    match state {
+        "ready" | "connected" => ("Connected", "active"),
+        "reconnecting" => ("Reconnecting…", "warning"),
+        "awaiting_approval" => ("Waiting for approval…", "warning"),
+        "unavailable" => ("Signer unavailable", "error"),
+        "failed" => ("Connection failed", "error"),
+        _ => ("Unknown", "inactive"),
     }
 }

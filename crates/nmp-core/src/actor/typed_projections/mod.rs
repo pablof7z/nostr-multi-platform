@@ -94,8 +94,6 @@ pub(crate) fn signer_state_typed(slot: &SignerStateSlot) -> Option<TypedProjecti
         is_reconnecting: dto.is_reconnecting,
         is_unavailable: dto.is_unavailable,
         is_failed: dto.is_failed,
-        status_label: dto.status_label.clone(),
-        status_tone: dto.status_tone.clone(),
     };
     Some(TypedProjectionData {
         key: SIGNER_STATE_SCHEMA_ID.to_string(),
@@ -130,7 +128,6 @@ pub(crate) fn bunker_handshake_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
         is_failed: dto.is_failed,
         is_terminal_success: dto.is_terminal_success,
         can_cancel: dto.can_cancel,
-        stage_label: dto.stage_label,
     };
     Some(TypedProjectionData {
         key: BUNKER_HANDSHAKE_SCHEMA_ID.to_string(),

@@ -321,8 +321,9 @@ private fun AmberSignerCard(
         else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
     }
 
-    // ADR-0032 / #1099: when a session exists, render the Rust-precomputed
-    // `statusLabel` verbatim; the no-session affordance is the only local copy.
+    // #1493 P9: when a session exists, render the shell-derived `statusLabel`
+    // (TypedSignerStateDecoder.deriveStatusLabel from the raw `state` token);
+    // the no-session affordance is the only local copy.
     val subtitleText: String = signerState?.statusLabel?.takeIf { it.isNotEmpty() }
         ?: "Sign in with ${signer.displayName}"
 
@@ -398,9 +399,11 @@ private fun AmberSignerCard(
  *  - `isFailed` → red warning + "Connection failed" (re-auth)
  *
  * The row label is picked from `signerKind` ("Signer relay" for NIP-46,
- * "External signer" for NIP-55). Rust pre-computes every flag (ADR-0032
- * relay_diagnostics pattern); Compose renders verbatim — no string-compare on
- * `signerState.state`.
+ * "External signer" for NIP-55). Rust pre-computes the `is*` flags (ADR-0032
+ * relay_diagnostics pattern), so Compose never string-compares `state` for
+ * control flow. Per #1493 P9 the English `statusLabel`/`statusTone` strings are
+ * shell-derived (TypedSignerStateDecoder) from the raw `state` token, not on the
+ * wire.
  */
 @Composable
 private fun SignerStateRow(
@@ -412,8 +415,9 @@ private fun SignerStateRow(
     val isDegradedTerminal = signerState.isFailed || signerState.isUnavailable
     val isInProgress = signerState.isAwaitingApproval || signerState.isReconnecting
     val rowLabel = if (signerState.signerKind == "nip55") "External signer" else "Signer relay"
-    // ADR-0032 / #1099: bind the Rust-precomputed label verbatim and map the
-    // precomputed tone → colour — no `when` on the raw `state` token remains.
+    // #1493 P9: bind the shell-derived label verbatim and map the shell-derived
+    // tone → colour (both from TypedSignerStateDecoder, off the raw `state`
+    // token) — no `when` on `state` for control flow remains here.
     val statusLabel = signerState.statusLabel
     val statusColor: Color = when (signerState.statusTone) {
         "error" -> MaterialTheme.colorScheme.error

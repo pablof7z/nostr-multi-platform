@@ -19,9 +19,9 @@ import Foundation
 /// too: doctrine §6 anti-pattern #1 + RMP bible commandment #4 — shells
 /// render fields directly instead of switching on the raw `stage` string.
 ///
-/// The flag / label fields are optional so an older kernel build that
-/// predates the doctrine fix still decodes (D1); call sites that fall back
-/// to `stage` are correct (but should migrate once the kernel rebuild lands).
+/// The flag fields are optional so an older kernel build that predates the
+/// doctrine fix still decodes (D1); call sites that fall back to `stage` are
+/// correct (but should migrate once the kernel rebuild lands).
 struct BunkerHandshake: Decodable, Equatable {
     let stage: String
     let message: String?
@@ -37,10 +37,23 @@ struct BunkerHandshake: Decodable, Equatable {
     /// True when the handshake can be cancelled (i.e. mid-flight). Drives
     /// the visibility of the "Cancel handshake" button.
     let canCancel: Bool?
-    /// Pre-formatted English label (e.g. `"Connecting to bunker relays…"`).
-    /// Always non-empty when emitted by a current kernel; legacy kernels
-    /// (pre-projection) leave it `nil` — call sites fall back on `stage`.
-    let stageLabel: String?
+}
+
+extension BunkerHandshake {
+    /// Shell-derived English label for `stage` (#1493 P9 — labels-to-shells,
+    /// mirrors #1568; aim.md:62). The wire carries only the raw `stage` token;
+    /// this presentation table replaces the deleted Rust `stage_label_for`.
+    /// The bunker-handshake row is iOS-only today, so there is no Android peer.
+    var stageLabel: String {
+        switch stage {
+        case "connecting":      return "Connecting to bunker relays…"
+        case "awaiting_pubkey": return "Awaiting bunker approval…"
+        case "ready":           return "Connected"
+        case "failed":          return "Bunker handshake failed"
+        case "idle":            return "Idle"
+        default:                return stage
+        }
+    }
 }
 
 /// Unified remote-signer health — `projections["signer_state"]`.
@@ -58,6 +71,10 @@ struct BunkerHandshake: Decodable, Equatable {
 /// `isAwaitingApproval` drives a "Waiting for Amber…" inline affordance;
 /// `isReconnecting` drives an amber reconnecting badge; `isUnavailable` and
 /// `isFailed` drive a red re-auth prompt.
+///
+/// #1493 P9 (labels-to-shells): the display label + tone are NOT on the wire —
+/// they are derived here from the raw `state` token via `SignerStateTone`, the
+/// authoritative shell renderer (Android peer: `TypedSignerStateDecoder`).
 ///
 /// `Decodable` for the JSON fallback path; `Equatable` for `@Published` diffing
 /// so SwiftUI re-renders only on real state changes.
@@ -79,10 +96,15 @@ struct SignerState: Decodable, Equatable {
     let isUnavailable: Bool
     /// `state == "failed"` — permanent error, session bricked. Prompt re-auth.
     let isFailed: Bool
-    /// Rust-precomputed display label (ADR-0032 / #1099) — rendered verbatim.
-    let statusLabel: String
-    /// Rust-precomputed tone — "active"|"warning"|"error"|"inactive".
-    let statusTone: String
+}
+
+extension SignerState {
+    /// Shell-derived display label for `state` (#1493 P9). Rendered verbatim by
+    /// `SignerStateRow`; mirrors the Android `TypedSignerStateDecoder` table.
+    var statusLabel: String { SignerStateTone.derivedLabel(state) }
+    /// Shell-derived tone for `state` (#1493 P9) — "active"|"warning"|"error"|
+    /// "inactive". Mapped to a `Color` by `SignerStateTone.color(forTone:)`.
+    var statusTone: String { SignerStateTone.derivedTone(state) }
 }
 
 /// NIP-46 onboarding read model — `projections["nip46_onboarding"]`.

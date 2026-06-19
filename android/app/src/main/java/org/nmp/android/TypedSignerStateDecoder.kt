@@ -15,17 +15,20 @@ private const val TAG = "TypedSignerStateDecoder"
  *
  * ADR-0048 D6 (generalises V-14 / #963): unified remote-signer health. Covers
  * BOTH NIP-46 bunker and NIP-55 (Amber) sessions — `signerKind` discriminates.
- * Drives the signer health badge on the sign-in screen. Every flag and the
- * `statusLabel`/`statusTone` strings are Rust-precomputed (ADR-0032 / #1099) so
- * the UI never string-compares the raw `state` token.
+ * Drives the signer health badge on the sign-in screen. The `is*` flags are
+ * Rust-precomputed so the UI never string-compares the raw `state` token for
+ * control flow.
+ *
+ * #1493 P9 (labels-to-shells, mirrors #1568): the wire no longer carries
+ * pre-formatted display strings. This shell owns the English `statusLabel` and
+ * semantic `statusTone` rendering, deriving both from the raw `state` token via
+ * [deriveStatusLabel] / [deriveStatusTone] — Rust emits tokens, the shell
+ * renders the prose (aim.md:62). The iOS peer (`SignerStateTone`) mirrors it.
  *
  * ADR-0037 Commitment 4: typed-FIRST with permanent fallback. Returns `null`
  * when the `KSST` sidecar is absent / wrong schema / unverifiable, so the caller
  * keeps `signerState = null` ("no remote-signer session"). Fail closed (D1/D6)
  * on a malformed buffer.
- *
- * `statusLabel`/`statusTone` are tail-appended (additive). Absent on pre-#1099
- * buffers → derive from the raw `state` token exactly as the Rust path does (D1).
  */
 object TypedSignerStateDecoder {
 
@@ -61,8 +64,8 @@ object TypedSignerStateDecoder {
                 isReconnecting = s.isReconnecting,
                 isUnavailable = s.isUnavailable,
                 isFailed = s.isFailed,
-                statusLabel = s.statusLabel ?: deriveStatusLabel(rawState),
-                statusTone = s.statusTone ?: deriveStatusTone(rawState),
+                statusLabel = deriveStatusLabel(rawState),
+                statusTone = deriveStatusTone(rawState),
             )
         } catch (e: Exception) {
             Log.e(TAG, "KSST decode error: ${e.message} bytes=${bytes.size}")
@@ -70,7 +73,10 @@ object TypedSignerStateDecoder {
         }
     }
 
-    /** Fallback label for pre-#1099 buffers; mirrors Rust `status_label()`. */
+    /**
+     * Shell renderer: the English display label for a raw `state` token
+     * (#1493 P9). Authoritative on Android; mirrors iOS `SignerStateTone`.
+     */
     private fun deriveStatusLabel(state: String): String = when (state) {
         "ready"             -> "Connected"
         "awaiting_approval" -> "Waiting for approval…"
@@ -80,7 +86,10 @@ object TypedSignerStateDecoder {
         else                -> "Unknown"
     }
 
-    /** Fallback tone for pre-#1099 buffers; mirrors Rust `status_tone()`. */
+    /**
+     * Shell renderer: the semantic tone for a raw `state` token (#1493 P9).
+     * Authoritative on Android; mirrors iOS `SignerStateTone`.
+     */
     private fun deriveStatusTone(state: String): String = when (state) {
         "ready"                            -> "active"
         "awaiting_approval", "reconnecting" -> "warning"

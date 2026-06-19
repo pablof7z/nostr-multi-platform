@@ -456,12 +456,11 @@ enum TypedProjectionGlue {
     /// `nmp_kernel_BunkerHandshake`) to the `BunkerHandshake` the JSON
     /// `projections["bunker_handshake"]` path yields. `message` is the only
     /// `Option<String>` (its `has_message` companion → `nil` when absent, byte-
-    /// identical to the JSON `null`). The five flag bools + `stageLabel` are
-    /// always emitted by a current kernel; the domain type declares them
-    /// `Bool?` / `String?` purely for legacy-kernel forward-compat, so the typed
-    /// path always surfaces a non-nil value (the JSON path of a current kernel
-    /// does too — parity). `stage` is a non-optional domain `String` (wire
-    /// `?? ""`).
+    /// identical to the JSON `null`). The five flag bools are always emitted by a
+    /// current kernel; the domain type declares them `Bool?` purely for
+    /// legacy-kernel forward-compat. `stage` is a non-optional domain `String`
+    /// (wire `?? ""`); the English `stageLabel` is shell-derived from it
+    /// (#1493 P9 — no longer on the wire).
     static func bunkerHandshake(_ reader: nmp_kernel_BunkerHandshake) -> BunkerHandshake {
         BunkerHandshake(
             stage: reader.stage ?? "",
@@ -470,30 +469,27 @@ enum TypedProjectionGlue {
             isInFlight: reader.isInFlight,
             isFailed: reader.isFailed,
             isTerminalSuccess: reader.isTerminalSuccess,
-            canCancel: reader.canCancel,
-            stageLabel: reader.stageLabel
+            canCancel: reader.canCancel
         )
     }
 
     // MARK: signer_state → SignerState (ADR-0048 D6, generalises V-14 / #963)
 
     /// Map the typed `signer_state` sidecar to `SignerState`. Rust pre-computes
-    /// every flag plus `statusLabel`/`statusTone` (ADR-0032 / #1099); Swift
-    /// renders verbatim. `reason` uses the `has_reason` companion. Label/tone are
-    /// tail-appended — derive from `state` for older buffers that lack them (D1).
+    /// every flag; Swift renders verbatim. `reason` uses the `has_reason`
+    /// companion. #1493 P9 (labels-to-shells): the display label / tone are NOT
+    /// on the wire — `SignerState.statusLabel` / `.statusTone` derive them from
+    /// the raw `state` token via `SignerStateTone`.
     static func signerState(_ reader: nmp_kernel_SignerState) -> SignerState {
-        let state = reader.state ?? ""
-        return SignerState(
+        SignerState(
             signerKind: reader.signerKind ?? "",
-            state: state,
+            state: reader.state ?? "",
             reason: reader.hasReason ? (reader.reason ?? "") : nil,
             isReady: reader.isReady,
             isAwaitingApproval: reader.isAwaitingApproval,
             isReconnecting: reader.isReconnecting,
             isUnavailable: reader.isUnavailable,
-            isFailed: reader.isFailed,
-            statusLabel: reader.statusLabel ?? SignerStateTone.derivedLabel(state),
-            statusTone: reader.statusTone ?? SignerStateTone.derivedTone(state)
+            isFailed: reader.isFailed
         )
     }
 

@@ -34,7 +34,6 @@ impl<'a> BunkerHandshake<'a> {
   pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 14;
   pub const VT_IS_TERMINAL_SUCCESS: ::flatbuffers::VOffsetT = 16;
   pub const VT_CAN_CANCEL: ::flatbuffers::VOffsetT = 18;
-  pub const VT_STAGE_LABEL: ::flatbuffers::VOffsetT = 20;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -46,7 +45,6 @@ impl<'a> BunkerHandshake<'a> {
     args: &'args BunkerHandshakeArgs<'args>
   ) -> ::flatbuffers::WIPOffset<BunkerHandshake<'bldr>> {
     let mut builder = BunkerHandshakeBuilder::new(_fbb);
-    if let Some(x) = args.stage_label { builder.add_stage_label(x); }
     if let Some(x) = args.message { builder.add_message(x); }
     if let Some(x) = args.stage { builder.add_stage(x); }
     builder.add_can_cancel(args.can_cancel);
@@ -115,13 +113,6 @@ impl<'a> BunkerHandshake<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(BunkerHandshake::VT_CAN_CANCEL, Some(false)).unwrap()}
   }
-  #[inline]
-  pub fn stage_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BunkerHandshake::VT_STAGE_LABEL, None)}
-  }
 }
 
 impl ::flatbuffers::Verifiable for BunkerHandshake<'_> {
@@ -138,7 +129,6 @@ impl ::flatbuffers::Verifiable for BunkerHandshake<'_> {
      .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
      .visit_field::<bool>("is_terminal_success", Self::VT_IS_TERMINAL_SUCCESS, false)?
      .visit_field::<bool>("can_cancel", Self::VT_CAN_CANCEL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("stage_label", Self::VT_STAGE_LABEL, false)?
      .finish();
     Ok(())
   }
@@ -152,7 +142,6 @@ pub struct BunkerHandshakeArgs<'a> {
     pub is_failed: bool,
     pub is_terminal_success: bool,
     pub can_cancel: bool,
-    pub stage_label: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for BunkerHandshakeArgs<'a> {
   #[inline]
@@ -166,7 +155,6 @@ impl<'a> Default for BunkerHandshakeArgs<'a> {
       is_failed: false,
       is_terminal_success: false,
       can_cancel: false,
-      stage_label: None,
     }
   }
 }
@@ -209,10 +197,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BunkerHandshakeBuilder<'a, 'b
     self.fbb_.push_slot::<bool>(BunkerHandshake::VT_CAN_CANCEL, can_cancel, false);
   }
   #[inline]
-  pub fn add_stage_label(&mut self, stage_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BunkerHandshake::VT_STAGE_LABEL, stage_label);
-  }
-  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BunkerHandshakeBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     BunkerHandshakeBuilder {
@@ -238,7 +222,6 @@ impl ::core::fmt::Debug for BunkerHandshake<'_> {
       ds.field("is_failed", &self.is_failed());
       ds.field("is_terminal_success", &self.is_terminal_success());
       ds.field("can_cancel", &self.can_cancel());
-      ds.field("stage_label", &self.stage_label());
       ds.finish()
   }
 }

@@ -15,9 +15,11 @@ import org.junit.Test
  * discriminator, nullable `reason`, and the five bool flags (`is_ready`,
  * `is_awaiting_approval`, `is_reconnecting`, `is_unavailable`, `is_failed`).
  *
- * Android uses the JSON fallback path (no typed FlatBuffers sidecar), so
- * correct deserialization of the `SnapshotProjections.signerState` field is
- * the acceptance criterion.
+ * #1493 P9 (labels-to-shells): the wire carries only the raw `state` token +
+ * flags. The English `statusLabel` / semantic `statusTone` are NOT serialized —
+ * the shell (`TypedSignerStateDecoder`) derives them from `state`. At runtime
+ * the typed FlatBuffers sidecar is authoritative (`KernelUpdateFrameDecoder`);
+ * these tests pin the structural JSON contract of the shared model.
  */
 class SignerStateTest {
 
@@ -228,40 +230,21 @@ class SignerStateTest {
         assertNull(default.reason)
         assertEquals("", default.signerKind)
         assertEquals("", default.state)
-        // ADR-0032 / #1099: precomputed display fields default to empty.
+        // #1493 P9: statusLabel/statusTone are shell-derived presentation, not
+        // on the wire; the data-class default is empty and the typed decoder
+        // (TypedSignerStateDecoder) fills them from `state`.
         assertEquals("", default.statusLabel)
         assertEquals("", default.statusTone)
     }
 
-    // ── Precomputed label/tone contract (ADR-0032 / #1099) ────────────────
+    // ── Shell-derived label/tone are NOT on the wire (#1493 P9) ────────────
 
     @Test
-    fun statusLabelAndToneDecodeVerbatim() {
-        // The Rust producer ships the precomputed display fields; the Android
-        // UI must bind them verbatim without re-deriving from `state`.
-        val raw = """
-            {
-                "signer_kind": "nip46",
-                "state": "reconnecting",
-                "reason": "connection reset by peer",
-                "is_ready": false,
-                "is_awaiting_approval": false,
-                "is_reconnecting": true,
-                "is_unavailable": false,
-                "is_failed": false,
-                "status_label": "Reconnecting…",
-                "status_tone": "warning"
-            }
-        """.trimIndent()
-        val result = json.decodeFromString<SignerState>(raw)
-        assertEquals("Reconnecting…", result.statusLabel)
-        assertEquals("warning", result.statusTone)
-    }
-
-    @Test
-    fun absentLabelAndToneDefaultToEmpty() {
-        // Older kernels (pre-#1099) omit the fields; decode must not fail and
-        // must default to empty so the UI's no-session fallback applies.
+    fun labelAndToneAreNotDeserializedFromJson() {
+        // #1493 P9 (labels-to-shells): the JSON projection no longer carries
+        // status_label/status_tone. Even if a stray buffer did, the model does
+        // not map those keys — they stay empty and are filled by the shell's
+        // TypedSignerStateDecoder from the raw `state` token instead.
         val raw = """
             {
                 "signer_kind": "nip46",
