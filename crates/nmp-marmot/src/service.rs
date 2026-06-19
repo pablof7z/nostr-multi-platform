@@ -19,8 +19,8 @@
 //!   a [`PendingGroupChange`] handle whose [`PendingGroupChange::commit`] /
 //!   [`PendingGroupChange::clear`] make the success/failure branch
 //!   uncircumventable.
-//! - Dual-publish KeyPackages: kind:30443 AND legacy kind:443
-//!   ([`KeyPackagePublication`] exposes both signed events) through 2026-05-31.
+//! - KeyPackages are published as kind:30443 only (legacy kind:443 was retired
+//!   2026-05-31; [`KeyPackagePublication`] carries only `event_30443`).
 //! - Post-join self-update is mandatory per MIP-02 — call
 //!   [`MarmotService::self_update`] after accepting a Welcome.
 //!
@@ -50,10 +50,10 @@ use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, RelayUrl, UnsignedEvent};
 use zeroize::Zeroizing;
 
-// Marmot KeyPackage event kinds — canonical `u32` integers from `nmp-kinds`
-// (via `crate::interest`). `Kind::Custom` wants a `u16`, so the build sites
-// cast at the call; the single source of truth is the registry, not a literal.
-use crate::interest::{KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY};
+// Marmot KeyPackage event kind — canonical `u32` integer from `nmp-kinds`
+// (via `crate::interest`). `Kind::Custom` wants a `u16`, so the build site
+// casts at the call; the single source of truth is the registry, not a literal.
+use crate::interest::KIND_MARMOT_KEY_PACKAGE;
 
 /// Errors surfaced by the service. Wraps `mdk_core::Error` (kept opaque as a
 /// string so the error type does not leak MLS types across a future FFI
@@ -112,15 +112,16 @@ impl From<nmp_nip59::Nip59Error> for MarmotError {
 
 pub type Result<T> = std::result::Result<T, MarmotError>;
 
-/// The signed Nostr events to publish for one KeyPackage publication.
-/// Dual-published (kind:30443 + legacy kind:443) through 2026-05-31. `d_tag`
+/// The signed Nostr event to publish for one KeyPackage publication.
+/// Published exclusively as kind:30443 (NIP-33 addressable). `d_tag`
 /// and `hash_ref` are surfaced for the rotation lifecycle (plan §Step 3).
+///
+/// The legacy kind:443 dual-publish was retired 2026-05-31 per the deadline
+/// in the original MDK spec. Only kind:30443 is published and subscribed.
 #[derive(Debug)]
 pub struct KeyPackagePublication {
     /// Signed kind:30443 event (current spec, NIP-33 addressable).
     pub event_30443: Event,
-    /// Signed legacy kind:443 event (dual-publish through 2026-05-31).
-    pub event_443: Event,
     /// The `d` tag value — store and reuse on rotation for relay replacement.
     pub d_tag: String,
     /// postcard-serialized `KeyPackageRef` bytes for consumption tracking.
@@ -228,12 +229,12 @@ pub struct MarmotService {
     /// Rust-owned copy we can reach, reducing (not eliminating) recoverable
     /// secret material in freed memory. Tracked as V-55 in GitHub issue #971.
     _secret_bytes: Zeroizing<[u8; 32]>,
-    /// `author_pubkey_hex` → most-recent full signed kind:30443/443 event for
-    /// that peer. Populated by the app's raw-event tap when the kernel
-    /// delivers a peer's KeyPackage. Any app using Marmot can populate this
-    /// cache (the tap is a thin per-app kernel bridge); the protocol logic
-    /// (cache lookup in `create_group`/`add_members`) lives here so all
-    /// NMP apps get it for free.
+    /// `author_pubkey_hex` → most-recent full signed kind:30443 event for that
+    /// peer. Populated by the app's raw-event tap when the kernel delivers a
+    /// peer's KeyPackage. Any app using Marmot can populate this cache (the tap
+    /// is a thin per-app kernel bridge); the protocol logic (cache lookup in
+    /// `create_group`/`add_members`) lives here so all NMP apps get it for
+    /// free.
     kp_cache: Mutex<HashMap<String, Event>>,
     /// Cumulative count of `PendingGroupChange` / `CreateGroupPending` handles
     /// that were dropped without being committed or cleared (V-61). Each
@@ -306,9 +307,9 @@ impl MarmotService {
 
     // ── KeyPackage cache (populated by the app's raw-event tap) ─────────────
 
-    /// Cache a peer's full signed kind:30443/443 event by author pubkey.
-    /// Called by the app's raw-event tap when the kernel delivers a peer's
-    /// KeyPackage. Overwrites silently — always keep the newest one received.
+    /// Cache a peer's full signed kind:30443 event by author pubkey. Called by
+    /// the app's raw-event tap when the kernel delivers a peer's KeyPackage.
+    /// Overwrites silently — always keep the newest one received.
     pub fn cache_key_package(&self, event: Event) {
         if let Ok(mut cache) = self.kp_cache.lock() {
             cache.insert(event.pubkey.to_hex(), event);
@@ -339,15 +340,17 @@ impl MarmotService {
             .unwrap_or_default()
     }
 
-    // ── KeyPackage (kind:30443 + legacy 443, author-write outbox) ────────────
+    // ── KeyPackage (kind:30443, author-write outbox) ────────────────────────
 
-    /// Generate a fresh MLS KeyPackage and produce the dual-published signed
-    /// Nostr events (kind:30443 + legacy kind:443). Caller publishes both via
-    /// standard author-write outbox routing (NOT relay-pinned).
+    /// Generate a fresh MLS KeyPackage and produce a signed kind:30443 Nostr
+    /// event. Caller publishes via standard author-write outbox routing (NOT
+    /// relay-pinned).
     ///
     /// `relays` are advertised in the KeyPackage (the owner's write relays).
     /// On rotation, the returned `d_tag` SHOULD be reused so relays replace
     /// the prior kind:30443 event (mdk-api.md §7.4).
+    ///
+    /// Only kind:30443 is published (legacy kind:443 was retired 2026-05-31).
     pub fn publish_key_package(
         &self,
         relays: impl IntoIterator<Item = RelayUrl>,
@@ -355,34 +358,31 @@ impl MarmotService {
         let KeyPackageEventData {
             content,
             tags_30443,
-            tags_443,
             hash_ref,
             d_tag,
+            // tags_443 is provided by mdk_core but no longer used — legacy
+            // kind:443 dual-publish was retired 2026-05-31.
+            ..
         } = self
             .mdk
             .create_key_package_for_event(&self.keys.public_key(), relays)?;
 
         let event_30443 =
-            EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE as u16), content.clone())
+            EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE as u16), content)
                 .tags(tags_30443)
                 .sign_with_keys(&self.keys)
                 .map_err(|e| MarmotError::Nostr(e.to_string()))?;
-        let event_443 = EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE_LEGACY as u16), content)
-            .tags(tags_443)
-            .sign_with_keys(&self.keys)
-            .map_err(|e| MarmotError::Nostr(e.to_string()))?;
 
         Ok(KeyPackagePublication {
             event_30443,
-            event_443,
             d_tag,
             hash_ref,
         })
     }
 
-    /// Validate a peer's KeyPackage Nostr event (kind:30443 or legacy 443)
-    /// parses. MDK parses the embedded KeyPackage internally on
-    /// `create_group`/`add_members`; this is a pre-flight sanity check.
+    /// Validate a peer's kind:30443 KeyPackage Nostr event parses. MDK parses
+    /// the embedded KeyPackage internally on `create_group`/`add_members`; this
+    /// is a pre-flight sanity check.
     #[must_use]
     pub fn validate_peer_key_package(&self, event: &Event) -> Result<()> {
         self.mdk

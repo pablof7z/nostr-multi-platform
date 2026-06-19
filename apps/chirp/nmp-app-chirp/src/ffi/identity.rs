@@ -10,6 +10,13 @@ use nmp_marmot::ffi::{nmp_marmot_register, nmp_marmot_register_active, MarmotHan
 
 use super::helpers::c_string_opt;
 
+/// NUL-terminated service id for the Marmot MLS DB encryption key. Matches
+/// `CHIRP_MARMOT_KEYRING_SERVICE_ID` in `nmp-chirp-config`. Defined as a
+/// `&CStr` literal here so callers never allocate and D6 is trivially
+/// satisfied — a `&'static CStr` cannot fail.
+const CHIRP_MARMOT_SVC_CSTR: &std::ffi::CStr =
+    c"nmp.chirp.marmot";
+
 /// Rust-owned Chirp identity bootstrap: restore a persisted local secret
 /// through the actor-owned session store and register Marmot. `test_nsec`
 /// may be NULL; when non-NULL it signs in that injected secret and registers
@@ -26,9 +33,9 @@ pub extern "C" fn nmp_app_chirp_identity_restore(
     }
     if !test_nsec.is_null() {
         nmp_app_signin_nsec(app, test_nsec, 1);
-        return nmp_marmot_register(app, test_nsec, db_dir);
+        return nmp_marmot_register(app, test_nsec, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr());
     }
-    nmp_marmot_register_active(app, db_dir)
+    nmp_marmot_register_active(app, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
 }
 
 /// Rust-owned nsec sign-in: sign in through the actor-owned identity reducer
@@ -44,7 +51,7 @@ pub extern "C" fn nmp_app_chirp_identity_sign_in_nsec(
         return std::ptr::null_mut();
     }
     nmp_app_signin_nsec(app, secret, 1);
-    nmp_marmot_register(app, secret, db_dir)
+    nmp_marmot_register(app, secret, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
 }
 
 /// Rust-owned removal policy: remove the identity through the kernel actor.

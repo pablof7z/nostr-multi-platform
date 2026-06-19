@@ -13,7 +13,7 @@ use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use super::shared::{EventAccumulator, EventAccumulatorDelta};
-use crate::interest::{KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY};
+use crate::interest::{KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE};
 
 // ─── GroupList ───────────────────────────────────────────────────────────────
 
@@ -49,10 +49,11 @@ impl GroupListView {
     }
     #[must_use] 
     pub fn dependencies(_spec: &GroupListSpec) -> ViewDependencies {
-        // KeyPackage stream (own publications, standard outbox — no pin) is the
-        // structural trigger surface; group membership itself is MDK state.
+        // KeyPackage stream (own kind:30443 publications, standard outbox — no
+        // pin) is the structural trigger surface; group membership itself is
+        // MDK state. Legacy kind:443 was retired 2026-05-31.
         ViewDependencies {
-            kinds: vec![KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY],
+            kinds: vec![KIND_MARMOT_KEY_PACKAGE],
             ..Default::default()
         }
     }
@@ -230,10 +231,11 @@ impl KeyPackageLookupView {
     pub fn key(spec: &KeyPackageLookupSpec) -> String {
         spec.owner_pubkey.clone()
     }
-    #[must_use] 
+    #[must_use]
     pub fn dependencies(spec: &KeyPackageLookupSpec) -> ViewDependencies {
+        // Only kind:30443 — legacy kind:443 retired 2026-05-31.
         ViewDependencies {
-            kinds: vec![KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY],
+            kinds: vec![KIND_MARMOT_KEY_PACKAGE],
             authors: vec![spec.owner_pubkey.clone()],
             ..Default::default()
         }

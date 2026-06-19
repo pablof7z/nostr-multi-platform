@@ -34,6 +34,8 @@ use std::sync::{Mutex, OnceLock};
 
 /// A valid nsec1 key shared with the sibling FFI tests.
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+/// App-scoped Marmot keyring service id for tests (mirrors what a real app supplies).
+const TEST_MARMOT_SVC: &std::ffi::CStr = c"test.marmot.svc";
 
 /// Process-local mock keyring store, keyed by account_id.
 fn keyring_slots() -> &'static Mutex<HashMap<String, String>> {
@@ -124,7 +126,7 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     // `nmp_marmot_register` must consume the flag inside `register_with_keys`.
     // We do NOT read the flag before register (a `take_*` would itself consume
     // it) — the post-register assertion proves it was set AND consumed.
-    let handle = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr());
+    let handle = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
     assert!(
         !handle.is_null(),
         "nmp_marmot_register must succeed with mock keyring + temp dir"
@@ -161,7 +163,7 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
     nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
     let tmp = temp_db_dir("pr4_idempotence");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
-    let h1 = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr());
+    let h1 = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
     assert!(!h1.is_null(), "first register must succeed");
     nmp_marmot_unregister(h1);
 

@@ -1,4 +1,4 @@
-//! Tests for the capability-backed credential store.
+//! Tests for the capability-backed credential store. (updated: keyring_service_id param)
 //!
 //! Split out of `credential_store.rs` (which was over the 500-LOC hard cap)
 //! via `#[cfg(test)] #[path = "credential_store_tests.rs"] mod tests;`. The
@@ -26,6 +26,9 @@ use std::sync::Mutex;
 static GLOBAL_LOCK: Mutex<()> = Mutex::new(());
 
 const VAR: &str = "NMP_MARMOT_MOCK_KEYRING";
+/// App-scoped Marmot keyring service id used by the tests (arbitrary; just
+/// needs to be non-empty so the probe account-id is well-formed).
+const TEST_SVC: &str = "test.marmot.svc";
 
 // In-memory KV store for the mock capability handler.  Shared by all tests
 // that use `mock_keyring_handler`; each test reinitialises it to an empty
@@ -77,7 +80,7 @@ fn initialize_returns_mock_when_env_set() {
     let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var(VAR, "1");
     let slot = new_capability_callback_slot();
-    let result = initialize(slot);
+    let result = initialize(slot, TEST_SVC);
     std::env::remove_var(VAR);
     assert_eq!(
         result,
@@ -322,7 +325,7 @@ fn initialize_with_live_handler_returns_some_false() {
     std::env::remove_var(VAR);
     *MOCK_KV.lock().unwrap_or_else(|e| e.into_inner()) = Some(HashMap::new());
     let slot = registered_slot_with(mock_keyring_handler);
-    let result = initialize(Arc::clone(&slot));
+    let result = initialize(Arc::clone(&slot), TEST_SVC);
     assert_eq!(
         result,
         Some(false),
@@ -337,7 +340,7 @@ fn initialize_with_no_handler_degrades_to_mock() {
     let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::remove_var(VAR);
     let slot = empty_slot();
-    let result = initialize(slot);
+    let result = initialize(slot, TEST_SVC);
     assert_eq!(
         result,
         Some(true),
@@ -352,7 +355,7 @@ fn initialize_with_error_handler_degrades_to_mock() {
     let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::remove_var(VAR);
     let slot = registered_slot_with(error_handler);
-    let result = initialize(slot);
+    let result = initialize(slot, TEST_SVC);
     assert_eq!(
         result,
         Some(true),

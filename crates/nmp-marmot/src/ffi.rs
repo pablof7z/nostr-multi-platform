@@ -5,7 +5,7 @@
 //!   (signer seam: secret key hex/nsec passed directly; DB at
 //!   `<app_support>/marmot-mls-state.sqlite`), register the lossy
 //!   `KernelEvent` metadata observer AND the substrate `IngestParser`
-//!   inbound seam (kinds `[443, 444, 445, 1059, 30443]` via
+//!   inbound seam (kinds `[444, 445, 1059, 30443]` via
 //!   `EventIngestDispatcher::replace_kind_parser` under the `"marmot"` slot),
 //!   AND register the two push projections (`nmp.marmot.snapshot` /
 //!   `nmp.marmot.messages`) onto the snapshot seam. Returns an opaque
@@ -63,7 +63,7 @@
 //! ## Inbound ingest seam — CLOSED
 //!
 //! `nmp_marmot_register` registers per-kind `IngestParser` registrations for
-//! all five Marmot kinds (`[443, 444, 445, 1059, 30443]`) through the
+//! the four active Marmot kinds (`[444, 445, 1059, 30443]`) through the
 //! substrate `EventIngestDispatcher` (slot key `"marmot"`,
 //! `replace_kind_parser` semantics — account-switch re-registration atomically
 //! evicts the previous parser for each kind). The kernel delivers every accepted
@@ -96,10 +96,8 @@ use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
 /// Page size used by the `nmp.marmot.messages` push projection and
 /// [`MarmotHandle::messages_rust`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
-
-/// Keyring coordinates for the production encrypted SQLite DB (lazily created
-/// by `MdkSqliteStorage`; `pub(crate)` for `credential_store`'s probe id).
-pub(crate) const KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
+/// Generic key-id for the MLS SQLite DB encryption key in the keyring.
+/// The service-id (app-scoped namespace) is caller-supplied (D0 #1606).
 pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
 /// Clearable slot for the two Marmot push-projection closures (ADR-0039).
@@ -284,17 +282,27 @@ fn now_secs() -> u64 {
 ///   it (non-Apple platform or Apple platform with no Keychain entitlement).
 ///   In that case `keyring_unavailable = true` is set on the projection so
 ///   the snapshot surfaces the diagnostic to the host.
-pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
+///
+/// `keyring_service_id` — app-owned namespace for the MLS DB encryption key
+/// (D0 #1606: the reusable crate must not embed a Chirp-specific string).
+pub(crate) fn register_with_keys(
+    app: *mut NmpApp,
+    keys: Keys,
+    db_path: &str,
+    keyring_service_id: &str,
+) -> *mut MarmotHandle {
     // Capability slot for the probe (rationale in `credential_store::initialize`).
     // SAFETY: both callers null-check `app` before delegating here.
     let capability_slot = unsafe { &*app }.capability_callback_slot();
-    let Some(use_mock) = crate::credential_store::initialize(capability_slot) else {
+    let Some(use_mock) =
+        crate::credential_store::initialize(capability_slot, keyring_service_id)
+    else {
         return std::ptr::null_mut();
     };
 
     // V-62: `use_mock` is `true` only when `initialize()` chose the mock store
     // (env hatch / probe failure); surfaced as `keyring_unavailable`.
-    let service = match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
+    let service = match MarmotService::new(db_path, keyring_service_id, KEYRING_DB_KEY_ID, keys.clone()) {
         Ok(s) => s,
         Err(e) => {
             // Both the real-keyring path and the already-mock path are hard
@@ -476,10 +484,12 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
 /// * `secret_key_hex` — **signer seam**: the local identity secret as hex
 ///   or `nsec…`. `MarmotService` signs key-package events and gift-wraps
 ///   with this key directly until a kernel `Keys` provider exists. NULL or
-///   unparuseable → null handle.
+///   unparseable → null handle.
 /// * `db_dir` — the app-support directory; the DB is created at
 ///   `<db_dir>/marmot-mls-state.sqlite` (owned by this crate). NULL →
 ///   null handle.
+/// * `keyring_service_id` — app-owned namespace for the MLS DB encryption
+///   key (non-empty; NULL or empty → null handle).
 ///
 /// Returns a non-null `*mut MarmotHandle` on success; `null` on any
 /// failure (D6).
@@ -489,29 +499,42 @@ pub extern "C" fn nmp_marmot_register(
     app: *mut NmpApp,
     secret_key_hex: *const c_char,
     db_dir: *const c_char,
+    keyring_service_id: *const c_char,
 ) -> *mut MarmotHandle {
     if app.is_null() {
         return std::ptr::null_mut();
     }
-    let (Some(sk), Some(dir)) = (c_str_opt(secret_key_hex), c_str_opt(db_dir)) else {
+    let (Some(sk), Some(dir), Some(svc_id)) = (
+        c_str_opt(secret_key_hex),
+        c_str_opt(db_dir),
+        c_str_opt(keyring_service_id),
+    ) else {
         return std::ptr::null_mut();
     };
+    if svc_id.is_empty() {
+        return std::ptr::null_mut();
+    }
     let Ok(keys) = Keys::parse(&sk) else {
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
-    register_with_keys(app, keys, &db_path)
+    register_with_keys(app, keys, &db_path, &svc_id)
 }
 
 /// Register a Marmot projection using the actor-owned active local key.
 /// Swift never sees the secret — the key is read from the slot the actor
 /// writes after every identity mutation. Returns a non-null handle on
-/// success; `null` if no local account is active or `db_dir` is NULL (D6).
+/// success; `null` if no local account is active, `db_dir` is NULL, or
+/// `keyring_service_id` is NULL/empty (D6).
+///
+/// * `keyring_service_id` — app-owned namespace for the MLS DB encryption key;
+///   non-empty (see [`nmp_marmot_register`]).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_marmot_register_active(
     app: *mut NmpApp,
     db_dir: *const c_char,
+    keyring_service_id: *const c_char,
 ) -> *mut MarmotHandle {
     if app.is_null() {
         return std::ptr::null_mut();
@@ -529,12 +552,15 @@ pub extern "C" fn nmp_marmot_register_active(
     let Ok(keys) = Keys::parse(&sk) else {
         return std::ptr::null_mut();
     };
-    let Some(dir) = c_str_opt(db_dir) else {
+    let (Some(dir), Some(svc_id)) = (c_str_opt(db_dir), c_str_opt(keyring_service_id)) else {
         return std::ptr::null_mut();
     };
+    if svc_id.is_empty() {
+        return std::ptr::null_mut();
+    }
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
     // Autopublish is handled in the shared register_with_keys tail.
-    register_with_keys(app, keys, &db_path)
+    register_with_keys(app, keys, &db_path, &svc_id)
 }
 
 /// Drop the observer registration and free the handle. Idempotent: null is

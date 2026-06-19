@@ -65,6 +65,11 @@ import os.log
 
 private let mbLog = Logger(subsystem: "io.f7z.chirp", category: "MarmotBridge")
 
+/// App-scoped keyring service id for the Marmot MLS DB encryption key.
+/// Must match `CHIRP_MARMOT_KEYRING_SERVICE_ID` in `nmp-chirp-config` (D0:
+/// Chirp product policy lives here, not in the reusable nmp-marmot crate).
+private let chirpMarmotKeyringServiceID = "nmp.chirp.marmot"
+
 // Decoded snapshot DTOs (MarmotGroup / …/ MarmotSnapshot / MarmotOpResult)
 // live in MarmotModels.swift (extracted for the 500-LOC file-size cap).
 
@@ -134,7 +139,9 @@ extension KernelHandle {
     func registerActiveMarmotIfAvailable() -> Bool {
         guard marmotHandle == nil, let dir = Self.appSupportDir() else { return false }
         let handle: UnsafeMutableRawPointer? = dir.withCString { dirPtr in
-            nmp_marmot_register_active(raw, dirPtr)
+            chirpMarmotKeyringServiceID.withCString { svcPtr in
+                nmp_marmot_register_active(raw, dirPtr, svcPtr)
+            }
         }
         marmotHandle = handle
         return handle != nil

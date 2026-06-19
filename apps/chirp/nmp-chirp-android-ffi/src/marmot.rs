@@ -78,15 +78,20 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeMarmotUnregister(
 /// any prior handle first. Returns whether a non-null handle is now stored.
 #[cfg(feature = "marmot")]
 fn register_active(s: &Session, db_dir: &std::ffi::CStr) -> bool {
+    use std::ffi::CString;
     use std::sync::atomic::Ordering;
     // Re-register cleanly: tear down a stale handle before installing a fresh
     // one (account switch / re-sign-in), mirroring iOS.
     unregister(s);
+    // The keyring service id is Chirp product policy (D0); it lives in
+    // `nmp-chirp-config` rather than in the reusable `nmp-marmot` crate.
+    let svc = CString::new(nmp_chirp_config::CHIRP_MARMOT_KEYRING_SERVICE_ID)
+        .expect("static ASCII string is valid CStr");
     // `db_dir` is a valid NUL-terminated C string for the duration of this
     // call. The guarded app accessor returns `None` after close/free, making
     // late registration a no-op instead of racing native teardown.
     s.with_app(|app| {
-        let new_handle = nmp_marmot_register_active(app, db_dir.as_ptr());
+        let new_handle = nmp_marmot_register_active(app, db_dir.as_ptr(), svc.as_ptr());
         if new_handle.is_null() {
             return false;
         }

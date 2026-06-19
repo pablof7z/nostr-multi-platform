@@ -68,3 +68,10 @@ pub const CHIRP_NOSTRCONNECT_PERMS: &str = "sign_event:1,sign_event:7";
 pub fn chirp_nostrconnect_perms() -> &'static str {
     CHIRP_NOSTRCONNECT_PERMS
 }
+
+/// App-scoped keyring service id for the Marmot MLS DB encryption key.
+///
+/// Passed to `nmp_marmot_register` / `nmp_marmot_register_active` as the
+/// `keyring_service_id` parameter. Chirp-specific so other Marmot host apps
+/// use their own namespace and never collide with Chirp's stored key (D0).
+pub const CHIRP_MARMOT_KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";

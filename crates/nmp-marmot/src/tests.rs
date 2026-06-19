@@ -41,12 +41,11 @@ fn marmot_full_round_trip_create_giftwrap_join_message() {
     let alice = in_memory_service(alice_keys.clone());
     let bob = in_memory_service(bob_keys.clone());
 
-    // Bob publishes a KeyPackage (dual kind:30443 + 443).
+    // Bob publishes a KeyPackage (kind:30443 only; legacy kind:443 retired).
     let bob_kp = bob
         .publish_key_package(test_relays())
         .expect("bob key package");
     assert_eq!(bob_kp.event_30443.kind, Kind::Custom(30443));
-    assert_eq!(bob_kp.event_443.kind, Kind::Custom(443));
     assert!(!bob_kp.d_tag.is_empty());
     alice
         .validate_peer_key_package(&bob_kp.event_30443)
@@ -524,8 +523,9 @@ fn key_package_cache_round_trips() {
     assert!(listed.contains(&bob.pubkey().to_hex()));
     assert!(!listed.contains(&carol.pubkey().to_hex()));
 
-    // Re-caching the same author overwrites silently (newest wins).
-    alice.service.cache_key_package(bob_kp.event_443.clone());
+    // Re-caching the same author overwrites silently (newest wins; kind:30443
+    // only — event_443 removed 2026-05-31).
+    alice.service.cache_key_package(bob_kp.event_30443.clone());
     assert_eq!(
         alice.service.cached_key_packages(&[bob.pubkey()]).len(),
         1,

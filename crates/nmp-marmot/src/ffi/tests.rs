@@ -54,7 +54,8 @@ fn null_pointer_paths_are_silent() {
     assert!(nmp_marmot_register(
         std::ptr::null_mut(),
         std::ptr::null(),
-        std::ptr::null()
+        std::ptr::null(),
+        std::ptr::null(),
     )
     .is_null());
     nmp_marmot_unregister(std::ptr::null_mut());
@@ -62,7 +63,12 @@ fn null_pointer_paths_are_silent() {
 
 #[test]
 fn register_with_null_app_returns_null() {
-    let h = nmp_marmot_register(std::ptr::null_mut(), std::ptr::null(), std::ptr::null());
+    let h = nmp_marmot_register(
+        std::ptr::null_mut(),
+        std::ptr::null(),
+        std::ptr::null(),
+        std::ptr::null(),
+    );
     assert!(h.is_null());
 }
 
@@ -103,7 +109,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
         })
         .unwrap();
     assert_eq!(r["ok"], json!(true), "publish_key_package: {r}");
-    assert!(r["events"].as_array().unwrap().len() == 2);
+    assert!(r["events"].as_array().unwrap().len() == 1); // kind:443 retired; only kind:30443
 
     // Snapshot now shows key_package.published == true.
     let snap = proj.snapshot(1_000);

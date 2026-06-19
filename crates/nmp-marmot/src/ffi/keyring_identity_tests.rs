@@ -85,6 +85,7 @@ fn nmp_marmot_identity_policy_owns_keyring_store_recall_forget() {
     let _ = crate::identity::sign_in_nsec_with_keyring_account(
         app,
         "test.keyring.acct",
+        "test.marmot.svc",
         TEST_NSEC.to_string(),
         None,
     );

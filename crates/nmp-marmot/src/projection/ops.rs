@@ -11,8 +11,9 @@
 //! [`crate::projection::publish`] (`nmp_ffi::NmpApp::publish_signed_explicit`
 //! against the retained `&NmpApp`) — no Swift relay path. Per-kind routing:
 //! kind:445 → `publish_group_pinned` (group's relay-pinned list; a cache
-//! MISS degrades to author-outbox `Auto`); kind:30443 + kind:443 key-package
-//! → `publish_explicit` (`Auto` / NIP-65 outbox), dual-published; kind:1059
+//! MISS degrades to author-outbox `Auto`); kind:30443 key-package
+//! → `publish_explicit` (`Auto` / NIP-65 outbox; legacy kind:443 retired
+//! 2026-05-31); kind:1059
 //! gift-wrap Welcome → the GROUP's relays as a documented inbox-routing
 //! APPROXIMATION (published verbatim, NIP-59 ephemeral key, never re-signed).
 //! Publish is fire-and-forget (success == "submitted"); the op result's
@@ -22,8 +23,9 @@
 //!
 //! [`ingest_signed_event_core`] is the single path driving a signed inbound
 //! event into `MarmotService` (kind:1059 → `unwrap_and_process_welcome`;
-//! kind:445 → `process_message`; kind:443/30443 → cache KP + retry deferred
-//! ops). Two callers share it: the automatic [`crate::projection::tap`]
+//! kind:445 → `process_message`; kind:30443 → cache KP + retry deferred ops;
+//! legacy kind:443 is no longer ingested). Two callers share it: the
+//! automatic [`crate::projection::tap`]
 //! raw-event observer and the back-compat `{"op":"ingest_signed_event"}`
 //! dispatch op.
 //!
@@ -292,9 +294,8 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 — both go through the kernel publish
-    // pipeline (fire-and-forget, async). The historical synchronous
-    // tungstenite "direct EVENT submit" path used to live here as a
+    // kind:30443 only — legacy kind:443 was retired 2026-05-31. The historical
+    // synchronous tungstenite "direct EVENT submit" path used to live here as a
     // simulator-path verification fallback but it was a D8 violation: it
     // blocked the calling thread (kernel actor / Swift worker) on
     // synchronous TCP + TLS + per-relay 6 s wall-clock waits. The kernel
@@ -303,13 +304,11 @@ fn publish_key_package(
     // ios/, apps/, crates/).
     use nostr::JsonUtil as _;
     h.publish_explicit(&pubn.event_30443, &relays);
-    h.publish_explicit(&pubn.event_443, &relays);
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
         "events": [
             pubn.event_30443.as_json(),
-            pubn.event_443.as_json(),
         ],
     }))
 }
@@ -645,11 +644,12 @@ pub(crate) fn ingest_signed_event_core(
             Ok(_) => Ok(Some(json!({ "kind": 445, "processed": true }))),
             Err(e) => Err(e.to_string()),
         }
-    } else if kind == 30443 || kind == 443 {
-        // KeyPackage: cache the full signed event by author pubkey in the
-        // shared MarmotService cache (protocol logic, not Chirp-specific).
-        // Any NMP app's tap can call this; create_group/add_members use it
-        // as a fallback when the caller supplies no explicit kp_events.
+    } else if kind == 30443 {
+        // kind:30443 KeyPackage: cache the full signed event by author pubkey in
+        // the shared MarmotService cache (protocol logic, not Chirp-specific).
+        // Any NMP app's tap can call this; create_group/add_members use it as
+        // a fallback when the caller supplies no explicit kp_events.
+        // (Legacy kind:443 was retired 2026-05-31 and is no longer ingested.)
         let pubkey_hex = event.pubkey.to_hex();
         h.service().cache_key_package(event.clone());
         // After caching, re-run any pending ops unblocked by this KP and age
@@ -684,7 +684,7 @@ fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, Stri
     match ingest_signed_event_core(h, &event, now_secs)? {
         Some(payload) => Ok(payload),
         None => Err(format!(
-            "ingest_signed_event: unsupported kind {} (expect 445 or 1059)",
+            "ingest_signed_event: unsupported kind {} (expect 30443, 445, or 1059)",
             event.kind.as_u16()
         )),
     }

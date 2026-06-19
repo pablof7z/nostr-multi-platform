@@ -637,19 +637,24 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 // on every SnapshotFrame — no per-tick pull needed (D8: no polling).
 //
 // Remaining lifecycle symbols:
-// 1. `nmp_marmot_register(app, secret_key_hex, db_dir)` once the local
-//    identity secret is known. Registers the Marmot observer AND the two
-//    push projections. Returns an opaque handle, or NULL on any failure (D6).
-// 2. `nmp_marmot_register_active(app, db_dir)` — same, but reads the key
-//    from the actor's active local-key slot (no nsec exposed to Swift).
+// 1. `nmp_marmot_register(app, secret_key_hex, db_dir, keyring_service_id)` once
+//    the local identity secret is known. Registers the Marmot observer AND the
+//    two push projections. `keyring_service_id` is the app-scoped keyring
+//    namespace for the Marmot MLS DB encryption key (e.g. "com.example.marmot").
+//    Returns an opaque handle, or NULL on any failure (D6).
+// 2. `nmp_marmot_register_active(app, db_dir, keyring_service_id)` — same, but
+//    reads the nsec from the actor's active local-key slot (no nsec exposed to
+//    Swift).
 // 3. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`.
 //    Results arrive through the next push snapshot frame.
 // 4. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
-void *nmp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
+void *nmp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir, const char *keyring_service_id);
 /// Register using the actor-owned key — Swift never sees the nsec. Reads
 /// the active local key from the slot the actor writes after identity
-/// mutations. Returns NULL if no local account is active (D6).
-void *nmp_marmot_register_active(void *app, const char *db_dir);
+/// mutations. `keyring_service_id` is the app-scoped keyring namespace for
+/// the Marmot MLS DB encryption key. Returns NULL if no local account is
+/// active or service id is empty (D6).
+void *nmp_marmot_register_active(void *app, const char *db_dir, const char *keyring_service_id);
 /// Rust-owned Chirp identity bootstrap: restore a persisted local secret
 /// through the native keyring capability, sign in through the kernel actor,
 /// and register Marmot. `test_nsec` may be NULL; when non-NULL it overrides
