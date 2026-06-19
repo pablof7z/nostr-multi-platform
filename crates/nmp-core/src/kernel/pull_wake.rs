@@ -13,6 +13,16 @@
 //! The batch is encoded standalone (`finish_minimal`, no file identifier — the
 //! single `NMPU` identifier belongs to `UpdateFrame`), so the payload bytes are
 //! a bare finished `PullWakeBatch` ready for [`decode_pull_wake_batch`].
+//!
+//! ## Host decoder scope (step 3b ships the producer + bindings, not host glue)
+//!
+//! Step 3b lands the Rust emit, the `PullWake`/`PullWakeBatch` schema, and the
+//! regenerated Swift/Kotlin/TS table accessors. It deliberately does NOT add
+//! per-host typed-decoder glue (Swift `TypedProjectionDecoders`, Android frame
+//! decoder, TS update-frame path), because **no host consumes `nmp.pull.wake`
+//! yet** — the first consumers are the `hl` mirror (step 5) and `load_older`
+//! (step 6). Wiring a decoder for a consumer that does not exist would be
+//! speculative (D5); the host decoder lands with its first consumer.
 
 use flatbuffers::FlatBufferBuilder;
 

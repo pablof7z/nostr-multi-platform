@@ -77,6 +77,11 @@ pub mod error {
     pub const STORE_ERROR: u32 = 6;
     /// The cursor limits were logically invalid (`PullError::InvalidLimits`).
     pub const INVALID_LIMITS: u32 = 7;
+    /// A panic was caught at the C-ABI boundary (never unwinds across FFI).
+    pub const PANIC: u32 = 8;
+    /// The first entry's raw event alone exceeds the raw-byte cap, so the page
+    /// cannot be represented within the promised bound (D5: hard cap).
+    pub const RAW_TOO_LARGE: u32 = 9;
 }
 
 /// op_tag wire values.
@@ -130,6 +135,20 @@ impl NmpOwnedBytes {
 /// — never a panic or null deref (D6).
 #[no_mangle]
 pub extern "C" fn nmp_app_pull_page(
+    app: *const NmpApp,
+    cursor_id: u64,
+    max_entries: u32,
+    max_total_raw_bytes: u32,
+) -> NmpOwnedBytes {
+    // A panic must NEVER unwind across the C-ABI (UB). Catch it and return a
+    // serialized `Error::PANIC` instead (matches the FFI pattern in lib.rs).
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        pull_page_impl(app, cursor_id, max_entries, max_total_raw_bytes)
+    }))
+    .unwrap_or_else(|_| NmpOwnedBytes::error(error::PANIC))
+}
+
+fn pull_page_impl(
     app: *const NmpApp,
     cursor_id: u64,
     max_entries: u32,
@@ -197,16 +216,18 @@ pub extern "C" fn nmp_app_pull_page(
 
     // ── Step 4: encode AFTER the store transaction has ended. ────────────────
     let raw_byte_cap = max_total_raw_bytes.min(MAX_PULL_PAGE_RAW_BYTES) as usize;
-    let bytes = match result {
-        Ok(ScanLogResult::Page(page)) => encode_page(page, raw_byte_cap),
-        Ok(ScanLogResult::Gap(gap)) => encode_gap(gap.requested_after_seq, gap.first_available_seq),
-        Err(PullError::UnsupportedInterestShape) => {
-            return NmpOwnedBytes::error(error::UNSUPPORTED_SCOPE)
+    match result {
+        Ok(ScanLogResult::Page(page)) => match encode_page(page, raw_byte_cap) {
+            Ok(bytes) => NmpOwnedBytes::from_vec(bytes),
+            Err(code) => NmpOwnedBytes::error(code),
+        },
+        Ok(ScanLogResult::Gap(gap)) => {
+            NmpOwnedBytes::from_vec(encode_gap(gap.requested_after_seq, gap.first_available_seq))
         }
-        Err(PullError::InvalidLimits) => return NmpOwnedBytes::error(error::INVALID_LIMITS),
-        Err(PullError::Store(_)) => return NmpOwnedBytes::error(error::STORE_ERROR),
-    };
-    NmpOwnedBytes::from_vec(bytes)
+        Err(PullError::UnsupportedInterestShape) => NmpOwnedBytes::error(error::UNSUPPORTED_SCOPE),
+        Err(PullError::InvalidLimits) => NmpOwnedBytes::error(error::INVALID_LIMITS),
+        Err(PullError::Store(_)) => NmpOwnedBytes::error(error::STORE_ERROR),
+    }
 }
 
 /// Release a buffer returned by [`nmp_app_pull_page`].
@@ -253,28 +274,39 @@ fn encode_gap(requested_after_seq: u64, first_available_seq: u64) -> Vec<u8> {
     buf
 }
 
-/// Encode a `PullPage`, enforcing the cumulative raw-byte budget. At least one
-/// entry is always kept (so an oversized single event still makes progress);
-/// truncation rewrites `next_after_seq` to the last kept entry's seq and
-/// recomputes `has_more`.
-fn encode_page(page: nmp_core::store::PullPage, raw_byte_cap: usize) -> Vec<u8> {
+/// Encode a `PullPage`, enforcing the cumulative raw-byte budget as a HARD cap.
+///
+/// Each raw event is serialized exactly ONCE (staged for re-use by
+/// `encode_entry`). Subsequent rows that would push the cumulative raw bytes
+/// past `raw_byte_cap` are dropped (`next_after_seq` rewinds to the last kept
+/// seq so they redeliver next call). If the FIRST row's raw event alone exceeds
+/// the cap it cannot be represented within the promised bound, so this returns
+/// `Err(error::RAW_TOO_LARGE)` rather than silently overshooting (D5).
+fn encode_page(
+    page: nmp_core::store::PullPage,
+    raw_byte_cap: usize,
+) -> Result<Vec<u8>, u32> {
     let latest_seq = page.latest_seq;
     let store_next_after_seq = page.next_after_seq;
     let original_count = page.entries.len();
 
-    let mut kept: Vec<StoreLogEntry> = Vec::new();
+    // Stage (entry, pre-serialized raw json) so the raw is serialized once.
+    let mut kept: Vec<(StoreLogEntry, Option<Vec<u8>>)> = Vec::new();
     let mut raw_total: usize = 0;
     for entry in page.entries {
-        let raw_len = entry
-            .raw_event
-            .as_ref()
-            .and_then(|r| serde_json::to_vec(r).ok())
-            .map_or(0, |j| j.len());
-        if !kept.is_empty() && raw_total.saturating_add(raw_len) > raw_byte_cap {
+        let json = entry.raw_event.as_ref().and_then(|r| serde_json::to_vec(r).ok());
+        let raw_len = json.as_ref().map_or(0, Vec::len);
+        if kept.is_empty() {
+            // First row: a raw event that alone overflows the cap cannot fit ⇒
+            // explicit hard-cap error, never silently exceed the bound.
+            if raw_len > raw_byte_cap {
+                return Err(error::RAW_TOO_LARGE);
+            }
+        } else if raw_total.saturating_add(raw_len) > raw_byte_cap {
             break;
         }
         raw_total = raw_total.saturating_add(raw_len);
-        kept.push(entry);
+        kept.push((entry, json));
     }
 
     // Truncated by the byte budget ⇒ rewind the cursor to the last kept seq so
@@ -282,7 +314,7 @@ fn encode_page(page: nmp_core::store::PullPage, raw_byte_cap: usize) -> Vec<u8> 
     // cursor stands (it already reflects the full page).
     let truncated = kept.len() < original_count;
     let next_after_seq = if truncated {
-        kept.last().map_or(store_next_after_seq, |e| e.seq)
+        kept.last().map_or(store_next_after_seq, |(e, _)| e.seq)
     } else {
         store_next_after_seq
     };
@@ -295,13 +327,13 @@ fn encode_page(page: nmp_core::store::PullPage, raw_byte_cap: usize) -> Vec<u8> 
     buf.push(u8::from(has_more));
     #[allow(clippy::cast_possible_truncation)]
     buf.extend_from_slice(&(kept.len() as u32).to_le_bytes());
-    for entry in &kept {
-        encode_entry(&mut buf, entry);
+    for (entry, json) in &kept {
+        encode_entry(&mut buf, entry, json.as_deref());
     }
-    buf
+    Ok(buf)
 }
 
-fn encode_entry(buf: &mut Vec<u8>, entry: &StoreLogEntry) {
+fn encode_entry(buf: &mut Vec<u8>, entry: &StoreLogEntry, raw_json: Option<&[u8]>) {
     buf.extend_from_slice(&entry.seq.to_le_bytes());
     match &entry.op {
         LogOp::Inserted => buf.push(op::INSERTED),
@@ -316,10 +348,10 @@ fn encode_entry(buf: &mut Vec<u8>, entry: &StoreLogEntry) {
         }
     }
     put_hex32(buf, &entry.event_id);
-    match entry.raw_event.as_ref().and_then(|r| serde_json::to_vec(r).ok()) {
+    match raw_json {
         Some(json) => {
             buf.push(1);
-            put_lp(buf, &json);
+            put_lp(buf, json);
         }
         None => buf.push(0),
     }

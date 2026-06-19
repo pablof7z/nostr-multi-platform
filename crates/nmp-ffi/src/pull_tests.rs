@@ -295,3 +295,31 @@ fn gap_and_error_encode_as_distinct_variants() {
     }
     nmp_free_bytes(err);
 }
+
+/// Hard cap: a first row whose raw event alone exceeds the byte cap cannot be
+/// represented within the promised bound, so `encode_page` returns
+/// `RAW_TOO_LARGE` rather than silently overshooting.
+#[test]
+fn first_row_raw_over_cap_is_hard_error() {
+    use nmp_core::store::{LogOp, PullPage, RawEvent, StoreLogEntry};
+    let big_raw = RawEvent {
+        id: "aa".repeat(32),
+        pubkey: "bb".repeat(32),
+        created_at: 1_700_000_000,
+        kind: 1,
+        tags: vec![],
+        content: "x".repeat(5_000),
+        sig: "cc".repeat(64),
+    };
+    let entry = StoreLogEntry {
+        seq: 1,
+        op: LogOp::Inserted,
+        event_id: [0u8; 32],
+        raw_event: Some(big_raw),
+        source_relay: None,
+        received_at_ms: 0,
+    };
+    let page = PullPage { entries: vec![entry], next_after_seq: 1, latest_seq: 1, has_more: false };
+    // Cap of 100 bytes is far below the ~5 KiB serialized raw ⇒ hard error.
+    assert_eq!(super::encode_page(page, 100), Err(super::error::RAW_TOO_LARGE));
+}
