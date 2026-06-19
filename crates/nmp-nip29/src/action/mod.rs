@@ -12,11 +12,13 @@
 //! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
+//! - `admin` — `PutUser` (kind:9000) and `CreateInvite` (kind:9009).
 //!
-//! NIP-29 ships its public group creation, relay-group chat surface,
-//! discovery, and join in v1. The remaining 9000-9009 admin actions stay
-//! out of scope for this milestone — Marmot MLS covers private groups.
+//! NIP-29 ships public group creation, relay-group chat, discovery, join, and
+//! the ADR-0060 admin subset (`9000` / `9009`) in v1. The other moderation
+//! actions remain out of this increment.
 
+mod admin;
 mod composed;
 mod content;
 mod create;
@@ -24,6 +26,9 @@ mod discover;
 mod join;
 mod publish_plan;
 
+pub use admin::{
+    CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
+};
 pub use composed::{ReactInGroupAction, ReactInGroupInput};
 pub use content::{PostChatMessageAction, PostChatMessageInput};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput};

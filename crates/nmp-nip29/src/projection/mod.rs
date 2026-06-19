@@ -14,13 +14,17 @@
 //!   the public-group create flow (the suggested relay URL, #626). Output-only:
 //!   not a `KernelEventObserver` — its snapshot is a pure function of a
 //!   crate-owned constant.
+//! - [`joined`] — [`JoinedGroupsProjection`]: active-account membership/admin
+//!   status derived from relay-signed 39001/39002 snapshots.
 
 pub mod discovered;
 pub mod group_chat;
 pub mod group_defaults;
+pub mod joined;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
 pub use group_chat::{GroupChatMessage, GroupChatProjection, GroupChatSnapshot};
 pub use group_defaults::{
     GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
+pub use joined::{JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot};
