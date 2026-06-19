@@ -25,7 +25,7 @@
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
 //! - [`projection`] — `GroupChatProjection`: the read-side of a group-chat
-//!   screen (a `KernelEventObserver` projecting kind 9/11 events).
+//!   screen, plus raw group-event projections for reusable `h`-tag mechanics.
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
@@ -50,7 +50,8 @@ pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindC
 pub use projection::{
     DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupChatMessage,
     GroupChatProjection, GroupChatSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
-    JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
+    GroupEventRow, GroupEventsProjection, GroupEventsSnapshot, JoinedGroup, JoinedGroupsProjection,
+    JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use register::register_actions;
 pub use wire::discovered_groups_fb::{
@@ -65,6 +66,10 @@ pub use wire::group_chat_fb::{
 pub use wire::group_defaults_fb::{
     decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,
     GROUP_DEFAULTS_SCHEMA_ID, GROUP_DEFAULTS_SCHEMA_VERSION,
+};
+pub use wire::group_events_fb::{
+    decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,
+    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION,
 };
 pub use wire::joined_groups_fb::{
     decode_joined_groups_snapshot, encode_joined_groups_snapshot, JOINED_GROUPS_FILE_IDENTIFIER,

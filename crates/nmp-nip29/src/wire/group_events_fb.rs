@@ -1,0 +1,183 @@
+//! Typed FlatBuffers wire codec for [`crate::projection::GroupEventsSnapshot`].
+
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/group_events_generated.rs"]
+pub mod generated;
+
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use generated::nmp::nip_29 as fb;
+
+use crate::projection::{GroupEventRow, GroupEventsSnapshot};
+
+pub const GROUP_EVENTS_SCHEMA_ID: &str = "nmp.nip29.group_events";
+pub const GROUP_EVENTS_FILE_IDENTIFIER: &[u8; 4] = b"NGES";
+pub const GROUP_EVENTS_SCHEMA_VERSION: u32 = 1;
+
+#[must_use]
+pub fn encode_group_events_snapshot(snapshot: &GroupEventsSnapshot) -> Vec<u8> {
+    let mut fbb = FlatBufferBuilder::new();
+
+    let event_offsets: Vec<WIPOffset<fb::GroupEventRow<'_>>> = snapshot
+        .events
+        .iter()
+        .map(|event| encode_event(&mut fbb, event))
+        .collect();
+    let events = fbb.create_vector(&event_offsets);
+    let group_id = fbb.create_string(&snapshot.group_id);
+    let host_relay_url = fbb.create_string(&snapshot.host_relay_url);
+
+    let root = fb::GroupEventsSnapshot::create(
+        &mut fbb,
+        &fb::GroupEventsSnapshotArgs {
+            schema_version: GROUP_EVENTS_SCHEMA_VERSION,
+            group_id: Some(group_id),
+            host_relay_url: Some(host_relay_url),
+            events: Some(events),
+        },
+    );
+    fb::finish_group_events_snapshot_buffer(&mut fbb, root);
+    fbb.finished_data().to_vec()
+}
+
+fn encode_event<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    event: &GroupEventRow,
+) -> WIPOffset<fb::GroupEventRow<'a>> {
+    let id = fbb.create_string(&event.id);
+    let pubkey = fbb.create_string(&event.pubkey);
+    let content = fbb.create_string(&event.content);
+    let tag_offsets: Vec<WIPOffset<fb::RawTag<'_>>> =
+        event.tags.iter().map(|tag| encode_tag(fbb, tag)).collect();
+    let tags = fbb.create_vector(&tag_offsets);
+    let provenance_offsets: Vec<WIPOffset<&str>> = event
+        .relay_provenance
+        .iter()
+        .map(|relay| fbb.create_string(relay))
+        .collect();
+    let relay_provenance = fbb.create_vector(&provenance_offsets);
+
+    fb::GroupEventRow::create(
+        fbb,
+        &fb::GroupEventRowArgs {
+            id: Some(id),
+            pubkey: Some(pubkey),
+            content: Some(content),
+            created_at: event.created_at,
+            kind: event.kind,
+            tags: Some(tags),
+            relay_provenance: Some(relay_provenance),
+        },
+    )
+}
+
+fn encode_tag<'a>(fbb: &mut FlatBufferBuilder<'a>, tag: &[String]) -> WIPOffset<fb::RawTag<'a>> {
+    let value_offsets: Vec<WIPOffset<&str>> =
+        tag.iter().map(|value| fbb.create_string(value)).collect();
+    let values = fbb.create_vector(&value_offsets);
+    fb::RawTag::create(
+        fbb,
+        &fb::RawTagArgs {
+            values: Some(values),
+        },
+    )
+}
+
+pub fn decode_group_events_snapshot(bytes: &[u8]) -> Result<GroupEventsSnapshot, String> {
+    if bytes.len() < 8 || !fb::group_events_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NGES file identifier".to_string());
+    }
+    let root = fb::root_as_group_events_snapshot(bytes)
+        .map_err(|e| format!("not a valid GroupEventsSnapshot buffer: {e}"))?;
+
+    let group_id = str_field(root.group_id(), "GroupEventsSnapshot.group_id")?;
+    let host_relay_url = str_field(root.host_relay_url(), "GroupEventsSnapshot.host_relay_url")?;
+    let mut events = Vec::new();
+    if let Some(fb_events) = root.events() {
+        events.reserve(fb_events.len());
+        for fb_event in fb_events.iter() {
+            events.push(decode_event(fb_event)?);
+        }
+    }
+
+    Ok(GroupEventsSnapshot {
+        group_id,
+        host_relay_url,
+        events,
+    })
+}
+
+fn decode_event(event: fb::GroupEventRow<'_>) -> Result<GroupEventRow, String> {
+    Ok(GroupEventRow {
+        id: str_field(event.id(), "GroupEventRow.id")?,
+        pubkey: str_field(event.pubkey(), "GroupEventRow.pubkey")?,
+        content: str_field(event.content(), "GroupEventRow.content")?,
+        created_at: event.created_at(),
+        kind: event.kind(),
+        tags: decode_tags(event.tags()),
+        relay_provenance: decode_strings(event.relay_provenance()),
+    })
+}
+
+fn decode_tags(
+    tags: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fb::RawTag<'_>>>>,
+) -> Vec<Vec<String>> {
+    let Some(tags) = tags else {
+        return Vec::new();
+    };
+    tags.iter()
+        .map(|tag| decode_strings(tag.values()))
+        .collect()
+}
+
+fn decode_strings(
+    strings: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>,
+) -> Vec<String> {
+    let Some(strings) = strings else {
+        return Vec::new();
+    };
+    strings.iter().map(str::to_string).collect()
+}
+
+fn str_field(value: Option<&str>, ctx: &str) -> Result<String, String> {
+    value
+        .map(str::to_string)
+        .ok_or_else(|| format!("{ctx}: missing required string field"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_events_round_trips() {
+        let snapshot = GroupEventsSnapshot {
+            group_id: "room".into(),
+            host_relay_url: "wss://groups.example.com".into(),
+            events: vec![GroupEventRow {
+                id: "e1".into(),
+                pubkey: "p1".into(),
+                content: "hello".into(),
+                created_at: 100,
+                kind: 16,
+                tags: vec![
+                    vec!["h".into(), "room".into()],
+                    vec!["e".into(), "target".into()],
+                ],
+                relay_provenance: vec!["wss://groups.example.com".into()],
+            }],
+        };
+
+        let bytes = encode_group_events_snapshot(&snapshot);
+        let decoded = decode_group_events_snapshot(&bytes).expect("NGES decodes");
+        assert_eq!(decoded, snapshot);
+    }
+}
