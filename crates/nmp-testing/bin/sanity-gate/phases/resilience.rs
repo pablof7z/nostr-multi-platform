@@ -19,7 +19,10 @@
 //! existing `idle_soak` detector and is referenced as a finding here — it needs
 //! the OS sidecar's per-thread sampler, so it is not re-measured in-process.
 
+use std::collections::HashSet;
 use std::time::Duration;
+
+use nostr::{EventBuilder, JsonUtil, Keys, Timestamp, ToBech32};
 
 use crate::config::{Args, Phase};
 use crate::driver::DrivenApp;
@@ -27,6 +30,9 @@ use crate::report::{GateRow, SanityReport, Verdict};
 
 /// A relay URL guaranteed to refuse connection (no listener on port 1).
 const DEAD_RELAY: &str = "ws://127.0.0.1:1";
+
+/// How many self-authored notes the render-from-store oracle seeds.
+const SEED_NOTES: u64 = 20;
 
 pub fn run_resilience(report: &mut SanityReport, args: &Args) {
     let phase = Phase::Resilience.as_str();
@@ -42,10 +48,20 @@ pub fn run_resilience(report: &mut SanityReport, args: &Args) {
     );
 }
 
-/// RENDER-FROM-STORE: a dead relay must not wedge the actor.
+/// RENDER-FROM-STORE: against a DEAD relay, a known locally-seeded item must be
+/// readable from the STORE (rendered from local state, not the wire), AND the
+/// actor must stay live. The prior version only proved frame/actor LIVENESS — it
+/// never seeded a store item, so it did not actually prove "renders from a
+/// populated store". Fix: sign in as a known key, inject a self-authored corpus
+/// while the only relay is dead, then assert every seeded id is store-readable
+/// via `nmp_app_read_author_event_ids` WHILE the relay is down.
 fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
     let dead = DEAD_RELAY.to_string();
-    let app = DrivenApp::launch(None, None, std::slice::from_ref(&dead));
+    // Known key so we can read our own seeded events back out of the store.
+    let keys = Keys::generate();
+    let nsec = keys.secret_key().to_bech32().unwrap_or_default();
+    let pubkey_hex = keys.public_key().to_hex();
+    let app = DrivenApp::launch(Some(&nsec), Some(&pubkey_hex), std::slice::from_ref(&dead));
     // Prove the actor came up at all.
     if app
         .wait_until(Duration::from_secs(10), |s| !s.records.is_empty())
@@ -62,27 +78,86 @@ fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
         ));
         return;
     }
-    let before = app.with_state(|s| s.records.len());
-    std::thread::sleep(Duration::from_secs(3));
-    let after = app.with_state(|s| s.records.len());
-    let alive = app.is_alive();
 
-    // Frames must keep flowing (renders from store, not wedged on the wire).
-    report.push(
-        GateRow::min(
+    // Seed a known corpus while the only configured relay is dead. These events
+    // never touch the wire — they go straight to the store via the inject seam.
+    let base = crate::report::now_unix();
+    let seed_ids: HashSet<String> = (0..SEED_NOTES)
+        .filter_map(|i| {
+            let ev: nostr::Event = EventBuilder::text_note(format!("render-from-store seed {i}"))
+                .custom_created_at(Timestamp::from(base + i))
+                .sign_with_keys(&keys)
+                .ok()?;
+            let id = ev.id.to_hex();
+            let c = std::ffi::CString::new(ev.as_json()).ok()?;
+            nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr()).then_some(id)
+        })
+        .collect();
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Read the seeded items back from the STORE while the relay is still dead.
+    let stored_ids: HashSet<String> = {
+        let pk = std::ffi::CString::new(pubkey_hex.as_str()).ok();
+        let ptr = pk.map(|pk| nmp_ffi::nmp_app_read_author_event_ids(app.raw(), pk.as_ptr(), 0));
+        match ptr {
+            Some(ptr) if !ptr.is_null() => {
+                let parsed = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                    .to_str()
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+                nmp_ffi::nmp_free_string(ptr);
+                parsed
+                    .and_then(|v| {
+                        v.as_array().map(|arr| {
+                            arr.iter()
+                                .filter_map(|o| o["id"].as_str().map(str::to_owned))
+                                .collect()
+                        })
+                    })
+                    .unwrap_or_default()
+            }
+            _ => HashSet::new(),
+        }
+    };
+    let alive = app.is_alive();
+    let missing = seed_ids.iter().filter(|id| !stored_ids.contains(*id)).count();
+
+    if seed_ids.is_empty() {
+        // No seed accepted — without a populated store the render assertion
+        // would be vacuous. SKIP LOUD rather than pass on an empty store.
+        report.push(GateRow::unmeasured(
             "resilience-render-from-store",
             phase,
-            "decode_snapshot_envelope (frame count over 3s) + nmp_app_is_alive",
-            "frame-count delta against a dead relay",
-            (after.saturating_sub(before)) as f64,
-            1.0,
-            "frames",
-        )
-        .with_note(&format!(
-            "dead relay {DEAD_RELAY}: frames {before}→{after} (actor renders from store, \
-             not wedged on the wire); actor_alive={alive}"
-        )),
-    );
+            "nmp_app_inject_signed_event_json + nmp_app_read_author_event_ids (dead relay)",
+            "seeded ids readable from the store while the relay is dead",
+            "all seeded ids store-readable",
+            Verdict::SkipRelayMiss,
+            "no seed event was accepted into the store — cannot assert render-from-store this \
+             run (SKIP LOUD, never a vacuous pass)",
+        ));
+    } else {
+        // Every seeded id must be store-readable WHILE the relay is dead: the
+        // app serves it from the populated store, not the wire.
+        report.push(
+            GateRow::max(
+                "resilience-render-from-store",
+                phase,
+                "nmp_app_read_author_event_ids (dead relay)",
+                "seeded ids missing from the store while the relay is dead",
+                missing as f64,
+                0.0,
+                "missing-seeded-ids",
+            )
+            .with_note(&format!(
+                "dead relay {DEAD_RELAY}: seeded {} self-authored notes off-wire; {} store-readable, \
+                 {missing} missing — the populated store renders the seeded items with NO live \
+                 relay; actor_alive={alive}",
+                seed_ids.len(),
+                stored_ids.len(),
+            )),
+        );
+    }
+
     // The actor thread must survive a dead-relay connect (no panic/wedge).
     report.push(GateRow::min(
         "resilience-actor-survives-dead-relay",
@@ -169,28 +244,60 @@ fn outbox_routing(report: &mut SanityReport, phase: &str, args: &Args) {
         .and_then(|s| s.as_array())
         .cloned()
         .unwrap_or_default();
-    let routed = subs
-        .iter()
-        .filter(|s| {
-            s.get("urls")
-                .and_then(|u| u.as_array())
-                .map(|a| !a.is_empty())
-                .unwrap_or(false)
-        })
-        .count();
+    // Also inspect publishes[] — the publish (write) path attributes
+    // `Nip65 { direction: Write }`, while the subscription (read) path
+    // attributes `Nip65 { direction: Read }` (author mailbox read-set). The
+    // prior gate only checked `urls` non-empty, which passes via an AppRelay
+    // FALLBACK or a user-configured relay — NOT actual NIP-65 outbox routing.
+    // Fix: require at least one `urls[].lanes[]` whose `kind == "Nip65"` (the
+    // outbox lane resolved the target). Without a NIP-65 fixture (fresh key, no
+    // follows, no kind:10002) no Nip65 lane exists → SKIP-LOUD, never a
+    // bare-non-empty-url pass.
+    let publishes = decisions
+        .as_ref()
+        .and_then(|d| d.get("publishes"))
+        .and_then(|p| p.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let nip65_routed = |rows: &[serde_json::Value]| -> usize {
+        rows.iter()
+            .filter(|row| {
+                row.get("urls")
+                    .and_then(|u| u.as_array())
+                    .map(|urls| {
+                        urls.iter().any(|entry| {
+                            entry
+                                .get("lanes")
+                                .and_then(|l| l.as_array())
+                                .map(|lanes| {
+                                    lanes.iter().any(|lane| {
+                                        lane.get("kind").and_then(|k| k.as_str()) == Some("Nip65")
+                                    })
+                                })
+                                .unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false)
+            })
+            .count()
+    };
+    let routed = nip65_routed(&subs) + nip65_routed(&publishes);
     if routed == 0 {
         report.push(GateRow::unmeasured(
             "resilience-outbox-routing",
             phase,
             "nmp_app_recent_routing_decisions",
-            "routing-trace subscriptions[].urls (NIP-65 resolved targets)",
-            "reads route to authors' WRITE relays",
+            "routing-trace urls[].lanes[] kind==Nip65 (NIP-65 outbox attribution)",
+            "at least one target resolved via the NIP-65 outbox lane",
             Verdict::SkipRelayMiss,
             &format!(
-                "{} subscription rows in the routing ledger, none with resolved relay targets — \
-                 no NIP-65 outbox fixture this run. Provide a high-follow account whose authors \
-                 publish kind:10002 to drive a positive outbox-route assertion.",
-                subs.len()
+                "{} subscription + {} publish rows in the routing ledger, NONE with a \
+                 urls[].lanes[] entry of kind==Nip65 — every resolved target came from an \
+                 AppRelay fallback / user-configured lane, NOT NIP-65 outbox routing. No NIP-65 \
+                 fixture this run. Provide a high-follow account whose authors publish kind:10002 \
+                 to drive a positive outbox-route assertion. SKIP LOUD.",
+                subs.len(),
+                publishes.len(),
             ),
         ));
         return;
@@ -200,14 +307,17 @@ fn outbox_routing(report: &mut SanityReport, phase: &str, args: &Args) {
             "resilience-outbox-routing",
             phase,
             "nmp_app_recent_routing_decisions",
-            "routing-trace subscriptions[].urls",
+            "routing-trace urls[].lanes[] kind==Nip65",
             routed as f64,
             1.0,
-            "routed-subs",
+            "nip65-routed-rows",
         )
         .with_note(&format!(
-            "{routed}/{} subscription rows carry resolved relay targets (outbox routing active)",
-            subs.len()
+            "{routed} routing-ledger row(s) carry a NIP-65 outbox lane (kind==Nip65) on a \
+             resolved target — reads route to authors' write relays via NIP-65, not the \
+             AppRelay fallback (subs={}, publishes={})",
+            subs.len(),
+            publishes.len()
         )),
     );
 }

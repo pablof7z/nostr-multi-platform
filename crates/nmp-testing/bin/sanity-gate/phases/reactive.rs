@@ -168,35 +168,15 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
         ));
     }
 
-    // (c) No-double-emit: re-inject the identical corpus; the projection must
-    //     NOT grow (dedup by id; no double-serve under the wakeup interaction).
-    let before_dupe = app.with_state(|s| s.peak_visible());
-    for json in &corpus {
-        if let Ok(c) = std::ffi::CString::new(json.as_str()) {
-            let _ = nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr());
-        }
-    }
-    std::thread::sleep(Duration::from_secs(2));
-    let after_dupe = app.with_state(|s| s.peak_visible());
-    report.push(
-        GateRow::max(
-            "reactive-no-double-emit",
-            phase,
-            "nmp_app_inject_signed_event_json (re-inject)",
-            "visible_items must not grow on duplicate ids",
-            after_dupe.saturating_sub(before_dupe) as f64,
-            0.0,
-            "extra-rows",
-        )
-        .with_note("re-injecting the identical corpus adds no rows (store dedups by id)"),
-    );
-
-    // (d) id-subset check: every injected event id must be readable from the
-    //     store for the author we signed as.  Uses seam 1
-    //     (`nmp_app_read_author_event_ids`) which scans the event store by
-    //     author + kind:1 and returns a JSON array of {id, author} objects.
-    //     This is a hard pass/fail: if any corpus id is missing the reactive
-    //     pipeline dropped or never persisted it.
+    // (c) NO-DOUBLE-EMIT — a REAL, self-contained dedup assertion on the STORE
+    //     id-set (not the projection). The prior version compared peak_visible
+    //     before/after the duplicate inject; whenever the projection half
+    //     SKIPped (self not in the home feed), that was a vacuous 0→0 pass. Fix:
+    //     read the stored author-id SET BEFORE and AFTER re-injecting the
+    //     identical corpus and assert the set does NOT grow — a correct store
+    //     dedups by id, so a duplicate id can add no new row. No relay, no
+    //     projection dependency; hard PASS/FAIL (or SKIP-LOUD if the read seam
+    //     returns nothing, never a 0→0 pass).
     let corpus_ids: std::collections::HashSet<String> = corpus
         .iter()
         .filter_map(|json| {
@@ -205,11 +185,12 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
                 .and_then(|v| v["id"].as_str().map(str::to_owned))
         })
         .collect();
-    let stored_ids: std::collections::HashSet<String> = {
+
+    let read_stored_ids = || -> std::collections::HashSet<String> {
         let pk_cstr = std::ffi::CString::new(pubkey_hex.as_str()).ok();
-        let json_ptr = pk_cstr.as_ref().map(|pk| {
-            nmp_ffi::nmp_app_read_author_event_ids(app.raw(), pk.as_ptr(), 0)
-        });
+        let json_ptr = pk_cstr
+            .as_ref()
+            .map(|pk| nmp_ffi::nmp_app_read_author_event_ids(app.raw(), pk.as_ptr(), 0));
         match json_ptr {
             Some(ptr) if !ptr.is_null() => {
                 let parsed = unsafe { std::ffi::CStr::from_ptr(ptr) }
@@ -218,19 +199,67 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
                     .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
                 nmp_ffi::nmp_free_string(ptr);
                 parsed
-                    .and_then(|v| v.as_array().map(|arr| {
-                        arr.iter()
-                            .filter_map(|obj| obj["id"].as_str().map(str::to_owned))
-                            .collect()
-                    }))
+                    .and_then(|v| {
+                        v.as_array().map(|arr| {
+                            arr.iter()
+                                .filter_map(|obj| obj["id"].as_str().map(str::to_owned))
+                                .collect()
+                        })
+                    })
                     .unwrap_or_default()
             }
             _ => std::collections::HashSet::new(),
         }
     };
+
+    // Snapshot the stored id-set, re-inject the identical corpus, snapshot again.
+    let stored_before = read_stored_ids();
+    for json in &corpus {
+        if let Ok(c) = std::ffi::CString::new(json.as_str()) {
+            let _ = nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr());
+        }
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    let stored_after = read_stored_ids();
+
+    if stored_before.is_empty() && stored_after.is_empty() {
+        report.push(GateRow::unmeasured(
+            "reactive-no-double-emit",
+            phase,
+            "nmp_app_read_author_event_ids (before/after re-inject)",
+            "stored author-id SET must not grow on duplicate ids",
+            "0 new stored ids",
+            Verdict::SkipRelayMiss,
+            "store-read seam returned no author ids for the injected corpus — cannot assert the \
+             id-set dedup invariant this run (SKIP LOUD; never a 0→0 vacuous pass)",
+        ));
+    } else {
+        let grew = stored_after.len().saturating_sub(stored_before.len());
+        report.push(
+            GateRow::max(
+                "reactive-no-double-emit",
+                phase,
+                "nmp_app_read_author_event_ids (before/after re-inject)",
+                "stored author-id SET growth on duplicate ids",
+                grew as f64,
+                0.0,
+                "extra-stored-ids",
+            )
+            .with_note(&format!(
+                "re-injected the identical {injected}-event corpus; stored author-id set \
+                 {}→{} (must not grow — the store dedups by id; a duplicate id adds no row)",
+                stored_before.len(),
+                stored_after.len()
+            )),
+        );
+    }
+
+    // (d) id-subset check: every injected event id must be readable from the
+    //     store for the author we signed as. Hard pass/fail: if any corpus id is
+    //     missing the reactive pipeline dropped or never persisted it.
     let missing_count = corpus_ids
         .iter()
-        .filter(|id| !stored_ids.contains(*id))
+        .filter(|id| !stored_after.contains(*id))
         .count();
     report.push(
         GateRow::max(
@@ -246,10 +275,35 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
             "corpus={} ids, stored={} ids, missing={} \
              (seam 1: nmp_app_read_author_event_ids)",
             corpus_ids.len(),
-            stored_ids.len(),
+            stored_after.len(),
             missing_count,
         )),
     );
+
+    // (e) RESIDUAL GAP — feed pager / load_older cursor correctness (ADR-0058
+    //     step-6). A self-contained oracle would inject a known OLDER corpus,
+    //     drive `nmp_app_load_older_feed` and assert no missed/duplicate page ids
+    //     + a monotonically advancing cursor. That is NOT self-contained today:
+    //     `load_older` paginates via the pull substrate against CONFIGURED RELAYS
+    //     (the wire), not the local inject-store sub-id, so an injected corpus
+    //     never reaches the pager. Driving it needs either a relay-backed fixture
+    //     or a new "pull-from-store" seam. Documented as BLOCKED (not counted in
+    //     hard PASS/FAIL) rather than faked with a vacuous oracle. The
+    //     `cold_start` phase's `load-older` row exercises the live-relay variant
+    //     and SKIPs honestly when the backlog is exhausted.
+    report.push(GateRow::unmeasured(
+        "reactive-pager-cursor",
+        phase,
+        "nmp_app_load_older_feed (pull substrate)",
+        "older page ids contiguous + cursor advances (no missed/duplicate page)",
+        "no missed/duplicate page ids; cursor strictly advances",
+        Verdict::Blocked,
+        "feed pager/load_older cursor correctness is not self-contained: load_older pulls older \
+         pages from configured relays via the pull substrate, not the local inject-store sub-id, \
+         so an injected corpus never reaches the pager. Needs a relay-backed older-corpus fixture \
+         or a pull-from-store seam. BLOCKED (documented gap) — not a faked pass. The cold_start \
+         `load-older` row covers the live-relay variant.",
+    ));
 }
 
 /// K self-authored kind:1 notes (real Schnorr signatures) with increasing

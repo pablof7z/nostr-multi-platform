@@ -22,8 +22,22 @@ use std::time::Duration;
 use crate::config::{gates, Args, Phase};
 use crate::report::{GateRow, SanityReport, Verdict};
 
-/// In-process burst size to grow the store well past the 500 projection cap.
-const STORE_GROWTH_BURST: u32 = 5_000;
+/// First store size (already well past the 500 projection cap).
+const STORE_SIZE_SMALL: u32 = 1_000;
+/// Additional events to take the store ~20x larger for the SLOPE check.
+const STORE_SIZE_LARGE_ADD: u32 = 19_000;
+/// Allowed growth of the steady-state frame between the small and large store
+/// sizes. The projection is capped at 500 visible items, so the frame must stay
+/// essentially FLAT as the store grows ~20x; a full-store-crosses-FFI regression
+/// would balloon the frame by megabytes. 64 KiB covers cap jitter + a few extra
+/// Tier-3 rows without admitting a store-scaling frame.
+const FRAME_SLOPE_TOLERANCE_BYTES: f64 = 65_536.0;
+
+/// Latest (steady-state) frame size — reflects the CURRENT projection, not the
+/// monotonic peak, so a store that grows without growing the frame reads flat.
+fn latest_frame_bytes(app: &crate::driver::DrivenApp) -> u64 {
+    app.with_state(|s| s.latest().map(|r| r.frame_bytes).unwrap_or(0))
+}
 
 pub fn run_ffi_bounds(report: &mut SanityReport, args: &Args) {
     let phase = Phase::FfiBounds.as_str();
@@ -31,28 +45,73 @@ pub fn run_ffi_bounds(report: &mut SanityReport, args: &Args) {
         return;
     };
 
-    let frame_before = app.with_state(|s| s.peak_frame_bytes());
-
-    // Grow the store far past the projection cap with real signed events.
-    nmp_ffi::nmp_app_inject_signed_events(app.raw(), crate::report::now_unix(), STORE_GROWTH_BURST);
-    // Let the projection ticks flush the growth.
+    // ── SLOPE check: grow the store ~20x; the steady-state frame must NOT grow
+    //    with it. The prior gate injected 5k small events and only checked a 4 MB
+    //    absolute ceiling — a full-store-crosses-FFI regression could stay under
+    //    that. Measuring the frame at two store sizes makes the gate FAIL if the
+    //    frame tracks the store instead of the 500-item projection cap.
+    nmp_ffi::nmp_app_inject_signed_events(app.raw(), crate::report::now_unix(), STORE_SIZE_SMALL);
     std::thread::sleep(Duration::from_secs(5));
-    let frame_after = app.with_state(|s| s.peak_frame_bytes());
+    let frame_small = latest_frame_bytes(&app);
 
-    report.push(
-        GateRow::max(
+    nmp_ffi::nmp_app_inject_signed_events(
+        app.raw(),
+        crate::report::now_unix() + 1,
+        STORE_SIZE_LARGE_ADD,
+    );
+    std::thread::sleep(Duration::from_secs(5));
+    let frame_large = latest_frame_bytes(&app);
+    let frame_peak = app.with_state(|s| s.peak_frame_bytes());
+
+    if frame_small == 0 || frame_large == 0 {
+        report.push(GateRow::unmeasured(
             "ffi-frame-bounded",
             phase,
             "nmp_app_inject_signed_events + capture payload_len",
-            "max SnapshotFrame bytes after store growth",
-            frame_after as f64,
+            "steady-state SnapshotFrame bytes at two store sizes",
+            "frame must not grow with the store",
+            Verdict::Blocked,
+            &format!(
+                "no steady-state frame captured (small={frame_small}, large={frame_large}) — \
+                 capture path saw no snapshot frame after a store-growth burst (BLOCKED)"
+            ),
+        ));
+    } else {
+        let slope = frame_large.saturating_sub(frame_small);
+        report.push(
+            GateRow::max(
+                "ffi-frame-bounded",
+                phase,
+                "nmp_app_inject_signed_events (1k vs 20k) + capture payload_len",
+                "steady-state frame-bytes GROWTH as the store grows ~20x",
+                slope as f64,
+                FRAME_SLOPE_TOLERANCE_BYTES,
+                "bytes-delta",
+            )
+            .with_note(&format!(
+                "store {STORE_SIZE_SMALL}→{} events (~20x); steady-state frame {frame_small}→{frame_large} \
+                 bytes (delta={slope}) — must stay flat (frame tracks the 500-item projection cap, \
+                 NOT store size; the full store never crosses FFI)",
+                STORE_SIZE_SMALL + STORE_SIZE_LARGE_ADD
+            )),
+        );
+    }
+
+    // Absolute ceiling still holds regardless of store size (kept as a second
+    // real gate, not the primary boundedness proof).
+    report.push(
+        GateRow::max(
+            "ffi-frame-under-ceiling",
+            phase,
+            "capture payload_len (peak)",
+            "peak SnapshotFrame bytes after store growth",
+            frame_peak as f64,
             gates::FRAME_BYTES_GATE,
             "bytes",
         )
         .with_note(&format!(
-            "injected {STORE_GROWTH_BURST} events (store grows past the 500 projection cap); \
-             peak frame bytes {frame_before}→{frame_after} — must stay under the ceiling \
-             regardless of store size (the full store never crosses FFI)"
+            "peak frame bytes after ~20k-event store = {frame_peak}; absolute ceiling holds \
+             regardless of store size"
         )),
     );
 
@@ -102,16 +161,4 @@ pub fn run_ffi_bounds(report: &mut SanityReport, args: &Args) {
             "actor alive before={alive_before} after={alive_after} — errors must not cross FFI"
         )),
     );
-
-    if frame_after == 0 {
-        report.push(GateRow::unmeasured(
-            "ffi-frame-bounded-note",
-            phase,
-            "capture payload_len",
-            "SnapshotFrame bytes",
-            "non-zero frame captured",
-            Verdict::Blocked,
-            "no frame bytes captured — capture path saw no snapshot frame (BLOCKED)",
-        ));
-    }
 }

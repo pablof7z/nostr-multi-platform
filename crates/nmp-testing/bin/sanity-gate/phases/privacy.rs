@@ -77,29 +77,54 @@ fn unverified_rejected(report: &mut SanityReport, phase: &str, args: &Args) {
     );
 }
 
-/// PRE-VERIFIED BYPASS IS TEST-GATED — compile-time invariant.
+/// PRE-VERIFIED BYPASS IS TEST-GATED — REAL compile-time source check.
 fn pre_verified_bypass_gated(report: &mut SanityReport, phase: &str) {
-    // This is a compile-time fact, asserted as a documented PASS row: the
-    // `nmp_app_inject_pre_verified_events` / `from_raw_unchecked` bypass lives
-    // behind `#![cfg(any(test, feature = "test-support"))]` (see
-    // crates/nmp-ffi/src/testing.rs:12). It is never in the production FFI ABI,
-    // so production wire ingest can ONLY construct a VerifiedEvent via
-    // try_from_raw (full Schnorr verify).
+    // FALSIFIABLE source-level assertion (was a hardcoded 1.0 that would still
+    // PASS even if the cfg gate were deleted). We embed the ACTUAL nmp-ffi
+    // source at compile time via `include_str!` and assert the test-support cfg
+    // gate + the bypass symbol are present. If a future change removed the
+    // `#![cfg(any(test, feature = "test-support"))]` gate (or ungated `mod
+    // testing;` in lib.rs) — the exact regression this row guards — the embedded
+    // source no longer contains the gate string and THIS gate FAILS.
+    const TESTING_SRC: &str = include_str!("../../../../nmp-ffi/src/testing.rs");
+    const LIB_SRC: &str = include_str!("../../../../nmp-ffi/src/lib.rs");
+
+    let module_inner_gate =
+        TESTING_SRC.contains("#![cfg(any(test, feature = \"test-support\"))]");
+    let bypass_symbol =
+        TESTING_SRC.contains("pub extern \"C\" fn nmp_app_inject_pre_verified_events");
+    let unchecked_path = TESTING_SRC.contains("from_raw_unchecked");
+    // The `mod testing;` declaration in lib.rs must itself be cfg-gated.
+    let mod_decl_gated = LIB_SRC.contains("#[cfg(any(test, feature = \"test-support\"))]")
+        && LIB_SRC.contains("mod testing;");
+
+    let checks = [
+        ("module #![cfg] gate on testing.rs", module_inner_gate),
+        ("nmp_app_inject_pre_verified_events present", bypass_symbol),
+        ("from_raw_unchecked bypass path present", unchecked_path),
+        ("`mod testing;` cfg-gated in lib.rs", mod_decl_gated),
+    ];
+    let failed: Vec<&str> = checks.iter().filter(|(_, ok)| !ok).map(|(n, _)| *n).collect();
+
     report.push(
-        GateRow::min(
+        GateRow::max(
             "privacy-pre-verified-bypass-test-gated",
             phase,
-            "compile-time cfg gate (crates/nmp-ffi/src/testing.rs:12)",
-            "#![cfg(any(test, feature = \"test-support\"))] on the inject seam",
-            1.0,
-            1.0,
-            "gated",
+            "include_str!(nmp-ffi/src/{testing,lib}.rs) compile-time source check",
+            "cfg(any(test, feature=\"test-support\")) gate on the inject-pre-verified bypass",
+            failed.len() as f64,
+            0.0,
+            "ungated-bypass-sites",
         )
-        .with_note(
-            "the pre-verified/from_raw_unchecked bypass is test-support gated; production wire \
-             ingest must use try_from_raw (full Schnorr+id verify). Verified by the \
-             ci/check-ffi-header-drift.sh gate, which excludes this module from the ABI.",
-        ),
+        .with_note(&format!(
+            "REAL source check (replaces the prior hardcoded 1.0): {}/{} guards satisfied — the \
+             nmp_app_inject_pre_verified_events / from_raw_unchecked bypass is behind \
+             #![cfg(any(test, feature=\"test-support\"))] and `mod testing;` is cfg-gated in \
+             lib.rs. Deleting the gate makes this gate FAIL (falsifiable). failed={:?}",
+            checks.len() - failed.len(),
+            checks.len(),
+            failed,
+        )),
     );
 }
 
