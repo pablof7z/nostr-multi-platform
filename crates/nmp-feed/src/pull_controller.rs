@@ -89,26 +89,31 @@ pub struct PullFeedController {
 }
 
 impl PullFeedController {
-    /// Construct a pull-backed controller, or `None` when the feed fails closed
-    /// (its interest is not a real, covered [`InterestShape`]). A `None` return
-    /// is the caller's signal to register no controller (the feed renders from
-    /// its push projection only) — never to broad-scan.
+    /// Construct a pull-backed controller. Always succeeds — registration is
+    /// unconditional so the controller is present before sign-in. The provider
+    /// re-reads the live shape on every [`load_older`](FeedController::load_older)
+    /// call; `None` from the provider fails closed (no pull, no broad-scan).
+    ///
+    /// This means the caller MUST NOT guard on `None` to decide whether to
+    /// register: always register, let the controller fail closed via its provider.
     #[must_use]
     pub fn new(
         provider: Arc<dyn FeedInterestShape + Send + Sync>,
         pull: PullFn,
         apply: FeedApply,
         advance: FeedAdvance,
-    ) -> Option<Arc<Self>> {
-        // Fail-closed gate: a pager only exists with a real shape (6A contract).
-        let pager = FeedPullPager::new(provider.as_ref())?;
-        Some(Arc::new(Self {
+    ) -> Arc<Self> {
+        // Cursor-only pager — no initial shape check. The live shape is read on
+        // every load_older call, so a controller registered before sign-in
+        // becomes active as soon as the provider yields a real shape.
+        let pager = FeedPullPager::at_start();
+        Arc::new(Self {
             pager: Mutex::new(pager),
             provider,
             pull,
             apply,
             advance,
-        }))
+        })
     }
 
     /// The pager's current seq cursor (diagnostics / tests).

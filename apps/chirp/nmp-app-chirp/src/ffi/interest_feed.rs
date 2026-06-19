@@ -148,14 +148,15 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     seed_author_feed_from_store(app_ref, &feed, &pubkey);
     let key = author_feed_key(&pubkey);
     // B1: drain store history by ingest seq via PullFeedController (FlatFeed = push observer).
+    // PullFeedController::new always succeeds; load_older fails closed if the
+    // provider returns None (which cannot happen here — pubkey is always valid).
     let pk_for_shape = pubkey.clone();
     let provider = Arc::new(ClosureInterestShape::new(move || author_feed_shape(&pk_for_shape, &FEED_KINDS)));
     let pull = make_pull_fn(app_ref.event_store_handle());
     let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
     let advance: nmp_feed::FeedAdvance = Arc::new(|| ());
-    if let Some(pull_ctrl) = PullFeedController::new(provider, pull, apply, advance) {
-        app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
-    }
+    let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
+    app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
@@ -215,14 +216,15 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     seed_thread_feed_from_store(app_ref, &feed, &root_id);
     let key = thread_feed_key(&root_id);
     // B1: pull the reply tail (#e-covered shape); root-by-id seeded above.
+    // PullFeedController::new always succeeds; load_older fails closed if the
+    // provider returns None (which cannot happen here — root_id is always valid).
     let root_for_shape = root_id.clone();
     let provider = Arc::new(ClosureInterestShape::new(move || thread_feed_shape(&root_for_shape, &FEED_KINDS)));
     let pull = make_pull_fn(app_ref.event_store_handle());
     let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
     let advance: nmp_feed::FeedAdvance = Arc::new(|| ());
-    if let Some(pull_ctrl) = PullFeedController::new(provider, pull, apply, advance) {
-        app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
-    }
+    let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
+    app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(

@@ -144,8 +144,8 @@ fn pull_feed_controller_seq_cursor_picks_up_late_old_event() {
         engine_for_advance.grow_visible_window();
     });
 
-    let pull_ctrl = PullFeedController::new(provider, pull, apply, advance)
-        .expect("shape is a valid covered InterestShape — controller must be Some");
+    // PullFeedController::new always succeeds; fail-closed via provider on load_older.
+    let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
 
     // ── 2. Insert two "recent" events ────────────────────────────────────────
     // seq 1: recent_a, created_at=1_000

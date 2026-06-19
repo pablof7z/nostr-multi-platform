@@ -122,7 +122,6 @@ fn controller_with_pages(
         })
     };
     PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance())
-        .expect("real shape builds a controller")
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
@@ -219,8 +218,7 @@ fn pull_gap_rebases_explicitly_no_silent_continuity() {
             first_available_seq: 42,
         })
     });
-    let ctrl = PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance())
-        .expect("real shape");
+    let ctrl = PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance());
     assert!(!ctrl.load_older(), "a pure gap drained no events");
     assert_eq!(
         ctrl.after_seq(),
@@ -229,15 +227,21 @@ fn pull_gap_rebases_explicitly_no_silent_continuity() {
     );
 }
 
-/// A feed whose interest is inexpressible fails closed: no controller is built,
-/// so the caller renders the push projection only — never a broad-scan.
+/// A feed whose interest is inexpressible fails closed: the controller is
+/// built unconditionally, but `load_older` returns false (no pull, no
+/// broad-scan) — the feed renders its push projection only.
 #[test]
 fn inexpressible_shape_fails_closed_to_projection() {
     let feed = Arc::new(FakeFeed::default());
     let pull: PullFn = Arc::new(|_scope, after| page(vec![], after, after));
+    let ctrl = PullFeedController::new(opaque_shape(), pull, feed.apply(), feed.advance());
     assert!(
-        PullFeedController::new(opaque_shape(), pull, feed.apply(), feed.advance()).is_none(),
-        "no real shape ⇒ no pull controller ⇒ projection-only fallback"
+        !ctrl.load_older(),
+        "no real shape ⇒ load_older returns false ⇒ projection-only fallback"
+    );
+    assert!(
+        feed.ingested.lock().unwrap().is_empty(),
+        "opaque provider ⇒ no events ingested, pull_fn never called"
     );
 }
 
@@ -263,8 +267,7 @@ fn load_older_does_not_require_or_consume_a_wake() {
             page(vec![inserted(after + 1, "e", 100)], after + 1, after + 1)
         })
     };
-    let ctrl = PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance())
-        .expect("real shape");
+    let ctrl = PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance());
     assert!(ctrl.load_older(), "drained synchronously, wake-free");
     assert_eq!(wake_reads.load(Ordering::Relaxed), 0);
 }

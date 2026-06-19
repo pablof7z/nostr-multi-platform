@@ -281,15 +281,21 @@ pub fn register_op_feed_defaults(
     //     time. Completeness rides ingest seq; display order is unchanged.
     let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
         let follow_set = follow_set.clone();
-        let viewer = viewer.clone();
+        // B2: capture the live active-account SLOT (not the registration-time
+        // viewer pubkey) so the closure reads the CURRENT signed-in account on
+        // every load_older call. After logout the slot holds None ⇒ authors is
+        // empty ⇒ provider returns None ⇒ load_older fails closed. After an
+        // account switch the slot holds the new pubkey without re-registering.
+        let account_slot = active_account_slot.clone();
         let kinds: BTreeSet<u32> = contact_feed_kinds.iter().copied().collect();
         Arc::new(ClosureInterestShape::new(move || {
             if kinds.is_empty() {
                 return None; // host declared no contact-feed kinds ⇒ fail closed
             }
             let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
-            if !viewer.is_empty() {
-                authors.insert(viewer.clone());
+            // Read the live active account — not a registration-time snapshot.
+            if let Some(pk) = read_active(&account_slot) {
+                authors.insert(pk);
             }
             if authors.is_empty() {
                 return None; // no signed-in account / no follows ⇒ fail closed
@@ -308,12 +314,13 @@ pub fn register_op_feed_defaults(
             engine.grow_visible_window();
         })
     };
-    // Fail closed: on `None` (no covered interest shape) register NO controller.
-    // The feed still renders through the typed projection (registered below);
-    // `nmp_app_load_older_feed` simply finds no controller and no-ops — never a
-    // broad-scan.
-    if let Some(controller) = PullFeedController::new(provider, pull, apply, advance) {
-        let controller: Arc<dyn FeedController> = controller;
+    // B2: register UNCONDITIONALLY — PullFeedController no longer requires an
+    // initial shape. The provider re-reads the live shape on every load_older;
+    // None from the provider fails closed (no pull, no broad-scan). A controller
+    // registered before sign-in becomes active as soon as the user signs in.
+    {
+        let controller: Arc<dyn FeedController> =
+            PullFeedController::new(provider, pull, apply, advance);
         app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
     }
 
