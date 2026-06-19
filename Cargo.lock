@@ -4849,6 +4849,7 @@ version = "0.8.0"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
+ "nmp-nip92-types",
  "serde",
 ]
 
@@ -4869,6 +4870,13 @@ version = "0.8.0"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
+ "serde",
+]
+
+[[package]]
+name = "nmp-nip92-types"
+version = "0.8.0"
+dependencies = [
  "serde",
 ]
 

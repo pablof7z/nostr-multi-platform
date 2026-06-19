@@ -125,6 +125,10 @@ name = "nmp-nip42-types"
 path = "crates/nmp-nip42-types"
 
 [[public_crates]]
+name = "nmp-nip92-types"
+path = "crates/nmp-nip92-types"
+
+[[public_crates]]
 name = "nmp-nip47"
 path = "crates/nmp-nip47"
 
@@ -139,6 +143,10 @@ path = "crates/nmp-nip51"
 [[public_crates]]
 name = "nmp-nip57"
 path = "crates/nmp-nip57"
+
+[[public_crates]]
+name = "nmp-nip68"
+path = "crates/nmp-nip68"
 
 # nmp-blossom (BUD-02 blob uploads) was un-parked in #1428 and is now a v1
 # workspace member, so it is classified here as a public crate.

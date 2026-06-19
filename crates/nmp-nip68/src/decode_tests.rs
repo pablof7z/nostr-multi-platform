@@ -28,6 +28,22 @@ fn rejects_non_picture_kind_and_picture_without_images() {
 }
 
 #[test]
+fn rejects_picture_event_with_non_image_media_imeta() {
+    let event = stored(
+        KIND_PICTURE_EVENT,
+        vec![vec![
+            "imeta",
+            "url https://cdn.example/a.mp4",
+            "m video/mp4",
+            "x abc",
+        ]],
+        "",
+    );
+
+    assert!(try_from_event(&event).is_none());
+}
+
+#[test]
 fn decodes_picture_event_fields() {
     let event = stored(
         KIND_PICTURE_EVENT,

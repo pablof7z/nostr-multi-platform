@@ -243,7 +243,7 @@ fn validate_image(image: &ImageMeta) -> Result<(), PicturePostBuildError> {
         });
     }
     if let Some(mime) = &image.mime {
-        if !crate::imeta::is_accepted_image_mime(mime) {
+        if !crate::imeta::image_has_supported_mime(image) {
             return Err(PicturePostBuildError::UnsupportedMime { mime: mime.clone() });
         }
     }

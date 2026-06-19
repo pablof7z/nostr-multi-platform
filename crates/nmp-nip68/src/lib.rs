@@ -3,14 +3,16 @@
 //! Scope is deliberately narrow and app-neutral:
 //!
 //! - decode kind:20 picture events into immutable [`PictureEventRecord`] values;
-//! - parse and build NIP-92 `imeta` image metadata tags;
+//! - apply NIP-68 image constraints to shared NIP-92 `imeta` metadata;
 //! - build deterministic picture-post drafts that can be published through the
 //!   existing `nmp.publish` / `PublishRaw` action path.
 //!
-//! This crate does not open feeds, rank posts, upload media, choose relays, or
-//! carry app-specific nouns. Apps open `{"kinds":[20]}` through
-//! `nmp_app_open_interest`, upload through a capability/protocol crate such as
-//! `nmp-blossom`, and compose the resulting image descriptors here.
+//! This crate imports the lower `nmp-nip92-types` wire/type substrate, but no
+//! other `nmp-nip*` protocol crate. It does not open feeds, rank posts, upload
+//! media, choose relays, or carry app-specific nouns. Apps open
+//! `{"kinds":[20]}` through `nmp_app_open_interest`, upload through a
+//! capability/protocol crate such as `nmp-blossom`, and compose the resulting
+//! image descriptors here. `nmp-core` gains zero picture-event nouns.
 
 pub mod build;
 pub mod decode;
