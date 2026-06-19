@@ -4834,6 +4834,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip78"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-kinds",
+ "serde",
+]
+
+[[package]]
 name = "nmp-nostr-lmdb"
 version = "0.8.0"
 dependencies = [

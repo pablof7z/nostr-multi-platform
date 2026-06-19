@@ -1,0 +1,18 @@
+[package]
+name = "nmp-nip78"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-78 kind:30078 app-data mechanics: safe builder plus active-account raw app-data projection. App-specific keys and policy stay in app crates."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-kinds = { path = "../nmp-kinds" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
