@@ -1,0 +1,29 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers wire for `nmp_nip29::projection::GroupEventsSnapshot`,
+// schema_id "nmp.nip29.group_events". This is a raw h-tag event carrier:
+// tags and event fields are preserved for downstream app/domain crates.
+
+table RawTag {
+  values:[string];
+}
+
+table GroupEventRow {
+  id:string;
+  pubkey:string;
+  content:string;
+  created_at:ulong;
+  kind:uint32;
+  tags:[RawTag];
+  relay_provenance:[string];
+}
+
+table GroupEventsSnapshot {
+  schema_version:uint32 = 1;
+  group_id:string;
+  host_relay_url:string;
+  events:[GroupEventRow];
+}
+
+root_type GroupEventsSnapshot;
+file_identifier "NGES";

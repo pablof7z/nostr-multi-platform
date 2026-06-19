@@ -9,6 +9,7 @@
 //!
 //! - `content` — `PostChatMessage` (kind:9).
 //! - `composed` — `ReactInGroup` (kind:7+h).
+//! - `group_event` — raw share/repost-in-group producers (kind:11/16+h).
 //! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
@@ -23,6 +24,7 @@ mod composed;
 mod content;
 mod create;
 mod discover;
+mod group_event;
 mod join;
 mod publish_plan;
 
@@ -33,5 +35,9 @@ pub use composed::{ReactInGroupAction, ReactInGroupInput};
 pub use content::{PostChatMessageAction, PostChatMessageInput};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
+pub use group_event::{
+    GroupEventTarget, RepostInGroupAction, RepostInGroupInput, ShareEventInGroupAction,
+    ShareEventInGroupInput,
+};
 pub use join::{JoinGroupAction, JoinGroupInput};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};

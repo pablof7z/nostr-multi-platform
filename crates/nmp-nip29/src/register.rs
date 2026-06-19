@@ -24,12 +24,13 @@ use nmp_ffi::NmpApp;
 
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
-    PostChatMessageAction, PutUserAction, ReactInGroupAction,
+    PostChatMessageAction, PutUserAction, ReactInGroupAction, RepostInGroupAction,
+    ShareEventInGroupAction,
 };
 use crate::group_id::GroupId;
 use crate::projection::{
     DiscoveredGroupsProjection, GroupChatProjection, GroupDefaultsProjection,
-    JoinedGroupsProjection,
+    GroupEventsProjection, JoinedGroupsProjection,
 };
 
 /// Wire a [`GroupChatProjection`] for `group_id` into `app`.
@@ -172,6 +173,36 @@ pub fn wire_joined_groups(app: &NmpApp, active_pubkey: String, host_relay_url: S
     });
 }
 
+/// Wire a raw `h`-tagged group-event projection for `group_id` into `app`.
+///
+/// The read model is exposed under `"nmp.nip29.group_events"` as a typed
+/// FlatBuffers sidecar (`NGES`). It preserves raw event fields and the complete
+/// tag matrix; consumers own any app-specific joins layered on top.
+pub fn wire_group_events(app: &NmpApp, group_id: GroupId) {
+    let projection = Arc::new(GroupEventsProjection::new(group_id));
+    let observer_id =
+        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    if observer_id.0 == 0 {
+        return;
+    }
+
+    let projection_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.nip29.group_events", move || {
+        let snapshot = projection_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip29.group_events".to_string(),
+            schema_id: crate::wire::group_events_fb::GROUP_EVENTS_SCHEMA_ID.to_string(),
+            schema_version: crate::wire::group_events_fb::GROUP_EVENTS_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                crate::wire::group_events_fb::GROUP_EVENTS_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: crate::wire::group_events_fb::encode_group_events_snapshot(&snapshot),
+            ..Default::default()
+        })
+    });
+}
+
 /// Wire the crate-owned NIP-29 group-create defaults projection into `app`.
 ///
 /// Exposes [`GroupDefaultsProjection::snapshot`] under
@@ -213,6 +244,8 @@ pub fn wire_group_defaults(app: &NmpApp) {
 /// Binds the typed [`ActionModule`] impls for:
 /// - `nmp.nip29.post_chat_message`
 /// - `nmp.nip29.react_in_group`
+/// - `nmp.nip29.share_event_in_group`
+/// - `nmp.nip29.repost_in_group`
 /// - `nmp.nip29.create_public_group`
 /// - `nmp.nip29.discover`
 /// - `nmp.nip29.join`
@@ -225,6 +258,8 @@ pub fn wire_group_defaults(app: &NmpApp) {
 pub fn register_actions(app: &mut NmpApp) {
     app.register_action(PostChatMessageAction);
     app.register_action(ReactInGroupAction);
+    app.register_action(ShareEventInGroupAction);
+    app.register_action(RepostInGroupAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
