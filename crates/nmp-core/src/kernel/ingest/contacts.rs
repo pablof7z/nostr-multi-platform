@@ -9,7 +9,7 @@ use crate::subs::{AccountId, CompileTrigger};
 use std::collections::BTreeSet as BTreeSetInner;
 
 /// Deterministic `InterestId` for the SINGLE multi-author follow-feed interest,
-/// keyed by the host-declared `kinds` set.
+/// keyed by the compiled acquisition `kinds` set.
 ///
 /// The follow-feed collapsed to ONE interest whose shape carries the whole
 /// follow set in `authors` (#1497 amendment 5), so the id is keyed on `kinds`
@@ -35,7 +35,7 @@ fn follow_feed_interest_id(kinds: &BTreeSetInner<u32>) -> InterestId {
 }
 
 /// Build the SINGLE multi-author follow-feed `LogicalInterest` covering the
-/// whole follow set (`authors`) under the host-declared `kinds`
+/// whole follow set (`authors`) under the compiled acquisition `kinds`
 /// (`InterestLifecycle::Tailing`, `InterestScope::Global`).
 ///
 /// `nmp-core` does not know which kinds belong to the host's app concept — the
@@ -95,8 +95,9 @@ impl Kernel {
         }
         self.follow_feed_interest_ids.clear();
 
-        // D0: the host declares which kinds the contact-list-authors
-        // subscription should REQ via `ActorCommand::OpenContactFeed { kinds }`. An empty `follow_feed_kinds` means the subscription is
+        // D0: callers supply compiled acquisition kinds for the
+        // contact-list-authors subscription via `ActorCommand::OpenContactFeed { kinds }`.
+        // An empty `follow_feed_kinds` means the subscription is
         // NOT active — withdraw any existing interests (done above) and return
         // without registering. `nmp-core` never hardcodes a kind set here.
         let kinds = self.follow_feed_kinds.clone();
@@ -226,7 +227,7 @@ impl Kernel {
     ///
     /// Called by `open_contact_feed()` (the `ActorCommand::OpenContactFeed`
     /// handler) so that switching screens back to the home feed re-confirms
-    /// the M2 interest set is populated under the host-declared
+    /// the M2 interest set is populated under the compiled acquisition
     /// `follow_feed_kinds`.
     ///
     /// T140 (codex finding #4): empty / no-cached-follows must NOT no-op —
@@ -237,14 +238,13 @@ impl Kernel {
     /// the trigger drives `drain_tick` to emit the CLOSE diff for the
     /// now-withdrawn subs. Calling it unconditionally is the correct CLEAR
     /// semantics.
-    /// Host-declared kinds setter for the contact-feed subscription.
+    /// Compiled-acquisition kinds setter for the contact-feed subscription.
     ///
-    /// The host (e.g. Chirp) calls this via
-    /// `ActorCommand::OpenContactFeed { kinds }` to declare which event kinds
-    /// the active account's follow-set REQ should carry. D0: `nmp-core` does
-    /// not know which kinds belong to the host's app concept (Chirp's home
-    /// feed is {1, 6}; a long-form app might want {30023}); the substrate just
-    /// stores and threads the set the host supplies.
+    /// Callers use `ActorCommand::OpenContactFeed { kinds }` to supply the
+    /// compiled acquisition kinds the active account's follow-set REQ should
+    /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
+    /// policy belong to the host's app concept; the substrate just stores and
+    /// threads the compiled set the caller supplies.
     ///
     /// Setting the kinds and then calling
     /// `register_follow_feed_for_active_account` re-registers the active
@@ -335,7 +335,7 @@ mod tests {
             follow_feed_interest_id(&kinds),
             follow_feed_interest_id(&kinds),
         );
-        // Distinct kinds sets never collide, so switching the host-declared
+        // Distinct kinds sets never collide, so switching the compiled
         // kinds withdraws the old id and registers a fresh one.
         assert_ne!(
             follow_feed_interest_id(&BTreeSetInner::from([1u32, 6u32])),

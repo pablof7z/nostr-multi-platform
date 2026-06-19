@@ -1,5 +1,5 @@
-//! #1493 P4 — `open_contact_feed` must persist the host-declared follow-feed
-//! kinds even when NO account is active yet.
+//! #1493 P4 — `open_contact_feed` must persist the compiled follow-feed
+//! acquisition kinds even when NO account is active yet.
 //!
 //! Both Chirp shells mount the home-feed view at launch (iOS
 //! `HomeFeedView.task` / Android `TimelineScreen.LaunchedEffect`), which fires

@@ -1,11 +1,10 @@
-# ADR-0042 — M2 migration: replace `open_author`/`open_thread`/`open_firehose_tag` with generic `open_interest`
+# ADR-0042 — M2 migration: generic interests and dynamic feed read paths
 
 - Status: Accepted (mechanism). Read-path admission/projection finalized by ADR-0057.
 - Date: 2026-06-03
-- Supersedes the bespoke per-verb feed primitives scheduled for removal in
+- Replaces the bespoke per-verb feed primitives scheduled for removal in
   `crates/nmp-core/src/kernel/requests/profile.rs` and the deleted
-  `kernel/requests/thread.rs` stub, per
-  `docs/design/subscription-compilation/compiler.md` §3.5 ("M2 full migration").
+  `kernel/requests/thread.rs` stub.
 
 ## 1. Context
 
@@ -14,8 +13,8 @@ substrate**:
 
 | Deleted C-ABI symbol          | Deleted `ActorCommand` | App decision it smuggled into `nmp-core`                       |
 | ----------------------------- | ---------------------- | ------------------------------------------------------------- |
-| `nmp_app_open_author`         | `OpenAuthor`           | "an author feed is kinds `{1,6}`" (Chirp social-timeline policy) |
-| `nmp_app_open_thread`         | `OpenThread`           | "a thread is kinds `{1,6}` on `#e`"                            |
+| `nmp_app_open_author`         | `OpenAuthor`           | "an author feed is a Chirp note feed plus repost wrappers"     |
+| `nmp_app_open_thread`         | `OpenThread`           | "a thread is a Chirp note feed plus repost wrappers on `#e`"    |
 | `nmp_app_open_firehose_tag`   | `OpenFirehoseTag`      | "a hashtag feed is kind `{1}` on `#t`"                         |
 | `nmp_app_close_author`        | `CloseAuthor`          | (refcounted teardown of the above)                            |
 | `nmp_app_close_thread`        | `CloseThread`          | (refcounted teardown of the above)                            |
@@ -28,10 +27,11 @@ what the generic `InterestRegistry` + `SubscriptionCompiler` path already does
 for every other subscription (`EnsureInterest` / `DropInterestOwner`,
 `registry_mut().ensure_sub` / `drop_owner`, `CompileTrigger`).
 
-The `{1,6}` literals living in `nmp-core` (and in the `nmp-ffi` shims that
-injected them) are a **D0 violation**: the substrate must not name an app
-concept like "a social timeline is kind:1 + kind:6". A long-form reader app
-would want `{30023}`; a media app `{20,21,22}`. The kind set is app policy.
+The kind and wrapper decisions living in `nmp-core` (and in `nmp-ffi` shims)
+were a **D0 violation**: the substrate must not name an app concept like "a
+social timeline." A feed declaration names primary content kinds and a
+reactive source; protocol adapters derive wrapper acquisition and provenance.
+A long-form reader app may declare `[30023]`; a media app may declare `[20]`.
 
 ## 2. Decision — generic `open_interest` / `close_interest`
 
@@ -39,7 +39,7 @@ Two new C-ABI symbols replace the five:
 
 ```c
 // Register (or attach an owner to) a tailing interest.
-// filter_json: standard Nostr REQ filter, e.g. {"kinds":[1,6],"authors":["<hex>"]}
+// filter_json: standard Nostr REQ filter, e.g. {"kinds":[30023],"authors":["<hex>"]}
 // consumer_id: refcount owner key — deduplicates across call sites
 // scope: 0 = ActiveAccount (re-routes on account switch), 1 = Global
 void nmp_app_open_interest(NmpApp *app, const char *filter_json,
@@ -109,7 +109,7 @@ satisfies the gate's ADR requirement for the surface change.
 ## 5. App-composes pattern for context hydration (read-path)
 
 `open_author` previously co-triggered three things the kernel decided on the
-app's behalf: (a) the author's kind:1/6 **notes feed**, (b) a kind:0/kind:10002
+app's behalf: (a) the author's note feed and repost wrappers, (b) a kind:0/kind:10002
 **profile + relay-list discovery probe**, and (c) surfaced the result as the
 `author_view` snapshot projection carrying both the **profile card** and the
 **rendered note list** (`AuthorViewPayload.items`). `open_thread` likewise
@@ -123,9 +123,11 @@ screens with no event source.
 The migration replaces the kernel's bundled decision with **explicit app
 composition**:
 
-- **Notes / replies feed** → the app crate calls `open_interest` with the filter it
-  chooses (`{1,6}` for Chirp). The kind set now lives in Chirp's Rust
-  composition root (D0-correct), not in `nmp-core`.
+- **Notes / replies feed** → the app crate declares the primary content kinds
+  and source it wants. The protocol adapter compiles that declaration into the
+  concrete raw interests, including derived wrapper kinds where needed. Chirp
+  declares primary kind `[1]`; the app does not declare wrapper kinds as
+  primary feed content.
 - **Profile card** → `claim_profile(pubkey, "author-page-<pk>", …)` → the
   highest-precedence `claimed_profiles` projection tier. The deleted author-view
   profile tier no longer participates in profile resolution.
@@ -199,8 +201,8 @@ FlatFeeds and explicit typed-projection teardown.
 ## 6. Consequences
 
 - D0: the substrate no longer names "social timeline" / "thread" / "hashtag
-  feed" or their kind sets. Verified by the absence of residual `[1u32, 6u32]`
-  / `{1, 6}` literals in `nmp-core` feed paths after the migration.
+  feed" or their app feed kind policies. Primary-kind declarations and wrapper
+  derivation live above `nmp-core`.
 - The bespoke `author_view` / `thread_view` / `diagnostic_firehose` kernel
   state, their request builders, per-view refcounts, and
   `close_subscriptions_with_prefixes` are deleted; the generic registry +
@@ -211,7 +213,7 @@ FlatFeeds and explicit typed-projection teardown.
 - `ffi-surface.md` and the codegen Swift projection registry are updated;
   generated Swift types are regenerated.
 
-## Amendment — retire `nmp_app_open_timeline` via generic `open_contact_feed` (2026-06-12)
+## Active contact-feed declaration
 
 ### Why `scope`-2-on-`open_interest` was rejected
 
@@ -225,27 +227,24 @@ re-routed on account switch). Overloading it via a magic-integer scope would:
 1. Violate `InterestScope`'s semantic contract — `Scope` is a mailbox
    **resolution** hint (Active vs. Global in `planner/interest.rs:426`), not
    an author-expansion directive.
-2. Conflate `filter_json`/`consumer_id`/`close` contracts: a filter of
-   `{"kinds":[1,6]}` without an `authors` field is not a valid follow-feed
-   shape; the planner would register a global wildcard, not an outbox-routed
-   per-follow subscription.
+2. Conflate `filter_json`/`consumer_id`/`close` contracts: a filter without an
+   `authors` field is not a valid active-user follow-feed shape; the planner
+   would register a global wildcard, not an outbox-routed follow subscription.
 3. Reproduce the §5.1 anti-pattern the first five deletions were designed to
    cure: the host encoding app-specific magic numbers into a substrate seam.
 
-### Decision: two dedicated verbs, kinds-only input
+### Decision: active contact-feed verbs
 
 ```c
-void nmp_app_open_contact_feed(NmpApp *app, const char *kinds_json);
+void nmp_app_open_contact_feed(NmpApp *app, const char *primary_kinds_json);
 void nmp_app_close_contact_feed(NmpApp *app);
 ```
 
 The kernel keeps the author-expansion logic, re-routing, and refcount-of-one.
-The host supplies only the event-kind set (e.g. `"[1,6]"`). An empty array
-`[]` is a legitimate clear (same as close). A Chirp-specific wrapper
-(`nmp_app_chirp_open_home_feed` / `nmp_app_chirp_close_home_feed`) hard-codes
-`HOME_FEED_KINDS_JSON = "[1,6]"` in ONE place
-(`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs`) so the `{1, 6}` literal
-is unreachable from `nmp-core`.
+The app-facing declaration supplies primary content kinds (e.g. `"[1]"` for
+Chirp notes). The protocol adapter derives wrapper acquisition (`6` for kind
+`1`, `16` for non-kind-1 targets) before the kernel stores the concrete
+acquisition kinds. An empty array `[]` is a legitimate clear.
 
 ### New `ActorCommand` variants
 
@@ -261,15 +260,15 @@ close path (D5 cluster was never symmetric before this change).
 
 ### Consequences
 
-- D5 cluster gating is now **symmetric**: the home-feed projection cluster
+- D5 cluster gating is **symmetric**: the home-feed projection cluster
   (`timeline`, `inserted`, `updated`, `removed`) appears only when
-  `follow_feed_kinds` is non-empty, and disappears when the host calls close
-  or passes an empty kinds set.
+  the active contact feed has concrete acquisition kinds, and disappears when
+  the host calls close or passes an empty primary-kind set.
 - The `timeline_requested` milestone is unaffected: it is flipped by ingest at
   `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
-- All Chirp shells (iOS, Android, TUI, desktop) call the Chirp wrapper
-  (`nmp_app_chirp_open_home_feed`) so the `{1, 6}` policy moves to exactly
-  one location with one test asserting the constant value.
+- All Chirp shells (iOS, Android, TUI, desktop) call the Chirp wrapper or
+  app registration path that declares primary kind `[1]`; wrapper kinds are
+  derived below that app-facing API.
 - `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`; the
   JNI export name `nativeOpenTimeline` is preserved (Kotlin-facing name
   stability); the JNI body now calls `nmp_app_chirp_open_home_feed`.

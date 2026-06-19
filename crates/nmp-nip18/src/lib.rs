@@ -3,13 +3,57 @@
 //! This crate owns generic repost wire interpretation. It does not render UI,
 //! choose relay policy, or depend on any app crate.
 
+use std::collections::BTreeSet;
+
 use nmp_core::substrate::KernelEvent;
 use serde::Deserialize;
 
-/// NIP-18 repost event kind.
+/// NIP-18 repost event kind for kind:1 short-text notes.
 pub const KIND_REPOST: u32 = 6;
 
-/// Decoded inner event embedded in a kind:6 repost `content` field.
+/// NIP-18 generic repost event kind for non-kind:1 targets.
+pub const KIND_GENERIC_REPOST: u32 = 16;
+
+/// Return whether `kind` is a NIP-18 repost wrapper kind.
+#[must_use]
+pub const fn is_repost_kind(kind: u32) -> bool {
+    kind == KIND_REPOST || kind == KIND_GENERIC_REPOST
+}
+
+/// Compile app-declared primary feed kinds into acquisition kinds.
+///
+/// Apps declare the content kinds they want to render. Repost wrapper kinds are
+/// protocol mechanics: kind `6` for primary kind `1`, and kind `16` for every
+/// non-kind-1 primary target.
+#[must_use]
+pub fn acquisition_kinds_for_primary<I>(primary_kinds: I) -> BTreeSet<u32>
+where
+    I: IntoIterator<Item = u32>,
+{
+    let mut kinds = BTreeSet::new();
+    let mut needs_kind6 = false;
+    let mut needs_kind16 = false;
+
+    for kind in primary_kinds {
+        kinds.insert(kind);
+        match kind {
+            1 => needs_kind6 = true,
+            KIND_REPOST | KIND_GENERIC_REPOST => {}
+            _ => needs_kind16 = true,
+        }
+    }
+
+    if needs_kind6 {
+        kinds.insert(KIND_REPOST);
+    }
+    if needs_kind16 {
+        kinds.insert(KIND_GENERIC_REPOST);
+    }
+
+    kinds
+}
+
+/// Decoded inner event embedded in a repost `content` field.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EmbeddedEvent {
     pub id: String,
@@ -20,7 +64,7 @@ pub struct EmbeddedEvent {
     pub content: String,
 }
 
-/// Decoded kind:6 repost record.
+/// Decoded NIP-18 repost record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RepostRecord {
     pub event_id: String,
@@ -32,12 +76,12 @@ pub struct RepostRecord {
 
 /// Decode a [`KernelEvent`] as a NIP-18 repost.
 ///
-/// Returns `None` for every non-kind:6 event. A kind:6 event with only an
-/// `e` tag and no embedded event is still a repost record; consumers can render
-/// a placeholder while the target is unresolved.
+/// Returns `None` for every non-repost event. A repost with only an `e` tag and
+/// no embedded event is still a repost record; consumers can render a
+/// placeholder while the target is unresolved.
 #[must_use]
 pub fn try_from_kernel_event(event: &KernelEvent) -> Option<RepostRecord> {
-    if event.kind != KIND_REPOST {
+    if !is_repost_kind(event.kind) {
         return None;
     }
 
@@ -116,9 +160,46 @@ mod tests {
     }
 
     #[test]
+    fn primary_kind_1_acquires_kind_6_reposts() {
+        let kinds = acquisition_kinds_for_primary([1]);
+        assert_eq!(kinds, BTreeSet::from([1, KIND_REPOST]));
+    }
+
+    #[test]
+    fn non_kind_1_primary_acquires_kind_16_reposts() {
+        let kinds = acquisition_kinds_for_primary([20]);
+        assert_eq!(kinds, BTreeSet::from([20, KIND_GENERIC_REPOST]));
+    }
+
+    #[test]
+    fn mixed_primary_kinds_acquire_both_repost_wrappers() {
+        let kinds = acquisition_kinds_for_primary([1, 20]);
+        assert_eq!(
+            kinds,
+            BTreeSet::from([1, 20, KIND_REPOST, KIND_GENERIC_REPOST])
+        );
+    }
+
+    #[test]
+    fn wrapper_kinds_do_not_recursively_add_wrappers() {
+        let kinds = acquisition_kinds_for_primary([1, KIND_REPOST]);
+        assert_eq!(kinds, BTreeSet::from([1, KIND_REPOST]));
+    }
+
+    #[test]
     fn decodes_repost_with_event_tag_only() {
         let record =
             try_from_kernel_event(&event(KIND_REPOST, "", vec![vec!["e", "target"]])).unwrap();
+
+        assert_eq!(record.target_event_id.as_deref(), Some("target"));
+        assert!(record.embedded_event.is_none());
+    }
+
+    #[test]
+    fn decodes_generic_repost_with_event_tag_only() {
+        let record =
+            try_from_kernel_event(&event(KIND_GENERIC_REPOST, "", vec![vec!["e", "target"]]))
+                .unwrap();
 
         assert_eq!(record.target_event_id.as_deref(), Some("target"));
         assert!(record.embedded_event.is_none());

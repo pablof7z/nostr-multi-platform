@@ -191,7 +191,8 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+            .engine;
 
     // 1. The repost wrapper arrives (fan-out). Placeholder keyed by the target,
     //    provenance recorded, target not local yet → claim emitted.
@@ -263,7 +264,8 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+            .engine;
 
     // The target OP is observed (so it is a live root) and the wrapper too.
     engine.on_kernel_event(&op_event(OP_ID, BOB, 9, "Bob's original"));
@@ -309,7 +311,8 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
     );
 
     set_app_active(app, Some(ALICE));
-    let engine = nmp_defaults::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1, 6]).engine;
+    let engine =
+        nmp_defaults::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1]).engine;
 
     // Drive the L-5 sequence with no published store: placeholder, then hydrate
     // body — but provenance is absent (no wrapper read possible), and crucially

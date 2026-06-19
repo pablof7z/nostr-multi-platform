@@ -5,7 +5,8 @@
 //! projections (and the four `open_author` / `open_thread` / `close_author` /
 //! `close_thread` C-ABI symbols + their bespoke kernel machinery) that Step D
 //! of the V-112 handoff deletes. A profile screen and a thread screen each
-//! render a **flat** list of notes — every matching kind:1/6 as its own
+//! render a **flat** list of notes — every matching kind:1 plus derived
+//! repost wrappers as its own
 //! top-level row — which the OP-centric home feed engine structurally cannot
 //! express (it rolls a followed author's replies up as *attribution* under
 //! other people's roots). [`nmp_nip01::FlatFeed`] is that flat machine; this
@@ -14,8 +15,9 @@
 //! ## What one open does
 //!
 //! `nmp_app_chirp_open_author_feed(app, pubkey_hex)` performs the two halves
-//! the read path needs, with the `{1,6}` note-kind policy defined ONCE here so
-//! the two halves can never diverge:
+//! the read path needs, with primary note kinds defined ONCE here and repost
+//! wrapper acquisition derived by `nmp-nip18` so the two halves can never
+//! diverge:
 //!
 //! 1. **Kernel interest** — pushes a generic `open_interest`
 //!    (`{"kinds":[1,6],"authors":[pk]}`, consumer `author-<pk>`, scope Global)
@@ -23,7 +25,7 @@
 //!    subscribes for matching relay events and fans accepted stored events out
 //!    to every [`nmp_core::KernelEventObserver`].
 //! 2. **Feed render** — constructs a [`nmp_nip01::FlatFeed`] over the same
-//!    `{1,6}` author predicate and registers it as BOTH a feed controller
+//!    compiled author predicate and registers it as BOTH a feed controller
 //!    (output, under `nmp.feed.author.<pk>`) AND a kernel event observer
 //!    (ingest) through [`NmpApp::register_feed_with_observer`], which tracks
 //!    the observer id under the key for teardown.
@@ -38,8 +40,8 @@
 //!
 //! * **D0** — `nmp-core` never names `nmp-nip01`/`FlatFeed`; this app crate is
 //!   the composition point (the same role `register_op_feed_defaults` plays
-//!   for the home feed). The `{1,6}` kind decision lives here, never in the
-//!   substrate.
+//!   for the home feed). The primary kind decision lives here, never in the
+//!   substrate, and wrapper kinds are derived below the app-facing declaration.
 //! * **D6** — every entry point is fire-and-forget. Null pointers, invalid
 //!   UTF-8, and poisoned mutexes degrade silently rather than raising across
 //!   the FFI.
@@ -62,12 +64,18 @@ use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
 
 use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_shape};
 
-/// The note-kind policy for both the author and thread flat feeds: kind:1
-/// (text note) + kind:6 (repost). Defined ONCE so the `open_interest` filter
-/// (kernel admission) and the `FlatFeed` predicate (render gate) always agree —
-/// a divergence would either admit events the feed silently drops or starve the
-/// feed of events the kernel never stored.
-const FEED_KINDS: [u32; 2] = [1, 6];
+/// Chirp's primary flat-feed content kind: kind:1 short-text notes.
+///
+/// Repost wrappers are not app-declared primary content. They are derived via
+/// `nmp_nip18::acquisition_kinds_for_primary` so the `open_interest` filter
+/// (kernel admission) and the `FlatFeed` predicate (render gate) always agree.
+pub(crate) const FEED_PRIMARY_KINDS: [u32; 1] = [1];
+
+fn feed_acquisition_kinds() -> Vec<u32> {
+    nmp_nip18::acquisition_kinds_for_primary(FEED_PRIMARY_KINDS)
+        .into_iter()
+        .collect()
+}
 
 /// Bound store seeding so an old account with a large author history cannot
 /// make a screen open unbounded. Live relay pushes continue filling the feed.
@@ -112,13 +120,18 @@ fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
     });
 }
 
-/// Build the `open_interest` filter JSON for [`FEED_KINDS`] over one tag
+/// Build the `open_interest` filter JSON for derived acquisition kinds over one tag
 /// dimension (`"authors"` or `"#e"`). Hand-built (not `serde_json`) because the
 /// shape is fixed and tiny; the value is re-parsed kernel-side into an
 /// `InterestShape` whose hash gives deterministic dedup.
 #[must_use]
 fn feed_filter_json(dimension: &str, value: &str) -> String {
-    format!(r#"{{"kinds":[1,6],"{dimension}":["{value}"]}}"#)
+    let kinds = feed_acquisition_kinds()
+        .into_iter()
+        .map(|k| k.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(r#"{{"kinds":[{kinds}],"{dimension}":["{value}"]}}"#)
 }
 
 /// Open the flat author feed for `pubkey_hex`.
@@ -148,20 +161,35 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     // (the registered observer/controller hold their own `Arc`s, not `&app`).
     let app_ref = unsafe { &*app };
 
-    let feed = FlatFeed::new(author_feed_predicate(pubkey.clone(), FEED_KINDS.to_vec()));
+    let acquisition_kinds = feed_acquisition_kinds();
+    let feed = FlatFeed::new(author_feed_predicate(
+        pubkey.clone(),
+        acquisition_kinds.clone(),
+    ));
     seed_author_feed_from_store(app_ref, &feed, &pubkey);
     let key = author_feed_key(&pubkey);
     // B1: drain store history by ingest seq via PullFeedController (FlatFeed = push observer).
     // PullFeedController::new always succeeds; load_older fails closed if the
     // provider returns None (which cannot happen here — pubkey is always valid).
     let pk_for_shape = pubkey.clone();
-    let provider = Arc::new(ClosureInterestShape::new(move || author_feed_shape(&pk_for_shape, &FEED_KINDS)));
+    let kinds_for_shape = acquisition_kinds.clone();
+    let provider = Arc::new(ClosureInterestShape::new(move || {
+        author_feed_shape(&pk_for_shape, &kinds_for_shape)
+    }));
     let pull = make_pull_fn(app_ref.event_store_handle());
-    let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
+    let apply: nmp_feed::FeedApply = {
+        let f = feed.clone();
+        Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev))
+    };
     // After a drained page is ingested, grow the render viewport so the newly-
     // pulled older rows become user-visible in the emitted sidecar (they sort
     // below the first page). Viewport-only — no second pull.
-    let advance: nmp_feed::FeedAdvance = { let f = feed.clone(); Arc::new(move || { f.grow_visible_window(); }) };
+    let advance: nmp_feed::FeedAdvance = {
+        let f = feed.clone();
+        Arc::new(move || {
+            f.grow_visible_window();
+        })
+    };
     let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
     app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
@@ -219,19 +247,34 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     // SAFETY: see `nmp_app_chirp_open_author_feed`.
     let app_ref = unsafe { &*app };
 
-    let feed = FlatFeed::new(thread_feed_predicate(root_id.clone(), FEED_KINDS.to_vec()));
+    let acquisition_kinds = feed_acquisition_kinds();
+    let feed = FlatFeed::new(thread_feed_predicate(
+        root_id.clone(),
+        acquisition_kinds.clone(),
+    ));
     seed_thread_feed_from_store(app_ref, &feed, &root_id);
     let key = thread_feed_key(&root_id);
     // B1: pull the reply tail (#e-covered shape); root-by-id seeded above.
     // PullFeedController::new always succeeds; load_older fails closed if the
     // provider returns None (which cannot happen here — root_id is always valid).
     let root_for_shape = root_id.clone();
-    let provider = Arc::new(ClosureInterestShape::new(move || thread_feed_shape(&root_for_shape, &FEED_KINDS)));
+    let kinds_for_shape = acquisition_kinds.clone();
+    let provider = Arc::new(ClosureInterestShape::new(move || {
+        thread_feed_shape(&root_for_shape, &kinds_for_shape)
+    }));
     let pull = make_pull_fn(app_ref.event_store_handle());
-    let apply: nmp_feed::FeedApply = { let f = feed.clone(); Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev)) };
+    let apply: nmp_feed::FeedApply = {
+        let f = feed.clone();
+        Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev))
+    };
     // Viewport grow after each drained page — reveals the newly-pulled reply
     // tail in the emitted sidecar (viewport-only, no second pull).
-    let advance: nmp_feed::FeedAdvance = { let f = feed.clone(); Arc::new(move || { f.grow_visible_window(); }) };
+    let advance: nmp_feed::FeedAdvance = {
+        let f = feed.clone();
+        Arc::new(move || {
+            f.grow_visible_window();
+        })
+    };
     let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
     app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
@@ -265,31 +308,27 @@ pub extern "C" fn nmp_app_chirp_close_thread_feed(app: *mut NmpApp, event_id_hex
     );
 }
 
-/// The home-feed kind policy for Chirp's contact-feed subscription: kind:1
-/// (text note) + kind:6 (repost). Defined ONCE here — the single source of
-/// truth for the `{1, 6}` decision (D0: `nmp-core` no longer hardcodes it).
-/// `nmp_app_chirp_open_home_feed` passes this via the generic
-/// `nmp_app_open_contact_feed` verb; `nmp_app_chirp_close_home_feed` uses the
-/// matching `nmp_app_close_contact_feed`. Any app wanting different kinds
-/// calls the generic verbs directly with its own set.
+/// Chirp's home-feed primary content kind declaration: kind:1 text notes.
+///
+/// Repost wrappers are derived by the generic `nmp_app_open_contact_feed` verb;
+/// Chirp does not enumerate kind:6 as primary feed policy.
 ///
 /// `pub(crate)` so in-crate tests can assert the constant value without
 /// duplicating the literal.
-pub(crate) const HOME_FEED_KINDS_JSON: &str = "[1,6]";
+pub(crate) const HOME_FEED_PRIMARY_KINDS_JSON: &str = "[1]";
 
-/// Open Chirp's home (contact) feed — the subscription that REQs kind:1 and
-/// kind:6 events from the active account's follow set.
+/// Open Chirp's home (contact) feed — the subscription that REQs kind:1 events
+/// and derived repost wrappers from the active account's follow set.
 ///
 /// Delegates to the generic `nmp_app_open_contact_feed` with
-/// `HOME_FEED_KINDS_JSON = "[1,6]"` so the `{1, 6}` literal lives in EXACTLY
-/// ONE place (this constant). App shells that previously called
+/// `HOME_FEED_PRIMARY_KINDS_JSON = "[1]"`. App shells that previously called
 /// `nmp_app_open_timeline` must call this instead (ADR-0042 amendment
 /// 2026-06-12).
 ///
 /// D6 — a null `app` is a silent no-op (forwarded by `nmp_app_open_contact_feed`).
 #[no_mangle]
 pub extern "C" fn nmp_app_chirp_open_home_feed(app: *mut NmpApp) {
-    if let Ok(kinds_c) = std::ffi::CString::new(HOME_FEED_KINDS_JSON) {
+    if let Ok(kinds_c) = std::ffi::CString::new(HOME_FEED_PRIMARY_KINDS_JSON) {
         nmp_app_open_contact_feed(app, kinds_c.as_ptr());
     }
 }
@@ -353,7 +392,7 @@ fn seed_author_feed_from_store(app: &NmpApp, feed: &FlatFeed, pubkey_hex: &str) 
         &*store,
         StoreQuery::AuthorKind {
             author,
-            kinds: FEED_KINDS.to_vec(),
+            kinds: feed_acquisition_kinds(),
             since: None,
             until: None,
         },
@@ -375,7 +414,7 @@ fn seed_thread_feed_from_store(app: &NmpApp, feed: &FlatFeed, root_id_hex: &str)
         &*store,
         StoreQuery::Etag {
             target,
-            kinds: FEED_KINDS.to_vec(),
+            kinds: feed_acquisition_kinds(),
         },
     );
 }

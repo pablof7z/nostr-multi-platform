@@ -266,7 +266,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let _feed = nmp_defaults::register_op_feed_defaults(
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
-            vec![1, 6],
+            vec![1],
         );
 
         let state = Box::new(Mutex::new(CaptureState::new()));
@@ -313,7 +313,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let _feed = nmp_defaults::register_op_feed_defaults(
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
-            vec![1, 6],
+            vec![1],
         );
 
         let state = Box::new(Mutex::new(CaptureState::new()));

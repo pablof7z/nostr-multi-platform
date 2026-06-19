@@ -54,7 +54,7 @@ pub type FeedApply = Arc<dyn Fn(&KernelEvent) + Send + Sync>;
 pub type FeedAdvance = Arc<dyn Fn() + Send + Sync>;
 
 /// A [`FeedInterestShape`] backed by a closure, so a feed's live interest (e.g.
-/// the active account's follow set + host-declared kinds) is re-evaluated on
+/// the active account's follow set + compiled acquisition kinds) is re-evaluated on
 /// every `load_older` rather than frozen at registration. Returning `None`
 /// fails closed.
 pub struct ClosureInterestShape<F>(F);

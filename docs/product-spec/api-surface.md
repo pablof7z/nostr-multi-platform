@@ -287,6 +287,11 @@ that key and closes the interest. The unregister path emits a one-shot
 `Cleared` typed row so host caches drop the dynamic key immediately; the key is
 not part of the static Tier-2 projection manifest.
 
+Feed declarations use primary content kinds and reactive perspectives: `[1]`
+from active-user follows, `[20]` from relay-set plus WoT admission, or any
+primary kind/source pair. Protocol adapters derive repost wrappers (`6` for
+`1`, `16` otherwise) and provenance; components separately claim secondary data.
+
 Rationale vs. opaque `ViewHandle` reference types:
 
 - TEA-pure (every state change goes through one action / one update channel).

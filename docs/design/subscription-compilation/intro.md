@@ -137,17 +137,18 @@ pub trait ViewModule {
 
 Concrete examples for the existing seed-timeline path:
 
-- `TimelineView { authors: [pablof7z, fiatjaf, jb55, ...follows] }` returns one `LogicalInterest { shape: { authors, kinds: {1, 6}, limit: 200 }, lifecycle: Tailing }`.
-- `AuthorView { pubkey }` returns three interests: kind:10002 (Indexer fallback policy, see §3), kind:0 (one-shot), and `{ authors: [pubkey], kinds: {1, 6}, limit: 100 }` (Tailing).
+- `TimelineView { source: ActiveUserFollows, primary_kinds: {1} }` returns one declared feed. The NIP-01/NIP-18 adapter compiles that declaration into acquisition interests over followed authors with kinds `{1, 6}` and `limit: 200`.
+- `AuthorView { pubkey, primary_kinds: {1} }` returns three interests: kind:10002 (Indexer fallback policy, see §3), kind:0 (one-shot), and an author feed declaration. The adapter compiles the feed declaration into `{ authors: [pubkey], kinds: {1, 6}, limit: 100 }` (Tailing).
 - `ProfileClaim { pubkey }` (the refcounted UI path from `crates/nmp-core/src/kernel/requests.rs:202-237`) returns one interest: `{ authors: [pubkey], kinds: {0}, limit: 1, lifecycle: OneShot }`.
-- `ThreadView { event_id }` returns up to two interests: `{ ids: [...] }` for context, `{ kinds: {1, 6}, tags: { #e: [...] } }` for replies.
+- `ThreadView { event_id, primary_reply_kinds: {1} }` returns up to two interests: `{ ids: [...] }` for context, plus a declared reply feed. The adapter compiles the reply feed into `{ kinds: {1, 6}, tags: { #e: [...] } }`.
 - `ThreadViewModule` for a NIP-22 comment thread on a NIP-23 article returns an additional hydration interest:
   `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, kinds: {30023}, lifecycle: OneShot }`.
 - `MetaTimelineViewModule` highlights-of-article registers the same coordinate:
   `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, lifecycle: OneShot }`.
 
-These `{1, 6}` examples are social/NIP-01 module policy. They are not substrate
-defaults: the compiler and `nmp-core` carry kind sets supplied by modules or apps.
+The app-facing feed declarations name primary content kinds (`{1}` here) and a
+reactive source. The `{1, 6}` shapes above are compiled acquisition output, not
+what the app asks for and not substrate defaults.
 
 **Worked example — address-pointer dedup across ThreadView and MetaTimeline:**
 

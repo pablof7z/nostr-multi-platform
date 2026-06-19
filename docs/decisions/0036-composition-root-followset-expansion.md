@@ -1,123 +1,43 @@
-# ADR-0036 - Composition-root expansion of the follow-set timeline
+# ADR-0036 - Active follow-set source and follow-feed expansion
 
-> Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
-> renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
-> as `nmp-defaults` / `nmp_defaults`.
-
-Status: accepted. **Revised 2026-06-12 (Revision 2): the interest-expansion
-half of the Decision (composition-root expansion, step 2/3 of "The expansion")
-was never built and is superseded — the kernel's `sync_follow_feed_interests`
-is the live owner of follow→interest expansion. See "Revision 2" below before
-building anything follow-list-shaped from this ADR.**
+Status: accepted
 
 Date: 2026-05-28
 
-## Revision 2 (2026-06-12) — the kernel owns follow→interest expansion
-
-### What this revision corrects
-
-Rev 1's "The expansion — at the composition root" section decides that
-`register_op_feed_defaults` expands `follow_set.follows()` into one
-`LogicalInterest` per followed author and re-runs the expansion on every
-follow-set change. **That topology was never built, and building it would be a
-bug.** The live owner of follow→interest expansion is the kernel:
-`crates/nmp-core/src/kernel/ingest/contacts.rs::sync_follow_feed_interests`
-registers one per-follow `LogicalInterest` (host-declared kinds, `Tailing`) on
-the active account's kind:3 ingest and on every identity change
-(`register_follow_feed_for_active_account` /
-`reconcile_follow_feed_after_identity_change`), and rebuilds
-`timeline_authors`. Those subscriptions are what bring follow-feed events onto
-the wire.
-
-`crates/nmp-defaults/src/op_feed_defaults.rs` (the "CRITICAL DECISION — no
-per-follow interest expansion here" module note) records why at the
-implementation site: registering the same interests *again* at the composition
-root would be **duplicate REQ subscriptions** — a wire-level bug and a
-no-duplication violation. The composition root wires only the engine
-(predicate + event lookup + claim sink + card builder), the `ActiveFollowSet`
-`on_change`, and the identity-change callback. No interest expansion.
-
-### Why the correct design won in code rather than in this ADR
-
-Rev 1 was written while the v3→v4 override was deleting the planner-side
-`SocialTimeline` seam; it assumed the kernel-side per-follow expansion would be
-removed too. It never was — deliberately: the kernel is the single writer of
-follow-derived subscription state (D4), already owns the kind:3 ingest path and
-the identity-change reconciliation, and re-deriving the same interests from a
-second writer at the composition root cannot be kept coherent with it.
-
-### What survives from Rev 1 (unchanged)
-
-- The **producer**: `nmp_nip02::ActiveFollowSet`, closures-only API, observing
-  kind:3 ingest, `notify_account_changed()` seam — exactly as decided.
-- The **membership predicate** consumed by the `RootIndexedFeed` engine via
-  `follow_set.predicate()` — exactly as decided.
-- The rejections of v3 (`FollowSetLookup` trait) and of
-  `LogicalInterest::SocialTimeline` — still correct, for the same reasons.
-
-Only the *interest-expansion locus* moves: kernel, not composition root.
-
-### Guidance for follow-like lists (mutes, NIP-51 sets)
-
-Anyone building a follow-like list MUST NOT copy Rev 1's composition-root
-expansion sketch — it re-introduces the duplicate-REQ bug whenever the kernel
-(or any other single writer) also derives interests from the same list. The
-pattern is: ONE owner per list derives the planner interests (today the kernel
-owns the follow set's); the composition root wires *consumers* (predicates,
-engines, projections) only. If a new list has no kernel-side owner, decide the
-single owner first — do not default to the composition root because this ADR's
-Rev 1 text said so.
-
 ## Context
 
-The OP-centric home feed (former tracker V-80; full design in
-[`docs/perf/op-centric-feed-architecture.md`](../perf/op-centric-feed-architecture.md))
-needs two things from the active account's follow set:
+App feeds need two different facts from the active account's follow set:
 
-1. **A membership predicate** the generic `RootIndexedFeed` engine
-   ([ADR-0035](0035-generic-root-indexed-feed-engine.md), `nmp-feed`) consults
-   to decide whether an incoming reply qualifies for attribution: "does the
-   active account follow this reply's author?"
-2. **A timeline-interest expansion**: the planner must REQ kind:1 / kind:6
-   events for each followed author so those events actually arrive.
+1. a live membership predicate so a projection can decide whether an author's
+   event or reference is relevant to the current active user;
+2. an acquisition shape so the kernel can subscribe to the active user's
+   current follow set and recompile that subscription when the list changes.
 
-Two earlier shapes were considered and rejected:
-
-- **v3: a `FollowSetLookup` trait in `nmp-feed`.** The engine would name a
-  trait, and the producer would implement it. Codex flagged (finding B1/B4)
-  that consuming the follow set *inside the planner* forces the planner to name
-  the same trait, creating a `nmp-feed → nmp-core → nmp-planner` dependency
-  cycle. The trait also adds a crate the producer must depend on.
-- **A `LogicalInterest::SocialTimeline` planner variant.** The planner would
-  carry a follow-set-aware interest variant and expand it internally against a
-  follow-set capability. This bakes a social concept (`SocialTimeline`) into
-  the substrate planner (D0 risk), forces the planner to consume a follow-set
-  capability, and — per the user's "right not smallest" rule — churns
-  `LogicalInterest` across 50+ call sites for a variant that exists only to
-  re-derive what the kernel's `sync_follow_feed_interests` already derives.
-
-The design's §3-D resolves the tension in codex's direction: **delete both.**
+The framework must not encode a Chirp-specific "social timeline" shape in the
+planner or in `nmp-feed`. A media app, a long-form app, or a relay-set app must
+be able to use the same machinery with different primary content kinds and
+different admission/ranking rules.
 
 ## Decision
 
-The follow set is **produced** in `nmp-nip02`, consumed as a **closure** by the
-engine, and **expanded into concrete planner interests at the composition
-root** (`nmp-app-template`). There is no `FollowSetLookup` trait and no
-`LogicalInterest::SocialTimeline` variant anywhere in the system.
+The active follow set has one producer and one acquisition owner:
 
-### The producer — `nmp_nip02::ActiveFollowSet` (this rung, rung 4)
+- `nmp-nip02::ActiveFollowSet` produces a reactive pubkey set and a closure
+  predicate.
+- `nmp-core::Kernel::sync_follow_feed_interests` owns the active-user
+  follow-feed acquisition interest.
 
-`ActiveFollowSet` (`crates/nmp-nip02/src/active_follow_set.rs`) owns an
-`Arc<RwLock<BTreeSet<String>>>` of the active account's follow pubkeys (raw
-hex) plus the active account's own pubkey (self-inclusion — see below). It
-keeps the set current by:
+The composition root wires consumers. It does not duplicate the kernel's
+follow-to-interest expansion.
 
-- observing kind:3 ingest as a `KernelEventObserver` (author-gated to the
-  active account); and
-- exposing `notify_account_changed()`, the explicit account-switch / logout
-  seam the composition root drives.
+## Producer
 
-Its public API is **closures only**:
+`ActiveFollowSet` owns an `Arc<RwLock<BTreeSet<String>>>` of the active
+account's follows plus the active account's own pubkey. It keeps the set
+current by observing kind `3` ingest and by receiving explicit account-change
+notifications from the app composition root.
+
+Its public surface is closure-shaped:
 
 ```rust
 impl ActiveFollowSet {
@@ -125,113 +45,59 @@ impl ActiveFollowSet {
     pub fn follows(&self) -> Vec<String>;
     pub fn predicate(&self) -> Arc<dyn Fn(&str) -> bool + Send + Sync>;
     pub fn on_change(&self, callback: Box<dyn Fn() + Send + Sync>);
+    pub fn notify_account_changed(&self);
 }
 ```
 
-`predicate()` captures a clone of the internal `Arc<RwLock<…>>`, so a predicate
-handed to the engine *before* a kind:3 update (or an account switch) reflects
-that update **live**. This is the load-bearing property of the closure-only
-design: the engine asks, the producer mutates, the engine's view stays current
-with zero re-wiring.
+`predicate()` captures the shared set. A predicate handed to a feed engine
+before a kind `3` update observes the new membership after that update without
+re-registration.
 
-### Why the constructor takes `ActiveAccountSlot`, not `&NmpApp`
+`ActiveFollowSet::new` takes `ActiveAccountSlot`, not `&NmpApp`, so
+`nmp-nip02` does not depend on `nmp-ffi`.
 
-The design doc sketches `ActiveFollowSet::new(app: &NmpApp)`. That is
-pseudocode. `NmpApp` lives in `nmp-ffi`, which `nmp-nip02` depends on only as a
-*dev*-dependency. A production `&NmpApp` parameter would add a
-`nmp-nip02 → nmp-ffi` edge — a stealth dependency-graph inversion. The
-substrate-clean realization mirrors the sibling `FollowListProjection`: take
-the `ActiveAccountSlot` (`Arc<Mutex<Option<String>>>`, re-exported through
-`nmp_core::slots`) directly. The composition root registers the struct as a
-`KernelEventObserver` separately, exactly as it already does for
-`FollowListProjection`. Net effect: **no new crate edge in either direction.**
-`cargo tree -p nmp-nip02` still carries only `nmp-core`, `nostr`, `serde`,
-`serde_json`.
+## Acquisition Owner
 
-### Self-inclusion
+The kernel owns active-user follow-feed subscription state. On active-account
+kind `3` changes, account switches, and contact-feed reopens,
+`sync_follow_feed_interests` withdraws the old interest and registers a single
+multi-author `LogicalInterest` for the active user plus their current follows.
 
-`crates/nmp-core/src/kernel/ingest/contacts.rs::sync_follow_feed_interests`
-seeds the active account's own pubkey into `timeline_authors` (lines 162-164:
-`authors.insert(me.clone())`) so the user's own notes appear in their home
-stream. `ActiveFollowSet` mirrors that inclusion: the active account's own
-pubkey is always a member (even before any kind:3 arrives), so the producer
-agrees with the kernel's own follow-derived authorship set.
+The acquisition kinds are app-declared primary content kinds transformed by
+the relevant protocol adapter before they reach the kernel. A Chirp notes feed
+declares primary kind `[1]`; the NIP-18/NIP-01 adapter may derive kind `6`
+wrapper acquisition. A non-kind-1 feed declares its primary kind, and generic
+repost wrapper acquisition is kind `16`.
 
-### Account switch / logout is an explicit seam, not an implicit observer
+The app must not pass a static copy of "the current user's follows" to native
+or to the kernel. It selects a reactive source such as active-user follows.
+The kernel and protocol modules react to kind `3`, list, account, mute/block,
+and replacement changes.
 
-`ActiveAccountSlot` is plain shared state — `Arc<Mutex<Option<String>>>` — with
-**no** push notification (no condvar, no channel), and neither `AppHost` nor
-`NmpApp` exposes an observer for it. A kind:3 ingest cannot cover logout (there
-is no logout-triggered kind:3). So account change is the explicit
-`notify_account_changed()` seam: the composition root (rung 6) calls it from
-the same identity-change path every other subsystem already uses. It re-reads
-the slot, rebuilds for the new active account (clearing the set entirely on
-logout), and fires `on_change`.
+## Composition Root
 
-### The expansion — at the composition root (rung 6, `nmp-app-template`)
+`nmp-defaults::register_op_feed_defaults` and app-specific registration code
+wire:
 
-> **Superseded by Revision 2 (2026-06-12).** Steps 2 and 3 below were never
-> built; the kernel's `sync_follow_feed_interests` owns the expansion. Doing
-> them at the composition root duplicates every follow-feed REQ. Steps 1 and 4
-> shipped as written.
+- the `ActiveFollowSet` observer;
+- the feed engine's membership predicate;
+- event lookup and claim/release closures;
+- identity-change reset hooks;
+- typed projection registration.
 
-`nmp-app-template::register_op_feed_defaults` will:
-
-1. construct the `ActiveFollowSet`;
-2. expand `follow_set.follows()` into one concrete `LogicalInterest` per
-   followed author (kinds host-declared, `Tailing`) and push them to the
-   planner — reusing `planner::LogicalInterest` verbatim, **no enum
-   conversion, no new variant**;
-3. register an `on_change` callback that re-runs the expansion on every
-   follow-set change (mirroring the kernel's existing
-   `sync_follow_feed_interests` semantics, just driven from the composition
-   root); and
-4. wire `follow_set.predicate()` into `nmp_nip01::register_op_feed`.
-
-Follow → interest expansion therefore happens **at the composition root**, not
-in the planner and not in the kernel.
+They do not register duplicate follow-feed REQs. Duplicating the kernel's
+follow-feed interest would violate D4 and produce duplicate wire
+subscriptions.
 
 ## Consequences
 
-- **No dependency cycle.** The planner never consumes a follow-set capability;
-  `nmp-feed` never names a follow-set trait; `nmp-nip02` gains no `nmp-feed`
-  edge. The graph is strictly simpler than v3.
-- **D0 clean.** No `SocialTimeline` social noun in the substrate planner; no
-  NIP-02 token leaks into `nmp-core`. `nmp-nip02` is a NIP crate, so the
-  NIP-02 follow-set concept lives there legitimately.
-- **D7 honored.** The capability is a closure the wiring decides; the engine
-  asks, it does not own a producer.
-- **V-45 is closed by a different mechanism than originally named.** The
-  original V-45 issue proposed the `LogicalInterest::SocialTimeline` substrate
-  seam. This ADR delivers the same affordance — every composing app gets the
-  follow-set-driven home feed through a one-line
-  `register_op_feed_defaults(app, viewer)` — without the planner-side variant.
-  The tracker V-45 entry should record that V-45 is satisfied via
-  composition-root expansion (rung 6), not via `SocialTimeline`.
-- **The user's Q2 (LogicalInterest enum-vs-discriminator) is moot.** There is
-  no `SocialTimeline` variant to convert.
-- **Post-v1 mute-list (V-60) composes cleanly.** When NIP-51 mute lists land,
-  `ActiveFollowSet::predicate()` AND-clauses with `!is_muted(pubkey)` at the
-  adapter layer — no engine or planner change.
+- `nmp-feed` remains a mechanics crate: windows, controllers, cursors,
+  provenance containers, and bounded paging.
+- `nmp-core` owns active-user follow acquisition, but not app feed semantics.
+- protocol crates derive wrapper kinds and target provenance.
+- app Rust crates choose feed keys, primary kinds, source expressions,
+  admission/ranking policy, and row projections.
+- native shells render snapshots and execute capabilities only.
 
-## Status of this rung
-
-Rung 4 of the 7-rung V-80 ladder. Delivers the **producer only**, unwired, with
-12 synthetic tests in `crates/nmp-nip02/src/active_follow_set/tests.rs`. No
-consumer (rungs 5–6 consume it). Chirp unchanged; master green.
-
-## Spec drift recorded during implementation
-
-- The design doc cites `Kernel::active_account_handle()` at
-  `crates/nmp-core/src/kernel/mod.rs:1265-1267`. On current master it is at
-  `mod.rs:1334-1335` (the repo moved). It returns an `ActiveAccountSlot`
-  (`Arc<Mutex<Option<String>>>`, a *pull*-shared slot), **not** a push
-  observable. `AppHost` does not expose it — only `Kernel` does (and
-  `nmp_core::slots` re-exports the type alias). Rung 6 will decide whether to
-  grow `AppHost` with an account-slot accessor or thread the slot in at
-  composition; that is not rung 4's call.
-- The host-declared-kinds change (`fix(nmp-core): keep follow-feed kinds
-  host-declared`, commit `2f06cc66`) touches only the follow-feed REQ kinds,
-  not the kind:3 ingest fan-out `ActiveFollowSet` observes. The sibling
-  `FollowListProjection` (untouched by that commit) is the living proof the
-  kind:3 observer pattern still works.
+This document is the current rule. If the implementation changes, edit this
+document in place instead of adding a later correction document.

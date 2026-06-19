@@ -237,9 +237,9 @@ impl InterestShape {
     /// is substrate: it carries whatever kind set a host or NIP module declares
     /// as filter data, but it must not choose app concepts like "a social
     /// timeline means kind:1 + kind:6" (V-68 / D0). The follow-feed call site
-    /// threads the host-declared set (e.g. Chirp's `{1, 6}` from
-    /// `ActorCommand::OpenContactFeed { kinds }`); a long-form app would pass
-    /// `{30023}`. An empty set yields a wildcard-kinds shape.
+    /// threads a compiled acquisition set derived above the planner; app-facing
+    /// primary-kind declarations do not live here. An empty set yields a
+    /// wildcard-kinds shape.
     #[must_use]
     pub fn timeline_for(authors: BTreeSet<Pubkey>, kinds: BTreeSet<u32>) -> Self {
         Self {

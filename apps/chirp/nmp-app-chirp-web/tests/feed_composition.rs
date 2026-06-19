@@ -193,8 +193,7 @@ fn wired_path_follow_feed_populates_snapshot() {
 
     // Notify the follow set of the account change. This seeds ALICE (self-
     // inclusion) into the follow set so the engine's follow predicate returns
-    // `true` for ALICE's events. Also triggers the engine reset guard (first
-    // account set, so last_seen transitions None → Some(ALICE) → engine reset).
+    // `true` for ALICE's events and resets the feed perspective.
     setup.notify_account_changed();
 
     // Deliver ALICE's kind:1 through the wired observer slot — NOT via
@@ -237,7 +236,7 @@ fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
     runtime
         .handle(WorkerRequest::Dispatch(ActionDispatch {
             action_type: "nmp.kernel.open_contact_feed".to_string(),
-            payload: serde_json::json!({ "kinds": [1, 6] }),
+            payload: serde_json::json!({ "kinds": [1] }),
             correlation_id: "open-contact-feed".to_string(),
         }))
         .expect("open_contact_feed dispatch must be accepted");

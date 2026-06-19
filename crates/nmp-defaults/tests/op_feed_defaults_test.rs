@@ -13,12 +13,12 @@
 //!    driven through the returned `Arc<OpFeedEngine>`, surfaces the root with
 //!    one attribution once the root is supplied (self-inclusion makes the
 //!    reply author a follow without needing the actor to deliver a kind:3).
-//! 3. **Account-switch clear→repopulate** — driving the account-change seam on
+//! 3. **Perspective reset** — driving the account-change seam on
 //!    a freshly-built `ActiveFollowSet` (constructed exactly as the production
 //!    code does, over the same slot type) clears the prior account's follows
 //!    and re-seeds self-inclusion; a subsequent kind:3 ingest repopulates the
-//!    set. The composition root's `on_change` callback wiring (engine reset on
-//!    switch, no-op on kind:3) is exercised via the same self-detecting logic.
+//!    set. Production wiring resets the feed engine on every follow-set
+//!    perspective change, including replacement kind:3 updates.
 //! 4. **No duplicate interest registration** — `register_op_feed_defaults`
 //!    enqueues no `OpenContactFeed` / interest-mutating command on
 //!    the actor channel (the kernel's `sync_follow_feed_interests` already owns
@@ -128,7 +128,9 @@ fn read_typed_op_feed(app: *mut NmpApp, key: &str) -> Option<nmp_nip01::op_feed:
     // The generic JSON lane is deleted (rule A6). Use the typed FlatBuffers sidecar.
     let app_ref: &NmpApp = unsafe { &*app };
     let projections = app_ref.run_typed_snapshot_projections();
-    let entry = projections.iter().find(|p| p.key == key && !p.payload.is_empty())?;
+    let entry = projections
+        .iter()
+        .find(|p| p.key == key && !p.payload.is_empty())?;
     nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()
 }
 
@@ -143,7 +145,7 @@ fn registers_op_feed_engine_under_home_key() {
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     set_app_active(app, Some(ALICE));
     let _defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]);
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
 
     // The engine's `RootFeedSnapshot` shape is `{ cards, page, metrics }`.
     // `ModularTimelineProjection` would emit a `ModularTimelineSnapshot`
@@ -179,7 +181,8 @@ fn followed_reply_surfaces_root_with_attribution() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+            .engine;
 
     // ALICE (a follow, via self-inclusion) replies to BOB's not-yet-seen OP.
     let reply = reply_event(REPLY_ID, ALICE, 200, OP_ID);
@@ -223,24 +226,15 @@ fn account_switch_clears_then_kind3_repopulates() {
     let account_slot = slot(Some(ALICE));
     let follow_set = nmp_nip02::ActiveFollowSet::new(account_slot.clone());
 
-    // Mirror the composition root's self-detecting reset callback: count the
-    // engine resets that would fire on an account switch (but NOT on a kind:3
-    // update). `last_seen` seeded from the slot at registration.
+    // Mirror the composition root's reset callback: every follow-set change is
+    // a perspective change and resets the current feed window.
     let resets = Arc::new(AtomicUsize::new(0));
-    let last_seen = Arc::new(Mutex::new(account_slot.lock().unwrap().clone()));
     let resets_for_cb = Arc::clone(&resets);
-    let last_for_cb = Arc::clone(&last_seen);
-    let slot_for_cb = account_slot.clone();
     follow_set.on_change(Box::new(move || {
-        let current = slot_for_cb.lock().unwrap().clone();
-        let mut last = last_for_cb.lock().unwrap();
-        if *last != current {
-            *last = current;
-            resets_for_cb.fetch_add(1, Ordering::SeqCst);
-        }
+        resets_for_cb.fetch_add(1, Ordering::SeqCst);
     }));
 
-    // ALICE's kind:3 lands → follows BOB. NOT an account switch → no reset.
+    // ALICE's kind:3 lands → follows BOB. This changes the feed perspective.
     let observer: &dyn KernelEventObserver = &*follow_set;
     observer.on_kernel_event(&kind3(ALICE, &[BOB]));
     assert!(
@@ -249,8 +243,8 @@ fn account_switch_clears_then_kind3_repopulates() {
     );
     assert_eq!(
         resets.load(Ordering::SeqCst),
-        0,
-        "a kind:3 update must NOT reset the engine"
+        1,
+        "a kind:3 update resets the perspective window"
     );
 
     // Switch to CAROL: host writes the slot, then calls notify_account_changed.
@@ -267,12 +261,12 @@ fn account_switch_clears_then_kind3_repopulates() {
     );
     assert_eq!(
         resets.load(Ordering::SeqCst),
-        1,
+        2,
         "an account switch resets the engine exactly once"
     );
 
-    // CAROL's kind:3 (re-fetched by the kernel on switch) repopulates the set.
-    // This is an update, not a switch → no further reset.
+    // CAROL's kind:3 (re-fetched by the kernel on switch) repopulates the set
+    // and resets the interim empty perspective window.
     observer.on_kernel_event(&kind3(CAROL, &[ALICE]));
     assert!(
         follow_set.predicate()(ALICE),
@@ -284,9 +278,51 @@ fn account_switch_clears_then_kind3_repopulates() {
     );
     assert_eq!(
         resets.load(Ordering::SeqCst),
-        1,
-        "the repopulating kind:3 must NOT reset the engine again"
+        3,
+        "the repopulating kind:3 resets the window again"
     );
+}
+
+#[test]
+fn kind3_replacement_resets_visible_feed_immediately() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    assert!(!app.is_null());
+
+    set_app_active(app, Some(ALICE));
+    let defaults =
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
+
+    let follow_observer: &dyn KernelEventObserver = &*defaults.follow_set;
+    follow_observer.on_kernel_event(&kind3(ALICE, &[BOB]));
+
+    let engine_observer: &dyn KernelEventObserver = &*defaults.engine;
+    engine_observer.on_kernel_event(&op_event(OP_ID, BOB, 200, "bob note"));
+    assert_eq!(
+        defaults
+            .engine
+            .snapshot(&nmp_feed::FeedRequest::default())
+            .cards
+            .len(),
+        1,
+        "precondition: Bob's visible row is in the feed"
+    );
+
+    follow_observer.on_kernel_event(&kind3(ALICE, &[CAROL]));
+    assert!(
+        !defaults.follow_set.predicate()(BOB),
+        "Bob is no longer in the active follow-set perspective"
+    );
+    assert!(
+        defaults
+            .engine
+            .snapshot(&nmp_feed::FeedRequest::default())
+            .cards
+            .is_empty(),
+        "replacement kind:3 must clear rows from the prior follow perspective immediately"
+    );
+
+    nmp_app_free(app);
 }
 
 // ─── 4. No duplicate interest registration ───────────────────────────────────
@@ -315,7 +351,8 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+            .engine;
 
     let snapshot = engine.snapshot(&nmp_feed::FeedRequest::default());
     assert!(
@@ -346,7 +383,7 @@ fn load_older_typed_sidecar_reflects_grown_window() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]);
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
     let engine = &defaults.engine;
 
     // Ingest 90 root events from ALICE (the viewer, so all are in-feed).
@@ -377,7 +414,10 @@ fn load_older_typed_sidecar_reflects_grown_window() {
 
     // grow_visible_window grows the viewport to 160 (or total count if smaller).
     let had_more = engine.grow_visible_window();
-    assert!(had_more, "grow_visible_window must return true when older events exist");
+    assert!(
+        had_more,
+        "grow_visible_window must return true when older events exist"
+    );
 
     // After growing: typed sidecar must reflect the grown viewport — all 90 cards.
     let after = read_typed_op_feed(app, "nmp.feed.home")

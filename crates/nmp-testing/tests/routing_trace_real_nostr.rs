@@ -50,17 +50,17 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, PURPLEPAG_ES, NOS_LOL};
+use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, NOS_LOL, PURPLEPAG_ES};
 use nmp_planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::{
     BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutingContext, RoutingSource,
     SessionKeySet,
 };
 use nmp_core::RoutingTraceProjection;
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Kind10002Parser};
+use nmp_store::{RawEvent, VerifiedEvent};
 use serde_json::Value;
 
 /// pablof7z's NIP-65 hex pubkey. Hardcoded ground truth — this account is
@@ -188,8 +188,9 @@ fn interest_for_pablo() -> LogicalInterest {
     LogicalInterest {
         id: InterestId(20251024),
         scope: InterestScope::Global,
-        // V-68: NIP-01 social-timeline-scoped real-relay test; the test plays
-        // the host and declares {1, 6} (the substrate no longer injects it).
+        // V-68: NIP-01 social-timeline-scoped real-relay test over compiled
+        // acquisition kinds. Primary-kind declaration is tested at the app
+        // wrapper boundary.
         shape: InterestShape::timeline_for(
             [PABLO_HEX.to_string()].into_iter().collect(),
             [1u32, 6u32].into_iter().collect(),

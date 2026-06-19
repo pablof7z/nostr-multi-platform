@@ -290,7 +290,7 @@ Answers to those questions inform every backfill, every fallback-loader decision
 
 **Three triggers, all built-in.**
 
-1. **App foreground.** On `AppAction::Foreground`, the engine schedules an incremental sync for the active user's home filter (kind:1, kind:6, kind:7 matching followed authors) against their write relays. Runs in the tokio runtime; emits `SyncState` updates as it progresses; no UI blocking.
+1. **App foreground.** On `AppAction::Foreground`, the engine schedules an incremental sync for the active user's declared home feed. For a Chirp-style notes feed the app declares primary kind `1`; the protocol adapter derives repost/reaction-related acquisition as needed before the planner syncs the matching followed authors against their write relays. Runs in the tokio runtime; emits `SyncState` updates as it progresses; no UI blocking.
 2. **View open.** When a view opens whose filter has a gap (per watermark/coverage), the engine reconciles the gap concurrently with the live REQ tail. Progress is visible in `SyncState`; the view payload streams in as events land.
 3. **Relay reconnect.** On reconnect, the planner re-establishes live REQs and schedules a coverage-aware gap fill. The gap between disconnect and reconnect is filled by sync when possible, not by re-fetching from scratch.
 

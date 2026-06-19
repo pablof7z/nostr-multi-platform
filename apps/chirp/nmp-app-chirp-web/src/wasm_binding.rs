@@ -19,9 +19,9 @@
 //! `handle_json` detects a `SetSigner` request and calls
 //! [`ChirpWebFeedSetup::notify_account_changed`] after `WasmRuntime::handle`
 //! returns. The call is unconditional: on a failed signer install the active
-//! account slot is unchanged, so `notify_account_changed`'s `last_seen` guard
-//! short-circuits with no engine reset. On success the follow set is re-seeded
-//! and any identity switch clears the prior account's roots from the engine.
+//! account slot is unchanged, so `notify_account_changed` short-circuits with
+//! no engine reset. On success the follow set is re-seeded and the perspective
+//! reset clears the prior account's roots from the engine.
 //!
 //! # Doctrine
 //!
@@ -92,8 +92,8 @@ impl NmpWasmRuntime {
     ///
     /// A `SetSigner` request additionally triggers
     /// [`ChirpWebFeedSetup::notify_account_changed`] so the follow set is
-    /// re-seeded from the newly-active account and the engine resets on an
-    /// actual identity switch.
+    /// re-seeded from the newly-active account and the engine resets on a
+    /// real perspective change.
     ///
     /// # D6 — errors as data
     ///
@@ -140,8 +140,8 @@ impl NmpWasmRuntime {
         };
         if is_set_signer {
             // Unconditional: failed signer install leaves the slot unchanged,
-            // so notify_account_changed's last_seen guard is a no-op. Successful
-            // install re-seeds the follow set and detects any pubkey change.
+            // so notify_account_changed is a no-op. Successful install
+            // re-seeds the follow set and resets the feed perspective.
             self.setup.notify_account_changed();
         }
         // Route UpdateBytes through the callback channel; collect control events.
@@ -250,10 +250,7 @@ fn serialize_events_to_js(events: &[WorkerEvent]) -> Result<JsValue, JsValue> {
 ///
 /// Mirrors `nmp_wasm::snapshot::push_bytes_if_callback` (which is
 /// `pub(crate)`) without re-exporting it. Kept private to this module.
-fn push_bytes_if_callback(
-    callback: &Rc<RefCell<Option<js_sys::Function>>>,
-    bytes: &[u8],
-) {
+fn push_bytes_if_callback(callback: &Rc<RefCell<Option<js_sys::Function>>>, bytes: &[u8]) {
     let callback_ref = callback.borrow();
     let Some(callback_fn) = callback_ref.as_ref() else {
         return;

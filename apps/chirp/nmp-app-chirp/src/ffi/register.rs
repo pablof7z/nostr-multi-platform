@@ -80,7 +80,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // explicit caller error and must NOT silently fall back to the empty
     // identity.
     let viewer: Pubkey = match c_string_opt(viewer_pubkey) {
-        None => String::new(), // null pointer → no viewer
+        None => String::new(),                    // null pointer → no viewer
         Some(s) if s.is_empty() => String::new(), // empty string → no viewer
         Some(s) => {
             if !is_hex_pubkey(&s) {
@@ -203,7 +203,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // also registers the `ActiveFollowSet` as its own observer for kind:3
     // ingest and on `NmpApp`'s identity-change observer so sign-in, switch,
     // logout, and reset proactively clear stale OP-feed state.
-    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, viewer, vec![1, 6]);
+    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, viewer, vec![1]);
 
     // ADR-0037 typed sidecar for nmp.feed.home IS wired:
     // `register_op_feed_defaults` step 5b (nmp-defaults

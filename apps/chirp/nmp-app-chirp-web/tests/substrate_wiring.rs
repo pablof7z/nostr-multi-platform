@@ -37,7 +37,7 @@ fn kind3_parser_updates_kernel_follow_feed_authors() {
     runtime
         .handle(WorkerRequest::Dispatch(ActionDispatch {
             action_type: "nmp.kernel.open_contact_feed".to_string(),
-            payload: serde_json::json!({ "kinds": [1, 6] }),
+            payload: serde_json::json!({ "kinds": [1] }),
             correlation_id: "open-contact-feed".to_string(),
         }))
         .expect("open contact feed dispatch must succeed");

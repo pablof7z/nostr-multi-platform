@@ -277,13 +277,18 @@ where
         self.released_signals_seen.load(Ordering::Relaxed)
     }
 
-    /// Tear down all per-account state on identity change / logout (§3-K).
+    /// Tear down all state owned by the current feed perspective.
     ///
-    /// Pending root claims are engine-owned refcounts in the wiring layer, so
+    /// A perspective is the caller-supplied admission/ranking source: active
+    /// account, follow set, mute/block policy, relay set, WoT filter, or any
+    /// equivalent app-defined view. When it changes, old rows must disappear
+    /// immediately instead of aging out naturally.
+    ///
+    /// Pending root claims are engine-owned refcounts in the wiring layer, so a
     /// reset must release them before dropping the local pointer map. The state
     /// lock is released before callbacks run; a claim sink may enqueue actor
     /// commands and must not execute under the engine mutex.
-    pub fn reset_for_identity_change(&self) {
+    pub fn reset_for_perspective_change(&self) {
         let releases = match self.state.lock() {
             Ok(mut st) => {
                 let releases = st
@@ -297,12 +302,21 @@ where
             Err(_) => Vec::new(),
         };
 
+        self.window_limit
+            .store(DEFAULT_FEED_WINDOW_LIMIT, Ordering::Relaxed);
+
         for pointer in releases {
             (self.caps.claim_sink)(ClaimRequest::Release {
                 pointer,
                 consumer_id: self.caps.consumer_id.clone(),
             });
         }
+    }
+
+    /// Compatibility alias for older call sites whose only perspective change
+    /// was identity switch/logout.
+    pub fn reset_for_identity_change(&self) {
+        self.reset_for_perspective_change();
     }
 
     /// Grow the **render viewport** by one page, revealing more of the
@@ -319,11 +333,7 @@ where
     /// reveal and the hard ceiling was not yet hit), `false` when everything is
     /// already visible or the cap is reached.
     pub fn grow_visible_window(&self) -> bool {
-        let total = self
-            .state
-            .lock()
-            .map(|st| st.roots.len())
-            .unwrap_or(0);
+        let total = self.state.lock().map(|st| st.roots.len()).unwrap_or(0);
         let current_limit = self.window_limit.load(Ordering::Relaxed);
         if current_limit >= total || current_limit >= MAX_FEED_WINDOW_LIMIT {
             return false;

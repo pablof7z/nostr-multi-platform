@@ -10,9 +10,8 @@
 //! 5. Constructs the [`OpFeedEngine`] via `register_op_feed`.
 //! 6. Registers the engine as a [`KernelEventObserver`] on the reducer.
 //! 7. Registers the follow set as a `KernelEventObserver` for kind:3 ingest.
-//! 8. Registers an `on_change` callback that resets the engine ONLY on an
-//!    actual account switch (not on a kind:3 follow-set update). Uses the same
-//!    self-detecting `last_seen` pattern as the native `register_op_feed_defaults`.
+//! 8. Registers an `on_change` callback that resets the engine on every
+//!    follow-set perspective change.
 //! 9. Registers the typed `nmp.feed.home` snapshot projection.
 //! 10. Installs the post-tick drain hook into the runtime.
 //!
@@ -22,17 +21,13 @@
 //!   (`ChirpWebFeedSetup::notify_account_changed`).
 //! * Query the feed engine directly for UI-driven snapshot pulls.
 //!
-//! # Engine reset on identity change
+//! # Engine reset on perspective change
 //!
-//! The engine holds roots and attributions built from the *prior* account's
-//! events. After an account switch or logout the prior identity's roots MUST
-//! be cleared via [`OpFeedEngine::reset_for_identity_change`]. The `on_change`
-//! callback self-detects: it remembers the last-seen active pubkey (seeded at
-//! registration time) and calls `reset_for_identity_change` only when the
-//! pubkey actually changes — NOT on ordinary kind:3 follow-set updates.
-//!
-//! This mirrors the `last_seen` / `engine_for_cb.reset_for_identity_change()`
-//! pattern in `nmp-defaults/src/op_feed_defaults.rs` §6.
+//! The engine holds roots and attributions admitted under the current
+//! perspective: active account, follow set, and future mute/block policy. When
+//! that perspective changes, stale rows must disappear immediately. The
+//! `ActiveFollowSet::on_change` callback therefore resets the engine on
+//! account switch, logout, and kind:3 replacement.
 //!
 //! # Doctrine
 //!
@@ -97,30 +92,25 @@ pub struct ChirpWebFeedSetup {
 }
 
 impl ChirpWebFeedSetup {
-    /// Notify the follow set that the active account changed (switch or
-    /// logout). Rebuilds the set from the kernel slot, fires any registered
-    /// `on_change` callbacks, and — **if the account pubkey actually changed**
-    /// — resets the engine to discard the prior identity's roots and pending
-    /// claims.
+    /// Notify the follow set that the active account changed.
     ///
-    /// Mirrors the `engine_for_cb.reset_for_identity_change()` path in
-    /// `nmp-defaults/src/op_feed_defaults.rs` §6. The `last_seen` guard
-    /// prevents a spurious reset on a kind:3 follow-set update (the `on_change`
-    /// callback is fired on BOTH a kind:3 update and an account switch;
-    /// self-detection distinguishes the two).
+    /// A guard prevents failed/no-op signer installs from resetting the feed
+    /// when the active pubkey did not actually change. Real account changes
+    /// call `ActiveFollowSet::notify_account_changed`, whose `on_change`
+    /// callback resets the current perspective window.
     pub fn notify_account_changed(&self) {
-        // Notify the follow set first so its internal state is updated.
-        self.follow_set.notify_account_changed();
-
-        // Then check whether the active pubkey actually changed.
         let current = read_active(&self.active_account_slot);
         let Ok(mut last) = self.last_seen.lock() else {
+            self.follow_set.notify_account_changed();
             return;
         };
-        if *last != current {
-            *last = current;
-            self.engine.reset_for_identity_change();
+        if *last == current {
+            return;
         }
+        *last = current;
+        drop(last);
+
+        self.follow_set.notify_account_changed();
     }
 }
 
@@ -194,28 +184,16 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         .borrow()
         .register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
 
-    // 8. Wire the identity-change engine reset.
+    // 8. Wire the perspective-change engine reset.
     //
-    // `on_change` fires on BOTH a kind:3 update and an account switch.
-    // The predicate is live (it holds a clone of the follow-set's internal
-    // `Arc<RwLock<…>>`), so a kind:3 update needs no engine action; only an
-    // account switch requires a reset. The callback self-detects against the
-    // slot, seeded with the registration-time active pubkey so the first
-    // kind:3 fire is not a false positive. Mirrors the identical logic in
-    // `nmp-defaults/src/op_feed_defaults.rs` §6.
+    // `on_change` fires on active-account kind:3 replacement, account switch,
+    // and logout. Each invalidates the visible rows admitted under the previous
+    // follow-set perspective, so the engine clears immediately and the reactive
+    // acquisition/cache path repopulates what still qualifies.
     let last_seen = Arc::new(Mutex::new(read_active(&active_account_slot)));
     let engine_for_cb = Arc::clone(&engine);
-    let slot_for_cb = Arc::clone(&active_account_slot);
-    let last_for_cb = Arc::clone(&last_seen);
     follow_set.on_change(Box::new(move || {
-        let current = read_active(&slot_for_cb);
-        let Ok(mut last) = last_for_cb.lock() else {
-            return;
-        };
-        if *last != current {
-            *last = current;
-            engine_for_cb.reset_for_identity_change();
-        }
+        engine_for_cb.reset_for_perspective_change();
     }));
 
     // 9. Register the typed snapshot projection under "nmp.feed.home".

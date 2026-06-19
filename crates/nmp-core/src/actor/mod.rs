@@ -768,11 +768,11 @@ pub enum ActorCommand {
     },
     /// (Re)open the contact-feed subscription for the active account.
     ///
-    /// `kinds` is the host-declared event-kind set the follow-set REQ should
-    /// carry. D0: `nmp-core` does not know which kinds belong to the host's
-    /// app concept (Chirp's home feed declares {1, 6}; a long-form app might
-    /// declare {30023}); the host supplies the set so the substrate carries no
-    /// app-specific social knowledge. The actor folds it into the kernel via
+    /// `kinds` is the compiled acquisition kind set the follow-set REQ should
+    /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
+    /// policy belong to the host's app concept; the caller supplies the
+    /// compiled set so the substrate carries no app-specific social knowledge.
+    /// The actor folds it into the kernel via
     /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
     /// follow-feed M2 interests under the new kind set. An empty set is
     /// equivalent to `CloseContactFeed` — it withdraws all follow-feed interests.
@@ -1092,10 +1092,15 @@ pub enum ActorCommand {
     /// `after_seq` (`max(old, new)`). Fire-and-forget. Re-arms an immediate
     /// pull wake when the cursor is still behind the store head. Unknown id is
     /// a no-op.
-    AdvancePullCursor { cursor_id: u64, after_seq: u64 },
+    AdvancePullCursor {
+        cursor_id: u64,
+        after_seq: u64,
+    },
     /// ADR-0058 §10, step 3a — remove a cursor's registry row AND any pending
     /// pull wake entry. Fire-and-forget.
-    UnregisterPullCursor { cursor_id: u64 },
+    UnregisterPullCursor {
+        cursor_id: u64,
+    },
     /// M2 (ADR-0042) — the generic FFI-facing feed-subscription front door that
     /// replaced the bespoke `OpenAuthor` / `OpenThread` / `OpenFirehoseTag`
     /// variants. The host passes a verbatim NIP-01 REQ filter; the dispatch arm

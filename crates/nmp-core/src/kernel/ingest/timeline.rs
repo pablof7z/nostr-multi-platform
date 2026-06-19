@@ -47,7 +47,7 @@ impl Kernel {
         )
     }
 
-    /// ADR-0057 — project an already-persisted host-declared follow-feed event
+    /// ADR-0057 — project an already-persisted compiled-acquisition follow-feed event
     /// into the timeline read-cache (`self.events` + `self.timeline`).
     ///
     /// Called by the chokepoint ([`Kernel::ingest_accepted_event`]) for

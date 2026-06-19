@@ -1,6 +1,11 @@
-# OP-Centric Home Feed — Architecture Proposal
+# OP-Centric Home Feed — Historical Architecture Proposal
 
-> **Status:** FINAL design. Implementation-ready.
+> **Status:** Historical proposal, not current implementation guidance. Keep
+> this file only as design history. Current feed behavior is owned by the
+> durable docs and live code: `nmp-feed` provides mechanics; protocol/app
+> layers declare primary kinds and perspectives; `nmp-core` owns active-user
+> follow acquisition; `nmp-defaults` wires consumers and resets the feed on
+> perspective changes.
 > **Author:** Architect (Serena Blackwood)
 > **Revision:** 2026-05-27d (post-codex-v2 + user decisions). This is the
 > implementation-input draft. Subsequent residual concerns track in GitHub Issues,
@@ -12,9 +17,10 @@
 > Includes the protocol-level mechanics required to make a non-followed root
 > appear in the feed when a followed user replies to it. Delivers the
 > OP-centric feed as a generic primitive in `nmp-feed`, with `nmp-nip01` as
-> a thin protocol instance, follow-set expansion done at the composition
-> root (`nmp-defaults`), and a kernel-side pre-kind:3 ingest buffer
-> closing the cold-start gap.
+> a thin protocol instance. The shipped implementation differs from this
+> proposal in important ways: follow acquisition is kernel-owned, wrapper
+> acquisition is derived from app-declared primary kinds, and the kernel-side
+> pre-kind:3 ingest buffer described below was not retained.
 >
 > ### Revision history
 >
@@ -28,27 +34,19 @@
 > - **v4 (this revision, 2026-05-27d):** addresses codex-v2 (review at
 >   `docs/perf/op-centric-feed-architect-review.md`) and four user
 >   decisions (Q1, Q2, Q5, Q7). Major changes:
->   - **Composition-root expansion of the follow-set timeline (codex
->     architecture override).** `LogicalInterest::SocialTimeline` is
->     **deleted from the design**. `nmp-defaults` expands the active
->     follow set into concrete per-author `LogicalInterest`s at
->     composition + on every kind:3 update. No planner-side seam, no
->     `FollowSetLookup` cycle. **User's Q2 enum-conversion answer is
->     therefore moot** — there is no variant to convert. Reasoning in
->     §3-D-decision.
+>   - **Kernel-owned follow-feed acquisition.** `LogicalInterest::SocialTimeline`
+>     is deleted from the design. `nmp-defaults` does not expand follows into
+>     duplicate interests; `nmp-core::sync_follow_feed_interests` is the single
+>     acquisition owner for the active-user follow feed. No planner-side seam,
+>     no `FollowSetLookup` cycle.
 >   - **`FollowSetLookup` becomes a generic predicate, not a trait.** The
 >     engine takes `Arc<dyn Fn(&str) -> bool + Send + Sync>`. No new
 >     trait crate, no dependency cycle. Codex §3-Q-options aligned. The
 >     follow-set producer lives in `nmp-nip02`; the predicate is wired
 >     by `nmp-defaults`.
->   - **Pre-kind:3 ingest buffer (Q7 implementation).** The kernel
->     buffers kind:1 / kind:6 events that arrive before the active
->     account's kind:3 is processed in a bounded queue keyed by
->     event id. When kind:3 lands and `timeline_authors` is rebuilt,
->     the kernel replays buffered events whose author is now in
->     `timeline_authors` through the normal ingest+observer path. The
->     engine sees them as ordinary fan-out, no replay API needed at
->     the engine layer. Rung 1 expansion.
+>   - **No pre-kind:3 buffer in the shipped path.** Cold-start replay is handled
+>     by interest registration plus cache-serve. The proposal's bounded
+>     pre-kind:3 buffer is historical design context, not current guidance.
 >   - **No-match release signal (codex B2-remainder).** Adds a kernel
 >     surface `pub fn event_claim_released(&self) -> &BoundedRingBuffer<EventId>`
 >     projection (substrate-generic name; not `claim_event`-specific to
@@ -145,22 +143,17 @@ own enumeration policy.
   read and a `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`
   factory. No trait introduced; no `FollowSetLookup`; this is the
   follow-set producer.
-- **`nmp-defaults`** — `register_op_feed_defaults(app, viewer)`
-  composes everything: constructs the `ActiveFollowSet`, wires the
-  predicate + event-lookup into `register_op_feed`, registers an
-  internal observer that calls `nmp_app_expand_follow_timeline_interests`
-  on every kind:3 update so the planner sees fresh per-follow
-  `LogicalInterest`s. No `SocialTimeline` variant. No planner-side
-  capability.
-- **`nmp-core`** — gains five small substrate-grade additions: (1) a
-  pre-kind:3 ingest buffer for kind:1/kind:6 events, replayed when
-  `timeline_authors` is rebuilt; (2) `event_claim_released` projection
-  (a bounded ring buffer of released primary_ids); (3) `OneshotApi::request`
-  accepts initial `hints` (URI relay TLVs); (4) `release_event` calls
-  `release_claim_expansion`; (5) a typed `active_timeline_authors() ->
-  Vec<String>` accessor for the existing `timeline_authors` field. **No
-  follow-set trait, no NIP token, no new ProtocolCommand, no new
-  bespoke C-ABI symbol.**
+- **`nmp-defaults`** — `register_op_feed_defaults(app, viewer, primary_kinds)`
+  composes consumers: constructs the `ActiveFollowSet`, compiles primary kinds
+  into acquisition kinds through the protocol adapter, wires the predicate +
+  event lookup into `register_op_feed`, registers the pull pager, and resets the
+  engine on every follow-set perspective change. It does not register follow
+  interests.
+- **`nmp-core`** — owns active-user follow-feed acquisition through
+  `sync_follow_feed_interests`. It consumes compiled acquisition kinds supplied
+  by the app/protocol layer and registers one multi-author follow-feed interest
+  for the active user plus current follows. **No follow-set trait, no NIP token,
+  no `SocialTimeline`, no new ProtocolCommand, no new bespoke C-ABI symbol.**
 - **`nmp-threading`** — `TimelineBlock::Standalone { id, root:
   Option<ThreadPointer> }` (lossless).
 - **`nmp-planner`** — unchanged. No `SocialTimeline` variant. No new
@@ -354,10 +347,8 @@ root → snapshot rebuilds → on EOSE without match, kernel pushes the
 primary_id into `event_claim_released` → engine drops
 `pending_attributions[primary_id]`.**
 
-Pre-kind:3 cold-start: kernel buffers kind:1/6 events that would
-otherwise drop at `should_store_event`. When kind:3 lands and rebuilds
-`timeline_authors`, the buffer drains through normal ingest. Engine
-sees the events as ordinary fan-out.
+Cold-start replay comes from interest registration and cache-serve after kind:3
+rebuilds `timeline_authors`. The historical pre-kind:3 buffer is not current.
 
 ---
 
@@ -366,9 +357,9 @@ sees the events as ordinary fan-out.
 ### A. Where does "OP-centric feed with attribution" semantics live?
 
 **Decision: generic engine `RootIndexedFeed<R, A>` in `nmp-feed`; NIP-10
-instance in `nmp-nip01`; follow-set producer in `nmp-nip02`;
-composition wiring in `nmp-defaults`.** Unchanged from v3 except for
-the composition-root expansion of follow-set (§3-D).
+instance in `nmp-nip01`; follow-set producer in `nmp-nip02`; kernel-owned
+follow acquisition in `nmp-core`; consumer composition wiring in
+`nmp-defaults`.**
 
 ### B. How does Bob's unfollowed OP enter the kernel?
 
@@ -544,9 +535,9 @@ impl AttributionPayload for Nip10ReplyAttribution {
 
 ### D. How does the engine know the follow set? (ARCHITECTURE OVERRIDE)
 
-**Decision: composition-root expansion. No `FollowSetLookup` trait. No
-`LogicalInterest::SocialTimeline` variant. The user's Q2 answer is
-moot.**
+**Decision: closure predicate plus kernel-owned acquisition. No
+`FollowSetLookup` trait. No `LogicalInterest::SocialTimeline` variant. No
+composition-root follow-interest expansion.**
 
 The follow-set producer is **`nmp-nip02::ActiveFollowSet`**. It exposes:
 
@@ -565,49 +556,27 @@ for the active account; an internal observer of
 internal state is `Arc<RwLock<BTreeSet<String>>>`. On every change,
 registered `on_change` callbacks fire.
 
-**`nmp-defaults`** is the composition root:
+**`nmp-defaults`** is the consumer composition root:
 
 ```rust
-pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) {
-    let follow_set = nmp_nip02::ActiveFollowSet::new(app);
+pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {
+    let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
+    let acquisition_kinds = nmp_nip18::acquisition_kinds_for_primary(primary_kinds);
 
-    // 1. Initial expansion of the follow set into concrete per-author
-    //    LogicalInterests (replaces SocialTimeline planner expansion).
-    expand_follow_timeline_interests(app, &follow_set.follows(), viewer.clone());
+    // Kernel-owned acquisition consumes the compiled kinds. The composition
+    // root does not expand follows into interests.
+    app.open_contact_feed(acquisition_kinds);
 
-    // 2. On every follow-set change, re-expand (withdraws stale interests,
-    //    installs fresh ones). Mirrors the existing
-    //    sync_follow_feed_interests semantics, just driven from the
-    //    composition root.
-    let app_clone = app.clone();
-    let follow_set_for_cb = Arc::clone(&follow_set);
-    let viewer_for_cb = viewer.clone();
-    follow_set.on_change(Box::new(move || {
-        expand_follow_timeline_interests(
-            &app_clone,
-            &follow_set_for_cb.follows(),
-            viewer_for_cb.clone(),
-        );
-    }));
-
-    // 3. Register the OP-feed engine. The predicate is closure-shaped, no
-    //    trait crate.
-    nmp_nip01::register_op_feed(
-        app,
+    let engine = nmp_nip01::register_op_feed(
         viewer,
         follow_set.predicate(),
-        kernel_event_lookup(app),
+        app.event_lookup(),
+        app.claim_sink(),
     );
-}
 
-fn expand_follow_timeline_interests(app: &NmpApp, follows: &[String], viewer: Pubkey) {
-    // Constructs one LogicalInterest per follow (kinds 1, 6, Tailing,
-    // limit 200). Registers via the existing dispatch_action surface or
-    // an actor command. Mirrors the kernel-side sync_follow_feed_interests
-    // body, but the call site is at the composition root, not in the
-    // kernel.
-    // Actual interest construction reuses planner::interest::LogicalInterest
-    // verbatim — no enum conversion, no new variant.
+    follow_set.on_change(Box::new(move || {
+        engine.reset_for_perspective_change();
+    }));
 }
 ```
 
@@ -616,27 +585,21 @@ conversion because the proposal as-written needed planner-side
 `SocialTimeline` expansion. Codex pointed out the planner-side
 consumption forces a `FollowSetLookup` trait the planner must name,
 which creates a cycle through `nmp-feed → nmp-core → nmp-planner`.
-The cleanest fix is to eliminate planner-side expansion entirely:
-expand at composition. The user's Q2 was answering the wrong question —
-the right question is whether to consume the predicate in the planner
-at all. v4 answers "no." No SocialTimeline variant, no enum
-conversion, no `FollowSetLookup` trait, no cycle. **The user's "right
-not smallest" rule is satisfied** because the resulting graph is
-genuinely simpler: zero new trait crates, zero new variants, one
-ordinary closure parameter on the engine.
+The cleanest fix is to eliminate planner-side expansion entirely and keep one
+acquisition owner. The user's Q2 was answering the wrong question — the right
+question is whether to consume the predicate in the planner at all. Current
+code answers "no." No `SocialTimeline` variant, no enum conversion, no
+`FollowSetLookup` trait, no cycle, and no duplicate composition-root REQs.
 
 **Why this is "right" not "smallest":** the v3 design (trait in
 `nmp-feed`) was the smallest move that named V-45 as the seam — and it
-broke compilation. v4's composition-root expansion **finishes V-45**:
-it gives every composing app a one-line affordance
-(`register_op_feed_defaults`) without forcing the planner to grow a
-generic capability. The framework-thesis is strengthened more than the
-v2/v3 design strengthened it.
+broke compilation. The current shape gives composing apps a one-line
+affordance (`register_op_feed_defaults`) without forcing the planner to grow a
+generic capability and without duplicating kernel-owned follow-feed REQs.
 
-**V-45 status:** the original V-45 issue is closed by this design,
-just not through the originally-named `SocialTimeline` mechanism. The
-tracker entry needs to record that the V-45 affordance is delivered
-through `nmp-defaults::register_op_feed_defaults` instead.
+**V-45 status:** the original V-45 affordance is delivered through
+`nmp-defaults::register_op_feed_defaults`, not through `SocialTimeline` and not
+through duplicate composition-root acquisition.
 
 ### E. `TimelineBlock::Standalone` lossless reshape
 
@@ -747,13 +710,11 @@ where
 
 ### H. Framework reusability
 
-**Decision: `register_op_feed_defaults(app, viewer)` is the single-line
-affordance.** A second protocol (`nmp-nip22` covering kind:1111 for ALL
-non-kind:1 root kinds — NIP-23, NIP-94, NIP-99, podcasts) composes with
-`(R, A)` only; the composition-root expansion logic is generic over
-"the set of kinds to register interests for," so `nmp-defaults`
-also gains a `register_op_feed_for_comments_defaults(...)` helper
-post-v1.
+**Decision: `register_op_feed_defaults(app, viewer, primary_kinds)` is the
+single-line affordance for this protocol instance.** Other feed instances use
+the same mechanics: app/protocol code declares primary kinds and perspective;
+protocol adapters derive wrapper acquisition; `nmp-feed` remains generic over
+the mechanics.
 
 ### I. Sequencing
 
@@ -868,35 +829,17 @@ flow:
   pubkey are always admitted (existing seed: line 104-109 in
   `contacts.rs` puts the active user's pubkey into `timeline_authors`
   on `prepopulate_seed_contacts`).
-- The buffer is *only* consulted when `sync_follow_feed_interests`
-  runs (`crates/nmp-core/src/kernel/ingest/contacts.rs:86-119`). At
-  the end of that function, after `timeline_authors` is rebuilt, the
-  kernel walks the buffer; for every buffered event whose author is
-  now in `timeline_authors`, it re-runs the normal ingest path
-  (`Kernel::ingest_timeline_event` with the original sub_id). The
-  observer fan-out fires; the engine receives the event as ordinary
-  ingest. Replayed events are removed from the buffer.
-- Buffer entries whose author is still NOT in `timeline_authors`
-  after the kind:3 update are dropped from the buffer (they were
-  noise — e.g., follow-of-follow events arriving on the firehose).
+Current implementation note: the pre-kind:3 buffer described in this proposal
+was not retained. Replay comes from interest registration and cache-serve after
+the active contacts transition rebuilds `timeline_authors`.
 
-**This is invisible to the engine.** No new engine API, no scan
-API on the kernel surface (codex's "no event store iteration"
-constraint is satisfied because the buffer holds raw `NostrEvent`s in
-arrival order, not store entries). The engine just sees a slightly-
-delayed observer fan-out for events that arrived during the gap window.
-
-**Account switch.** `Kernel::active_account_handle()`
-(`crates/nmp-core/src/kernel/mod.rs:1265-1267`) is the existing
-substrate push seam. `ActiveFollowSet` registers an internal observer
-on the slot; when the active account changes, the adapter's `BTreeSet`
-is rebuilt against the new active account's `timeline_authors`. The
-`on_change` callback fires; `expand_follow_timeline_interests` runs
-with the new follow set. The engine receives a
-`reset_for_identity_change()` call from the wiring layer (it's a
-method on `RootIndexedFeed` that tears down `roots`, `attributions`,
-`pending_attributions`, `pending_pointers`, `profiles`). Pre-kind:3
-buffer for the previous account is also cleared.
+**Account switch and follow-set replacement.** `ActiveFollowSet` rebuilds from
+the active-account slot on identity changes and from the active account's
+replacement kind:3 on follow-list changes. Its `on_change` callback resets the
+feed perspective through `RootIndexedFeed::reset_for_perspective_change`,
+clearing `roots`, `attributions`, `pending_attributions`, `pending_pointers`,
+`profiles`, and the widened render window. The kernel-owned follow-feed
+interest and cache-serve path repopulate rows that still qualify.
 
 **Logout.** Same teardown rules as account switch. `ActiveFollowSet`
 returns an empty `BTreeSet`; predicate returns `false` for everyone;
@@ -965,18 +908,18 @@ Tests in §3-J cover all five cases.
 
 | Check | Status | Where |
 |---|---|---|
-| `nmp-core` introduces no NIP-named token | ✅ | Additions: pre-kind:3 buffer (substrate-named field), `event_claim_released` projection (substrate-named), `OneshotApi::request` hints parameter (no NIP), `active_timeline_authors()` accessor, `release_event` calls `release_claim_expansion`. No FollowSetLookup, no SocialTimeline. |
+| `nmp-core` introduces no NIP-named token | ✅ | Follow-feed acquisition stores compiled kinds supplied from above and owns `sync_follow_feed_interests`. No FollowSetLookup, no SocialTimeline. |
 | `nmp-feed` introduces no NIP-named token | ✅ | `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`, `ClaimRequest`. `Profile` is associated type. CI grep test. |
 | `nmp-router` introduces no NIP-named token | ✅ | Untouched. |
-| `nmp-planner` introduces no NIP-named token | ✅ | Untouched (composition-root expansion overrides v3's planner-side seam). |
+| `nmp-planner` introduces no NIP-named token | ✅ | Untouched; no planner-side social/feed seam. |
 | No new bespoke `nmp_app_*` C-ABI symbol | ✅ | Existing `nmp_app_claim_event`, `nmp_app_release_event`, `nmp_app_register_event_observer`. No new symbol. |
 | Doctrine path correct | ✅ | `docs/product-spec/doctrine.md`. |
 | No write-path outside `dispatch_action` | ✅ | Hydration is read. |
-| No new poll loop | ✅ | Observer-driven; pre-kind:3 buffer drains synchronously when kind:3 lands. |
+| No new poll loop | ✅ | Observer-driven; cache-serve runs from interest registration and continuation ticks. |
 | Display-separation | ✅ | Raw pubkeys, raw timestamps, `Option<String>` mirrors. **No `attribution_total` — Vec length is the count.** |
 | File-size ceiling | ✅ | Engine ~450 + ~320 tests; instance ~150 + ~220 tests; adapter ~120 + ~100 tests; kernel adds ~180 + ~180 tests. None breach. |
 | Single-source-of-truth | ✅ | Engine `attributions` is single owner; `event_claims[primary_id]` is single refcount. |
-| V-45 prerequisite | ✅ | Closed by `register_op_feed_defaults` (composition-root expansion replaces SocialTimeline). |
+| V-45 prerequisite | ✅ | Closed by `register_op_feed_defaults` without SocialTimeline or duplicate follow expansion. |
 | ADR numbering | ✅ | 0035 + 0036 (0033, 0034 already taken). |
 | Crate dep graph | ✅ | New edges: `nmp-nip02 → nmp-feed` NOT needed (nmp-nip02 has no `FollowSetLookup` trait to implement); `nmp-defaults → nmp-nip02` (already exists); `nmp-defaults → nmp-nip01` (already exists). NO `nmp-planner → nmp-feed` cycle. |
 | F-05 codegen | ⚠ | TimelineBlock shape (rung 2) + RootFeedSnapshot (rung 5) regenerate Swift Decodables. |
@@ -1057,8 +1000,7 @@ Tests in §3-J cover all five cases.
 
 | File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-defaults/src/op_feed_defaults.rs` | **NEW** — `register_op_feed_defaults(app, viewer)`. Constructs `ActiveFollowSet`, calls `expand_follow_timeline_interests`, registers `on_change` callback re-running expansion, calls `nmp_nip01::register_op_feed`. | +120 |
-| `crates/nmp-defaults/src/expand_follow_interests.rs` | **NEW** — `expand_follow_timeline_interests(app, follows, viewer)`. Builds per-follow `LogicalInterest` (kinds 1, 6, Tailing, limit 200); registers via the existing actor command surface. Mirrors `kernel::ingest::contacts::sync_follow_feed_interests` body. | +90 |
+| `crates/nmp-defaults/src/op_feed_defaults.rs` | Wires `ActiveFollowSet`, protocol engine, pull controller, and typed projection. Compiles app-declared primary kinds into acquisition kinds, but does not expand follows into duplicate interests. Resets on every follow-set perspective change. | +120 |
 | `crates/nmp-defaults/src/lib.rs` | Export. | +8 |
 | `crates/nmp-defaults/tests/op_feed_defaults_test.rs` | **NEW** — integration test: register defaults; feed events; assert snapshot. | +180 |
 
@@ -1074,7 +1016,7 @@ Tests in §3-J cover all five cases.
 | `ios/Chirp/Chirp/Bridge/Generated/*.swift` | Regenerated for `RootFeedSnapshot` + `Nip10ReplyAttribution`. | varies |
 | `crates/nmp-codegen/src/swift_projections_registry.rs` | Bind `nmp.feed.home` to new `OpFeedSnapshot` Swift type. | +6 / -3 |
 | `docs/architecture/crate-boundaries.md` | Row updates for `nmp-feed` and `nmp-nip02`. | +25 |
-| GitHub Issues | Close V-45 (resolved via composition-root expansion). Add V-59 (this work). Add V-60 (mute-list interaction post-v1, per Q5 + §3-K). Add V-61 (NIP-22 instance post-v1, per Q5). | varies |
+| GitHub Issues | Close V-45 (resolved via `register_op_feed_defaults`). Add V-59 (this work). Add V-60 (mute-list interaction post-v1, per Q5 + §3-K). Add V-61 (NIP-22 instance post-v1, per Q5). | varies |
 | `docs/plan.md` | Bump framework-thesis status. | +5 |
 
 **Total worktree footprint:** ~7 PRs, ~2,400 LOC net add (engine + tests
@@ -1160,14 +1102,12 @@ standalone rows; PR #710 added a ↳ partial mitigation. Product model is
 **Architectural shape:** generic engine `RootIndexedFeed<R, A>` in `nmp-feed`
 parameterized over `ParentResolver` + `AttributionPayload<Profile=…>` +
 closure-shaped follow predicate + event-lookup callback. NIP-10 instance in
-`nmp-nip01`. Follow-set producer in `nmp-nip02`. Composition root in
-`nmp-defaults`. Kernel additions (rung 1): pre-kind:3 ingest buffer,
-`event_claim_released` projection, `OneshotApi::request` initial hints,
-`release_event` calls `release_claim_expansion`. Root hydration via existing
-`Kernel::claim_event` / `nmp_app_claim_event` — no bespoke action.
+`nmp-nip01`. Follow-set producer in `nmp-nip02`. Consumer composition root in
+`nmp-defaults`. Kernel-owned follow acquisition in `nmp-core`. Root hydration
+via existing `Kernel::claim_event` / `nmp_app_claim_event` — no bespoke action.
 
-**Closes V-45** (via composition-root expansion of follow-set timeline
-interests in `nmp-defaults`; no planner-side `SocialTimeline` variant).
+**Closes V-45** (via `register_op_feed_defaults`; no planner-side
+`SocialTimeline` variant and no composition-root follow expansion).
 
 **Recommended action:** 7-rung PR ladder per §5. Net ~+2,400 LOC,
 ~-310 LOC. Two ADRs (0035 + 0036).
@@ -1175,7 +1115,7 @@ interests in `nmp-defaults`; no planner-side `SocialTimeline` variant).
 **User decisions resolved:** Q1 (raw attribution, no cap), Q2 (n/a —
 SocialTimeline deleted), Q3 (reposts stay, full case list in §3-L), Q4
 (self-replies promote), Q5 (NIP-22 post-v1), Q6 (D1-strict latency), Q7
-(pre-kind:3 buffer in kernel — replay through normal ingest).
+(current replay path is cache-serve, not the historical pre-kind:3 buffer).
 
 **Post-v1 follow-ups:** V-60 (mute interaction), V-61 (NIP-22 instance),
 V-62 (retire `timeline_authors`), V-63 (`claim_event` release semantics
@@ -1193,10 +1133,9 @@ cleanup), V-64 (`event_provenance` accessor).
   `nmp-nip01`.
 - **Do not** import any `nmp-nip*` crate from `nmp-feed`. CI grep
   enforces.
-- **Do not** add a `FollowSetLookup` trait or `LogicalInterest::SocialTimeline`
-  variant. Both were earlier proposals; composition-root expansion
-  replaces them. If you find yourself reaching for either, re-read
-  §3-D.
+- **Do not** add a `FollowSetLookup` trait, `LogicalInterest::SocialTimeline`
+  variant, or composition-root follow-interest expansion. The kernel is the
+  single owner of active-user follow acquisition; re-read §3-D.
 - **Do not** accept dual `Standalone` JSON shapes. Rung 2 patches every
   consumer.
 - **Do not** poll. Kernel push, observer callbacks, `Arc<RwLock<_>>`

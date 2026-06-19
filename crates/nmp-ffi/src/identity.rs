@@ -12,9 +12,9 @@
 //! shared `NmpApp` handle; the symbols stay `#[no_mangle] extern "C"` so the
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
-use super::{NmpApp, app_ref, c_optional_string_argument, c_string_argument};
+use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
 use nmp_core::ActorCommand;
-use std::ffi::{CString, c_char};
+use std::ffi::{c_char, CString};
 
 /// Mint a unique correlation id for a `SignEventForReturn` round-trip.
 ///
@@ -334,7 +334,7 @@ pub extern "C" fn nmp_app_remove_relay(app: *mut NmpApp, url: *const c_char) {
 
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): `nmp_app_open_timeline` deleted.
 // Callers must use the Chirp wrapper `nmp_app_chirp_open_home_feed` (which
-// hardcodes HOME_FEED_KINDS = [1,6] in ONE place) or the generic
+// declares primary home-feed kinds in one place) or the generic
 // `nmp_app_open_contact_feed`/`nmp_app_close_contact_feed` verbs in
 // `crates/nmp-ffi/src/timeline.rs`.
 

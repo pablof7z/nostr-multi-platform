@@ -65,6 +65,7 @@ nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 # supplies the `FeedController` / `EventLookup` types the engine is cast to.
 nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip18 = { path = "../nmp-nip18" }
 nmp-feed = { path = "../nmp-feed" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"

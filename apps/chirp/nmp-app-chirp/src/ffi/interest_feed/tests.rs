@@ -2,7 +2,7 @@
 //! (ADR-0042 §5.1, ADR-0058 §8 6B viewport grow wiring).
 
 use super::*;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 
 use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::WireProjectionState;
@@ -18,9 +18,11 @@ fn keys_are_namespaced_per_consumer() {
 
 #[test]
 fn filter_json_carries_the_feed_kinds_and_dimension() {
-    // The {1,6} policy in the filter MUST match FEED_KINDS (the predicate
-    // source), or the kernel admits events the feed drops / vice versa.
-    assert_eq!(FEED_KINDS, [1, 6]);
+    // Chirp declares primary kind 1. The NIP-18 helper derives the kind 6
+    // wrapper for acquisition, so the kernel filter and feed predicate still
+    // agree without the app declaring [1,6] as primary policy.
+    assert_eq!(FEED_PRIMARY_KINDS, [1]);
+    assert_eq!(feed_acquisition_kinds(), vec![1, 6]);
     assert_eq!(
         feed_filter_json("authors", "abc"),
         r#"{"kinds":[1,6],"authors":["abc"]}"#
@@ -283,7 +285,9 @@ fn insert_raw(store: &MemEventStore, raw: RawEvent) {
 fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
     let app_ref: &NmpApp = unsafe { &*app };
     let projections = app_ref.run_typed_snapshot_projections();
-    let entry = projections.iter().find(|p| p.key == key && !p.payload.is_empty())?;
+    let entry = projections
+        .iter()
+        .find(|p| p.key == key && !p.payload.is_empty())?;
     let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()?;
     Some(snapshot.cards.iter().map(|c| c.card.id.clone()).collect())
 }
@@ -292,5 +296,7 @@ fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
 fn typed_projection_is_gone(app: *mut NmpApp, key: &str) -> bool {
     let app_ref: &NmpApp = unsafe { &*app };
     let projections = app_ref.run_typed_snapshot_projections();
-    projections.iter().all(|p| p.key != key || p.payload.is_empty())
+    projections
+        .iter()
+        .all(|p| p.key != key || p.payload.is_empty())
 }

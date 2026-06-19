@@ -253,8 +253,9 @@ pub(crate) enum InterestDispatch {
         consumer_id: String,
         scope: u32,
     },
-    /// `open_contact_feed {kinds:[1,6]}` — sets the follow-feed kind set and
-    /// re-registers the active account's follow interests.
+    /// `open_contact_feed {kinds:[1]}` — compiles app-declared primary kinds
+    /// into the follow-feed acquisition kind set and re-registers the active
+    /// account's follow interests.
     OpenContactFeed {
         kinds: std::collections::BTreeSet<u32>,
     },
@@ -289,16 +290,17 @@ pub(crate) fn interest_dispatch_from_action(action: &ActionDispatch) -> Option<I
             Some(InterestDispatch::CloseInterest { filter_json, consumer_id, scope })
         }
         "nmp.kernel.open_contact_feed" => {
-            let kinds = action
+            let primary_kinds: Vec<u32> = action
                 .payload
                 .get("kinds")
                 .and_then(Value::as_array)
                 .map(|arr| {
                     arr.iter()
-                        .filter_map(|v| v.as_u64().map(|n| n as u32))
-                        .collect()
+                        .map(|v| v.as_u64().and_then(|n| u32::try_from(n).ok()))
+                        .collect::<Option<Vec<_>>>()
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(|| Some(Vec::new()))?;
+            let kinds = nmp_nip18::acquisition_kinds_for_primary(primary_kinds);
             Some(InterestDispatch::OpenContactFeed { kinds })
         }
         "nmp.kernel.close_contact_feed" => Some(InterestDispatch::CloseContactFeed),
@@ -330,4 +332,3 @@ pub(crate) fn execute_interest_dispatch(
 #[cfg(test)]
 #[path = "dispatch_routing_tests.rs"]
 mod tests;
-

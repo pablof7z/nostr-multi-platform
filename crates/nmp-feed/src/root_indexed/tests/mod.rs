@@ -11,7 +11,7 @@ use nmp_threading::pointer::ThreadPointer;
 use crate::root_indexed::card::RootFeedSnapshot;
 use crate::root_indexed::claim::ClaimRequest;
 use crate::root_indexed::engine::MAX_ATTRIBUTION_PER_ROOT;
-use crate::FeedRequest;
+use crate::{FeedRequest, DEFAULT_FEED_WINDOW_LIMIT};
 use support::{
     profile_event, reply_event, repost_event, root_event, Harness, TestCard, TestPayload,
 };
@@ -331,6 +331,40 @@ fn reset_for_identity_change_clears_all_state() {
 
     h.engine.reset_for_identity_change();
     assert!(h.snapshot().cards.is_empty());
+}
+
+#[test]
+fn perspective_reset_restores_default_window_limit() {
+    let h = Harness::new(&["alice"]);
+    for i in 0u64..90 {
+        h.ingest(&root_event(
+            &format!("old{i}"),
+            "alice",
+            1_000 + i,
+            "old body",
+        ));
+    }
+    assert!(
+        h.engine.grow_visible_window(),
+        "precondition: visible window grew past the default"
+    );
+    assert_eq!(h.engine.snapshot_current_window().cards.len(), 90);
+
+    h.engine.reset_for_perspective_change();
+
+    for i in 0u64..90 {
+        h.ingest(&root_event(
+            &format!("new{i}"),
+            "alice",
+            2_000 + i,
+            "new body",
+        ));
+    }
+    assert_eq!(
+        h.engine.snapshot_current_window().cards.len(),
+        DEFAULT_FEED_WINDOW_LIMIT,
+        "a perspective reset must return paging to the first window"
+    );
 }
 
 #[test]

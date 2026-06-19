@@ -29,8 +29,8 @@
 //! 4. Registers the `ActiveFollowSet` as its own `KernelEventObserver` (so
 //!    kind:3 ingest keeps the follow set current — exactly the pattern the
 //!    sibling `FollowListProjection` already uses).
-//! 5. Registers an `on_change` callback that resets the engine **only on an
-//!    account switch** (see [the account-switch note](#account-switch-vs-kind3-update)).
+//! 5. Registers an `on_change` callback that resets the engine on every
+//!    follow-set perspective change.
 //! 6. Registers the follow-set notifier on `NmpApp`'s identity-change observer
 //!    seam so sign-in, switch, logout, and reset are pushed after the actor has
 //!    written the active-account slot.
@@ -48,10 +48,10 @@
 //! (`crates/nmp-core/src/kernel/ingest/contacts.rs:119`): on the active
 //! account's kind:3 (`ingest_contacts`) and on every identity change
 //! (`register_follow_feed_for_active_account` /
-//! `reconcile_follow_feed_after_identity_change`) it registers one per-follow
-//! `LogicalInterest` (host-declared kind:1/6) AND rebuilds `timeline_authors`.
-//! Those subscriptions are what bring the follow-feed kind:1/6 events onto the
-//! wire; the OP-feed engine then observes them via the kernel's
+//! `reconcile_follow_feed_after_identity_change`) it registers one
+//! multi-author `LogicalInterest` under compiled acquisition kinds AND rebuilds
+//! `timeline_authors`. Those subscriptions are what bring the follow-feed
+//! events onto the wire; the OP-feed engine then observes them via the kernel's
 //! `KernelEventObserver` fan-out. Registering the same interests **again** at
 //! the composition root would be duplicate REQ subscriptions — a wire-level
 //! bug and a no-duplication-rule violation.
@@ -102,25 +102,14 @@
 //! so the follow predicate and the identity-change observer share the same
 //! app-owned `Arc` the actor writes in `Kernel::set_accounts`.
 //!
-//! # Account switch vs kind:3 update
+//! # Perspective changes reset the feed
 //!
-//! `ActiveFollowSet::on_change` fires on **both** a kind:3 update and an
-//! account switch (`notify_account_changed`). They need different engine
-//! responses:
-//!
-//! * **kind:3 update** — the predicate is *live* (it captures a clone of the
-//!   `ActiveFollowSet`'s internal `Arc<RwLock<…>>`), so the engine needs
-//!   nothing: future fan-out is already gated by the new follow set, and stale
-//!   roots D5-evict naturally.
-//! * **account switch** — the engine holds roots/attributions built from the
-//!   *prior* account's events; it MUST be reset
-//!   ([`OpFeedEngine::reset_for_identity_change`]).
-//!
-//! `on_change` cannot tell the two apart, so the callback **self-detects**
-//! against the slot: it remembers the last-seen active pubkey and resets the
-//! engine only when the pubkey actually changed. `last_seen` is initialised
-//! from the slot at registration, so the first post-startup kind:3 fire is not
-//! a false positive.
+//! `ActiveFollowSet::on_change` fires on active-account kind:3 replacement,
+//! account switch, and logout. All of those are feed-perspective changes: the
+//! user has changed who can cause rows to appear. The engine therefore resets
+//! immediately instead of letting stale rows D5-evict naturally. Re-population
+//! comes from the same reactive acquisition/cache-serve path that registered
+//! the new follow-feed interest.
 //!
 //! ## The account-change race (rung-4 flagged this)
 //!
@@ -131,10 +120,10 @@
 //! self-inclusion of B (its follows are still empty — B's kind:3 has not landed
 //! yet) and fires `on_change`; this callback sees `B != A`, resets the engine,
 //! and records B. When B's kind:3 later ingests, `ActiveFollowSet`'s own
-//! observer repopulates the set and fires `on_change` again; the callback sees
-//! `B == B` and no-ops, while the predicate is now live for B's follows. The
-//! clear-then-repopulate ordering means the switch-before-kind:3 window never
-//! rebuilds against a stale follow set.
+//! observer repopulates the set and fires `on_change` again; the callback
+//! resets the empty interim window so the new perspective is populated only by
+//! B's qualifying rows. The clear-then-repopulate ordering means the
+//! switch-before-kind:3 window never rebuilds against a stale follow set.
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
@@ -150,7 +139,8 @@ use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, Pul
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{
-    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, FeedEmissionState, FrameIdentity,
+    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, FeedEmissionState,
+    FrameIdentity,
 };
 use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
@@ -181,7 +171,8 @@ pub struct OpFeedDefaults {
 /// generic `Value` `FeedController` — a host with a `NOFS` decoder prefers the
 /// typed payload, others fall back to the generic `Value` subtree. Finally
 /// registers the `ActiveFollowSet` as its own `KernelEventObserver` and an
-/// `on_change` callback that resets the engine on an account switch.
+/// `on_change` callback that resets the engine on any follow-set perspective
+/// change.
 ///
 /// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` and
 /// `Arc<ActiveFollowSet>` for direct tests/diagnostics. Both are already
@@ -204,7 +195,7 @@ pub struct OpFeedDefaults {
 pub fn register_op_feed_defaults(
     app: &NmpApp,
     viewer: Pubkey,
-    contact_feed_kinds: Vec<u32>,
+    primary_feed_kinds: Vec<u32>,
 ) -> OpFeedDefaults {
     // ── 1. Follow-set producer ───────────────────────────────────────────
     //
@@ -252,7 +243,12 @@ pub fn register_op_feed_defaults(
     });
 
     // ── 4. Construct the engine ──────────────────────────────────────────
-    let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup, claim_sink);
+    let engine = register_op_feed(
+        viewer.clone(),
+        follow_set.predicate(),
+        event_lookup,
+        claim_sink,
+    );
 
     // ── 5. Register the engine (ingest + output) ─────────────────────────
     let engine_observer: Arc<dyn KernelEventObserver> = engine.clone();
@@ -267,8 +263,8 @@ pub fn register_op_feed_defaults(
     //
     //   * **interest** — a LIVE, fail-closed `InterestShape` recomputed on every
     //     `load_older`: the active account's follow set + the active user as
-    //     `authors`, under the host-declared `contact_feed_kinds`. This is the
-    //     same collapsed follow-feed shape the kernel registers for M2
+    //     `authors`, under acquisition kinds derived from app-declared primary
+    //     kinds. This is the same collapsed follow-feed shape the kernel registers for M2
     //     (`sync_follow_feed_interests`). The controller is registered
     //     UNCONDITIONALLY (below); the provider proves a LIVE active account
     //     FIRST and yields `None` on empty kinds or no signed-in account, so a
@@ -289,7 +285,8 @@ pub fn register_op_feed_defaults(
         // empty ⇒ provider returns None ⇒ load_older fails closed. After an
         // account switch the slot holds the new pubkey without re-registering.
         let account_slot = active_account_slot.clone();
-        let kinds: BTreeSet<u32> = contact_feed_kinds.iter().copied().collect();
+        let kinds: BTreeSet<u32> =
+            nmp_nip18::acquisition_kinds_for_primary(primary_feed_kinds.iter().copied());
         Arc::new(ClosureInterestShape::new(move || {
             live_contact_feed_shape(&account_slot, &follow_set, &kinds)
         }))
@@ -400,8 +397,10 @@ pub fn register_op_feed_defaults(
                 key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
                 schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
                 schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-                file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
-                    .into_owned(),
+                file_identifier: String::from_utf8_lossy(
+                    nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
+                )
+                .into_owned(),
                 payload,
                 projection_rev,
                 ..Default::default()
@@ -409,32 +408,22 @@ pub fn register_op_feed_defaults(
         }
     });
 
-    // ── 6. Account-switch reset (NOT on kind:3 updates) ──────────────────
+    // ── 6. Perspective reset ─────────────────────────────────────────────
     //
-    // `on_change` fires on both a kind:3 update and an account switch. The
-    // predicate is live, so a kind:3 update needs no engine action; only an
-    // account switch (the active pubkey actually changed) requires a reset.
-    // The callback self-detects against the slot, seeded with the
-    // registration-time active pubkey so the first kind:3 fire is not a false
-    // positive. See the module docs for the full switch race analysis.
+    // `on_change` fires on active-account kind:3 replacement, account switch,
+    // and logout. Each changes the app's perspective on which authors can make
+    // rows appear, so the current feed window is invalid and must clear
+    // immediately. The acquisition/cache-serve path then repopulates rows that
+    // still qualify under the new perspective.
     //
     // R6-S1: this callback no longer touches the typed-projection emission state.
-    // An account switch bumps the kernel's `snapshot_epoch` (identity_state.rs
-    // → `bump_epoch`), which the kernel publishes into the frame-identity handles
-    // the typed closure reads — so the closure rebaselines automatically, in
-    // lockstep with the host cache reset, with no bespoke epoch bump here.
-    let last_seen = Arc::new(Mutex::new(read_active(&active_account_slot)));
+    // Account switches bump the kernel's `snapshot_epoch` (identity_state.rs →
+    // `bump_epoch`), which the kernel publishes into the frame-identity handles
+    // the typed closure reads. Follow-list changes emit new feed bytes because
+    // the engine state changes.
     let engine_for_cb = engine.clone();
-    let slot_for_cb = active_account_slot.clone();
     follow_set.on_change(Box::new(move || {
-        let current = read_active(&slot_for_cb);
-        let Ok(mut last) = last_seen.lock() else {
-            return;
-        };
-        if *last != current {
-            *last = current;
-            engine_for_cb.reset_for_identity_change();
-        }
+        engine_for_cb.reset_for_perspective_change();
     }));
 
     let follow_set_for_identity = follow_set.clone();

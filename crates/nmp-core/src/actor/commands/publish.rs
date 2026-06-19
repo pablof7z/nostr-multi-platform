@@ -622,24 +622,24 @@ pub(crate) fn follow(
 
 /// (Re)open the contact-feed subscription for the active account.
 ///
-/// `kinds` is the host-declared event-kind set the follow-set REQ should
-/// carry. D0: `nmp-core` does not know which kinds belong to the host's app
-/// concept (Chirp's home feed declares {1, 6}; a long-form app might declare
-/// {30023}); the host supplies the set so the substrate carries no
-/// app-specific social knowledge. `Kernel::set_follow_feed_kinds` stores the
-/// set and re-registers the active account's M2 follow-feed interests under it,
+/// `kinds` is the compiled acquisition kind set the follow-set REQ should
+/// carry. D0: `nmp-core` does not know which primary kinds or wrapper policy
+/// belong to the host's app concept; the caller supplies the compiled set so
+/// the substrate carries no app-specific social knowledge.
+/// `Kernel::set_follow_feed_kinds` stores the set and re-registers the active
+/// account's M2 follow-feed interests under it,
 /// so `drain_lifecycle_tick` emits REQ frames for the follow set on the next
 /// idle tick. This complements `ingest_contacts` (which registers on kind:3
 /// arrival, reading the same stored kinds); this command covers re-opens
 /// (screen re-entry) before a new kind:3 arrives, and is also where the host
-/// first activates the subscription by declaring its kinds. An empty `kinds`
-/// set clears the subscription (equivalent to `close_contact_feed`).
+/// first activates the subscription by supplying acquisition kinds. An empty
+/// `kinds` set clears the subscription (equivalent to `close_contact_feed`).
 ///
-/// The host-declared kinds are stored UNCONDITIONALLY — including before any
+/// The compiled acquisition kinds are stored UNCONDITIONALLY — including before any
 /// account is active (#1493 P4). Both Chirp shells mount the home-feed view at
 /// app launch (`HomeFeedView.task` / `TimelineScreen.LaunchedEffect`), which can
-/// fire this verb before the user signs in. The kinds are pure host policy that
-/// outlives the identity; persisting them now lets the sign-in path's
+/// fire this verb before the user signs in. The kinds are pure acquisition
+/// policy that outlives the identity; persisting them now lets the sign-in path's
 /// `reconcile_follow_feed_after_identity_change` →
 /// `register_follow_feed_for_active_account` register the follow-feed under the
 /// stored kinds without the host having to re-declare them post-identity (which
@@ -653,7 +653,7 @@ pub(crate) fn open_contact_feed(
     kernel: &mut Kernel,
     kinds: std::collections::BTreeSet<u32>,
 ) -> Vec<OutboundMessage> {
-    // Store the host-declared kinds and (re-)register M2 follow-feed interests
+    // Store the compiled acquisition kinds and (re-)register M2 follow-feed interests
     // so drain_lifecycle_tick emits REQ frames for the follow set on the next
     // idle tick. Idempotent and account-agnostic: with no active account this
     // only persists the kinds (registration early-returns); the subsequent

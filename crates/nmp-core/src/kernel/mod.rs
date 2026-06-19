@@ -89,14 +89,12 @@ pub(crate) mod pull_cursor;
 pub(crate) mod pull_wake;
 // ADR-0058 §10, step 3a — single actor-owned store-wakeup subsystem
 // (generalizes the #1520 cache-serve wakeup; carries the pull wake arm too).
-mod store_wakeup;
-#[cfg(test)]
-mod pull_tests;
 #[cfg(test)]
 mod pull_cursor_wake_tests;
-// ADR-0058 §6 step-4 — Protected-cursor retention claim publish wiring.
 #[cfg(test)]
-mod pull_cursor_retention_tests;
+mod pull_tests;
+mod store_wakeup;
+// ADR-0058 §6 step-4 — Protected-cursor retention claim publish wiring.
 #[cfg(test)]
 mod cache_serve_all_kinds_dispatcher_tests;
 #[cfg(test)]
@@ -110,6 +108,8 @@ mod cache_serve_universal_tests;
 #[cfg(test)]
 mod cache_serve_wakeup_tests;
 pub(crate) mod closed_reason;
+#[cfg(test)]
+mod pull_cursor_retention_tests;
 // K3 Stage D1 (ADR-0056 §3) — coverage-ledger write path.
 #[cfg(test)]
 mod chokepoint_tests;
@@ -912,12 +912,11 @@ pub struct Kernel {
     /// `pub(crate)` so in-crate tests can assert the interest registry is
     /// empty after `close_contact_feed` without triggering side-effects.
     pub(crate) follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
-    /// Host-declared event kinds the contact-feed subscription should REQ for
+    /// Compiled acquisition kinds the contact-feed subscription should REQ for
     /// the active account's follow set. Empty = the subscription is not active
-    /// (no follow-feed interests are registered). The host (e.g. Chirp) declares
-    /// its app-specific kinds via `ActorCommand::OpenContactFeed { kinds }`;
-    /// `nmp-core` no longer hardcodes any kind set here (D0 — the substrate
-    /// carries no app-specific social knowledge such as {1, 6}).
+    /// (no follow-feed interests are registered). Callers derive this set from
+    /// app-facing primary kinds and wrapper policy before it reaches
+    /// `nmp-core`; the substrate carries no app-specific social knowledge.
     ///
     /// `pub(crate)` so in-crate tests can seed it directly as fixture setup
     /// without triggering the `register_follow_feed_for_active_account`
