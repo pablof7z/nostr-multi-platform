@@ -81,6 +81,10 @@ mod claimed_events_raw_author_tests;
 // newest-N events matching the interest's shape and feed them through the
 // post-store projection-dispatch path (not store.insert — see ADR §1.2).
 pub(crate) mod cache_serve;
+// ADR-0058 §10, step 2 — kernel pull service over GlobalLog + InterestShape.
+pub(crate) mod pull;
+#[cfg(test)]
+mod pull_tests;
 #[cfg(test)]
 mod cache_serve_all_kinds_dispatcher_tests;
 #[cfg(test)]
