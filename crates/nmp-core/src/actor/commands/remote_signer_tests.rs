@@ -805,6 +805,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             routing_trace: Arc::new(std::sync::Mutex::new(None)),
             active_account: crate::slots::new_active_account_slot(),
             event_store: crate::slots::new_event_store_slot(),
+            pull_cursor_registry: crate::slots::new_pull_cursor_registry_handle_slot(),
             external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
         };
         let config = ActorConfigSources {

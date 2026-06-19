@@ -67,6 +67,21 @@ pub type RoutingTraceSlot =
 /// [`KernelEvent`] with no NIP noun (D0 stays clean).
 pub type EventStoreSlot = Arc<Mutex<Option<Arc<dyn crate::store::EventStore>>>>;
 
+/// ADR-0058 step 3b — typed slot the actor publishes the kernel's pull-cursor
+/// registry handle into, right after kernel construction (and re-publishes on
+/// `Reset`).
+///
+/// Follows the [`EventStoreSlot`] **publish-back** pattern: the registry is
+/// kernel-owned (a fresh `Arc<RwLock<PullCursorRegistry>>` is minted per kernel,
+/// so `Reset` requires a re-publish). The actor is the sole writer of the inner
+/// registry (the three `RegisterPullCursor` / `AdvancePullCursor` /
+/// `UnregisterPullCursor` command arms); the synchronous FFI `pull_page` path
+/// reads through this slot, read-locks the registry to snapshot a registration,
+/// then releases before touching the store. Substrate-generic: a cursor id and a
+/// `PullScope` carry no NIP noun (D0 stays clean).
+pub type PullCursorRegistryHandleSlot =
+    Arc<Mutex<Option<crate::kernel::pull_cursor::PullCursorRegistrySlot>>>;
+
 /// V-51 phase 5 — per-app substrate-routing factory.
 ///
 /// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke the
@@ -110,6 +125,12 @@ pub fn new_routing_trace_slot() -> RoutingTraceSlot {
 /// Construct a fresh, empty [`EventStoreSlot`].
 #[must_use]
 pub fn new_event_store_slot() -> EventStoreSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`PullCursorRegistryHandleSlot`].
+#[must_use]
+pub fn new_pull_cursor_registry_handle_slot() -> PullCursorRegistryHandleSlot {
     Arc::new(Mutex::new(None))
 }
 

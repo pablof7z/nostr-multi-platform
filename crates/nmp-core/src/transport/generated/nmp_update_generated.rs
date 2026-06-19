@@ -4274,6 +4274,264 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum PullWakeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct PullWake<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PullWake<'a> {
+            type Inner = PullWake<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PullWake<'a> {
+            pub const VT_CURSOR_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LATEST_SEQ: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PullWake { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PullWakeArgs,
+            ) -> ::flatbuffers::WIPOffset<PullWake<'bldr>> {
+                let mut builder = PullWakeBuilder::new(_fbb);
+                builder.add_latest_seq(args.latest_seq);
+                builder.add_cursor_id(args.cursor_id);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn cursor_id(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(PullWake::VT_CURSOR_ID, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn latest_seq(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(PullWake::VT_LATEST_SEQ, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PullWake<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("cursor_id", Self::VT_CURSOR_ID, false)?
+                    .visit_field::<u64>("latest_seq", Self::VT_LATEST_SEQ, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PullWakeArgs {
+            pub cursor_id: u64,
+            pub latest_seq: u64,
+        }
+        impl<'a> Default for PullWakeArgs {
+            #[inline]
+            fn default() -> Self {
+                PullWakeArgs {
+                    cursor_id: 0,
+                    latest_seq: 0,
+                }
+            }
+        }
+
+        pub struct PullWakeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PullWakeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_cursor_id(&mut self, cursor_id: u64) {
+                self.fbb_
+                    .push_slot::<u64>(PullWake::VT_CURSOR_ID, cursor_id, 0);
+            }
+            #[inline]
+            pub fn add_latest_seq(&mut self, latest_seq: u64) {
+                self.fbb_
+                    .push_slot::<u64>(PullWake::VT_LATEST_SEQ, latest_seq, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PullWakeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PullWakeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PullWake<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PullWake<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PullWake");
+                ds.field("cursor_id", &self.cursor_id());
+                ds.field("latest_seq", &self.latest_seq());
+                ds.finish()
+            }
+        }
+        pub enum PullWakeBatchOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct PullWakeBatch<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PullWakeBatch<'a> {
+            type Inner = PullWakeBatch<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PullWakeBatch<'a> {
+            pub const VT_WAKES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PullWakeBatch { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PullWakeBatchArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PullWakeBatch<'bldr>> {
+                let mut builder = PullWakeBatchBuilder::new(_fbb);
+                if let Some(x) = args.wakes {
+                    builder.add_wakes(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn wakes(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PullWake<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PullWake>>,
+                    >>(PullWakeBatch::VT_WAKES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PullWakeBatch<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PullWake>>,
+                    >>("wakes", Self::VT_WAKES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PullWakeBatchArgs<'a> {
+            pub wakes: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PullWake<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for PullWakeBatchArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PullWakeBatchArgs { wakes: None }
+            }
+        }
+
+        pub struct PullWakeBatchBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PullWakeBatchBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_wakes(
+                &mut self,
+                wakes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<PullWake<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PullWakeBatch::VT_WAKES,
+                    wakes,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PullWakeBatchBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PullWakeBatchBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PullWakeBatch<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PullWakeBatch<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PullWakeBatch");
+                ds.field("wakes", &self.wakes());
+                ds.finish()
+            }
+        }
         #[inline]
         /// Verifies that a buffer of bytes contains a `UpdateFrame`
         /// and returns it.

@@ -54,9 +54,10 @@ pub enum PullCursorMode {
 /// One registered cursor row. Cloned out under the registry read-lock by the
 /// (step-3b) FFI `pull_page` path; written only on the actor thread.
 ///
-/// `consumer_id` / `scope` / `mode` / `limits` are written here and read by the
-/// step-3b FFI `pull_page` snapshot seam (and by tests); `allow(dead_code)`
-/// holds until that seam lands.
+/// `scope` / `after_seq` / `limits` are read by the FFI `pull_page` snapshot
+/// seam; `consumer_id` / `mode` are carried for step-4 (retention claims) and
+/// diagnostics — written here but not yet read, so `allow(dead_code)` documents
+/// the forward-looking fields rather than masking genuine dead code.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct PullCursorRegistration {
@@ -95,8 +96,7 @@ impl PullCursorRegistry {
         self.by_id.is_empty()
     }
 
-    /// Clone a registration by id (FFI snapshot seam, step 3b; used by tests).
-    #[allow(dead_code)]
+    /// Clone a registration by id (FFI `pull_page` snapshot seam; used by tests).
     #[must_use]
     pub fn get(&self, id: &PullCursorId) -> Option<PullCursorRegistration> {
         self.by_id.get(id).cloned()

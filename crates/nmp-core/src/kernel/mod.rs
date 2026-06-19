@@ -85,6 +85,8 @@ pub(crate) mod cache_serve;
 pub(crate) mod pull;
 // ADR-0058 §10, step 3a — non-durable pull-cursor registry + actor commands.
 pub(crate) mod pull_cursor;
+// ADR-0058 §4, step 3b — pull-cursor wake sidecar codec (`nmp.pull.wake`).
+pub(crate) mod pull_wake;
 // ADR-0058 §10, step 3a — single actor-owned store-wakeup subsystem
 // (generalizes the #1520 cache-serve wakeup; carries the pull wake arm too).
 mod store_wakeup;
@@ -1661,6 +1663,20 @@ impl Kernel {
     #[must_use]
     pub fn event_store_handle(&self) -> Arc<dyn EventStore> {
         Arc::clone(&self.store)
+    }
+
+    /// Borrow the kernel's pull-cursor registry handle (ADR-0058 §3, step 3b).
+    ///
+    /// Returns a clone of the shared `Arc<RwLock<PullCursorRegistry>>`. The
+    /// actor (sole writer per D4) registers/advances/unregisters cursors
+    /// through it; the synchronous FFI `pull_page` path read-locks it to
+    /// snapshot a registration before reading the store. Mirrors the
+    /// [`event_store_handle`](Self::event_store_handle) publish-back pattern: a
+    /// fresh kernel built on `Reset` mints a fresh registry, so the actor
+    /// re-publishes this handle on `Reset`.
+    #[must_use]
+    pub fn pull_cursor_registry_handle(&self) -> pull_cursor::PullCursorRegistrySlot {
+        Arc::clone(&self.pull_cursor_registry)
     }
 
     /// Borrow the kernel's indexer-relays slot.

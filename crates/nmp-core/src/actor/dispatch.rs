@@ -327,6 +327,12 @@ pub(super) struct ActorContext<'a> {
     /// the live store across a state wipe — same publish-back-on-`Reset`
     /// contract as `routing_trace_slot`.
     pub(super) event_store_slot: &'a crate::slots::EventStoreSlot,
+    /// ADR-0058 step 3b — pull-cursor registry publish-back slot. Read by the
+    /// `Reset` arm to re-publish the rebuilt kernel's `pull_cursor_registry_handle()`
+    /// clone (the rebuild mints a fresh registry) so the FFI `pull_page` path
+    /// snapshots the live kernel's cursors across a state wipe — same
+    /// publish-back-on-`Reset` contract as `event_store_slot`.
+    pub(super) pull_cursor_registry_slot: &'a crate::slots::PullCursorRegistryHandleSlot,
     /// V-82 — the FFI-shared active-account hex-pubkey slot. The kernel writes
     /// its active account into this `Arc` on every identity mutation and the
     /// host (`nmp-ffi::NmpApp::active_account_handle`) holds the same `Arc`.
@@ -1261,6 +1267,14 @@ pub(super) fn dispatch_command(
             // routing-trace projection above.
             if let Ok(mut guard) = ctx.event_store_slot.lock() {
                 *guard = Some(ctx.kernel.event_store_handle());
+            }
+            // ADR-0058 step 3b — re-publish the rebuilt kernel's pull-cursor
+            // registry handle (the `Reset` above minted a fresh registry) so the
+            // FFI `pull_page` path reads the live kernel's cursors, not the
+            // discarded kernel's. Same publish-back-on-`Reset` contract as the
+            // event-store handle above.
+            if let Ok(mut guard) = ctx.pull_cursor_registry_slot.lock() {
+                *guard = Some(ctx.kernel.pull_cursor_registry_handle());
             }
             // Re-register injected raw-event forwarding policies against the
             // rebuilt kernel. The prior observers captured handles from the

@@ -293,6 +293,20 @@ impl Kernel {
         // for action_results / signed_events and the copy-mirror TTL machines
         // for action_stages / action_lifecycle.
         self.drain_and_capture_projections();
+        // ADR-0058 §4 (step 3b) — drain the coalesced pull-cursor wakes and emit
+        // ONE `nmp.pull.wake` typed sidecar carrying the `{cursor_id, latest_seq}`
+        // rows. Runs BEFORE `merge_builtin_typed_projections` so the wake rides
+        // this tick's frame; `drain_pull_wakes` re-arms any cursor still behind
+        // the head (the level-triggered contract, ADR §3/§6.1 — no poll, D8).
+        // `nmp.pull.wake` is not a reserved built-in key, so the merge below
+        // carries it through unchanged.
+        let mut typed = typed;
+        let pull_wakes = self.drain_pull_wakes();
+        if let Some(sidecar) =
+            crate::kernel::pull_wake::pull_wake_typed_projection(&pull_wakes)
+        {
+            typed.push(sidecar);
+        }
         // Wave C (ADR-0037): merge the kernel-owned (Tier-2) built-in typed
         // sidecars with the host-registered (Tier-1) ones. These read live
         // `&self` state, so — unlike a `register_typed` closure — they are
