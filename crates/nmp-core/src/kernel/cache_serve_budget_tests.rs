@@ -83,7 +83,10 @@ fn e1_follow_feed_serves_single_authorskind_multi_author_newest_first() {
     kernel.sync_follow_feed_interests(&follows);
 
     let served = kernel.events.len();
-    assert!(served > 0, "the synchronous drain must serve the visible window");
+    assert!(
+        served > 0,
+        "the synchronous drain must serve the visible window"
+    );
     assert!(
         served <= tick_budget,
         "the collapsed serve is bounded by the tick budget ({tick_budget}), \
@@ -157,6 +160,11 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
         kinds: BTreeSet::from([30023u32]),
         ..Default::default()
     };
+    let shape_search = InterestShape {
+        kinds: BTreeSet::from([1u32]),
+        search: Some("nostr rust".to_string()),
+        ..Default::default()
+    };
     let mut shape_tagged = InterestShape {
         authors: BTreeSet::from([author.clone()]),
         kinds: BTreeSet::from([1u32]),
@@ -213,6 +221,10 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
     assert!(
         shape_to_store_queries(&shape_event_ids).is_empty(),
         "event-id shapes → no queries (not covered)"
+    );
+    assert!(
+        shape_to_store_queries(&shape_search).is_empty(),
+        "search shapes → no local StoreQuery; relay NIP-50 serves them"
     );
 }
 
@@ -334,4 +346,3 @@ fn e3_structural_floored_implies_served() {
         "event-id shapes → no queries (not covered)"
     );
 }
-

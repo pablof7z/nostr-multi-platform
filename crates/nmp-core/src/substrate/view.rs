@@ -13,7 +13,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+    bounded_search_query, InterestId, InterestLifecycle, InterestScope, InterestShape,
+    LogicalInterest,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -47,6 +48,10 @@ pub struct ViewDependencies {
     /// limit (relay applies its own default). Use for bounded lookups such as
     /// `KeyPackage` fetch (`limit: Some(4)`) or chat history (`limit: Some(200)`).
     pub limit: Option<u32>,
+    /// Relay-evaluated NIP-50 search query. Full query semantics and result
+    /// projection belong to the owning search module; this bridge only carries
+    /// the bounded wire-filter primitive into the planner.
+    pub search: Option<String>,
 }
 
 impl ViewDependencies {
@@ -86,6 +91,7 @@ impl ViewDependencies {
                 tags,
                 relay_pin: self.relay_pin.clone(),
                 limit: self.limit,
+                search: self.search.as_deref().and_then(bounded_search_query),
                 ..Default::default()
             },
             hints: Vec::new(),
@@ -187,6 +193,21 @@ mod tests {
             InterestLifecycle::Tailing,
         );
         assert_eq!(interest.shape.limit, Some(4));
+    }
+
+    #[test]
+    fn bridge_threads_bounded_search_into_interest_shape() {
+        let deps = ViewDependencies {
+            kinds: vec![1],
+            search: Some("  nostr rust  ".to_string()),
+            ..Default::default()
+        };
+        let interest = deps.into_logical_interest(
+            InterestId(42),
+            InterestScope::Global,
+            InterestLifecycle::Tailing,
+        );
+        assert_eq!(interest.shape.search.as_deref(), Some("nostr rust"));
     }
 
     #[test]

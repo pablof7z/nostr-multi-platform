@@ -242,7 +242,8 @@ Feature set:
 - Following timeline subscribed to a user with 1,000+ follows.
 - Hashtag firehose subscribed to a high-throughput tag (e.g., `#nostr`).
 - Thread view rendering a controversial event with hundreds of replies + reactions + zaps.
-- Search over the local store.
+- Search over the local store plus NIP-50 relay search where the search module
+  is wired to user/default search relays.
 - DM inbox with 50+ active conversations (NIP-17 gift-wrapped).
 - Long-form reader (NIP-23).
 - Wallet operations: NWC + Cashu + zaps in both directions + nutzap claim.

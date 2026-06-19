@@ -109,8 +109,9 @@ pub mod planner {
         SubscriptionCompiler,
     };
     pub use nmp_planner::interest::{
-        HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
-        NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
+        bounded_search_query, HintSource, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
+        MAX_SEARCH_QUERY_CHARS,
     };
     pub use nmp_planner::lattice::{merge, MergeOutcome};
     pub use nmp_planner::plan::{

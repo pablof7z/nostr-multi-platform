@@ -1,0 +1,16 @@
+[package]
+name = "nmp-nip50"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-50 search request and result-projection primitives for NMP. Core/planner carry the generic search filter; this crate owns NIP-50 search semantics."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-kinds = { path = "../nmp-kinds" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

@@ -162,3 +162,13 @@ pub(super) fn rule8_addresses(
 pub(super) fn rule9_relay_pin(a: &InterestShape, b: &InterestShape) -> bool {
     a.relay_pin == b.relay_pin
 }
+
+/// Rule 10 — `search` equality.
+///
+/// NIP-50 search is a relay-evaluated wire filter field. It has no wildcard
+/// absorb rule: merging a search filter with a non-search filter would either
+/// drop the search constraint or hide the non-search consumer's intent behind
+/// a text query. Two equal search strings coalesce normally.
+pub(super) fn rule10_search(a: &InterestShape, b: &InterestShape) -> bool {
+    a.search == b.search
+}

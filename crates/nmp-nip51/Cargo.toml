@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-51 mute-list (kind:10000) adapter — thin substrate crate that decodes the active account's kind:10000 public `p`/`e` tags into a `SuppressionLookup` the timeline projection consults to suppress muted authors and events. Public mute tags only (no NIP-44 private-mute content decryption — that requires the signer and is out of v1 scope). The crate name reflects the originating NIP; the substrate seam it exposes (`SuppressionLookup`) carries no NIP-51 nouns."
+description = "NIP-51 list projections for NMP: kind:10000 public mute suppression and kind:10007 active-account search-relay facts. Protocol parsing stays here; generic routing/search policy stays in substrate/search owners."
 
 [lib]
 crate-type = ["rlib"]
@@ -14,8 +14,8 @@ crate-type = ["rlib"]
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
 nmp-core = { path = "../nmp-core" }
-# Layer-0 kind-constant registry — re-exports KIND_MUTE_LIST
-# so this crate no longer duplicates that value (V-57).
+# Layer-0 kind-constant registry — re-exports NIP-51 kind integers
+# so this crate no longer duplicates those values.
 nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

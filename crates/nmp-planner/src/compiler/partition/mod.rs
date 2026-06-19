@@ -167,6 +167,7 @@ pub(super) fn partition_interest(
         since: interest.shape.since,
         until: interest.shape.until,
         limit: interest.shape.limit,
+        search: interest.shape.search.clone(),
         event_ids: interest.shape.event_ids.clone(),
         addresses: BTreeSet::new(),
         relay_pin: interest.shape.relay_pin.clone(),
