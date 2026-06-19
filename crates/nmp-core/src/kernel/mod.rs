@@ -314,6 +314,21 @@ mod wire_sub;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
 #[cfg(any(test, feature = "test-support"))]
 pub use update::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
+/// Process-lifetime counter: how many events were LRU-evicted from the durable
+/// store in `Kernel::run_gc_step`. Incremented by `report.lru_evicted` after
+/// every `gc_step_with_pins_and_coverage` call that returns `Ok`. Starts at 0;
+/// never decremented. Sibling to `PROCESS_RAM_EVENTS_EVICTED` in
+/// `kernel/ram_eviction.rs`.
+///
+/// Test-support only — zero overhead in production builds.
+#[cfg(any(test, feature = "test-support"))]
+pub static PROCESS_STORE_LRU_EVICTED: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// Re-export the RAM-tier eviction counter from the private `ram_eviction`
+/// module so `nmp_core::testing` can reach it as `crate::kernel::PROCESS_RAM_EVENTS_EVICTED`.
+#[cfg(any(test, feature = "test-support"))]
+pub use ram_eviction::PROCESS_RAM_EVENTS_EVICTED;
 #[cfg(test)]
 mod v66_no_configured_relays_tests;
 #[cfg(test)]
@@ -665,6 +680,17 @@ pub struct Kernel {
     /// neither holds this field nor runs the oracle (ZERO emit-path cost).
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) projection_oracle: projection_rev::oracle::OracleState,
+    /// Test-support GC budget ceiling — when `Some(n)`, `derive_store_gc_inputs`
+    /// uses `GcBudget::with_durable_event_ceiling(n)` instead of
+    /// `GcBudget::production()` (which has `max_total_events = usize::MAX`, i.e.
+    /// LRU deletion disabled). Set via `Kernel::set_gc_budget_ceiling` which is
+    /// called from `ActorConfig::apply_to_kernel` when the pre-start
+    /// `nmp_app_configure_gc_budget` seam was used.
+    ///
+    /// Production default: `None` (preserves `usize::MAX` / LRU disabled).
+    /// Only compiled under `cfg(any(test, feature = "test-support"))`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) gc_budget_ceiling: Option<usize>,
     /// FFI diagnostic timing milestones (D0 app-domain state). See
     /// [`TimingMilestones`].
     timing: TimingMilestones,
@@ -2049,6 +2075,8 @@ impl Kernel {
             negentropy_sync_stats: types::NegentropySyncStats::default(),
             last_gc: None,
             last_gc_at_ms: None,
+            #[cfg(any(test, feature = "test-support"))]
+            gc_budget_ceiling: None,
             served_interest_shapes: HashSet::new(),
             pending_cache_serves: VecDeque::new(),
             store_wakeups: store_wakeup::StoreWakeups::new(),
@@ -2213,6 +2241,13 @@ impl Kernel {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
+                #[cfg(any(test, feature = "test-support"))]
+                if report.lru_evicted > 0 {
+                    PROCESS_STORE_LRU_EVICTED.fetch_add(
+                        report.lru_evicted as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
                 Some(report)
             }
             Err(e) => {
@@ -2233,6 +2268,22 @@ impl Kernel {
     /// last [`Self::run_gc_step`], or `None` if no gc pass has run yet.
     pub fn last_gc_at_ms(&self) -> Option<u64> {
         self.last_gc_at_ms
+    }
+
+    /// Test-support — set a durable LRU eviction ceiling for the GC budget.
+    ///
+    /// When set, `derive_store_gc_inputs` uses
+    /// `GcBudget::with_durable_event_ceiling(max_events)` instead of
+    /// `GcBudget::production()` (which has `max_total_events = usize::MAX`,
+    /// i.e. LRU deletion disabled). Only meaningful before the first GC tick;
+    /// called from `ActorConfig::apply_to_kernel` when
+    /// `nmp_app_configure_gc_budget` was used before start.
+    ///
+    /// Does NOT change the production default — only test-support builds compile
+    /// this method.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_gc_budget_ceiling(&mut self, max_events: usize) {
+        self.gc_budget_ceiling = Some(max_events);
     }
 
     /// Resolve the configured relay URLs for a given `RelayRole` from the

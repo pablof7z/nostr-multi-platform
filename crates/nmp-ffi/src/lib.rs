@@ -218,8 +218,10 @@ pub use timeline::{
 // native C ABI and is re-exported above for Android JNI parity.
 #[cfg(any(test, feature = "test-support"))]
 pub use testing::{
-    nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
-    nmp_app_inject_signed_events, nmp_app_read_projection_churn_stats,
+    nmp_app_configure_gc_budget, nmp_app_inject_pre_verified_events,
+    nmp_app_inject_signed_event_json, nmp_app_inject_signed_events,
+    nmp_app_read_author_event_ids, nmp_app_read_projection_churn_stats,
+    nmp_app_read_ram_eviction_stats, nmp_app_trigger_gc_step,
 };
 // ADR-0052 §D3 — rung 5.3 per-app signer-port oracle seam.
 #[cfg(any(test, feature = "test-support"))]
@@ -847,6 +849,18 @@ pub struct NmpApp {
     /// content) so the wallet pay-invoice FFI shim can short-circuit a
     /// same-bolt11 retap before it crosses into `nmp-nip47`.
     pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    /// Test-support GC budget ceiling.  Set by `nmp_app_configure_gc_budget`
+    /// before `nmp_app_start`; actor startup snapshots it into
+    /// `ActorConfigSources::gc_budget_ceiling`.  `None` (the default) preserves
+    /// `GcBudget::production()` (LRU deletion disabled).
+    ///
+    /// `Arc<Mutex<…>>` so the actor_starter closure can capture a clone and
+    /// read the value at call time (after `nmp_app_configure_gc_budget` has
+    /// written it). Mirrors the `kernel_clock` slot pattern.
+    ///
+    /// Only compiled under `cfg(any(test, feature = "test-support"))`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) gc_budget_ceiling: Arc<Mutex<Option<usize>>>,
 }
 
 #[no_mangle]
@@ -1131,6 +1145,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // The `actor_queue_depth` snapshot metric is therefore a lower bound
     // for self-feedback traffic — acceptable for a backpressure gate that
     // watches for buildup, matches the existing `actor_sender()` caveat.
+    // Test-support GC budget ceiling slot. `nmp_app_configure_gc_budget` writes
+    // through the NmpApp clone; the actor_starter closure captures a second clone
+    // and reads it at call time (after pre-start config is applied). Pattern
+    // mirrors `kernel_clock`.
+    #[cfg(any(test, feature = "test-support"))]
+    let gc_budget_ceiling: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
+    #[cfg(any(test, feature = "test-support"))]
+    let actor_gc_budget_ceiling = Arc::clone(&gc_budget_ceiling);
+
     let actor_command_tx_self = command_tx.clone();
     let actor_starter: ActorStarter = Box::new(move || {
         let channels = ActorChannels {
@@ -1157,6 +1180,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             pull_cursor_registry: actor_pull_cursor_registry,
             external_event_sink_dispatcher: actor_external_event_sink_dispatcher_slot,
         };
+        // Compute GC budget ceiling at start time (after nmp_app_configure_gc_budget).
+        // In non-test-support builds actor_gc_budget_ceiling doesn't exist, so this
+        // falls back to None (production default = LRU disabled).
+        #[cfg(any(test, feature = "test-support"))]
+        let gc_budget_ceiling_for_config: Option<usize> =
+            actor_gc_budget_ceiling.lock().ok().and_then(|g| *g);
+        #[cfg(not(any(test, feature = "test-support")))]
+        let gc_budget_ceiling_for_config: Option<usize> = None;
+
         let config = ActorConfigSources {
             storage_path: actor_storage_path,
             coverage_hook: actor_coverage_hook,
@@ -1174,6 +1206,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             publish_resolver: actor_publish_resolver,
             external_event_sink_policy: actor_external_event_sink_policy,
             kernel_clock: actor_kernel_clock,
+            gc_budget_ceiling: gc_budget_ceiling_for_config,
         }
         .snapshot();
         thread::spawn(move || {
@@ -1376,6 +1409,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // content); the wallet runtime that consumes the dispatched action
         // moved to `crates/nmp-nip47`.
         inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
+        // Test-support GC budget ceiling — None (production default = LRU disabled)
+        // until `nmp_app_configure_gc_budget` is called before start.
+        #[cfg(any(test, feature = "test-support"))]
+        gc_budget_ceiling,
     };
     // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.
     // The host (per-app crate) registers it themselves on the `NmpApp`

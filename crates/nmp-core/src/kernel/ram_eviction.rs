@@ -96,6 +96,16 @@
 use super::Kernel;
 use std::collections::HashSet;
 
+/// Process-lifetime counter: how many events were evicted from the kernel's
+/// RAM-tier `self.events` cache in `Kernel::evict_events_cache`. Incremented
+/// by the evicted count after every RAM eviction pass. Starts at 0; never
+/// decremented. Sibling to `PROCESS_STORE_LRU_EVICTED` in `kernel/mod.rs`.
+///
+/// Test-support only — zero overhead in production builds.
+#[cfg(any(test, feature = "test-support"))]
+pub static PROCESS_RAM_EVENTS_EVICTED: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 // Sibling files (kept out of at-baseline `kernel/mod.rs`): #1090 floor helpers +
 // tests, and the K3 Stage C (ADR-0056) floor⇄serve unification lock tests.
 #[path = "ram_eviction_floor.rs"]
@@ -174,6 +184,15 @@ impl Kernel {
         // Invalidate the memoised byte-estimate when any map shrank.
         if report.events_evicted + report.profiles_evicted + report.contacts_evicted > 0 {
             self.cached_estimated_store_bytes.set(None);
+        }
+
+        // Test-support: accumulate the per-process RAM-eviction counter.
+        #[cfg(any(test, feature = "test-support"))]
+        if report.events_evicted > 0 {
+            PROCESS_RAM_EVENTS_EVICTED.fetch_add(
+                report.events_evicted as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
         }
 
         report
@@ -331,18 +350,30 @@ impl Kernel {
     pub(crate) fn derive_store_gc_inputs(
         &self,
     ) -> (HashSet<crate::store::EventId>, crate::store::GcBudget) {
-        let production = crate::store::GcBudget::production();
-        if production.max_total_events == usize::MAX {
-            return (HashSet::new(), production);
+        // Test-support: use an explicit ceiling when configured via
+        // `nmp_app_configure_gc_budget` + `Kernel::set_gc_budget_ceiling`.
+        // Production default: `GcBudget::production()` → `max_total_events =
+        // usize::MAX` (LRU deletion disabled). The cfg-gated block is
+        // dead-code-eliminated in production builds.
+        #[cfg(any(test, feature = "test-support"))]
+        let base_budget = match self.gc_budget_ceiling {
+            Some(ceiling) => crate::store::GcBudget::with_durable_event_ceiling(ceiling),
+            None => crate::store::GcBudget::production(),
+        };
+        #[cfg(not(any(test, feature = "test-support")))]
+        let base_budget = crate::store::GcBudget::production();
+
+        if base_budget.max_total_events == usize::MAX {
+            return (HashSet::new(), base_budget);
         }
 
         let (pins, complete) = self.derive_store_pin_set();
         let budget = if complete {
-            production
+            base_budget
         } else {
             crate::store::GcBudget {
                 max_total_events: usize::MAX, // LRU eviction deferred this tick
-                ..production
+                ..base_budget
             }
         };
         (pins, budget)

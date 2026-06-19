@@ -835,6 +835,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             publish_resolver: crate::slots::new_publish_resolver_slot(),
             external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
             kernel_clock: crate::slots::new_kernel_clock_slot(),
+            gc_budget_ceiling: None,
         }
         .snapshot();
         run_actor_with_observers(

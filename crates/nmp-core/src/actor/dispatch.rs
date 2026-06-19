@@ -1657,6 +1657,13 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::TriggerGcStep => {
+            // Force one GC pass immediately (bypasses the 60-second wall-clock gate).
+            // Identical to the idle-tick path: RAM eviction then store LRU step.
+            ctx.kernel.run_gc_step();
+            Some(Vec::new())
+        }
     }
 }
 

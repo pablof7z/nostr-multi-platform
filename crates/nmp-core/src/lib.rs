@@ -419,7 +419,7 @@ pub mod __ffi_internal {
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
-    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
+    pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED, PROCESS_STORE_LRU_EVICTED};
     pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
 
     /// NIP golden-tag conformance harness — drives the (crate-private) command
@@ -471,8 +471,7 @@ pub mod testing {
     ) {
         use crate::actor::{run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots};
         use crate::slots::new_storage_path_slot;
-        use std::sync::atomic::AtomicU64;
-        use std::sync::{Arc, Mutex};
+        use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
         let (inbox_tx, command_rx) = mpsc::channel::<crate::ActorMail>();
         let (update_tx, update_rx) = mpsc::channel();
@@ -521,6 +520,7 @@ pub mod testing {
                 publish_resolver: crate::slots::new_publish_resolver_slot(),
                 external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
                 kernel_clock: crate::slots::new_kernel_clock_slot(),
+                gc_budget_ceiling: None,
             }
             .snapshot();
             run_actor_with_observers(

@@ -15,10 +15,10 @@
 //!  - NO-DOUBLE-EMIT: re-injecting the identical corpus adds NO new rows (the
 //!    store dedups by id; the projection does not double-serve).
 //!
-//! HOOK NOTE: the typed `SnapshotEnvelope` carries `visible_items` (count) but
-//! NOT per-item id/author hex, so the FULL id-subset check is BLOCKED on the
-//! same `nmp_app_read_feed_authors` seam already documented in `oracle.rs`. The
-//! COUNT-complete half below is a real PASS/FAIL — a dropped update fails it.
+//! SEAM 1: `nmp_app_read_author_event_ids` (test-support, now wired) exposes the
+//! set of stored event ids for a given author so `corpus_ids ⊆ stored_ids` can
+//! be asserted directly in oracle (d) below.  The COUNT-complete half above is
+//! still a separate hard gate — a dropped update fails either.
 
 use std::time::Duration;
 
@@ -191,11 +191,64 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
         .with_note("re-injecting the identical corpus adds no rows (store dedups by id)"),
     );
 
-    report.finding(
-        "HOOK GAP (family 1) — id-subset half of missed-update: SnapshotEnvelope carries \
-         visible_items (count) not per-item id/author hex, so `corpus IDs ⊆ visible IDs` is \
-         asserted at the COUNT level only. Wire `nmp_app_read_feed_authors` (read-only typed \
-         projection accessor) to complete the exact set-inclusion check.",
+    // (d) id-subset check: every injected event id must be readable from the
+    //     store for the author we signed as.  Uses seam 1
+    //     (`nmp_app_read_author_event_ids`) which scans the event store by
+    //     author + kind:1 and returns a JSON array of {id, author} objects.
+    //     This is a hard pass/fail: if any corpus id is missing the reactive
+    //     pipeline dropped or never persisted it.
+    let corpus_ids: std::collections::HashSet<String> = corpus
+        .iter()
+        .filter_map(|json| {
+            serde_json::from_str::<serde_json::Value>(json)
+                .ok()
+                .and_then(|v| v["id"].as_str().map(str::to_owned))
+        })
+        .collect();
+    let stored_ids: std::collections::HashSet<String> = {
+        let pk_cstr = std::ffi::CString::new(pubkey_hex.as_str()).ok();
+        let json_ptr = pk_cstr.as_ref().map(|pk| {
+            nmp_ffi::nmp_app_read_author_event_ids(app.raw(), pk.as_ptr(), 0)
+        });
+        match json_ptr {
+            Some(ptr) if !ptr.is_null() => {
+                let parsed = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                    .to_str()
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+                nmp_ffi::nmp_free_string(ptr);
+                parsed
+                    .and_then(|v| v.as_array().map(|arr| {
+                        arr.iter()
+                            .filter_map(|obj| obj["id"].as_str().map(str::to_owned))
+                            .collect()
+                    }))
+                    .unwrap_or_default()
+            }
+            _ => std::collections::HashSet::new(),
+        }
+    };
+    let missing_count = corpus_ids
+        .iter()
+        .filter(|id| !stored_ids.contains(*id))
+        .count();
+    report.push(
+        GateRow::max(
+            "reactive-id-subset",
+            phase,
+            "nmp_app_read_author_event_ids + injected corpus ids",
+            "corpus_ids \u{2286} stored_ids (missing count)",
+            missing_count as f64,
+            0.0,
+            "missing-ids",
+        )
+        .with_note(&format!(
+            "corpus={} ids, stored={} ids, missing={} \
+             (seam 1: nmp_app_read_author_event_ids)",
+            corpus_ids.len(),
+            stored_ids.len(),
+            missing_count,
+        )),
     );
 }
 

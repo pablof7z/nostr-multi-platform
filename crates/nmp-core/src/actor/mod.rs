@@ -955,6 +955,16 @@ pub enum ActorCommand {
     /// Test-support only (D0: not part of production FFI surface).
     #[cfg(any(test, feature = "test-support"))]
     IngestPreVerifiedEvents(Vec<crate::store::VerifiedEvent>),
+    /// Force one immediate GC pass outside the 60-second tick interval.
+    ///
+    /// Lets test harnesses exercise GC-budget eviction without waiting 60 s for
+    /// the wall-clock gate.  The pass is identical to the idle-tick GC path:
+    /// `Kernel::run_gc_step()` → RAM eviction + store LRU step (if a budget
+    /// ceiling is configured via `nmp_app_configure_gc_budget`).
+    ///
+    /// Test-support only (D0: not part of production FFI surface).
+    #[cfg(any(test, feature = "test-support"))]
+    TriggerGcStep,
     /// D6 — surface an error toast from the FFI boundary. Used when the FFI
     /// layer detects a malformed argument (e.g. unparseable JSON) and cannot
     /// call `kernel.set_last_error_toast` directly (the FFI only has a channel
