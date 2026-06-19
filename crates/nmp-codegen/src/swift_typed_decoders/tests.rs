@@ -3,6 +3,11 @@ use crate::swift_projections_registry::TypedSidecar;
 
 /// A two-entry registry: one emitted (has a Swift reader binding), one skipped
 /// (sidecar present but no reader binding yet). Mirrors the real-world split.
+///
+/// Note: entries with `typed_sidecar: None` are banned by the coverage gate
+/// (`typed_sidecar_coverage_gate` test) so this test fixture no longer
+/// includes one. The renderer still handles `None` defensively, but the
+/// registry enforces that no live entry may have that state.
 fn mixed_registry() -> Vec<SnapshotProjectionEntry> {
     vec![
         SnapshotProjectionEntry {
@@ -28,13 +33,6 @@ fn mixed_registry() -> Vec<SnapshotProjectionEntry> {
                 swift_reader_type: None,
             }),
         },
-        // No sidecar at all → skipped.
-        SnapshotProjectionEntry {
-            json_key: "last_action_result",
-            swift_field: "lastActionResult",
-            swift_type: "LastActionResult",
-            typed_sidecar: None,
-        },
     ]
 }
 
@@ -51,10 +49,6 @@ fn emits_decoder_only_for_keys_with_a_reader_binding() {
     assert!(
         !out.contains("TypedSettingsHubDecoder"),
         "settings_hub (no reader binding) must be skipped"
-    );
-    assert!(
-        !out.contains("TypedLastActionResultDecoder"),
-        "last_action_result (no sidecar) must be skipped"
     );
 }
 

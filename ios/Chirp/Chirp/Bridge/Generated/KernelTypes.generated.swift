@@ -202,6 +202,12 @@ public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiab
 // The `CodingKeys` enum below uses post-`.convertFromSnakeCase` raw values
 // (the iOS shell's `KernelHandle.decode` sets that strategy). Cases whose
 // raw value matches the Swift property name carry no explicit literal.
+//
+// #1610: removed five JSON-era vestigial sidecar-less fields:
+//   `lastActionResult`, `timeline`, `inserted`, `updated`, `removed`.
+// The typed feed is `homeFeed` (via `nmp.feed.home`); action results are
+// `actionResults`. The coverage gate in nmp-codegen prevents future
+// sidecar-less entries.
 struct SnapshotProjections: Decodable, Equatable {
     let wallet: WalletStatusData?
     let bunkerHandshake: BunkerHandshake?
@@ -215,15 +221,10 @@ struct SnapshotProjections: Decodable, Equatable {
     let accounts: [AccountSummary]?
     let activeAccount: String?
     let actionResults: [LastActionResult]?
-    let lastActionResult: LastActionResult?
     let actionStages: [String: [ActionStageEntry]]?
     let actionLifecycle: ActionLifecycleSnapshot?
     let profile: ProfileCard?
-    let timeline: [TimelineItem]?
     let homeFeed: ChirpTimelineSnapshot?
-    let inserted: [TimelineItem]?
-    let updated: [TimelineItem]?
-    let removed: [String]?
     let groupChat: GroupChatSnapshot?
     let dmInbox: DmInboxSnapshot?
     let followList: FollowListSnapshot?
@@ -253,15 +254,10 @@ struct SnapshotProjections: Decodable, Equatable {
         case accounts
         case activeAccount
         case actionResults
-        case lastActionResult
         case actionStages
         case actionLifecycle
         case profile
-        case timeline
         case homeFeed = "nmp.feed.home"
-        case inserted
-        case updated
-        case removed
         case groupChat = "nmp.nip29.groupChat"
         case dmInbox = "nmp.nip17.dmInbox"
         case followList = "nmp.followList"

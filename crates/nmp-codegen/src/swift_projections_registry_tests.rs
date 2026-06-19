@@ -11,13 +11,14 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 36 entries: 35 (the V-112 / #963 / #626 baseline) plus
-    // `claimed_event_embeds` (the typed embed sidecar, issue #1283 Phase 1).
+    // 31 entries: 36 (the #1283 Phase 1 baseline) minus the five JSON-era
+    // vestigial sidecar-less slots removed in #1610:
+    // `timeline`, `inserted`, `updated`, `removed`, `last_action_result`.
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        36,
+        31,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }
@@ -86,4 +87,40 @@ fn all_dotted_keys_are_present() {
     }
     // Equal lengths + the forward-contains prove set equality.
     assert_eq!(dotted.len(), expected.len(), "dotted keys drifted: {dotted:?}");
+}
+
+/// Coverage gate: every entry in the registry MUST carry a typed FlatBuffer
+/// sidecar (`typed_sidecar: Some(...)`). A `None` means the projection is a
+/// JSON-era vestigial with no typed wire form — such entries must be removed
+/// from the registry. The #1610 sweep deleted the five that existed
+/// (`timeline`, `inserted`, `updated`, `removed`, `last_action_result`).
+///
+/// `swift_reader_type: None` inside a `Some(TypedSidecar)` is acceptable:
+/// the typed wire exists but the `flatc --swift` binding is not yet
+/// checked into the Chirp target. Only `typed_sidecar: None` is banned.
+///
+/// To add a new sidecar-less entry, you MUST: (a) open a GitHub issue
+/// naming the typed-sidecar owner and delivery deadline, and (b) add that
+/// issue number to the explicit allowlist below. This makes exemptions
+/// durable and auditable rather than silently accumulating.
+#[test]
+fn typed_sidecar_coverage_gate() {
+    // Allowlist for entries that are INTENTIONALLY `typed_sidecar: None`
+    // pending a named issue / ADR:
+    //   (empty — all five original exemptions removed in #1610)
+    const ALLOWED_SIDECAR_LESS: &[&str] = &[];
+
+    for entry in SNAPSHOT_PROJECTIONS {
+        if entry.typed_sidecar.is_none()
+            && !ALLOWED_SIDECAR_LESS.contains(&entry.json_key)
+        {
+            panic!(
+                "registry entry {:?} has typed_sidecar: None without an approved \
+                 exemption. Either add a typed FlatBuffer sidecar for this key OR \
+                 open a GitHub issue naming the owner + deadline and add the key to \
+                 ALLOWED_SIDECAR_LESS with the issue number in a comment.",
+                entry.json_key
+            );
+        }
+    }
 }

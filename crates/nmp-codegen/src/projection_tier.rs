@@ -12,6 +12,12 @@
 use crate::swift_projections_registry::SNAPSHOT_PROJECTIONS;
 
 /// Projection-tier classification for a [`SNAPSHOT_PROJECTIONS`] entry.
+///
+/// #1610: the former `Transient` variant (JSON-era keys with no typed sidecar:
+/// `timeline`, `inserted`, `updated`, `removed`, `last_action_result`) was
+/// deleted because those five entries no longer exist in the registry.
+/// The coverage gate in `swift_projections_registry_tests::typed_sidecar_coverage_gate`
+/// now prevents new sidecar-less entries from accumulating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectionTier {
     /// Tier-2 **kernel-owned built-in**: emitted directly by
@@ -25,13 +31,6 @@ pub enum ProjectionTier {
     /// registration *is* the declaration — and are never members of the
     /// kernel built-in set.
     HostRegistered,
-    /// **JSON-era transient** key with no standalone producer in the built-in
-    /// cluster: the per-tick timeline deltas (`timeline` / `inserted` /
-    /// `updated` / `removed`) and the sticky `last_action_result` scalar. They
-    /// have a vestigial Swift-struct field (decoded from `payload` in the JSON
-    /// era) but no typed sidecar and no built-in producer, so they are neither
-    /// Tier-2 built-ins nor Tier-1 registrations.
-    Transient,
 }
 
 /// Classify a [`SNAPSHOT_PROJECTIONS`] `json_key` into its [`ProjectionTier`].
@@ -77,15 +76,11 @@ pub fn projection_tier(json_key: &str) -> ProjectionTier {
         | "claimed_event_embeds"
         | "nmp.marmot.snapshot"
         | "nmp.marmot.messages" => ProjectionTier::HostRegistered,
-        // ── JSON-era transient (timeline deltas + sticky scalar) ──
-        "timeline" | "inserted" | "updated" | "removed" | "last_action_result" => {
-            ProjectionTier::Transient
-        }
         other => panic!(
             "unclassified SNAPSHOT_PROJECTIONS json_key {other:?} — add it to \
-             `projection_tier` (Tier-2 built-in, Tier-1 host registration, or \
-             transient). The kernel built-in key set is derived from this \
-             classification, so an unclassified key cannot be generated."
+             `projection_tier` (Tier-2 built-in or Tier-1 host registration). \
+             The kernel built-in key set is derived from this classification, \
+             so an unclassified key cannot be generated."
         ),
     }
 }
@@ -196,5 +191,26 @@ mod tests {
             "kernel built-in projection key set drifted — regenerate \
              builtin_projection_keys.generated.rs (`nmp gen builtin-keys`) and review"
         );
+    }
+
+    /// Confirm the `Transient` variant is gone and no remaining entry would
+    /// have matched it. This test exists to fail loudly if someone tries to
+    /// re-introduce a transient-tier key: the coverage gate in
+    /// `swift_projections_registry_tests::typed_sidecar_coverage_gate` is the
+    /// permanent enforcement, but this companion test makes the classifier
+    /// exhaustive-match requirement explicit.
+    #[test]
+    fn no_unclassified_registry_key_exists() {
+        // `projection_tier` panics on any unknown key, so iterating the full
+        // registry is sufficient — the test harness turns the panic into a
+        // test failure.
+        for entry in SNAPSHOT_PROJECTIONS {
+            let tier = projection_tier(entry.json_key);
+            assert!(
+                tier == ProjectionTier::KernelBuiltin || tier == ProjectionTier::HostRegistered,
+                "key {:?} resolved to an unexpected tier — update `projection_tier`",
+                entry.json_key
+            );
+        }
     }
 }

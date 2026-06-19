@@ -653,19 +653,12 @@ pub(crate) struct KernelSnapshot {
     pub(super) last_tick_ms: u64,
     pub(super) update_kind: &'static str,
     pub(super) running: bool,
-    // D0: the views cluster (`profile`, the visible timeline, `author_view`,
-    // `thread_view`, and the `inserted` / `updated` / `removed` deltas) is
-    // app-shaped social view state — NOT a protocol-neutral kernel primitive.
-    // There are NO typed fields for them. All seven are surfaced through the
-    // host-extensible `projections` map below under the built-in keys
-    // `"profile"`, `"timeline"`, `"author_view"`, `"thread_view"`,
-    // `"inserted"`, `"updated"`, and `"removed"`: a shell reads
-    // `projections.timeline` etc. instead of a baked-in kernel field. The
-    // generic typed-field name `items` is deliberately renamed to the more
-    // descriptive `"timeline"` projection key. Like the publish cluster and
-    // the identity pair, these are kernel-owned domain state, so `make_update`
-    // inserts them into the map directly after running the host-registered
-    // projection closures.
+    // D0: the views cluster (`profile`) is kernel-owned domain state surfaced
+    // through the host-extensible `projections` map under the `"profile"` key.
+    // V-112 (ADR-0042): `author_view` and `thread_view` deleted.
+    // #1610: the JSON-era `"timeline"`, `"inserted"`, `"updated"`, `"removed"`
+    // projection slots were removed from the codegen registry and from the Swift
+    // shell surface; the typed feed ships via `nmp.feed.home` (`OpFeedSnapshot`).
     pub(super) metrics: Metrics,
     pub(super) relay_status: RelayStatus,
     pub(super) relay_statuses: Vec<RelayStatus>,

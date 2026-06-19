@@ -32,17 +32,14 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     var id: String { eventId }
 }
 
-/// One action terminal result. Used both in the per-tick `actionResults` array
-/// (preferred) and the sticky `lastActionResult` scalar (deprecated — drops
-/// terminals when two actions settle in the same kernel tick).
+/// One action terminal result. Used in the per-tick `actionResults` array.
+/// The deprecated `lastActionResult` sticky scalar was removed in #1610 —
+/// use `actionResults` exclusively (drains every terminal that settled in a
+/// tick, not just the last one; correct for spinner clearing per review #29).
 ///
 /// `status` is one of `"published"`, `"failed"`, `"cancelled"`. `error` is
 /// `nil` for `published` / `cancelled` and carries a human-readable reason for
 /// `failed` (the publish engine joins per-relay reasons with `; `).
-///
-/// To clear spinners correctly: iterate `update.actionResults` each tick
-/// (direction review #29) — it drains every terminal that settled, not just
-/// the last one.
 struct LastActionResult: Decodable, Equatable {
     let correlationId: String
     let status: String

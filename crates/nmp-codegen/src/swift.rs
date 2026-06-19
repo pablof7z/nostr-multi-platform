@@ -235,6 +235,12 @@ fn render_snapshot_projections(entries: &[SnapshotProjectionEntry], out: &mut St
     out.push_str("// The `CodingKeys` enum below uses post-`.convertFromSnakeCase` raw values\n");
     out.push_str("// (the iOS shell's `KernelHandle.decode` sets that strategy). Cases whose\n");
     out.push_str("// raw value matches the Swift property name carry no explicit literal.\n");
+    out.push_str("//\n");
+    out.push_str("// #1610: removed five JSON-era vestigial sidecar-less fields:\n");
+    out.push_str("//   `lastActionResult`, `timeline`, `inserted`, `updated`, `removed`.\n");
+    out.push_str("// The typed feed is `homeFeed` (via `nmp.feed.home`); action results are\n");
+    out.push_str("// `actionResults`. The coverage gate in nmp-codegen prevents future\n");
+    out.push_str("// sidecar-less entries.\n");
     out.push_str("struct SnapshotProjections: Decodable, Equatable {\n");
 
     for entry in entries {
