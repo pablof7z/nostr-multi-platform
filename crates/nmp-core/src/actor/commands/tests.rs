@@ -1566,6 +1566,40 @@ fn profile_update_publishes_kind0_metadata_event() {
 }
 
 #[test]
+fn publish_profile_merges_edits_onto_cached_kind0_fields() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let active_pubkey = id.active_pubkey().unwrap();
+    kernel.seed_profile_kind0_for_test(
+        &active_pubkey,
+        "kind0-current",
+        1_700_000_000,
+        r#"{"name":"marcus","display_name":"Marcus Webb","banner":"https://example.com/banner.png","website":"https://example.com","third_party":{"keep":true}}"#,
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "display_name".to_string(),
+        serde_json::Value::String("Marcus Updated".to_string()),
+    );
+
+    let outbound = publish_profile(&id, &mut kernel, fields, None, &mut Vec::new());
+    assert!(
+        !outbound.is_empty(),
+        "PublishProfile must produce an EVENT frame"
+    );
+
+    let event = last_published_event_json(&outbound);
+    assert_eq!(event["kind"], 0);
+    let content: serde_json::Value =
+        serde_json::from_str(event["content"].as_str().expect("content string")).unwrap();
+    assert_eq!(content["display_name"], "Marcus Updated");
+    assert_eq!(content["name"], "marcus");
+    assert_eq!(content["banner"], "https://example.com/banner.png");
+    assert_eq!(content["website"], "https://example.com");
+    assert_eq!(content["third_party"], serde_json::json!({"keep": true}));
+}
+
+#[test]
 fn profile_update_without_account_toasts_and_no_outbound() {
     // D6: a kind:0 metadata update with no active account is a toast, never
     // an exception — the generic publish path can't sign without an identity.

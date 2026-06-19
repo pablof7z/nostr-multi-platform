@@ -128,12 +128,28 @@ pub(super) struct ProfileCard {
     /// first non-empty wins). `None` when no kind:0 has arrived yet —
     /// presentation layer renders its own fallback.
     pub(super) display_name: Option<String>,
+    /// Raw `name` field from kind:0. Kept distinct from derived
+    /// `display_name` so hosts can edit one profile field without becoming a
+    /// second kind:0 parser.
+    pub(super) name: Option<String>,
+    /// Raw snake-case `display_name` field from kind:0.
+    pub(super) raw_display_name: Option<String>,
+    /// Raw camel-case `displayName` field from kind:0.
+    pub(super) display_name_camel: Option<String>,
     /// Picture URL from kind:0. `None` when no kind:0 has arrived yet
     /// or the metadata carries no `picture` field — presentation layer
     /// chooses a placeholder/identicon strategy.
     pub(super) picture_url: Option<String>,
+    /// Raw `banner` field from kind:0.
+    pub(super) banner: Option<String>,
+    /// Raw `website` field from kind:0.
+    pub(super) website: Option<String>,
     pub(super) nip05: String,
     pub(super) about: String,
+    /// Raw `lud16` lightning address from kind:0.
+    pub(super) lud16: Option<String>,
+    /// Raw `lud06` LNURL field from kind:0.
+    pub(super) lud06: Option<String>,
     /// Pre-extracted lightning address (`lud16`) / LNURL (`lud06`) from
     /// this pubkey's kind:0 metadata. `None` when no kind:0 has arrived
     /// or the user has no lightning address. The zap button in the shell
@@ -150,9 +166,16 @@ impl ProfileCard {
         Self {
             pubkey: pubkey.to_string(),
             display_name: m.display_name.clone(),
+            name: None,
+            raw_display_name: m.display_name.clone(),
+            display_name_camel: None,
             picture_url: m.picture_url.clone(),
+            banner: None,
+            website: None,
             nip05: String::new(),
             about: String::new(),
+            lud16: None,
+            lud06: None,
             lnurl: None,
         }
     }

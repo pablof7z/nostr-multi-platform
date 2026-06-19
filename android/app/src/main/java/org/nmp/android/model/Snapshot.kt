@@ -109,10 +109,21 @@ data class SnapshotProjections(
 data class ProfileCard(
     val pubkey: String = "",
     val npub: String = "",
+    @SerialName("display_name")
     val displayName: String? = null,
+    val name: String? = null,
+    @SerialName("raw_display_name")
+    val rawDisplayName: String? = null,
+    @SerialName("display_name_camel")
+    val displayNameCamel: String? = null,
+    @SerialName("picture_url")
     val pictureUrl: String? = null,
+    val banner: String? = null,
+    val website: String? = null,
     val nip05: String = "",
     val about: String = "",
+    val lud16: String? = null,
+    val lud06: String? = null,
     val lnurl: String? = null,
 )
 
@@ -387,4 +398,3 @@ data class UnknownProjectionEntry(
     val tags: List<List<String>> = emptyList(),
     @SerialName("alt_text") val altText: String? = null,
 )
-

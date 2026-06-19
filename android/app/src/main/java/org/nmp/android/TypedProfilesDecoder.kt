@@ -40,7 +40,7 @@ object TypedProfilesDecoder {
     const val CLAIMED_SCHEMA_ID = "claimed_profiles"
     const val CLAIMED_FILE_IDENTIFIER = "KCPR"
 
-    private const val SUPPORTED_SCHEMA_VERSION: UInt = 1u
+    private const val SUPPORTED_SCHEMA_VERSION: UInt = 2u
 
     /**
      * Decode the typed `resolved_profiles` sidecar into the pubkey -> card map.
@@ -134,9 +134,16 @@ object TypedProfilesDecoder {
         // encoding is host-side via KernelBridge.encodeProfile.
         npub = "",
         displayName = if (card.hasDisplayName) card.displayName else null,
+        name = if (card.hasName) card.name else null,
+        rawDisplayName = if (card.hasRawDisplayName) card.rawDisplayName else null,
+        displayNameCamel = if (card.hasDisplayNameCamel) card.displayNameCamel else null,
         pictureUrl = if (card.hasPictureUrl) card.pictureUrl else null,
+        banner = if (card.hasBanner) card.banner else null,
+        website = if (card.hasWebsite) card.website else null,
         nip05 = card.nip05 ?: "",
         about = card.about ?: "",
+        lud16 = if (card.hasLud16) card.lud16 else null,
+        lud06 = if (card.hasLud06) card.lud06 else null,
         lnurl = if (card.hasLnurl) card.lnurl else null,
     )
 }

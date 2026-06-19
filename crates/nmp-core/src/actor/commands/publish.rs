@@ -458,6 +458,9 @@ pub(crate) fn publish_profile(
     };
 
     // kind:0 `content` is the JSON-serialized metadata object (NIP-01).
+    // Preserve cached third-party fields so a profile edit from the one-door
+    // action path does not turn the host into a second kind:0 writer.
+    let fields = merged_profile_fields(kernel, &pubkey, fields);
     let content = match serde_json::to_string(&fields) {
         Ok(json) => json,
         Err(e) => {
@@ -511,6 +514,21 @@ pub(crate) fn publish_profile(
             Vec::new()
         }
     }
+}
+
+fn merged_profile_fields(
+    kernel: &Kernel,
+    pubkey: &str,
+    fields: serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut merged = kernel
+        .profile_for_pubkey(pubkey)
+        .map(|profile| profile.raw_fields)
+        .unwrap_or_default();
+    for (key, value) in fields {
+        merged.insert(key, value);
+    }
+    merged
 }
 
 /// Add (`add == true`) or remove a follow from the active account's kind:3

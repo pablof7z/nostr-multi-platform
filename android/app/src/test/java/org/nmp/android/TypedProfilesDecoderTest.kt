@@ -29,13 +29,27 @@ class TypedProfilesDecoderTest {
         displayName: String?,
         pictureUrl: String?,
         lnurl: String?,
+        name: String? = null,
+        rawDisplayName: String? = null,
+        displayNameCamel: String? = null,
+        banner: String? = null,
+        website: String? = null,
+        lud16: String? = null,
+        lud06: String? = null,
     ): Int {
         val pubkeyOff = builder.createString(pubkey)
         // V-115 / ADR-0032: `npub` removed from profile_card.fbs schema.
         val dnOff = if (displayName != null) builder.createString(displayName) else 0
+        val nameOff = if (name != null) builder.createString(name) else 0
+        val rawDnOff = if (rawDisplayName != null) builder.createString(rawDisplayName) else 0
+        val camelOff = if (displayNameCamel != null) builder.createString(displayNameCamel) else 0
         val pxOff = if (pictureUrl != null) builder.createString(pictureUrl) else 0
+        val bannerOff = if (banner != null) builder.createString(banner) else 0
+        val websiteOff = if (website != null) builder.createString(website) else 0
         val nip05Off = builder.createString("nip05@example")
         val aboutOff = builder.createString("about")
+        val lud16Off = if (lud16 != null) builder.createString(lud16) else 0
+        val lud06Off = if (lud06 != null) builder.createString(lud06) else 0
         val lnurlOff = if (lnurl != null) builder.createString(lnurl) else 0
         return FbProfileCard.createProfileCard(
             builder,
@@ -48,13 +62,40 @@ class TypedProfilesDecoderTest {
             aboutOff,
             lnurl != null,
             lnurlOff,
+            name != null,
+            nameOff,
+            rawDisplayName != null,
+            rawDnOff,
+            displayNameCamel != null,
+            camelOff,
+            banner != null,
+            bannerOff,
+            website != null,
+            websiteOff,
+            lud16 != null,
+            lud16Off,
+            lud06 != null,
+            lud06Off,
         )
     }
 
     private fun resolvedBuffer(): ByteArray {
         val builder = FlatBufferBuilder(512)
         val keyA = builder.createString(hex(0x01))
-        val cardA = profileCardOffset(builder, hex(0x01), "Alice", "https://a/p.png", "alice@ln")
+        val cardA = profileCardOffset(
+            builder,
+            hex(0x01),
+            "Alice",
+            "https://a/p.png",
+            "alice@ln",
+            name = "alice",
+            rawDisplayName = "Alice",
+            displayNameCamel = "Alice Camel",
+            banner = "https://a/banner.png",
+            website = "https://alice.example",
+            lud16 = "alice@ln",
+            lud06 = "lnurl1alice",
+        )
         val entryA = ResolvedProfileEntry.createResolvedProfileEntry(builder, keyA, cardA)
         val keyB = builder.createString(hex(0x02))
         // displayName / pictureUrl / lnurl absent → has_* == false → null.
@@ -85,7 +126,14 @@ class TypedProfilesDecoderTest {
         assertEquals(setOf(hex(0x01), hex(0x02)), map.keys)
         val a = map.getValue(hex(0x01))
         assertEquals("Alice", a.displayName)
+        assertEquals("alice", a.name)
+        assertEquals("Alice", a.rawDisplayName)
+        assertEquals("Alice Camel", a.displayNameCamel)
         assertEquals("https://a/p.png", a.pictureUrl)
+        assertEquals("https://a/banner.png", a.banner)
+        assertEquals("https://alice.example", a.website)
+        assertEquals("alice@ln", a.lud16)
+        assertEquals("lnurl1alice", a.lud06)
         assertEquals("alice@ln", a.lnurl)
         val b = map.getValue(hex(0x02))
         // has_* == false round-trips to null (ADR-0032).
@@ -106,7 +154,7 @@ class TypedProfilesDecoderTest {
         val env = TypedProjectionEnvelope(
             key = TypedProfilesDecoder.RESOLVED_KEY,
             schemaId = TypedProfilesDecoder.RESOLVED_SCHEMA_ID,
-            schemaVersion = 1u,
+            schemaVersion = 2u,
             fileIdentifier = TypedProfilesDecoder.RESOLVED_FILE_IDENTIFIER,
             payload = resolvedBuffer(),
         )
@@ -126,7 +174,7 @@ class TypedProfilesDecoderTest {
         val env = TypedProjectionEnvelope(
             key = TypedProfilesDecoder.RESOLVED_KEY,
             schemaId = TypedProfilesDecoder.RESOLVED_SCHEMA_ID,
-            schemaVersion = 2u, // unsupported
+            schemaVersion = 99u, // unsupported
             fileIdentifier = TypedProfilesDecoder.RESOLVED_FILE_IDENTIFIER,
             payload = resolvedBuffer(),
         )

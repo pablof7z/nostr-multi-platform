@@ -79,8 +79,92 @@ lnurl(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
+hasName():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 22);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+name():string|null
+name(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+name(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 24);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+hasRawDisplayName():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 26);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+rawDisplayName():string|null
+rawDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+rawDisplayName(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 28);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+hasDisplayNameCamel():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 30);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+displayNameCamel():string|null
+displayNameCamel(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+displayNameCamel(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 32);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+hasBanner():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 34);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+banner():string|null
+banner(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+banner(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 36);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+hasWebsite():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 38);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+website():string|null
+website(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+website(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 40);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+hasLud16():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 42);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+lud16():string|null
+lud16(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+lud16(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 44);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
+hasLud06():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 46);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+lud06():string|null
+lud06(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+lud06(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 48);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
 static startProfileCard(builder:flatbuffers.Builder) {
-  builder.startObject(9);
+  builder.startObject(23);
 }
 
 static addPubkey(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset) {
@@ -119,12 +203,68 @@ static addLnurl(builder:flatbuffers.Builder, lnurlOffset:flatbuffers.Offset) {
   builder.addFieldOffset(8, lnurlOffset, 0);
 }
 
+static addHasName(builder:flatbuffers.Builder, hasName:boolean) {
+  builder.addFieldInt8(9, +hasName, +false);
+}
+
+static addName(builder:flatbuffers.Builder, nameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(10, nameOffset, 0);
+}
+
+static addHasRawDisplayName(builder:flatbuffers.Builder, hasRawDisplayName:boolean) {
+  builder.addFieldInt8(11, +hasRawDisplayName, +false);
+}
+
+static addRawDisplayName(builder:flatbuffers.Builder, rawDisplayNameOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(12, rawDisplayNameOffset, 0);
+}
+
+static addHasDisplayNameCamel(builder:flatbuffers.Builder, hasDisplayNameCamel:boolean) {
+  builder.addFieldInt8(13, +hasDisplayNameCamel, +false);
+}
+
+static addDisplayNameCamel(builder:flatbuffers.Builder, displayNameCamelOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(14, displayNameCamelOffset, 0);
+}
+
+static addHasBanner(builder:flatbuffers.Builder, hasBanner:boolean) {
+  builder.addFieldInt8(15, +hasBanner, +false);
+}
+
+static addBanner(builder:flatbuffers.Builder, bannerOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(16, bannerOffset, 0);
+}
+
+static addHasWebsite(builder:flatbuffers.Builder, hasWebsite:boolean) {
+  builder.addFieldInt8(17, +hasWebsite, +false);
+}
+
+static addWebsite(builder:flatbuffers.Builder, websiteOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(18, websiteOffset, 0);
+}
+
+static addHasLud16(builder:flatbuffers.Builder, hasLud16:boolean) {
+  builder.addFieldInt8(19, +hasLud16, +false);
+}
+
+static addLud16(builder:flatbuffers.Builder, lud16Offset:flatbuffers.Offset) {
+  builder.addFieldOffset(20, lud16Offset, 0);
+}
+
+static addHasLud06(builder:flatbuffers.Builder, hasLud06:boolean) {
+  builder.addFieldInt8(21, +hasLud06, +false);
+}
+
+static addLud06(builder:flatbuffers.Builder, lud06Offset:flatbuffers.Offset) {
+  builder.addFieldOffset(22, lud06Offset, 0);
+}
+
 static endProfileCard(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createProfileCard(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset, hasDisplayName:boolean, displayNameOffset:flatbuffers.Offset, hasPictureUrl:boolean, pictureUrlOffset:flatbuffers.Offset, nip05Offset:flatbuffers.Offset, aboutOffset:flatbuffers.Offset, hasLnurl:boolean, lnurlOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createProfileCard(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset, hasDisplayName:boolean, displayNameOffset:flatbuffers.Offset, hasPictureUrl:boolean, pictureUrlOffset:flatbuffers.Offset, nip05Offset:flatbuffers.Offset, aboutOffset:flatbuffers.Offset, hasLnurl:boolean, lnurlOffset:flatbuffers.Offset, hasName:boolean, nameOffset:flatbuffers.Offset, hasRawDisplayName:boolean, rawDisplayNameOffset:flatbuffers.Offset, hasDisplayNameCamel:boolean, displayNameCamelOffset:flatbuffers.Offset, hasBanner:boolean, bannerOffset:flatbuffers.Offset, hasWebsite:boolean, websiteOffset:flatbuffers.Offset, hasLud16:boolean, lud16Offset:flatbuffers.Offset, hasLud06:boolean, lud06Offset:flatbuffers.Offset):flatbuffers.Offset {
   ProfileCard.startProfileCard(builder);
   ProfileCard.addPubkey(builder, pubkeyOffset);
   ProfileCard.addHasDisplayName(builder, hasDisplayName);
@@ -135,6 +275,20 @@ static createProfileCard(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.O
   ProfileCard.addAbout(builder, aboutOffset);
   ProfileCard.addHasLnurl(builder, hasLnurl);
   ProfileCard.addLnurl(builder, lnurlOffset);
+  ProfileCard.addHasName(builder, hasName);
+  ProfileCard.addName(builder, nameOffset);
+  ProfileCard.addHasRawDisplayName(builder, hasRawDisplayName);
+  ProfileCard.addRawDisplayName(builder, rawDisplayNameOffset);
+  ProfileCard.addHasDisplayNameCamel(builder, hasDisplayNameCamel);
+  ProfileCard.addDisplayNameCamel(builder, displayNameCamelOffset);
+  ProfileCard.addHasBanner(builder, hasBanner);
+  ProfileCard.addBanner(builder, bannerOffset);
+  ProfileCard.addHasWebsite(builder, hasWebsite);
+  ProfileCard.addWebsite(builder, websiteOffset);
+  ProfileCard.addHasLud16(builder, hasLud16);
+  ProfileCard.addLud16(builder, lud16Offset);
+  ProfileCard.addHasLud06(builder, hasLud06);
+  ProfileCard.addLud06(builder, lud06Offset);
   return ProfileCard.endProfileCard(builder);
 }
 }

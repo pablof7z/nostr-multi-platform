@@ -297,6 +297,7 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
             nip05: String::new(),
             about: String::new(),
             lnurl: None,
+            ..Default::default()
         },
     );
 
@@ -354,6 +355,7 @@ fn picture_url_is_none_when_profile_omits_picture() {
                 nip05: String::new(),
                 about: String::new(),
                 lnurl: None,
+                ..Default::default()
             },
         );
 
@@ -673,6 +675,7 @@ fn accounts_enriched_populates_display_name_when_kind0_lands() {
             nip05: String::new(),
             about: String::new(),
             lnurl: None,
+            ..Default::default()
         },
     );
 
