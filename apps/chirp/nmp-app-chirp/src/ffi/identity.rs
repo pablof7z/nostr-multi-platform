@@ -3,8 +3,9 @@
 //! These symbols preserve Chirp's native ABI while keeping the reusable
 //! `nmp-marmot` crate free of Chirp-specific symbol names.
 
-use std::ffi::c_char;
+use std::ffi::{c_char, CString};
 
+use nmp_chirp_config::CHIRP_MARMOT_KEYRING_SERVICE_ID;
 use nmp_ffi::{nmp_app_remove_account, nmp_app_signin_nsec, NmpApp};
 use nmp_marmot::ffi::{nmp_marmot_register, nmp_marmot_register_active, MarmotHandle};
 
@@ -26,9 +27,11 @@ pub extern "C" fn nmp_app_chirp_identity_restore(
     }
     if !test_nsec.is_null() {
         nmp_app_signin_nsec(app, test_nsec, 1);
-        return nmp_marmot_register(app, test_nsec, db_dir);
+        let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID).expect("static str is valid CString");
+        return nmp_marmot_register(app, test_nsec, db_dir, svc.as_ptr());
     }
-    nmp_marmot_register_active(app, db_dir)
+    let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID).expect("static str is valid CString");
+    nmp_marmot_register_active(app, db_dir, svc.as_ptr())
 }
 
 /// Rust-owned nsec sign-in: sign in through the actor-owned identity reducer
@@ -44,7 +47,8 @@ pub extern "C" fn nmp_app_chirp_identity_sign_in_nsec(
         return std::ptr::null_mut();
     }
     nmp_app_signin_nsec(app, secret, 1);
-    nmp_marmot_register(app, secret, db_dir)
+    let svc = CString::new(CHIRP_MARMOT_KEYRING_SERVICE_ID).expect("static str is valid CString");
+    nmp_marmot_register(app, secret, db_dir, svc.as_ptr())
 }
 
 /// Rust-owned removal policy: remove the identity through the kernel actor.

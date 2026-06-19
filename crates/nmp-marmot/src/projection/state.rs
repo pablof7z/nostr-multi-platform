@@ -84,7 +84,7 @@ use crate::projection::pending::PendingOpsStore;
 // Marmot KeyPackage kinds — canonical `u32` integers from `nmp-kinds` (via
 // `crate::interest`). Previously re-declared as a local literal here, diverging
 // in type from the `service.rs` copy (u16) — #1493 fragmentation finding.
-use crate::interest::{KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY};
+use crate::interest::KIND_MARMOT_KEY_PACKAGE;
 
 /// 7-day key-package rotation threshold (snapshot `stale`).
 const KEY_PACKAGE_STALE_SECS: u64 = 7 * 24 * 60 * 60;
@@ -596,9 +596,10 @@ impl KernelEventObserver for MarmotProjection {
     /// the `published` flag warm so the snapshot reflects reality even
     /// before a `publish_key_package` dispatch this session.
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind != KIND_MARMOT_KEY_PACKAGE && event.kind != KIND_MARMOT_KEY_PACKAGE_LEGACY {
+        if event.kind != KIND_MARMOT_KEY_PACKAGE {
             // kind:445 / kind:1059 require a signed event — driven by the
             // raw signed-event tap (`crate::projection::tap`), not here.
+            // Legacy kind:443 was retired 2026-05-31 and is no longer tracked.
             return;
         }
         let Ok(mut inner) = self.inner.lock() else {

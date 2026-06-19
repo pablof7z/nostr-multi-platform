@@ -19,9 +19,7 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-19 — **Issue #1612: Replace gallery Android signer-request polling with push delivery (D6/D8)**. Branch: `worktree-agent-1612-android-signer-push`. Worktree: `/tmp/worktrees/nmp-1612-android-signer-push`.
-
-- 2026-06-19 — **Issue #1611: Make Android FFI app-owned (D0)**. Branch: `worktree-agent-1611-android-ffi-ownership`. Worktree: `/tmp/worktrees/nmp-1611-android-ffi-ownership`. Moves `crates/nmp-android-ffi` → `apps/chirp/nmp-chirp-android-ffi`; renames `nativeOpenTimeline` → `nativeOpenHomeFeed` (hard break).
+- 2026-06-19 — **Issue #1606: Remove expired Marmot legacy/app-named external surface (P1, D0)**. Branch: `worktree-agent-1606-marmot-surface`. Worktree: `/tmp/worktrees/nmp-1606-marmot-surface`. Deletes kind:443 dual-publish/lookup/ingest, makes keyring service id caller-scoped.
 
 - 2026-06-19 — **Issue #1559: NIP-29 admin actions + joined-groups ADR**. Branch: `docs/1559-nip29-admin-joined-adr`. Worktree: `/private/tmp/worktrees/nmp-1559-nip29-admin-adr`. ADR-only inventory/decision; no implementation until ADR acceptance.
 

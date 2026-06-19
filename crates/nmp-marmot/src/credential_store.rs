@@ -259,17 +259,30 @@ fn env_requests_mock() -> bool {
 /// Install the capability-backed credential store and probe it with one
 /// side-effect-free `Retrieve`.
 ///
+/// The probe uses `keyring_service_id` + `KEYRING_DB_KEY_ID` as the
+/// `account_id`, which is the SAME key `mdk-sqlite-storage` will look up in
+/// production. This lets the probe test handler liveness without using a
+/// synthetic key that could accidentally create a spurious keyring entry.
+///
 /// Returns `Some(false)` if the capability store is live (probe returned ok
 /// or not_found), `Some(true)` if we degraded to the mock store.
-fn try_install_capability_store(slot: CapabilityCallbackSlot) -> Option<bool> {
+fn try_install_capability_store(
+    slot: CapabilityCallbackSlot,
+    keyring_service_id: &str,
+) -> Option<bool> {
     let store = Arc::new(CapabilityCredentialStore {
         slot: Arc::clone(&slot),
     });
 
-    // Probe: one side-effect-free Retrieve of the DB-key account_id.
-    // mdk-sqlite-storage uses KEYRING_SERVICE_ID + KEYRING_DB_KEY_ID as the
-    // service/user pair (see ffi.rs); the probe uses the same derived id.
-    let probe_id = format!("{}/{}", super::ffi::KEYRING_SERVICE_ID, super::ffi::KEYRING_DB_KEY_ID);
+    // Probe: one side-effect-free Retrieve using the caller-supplied
+    // service-id and the generic DB-key id. Both must be slash-free so the
+    // `"{service}/{user}"` join in `build` and the `split_once('/')` in
+    // `get_specifiers` stay injective (see the INVARIANT comment there).
+    let probe_id = format!(
+        "{}/{}",
+        keyring_service_id,
+        super::ffi::KEYRING_DB_KEY_ID
+    );
     let credential = CapabilityCredential {
         slot: Arc::clone(&slot),
         account_id: probe_id,
@@ -302,8 +315,12 @@ fn try_install_capability_store(slot: CapabilityCallbackSlot) -> Option<bool> {
 ///    `Retrieve` of the DB-key id:
 ///    - decodable ok/not_found → capability store, `Some(false)`.
 ///    - anything else → mock + `Some(true)`.
+///
+/// `keyring_service_id` is the app-scoped keyring namespace (e.g.
+/// `"nmp.chirp.marmot"` for Chirp); it is forwarded to the probe so the
+/// probe tests the REAL production account-id, not a synthetic one.
 #[must_use]
-pub(crate) fn initialize(slot: CapabilityCallbackSlot) -> Option<bool> {
+pub(crate) fn initialize(slot: CapabilityCallbackSlot, keyring_service_id: &str) -> Option<bool> {
     // Escape hatch: if the caller has opted in via env var, install the
     // in-memory mock store unconditionally — before any platform check.
     // Off by default; production builds never set this variable.
@@ -311,7 +328,7 @@ pub(crate) fn initialize(slot: CapabilityCallbackSlot) -> Option<bool> {
         return install_mock_store();
     }
 
-    try_install_capability_store(slot)
+    try_install_capability_store(slot, keyring_service_id)
 }
 
 #[must_use]

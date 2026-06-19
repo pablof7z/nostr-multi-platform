@@ -44,15 +44,14 @@ use nmp_core::substrate::IngestParser;
 use nostr::{Event, JsonUtil};
 
 use crate::interest::{
-    KIND_GIFT_WRAP, KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE,
-    KIND_MARMOT_KEY_PACKAGE_LEGACY, KIND_MARMOT_WELCOME,
+    KIND_GIFT_WRAP, KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
 };
 use crate::projection::ops::ingest_signed_event_core;
 use crate::projection::state::MarmotProjection;
 
 /// Kinds the inbound parser subscribes to per-kind registrations:
-/// - kind:443 / kind:30443 — key-packages, so the `kp_cache` in
-///   `MarmotService` is populated when peers' events arrive;
+/// - kind:30443 — key-packages, so the `kp_cache` in `MarmotService` is
+///   populated when peers' events arrive (legacy kind:443 retired 2026-05-31);
 /// - kind:1059 — gift-wrap welcome;
 /// - kind:445 — group message / commit / proposal;
 /// - kind:444 — welcome rumor, admitted defensively (the wire welcome is
@@ -63,8 +62,7 @@ use crate::projection::state::MarmotProjection;
 /// not literals — one source of truth shared with the publish/cache sites.
 // Used by the feature-gated `ffi` module and tests; not dead code.
 #[allow(dead_code)]
-pub(crate) const TAP_KINDS: [u32; 5] = [
-    KIND_MARMOT_KEY_PACKAGE_LEGACY,
+pub(crate) const TAP_KINDS: [u32; 4] = [
     KIND_MARMOT_WELCOME,
     KIND_MARMOT_GROUP_MESSAGE,
     KIND_GIFT_WRAP,

@@ -32,20 +32,24 @@ fn sign_in_and_register_marmot(
     app: *mut NmpApp,
     secret: &str,
     db_dir: Option<&str>,
+    keyring_service_id: &str,
 ) -> *mut MarmotHandle {
     let (Some(db_dir), Ok(keys)) = (db_dir, Keys::parse(secret)) else {
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", db_dir.trim_end_matches('/'));
-    register_with_keys(app, keys, &db_path)
+    register_with_keys(app, keys, &db_path, keyring_service_id)
 }
 
 /// Restore a caller-scoped local secret from the keyring, sign it into the
 /// kernel actor, and register Marmot with the same account.
 ///
-/// `keyring_account_id` is app-owned policy (e.g. `"com.example.app.nsec"`).
-/// Passing an empty id or a missing `db_dir` degrades gracefully to a null
-/// Marmot handle (D6 — never panics on bad input).
+/// `keyring_account_id` is app-owned policy for the identity secret (e.g.
+/// `"com.example.app.nsec"`). `keyring_service_id` is the app-scoped namespace
+/// for the Marmot MLS DB encryption key (e.g. `"com.example.app.marmot"` —
+/// distinct from the identity key so rotation does not collide). Both must be
+/// non-empty; passing an empty id or a missing `db_dir` degrades gracefully to
+/// a null Marmot handle (D6 — never panics on bad input).
 ///
 /// When `test_nsec` is `Some`, that value is used directly instead of querying
 /// the host keyring — for use in unit tests that do not wire a real keyring.
@@ -56,10 +60,11 @@ fn sign_in_and_register_marmot(
 pub fn restore_identity_with_keyring_account(
     app: *mut NmpApp,
     keyring_account_id: &str,
+    keyring_service_id: &str,
     db_dir: Option<&str>,
     test_nsec: Option<String>,
 ) -> *mut MarmotHandle {
-    if app.is_null() || keyring_account_id.is_empty() {
+    if app.is_null() || keyring_account_id.is_empty() || keyring_service_id.is_empty() {
         return std::ptr::null_mut();
     }
     let app_ref = unsafe { &*app };
@@ -75,13 +80,15 @@ pub fn restore_identity_with_keyring_account(
         nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
         true,
     );
-    sign_in_and_register_marmot(app, &secret, db_dir)
+    sign_in_and_register_marmot(app, &secret, db_dir, keyring_service_id)
 }
 
 /// Persist a newly-imported local secret to the keyring, sign it into the
 /// kernel actor, and register Marmot with the same account.
 ///
-/// `keyring_account_id` is app-owned policy (e.g. `"com.example.app.nsec"`).
+/// `keyring_account_id` is app-owned policy for the identity secret (e.g.
+/// `"com.example.app.nsec"`). `keyring_service_id` is the app-scoped namespace
+/// for the Marmot MLS DB encryption key (e.g. `"com.example.app.marmot"`).
 /// Passing an empty id or a missing `db_dir` degrades gracefully to a null
 /// Marmot handle (D6 — never panics on bad input).
 ///
@@ -91,10 +98,11 @@ pub fn restore_identity_with_keyring_account(
 pub fn sign_in_nsec_with_keyring_account(
     app: *mut NmpApp,
     keyring_account_id: &str,
+    keyring_service_id: &str,
     secret: String,
     db_dir: Option<&str>,
 ) -> *mut MarmotHandle {
-    if app.is_null() || keyring_account_id.is_empty() {
+    if app.is_null() || keyring_account_id.is_empty() || keyring_service_id.is_empty() {
         return std::ptr::null_mut();
     }
     let app_ref = unsafe { &*app };
@@ -109,7 +117,7 @@ pub fn sign_in_nsec_with_keyring_account(
         nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
         true,
     );
-    sign_in_and_register_marmot(app, &secret, db_dir)
+    sign_in_and_register_marmot(app, &secret, db_dir, keyring_service_id)
 }
 
 /// Forget a caller-scoped local secret and remove the identity through the
@@ -208,6 +216,7 @@ mod tests {
         let handle = sign_in_nsec_with_keyring_account(
             app,
             "example.marmot.sign_in.local_secret",
+            "example.marmot.svc",
             TEST_NSEC.to_string(),
             None,
         );

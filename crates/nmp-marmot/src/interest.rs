@@ -4,8 +4,8 @@
 //! Marmot app needs is represented as a kernel interest:
 //!
 //! - kind:1059 `#p = self` gift-wrap inbox, registered at Marmot startup;
-//! - kind:30443/443 KeyPackage lookup, registered when an invite flow needs a
-//!   peer's package; and
+//! - kind:30443 KeyPackage lookup, registered when an invite flow needs a
+//!   peer's package (legacy kind:443 retired 2026-05-31); and
 //! - relay-pinned kind:445 group messages, registered when the group relays are
 //!   known from group creation or a Welcome.
 //!
@@ -22,10 +22,11 @@ use nmp_core::stable_hash::stable_hash64;
 // the crate (these constants have no external importers). NOTE: the `ops.rs`
 // dispatch still matches on `event.kind.as_u16()` literals — left as-is to keep
 // that 500-LOC god-file from expanding over its file-size baseline.
-pub use nmp_core::kinds::{
-    KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY,
-    KIND_MARMOT_WELCOME,
-};
+//
+// KIND_MARMOT_KEY_PACKAGE_LEGACY (kind:443) is intentionally NOT re-exported:
+// the legacy dual-publish was retired 2026-05-31; nmp-marmot now only
+// publishes/subscribes kind:30443.
+pub use nmp_core::kinds::{KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME};
 pub use nmp_nip59::KIND_GIFT_WRAP;
 
 /// Stable, deterministic `InterestId` for a pubkey's gift-wrap inbox
@@ -80,12 +81,13 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
 ///
 /// KeyPackage events are addressable replaceable events published to the
 /// author's outbox relays. The kernel planner owns that NIP-65 routing; the
-/// app only declares the peer pubkey and the event kinds it needs.
+/// app only declares the peer pubkey and the event kind it needs.
 ///
-#[must_use] 
+/// Only kind:30443 is subscribed (legacy kind:443 was retired 2026-05-31).
+#[must_use]
 pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
     nmp_core::substrate::ViewDependencies {
-        kinds: vec![KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY],
+        kinds: vec![KIND_MARMOT_KEY_PACKAGE],
         authors: vec![pubkey.to_string()],
         limit: Some(4),
         ..Default::default()
@@ -166,11 +168,12 @@ mod tests {
     }
 
     #[test]
-    fn key_package_lookup_interest_targets_peer_package_kinds() {
+    fn key_package_lookup_interest_targets_only_kind_30443() {
         let i = key_package_lookup_interest("peerpubkey");
         assert!(i.shape.authors.contains("peerpubkey"));
         assert!(i.shape.kinds.contains(&KIND_MARMOT_KEY_PACKAGE));
-        assert!(i.shape.kinds.contains(&KIND_MARMOT_KEY_PACKAGE_LEGACY));
+        // Legacy kind:443 is retired — must NOT appear in lookup interests.
+        assert_eq!(i.shape.kinds.len(), 1, "only kind:30443, no legacy kind:443");
         assert_eq!(i.shape.limit, Some(4));
         assert!(i.shape.relay_pin.is_none());
         assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
