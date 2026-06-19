@@ -17,37 +17,38 @@
 //! 5.2: owned by value, no process-global), so two `NmpApp` instances in one
 //! process dedup independently. The FFI shims `nmp_app_wallet_*` were deleted;
 //! callers use `nmp_app_dispatch_action("nmp.wallet.*", …)` directly.
+//!
+//! # Submodule layout
+//!
+//! * `dedupe` — [`InflightBolt11Guard`](dedupe::InflightBolt11Guard) +
+//!   [`INFLIGHT_BOLT11_TTL`] constant.
+//! * `connect` — [`WalletConnectAction`] / [`WalletConnectModule`] /
+//!   [`WalletDisconnectAction`] / [`WalletDisconnectModule`].
+//! * This file (`mod.rs`) — [`WalletAction`] + [`WalletPayInvoiceModule`].
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+mod connect;
+mod dedupe;
+
+pub use connect::{
+    WalletConnectAction, WalletConnectModule, WalletDisconnectAction, WalletDisconnectModule,
+};
+pub use dedupe::INFLIGHT_BOLT11_TTL;
+use dedupe::InflightBolt11Guard;
 
 use serde::{Deserialize, Serialize};
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
 
-use crate::protocol::{
-    WalletConnectCommand, WalletDisconnectCommand, WalletPayInvoiceCommand,
-};
+use crate::protocol::WalletPayInvoiceCommand;
 use crate::runtime::WalletRuntimeHandle;
-
-/// Time-to-live for an `inflight_bolt11` entry — the wall-clock window during
-/// which a same-invoice retap is rejected as a UI double-tap before it is
-/// dispatched through the action seam.
-///
-/// 60 s is sized for "the NWC response is in flight": long enough to absorb
-/// relay round-trip jitter, short enough that a wallet that never responds
-/// does not lock the user out of retrying. The `WalletRuntime` owns a separate
-/// `PENDING_PAYMENT_TTL_SECS` (90 s) guard for the on-wire dedup window.
-pub const INFLIGHT_BOLT11_TTL: Duration = Duration::from_secs(60);
 
 /// User-initiated wallet intents dispatchable through
 /// `nmp_app_dispatch_action` under the `nmp.wallet.pay_invoice` namespace.
 ///
 /// `PayInvoice` is currently the only variant: connection lifecycle
-/// (`wallet_connect` / `wallet_disconnect`) stays on dedicated FFI symbols
-/// per the Theme A discriminator (see module docs).
+/// (`wallet_connect` / `wallet_disconnect`) stays on dedicated modules
+/// in the `connect` submodule per the Theme A discriminator (see module docs).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum WalletAction {
     /// Pay a BOLT-11 Lightning invoice via the connected NIP-47 wallet.
@@ -55,124 +56,6 @@ pub enum WalletAction {
         bolt11: String,
         amount_msats: Option<u64>,
     },
-}
-
-// ── Connection lifecycle action modules (V-38) ──────────────────────────────
-
-/// Wire shape for `nmp.wallet.connect` — parse a NWC URI and bring the
-/// runtime up. Single-field externally-tagged enum so the wire JSON shape is
-/// `{"Connect":{"uri":"nostr+walletconnect://…"}}`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub enum WalletConnectAction {
-    Connect { uri: String },
-}
-
-/// `ActionModule` for `nmp.wallet.connect`. Replaces the pre-V-38 bespoke
-/// `nmp_app_wallet_connect` FFI symbol's direct ActorCommand construction.
-///
-/// ADR-0052 rung 5.2: owns its `WalletRuntimeHandle` by value (cloned from
-/// the composition root). `execute` reaches the runtime through `self.runtime`
-/// — no process-global. Two `NmpApp` instances therefore drive independent
-/// runtimes.
-pub struct WalletConnectModule {
-    pub runtime: WalletRuntimeHandle,
-}
-
-impl WalletConnectModule {
-    /// Construct the module bound to `runtime` (the per-app handle the
-    /// composition root cloned for this seam).
-    #[must_use]
-    pub fn new(runtime: WalletRuntimeHandle) -> Self {
-        Self { runtime }
-    }
-}
-
-impl ActionModule for WalletConnectModule {
-    const NAMESPACE: &'static str = "nmp.wallet.connect";
-    type Action = WalletConnectAction;
-
-    /// Validate the NWC URI before the runtime attempts to parse it.
-    ///
-    /// V-100: URI scheme validation lives here, not in the Swift shell
-    /// (thin-shell doctrine). The Connect button always dispatches; if the
-    /// URI fails validation the action is rejected synchronously and the FFI
-    /// shim surfaces the reason as a `last_error_toast`.
-    ///
-    /// Validates:
-    /// 1. Non-empty URI
-    /// 2. `nostr+walletconnect://` scheme prefix (case-insensitive)
-    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        match action {
-            WalletConnectAction::Connect { uri } => {
-                if uri.is_empty() {
-                    return Err(ActionRejection::Invalid(
-                        "wallet connect requires a non-empty NWC URI".to_string(),
-                    ));
-                }
-                if !uri.to_ascii_lowercase().starts_with("nostr+walletconnect://") {
-                    return Err(ActionRejection::Invalid(
-                        "invalid NWC URI: must start with nostr+walletconnect://".to_string(),
-                    ));
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn execute(
-        &self,
-        action: Self::Action,
-        _correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        match action {
-            WalletConnectAction::Connect { uri } => {
-                send(ActorCommand::Protocol(Box::new(WalletConnectCommand {
-                    uri,
-                    runtime: self.runtime.clone(),
-                })));
-                Ok(())
-            }
-        }
-    }
-}
-
-/// Wire shape for `nmp.wallet.disconnect`. Unit variant (no payload).
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub enum WalletDisconnectAction {
-    Disconnect,
-}
-
-/// `ActionModule` for `nmp.wallet.disconnect`.
-///
-/// ADR-0052 rung 5.2: owns its per-app `WalletRuntimeHandle` by value.
-pub struct WalletDisconnectModule {
-    pub runtime: WalletRuntimeHandle,
-}
-
-impl WalletDisconnectModule {
-    /// Construct the module bound to `runtime` (the per-app handle).
-    #[must_use]
-    pub fn new(runtime: WalletRuntimeHandle) -> Self {
-        Self { runtime }
-    }
-}
-
-impl ActionModule for WalletDisconnectModule {
-    const NAMESPACE: &'static str = "nmp.wallet.disconnect";
-    type Action = WalletDisconnectAction;
-
-    fn execute(
-        &self,
-        _action: Self::Action,
-        _correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        send(ActorCommand::Protocol(Box::new(WalletDisconnectCommand {
-            runtime: self.runtime.clone(),
-        })));
-        Ok(())
-    }
 }
 
 // ── nmp.wallet.pay_invoice ──────────────────────────────────────────────────
@@ -190,13 +73,9 @@ impl ActionModule for WalletDisconnectModule {
 /// neither can observe the other's in-flight invoices.
 pub struct WalletPayInvoiceModule {
     pub runtime: WalletRuntimeHandle,
-    /// UI-layer bolt11 dedup guard: bolt11 strings accepted since the last
-    /// sweep. A same-invoice retap within [`INFLIGHT_BOLT11_TTL`] is rejected
-    /// by [`Self::start`] before the action reaches the actor, preventing
-    /// the user from double-tapping the Pay button. Entries are swept
-    /// lazily on each `start` call. D6: a poisoned mutex collapses to
-    /// "let the send through" (no user-visible lockout on poison).
-    inflight_bolt11: Mutex<HashMap<String, Instant>>,
+    /// UI-layer bolt11 dedup guard. See [`dedupe::InflightBolt11Guard`] for
+    /// the TTL, sweep, and D6/D8 policies.
+    inflight_bolt11: InflightBolt11Guard,
 }
 
 impl WalletPayInvoiceModule {
@@ -205,25 +84,8 @@ impl WalletPayInvoiceModule {
     pub fn new(runtime: WalletRuntimeHandle) -> Self {
         Self {
             runtime,
-            inflight_bolt11: Mutex::new(HashMap::new()),
+            inflight_bolt11: InflightBolt11Guard::new(),
         }
-    }
-
-    /// Returns `true` if `bolt11` is currently in-flight and the call should
-    /// be treated as a duplicate tap. Sweeps expired entries on every call
-    /// (D8 — no sleep/loop). D6: a poisoned mutex is treated as "not a
-    /// duplicate" so the user is never locked out by a poisoned guard.
-    fn is_duplicate_tap(&self, bolt11: &str) -> bool {
-        let Ok(mut guard) = self.inflight_bolt11.lock() else {
-            return false; // D6: poisoned mutex → let through
-        };
-        let now = Instant::now();
-        guard.retain(|_, started| now.duration_since(*started) < INFLIGHT_BOLT11_TTL);
-        if guard.contains_key(bolt11) {
-            return true;
-        }
-        guard.insert(bolt11.to_string(), now);
-        false
     }
 }
 
@@ -236,9 +98,10 @@ impl ActionModule for WalletPayInvoiceModule {
     ///
     /// Also enforces the UI-layer double-tap guard: a same-`bolt11` retap
     /// within [`INFLIGHT_BOLT11_TTL`] of the first is rejected with
-    /// `ActionRejection::Busy` so the host can surface a "payment in progress"
-    /// state rather than a user-visible error. The guard is per-module-instance
-    /// (no process-global) and sweeps expired entries lazily on each call (D8).
+    /// `ActionRejection::Conflict` so the host can surface a "payment in
+    /// progress" state rather than a user-visible error. The guard is
+    /// per-module-instance (no process-global) and sweeps expired entries
+    /// lazily on each call (D8).
     fn start(
         &self,
         _ctx: &mut ActionContext,
@@ -251,7 +114,7 @@ impl ActionModule for WalletPayInvoiceModule {
                         "wallet pay_invoice requires a non-empty bolt11 invoice".to_string(),
                     ));
                 }
-                if self.is_duplicate_tap(bolt11) {
+                if self.inflight_bolt11.is_duplicate_tap(bolt11) {
                     return Err(ActionRejection::Conflict(
                         "payment already in progress for this invoice".to_string(),
                     ));
@@ -307,72 +170,6 @@ mod tests {
     fn handle() -> WalletRuntimeHandle {
         crate::runtime::new_wallet_runtime_handle()
     }
-
-    // ── WalletConnectModule tests ─────────────────────────────────────────
-
-    #[test]
-    fn connect_start_accepts_valid_nwc_uri() {
-        let action = WalletConnectAction::Connect {
-            uri: "nostr+walletconnect://abc123?relay=wss://relay.example.com&secret=xyz".to_string(),
-        };
-        WalletConnectModule::new(handle())
-            .start(&mut ctx(), action)
-            .expect("valid nostr+walletconnect:// URI must be accepted");
-    }
-
-    #[test]
-    fn connect_start_accepts_nwc_uri_mixed_case_scheme() {
-        // The scheme check is case-insensitive; uppercase variants should pass.
-        let action = WalletConnectAction::Connect {
-            uri: "NOSTR+WALLETCONNECT://abc123?relay=wss://relay.example.com".to_string(),
-        };
-        WalletConnectModule::new(handle())
-            .start(&mut ctx(), action)
-            .expect("upper-case scheme variant must be accepted");
-    }
-
-    #[test]
-    fn connect_start_rejects_empty_uri() {
-        let action = WalletConnectAction::Connect {
-            uri: String::new(),
-        };
-        let err = WalletConnectModule::new(handle())
-            .start(&mut ctx(), action)
-            .expect_err("empty URI must be rejected");
-        match err {
-            ActionRejection::Invalid(msg) => {
-                assert!(msg.contains("non-empty"), "rejection should explain the constraint: {msg}");
-            }
-            other => panic!("expected Invalid rejection, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn connect_start_rejects_wrong_scheme() {
-        for bad in &[
-            "https://example.com",
-            "nostr://abc",
-            "walletconnect://abc",
-            "lightning:abc",
-            "   ",
-        ] {
-            let action = WalletConnectAction::Connect { uri: bad.to_string() };
-            let err = WalletConnectModule::new(handle())
-                .start(&mut ctx(), action)
-                .expect_err(&format!("bad URI {bad:?} must be rejected"));
-            match err {
-                ActionRejection::Invalid(msg) => {
-                    assert!(
-                        msg.contains("nostr+walletconnect://"),
-                        "rejection message must name the required scheme; got: {msg}"
-                    );
-                }
-                other => panic!("expected Invalid for {bad:?}, got {other:?}"),
-            }
-        }
-    }
-
-    // ── WalletPayInvoiceModule tests ──────────────────────────────────────
 
     #[test]
     fn start_accepts_non_empty_bolt11() {
@@ -534,6 +331,8 @@ mod tests {
     /// After the TTL the same bolt11 is accepted again.
     #[test]
     fn expired_inflight_entry_allows_retry() {
+        use std::time::Duration;
+
         let module = WalletPayInvoiceModule::new(handle());
         let bolt11 = "lnbc500n1p0expired";
 
@@ -546,11 +345,11 @@ mod tests {
 
         // Backdate the entry so it appears expired.
         {
-            let mut guard = module.inflight_bolt11.lock().unwrap();
-            let backdated = Instant::now()
+            let mut map = module.inflight_bolt11.get_inner_mut();
+            let backdated = std::time::Instant::now()
                 .checked_sub(INFLIGHT_BOLT11_TTL + Duration::from_secs(1))
                 .expect("Instant::checked_sub(61s) must succeed");
-            if let Some(v) = guard.get_mut(bolt11) {
+            if let Some(v) = map.get_mut(bolt11) {
                 *v = backdated;
             }
         }
