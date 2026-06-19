@@ -21,7 +21,7 @@ use crate::projection::{ops, state::MarmotProjection};
 use crate::service::MarmotService;
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::IngestParser;
 use nostr::{JsonUtil, Keys};
 use serde_json::json;

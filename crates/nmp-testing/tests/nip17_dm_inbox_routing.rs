@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot, PTagRouting, RoutingSource, SubscriptionCompiler,
 };

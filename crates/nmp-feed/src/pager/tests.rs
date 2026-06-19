@@ -5,7 +5,7 @@
 //! termination, gap rebase, fail-closed shape, and display-order invariance.
 
 use super::*;
-use nmp_core::store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
+use nmp_store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ fn deleted(seq: u64, _target: &str) -> StoreLogEntry {
         // AdminPurge reason (the pager skips every Deleted row regardless).
         op: LogOp::Deleted {
             target_id: id32(seq as u8),
-            reason: nmp_core::store::DeleteReason::AdminPurge,
+            reason: nmp_store::DeleteReason::AdminPurge,
         },
         event_id: id32(0xff),
         raw_event: None,

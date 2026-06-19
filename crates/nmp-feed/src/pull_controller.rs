@@ -30,8 +30,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::InterestShape;
-use nmp_core::store::ScanLogResult;
+use nmp_planner::InterestShape;
+use nmp_store::ScanLogResult;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
 

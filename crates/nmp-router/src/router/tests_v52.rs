@@ -14,7 +14,7 @@
 //!
 //! Store invariants are tested in `nmp-store/src/mem/tests.rs`.
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot, SubscriptionCompiler,
 };

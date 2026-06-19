@@ -2,7 +2,7 @@
 //!
 //! See `docs/design/lmdb/tests.md` §2.8.
 
-use nmp_core::store::{GcBudget, InsertOutcome, RejectReason, TombstoneOrigin};
+use nmp_store::{GcBudget, InsertOutcome, RejectReason, TombstoneOrigin};
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 

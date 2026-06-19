@@ -4,7 +4,7 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_nip29::register::wire_joined_groups;
 use nmp_nip29::{
     decode_joined_groups_snapshot, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,

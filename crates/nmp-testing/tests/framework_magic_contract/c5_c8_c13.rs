@@ -8,7 +8,7 @@
 //!
 //! Design: `docs/design/framework-magic/`
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
 };
@@ -253,7 +253,7 @@ fn c8_subscriptions_coalesce_and_buffer() {
 #[test]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::nip19::encode_note;
-    use nmp_core::store::RawEvent;
+    use nmp_store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
     use nmp_core::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
     use nmp_core::{
@@ -284,7 +284,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
         sig: "a".repeat(128),
     };
 
-    use nmp_core::store::VerifiedEvent;
+    use nmp_store::VerifiedEvent;
     let verified = VerifiedEvent::from_raw_unchecked(raw);
     // The diag-firehose-stress path pushes the event directly into self.events
     // regardless of timeline_authors, so it is visible to claimed_events.

@@ -64,11 +64,11 @@
 
 use std::sync::Arc;
 
-use nmp_core::planner::{
+use nmp_planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, ViewDependencies};
 use nmp_core::{CommandSender, KindFilter};
 use nmp_nip59::KIND_GIFT_WRAP;
@@ -327,7 +327,7 @@ impl IngestParser for DmInboxProjection {
     /// Schnorr signature verification at the ingest gate — no re-verify needed.
     /// We reconstruct the verbatim signed JSON that [`Self::ingest_gift_wrap`]
     /// needs (NIP-44 decryption requires the `sig` field) via a plain
-    /// `serde_json::to_string` of the [`nmp_core::store::RawEvent`] that
+    /// `serde_json::to_string` of the [`nmp_store::RawEvent`] that
     /// [`VerifiedEvent::raw`] exposes.
     ///
     /// Source relay provenance is unavailable at the `IngestParser` seam today
@@ -363,7 +363,7 @@ impl IngestParser for DmInboxProjection {
 /// subscription per account.
 #[must_use]
 pub fn active_giftwrap_inbox_interest_id() -> InterestId {
-    InterestId(nmp_core::stable_hash::stable_hash64(
+    InterestId(nmp_planner::stable_hash::stable_hash64(
         "nip17.giftwrap.active",
     ))
 }

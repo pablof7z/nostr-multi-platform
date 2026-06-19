@@ -11,7 +11,7 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::wire_group_chat;
 use nmp_nip29::{decode_group_chat_snapshot, GROUP_CHAT_FILE_IDENTIFIER, GROUP_CHAT_SCHEMA_ID};

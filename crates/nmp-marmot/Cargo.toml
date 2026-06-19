@@ -25,6 +25,13 @@ ffi = ["dep:keyring-core", "dep:base64"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
+# LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
+# deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
+# Direct dep on nmp-store for VerifiedEvent / RawEvent — the nmp_core::store
+# compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 # `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
 # `nmp-core::ffi` in step 11-final). The Marmot projection +
 # bridge name the handle through this dep.

@@ -174,7 +174,7 @@ impl RoutingFactoryRegistrar for NmpApp {
     fn set_publish_resolver_factory<F>(&self, factory: F)
     where
         F: Fn(
-                Arc<dyn nmp_core::store::EventStore>,
+                Arc<dyn nmp_store::EventStore>,
                 nmp_core::slots::IndexerRelaysSlot,
                 nmp_core::slots::LocalWriteRelaysSlot,
                 nmp_core::slots::ActiveAccountSlot,

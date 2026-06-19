@@ -41,7 +41,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::IngestParser;
 
 use crate::dm_relay_cache::DmRelayCache;
@@ -140,7 +140,7 @@ fn canonicalize_relay_url(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::store::RawEvent;
+    use nmp_store::RawEvent;
     use nmp_core::substrate::EventIngestDispatcher;
 
     fn evt(pubkey: &str, kind: u32, tags: Vec<Vec<String>>) -> VerifiedEvent {

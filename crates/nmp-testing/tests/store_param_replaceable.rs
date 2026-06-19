@@ -2,7 +2,7 @@
 //!
 //! See `docs/design/lmdb/tests/insert.md` §2.5.
 
-use nmp_core::store::InsertOutcome;
+use nmp_store::InsertOutcome;
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, ALICE_PUBKEY};
 

@@ -23,7 +23,7 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
 use nmp_core::nip19::{decode_nprofile, decode_npub};
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_router::{InMemoryMailboxCache, Kind10002Parser};
 use nmp_ffi::{nmp_app_encode_profile, nmp_app_free, nmp_app_new, nmp_free_string, NmpApp};
 

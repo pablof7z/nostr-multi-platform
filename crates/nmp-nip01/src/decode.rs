@@ -4,7 +4,7 @@
 //! every NIP-10 reference (root, reply, mentions, mentioned pubkeys) is
 //! parsed once and carried in the record alongside the raw fields.
 
-use nmp_core::store::StoredEvent;
+use nmp_store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::{parse_nip10, Nip10Refs};
 use serde::{Deserialize, Serialize};
@@ -100,7 +100,7 @@ fn decode_borrowed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::store::{RawEvent, StoredEvent};
+    use nmp_store::{RawEvent, StoredEvent};
     use std::sync::Arc;
 
     fn make_stored(kind: u32, tags: Vec<Vec<String>>, content: &str) -> StoredEvent {

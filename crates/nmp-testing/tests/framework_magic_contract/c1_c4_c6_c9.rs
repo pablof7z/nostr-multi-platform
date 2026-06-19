@@ -6,11 +6,11 @@
 //!
 //! Design: `docs/design/framework-magic/replaceable.md`, `outbox.md`, `sync.md`
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot, SubscriptionCompiler,
 };
-use nmp_core::store::{InsertOutcome, TombstoneOrigin};
+use nmp_store::{InsertOutcome, TombstoneOrigin};
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ pub fn c3_kind5_delete_removes_referenced_and_tombstones() {
 /// Design: `docs/design/framework-magic/replaceable.md` §C4.
 #[test]
 pub fn c4_nip40_expiration_removes_and_persists_schedule() {
-    use nmp_core::store::{GcBudget, RejectReason};
+    use nmp_store::{GcBudget, RejectReason};
     let h = StoreHarness::mem();
 
     let ev_past = h.make_event_with_tags(

@@ -13,7 +13,7 @@
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 
-use nmp_core::store::{
+use nmp_store::{
     conversion_count, reset_conversion_count, EventStore, StoreQuery, StoredEvent,
 };
 use nmp_testing::store_harness::{hex_to_id, StoreHarness, ALICE_HEX, ALICE_PUBKEY, BOB_HEX};

@@ -75,7 +75,7 @@ mod tests {
     fn tag_filter_json_parses_as_interest_shape() {
         let json = tag_feed_filter_json("nostr");
         assert!(
-            nmp_core::planner::InterestShape::from_filter_json(&json).is_some(),
+            nmp_planner::InterestShape::from_filter_json(&json).is_some(),
             "filter must parse: {json}"
         );
     }

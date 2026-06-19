@@ -1833,7 +1833,7 @@ impl NmpApp {
     /// delivery, per-group kind:445 feeds, etc. The kernel emits REQ frames
     /// on the next compile pass; matching inbound events then flow through the
     /// registered `IngestParser` seams automatically, with no Swift polling needed.
-    pub fn push_interest(&self, interest: nmp_core::planner::LogicalInterest) {
+    pub fn push_interest(&self, interest: nmp_planner::LogicalInterest) {
         self.send_cmd(ActorCommand::PushInterest(interest));
     }
 
@@ -1983,7 +1983,7 @@ impl NmpApp {
     /// [`nmp_feed::PullFeedController`] drains on `load_older`.
     ///
     /// Returns a plain Rust closure `(scope, after_seq) -> page` that reads the
-    /// kernel's published [`EventStore`](nmp_core::store::EventStore) directly
+    /// kernel's published [`EventStore`](nmp_store::EventStore) directly
     /// via [`nmp_core::pull_page_over`]. This is **not** a new C-ABI symbol and
     /// **not** a projection accessor: it reads the raw ingest log exactly as the
     /// existing [`crate::pull::nmp_app_pull_page`] door does (ADR-0039 §6.1
@@ -1998,7 +1998,7 @@ impl NmpApp {
     #[must_use]
     pub fn feed_pull_fn(&self) -> nmp_feed::PullFn {
         use std::num::NonZeroUsize;
-        use nmp_core::store::{PullPage, ScanLogResult};
+        use nmp_store::{PullPage, ScanLogResult};
         use nmp_core::{pull_page_over, PullLimits};
 
         let slot = Arc::clone(&self.event_store_handle);
@@ -2123,7 +2123,7 @@ impl NmpApp {
         // crypto bar as a wire-arrived event. The `tags` clone mirrors
         // every other RawEvent construction site in the crate
         // (`commands::publish` action_registry.rs:420).
-        let raw = nmp_core::store::RawEvent {
+        let raw = nmp_store::RawEvent {
             id: event.id.to_hex(),
             pubkey: event.pubkey.to_hex(),
             created_at: event.created_at.as_secs(),

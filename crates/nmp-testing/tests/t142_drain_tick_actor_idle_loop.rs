@@ -18,7 +18,7 @@
 //! (in `nmp-core/src/actor/tests.rs`) cover the `wire_frames_to_outbound`
 //! conversion; these tests cover the `drain_tick` trigger-to-frame pipeline.
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
 };

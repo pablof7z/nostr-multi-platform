@@ -19,7 +19,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::KernelEvent;
 // `on_kernel_event` is a `KernelEventObserver` method (the engine impls it).
 use nmp_core::KernelEventObserver as _;
@@ -156,8 +156,8 @@ fn publish_store_with(app: *mut NmpApp, events: &[RawEvent]) {
         assert!(
             matches!(
                 outcome,
-                nmp_core::store::InsertOutcome::Inserted { .. }
-                    | nmp_core::store::InsertOutcome::Replaced { .. }
+                nmp_store::InsertOutcome::Inserted { .. }
+                    | nmp_store::InsertOutcome::Replaced { .. }
             ),
             "seed event {} must land in the store, got {outcome:?}",
             raw.id

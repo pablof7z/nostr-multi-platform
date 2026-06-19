@@ -68,7 +68,7 @@
 //! `replace_kind_parser` semantics — account-switch re-registration atomically
 //! evicts the previous parser for each kind). The kernel delivers every accepted
 //! inbound verified event of those kinds to [`crate::projection::tap::MarmotIngestParser`],
-//! which reconstructs the signed `nostr::Event` from [`nmp_core::store::VerifiedEvent::raw`]
+//! which reconstructs the signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`]
 //! (same pattern as `nmp-nip17::DmInboxProjection::parse`, PR-1) and drives it
 //! through the SAME `ops::ingest_signed_event_core` the back-compat
 //! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes / messages

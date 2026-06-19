@@ -33,7 +33,7 @@
 //! account switch, so the kernel never accumulates one standing subscription
 //! per ever-active pubkey. Mirrors the NIP-17 inbox slot.
 
-use nmp_core::planner::{
+use nmp_planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
 use nmp_core::substrate::ViewDependencies;
@@ -48,7 +48,7 @@ use crate::kinds::KIND_ZAP_RECEIPT;
 /// [`nmp_nip17::active_giftwrap_inbox_interest_id`] line for line.
 #[must_use]
 pub fn self_zap_receipts_interest_id() -> InterestId {
-    InterestId(nmp_core::stable_hash::stable_hash64(
+    InterestId(nmp_planner::stable_hash::stable_hash64(
         "nip57.zap_receipts.active",
     ))
 }

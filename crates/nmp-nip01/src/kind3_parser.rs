@@ -31,7 +31,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{ContactsView, IngestParser};
 
 use crate::contacts_cache::ContactsCache;
@@ -85,7 +85,7 @@ impl IngestParser for Kind3Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::store::RawEvent;
+    use nmp_store::RawEvent;
     use nmp_core::substrate::{ContactsLookup, EventIngestDispatcher};
 
     fn evt(pubkey: &str, id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> VerifiedEvent {

@@ -57,8 +57,8 @@
 //! cannot do (keyring, audio, file storage). Relay operations belong to the
 //! kernel exclusively; this module is how you reach them.
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
-use nmp_core::stable_hash::stable_hash64;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_planner::stable_hash::stable_hash64;
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,

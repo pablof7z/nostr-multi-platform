@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::planner::{
+use nmp_planner::{
     merge as lattice_merge, EmptyMailboxCache, InterestId, InterestLifecycle, InterestScope,
     InterestShape, LogicalInterest, MergeOutcome, SubscriptionCompiler,
 };

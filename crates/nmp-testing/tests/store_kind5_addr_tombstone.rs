@@ -5,7 +5,7 @@
 //!
 //! See `docs/design/lmdb/tests/insert.md` §2.7a.
 
-use nmp_core::store::{InsertOutcome, TombstoneOrigin};
+use nmp_store::{InsertOutcome, TombstoneOrigin};
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
 

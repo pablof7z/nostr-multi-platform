@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
 use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
 use nmp_core::slots::{new_indexer_relays_slot, IndexerRelaysSlot};
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::BlockedRelaySet;
 
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";

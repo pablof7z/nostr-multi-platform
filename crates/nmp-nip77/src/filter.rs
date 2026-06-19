@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use nmp_core::store::{EventStore, StoreQuery};
+use nmp_store::{EventStore, StoreQuery};
 use serde_json::Value;
 
 use crate::reconciler::SyncedItem;

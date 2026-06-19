@@ -33,8 +33,8 @@
 //! wake consumer. No `nmp.pull.wake` decode, no host pull accessor (ADR-0039
 //! §6.1 preserved). 6B wires concrete feeds.
 
-use nmp_core::planner::InterestShape;
-use nmp_core::store::{LogOp, ScanLogResult, StoreLogEntry};
+use nmp_planner::InterestShape;
+use nmp_store::{LogOp, ScanLogResult, StoreLogEntry};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
 

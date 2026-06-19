@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::planner::{
+use nmp_planner::{
     EmptyMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, RoutingSource, SubscriptionCompiler, UserConfiguredCategory,
 };

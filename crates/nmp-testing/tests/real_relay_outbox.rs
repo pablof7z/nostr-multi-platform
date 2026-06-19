@@ -29,7 +29,7 @@ use common::{
     PRIMAL_RELAY,
 };
 use nmp_core::publish::{OutboxResolver, PublishTarget};
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 // Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved from
 // `nmp_core::publish::nip65` into `nmp-router`.
 use nmp_router::Nip65OutboxResolver;

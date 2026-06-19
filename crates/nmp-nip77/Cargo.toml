@@ -11,6 +11,12 @@ name = "nmp_nip77"
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-planner for InterestId / InterestLifecycle —
+# the nmp_core::planner compat facade is deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
+# Direct dep on nmp-store for EventStore / StoreQuery — the nmp_core::store
+# compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 negentropy = { version = "0.5", default-features = false, features = ["std"] }
 nostr = { workspace = true }

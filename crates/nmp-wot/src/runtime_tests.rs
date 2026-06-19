@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::interest::KIND_MUTE_LIST;
-use nmp_core::planner::InterestLifecycle;
+use nmp_planner::InterestLifecycle;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nostr::Keys;
 

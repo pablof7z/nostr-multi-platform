@@ -32,7 +32,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use nmp_core::nip19::decode_npub;
-use nmp_core::planner::{
+use nmp_planner::{
     apply_selection, InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
     InterestShape, LogicalInterest, SubscriptionCompiler,
 };

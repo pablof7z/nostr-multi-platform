@@ -6,7 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::planner::{bounded_search_query, InterestShape};
+use nmp_planner::{InterestShape};
+use nmp_planner::interest::bounded_search_query;
 use nmp_core::substrate::{KernelEvent, ViewDependencies};
 use nmp_kinds::KIND_PROFILE_METADATA;
 use serde::{Deserialize, Serialize};

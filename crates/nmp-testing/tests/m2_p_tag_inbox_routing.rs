@@ -10,7 +10,7 @@
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1 / §3.2
 //! Doctrine: D3 (outbox routing automatic).
 
-use nmp_core::planner::{
+use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot, SubscriptionCompiler,
 };

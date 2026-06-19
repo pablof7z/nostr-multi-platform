@@ -21,6 +21,12 @@ native = ["dep:ureq", "dep:nmp-nip47"]
 # `native` feature on nmp-core is opted-in by callers that need it via
 # feature unification — no explicit re-export required here.
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-planner for InterestId / InterestShape / LogicalInterest /
+# stable_hash64 — the nmp_core::planner compat facade is deleted (#1608).
+nmp-planner = { path = "../nmp-planner", default-features = false }
+# Direct dep on nmp-store for StoredEvent / RawEvent — the nmp_core::store
+# compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 # Layer-0 kind-constant registry — re-exports KIND_ZAP_REQUEST / KIND_ZAP_RECEIPT
 # so this crate no longer duplicates those values (V-57).
 nmp-kinds = { path = "../nmp-kinds" }

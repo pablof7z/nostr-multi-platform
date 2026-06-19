@@ -10,6 +10,13 @@ description = "The framework's default composition for an NMP-based Nostr applic
 # Kernel substrate — `ActorCommand`, observer traits, the routing
 # substrate factory seam, and the app-neutral `AppHost` registration trait.
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-planner for InterestShape / InterestId / InterestLifecycle /
+# InterestScope / LogicalInterest — the nmp_core::planner compat facade is
+# deleted (#1608).
+nmp-planner = { path = "../nmp-planner" }
+# Direct dep on nmp-store for EventStore / VerifiedEvent / RawEvent —
+# the nmp_core::store compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 # Layer-2 routing: `GenericOutboxRouter`, `InMemoryMailboxCache`, and the
 # `nmp.nip65.publish_relay_list` action module the template registers.
 nmp-router = { path = "../nmp-router" }

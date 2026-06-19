@@ -20,6 +20,9 @@ path = "src/bin/build-wire-fixtures.rs"
 [dependencies]
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-store for RawEvent / VerifiedEvent — the nmp_core::store
+# compat facade is deleted (#1608).
+nmp-store = { path = "../nmp-store" }
 nmp-signers = { path = "../nmp-signers" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

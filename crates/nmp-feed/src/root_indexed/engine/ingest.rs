@@ -3,7 +3,7 @@
 //! each file under the 500-LOC ceiling; this is a continuation `impl` block on
 //! the same type plus its free helpers.
 
-use nmp_core::planner::RelayHint;
+use nmp_planner::RelayHint;
 use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent};
 use nmp_threading::{pointer::ThreadPointer, ParentResolver};
 

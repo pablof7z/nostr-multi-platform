@@ -301,7 +301,7 @@ fn gap_and_error_encode_as_distinct_variants() {
 /// `RAW_TOO_LARGE` rather than silently overshooting.
 #[test]
 fn first_row_raw_over_cap_is_hard_error() {
-    use nmp_core::store::{LogOp, PullPage, RawEvent, StoreLogEntry};
+    use nmp_store::{LogOp, PullPage, RawEvent, StoreLogEntry};
     let big_raw = RawEvent {
         id: "aa".repeat(32),
         pubkey: "bb".repeat(32),

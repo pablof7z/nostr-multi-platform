@@ -22,8 +22,8 @@ pub(super) fn c_string_opt(ptr: *const c_char) -> Option<String> {
 
 use std::num::NonZeroUsize;
 
-use nmp_core::planner::InterestShape;
-use nmp_core::store::{PullPage, ScanLogResult};
+use nmp_planner::InterestShape;
+use nmp_store::{PullPage, ScanLogResult};
 use nmp_core::{pull_page_over, PullLimits, PullScope};
 
 /// Build the `InterestShape` for an author flat feed (kind policy from caller).

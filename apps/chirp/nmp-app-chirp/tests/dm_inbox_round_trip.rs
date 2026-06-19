@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
 use nmp_core::{ActorCommand, ActorMail, CommandSender};
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::IngestParser;
 use nmp_ffi::{
     nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_signin_nsec, nmp_app_start,

@@ -142,7 +142,7 @@ use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::InterestShape;
+use nmp_planner::InterestShape;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{ActorCommand, KernelEventObserver};

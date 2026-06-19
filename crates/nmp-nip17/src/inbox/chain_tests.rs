@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::IngestParser;
 use nmp_core::{ActorCommand, ActorMail, CommandSender};
-use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
 use super::{DmInboxProjection, KIND_GIFT_WRAP};

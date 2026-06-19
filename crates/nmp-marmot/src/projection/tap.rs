@@ -4,7 +4,7 @@
 //! in PR-2 of the raw-tap retirement ladder (rule A5). The kernel's
 //! `EventIngestDispatcher` delivers every accepted inbound signed event of the
 //! registered kinds to this parser; the parser reconstructs the verbatim
-//! signed `nostr::Event` from [`nmp_core::store::VerifiedEvent::raw`] (same
+//! signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`] (same
 //! pattern as `nmp-nip17/src/inbox.rs`, PR-1) and calls the existing
 //! [`crate::projection::ops::ingest_signed_event_core`] unchanged.
 //!
@@ -39,7 +39,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::store::VerifiedEvent;
+use nmp_store::VerifiedEvent;
 use nmp_core::substrate::IngestParser;
 use nostr::{Event, JsonUtil};
 
