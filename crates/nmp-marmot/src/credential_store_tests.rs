@@ -1,4 +1,4 @@
-//! Tests for the capability-backed credential store.
+//! Tests for the capability-backed credential store. (updated: keyring_service_id param)
 //!
 //! Split out of `credential_store.rs` (which was over the 500-LOC hard cap)
 //! via `#[cfg(test)] #[path = "credential_store_tests.rs"] mod tests;`. The
