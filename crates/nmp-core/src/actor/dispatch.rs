@@ -951,6 +951,28 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::FollowMany {
+            pubkeys,
+            correlation_id,
+        } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::follow_many(
+                ctx.identity,
+                ctx.kernel,
+                &pubkeys,
+                None, // active_pubkey_hint: actor has the live pubkey internally
+                correlation_id,
+                ctx.parked_ops,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::AddRelay { url, role } => {
             // T158: add_relay now returns Some(canonical_url) on success so we
             // can dial a real socket immediately. User-added relays use

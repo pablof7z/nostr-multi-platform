@@ -77,6 +77,19 @@ pub struct PubkeyAction {
     pub pubkey: String,
 }
 
+/// Wire shape for `nmp.follow_many` — `{"pubkeys":["<hex>", ...]}`.
+///
+/// Carries the full set of pubkeys to be added to the active account's
+/// kind:3 in a single atomic read-modify-write-publish cycle. The
+/// actor's `FollowMany` command handler owns validation (per-entry hex
+/// shape check, self-exclusion, dedup via idempotent `kind3_tags_after_add`).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FollowManyAction {
+    /// The set of hex pubkeys to follow. May include duplicates or the
+    /// active account's own pubkey — the actor drops them silently.
+    pub pubkeys: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // ActionModule impls
 // ---------------------------------------------------------------------------
@@ -117,6 +130,17 @@ impl ActionModule for FollowModule {
 /// the actor owns the semantic rules.
 pub struct UnfollowModule;
 
+/// `nmp.follow_many` — merge a list of pubkeys into the active account's
+/// kind:3 follow set and re-publish it EXACTLY ONCE.
+///
+/// This is the race-free bulk-follow primitive. Dispatching N sequential
+/// `nmp.follow` actions races because each reads kind:3 before the prior
+/// signed event is ingested (last-write-wins, silently dropping all but
+/// the last follow). `nmp.follow_many` dispatches a single
+/// `ActorCommand::FollowMany` which the actor resolves in one
+/// read-modify-write-publish cycle on its exclusive execution slot.
+pub struct FollowManyModule;
+
 impl ActionModule for UnfollowModule {
     const NAMESPACE: &'static str = "nmp.unfollow";
     type Action = PubkeyAction;
@@ -129,6 +153,24 @@ impl ActionModule for UnfollowModule {
     ) -> Result<(), String> {
         send(ActorCommand::Unfollow {
             pubkey: action.pubkey,
+            correlation_id: Some(correlation_id.to_string()),
+        });
+        Ok(())
+    }
+}
+
+impl ActionModule for FollowManyModule {
+    const NAMESPACE: &'static str = "nmp.follow_many";
+    type Action = FollowManyAction;
+
+    fn execute(
+        &self,
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        send(ActorCommand::FollowMany {
+            pubkeys: action.pubkeys,
             correlation_id: Some(correlation_id.to_string()),
         });
         Ok(())
@@ -149,6 +191,7 @@ pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
     // whether it registers before or after `register_defaults`.
     app.register_default_action(FollowModule);
     app.register_default_action(UnfollowModule);
+    app.register_default_action(FollowManyModule);
 }
 
 /// Compatibility helper for older composition roots that expected

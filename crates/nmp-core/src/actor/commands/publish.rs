@@ -620,6 +620,89 @@ pub(crate) fn follow(
     }
 }
 
+/// Bulk-follow: merge `pubkeys` into the active account's kind:3 and
+/// re-publish it exactly ONCE.
+///
+/// This is the race-free counterpart to calling `follow()` N times. It reads
+/// the active account's current kind:3 exactly once, folds every target pubkey
+/// through `kind3_tags_after_add` in a single in-memory pass, then signs and
+/// publishes the result as one kind:3 event. Because the entire operation is
+/// a single actor-command executed on the actor thread's exclusive execution
+/// slot, there is no opportunity for another command to interleave a competing
+/// read-modify-write of the contact list.
+///
+/// Silently skips entries that:
+/// - fail the 64-hex pubkey shape check,
+/// - are already present in the current follow set (idempotent add in
+///   `kind3_tags_after_add`), or
+/// - are the active account's own pubkey (self-follow guard).
+///
+/// If kind:3 is not yet loaded for the active account the call records a
+/// `follow_list_not_loaded` failure under the `correlation_id` and returns
+/// immediately — same fail-closed gate as the single-pubkey `follow()`.
+pub(crate) fn follow_many(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    pubkeys: &[String],
+    active_pubkey_hint: Option<&str>,
+    correlation_id: Option<String>,
+    parked_ops: &mut Vec<ParkedOp>,
+) -> Vec<OutboundMessage> {
+    let Some(author) = identity.active_pubkey() else {
+        return toast_no_account(kernel, "follow_many", correlation_id);
+    };
+    // Fail-closed gate — same discipline as `follow()`.
+    let Some((current_tags, current_content)) = kernel.try_current_kind3_event() else {
+        return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
+    };
+    // Determine the self-pubkey to guard against (prefer the actor's live
+    // active pubkey; `active_pubkey_hint` is the FFI caller's best-effort
+    // copy from when the action was dispatched).
+    let self_pk: &str = &author;
+
+    // Fold all target pubkeys into the tag set in ONE pass.
+    // `kind3_tags_after_add` is idempotent — already-present pubkeys are
+    // skipped without producing duplicates or stripping relay hints/petnames.
+    let mut merged_tags = current_tags;
+    for pk in pubkeys {
+        if pk.len() != 64 || !crate::kernel::is_hex_pubkey(pk) {
+            continue; // skip malformed entries
+        }
+        if pk.as_str() == self_pk
+            || active_pubkey_hint.map_or(false, |h| h == pk.as_str())
+        {
+            continue; // skip self-follow
+        }
+        merged_tags = crate::tags::kind3_tags_after_add(&merged_tags, pk);
+    }
+
+    let unsigned = UnsignedEvent {
+        pubkey: author,
+        kind: 3,
+        tags: merged_tags,
+        content: current_content,
+        created_at: kernel.now_secs(),
+    };
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
+        Err(reason) => return fail_publish(kernel, reason, correlation_id),
+    };
+    match op.poll() {
+        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
+        Some(Err(e)) => fail_publish(kernel, format!("sign failed: {e}"), correlation_id),
+        None => {
+            parked_ops.push(ParkedOp::publish(
+                op,
+                Vec::new(),
+                PublishTarget::Auto,
+                correlation_id,
+                identity.active_sign_deadline(),
+            ));
+            Vec::new()
+        }
+    }
+}
+
 /// Declare the active-account-follows feed for app primary content kinds.
 ///
 /// `acquisition_kinds` is the compiled acquisition kind set the follow-set REQ should
