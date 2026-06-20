@@ -114,7 +114,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        return finish(
+        return report::finish(
             roots.len(),
             "D18 native doctrine",
             cfg.allow_findings,
@@ -169,44 +169,9 @@ fn main() -> ExitCode {
     } else {
         "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/D27/no_raw_tap"
     };
-    finish(roots.len(), rules, cfg.allow_findings, all_findings)
+    report::finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
 
-fn finish(
-    root_count: usize,
-    rule_label: &str,
-    allow_findings: bool,
-    mut all_findings: Vec<report::Finding>,
-) -> ExitCode {
-    // Stable order: by file, then by line, then by column.
-    all_findings.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then(a.line.cmp(&b.line))
-            .then(a.col.cmp(&b.col))
-    });
-
-    for f in &all_findings {
-        println!("{}", f.render());
-    }
-
-    if all_findings.is_empty() {
-        eprintln!(
-            "doctrine-lint: 0 findings across {} root(s) ({} clean).",
-            root_count, rule_label
-        );
-        ExitCode::from(0)
-    } else if allow_findings {
-        eprintln!(
-            "doctrine-lint: {} finding(s) (passing because --allow-findings).",
-            all_findings.len()
-        );
-        ExitCode::from(0)
-    } else {
-        eprintln!("doctrine-lint: {} finding(s).", all_findings.len());
-        ExitCode::from(1)
-    }
-}
 
 /// Scan one file, appending findings.
 ///
