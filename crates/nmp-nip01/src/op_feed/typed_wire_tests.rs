@@ -48,6 +48,7 @@ fn repost_card() -> TimelineEventCard {
             zaps: RelationCount::Loading {
                 interest: RelationCountInterest::zaps(&hex32(0xaa)),
             },
+            comments: RelationCount::Known { count: 3 },
         },
         reposted_by: Some(RepostAttribution {
             author_pubkey: hex32(0x42),
@@ -72,6 +73,7 @@ fn bare_card() -> TimelineEventCard {
             reactions: RelationCount::Known { count: 0 },
             reposts: RelationCount::Known { count: 0 },
             zaps: RelationCount::Known { count: 0 },
+            comments: RelationCount::Known { count: 0 },
         },
         reposted_by: None,
         relay_provenance: Vec::new(),

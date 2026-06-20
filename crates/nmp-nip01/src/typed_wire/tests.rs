@@ -18,6 +18,7 @@ fn known_counts() -> NoteRelationCounts {
         reactions: RelationCount::Known { count: 5 },
         reposts: RelationCount::Known { count: 1 },
         zaps: RelationCount::Known { count: 7 },
+        comments: RelationCount::Known { count: 4 },
     }
 }
 
@@ -32,6 +33,9 @@ fn loading_counts() -> NoteRelationCounts {
         },
         zaps: RelationCount::Loading {
             interest: RelationCountInterest::zaps(&event_id(0xaa)),
+        },
+        comments: RelationCount::Loading {
+            interest: RelationCountInterest::comments(&event_id(0xaa)),
         },
     }
 }

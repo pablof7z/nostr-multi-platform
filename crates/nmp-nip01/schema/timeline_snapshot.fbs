@@ -122,6 +122,10 @@ table NoteRelationCounts {
   reactions:RelationCount;
   reposts:RelationCount;
   zaps:RelationCount;
+  // NIP-22 kind:1111 comments rooted at this event/address/external id.
+  // Appended after `zaps` to preserve wire compatibility: pre-existing
+  // encoders omit it and readers see the default (absent → known-zero).
+  comments:RelationCount;
 }
 
 // ---------------------------------------------------------------------------

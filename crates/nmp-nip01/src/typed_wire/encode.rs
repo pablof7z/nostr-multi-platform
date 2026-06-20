@@ -221,6 +221,7 @@ fn encode_relation_counts<'bldr>(
     let reactions = encode_relation_count(builder, &counts.reactions);
     let reposts = encode_relation_count(builder, &counts.reposts);
     let zaps = encode_relation_count(builder, &counts.zaps);
+    let comments = encode_relation_count(builder, &counts.comments);
     fb::NoteRelationCounts::create(
         builder,
         &fb::NoteRelationCountsArgs {
@@ -228,6 +229,7 @@ fn encode_relation_counts<'bldr>(
             reactions: Some(reactions),
             reposts: Some(reposts),
             zaps: Some(zaps),
+            comments: Some(comments),
         },
     )
 }

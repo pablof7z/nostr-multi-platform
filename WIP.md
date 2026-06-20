@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-20 — **Issue #1633: nmp NIP-22 comments (kind:1111) crate/projection/action/count (M, feature)**. Branch: `feat/nip22-comments`. Worktree: `/Users/pablofernandez/Work/nmp-wt-nip22`. New `nmp-nip22` crate (in-memory KernelEventObserver style, like nip25/nip51): kind:1111 decode (UPPERCASE root A/E/I+K, lowercase parent a/e/i+k), threaded `CommentThreadProjection`, `nmp.nip22.post_comment` action, plus note_relations comment-count integration and `register_comment_runtime` in nmp-defaults. ADR-0061. Remove when merged.
+
 - 2026-06-20 — **Issue #1609: Delete dead events_per_second ABI/schema slot (P2)**. Branch: `worktree-agent-1609-events-per-second`. Removes `_events_per_second` from `nmp_app_start`/`nmp_app_configure` C ABI + header + all call sites; removes `events_per_second_configured` from `nmp_update.fbs` schema + all generated bindings (Rust/Swift/Kotlin/TS) + Rust kernel types/encode. Remove when merged.
 
 - 2026-06-20 — **Issue #1616: Purge stale generated-module and fixture authority from docs (P2)**. Branch: `worktree-agent-1616-docs-fixture-authority`. Worktree: `/tmp/worktrees/nmp-1616-docs-fixture-authority`. Replaces `nmp gen modules`/`apps/fixture`/`@Twitter` references with current `nmp-defaults`/`register_defaults` model; annotates ADR history as superseded.

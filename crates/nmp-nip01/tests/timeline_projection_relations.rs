@@ -60,6 +60,7 @@ fn relation_counts_serialize_loading_vs_known_zero() {
         reactions: RelationCount::known(0),
         reposts: RelationCount::known(0),
         zaps: RelationCount::known(0),
+        comments: RelationCount::known(0),
     };
     let json = serde_json::to_value(counts).expect("counts serialize");
 

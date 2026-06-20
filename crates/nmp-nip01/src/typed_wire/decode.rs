@@ -142,6 +142,12 @@ fn decode_relation_counts(
         reactions: decode_relation_count(counts.reactions().ok_or("counts missing reactions")?)?,
         reposts: decode_relation_count(counts.reposts().ok_or("counts missing reposts")?)?,
         zaps: decode_relation_count(counts.zaps().ok_or("counts missing zaps")?)?,
+        // Appended field: pre-existing wire blobs omit it. Absence is a
+        // known-zero comment count, not an error.
+        comments: match counts.comments() {
+            Some(comments) => decode_relation_count(comments)?,
+            None => RelationCount::known(0),
+        },
     })
 }
 

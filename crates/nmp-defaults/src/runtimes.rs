@@ -497,6 +497,9 @@ pub use mute_runtime::register_mute_runtime;
 mod bookmarks_runtime;
 pub use bookmarks_runtime::register_bookmark_runtime;
 
+mod comments_runtime;
+pub use comments_runtime::register_comment_runtime;
+
 // Co-located zap-reconciler unit tests live in a sibling file (kept out of this
 // module body to hold it under the 300-LOC ceiling) but compile as a child
 // module so they reach the private `ZapReceiptsRuntimeController`.
