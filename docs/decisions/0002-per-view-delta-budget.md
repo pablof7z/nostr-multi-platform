@@ -2,11 +2,10 @@
 
 **Date:** 2026-05-17
 **Status:** accepted
-**Supersedes:** `reactivity.md` rev 0 §10.3 budget, `plan.md` Phase 1 exit gate
 
 ## Context
 
-The initial Phase 1 exit gate set "≤ 1000 deltas/sec cumulative" under hashtag firehose. The reactivity-bench harness (run 001) reported:
+An earlier Phase 1 exit gate set "≤ 1000 deltas/sec cumulative" under hashtag firehose. The reactivity-bench harness (run 001) reported:
 
 - hashtag_firehose: 2,000 deltas/sec (one view, 200 events/sec).
 - profile_fanout: 3,379.56 deltas/sec (50 views sharing authors, single kind:0 arrival).

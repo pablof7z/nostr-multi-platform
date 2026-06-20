@@ -1,8 +1,8 @@
 # ADR-0012 — `relay_pin` and the Third Routing Lane
 
-> **Status:** Accepted (landed alongside T42 / commit `5178cfc`; field renamed
-> from `pin_to` to `relay_pin` and abstraction generalised away from NIP-29
-> nouns under T55 / D0 cleanup).
+> **Status:** Accepted. The subscription-side carrier is the generic,
+> protocol-agnostic `InterestShape::relay_pin` field; `nmp-core`/`nmp-planner`
+> carry zero NIP-29 nouns.
 > **Date:** 2026-05-18.
 > **Companion:** `docs/design/nip29/routing.md` §3.
 
@@ -46,7 +46,7 @@ protocol-agnostic.
 
 ## Decision
 
-Ship **(b) generic**: `nmp_core::planner::InterestShape::relay_pin:
+Ship **(b) generic**: `nmp_planner::InterestShape::relay_pin:
 Option<RelayUrl>` is a first-class field. The compiler's filter-merge lattice
 gains **Rule 9** (`relay_pin` equality; `None` does NOT absorb `Some`); the
 partition gains **Case E** which short-circuits the four-lane dispatch when
@@ -59,7 +59,7 @@ through the same generic surface with **zero compiler changes**.
 
 - `InterestShape::relay_pin: Option<RelayUrl>` — purely out-of-band; never
   sent on the wire as part of the filter.
-- `planner::lattice::rules::rule9_relay_pin` — equality check; refuses merge
+- `nmp_planner::lattice::rules::rule9_relay_pin` — equality check; refuses merge
   across different hosts, refuses to absorb `None` into `Some(_)` (mixing
   pinned + unpinned would either leak pinned content to other relays or
   narrow the unpinned scope). When two shapes share a host, the rest of the
@@ -68,7 +68,7 @@ through the same generic surface with **zero compiler changes**.
   into a single per-host REQ. That coalesce pattern is what the third
   routing lane is named after ("h-tag coalesce") even though Rule 9 itself
   is generic and tag-agnostic.
-- `planner::compiler::partition::case_e_relay_pinned::route` —
+- `nmp_planner::compiler::partition::case_e_relay_pinned::route` —
   short-circuits Cases A/B/C/D when `relay_pin.is_some()`. Authors /
   addresses / `#p` on the same interest are retained on the wire filter
   but ignored for routing.
@@ -130,7 +130,7 @@ This `PublishPlan` field lives in the **protocol crate**, not in `nmp-core`
 
 ## Tests landed with this ADR
 
-In `nmp_core::planner::lattice::tests` (`crates/nmp-core/src/planner/lattice/mod.rs`):
+In `nmp_planner::lattice` (`crates/nmp-planner/src/lattice/relay_search_tests.rs`):
 
 - `rule9_identical_relay_pin_coalesces_h_tags`
 - `rule9_different_relay_pin_refuses`

@@ -2,11 +2,10 @@
 
 **Date:** 2026-05-17
 **Status:** accepted
-**Supersedes:** `reactivity.md` rev 0 §10.3 memory budget
 
 ## Context
 
-The initial gate read "≤ 100 MB at 100k events / 100 views." The reactivity-bench harness (run 001) reported 130.8 MB at 1M events, failing the gate. But this is misleading: holding 1M events resident in memory is the anti-pattern the spec already calls out for the durable storage backend (LMDB / SQLite / IndexedDB / nostrdb).
+An earlier gate read "≤ 100 MB at 100k events / 100 views." The reactivity-bench harness (run 001) reported 130.8 MB at 1M events, failing the gate. But this is misleading: holding 1M events resident in memory is the anti-pattern the spec already calls out for the durable storage backend (LMDB / SQLite / IndexedDB / nostrdb).
 
 The actor should keep a **bounded working set** of hot events in memory; cold events live on disk. The reverse index can cover both — it keys on attributes, not event bodies.
 
