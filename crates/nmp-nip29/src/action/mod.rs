@@ -13,6 +13,7 @@
 //! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
+//! - `leave` — `LeaveGroup` (kind:9022, user-management request).
 //! - `admin` — `PutUser` (kind:9000) and `CreateInvite` (kind:9009).
 //!
 //! NIP-29 ships public group creation, relay-group chat, discovery, join, and
@@ -26,6 +27,7 @@ mod create;
 mod discover;
 mod group_event;
 mod join;
+mod leave;
 mod publish_plan;
 
 pub use admin::{
@@ -40,4 +42,5 @@ pub use group_event::{
     ShareEventInGroupInput,
 };
 pub use join::{JoinGroupAction, JoinGroupInput};
+pub use leave::{LeaveGroupAction, LeaveGroupInput};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};
