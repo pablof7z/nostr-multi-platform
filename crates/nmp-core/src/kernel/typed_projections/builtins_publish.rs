@@ -42,7 +42,7 @@ impl super::super::Kernel {
                     event_id: entry.event_id.clone(),
                     kind: entry.kind,
                     // `title` was removed from the Rust `PublishQueueEntry` DTO
-                    // (doctrine §4.4: no pre-formatted English labels in kernel).
+                    // (aim.md §2 #4: no pre-formatted English labels in kernel).
                     // The wire field is kept for backward compat with older shells
                     // that may read it; emit empty string (the glue ignores it).
                     title: String::new(),

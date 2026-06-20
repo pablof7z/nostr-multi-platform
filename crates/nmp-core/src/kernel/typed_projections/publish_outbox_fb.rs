@@ -61,7 +61,7 @@ pub struct PublishOutboxRelayRow {
 /// V-115 / ADR-0032: `created_at_display` and `target_summary` fully
 /// removed from the schema. `created_at` (raw Unix-seconds u64) carries
 /// the timestamp; shells format with their own locale.
-/// ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+/// ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`,
 /// `status_label` pre-formatted strings removed; `content` (raw event
 /// content) added so shells can render their own presentation.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -131,7 +131,7 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
             // V-115 / ADR-0032: `created_at_display` and `target_summary`
             // removed from schema (fully deleted, not tombstoned). Pass raw
             // `created_at` (uint64) so shells format with their own locale.
-            // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+            // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`,
             // `status_label` removed; `content` (raw event content) added.
             fb::PublishOutboxItem::create(
                 &mut fbb,
@@ -191,7 +191,7 @@ pub fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String>
             }
             // V-115 / ADR-0032: `created_at_display` and `target_summary`
             // removed from schema; decode `created_at` (raw uint64).
-            // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+            // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`,
             // `status_label` removed; `content` added.
             items.push(PublishOutboxItemRow {
                 handle: item.handle().unwrap_or_default().to_string(),

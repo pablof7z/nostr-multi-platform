@@ -113,17 +113,9 @@ This discipline is non-negotiable. A PR that introduces a duplicate planning fil
 - The LOC rule still wins. When a cohesive owner approaches the limit, split under the same owner namespace by concrete sub-type or sub-protocol, not by recreating global Model/Update/View layers.
 - Keep the top-level actor/router flat until a screen or module has genuinely self-contained state. Compose nested messages deliberately; do not introduce native/local component state to avoid plumbing.
 
-## Architecture: Rust owns all logic; native is rendering + capabilities only
+## Architecture: Rust owns all domain logic; native is rendering + capabilities only
 
-Per `docs/aim.md` §2 (architectural north star, commandment #4):
-
-> **No native business logic.** If you would write an `if` statement in Swift, Kotlin, or any native language that decides what the app should *do* (not how it should *look*), that logic belongs in Rust. Native is rendering plus capability execution. Nothing else.
-
-Native code (Swift, Kotlin, TypeScript, etc.) is allowed to do exactly two things:
-1. **Render** — translate Rust-produced state snapshots into UI.
-2. **Execute capabilities** — call OS APIs (Keychain, AVPlayer, push, location) and report raw results back to Rust. Never decide policy; never retry; never cache.
-
-Everything else — state, business rules, derived data, routing decisions, error recovery, protocol logic — lives in Rust.
+See `docs/aim.md` §2 commandment #4 for the canonical rule. Summary: native has exactly **three** responsibilities (render, execute capabilities, hold ephemeral presentation state). The discriminating test is *"would a second platform have to reimplement this to stay correct?"* — yes → Rust (domain); only-how-it-looks → shell (presentation). Do not let domain logic leak into the shell, and do not push pure presentation concerns into the core.
 
 ## Effects, replay, and snapshot discipline
 

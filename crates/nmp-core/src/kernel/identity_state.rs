@@ -45,7 +45,7 @@ pub fn new_active_account_slot() -> ActiveAccountSlot {
 /// `signer_kind` is the stable wire token (`"local"` | `"nip46"` | …) other
 /// platforms switch on; it is kept for backward compatibility with Android +
 /// diagnostic surfaces, but Swift no longer derives display labels from it
-/// (aim.md §4.4 / §4.5). Native should bind the pre-classified fields below.
+/// (aim.md §2 #4 / §4.5). Native should bind the pre-classified fields below.
 ///
 /// Pre-classified fields (D4: actor populates, Swift binds):
 /// - `signer_label` — human-readable label for the row's signer.

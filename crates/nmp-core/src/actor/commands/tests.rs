@@ -122,7 +122,7 @@ fn sign_in_nsec_adds_active_account_and_projects_it() {
     assert!(accounts[0].npub.starts_with("npub1"));
 }
 
-/// aim.md §4.4 / §4.5: native cannot derive signer-display labels with a
+/// aim.md §2 #4 / §4.5: native cannot derive signer-display labels with a
 /// `switch` on a wire token, nor scope a "remote signers" list with a
 /// lowercased string comparison, nor compute `isActive` from `status == ..`.
 /// The actor pre-classifies all three on every row.

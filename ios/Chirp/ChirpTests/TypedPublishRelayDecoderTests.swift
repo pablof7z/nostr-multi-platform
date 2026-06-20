@@ -109,7 +109,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── outbox_summary (KOXS) ────────────────────────────────────────────────
 
     func testTypedOutboxSummarySidecarDecodes() throws {
-        // ADR-0032 / doctrine §4.4: `title` / `subtitle` removed from the wire.
+        // ADR-0032 / aim.md §2 #4: `title` / `subtitle` removed from the wire.
         let envelope = TypedProjectionEnvelope(
             key: TypedOutboxSummaryDecoder.key,
             schemaId: TypedOutboxSummaryDecoder.schemaId,
@@ -146,7 +146,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── publish_outbox (KPBO) ────────────────────────────────────────────────
 
     func testTypedPublishOutboxSidecarDecodes() throws {
-        // ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`,
+        // ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`,
         // `systemImage` removed from the wire; `content` added.
         let envelope = TypedProjectionEnvelope(
             key: TypedPublishOutboxDecoder.key,
@@ -289,7 +289,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         total: UInt32, sending: UInt32,
         retrying: UInt32, queued: UInt32, failed: UInt32
     ) -> Data {
-        // ADR-0032 / doctrine §4.4: `title` / `subtitle` removed from the wire.
+        // ADR-0032 / aim.md §2 #4: `title` / `subtitle` removed from the wire.
         var fbb = FlatBufferBuilder(initialSize: 256)
         let root = nmp_kernel_OutboxSummarySnapshot.createOutboxSummarySnapshot(
             &fbb, total: total, sending: sending, retrying: retrying,
@@ -299,7 +299,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     }
 
     private func buildPublishOutbox() -> Data {
-        // ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`,
+        // ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`,
         // `systemImage`, relay `statusLabel`, relay `attemptLabel` removed.
         // `content` added to item.
         var fbb = FlatBufferBuilder(initialSize: 1024)

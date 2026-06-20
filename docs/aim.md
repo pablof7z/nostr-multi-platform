@@ -47,7 +47,14 @@ Critical invariants all framework implementation must honor:
 1. **Monotonic revision guard.** `rev: u64` increments on every state change. Platforms compare incoming `rev` to last applied and skip stale updates.
 2. **Errors do not cross FFI.** Operational errors become `toast: Option<String>` fields in state; long-running operation errors clear `busy` flags. Native `dispatch` calls never need try/catch.
 3. **`dispatch()` is fire-and-forget.** No return value. Results come back as state changes.
-4. **No native business logic.** If you would write an `if` statement in Swift or Kotlin that decides what the app should *do* (not how it should *look*), that logic belongs in Rust. Native is rendering plus capability execution. Nothing else.
+4. **No native domain logic.** If you would write an `if` statement in Swift or Kotlin that decides what the app should *do* (not how it should *look*), that logic belongs in Rust. Native has exactly three responsibilities:
+   - **Render** — translate Rust-produced state snapshots into UI.
+   - **Execute capabilities** — call OS APIs (Keychain, AVPlayer, push, location) and report raw results back to Rust. Never decide policy; never retry; never cache.
+   - **Hold ephemeral presentation state** — purely local, throwaway UI state that no other platform would have to reimplement to behave correctly: in-flight / optimistic indicators (e.g. a spinner keyed to a dispatched action's correlation id), scroll position, focus, input-buffer text, animation/transition state, and per-platform look choices (icon names, colors, layout). This state never decides protocol behavior and is never the source of truth — it is discarded and rebuilt from the next Rust snapshot.
+
+   **The discriminating test** is *not* "is it logic?" — that question is too broad and sweeps in presentation. It is: **would a second platform have to reimplement this to stay correct?** If yes, it is **domain** logic and belongs in Rust — state, business rules, derived data, routing decisions, error recovery, protocol logic, all of it. If it is only *how this platform shows or stages* something, it is presentation and may live in the shell.
+
+   Apply this in both directions. Do **not** let domain logic leak into the shell. But equally, do **not** push presentation concerns into the core to satisfy an absolutist reading of this rule — forcing icon names, accent colors, or local in-flight tracking through Rust buys no cross-platform reuse and only adds core complexity (and churn when it is later moved back out). The boundary is **domain vs. presentation**, not "native does nothing by default."
 5. **Bounded native state.** Native holds only transient OS handles (keychain refs, audio sessions, network monitors). No caches, no derived state, no policy.
 6. **Capability bridge pattern.** When Rust needs an OS API (keychain, push, location, external signer app), it requests the capability via a typed callback interface. Native executes and reports raw data. Rust decides policy. Native never decides "should we retry?" or "is this recoverable?"
 7. **Idempotent capability lifecycle.** Start/stop/restart of any bridge must be safe.

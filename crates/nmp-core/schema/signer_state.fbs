@@ -67,7 +67,7 @@ table SignerState {
   // `state == "failed"` — permanent error (rejected / mismatch / timeout),
   // session bricked. Hosts prompt re-auth on this signal.
   is_failed:bool;
-  // ADR-0032 / doctrine §4.4 (#1493 P9 — labels-to-shells, mirrors #1568): the
+  // ADR-0032 / aim.md §2 #4 (#1493 P9 — labels-to-shells, mirrors #1568): the
   // pre-computed English `status_label` and semantic `status_tone` strings were
   // removed from this wire. Shells derive both from the raw `state` token (and
   // the `is_*` flags) themselves — Rust emits raw tokens, the iOS/Android shells
