@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-20 — **Issue #1614: Make wasm protocol failures data, not JS exceptions (P2, D6)**. Branch: `worktree-agent-1614-wasm-failures-data`. Worktree: `/tmp/worktrees/nmp-1614-wasm-failures-data`. `handle_json` parse/invalid-config failures now resolve as `WorkerEvent::Error`; `dispatch_app_action_async` parse failures resolve as `WorkerEvent::CapabilityFailure`; only `KernelContract` violations and serde regressions reject.
+
 - 2026-06-19 — **Issue #1606: Remove expired Marmot legacy/app-named external surface (P1, D0)**. Branch: `worktree-agent-1606-marmot-surface`. Worktree: `/tmp/worktrees/nmp-1606-marmot-surface`. Deletes kind:443 dual-publish/lookup/ingest, makes keyring service id caller-scoped.
 
 - 2026-06-19 — **Issue #1559: NIP-29 admin actions + joined-groups ADR**. Branch: `docs/1559-nip29-admin-joined-adr`. Worktree: `/private/tmp/worktrees/nmp-1559-nip29-admin-adr`. ADR-only inventory/decision; no implementation until ADR acceptance.
