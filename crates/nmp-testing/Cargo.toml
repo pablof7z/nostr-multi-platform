@@ -69,6 +69,7 @@ zeroize = { workspace = true }
 nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip17 = { path = "../nmp-nip17" }
+nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip57 = { path = "../nmp-nip57" }

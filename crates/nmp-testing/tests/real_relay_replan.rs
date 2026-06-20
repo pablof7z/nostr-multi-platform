@@ -37,7 +37,8 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use common::{
-    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, PURPLEPAG_ES, PRIMAL_RELAY,
+    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, PRIMAL_RELAY,
+    PURPLEPAG_ES,
 };
 use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
@@ -141,9 +142,12 @@ fn compile_author_set(followees: &BTreeSet<Pubkey>) -> (BTreeSet<Pubkey>, String
         id: InterestId(1),
         scope: InterestScope::ActiveAccount,
         // V-68: this real-relay test is explicitly scoped to NIP-01/NIP-18
-        // social-timeline routing, so the test plays the host role and declares
-        // {1, 6} (text notes + reposts) — the substrate no longer injects it.
-        shape: InterestShape::timeline_for(followees.clone(), [1u32, 6u32].into_iter().collect()),
+        // social-timeline routing. The app-facing declaration is primary
+        // kind:1; NIP-18 derives kind:6 acquisition outside the substrate.
+        shape: InterestShape::timeline_for(
+            followees.clone(),
+            nmp_nip18::acquisition_kinds_for_primary([1u32]),
+        ),
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
@@ -315,8 +319,11 @@ fn kind3_change_forces_subscription_replan() {
          through `nmp_planner::SubscriptionCompiler::compile` (the \
          in-process kernel subscription compiler).\n\n\
          ## Planner API exercised\n\n\
-         - `InterestShape::timeline_for(followees)` → tailing kind:[1,6] \
-           timeline interest over the real follow-set.\n\
+         - primary feed declaration: kind:[1].\n\
+         - `nmp_nip18::acquisition_kinds_for_primary([1])` → compiled \
+           acquisition kind:[1,6].\n\
+         - `InterestShape::timeline_for(followees, acquisition_kinds)` → \
+           tailing acquisition interest over the real follow-set.\n\
          - `SubscriptionCompiler::new(&InMemoryMailboxCache, &indexer)` then \
            `.compile(&[interest])` → `CompiledPlan`.\n\
          - Asserted on the union of `RelayPlan.sub_shapes[].shape.authors` \

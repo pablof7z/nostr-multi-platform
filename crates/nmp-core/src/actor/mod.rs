@@ -1110,14 +1110,15 @@ pub enum ActorCommand {
     /// `registry_mut().ensure_sub` + `CompileTrigger` body as
     /// [`EnsureInterest`](Self::EnsureInterest). Lifecycle is always `Tailing`.
     ///
-    /// D0: `nmp-core` carries the filter as opaque shape data — the app owns the
-    /// kind set (`{1,6}` etc. now live in Swift, not the substrate). The
+    /// D0: `nmp-core` carries the filter as opaque shape data. Declared feed
+    /// seams accept app-owned primary kinds; protocol adapters derive wrapper
+    /// acquisition outside the substrate. The
     /// `InterestShape` hash gives deterministic dedup: two call sites passing
     /// the same filter (regardless of JSON key/element ordering) map to the same
     /// slot.
     OpenInterest {
         /// Verbatim NIP-01 REQ filter JSON, e.g.
-        /// `{"kinds":[1,6],"authors":["<hex>"]}`.
+        /// `{"kinds":[1],"#t":["nostr"]}`.
         filter_json: String,
         /// Refcount owner key — deduplicates the live subscription across call
         /// sites that register the same filter.

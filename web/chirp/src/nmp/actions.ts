@@ -113,10 +113,11 @@ export function walletCommand(action: string, payload: Record<string, unknown> =
 // Route via the existing `WorkerRequest::Dispatch` path (`dispatchCommand`
 // on the NmpClient).
 
-/** Open the home contact feed for kinds 1 and 6 (kind:1 notes + NIP-18 reposts).
+/** Open the home contact feed for primary kind 1 notes.
+ *  NIP-18 repost wrappers are derived by the Rust feed declaration path.
  *  Must be dispatched after SetSigner so the kernel knows the viewer pubkey
  *  and can open subscriptions for the viewer's follow set. */
-export function openContactFeedCommand(kinds = [1, 6]): RuntimeCommand {
+export function openContactFeedCommand(kinds = [1]): RuntimeCommand {
   return command("nmp.kernel.open_contact_feed", { kinds });
 }
 

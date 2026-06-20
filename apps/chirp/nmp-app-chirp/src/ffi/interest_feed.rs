@@ -19,7 +19,8 @@
 //! wrapper acquisition derived by `nmp-nip18` so the two halves can never
 //! diverge:
 //!
-//! 1. **Kernel interest** — pushes a generic `open_interest`
+//! 1. **Kernel interest** — derives acquisition kinds from Chirp's primary
+//!    `[1]` declaration, then pushes a generic `open_interest`
 //!    (`{"kinds":[1,6],"authors":[pk]}`, consumer `author-<pk>`, scope Global)
 //!    through the existing [`nmp_ffi::nmp_app_open_interest`] so the kernel
 //!    subscribes for matching relay events and fans accepted stored events out

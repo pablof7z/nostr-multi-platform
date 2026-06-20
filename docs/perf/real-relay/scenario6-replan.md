@@ -1,7 +1,7 @@
 ---
 scenario: 6-replan
 verdict: PASS
-generated_at: 1779089088
+generated_at: 1781918281
 relays: ["wss://relay.damus.io"]
 ---
 
@@ -9,11 +9,13 @@ relays: ["wss://relay.damus.io"]
 
 ## Verdict: PASS
 
-Fetched a **real live kind:3** for `jb55` from `wss://relay.damus.io`, extracted **695** `p`-tag followees, and ran them through `nmp_core::planner::SubscriptionCompiler::compile` (the in-process kernel subscription compiler).
+Fetched a **real live kind:3** for `jb55` from `wss://relay.damus.io`, extracted **695** `p`-tag followees, and ran them through `nmp_planner::SubscriptionCompiler::compile` (the in-process kernel subscription compiler).
 
 ## Planner API exercised
 
-- `InterestShape::timeline_for(followees)` → tailing kind:[1,6] timeline interest over the real follow-set.
+- primary feed declaration: kind:[1].
+- `nmp_nip18::acquisition_kinds_for_primary([1])` → compiled acquisition kind:[1,6].
+- `InterestShape::timeline_for(followees, acquisition_kinds)` → tailing acquisition interest over the real follow-set.
 - `SubscriptionCompiler::new(&InMemoryMailboxCache, &indexer)` then `.compile(&[interest])` → `CompiledPlan`.
 - Asserted on the union of `RelayPlan.sub_shapes[].shape.authors` and on `CompiledPlan.plan_id`.
 
@@ -23,7 +25,7 @@ Fetched a **real live kind:3** for `jb55` from `wss://relay.damus.io`, extracted
 - mutation applied: dropped `000000000652e452ee68a01187fb08c899496cb46cb51d1aa0803d063acedba7`, added `deadbeef00000000000000000000000000000000000000000000000000000000`.
 - recompiled REQ author-set size: **695**.
 - symmetric difference vs original: exactly `{-000000000652e452ee68a01187fb08c899496cb46cb51d1aa0803d063acedba7, +deadbeef00000000000000000000000000000000000000000000000000000000}` — no other author moved.
-- `plan_id` changed: `ef09a10d32302c87` → `3671b3f760e1d9e5` (content-addressed identity correctly invalidated).
+- `plan_id` changed: `b13793d7df820797` → `281fbc70761ec42f` (content-addressed identity correctly invalidated).
 
 This proves the kernel re-plans subscriptions correctly when a real follow-graph (kind:3) changes: the compiled REQ filter set tracks the followee delta exactly, and the plan identity flips so the wire-emitter diff would see the change.
 

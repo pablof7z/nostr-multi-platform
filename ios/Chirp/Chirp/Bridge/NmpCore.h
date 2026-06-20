@@ -37,10 +37,11 @@ void nmp_app_reset(void *app);
 // M2 (ADR-0042) — generic feed-subscription surface. Replaces the deleted
 // open_firehose_tag verb (a hashtag feed is now open_interest with
 // {"kinds":[1],"#t":["<tag>"]}, scope Global). `filter_json` is a
-// verbatim NIP-01 REQ filter (e.g. {"kinds":[1,6],"authors":["<hex>"]}); the
-// app owns the kind set (D0). `consumer_id` refcounts owners across call sites
-// passing the same filter; `scope` is 0 = ActiveAccount (re-route on switch),
-// 1 = Global (account-agnostic, e.g. a hashtag feed).
+// verbatim NIP-01 REQ filter. Declared feeds pass primary kinds only through
+// their typed seam; protocol adapters derive repost wrappers. `consumer_id`
+// refcounts owners across call sites passing the same filter; `scope` is
+// 0 = ActiveAccount (re-route on switch), 1 = Global (account-agnostic, e.g.
+// a hashtag feed).
 void nmp_app_open_interest(void *app, const char *filter_json,
                            const char *consumer_id, uint32_t scope);
 void nmp_app_close_interest(void *app, const char *filter_json,
@@ -80,8 +81,9 @@ void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 //
 // ADR-0042 amendment (2026-06-12) — contact-feed subscription seam.
-// `kinds_json` is a JSON array of unsigned 32-bit integers, e.g. `"[1,6]"`.
-// The host declares the policy; the substrate carries it verbatim (D0).
+// `kinds_json` is a JSON array of primary unsigned 32-bit event kinds, e.g.
+// `"[1]"`. The host declares primary feed policy; protocol adapters derive
+// wrapper acquisition (D0).
 // An empty array `"[]"` is a legitimate clear (same effect as close).
 // A malformed or non-array value surfaces a diagnostic toast (D6).
 // D8: fire-and-forget; the actor processes the command asynchronously.

@@ -213,8 +213,9 @@ final class KernelHandle {
     // hardcoded in the substrate now live app-side (D0-correct).
 
     /// M2 (ADR-0042) — generic feed-subscription open. `filterJSON` is a
-    /// verbatim NIP-01 REQ filter (the app owns the kind set, e.g.
-    /// `{"kinds":[1,6],"authors":["<hex>"]}`); `consumerID` refcounts owners so
+    /// verbatim NIP-01 REQ filter (e.g. `{"kinds":[1],"#t":["nostr"]}`).
+    /// Declared feeds should pass primary kinds only through their typed seam;
+    /// protocol adapters derive repost wrappers. `consumerID` refcounts owners so
     /// repeated opens of the same filter share one live subscription; `scope`
     /// is `.activeAccount` (re-route on switch) or `.global` (account-agnostic).
     /// Generic replacement for the deleted `openFirehose`. V-112 (ADR-0042):

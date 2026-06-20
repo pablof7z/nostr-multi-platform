@@ -81,7 +81,7 @@ class KernelBridge {
 
     fun isAlive(): Boolean = handle != 0L && nativeIsAlive(handle)
 
-    /** Open the Chirp home feed (kind:1 + kind:6). */
+    /** Open the Chirp home feed for primary kind:1 notes. Reposts are derived in Rust. */
     fun openHomeFeed() {
         if (handle != 0L) nativeOpenHomeFeed(handle)
     }
