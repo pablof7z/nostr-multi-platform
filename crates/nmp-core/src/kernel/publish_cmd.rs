@@ -470,4 +470,48 @@ impl Kernel {
         };
         Some((stored.raw.tags.clone(), stored.raw.content.clone()))
     }
+
+    /// Resolve the active account's CURRENT kind:3 baseline for a follow-set
+    /// edit (the actor `follow` / `follow_many` write path), in priority order:
+    ///
+    /// 1. The FULL raw kind:3 event from the store — every tag + content
+    ///    verbatim ([`Self::try_current_kind3_event`]). This preserves relay
+    ///    hints, petnames, non-`p` tags, and content on re-publish (issue
+    ///    #1246a). It is the synced / locally-published path.
+    /// 2. If NO raw kind:3 is in the store but the capability-owned contacts
+    ///    cache KNOWS this account's follow set (`follows()` is `Some`, the empty
+    ///    list included), rebuild a minimal `p`-only kind:3 from those follows
+    ///    with empty content. The cache is `Some` ONLY when the follow set is
+    ///    genuinely known: a brand-new account seeded at `create_account` (empty
+    ///    list), an account restored from persisted contacts, or a relay-synced
+    ///    cache. In this branch the store — the only place relay hints / petnames
+    ///    / non-`p` content ever live — holds no event, so a `p`-only
+    ///    reconstruction loses nothing recoverable.
+    /// 3. Otherwise `None` — an EXISTING account whose kind:3 has NOT synced yet
+    ///    (cache `None`). Editing here would silently clobber an unsynced remote
+    ///    contact list, so callers MUST fail closed (issue #1246b).
+    ///
+    /// This is the gate that distinguishes "no list exists (a brand-new local
+    /// account, safe to publish its first kind:3)" from "a list exists remotely
+    /// but is not loaded (must fail closed)". The store-only
+    /// [`Self::try_current_kind3_event`] remains the wasm reducer seam's gate and
+    /// keeps its strict not-loaded → `None` contract unchanged.
+    #[must_use]
+    pub(crate) fn try_current_kind3_event_for_edit(
+        &self,
+    ) -> Option<(Vec<Vec<String>>, String)> {
+        if let Some(raw) = self.try_current_kind3_event() {
+            return Some(raw);
+        }
+        // No raw kind:3 in the store — fall back to the contacts cache's
+        // authoritative follow set. `None` (unknown / unsynced) fails closed;
+        // `Some(list)` (known, possibly empty) rebuilds a `p`-only baseline.
+        let author_hex = self.active_account_pubkey()?;
+        let follows = self.contacts_lookup().follows(author_hex)?;
+        let tags = follows
+            .into_iter()
+            .map(|pk| vec!["p".to_string(), pk])
+            .collect();
+        Some((tags, String::new()))
+    }
 }

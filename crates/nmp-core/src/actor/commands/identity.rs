@@ -980,9 +980,19 @@ pub(crate) fn create_account(
     // here and baked Chirp's seed pubkeys into the framework — #1493). An empty
     // `initial_follows` means the account starts with no contacts and no
     // cold-start kind:3 is published.
-    if !initial_follows.is_empty() {
-        kernel.prepopulate_contacts(id.clone(), initial_follows.to_vec());
-    }
+    //
+    // Seed the contacts cache with the (possibly empty) known follow set so the
+    // account's contact list is recorded as KNOWN rather than UNSYNCED. A
+    // brand-new local account has, by construction, no REMOTE kind:3 to wait
+    // for — its empty follow set is authoritative immediately. This is the
+    // signal the `follow` / `follow_many` fail-closed gate
+    // (`Kernel::try_current_kind3_event_for_edit`) reads to distinguish a fresh
+    // local account (safe to publish its FIRST kind:3, e.g. when onboarding
+    // applies follow packs after account creation) from an EXISTING account
+    // whose remote kind:3 has not synced (must fail closed to avoid clobbering
+    // it). Seeding the cache publishes nothing — #1493 still holds: an empty
+    // `initial_follows` emits no cold-start kind:3 and NMP hardcodes no follows.
+    kernel.prepopulate_contacts(id.clone(), initial_follows.to_vec());
 
     let mut publish_outbound = Vec::new();
     // ── Publish kind:0 metadata ──────────────────────────────────
