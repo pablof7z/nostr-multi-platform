@@ -16,7 +16,7 @@
 
 The framework treats common Nostr-correctness failures — stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns — as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
 
-NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, library-based app composition through `nmp-defaults`, FFI bindings for Swift/Kotlin, a scaffolding CLI, a registry of app-owned reactive native UI components, and reference native platform shells. TypeScript/wasm bindings and the web shell are still part of the long-term framework shape, but they are post-v1.
+NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a composition-root library (`nmp-defaults`) that wires the standard module set in one call, host-binding codegen (`gen swift` / `gen typed-decoders`), a scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI components, and reference native platform shells. TypeScript/wasm bindings and the web shell are still part of the long-term framework shape, but they are post-v1.
 
 The kernel composes the `rust-nostr` crate family plus OS capability crates into a substrate. It owns actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform shadow/codegen machinery, diagnostics, and test harnesses.
 
@@ -205,7 +205,8 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | Crate | Role | FFI? |
 |---|---|---|
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
-| `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders | Binary + library |
+| `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`); `nmp gen modules` was deleted by ADR-0046 | Binary + library |
+| `nmp-defaults` | Composition-root library: `register_defaults` / `register_substrate` / `NmpDefaults` config (ADR-0046) | Pure Rust |
 | `nmp-ffi` | UniFFI building blocks used by generated app crates | UniFFI |
 | `nmp-wasm` | Post-v1 wasm-bindgen building blocks used by generated app crates | wasm-bindgen |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |

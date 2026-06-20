@@ -8,7 +8,7 @@
 
 **Subsystem deliverables.**
 
-- `nmp init`, `nmp add module`, `nmp gen modules`, `nmp doctor`, `nmp upgrade` commands.
+- `nmp init`, `nmp add module`, `nmp gen swift`, `nmp gen typed-decoders`, `nmp doctor`, `nmp upgrade` commands. (`nmp gen modules` was deleted by ADR-0046 — composition is `register_defaults`, not a generated crate.)
 - `nmp add component` and `nmp update component` for app-owned native UI source
   components. First track: iOS SwiftUI + Android Compose content rendering.
   Detailed plan: [`m16-component-registry.md`](m16-component-registry.md).

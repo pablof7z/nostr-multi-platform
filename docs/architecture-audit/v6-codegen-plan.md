@@ -1,6 +1,7 @@
 # V6 — `nmp-codegen` Swift `Decodable` emitter — implementation plan
 
-- **Status:** Plan (no code lands with this doc).
+- **Status:** Plan (no code lands with this doc). **ADR-0046:** §1a describes deleted generator
+  code (`generate.rs`/`ffi_gen.rs`); those absolute paths no longer exist. Rest of plan is current.
 - **Severity:** HIGH.
 - **Doctrine:** D2 (single source of truth) — the Rust projection types are the
   truth; the Swift `Decodable` mirrors are noise that has drifted and will
@@ -434,9 +435,8 @@ The Chirp iOS target includes the file directly. Xcode group path:
 - Header comment: `// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.`
 - Regenerate command shown in the header.
 - Source-of-truth provenance per type (Rust crate + file).
-- Deterministic output (sorted types, sorted fields-within-type per
-  schema order, no timestamps). Same rule as `nmp gen modules --check`
-  (`crates/nmp-codegen/src/lib.rs:10`).
+- Deterministic output (sorted types, sorted fields per schema order, no timestamps).
+  (`nmp gen modules --check` deleted by ADR-0046; rule applies to `gen swift`.)
 
 ### 5d. CI gate wiring (concrete)
 

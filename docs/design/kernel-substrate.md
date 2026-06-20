@@ -353,9 +353,14 @@ The kernel owns identity ID assignment, secure-store persistence, session activa
 
 ---
 
-## 7. Codegen pipeline
+## 7. Composition and bindings pipeline
 
-`nmp gen modules` reads `nmp.toml`, resolves the declared modules and their trait implementations, and produces the per-app crate `nmp-app-<name>/`.
+> **Superseded (ADR-0046).** `nmp gen modules` and `apps/fixture` were deleted.
+> Current model: apps call `nmp_defaults::register_defaults` from a thin `<name>-core`
+> crate; `nmp gen swift` / `nmp gen typed-decoders` generate host bindings. The
+> terminal output below is preserved to illustrate what the generator produced.
+
+Historical terminal output (superseded — `nmp gen modules` no longer exists):
 
 ```
 $ nmp gen modules
@@ -377,9 +382,9 @@ Generating bindings:
   bindings/typescript/ ✓
 ```
 
-The generated crate's `Cargo.toml` includes the chosen modules as path or registry dependencies. The crate is checked into `apps/<name>/nmp-app-<name>/`. CI verifies regeneration is deterministic (same modules → same output).
-
-Cross-crate enum composition is done by the codegen tool, not by macros, to keep the build graph linear and avoid macro recursion issues with UniFFI.
+The generated crate's `Cargo.toml` would have included the chosen modules as path or registry
+dependencies — but the generated `ffi.rs` never called `register_defaults` and therefore
+produced a non-functional Nostr app. This is why the generator was replaced by a library.
 
 ---
 
@@ -441,7 +446,11 @@ End-to-end tests in `firehose-bench live` exercise the full per-app generated cr
 - `ActionModule` trait + durable ledger + restart recovery.
 - `CapabilityModule` trait + bridge plumbing.
 - `IdentityModule` trait + secure-store binding.
-- `nmp gen modules` codegen with output for one fixture app.
+- `nmp-defaults` composition-root library (`register_defaults` / `register_substrate`).
+
+> **Superseded (ADR-0046).** The original list included "`nmp gen modules` codegen with output
+> for one fixture app" — that generator and `apps/fixture` / `fixture-todo-core` were deleted.
+> Composition is now a library call (`register_defaults`), not a generated tree.
 
 **v1 reference modules:**
 
@@ -456,8 +465,7 @@ End-to-end tests in `firehose-bench live` exercise the full per-app generated cr
 
 **v1 app modules:**
 
-- `twitter-core`: the demo app (compose UI state, settings).
-- `fixture-todo-core`: the non-Nostr fixture module proving the boundary.
+- `nmp-app-chirp`: the reference iOS/Android app (Chirp) — proves the framework thesis.
 
 **v1.x and beyond:**
 
@@ -469,7 +477,7 @@ End-to-end tests in `firehose-bench live` exercise the full per-app generated cr
 ## 12. Open questions still to settle
 
 - **Sub-action atomicity ordering.** When `reduce` dispatches a sub-action, is the sub-action visible to other modules' reducers in the same actor tick? Recommended default: yes (single tick), but needs validating against use cases.
-- **Module hot-reload during dev.** Can `nmp gen modules` re-run incrementally? Not v1; rebuild from scratch is acceptable for v1.
+- **Module hot-reload during dev.** (`nmp gen modules` was deleted by ADR-0046; module reloading is now a crate rebuild of `<name>-core` + `nmp-defaults`, same incremental-build tradeoffs as any Cargo workspace change.)
 - **Per-platform wrapper customization.** Should modules be able to override the default wrapper shape (e.g., a Swift wrapper that uses `@AppStorage` instead of `@Observable`)? Probably yes but as v1.5.
 - **Cross-module migration coordination.** Module A migrates schema → Module B needs to know. Sketched as a "migration manifest" but needs design.
 - **Modules with no Rust-side state.** Pure protocol modules (e.g., `nmp-nip19` for bech32 encoding) might have no DomainModule / ViewModule / ActionModule — just utility code. Allowed; not all modules implement all traits.
@@ -480,6 +488,6 @@ End-to-end tests in `firehose-bench live` exercise the full per-app generated cr
 
 This design is validated when:
 
-1. Phase 1a.1 (kernel substrate prototype) ships with one fixture module (`fixture-todo-core`) demonstrating each of the five trait families. Codegen produces a working `nmp-app-fixture` crate. Desktop iced app renders a TODO list, no business logic in Swift / iced.
-2. Phase 1a.2 onward (Twitter clone) implements the demo entirely as extension modules with no `nmp-core` patches needed.
-3. A future Highlighter-lite, TENEX-lite, or podcast-lite module can be added without changes to `nmp-core` traits. Demonstrated on paper for v1; demonstrated in code post-v1.
+1. Phase 1a.1 (kernel substrate prototype) ships with the `nmp-defaults` composition-root library and `nmp-app-chirp` demonstrating each of the five trait families over the real kernel. (`fixture-todo-core` / `nmp-app-fixture` were the original validation targets; both were deleted by ADR-0046 after it became clear the generated fixture was never functionally wired.)
+2. Phase 1a.2 onward (Chirp reference app) implements social features entirely as extension modules with no `nmp-core` patches needed.
+3. A future Highlighter-lite, TENEX-lite, or podcast-lite module can be added without changes to `nmp-core` traits. Demonstrated in code by external consumers (`hl`, `win-the-day`, `podcast-player`).

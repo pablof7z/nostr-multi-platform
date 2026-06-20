@@ -1,9 +1,17 @@
 # ADR 0010: Generated per-app concrete enums at the FFI boundary
 
 **Date:** 2026-05-17
-**Status:** accepted
+**Status:** superseded by ADR-0046 (2026-06-12)
 **Resolves:** `docs/design/app-extension-kernel.md` open question 1
 **Depends on:** ADR-0009 (kernel boundary)
+
+> **SUPERSEDED.** ADR-0046 ("Composition is a library, not a generator") deleted the
+> `nmp gen modules` generator and `apps/fixture` that this ADR proposed. The current
+> composition model is: apps depend on `nmp-defaults` and call `register_defaults`.
+> `nmp init` scaffolds a thin `<name>-core` crate that calls `register_defaults`; no
+> generated FFI crate is produced. The `@Twitter` property wrappers, `nmp-app-twitter`
+> crate, and `fixture-todo-core` examples referenced below are historical context only
+> and do not exist. See ADR-0046 for rationale.
 
 ## Context
 

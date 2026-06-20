@@ -59,8 +59,8 @@ grep -rl 'mdk-core\|mdk_core\|openmls' --include=Cargo.toml apps/
 (no output — zero matches)
 ```
 
-**Result: PASS.** No app (`apps/chirp`, `apps/fixture`, `apps/podcast`)
-directly imports mdk-core or openmls.
+**Result: PASS.** No app (`apps/chirp`, `apps/podcast`)
+directly imports mdk-core or openmls. (`apps/fixture` was deleted by ADR-0046.)
 
 ---
 
