@@ -9,10 +9,11 @@
 //! # Crate layout
 //!
 //! * [`composition`] — `setup_chirp_web_feeds` wires everything together:
-//!   creates the `ActiveFollowSet`, builds the engine via `register_op_feed`,
-//!   registers the engine as a `KernelEventObserver`, registers the typed
-//!   `nmp.feed.home` snapshot projection, and resets the feed when the active
-//!   follow-set perspective changes.
+//!   creates the `ActiveFollowSet`, installs the NIP-51 mute projection, builds
+//!   the engine via `register_op_feed`, registers the NIP-01 OP-feed observer
+//!   adapter, registers the typed `nmp.feed.home` / `nmp.nip51.mute_list`
+//!   projections, and resets the feed when the active follow-set or mute-list
+//!   perspective changes.
 
 pub mod composition;
 // wasm32 composition-root entry point. Compiled only for the wasm32 target so

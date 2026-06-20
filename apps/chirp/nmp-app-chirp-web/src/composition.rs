@@ -4,13 +4,15 @@
 //!
 //! 1. Extracts the kernel's [`ActiveAccountSlot`] from the reducer.
 //! 2. Constructs an [`ActiveFollowSet`] seeded from the active account.
-//! 3. Builds an `EventLookup` closure over the kernel's `EventStore` handle.
-//! 4. Constructs the [`OpFeedEngine`] via `register_op_feed`.
-//! 5. Registers the engine as a [`KernelEventObserver`] on the reducer.
-//! 6. Registers the follow set as a `KernelEventObserver` for kind:3 ingest.
-//! 7. Registers an `on_change` callback that resets the engine on every
+//! 3. Constructs the NIP-51 mute-list projection for active-account suppression.
+//! 4. Builds an `EventLookup` closure over the kernel's `EventStore` handle.
+//! 5. Constructs the [`OpFeedEngine`] via `register_op_feed`.
+//! 6. Registers the NIP-01 OP-feed observer adapter on the reducer.
+//! 7. Registers the follow set and mute projection as event observers.
+//! 8. Registers `on_change` callbacks that reset the engine on every
 //!    follow-set perspective change.
-//! 8. Registers the typed `nmp.feed.home` snapshot projection.
+//! 9. Registers the typed `nmp.feed.home` and `nmp.nip51.mute_list` snapshot
+//!    projections.
 //!
 //! The returned [`ChirpWebFeedSetup`] gives the caller handles to:
 //!
@@ -21,10 +23,11 @@
 //! # Engine reset on perspective change
 //!
 //! The engine holds roots and attributions admitted under the current
-//! perspective: active account, follow set, and future mute/block policy. When
+//! perspective: active account, follow set, and active-account mute list. When
 //! that perspective changes, stale rows must disappear immediately. The
-//! `ActiveFollowSet::on_change` callback therefore resets the engine on
-//! account switch, logout, and kind:3 replacement.
+//! `ActiveFollowSet::on_change` and `MuteListProjection::on_change` callbacks
+//! therefore reset the engine on account switch, logout, kind:3 replacement,
+//! and kind:10000 replacement.
 //!
 //! # Doctrine
 //!
@@ -37,15 +40,19 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::substrate::SuppressionLookup;
 use nmp_core::KernelEventObserver;
 use nmp_core::TypedProjectionData;
 use nmp_feed::FeedRequest;
 use nmp_nip01::op_feed::{
-    encode_op_feed_snapshot, register_op_feed, OpFeedEngine, OP_FEED_FILE_IDENTIFIER,
-    OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION, OP_FEED_SNAPSHOT_KEY,
+    encode_op_feed_snapshot, op_feed_observer, register_op_feed, OpFeedEngine,
+    OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION, OP_FEED_SNAPSHOT_KEY,
 };
 use nmp_nip02::ActiveFollowSet;
+use nmp_nip51::MuteListProjection;
 use nmp_wasm::WasmRuntime;
+
+const MUTE_LIST_SNAPSHOT_KEY: &str = "nmp.nip51.mute_list";
 
 /// Content-parser seam implementation backed by nmp-content.
 ///
@@ -77,6 +84,9 @@ pub struct ChirpWebFeedSetup {
     /// The active-follow-set producer. Call `notify_account_changed()` when
     /// the active account switches or the user logs out.
     pub follow_set: Arc<ActiveFollowSet>,
+    /// Active-account NIP-51 mute-list projection used by the OP-feed observer
+    /// and exported as a typed snapshot.
+    pub mute: Arc<MuteListProjection>,
     /// Last-seen active pubkey, used by `notify_account_changed` to detect
     /// whether the account actually changed (vs. a follow-set kind:3 update).
     last_seen: Arc<Mutex<Option<String>>>,
@@ -152,29 +162,42 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     // 2. Follow set — seeded immediately from the slot.
     let follow_set = ActiveFollowSet::new(Arc::clone(&active_account_slot));
 
-    // 3. Event lookup — captures Arc<dyn EventStore>, not the Rc<RefCell>.
+    // 3. Active-account NIP-51 mute-list projection. The built-in kernel
+    //    bootstrap self-kinds include kind:10000, so relay-delivered mute
+    //    replacements arrive through normal ingest and update this observer.
+    let mute = Arc::new(MuteListProjection::new(Arc::clone(&active_account_slot)));
+
+    // 4. Event lookup — captures Arc<dyn EventStore>, not the Rc<RefCell>.
     //    Uses `event_by_id_from_arc` to share the hex-decode body with
     //    the native seam (ADR §4-B, no duplication).
     let event_store = reducer.borrow().event_store_handle();
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &String| {
         nmp_core::slots::event_by_id_from_arc(&event_store, id.as_str())
     });
+    let event_lookup_for_observer = Arc::clone(&event_lookup);
 
-    // 4. Build the OP-feed engine.
+    // 5. Build the OP-feed engine.
     let viewer = reducer.borrow().active_account_pubkey().unwrap_or_default();
     let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup);
 
-    // 5. Register the engine as an event observer (kind:1/6 ingest).
+    // 6. Register the NIP-01 observer adapter (kind:1/6 admission, NIP-09
+    //    removal, and active-account suppression). The generic engine remains
+    //    policy-free.
+    let suppression: Arc<dyn SuppressionLookup> = mute.clone();
+    let observer = op_feed_observer(Arc::clone(&engine), event_lookup_for_observer, suppression);
     reducer
         .borrow()
-        .register_event_observer(Arc::clone(&engine) as Arc<dyn KernelEventObserver>);
+        .register_event_observer(observer as Arc<dyn KernelEventObserver>);
 
-    // 6. Register the follow set as an event observer (kind:3 ingest).
+    // 7. Register the follow set as an event observer (kind:3 ingest).
     reducer
         .borrow()
         .register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
+    reducer
+        .borrow()
+        .register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
 
-    // 7. Wire the perspective-change engine reset.
+    // 8. Wire perspective-change engine resets.
     //
     // `on_change` fires on active-account kind:3 replacement, account switch,
     // and logout. Each invalidates the visible rows admitted under the previous
@@ -185,8 +208,12 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     follow_set.on_change(Box::new(move || {
         engine_for_cb.reset_for_perspective_change();
     }));
+    let engine_for_mute = Arc::clone(&engine);
+    mute.on_change(Box::new(move || {
+        engine_for_mute.reset_for_perspective_change();
+    }));
 
-    // 8. Register the typed snapshot projection under "nmp.feed.home".
+    // 9. Register the typed snapshot projection under "nmp.feed.home".
     let engine_for_projection = Arc::clone(&engine);
     reducer
         .borrow()
@@ -201,10 +228,26 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
                 ..Default::default()
             })
         });
+    let mute_for_projection = Arc::clone(&mute);
+    reducer
+        .borrow()
+        .register_typed_snapshot_projection(MUTE_LIST_SNAPSHOT_KEY, move || {
+            let snapshot = mute_for_projection.snapshot();
+            Some(TypedProjectionData {
+                key: MUTE_LIST_SNAPSHOT_KEY.to_string(),
+                schema_id: nmp_nip51::MUTE_LIST_SCHEMA_ID.to_string(),
+                schema_version: nmp_nip51::MUTE_LIST_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(nmp_nip51::MUTE_LIST_FILE_IDENTIFIER)
+                    .into_owned(),
+                payload: nmp_nip51::encode_mute_list(&snapshot),
+                ..Default::default()
+            })
+        });
 
     ChirpWebFeedSetup {
         engine,
         follow_set,
+        mute,
         last_seen,
         active_account_slot,
     }

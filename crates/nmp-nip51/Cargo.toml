@@ -13,7 +13,7 @@ crate-type = ["rlib"]
 # `nmp-core` supplies `KernelEventObserver` (the ingest seam) and
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 # Layer-0 kind-constant registry — re-exports NIP-51 kind integers
 # so this crate no longer duplicates those values.
 nmp-kinds = { path = "../nmp-kinds" }
