@@ -3,12 +3,20 @@
 > Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
 > renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
 > as `nmp-defaults` / `nmp_defaults`.
+>
+> **Superseded-in-part by ADR-0053** (host-declared projection subscriptions):
+> the push seam remains canonical, but *which* projections a host receives is
+> now host-declared rather than always-on for every registered projector. The
+> single-seam / no-pull-accessor decision below stands.
 
-- **Status:** Accepted (2026-05-31)
+- **Status:** Accepted (2026-05-31); push-seam *subscription* aspect
+  superseded-in-part by ADR-0053
 - **Relates to:** ADR-0025 (Marmot bespoke FFI cluster — the pull anti-pattern this
   ADR finishes retiring), ADR-0037 (typed FlatBuffers sidecar — a hot-path
   optimization *layered on* this seam, not an app-facing alternative to it),
-  ADR-0036 (composition-root follow-set expansion — supersedes V-45). Resolves the
+  ADR-0036 (composition-root follow-set expansion — supersedes V-45), ADR-0053
+  (host-declared projection subscriptions — supersedes-in-part the always-on
+  delivery model here). Resolves the
   long-standing **V-37** "snapshot output seam for non-Chirp apps" framing and the
   **PD-033-A** second-app thesis blocker. Governs **V-107** (live Marmot read-leg
   migration). Surfaced by the 2026-05-29 podcast-player polling incident and the
@@ -153,8 +161,9 @@ migrated off the deprecated C-ABI pull symbols onto `MarmotHandle::snapshot_rust
 `MarmotHandle::messages_rust()` — Rust-native accessors on the same `MarmotProjection`,
 same data path as the push projections, no C-ABI round-trip.
 
-**Deprecated, not deleted:** `nmp_marmot_snapshot` and `nmp_marmot_group_messages` carry
-`#[deprecated]` but remain exported. `MarmotBridge.swift` still calls the C-ABI symbols;
-they will be removed in a later Xcode session once that Swift consumer migrates to reading
-`projections["nmp.marmot.snapshot"]` / `projections["nmp.marmot.messages"][gid]` off
-the pushed SnapshotFrame `apply()` callback.
+**Deleted (V-107 complete):** `nmp_marmot_snapshot` and `nmp_marmot_group_messages`
+(and `nmp_marmot_string_free`) have been **removed** — see the comment at
+`crates/nmp-marmot/src/ffi.rs:18`. `MarmotBridge.swift` was migrated to read
+`projections["nmp.marmot.snapshot"]` / `projections["nmp.marmot.messages"][gid]`
+off the pushed SnapshotFrame `apply()` callback. There is no Marmot pull symbol
+left to deprecate.

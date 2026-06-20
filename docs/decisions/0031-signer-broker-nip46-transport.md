@@ -4,7 +4,8 @@
 - **Date:** 2026-05-24
 - **Resolves:** V-36.
 - **Related:** ADR-0022 (NMP owns its relay transport), ADR-0026 (signer NIP-44 seal seam),
-  ADR-0027 (unified `ActionModule` trait)
+  ADR-0027 (unified `ActionModule` trait), ADR-0050 (signer-session capability port —
+  decides the remote-signer verb-set extension shape)
 
 ## Context
 
@@ -20,7 +21,7 @@ $ grep -rn "nostr-connect\|nostr_connect" Cargo.toml crates/*/Cargo.toml
 ```
 
 The broker crate (`nmp-signer-broker/`) has four sub-modules: `broker`, `handshake`,
-`relay_client`, and `transport`. `relay_client.rs` (851 LOC) is the custom WebSocket client
+`relay_client`, and `transport`. `relay_client.rs` (~640 LOC) is the custom WebSocket client
 that was the subject of V-13 (polling violation) and V-14 (no reconnect), both fixed in
 PR #431.
 
@@ -78,22 +79,17 @@ are consumed by the kernel to update the `bunker_handshake` projection, which th
 polls to render live feedback. This is NMP's action-stages protocol (D12) applied to the
 handshake path — it has no counterpart in `nostr-connect`.
 
-### 5. V-06/V-08 substrate gaps — NIP-42 AUTH + NIP-17 gift-wrap for remote signers
+### 5. NIP-46 verb-set extension for remote signers
 
-Stages 2-3 of V-06 (broker `sign_auth_challenge` RPC) and Stage 3 of V-08 (`unwrap_gift_wrap`
-via remote signer RPC) extend the broker's NIP-46 verb set with verbs `nostr-connect` may
-not support. Owning the broker lets NMP extend the verb set without depending on upstream
-merges.
-
-> Correction (2026-06-12): the V-08 Stage 3 plan as named here — per-envelope
-> `unwrap_gift_wrap` via remote signer RPC — was rejected as unviable (each
-> kind:1059 unseal is two *sequential* interactive NIP-46 decrypts; an inbox
-> backfill is O(2N) bunker round-trips). The argument above (owning the broker
-> lets NMP extend the verb set) stands; the *shape* of the V-08 extension is
-> re-decided in issue #961: a signer-session capability port as the
-> prerequisite seam, then either a delegated decrypt-session capability or an
-> explicit "bunker accounts do not receive DMs" product policy. V-06 Stages 2-3
-> should likewise ride the session port (see #960).
+Remote-signer flows (NIP-42 AUTH challenges, DM decryption) need NIP-46 verbs
+that `nostr-connect` may not support. Owning the broker lets NMP extend the
+verb set without depending on upstream merges. The concrete shape of those
+extensions is decided by **ADR-0050** (signer-session capability port): the
+broker exposes a session capability that the relevant flows ride, rather than
+issuing per-envelope remote-signer RPCs. (An earlier sketch — per-envelope
+`unwrap_gift_wrap` via remote-signer RPC — was rejected as unviable, since each
+kind:1059 unseal is two sequential interactive NIP-46 decrypts; see ADR-0050
+and git history for the superseded design.)
 
 ## Decision
 
@@ -115,18 +111,20 @@ releases). Pre-condition: rust-nostr adopts a non-tokio relay-transport model. R
 upstream timeline is out of NMP's control.
 
 **Option B — maintain `nmp-signer-broker` as-is:** Continue improving the broker in-tree,
-extract the non-NMP-specific relay-client primitive into `crates/nmp-relay-conn/` (the
-V-13 Stage 1 issue), and share it with `nmp-core`'s relay worker.
+optionally extracting the non-NMP-specific relay-client primitive into a shared
+`nmp-relay-conn` crate and sharing it with `nmp-core`'s relay worker.
 
-**Current ruling:** Option B. The broker owns the NIP-46 relay transport. V-13's
-`nmp-relay-conn` extraction (when it lands) eliminates the remaining duplicate-transport
-code smell without changing the architectural decision.
+**Current ruling:** Option B. The broker owns the NIP-46 relay transport. A shared
+relay-connection crate (`nmp-relay-conn`) has not been extracted; doing so would
+eliminate the remaining duplicate-transport code smell without changing the
+architectural decision.
 
 ## Consequences
 
 - New contributors reading `aim.md` §3 will see a note pointing to this ADR.
-- Every future NIP-46 verb extension (V-06 Stages 2-3, V-08 Stage 3) extends
-  `nmp-signer-broker`'s verb set — no upstream dependency approval needed.
+- Every future NIP-46 verb extension (AUTH challenges, DM decryption via the
+  ADR-0050 session port) extends `nmp-signer-broker`'s verb set — no upstream
+  dependency approval needed.
 - V-13, V-14 fix tickets are properly framed as fixes to maintained infrastructure, not
   arguments that the crate should not exist.
 - V-36 closes.

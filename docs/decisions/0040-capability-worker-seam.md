@@ -1,24 +1,21 @@
 # ADR-0040 — Capability-worker seam: take remote-signer and capability I/O off the actor thread
 
-- **Status:** Accepted (2026-05-31) — **V-90 fully closed**. Site 1 shipped (`fix/v90-site1-dm-offactor`); Site 2 shipped (`fix/v90-site2-capability-worker`, 2026-05-31); Site 3 withdrawn (misdiagnosis, see corrected V-54 note below).
+- **Status:** Accepted (2026-05-31) — **V-90 fully closed**. Site 1 (DM off-actor) and Site 2 (serialized capability-worker thread, live at `crates/nmp-core/src/actor/capability_worker.rs`) both shipped. The originally-bundled "Site 3 / V-54" was a non-bug (see the V-54 note below); it is enforced by `assert!(active_remote().is_none())` rather than implemented.
   - **Restore-read residual (by design):** `restore_active_session` still calls `dispatch_capability` synchronously on the actor thread (up to 3 serial Keychain *reads* at cold-start, in the `Start` arm *before* the first snapshot emit). Left synchronous deliberately: the reads are `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` with no `LAContext`/biometric path (`KeychainCapability.swift:241,248-253`) → non-blocking daemon round-trips, below the liveness threshold, and no UI frame exists yet to freeze. Only the *write* path (persist/forget, repeated per account-switch) was moved off-actor. Deferring the cold-start read chain would require an undesigned sign-in continuation state machine for no measurable benefit.
 - **Relates to:**
   - **Resolves V-90** (actor thread blocking during remote-signer operations,
-    HIGH · D8 violation · GH #612 #613) — via Site 1 (DM `op.wait`, shipped)
-    and Site 2 (capability-worker seam, pending).
-  - **~~Resolves V-54~~ — CORRECTED 2026-05-31: Site 3 was a MISDIAGNOSIS.**
-    V-54 claimed `identity.rs` cold-start signs block the actor on a bunker.
-    They do not: `create_account` unconditionally activates a freshly-generated
-    **local** key (identity.rs:893-894) *before* the three signs (925/963/1118),
-    so `active_remote()` is provably `None` at every sign site (no active-flip
-    between `Keys::generate()` and the signs, verified inside the function) and
-    `sign_active` takes the synchronous local branch — it never reaches
-    `.wait(REMOTE_SIGN_TIMEOUT)`. A bunker user's *real* onboarding publishes go
-    through `publish_unsigned_event` (publish.rs:128), which already uses
-    `sign_active_nonblocking` + `PendingSign`. There is no cold-start-on-bunker
-    freeze. V-54 is closed as a non-bug; the 3 sites carry a
-    `debug_assert!(active_remote().is_none())` to *enforce* the local-key
-    invariant. See PR #866 (closed) for the rejected park-arm approach.
+    HIGH · D8 violation · GH #612 #613) — via Site 1 (DM `op.wait`) and Site 2
+    (capability-worker seam), both shipped.
+  - **V-54 was a non-bug (closed).** V-54 claimed `identity.rs` cold-start signs
+    block the actor on a bunker. They do not: `create_account` activates a
+    freshly-generated **local** key before the three signs and never flips
+    `active` to a remote signer in between, so `active_remote()` is provably
+    `None` at every sign site and `sign_active` takes the synchronous local
+    branch — it never reaches `.wait(REMOTE_SIGN_TIMEOUT)`. The invariant is now
+    *enforced* by `assert!(active_remote().is_none())` at the three sign sites
+    (`crates/nmp-core/src/actor/commands/identity.rs:1011,1067,1246`). No code
+    change was needed beyond that enforcement; the misdiagnosed "Site 3" design
+    that once lived in this ADR is in git history.
   - **ADR-0024** (async capability protocol) — that ADR proposed a two-phase
     `CapabilityResultReady` re-entry but was never implemented and only ever
     scoped the *HTTP* capability. This ADR supersedes its mechanism for the
@@ -43,8 +40,7 @@
   gift-wrap `op.wait`; the synchronous-native capability dispatch). It ratifies
   **one new primitive** — the serialized capability-worker thread — and confirms
   that Site 1 reuses an *existing* precedented mechanism (the nmp-nip57 lnurl
-  worker). (Site 3 / V-54 cold-start signs were originally bundled here but were
-  found to be a misdiagnosis — see the corrected V-54 note above.)
+  worker).
   Out of scope: the HTTP/LNURL capability (already non-blocking via the lnurl
   worker), Android `nativeNextUpdate` polling (V-91), and any change to the
   `bunker_hook` handshake transport.
@@ -109,33 +105,19 @@ persist/forget/switch. ADR-0023 explicitly scoped this synchronous socket as an
 MVP that "blocks the actor thread — a deliberate, documented" choice; this ADR
 retires that sanction for the in-actor sites. **Confirmed live.**
 
-### ~~Blocking site 3 — cold-start onboarding signs [V-54]~~ — NOT A BLOCKING SITE (corrected 2026-05-31)
-
-`crates/nmp-core/src/actor/commands/identity.rs:925,963,1118` publish the
-initial kind:0 metadata, kind:10002 relay list, and kind:3 follows during
-`create_account` via `sign_active`. This was **originally flagged** as a
-blocking stall on a bunker account — but that was wrong. `sign_active` only
-blocks (`.wait(REMOTE_SIGN_TIMEOUT)`) when `active_remote()` is `Some`, and
-`create_account` activates a freshly-generated **local** key (893-894) before
-these signs and never flips `active` to a remote signer in between (verified
-inside the function). So `active_remote()` is always `None` here and
-`sign_active` takes the synchronous local branch — there is no actor stall.
-The bunker user's later publishes go through `publish_unsigned_event`
-(publish.rs:128), already on `sign_active_nonblocking` + `PendingSign`.
-Resolution: close V-54 as a non-bug and add
-`debug_assert!(active_remote().is_none())` at the 3 sites to enforce the
-invariant. (The "actor thread has zero *callable* blocking-sign paths"
-hardening — delete/`cfg(test)`-gate the blocking `sign_active` so it can never
-be re-introduced on the actor thread — is a separate D8 item, not this ADR.)
+> **Site 3 (V-54 cold-start signs) was a non-bug**, not a third blocking site.
+> The detail lives in the V-54 note in the front-matter; in short,
+> `create_account` signs with a local key active, so `sign_active` never reaches
+> `.wait()`, and the invariant is enforced by `assert!(active_remote().is_none())`
+> at `identity.rs:1011,1067,1246`. It required no off-actor work.
 
 ### Why this is one ADR
 
 The 2026-05-29 `open-backlog-resolution` workflow produced a single off-actor
-design for the V-54 + V-90 cluster (recorded in the tracker as "DESIGN PRODUCED,
-ADR-pending" note). It rests on **three precedented primitives, no ad-hoc
-copies**. Two of the three reuse mechanisms that already ship; **only the
-serialized capability-worker thread is genuinely new and needs ratification** —
-hence this ADR.
+design for the V-90 cluster. It rests on **precedented primitives, no ad-hoc
+copies**: Site 1 reuses a mechanism that already ships; **only the serialized
+capability-worker thread is genuinely new and needs ratification** — hence this
+ADR.
 
 ---
 
@@ -186,11 +168,10 @@ hence this ADR.
 
 ## Options considered
 
-### Site 1 (DM `op.wait`) — settled by reuse (and Site 3, withdrawn)
+### Site 1 (DM `op.wait`) — settled by reuse
 
 Site 1 is **not** new design and is recorded here only to fix its mechanism by
-reference. Site 3 was withdrawn (misdiagnosis — see above); its former
-`PendingSign` plan is struck through below.
+reference.
 
 - **Site 1 → worker-thread re-entry, reusing the nmp-nip57 lnurl pattern.**
   `gift_wrap_with_signer` already returns `SignerOp::Pending(rx)` and spawns
@@ -206,11 +187,6 @@ reference. Site 3 was withdrawn (misdiagnosis — see above); its former
   `PublishSignedEvent`, which carries a fully-signed, self-contained kind:1059
   envelope bound to no mutable account slot — applying it after an account
   switch publishes an already-built envelope, it cannot corrupt account state.
-- **~~Site 3 → `PendingSign` park/poll/settle.~~** WITHDRAWN — the three
-  cold-start signs run with a local key active (see corrected site-3 note), so
-  they never block; converting them to `PendingSign` would only add unreachable
-  park arms (rejected in PR #866). No change to `create_account` beyond the
-  enforcing `debug_assert`.
 
 The remainder of this section weighs the genuinely-new piece: **Site 2, the
 synchronous-native capability seam.**
@@ -276,8 +252,8 @@ complicates teardown. One serialized worker dominates it on every axis.
 
 ## Decision
 
-Ratify the **three-primitive off-actor design**; introduce **one new seam** —
-the serialized capability-worker thread.
+Ratify the **two-site off-actor design**; introduce **one new seam** — the
+serialized capability-worker thread.
 
 ### 1. DM gift-wrap moves off-actor via the lnurl-worker pattern (Site 1)
 
@@ -291,22 +267,7 @@ gift-wrap failure/timeout the worker re-enters with `ShowToast` +
 `RecordActionFailure` (D6). **No new primitive — verbatim reuse of
 `nmp-nip57/src/lnurl/mod.rs`.**
 
-### 2. ~~Cold-start signs move onto `PendingSign` (Site 3 / V-54)~~ — WITHDRAWN (misdiagnosis)
-
-> **Withdrawn 2026-05-31.** This decision was never implemented — Site 3 was a
-> misdiagnosis (see the corrected V-54 note in the front-matter and Context).
-> `create_account` activates a fresh local key before the three signs, so
-> `sign_active` never reaches `.wait()`; converting them to `PendingSign` would
-> only add unreachable park arms (rejected in PR #866). The original text is
-> struck through and retained for the record:
->
-> ~~The three `create_account` cold-start publishes switch from `sign_active` to
-> `sign_active_nonblocking` and are parked as `PendingSign` with their explicit
-> cold-start relay targets (`PublishTarget::Explicit`) and D6 "no cold-start
-> relay" toasts preserved. No new primitive — verbatim reuse of the existing
-> `PendingSign` path.~~
-
-### 3. The capability-worker seam (Site 2) — the new, ratified piece
+### 2. The capability-worker seam (Site 2) — the new, ratified piece
 
 Introduce a **single, long-lived, serialized capability-worker thread** owned
 by the FFI app handle (`NmpApp`), created at app init alongside the existing
@@ -361,8 +322,9 @@ callers already off the actor thread.
   worker-thread spawn that re-enters via `PublishSignedEvent` / `ShowToast` /
   `RecordActionFailure`. The actor no longer blocks up to ~24 s on a two-leg
   bunker DM.
-- `crates/nmp-core/src/actor/commands/identity.rs:825,863,1018` — the three
-  cold-start signs move to `sign_active_nonblocking` + `PendingSign`.
+- `crates/nmp-core/src/actor/commands/identity.rs:1011,1067,1246` — the three
+  cold-start signs carry an `assert!(active_remote().is_none())` enforcing the
+  local-key invariant (V-54 non-bug; no off-actor change).
 - `crates/nmp-ffi/src/lib.rs` (in-actor capability call sites) — synchronous
   `dispatch_capability` calls become enqueues to the capability worker.
 - `crates/nmp-ffi/src/capability.rs` — gains the worker thread + work-queue
@@ -381,8 +343,7 @@ callers already off the actor thread.
 **Migration path**
 
 Ratify → land in independently-shippable PRs. Site 1 (DM off-actor) and Site 2
-(capability worker) shipped; Site 3 was withdrawn as a misdiagnosis and shipped
-as a correction (#868) instead. Site 2 is the only one that adds a thread/command
+(capability worker) shipped. Site 2 is the only one that adds a thread/command
 and so landed last with the fullest test coverage. ADR-0024 is marked
 **Superseded (native class)** for its capability re-entry mechanism; its HTTP
 saga framing is untouched (the lnurl worker already realizes it).
@@ -402,10 +363,9 @@ saga framing is untouched (the lnurl worker already realizes it).
   re-entry. A "no poll" assertion: the worker advances only via blocking
   `recv` (covered by the `doctrine_lint` no-polling smoke + a unit test that
   the worker makes zero progress with an empty queue and no spin).
-- *~~Site 3:~~* WITHDRAWN — no test needed; `create_account` is local-key-only,
-  so the signs never block (see corrected V-54 note). A
-  `debug_assert!(active_remote().is_none())` at the 3 sites enforces the
-  invariant instead.
+- *V-54 (non-bug):* no test needed; `create_account` is local-key-only, so the
+  signs never block. The `assert!(active_remote().is_none())` at the three sites
+  enforces the invariant instead.
 
 **Risks**
 
@@ -435,14 +395,7 @@ saga framing is untouched (the lnurl worker already realizes it).
 - Tests: `crates/nmp-nip17/src/dm_send/tests.rs` — pending-signer non-block +
   timeout-no-stall cases.
 
-**~~PR 2 — Site 3 (cold-start signs), no new seam.~~** WITHDRAWN (misdiagnosis,
-2026-05-31). Shipped instead as a *correction* PR (#868): mark Site 3 withdrawn,
-delete V-54, add `debug_assert!(active_remote().is_none())` at the 3 sites.
-`create_account` is local-key-only, so its signs never reach `.wait()` — there
-was no freeze to fix. The genuine "actor retains a callable blocking-sign
-primitive" hardening is filed separately as V-111.
-
-**PR 3 — Site 2 (capability-worker seam), the ratified new piece.**
+**PR 2 — Site 2 (capability-worker seam), the ratified new piece.**
 - `crates/nmp-core/src/actor/mod.rs`: add
   `ActorCommand::CapabilityResultReady { account_id, namespace,
   correlation_id, result_json }` and its dispatch arm in
@@ -468,5 +421,5 @@ primitive" hardening is filed separately as V-111.
 
 ## Validation
 
-Documentation only — no code changes in this PR. This ADR is the ratifiable
-deliverable; the three PRs above gate the implementation work that follows.
+Documentation only — no code changes in this ADR. This ADR is the ratifiable
+deliverable; the PRs above gate the implementation work that follows.

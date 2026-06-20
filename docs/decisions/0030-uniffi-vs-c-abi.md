@@ -162,37 +162,32 @@ What is *not* deferred:
 - The Marmot bespoke cluster (ADR-0025) remains the named, bounded
   exception. No second cluster.
 
-### (b) Read/snapshot surface — ship a Swift `Decodable` emitter in `nmp-codegen`
+### (b) Read/snapshot surface — generate the host's typed decoders in `nmp-codegen`
 
-The hand-mirrored `Decodable` types in
-`ios/Chirp/Chirp/Bridge/KernelBridge.swift:680-1988` (~1,308 LoC) are
-replaced by Swift code emitted from `nmp-codegen` against the projection
-schema. The emitter targets:
+The hand-mirrored read-surface types are replaced by Swift code emitted
+from `nmp-codegen` against the projection schema, so a renamed/added field
+regenerates the host parser instead of being mirrored by hand.
 
-- One `Decodable` struct per typed projection currently mirrored by hand.
-- One `Decodable` enum per snapshot-level tagged-union (e.g.
-  `KernelUpdate.updateKind` discriminators).
-- Optional/`?`-typed fields by default, matching the
-  forward-compatibility doctrine (`update.previousCountLabel: String?`
-  pattern at `KernelBridge.swift:1508` — kernel may emit older snapshots,
-  host treats `nil` as empty per D1).
-- `Equatable` / `Identifiable` / `Hashable` conformances driven by
-  per-projection annotations in the manifest (today these are added by
-  hand; the manifest gains a small `traits: [...]` field per projection).
+> **Realization note (current).** This decision shipped, but the *input
+> contract* it decodes changed under it. The original sketch (a Swift JSON
+> `Decodable` emitter writing to a checked-in `bindings/swift/` path) was
+> overtaken by ADR-0037/ADR-0044: the read surface is now a **typed
+> FlatBuffer sidecar** (`SnapshotFrame.typed_projections`), not a JSON
+> `payload:Value` tree. So the emitter that actually shipped is
+> `crates/nmp-codegen/src/swift_typed_decoders.rs` — it generates the
+> mechanical part of every typed-FlatBuffer-sidecar decoder (envelope
+> lookup by `key`+`schema_id`, `getRoot` into the `flatc --swift` reader
+> struct), with a per-key `TypedProjectionGlue` static mapping the reader
+> to the Chirp domain type. No `bindings/swift/` directory was ever
+> created; the generated decoders live in the codegen output tree and the
+> Chirp host imports them. The hand-mirror retirement happened along the
+> typed-decoder path rather than as a single deletion of a fixed
+> `KernelBridge.swift` line range.
 
 The emitter lives alongside `crates/nmp-codegen/src/generate.rs` (per
-ADR-0010, this is the codegen seam) and writes to a checked-in
-`bindings/swift/` path that `KernelBridge.swift` imports verbatim. The
-hand-mirrored block at `KernelBridge.swift:680-1988` is deleted in the
-same change-set that wires the generated bindings.
-
-This is **not** UniFFI. It is `nmp-codegen` doing the job the aim doc
-named at §5 lines 203–204 — "Generated UniFFI Swift, checked in" — for the
-*read* surface, while the *write* surface waits for M14 to do the
-UniFFI-proper job.
-
-This ADR records the decision. The implementation is a follow-on milestone;
-no code ships with this ADR.
+ADR-0010, this is the codegen seam). It is **not** UniFFI — it is
+`nmp-codegen` doing the read-surface decoder job, while the *write* surface
+waits for M14 to do the UniFFI-proper job.
 
 ## Consequences
 
@@ -202,8 +197,8 @@ no code ships with this ADR.
   reviews stop relitigating "why don't we use UniFFI?" — the answer is "we
   will, on the write surface, at M14; the read surface is a different
   problem with a different (smaller, sooner) fix."
-- **The 1,308 LoC drift hazard becomes a build-time error.** A renamed
-  field in a Rust projection regenerates the Swift struct; a mismatched
+- **The hand-mirror drift hazard becomes a build-time error.** A renamed
+  field in a Rust projection regenerates the Swift decoder; a mismatched
   Swift consumer fails to compile rather than silently dropping the field.
 - **`nmp-codegen` earns its keep.** Today it emits 8 Rust files and zero
   Swift. After (b), it emits the read-surface contract for every host
@@ -232,10 +227,10 @@ no code ships with this ADR.
   exists in `nmp-codegen/src/generate.rs`. Both target the same manifest
   and should share manifest-parsing code, but the emission templates are
   distinct. This is structural complexity in `nmp-codegen` that we accept.
-- **A `bindings/swift/` checked-in path is new.** The aim doc reserved it
-  (§5 lines 203–204) but the repo does not have it today. Introducing it
-  costs a CI gate (`just gen bindings` + diff check against the projection
-  schema) and a small amount of repo discipline. The cost is paid once.
+- **A generated read-surface decoder set is new.** It costs a CI gate
+  (`just gen bindings` + diff check against the projection schema) and a
+  small amount of repo discipline. The cost is paid once. (No
+  `bindings/swift/` directory was created; see the realization note above.)
 - **Codegen output must be deterministic.** The M14 exit gate already
   names this for the Rust scaffolding ("repeated runs produce byte-identical
   output"); the read-surface emitter inherits the same constraint. A
@@ -247,10 +242,9 @@ no code ships with this ADR.
 - No snapshot schema change. ADR-0009's JSON-snapshot decision is the
   load-bearing prerequisite for this ADR (the snapshot shape is *already*
   the codegen contract; the emitter just renders the Swift parser for it).
-- The hand-mirrored block at `KernelBridge.swift:680-1988` is deleted in
-  the change-set that wires generated bindings; the rest of
-  `KernelBridge.swift` (pointer-wrangling for the write surface) is
-  untouched.
+- The hand-mirrored read-surface types are retired as the generated typed
+  decoders land; the write-surface pointer-wrangling in `KernelBridge.swift`
+  is untouched.
 
 ## Out of scope
 
