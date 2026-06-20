@@ -106,7 +106,6 @@ class TypedDmWalletRelayDecoderTest {
         val status = builder.createString(wireStatus)
         val relayUrl = builder.createString("wss://nwc.example")
         val npub = builder.createString("npub1wallet")
-        val npubShort = builder.createString("npub1wa…et")
         val pkHex = builder.createString(hex(0x44))
         val w = FbWalletStatus.createWalletStatus(
             builder,
@@ -115,7 +114,6 @@ class TypedDmWalletRelayDecoderTest {
             npub,
             false, 0UL, // msats
             balanceSats != null, balanceSats ?: 0UL, // sats
-            npubShort,
             isReady, isConnected, // is_ready, is_connected
             false, 0u, // connection_state
             pkHex,
@@ -215,14 +213,13 @@ class TypedDmWalletRelayDecoderTest {
 
     private fun relayRoleBuffer(): ByteArray {
         val builder = FlatBufferBuilder(256)
-        fun opt(value: String, label: String, tint: String, isDefault: Boolean): Int {
+        fun opt(value: String, tint: String, isDefault: Boolean): Int {
             val v = builder.createString(value)
-            val l = builder.createString(label)
             val t = builder.createString(tint)
-            return FbRelayRoleOption.createRelayRoleOption(builder, v, l, t, isDefault)
+            return FbRelayRoleOption.createRelayRoleOption(builder, v, t, isDefault)
         }
-        val o1 = opt("both", "Both", "accent", true)
-        val o2 = opt("read", "Read", "info", false)
+        val o1 = opt("both", "accent", true)
+        val o2 = opt("read", "info", false)
         val vec = RelayRoleOptionsSnapshot.createOptionsVector(builder, intArrayOf(o1, o2))
         val snap = RelayRoleOptionsSnapshot.createRelayRoleOptionsSnapshot(builder, vec)
         RelayRoleOptionsSnapshot.finishRelayRoleOptionsSnapshotBuffer(builder, snap)

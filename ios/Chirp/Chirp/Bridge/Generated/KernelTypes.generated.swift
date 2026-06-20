@@ -145,28 +145,12 @@ public struct AppRelay: Decodable, Equatable, Identifiable, Sendable {
 
 // MARK: - RelayRoleOption
 // Source: nmp_core::actor::relay_roles::RelayRoleOption
-// `label` was removed from the wire (#1678, D7 — presentation artifact).
-// It is now a computed property that maps the raw `value` token to an
-// English label in the shell (raw-data doctrine, aim.md §2 / ADR-0032).
 public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
     public let isDefault: Bool
     public let tint: String
     public let value: String
 
     public var id: String { value }
-
-    /// Human-readable label derived from the raw `value` token.
-    /// Shells own this mapping (#1678); the kernel no longer pre-renders it.
-    public var label: String {
-        switch value {
-        case "both,indexer": return "Both + Index"
-        case "both":         return "Both"
-        case "read":         return "Read"
-        case "write":        return "Write"
-        case "indexer":      return "Index"
-        default:             return value
-        }
-    }
 }
 
 // MARK: - TimelineItem

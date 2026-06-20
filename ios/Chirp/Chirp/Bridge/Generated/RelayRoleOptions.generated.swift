@@ -21,7 +21,6 @@ public struct nmp_kernel_RelayRoleOption: FlatBufferTable, FlatbuffersVectorInit
 
   private enum VTOFFSET: VOffset {
     case value = 4
-    case label = 6
     case tint = 8
     case isDefault = 10
     var v: Int32 { Int32(self.rawValue) }
@@ -30,14 +29,11 @@ public struct nmp_kernel_RelayRoleOption: FlatBufferTable, FlatbuffersVectorInit
 
   public var value: String? { let o = _accessor.offset(VTOFFSET.value.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var valueSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.value.v) }
-  public var label: String? { let o = _accessor.offset(VTOFFSET.label.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var labelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.label.v) }
   public var tint: String? { let o = _accessor.offset(VTOFFSET.tint.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var tintSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.tint.v) }
   public var isDefault: Bool { let o = _accessor.offset(VTOFFSET.isDefault.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public static func startRelayRoleOption(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
   public static func add(value: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: value, at: VTOFFSET.value.p) }
-  public static func add(label: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: label, at: VTOFFSET.label.p) }
   public static func add(tint: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: tint, at: VTOFFSET.tint.p) }
   public static func add(isDefault: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isDefault, def: false,
    at: VTOFFSET.isDefault.p) }
@@ -45,13 +41,11 @@ public struct nmp_kernel_RelayRoleOption: FlatBufferTable, FlatbuffersVectorInit
   public static func createRelayRoleOption(
     _ fbb: inout FlatBufferBuilder,
     valueOffset value: Offset = Offset(),
-    labelOffset label: Offset = Offset(),
     tintOffset tint: Offset = Offset(),
     isDefault: Bool = false
   ) -> Offset {
     let __start = nmp_kernel_RelayRoleOption.startRelayRoleOption(&fbb)
     nmp_kernel_RelayRoleOption.add(value: value, &fbb)
-    nmp_kernel_RelayRoleOption.add(label: label, &fbb)
     nmp_kernel_RelayRoleOption.add(tint: tint, &fbb)
     nmp_kernel_RelayRoleOption.add(isDefault: isDefault, &fbb)
     return nmp_kernel_RelayRoleOption.endRelayRoleOption(&fbb, start: __start)
@@ -60,7 +54,6 @@ public struct nmp_kernel_RelayRoleOption: FlatBufferTable, FlatbuffersVectorInit
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.value.p, fieldName: "value", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.label.p, fieldName: "label", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.tint.p, fieldName: "tint", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.isDefault.p, fieldName: "isDefault", required: false, type: Bool.self)
     _v.finish()

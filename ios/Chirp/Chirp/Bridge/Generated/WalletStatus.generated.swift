@@ -40,7 +40,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     case balanceMsats = 12
     case hasBalanceSats = 14
     case balanceSats = 16
-    case walletNpubShort = 18
     case isReady = 20
     case isConnected = 22
     case hasConnectionState = 24
@@ -60,8 +59,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
   public var balanceMsats: UInt64 { let o = _accessor.offset(VTOFFSET.balanceMsats.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var hasBalanceSats: Bool { let o = _accessor.offset(VTOFFSET.hasBalanceSats.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var balanceSats: UInt64 { let o = _accessor.offset(VTOFFSET.balanceSats.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var walletNpubShort: String? { let o = _accessor.offset(VTOFFSET.walletNpubShort.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var walletNpubShortSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.walletNpubShort.v) }
   public var isReady: Bool { let o = _accessor.offset(VTOFFSET.isReady.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isConnected: Bool { let o = _accessor.offset(VTOFFSET.isConnected.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var hasConnectionState: Bool { let o = _accessor.offset(VTOFFSET.hasConnectionState.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
@@ -78,7 +75,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
   public static func add(hasBalanceSats: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasBalanceSats, def: false,
    at: VTOFFSET.hasBalanceSats.p) }
   public static func add(balanceSats: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: balanceSats, def: 0, at: VTOFFSET.balanceSats.p) }
-  public static func add(walletNpubShort: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: walletNpubShort, at: VTOFFSET.walletNpubShort.p) }
   public static func add(isReady: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isReady, def: false,
    at: VTOFFSET.isReady.p) }
   public static func add(isConnected: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isConnected, def: false,
@@ -97,7 +93,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     balanceMsats: UInt64 = 0,
     hasBalanceSats: Bool = false,
     balanceSats: UInt64 = 0,
-    walletNpubShortOffset walletNpubShort: Offset = Offset(),
     isReady: Bool = false,
     isConnected: Bool = false,
     hasConnectionState: Bool = false,
@@ -112,7 +107,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     nmp_nip47_WalletStatus.add(balanceMsats: balanceMsats, &fbb)
     nmp_nip47_WalletStatus.add(hasBalanceSats: hasBalanceSats, &fbb)
     nmp_nip47_WalletStatus.add(balanceSats: balanceSats, &fbb)
-    nmp_nip47_WalletStatus.add(walletNpubShort: walletNpubShort, &fbb)
     nmp_nip47_WalletStatus.add(isReady: isReady, &fbb)
     nmp_nip47_WalletStatus.add(isConnected: isConnected, &fbb)
     nmp_nip47_WalletStatus.add(hasConnectionState: hasConnectionState, &fbb)
@@ -130,7 +124,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     try _v.visit(field: VTOFFSET.balanceMsats.p, fieldName: "balanceMsats", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.hasBalanceSats.p, fieldName: "hasBalanceSats", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.balanceSats.p, fieldName: "balanceSats", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.walletNpubShort.p, fieldName: "walletNpubShort", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.isReady.p, fieldName: "isReady", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isConnected.p, fieldName: "isConnected", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.hasConnectionState.p, fieldName: "hasConnectionState", required: false, type: Bool.self)

@@ -408,3 +408,25 @@ struct WalletStatusData: Decodable, Equatable {
     /// from the raw `status` token; the view maps it → colour.
     var statusTone: String { WalletStatusTone.tone(status) }
 }
+
+// ─── RelayRoleOption shell-side label ─────────────────────────────────────
+//
+// `label` was removed from the `relay_role_options` wire (#1678, D7 —
+// presentation artifact; raw-data doctrine aim.md §2 / ADR-0032). The kernel
+// now ships only the raw `value` token; the shell maps it to a human-readable
+// label here.
+
+extension RelayRoleOption {
+    /// Human-readable label derived from the raw `value` token.
+    /// Shells own this mapping (#1678); the kernel no longer pre-renders it.
+    var label: String {
+        switch value {
+        case "both,indexer": return "Both + Index"
+        case "both":         return "Both"
+        case "read":         return "Read"
+        case "write":        return "Write"
+        case "indexer":      return "Index"
+        default:             return value
+        }
+    }
+}

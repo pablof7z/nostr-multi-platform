@@ -37,8 +37,8 @@ class RelayRoleOption : Table() {
                 null
             }
         }
-    val valueAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun valueInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val valueAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun valueInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val tint : String?
         get() {
             val o = __offset(8)
@@ -48,8 +48,8 @@ class RelayRoleOption : Table() {
                 null
             }
         }
-    val tintAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun tintInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val tintAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun tintInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val isDefault : Boolean
         get() {
             val o = __offset(10)
