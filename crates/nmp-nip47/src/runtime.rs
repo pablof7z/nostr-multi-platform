@@ -55,7 +55,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::display::short_npub;
 use nmp_core::substrate::{UnsignedEvent, WalletKernelAccess};
 use nmp_core::{AuthSignerFn, OutboundMessage, RelayRole};
 use nostr::nips::nip19::ToBech32;
@@ -697,7 +696,6 @@ fn wallet_disconnect_inner(
             wallet_pubkey_hex: conn.wallet_pubkey_hex.clone(),
             balance_msats: conn.balance_msats,
             balance_sats,
-            wallet_npub_short: short_npub(&conn.wallet_npub),
             is_ready: false,
             is_connected: false,
             connection_state: None,
@@ -1145,7 +1143,6 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &dyn WalletKernelAccess) {
             wallet_pubkey_hex: c.wallet_pubkey_hex.clone(),
             balance_msats: c.balance_msats,
             balance_sats,
-            wallet_npub_short: short_npub(&c.wallet_npub),
             is_ready: c.status == "ready",
             is_connected: c.status == "connecting" || c.status == "ready",
             // V-79: project the real-time transport-health state.

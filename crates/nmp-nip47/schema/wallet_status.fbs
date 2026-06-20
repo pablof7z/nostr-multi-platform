@@ -65,8 +65,9 @@ table WalletStatus {
   // formatting when rendering (raw-data doctrine).
   has_balance_sats:bool;
   balance_sats:uint64;
-  // Abbreviated npub (first 10 chars + "…" + last 6 chars).
-  wallet_npub_short:string;
+  // `wallet_npub_short` removed (#1678, D7): shells abbreviate `wallet_npub`
+  // themselves.  Vtable slot reserved to prevent accidental reuse.
+  _reserved_was_wallet_npub_short:string (deprecated);
   // status == "ready"
   is_ready:bool;
   // status == "connecting" || status == "ready"

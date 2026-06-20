@@ -76,13 +76,15 @@ enum TypedProjectionGlue {
     /// Map the typed `relay_role_options` sidecar (`KRRO` /
     /// `nmp_kernel_RelayRoleOptionsSnapshot`) to the `[RelayRoleOption]` the JSON
     /// `projections.relay_role_options` path yields. Field-for-field copy of the
-    /// four-field rows (`value`, `label`, `tint`, `isDefault`), in the producer's
+    /// three-field rows (`value`, `tint`, `isDefault`), in the producer's
     /// picker render order.
+    ///
+    /// `label` was removed from the wire (#1678, D7); `RelayRoleOption.label`
+    /// is now a computed property that maps `value` → English label in the shell.
     static func relayRoleOptions(_ reader: nmp_kernel_RelayRoleOptionsSnapshot) -> [RelayRoleOption] {
         reader.options.map { row in
             RelayRoleOption(
                 isDefault: row.isDefault,
-                label: row.label ?? "",
                 tint: row.tint ?? "",
                 value: row.value ?? ""
             )

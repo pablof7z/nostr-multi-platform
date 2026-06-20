@@ -370,18 +370,20 @@ struct DmInboxSnapshot: Decodable, Equatable {
 /// NIP-47 wallet connection status, projected from the kernel snapshot.
 ///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// maps Rust snake_case (`balance_sats`, `wallet_npub_short`, …) onto these
-/// camelCase properties automatically.
+/// maps Rust snake_case (`balance_sats`, …) onto these camelCase properties
+/// automatically.
 ///
 /// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032 /
 /// docs/wiki/guides/shell-formatting-boundary.md): the kernel ships only raw
-/// tokens. `statusLabel` / `statusTone` / `balanceSatsDisplay` / `walletNpubShort`
-/// are NOT on the wire — the shell derives the label, tone, and formatted balance
-/// from the raw `status` token + `balanceSats` (see `WalletStatusTone`). The
-/// `status_label` / `status_tone` / `balance_sats_display` precompute was a
-/// regression (#623) removed in the wallet_status sweep. `isReady` / `isConnected`
-/// remain pre-computed because they encode protocol semantics (a boolean
-/// predicate over the status token), not display formatting.
+/// tokens. `statusLabel` / `statusTone` / `balanceSatsDisplay` are NOT on the
+/// wire — the shell derives the label, tone, and formatted balance from the raw
+/// `status` token + `balanceSats` (see `WalletStatusTone`). The `status_label` /
+/// `status_tone` / `balance_sats_display` precompute was a regression (#623)
+/// removed in the wallet_status sweep. `wallet_npub_short` was a further
+/// presentation regression (#1678, D7) removed similarly — shells abbreviate
+/// `walletPubkeyHex` using `.shortHex`. `isReady` / `isConnected` remain
+/// pre-computed because they encode protocol semantics (a boolean predicate over
+/// the status token), not display formatting.
 struct WalletStatusData: Decodable, Equatable {
     /// Raw NIP-47 status token: `"connecting"` | `"ready"` | `"error"` |
     /// `"disconnected"`. The shell maps this to a label/tone itself.

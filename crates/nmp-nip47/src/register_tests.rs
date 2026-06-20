@@ -25,7 +25,7 @@ fn sample_status() -> WalletStatus {
         wallet_pubkey_hex: "ab".repeat(32),
         balance_msats: Some(7_000_000),
         balance_sats: Some(7_000),
-        wallet_npub_short: "npub1walle…ch32".to_string(),
+        // `wallet_npub_short` removed (#1678, D7) — shells abbreviate.
         is_ready: true,
         is_connected: true,
         connection_state: Some(NwcConnectionState::Connected),

@@ -37,19 +37,8 @@ class RelayRoleOption : Table() {
                 null
             }
         }
-    val valueAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
-    fun valueInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
-    val label : String?
-        get() {
-            val o = __offset(6)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val labelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun labelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val valueAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
+    fun valueInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
     val tint : String?
         get() {
             val o = __offset(8)
@@ -59,8 +48,8 @@ class RelayRoleOption : Table() {
                 null
             }
         }
-    val tintAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun tintInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val tintAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
+    fun tintInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
     val isDefault : Boolean
         get() {
             val o = __offset(10)
@@ -73,17 +62,15 @@ class RelayRoleOption : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createRelayRoleOption(builder: FlatBufferBuilder, valueOffset: Int, labelOffset: Int, tintOffset: Int, isDefault: Boolean) : Int {
+        fun createRelayRoleOption(builder: FlatBufferBuilder, valueOffset: Int, tintOffset: Int, isDefault: Boolean) : Int {
             builder.startTable(4)
             addTint(builder, tintOffset)
-            addLabel(builder, labelOffset)
             addValue(builder, valueOffset)
             addIsDefault(builder, isDefault)
             return endRelayRoleOption(builder)
         }
         fun startRelayRoleOption(builder: FlatBufferBuilder) = builder.startTable(4)
         fun addValue(builder: FlatBufferBuilder, value: Int) = builder.addOffset(0, value, 0)
-        fun addLabel(builder: FlatBufferBuilder, label: Int) = builder.addOffset(1, label, 0)
         fun addTint(builder: FlatBufferBuilder, tint: Int) = builder.addOffset(2, tint, 0)
         fun addIsDefault(builder: FlatBufferBuilder, isDefault: Boolean) = builder.addBoolean(3, isDefault, false)
         fun endRelayRoleOption(builder: FlatBufferBuilder) : Int {
