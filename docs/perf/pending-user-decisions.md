@@ -247,7 +247,7 @@ User confirmed the cleanest path: extract `StoredEvent`, `DomainHandle`, `StoreE
 
 ### PD-028 (2026-05-18, HB54) — T136b Gate B write-path policy: **Document then implement** (ADR-driven mem-canonical reconciliation)
 
-User picked the ADR-first path. Plan: write `docs/decisions/0012-lmdb-write-path-policy.md` comparing `nostr-lmdb::save_event_with_txn` vs `MemEventStore::insert` (supersession, provenance, NIP-09 deletions, replaceable/addressable rules), declare `MemEventStore` canonical per D4 ("single writer per fact"), then port the canonical pipeline to the LMDB adapter so both backends share identical observable invariants. Heartbeat-dispatched to a worktree agent (Gates B-E).
+User picked the ADR-first path. Plan: write `docs/decisions/0014-lmdb-write-path-policy.md` (originally filed as 0012; renumbered to resolve a duplicate ADR number) comparing `nostr-lmdb::save_event_with_txn` vs `MemEventStore::insert` (supersession, provenance, NIP-09 deletions, replaceable/addressable rules), declare `MemEventStore` canonical per D4 ("single writer per fact"), then port the canonical pipeline to the LMDB adapter so both backends share identical observable invariants. Heartbeat-dispatched to a worktree agent (Gates B-E).
 
 ---
 
