@@ -28,7 +28,8 @@ pub use pager::{
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
 };
 pub use pull_controller::{
-    ClosureInterestShape, FeedAdvance, FeedApply, PullFeedController, PullFn,
+    ClosureInterestShape, FeedAdvance, FeedApply, FeedReplace, FeedReset, PullFeedController,
+    PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use root_indexed::{
