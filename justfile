@@ -11,6 +11,13 @@ rust-ios-sim:
     # duplicated across app, projection, and NIP-46 broker crates.
     cargo build -p nmp-app-chirp --features marmot --target aarch64-apple-ios-sim
 
+rust-ios-device:
+    # Release build required — pbxproj LIBRARY_SEARCH_PATHS points at the
+    # release archive. IPHONEOS_DEPLOYMENT_TARGET=17.0 avoids the
+    # ___chkstk_darwin linker error introduced by Xcode 26.
+    IPHONEOS_DEPLOYMENT_TARGET=17.0 cargo build -p nmp-core --features lmdb-backend --target aarch64-apple-ios --release
+    IPHONEOS_DEPLOYMENT_TARGET=17.0 cargo build -p nmp-app-chirp --features marmot --target aarch64-apple-ios --release
+
 # Seed the gitignored BuildInfo.generated.swift BEFORE xcodegen runs.
 #
 # project.yml's `Generate BuildInfo` preBuildScript writes this file at every

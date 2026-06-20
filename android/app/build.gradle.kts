@@ -16,7 +16,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     buildTypes {
@@ -79,8 +79,8 @@ val cargoNdk by tasks.registering(Exec::class) {
     // pre-V-109.
     commandLine(
         bin, "ndk",
-        "--manifest-path", "apps/chirp/nmp-chirp-android-ffi/Cargo.toml",
-        "-t", "arm64-v8a", "-t", "x86_64",
+        "--manifest-path", "crates/nmp-android-ffi/Cargo.toml",
+        "-t", "arm64-v8a",
         "-o", "android/app/src/main/jniLibs",
         "build", "--release", "--features", "marmot",
     )
