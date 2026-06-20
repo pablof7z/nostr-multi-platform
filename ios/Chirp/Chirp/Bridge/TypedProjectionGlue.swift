@@ -701,12 +701,12 @@ enum TypedProjectionGlue {
     /// The Rust projection sends RAW key-package state (`published`/`ageSecs`/
     /// `stale`/`isRegistered`); the shell derives the subtitle / action-label /
     /// age string itself (aim.md §2 — presentation formatting lives in the shell).
-    /// The free-form metadata fallbacks `displayName`/`initials`/`invitesChipLabel`
-    /// are still Rust-owned (empty-name fallbacks, not banned formatters). Every
-    /// `has_*` companion bool reproduces the JSON `null`-when-`None` semantics:
-    /// `unreadCount`/`lastMsgAt` (`UInt32?`/`UInt64?`), `dTag`/`ageSecs`
-    /// (`String?`/`UInt64?`),
-    /// `invitesChipLabel` (`String?`) are `nil` when the companion is `false`,
+    /// Presentation fallbacks (`displayName`/`initials` for groups,
+    /// `displayName` for pending-welcomes, `invitesChipLabel` and
+    /// `displayLabel`) are now shell-computed from raw wire counts/names
+    /// (schema v4 — aim.md §2). Every `has_*` companion bool reproduces the
+    /// JSON `null`-when-`None` semantics: `unreadCount`/`lastMsgAt`
+    /// (`UInt32?`/`UInt64?`), `dTag`/`ageSecs` (`String?`/`UInt64?`),
     /// byte-identical to the JSON path. The wire's `orphanedCommitCount` /
     /// `keyringUnavailable` diagnostics are NOT carried by the Chirp domain type;
     /// the JSON `Decodable` drops them too (field-subset, not divergence). A
@@ -725,8 +725,6 @@ enum TypedProjectionGlue {
                 MarmotGroup(
                     idHex: g.idHex ?? "",
                     name: g.name ?? "",
-                    displayName: g.displayName ?? "",
-                    initials: g.initials ?? "",
                     members: g.members.map { $0 ?? "" },
                     memberCount: g.memberCount,
                     unreadCount: g.hasUnreadCount ? g.unreadCount : nil,
@@ -735,16 +733,14 @@ enum TypedProjectionGlue {
             },
             pendingWelcomes: reader.pendingWelcomes.map {
                 MarmotPendingWelcome(idHex: $0.idHex ?? "", groupName: $0.groupName ?? "",
-                                     displayName: $0.displayName ?? "", inviterNpub: $0.inviterNpub ?? "")
+                                     inviterNpub: $0.inviterNpub ?? "")
             },
             keyPackage: keyPackage,
             cachedKpPubkeys: reader.cachedKpPubkeys.map { $0 ?? "" },
-            invitesChipLabel: reader.hasInvitesChipLabel ? (reader.invitesChipLabel ?? "") : nil,
             isRegistered: reader.isRegistered,
             pendingOps: reader.pendingOps.map { op in
                 MarmotPendingOp(correlationId: op.correlationId ?? "", opTag: op.opTag ?? "",
-                                missingCount: op.missingCount, displayLabel: op.displayLabel ?? "",
-                                ageSecs: op.ageSecs)
+                                missingCount: op.missingCount, ageSecs: op.ageSecs)
             },
             lastOpError: reader.lastOpError.map { e in
                 MarmotLastOpError(op: e.op ?? "", reason: e.reason ?? "",
