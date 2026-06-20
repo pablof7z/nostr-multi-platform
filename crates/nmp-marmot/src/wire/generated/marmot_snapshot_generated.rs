@@ -28,14 +28,12 @@ pub mod nmp {
         impl<'a> MarmotGroupRow<'a> {
             pub const VT_ID_HEX: ::flatbuffers::VOffsetT = 4;
             pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
-            pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_INITIALS: ::flatbuffers::VOffsetT = 10;
-            pub const VT_MEMBERS: ::flatbuffers::VOffsetT = 12;
-            pub const VT_MEMBER_COUNT: ::flatbuffers::VOffsetT = 14;
-            pub const VT_HAS_UNREAD_COUNT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_UNREAD_COUNT: ::flatbuffers::VOffsetT = 18;
-            pub const VT_HAS_LAST_MSG_AT: ::flatbuffers::VOffsetT = 20;
-            pub const VT_LAST_MSG_AT: ::flatbuffers::VOffsetT = 22;
+            pub const VT_MEMBERS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MEMBER_COUNT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_UNREAD_COUNT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_UNREAD_COUNT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_LAST_MSG_AT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_LAST_MSG_AT: ::flatbuffers::VOffsetT = 18;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -57,12 +55,6 @@ pub mod nmp {
                 builder.add_member_count(args.member_count);
                 if let Some(x) = args.members {
                     builder.add_members(x);
-                }
-                if let Some(x) = args.initials {
-                    builder.add_initials(x);
-                }
-                if let Some(x) = args.display_name {
-                    builder.add_display_name(x);
                 }
                 if let Some(x) = args.name {
                     builder.add_name(x);
@@ -95,30 +87,6 @@ pub mod nmp {
                 unsafe {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotGroupRow::VT_NAME, None)
-                }
-            }
-            #[inline]
-            pub fn display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        MarmotGroupRow::VT_DISPLAY_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn initials(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        MarmotGroupRow::VT_INITIALS,
-                        None,
-                    )
                 }
             }
             #[inline]
@@ -209,16 +177,6 @@ pub mod nmp {
                         Self::VT_NAME,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "display_name",
-                        Self::VT_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "initials",
-                        Self::VT_INITIALS,
-                        false,
-                    )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("members", Self::VT_MEMBERS, false)?
@@ -234,8 +192,6 @@ pub mod nmp {
         pub struct MarmotGroupRowArgs<'a> {
             pub id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub initials: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub members: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
@@ -253,8 +209,6 @@ pub mod nmp {
                 MarmotGroupRowArgs {
                     id_hex: None,
                     name: None,
-                    display_name: None,
-                    initials: None,
                     members: None,
                     member_count: 0,
                     has_unread_count: false,
@@ -281,20 +235,6 @@ pub mod nmp {
             pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotGroupRow::VT_NAME, name);
-            }
-            #[inline]
-            pub fn add_display_name(&mut self, display_name: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    MarmotGroupRow::VT_DISPLAY_NAME,
-                    display_name,
-                );
-            }
-            #[inline]
-            pub fn add_initials(&mut self, initials: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    MarmotGroupRow::VT_INITIALS,
-                    initials,
-                );
             }
             #[inline]
             pub fn add_members(
@@ -361,8 +301,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("MarmotGroupRow");
                 ds.field("id_hex", &self.id_hex());
                 ds.field("name", &self.name());
-                ds.field("display_name", &self.display_name());
-                ds.field("initials", &self.initials());
                 ds.field("members", &self.members());
                 ds.field("member_count", &self.member_count());
                 ds.field("has_unread_count", &self.has_unread_count());
@@ -392,8 +330,7 @@ pub mod nmp {
         impl<'a> PendingWelcomeRow<'a> {
             pub const VT_ID_HEX: ::flatbuffers::VOffsetT = 4;
             pub const VT_GROUP_NAME: ::flatbuffers::VOffsetT = 6;
-            pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_INVITER_NPUB: ::flatbuffers::VOffsetT = 10;
+            pub const VT_INVITER_NPUB: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -412,9 +349,6 @@ pub mod nmp {
                 let mut builder = PendingWelcomeRowBuilder::new(_fbb);
                 if let Some(x) = args.inviter_npub {
                     builder.add_inviter_npub(x);
-                }
-                if let Some(x) = args.display_name {
-                    builder.add_display_name(x);
                 }
                 if let Some(x) = args.group_name {
                     builder.add_group_name(x);
@@ -445,18 +379,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         PendingWelcomeRow::VT_GROUP_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        PendingWelcomeRow::VT_DISPLAY_NAME,
                         None,
                     )
                 }
@@ -493,11 +415,6 @@ pub mod nmp {
                         false,
                     )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "display_name",
-                        Self::VT_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "inviter_npub",
                         Self::VT_INVITER_NPUB,
                         false,
@@ -509,7 +426,6 @@ pub mod nmp {
         pub struct PendingWelcomeRowArgs<'a> {
             pub id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub group_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub inviter_npub: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for PendingWelcomeRowArgs<'a> {
@@ -518,7 +434,6 @@ pub mod nmp {
                 PendingWelcomeRowArgs {
                     id_hex: None,
                     group_name: None,
-                    display_name: None,
                     inviter_npub: None,
                 }
             }
@@ -541,13 +456,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     PendingWelcomeRow::VT_GROUP_NAME,
                     group_name,
-                );
-            }
-            #[inline]
-            pub fn add_display_name(&mut self, display_name: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PendingWelcomeRow::VT_DISPLAY_NAME,
-                    display_name,
                 );
             }
             #[inline]
@@ -579,7 +487,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("PendingWelcomeRow");
                 ds.field("id_hex", &self.id_hex());
                 ds.field("group_name", &self.group_name());
-                ds.field("display_name", &self.display_name());
                 ds.field("inviter_npub", &self.inviter_npub());
                 ds.finish()
             }
@@ -843,6 +750,7 @@ pub mod nmp {
 
         /// One parked (deferred) op waiting for a peer's KP to arrive.
         /// Mirrors `crate::projection::payload::PendingOpRow`.
+        /// Shells format display copy from op_tag + missing_count (aim.md §2).
         pub struct PendingOpRow<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -861,8 +769,7 @@ pub mod nmp {
             pub const VT_CORRELATION_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_OP_TAG: ::flatbuffers::VOffsetT = 6;
             pub const VT_MISSING_COUNT: ::flatbuffers::VOffsetT = 8;
-            pub const VT_DISPLAY_LABEL: ::flatbuffers::VOffsetT = 10;
-            pub const VT_AGE_SECS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_AGE_SECS: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -880,9 +787,6 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<PendingOpRow<'bldr>> {
                 let mut builder = PendingOpRowBuilder::new(_fbb);
                 builder.add_age_secs(args.age_secs);
-                if let Some(x) = args.display_label {
-                    builder.add_display_label(x);
-                }
                 builder.add_missing_count(args.missing_count);
                 if let Some(x) = args.op_tag {
                     builder.add_op_tag(x);
@@ -927,18 +831,6 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn display_label(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        PendingOpRow::VT_DISPLAY_LABEL,
-                        None,
-                    )
-                }
-            }
-            #[inline]
             pub fn age_secs(&self) -> u64 {
                 // Safety:
                 // Created from valid Table for this object
@@ -969,11 +861,6 @@ pub mod nmp {
                         false,
                     )?
                     .visit_field::<u32>("missing_count", Self::VT_MISSING_COUNT, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "display_label",
-                        Self::VT_DISPLAY_LABEL,
-                        false,
-                    )?
                     .visit_field::<u64>("age_secs", Self::VT_AGE_SECS, false)?
                     .finish();
                 Ok(())
@@ -983,7 +870,6 @@ pub mod nmp {
             pub correlation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub op_tag: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub missing_count: u32,
-            pub display_label: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub age_secs: u64,
         }
         impl<'a> Default for PendingOpRowArgs<'a> {
@@ -993,7 +879,6 @@ pub mod nmp {
                     correlation_id: None,
                     op_tag: None,
                     missing_count: 0,
-                    display_label: None,
                     age_secs: 0,
                 }
             }
@@ -1027,13 +912,6 @@ pub mod nmp {
                     .push_slot::<u32>(PendingOpRow::VT_MISSING_COUNT, missing_count, 0);
             }
             #[inline]
-            pub fn add_display_label(&mut self, display_label: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PendingOpRow::VT_DISPLAY_LABEL,
-                    display_label,
-                );
-            }
-            #[inline]
             pub fn add_age_secs(&mut self, age_secs: u64) {
                 self.fbb_
                     .push_slot::<u64>(PendingOpRow::VT_AGE_SECS, age_secs, 0);
@@ -1061,7 +939,6 @@ pub mod nmp {
                 ds.field("correlation_id", &self.correlation_id());
                 ds.field("op_tag", &self.op_tag());
                 ds.field("missing_count", &self.missing_count());
-                ds.field("display_label", &self.display_label());
                 ds.field("age_secs", &self.age_secs());
                 ds.finish()
             }
@@ -1288,13 +1165,11 @@ pub mod nmp {
             pub const VT_PENDING_WELCOMES: ::flatbuffers::VOffsetT = 8;
             pub const VT_KEY_PACKAGE: ::flatbuffers::VOffsetT = 10;
             pub const VT_CACHED_KP_PUBKEYS: ::flatbuffers::VOffsetT = 12;
-            pub const VT_HAS_INVITES_CHIP_LABEL: ::flatbuffers::VOffsetT = 14;
-            pub const VT_INVITES_CHIP_LABEL: ::flatbuffers::VOffsetT = 16;
-            pub const VT_IS_REGISTERED: ::flatbuffers::VOffsetT = 18;
-            pub const VT_ORPHANED_COMMIT_COUNT: ::flatbuffers::VOffsetT = 20;
-            pub const VT_KEYRING_UNAVAILABLE: ::flatbuffers::VOffsetT = 22;
-            pub const VT_PENDING_OPS: ::flatbuffers::VOffsetT = 24;
-            pub const VT_LAST_OP_ERROR: ::flatbuffers::VOffsetT = 26;
+            pub const VT_IS_REGISTERED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_ORPHANED_COMMIT_COUNT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_KEYRING_UNAVAILABLE: ::flatbuffers::VOffsetT = 18;
+            pub const VT_PENDING_OPS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_LAST_OP_ERROR: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1318,9 +1193,6 @@ pub mod nmp {
                     builder.add_pending_ops(x);
                 }
                 builder.add_orphaned_commit_count(args.orphaned_commit_count);
-                if let Some(x) = args.invites_chip_label {
-                    builder.add_invites_chip_label(x);
-                }
                 if let Some(x) = args.cached_kp_pubkeys {
                     builder.add_cached_kp_pubkeys(x);
                 }
@@ -1336,7 +1208,6 @@ pub mod nmp {
                 builder.add_schema_version(args.schema_version);
                 builder.add_keyring_unavailable(args.keyring_unavailable);
                 builder.add_is_registered(args.is_registered);
-                builder.add_has_invites_chip_label(args.has_invites_chip_label);
                 builder.finish()
             }
 
@@ -1408,29 +1279,6 @@ pub mod nmp {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                     >>(MarmotSnapshot::VT_CACHED_KP_PUBKEYS, None)
-                }
-            }
-            #[inline]
-            pub fn has_invites_chip_label(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(MarmotSnapshot::VT_HAS_INVITES_CHIP_LABEL, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn invites_chip_label(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        MarmotSnapshot::VT_INVITES_CHIP_LABEL,
-                        None,
-                    )
                 }
             }
             #[inline]
@@ -1520,16 +1368,6 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("cached_kp_pubkeys", Self::VT_CACHED_KP_PUBKEYS, false)?
-                    .visit_field::<bool>(
-                        "has_invites_chip_label",
-                        Self::VT_HAS_INVITES_CHIP_LABEL,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "invites_chip_label",
-                        Self::VT_INVITES_CHIP_LABEL,
-                        false,
-                    )?
                     .visit_field::<bool>("is_registered", Self::VT_IS_REGISTERED, false)?
                     .visit_field::<u32>(
                         "orphaned_commit_count",
@@ -1574,8 +1412,6 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                 >,
             >,
-            pub has_invites_chip_label: bool,
-            pub invites_chip_label: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub is_registered: bool,
             pub orphaned_commit_count: u32,
             pub keyring_unavailable: bool,
@@ -1595,8 +1431,6 @@ pub mod nmp {
                     pending_welcomes: None,
                     key_package: None,
                     cached_kp_pubkeys: None,
-                    has_invites_chip_label: false,
-                    invites_chip_label: None,
                     is_registered: false,
                     orphaned_commit_count: 0,
                     keyring_unavailable: false,
@@ -1664,24 +1498,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     MarmotSnapshot::VT_CACHED_KP_PUBKEYS,
                     cached_kp_pubkeys,
-                );
-            }
-            #[inline]
-            pub fn add_has_invites_chip_label(&mut self, has_invites_chip_label: bool) {
-                self.fbb_.push_slot::<bool>(
-                    MarmotSnapshot::VT_HAS_INVITES_CHIP_LABEL,
-                    has_invites_chip_label,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_invites_chip_label(
-                &mut self,
-                invites_chip_label: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    MarmotSnapshot::VT_INVITES_CHIP_LABEL,
-                    invites_chip_label,
                 );
             }
             #[inline]
@@ -1753,8 +1569,6 @@ pub mod nmp {
                 ds.field("pending_welcomes", &self.pending_welcomes());
                 ds.field("key_package", &self.key_package());
                 ds.field("cached_kp_pubkeys", &self.cached_kp_pubkeys());
-                ds.field("has_invites_chip_label", &self.has_invites_chip_label());
-                ds.field("invites_chip_label", &self.invites_chip_label());
                 ds.field("is_registered", &self.is_registered());
                 ds.field("orphaned_commit_count", &self.orphaned_commit_count());
                 ds.field("keyring_unavailable", &self.keyring_unavailable());

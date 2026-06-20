@@ -22,14 +22,12 @@ public struct nmp_marmot_MarmotGroupRow: FlatBufferTable, FlatbuffersVectorIniti
   private enum VTOFFSET: VOffset {
     case idHex = 4
     case name = 6
-    case displayName = 8
-    case initials = 10
-    case members = 12
-    case memberCount = 14
-    case hasUnreadCount = 16
-    case unreadCount = 18
-    case hasLastMsgAt = 20
-    case lastMsgAt = 22
+    case members = 8
+    case memberCount = 10
+    case hasUnreadCount = 12
+    case unreadCount = 14
+    case hasLastMsgAt = 16
+    case lastMsgAt = 18
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -38,21 +36,15 @@ public struct nmp_marmot_MarmotGroupRow: FlatBufferTable, FlatbuffersVectorIniti
   public var idHexSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.idHex.v) }
   public var name: String? { let o = _accessor.offset(VTOFFSET.name.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var nameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.name.v) }
-  public var displayName: String? { let o = _accessor.offset(VTOFFSET.displayName.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var displayNameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.displayName.v) }
-  public var initials: String? { let o = _accessor.offset(VTOFFSET.initials.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var initialsSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.initials.v) }
   public var members: FlatbufferVector<String?> { return _accessor.vector(at: VTOFFSET.members.v, byteSize: 4) }
   public var memberCount: UInt32 { let o = _accessor.offset(VTOFFSET.memberCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var hasUnreadCount: Bool { let o = _accessor.offset(VTOFFSET.hasUnreadCount.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var unreadCount: UInt32 { let o = _accessor.offset(VTOFFSET.unreadCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var hasLastMsgAt: Bool { let o = _accessor.offset(VTOFFSET.hasLastMsgAt.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var lastMsgAt: UInt64 { let o = _accessor.offset(VTOFFSET.lastMsgAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startMarmotGroupRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
+  public static func startMarmotGroupRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
   public static func add(idHex: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: idHex, at: VTOFFSET.idHex.p) }
   public static func add(name: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: name, at: VTOFFSET.name.p) }
-  public static func add(displayName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayName, at: VTOFFSET.displayName.p) }
-  public static func add(initials: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: initials, at: VTOFFSET.initials.p) }
   public static func addVectorOf(members: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: members, at: VTOFFSET.members.p) }
   public static func add(memberCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: memberCount, def: 0, at: VTOFFSET.memberCount.p) }
   public static func add(hasUnreadCount: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasUnreadCount, def: false,
@@ -66,8 +58,6 @@ public struct nmp_marmot_MarmotGroupRow: FlatBufferTable, FlatbuffersVectorIniti
     _ fbb: inout FlatBufferBuilder,
     idHexOffset idHex: Offset = Offset(),
     nameOffset name: Offset = Offset(),
-    displayNameOffset displayName: Offset = Offset(),
-    initialsOffset initials: Offset = Offset(),
     membersVectorOffset members: Offset = Offset(),
     memberCount: UInt32 = 0,
     hasUnreadCount: Bool = false,
@@ -78,8 +68,6 @@ public struct nmp_marmot_MarmotGroupRow: FlatBufferTable, FlatbuffersVectorIniti
     let __start = nmp_marmot_MarmotGroupRow.startMarmotGroupRow(&fbb)
     nmp_marmot_MarmotGroupRow.add(idHex: idHex, &fbb)
     nmp_marmot_MarmotGroupRow.add(name: name, &fbb)
-    nmp_marmot_MarmotGroupRow.add(displayName: displayName, &fbb)
-    nmp_marmot_MarmotGroupRow.add(initials: initials, &fbb)
     nmp_marmot_MarmotGroupRow.addVectorOf(members: members, &fbb)
     nmp_marmot_MarmotGroupRow.add(memberCount: memberCount, &fbb)
     nmp_marmot_MarmotGroupRow.add(hasUnreadCount: hasUnreadCount, &fbb)
@@ -93,8 +81,6 @@ public struct nmp_marmot_MarmotGroupRow: FlatBufferTable, FlatbuffersVectorIniti
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.idHex.p, fieldName: "idHex", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.name.p, fieldName: "name", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.displayName.p, fieldName: "displayName", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.initials.p, fieldName: "initials", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.members.p, fieldName: "members", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
     try _v.visit(field: VTOFFSET.memberCount.p, fieldName: "memberCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.hasUnreadCount.p, fieldName: "hasUnreadCount", required: false, type: Bool.self)
@@ -119,8 +105,7 @@ public struct nmp_marmot_PendingWelcomeRow: FlatBufferTable, FlatbuffersVectorIn
   private enum VTOFFSET: VOffset {
     case idHex = 4
     case groupName = 6
-    case displayName = 8
-    case inviterNpub = 10
+    case inviterNpub = 8
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -129,27 +114,22 @@ public struct nmp_marmot_PendingWelcomeRow: FlatBufferTable, FlatbuffersVectorIn
   public var idHexSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.idHex.v) }
   public var groupName: String? { let o = _accessor.offset(VTOFFSET.groupName.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var groupNameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.groupName.v) }
-  public var displayName: String? { let o = _accessor.offset(VTOFFSET.displayName.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var displayNameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.displayName.v) }
   public var inviterNpub: String? { let o = _accessor.offset(VTOFFSET.inviterNpub.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var inviterNpubSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.inviterNpub.v) }
-  public static func startPendingWelcomeRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
+  public static func startPendingWelcomeRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 3) }
   public static func add(idHex: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: idHex, at: VTOFFSET.idHex.p) }
   public static func add(groupName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: groupName, at: VTOFFSET.groupName.p) }
-  public static func add(displayName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayName, at: VTOFFSET.displayName.p) }
   public static func add(inviterNpub: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: inviterNpub, at: VTOFFSET.inviterNpub.p) }
   public static func endPendingWelcomeRow(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createPendingWelcomeRow(
     _ fbb: inout FlatBufferBuilder,
     idHexOffset idHex: Offset = Offset(),
     groupNameOffset groupName: Offset = Offset(),
-    displayNameOffset displayName: Offset = Offset(),
     inviterNpubOffset inviterNpub: Offset = Offset()
   ) -> Offset {
     let __start = nmp_marmot_PendingWelcomeRow.startPendingWelcomeRow(&fbb)
     nmp_marmot_PendingWelcomeRow.add(idHex: idHex, &fbb)
     nmp_marmot_PendingWelcomeRow.add(groupName: groupName, &fbb)
-    nmp_marmot_PendingWelcomeRow.add(displayName: displayName, &fbb)
     nmp_marmot_PendingWelcomeRow.add(inviterNpub: inviterNpub, &fbb)
     return nmp_marmot_PendingWelcomeRow.endPendingWelcomeRow(&fbb, start: __start)
   }
@@ -158,7 +138,6 @@ public struct nmp_marmot_PendingWelcomeRow: FlatBufferTable, FlatbuffersVectorIn
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.idHex.p, fieldName: "idHex", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.groupName.p, fieldName: "groupName", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.displayName.p, fieldName: "displayName", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.inviterNpub.p, fieldName: "inviterNpub", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
@@ -245,6 +224,7 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
 
 ///  One parked (deferred) op waiting for a peer's KP to arrive.
 ///  Mirrors `crate::projection::payload::PendingOpRow`.
+///  Shells format display copy from op_tag + missing_count (aim.md §2).
 public struct nmp_marmot_PendingOpRow: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
@@ -260,8 +240,7 @@ public struct nmp_marmot_PendingOpRow: FlatBufferTable, FlatbuffersVectorInitial
     case correlationId = 4
     case opTag = 6
     case missingCount = 8
-    case displayLabel = 10
-    case ageSecs = 12
+    case ageSecs = 10
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -271,14 +250,11 @@ public struct nmp_marmot_PendingOpRow: FlatBufferTable, FlatbuffersVectorInitial
   public var opTag: String? { let o = _accessor.offset(VTOFFSET.opTag.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var opTagSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.opTag.v) }
   public var missingCount: UInt32 { let o = _accessor.offset(VTOFFSET.missingCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
-  public var displayLabel: String? { let o = _accessor.offset(VTOFFSET.displayLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var displayLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.displayLabel.v) }
   public var ageSecs: UInt64 { let o = _accessor.offset(VTOFFSET.ageSecs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startPendingOpRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 5) }
+  public static func startPendingOpRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
   public static func add(correlationId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: correlationId, at: VTOFFSET.correlationId.p) }
   public static func add(opTag: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: opTag, at: VTOFFSET.opTag.p) }
   public static func add(missingCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: missingCount, def: 0, at: VTOFFSET.missingCount.p) }
-  public static func add(displayLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayLabel, at: VTOFFSET.displayLabel.p) }
   public static func add(ageSecs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: ageSecs, def: 0, at: VTOFFSET.ageSecs.p) }
   public static func endPendingOpRow(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createPendingOpRow(
@@ -286,14 +262,12 @@ public struct nmp_marmot_PendingOpRow: FlatBufferTable, FlatbuffersVectorInitial
     correlationIdOffset correlationId: Offset = Offset(),
     opTagOffset opTag: Offset = Offset(),
     missingCount: UInt32 = 0,
-    displayLabelOffset displayLabel: Offset = Offset(),
     ageSecs: UInt64 = 0
   ) -> Offset {
     let __start = nmp_marmot_PendingOpRow.startPendingOpRow(&fbb)
     nmp_marmot_PendingOpRow.add(correlationId: correlationId, &fbb)
     nmp_marmot_PendingOpRow.add(opTag: opTag, &fbb)
     nmp_marmot_PendingOpRow.add(missingCount: missingCount, &fbb)
-    nmp_marmot_PendingOpRow.add(displayLabel: displayLabel, &fbb)
     nmp_marmot_PendingOpRow.add(ageSecs: ageSecs, &fbb)
     return nmp_marmot_PendingOpRow.endPendingOpRow(&fbb, start: __start)
   }
@@ -303,7 +277,6 @@ public struct nmp_marmot_PendingOpRow: FlatBufferTable, FlatbuffersVectorInitial
     try _v.visit(field: VTOFFSET.correlationId.p, fieldName: "correlationId", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.opTag.p, fieldName: "opTag", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.missingCount.p, fieldName: "missingCount", required: false, type: UInt32.self)
-    try _v.visit(field: VTOFFSET.displayLabel.p, fieldName: "displayLabel", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.ageSecs.p, fieldName: "ageSecs", required: false, type: UInt64.self)
     _v.finish()
   }
@@ -387,13 +360,11 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     case pendingWelcomes = 8
     case keyPackage = 10
     case cachedKpPubkeys = 12
-    case hasInvitesChipLabel = 14
-    case invitesChipLabel = 16
-    case isRegistered = 18
-    case orphanedCommitCount = 20
-    case keyringUnavailable = 22
-    case pendingOps = 24
-    case lastOpError = 26
+    case isRegistered = 14
+    case orphanedCommitCount = 16
+    case keyringUnavailable = 18
+    case pendingOps = 20
+    case lastOpError = 22
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -403,23 +374,17 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
   public var pendingWelcomes: FlatbufferVector<nmp_marmot_PendingWelcomeRow> { return _accessor.vector(at: VTOFFSET.pendingWelcomes.v, byteSize: 4) }
   public var keyPackage: nmp_marmot_KeyPackageStatus? { let o = _accessor.offset(VTOFFSET.keyPackage.v); return o == 0 ? nil : nmp_marmot_KeyPackageStatus(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
   public var cachedKpPubkeys: FlatbufferVector<String?> { return _accessor.vector(at: VTOFFSET.cachedKpPubkeys.v, byteSize: 4) }
-  public var hasInvitesChipLabel: Bool { let o = _accessor.offset(VTOFFSET.hasInvitesChipLabel.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var invitesChipLabel: String? { let o = _accessor.offset(VTOFFSET.invitesChipLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var invitesChipLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.invitesChipLabel.v) }
   public var isRegistered: Bool { let o = _accessor.offset(VTOFFSET.isRegistered.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var orphanedCommitCount: UInt32 { let o = _accessor.offset(VTOFFSET.orphanedCommitCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var keyringUnavailable: Bool { let o = _accessor.offset(VTOFFSET.keyringUnavailable.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var pendingOps: FlatbufferVector<nmp_marmot_PendingOpRow> { return _accessor.vector(at: VTOFFSET.pendingOps.v, byteSize: 4) }
   public var lastOpError: nmp_marmot_LastOpError? { let o = _accessor.offset(VTOFFSET.lastOpError.v); return o == 0 ? nil : nmp_marmot_LastOpError(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startMarmotSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 12) }
+  public static func startMarmotSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
   public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 2, at: VTOFFSET.schemaVersion.p) }
   public static func addVectorOf(groups: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: groups, at: VTOFFSET.groups.p) }
   public static func addVectorOf(pendingWelcomes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pendingWelcomes, at: VTOFFSET.pendingWelcomes.p) }
   public static func add(keyPackage: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: keyPackage, at: VTOFFSET.keyPackage.p) }
   public static func addVectorOf(cachedKpPubkeys: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: cachedKpPubkeys, at: VTOFFSET.cachedKpPubkeys.p) }
-  public static func add(hasInvitesChipLabel: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasInvitesChipLabel, def: false,
-   at: VTOFFSET.hasInvitesChipLabel.p) }
-  public static func add(invitesChipLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: invitesChipLabel, at: VTOFFSET.invitesChipLabel.p) }
   public static func add(isRegistered: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isRegistered, def: false,
    at: VTOFFSET.isRegistered.p) }
   public static func add(orphanedCommitCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: orphanedCommitCount, def: 0, at: VTOFFSET.orphanedCommitCount.p) }
@@ -435,8 +400,6 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     pendingWelcomesVectorOffset pendingWelcomes: Offset = Offset(),
     keyPackageOffset keyPackage: Offset = Offset(),
     cachedKpPubkeysVectorOffset cachedKpPubkeys: Offset = Offset(),
-    hasInvitesChipLabel: Bool = false,
-    invitesChipLabelOffset invitesChipLabel: Offset = Offset(),
     isRegistered: Bool = false,
     orphanedCommitCount: UInt32 = 0,
     keyringUnavailable: Bool = false,
@@ -449,8 +412,6 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     nmp_marmot_MarmotSnapshot.addVectorOf(pendingWelcomes: pendingWelcomes, &fbb)
     nmp_marmot_MarmotSnapshot.add(keyPackage: keyPackage, &fbb)
     nmp_marmot_MarmotSnapshot.addVectorOf(cachedKpPubkeys: cachedKpPubkeys, &fbb)
-    nmp_marmot_MarmotSnapshot.add(hasInvitesChipLabel: hasInvitesChipLabel, &fbb)
-    nmp_marmot_MarmotSnapshot.add(invitesChipLabel: invitesChipLabel, &fbb)
     nmp_marmot_MarmotSnapshot.add(isRegistered: isRegistered, &fbb)
     nmp_marmot_MarmotSnapshot.add(orphanedCommitCount: orphanedCommitCount, &fbb)
     nmp_marmot_MarmotSnapshot.add(keyringUnavailable: keyringUnavailable, &fbb)
@@ -466,8 +427,6 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     try _v.visit(field: VTOFFSET.pendingWelcomes.p, fieldName: "pendingWelcomes", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_marmot_PendingWelcomeRow>, nmp_marmot_PendingWelcomeRow>>.self)
     try _v.visit(field: VTOFFSET.keyPackage.p, fieldName: "keyPackage", required: false, type: ForwardOffset<nmp_marmot_KeyPackageStatus>.self)
     try _v.visit(field: VTOFFSET.cachedKpPubkeys.p, fieldName: "cachedKpPubkeys", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
-    try _v.visit(field: VTOFFSET.hasInvitesChipLabel.p, fieldName: "hasInvitesChipLabel", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.invitesChipLabel.p, fieldName: "invitesChipLabel", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.isRegistered.p, fieldName: "isRegistered", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.orphanedCommitCount.p, fieldName: "orphanedCommitCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.keyringUnavailable.p, fieldName: "keyringUnavailable", required: false, type: Bool.self)

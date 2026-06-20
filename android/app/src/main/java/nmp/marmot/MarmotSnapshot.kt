@@ -80,40 +80,24 @@ class MarmotSnapshot : Table() {
         get() {
             val o = __offset(12); return if (o != 0) __vector_len(o) else 0
         }
-    val hasInvitesChipLabel : Boolean
+    val isRegistered : Boolean
         get() {
             val o = __offset(14)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
-    val invitesChipLabel : String?
-        get() {
-            val o = __offset(16)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val invitesChipLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
-    fun invitesChipLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
-    val isRegistered : Boolean
-        get() {
-            val o = __offset(18)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
-        }
     val orphanedCommitCount : UInt
         get() {
-            val o = __offset(20)
+            val o = __offset(16)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val keyringUnavailable : Boolean
         get() {
-            val o = __offset(22)
+            val o = __offset(18)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     fun pendingOps(j: Int) : nmp.marmot.PendingOpRow? = pendingOps(nmp.marmot.PendingOpRow(), j)
     fun pendingOps(obj: nmp.marmot.PendingOpRow, j: Int) : nmp.marmot.PendingOpRow? {
-        val o = __offset(24)
+        val o = __offset(20)
         return if (o != 0) {
             obj.__assign(__indirect(__vector(o) + j * 4), bb)
         } else {
@@ -122,11 +106,11 @@ class MarmotSnapshot : Table() {
     }
     val pendingOpsLength : Int
         get() {
-            val o = __offset(24); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(20); return if (o != 0) __vector_len(o) else 0
         }
     val lastOpError : nmp.marmot.LastOpError? get() = lastOpError(nmp.marmot.LastOpError())
     fun lastOpError(obj: nmp.marmot.LastOpError) : nmp.marmot.LastOpError? {
-        val o = __offset(26)
+        val o = __offset(22)
         return if (o != 0) {
             obj.__assign(__indirect(o + bb_pos), bb)
         } else {
@@ -141,12 +125,11 @@ class MarmotSnapshot : Table() {
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
         fun MarmotSnapshotBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "NMMS")
-        fun createMarmotSnapshot(builder: FlatBufferBuilder, schemaVersion: UInt, groupsOffset: Int, pendingWelcomesOffset: Int, keyPackageOffset: Int, cachedKpPubkeysOffset: Int, hasInvitesChipLabel: Boolean, invitesChipLabelOffset: Int, isRegistered: Boolean, orphanedCommitCount: UInt, keyringUnavailable: Boolean, pendingOpsOffset: Int, lastOpErrorOffset: Int) : Int {
-            builder.startTable(12)
+        fun createMarmotSnapshot(builder: FlatBufferBuilder, schemaVersion: UInt, groupsOffset: Int, pendingWelcomesOffset: Int, keyPackageOffset: Int, cachedKpPubkeysOffset: Int, isRegistered: Boolean, orphanedCommitCount: UInt, keyringUnavailable: Boolean, pendingOpsOffset: Int, lastOpErrorOffset: Int) : Int {
+            builder.startTable(10)
             addLastOpError(builder, lastOpErrorOffset)
             addPendingOps(builder, pendingOpsOffset)
             addOrphanedCommitCount(builder, orphanedCommitCount)
-            addInvitesChipLabel(builder, invitesChipLabelOffset)
             addCachedKpPubkeys(builder, cachedKpPubkeysOffset)
             addKeyPackage(builder, keyPackageOffset)
             addPendingWelcomes(builder, pendingWelcomesOffset)
@@ -154,10 +137,9 @@ class MarmotSnapshot : Table() {
             addSchemaVersion(builder, schemaVersion)
             addKeyringUnavailable(builder, keyringUnavailable)
             addIsRegistered(builder, isRegistered)
-            addHasInvitesChipLabel(builder, hasInvitesChipLabel)
             return endMarmotSnapshot(builder)
         }
-        fun startMarmotSnapshot(builder: FlatBufferBuilder) = builder.startTable(12)
+        fun startMarmotSnapshot(builder: FlatBufferBuilder) = builder.startTable(10)
         fun addSchemaVersion(builder: FlatBufferBuilder, schemaVersion: UInt) = builder.addInt(0, schemaVersion.toInt(), 2)
         fun addGroups(builder: FlatBufferBuilder, groups: Int) = builder.addOffset(1, groups, 0)
         fun createGroupsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
@@ -187,12 +169,10 @@ class MarmotSnapshot : Table() {
             return builder.endVector()
         }
         fun startCachedKpPubkeysVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addHasInvitesChipLabel(builder: FlatBufferBuilder, hasInvitesChipLabel: Boolean) = builder.addBoolean(5, hasInvitesChipLabel, false)
-        fun addInvitesChipLabel(builder: FlatBufferBuilder, invitesChipLabel: Int) = builder.addOffset(6, invitesChipLabel, 0)
-        fun addIsRegistered(builder: FlatBufferBuilder, isRegistered: Boolean) = builder.addBoolean(7, isRegistered, false)
-        fun addOrphanedCommitCount(builder: FlatBufferBuilder, orphanedCommitCount: UInt) = builder.addInt(8, orphanedCommitCount.toInt(), 0)
-        fun addKeyringUnavailable(builder: FlatBufferBuilder, keyringUnavailable: Boolean) = builder.addBoolean(9, keyringUnavailable, false)
-        fun addPendingOps(builder: FlatBufferBuilder, pendingOps: Int) = builder.addOffset(10, pendingOps, 0)
+        fun addIsRegistered(builder: FlatBufferBuilder, isRegistered: Boolean) = builder.addBoolean(5, isRegistered, false)
+        fun addOrphanedCommitCount(builder: FlatBufferBuilder, orphanedCommitCount: UInt) = builder.addInt(6, orphanedCommitCount.toInt(), 0)
+        fun addKeyringUnavailable(builder: FlatBufferBuilder, keyringUnavailable: Boolean) = builder.addBoolean(7, keyringUnavailable, false)
+        fun addPendingOps(builder: FlatBufferBuilder, pendingOps: Int) = builder.addOffset(8, pendingOps, 0)
         fun createPendingOpsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {
@@ -201,7 +181,7 @@ class MarmotSnapshot : Table() {
             return builder.endVector()
         }
         fun startPendingOpsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addLastOpError(builder: FlatBufferBuilder, lastOpError: Int) = builder.addOffset(11, lastOpError, 0)
+        fun addLastOpError(builder: FlatBufferBuilder, lastOpError: Int) = builder.addOffset(9, lastOpError, 0)
         fun endMarmotSnapshot(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

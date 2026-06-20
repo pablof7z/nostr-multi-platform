@@ -20,7 +20,6 @@
 
 pub mod action;
 pub mod deferred;
-pub mod display;
 pub mod handler;
 pub mod ops;
 pub mod payload;

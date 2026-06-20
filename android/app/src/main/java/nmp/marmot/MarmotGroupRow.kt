@@ -50,30 +50,8 @@ class MarmotGroupRow : Table() {
         }
     val nameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
     fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
-    val displayName : String?
-        get() {
-            val o = __offset(8)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
-    val initials : String?
-        get() {
-            val o = __offset(10)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val initialsAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun initialsInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     fun members(j: Int) : String? {
-        val o = __offset(12)
+        val o = __offset(8)
         return if (o != 0) {
             __string(__vector(o) + j * 4)
         } else {
@@ -82,31 +60,31 @@ class MarmotGroupRow : Table() {
     }
     val membersLength : Int
         get() {
-            val o = __offset(12); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(8); return if (o != 0) __vector_len(o) else 0
         }
     val memberCount : UInt
         get() {
-            val o = __offset(14)
+            val o = __offset(10)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val hasUnreadCount : Boolean
         get() {
-            val o = __offset(16)
+            val o = __offset(12)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val unreadCount : UInt
         get() {
-            val o = __offset(18)
+            val o = __offset(14)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val hasLastMsgAt : Boolean
         get() {
-            val o = __offset(20)
+            val o = __offset(16)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val lastMsgAt : ULong
         get() {
-            val o = __offset(22)
+            val o = __offset(18)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     companion object {
@@ -116,26 +94,22 @@ class MarmotGroupRow : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createMarmotGroupRow(builder: FlatBufferBuilder, idHexOffset: Int, nameOffset: Int, displayNameOffset: Int, initialsOffset: Int, membersOffset: Int, memberCount: UInt, hasUnreadCount: Boolean, unreadCount: UInt, hasLastMsgAt: Boolean, lastMsgAt: ULong) : Int {
-            builder.startTable(10)
+        fun createMarmotGroupRow(builder: FlatBufferBuilder, idHexOffset: Int, nameOffset: Int, membersOffset: Int, memberCount: UInt, hasUnreadCount: Boolean, unreadCount: UInt, hasLastMsgAt: Boolean, lastMsgAt: ULong) : Int {
+            builder.startTable(8)
             addLastMsgAt(builder, lastMsgAt)
             addUnreadCount(builder, unreadCount)
             addMemberCount(builder, memberCount)
             addMembers(builder, membersOffset)
-            addInitials(builder, initialsOffset)
-            addDisplayName(builder, displayNameOffset)
             addName(builder, nameOffset)
             addIdHex(builder, idHexOffset)
             addHasLastMsgAt(builder, hasLastMsgAt)
             addHasUnreadCount(builder, hasUnreadCount)
             return endMarmotGroupRow(builder)
         }
-        fun startMarmotGroupRow(builder: FlatBufferBuilder) = builder.startTable(10)
+        fun startMarmotGroupRow(builder: FlatBufferBuilder) = builder.startTable(8)
         fun addIdHex(builder: FlatBufferBuilder, idHex: Int) = builder.addOffset(0, idHex, 0)
         fun addName(builder: FlatBufferBuilder, name: Int) = builder.addOffset(1, name, 0)
-        fun addDisplayName(builder: FlatBufferBuilder, displayName: Int) = builder.addOffset(2, displayName, 0)
-        fun addInitials(builder: FlatBufferBuilder, initials: Int) = builder.addOffset(3, initials, 0)
-        fun addMembers(builder: FlatBufferBuilder, members: Int) = builder.addOffset(4, members, 0)
+        fun addMembers(builder: FlatBufferBuilder, members: Int) = builder.addOffset(2, members, 0)
         fun createMembersVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {
@@ -144,11 +118,11 @@ class MarmotGroupRow : Table() {
             return builder.endVector()
         }
         fun startMembersVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addMemberCount(builder: FlatBufferBuilder, memberCount: UInt) = builder.addInt(5, memberCount.toInt(), 0)
-        fun addHasUnreadCount(builder: FlatBufferBuilder, hasUnreadCount: Boolean) = builder.addBoolean(6, hasUnreadCount, false)
-        fun addUnreadCount(builder: FlatBufferBuilder, unreadCount: UInt) = builder.addInt(7, unreadCount.toInt(), 0)
-        fun addHasLastMsgAt(builder: FlatBufferBuilder, hasLastMsgAt: Boolean) = builder.addBoolean(8, hasLastMsgAt, false)
-        fun addLastMsgAt(builder: FlatBufferBuilder, lastMsgAt: ULong) = builder.addLong(9, lastMsgAt.toLong(), 0)
+        fun addMemberCount(builder: FlatBufferBuilder, memberCount: UInt) = builder.addInt(3, memberCount.toInt(), 0)
+        fun addHasUnreadCount(builder: FlatBufferBuilder, hasUnreadCount: Boolean) = builder.addBoolean(4, hasUnreadCount, false)
+        fun addUnreadCount(builder: FlatBufferBuilder, unreadCount: UInt) = builder.addInt(5, unreadCount.toInt(), 0)
+        fun addHasLastMsgAt(builder: FlatBufferBuilder, hasLastMsgAt: Boolean) = builder.addBoolean(6, hasLastMsgAt, false)
+        fun addLastMsgAt(builder: FlatBufferBuilder, lastMsgAt: ULong) = builder.addLong(7, lastMsgAt.toLong(), 0)
         fun endMarmotGroupRow(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o
