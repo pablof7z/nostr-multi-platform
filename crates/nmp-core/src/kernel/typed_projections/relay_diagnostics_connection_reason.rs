@@ -24,7 +24,7 @@ pub struct ConnectionReasonRow {
     /// Exact author total (>= `author_pubkeys.len()`). Zero when not applicable.
     pub author_total: u32,
     /// Pre-formatted kinds label (`"kind:0, kind:1"`). Non-empty for interest reasons only.
-    pub kinds_label: String,
+    pub kinds_label: String, // doctrine-allow: D27 — pending removal by #1677/#1678/#1680/#1681/#1682
     /// Hint origin event id (hex) when present.
     pub source_event_id: Option<String>,
 }
