@@ -69,13 +69,16 @@ impl SignerCapability {
 /// field. `package_name` is the APK id used for `PackageManager` lookups;
 /// `content_authority` is the optional ContentProvider fast-path namespace
 /// (`None` ⇒ Intent round-trip only).
+///
+/// Install-hint prose ("Install Amber for one-tap sign-in") is NOT stored here —
+/// that is UI copy, not signer identity (#1681). The shell formats its own hint
+/// from `display_label` (e.g. "Install {displayName} for one-tap sign-in").
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct AndroidSignerSpec {
     pub intent_scheme: &'static str,
     pub package_name: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_authority: Option<&'static str>,
-    pub install_hint: &'static str,
 }
 
 /// iOS detection mechanics for one signer app.
@@ -83,10 +86,12 @@ pub struct AndroidSignerSpec {
 /// `url_scheme` MUST appear in `Info.plist` `LSApplicationQueriesSchemes`
 /// (`UIApplication.canOpenURL` returns `false` for undeclared schemes) — the
 /// codegen emits that array from this field.
+///
+/// Install-hint prose is NOT stored here — that is UI copy, not signer
+/// identity (#1681). The shell formats its own hint from `display_label`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct IosSignerSpec {
     pub url_scheme: &'static str,
-    pub install_hint: &'static str,
 }
 
 /// One known external signer app — the unit of the catalog.
@@ -138,11 +143,9 @@ pub const KNOWN_SIGNER_APPS: &[KnownSignerApp] = &[
             intent_scheme: "nostrsigner",
             package_name: "com.greenart7c3.nostrsigner",
             content_authority: Some("com.greenart7c3.nostrsigner"),
-            install_hint: "Install Amber for one-tap sign-in",
         }),
         ios: Some(IosSignerSpec {
             url_scheme: "nostrsigner",
-            install_hint: "Install Amber for one-tap sign-in",
         }),
     },
     // Primal — registers `primal://` on both platforms and acts as a remote
@@ -155,11 +158,9 @@ pub const KNOWN_SIGNER_APPS: &[KnownSignerApp] = &[
             intent_scheme: "primal",
             package_name: "net.primal.android",
             content_authority: None,
-            install_hint: "Install Primal for one-tap sign-in",
         }),
         ios: Some(IosSignerSpec {
             url_scheme: "primal",
-            install_hint: "Install Primal for one-tap sign-in",
         }),
     },
     // Nostr Connect — the generic NIP-46 bridge reached via the
@@ -172,7 +173,6 @@ pub const KNOWN_SIGNER_APPS: &[KnownSignerApp] = &[
         android: None,
         ios: Some(IosSignerSpec {
             url_scheme: "nostrconnect",
-            install_hint: "Connect a remote signer",
         }),
     },
 ];
@@ -214,11 +214,9 @@ mod tests {
             if let Some(android) = app.android {
                 assert!(!android.intent_scheme.is_empty());
                 assert!(!android.package_name.is_empty());
-                assert!(!android.install_hint.is_empty());
             }
             if let Some(ios) = app.ios {
                 assert!(!ios.url_scheme.is_empty());
-                assert!(!ios.install_hint.is_empty());
             }
         }
     }

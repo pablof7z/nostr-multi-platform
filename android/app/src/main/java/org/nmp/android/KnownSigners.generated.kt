@@ -25,13 +25,11 @@ val KNOWN_NOSTR_SIGNERS: List<NostrSignerInfo> = listOf(
         intentScheme = "nostrsigner",
         contentAuthority = "com.greenart7c3.nostrsigner",
         packageName = "com.greenart7c3.nostrsigner",
-        installHint = "Install Amber for one-tap sign-in",
     ),
     NostrSignerInfo(
         displayName = "Primal",
         intentScheme = "primal",
         contentAuthority = null,
         packageName = "net.primal.android",
-        installHint = "Install Primal for one-tap sign-in",
     ),
 )
