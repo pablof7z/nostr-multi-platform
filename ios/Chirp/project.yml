@@ -29,6 +29,20 @@ targets:
         UILaunchScreen: {}
         CFBundleDisplayName: Chirp7z
         UIApplicationSupportsIndirectInputEvents: true
+        # App Store upload requires an explicit icon name and orientation set
+        # (validation errors 90713 / 90474). Declared here so xcodegen does not
+        # strip them from Info.plist on the next `xcodegen generate`.
+        CFBundleIconName: AppIcon
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         LSApplicationQueriesSchemes:
           - nostrsigner
           - primal
