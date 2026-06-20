@@ -1,7 +1,13 @@
 # ADR-0015 — M6 Signer trait, IdentityModule, and crate boundary
 
 **Date:** 2026-05-18
-**Status:** Accepted (M6 task #43, written before sessions-research synthesis landed; subject to re-evaluation when `docs/research/sessions/synthesis.md` is published).
+**Status:** Accepted (M6 task #43). The durable decisions below are live. The
+provisional synthesis-reconciliation log and the kind:3 auto-rewire scaffolding
+that originally accompanied this ADR have been removed — both were overtaken by
+later work: signer persistence is now ADR-0050's scope, and active-account
+rewire is handled by the `SwitchActive` actor command, not an observer.
+`SignerOp` has since moved into the `nmp-signer-iface` crate so `nmp-core` can
+name it without depending on `nmp-signers`.
 **Doctrines invoked:** D0 (no app nouns in `nmp-core`), D3 (outbox automatic), D4 (single writer per fact), D6 (errors never cross FFI), D7 (capabilities report; never decide), D8 (reactivity contract).
 
 ## Context
@@ -76,14 +82,15 @@ impl AccountManager {
 
 `add_account` runs the applesauce `SignerMismatchError` post-condition: `sign(test_template).pubkey == signer.pubkey()` before the account is accepted. Catches malicious / buggy signers that mutate the event.
 
-### kind:3 auto-rewire
+### Active-account rewire
 
-When the active account flips:
-1. Kernel closes all subscriptions tagged with the prior active account.
-2. Kernel re-derives interest set against the new active account's `follows` (kind:3) and `relayList` (kind:10002).
-3. New subscriptions open via the existing planner.
-
-Implementation: `AccountManager` exposes an `ActiveChangeObserver` callback hook. This commit adds `Kind3RewireObserver`, which stages active-account rewire requests for a future kernel integration to drain and translate into kind:3 / kind:10002 subscription rebuilds.
+When the active account flips, the kernel closes subscriptions tagged with the
+prior account, re-derives the interest set against the new account's `follows`
+(kind:3) and `relayList` (kind:10002), and opens new subscriptions via the
+planner. `AccountManager` exposes an `ActiveChangeObserver` callback hook for
+this. (As built, the rewire is driven directly by the `SwitchActive` actor
+command in `nmp-core`; the original provisional `Kind3RewireObserver` staging
+scaffold was deleted as dead production code.)
 
 ### bunker:// URL parsing
 
@@ -122,140 +129,22 @@ The parser is **the** target of the 1000-URI fuzz suite (`fuzz/bunker_uri.rs`), 
 - **NIP-46 reconnect/relay-switching** is not implemented in this commit. The 2026-05-18 scope adjustments call out NIP-46 reconnect as M6 work; the bunker:// **parsing** (the M6 first-class onboarding path) lands here, but the kernel-relay-pool integration for the long-lived 24133 subscription will follow when the live NIP-46 demo is wired.
 - **`KeychainCapability` is not wired here** — M6 plan calls for real iOS Keychain via `keyring-rs`; this commit only lands storage-shaped signer payloads.
 
-## Synthesis reconciliation (post-`docs/research/sessions/synthesis.md`)
+## Durable outcomes
 
-The synthesis landed mid-implementation (commit `de9e7b4`).  Where the
-synthesis recommendations align with the design above, no change is needed.
-Where they diverge, this section names the divergence + rationale.
-
-### Adopted from synthesis
-
-1. **Id-precompute post-condition** (§1.1c) — `AccountManager::verify_signer`
-   now pre-computes the canonical event id via `nostr::EventBuilder` and
-   compares to `signed.id`.  Catches *any* signer-side mutation
-   (content, tags, kind, created_at, tag ordering).  Test `t3b` exercises a
-   tag-adding mutating signer and confirms the check fires.
-
-2. **Bunker pubkey strict-hex validation** (§1.7) — `parse_bunker_uri`
-   rejects non-hex / wrong-length pubkeys (matches applesauce, stricter than
-   NDK).  Fuzz harness `bunker_uri_fuzz.rs` enforces this on 1000+ inputs.
-
-3. **`bunker://` secret persisted** (§1.7) — `Nip46Payload.secret: Option<String>`.
-
-4. **Cached remote-user pubkey on `Nip46Payload`** (§1.7) — enables
-   synchronous `pubkey()` on restore without a re-handshake (also matches
-   applesauce `0867a502`).
-
-5. **Sync `pubkey()` despite synthesis pushback** — synthesis §1.1c argues
-   "async only" for D6.  D6 is about *errors not crossing FFI as exceptions*,
-   not sync-vs-async.  A synchronous, infallible `pubkey()` (only callable
-   after construction completes the handshake) carries no error to cross FFI
-   and is the only design that satisfies D8's hot-path constraint
-   (per-event allocation MUST be linear in active-view count, not in
-   per-active-account async-state-machine size).  Applesauce caches the
-   pubkey for exactly this reason (`extension-signer.ts` commit `0867a502`).
-   See "Divergence from synthesis" below.
-
-### Adopted with adjustment
-
-6. **`AccountId` == pubkey (one account per pubkey)** — PD-004 (resolved)
-   made `IdentityId = pubkey_hex` **permanent**; the ULID rekey is
-   **cancelled** and the applesauce dual-account-per-pubkey model is
-   rejected.  Same nsec = same account: `AccountManager::add` is an
-   idempotent no-op for a known pubkey (at most a future relay-policy
-   merge), never a second slot.
-
-7. **Extend `IdentityError`** (§1.1) — `nmp-core::substrate::identity::IdentityError`
-   currently has 2 variants.  Our `SignerError` (in `nmp-signers`) already
-   covers `Timeout`, `NotReady`, `Unsupported`, `Mismatch` — the additional
-   names the synthesis wants (`SignerPubkeyMismatch`, `SignerModifiedEvent`)
-   are captured by `SignerError::Mismatch` with descriptive messages.  The
-   `IdentityError` extension in `nmp-core` is a separate task because it
-   touches the existing `IdentityModule` trait and would expand the change
-   surface beyond this commit.  **Filed as M6 follow-up**: ext-identityerror.
-
-### Divergence from synthesis (with rationale)
-
-- **Async trait surface** — synthesis §1.1c mandates "all methods async,
-  return BoxFuture."  We use sync `pubkey()` + `SignerOp<T>` thunks for
-  fallible ops.  Rationale: the kernel actor is `std::sync::mpsc` based; we
-  do not have Tokio in the workspace, and adding it for the signer path
-  would change the runtime model of every actor message.  `SignerOp<T>`
-  satisfies the synthesis intent (no blocking the actor on a remote
-  round-trip) without the runtime cost.  If a future signer kind genuinely
-  needs `async fn` ergonomics, we add an `AsyncSignerAdapter` rather than
-  retrofit the whole trait.
-
-- **Bunker parser lives in `nmp-signers`, not `nmp-core`** — synthesis §1.7
-  recommends `nmp-core`.  Per D0, signer-onboarding is policy/capability —
-  the parser belongs with the implementation it serves.  Both placements
-  work; the parser is a pure function and re-locating it is a 5-minute
-  mechanical move if a reviewer disagrees.  Flagging this for the codex
-  post-merge review.
-
-- **No `IAccount` shape adoption beyond AccountManager** — synthesis §1.2
-  proposes a full `AccountRecord { id, pubkey, namespace, descriptor,
-  display_name, last_active, created_at }` for persistence.  The current
-  `AccountManager` keeps signers + active in memory only; persistence is
-  intentionally deferred to a separate commit because it touches
-  `KeyringCapability` (which doesn't have a real impl yet) and the LMDB
-  schema (M3 phase 2).  The current minimal model + `SignerPayload`
-  serialization is enough for the M6 demo (paste nsec + paste bunker +
-  generate-new flow on iOS with in-memory + ephemeral keychain stub) and
-  forward-compatible with the `AccountRecord` shape — adding ULID id +
-  metadata fields is additive.
-
-- **NIP-07 wasm-stub** — synthesis §1.8 explicitly defers web post-v1.
-  Our impl agrees and provides a compile-correct stub today so the
-  identifying type + payload shape are already stable.
-
-### Codex synthesis correction (post-`de9e7b4`, addressed here)
-
-The coordinator forwarded a codex correction on `synthesis.md`:
-
-> **AccountRecord MUST split into AccountPublic (LMDB) + AccountSecret (Keyring).**  Putting display_name + last_active in Keyring while ALSO writing them to LMDB violates D4.
-
-This is forward-looking guidance for the *persistence layer*.  The current
-landing has **no persistence yet** — `AccountManager` is purely in-memory.
-Keyring + LMDB persistence is a separate task (depends on
-`KeychainCapability` real impl + M3 LMDB schema extension, neither in
-scope here).
-
-When persistence lands the schema will be:
-
-- **`AccountPublic`** in LMDB (`pubkey`, `display_name`, `last_active`,
-  `created_at`, `signer_kind`, `signer_descriptor`).  LMDB is the sole
-  writer of all mutable public metadata per D4.
-- **`AccountSecret`** in Keyring (NIP-49-encrypted nsec OR bunker
-  `local_signer.private_key` + bunker URI metadata).  Opaque to the
-  capability; nmp-signers serialises the blob.
-- Linked by `AccountId` (== `pubkey_hex`, permanent per PD-004).
-
-The current `SignerPayload` is already shaped to slot into `AccountSecret`
-as the opaque blob — it carries only secret-bearing fields, no display
-metadata, no timestamps.  When the persistence task lands the split is
-additive; no rewrite needed.
-
-Other synthesis corrections from the same coordinator message
-(account-bootstrap uses NIP-77 from day one; drop `ListAccounts`; defer
-`RenameAccount` to M8; bunker-secret divergence noted in NDK direction)
-are forward-looking and consistent with the current landing — no
-current-commit change required.
-
-### Open follow-ups (for orchestrator)
-
-- ~~**PD-004 candidate**: switch `IdentityId` from `pubkey_hex` to ULID
-  before M8.~~  **Resolved (PD-004): `pubkey_hex` is permanent; ULID rekey
-  cancelled — one account per pubkey, applesauce dual-account model
-  rejected.**
-- **`IdentityError` extension** in `nmp-core` to add per-synthesis-§1.1
-  variants — one-file diff, deferred to keep this commit focused.
-- **NIP-46 `switch_relays` extension** — synthesis §1.7 wants it day-one.
-  The kernel side will own the actual relay-pool re-bind in the same commit
-  that wires the live RPC subscription.
-- **Keyring persistence** — `LocalPayload::Raw(hex)` and
-  `LocalPayload::Ncryptsec(s)` are storage-form-ready; the real iOS
-  Keychain backend lands with `KeychainCapability` (M6 plan §1).
+- **`IdentityId == pubkey_hex`, permanent (PD-004).** Same nsec = same account:
+  `AccountManager::add` is an idempotent no-op for a known pubkey, never a
+  second slot. The ULID rekey and the applesauce dual-account-per-pubkey model
+  are rejected.
+- **Signer persistence is out of scope for this ADR.** When this ADR landed
+  `AccountManager` was in-memory only; the durable signer-secret / public-record
+  split and the keyring/LMDB storage schema are owned by ADR-0050 and the
+  capability-port work, not here. `SignerPayload` is shaped to slot into an
+  opaque secret blob (secret-bearing fields only, no display metadata).
+- **Sync `pubkey()` + `SignerOp` thunk, not an async trait.** The kernel actor
+  is `std::sync::mpsc` based with no Tokio; `SignerOp` lets remote signers
+  resolve without blocking the actor and without pulling an executor into the
+  kernel. `SignerOp` now lives in `nmp-signer-iface` so `nmp-core` can name it
+  across the D0 boundary.
 
 ## Related
 

@@ -1,9 +1,20 @@
 # ADR-0026: Signer NIP-44 seal seam — `RemoteSignerHandle` gains `nip44_encrypt` / `nip44_decrypt`
 
-- Status: Implemented
+- Status: Implemented — **superseded-in-part by ADR-0050 §D5**.
 - Date: 2026-05-21
 - Supersedes / amends: none
+- Superseded-in-part by: ADR-0050 §D5. The two trait verbs `nip44_encrypt` /
+  `nip44_decrypt` introduced here **survive** and are live at
+  `crates/nmp-core/src/remote_signer.rs:70,77`. What ADR-0050 §D5 **deleted** is
+  the seal-*execution* model that was later built on top of them — the
+  `SignerForSeal` resolver (`RemoteSignerForSeal` adapter,
+  `gift_wrap_with_signer`, the per-invocation driver thread). `nmp-nip59`
+  reduced to pure functions; gift-wrap is now a continuation chain through the
+  signer-session capability port. The forward-facing "Phase 2.5 / Phase 3 seal
+  execution" wording below describes that deleted model and is retained only as
+  historical context.
 - Related: ADR-0015 (M6 signer design), ADR-0025 (Marmot bespoke-FFI cluster),
+  ADR-0050 (signer-session capability port — the as-built seal model),
   Phase 1 of the NIP-17 DM stack (`feat(nip17): signer-access seam for
   gift-wrapped DMs`, PR #122)
 
@@ -79,8 +90,10 @@ migration of it) must obtain encryption capability **only** through this seam �
 identity state. It must never read `NmpApp::active_local_nsec` or
 `mls_local_nsec`. Reading a raw nsec would (a) exfiltrate key material out of
 the signer boundary and (b) still exclude bunker users, who have no local nsec
-at all. This constraint is forward-facing: it governs the Phase 2.5/Phase 3
-migration of the `dm.rs` actor arm onto this seam.
+at all. The no-raw-nsec constraint still holds. (The specific "Phase 2.5/Phase 3
+migration of the `dm.rs` actor arm onto this seam" it described is historical:
+ADR-0050 §D5 deleted the `SignerForSeal` execution model and re-routed seal
+encryption/signing through the signer-session capability port instead.)
 
 ### `nmp_nip59::gift_wrap` stays a local-keys-only primitive
 
@@ -114,12 +127,17 @@ by this ADR.
   (so plumbing tests behave like a real signer).
 
 The actor `dm.rs` arm is **not** migrated in this PR — that file lands with
-Phase 1 (PR #122) and its migration onto this seam is Phase 3.
+Phase 1 (PR #122). (Its eventual migration was originally scoped as "Phase 3";
+in the as-built history that migration was subsumed by ADR-0050 §D5, which
+replaced the `SignerForSeal` seal-execution model with the capability-port
+continuation chain.)
 
 ## Consequences
 
 - Bunker (NIP-46) accounts become *capable* of building a NIP-17 seal once the
-  Phase 3 `dm.rs` migration consumes the seam. This ADR only builds the seam.
+  DM send path consumes the seam. (This ADR only built the seam; the seal
+  *execution* is the as-built capability-port chain from ADR-0050 §D5, not the
+  "Phase 3 `dm.rs` migration" originally named here.)
 - Every `RemoteSignerHandle` implementor must now provide `nip44_encrypt` /
   `nip44_decrypt`; the methods are required (no default). A default returning
   `Err` would silently mask a missed impl on a future signer kind.
