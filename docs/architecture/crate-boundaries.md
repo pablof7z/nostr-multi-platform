@@ -227,11 +227,15 @@ in the leaf app's Rust crate and is injected by app-owned FFI.
 
 `nmp-ffi`, `nmp-android-ffi`, and `nmp-wasm` are delivery surfaces. They own ABI
 shape, panic guards, callbacks, lifecycle handles, and platform-specific bridge
-mechanics. They do not own business policy.
+mechanics. They do not own business policy, app defaults, or example-app
+namespaces unless they are explicitly app-owned delivery crates.
 
-The C-ABI surface is frozen by CI. Net-new `nmp_app_*` symbols require an ADR
-or an accepted GitHub issue that explicitly explains why the generic action,
-projection, or capability seam is insufficient.
+The pre-v1 ABI surface is governed, not compatibility-frozen. Net-new
+`nmp_app_*` symbols require an ADR or an accepted GitHub issue that explicitly
+explains why the generic action, projection, or capability seam is insufficient.
+Renames and deletions that collapse legacy wrappers, dead parameters, app-named
+generic surfaces, or duplicate paths are preferred over compatibility aliases.
+Temporary retention requires a staged GitHub issue with a deletion gate.
 
 ---
 

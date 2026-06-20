@@ -36,10 +36,10 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 | `type` wire tag | Rust variant | Payload fields | Notes |
 |---|---|---|---|
 | `"hello"` | `Hello(ClientHello)` | `app_id: String`, `platform: String`, `protocol_version: u16` | **Host convention:** send before `Start`. The runtime enforces no ordering — `Start` without a prior `Hello` succeeds (`runtime.rs:185-223`). Protocol version must be `1`; mismatch returns `WorkerEvent::Error` with `code = "protocol_mismatch"`. |
-| `"start"` | `Start(StartConfig)` | `app_id: String`, `relays: Vec<String>` (default: Chirp defaults), `relay_bootstrap: Vec<{url, role}>` (default: Chirp defaults), `database_name: String`, `correlation_id: String` | Starts the `KernelReducer`, spawns relay drivers (wasm32 only). |
+| `"start"` | `Start(StartConfig)` | `app_id: String`, `relays: Vec<String>`, `relay_bootstrap: Vec<{url, role}>`, `database_name: String`, `correlation_id: String` | Starts the `KernelReducer`, spawns relay drivers (wasm32 only). Relay/bootstrap input is explicit host policy; the framework has no app-default fallback. |
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
 | `"dispatch"` | `Dispatch(ActionDispatch)` | `action_type: String`, `payload: Value`, `correlation_id: String` | Generic kernel-namespaced dispatch. Routes `nmp.kernel.*` actions through `KernelReducer::reduce`. App-namespaced writes not routed through the sync path (see §3). |
-| `"chirp_action"` | `AppAction(AppActionDispatch)` | `action: AppAction`, `correlation_id: String` | **Note:** wire tag is `"chirp_action"` — a residual Chirp-ism flagged for future rename (ADR-0047). On the sync path this always returns `CapabilityFailure`; use `dispatch_app_action_async` instead (§3). |
+| `"app_action"` | `AppAction(AppActionDispatch)` | `action: AppAction`, `correlation_id: String` | Framework-neutral app action tag. On the sync path this always returns `CapabilityFailure`; use `dispatch_app_action_async` instead (§3). |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
 | `"set_signer"` | `SetSigner(SetSigner)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String` | Install a signer. Only `kind = "nip07"` is wired. `pubkey_hex` is the result of `await window.nostr.getPublicKey()` — the host completes the async handshake before sending this request. |
 
@@ -133,7 +133,7 @@ dispatch_app_action_async(request_json: string): Promise<string>
 ```
 
 Accepts a JSON-serialised `AppActionDispatch` (the inner struct from
-`WorkerRequest::AppAction`, without the outer `"type":"chirp_action"` wrapper).
+`WorkerRequest::AppAction`, without the outer `"type":"app_action"` wrapper).
 Returns a `Promise` resolving to a JSON-serialised `WorkerEvent` —
 `ActionAccepted` on success or `CapabilityFailure` for every honest failure mode.
 Promise rejects only on invalid `request_json` (programmer error).
@@ -148,12 +148,19 @@ changing the synchronous contract of `handle_json`.
 Source: `crates/nmp-wasm/src/protocol.rs` lines 97–116.
 Serialised with `"action"` tag (`serde(tag = "action", rename_all = "snake_case")`).
 
+Current web preview builds return `CapabilityFailure` with reason prefix
+`publish_not_supported_in_web_preview` for every app-level write before any
+NIP-07 signing step. The runtime does this because the wasm composition root has
+no real `Nip65OutboxResolver`; accepting a write would report success while
+publishing to zero relays. The table below documents the compiled action
+mapping behind that honest-disable gate.
+
 | `action` | Payload fields | Notes |
 |---|---|---|
-| `"publish_note"` | `content: String`, `reply_to_id?: String` | Maps to `nmp.publish / PublishRaw { kind: 1 }`. `reply_to_id` is accepted in the struct; on the async path a non-null value returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind: nmp.publish.reply` — replies are not yet wired. |
-| `"react"` | `target_event_id: String`, `reaction?: String` (default `"+"`) | Maps to `nmp.nip25.react`. **Not wired on the async path:** `dispatch_app_action_async` returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind` (`publish_path.rs:165-171`). |
-| `"follow"` | `pubkey: String` | Maps to `nmp.follow`. **Not wired on the async path:** returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind`. |
-| `"unfollow"` | `pubkey: String` | Maps to `nmp.unfollow`. **Not wired on the async path:** returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind`. |
+| `"publish_note"` | `content: String`, `reply_to_id?: String` | Maps to `nmp.publish / PublishRaw { kind: 1 }`. `reply_to_id` is consumed by the async publish path to build NIP-10 tags from the kernel store; absent or non-kind:1 parents fail closed with `reply_target_unknown`. |
+| `"react"` | `target_event_id: String`, `reaction?: String` (default `"+"`) | Maps to `nmp.nip25.react` and validates a 64-hex target event id before building the kind:7 draft. |
+| `"follow"` | `pubkey: String` | Maps to `nmp.follow`; requires the active account kind:3 contact list before building the replacement event. |
+| `"unfollow"` | `pubkey: String` | Maps to `nmp.unfollow`; requires the active account kind:3 contact list before building the replacement event. |
 
 ---
 
@@ -234,21 +241,14 @@ work across both surfaces.
 
 ## 7. Follow-on work (not yet shipped)
 
-- **React / Follow / Unfollow + reply wiring on the async path.** The async
-  `dispatch_app_action_async` entrypoint currently wires `PublishNote` (kind:1,
-  no reply) only. `React`, `Follow`, `Unfollow`, and `PublishNote` with a non-null
-  `reply_to_id` all return `CapabilityFailure` with reason
-  `publish_path_not_wired_for_kind`. Each variant needs kind-specific tag
-  construction (NIP-25 `k` tag for React, kind:3 follow-set merging for
-  Follow/Unfollow, NIP-10 reply tags for replies) before it can use the same
-  publish path. This is the largest unshipped async-write piece; tracked in
-  the Chirp-isms issue (see `"chirp_action"` rename below).
+- **Web publish enablement.** `dispatch_app_action_async` currently returns
+  `CapabilityFailure` with reason prefix `publish_not_supported_in_web_preview`
+  for every app-level write because the wasm runtime lacks a real
+  `Nip65OutboxResolver`. The `PublishNote`, reply, React, Follow, and Unfollow
+  builders are compiled and tested behind that gate; enabling writes means
+  installing the real composition root and removing the honest-disable gate.
 - **IndexedDB store.** The kernel runs in memory; state resets on page reload.
   An IndexedDB replay-log adapter feeding explicit events into the kernel is
   unimplemented.
 - **NIP-46 (bunker) signer on wasm.** `SetSigner` only accepts `kind = "nip07"`.
   A wasm NIP-46 transport is a future Stage 3c follow-up.
-- **`"chirp_action"` wire tag rename.** The `WorkerRequest::AppAction` variant
-  serialises as `"chirp_action"` — a residual Chirp-ism. Rename to
-  `"app_action"` (or a framework-namespaced equivalent) in a future
-  breaking-wire-version bump. Tracked with other Chirp-isms in issue https://github.com/pablof7z/nostr-multi-platform/issues/1125.
