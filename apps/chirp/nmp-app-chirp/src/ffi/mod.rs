@@ -59,6 +59,7 @@
 mod actions;
 mod create_account;
 mod declared_projections;
+mod group;
 mod handle;
 mod helpers;
 #[cfg(feature = "marmot")]
@@ -86,10 +87,13 @@ pub use interest_feed::{
     nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed,
 };
-pub use register::{
+pub use group::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
+    nmp_app_chirp_register_group_chat,
+};
+pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat, NmpRegisterStatus,
+    NmpRegisterStatus,
 };
 pub use relay_seeding::{nmp_app_chirp_seed_default_relays, nmp_app_chirp_seed_relays_from_json};
 pub use snapshot::nmp_app_chirp_unregister;
