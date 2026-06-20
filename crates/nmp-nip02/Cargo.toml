@@ -10,27 +10,24 @@ description = "NIP-02 follow-list actions and projections for NMP apps."
 crate-type = ["rlib"]
 
 [dependencies]
-# `nmp-core` supplies the `ActionModule` trait this crate's modules implement,
-# the `ActorCommand` variants the executors enqueue (`React`, `Follow`,
-# `Unfollow` — kept generic in core because the actor owns the kind:3/kind:7
-# build + sign step on its thread per D7), the `KernelEvent` /
-# `KernelEventObserver` ingest seam the `FollowListProjection` plugs into,
-# and the app-neutral `ActionRegistrar` seam `register_actions` calls.
+# `nmp-core` supplies the `ActionModule` / `ActionRegistrar` traits, the
+# `ActorCommand` variants (`Follow`, `Unfollow`, `OpenInterest`,
+# `CloseInterest` — kept generic in core per D0/D7), the substrate seams
+# (`HostCapabilities`, `IdentityChangeRegistrar`, `SnapshotProjectionRegistrar`,
+# `ContactsLookup`) the `register_follow_state_runtime` entry point uses, and
+# the `ActiveAccountSlot` the `FollowListProjection` reads.
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-nip25 = { path = "../nmp-nip25" }
-# `nostr` supplies `PublicKey::parse` + `ToBech32` for the npub display
-# helpers the `FollowListProjection` uses to pre-format follow rows for the
-# host shell. Only `std` is needed — no crypto features (NIP-44 / NIP-59) are
-# required here, in contrast to `nmp-nip17` which seals/unseals gift-wraps.
-nostr = { workspace = true, features = ["std"] }
 # Typed FlatBuffers codec for the `nmp.follow_list` snapshot sidecar (ADR-0037).
 flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-# Brings in `nmp_app_new` / `nmp_app_free` so the integration tests can
-# exercise `register_actions` end-to-end against a real `NmpApp` — same
+# Brings in `nmp_app_new` / `nmp_app_free` and `TestContactsCache` so the
+# integration tests can exercise `register_follow_state_runtime` and
+# `FollowListProjection` end-to-end against a real `NmpApp` — same
 # pattern the other `nmp-nip*` crates use.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+nostr = { workspace = true, features = ["std"] }
