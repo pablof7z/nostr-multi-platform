@@ -97,6 +97,7 @@ pub struct RepostRecord {
     pub author: String,
     pub created_at: u64,
     pub target_event_id: Option<String>,
+    pub target_kind: Option<u32>,
     pub embedded_event: Option<EmbeddedEvent>,
 }
 
@@ -114,12 +115,15 @@ pub fn try_from_kernel_event(event: &KernelEvent) -> Option<RepostRecord> {
     let embedded_event = parse_embedded_event(&event.content);
     let target_event_id = first_event_tag(&event.tags)
         .or_else(|| embedded_event.as_ref().map(|inner| inner.id.clone()));
+    let target_kind =
+        first_kind_tag(&event.tags).or_else(|| embedded_event.as_ref().map(|inner| inner.kind));
 
     Some(RepostRecord {
         event_id: event.id.clone(),
         author: event.author.clone(),
         created_at: event.created_at,
         target_event_id,
+        target_kind,
         embedded_event,
     })
 }
@@ -155,6 +159,16 @@ fn first_event_tag(tags: &[Vec<String>]) -> Option<String> {
     tags.iter().find_map(|tag| {
         if tag.first().is_some_and(|name| name == "e") {
             tag.get(1).filter(|id| !id.is_empty()).cloned()
+        } else {
+            None
+        }
+    })
+}
+
+fn first_kind_tag(tags: &[Vec<String>]) -> Option<u32> {
+    tags.iter().find_map(|tag| {
+        if tag.first().is_some_and(|name| name == "k") {
+            tag.get(1).and_then(|raw| raw.parse::<u32>().ok())
         } else {
             None
         }
@@ -237,11 +251,15 @@ mod tests {
 
     #[test]
     fn decodes_generic_repost_with_event_tag_only() {
-        let record =
-            try_from_kernel_event(&event(KIND_GENERIC_REPOST, "", vec![vec!["e", "target"]]))
-                .unwrap();
+        let record = try_from_kernel_event(&event(
+            KIND_GENERIC_REPOST,
+            "",
+            vec![vec!["e", "target"], vec!["k", "20"]],
+        ))
+        .unwrap();
 
         assert_eq!(record.target_event_id.as_deref(), Some("target"));
+        assert_eq!(record.target_kind, Some(20));
         assert!(record.embedded_event.is_none());
     }
 
@@ -260,6 +278,7 @@ mod tests {
         let inner = record.embedded_event.as_ref().unwrap();
 
         assert_eq!(record.target_event_id.as_deref(), Some("inner"));
+        assert_eq!(record.target_kind, Some(1));
         assert_eq!(inner.author, "bob");
         assert_eq!(inner.kind, 1);
         assert_eq!(inner.tags, vec![vec!["p".to_string(), "alice".to_string()]]);

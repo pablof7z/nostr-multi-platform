@@ -180,9 +180,9 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     let viewer = reducer.borrow().active_account_pubkey().unwrap_or_default();
     let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup);
 
-    // 6. Register the NIP-01 observer adapter (kind:1/6 admission, NIP-09
-    //    removal, and active-account suppression). The generic engine remains
-    //    policy-free.
+    // 6. Register the NIP-01 observer adapter (primary kind:1 plus derived
+    //    kind:6 wrapper admission, NIP-09 removal, and active-account
+    //    suppression). The generic engine remains policy-free.
     let suppression: Arc<dyn SuppressionLookup> = mute.clone();
     let observer = op_feed_observer(Arc::clone(&engine), event_lookup_for_observer, suppression);
     reducer

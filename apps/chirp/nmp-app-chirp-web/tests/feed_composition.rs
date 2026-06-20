@@ -155,7 +155,8 @@ fn wired_path_follow_feed_populates_snapshot() {
 fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
     // Regression guard for the wasm composition substrate wiring:
     //   1. web installs the same ContactsCache as kernel reader + kind:3 parser
-    //   2. host opens the contact-feed interest for kinds 1/6
+    //   2. host opens the contact-feed interest for primary kind 1, with
+    //      kind 6 derived by the NIP-18 acquisition helper
     //   3. the active account's kind:3 arrives through the projection chokepoint
     //   4. the kernel's follow-feed author set expands from self-only to include
     //      BOB, so the wasm relay pool can subscribe to BOB's notes.

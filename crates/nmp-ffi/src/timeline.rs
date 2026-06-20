@@ -20,12 +20,12 @@ use std::ffi::{c_char, c_int};
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
 /// interest. The generic replacement for `nmp_app_open_author` /
 /// `nmp_app_open_thread` / the deleted `nmp_app_open_firehose_tag`: the app
-/// passes a verbatim NIP-01 REQ filter, so the `{1,6}` kind decisions (and the
-/// hashtag `#t` filter the firehose verb hardcoded) live in the app
-/// (D0-correct), not in the substrate.
+/// or protocol composition layer passes a verbatim NIP-01 REQ filter after it
+/// has compiled any primary-kind feed declaration into acquisition kinds. The
+/// substrate owns no app feed-kind policy; it only parses and refcounts the
+/// supplied filter.
 ///
-/// * `filter_json` — standard Nostr REQ filter, e.g.
-///   `{"kinds":[1,6],"authors":["<hex>"]}`. Parsed kernel-side into an
+/// * `filter_json` — standard Nostr REQ filter, parsed kernel-side into an
 ///   `InterestShape`; the shape hash gives deterministic dedup across call
 ///   sites passing the same filter (regardless of JSON key/element ordering).
 /// * `consumer_id` — refcount owner key. Multiple owners sharing the same

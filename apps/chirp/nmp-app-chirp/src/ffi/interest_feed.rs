@@ -21,10 +21,10 @@
 //!
 //! 1. **Kernel interest** — derives acquisition kinds from Chirp's primary
 //!    `[1]` declaration, then pushes a generic `open_interest`
-//!    (`{"kinds":[1,6],"authors":[pk]}`, consumer `author-<pk>`, scope Global)
-//!    through the existing [`nmp_ffi::nmp_app_open_interest`] so the kernel
-//!    subscribes for matching relay events and fans accepted stored events out
-//!    to every [`nmp_core::KernelEventObserver`].
+//!    with the compiled acquisition kinds, consumer `author-<pk>`, scope
+//!    Global, through the existing [`nmp_ffi::nmp_app_open_interest`] so the
+//!    kernel subscribes for matching relay events and fans accepted stored
+//!    events out to every [`nmp_core::KernelEventObserver`].
 //! 2. **Feed render** — constructs a [`nmp_nip01::FlatFeed`] over the same
 //!    compiled author predicate and registers it as BOTH a feed controller
 //!    (output, under `nmp.feed.author.<pk>`) AND a kernel event observer
@@ -229,11 +229,11 @@ pub extern "C" fn nmp_app_chirp_close_author_feed(app: *mut NmpApp, pubkey_hex: 
 ///
 /// Registers a [`FlatFeed`] under `nmp.feed.thread.<event_id_hex>` (read by
 /// `ThreadScreen`) whose predicate admits the root by id AND every admitted
-/// kind:1/kind:6 event that references it via an `#e` tag, and pushes the
-/// kernel interest that admits those `#e` referrers into storage. (The root
-/// itself arrives through whatever interest opened the screen that linked here
-/// — the predicate admits it by id when it is already stored, and the `#e`
-/// interest pulls the replies.)
+/// primary kind:1 event or derived kind:6 repost wrapper that references it
+/// via an `#e` tag, and pushes the kernel interest that admits those `#e`
+/// referrers into storage. (The root itself arrives through whatever interest
+/// opened the screen that linked here — the predicate admits it by id when it
+/// is already stored, and the `#e` interest pulls the replies.)
 ///
 /// D6 — a null `app` or non-UTF-8 `event_id_hex` is a silent no-op.
 #[no_mangle]

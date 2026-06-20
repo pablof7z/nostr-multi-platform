@@ -17,21 +17,38 @@ fn keys_are_namespaced_per_consumer() {
 }
 
 #[test]
-fn filter_json_carries_the_feed_kinds_and_dimension() {
+fn filter_json_carries_derived_acquisition_kinds_and_dimension() {
     // Chirp declares primary kind 1. The NIP-18 helper derives the kind 6
     // wrapper for acquisition, so the kernel filter and feed predicate still
-    // agree without the app declaring [1,6] as primary policy.
+    // agree without the app declaring wrapper kinds as primary policy.
     assert_eq!(FEED_PRIMARY_KINDS, [1]);
-    assert_eq!(feed_acquisition_kinds(), Some(vec![1, 6]));
+    let acquisition = feed_acquisition_kinds().expect("primary kind derives acquisition");
+
+    let author_json = feed_filter_json("authors", "abc").expect("author filter");
+    let author_shape = nmp_planner::InterestShape::from_filter_json(&author_json).unwrap();
     assert_eq!(
-        feed_filter_json("authors", "abc"),
-        Some(r#"{"kinds":[1,6],"authors":["abc"]}"#.to_string())
+        author_shape.kinds,
+        acquisition
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
     );
-    // `r##"…"##` — the inner `"#e"` contains a `"#` sequence that would
-    // terminate a single-hash raw string early.
     assert_eq!(
-        feed_filter_json("#e", "root1"),
-        Some(r##"{"kinds":[1,6],"#e":["root1"]}"##.to_string())
+        author_shape.authors,
+        std::collections::BTreeSet::from(["abc".to_string()])
+    );
+
+    let thread_json = feed_filter_json("#e", "root1").expect("thread filter");
+    let thread_shape = nmp_planner::InterestShape::from_filter_json(&thread_json).unwrap();
+    assert_eq!(
+        thread_shape.kinds,
+        acquisition
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+    assert_eq!(
+        thread_shape.tags.get("e"),
+        Some(&std::collections::BTreeSet::from(["root1".to_string()]))
     );
 }
 

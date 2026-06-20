@@ -26,6 +26,21 @@ fn ranked_event(id: &str, created_at: u64, rank: u64, content: &str) -> KernelEv
 fn item(id: &str, sort_created_at: u64, card: &str) -> FlatFeedItem<String> {
     FlatFeedItem {
         id: id.to_string(),
+        source_id: id.to_string(),
+        sort_created_at,
+        card: card.to_string(),
+    }
+}
+
+fn sourced_item(
+    id: &str,
+    source_id: &str,
+    sort_created_at: u64,
+    card: &str,
+) -> FlatFeedItem<String> {
+    FlatFeedItem {
+        id: id.to_string(),
+        source_id: source_id.to_string(),
         sort_created_at,
         card: card.to_string(),
     }
@@ -35,7 +50,14 @@ fn item(id: &str, sort_created_at: u64, card: &str) -> FlatFeedItem<String> {
 fn canonical_identity_dedups_and_keeps_newer_sort_source() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),
-        Arc::new(|event| Some(item("target", event.created_at, &event.content))),
+        Arc::new(|event| {
+            Some(sourced_item(
+                "target",
+                &event.id,
+                event.created_at,
+                &event.content,
+            ))
+        }),
     );
 
     feed.on_kernel_event(&event("target", 1, 10, "original"));
@@ -48,12 +70,88 @@ fn canonical_identity_dedups_and_keeps_newer_sort_source() {
 }
 
 #[test]
+fn equal_timestamp_sources_keep_deterministic_first_source() {
+    let feed = FlatFeed::new(
+        Arc::new(|_| true),
+        Arc::new(|event| {
+            Some(sourced_item(
+                "target",
+                &event.id,
+                event.created_at,
+                &event.content,
+            ))
+        }),
+    );
+
+    feed.on_kernel_event(&event("aaa", 6, 20, "lower source"));
+    feed.on_kernel_event(&event("zzz", 6, 20, "higher source"));
+
+    let snap = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards[0].card, "higher source");
+}
+
+#[test]
+fn removing_one_source_recomputes_canonical_row() {
+    let feed = FlatFeed::new(
+        Arc::new(|_| true),
+        Arc::new(|event| {
+            Some(sourced_item(
+                "target",
+                &event.id,
+                event.created_at,
+                &event.content,
+            ))
+        }),
+    );
+
+    feed.on_kernel_event(&event("target", 1, 10, "original"));
+    feed.on_kernel_event(&event("wrapper", 6, 20, "repost"));
+    assert_eq!(
+        feed.snapshot(&FeedRequest::default()).cards[0].card,
+        "repost"
+    );
+
+    assert!(feed.remove_source("target", "wrapper"));
+    let snap = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards[0].card, "original");
+}
+
+#[test]
+fn removing_matching_sources_drops_empty_rows_only() {
+    let feed = FlatFeed::new(
+        Arc::new(|_| true),
+        Arc::new(|event| {
+            Some(sourced_item(
+                &event.id.replace("-wrapper", ""),
+                &event.id,
+                event.created_at,
+                &event.content,
+            ))
+        }),
+    );
+
+    feed.on_kernel_event(&event("one", 1, 10, "one target"));
+    feed.on_kernel_event(&event("one-wrapper", 6, 20, "one repost"));
+    feed.on_kernel_event(&event("two-wrapper", 6, 30, "two repost"));
+
+    let removed = feed.remove_sources_if(|item| item.source_id.ends_with("-wrapper"));
+    assert_eq!(removed, 2);
+
+    let snap = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards[0].card, "one target");
+}
+
+#[test]
 fn custom_merge_can_hydrate_existing_bumped_item() {
     let merge: FlatFeedMerge<String> = Arc::new(|existing, incoming| {
         if let Some(existing) = existing {
             if existing.sort_created_at > incoming.sort_created_at {
                 return FlatFeedItem {
                     id: existing.id.clone(),
+                    source_id: existing.source_id.clone(),
                     sort_created_at: existing.sort_created_at,
                     card: format!("{}+{}", incoming.card, existing.card),
                 };
@@ -63,7 +161,14 @@ fn custom_merge_can_hydrate_existing_bumped_item() {
     });
     let feed = FlatFeed::with_merge(
         Arc::new(|_| true),
-        Arc::new(|event| Some(item("target", event.created_at, &event.content))),
+        Arc::new(|event| {
+            Some(sourced_item(
+                "target",
+                &event.id,
+                event.created_at,
+                &event.content,
+            ))
+        }),
         None,
         merge,
     );

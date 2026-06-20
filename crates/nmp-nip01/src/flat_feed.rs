@@ -173,6 +173,7 @@ fn timeline_item_builder() -> FlatFeedItemBuilder<TimelineEventCard> {
         let card = TimelineEventCard::from_event_for_op_feed(event, None);
         Some(FlatFeedItem {
             id: card.id.clone(),
+            source_id: event.id.clone(),
             sort_created_at: card.created_at,
             card,
         })
@@ -209,6 +210,7 @@ fn merge_older_target_into_bumped_row(
     card.created_at = existing.sort_created_at;
     FlatFeedItem {
         id: existing.id.clone(),
+        source_id: existing.source_id.clone(),
         sort_created_at: existing.sort_created_at,
         card,
     }
@@ -221,6 +223,7 @@ fn prefer_hydrated_card(
     if card_is_placeholder(&existing.card) && !card_is_placeholder(&incoming.card) {
         return FlatFeedItem {
             id: incoming.id,
+            source_id: existing.source_id.clone(),
             sort_created_at: existing.sort_created_at,
             card: incoming.card,
         };
@@ -302,9 +305,10 @@ pub fn author_feed_predicate(author: String, kinds: Vec<u32>) -> FlatFeedPredica
 /// a host-chosen kind that references the root via a NIP-10 `#e` tag.
 ///
 /// Crucially this admits the root event by id (`event.id == root_id`) — a
-/// `{"kinds":[1,6],"#e":[root]}` filter alone would fetch the *replies* but not
-/// the root, and `ThreadScreen` must show the root as a row. The `#e` match is
-/// any `e` tag whose value equals `root_id` (NIP-10 root or reply marker).
+/// a compiled acquisition filter with only `#e=[root]` would fetch the
+/// *replies* but not the root, and `ThreadScreen` must show the root as a row.
+/// The `#e` match is any `e` tag whose value equals `root_id` (NIP-10 root or
+/// reply marker).
 #[must_use]
 pub fn thread_feed_predicate(root_id: String, kinds: Vec<u32>) -> FlatFeedPredicate {
     Arc::new(move |event: &KernelEvent| {

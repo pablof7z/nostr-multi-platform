@@ -36,6 +36,12 @@ pub struct FlatFeedItem<C> {
     /// Canonical row identity. For repost-aware feeds this is the target event
     /// id, not the wrapper id.
     pub id: String,
+    /// Source event identity that contributed this canonical row.
+    ///
+    /// A target event and one or more repost wrappers can all surface the same
+    /// canonical row. Keeping source identity lets protocol adapters remove one
+    /// contribution, then let the feed recompute the remaining best row.
+    pub source_id: String,
     /// Sort timestamp for this row. A later repost can intentionally sort a
     /// target above its own publish time while the card still renders target
     /// metadata.
@@ -45,8 +51,8 @@ pub struct FlatFeedItem<C> {
 
 #[derive(Clone)]
 struct FlatRow<C> {
-    sort_created_at: u64,
-    card: C,
+    sources: BTreeMap<String, FlatFeedItem<C>>,
+    best: FlatFeedItem<C>,
 }
 
 struct FlatFeedState<C> {
@@ -118,19 +124,27 @@ where
             return;
         };
         if let Ok(mut st) = self.state.lock() {
-            let existing = st.rows.get(&incoming.id).map(|row| FlatFeedItem {
-                id: incoming.id.clone(),
-                sort_created_at: row.sort_created_at,
-                card: row.card.clone(),
-            });
-            let merged = (self.merge)(existing.as_ref(), incoming);
-            st.rows.insert(
-                merged.id,
-                FlatRow {
-                    sort_created_at: merged.sort_created_at,
-                    card: merged.card,
-                },
-            );
+            let row_id = incoming.id.clone();
+            let source_id = incoming.source_id.clone();
+            match st.rows.get_mut(&row_id) {
+                Some(row) => {
+                    row.sources.insert(source_id, incoming);
+                    if let Some(best) = merge_sources(&self.merge, &row.sources) {
+                        row.best = best;
+                    }
+                }
+                None => {
+                    let mut sources = BTreeMap::new();
+                    sources.insert(source_id, incoming.clone());
+                    st.rows.insert(
+                        row_id,
+                        FlatRow {
+                            sources,
+                            best: incoming,
+                        },
+                    );
+                }
+            }
         }
     }
 
@@ -150,7 +164,7 @@ where
         let mut ordered: Vec<(u64, &String, &C)> = st
             .rows
             .iter()
-            .map(|(id, row)| (row.sort_created_at, id, &row.card))
+            .map(|(id, row)| (row.best.sort_created_at, id, &row.best.card))
             .collect();
         ordered.sort_by(|(lt, lid, _), (rt, rid, _)| rt.cmp(lt).then_with(|| rid.cmp(lid)));
 
@@ -197,6 +211,82 @@ where
         let new_limit = (current + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
         self.visible_limit.store(new_limit, Ordering::Relaxed);
         true
+    }
+
+    /// Remove an entire canonical row by id.
+    ///
+    /// Protocol adapters use this for deletes, mutes, blocks, and other
+    /// externally-owned suppression facts that apply to the target event. The
+    /// generic feed does not interpret those policies; it only owns row-index
+    /// mutation.
+    pub fn remove_item(&self, id: &str) -> bool {
+        self.state
+            .lock()
+            .ok()
+            .and_then(|mut st| st.rows.remove(id))
+            .is_some()
+    }
+
+    /// Remove an entire canonical row when the current best card satisfies
+    /// `predicate`.
+    pub fn remove_item_if(&self, id: &str, predicate: impl FnOnce(&C) -> bool) -> bool {
+        let Ok(mut st) = self.state.lock() else {
+            return false;
+        };
+        let should_remove = st.rows.get(id).is_some_and(|row| predicate(&row.best.card));
+        if should_remove {
+            st.rows.remove(id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove one source contribution from a canonical row and recompute the
+    /// row from remaining sources.
+    pub fn remove_source(&self, id: &str, source_id: &str) -> bool {
+        let Ok(mut st) = self.state.lock() else {
+            return false;
+        };
+        let Some(row) = st.rows.get_mut(id) else {
+            return false;
+        };
+        if row.sources.remove(source_id).is_none() {
+            return false;
+        }
+        if let Some(best) = merge_sources(&self.merge, &row.sources) {
+            row.best = best;
+        } else {
+            st.rows.remove(id);
+        }
+        true
+    }
+
+    /// Remove all source contributions matching `predicate`.
+    ///
+    /// Returns the number of removed sources. Canonical rows with remaining
+    /// sources are recomputed; rows with no sources left are removed.
+    pub fn remove_sources_if(&self, predicate: impl Fn(&FlatFeedItem<C>) -> bool) -> usize {
+        let Ok(mut st) = self.state.lock() else {
+            return 0;
+        };
+
+        let mut removed = 0usize;
+        let mut empty_rows = Vec::new();
+        for (id, row) in &mut st.rows {
+            let before = row.sources.len();
+            row.sources.retain(|_, item| !predicate(item));
+            removed += before.saturating_sub(row.sources.len());
+            if let Some(best) = merge_sources(&self.merge, &row.sources) {
+                row.best = best;
+            } else {
+                empty_rows.push(id.clone());
+            }
+        }
+        for id in empty_rows {
+            st.rows.remove(&id);
+        }
+        removed
     }
 
     /// Snapshot using the current render viewport.
@@ -249,9 +339,31 @@ where
     C: Clone + Send + 'static,
 {
     Arc::new(|existing, incoming| match existing {
-        Some(existing) if existing.sort_created_at > incoming.sort_created_at => existing.clone(),
+        Some(existing) if existing.sort_created_at >= incoming.sort_created_at => existing.clone(),
         _ => incoming,
     })
+}
+
+fn merge_sources<C>(
+    merge: &FlatFeedMerge<C>,
+    sources: &BTreeMap<String, FlatFeedItem<C>>,
+) -> Option<FlatFeedItem<C>>
+where
+    C: Clone + Send + 'static,
+{
+    let mut items = sources.values().cloned().collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        right
+            .sort_created_at
+            .cmp(&left.sort_created_at)
+            .then_with(|| right.source_id.cmp(&left.source_id))
+    });
+    let mut items = items.into_iter();
+    let mut merged = items.next()?;
+    for item in items {
+        merged = merge(Some(&merged), item);
+    }
+    Some(merged)
 }
 
 #[cfg(test)]

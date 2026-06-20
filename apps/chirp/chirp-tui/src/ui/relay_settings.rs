@@ -15,8 +15,8 @@ use crate::ui::colors::{
 mod format;
 use format::{
     append_wrapped, compact_count, consumer_count_label, discovery_kinds_label, empty_dash,
-    format_bytes, format_ms_ago, label_line, short_relay_url, short_wire_id, status_dot, title_case,
-    truncate,
+    format_bytes, format_ms_ago, label_line, short_relay_url, short_wire_id, status_dot,
+    title_case, truncate,
 };
 
 pub(super) fn render_relay_list(frame: &mut Frame, area: Rect, state: &AppState, active: bool) {
@@ -473,7 +473,7 @@ mod tests {
             role: "indexer".to_string(),
             discovery_kinds: vec![0, 3, 10002],
             wire_subs: vec![RelayWireSubRow {
-                filter_summary: r#"{"kinds":[1,6]}"#.to_string(),
+                filter_summary: r#"{"kinds":[1]}"#.to_string(),
                 state: "open".to_string(),
                 ..RelayWireSubRow::default()
             }],
