@@ -81,14 +81,17 @@ pub use typed_api::{
     switch_account_action, unfollow_action, zap_action, ChirpClient,
 };
 
-/// V-80 rung 7 — the home-feed snapshot served under `"nmp.feed.home"`.
+/// V-80 rung 7 / issue #1613 — the home-feed snapshot served under `"nmp.feed.home"`.
 ///
 /// Was `nmp_nip01::ModularTimelineSnapshot` (`{ blocks, cards, … }`); now the
 /// OP-centric [`nmp_feed::RootFeedSnapshot`] instantiated with the NIP-10
 /// render card ([`ChirpEventCard`]) and the NIP-10 reply attribution
 /// ([`ChirpReplyAttribution`]). Wire shape:
 /// `{ "cards": [{ "card": ChirpEventCard, "attribution": [ChirpReplyAttribution] }], "page": …, "metrics": … }`.
-pub type ChirpTimelineSnapshot = nmp_feed::RootFeedSnapshot<ChirpEventCard, ChirpReplyAttribution>;
+///
+/// Named `OpFeedSnapshot` to match the Swift type and the framework type
+/// `nmp_nip01::op_feed::OpFeedSnapshot` — no app name in a framework type alias.
+pub type OpFeedSnapshot = nmp_feed::RootFeedSnapshot<ChirpEventCard, ChirpReplyAttribution>;
 
 // ── Marmot (MLS encrypted groups) projection ─────────────────────────────
 //

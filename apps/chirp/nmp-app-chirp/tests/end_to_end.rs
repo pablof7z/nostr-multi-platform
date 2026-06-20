@@ -23,7 +23,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, ChirpTimelineSnapshot,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, OpFeedSnapshot,
     NmpRegisterStatus,
 };
 
@@ -61,7 +61,7 @@ fn raw_note(id: &str, author: &str, ts: u64, tags: Vec<Vec<String>>, content: &s
     }
 }
 
-fn feed_projection_for(handle: *mut ChirpHandle) -> ChirpTimelineSnapshot {
+fn feed_projection_for(handle: *mut ChirpHandle) -> OpFeedSnapshot {
     // The generic JSON lane is deleted (rule A6). Snapshot directly from the
     // ChirpHandle's OpFeedEngine — the same data the typed FlatBuffers sidecar
     // encodes and sends to Swift.

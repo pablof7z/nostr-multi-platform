@@ -11,7 +11,7 @@ import FlatBuffers
 /// helpers live in the shared `OpFeedTestFixtures`, so the test needs no
 /// bundle-resource wiring or simulator.
 ///
-/// PARITY CONTRACT: the typed decoder must produce the same `ChirpTimelineSnapshot`
+/// PARITY CONTRACT: the typed decoder must produce the same `OpFeedSnapshot`
 /// model the generic `Value` path produces, so `HomeFeedView` renders either
 /// source identically. Both `contentTree` (embedded NFCT bytes, Swift NFCT
 /// decoder) and `relationCounts` (typed sub-table) are now populated by the
@@ -160,9 +160,9 @@ final class OpFeedDecoderTests: XCTestCase {
 
         // JSON-derived dict: a placeholder author feed (1 dummy card) + a
         // thread feed that has NO typed sidecar (must survive untouched).
-        let jsonAuthor = ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-author")], page: nil)
-        let jsonThread = ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-thread")], page: nil)
-        let json: [String: ChirpTimelineSnapshot] = [authorKey: jsonAuthor, threadKey: jsonThread]
+        let jsonAuthor = OpFeedSnapshot(cards: [dummyRootCard(id: "json-author")], page: nil)
+        let jsonThread = OpFeedSnapshot(cards: [dummyRootCard(id: "json-thread")], page: nil)
+        let json: [String: OpFeedSnapshot] = [authorKey: jsonAuthor, threadKey: jsonThread]
 
         let typedEnvelope = TypedProjectionEnvelope(
             key: authorKey,
@@ -186,8 +186,8 @@ final class OpFeedDecoderTests: XCTestCase {
     /// payload) → the JSON entry is the fallback, untouched.
     func testAbsentOrMalformedTypedSidecarFallsBackToJson() {
         let authorKey = "nmp.feed.author.\(hex32(0x01))"
-        let json: [String: ChirpTimelineSnapshot] = [
-            authorKey: ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-only")], page: nil)
+        let json: [String: OpFeedSnapshot] = [
+            authorKey: OpFeedSnapshot(cards: [dummyRootCard(id: "json-only")], page: nil)
         ]
 
         // (a) right key, WRONG schema id → ignored by the schemaId guard.

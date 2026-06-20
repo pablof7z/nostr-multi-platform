@@ -2,7 +2,7 @@ import Foundation
 import FlatBuffers
 
 /// Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers `NOFS` buffer
-/// (ADR-0038 Stage T4) into the SAME `ChirpTimelineSnapshot` model the generic
+/// (ADR-0038 Stage T4) into the SAME `OpFeedSnapshot` model the generic
 /// `Value` projection path produces, so `HomeFeedView` renders either source
 /// identically.
 ///
@@ -40,7 +40,7 @@ enum TypedHomeFeedDecoder {
 
     /// Extract and decode the `nmp.feed.home` typed payload from a set of typed
     /// projection envelopes lifted off a snapshot frame.
-    static func decode(from projections: [TypedProjectionEnvelope]) -> ChirpTimelineSnapshot? {
+    static func decode(from projections: [TypedProjectionEnvelope]) -> OpFeedSnapshot? {
         guard let projection = projections.first(where: {
             $0.key == projectionKey && $0.schemaId == schemaId
         }), !projection.payload.isEmpty else {
@@ -57,14 +57,14 @@ enum TypedHomeFeedDecoder {
     /// `!bytes.isEmpty` guard above is the only presence check needed; a
     /// gross wiring error would surface as empty/default field values from
     /// the glue layer rather than a crash.
-    static func decode(bytes: Data) -> ChirpTimelineSnapshot? {
+    static func decode(bytes: Data) -> OpFeedSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
         let snapshot: nmp_nip01_OpFeedSnapshot = getRoot(byteBuffer: &buffer)
 
         let cards = snapshot.cards.map(makeRootCard)
         let page = snapshot.hasPage ? decodePage(snapshot) : nil
-        return ChirpTimelineSnapshot(cards: cards, page: page)
+        return OpFeedSnapshot(cards: cards, page: page)
     }
 
     // ── Card mapping ─────────────────────────────────────────────────────────

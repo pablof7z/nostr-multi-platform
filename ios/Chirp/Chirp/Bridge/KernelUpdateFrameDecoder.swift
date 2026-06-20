@@ -33,7 +33,7 @@ enum KernelUpdateFrame {
         UInt64,
         UInt64,
         [TypedProjectionEnvelope],
-        [String: ChirpTimelineSnapshot],
+        [String: OpFeedSnapshot],
         TypedSnapshotEnvelope?)
     case panic(String)
 }
@@ -242,7 +242,7 @@ enum KernelUpdateFrameDecoder {
     /// feed key, so the typed path is authoritative.
     private static func extractFlatFeeds(
         typed envelopes: [TypedProjectionEnvelope]
-    ) -> [String: ChirpTimelineSnapshot] {
+    ) -> [String: OpFeedSnapshot] {
         overlayTypedFlatFeeds(json: [:], typed: envelopes)
     }
 
@@ -251,9 +251,9 @@ enum KernelUpdateFrameDecoder {
     /// onto the JSON-derived dictionary; non-matching or undecodable envelopes
     /// leave the JSON entry in place.
     static func overlayTypedFlatFeeds(
-        json: [String: ChirpTimelineSnapshot],
+        json: [String: OpFeedSnapshot],
         typed envelopes: [TypedProjectionEnvelope]
-    ) -> [String: ChirpTimelineSnapshot] {
+    ) -> [String: OpFeedSnapshot] {
         var feeds = json
         for envelope in envelopes {
             guard flatFeedKeyPrefixes.contains(where: { envelope.key.hasPrefix($0) }),

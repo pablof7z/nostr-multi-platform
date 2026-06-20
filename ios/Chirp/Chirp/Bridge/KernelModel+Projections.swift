@@ -11,7 +11,7 @@ extension KernelModel {
     // non-null generic key has a typed sidecar, and the Tier-3 envelope fields
     // are written unconditionally on every production frame).
     var isRunning: Bool { typedEnvelope?.running ?? false }
-    var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? .empty }
+    var modularTimeline: OpFeedSnapshot { typedHomeFeed ?? .empty }
     var rev: UInt64 { typedEnvelope?.rev ?? 0 }
     var profile: ProfileCard? { typedProfile }
     var metrics: KernelMetrics? { typedEnvelope?.metrics }

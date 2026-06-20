@@ -13,7 +13,7 @@ struct ThreadScreen: View {
     /// The note we want to present a reply compose sheet for.
     @State private var replyTarget: ChirpReplyTarget? = nil
 
-    private var threadFeed: ChirpTimelineSnapshot? { model.threadFeed(eventID: eventID) }
+    private var threadFeed: OpFeedSnapshot? { model.threadFeed(eventID: eventID) }
     private var cardLookup: [String: ChirpEventCard] {
         Dictionary(uniqueKeysWithValues: (threadFeed?.cards ?? []).map { ($0.card.id, $0.card) })
     }
@@ -66,7 +66,7 @@ struct ThreadScreen: View {
     // MARK: – Thread content
 
     @ViewBuilder
-    private func threadContent(_ threadFeed: ChirpTimelineSnapshot) -> some View {
+    private func threadContent(_ threadFeed: OpFeedSnapshot) -> some View {
         if threadFeed.cards.isEmpty {
             emptyThreadState
         } else {

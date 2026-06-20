@@ -6,7 +6,7 @@ import Foundation
 //
 // V-80 rung 7 NOTE: the HOME feed (`projections["nmp.feed.home"]`) no longer
 // uses the `{ blocks, cards }` modular shape — it is now the OP-centric
-// `ChirpTimelineSnapshot` (`{ cards: [ChirpRootCard], page }`) defined lower
+// `OpFeedSnapshot` (`{ cards: [ChirpRootCard], page }`) defined lower
 // in this file. The `TimelineBlock` enum + `ChirpEventCard` below are STILL
 // used by the author-view / thread-view modular renderers
 // (`ModularBlockView`), which keep the `{ blocks, cards }` shape — so they are
@@ -337,10 +337,9 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
 // ─────────────────────────────────────────────────────────────────────────
 // V-80 rung 7 — OP-centric home feed.
 //
-// `projections["nmp.feed.home"]` is now the Rust `RootFeedSnapshot<
-// TimelineEventCard, Nip10ReplyAttribution>` (`apps/chirp/nmp-app-chirp`
-// re-exports it as `ChirpTimelineSnapshot`). Wire shape (after
-// `.convertFromSnakeCase`):
+// `projections["nmp.feed.home"]` is the Rust `RootFeedSnapshot<
+// TimelineEventCard, Nip10ReplyAttribution>` (Rust alias: `OpFeedSnapshot`).
+// Wire shape (after `.convertFromSnakeCase`):
 //
 //   { "cards": [{ "card": ChirpEventCard, "attribution": [ChirpReplyAttribution] }],
 //     "page": TimelineWindowPage?, "metrics": null }
@@ -349,10 +348,8 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
 // reply to a non-followed author's note surfaces THAT note here, tagged with
 // the replier in `attribution`. Replies never get their own row.
 //
-// The Swift type name `ChirpTimelineSnapshot` is unchanged so the generated
-// `SnapshotProjections.homeFeed` binding and the `nmp-codegen` registry need
-// no edit — only the SHAPE behind the name changes (mirrors the Rust
-// `pub type ChirpTimelineSnapshot = RootFeedSnapshot<…>` repoint).
+// The generated `SnapshotProjections.homeFeed` binding uses the framework type
+// name `OpFeedSnapshot` (issue #1613).
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Raw attribution for one follow's reply to a feed root (mirror of Rust
@@ -399,11 +396,16 @@ struct ChirpRootCard: Decodable, Equatable, Identifiable, Sendable {
 }
 
 /// Decoded OP-centric home projection payload (`RootFeedSnapshot`).
-struct ChirpTimelineSnapshot: Decodable, Equatable {
+///
+/// The framework/protocol name — mirrors the Rust `nmp_nip01::op_feed::OpFeedSnapshot`
+/// type alias (`RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>`). The
+/// `nmp-codegen` registry uses this name in the generated `SnapshotProjections.homeFeed`
+/// binding (issue #1613 — no app names in generic codegen tool).
+struct OpFeedSnapshot: Decodable, Equatable {
     let cards: [ChirpRootCard]
     let page: TimelineWindowPage?
 
-    static let empty = ChirpTimelineSnapshot(cards: [], page: nil)
+    static let empty = OpFeedSnapshot(cards: [], page: nil)
 
     private enum CodingKeys: String, CodingKey {
         case cards
