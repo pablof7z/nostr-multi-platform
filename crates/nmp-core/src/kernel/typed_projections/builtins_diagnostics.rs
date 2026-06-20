@@ -95,11 +95,10 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
             .iter()
             .map(|r| ConnectionReasonRow {
                 kind: r.kind.clone(),
-                label: r.label.clone(),
                 tone: r.tone.clone(),
                 author_pubkeys: r.author_pubkeys.clone(),
                 author_total: r.author_total,
-                kinds_label: r.kinds_label.clone(),
+                kinds: r.kinds.clone(),
                 source_event_id: r.source_event_id.clone(),
             })
             .collect(),

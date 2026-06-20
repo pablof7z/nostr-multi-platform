@@ -84,6 +84,29 @@ extension PublishOutboxRelay {
     var attemptLabel: String {
         attempt == 0 ? "" : "try \(attempt)"
     }
+
+    /// Human-readable relay-reason label derived from the raw `relayReason`
+    /// token. Parameterised tokens are parsed; unknown tokens pass through.
+    var relayReasonDisplay: String {
+        let token = relayReason
+        if token.isEmpty { return "" }
+        let discoveryPrefix = "discovery_indexer:"
+        if token.hasPrefix(discoveryPrefix) {
+            let kind = token.dropFirst(discoveryPrefix.count)
+            return "Discovery indexer (kind \(kind))"
+        }
+        let inboxPrefix = "recipient_inbox:"
+        if token.hasPrefix(inboxPrefix) {
+            let pubkey = token.dropFirst(inboxPrefix.count)
+            return "Inbox relay for \(pubkey)"
+        }
+        switch token {
+        case "nip65_write": return "NIP-65 write relay"
+        case "local_config": return "App relay (local config)"
+        case "explicit": return "Explicit relay"
+        default: return token
+        }
+    }
 }
 
 // MARK: - Views
@@ -197,8 +220,8 @@ struct OutboxRelayRow: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
             }
-            if !relay.relayReason.isEmpty {
-                Text(relay.relayReason)
+            if !relay.relayReasonDisplay.isEmpty {
+                Text(relay.relayReasonDisplay)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 16)

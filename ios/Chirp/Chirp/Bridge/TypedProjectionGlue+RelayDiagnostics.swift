@@ -71,13 +71,17 @@ extension TypedProjectionGlue {
     private static func relayConnectionReason(
         _ reason: nmp_kernel_RelayConnectionReason
     ) -> RelayConnectionReason {
-        RelayConnectionReason(
+        var kinds: [UInt32] = []
+        let kindsVec = reason.kinds
+        for i in 0..<kindsVec.count {
+            kinds.append(kindsVec[i])
+        }
+        return RelayConnectionReason(
             kind: reason.kind ?? "",
-            label: reason.label ?? "",
             tone: reason.tone ?? "",
             authorPubkeys: reason.authorPubkeys.map { $0 ?? "" },
             authorTotal: reason.authorTotal,
-            kindsLabel: reason.kindsLabel ?? "",
+            kinds: kinds,
             sourceEventId: reason.hasSourceEventId ? reason.sourceEventId : nil
         )
     }

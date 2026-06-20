@@ -142,40 +142,46 @@ fn decode_rejects_malformed_input() {
 }
 
 /// `reasons` round-trips: a non-empty list with multiple entries — including
-/// the "blocked" sentinel — must survive encode/decode with all fields intact.
+/// the "blocked" sentinel and an "interest" entry with raw kind numbers —
+/// must survive encode/decode with all fields intact.
 #[test]
 fn reasons_round_trip() {
     let mut model = sample();
     model.relays[0].reasons = vec![
         ConnectionReasonRow {
             kind: "blocked".to_string(),
-            label: "Blocked".to_string(),
             tone: "muted".to_string(),
             author_pubkeys: vec![],
             author_total: 0,
-            kinds_label: String::new(),
+            kinds: vec![],
             source_event_id: None,
         },
         ConnectionReasonRow {
             kind: "nip65".to_string(),
-            label: "Outbox of 2 people".to_string(),
             tone: "accent".to_string(),
             author_pubkeys: vec![
                 "aabbcc".to_string(),
                 "ddeeff".to_string(),
             ],
             author_total: 2,
-            kinds_label: String::new(),
+            kinds: vec![],
             source_event_id: None,
         },
         ConnectionReasonRow {
             kind: "hint".to_string(),
-            label: "Relay hint".to_string(),
             tone: "warn".to_string(),
             author_pubkeys: vec![],
             author_total: 0,
-            kinds_label: String::new(),
+            kinds: vec![],
             source_event_id: Some("deadbeef".to_string()),
+        },
+        ConnectionReasonRow {
+            kind: "interest".to_string(),
+            tone: "ok".to_string(),
+            author_pubkeys: vec!["abc123".to_string()],
+            author_total: 1,
+            kinds: vec![0, 3, 10002],
+            source_event_id: None,
         },
     ];
     let decoded =

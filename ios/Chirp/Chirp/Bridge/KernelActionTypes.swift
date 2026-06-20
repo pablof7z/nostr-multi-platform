@@ -266,8 +266,10 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     let status: String
     let attempt: UInt32
     let message: String
-    /// Pre-formatted English reason the relay was targeted — empty string on
-    /// old kernels. Shell renders verbatim with no branching.
+    /// Raw machine token for why the relay was targeted, e.g. `"nip65_write"`,
+    /// `"local_config"`, `"discovery_indexer:{kind}"`, `"recipient_inbox:{pubkey}"`,
+    /// `"explicit"`. Empty string on old kernels or when no reason applies.
+    /// Shell formats via `relayReasonDisplay` in `NotificationsView+OutboxRow.swift`.
     /// `skip_serializing_if = "String::is_empty"` on the Rust side means the
     /// key is absent when empty; `decodeIfPresent` handles that transparently.
     let relayReason: String
