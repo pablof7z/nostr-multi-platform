@@ -1,6 +1,9 @@
 # ADR-0060 - NIP-29 Admin Actions and Joined Groups Projection
 
-> **Status:** Accepted pending implementation.
+> **Status:** Implemented. `PutUserAction`, `CreateInviteAction`, and
+> `JoinedGroupsProjection` are imported, registered (`app.register_action(...)` /
+> `wire_joined_groups`), and exported from
+> `crates/nmp-nip29/src/register.rs`.
 > **Date:** 2026-06-19.
 > **Issue:** #1559.
 > **Companions:** `docs/design/nip29-crate.md`,
@@ -13,19 +16,27 @@ NIP-29 admin actions and joined-group status are reusable Nostr group
 infrastructure. They belong in `nmp-nip29`; `nmp-core` must stay generic and
 must not grow NIP-29 command variants, group nouns, or router branches.
 
-Current `nmp-nip29` already has these live surfaces:
+`nmp-nip29` now registers these live action surfaces (the full set in
+`crates/nmp-nip29/src/register.rs::register_actions`):
 
 - `action`: `PostChatMessageAction`, `ReactInGroupAction`,
-  `CreatePublicGroupAction` (9007 then 9002), `DiscoverGroupsAction`, and
-  `JoinGroupAction` (9021 with optional `code`).
+  `ShareEventInGroupAction`, `RepostInGroupAction`, `CreatePublicGroupAction`
+  (9007 then 9002), `DiscoverGroupsAction`, `JoinGroupAction` (9021 with
+  optional `code`), and — added by this ADR — `PutUserAction` (9000) and
+  `CreateInviteAction` (9009).
 - `kinds`: constants and classification for 9000, 9001, 9002, 9005, 9007,
   9008, 9009, 9021, 9022, and relay-signed 39000-39003.
 - `interest`: `joined_groups_for_host`, which builds one host-pinned
   39001/39002 interest for one `(user_pubkey, host_relay_url)`.
-- `projection`: `GroupChatProjection`, `DiscoveredGroupsProjection`, and
-  `GroupDefaultsProjection`.
-- `register`: wiring for group chat, discovered groups, defaults, and the
-  existing actions.
+- `projection`: `GroupChatProjection`, `DiscoveredGroupsProjection`,
+  `GroupDefaultsProjection`, `GroupEventsProjection`, and — added by this ADR —
+  `JoinedGroupsProjection` (wired via `wire_joined_groups`).
+- `register`: wiring for group chat, group discovery, group events, defaults,
+  joined groups, and the actions above.
+
+> **Note.** `register.rs` also registers `RepostInGroupAction` (group reposts).
+> It ships in `nmp-nip29` but is outside this ADR's scope; it is listed here
+> only to keep the "current surface" enumeration faithful to the shipped code.
 
 That surface is not enough for #1559. `DiscoveredGroupsProjection` is scoped to
 one host relay and surfaces group metadata plus `member_count` and

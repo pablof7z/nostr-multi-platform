@@ -1,234 +1,15 @@
 # ADR-0045 — Store→projection replay (offline / second-launch render)
 
-- Status: Accepted pending implementation. **Revised 2026-06-12 (Revision 2 —
-  owner product correction): the staged-by-domain rollout (§9) is superseded by
-  a single always-on cache-serve mechanism; see "Revision 2" below, which amends
-  the Decision (§2) and replaces §9 and §11.** **Revised 2026-06-17 (Revision 3 —
-  owner correction): store-first is UNIVERSAL — every interest, including the
-  active account's own kind:0/3/10002 bootstrap kinds, is served from the local
-  store on open and revalidated by its wire REQ. See "Revision 3" below.**
-- Date: 2026-06-12
+- Status: Implemented. The single always-on cache-serve seam is live at
+  `crates/nmp-core/src/kernel/cache_serve/`; store-served and relay-delivered
+  events converge on the shared `project_accepted_event` seam.
+- Date: 2026-06-12 (folded owner corrections 2026-06-12 and 2026-06-17)
 - Issue: #1086 (F-12), `doctrine:d1`, `priority:p1`, `area:core`, `area:store`
 - Related: #1087/#1091 (author-aware watermark rewrite — the load-bearing
   precondition this ADR completes), #1085/V-117 (gc_step unbudgeted scan —
   the anti-precedent for actor-thread store scans), #617 (constructor blocks
   on synchronous LMDB open — the anti-precedent for whole-store replay at
   construction), #1080 (F-02 cold-start DM receive).
-
-## Revision 2 (2026-06-12) — owner correction: one mechanism, always on
-
-This revision supersedes **§9 (staged rollout)** and **§11 (v1 recommendation)**
-and amends the **Decision (§2)**. The remaining sections (§1, §1.1, §1.2, §3–§8,
-§10) are Rev 1 text and stand as written — their *technical* findings survive the
-correction intact (enumerated below). Where Rev 1 says "stage 1" / "stage 2" /
-"stage 3" as a **product-staged-by-domain** boundary, read it as Rev 2's single
-mechanism with *engineering* shape-coverage increments — never as a per-domain
-gating of when cache-serve "turns on."
-
-### R2.1 The correction (verbatim, owner, 2026-06-12)
-
-> "offline replay should be governed by a single mechanism which is 'get events
-> from the network' — per how we implement things in NMP there should be a
-> SINGLE way to do things, and that thing should include serving things from the
-> cache. So the 'stage 1 (timeline)' vs '(stage 2) DMs' should not even exist; it
-> should be the same thing and serving things from the cache should always happen
-> regardless of whether the app is just starting and it's not even connected to
-> relays or if the app is already connected to relays."
-
-### R2.2 What this changes
-
-The staged-by-domain framing in §9 (timeline first, DMs second, generalize third)
-is **rejected as design.** There is exactly **one** event-acquisition mechanism,
-and serving from the local store is the **first half of that one mechanism** — not
-a separate offline mode, not a per-domain feature that lands timeline-then-DM:
-
-- **One seam, every interest.** Every `LogicalInterest` — any shape, any consumer,
-  host-declared or built-in, timeline or DM or thread or long-form or anything
-  else — when opened / compiled, is **served from the local store first** through
-  the *same* post-store projection-dispatch path that relay-delivered events take
-  (§1.2: `insert_timeline_id_sorted` + `events` read-cache + `notify_event_observers`,
-  never `store.insert`). The planner's wire REQ is the **refinement half of the
-  very same mechanism** — it widens coverage and pulls events the store does not
-  yet hold.
-- **Always on; no special cases.** Cold start, warm app, offline, online — the
-  store-serve half runs unconditionally for every opened interest. There is no
-  "offline path" and no "online path"; there is one path with two halves (local
-  store → wire). **Offline rendering is simply the degenerate case where the
-  network half delivers nothing** — the store half already rendered the view.
-- **The watermark⇄replay invariant (§6) now holds universally by construction.**
-  Because cache-serve is part of the one mechanism that every floored shape passes
-  through, "no watermark floor without cache-serve for the same shape" is true for
-  *all* shapes automatically. The §6/§9-stage-3 CI assertion therefore becomes a
-  **structural guard** (the seam is the same seam) rather than a per-shape coverage
-  checklist that DMs/threads/long-form each have to earn.
-
-### R2.3 Alignment with the north star (this was drift)
-
-`docs/aim.md` §4.1 ("Reactive single source of truth") already promised exactly
-this and the staged design was drift from it:
-
-- §4.1: *"Every read goes through it [the EventStore]."* — i.e. a projection open
-  is a read, and reads are served from the store first. A staged design where the
-  feed reads through the store on second launch but the DM inbox does not (until a
-  later stage) violates "every read goes through it."
-- §4.1's **fallback event loader**: *"a single user-provided async function the
-  store calls when a subscription asks for an event it doesn't have… the developer
-  never writes 'if missing, fetch from relay, then update local state' logic."*
-  That is precisely the two-halves-of-one-mechanism shape: store-serve first, wire
-  refinement on miss, **one** path. The wire REQ in this ADR is NMP's in-kernel
-  realization of that fallback half; the store-serve seam is the read half.
-
-The single-mechanism design is therefore a **return** to aim.md §4.1, not a new
-position.
-
-### R2.4 What survives from Revision 1 (technical findings — unchanged)
-
-All of Rev 1's load-bearing engineering findings survive the correction; they are
-*how* the one mechanism is built correctly:
-
-- **(a) No `store.insert` on the serve half.** A re-fed stored event returns
-  `InsertOutcome::Duplicate` and the `Duplicate` arm is a deliberate no-op
-  (§1.2, §8(c)) — cache-serve must feed the **post-store projection-dispatch**
-  seam directly, the inverse of the live insert-then-project path. (Universal now:
-  it is the same seam relay deliveries land on after insert.)
-- **(b) `Provenance::LocalStore` marker** distinguishes store-served events from
-  wire-delivered ones in the one dispatch path (§2, §10).
-- **(c) Budgeted per-tick serve on the actor thread** — at most
-  `REPLAY_BUDGET_EVENTS` per interest per tick, chunked continuation, never an
-  unbudgeted whole-store scan (§5, the #1085 / V-117 anti-precedent) and never a
-  blocking scan at construction (#617).
-- **(d) `InterestShape` → `StoreQuery` mapping** over existing indexes (§3), no
-  new index required for the shapes the planner compiles today.
-- **(e) The watermark ⇄ serve invariant** (§6) — *"no watermark floor without
-  cache-serve for the same shape"* — now holds **universally by construction**
-  because cache-serve is part of the one mechanism every floored shape uses,
-  making the CI lint a structural seam-identity check rather than a per-shape
-  table.
-- **(f) DM ciphertext** (NIP-17 kind:1059) is store-served through the **#1080
-  decrypt seam**, as a *property of the uniform path* (the same seam unwraps live
-  gift-wraps) — **not** a separate "stage 2." Verify the decrypt seam does not
-  assume live-only provenance; that verification is engineering work on the one
-  mechanism, not a product stage.
-- **(g) MLS group state stays excluded** (§7): MLS ratchet/group state is a
-  stateful protocol object rehydrated by Marmot's own persistence, **not**
-  event-acquisition, so it is outside this mechanism by definition (replaying
-  kind:44x into MLS would corrupt ratchet state). Pure event-projection group
-  *membership/metadata* shapes ride the one mechanism like any other shape.
-
-### R2.5 Amended Decision (§2)
-
-§2 is amended to state the contract as a **single always-on cache-serve seam**:
-the store-serve half of the one event-acquisition mechanism runs for **every**
-opened/compiled `LogicalInterest`, unconditionally (cold/warm/offline/online),
-feeding the post-store projection-dispatch path with `Provenance::LocalStore`,
-budgeted on the actor tick; the planner's wire REQ is the refinement half of the
-*same* mechanism. The store→`StoreQuery` mapping (§3), ordering/limits (§4),
-budget (§5), invariant (§6), DM decrypt routing (§7), and the rejected
-alternatives (§8) are unchanged and apply to this single seam.
-
-### R2.6 Engineering may still land incrementally — but the contract is one seam
-
-Implementation **may** land in increments (e.g. broadening shape coverage,
-budget tuning), but those are *engineering increments of one mechanism*, not
-product stages and not a per-domain gating of when cache-serve exists. The design
-contract is the single always-on seam, and the **acceptance test is universal**:
-
-> **Launch twice; the second launch offline. EVERY open interest's projection
-> renders from the store** — feed, DM inbox, threads, long-form, and anything
-> else the app has opened. Offline-empty for any open, store-backed interest is a
-> failure of the one mechanism.
-
-See §11 (revised) for the v1 recommendation under this shape.
-
----
-
-## Revision 3 (2026-06-17) — owner correction: store-first is UNIVERSAL
-
-Revision 2 established "one mechanism, always on." Revision 3 states the rule at
-its full reach: **every interest is served from the local store the moment it
-opens, and revalidated by its wire REQ — including the active account's own
-bootstrap kinds (kind:0 profile, kind:3 contacts, kind:10002 relay list,
-kind:10000/10006).** The store-serve half and the wire REQ are the two halves of
-the one mechanism (R2.2), and they run together for **every** interest the system
-compiles — host-declared or built-in, consumer or bootstrap, discovery-direction
-or follow-feed. Store-first is the universal default; the network is the
-revalidation layer on top of it.
-
-### R3.1 The principle (owner, 2026-06-17)
-
-> "Store-first applies to everything by default. We serve the kinds we need from
-> the cache; later, if we find a kind:3 — or any kind — with fresher data, that is
-> the EXACT SAME THING as a new version of an event being signed right now. It
-> should LITERALLY be the same code.
->
-> Scenario: the app opens. We serve the kinds we need from the cache, find a
-> kind:3 signed at t+0, show it to the app, query the relay, find the exact same
-> event — nothing happens, we already have the latest version. Later, a new
-> version is signed in some other client; we see the event come in; we route it
-> through the same mechanism, which results — without the app doing ANYTHING — in a
-> resubscription of the kinds shown in the timeline under the new kind:3. The app
-> doesn't even know some other client followed someone new; it just keeps
-> receiving the data it needs to show.
->
-> Store-first is what makes every NMP app perfectly offline-first."
-
-### R3.2 The two halves run together, for every interest
-
-Cache-serve is the **first half** of the one mechanism; the wire REQ is the
-**refinement half**. They are **additive** — both always run:
-
-- **Serve from cache, then revalidate.** On open, every interest is served from
-  the local store immediately, and its wire REQ (tailing or one-shot) fires in
-  parallel to refine and tail for future updates. Time-to-first-pixel is **zero**;
-  the network keeps the view current from there.
-- **One code path for cached and fresh — literally the same code.** A
-  store-served event and a relay-delivered event flow through the *same*
-  `project_accepted_event` seam under the *same* supersession rule (newest
-  `created_at` wins; event-id tiebreak). When the relay returns the event we
-  already hold, supersession makes it a no-op; when it returns a newer one — or
-  another client signs one mid-session — the same seam re-drives every downstream
-  effect (the contacts transition re-registers the follow-feed; the timeline
-  re-subscribes under the new follow set). Cold-start serve and live arrival
-  differ ONLY by `Provenance` — never by mechanism.
-- **The on-disk copy is authoritative offline.** When the app is offline, or in
-  the window before the REQ round-trips, the last-known copy on disk **is** the
-  current copy — and rendering it immediately is exactly right. This is what makes
-  the app show your follow list, your profile, and your relay list on a plane, in
-  line with aim.md §4.1 ("every read goes through the store").
-
-### R3.3 Store-first resolves the cold-start chicken-and-egg
-
-The active account's NIP-65 mailbox (kind:10002) and follow set (kind:3) are
-needed to drive everything downstream — and store-first delivers them **first**:
-
-- Serving the stored kind:10002 yields the last-known relay list **immediately**,
-  so the first wire REQs target the user's real outbox. (The indexer-relay
-  fallback remains for the cold-cold case: a brand-new install with no kind:10002
-  on disk yet.)
-- Serving the stored kind:3 populates the contacts cache at startup, firing the
-  contacts transition (`on_active_contacts_changed`) → registering the follow-feed
-  → serving the followed authors' notes. The entire timeline rehydrates from disk
-  with the app doing nothing — the offline-first acceptance test (R2.6) passes for
-  the bootstrap kinds, not just consumer feeds.
-
-### R3.4 What the implementation does
-
-- **Every built-in interest cache-serves on open.** The bootstrap self-kinds
-  tailing interest and the one-shot discovery interests
-  (`kernel/requests/startup.rs`) route through `enqueue_interest_cache_serve` like
-  every other interest, serving kind:0/3/10002/… from the store on open. Their
-  tailing / one-shot wire REQ fires alongside for revalidation (R3.2).
-- **The §6 watermark⇄serve invariant binds the bootstrap shapes.** kind:0/3/10002/…
-  are watermark-floored, therefore they are cache-served — the invariant ("no
-  watermark floor without cache-serve for the same shape") applies to them as to
-  every other floored shape.
-- **Every code comment frames cache-serve as the default for all interests** —
-  the store-serve half runs for each interest, with the wire REQ as the refinement
-  half on top.
-
-Store-first is the law for every interest the system opens.
-
----
 
 ## 1. Context
 
@@ -296,41 +77,73 @@ path: live = insert-then-project (dedup at insert); replay = project-from-store
 
 ## 2. Decision
 
-Introduce a **store-replay seam invoked at interest-open / compile time**,
-budgeted and chunked on the actor tick (never a blocking whole-store scan),
-that queries the local store for the newest-N events matching a newly-opened
-interest's shape and feeds them through the **existing projection-update
-functions** (not `insert`), marked with local provenance. The watermark
-rewrite stays, now guarded by the replay-coverage invariant (§6).
+There is exactly **one** event-acquisition mechanism, and serving from the local
+store is the **first half** of it; the planner's wire REQ is the **refinement
+half**. Both halves run together, unconditionally, for **every** opened/compiled
+`LogicalInterest` — any shape, any consumer, host-declared or built-in, consumer
+feed or the active account's own bootstrap kinds (kind:0 profile, kind:3 contacts,
+kind:10002 relay list, kind:10000/10006). This is a **single always-on cache-serve
+seam**, not an offline mode and not a per-domain feature:
 
-Concretely, for each interest the planner newly compiles
-(`CompileTrigger::ViewOpened`, and the seed-timeline open):
+- **One seam, every interest, store-first.** On open / compile
+  (`CompileTrigger::ViewOpened`, the seed-timeline open, the bootstrap and
+  one-shot discovery interests in `kernel/requests/startup.rs`), the interest is
+  served from the local store immediately through `enqueue_interest_cache_serve`,
+  and its wire REQ fires in parallel to revalidate and tail. Time-to-first-pixel
+  is zero; the network keeps the view current from there.
+- **Always on; offline is the degenerate case.** Cold/warm/offline/online, the
+  store-serve half runs. There is no "offline path" and no "online path" — one
+  path with two halves. Offline rendering is simply the case where the wire half
+  delivers nothing; the on-disk copy *is* the current copy and rendering it
+  immediately is correct (aim.md §4.1, "every read goes through the store").
+- **Literally the same code for cached and fresh.** A store-served event and a
+  relay-delivered event flow through the *same* `project_accepted_event` seam
+  under the *same* supersession rule (newest `created_at` wins; event-id
+  tiebreak), differing **only** by `Provenance::LocalStore` vs relay provenance.
+  When the relay returns an event we already hold, supersession makes it a no-op;
+  when it returns a newer one — or another client signs one mid-session — the same
+  seam re-drives every downstream effect. Serving a stored kind:3 fires the
+  contacts transition (`on_active_contacts_changed`) → registers the follow-feed →
+  serves the followed authors' notes, with the app doing nothing; a later kind:3
+  signed in another client routes through the identical seam and re-subscribes the
+  timeline under the new follow set.
 
-1. Map the interest `InterestShape` → one or more `StoreQuery` variants (§3).
-2. `query_visit` the store newest-first up to a per-shape `replay_limit`
-   matching the projection's visible window (§4), on a **budgeted slice** of
-   the actor tick (§5) — never a single unbounded scan.
-3. For each visited `StoredEvent`, call the **projection-update path** the
-   live ingest uses *after* a successful insert — for the timeline:
-   `insert_timeline_id_sorted` + populate the `events` read-cache; for observer-
-   backed projections: `notify_event_observers` with a `Provenance::LocalStore`
-   marker. **Skip `store.insert` entirely.**
-4. Mark the interest's replay as completed so re-compiles (reconnect, follow-
-   list change) do not re-replay the same shape every tick.
+For each interest the cache-serve seam:
 
-Replayed events are dedup-safe against the *subsequent* live delivery: when a
-relay later re-sends a replayed event (e.g. a follow-list change widens the
-shape and the relay's `since` floor lets it through), `store.insert` returns
-`Duplicate` and the live path's `Duplicate` arm is a no-op — the event is
-already in the timeline/cache from replay. The two paths converge on the store
-as the single source of truth (D4).
+1. Maps the interest `InterestShape` → one or more `StoreQuery` variants (§3).
+2. `query_visit`es the store newest-first up to a per-shape limit matching the
+   projection's visible window (§4), on a **budgeted slice** of the actor tick
+   (§5) — never a single unbounded scan, never a blocking scan at construction.
+3. Feeds each visited `StoredEvent` through the **post-store projection-dispatch
+   seam** the live ingest uses *after* a successful insert (`project_accepted_event`
+   → `insert_timeline_id_sorted` + `events` read-cache + `notify_event_observers`),
+   marked `Provenance::LocalStore`. It **skips `store.insert` entirely** (§1.2),
+   because a re-fed stored event returns `InsertOutcome::Duplicate` whose arm is a
+   deliberate no-op.
+4. Marks the interest's serve completed so re-compiles (reconnect, follow-list
+   change) do not re-serve the same shape every tick.
+
+Store-served events are dedup-safe against the *subsequent* live delivery: when a
+relay later re-sends one, `store.insert` returns `Duplicate` and the live path's
+`Duplicate` arm is a no-op — the event is already in the timeline/cache. Both
+paths converge on the store as the single source of truth (D4).
+
+The watermark rewrite stays, now holding **universally by construction** (§6):
+because cache-serve is part of the one mechanism every floored shape passes
+through, "no watermark floor without cache-serve for the same shape" is true for
+all shapes — including the bootstrap kinds — automatically, making the §6 check a
+structural seam-identity guard rather than a per-shape coverage table.
+
+This is a **return** to aim.md §4.1, which already promised a single store-first
+read path with a network fallback half — the store-serve seam is the read half,
+the wire REQ is the in-kernel realization of the fallback half.
 
 ## 3. Filter → store-query mapping
 
 `InterestShape` carries `authors: BTreeSet`, `kinds: BTreeSet`, `event_ids`,
 `addresses`, `since/until/limit`, plus tag routing. The store query surface is
 the five `StoreQuery` variants (`nmp-store/src/types/query.rs:14`), each backed
-by an existing secondary index. Stage-1 mapping (no new index required):
+by an existing secondary index. The mapping (no new index required):
 
 | Shape pattern | `StoreQuery` | Index | Coverage |
 |---|---|---|---|
@@ -340,8 +153,8 @@ by an existing secondary index. Stage-1 mapping (no new index required):
 | `#p` target + kinds | `Ptag` | `idx_ptag_time` | **DM inbox (kind:1059 `#p`=me)**, mentions |
 | addressable coord | `KindDtag` | `idx_kind_dtag_time` | long-form, lists |
 
-Every stage-1 shape maps onto an existing index — **no new index is needed for
-stage 1.** The multi-author timeline case issues one `AuthorKind` scan per
+Every shape maps onto an existing index — **no new index is needed.** The
+multi-author timeline case issues one `AuthorKind` scan per
 author and merges by `created_at` newest-first under the global `replay_limit`
 (§4); this mirrors the per-author watermark scan #1091 already does, so the
 index access pattern is proven. A future optimization (a follow-set-aware
@@ -407,18 +220,17 @@ construction path — structurally avoiding the V-117 class of bug.
 
 The watermark rewrite (`apply_watermark_rewrite`) may floor a sub-shape's
 `since` at `newest-stored + 1` **only if** that shape's stored events
-`[…, newest-stored]` are guaranteed to be replayed into the projection at
-open time. Stage 1 satisfies this for the shapes it covers (timeline, DM
-inbox); shapes **not** yet covered by replay must **not** be watermark-floored
-until their replay lands. This is enforceable as a doctrine-lint / unit
-assertion: every shape pattern in the watermark `WatermarkFn` (§1.1,
-`kernel/mod.rs:1876`) must have a corresponding replay `StoreQuery` mapping
-(§3). The watermark and replay tables are the same table read two ways.
+`[…, newest-stored]` are guaranteed to be cache-served into the projection at
+open time. Because cache-serve is the one always-on seam every floored shape
+passes through, this holds by construction for all shapes — including the
+bootstrap kinds. It remains expressible as a doctrine-lint / unit assertion:
+every shape pattern in the watermark `WatermarkFn` (§1.1, `kernel/mod.rs:1876`)
+has a corresponding cache-serve `StoreQuery` mapping (§3). The watermark and
+cache-serve tables are the same table read two ways.
 
-The author-aware watermark fix (#1087/#1091) already narrowed the floor to
-per-author `AuthorKind` shapes — which is exactly the stage-1 replay coverage
-set. The two changes interlock: #1091 made the floor *safe per author*, #1086
-makes the floor *render-complete*.
+The author-aware watermark fix (#1087/#1091) narrowed the floor to per-author
+`AuthorKind` shapes: #1091 made the floor *safe per author*, #1086 makes the
+floor *render-complete*.
 
 ## 7. Marmot / DM special cases
 
@@ -426,18 +238,18 @@ makes the floor *render-complete*.
   `#p = me` + kind:1059 shape → `StoreQuery::Ptag` (§3). Replayed kind:1059
   events **must go through the same decrypt-on-ingest seam** the live path
   uses (the `EventIngestParser` / DM-inbox projection that unwraps the
-  gift-wrap — the cold-start path #1080 wired). Replay feeds the stored
+  gift-wrap — the cold-start path #1080 wired). Cache-serve feeds the stored
   *ciphertext* kind:1059 through that decrypt seam, not a separate path —
-  one decrypt code path (no fragmentation). **Stage 2** scopes this, because
-  it needs the decrypt seam to be replay-callable (verify it does not assume
-  live-only provenance).
+  one decrypt code path (no fragmentation), as a property of the uniform path
+  (the decrypt seam is provenance-agnostic).
 - **MLS group state (Marmot):** MLS ratchet/group state is **not** event-replay
   reconstructable the same way — it is a stateful protocol object, not a
   projection over events. Replaying kind:445/44x events into MLS would corrupt
   ratchet state. **MLS group-message replay is explicitly OUT of scope** for
   this ADR; group *membership/metadata* projections that are pure event
-  projections may be covered in a later stage, but the MLS state machine is
-  rehydrated by its own persistence path (Marmot storage), not by this seam.
+  projections ride the one cache-serve seam like any other shape, but the MLS
+  state machine is rehydrated by its own persistence path (Marmot storage), not
+  by this seam.
 
 ## 8. Alternatives considered
 
@@ -463,91 +275,41 @@ silent no-op for exactly the events it must surface. The dedup gate that makes
 live ingest correct makes insert-based replay impossible.
 
 **(d) Per-projection store-hydration opt-in (each projection queries the store
-itself).** Rejected for stage 1 as the *primary* mechanism — it fragments the
-replay policy across every projection (N copies of the budget/limit/ordering
-logic), violating the one-canonical-path rule. The chosen design centralizes
-replay at the interest-open seam and feeds projections through their existing
-update functions. (A narrow opt-in *hook* for projections whose shape does not
-map to a `StoreQuery` — should any arise — remains available as an extension,
-but is not the stage-1 path.)
+itself).** Rejected as the *primary* mechanism — it fragments the cache-serve
+policy across every projection (N copies of the budget/limit/ordering logic),
+violating the one-canonical-path rule. The chosen design centralizes cache-serve
+at the interest-open seam and feeds projections through their existing update
+functions. (A narrow opt-in *hook* for projections whose shape does not map to a
+`StoreQuery` — should any arise — remains available as an extension.)
 
 **(e) Remove the watermark rewrite (serve everything from relays each launch).**
 Rejected (§1.1): unbounded bandwidth, defeats the store-is-authoritative bet,
 and still renders empty offline.
 
-## 9. One mechanism — engineering increments (supersedes the staged-by-domain rollout)
+## 9. Acceptance test (the contract)
 
-> **Superseded by Revision 2 (2026-06-12).** The original §9 staged the rollout
-> *by domain* — timeline (stage 1), then DMs (stage 2), then generalize (stage 3)
-> — and gated when cache-serve "turned on" per domain. The owner correction
-> (R2.1) rejects that: cache-serve is **one always-on mechanism** that runs for
-> every opened interest from the first launch, not a feature that lands
-> domain-by-domain. This section now describes the *single seam* and the
-> *engineering increments* by which it is implemented — increments of one
-> mechanism, never product stages.
+> **Launch twice; the second launch offline. EVERY open interest's projection
+> renders from the store** — feed, DM inbox, threads, long-form, the bootstrap
+> kinds, and anything else open. Offline-empty for any open, store-backed interest
+> is a failure of the one mechanism.
 
-**The mechanism (one seam, always on).** At interest-open / compile
-(`CompileTrigger::ViewOpened` and the seed-timeline open), **every**
-`LogicalInterest` — any shape, any consumer — is served from the local store
-first: map `InterestShape` → `StoreQuery` (§3), `query_visit` newest-first under
-the per-tick budget (§4–§5), and feed each `StoredEvent` through the post-store
-projection-dispatch seam with `Provenance::LocalStore` (§1.2), **never**
-`store.insert` (§8(c)). The planner's wire REQ is the refinement half of the same
-mechanism. This runs unconditionally — cold/warm/offline/online — with offline
-being the degenerate case where the wire half delivers nothing.
-
-**Universal acceptance test (the contract):** launch twice, **second launch
-offline**, and **every** open interest's projection renders from the store —
-feed, DM inbox, threads, long-form, and anything else open. (Rev 1's per-stage
-"exit" criteria collapse into this one universal test.)
-
-**Engineering increments (of one mechanism — not product stages).** Landing may
-proceed incrementally for delivery hygiene; each increment is the *same* seam
-applied to more shapes / tuned, gated by the universal test above, not a
-per-domain on-switch:
-
-- **E1 — Land the seam + first shapes.** Add `Provenance::LocalStore`, the
-  budgeted store-serve step at interest-open/`ViewOpened`, the post-store
-  projection-dispatch feed, the one-shot per-(interest, shape) completion marker,
-  and the `AuthorKind` + `KindTime` shape mappings (timeline / profile / global).
-  The seam is general from the first commit — these are simply the first shapes
-  wired through it.
-- **E2 — DM ciphertext through the shared decrypt seam.** Verify the #1080
-  decrypt seam is provenance-agnostic and route `Ptag` kind:1059 store-serve
-  through it (the same seam that unwraps live gift-wraps — one decrypt path,
-  R2.4(f)). This is *the same seam decrypting store-served ciphertext*, not a new
-  "DM stage."
-- **E3 — Remaining shapes + structural invariant guard.** Wire `Etag` (threads),
-  `KindDtag` (addressable / long-form), `Ptag` mentions, and any observer-backed
-  projection whose shape maps to a `StoreQuery`. Land the §6 assertion as a
-  **structural seam-identity check** (every floored shape passes through the one
-  cache-serve seam — by construction, since the seam is universal), not a
-  per-shape coverage table. MLS group state explicitly excluded (§7, R2.4(g)).
-
-These increments may overlap or land together; their only purpose is incremental
-delivery of **one** seam. There is no point at which cache-serve is "on for the
-feed but off for DMs" as a shipped state — the universal acceptance test forbids
-it.
+There is no shipped state in which cache-serve is "on for the feed but off for
+DMs": one seam either renders every open interest from the store or it does not.
 
 ## 10. Consequences
 
 - D1 honored: offline/second-launch renders from the store, refines from relays.
 - The watermark rewrite becomes the *complete* NDK pattern (floor + cache-serve),
   guarded by an enforceable invariant.
-- One new provenance marker; zero new indexes for stages 1–2; reuse of the
+- One new provenance marker; zero new indexes; reuse of the
   existing bounded timeline cache and projection-update functions.
 - The replay budget adds bounded per-tick work; profiling gates any index
   optimization (post-v1).
 
-## 11. v1 vs post-v1 — DECIDED by owner (2026-06-12): universal cache-serve gates v1
+## 11. v1 exit criterion (owner decision, 2026-06-12)
 
-> **Decided by owner (2026-06-12).** The original question — "do stages 1–2 gate
-> v1?" — assumed a domain-staged rollout that no longer exists. Under the one
-> always-on mechanism the question is "does universal cache-serve gate v1?" and
-> the owner has **decided: yes.** This is no longer a recommendation.
-
-**Decision: universal cache-serve gates v1.** The single always-on mechanism,
-passing its **universal acceptance test**, is a **v1 exit criterion**:
+Universal cache-serve gates v1. The single always-on mechanism, passing its
+acceptance test (§9), is a v1 exit criterion:
 
 > **v1 exit criterion (cache-serve):** launch twice; the second launch offline;
 > **every open interest's projection renders from the store** — feed, DM inbox,
@@ -555,33 +317,8 @@ passing its **universal acceptance test**, is a **v1 exit criterion**:
 > open, store-backed interest blocks v1.
 
 `docs/plan.md` carries this in its v1 blocker list (issue #1086,
-`phase:v1-blocker`, `priority:p1`).
-
-Under the single-mechanism design there is no meaningful "feed gates v1 but DMs
-are post-v1" line to draw — cache-serve is one seam that either renders every
-open interest from the store or it does not. A half-shipped "feed offline-renders
-but DMs do not" state is the very split the owner rejected (R2.1) and is not a
-coherent v1 cut.
-
-Rationale (why the owner gated v1 on it):
-
-- The owner ships iOS + Android + desktop (web is out of v1). On all three,
-  "reopen the app — especially offline — and see your feed, your DMs, the thread
-  you were reading" is table-stakes app behavior, not a refinement.
-- An app that renders empty on second launch despite a full local store fails the
-  most basic user expectation and directly contradicts the framework's own D1
-  doctrine — and aim.md §4.1's "every read goes through the store" — that the
-  product is sold on.
-- Because the mechanism is *one seam*, a half-shipped state ("feed offline-renders
-  but DMs do not") is not a coherent v1 cut; it is the very split the owner
-  rejected. The honest v1 line is "the one mechanism is in, and the universal
-  acceptance test passes for the shapes the v1 apps open."
-
-Engineering nuance: the seam itself (E1) and the shapes the v1 apps actually open
-(timeline + DM at minimum; threads / long-form per app) are what the universal
-test must cover at the v1 cut. Shapes no v1 app opens (e.g. a projection only a
-future app would declare) do not block v1 in practice — not because cache-serve is
-"off" for them, but because no v1 view exercises them; the seam still serves them
-the moment such a view is opened. The structural invariant guard (E3) can land
-alongside or just after, since under the single seam it is a seam-identity
-assertion, not a per-shape coverage gate.
+`phase:v1-blocker`, `priority:p1`). Because the mechanism is one seam, there is no
+coherent "feed gates v1 but DMs are post-v1" line — it either renders every open
+interest from the store or it does not. This is table-stakes app behavior on the
+v1 platforms (iOS + Android + desktop; web is out of v1): reopen the app, even
+offline, and see your feed, your DMs, the thread you were reading.
