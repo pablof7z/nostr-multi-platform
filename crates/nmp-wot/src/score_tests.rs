@@ -35,9 +35,38 @@ fn many_followed_mutes_hide_unfollowed_candidate() {
     graph.ingest_mute_list(&bob, &[p(&candidate)]);
 
     let decision = graph.score(&me, &candidate);
-    assert_eq!(decision.score, -50);
+    assert_eq!(decision.score, DEFAULT_AUTO_HIDE_SCORE);
     assert!(decision.hide);
     assert_eq!(decision.reason, "muted-by-followed");
+}
+
+#[test]
+fn apps_build_presets_from_public_policy_constants() {
+    // An app crate should be able to express "default or stricter" trust presets
+    // by referencing NMP's authoritative tier constants instead of cloning the
+    // magic numbers locally (issue #1623). A "close-friends" preset that admits
+    // only direct follows is just `DIRECT_FOLLOW_SCORE` as the minimum floor.
+    let me = author(1);
+    let direct = author(2);
+    let mutual = author(3);
+    let second_degree = author(4);
+
+    let mut graph = WotGraph::default();
+    graph.ingest_follow_list(&me, &[p(&direct), p(&mutual)]);
+    graph.ingest_follow_list(&mutual, &[p(&second_degree)]);
+
+    // Default policy keeps the second-degree candidate visible.
+    assert!(!graph.score(&me, &second_degree).hide);
+
+    // A stricter, app-owned preset built from the public constant hides anyone
+    // below direct-follow strength — no duplicated policy numbers required.
+    let strict = graph.batch_score_with_minimum_score(
+        &me,
+        [direct.as_str(), second_degree.as_str()],
+        DIRECT_FOLLOW_SCORE,
+    );
+    assert!(!strict[0].hide, "direct follow passes the close-friends floor");
+    assert!(strict[1].hide, "second-degree is hidden by the stricter preset");
 }
 
 #[test]
