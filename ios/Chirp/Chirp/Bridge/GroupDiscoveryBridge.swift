@@ -170,18 +170,37 @@ final class DiscoveredGroupsStore: ObservableObject {
 
     /// The opaque Rust handle for the currently-open discovery session.
     /// `nil` until the user first searches. Closed on relay switch or deinit.
+    ///
+    /// Always mutate via `setDiscoveryHandle(_:)` — it keeps `_discoveryHandleRaw`
+    /// in sync so the nonisolated `deinit` can close the handle safely.
     private var discoveryHandle: OpaquePointer?
+
+    /// Nonisolated mirror of `discoveryHandle`. Updated in lock-step by
+    /// `setDiscoveryHandle(_:)`. Only ever read from `deinit`, which runs after
+    /// the last reference is released — no concurrent MainActor mutation can
+    /// occur at that point, making the unsafety sound.
+    nonisolated(unsafe) private var _discoveryHandleRaw: OpaquePointer?
 
     init(kernel: KernelHandle) {
         self.kernel = kernel
     }
 
     deinit {
-        // Close the Rust-side discovery session when the store is torn down
-        // so the event observer and snapshot projection are reclaimed.
-        if let handle = discoveryHandle {
-            kernel.closeGroupDiscovery(handle)
+        // Swift 6: `deinit` is nonisolated and cannot touch `@MainActor`-isolated
+        // state. `_discoveryHandleRaw` mirrors `discoveryHandle` exactly.
+        // `nmp_app_chirp_close_group_discovery` is a plain C function — it takes
+        // no Swift state and needs no actor. By the time `deinit` runs there are
+        // no remaining references, so no concurrent mutation of `_discoveryHandleRaw`
+        // is possible: the unsafety is sound.
+        if let raw = _discoveryHandleRaw {
+            nmp_app_chirp_close_group_discovery(UnsafeMutableRawPointer(raw))
         }
+    }
+
+    /// Update both handle fields atomically. Always runs on the MainActor.
+    private func setDiscoveryHandle(_ handle: OpaquePointer?) {
+        discoveryHandle = handle
+        _discoveryHandleRaw = handle
     }
 
     /// Begin a discover session against `relayUrl`: open the read projection
@@ -197,7 +216,7 @@ final class DiscoveredGroupsStore: ObservableObject {
         // catalog arrives.
         if trimmed != hostRelayUrl {
             kernel.closeGroupDiscovery(discoveryHandle)
-            discoveryHandle = nil
+            setDiscoveryHandle(nil)
             groups = []
             lastJoinedGroupId = nil
         }
@@ -206,7 +225,7 @@ final class DiscoveredGroupsStore: ObservableObject {
         // Open a session for this relay when none is held yet (first search
         // or after a relay switch above).
         if discoveryHandle == nil {
-            discoveryHandle = kernel.openGroupDiscovery(hostRelayUrl: trimmed)
+            setDiscoveryHandle(kernel.openGroupDiscovery(hostRelayUrl: trimmed))
         }
         isSearching = true
         kernel.discoverGroups(relayUrl: trimmed)
