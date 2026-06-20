@@ -4,9 +4,9 @@
 use super::*;
 use std::ffi::CString;
 
-use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::WireProjectionState;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
+use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
 
 #[test]
 fn keys_are_namespaced_per_consumer() {
@@ -22,16 +22,16 @@ fn filter_json_carries_the_feed_kinds_and_dimension() {
     // wrapper for acquisition, so the kernel filter and feed predicate still
     // agree without the app declaring [1,6] as primary policy.
     assert_eq!(FEED_PRIMARY_KINDS, [1]);
-    assert_eq!(feed_acquisition_kinds(), vec![1, 6]);
+    assert_eq!(feed_acquisition_kinds(), Some(vec![1, 6]));
     assert_eq!(
         feed_filter_json("authors", "abc"),
-        r#"{"kinds":[1,6],"authors":["abc"]}"#
+        Some(r#"{"kinds":[1,6],"authors":["abc"]}"#.to_string())
     );
     // `r##"…"##` — the inner `"#e"` contains a `"#` sequence that would
     // terminate a single-hash raw string early.
     assert_eq!(
         feed_filter_json("#e", "root1"),
-        r##"{"kinds":[1,6],"#e":["root1"]}"##
+        Some(r##"{"kinds":[1,6],"#e":["root1"]}"##.to_string())
     );
 }
 
@@ -40,8 +40,8 @@ fn feed_filter_json_parses_as_a_valid_interest_shape() {
     // Guards the hand-built JSON against the kernel-side parser the open
     // path feeds it into — a malformed filter would be silently rejected.
     for json in [
-        feed_filter_json("authors", "abc"),
-        feed_filter_json("#e", "root1"),
+        feed_filter_json("authors", "abc").expect("valid author filter"),
+        feed_filter_json("#e", "root1").expect("valid thread filter"),
     ] {
         assert!(
             nmp_planner::InterestShape::from_filter_json(&json).is_some(),

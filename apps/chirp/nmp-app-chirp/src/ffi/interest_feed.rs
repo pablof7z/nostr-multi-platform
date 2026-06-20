@@ -49,7 +49,6 @@
 use std::ffi::c_char;
 use std::sync::Arc;
 
-use nmp_store::{EventStore, StoreQuery, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{ClosureInterestShape, PullFeedController};
@@ -61,6 +60,7 @@ use nmp_nip01::op_feed::{
     encode_op_feed_snapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
 use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
+use nmp_store::{EventStore, StoreQuery, StoredEvent};
 
 use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_shape};
 
@@ -71,11 +71,10 @@ use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_
 /// (kernel admission) and the `FlatFeed` predicate (render gate) always agree.
 pub(crate) const FEED_PRIMARY_KINDS: [u32; 1] = [1];
 
-fn feed_acquisition_kinds() -> Vec<u32> {
+fn feed_acquisition_kinds() -> Option<Vec<u32>> {
     nmp_nip18::try_acquisition_kinds_for_primary(FEED_PRIMARY_KINDS)
-        .expect("Chirp primary feed kinds must not include repost wrappers")
-        .into_iter()
-        .collect()
+        .ok()
+        .map(|kinds| kinds.into_iter().collect())
 }
 
 /// Bound store seeding so an old account with a large author history cannot
@@ -126,13 +125,15 @@ fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
 /// shape is fixed and tiny; the value is re-parsed kernel-side into an
 /// `InterestShape` whose hash gives deterministic dedup.
 #[must_use]
-fn feed_filter_json(dimension: &str, value: &str) -> String {
-    let kinds = feed_acquisition_kinds()
+fn feed_filter_json(dimension: &str, value: &str) -> Option<String> {
+    let kinds = feed_acquisition_kinds()?
         .into_iter()
         .map(|k| k.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    format!(r#"{{"kinds":[{kinds}],"{dimension}":["{value}"]}}"#)
+    Some(format!(
+        r#"{{"kinds":[{kinds}],"{dimension}":["{value}"]}}"#
+    ))
 }
 
 /// Open the flat author feed for `pubkey_hex`.
@@ -162,7 +163,9 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     // (the registered observer/controller hold their own `Arc`s, not `&app`).
     let app_ref = unsafe { &*app };
 
-    let acquisition_kinds = feed_acquisition_kinds();
+    let Some(acquisition_kinds) = feed_acquisition_kinds() else {
+        return;
+    };
     let feed = FlatFeed::new(author_feed_predicate(
         pubkey.clone(),
         acquisition_kinds.clone(),
@@ -195,11 +198,9 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
-    open_interest_for(
-        app,
-        &feed_filter_json("authors", &pubkey),
-        &author_consumer(&pubkey),
-    );
+    if let Some(filter_json) = feed_filter_json("authors", &pubkey) {
+        open_interest_for(app, &filter_json, &author_consumer(&pubkey));
+    }
 }
 
 /// Close the flat author feed for `pubkey_hex`: tear down the feed registration
@@ -218,11 +219,9 @@ pub extern "C" fn nmp_app_chirp_close_author_feed(app: *mut NmpApp, pubkey_hex: 
     let app_ref = unsafe { &*app };
 
     let _ = app_ref.unregister_feed(&author_feed_key(&pubkey));
-    close_interest_for(
-        app,
-        &feed_filter_json("authors", &pubkey),
-        &author_consumer(&pubkey),
-    );
+    if let Some(filter_json) = feed_filter_json("authors", &pubkey) {
+        close_interest_for(app, &filter_json, &author_consumer(&pubkey));
+    }
 }
 
 /// Open the flat thread feed for `event_id_hex` (the thread root).
@@ -248,7 +247,9 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     // SAFETY: see `nmp_app_chirp_open_author_feed`.
     let app_ref = unsafe { &*app };
 
-    let acquisition_kinds = feed_acquisition_kinds();
+    let Some(acquisition_kinds) = feed_acquisition_kinds() else {
+        return;
+    };
     let feed = FlatFeed::new(thread_feed_predicate(
         root_id.clone(),
         acquisition_kinds.clone(),
@@ -280,11 +281,9 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
-    open_interest_for(
-        app,
-        &feed_filter_json("#e", &root_id),
-        &thread_consumer(&root_id),
-    );
+    if let Some(filter_json) = feed_filter_json("#e", &root_id) {
+        open_interest_for(app, &filter_json, &thread_consumer(&root_id));
+    }
 }
 
 /// Close the flat thread feed for `event_id_hex`: tear down the feed
@@ -302,11 +301,9 @@ pub extern "C" fn nmp_app_chirp_close_thread_feed(app: *mut NmpApp, event_id_hex
     let app_ref = unsafe { &*app };
 
     let _ = app_ref.unregister_feed(&thread_feed_key(&root_id));
-    close_interest_for(
-        app,
-        &feed_filter_json("#e", &root_id),
-        &thread_consumer(&root_id),
-    );
+    if let Some(filter_json) = feed_filter_json("#e", &root_id) {
+        close_interest_for(app, &filter_json, &thread_consumer(&root_id));
+    }
 }
 
 /// Chirp's home-feed primary content kind declaration: kind:1 text notes.
@@ -388,12 +385,15 @@ fn seed_author_feed_from_store(app: &NmpApp, feed: &FlatFeed, pubkey_hex: &str) 
     let Some(store) = event_store(app) else {
         return;
     };
+    let Some(kinds) = feed_acquisition_kinds() else {
+        return;
+    };
     seed_query(
         feed,
         &*store,
         StoreQuery::AuthorKind {
             author,
-            kinds: feed_acquisition_kinds(),
+            kinds,
             since: None,
             until: None,
         },
@@ -410,14 +410,10 @@ fn seed_thread_feed_from_store(app: &NmpApp, feed: &FlatFeed, root_id_hex: &str)
     let Some(store) = event_store(app) else {
         return;
     };
-    seed_query(
-        feed,
-        &*store,
-        StoreQuery::Etag {
-            target,
-            kinds: feed_acquisition_kinds(),
-        },
-    );
+    let Some(kinds) = feed_acquisition_kinds() else {
+        return;
+    };
+    seed_query(feed, &*store, StoreQuery::Etag { target, kinds });
 }
 
 fn seed_query(feed: &FlatFeed, store: &dyn EventStore, query: StoreQuery) {
