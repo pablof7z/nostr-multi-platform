@@ -24,8 +24,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec, TimelineEventCard};
-use nmp_threading::ModulePolicy;
 use nmp_nip51::MuteListProjection;
+use nmp_threading::ModulePolicy;
 
 const ALICE: &str = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
 const BOB: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
@@ -56,7 +56,9 @@ fn mute_event(active: &str, muted_pubkeys: &[&str], muted_event_ids: &[&str]) ->
         tags.push(vec!["e".to_string(), eid.to_string()]);
     }
     KernelEvent {
-        id: EventId::from("0000000000000000000000000000000000000000000000000000000000000001".to_string()),
+        id: EventId::from(
+            "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
+        ),
         author: active.to_string(),
         kind: 10000,
         created_at: 9999,
@@ -188,8 +190,14 @@ fn empty_mute_list_suppresses_nothing() {
     timeline.on_kernel_event(&kind1_event(CAROL, NOTE_CAROL, 999));
 
     let ids = card_ids(&timeline);
-    assert!(ids.contains(&NOTE_BOB.to_string()), "Bob must appear with empty mute list");
-    assert!(ids.contains(&NOTE_CAROL.to_string()), "Carol must appear with empty mute list");
+    assert!(
+        ids.contains(&NOTE_BOB.to_string()),
+        "Bob must appear with empty mute list"
+    );
+    assert!(
+        ids.contains(&NOTE_CAROL.to_string()),
+        "Carol must appear with empty mute list"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +217,11 @@ fn unmuting_restores_author_to_timeline_on_new_notes() {
 
     // Alice unmutes Bob (publishes a replacement kind:10000 without Bob).
     mute.on_kernel_event(&mute_event(ALICE, &[], &[]));
+    let ids_after_unmute = card_ids(&timeline);
+    assert!(
+        !ids_after_unmute.contains(&NOTE_BOB.to_string()),
+        "unmuting must not resurrect a row that was suppressed at ingest time"
+    );
 
     // Bob publishes a new note after unmute.
     let note_bob_2 = "4444444444444444444444444444444444444444444444444444444444444444";
