@@ -1023,15 +1023,6 @@ fn reconcile_unresolved_payments(
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-/// Serialize a JSON value to a string for the outbound wire queue.
-///
-/// V-63: replaces the prior `serde_json::to_string(...).unwrap_or_default()`
-/// call sites. Returns `Err` on the rare serialization failure so callers can
-/// surface an error rather than pushing an empty `""` frame.
-fn encode_frame(value: &serde_json::Value) -> Result<String, serde_json::Error> {
-    serde_json::to_string(value)
-}
-
 /// Build a signed NWC request frame and register it in the inflight maps.
 ///
 /// Returns `Some((outbound, request_event_id))` on success — the second tuple
@@ -1240,12 +1231,9 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &dyn WalletKernelAccess) {
     kernel.mark_changed_since_emit();
 }
 
-fn pubkey_to_npub(hex: &str) -> Result<String, String> {
-    PublicKey::from_hex(hex)
-        .map_err(|e| format!("{e}"))?
-        .to_bech32()
-        .map_err(|e| format!("{e}"))
-}
+#[path = "runtime_utils.rs"]
+mod runtime_utils;
+use runtime_utils::{encode_frame, pubkey_to_npub};
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

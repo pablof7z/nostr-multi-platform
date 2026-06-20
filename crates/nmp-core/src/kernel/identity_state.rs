@@ -331,7 +331,7 @@ impl super::Kernel {
             return;
         }
         entry.status = status.to_string();
-        entry.can_retry = publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
+        entry.can_retry = publish_queue::publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump publish_ver on terminal state transition.
@@ -492,19 +492,8 @@ impl super::Kernel {
     }
 }
 
-pub(in crate::kernel) fn publish_entry_can_retry(
-    status: &str,
-    outcomes: &[RelayAckOutcome],
-    has_retry_payload: bool,
-) -> bool {
-    if !has_retry_payload {
-        return false;
-    }
-    status == "failed"
-        || status == "pending_relays_unknown"
-        || outcomes.iter().any(|relay| relay.status == "failed")
-}
-
+#[path = "identity_state/publish_queue.rs"]
+pub(in crate::kernel) mod publish_queue;
 #[cfg(test)]
 #[path = "identity_state/tests.rs"]
 mod tests;
