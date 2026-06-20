@@ -1000,9 +1000,9 @@ private final class KernelUpdateSink {
 /// (both use the system malloc allocator).
 ///
 /// There is one C callback for every capability; `ChirpCapabilities.handleJSON`
-/// routes the request to the capability owning its `namespace` (keyring vs
-/// HTTP). Rust invokes this from the actor thread (never the main thread), so
-/// a synchronous capability like `HttpCapability` may block here safely.
+/// routes the request to the capability owning its `namespace` (keyring). Rust
+/// invokes this from the actor thread (never the main thread), so a synchronous
+/// capability may block here safely.
 private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSON in
     guard let context, let requestJSON else { return nil }
     let capabilities = Unmanaged<ChirpCapabilities>.fromOpaque(context).takeUnretainedValue()
