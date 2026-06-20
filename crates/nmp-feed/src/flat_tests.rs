@@ -248,3 +248,6 @@ fn caller_supplied_admission_and_rank_key_drive_flat_feed() {
         "admission and ordering are owned by caller-supplied closures"
     );
 }
+
+#[path = "flat_policy_tests.rs"]
+mod policy_tests;
