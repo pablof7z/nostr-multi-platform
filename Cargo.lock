@@ -4418,7 +4418,6 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip02",
  "nmp-substrate-defaults",
- "nmp-threading",
  "nmp-wasm",
  "serde_json",
  "wasm-bindgen",

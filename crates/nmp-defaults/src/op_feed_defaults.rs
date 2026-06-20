@@ -12,14 +12,12 @@
 //!
 //! 1. Constructs [`nmp_nip02::ActiveFollowSet`] over the kernel's
 //!    [`ActiveAccountSlot`] (the producer of the follow predicate).
-//! 2. Builds the four closures `register_op_feed` needs:
+//! 2. Builds the three inputs `register_op_feed` needs:
 //!    * **follow predicate** — `active_follow_set.predicate()` (live view of
 //!      the active account's follow set);
 //!    * **event lookup** — a synchronous read through the kernel event-store
-//!      handle exposed by `NmpApp`;
-//!    * **claim sink** — `nmp_nip01::op_feed::build_actor_claim_sink` over a
-//!      dispatcher built from `app.actor_sender()` (the public command-send
-//!      seam; `NmpApp::send_cmd` is crate-private);
+//!      handle exposed by `NmpApp`; this is a local cache read only, never
+//!      acquisition;
 //!    * **card builder** — supplied inside `register_op_feed` itself
 //!      (`TimelineEventCard::from_event_for_op_feed`).
 //! 3. Registers the returned `Arc<OpFeedEngine>` as a
@@ -60,8 +58,8 @@
 //! (the v3→v4 override deleted the planner-side `SocialTimeline` seam but the
 //! kernel-side per-follow expansion was never removed — it is still the live
 //! producer of the follow-feed subscription). The composition root therefore
-//! only needs to wire the **engine** (predicate + event_lookup + claim sink +
-//! card builder), the `ActiveFollowSet` `on_change`, and the app-level
+//! only needs to wire the **engine** (predicate + event_lookup + card builder),
+//! the `ActiveFollowSet` `on_change`, and the app-level
 //! identity-change callback; no interest expansion.
 //!
 //! # `event_lookup` reads the kernel event store (V-83)
@@ -134,14 +132,11 @@ use std::sync::{Arc, Mutex};
 use nmp_planner::InterestShape;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{ActorCommand, KernelEventObserver};
+use nmp_core::KernelEventObserver;
 use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::op_feed::{
-    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, FeedEmissionState,
-    FrameIdentity,
-};
+use nmp_nip01::op_feed::{register_op_feed, FeedEmissionState, FrameIdentity};
 use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
 
@@ -212,19 +207,7 @@ pub fn register_op_feed_defaults(
     let follow_set_observer: Arc<dyn KernelEventObserver> = follow_set.clone();
     let _follow_set_observer_id = app.register_event_observer(follow_set_observer);
 
-    // ── 2. Claim sink dispatcher ─────────────────────────────────────────
-    //
-    // `NmpApp::send_cmd` is crate-private; the public command-send seam is
-    // `actor_sender()` -> `Sender<ActorCommand>`. Dropped sends (closed
-    // channel after teardown) are best-effort no-ops (D6: a hydration request
-    // is best-effort).
-    let sender = app.actor_sender();
-    let dispatch: ActorCommandDispatch = Arc::new(move |cmd: ActorCommand| {
-        let _ = sender.send(cmd);
-    });
-    let claim_sink = build_actor_claim_sink(dispatch);
-
-    // ── 3. Event lookup (V-83 — real synchronous kernel event read) ──────
+    // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
     // `Fn(&EventId) -> Option<KernelEvent>`. The engine's repost L-2/L-5
     // backward-hydration paths consult this to read a parent/target/wrapper
@@ -242,19 +225,14 @@ pub fn register_op_feed_defaults(
         nmp_core::slots::event_by_id_from_store(&event_store, id)
     });
 
-    // ── 4. Construct the engine ──────────────────────────────────────────
-    let engine = register_op_feed(
-        viewer.clone(),
-        follow_set.predicate(),
-        event_lookup,
-        claim_sink,
-    );
+    // ── 3. Construct the engine ──────────────────────────────────────────
+    let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup);
 
-    // ── 5. Register the engine (ingest + output) ─────────────────────────
+    // ── 4. Register the engine (ingest + output) ─────────────────────────
     let engine_observer: Arc<dyn KernelEventObserver> = engine.clone();
     let _engine_observer_id = app.register_event_observer(engine_observer);
 
-    // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
+    // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //
     // `load_older` is no longer a `created_at` window-grow on the engine (that
     // parallel path was deleted in 6B — the engine is no longer a
@@ -315,7 +293,7 @@ pub fn register_op_feed_defaults(
         app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
     }
 
-    // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
+    // ── 4b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //
     // ADR-0055 Rung 6 Option A (R6-S1): the typed sidecar now uses
     // `FeedEmissionState` to omit an unchanged feed frame when the host has
@@ -411,7 +389,7 @@ pub fn register_op_feed_defaults(
         }
     });
 
-    // ── 6. Perspective reset ─────────────────────────────────────────────
+    // ── 5. Perspective reset ─────────────────────────────────────────────
     //
     // `on_change` fires on active-account kind:3 replacement, account switch,
     // and logout. Each changes the app's perspective on which authors can make

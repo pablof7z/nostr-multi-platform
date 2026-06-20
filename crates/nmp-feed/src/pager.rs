@@ -191,7 +191,9 @@ impl FeedPullPager {
     /// The pull scope to hand the kernel, if a shape is stored.
     #[must_use]
     pub fn pull_scope(&self) -> Option<PullScope> {
-        self.shape.as_ref().map(|s| PullScope::InterestShape(s.clone()))
+        self.shape
+            .as_ref()
+            .map(|s| PullScope::InterestShape(s.clone()))
     }
 
     /// The cursor's current seq position (last fully-consumed seq).

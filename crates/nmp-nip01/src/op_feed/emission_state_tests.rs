@@ -47,7 +47,12 @@ impl HostCacheSim {
     ///   SHOULD have after this frame, regardless of omit/emit).
     ///
     /// Asserts the host-coherence invariant: reconstructed cache == full_payload.
-    fn apply(&mut self, result: Option<(Vec<u8>, u64)>, identity: FrameIdentity, full_payload: &[u8]) {
+    fn apply(
+        &mut self,
+        result: Option<(Vec<u8>, u64)>,
+        identity: FrameIdentity,
+        full_payload: &[u8],
+    ) {
         // Two-axis reset: session_id OR snapshot_epoch change → removeAll().
         if self.identity != Some(identity) {
             self.identity = Some(identity);
@@ -109,7 +114,10 @@ fn a1_first_emission_is_always_full_emit() {
     let result = state.should_emit(p.clone(), id0());
     assert!(result.is_some(), "first emission must never be omitted");
     let (emitted_payload, rev) = result.unwrap();
-    assert_eq!(emitted_payload, p, "first emission must carry the full payload");
+    assert_eq!(
+        emitted_payload, p,
+        "first emission must carry the full payload"
+    );
     assert_eq!(rev, 1, "first emission rev must be 1");
     assert_eq!(state.current_rev(), 1);
 }
@@ -173,15 +181,14 @@ fn a6_attribution_removed_from_visible_root_emits() {
     );
 }
 
-/// A.7 — Profile refresh changing an author display name inside a visible card →
-/// bytes change → emit. The subtlest input — the one an enumerated bump-list
-/// would most likely miss. M1's structural trap-proof guarantee covers it.
+/// A.7 — Any visible author-display byte change → emit. This is a structural
+/// equality guard, not a feed-owned profile-refresh path.
 #[test]
-fn a7_profile_refresh_in_visible_card_emits() {
+fn a7_visible_author_display_change_emits() {
     let mut state = FeedEmissionState::new(capability_on());
     state.should_emit(b"...author:Alice...".to_vec(), id0());
     let result = state.should_emit(b"...author:Alice Renamed...".to_vec(), id0());
-    assert!(result.is_some(), "profile refresh in visible card must emit");
+    assert!(result.is_some(), "visible card byte change must emit");
     assert_eq!(result.unwrap().1, 2);
 }
 
@@ -212,7 +219,10 @@ fn a9_account_switch_epoch_change_forces_baseline() {
     };
     let p2 = payload(0xBB, 58_768);
     let result = state.should_emit(p2.clone(), switched);
-    assert!(result.is_some(), "epoch change must force a baseline re-emit");
+    assert!(
+        result.is_some(),
+        "epoch change must force a baseline re-emit"
+    );
     let (emitted, rev) = result.unwrap();
     assert_eq!(emitted, p2);
     assert_eq!(rev, 1, "rev must reset to 1 after epoch change");
@@ -249,7 +259,10 @@ fn b2_multiple_idle_ticks_all_omit() {
     let p = payload(0xCC, 58_768);
     state.should_emit(p.clone(), id0());
     for _ in 0..39 {
-        assert!(state.should_emit(p.clone(), id0()).is_none(), "idle must omit");
+        assert!(
+            state.should_emit(p.clone(), id0()).is_none(),
+            "idle must omit"
+        );
     }
     assert_eq!(state.current_rev(), 1, "rev stable across 39 idle ticks");
 }
@@ -261,7 +274,10 @@ fn b3_out_of_window_event_omits() {
     let mut state = FeedEmissionState::new(capability_on());
     let p = payload(0x77, 58_872);
     state.should_emit(p.clone(), id0());
-    assert!(state.should_emit(p, id0()).is_none(), "out-of-window must omit");
+    assert!(
+        state.should_emit(p, id0()).is_none(),
+        "out-of-window must omit"
+    );
 }
 
 /// B.4 — Duplicate event (already held): engine state unchanged → omit.
@@ -280,17 +296,22 @@ fn b5_attribution_on_non_visible_root_omits() {
     let mut state = FeedEmissionState::new(capability_on());
     let p = payload(0x33, 58_872);
     state.should_emit(p.clone(), id0());
-    assert!(state.should_emit(p, id0()).is_none(), "non-visible attr must omit");
+    assert!(
+        state.should_emit(p, id0()).is_none(),
+        "non-visible attr must omit"
+    );
 }
 
-/// B.6 — Profile refresh for a non-visible author → visible bytes unchanged →
-/// omit.
+/// B.6 — Non-visible author metadata change → visible bytes unchanged → omit.
 #[test]
-fn b6_profile_refresh_for_non_visible_author_omits() {
+fn b6_non_visible_author_metadata_change_omits() {
     let mut state = FeedEmissionState::new(capability_on());
     let p = payload(0x22, 58_000);
     state.should_emit(p.clone(), id0());
-    assert!(state.should_emit(p, id0()).is_none(), "non-visible refresh omit");
+    assert!(
+        state.should_emit(p, id0()).is_none(),
+        "non-visible refresh omit"
+    );
 }
 
 // ── Group C: host-coherence simulation ───────────────────────────────────────
@@ -338,8 +359,15 @@ fn c3_epoch_change_resets_host_cache_then_baseline() {
         snapshot_epoch: 1,
     };
     let r3 = state.should_emit(pb.clone(), switched);
-    assert!(r3.is_some(), "first tick after epoch change must be a baseline");
-    assert_eq!(r3.as_ref().unwrap().1, 1, "rev resets to 1 after epoch change");
+    assert!(
+        r3.is_some(),
+        "first tick after epoch change must be a baseline"
+    );
+    assert_eq!(
+        r3.as_ref().unwrap().1,
+        1,
+        "rev resets to 1 after epoch change"
+    );
     host.apply(r3, switched, &pb);
 }
 
@@ -385,8 +413,12 @@ fn c7_capability_off_is_byte_identical_to_today() {
     let mut state = FeedEmissionState::new(capability_off());
     let p = payload(0xFF, 58_768);
     let r1 = state.should_emit(p.clone(), id0()).expect("emit tick 1");
-    let r2 = state.should_emit(p.clone(), id0()).expect("emit tick 2 (idle)");
-    let r3 = state.should_emit(p.clone(), id0()).expect("emit tick 3 (idle)");
+    let r2 = state
+        .should_emit(p.clone(), id0())
+        .expect("emit tick 2 (idle)");
+    let r3 = state
+        .should_emit(p.clone(), id0())
+        .expect("emit tick 3 (idle)");
     assert_eq!(r1.0, p);
     assert_eq!(r2.0, p);
     assert_eq!(r3.0, p);
@@ -414,8 +446,14 @@ fn c9_capability_flag_propagates_from_shared_atomic() {
     let flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     let mut state = FeedEmissionState::new(Arc::clone(&flag));
     let p = payload(0xAB, 58_768);
-    assert!(state.should_emit(p.clone(), id0()).is_some(), "cap OFF emit 1");
-    assert!(state.should_emit(p.clone(), id0()).is_some(), "cap OFF emit 2");
+    assert!(
+        state.should_emit(p.clone(), id0()).is_some(),
+        "cap OFF emit 1"
+    );
+    assert!(
+        state.should_emit(p.clone(), id0()).is_some(),
+        "cap OFF emit 2"
+    );
     flag.store(true, Ordering::Release); // declare_incremental_apply
     assert!(
         state.should_emit(p.clone(), id0()).is_none(),
@@ -463,7 +501,11 @@ fn c10_reset_new_session_id_forces_baseline_not_omit() {
         "FREEZE GUARD: byte-identical payload after a session_id change MUST \
          emit a baseline (host cache was reset), never omit"
     );
-    assert_eq!(post_reset.as_ref().unwrap().1, 1, "rev restarts at 1 post-Reset");
+    assert_eq!(
+        post_reset.as_ref().unwrap().1,
+        1,
+        "rev restarts at 1 post-Reset"
+    );
     // Host applies under the new identity (its cache was reset) and stays coherent.
     host.apply(post_reset, post, &p);
 }

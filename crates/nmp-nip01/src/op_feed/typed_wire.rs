@@ -23,7 +23,8 @@
 //! ## Raw data only (ADR-0032)
 //!
 //! Every field is the raw protocol value: hex pubkeys / event ids, Unix-second
-//! `created_at`, verbatim kind:0 display mirrors with `has_*` absence flags. No
+//! `created_at`, and absent author-display fields with `has_*` absence flags.
+//! The feed encoder does not resolve or mirror kind:0 profile state, and no
 //! `display::` forwarder runs on the encode path.
 //!
 //! ## D5 bound
@@ -239,9 +240,7 @@ pub fn decode_op_feed_snapshot(bytes: &[u8]) -> Result<OpFeedSnapshot, String> {
 fn decode_root_card(
     root: fb::RootCard<'_>,
 ) -> Result<RootCard<TimelineEventCard, Nip10ReplyAttribution>, String> {
-    let card = crate::typed_wire::decode::decode_card(
-        root.card().ok_or("RootCard missing card")?,
-    )?;
+    let card = crate::typed_wire::decode::decode_card(root.card().ok_or("RootCard missing card")?)?;
     let mut attribution = Vec::new();
     if let Some(attrs) = root.attribution() {
         attribution.reserve(attrs.len());

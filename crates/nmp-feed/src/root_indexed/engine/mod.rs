@@ -2,43 +2,27 @@
 //!
 //! Consumes `KernelEvent`s through the kernel observer fan-out and produces a
 //! feed of **thread roots only**, each carrying the raw list of attributions
-//! (qualifying references from followed authors). Unknown roots are hydrated
-//! by emitting a [`ClaimRequest`] through a construction-time closure sink;
-//! the engine never touches the action system or any C-ABI symbol (D7).
+//! (qualifying references from followed authors). Unknown roots remain
+//! structural placeholders until some other mounted component or protocol
+//! module claims and delivers the referenced event; generic feed mechanics do
+//! not fetch secondary data.
 //!
 //! This crate is substrate-generic: it names no protocol convention. The
 //! resolver (`R: ParentResolver`) decides parent/root/supersedes edges; the
-//! payload (`A: AttributionPayload`) decides what qualifies as attribution and
-//! how a card's author display refreshes; the follow predicate and event
-//! lookup are plain closures. A CI grep gate enforces zero NIP/profile tokens.
-//!
-//! ## V-81 — the release signal is NOT terminal
-//!
-//! Rung 1's `event_claim_released` ring fires on **Phase-1 EOSE**, which is
-//! *not* the final "this root will never arrive" verdict — Phase-2 relay
-//! retargeting may still be fetching the root. The design doc §3-D originally
-//! said `on_claim_released` should drop `pending_attributions[root]`; **former
-//! tracker V-81 supersedes that** (it postdates the doc). [`Self::on_event_claim_released`]
-//! is therefore a no-op beyond a diagnostic counter: a pending attribution
-//! survives a release signal and is dropped ONLY when (a) the root actually
-//! arrives (drains pending → attributions) or (b) the bounded map evicts it
-//! under D5 capacity pressure. See ADR-0035 for the full rationale. The
-//! cleaner long-term fix — moving the ring push to `terminate_claim` in
-//! `nmp-core` — is recorded as a rung-1 follow-up in V-81, not implemented
-//! here (this rung is `nmp-feed`-only).
+//! payload (`A: AttributionPayload`) decides what qualifies as attribution; the
+//! follow predicate and event lookup are plain closures. A CI grep gate enforces
+//! zero NIP tokens.
 
 use std::sync::{
-    atomic::{AtomicU64, AtomicUsize, Ordering},
+    atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
 };
 
-use nmp_planner::RelayHint;
 use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_threading::{pointer::ThreadPointer, ParentResolver};
+use nmp_threading::ParentResolver;
 
 use crate::root_indexed::attribution::AttributionPayload;
 use crate::root_indexed::card::{RootCard, RootFeedSnapshot};
-use crate::root_indexed::claim::ClaimRequest;
 use crate::types::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
 use crate::{FeedCursor, FeedPage, FeedRequest};
 
@@ -46,9 +30,8 @@ use crate::{FeedCursor, FeedPage, FeedRequest};
 /// under the 500-LOC ceiling; it is a continuation `impl` on `RootIndexedFeed`.
 mod ingest;
 
-/// Per-root D5 cap: at most this many attributions per root sub-map. When the
-/// sub-map is full the oldest reply (by [`AttributionPayload::reply_created_at`])
-/// is evicted. Independent of the global [`MAX_PROJECTION_MESSAGES`] outer cap.
+/// Per-root D5 cap: at most this many attributions per root sub-map.
+/// Independent of the global [`MAX_PROJECTION_MESSAGES`] outer cap.
 pub const MAX_ATTRIBUTION_PER_ROOT: usize = 64;
 
 /// Predicate the engine consults to decide whether a referencing author's
@@ -59,22 +42,13 @@ pub type FollowPredicate = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 /// Read-cache lookup the engine uses for repost L-2 / L-5 rebuild.
 pub type EventLookup = Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>;
 
-/// Sink the engine pushes [`ClaimRequest`]s through. The wiring layer turns
-/// these into host hydration calls; the engine stays free of the action system.
-pub type ClaimSink = Arc<dyn Fn(ClaimRequest) + Send + Sync>;
-
-/// Detect a profile event and extract `(author_pubkey, profile)`; `None` for
-/// non-profile events. Lets the engine fan profiles out without naming a kind.
-pub type ProfileDetector<A> =
-    Box<dyn Fn(&KernelEvent) -> Option<(String, <A as AttributionPayload>::Profile)> + Send + Sync>;
-
 /// Gate predicate: `true` for feed-eligible event kinds (roots or attributions).
 /// Events that fail the gate are dropped at the observer entry point before any
 /// state is touched. Caller-supplied so the engine stays kind-agnostic (D0).
 pub type EventGate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
 /// Build a render card from a root event, plus the supersedes-target event when
-/// present (L-5 hydration rebuilds with both).
+/// present (L-5 late-target rebuilds with both).
 pub type CardBuilder<C> = Box<dyn Fn(&KernelEvent, Option<&KernelEvent>) -> C + Send + Sync>;
 
 /// A locally-held root and its render card + bookkeeping for repost rebuild.
@@ -82,11 +56,11 @@ struct RootSlot<C> {
     card: C,
     created_at: u64,
     /// When this root is a repost-style wrapper, the id it supersedes. Used to
-    /// hydrate the card while preserving repost provenance once the wrapped
+    /// rebuild the card while preserving repost provenance once the wrapped
     /// target arrives (L-5).
     supersedes_target: Option<EventId>,
     /// The kind:6 repost wrapper event id, when this slot was seeded by a
-    /// repost. On L-5 backward hydration (target arrives after the wrapper),
+    /// repost. On L-5 late-target rebuild (target arrives after the wrapper),
     /// the engine re-fetches the wrapper via `event_lookup` and rebuilds the
     /// card from the `(wrapper, target)` pair so a renderer can still show the
     /// "reposted by" provenance. `None` for plain roots.
@@ -96,15 +70,12 @@ struct RootSlot<C> {
 /// Closure capability bundle, all shared/owned closures. Held outside the
 /// `Mutex` (they are immutable after construction) so the hot observer path
 /// does not contend on capability access.
-struct Capabilities<R, A: AttributionPayload, C> {
+struct Capabilities<R, C> {
     resolver: R,
     follow: FollowPredicate,
     event_gate: EventGate,
     event_lookup: EventLookup,
-    claim_sink: ClaimSink,
-    profile_detector: ProfileDetector<A>,
     card_builder: CardBuilder<C>,
-    consumer_id: String,
 }
 
 /// Mutable engine state. One `Mutex` guards all maps; the observer path and
@@ -116,13 +87,8 @@ struct EngineState<A: AttributionPayload, C> {
     /// root_id → (reply_event_id → attribution). Per-root sub-map D5 capped.
     attributions: BoundedMessageMap<EventId, BoundedMessageMap<EventId, A>>,
     /// Buffered attributions for roots not yet locally held, keyed by the
-    /// referenced root id. Survives a release signal (V-81).
+    /// referenced root id. Drained when the root arrives through normal ingest.
     pending_attributions: BoundedMessageMap<EventId, BoundedMessageMap<EventId, A>>,
-    /// Pointer the engine emitted a `Claim` for, keyed by primary id, so a
-    /// `Release` can carry the correct pointer shape.
-    pending_pointers: BoundedMessageMap<EventId, ThreadPointer>,
-    /// Author pubkey → most recent profile, for in-place display refresh.
-    profiles: BoundedMessageMap<String, A::Profile>,
 }
 
 impl<A: AttributionPayload, C> EngineState<A, C> {
@@ -131,8 +97,6 @@ impl<A: AttributionPayload, C> EngineState<A, C> {
             roots: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
             attributions: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
             pending_attributions: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
-            pending_pointers: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
-            profiles: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
         }
     }
 }
@@ -147,12 +111,8 @@ where
     A: AttributionPayload,
     C: Clone + Send + Sync + serde::Serialize,
 {
-    caps: Capabilities<R, A, C>,
+    caps: Capabilities<R, C>,
     state: Mutex<EngineState<A, C>>,
-    /// Diagnostic counter of release signals seen. Per V-81 these do NOT evict
-    /// pending attributions; the counter exists so a consumer (and the V-81
-    /// test) can observe "release seen, pending intact".
-    released_signals_seen: AtomicU64,
     /// Current visible-window limit — the **render viewport**, grown one page at
     /// a time by [`Self::grow_visible_window`].
     ///
@@ -180,22 +140,16 @@ where
     /// * `event_gate` — true for feed-eligible kinds; events that fail the gate
     ///   are dropped at the observer entry point before any state is touched.
     /// * `event_lookup` — read-cache lookup, needed for repost L-2/L-5 rebuild.
-    /// * `claim_sink` — receives every [`ClaimRequest`]; the wiring layer turns
-    ///   these into host hydration calls.
-    /// * `profile_detector` — extracts `(author, profile)` from a profile
-    ///   event, `None` otherwise.
+    /// Missing roots or repost targets stay as structural placeholders. A UI
+    /// component that wants to render the target must claim it through that
+    /// component's own dependency path.
     /// * `card_builder` — `(root_event, Option<target_event>) -> C`.
-    /// * `consumer_id` — refcount/match key stamped on every emitted claim.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         resolver: R,
         follow: FollowPredicate,
         event_gate: EventGate,
         event_lookup: EventLookup,
-        claim_sink: ClaimSink,
-        profile_detector: ProfileDetector<A>,
         card_builder: CardBuilder<C>,
-        consumer_id: impl Into<String>,
     ) -> Self {
         Self {
             caps: Capabilities {
@@ -203,78 +157,11 @@ where
                 follow,
                 event_gate,
                 event_lookup,
-                claim_sink,
-                profile_detector,
                 card_builder,
-                consumer_id: consumer_id.into(),
             },
             state: Mutex::new(EngineState::new()),
-            released_signals_seen: AtomicU64::new(0),
             window_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
         }
-    }
-
-    /// Fan a freshly-arrived profile into every attribution (live + pending)
-    /// for its author, and cache it for future `from_reply` calls.
-    fn apply_profile(&self, pubkey: &str, profile: A::Profile) {
-        let Ok(mut st) = self.state.lock() else {
-            return;
-        };
-        st.profiles.insert(pubkey.to_string(), profile.clone());
-        refresh_author(&mut st.attributions, pubkey, &profile);
-        refresh_author(&mut st.pending_attributions, pubkey, &profile);
-    }
-
-    fn profile_for(&self, pubkey: &str) -> Option<A::Profile> {
-        self.state
-            .lock()
-            .ok()
-            .and_then(|st| st.profiles.get(pubkey).cloned())
-    }
-
-    fn emit_claim(
-        &self,
-        st: &mut EngineState<A, C>,
-        primary_id: &str,
-        pointer: ThreadPointer,
-        hints: Vec<RelayHint>,
-    ) {
-        st.pending_pointers
-            .insert(primary_id.to_string(), pointer.clone());
-        (self.caps.claim_sink)(ClaimRequest::Claim {
-            pointer,
-            hints,
-            consumer_id: self.caps.consumer_id.clone(),
-        });
-    }
-
-    /// Emit `Release` for a now-resolved primary id if we had a pointer
-    /// recorded for it.
-    fn emit_release_for(&self, st: &mut EngineState<A, C>, primary_id: &str) {
-        if let Some(pointer) = st.pending_pointers.remove(primary_id) {
-            (self.caps.claim_sink)(ClaimRequest::Release {
-                pointer,
-                consumer_id: self.caps.consumer_id.clone(),
-            });
-        }
-    }
-
-    /// Rung-1 `event_claim_released` observer hook.
-    ///
-    /// **V-81: this is intentionally NOT terminal.** A Phase-1-EOSE release
-    /// signal does not mean the root will never arrive (Phase-2 retargeting may
-    /// still be running), so the engine MUST NOT drop `pending_attributions`
-    /// here. We only bump a diagnostic counter. Pending entries are dropped
-    /// solely by root arrival (drain) or D5 capacity eviction. See ADR-0035
-    /// and former tracker V-81.
-    pub fn on_event_claim_released(&self, _primary_id: &EventId) {
-        self.released_signals_seen.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Number of release signals observed (diagnostic; V-81).
-    #[must_use]
-    pub fn released_signals_seen(&self) -> u64 {
-        self.released_signals_seen.load(Ordering::Relaxed)
     }
 
     /// Tear down all state owned by the current feed perspective.
@@ -283,34 +170,13 @@ where
     /// account, follow set, mute/block policy, relay set, WoT filter, or any
     /// equivalent app-defined view. When it changes, old rows must disappear
     /// immediately instead of aging out naturally.
-    ///
-    /// Pending root claims are engine-owned refcounts in the wiring layer, so a
-    /// reset must release them before dropping the local pointer map. The state
-    /// lock is released before callbacks run; a claim sink may enqueue actor
-    /// commands and must not execute under the engine mutex.
     pub fn reset_for_perspective_change(&self) {
-        let releases = match self.state.lock() {
-            Ok(mut st) => {
-                let releases = st
-                    .pending_pointers
-                    .iter()
-                    .map(|(_, pointer)| pointer.clone())
-                    .collect::<Vec<_>>();
-                *st = EngineState::new();
-                releases
-            }
-            Err(_) => Vec::new(),
-        };
+        if let Ok(mut st) = self.state.lock() {
+            *st = EngineState::new();
+        }
 
         self.window_limit
             .store(DEFAULT_FEED_WINDOW_LIMIT, Ordering::Relaxed);
-
-        for pointer in releases {
-            (self.caps.claim_sink)(ClaimRequest::Release {
-                pointer,
-                consumer_id: self.caps.consumer_id.clone(),
-            });
-        }
     }
 
     /// Compatibility alias for older call sites whose only perspective change
@@ -421,21 +287,5 @@ where
 {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.ingest(event);
-    }
-}
-
-/// Refresh display fields for every attribution authored by `pubkey` across a
-/// map of per-root sub-maps.
-fn refresh_author<A: AttributionPayload>(
-    map: &mut BoundedMessageMap<EventId, BoundedMessageMap<EventId, A>>,
-    pubkey: &str,
-    profile: &A::Profile,
-) {
-    for sub in map.values_mut() {
-        for attribution in sub.values_mut() {
-            if attribution.author_pubkey() == pubkey {
-                attribution.refresh_for_profile(profile);
-            }
-        }
     }
 }

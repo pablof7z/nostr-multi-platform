@@ -4,11 +4,16 @@
 //! shells also need the per-event render metadata in the same pushed snapshot,
 //! so this projection owns the generic card cache beside the view state.
 
-use std::{collections::BTreeMap, sync::{Arc, Mutex}, time::Instant};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
 use nmp_core::substrate::{
-    empty_suppression_lookup, BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext, MAX_PROJECTION_MESSAGES,
+    empty_suppression_lookup, BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext,
+    MAX_PROJECTION_MESSAGES,
 };
 use nmp_core::KernelEventObserver;
 use nmp_feed::{FeedBlock, FeedCard};
@@ -96,11 +101,10 @@ impl TimelineEventCard {
     /// must produce a `TimelineEventCard` without access to the
     /// `ModularTimelineProjection`'s internal profile / card / relation caches.
     /// This is the stateless reuse seam: it invokes the private
-    /// [`Self::from_event`] with empty caches and zero relation counts. Author
-    /// display and relation counts then hydrate later via the engine's
-    /// profile-refresh fan-out (`Nip10ReplyAttribution::refresh_for_profile`
-    /// keeps the *attribution* rows current; root-card profile refresh is a
-    /// rung-7 wiring concern — flagged as drift, not solved here).
+    /// [`Self::from_event`] with empty caches and zero relation counts. Profile
+    /// display, relation counts, and other secondary data are not feed-owned;
+    /// mounted UI components or sibling projections claim and render those
+    /// dependencies independently when they need them.
     ///
     /// For a repost wrapper the `target` arg carries the superseded note so the
     /// NIP-18 `reposted_by` attribution is preserved (L-1 / L-5). For a plain
@@ -143,7 +147,10 @@ impl TimelineEventCard {
                 &target_event.id,
                 crate::note_relations::TargetRelationCounts::default(),
             );
-            (Self::from_event(target_event, counts), target_event.created_at)
+            (
+                Self::from_event(target_event, counts),
+                target_event.created_at,
+            )
         } else if let Some(inner) = repost.embedded_event.as_ref() {
             // L-1: the wrapper embeds the inner note. `from_event` decodes it.
             let counts = NoteRelationCounts::for_note(
@@ -391,7 +398,10 @@ impl ModularTimelineProjection {
         let cards: Vec<TimelineEventCard> = inner
             .cards
             .values()
-            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey) && !self.suppression.is_suppressed_event(&c.id))
+            .filter(|c| {
+                !self.suppression.is_suppressed_author(&c.author_pubkey)
+                    && !self.suppression.is_suppressed_event(&c.id)
+            })
             .cloned()
             .collect();
         ModularTimelineSnapshot {
@@ -416,7 +426,10 @@ impl ModularTimelineProjection {
         // when they were already in the window's state.
         let cards: Vec<TimelineEventCard> = cards
             .into_iter()
-            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey) && !self.suppression.is_suppressed_event(&c.id))
+            .filter(|c| {
+                !self.suppression.is_suppressed_author(&c.author_pubkey)
+                    && !self.suppression.is_suppressed_event(&c.id)
+            })
             .collect();
         ModularTimelineSnapshot {
             blocks: page_blocks,
@@ -431,7 +444,6 @@ impl ModularTimelineProjection {
         }
     }
 
-
     #[must_use]
     pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
         let make_window_start = Instant::now();
@@ -440,11 +452,15 @@ impl ModularTimelineProjection {
         };
         let blocks = sorted_projection_blocks(&inner);
         let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
-        let (page_blocks, page) = nmp_feed::page_for_request(&visible_blocks, &inner.cards, &request);
+        let (page_blocks, page) =
+            nmp_feed::page_for_request(&visible_blocks, &inner.cards, &request);
         let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
         let cards: Vec<TimelineEventCard> = cards
             .into_iter()
-            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey) && !self.suppression.is_suppressed_event(&c.id))
+            .filter(|c| {
+                !self.suppression.is_suppressed_author(&c.author_pubkey)
+                    && !self.suppression.is_suppressed_event(&c.id)
+            })
             .collect();
         ModularTimelineSnapshot {
             blocks: page_blocks,

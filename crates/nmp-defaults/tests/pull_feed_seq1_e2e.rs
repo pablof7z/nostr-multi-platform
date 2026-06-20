@@ -37,10 +37,10 @@ use std::sync::Arc;
 
 use nmp_planner::InterestShape;
 use nmp_store::{EventStore, MemEventStore, PullPage, RawEvent, ScanLogResult, VerifiedEvent};
-use nmp_core::{pull_page_over, PullLimits, PullScope};
 use nmp_core::KernelEventObserver;
+use nmp_core::{pull_page_over, PullLimits, PullScope};
 use nmp_feed::{ClosureInterestShape, FeedController, PullFeedController};
-use nmp_nip01::op_feed::{build_actor_claim_sink, register_op_feed};
+use nmp_nip01::op_feed::register_op_feed;
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
@@ -78,11 +78,6 @@ fn alice_shape() -> InterestShape {
     }
 }
 
-/// A no-op claim sink (no actor in this test).
-fn noop_sink() -> nmp_feed::ClaimSink {
-    build_actor_claim_sink(Arc::new(|_cmd| {}))
-}
-
 /// A no-op follow predicate (ALICE self-authored, so follow predicate is
 /// irrelevant for root ingestion; a "follows everyone" predicate is fine).
 fn follow_all() -> nmp_feed::FollowPredicate {
@@ -102,12 +97,7 @@ fn pull_feed_controller_seq_cursor_picks_up_late_old_event() {
     let store = Arc::new(MemEventStore::new());
 
     // OP engine (RootIndexedFeed) — the real production engine.
-    let engine = register_op_feed(
-        ALICE.to_string(),
-        follow_all(),
-        noop_lookup(),
-        noop_sink(),
-    );
+    let engine = register_op_feed(ALICE.to_string(), follow_all(), noop_lookup());
 
     let pull_limits = PullLimits {
         max_entries: NonZeroUsize::new(50).unwrap(),

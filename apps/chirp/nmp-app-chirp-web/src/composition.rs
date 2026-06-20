@@ -5,15 +5,12 @@
 //! 1. Extracts the kernel's [`ActiveAccountSlot`] from the reducer.
 //! 2. Constructs an [`ActiveFollowSet`] seeded from the active account.
 //! 3. Builds an `EventLookup` closure over the kernel's `EventStore` handle.
-//! 4. Creates a [`PendingClaimQueue`] and a queuing [`ClaimSink`] that parks
-//!    `ClaimRequest`s while the reducer is borrowed.
-//! 5. Constructs the [`OpFeedEngine`] via `register_op_feed`.
-//! 6. Registers the engine as a [`KernelEventObserver`] on the reducer.
-//! 7. Registers the follow set as a `KernelEventObserver` for kind:3 ingest.
-//! 8. Registers an `on_change` callback that resets the engine on every
+//! 4. Constructs the [`OpFeedEngine`] via `register_op_feed`.
+//! 5. Registers the engine as a [`KernelEventObserver`] on the reducer.
+//! 6. Registers the follow set as a `KernelEventObserver` for kind:3 ingest.
+//! 7. Registers an `on_change` callback that resets the engine on every
 //!    follow-set perspective change.
-//! 9. Registers the typed `nmp.feed.home` snapshot projection.
-//! 10. Installs the post-tick drain hook into the runtime.
+//! 8. Registers the typed `nmp.feed.home` snapshot projection.
 //!
 //! The returned [`ChirpWebFeedSetup`] gives the caller handles to:
 //!
@@ -33,11 +30,10 @@
 //!
 //! * **D0** — no protocol nouns leak into this crate's public API; the surface
 //!   is [`WasmRuntime`] in, [`ChirpWebFeedSetup`] out.
-//! * **D7** — composition is wired by closures; the engine asks, the drain
-//!   decides.
+//! * **D7** — composition is wired by closures; `EventLookup` is a local
+//!   read-cache seam only, not acquisition.
 //! * **D8** — no I/O or blocking in any registered closure.
 
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
@@ -50,8 +46,6 @@ use nmp_nip01::op_feed::{
 };
 use nmp_nip02::ActiveFollowSet;
 use nmp_wasm::WasmRuntime;
-
-use crate::claim_queue::{build_queuing_claim_sink, drain_pending_claims, new_pending_claim_queue};
 
 /// Content-parser seam implementation backed by nmp-content.
 ///
@@ -166,25 +160,21 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         nmp_core::slots::event_by_id_from_arc(&event_store, id.as_str())
     });
 
-    // 4. Queuing claim sink — parks ClaimRequests while reducer is borrowed.
-    let queue = new_pending_claim_queue();
-    let claim_sink = build_queuing_claim_sink(Arc::clone(&queue));
-
-    // 5. Build the OP-feed engine.
+    // 4. Build the OP-feed engine.
     let viewer = reducer.borrow().active_account_pubkey().unwrap_or_default();
-    let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup, claim_sink);
+    let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup);
 
-    // 6. Register the engine as an event observer (kind:0/1/6 ingest).
+    // 5. Register the engine as an event observer (kind:1/6 ingest).
     reducer
         .borrow()
         .register_event_observer(Arc::clone(&engine) as Arc<dyn KernelEventObserver>);
 
-    // 7. Register the follow set as an event observer (kind:3 ingest).
+    // 6. Register the follow set as an event observer (kind:3 ingest).
     reducer
         .borrow()
         .register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
 
-    // 8. Wire the perspective-change engine reset.
+    // 7. Wire the perspective-change engine reset.
     //
     // `on_change` fires on active-account kind:3 replacement, account switch,
     // and logout. Each invalidates the visible rows admitted under the previous
@@ -196,7 +186,7 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         engine_for_cb.reset_for_perspective_change();
     }));
 
-    // 9. Register the typed snapshot projection under "nmp.feed.home".
+    // 8. Register the typed snapshot projection under "nmp.feed.home".
     let engine_for_projection = Arc::clone(&engine);
     reducer
         .borrow()
@@ -211,13 +201,6 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
                 ..Default::default()
             })
         });
-
-    // 10. Install post-tick drain hook.
-    let queue_for_drain = Arc::clone(&queue);
-    let reducer_for_drain = Rc::clone(&reducer);
-    runtime.install_post_tick_drain(Rc::new(move || {
-        drain_pending_claims(&queue_for_drain, &reducer_for_drain);
-    }));
 
     ChirpWebFeedSetup {
         engine,

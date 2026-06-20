@@ -28,9 +28,9 @@
 >   action. Generic factoring scoped post-v1.
 > - **v2 (2026-05-27b):** generic engine pulled forward into `nmp-feed`;
 >   NIP-01 became a thin instance.
-> - **v3 (2026-05-27c):** addressed codex-v1 blockers — associated
->   `type Profile`, `ClaimRequest(ThreadPointer)`, `Kernel::claim_event`
->   primitive, full Swift consumer enumeration.
+> - **v3 (2026-05-27c):** historical draft that still included associated
+>   profile state and feed-owned claim plumbing. Those are not current feed
+>   architecture.
 > - **v4 (this revision, 2026-05-27d):** addresses codex-v2 (review at
 >   `docs/perf/op-centric-feed-architect-review.md`) and four user
 >   decisions (Q1, Q2, Q5, Q7). Major changes:
@@ -47,24 +47,9 @@
 >   - **No pre-kind:3 buffer in the shipped path.** Cold-start replay is handled
 >     by interest registration plus cache-serve. The proposal's bounded
 >     pre-kind:3 buffer is historical design context, not current guidance.
->   - **No-match release signal (codex B2-remainder).** Adds a kernel
->     surface `pub fn event_claim_released(&self) -> &BoundedRingBuffer<EventId>`
->     projection (substrate-generic name; not `claim_event`-specific to
->     callers). The engine observes it through a new `RawEventObserver`
->     callback at registration time. EOSE-driven release inside
->     `complete_unknown_oneshot` now also clears `event_claims` /
->     `event_claim_requested` and pushes the primary id into the
->     released-events ring buffer. Rung 1 expansion.
->   - **URI relay hints become initial planner hints (codex B2-remainder
->     option a).** `OneshotApi::request` gains a `hints: Vec<RelayHint>`
->     parameter; `claim_event` passes URI relay TLVs both into initial
->     `LogicalInterest.hints` AND into `register_claim_expansion`. The
->     first REQ goes to bootstrap content relays ∪ hint relays. This
->     is a kernel-API change in its own right; justified because the
->     existing OP-feed work depends on it and it benefits every other
->     `claim_event` caller (quoted notes, mentions, etc.). Rung 1
->     expansion. Cited tests prove identical behavior for non-hint
->     callers.
+>   - **Secondary data not feed-owned.** The historical no-match release signal
+>     and URI-hint claim plumbing are not part of the feed design. Components
+>     that need missing events still use their own claim dependencies.
 >   - **`Q1` attribution rendering — display-layer concern.** User
 >     answer: "Only 1, but this is obviously a display concern." The
 >     projection now exposes ALL enumerated repliers as raw data
@@ -126,16 +111,14 @@ own enumeration policy.
 **Crate layout:**
 
 - **`nmp-feed`** — `RootIndexedFeed<R, A>` engine, `AttributionPayload`
-  trait (`type Profile`), `ClaimRequest { Claim, Release }` carrying
-  `ThreadPointer`. Engine takes a generic `FollowPredicate: Arc<dyn
+  trait. Engine takes a generic `FollowPredicate: Arc<dyn
   Fn(&str) -> bool + Send + Sync>` and an `EventLookup: Arc<dyn
   Fn(&EventId) -> Option<KernelEvent> + Send + Sync>`. No NIP-named
-  tokens; no follow-set trait; no planner coupling.
-- **`nmp-nip01`** — `Nip10ReplyAttribution: AttributionPayload<Profile =
-  ProfileDisplay>`, `register_op_feed(app, viewer, follow_predicate,
-  event_lookup)` wiring helper (~150 LOC), `ClaimRequest` sink that
-  encodes pointers as `nostr:` URIs and calls the existing
-  `nmp_app_claim_event` C-ABI.
+  tokens; no follow-set trait; no planner coupling; no acquisition.
+- **`nmp-nip01`** — `Nip10ReplyAttribution: AttributionPayload`,
+  `register_op_feed(viewer, follow_predicate, event_lookup)` wiring helper.
+  The NIP-10 instance gates kind:1/kind:6 and builds raw feed cards; it does
+  not fetch roots, targets, profiles, reply counts, or previews.
 - **`nmp-nip02`** — `ActiveFollowSet`, an observable snapshot of the
   active account's follows (raw `Arc<RwLock<BTreeSet<String>>>` or
   equivalent), updated by an internal observer that watches kind:3
@@ -164,27 +147,23 @@ own enumeration policy.
 1. `TimelineBlock::Standalone` becomes lossless (root pointer preserved
    on 1-event chains — closes `grouper.rs:362-368` bug).
 2. `RootIndexedFeed<R, A>` engine in `nmp-feed` consumes `KernelEvent`s
-   via the existing observer fan-out, emits typed `ClaimRequest` values
-   for unknown roots, exposes `RootFeedSnapshot<C, A>` (visible-window-
-   only) as the FFI surface.
-3. `nmp-nip01`'s host adapter translates `ClaimRequest` into
-   `nmp_app_claim_event` / `nmp_app_release_event` calls (existing
-   C-ABI). Hydrates non-followed roots via `Kernel::claim_event`'s
-   canonical OneShot path. The kernel-side enhancements (initial-hint
-   plumbing, no-match release signal) benefit every claim_event consumer,
-   not just the OP feed.
+   via the existing observer fan-out, buffers followed replies whose roots are
+   absent, keeps repost placeholders keyed by target id, and exposes
+   `RootFeedSnapshot<C, A>` (visible-window-only) as the FFI surface.
+3. Components or sibling modules that render secondary data translate their own
+   mounted dependencies into `claim_event`, profile, count, media, or preview
+   requests. The feed itself never does that acquisition.
 4. **`nmp-defaults`** is the composition root. It owns the
-   follow-set producer (`nmp-nip02`'s `ActiveFollowSet`), the
-   pre-engine kind:1/6 buffer drainage, the per-follow
-   `LogicalInterest` registration, and the OP-feed registration.
+   follow-set producer (`nmp-nip02`'s `ActiveFollowSet`), protocol primary-kind
+   expansion, pull pager, perspective reset callback, and OP-feed registration.
 
 **Net effect:**
 
 - `nmp-core` D0-clean. `nmp-feed` D0-clean. No new bespoke C-ABI symbol.
 - One-line affordance for any composing app:
   `nmp_defaults::register_op_feed_defaults(app, viewer)`.
-- The pre-kind:3 cold-start gap is closed at the source (kernel
-  ingest), not papered over at the engine layer.
+- The app declares primary content kinds and a reactive perspective; wrapper
+  kinds and active follow acquisition are derived by reusable NMP machinery.
 
 ---
 
@@ -217,74 +196,52 @@ own enumeration policy.
 │  Layer 4 — nmp-nip01 (THIN — ~150 LOC)                                      │
 │                                                                             │
 │   Nip10Resolver: ParentResolver                  (existing)                 │
-│   Nip10ReplyAttribution: AttributionPayload<Profile = ProfileDisplay>       │
+│   Nip10ReplyAttribution: AttributionPayload                                 │
 │   register_op_feed(app, viewer, predicate, event_lookup) wires:             │
 │     - RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>                 │
 │     - KernelEventObserver registration                                      │
 │     - snapshot key "nmp.feed.home"                                          │
-│     - ClaimRequest sink → nmp_app_claim_event / nmp_app_release_event      │
-│     - event_claim_released observer → forwards to engine                    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      ▲ KernelEvent fan-out
 ┌────────────────────────────────────┴────────────────────────────────────────┐
 │  Layer 4 — nmp-feed (GENERIC ENGINE — ~450 LOC NEW)                         │
 │                                                                             │
 │   trait AttributionPayload {                                                │
-│     type Profile;                                                           │
-│     fn from_reply(reply, follow, profile_for) → Option<Self>;               │
+│     fn from_reply(reply, follow) → Option<Self>;                            │
 │     fn reply_event_id(&self) → &str;                                        │
-│     fn author_pubkey(&self) → &str;                                         │
-│     fn reply_created_at(&self) → u64;                                       │
-│     fn refresh_for_profile(&mut self, profile: &Self::Profile);             │
 │   }                                                                         │
 │                                                                             │
 │   RootIndexedFeed<R, A> {                                                   │
 │     resolver: R,                                                            │
 │     follow: Arc<dyn Fn(&str) -> bool + Send + Sync>,                        │
 │     event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>,│
-│     profile_detector: Box<dyn Fn(&KernelEvent)                              │
-│                              -> Option<(String, A::Profile)>                │
-│                          + Send + Sync>,                                    │
 │     card_builder: Box<dyn Fn(&KernelEvent, ...) -> C + Send + Sync>,        │
 │     roots: BoundedMessageMap<EventId, RootCard<C, A>>,                      │
 │     attributions: BoundedMessageMap<EventId, BTreeMap<EventId, A>>,         │
 │     pending_attributions: BoundedMessageMap<EventId,                        │
 │                                BTreeMap<EventId, A>>,                       │
-│     pending_pointers: BoundedMessageMap<EventId, ThreadPointer>,            │
-│     profiles: BoundedMessageMap<String, A::Profile>,                        │
 │     window: FeedWindowState,                                                │
 │   }                                                                         │
 │                                                                             │
 │   impl KernelEventObserver { on_kernel_event(evt):                          │
 │     • root-shaped (resolver.parent == None) → insert in roots;              │
-│       flush pending_attributions for this id; emit Release for the pointer  │
+│       flush pending_attributions for this id                                │
 │     • reply-shaped AND follow(evt.author) →                                 │
 │         pointer = resolver.root(evt) or .parent(evt)                        │
-│         a = A::from_reply(evt, follow.as_ref(), profile_for)                │
+│         a = A::from_reply(evt, follow.as_ref())                             │
 │         if pointer is Event AND parent event is locally available:          │
 │           if event_lookup(&pointer.id).map(|e| resolver.supersedes(&e)).flatten() │
 │             ⇒ re-key the attribution to the supersedes target (L-2 rule)    │
-│         if pointer not in roots → emit Claim(pointer, hints)                │
 │         record in attributions[pointer.primary_id] or pending_attrs         │
 │     • repost-shaped (resolver.supersedes != None) → target = supersedes;    │
 │         insert kind:6 wrapper into roots[target] (L-1);                     │
-│         if target absent locally → emit Claim(Event(target), hints);        │
+│         if target absent locally → keep a target-keyed placeholder;         │
 │         when target arrives later, engine rebuilds the card via L-5 rule    │
-│     • profile event (profile_detector returns Some) → fan out               │
-│       A::refresh_for_profile across attributions + pending_attributions     │
 │     • non-follow reply / repost → dropped                                   │
 │   }                                                                         │
 │                                                                             │
-│   on_claim_released(primary_id): drop pending_attributions[primary_id];     │
-│       remove pending_pointers[primary_id]; surface as a UI hint that the    │
-│       reference is permanently unresolvable (visible only via diagnostics). │
-│                                                                             │
 │   fn snapshot(request) → RootFeedSnapshot<C, A>                             │
 │      [visible window only; cards + attribution Vec<A>, both bounded]        │
-│                                                                             │
-│   ClaimRequest::Claim { pointer: ThreadPointer, hints: Vec<RelayHint>,      │
-│                         consumer_id: String }                               │
-│   ClaimRequest::Release { pointer: ThreadPointer, consumer_id: String }     │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      ▲
 ┌────────────────────────────────────┴────────────────────────────────────────┐
@@ -312,16 +269,8 @@ own enumeration policy.
 │         timeline_authors. On every sync_follow_feed_interests rebuild,     │
 │         walk the buffer and re-ingest any event whose author is now in     │
 │         timeline_authors via the normal ingest+observer path. D5 cap.       │
-│     • event_claim_released projection                                       │
-│         pub fn event_claim_released(&self) -> &BoundedRingBuffer<EventId>   │
-│         Pushed by complete_unknown_oneshot's EOSE path AND by release_event │
-│         when refcount reaches zero. Observable through a substrate-grade    │
-│         callback the engine registers at construction.                      │
-│     • OneshotApi::request gains hints: Vec<RelayHint>                       │
-│         Plumbed into LogicalInterest.hints so route_hints sees URI relays   │
-│         on the FIRST REQ.                                                   │
-│     • release_event calls release_claim_expansion(primary_id)               │
-│         M3 fix.                                                             │
+│     • No feed-specific claim/release additions                              │
+│         claim_event remains component-owned secondary-data infrastructure.  │
 │     • Kernel::active_timeline_authors() -> Vec<String>                      │
 │         Typed accessor over the existing field (no new noun).               │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -336,16 +285,12 @@ own enumeration policy.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Data flow: **EventIngest → (if author in `timeline_authors`) store +
-observer fan-out → `RootIndexedFeed::on_kernel_event` → engine emits
-`ClaimRequest::Claim(pointer, hints)` if a root is missing → host
-adapter calls `nmp_app_claim_event` → kernel runs `claim_event` →
-`OneshotApi::request` includes URI relay hints → planner routes to
-`bootstrap_content_relays ∪ hint relays` on the FIRST REQ → Bob's OP
-arrives, ingest stores it, observer fan-out fires, engine receives the
-root → snapshot rebuilds → on EOSE without match, kernel pushes the
-primary_id into `event_claim_released` → engine drops
-`pending_attributions[primary_id]`.**
+Data flow: **EventIngest → store + observer fan-out →
+`RootIndexedFeed::on_kernel_event` → engine inserts a root, buffers a
+followed reply until its root arrives, or inserts a repost target placeholder →
+snapshot rebuilds from the current local feed state.** Acquisition remains
+outside the feed. If a mounted component needs an absent root/target/profile,
+that component opens its own dependency through the appropriate NMP seam.
 
 Cold-start replay comes from interest registration and cache-serve after kind:3
 rebuilds `timeline_authors`. The historical pre-kind:3 buffer is not current.
@@ -363,86 +308,31 @@ follow acquisition in `nmp-core`; consumer composition wiring in
 
 ### B. How does Bob's unfollowed OP enter the kernel?
 
-**Decision: through the canonical `Kernel::claim_event` primitive
-(`crates/nmp-core/src/kernel/requests/event.rs`), with three rung-1
-kernel API additions that make the routing match what v3 promised:**
+**Decision: not because the feed fetched it.** A followed reply can make Bob's
+OP relevant to the feed, but the feed layer only records that relevance as
+pending attribution. Bob's OP enters the kernel through normal acquisition:
+active interests, relay replay/cache-serve, user navigation, or a mounted UI
+component that explicitly claims the missing event because it is trying to
+render that event.
 
-1. `OneshotApi::request(registry, scope, shape, hints)` — new `hints`
-   parameter; `claim_event` passes URI relay TLVs into it. Initial
-   `LogicalInterest.hints` populated.
-2. `event_claim_released` projection (`BoundedRingBuffer<EventId>`) +
-   observer callback the engine registers at construction. EOSE-with-
-   no-match release inside `complete_unknown_oneshot` clears
-   `event_claims` + `event_claim_requested` AND pushes into the ring.
-3. `release_event` calls `release_claim_expansion(primary_id)` (M3).
+#### Step-by-step trace of the current path
 
-#### Step-by-step trace of the fetch path (v4, every claim verified)
-
-1. **Alice's reply arrives.** `Kernel::ingest_timeline_event`
-   (`crates/nmp-core/src/kernel/ingest/timeline.rs:20-211`) admits it
-   because Alice is in `timeline_authors` (the active account follows
-   her). Event stored; observer fan-out fires.
-2. **`RootIndexedFeed::on_kernel_event` runs.** Resolver returns
-   `Some(ThreadPointer::Event { id: bob_op_id, relay:
-   alice_relay_hint, kind: None })`.
-3. **Follow predicate.** `follow(alice_pubkey) == true`. Reply qualifies.
-4. **Engine looks up Bob's OP locally.** `roots.contains(bob_op_id) ==
-   false`. Records attribution in `pending_attributions[bob_op_id]`,
-   `pending_pointers[bob_op_id] = ThreadPointer::Event { … }`. Emits
-   `ClaimRequest::Claim { pointer: ThreadPointer::Event { id:
-   bob_op_id, relay: alice_relay_hint, kind: None }, hints: vec![
-   RelayHint { url: alice_provenance_relay, source: Provenance {
-   event_id: alice_event_id } }, ], consumer_id: "nmp.feed.home" }`.
-   Alice's provenance relay is read from the kernel's `event_provenance`
-   record for Alice's reply id via `event_lookup` (the lookup callback
-   can return the provenance through a sibling accessor, or — simpler —
-   the engine encodes Alice's reply-id as part of the `RelayHint`
-   payload and lets the kernel side resolve it; the implementer picks
-   the cleaner shape).
-5. **`nmp-nip01` host adapter** encodes the `ThreadPointer::Event` into
-   a `nostr:nevent1…` URI with the relay-hint TLV. Calls
-   `nmp_app_claim_event(app, uri, consumer_id)` —
-   `crates/nmp-ffi/src/timeline.rs:133`.
-6. **`Kernel::claim_event`** parses the URI. Falls into the
-   `NostrUri::Event` arm
-   (`crates/nmp-core/src/kernel/requests/event.rs:93-109`). Extracts
-   `event_id`, optional `author`, and `relays`. Constructs
-   `InterestShape { event_ids: {bob_op_id}, limit: Some(1) }`. Refcounts
-   `event_claims[bob_op_id]`. Calls **`OneshotApi::request(registry,
-   InterestScope::Global, shape, uri_relay_hints_as_RelayHints)`** —
-   the new v4 signature; the initial `LogicalInterest.hints` is no
-   longer empty. Also calls `register_claim_expansion(primary_id,
-   Some(interest_id), uri_author /* None */, uri_relay_hints, now)` —
-   unchanged. Enqueues `CompileTrigger::ViewOpened`.
-7. **Planner partition dispatcher** at
-   `crates/nmp-planner/src/compiler/partition/mod.rs:240-289` — verified
-   that `route_hints` runs at line 265 BEFORE the bootstrap-content-
-   relays test. With v4's `hints` plumbing the initial REQ goes to
-   **Alice's provenance relay (from hints) ∪ bootstrap_content_relays
-   (from `route_bootstrap_content`)**. **This is the change codex flagged
-   was missing in v3.**
-8. **Bob's OP arrives.** Ingest accepts via `is_discovery_oneshot(sub_id)`
-   (line 209) — the OneshotApi-registered sub id matches. Event stored;
-   observer fan-out fires.
-9. **`RootIndexedFeed::on_kernel_event` runs again** for Bob's OP.
-   Resolver returns `parent == None` — Bob's note is a root. Engine
-   inserts into `roots[bob_op_id]`, drains
-   `pending_attributions[bob_op_id]` into `attributions[bob_op_id]`,
-   removes `pending_pointers[bob_op_id]`. Emits `ClaimRequest::Release
-   { pointer: …, consumer_id: "nmp.feed.home" }` because the root is
-   now locally available; host adapter calls `nmp_app_release_event`,
-   which (with M3 fix) cleans up `event_claims` AND
-   `release_claim_expansion(primary_id)`.
-10. **If Bob's OP never arrived.** `OneshotApi`'s EOSE path
-    (`complete_unknown_oneshot`) inside the kernel — with v4's
-    enhancement — clears `event_claims[bob_op_id]`,
-    `event_claim_requested.remove(bob_op_id)`,
-    `release_claim_expansion(bob_op_id)`, and pushes `bob_op_id` into
-    the `event_claim_released` ring buffer. The engine, which
-    registered an observer on the ring at construction, drops
-    `pending_attributions[bob_op_id]` and `pending_pointers[bob_op_id]`.
-    The attribution disappears from the snapshot (it had nowhere to
-    attach). No further action.
+1. **Alice's reply arrives.** The kernel stores it and observer fan-out calls
+   the feed engine.
+2. **`RootIndexedFeed::on_kernel_event` runs.** The NIP-10 resolver identifies
+   Bob's OP as the root pointer.
+3. **Follow predicate.** `follow(alice_pubkey) == true`, so the reply qualifies
+   as attribution.
+4. **Engine looks up Bob's OP locally.** If the root is absent, the engine
+   records attribution in `pending_attributions[bob_op_id]`. It does not emit a
+   claim, request a profile, or ask the kernel to fetch anything.
+5. **If Bob's OP later arrives** through any normal event source, observer
+   fan-out delivers it to the engine. The engine inserts the root, drains
+   `pending_attributions[bob_op_id]`, and the snapshot shows Bob's OP with
+   Alice's attribution.
+6. **If Bob's OP never arrives,** the pending attribution remains bounded local
+   feed state until evicted or cleared by a perspective reset. No feed-owned
+   release signal is required.
 
 #### Address-pointer arm (§3-B-3, corrected per codex)
 
@@ -485,16 +375,9 @@ Trait (in `nmp-feed`):
 
 ```rust
 pub trait AttributionPayload: Clone + Send + Sync + 'static {
-    type Profile: Clone + Send + Sync + 'static;
-    fn from_reply(
-        reply: &KernelEvent,
-        follow: &dyn Fn(&str) -> bool,
-        profile_for: &dyn Fn(&str) -> Option<Self::Profile>,
-    ) -> Option<Self>;
+    fn from_reply(reply: &KernelEvent, follow: &dyn Fn(&str) -> bool)
+        -> Option<Self>;
     fn reply_event_id(&self) -> &str;
-    fn author_pubkey(&self) -> &str;
-    fn reply_created_at(&self) -> u64;
-    fn refresh_for_profile(&mut self, profile: &Self::Profile);
 }
 ```
 
@@ -505,33 +388,28 @@ pub trait AttributionPayload: Clone + Send + Sync + 'static {
 pub struct Nip10ReplyAttribution {
     pub author_pubkey: String,
     pub author_display: AuthorDisplay,
-    pub author_display_name: Option<String>,
-    pub author_picture_url: Option<String>,
     pub reply_event_id: String,
     pub reply_created_at: u64,
 }
 
 impl AttributionPayload for Nip10ReplyAttribution {
-    type Profile = ProfileDisplay;
-    fn from_reply(reply, follow, profile_for) -> Option<Self> {
+    fn from_reply(reply, follow) -> Option<Self> {
         if reply.kind != KIND_SHORT_TEXT_NOTE { return None; }
         if !follow(&reply.author) { return None; }
         let refs = parse_nip10(&reply.tags);
         if !refs.is_reply() { return None; }
-        let profile = profile_for(&reply.author);
-        let display = AuthorDisplay::from_profile(&reply.author, profile.as_ref());
-        Some(Self { …, author_pubkey: reply.author.clone(), … })
-    }
-    fn refresh_for_profile(&mut self, profile: &ProfileDisplay) {
-        let new = AuthorDisplay::from_profile(&self.author_pubkey, Some(profile));
-        self.author_display_name = new.name.clone();
-        self.author_picture_url = new.picture_url.clone();
-        self.author_display = new;
+        Some(Self {
+            author_pubkey: reply.author.clone(),
+            author_display: AuthorDisplay::fallback(&reply.author),
+            reply_event_id: reply.id.clone(),
+            reply_created_at: reply.created_at,
+        })
     }
 }
 ```
 
-`ProfileDisplay` is named in `nmp-nip01` only. `nmp-feed` never names it.
+Profile display is resolved by mounted profile/avatar components, not by the
+feed payload.
 
 ### D. How does the engine know the follow set? (ARCHITECTURE OVERRIDE)
 
@@ -653,25 +531,25 @@ grep against the current tree. Rung 2 patches all of:
 
 | Doctrine | Compliance | Notes |
 |---|---|---|
-| **D0** | ✅ | `nmp-core` gains: pre-kind:3 buffer (substrate-named), `event_claim_released` projection (substrate-named), `OneshotApi::request` hints parameter (no NIP), `active_timeline_authors()` accessor (existing field, substrate name). NO `FollowSetLookup`, NO `SocialTimeline`. `nmp-feed` gains: `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`, `ClaimRequest`. Public API uses only substrate vocabulary; `Profile` is an associated type. Verification: `grep -E 'nip[0-9]+|marmot|ProfileDisplay' crates/nmp-feed/src/` must return zero matches (CI test in rung 3). |
-| **D1** | ✅ | Profile mirror via `A::refresh_for_profile`. |
-| **D2** | ✅ | Root hydration through `claim_event` → `OneshotApi` → planner (coverage hooks intact). |
-| **D3** | ✅ | Root-claim routing through `bootstrap_content_relays ∪ hint_relays` (the kernel's v4 enhancement to `OneshotApi::request`). Per-follow `LogicalInterest`s routed through NIP-65 Outbox (Case A) — unchanged. |
-| **D4** | ✅ | Engine's `attributions` is single owner per root. `event_claims[primary_id]` single writer per primary_id. |
-| **D5** | ✅ | Every map bounded; visible-window-only snapshot. Per-root attribution sub-map bounded at `MAX_ATTRIBUTION_PER_ROOT`. Pre-kind:3 buffer bounded. Acceptance test in §3-J: 5,000 roots populated; snapshot at limit=80; assert exactly 80 cards + JSON size bound. |
-| **D6** | ✅ | `claim_event` returns `Vec::new()` on errors. `event_claim_released` is state, not exception. |
+| **D0** | ✅ | `nmp-core` owns follow acquisition without NIP-named feed policy. NO `FollowSetLookup`, NO `SocialTimeline`. `nmp-feed` exports `AttributionPayload`, `RootIndexedFeed`, `RootCard`, and `RootFeedSnapshot`; it exports no profile type and no feed claim request. Verification: `grep -E 'nip[0-9]+|marmot|ProfileDisplay' crates/nmp-feed/src/` must return zero matches. |
+| **D1** | ✅ | Profile display is resolved by profile UI/components, not mirrored by the feed. |
+| **D2** | ✅ | Secondary event/profile hydration belongs to mounted components or sibling modules through their own dependencies. |
+| **D3** | ✅ | Follow-feed interests route through the existing acquisition machinery; component claims keep using their normal routing. |
+| **D4** | ✅ | Engine's `attributions` is single owner per root. Component claim refcounts remain kernel-owned. |
+| **D5** | ✅ | Every map bounded; visible-window-only snapshot. Per-root attribution sub-map bounded at `MAX_ATTRIBUTION_PER_ROOT`. |
+| **D6** | ✅ | Missing roots/targets degrade to bounded pending state or placeholders; no feed-owned fetch error path. |
 | **D7** | ✅ | Closure-shaped capability (`Arc<dyn Fn(...) -> bool>` for follow predicate, `Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` for event lookup). The engine asks; the wiring decides. |
 | **D8** | ✅ | Observer-driven. Pre-kind:3 buffer drain is one event-loop pass when kind:3 lands; not a poll. |
 | **D9** | ✅ | `reply_created_at` is signed `event.created_at`. |
 | **D10** | n/a | Public kind:1/kind:6 only. |
-| **D11** | ✅ | No new bespoke C-ABI symbol. Hydration via existing `nmp_app_claim_event`. |
+| **D11** | ✅ | No new bespoke C-ABI symbol. Component hydration uses existing seams. |
 | **D14** | ✅ | `nmp.feed.home` is a typed projection. |
 
 **ADRs:**
 - **ADR-0035** — Generic root-indexed feed engine in `nmp-feed`
-  (`RootIndexedFeed<R, A>`, `AttributionPayload`,
-  `ClaimRequest(ThreadPointer)`). Records the closure-based predicate
-  + event-lookup capability shape.
+  (`RootIndexedFeed<R, A>`, `AttributionPayload`). Records the closure-based
+  predicate + event-lookup capability shape and the no-secondary-acquisition
+  boundary.
 - **ADR-0036** — Composition-root expansion of follow-set timeline
   interests in `nmp-defaults`. Records why `SocialTimeline` was
   rejected and what replaces V-45.
@@ -729,13 +607,11 @@ Synthetic resolver + synthetic payload + synthetic follow predicate +
 synthetic event_lookup. Zero NIP imports.
 
 - Reply arrives, root arrives → attribution attaches.
-- Reply arrives, root never arrives → `Claim` emitted; on `event_claim_released`
-  ring update, engine drops `pending_attributions`.
-- Bounded-map eviction → emits `ClaimRequest::Release`.
+- Reply arrives, root never arrives → attribution stays buffered inside the
+  feed. The feed does not claim the missing root.
+- Bounded-map eviction → evicts local feed state only; no claim release.
 - Per-root sub-map eviction (`MAX_ATTRIBUTION_PER_ROOT`) — oldest reply
-  evicted; engine does NOT emit Release (the root is still claimed by
-  remaining attributions; refcount is implicit in the per-root map size).
-- Profile event → fan out to attributions + pending_attributions.
+  evicted.
 - Repost (`resolver.supersedes != None`) → target becomes surfaced root.
 - L-2: reply to a kind:6 wrapper, parent locally available; engine
   consults `event_lookup` + `resolver.supersedes`; attribution re-keyed
@@ -746,9 +622,9 @@ synthetic event_lookup. Zero NIP imports.
 - Non-follow reply → dropped.
 - D5 visible-window snapshot: 5,000 roots, `limit = 80`, assert exactly
   80 cards + JSON size bound + internal maps at cap.
-- Address pointer: synthetic `ThreadPointer::Address`; assert
-  `ClaimRequest` carries Address variant; host adapter encodes naddr URI.
-- External pointer: terminal; no Claim emitted; attribution attaches
+- Address pointer: synthetic `ThreadPointer::Address`; attribution buffers
+  under its address surrogate without feed-owned acquisition.
+- External pointer: terminal; attribution attaches
   against URI-hash surrogate.
 - **Serde bounds compile test:** assert `RootCard<TimelineEventCard,
   Nip10ReplyAttribution>` and `RootFeedSnapshot<…>` round-trip through
@@ -757,10 +633,11 @@ synthetic event_lookup. Zero NIP imports.
 #### `nmp-nip01` instance tests (~220 LOC)
 
 - `Nip10ReplyAttribution::from_reply` filter chain.
-- Profile refresh in place.
+- Raw-author attribution; no profile dependency.
 - `register_op_feed` composes correctly.
 - End-to-end with synthetic kernel: follow's reply + non-followed root
-  + kind:0 profile; assert snapshot + `nmp_app_claim_event` URI.
+  arrives later; assert the snapshot attaches attribution without any feed-owned
+  claim.
 - Repost L-1 through L-5 with the new `event_lookup` callback (L-2 and
   L-5 require the lookup; L-1, L-3, L-4 don't).
 
@@ -780,14 +657,8 @@ synthetic event_lookup. Zero NIP imports.
   fan-out.
 - Pre-kind:3 buffer D5 bound: insert `MAX_PROJECTION_MESSAGES + N`
   events; oldest evicted.
-- `OneshotApi::request` initial hints: assert the constructed
-  `LogicalInterest.hints` is non-empty when called with hints. **Identical
-  behavior for non-hint callers** (existing tests with hints=Vec::new()
-  pass unchanged — non-regression for every other claim_event caller).
-- `event_claim_released` ring buffer: EOSE-no-match path pushes
-  primary_id; release_event refcount-to-zero path pushes primary_id.
-- `release_event` calls `release_claim_expansion` (assert the
-  expansion tracker is gone after release).
+- No feed-owned claim/release: missing roots stay pending or placeholder-only,
+  and no feed observer depends on `event_claim_released`.
 
 #### chirp-tui tests
 
@@ -837,9 +708,9 @@ the active contacts transition rebuilds `timeline_authors`.
 the active-account slot on identity changes and from the active account's
 replacement kind:3 on follow-list changes. Its `on_change` callback resets the
 feed perspective through `RootIndexedFeed::reset_for_perspective_change`,
-clearing `roots`, `attributions`, `pending_attributions`, `pending_pointers`,
-`profiles`, and the widened render window. The kernel-owned follow-feed
-interest and cache-serve path repopulate rows that still qualify.
+clearing `roots`, `attributions`, `pending_attributions`, and the widened
+render window. The kernel-owned follow-feed interest and cache-serve path
+repopulate rows that still qualify.
 
 **Logout.** Same teardown rules as account switch. `ActiveFollowSet`
 returns an empty `BTreeSet`; predicate returns `false` for everyone;
@@ -909,10 +780,10 @@ Tests in §3-J cover all five cases.
 | Check | Status | Where |
 |---|---|---|
 | `nmp-core` introduces no NIP-named token | ✅ | Follow-feed acquisition stores compiled kinds supplied from above and owns `sync_follow_feed_interests`. No FollowSetLookup, no SocialTimeline. |
-| `nmp-feed` introduces no NIP-named token | ✅ | `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`, `ClaimRequest`. `Profile` is associated type. CI grep test. |
+| `nmp-feed` introduces no NIP-named token | ✅ | `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`. No feed-owned profile or claim request type. CI grep test. |
 | `nmp-router` introduces no NIP-named token | ✅ | Untouched. |
 | `nmp-planner` introduces no NIP-named token | ✅ | Untouched; no planner-side social/feed seam. |
-| No new bespoke `nmp_app_*` C-ABI symbol | ✅ | Existing `nmp_app_claim_event`, `nmp_app_release_event`, `nmp_app_register_event_observer`. No new symbol. |
+| No new bespoke `nmp_app_*` C-ABI symbol | ✅ | Feed wiring adds no host acquisition ABI. Components use existing claim/profile seams as needed. |
 | Doctrine path correct | ✅ | `docs/product-spec/doctrine.md`. |
 | No write-path outside `dispatch_action` | ✅ | Hydration is read. |
 | No new poll loop | ✅ | Observer-driven; cache-serve runs from interest registration and continuation ticks. |
@@ -941,12 +812,10 @@ Tests in §3-J cover all five cases.
 | `crates/nmp-core/src/kernel/ingest/timeline.rs` | Pre-kind:3 buffer: when `should_store_event` returns `false` due to `!timeline_authors.contains(author)` AND the event is kind:1 or kind:6, push into `Kernel::pre_kind3_buffer` (a new `BoundedMessageMap<EventId, NostrEvent>` field) instead of dropping. | +40 |
 | `crates/nmp-core/src/kernel/ingest/contacts.rs` | At end of `sync_follow_feed_interests`, walk `pre_kind3_buffer` and re-run `ingest_timeline_event` for entries whose author is now in `timeline_authors`. Drop the rest. | +30 |
 | `crates/nmp-core/src/kernel/mod.rs` | Add `pre_kind3_buffer: BoundedMessageMap<EventId, NostrEvent>` field; clear it on identity-change. | +10 |
-| `crates/nmp-core/src/subs/oneshot.rs` | `OneshotApi::request` gains `hints: Vec<RelayHint>` parameter; populate `LogicalInterest.hints` from it. Update every caller. | +15 / -3 |
-| `crates/nmp-core/src/kernel/requests/event.rs` | `claim_event` passes URI relay hints into `OneshotApi::request` as initial `LogicalInterest.hints` (in addition to existing `register_claim_expansion`). `release_event` calls `release_claim_expansion(&primary_id)` at the end of the refcount-to-zero arm. | +18 / -2 |
-| `crates/nmp-core/src/kernel/oneshot/complete.rs` (or wherever `complete_unknown_oneshot` lives) | EOSE-no-match path clears `event_claims` + `event_claim_requested` for the primary_id AND pushes into `event_claim_released` ring. | +20 |
-| `crates/nmp-core/src/kernel/types.rs` | Add `event_claim_released: BoundedRingBuffer<EventId>` field + projection accessor. | +25 |
-| `crates/nmp-core/src/kernel/event_observer.rs` | Allow observers to register a `RawEventObserver`-shaped callback for `event_claim_released` ring updates. | +30 |
-| `crates/nmp-core/src/kernel/types_tests.rs` + sibling test files | Tests for pre-kind:3 buffer, initial hints, no-match release. | +180 |
+| `crates/nmp-core/src/subs/oneshot.rs` | No feed-specific change. Component-owned claims continue to use the existing oneshot path. | 0 |
+| `crates/nmp-core/src/kernel/requests/event.rs` | No feed-specific change. The feed does not call `claim_event` or `release_event`. | 0 |
+| `crates/nmp-core/src/kernel/event_claim_released.rs` | Remains component-claim infrastructure; the feed engine does not observe it. | 0 |
+| `crates/nmp-core/src/kernel/types_tests.rs` + sibling test files | No feed claim/release tests. Cover component claims where those components own the dependency. | 0 |
 
 ### Stage 1 — `nmp-threading::TimelineBlock` lossless + all consumers (rung 2)
 
@@ -971,7 +840,7 @@ Tests in §3-J cover all five cases.
 
 | File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-feed/src/root_indexed.rs` | **NEW** — `trait AttributionPayload<Profile>`, `struct RootIndexedFeed<R, A>`, `RootCard<C, A>`, `RootFeedSnapshot<C, A>`, `ClaimRequest`. Closure-shaped `follow` + `event_lookup`. Implements `KernelEventObserver` + `FeedController` + observer for `event_claim_released`. | +450 |
+| `crates/nmp-feed/src/root_indexed.rs` | **NEW** — `trait AttributionPayload`, `struct RootIndexedFeed<R, A>`, `RootCard<C, A>`, `RootFeedSnapshot<C, A>`. Closure-shaped `follow` + local `event_lookup`. Implements `KernelEventObserver` and feed snapshot/window mechanics; no claim sink and no profile detector. | +450 |
 | `crates/nmp-feed/src/root_indexed/tests.rs` | **NEW** — engine tests with synthetic resolver + payload + predicate + event_lookup. Covers every arrival case, eviction, repost L-2 / L-5 via event_lookup, D5 visible-window assertion, serde round-trip. | +320 |
 | `crates/nmp-feed/src/lib.rs` | Export new items. | +12 |
 | `crates/nmp-testing/tests/op_feed_doctrine_lint.rs` | **NEW** — CI grep gate. | +30 |
@@ -991,9 +860,9 @@ Tests in §3-J cover all five cases.
 | File | Change | LOC ± |
 |---|---|---|
 | `crates/nmp-nip01/src/op_feed/mod.rs` | **NEW** — module surface. | +20 |
-| `crates/nmp-nip01/src/op_feed/attribution.rs` | **NEW** — `Nip10ReplyAttribution: AttributionPayload<Profile = ProfileDisplay>`. | +100 |
-| `crates/nmp-nip01/src/op_feed/wiring.rs` | **NEW** — `register_op_feed(app, viewer, predicate, event_lookup)`. Constructs engine, registers observer + snapshot projection at `"nmp.feed.home"`, installs claim sink mapping `ClaimRequest::Claim/Release` → `nmp_app_claim_event`/`nmp_app_release_event`, installs `event_claim_released` observer forwarding to the engine. | +150 |
-| `crates/nmp-nip01/src/op_feed/tests.rs` | **NEW** — instance tests + repost L-1 through L-5 + claim URI encoding. | +260 |
+| `crates/nmp-nip01/src/op_feed/attribution.rs` | **NEW** — `Nip10ReplyAttribution: AttributionPayload`, raw author + reply metadata only. | +100 |
+| `crates/nmp-nip01/src/op_feed/wiring.rs` | **NEW** — `register_op_feed(viewer, predicate, event_lookup)`. Constructs engine for registration by the composition root; no claim sink, no profile detector. | +150 |
+| `crates/nmp-nip01/src/op_feed/tests.rs` | **NEW** — instance tests + repost L-1 through L-5 + no-secondary-acquisition assertions. | +260 |
 | `crates/nmp-nip01/src/lib.rs` | Export. | +12 |
 
 ### Stage 5 — `nmp-defaults` composition (rung 6)
@@ -1028,13 +897,9 @@ Tests in §3-J cover all five cases.
 
 Each rung independently mergeable, leaves master green.
 
-1. **Rung 1 — Stage 0 — Kernel API additions.** Pre-kind:3 buffer,
-   `event_claim_released` projection, `OneshotApi::request` hints,
-   `release_event` calls `release_claim_expansion`,
-   `active_timeline_authors` accessor. Pure substrate additions. No
-   consumer yet. Master state: unchanged user-facing behavior; faster
-   discovery for every existing `claim_event` caller (URI hints land
-   on FIRST REQ).
+1. **Rung 1 — Stage 0 — Kernel acquisition boundary.** No feed-specific
+   `claim_event` additions. Component-owned claims remain separate from feed
+   mechanics. Master state: unchanged user-facing behavior.
 2. **Rung 2 — Stage 1 — Lossless `TimelineBlock` + all consumers.**
    In-PR patches every cited consumer. Master: home feed unchanged in
    behavior; previously-invisible Standalone roots now flag correctly
@@ -1100,11 +965,11 @@ standalone rows; PR #710 added a ↳ partial mitigation. Product model is
 **feed = thread roots only; follows' replies attribute back to their root**.
 
 **Architectural shape:** generic engine `RootIndexedFeed<R, A>` in `nmp-feed`
-parameterized over `ParentResolver` + `AttributionPayload<Profile=…>` +
-closure-shaped follow predicate + event-lookup callback. NIP-10 instance in
-`nmp-nip01`. Follow-set producer in `nmp-nip02`. Consumer composition root in
-`nmp-defaults`. Kernel-owned follow acquisition in `nmp-core`. Root hydration
-via existing `Kernel::claim_event` / `nmp_app_claim_event` — no bespoke action.
+parameterized over `ParentResolver` + `AttributionPayload` + closure-shaped
+follow predicate + local event-lookup callback. NIP-10 instance in `nmp-nip01`.
+Follow-set producer in `nmp-nip02`. Consumer composition root in `nmp-defaults`.
+Kernel-owned follow acquisition in `nmp-core`. Secondary event/profile/count
+hydration belongs to mounted components or sibling modules, not the feed.
 
 **Closes V-45** (via `register_op_feed_defaults`; no planner-side
 `SocialTimeline` variant and no composition-root follow expansion).
@@ -1118,17 +983,16 @@ SocialTimeline deleted), Q3 (reposts stay, full case list in §3-L), Q4
 (current replay path is cache-serve, not the historical pre-kind:3 buffer).
 
 **Post-v1 follow-ups:** V-60 (mute interaction), V-61 (NIP-22 instance),
-V-62 (retire `timeline_authors`), V-63 (`claim_event` release semantics
-cleanup), V-64 (`event_provenance` accessor).
+V-62 (retire `timeline_authors`), V-64 (`event_provenance` accessor).
 ```
 
 ---
 
 ## 9. Implementer notes — read before writing code
 
-- **Do not** add a new bespoke `nmp_app_*` C-ABI symbol. Use
-  `nmp_app_claim_event`, `nmp_app_release_event`,
-  `nmp_app_register_event_observer`.
+- **Do not** add feed-owned secondary acquisition. Components that need a
+  missing event/profile/count open their own dependencies through existing NMP
+  seams.
 - **Do not** parse NIP-10 inside `nmp-core`. Decoder lives in
   `nmp-nip01`.
 - **Do not** import any `nmp-nip*` crate from `nmp-feed`. CI grep
@@ -1155,8 +1019,7 @@ cleanup), V-64 (`event_provenance` accessor).
 | Finding | Status | Where addressed |
 |---|---|---|
 | B4 (v3-introduced): `FollowSetLookup` in `nmp-feed` creates planner cycle | **Resolved** | `FollowSetLookup` trait deleted. Engine takes closure-shaped `Arc<dyn Fn(&str) -> bool + Send + Sync>`. Producer lives in `nmp-nip02` as `ActiveFollowSet`. No planner consumption. §3-D. |
-| B2-remainder: `OneshotApi::request` hardcodes `hints: Vec::new()` | **Resolved** | Rung 1 expands `OneshotApi::request` signature to accept initial `hints`. `claim_event` populates them from URI relay TLVs. Verified against `crates/nmp-core/src/subs/oneshot.rs:120` and `crates/nmp-core/src/kernel/requests/event.rs:83-103`. §3-B step 7. |
-| B2-remainder: no engine-observable no-match release signal | **Resolved** | Rung 1 adds `event_claim_released: BoundedRingBuffer<EventId>` projection. EOSE-no-match in `complete_unknown_oneshot` clears `event_claims` + pushes to ring. Engine registers a substrate-grade callback. §3-B step 10. |
+| B2-remainder: feed-owned claim hints/release signal | **Rejected for feed architecture** | The feed does not own secondary acquisition. Missing roots remain pending/placeholder state; components own claims when rendered. |
 | B2-remainder: store-gate via `claim_expansion_match_author` is wrong description | **Resolved** | §3-B step 8 corrected to `is_discovery_oneshot(sub_id)`. |
 | B3-remainder: missing Rust consumers of `Standalone` | **Resolved** | §5 Stage 1 enumerates every consumer: `nmp-feed/src/types.rs`, `nmp-nip01/src/timeline_projection/tests.rs`, `apps/chirp/nmp-app-chirp/tests/end_to_end.rs`, `nmp-nip01/src/meta_timeline/tests.rs`, `chirp-tui/src/timeline/tests.rs` fixtures, and `grouper.rs` self-uses. Grep-verified. |
 | H2-remainder: `timeline_authors` not LMDB-restored on cold start | **Resolved** | v4 stops claiming LMDB restore. Pre-kind:3 buffer (rung 1) closes the gap by buffering kind:1/6 events that miss the `timeline_authors` gate and replaying them after `sync_follow_feed_interests`. §3-K rewritten. |

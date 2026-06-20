@@ -30,9 +30,6 @@ use std::sync::{Arc, Mutex};
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{EventId, KernelEvent};
 use nmp_core::KernelEventObserver;
-// `AttributionPayload` brings `author_pubkey()` into scope for the attribution
-// assertion in `followed_reply_surfaces_root_with_attribution`.
-use nmp_feed::AttributionPayload as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
@@ -231,8 +228,7 @@ fn followed_reply_surfaces_root_with_attribution() {
         "exactly one follow-reply attribution attaches to the root"
     );
     assert_eq!(
-        card.attribution[0].author_pubkey(),
-        ALICE,
+        card.attribution[0].author_pubkey, ALICE,
         "attribution carries the raw replier pubkey"
     );
 

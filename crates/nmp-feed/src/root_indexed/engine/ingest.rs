@@ -3,7 +3,6 @@
 //! each file under the 500-LOC ceiling; this is a continuation `impl` block on
 //! the same type plus its free helpers.
 
-use nmp_planner::RelayHint;
 use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent};
 use nmp_threading::{pointer::ThreadPointer, ParentResolver};
 
@@ -26,13 +25,6 @@ where
             return;
         }
 
-        // Profile events are handled first and short-circuit: a profile is not
-        // a feed event.
-        if let Some((pubkey, profile)) = (self.caps.profile_detector)(event) {
-            self.apply_profile(&pubkey, profile);
-            return;
-        }
-
         if let Some(target) = self.caps.resolver.supersedes(event) {
             self.ingest_repost(event, target);
             return;
@@ -51,11 +43,10 @@ where
         }
     }
 
-    /// Insert a root, drain any buffered attributions, and emit `Release` since
-    /// the root is now locally available.
+    /// Insert a root and drain any buffered attributions for it.
     ///
     /// L-5: when a repost wrapper already keyed this id (`supersedes_target`
-    /// set, empty/placeholder card), the arriving target hydrates the card body
+    /// set, empty/placeholder card), the arriving target rebuilds the card body
     /// **without losing the repost provenance** — the existing
     /// `supersedes_target` is preserved so the renderer still shows the
     /// "reposted by" banner. A plain (non-reposted) root just inserts.
@@ -74,7 +65,7 @@ where
             Some((target, wrapper, created)) => (target, wrapper, Some(created)),
             None => (None, None, None),
         };
-        // L-5 backward path: a repost wrapper keyed this id first. Re-fetch the
+        // L-5 late-target path: a repost wrapper keyed this id first. Re-fetch the
         // wrapper so the card is rebuilt from the `(wrapper, target)` pair,
         // preserving repost provenance. Plain roots build from `(event, None)`.
         let wrapper = wrapper_event_id
@@ -102,13 +93,13 @@ where
             st.attributions.remove(&evicted_id);
         }
         Self::drain_pending_into(&mut st, &event.id);
-        self.emit_release_for(&mut st, &event.id);
     }
 
     /// Repost-shaped event (`supersedes == Some(target)`): the target becomes
-    /// the surfaced root. Insert the wrapper card keyed by the target id; claim
-    /// the target if absent (L-1); hydrate from the pair if already local (L-5
-    /// forward direction).
+    /// the surfaced root. Insert the wrapper card keyed by the target id;
+    /// rebuild from the pair if already local. If the target is absent, keep a
+    /// structural placeholder. Target fetching belongs to the mounted component
+    /// that wants to render that target.
     fn ingest_repost(&self, wrapper: &KernelEvent, target: EventId) {
         let Ok(mut st) = self.state.lock() else {
             return;
@@ -137,49 +128,31 @@ where
             st.attributions.remove(&evicted_id);
         }
         Self::drain_pending_into(&mut st, &target);
-        if target_event.is_none() {
-            // L-1 / L-5: target not local → claim it.
-            let pointer = ThreadPointer::Event {
-                id: target.clone(),
-                relay: None,
-                kind: None,
-            };
-            self.emit_claim(&mut st, &target, pointer, Vec::new());
-        } else {
-            self.emit_release_for(&mut st, &target);
-        }
     }
 
     /// Reply from a followed author. Resolve the referenced root, re-key past a
-    /// repost wrapper if applicable (L-2), record the attribution against the
-    /// root (or buffer it), and claim the root if not locally held.
+    /// repost wrapper if applicable (L-2), and record the attribution against
+    /// the root or buffer it until the root arrives through normal ingest.
     fn ingest_reply(&self, event: &KernelEvent, pointer: ThreadPointer) {
         // Prefer the explicit root pointer; fall back to the parent pointer.
         let resolved = self.caps.resolver.root(event).unwrap_or(pointer);
 
-        // Only Event pointers are hydratable. Address is post-v1; External is
-        // terminal — both attach against a surrogate primary id with no claim.
-        let (primary_id, claim_pointer): (EventId, Option<ThreadPointer>) = match &resolved {
+        let primary_id: EventId = match &resolved {
             ThreadPointer::Event { id, .. } => {
                 // L-2: the reply targets a repost wrapper that is locally known
                 // and supersedes a different id → re-key to that target.
                 let rekeyed = (self.caps.event_lookup)(id)
                     .and_then(|parent| self.caps.resolver.supersedes(&parent));
                 match rekeyed {
-                    Some(target) => (target, Some(rekey_pointer(&resolved, id))),
-                    None => (id.clone(), Some(resolved.clone())),
+                    Some(target) => target,
+                    None => id.clone(),
                 }
             }
-            // Address roots are claimable (post-v1 path) but carry the coord as
-            // the surrogate primary id so attribution still attaches meanwhile.
-            ThreadPointer::Address { coord, .. } => (coord.clone(), Some(resolved.clone())),
-            // External is terminal: never claimed; attaches to a URI surrogate.
-            ThreadPointer::External { uri } => (external_surrogate(uri), None),
+            ThreadPointer::Address { coord, .. } => coord.clone(),
+            ThreadPointer::External { uri } => external_surrogate(uri),
         };
 
-        let Some(attribution) =
-            A::from_reply(event, self.caps.follow.as_ref(), &|pk| self.profile_for(pk))
-        else {
+        let Some(attribution) = A::from_reply(event, self.caps.follow.as_ref()) else {
             return;
         };
 
@@ -190,20 +163,11 @@ where
             Self::record_attribution(&mut st.attributions, &primary_id, attribution);
         } else {
             Self::record_attribution(&mut st.pending_attributions, &primary_id, attribution);
-            if let Some(pointer) = claim_pointer {
-                let hints = reply_provenance_hints(event);
-                self.emit_claim(&mut st, &primary_id, pointer, hints);
-            }
         }
     }
 
     /// Drain buffered attributions for `root_id` into the live map. Called once
     /// the root is locally held.
-    ///
-    /// Does NOT touch `pending_pointers` — `emit_release_for` is the single
-    /// owner of pointer removal so it can still read the pointer to build the
-    /// `Release`. (An early `remove` here was an ordering bug: drain-then-
-    /// release found nothing to release.)
     fn drain_pending_into(st: &mut EngineState<A, C>, root_id: &str) {
         if let Some(pending) = st.pending_attributions.remove(root_id) {
             let live = st
@@ -232,33 +196,9 @@ where
     }
 }
 
-/// Re-key a resolved `Event` pointer onto a (possibly different) id while
-/// keeping the original relay/kind hint TLVs. Non-`Event` pointers pass through.
-fn rekey_pointer(original: &ThreadPointer, id: &str) -> ThreadPointer {
-    match original {
-        ThreadPointer::Event { relay, kind, .. } => ThreadPointer::Event {
-            id: id.to_string(),
-            relay: relay.clone(),
-            kind: *kind,
-        },
-        other => other.clone(),
-    }
-}
-
 /// Stable surrogate id for an external (non-Nostr) root reference. Lets
 /// attribution attach even though the engine never hydrates it. The
 /// `external:` prefix guarantees it never collides with a 64-hex event id.
 fn external_surrogate(uri: &str) -> EventId {
     format!("external:{uri}")
-}
-
-/// Provenance relay hints for the root claim seeded from the referencing event.
-///
-/// The reply's provenance relay lives in the kernel, not in the `KernelEvent`
-/// the engine receives (V-64). Per design §3-B step 4, the cleaner shape is for
-/// the wiring/kernel side to resolve the relay from the reply id, so the engine
-/// emits no hint here — keeping the claim identical to every other
-/// `claim_event` caller. The wiring layer may enrich the claim if it chooses.
-fn reply_provenance_hints(_event: &KernelEvent) -> Vec<RelayHint> {
-    Vec::new()
 }

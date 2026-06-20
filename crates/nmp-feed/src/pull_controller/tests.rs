@@ -94,7 +94,8 @@ impl FakeFeed {
     /// Display order the snapshot would render: newest-first by `(created_at, id)`.
     fn display_order(&self) -> Vec<String> {
         let g = self.ingested.lock().unwrap();
-        let mut keyed: Vec<(u64, String)> = g.iter().map(|e| (e.created_at, e.id.clone())).collect();
+        let mut keyed: Vec<(u64, String)> =
+            g.iter().map(|e| (e.created_at, e.id.clone())).collect();
         keyed.sort_by(|(lt, lid), (rt, rid)| rt.cmp(lt).then_with(|| rid.cmp(lid)));
         keyed.into_iter().map(|(_, id)| id).collect()
     }
@@ -139,7 +140,10 @@ fn late_old_event_is_not_skipped_across_loads() {
         &feed,
         vec![
             page(
-                vec![inserted(1, "recent_a", 1_000), inserted(2, "recent_b", 1_100)],
+                vec![
+                    inserted(1, "recent_a", 1_000),
+                    inserted(2, "recent_b", 1_100),
+                ],
                 2,
                 2,
             ),
@@ -149,16 +153,27 @@ fn late_old_event_is_not_skipped_across_loads() {
     );
 
     assert!(ctrl.load_older(), "first drain ingested a page");
-    assert_eq!(ctrl.after_seq(), 2, "cursor advanced past the recent events");
+    assert_eq!(
+        ctrl.after_seq(),
+        2,
+        "cursor advanced past the recent events"
+    );
 
-    assert!(ctrl.load_older(), "second drain ingested the late-old event");
+    assert!(
+        ctrl.load_older(),
+        "second drain ingested the late-old event"
+    );
     assert_eq!(
         seen.lock().unwrap().as_slice(),
         &[0, 2],
         "second drain resumes from the seq-2 cursor — by seq, not created_at"
     );
     assert!(
-        feed.ingested.lock().unwrap().iter().any(|e| e.id == "late_old"),
+        feed.ingested
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.id == "late_old"),
         "the late-arriving old-created_at event WAS ingested (seq completeness)"
     );
 }
@@ -202,8 +217,16 @@ fn empty_advancing_pull_does_not_loop() {
         Arc::clone(&seen),
     );
     assert!(!ctrl.load_older(), "no new events ⇒ no visible change");
-    assert_eq!(seen.lock().unwrap().len(), 1, "exactly one pull — no polling");
-    assert_eq!(feed.grows.load(Ordering::Relaxed), 0, "viewport did not grow");
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        1,
+        "exactly one pull — no polling"
+    );
+    assert_eq!(
+        feed.grows.load(Ordering::Relaxed),
+        0,
+        "viewport did not grow"
+    );
     assert!(feed.ingested.lock().unwrap().is_empty());
 }
 

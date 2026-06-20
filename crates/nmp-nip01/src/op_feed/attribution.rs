@@ -5,18 +5,14 @@
 //! to a thread root when a *followed* author posts a NIP-10 reply that
 //! references it. The engine stays protocol-agnostic; this type supplies the
 //! NIP-10 qualification rules (`from_reply`), the keying accessors, and the
-//! in-place profile refresh.
+//! raw attribution metadata.
 //!
-//! # Display separation (aim.md §2)
+//! # Display separation
 //!
-//! The payload carries **raw protocol data only** — a raw hex pubkey, the raw
-//! reply event id, the raw `created_at` (Unix seconds), and the kind:0
-//! display-name / picture-url via the nested [`AuthorDisplay`] (None until a
-//! kind:0 arrives). No `display::` formatting helper is invoked here: the
-//! render surface formats the missing-name case itself (typically by
-//! formatting the raw pubkey). The flat `author_display_name` /
-//! `author_picture_url` mirrors that previously duplicated `author_display`
-//! fields have been removed (ADR-0032 / #1493 P1).
+//! The payload carries the replying author's raw pubkey and reply metadata.
+//! kind:0 profile display is intentionally absent from this feed payload:
+//! mounted profile/avatar components claim and render profile data through
+//! their own dependency path.
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::parse_nip10;
@@ -24,7 +20,7 @@ use nmp_feed::AttributionPayload;
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::KIND_SHORT_TEXT_NOTE;
-use crate::profile_display::{AuthorDisplay, ProfileDisplay};
+use crate::profile_display::AuthorDisplay;
 
 /// Per-root attribution for a followed author's NIP-10 reply.
 ///
@@ -36,9 +32,8 @@ use crate::profile_display::{AuthorDisplay, ProfileDisplay};
 pub struct Nip10ReplyAttribution {
     /// Raw hex pubkey of the replying (followed) author.
     pub author_pubkey: String,
-    /// Raw mirror of the author's kind:0 display fields (None until a kind:0
-    /// arrives). Carries the optional name/picture. Shells read name/picture
-    /// from this nested table directly.
+    /// Always the fallback raw-author display. Profile components render
+    /// kind:0-derived name/picture independently when mounted.
     pub author_display: AuthorDisplay,
     /// Raw event id of the reply this attribution was built from.
     pub reply_event_id: String,
@@ -47,8 +42,6 @@ pub struct Nip10ReplyAttribution {
 }
 
 impl AttributionPayload for Nip10ReplyAttribution {
-    type Profile = ProfileDisplay;
-
     /// Build attribution from a referencing event, or `None` when it does not
     /// qualify as a NIP-10 reply from a followed author.
     ///
@@ -60,14 +53,7 @@ impl AttributionPayload for Nip10ReplyAttribution {
     ///    calling, so this is a fail-closed re-check per the trait contract);
     /// 3. the event carries a NIP-10 reply marker (`Nip10Refs::is_reply`).
     ///
-    /// The profile mirrors are filled best-effort from `profile_for`; a `None`
-    /// profile yields the fallback `AuthorDisplay` (npub only), refreshed later
-    /// via [`Self::refresh_for_profile`] when the kind:0 lands.
-    fn from_reply(
-        reply: &KernelEvent,
-        follow: &dyn Fn(&str) -> bool,
-        profile_for: &dyn Fn(&str) -> Option<Self::Profile>,
-    ) -> Option<Self> {
+    fn from_reply(reply: &KernelEvent, follow: &dyn Fn(&str) -> bool) -> Option<Self> {
         if reply.kind != KIND_SHORT_TEXT_NOTE {
             return None;
         }
@@ -78,8 +64,7 @@ impl AttributionPayload for Nip10ReplyAttribution {
         if !refs.is_reply() {
             return None;
         }
-        let profile = profile_for(&reply.author);
-        let author_display = AuthorDisplay::from_profile(&reply.author, profile.as_ref());
+        let author_display = AuthorDisplay::fallback(&reply.author);
         Some(Self {
             author_pubkey: reply.author.clone(),
             author_display,
@@ -90,20 +75,5 @@ impl AttributionPayload for Nip10ReplyAttribution {
 
     fn reply_event_id(&self) -> &str {
         &self.reply_event_id
-    }
-
-    fn author_pubkey(&self) -> &str {
-        &self.author_pubkey
-    }
-
-    fn reply_created_at(&self) -> u64 {
-        self.reply_created_at
-    }
-
-    /// Refresh `author_display` in place when a newer kind:0 for this author
-    /// arrives. Never mutates the keying fields (`reply_event_id`,
-    /// `author_pubkey`).
-    fn refresh_for_profile(&mut self, profile: &Self::Profile) {
-        self.author_display = AuthorDisplay::from_profile(&self.author_pubkey, Some(profile));
     }
 }
