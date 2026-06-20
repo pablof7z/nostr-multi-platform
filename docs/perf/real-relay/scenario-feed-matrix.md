@@ -1,7 +1,7 @@
 ---
 scenario: feed-matrix
 verdict: PASS
-generated_at: 1781933059
+generated_at: 1781983962
 relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://purplepag.es"]
 ---
 
@@ -20,6 +20,6 @@ Assertions:
 - relay-set kind:30023 feed compiled to app relays with no authors filter; live no-author query returned 12 real kind:30023 events.
 - live kind:20 query returned 12 events; NIP-68 picture adapter rendered 5 rows from parsed feed data.
 - live kind:16 query returned 40 events; 0 claimed a kind:20 target via `k` tag or embedded event.
-- caller-owned custom ranking/filtering ran over 12 real events and produced 12 bounded feed rows with page limit 2.
+- caller-owned custom ranking/filtering ran over 12 real events and produced 6 bounded feed rows with page limit 2.
 
 Kind:16 picture repost observation is reported as evidence, not a hard public-relay invariant: absence means this relay sample did not serve that shape within budget, not that the adapter path is green by itself.

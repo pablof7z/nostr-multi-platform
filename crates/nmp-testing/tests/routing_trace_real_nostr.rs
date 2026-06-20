@@ -55,7 +55,7 @@ use nmp_core::substrate::{
     BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutingContext, RoutingSource,
     SessionKeySet,
 };
-use nmp_core::RoutingTraceProjection;
+use nmp_core::{canonical_relay_url, RoutingTraceProjection};
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Kind10002Parser};
 use nmp_store::{RawEvent, VerifiedEvent};
@@ -122,13 +122,16 @@ fn declared_read_relays(ev: &Value) -> BTreeSet<String> {
         let Some(url) = parts.get(1).and_then(Value::as_str) else {
             continue;
         };
-        if !(url.starts_with("wss://") || url.starts_with("ws://")) {
+        if !url.starts_with("wss://") {
             continue;
         }
+        let Some(url) = canonical_relay_url(url) else {
+            continue;
+        };
         match parts.get(2).and_then(Value::as_str) {
             // unmarked or "read" lands in the read set
             None | Some("") | Some("read") => {
-                out.insert(url.to_string());
+                out.insert(url);
             }
             Some("write") => {}
             // unknown markers — `Kind10002Parser` drops them; mirror that

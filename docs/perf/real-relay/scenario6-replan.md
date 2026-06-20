@@ -1,7 +1,7 @@
 ---
 scenario: 6-replan
 verdict: PASS
-generated_at: 1781918281
+generated_at: 1781983970
 relays: ["wss://relay.damus.io"]
 ---
 
