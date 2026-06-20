@@ -178,7 +178,7 @@ impl DrivenApp {
         nmp_app_set_update_callback(app, ctx as *mut c_void, Some(capture_cb));
 
         // Start: visible_limit 500 (TIMELINE_CACHE_LIMIT), emit 4 Hz (cold_start parity).
-        nmp_app_start(app, 0, 500, 4);
+        nmp_app_start(app, 500, 4);
         nmp_app_chirp_open_home_feed(app);
 
         DrivenApp { app, chirp, ctx }

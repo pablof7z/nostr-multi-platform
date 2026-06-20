@@ -138,7 +138,6 @@ impl Kernel {
                 inserted_count: 0,
                 updated_count: 0,
                 removed_count: 0,
-                events_per_second_configured: 0,
                 emit_hz_configured: DEFAULT_EMIT_HZ,
                 update_sequence: self.update_sequence,
                 estimated_store_bytes: self.estimated_store_bytes(),

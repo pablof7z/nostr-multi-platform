@@ -126,10 +126,9 @@ pub struct RelaysDeclared;
 
 /// Runtime configuration forwarded to `nmp_app_start`.
 ///
-/// Mirrors the three parameters `nmp_app_start` accepts today:
+/// Mirrors the two parameters `nmp_app_start` accepts:
 /// `visible_limit` (max rows the kernel emits per snapshot) and `emit_hz`
-/// (snapshot-emission rate). A third parameter (`_events_per_second`) is
-/// accepted by the C-ABI but ignored; it is omitted here.
+/// (snapshot-emission rate).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunConfig {
     /// Maximum number of feed rows the kernel includes in each snapshot.
@@ -580,7 +579,7 @@ impl NmpAppBuilder<RelaysDeclared> {
         // raw C-ABI path (Swift/Kotlin), which is outside Rust's type system.
 
         // SAFETY: `app` is non-null (builder invariant).
-        nmp_app_start(app, 0, config.visible_limit, config.emit_hz);
+        nmp_app_start(app, config.visible_limit, config.emit_hz);
         app
     }
 }

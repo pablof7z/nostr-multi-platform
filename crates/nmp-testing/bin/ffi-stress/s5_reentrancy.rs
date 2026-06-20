@@ -140,7 +140,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     let ctx = Box::into_raw(state) as *mut c_void;
 
     nmp_app_set_update_callback(app, ctx, Some(reentrant_cb));
-    nmp_app_configure(app, 0, 80, 4);
+    nmp_app_configure(app, 80, 4);
 
     // Inject real Schnorr-signed events via try_from_raw verify path.
     // S5 uses full verify (D0: 200 events ~6-10 ms; acceptable for setup).
@@ -185,7 +185,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     let mut next_tick = Instant::now();
 
     while wall_start.elapsed() < cfg.duration {
-        nmp_app_configure(app, 0, 80, 4);
+        nmp_app_configure(app, 80, 4);
         next_tick += interval;
         if let Some(sleep) = next_tick.checked_duration_since(Instant::now()) {
             std::thread::sleep(sleep);

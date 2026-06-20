@@ -261,7 +261,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
         let Ok(role_c) = CString::new(relay.role.as_str()) else { continue };
         nmp_app_add_relay(s.app, url_c.as_ptr(), role_c.as_ptr());
     }
-    nmp_app_start(s.app, 0, visible_limit as u32, emit_hz as u32);
+    nmp_app_start(s.app, visible_limit as u32, emit_hz as u32);
 }
 
 #[no_mangle]

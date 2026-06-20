@@ -174,35 +174,34 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     case insertedCount = 30
     case updatedCount = 32
     case removedCount = 34
-    case eventsPerSecondConfigured = 36
-    case emitHzConfigured = 38
-    case updateSequence = 40
-    case estimatedStoreBytes = 42
-    case payloadBytes = 44
-    case storeToPayloadRatio = 46
-    case actorQueueDepth = 48
-    case framesRx = 50
-    case eventsRx = 52
-    case eoseRx = 54
-    case noticesRx = 56
-    case closedRx = 58
-    case bytesRx = 60
-    case bytesTx = 62
-    case contactsAuthors = 64
-    case timelineAuthors = 66
-    case firstEventMs = 68
-    case targetProfileLoadedMs = 70
-    case timelineOpenedMs = 72
-    case timelineFirstItemMs = 74
-    case updateEmittedMs = 76
-    case lastEventToEmitMs = 78
-    case maxEventToEmitMs = 80
-    case maxEventsPerUpdate = 82
-    case dispatchDropsTotal = 84
-    case claimDropsTotal = 86
-    case makeUpdateUs = 88
-    case serializeUs = 90
-    case updateFrameDegradationsTotal = 92
+    case emitHzConfigured = 36
+    case updateSequence = 38
+    case estimatedStoreBytes = 40
+    case payloadBytes = 42
+    case storeToPayloadRatio = 44
+    case actorQueueDepth = 46
+    case framesRx = 48
+    case eventsRx = 50
+    case eoseRx = 52
+    case noticesRx = 54
+    case closedRx = 56
+    case bytesRx = 58
+    case bytesTx = 60
+    case contactsAuthors = 62
+    case timelineAuthors = 64
+    case firstEventMs = 66
+    case targetProfileLoadedMs = 68
+    case timelineOpenedMs = 70
+    case timelineFirstItemMs = 72
+    case updateEmittedMs = 74
+    case lastEventToEmitMs = 76
+    case maxEventToEmitMs = 78
+    case maxEventsPerUpdate = 80
+    case dispatchDropsTotal = 82
+    case claimDropsTotal = 84
+    case makeUpdateUs = 86
+    case serializeUs = 88
+    case updateFrameDegradationsTotal = 90
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -223,7 +222,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
   public var insertedCount: UInt64 { let o = _accessor.offset(VTOFFSET.insertedCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var updatedCount: UInt64 { let o = _accessor.offset(VTOFFSET.updatedCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var removedCount: UInt64 { let o = _accessor.offset(VTOFFSET.removedCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var eventsPerSecondConfigured: UInt32 { let o = _accessor.offset(VTOFFSET.eventsPerSecondConfigured.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var emitHzConfigured: UInt32 { let o = _accessor.offset(VTOFFSET.emitHzConfigured.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var updateSequence: UInt64 { let o = _accessor.offset(VTOFFSET.updateSequence.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var estimatedStoreBytes: UInt64 { let o = _accessor.offset(VTOFFSET.estimatedStoreBytes.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
@@ -252,7 +250,7 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
   public var makeUpdateUs: UInt64 { let o = _accessor.offset(VTOFFSET.makeUpdateUs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var serializeUs: UInt64 { let o = _accessor.offset(VTOFFSET.serializeUs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var updateFrameDegradationsTotal: UInt64 { let o = _accessor.offset(VTOFFSET.updateFrameDegradationsTotal.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startMetrics(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 45) }
+  public static func startMetrics(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 44) }
   public static func add(generatedEvents: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: generatedEvents, def: 0, at: VTOFFSET.generatedEvents.p) }
   public static func add(noteEvents: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: noteEvents, def: 0, at: VTOFFSET.noteEvents.p) }
   public static func add(profileEvents: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: profileEvents, def: 0, at: VTOFFSET.profileEvents.p) }
@@ -269,7 +267,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
   public static func add(insertedCount: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: insertedCount, def: 0, at: VTOFFSET.insertedCount.p) }
   public static func add(updatedCount: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: updatedCount, def: 0, at: VTOFFSET.updatedCount.p) }
   public static func add(removedCount: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: removedCount, def: 0, at: VTOFFSET.removedCount.p) }
-  public static func add(eventsPerSecondConfigured: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: eventsPerSecondConfigured, def: 0, at: VTOFFSET.eventsPerSecondConfigured.p) }
   public static func add(emitHzConfigured: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: emitHzConfigured, def: 0, at: VTOFFSET.emitHzConfigured.p) }
   public static func add(updateSequence: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: updateSequence, def: 0, at: VTOFFSET.updateSequence.p) }
   public static func add(estimatedStoreBytes: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: estimatedStoreBytes, def: 0, at: VTOFFSET.estimatedStoreBytes.p) }
@@ -317,7 +314,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     insertedCount: UInt64 = 0,
     updatedCount: UInt64 = 0,
     removedCount: UInt64 = 0,
-    eventsPerSecondConfigured: UInt32 = 0,
     emitHzConfigured: UInt32 = 0,
     updateSequence: UInt64 = 0,
     estimatedStoreBytes: UInt64 = 0,
@@ -364,7 +360,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     nmp_transport_Metrics.add(insertedCount: insertedCount, &fbb)
     nmp_transport_Metrics.add(updatedCount: updatedCount, &fbb)
     nmp_transport_Metrics.add(removedCount: removedCount, &fbb)
-    nmp_transport_Metrics.add(eventsPerSecondConfigured: eventsPerSecondConfigured, &fbb)
     nmp_transport_Metrics.add(emitHzConfigured: emitHzConfigured, &fbb)
     nmp_transport_Metrics.add(updateSequence: updateSequence, &fbb)
     nmp_transport_Metrics.add(estimatedStoreBytes: estimatedStoreBytes, &fbb)
@@ -414,7 +409,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     try _v.visit(field: VTOFFSET.insertedCount.p, fieldName: "insertedCount", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.updatedCount.p, fieldName: "updatedCount", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.removedCount.p, fieldName: "removedCount", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.eventsPerSecondConfigured.p, fieldName: "eventsPerSecondConfigured", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.emitHzConfigured.p, fieldName: "emitHzConfigured", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.updateSequence.p, fieldName: "updateSequence", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.estimatedStoreBytes.p, fieldName: "estimatedStoreBytes", required: false, type: UInt64.self)

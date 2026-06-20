@@ -45,7 +45,7 @@ fn boot() -> *mut NmpApp {
     FRAMES.lock().unwrap_or_else(|p| p.into_inner()).clear();
     let app = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_frame));
-    nmp_app_start(app, 0, 64, 8); // emit_hz=8 → ~125 ms cadence
+    nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
     app
 }
 

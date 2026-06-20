@@ -68,7 +68,7 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
         "passive pre-start frame must be running=false"
     );
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
     assert_eq!(crate::nmp_app_is_alive(app), 1, "start spawns the actor");
     nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
     nmp_app_free(app);

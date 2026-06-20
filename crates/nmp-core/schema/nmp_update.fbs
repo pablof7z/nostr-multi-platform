@@ -85,7 +85,6 @@ table Metrics {
   inserted_count:ulong;                   // usize -> ulong
   updated_count:ulong;                    // usize -> ulong
   removed_count:ulong;                    // usize -> ulong
-  events_per_second_configured:uint;
   emit_hz_configured:uint;
   update_sequence:ulong;
   estimated_store_bytes:ulong;            // usize -> ulong

@@ -591,7 +591,6 @@ enum TypedProjectionGlue {
             emitHzConfigured: m.emitHzConfigured,
             eoseRx: m.eoseRx,
             estimatedStoreBytes: Int(m.estimatedStoreBytes),
-            eventsPerSecondConfigured: m.eventsPerSecondConfigured,
             eventsRx: m.eventsRx,
             eventsSinceLastUpdate: m.eventsSinceLastUpdate,
             firstEventMs: m.firstEventMs,

@@ -193,7 +193,7 @@ mod tests {
         let rx = install_recorder();
         let app = nmp_app_new();
         nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
 
         nmp_app_lifecycle_foreground(app);
 
@@ -221,7 +221,7 @@ mod tests {
             "passive handle must not run lifecycle callbacks before start",
         );
 
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
         let phase = rx
             .recv_timeout(Duration::from_secs(2))
             .expect("queued foreground callback fired after start");
@@ -238,7 +238,7 @@ mod tests {
         let rx = install_recorder();
         let app = nmp_app_new();
         nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
 
         nmp_app_lifecycle_foreground(app);
         nmp_app_lifecycle_foreground(app);
@@ -266,7 +266,7 @@ mod tests {
         let rx = install_recorder();
         let app = nmp_app_new();
         nmp_app_set_lifecycle_callback(app, std::ptr::null_mut(), Some(record_callback));
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
 
         nmp_app_lifecycle_foreground(app);
         nmp_app_lifecycle_background(app);
@@ -306,7 +306,7 @@ mod tests {
             0,
             "actor is passive before start"
         );
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
         assert_eq!(
             super::nmp_app_is_alive(app),
             1,
@@ -331,7 +331,7 @@ mod tests {
         use nmp_core::ActorCommand;
         let _g = SERIAL.lock().unwrap();
         let app = nmp_app_new();
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
         // Push `Shutdown` straight onto the actor's command channel
         // (mirrors what `Drop` does, but without joining yet).
         // SAFETY: `app` is a live pointer from `nmp_app_new` above.

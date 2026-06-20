@@ -111,7 +111,7 @@ fn logout_before_kind3_clears_op_feed_identity_state() {
     // SAFETY: app is a live pointer from nmp_app_new.
     let app_ref = unsafe { &*app };
     let defaults = nmp_defaults::register_op_feed_defaults(app_ref, String::new(), vec![1, 6]);
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     let alice = keys_from_nsec(TEST_NSEC);
     let alice_pk = alice.public_key().to_hex();
@@ -154,7 +154,7 @@ fn switch_after_kind3_clears_predicate_snapshot_then_new_kind3_repopulates() {
     // SAFETY: app is a live pointer from nmp_app_new.
     let app_ref = unsafe { &*app };
     let defaults = nmp_defaults::register_op_feed_defaults(app_ref, String::new(), vec![1, 6]);
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     let alice = keys_from_nsec(TEST_NSEC);
     let alice_pk = alice.public_key().to_hex();

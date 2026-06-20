@@ -573,7 +573,6 @@ pub(crate) struct Metrics {
     pub(super) inserted_count: usize,
     pub(super) updated_count: usize,
     pub(super) removed_count: usize,
-    pub(super) events_per_second_configured: u32,
     pub(super) emit_hz_configured: u32,
     pub(super) update_sequence: u64,
     pub(super) estimated_store_bytes: usize,

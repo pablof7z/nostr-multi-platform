@@ -124,8 +124,8 @@ fn two_apps_two_wallets_no_crosstalk() {
     let (app_b, handle_b) = build_chirp_app();
     let rx_a = install_emit_signal(app_a);
     let rx_b = install_emit_signal(app_b);
-    nmp_app_start(app_a, 0, 256, 4);
-    nmp_app_start(app_b, 0, 256, 4);
+    nmp_app_start(app_a, 256, 4);
+    nmp_app_start(app_b, 256, 4);
 
     // Each app connects to its OWN wallet.
     connect_wallet(app_a, &wallet_a);

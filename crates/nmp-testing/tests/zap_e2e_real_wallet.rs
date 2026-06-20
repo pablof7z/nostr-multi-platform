@@ -100,7 +100,7 @@ fn real_wallet_zap_e2e() {
         let role_c = CString::new("both").expect("role NUL-free");
         nmp_app_add_relay(app, url_c.as_ptr(), role_c.as_ptr());
     }
-    nmp_app_start(app, 0, 200, 4);
+    nmp_app_start(app, 200, 4);
 
     // #1607: use nmp_app_dispatch_action directly — nmp_app_wallet_connect deleted.
     let action_json = serde_json::to_string(&serde_json::json!({

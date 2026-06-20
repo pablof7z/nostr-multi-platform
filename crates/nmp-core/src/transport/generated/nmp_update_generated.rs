@@ -629,35 +629,34 @@ pub mod nmp {
             pub const VT_INSERTED_COUNT: ::flatbuffers::VOffsetT = 30;
             pub const VT_UPDATED_COUNT: ::flatbuffers::VOffsetT = 32;
             pub const VT_REMOVED_COUNT: ::flatbuffers::VOffsetT = 34;
-            pub const VT_EVENTS_PER_SECOND_CONFIGURED: ::flatbuffers::VOffsetT = 36;
-            pub const VT_EMIT_HZ_CONFIGURED: ::flatbuffers::VOffsetT = 38;
-            pub const VT_UPDATE_SEQUENCE: ::flatbuffers::VOffsetT = 40;
-            pub const VT_ESTIMATED_STORE_BYTES: ::flatbuffers::VOffsetT = 42;
-            pub const VT_PAYLOAD_BYTES: ::flatbuffers::VOffsetT = 44;
-            pub const VT_STORE_TO_PAYLOAD_RATIO: ::flatbuffers::VOffsetT = 46;
-            pub const VT_ACTOR_QUEUE_DEPTH: ::flatbuffers::VOffsetT = 48;
-            pub const VT_FRAMES_RX: ::flatbuffers::VOffsetT = 50;
-            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 52;
-            pub const VT_EOSE_RX: ::flatbuffers::VOffsetT = 54;
-            pub const VT_NOTICES_RX: ::flatbuffers::VOffsetT = 56;
-            pub const VT_CLOSED_RX: ::flatbuffers::VOffsetT = 58;
-            pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 60;
-            pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 62;
-            pub const VT_CONTACTS_AUTHORS: ::flatbuffers::VOffsetT = 64;
-            pub const VT_TIMELINE_AUTHORS: ::flatbuffers::VOffsetT = 66;
-            pub const VT_FIRST_EVENT_MS: ::flatbuffers::VOffsetT = 68;
-            pub const VT_TARGET_PROFILE_LOADED_MS: ::flatbuffers::VOffsetT = 70;
-            pub const VT_TIMELINE_OPENED_MS: ::flatbuffers::VOffsetT = 72;
-            pub const VT_TIMELINE_FIRST_ITEM_MS: ::flatbuffers::VOffsetT = 74;
-            pub const VT_UPDATE_EMITTED_MS: ::flatbuffers::VOffsetT = 76;
-            pub const VT_LAST_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 78;
-            pub const VT_MAX_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 80;
-            pub const VT_MAX_EVENTS_PER_UPDATE: ::flatbuffers::VOffsetT = 82;
-            pub const VT_DISPATCH_DROPS_TOTAL: ::flatbuffers::VOffsetT = 84;
-            pub const VT_CLAIM_DROPS_TOTAL: ::flatbuffers::VOffsetT = 86;
-            pub const VT_MAKE_UPDATE_US: ::flatbuffers::VOffsetT = 88;
-            pub const VT_SERIALIZE_US: ::flatbuffers::VOffsetT = 90;
-            pub const VT_UPDATE_FRAME_DEGRADATIONS_TOTAL: ::flatbuffers::VOffsetT = 92;
+            pub const VT_EMIT_HZ_CONFIGURED: ::flatbuffers::VOffsetT = 36;
+            pub const VT_UPDATE_SEQUENCE: ::flatbuffers::VOffsetT = 38;
+            pub const VT_ESTIMATED_STORE_BYTES: ::flatbuffers::VOffsetT = 40;
+            pub const VT_PAYLOAD_BYTES: ::flatbuffers::VOffsetT = 42;
+            pub const VT_STORE_TO_PAYLOAD_RATIO: ::flatbuffers::VOffsetT = 44;
+            pub const VT_ACTOR_QUEUE_DEPTH: ::flatbuffers::VOffsetT = 46;
+            pub const VT_FRAMES_RX: ::flatbuffers::VOffsetT = 48;
+            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 50;
+            pub const VT_EOSE_RX: ::flatbuffers::VOffsetT = 52;
+            pub const VT_NOTICES_RX: ::flatbuffers::VOffsetT = 54;
+            pub const VT_CLOSED_RX: ::flatbuffers::VOffsetT = 56;
+            pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 58;
+            pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 60;
+            pub const VT_CONTACTS_AUTHORS: ::flatbuffers::VOffsetT = 62;
+            pub const VT_TIMELINE_AUTHORS: ::flatbuffers::VOffsetT = 64;
+            pub const VT_FIRST_EVENT_MS: ::flatbuffers::VOffsetT = 66;
+            pub const VT_TARGET_PROFILE_LOADED_MS: ::flatbuffers::VOffsetT = 68;
+            pub const VT_TIMELINE_OPENED_MS: ::flatbuffers::VOffsetT = 70;
+            pub const VT_TIMELINE_FIRST_ITEM_MS: ::flatbuffers::VOffsetT = 72;
+            pub const VT_UPDATE_EMITTED_MS: ::flatbuffers::VOffsetT = 74;
+            pub const VT_LAST_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 76;
+            pub const VT_MAX_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 78;
+            pub const VT_MAX_EVENTS_PER_UPDATE: ::flatbuffers::VOffsetT = 80;
+            pub const VT_DISPATCH_DROPS_TOTAL: ::flatbuffers::VOffsetT = 82;
+            pub const VT_CLAIM_DROPS_TOTAL: ::flatbuffers::VOffsetT = 84;
+            pub const VT_MAKE_UPDATE_US: ::flatbuffers::VOffsetT = 86;
+            pub const VT_SERIALIZE_US: ::flatbuffers::VOffsetT = 88;
+            pub const VT_UPDATE_FRAME_DEGRADATIONS_TOTAL: ::flatbuffers::VOffsetT = 90;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -729,7 +728,6 @@ pub mod nmp {
                 builder.add_generated_events(args.generated_events);
                 builder.add_actor_queue_depth(args.actor_queue_depth);
                 builder.add_emit_hz_configured(args.emit_hz_configured);
-                builder.add_events_per_second_configured(args.events_per_second_configured);
                 builder.add_open_views(args.open_views);
                 builder.finish()
             }
@@ -907,17 +905,6 @@ pub mod nmp {
                 unsafe {
                     self._tab
                         .get::<u64>(Metrics::VT_REMOVED_COUNT, Some(0))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn events_per_second_configured(&self) -> u32 {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<u32>(Metrics::VT_EVENTS_PER_SECOND_CONFIGURED, Some(0))
                         .unwrap()
                 }
             }
@@ -1243,11 +1230,6 @@ pub mod nmp {
                     .visit_field::<u64>("inserted_count", Self::VT_INSERTED_COUNT, false)?
                     .visit_field::<u64>("updated_count", Self::VT_UPDATED_COUNT, false)?
                     .visit_field::<u64>("removed_count", Self::VT_REMOVED_COUNT, false)?
-                    .visit_field::<u32>(
-                        "events_per_second_configured",
-                        Self::VT_EVENTS_PER_SECOND_CONFIGURED,
-                        false,
-                    )?
                     .visit_field::<u32>("emit_hz_configured", Self::VT_EMIT_HZ_CONFIGURED, false)?
                     .visit_field::<u64>("update_sequence", Self::VT_UPDATE_SEQUENCE, false)?
                     .visit_field::<u64>(
@@ -1333,7 +1315,6 @@ pub mod nmp {
             pub inserted_count: u64,
             pub updated_count: u64,
             pub removed_count: u64,
-            pub events_per_second_configured: u32,
             pub emit_hz_configured: u32,
             pub update_sequence: u64,
             pub estimated_store_bytes: u64,
@@ -1383,7 +1364,6 @@ pub mod nmp {
                     inserted_count: 0,
                     updated_count: 0,
                     removed_count: 0,
-                    events_per_second_configured: 0,
                     emit_hz_configured: 0,
                     update_sequence: 0,
                     estimated_store_bytes: 0,
@@ -1515,14 +1495,6 @@ pub mod nmp {
             pub fn add_removed_count(&mut self, removed_count: u64) {
                 self.fbb_
                     .push_slot::<u64>(Metrics::VT_REMOVED_COUNT, removed_count, 0);
-            }
-            #[inline]
-            pub fn add_events_per_second_configured(&mut self, events_per_second_configured: u32) {
-                self.fbb_.push_slot::<u32>(
-                    Metrics::VT_EVENTS_PER_SECOND_CONFIGURED,
-                    events_per_second_configured,
-                    0,
-                );
             }
             #[inline]
             pub fn add_emit_hz_configured(&mut self, emit_hz_configured: u32) {
@@ -1732,10 +1704,6 @@ pub mod nmp {
                 ds.field("inserted_count", &self.inserted_count());
                 ds.field("updated_count", &self.updated_count());
                 ds.field("removed_count", &self.removed_count());
-                ds.field(
-                    "events_per_second_configured",
-                    &self.events_per_second_configured(),
-                );
                 ds.field("emit_hz_configured", &self.emit_hz_configured());
                 ds.field("update_sequence", &self.update_sequence());
                 ds.field("estimated_store_bytes", &self.estimated_store_bytes());

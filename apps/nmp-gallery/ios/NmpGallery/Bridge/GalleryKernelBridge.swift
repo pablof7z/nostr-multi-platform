@@ -88,10 +88,9 @@ final class GalleryKernelHandle {
     }
 
     /// Configure the kernel and start the actor thread. The arguments mirror
-    /// Chirp's defaults: 200 events/second cap, 80 visible items, 4 Hz emit
-    /// rate.
+    /// Chirp's defaults: 80 visible items, 4 Hz emit rate.
     func start() {
-        nmp_app_start(raw, 200, 80, 4)
+        nmp_app_start(raw, 80, 4)
     }
 
     func stop() {

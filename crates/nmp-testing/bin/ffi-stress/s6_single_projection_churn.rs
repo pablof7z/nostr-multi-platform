@@ -144,12 +144,12 @@ fn drive_churn_cycles(app: *mut NmpApp, churn_pubkey: &std::ffi::CStr, consumer_
     for _ in 0..cycles {
         nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
         std::thread::sleep(Duration::from_millis(200));
-        nmp_app_configure(app, 0, 500, 12);
+        nmp_app_configure(app, 500, 12);
         std::thread::sleep(Duration::from_millis(50));
 
         nmp_app_release_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr());
         std::thread::sleep(Duration::from_millis(200));
-        nmp_app_configure(app, 0, 500, 12);
+        nmp_app_configure(app, 500, 12);
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -222,7 +222,7 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
         let state_a = Box::new(Mutex::new(CallbackState { records: Vec::new() }));
         let ctx_a = Box::into_raw(state_a) as *mut c_void;
         nmp_app_set_update_callback(app_a, ctx_a, Some(measure_cb));
-        nmp_app_configure(app_a, 0, 500, 12);
+        nmp_app_configure(app_a, 500, 12);
         inject_signed_events(app_a, base_ts, cfg.seed_events);
         configure_and_settle(app_a, cfg.settle_ms);
 
@@ -253,7 +253,7 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
         }));
         let ctx_b = Box::into_raw(state_b) as *mut c_void;
         nmp_app_set_update_callback(app_b, ctx_b, Some(measure_cb_with_bytes));
-        nmp_app_configure(app_b, 0, 500, 12);
+        nmp_app_configure(app_b, 500, 12);
         inject_signed_events(app_b, base_ts, cfg.seed_events);
         configure_and_settle(app_b, cfg.settle_ms);
 

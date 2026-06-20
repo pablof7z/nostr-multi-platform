@@ -97,7 +97,7 @@ impl AppRuntime {
         // forgotten-wiring bug, not a silent firehose.
         nmp_app_chirp_declare_consumed_projections(app);
 
-        nmp_app_start(app, 0, 200, 10);
+        nmp_app_start(app, 200, 10);
         nmp_app_chirp_open_home_feed(app);
 
         Ok((

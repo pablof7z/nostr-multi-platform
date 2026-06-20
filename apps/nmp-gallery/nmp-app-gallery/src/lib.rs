@@ -161,7 +161,7 @@ mod tests {
         assert!(!app.is_null(), "nmp_app_new must produce a non-null app");
 
         nmp_app_gallery_register(app as *mut c_void);
-        nmp_ffi::nmp_app_start(app as *mut nmp_ffi::NmpApp, 0, 256, 4);
+        nmp_ffi::nmp_app_start(app as *mut nmp_ffi::NmpApp, 256, 4);
         assert!(
             nmp_ffi::nmp_app_is_alive(app as *mut nmp_ffi::NmpApp) != 0,
             "registered app must report alive via the D7 probe"

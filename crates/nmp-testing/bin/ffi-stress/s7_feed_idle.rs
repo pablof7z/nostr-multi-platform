@@ -223,13 +223,13 @@ fn phase_metrics(records: &[FeedFrameRecord]) -> FeedPhaseMetrics {
 }
 
 fn settle(app: *mut NmpApp) {
-    nmp_app_configure(app, 0, 500, 12);
+    nmp_app_configure(app, 500, 12);
     std::thread::sleep(Duration::from_millis(2_500));
 }
 
 fn run_idle_ticks(app: *mut NmpApp) {
     for _ in 0..IDLE_TICKS {
-        nmp_app_configure(app, 0, 500, 12);
+        nmp_app_configure(app, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
     }
 }
@@ -343,7 +343,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // id namespace 10_000 to avoid any seed collision.
         let oow_start = ctx_record_count(ctx);
         inject_followed_reply_to_unknown_root(app, base_ts - 1, 10_000);
-        nmp_app_configure(app, 0, 500, 12);
+        nmp_app_configure(app, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
         let oow_resends = ctx_record_count_resends(ctx, oow_start);
 
@@ -357,7 +357,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // byte-equality gate suppresses (would pass even with a broken gate).
         let stranger_start = ctx_record_count(ctx);
         inject_stranger_replies(app, base_ts + 200_000, 20_000, OUT_OF_WINDOW_EVENTS);
-        nmp_app_configure(app, 0, 500, 12);
+        nmp_app_configure(app, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
         let stranger_resends = ctx_record_count_resends(ctx, stranger_start);
 

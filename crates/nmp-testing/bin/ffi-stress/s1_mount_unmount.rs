@@ -59,7 +59,7 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     // S1 tests FFI dispatch latency and refcount correctness, not relay connectivity.
     let app: *mut NmpApp = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(sink_cb));
-    nmp_app_configure(app, 0, 80, 4);
+    nmp_app_configure(app, 80, 4);
 
     let pubkeys = test_pubkeys(cfg.pool_size);
     // Stable consumer IDs: in production, a consumer ID is a view lifecycle token

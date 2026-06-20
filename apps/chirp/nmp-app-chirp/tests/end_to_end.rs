@@ -82,7 +82,7 @@ fn root_surfaces_and_unfollowed_reply_is_dropped() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
-    nmp_app_start(app, 0, 80, 4);
+    nmp_app_start(app, 80, 4);
 
     let handle = register_app(app);
 
@@ -131,7 +131,7 @@ fn standalone_note_renders_as_root_card() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
-    nmp_app_start(app, 0, 80, 4);
+    nmp_app_start(app, 80, 4);
     let handle = register_app(app);
 
     let id = "3".repeat(64);
@@ -154,7 +154,7 @@ fn snapshot_returns_default_window() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
-    nmp_app_start(app, 0, 80, 4);
+    nmp_app_start(app, 80, 4);
     let handle = register_app(app);
 
     let author = "c".repeat(64);

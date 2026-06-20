@@ -104,7 +104,7 @@ fn sign_event_for_return_signs_with_active_local_key_and_returns_flat_json() {
 
     let app = nmp_app_new();
     super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_frame_callback));
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Sign in a local nsec — the active account that will sign the draft.
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
@@ -166,7 +166,7 @@ fn sign_event_for_return_without_account_returns_error_verdict() {
 
     let app = nmp_app_new();
     super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_frame_callback));
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // No sign-in: the active account is empty, so the sign must fail with an
     // observable error verdict (never a hang, never a crash — D6).
@@ -200,7 +200,7 @@ fn sign_by_explicit_pubkey_uses_named_signer() {
 
     let app = nmp_app_new();
     super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_frame_callback));
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Sign in with the test nsec (nmp_app_signin_nsec is the one registration
     // path — no separate "register without activating" FFI is needed).

@@ -105,7 +105,7 @@ fn nwc_pay_invoice_round_trip_over_live_relay() {
     let url_c = CString::new(relay_url.as_str()).expect("url NUL-free");
     let role_c = CString::new("wallet").expect("role NUL-free");
     nmp_app_add_relay(app, url_c.as_ptr(), role_c.as_ptr());
-    nmp_app_start(app, 0, 200, 4);
+    nmp_app_start(app, 200, 4);
 
     // Connect the NWC wallet, pointed at the same relay.
     // #1607: use nmp_app_dispatch_action directly — nmp_app_wallet_connect deleted.
@@ -215,7 +215,7 @@ fn zap_receipt_ingest_updates_aggregate_projection() {
     assert_eq!(status, NmpRegisterStatus::Ok as u32);
     assert!(!handle.is_null());
     let rx = install_emit_signal(app);
-    nmp_app_start(app, 0, 200, 4);
+    nmp_app_start(app, 200, 4);
 
     // The LN provider that mints the receipt (its nostrPubkey identity).
     let provider = Keys::generate();

@@ -110,7 +110,7 @@ pub fn run_gc_soundness(report: &mut SanityReport, _args: &Args) {
         return;
     }
 
-    nmp_app_start(app, 0, 500, 4);
+    nmp_app_start(app, 500, 4);
 
     // ── Eviction counters BEFORE inject ─────────────────────────────────────
     let mut ram_before: u64 = 0;

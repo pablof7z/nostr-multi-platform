@@ -243,7 +243,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
     // required so the identity reducer runs.
     let bob_nsec = CString::new(bob.secret_key().to_bech32().expect("nsec")).unwrap();
     nmp_app_signin_nsec(app, bob_nsec.as_ptr(), 1);
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
     std::thread::sleep(Duration::from_millis(200));
 
     // Build the gift-wrap envelope (kind:1059) from Alice to Bob.
