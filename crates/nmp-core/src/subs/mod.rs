@@ -63,6 +63,8 @@ mod lifecycle_tests;
 #[cfg(test)]
 mod probe_epoch_tests;
 #[cfg(test)]
+mod relay_set_feed_tests;
+#[cfg(test)]
 mod since_rewrite_tests;
 
 use std::collections::BTreeSet;
