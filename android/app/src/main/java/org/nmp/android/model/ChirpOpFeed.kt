@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 //
 // `projections["nmp.feed.home"]` is the Rust `RootFeedSnapshot<
 // TimelineEventCard, Nip10ReplyAttribution>` (`apps/chirp/nmp-app-chirp`
-// re-exports it as `ChirpTimelineSnapshot`). Wire shape:
+// re-exports it as `OpFeedSnapshot`). Wire shape:
 //
 //   { "cards": [{ "card": ChirpEventCard, "attribution": [ChirpReplyAttribution] }],
 //     "page": TimelineWindowPage?, "metrics": null }

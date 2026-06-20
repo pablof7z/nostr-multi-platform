@@ -6,7 +6,7 @@ import Foundation
 //
 // V-80 rung 7 NOTE: the HOME feed (`projections["nmp.feed.home"]`) no longer
 // uses the `{ blocks, cards }` modular shape — it is now the OP-centric
-// `ChirpTimelineSnapshot` (`{ cards: [ChirpRootCard], page }`) defined lower
+// `OpFeedSnapshot` (`{ cards: [ChirpRootCard], page }`) defined lower
 // in this file. The `TimelineBlock` enum + `ChirpEventCard` below are STILL
 // used by the author-view / thread-view modular renderers
 // (`ModularBlockView`), which keep the `{ blocks, cards }` shape — so they are
@@ -349,8 +349,7 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
 // the replier in `attribution`. Replies never get their own row.
 //
 // The generated `SnapshotProjections.homeFeed` binding uses the framework type
-// name `OpFeedSnapshot` (issue #1613). `ChirpTimelineSnapshot` is a typealias
-// kept for backward compatibility with existing Chirp call sites.
+// name `OpFeedSnapshot` (issue #1613).
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Raw attribution for one follow's reply to a feed root (mirror of Rust
@@ -415,10 +414,6 @@ struct OpFeedSnapshot: Decodable, Equatable {
         // `null`; we do not decode it (D1 forward-compat tolerates extra keys).
     }
 }
-
-/// Backward-compatibility alias. Existing Chirp call sites use this name;
-/// new code should prefer `OpFeedSnapshot` (the framework type name).
-typealias ChirpTimelineSnapshot = OpFeedSnapshot
 
 // ─── nmp-content ContentTreeWire mirror ─────────────────────────────────
 //

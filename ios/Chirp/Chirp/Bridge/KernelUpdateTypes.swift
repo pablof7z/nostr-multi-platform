@@ -54,7 +54,7 @@ struct KernelUpdateResult {
     /// snapshot carried a well-formed `NOFS` typed projection that the Swift
     /// `NFCT` decoder could fully populate. `nil` means the generic
     /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
-    let typedHomeFeed: ChirpTimelineSnapshot?
+    let typedHomeFeed: OpFeedSnapshot?
     /// Typed `accounts` projection decode (V6 Stage 4 / Wave B `KACC` sidecar).
     /// Non-nil when the snapshot carried a well-formed `accounts` typed sidecar;
     /// `nil` means the generic `projections.accounts` JSON fallback applies.
@@ -200,7 +200,7 @@ struct KernelUpdateResult {
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.
-    let flatFeeds: [String: ChirpTimelineSnapshot]
+    let flatFeeds: [String: OpFeedSnapshot]
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int

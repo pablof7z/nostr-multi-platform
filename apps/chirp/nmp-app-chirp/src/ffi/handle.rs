@@ -69,10 +69,10 @@ unsafe impl Sync for ChirpHandle {}
 
 impl ChirpHandle {
     /// Snapshot the OP-feed engine into the OP-centric
-    /// [`crate::ChirpTimelineSnapshot`] (`RootFeedSnapshot`). V-80 rung 7
+    /// [`crate::OpFeedSnapshot`] (`RootFeedSnapshot`). V-80 rung 7
     /// repointed the handle from the old `ModularTimelineProjection` to the
     /// `OpFeedEngine`; callers such as the REPL use this directly.
-    pub fn snapshot(&self) -> crate::ChirpTimelineSnapshot {
+    pub fn snapshot(&self) -> crate::OpFeedSnapshot {
         // Use `snapshot_current_window()` to respect the engine's `window_limit`
         // (updated by `load_older`). `FeedRequest::default()` would hardcode
         // `DEFAULT_FEED_WINDOW_LIMIT` and ignore any load-older window growth.

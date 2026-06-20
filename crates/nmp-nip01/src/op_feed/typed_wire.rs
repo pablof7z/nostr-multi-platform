@@ -71,8 +71,8 @@ use crate::timeline_snapshot_generated as tl;
 /// The concrete OP-feed snapshot shape this codec encodes / decodes.
 ///
 /// `RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>` — exactly what
-/// the NIP-10 [`OpFeedEngine`](super::OpFeedEngine) produces. Chirp's
-/// `ChirpTimelineSnapshot` is a type alias of this same instantiation, so no
+/// the NIP-10 [`OpFeedEngine`](super::OpFeedEngine) produces. `nmp-app-chirp`'s
+/// `OpFeedSnapshot` is a type alias of this same instantiation, so no
 /// wrapper conversion is needed at the registration site (ADR-0038 §Encoding
 /// notes).
 pub type OpFeedSnapshot = RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>;

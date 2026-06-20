@@ -54,7 +54,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// ADR-0038 typed home-feed. Non-nil when the typed NOFS+NFCT decode
     /// succeeded on the most-recent tick; `nil` ⇒ the `modularTimeline`
     /// accessor collapses to `.empty`.
-    @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
+    @Published private(set) var typedHomeFeed: OpFeedSnapshot?
 
     /// V6 Stage 4 (Wave B) typed `accounts` (`KACC` sidecar). `nil` ⇒ the
     /// `accounts` accessor collapses to `[]`.
@@ -144,7 +144,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
-    @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
+    @Published private(set) var flatFeeds: [String: OpFeedSnapshot] = [:]
 
     // ── Local mutable state ──────────────────────────────────────────────
 
@@ -427,10 +427,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
     func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
     func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
-    func authorFeed(pubkey: String) -> ChirpTimelineSnapshot? {
+    func authorFeed(pubkey: String) -> OpFeedSnapshot? {
         flatFeeds["nmp.feed.author.\(pubkey)"]
     }
-    func threadFeed(eventID: String) -> ChirpTimelineSnapshot? {
+    func threadFeed(eventID: String) -> OpFeedSnapshot? {
         flatFeeds["nmp.feed.thread.\(eventID)"]
     }
     /// `NostrProfileHost` conformance. `liveness` declares the subscription

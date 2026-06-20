@@ -6,7 +6,7 @@
 //!
 //! 1. **Feed registration** — the `"nmp.feed.home"` snapshot key reads as the
 //!    engine's `RootFeedSnapshot` shape (`cards` / `page` / `metrics`),
-//!    distinct from `ModularTimelineProjection`'s `ChirpTimelineSnapshot`. This
+//!    distinct from `ModularTimelineProjection`'s `OpFeedSnapshot`. This
 //!    is the negative proof of the CRITICAL DECISION: the composition root
 //!    wires the *engine*, not a duplicate kernel subscription.
 //! 2. **Attribution path** — a followed author's reply to a non-followed root,
@@ -146,7 +146,7 @@ fn registers_op_feed_engine_under_home_key() {
         nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]);
 
     // The engine's `RootFeedSnapshot` shape is `{ cards, page, metrics }`.
-    // `ModularTimelineProjection` would emit a `ChirpTimelineSnapshot`
+    // `ModularTimelineProjection` would emit a `ModularTimelineSnapshot`
     // (`{ blocks, events, profiles, … }`). Reading the engine's shape here
     // proves the composition root registered the *engine* under the key —
     // it did NOT register a duplicate kernel follow-feed subscription (the
