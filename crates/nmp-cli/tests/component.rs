@@ -237,22 +237,30 @@ fn add_component_installs_content_media_grid() {
 }
 
 #[test]
-fn add_component_installs_content_quote_card() {
-    let tmp = TempDir::new("quote-card");
+fn add_component_installs_content_kind_registry() {
+    let tmp = TempDir::new("kind-registry");
 
     let out = nmp(
         tmp.path(),
-        &["add", "component", "swiftui/content-quote-card"],
+        &["add", "component", "swiftui/content-kind-registry"],
     );
     assert!(
         out.status.success(),
-        "nmp add component swiftui/content-quote-card failed: {}",
+        "nmp add component swiftui/content-kind-registry failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
 
     assert!(tmp
         .path()
-        .join("Components/NostrContent/NostrQuoteCard.swift")
+        .join("Components/NostrContent/NostrKindRegistry.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/EmbeddedEvent.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/EmbedHostEnvironment.swift")
         .exists());
     assert!(tmp
         .path()
@@ -260,7 +268,38 @@ fn add_component_installs_content_quote_card() {
         .exists());
 
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
-    assert!(lock.contains("id = \"swiftui/content-quote-card\""));
+    assert!(lock.contains("id = \"swiftui/content-kind-registry\""));
+}
+
+#[test]
+fn add_component_installs_compose_content_kind_registry() {
+    let tmp = TempDir::new("compose-kind-registry");
+
+    let out = nmp(
+        tmp.path(),
+        &["add", "component", "compose/content-kind-registry"],
+    );
+    assert!(
+        out.status.success(),
+        "nmp add component compose/content-kind-registry failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrKindRegistry.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/EmbeddedEvent.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/EmbedKindProjection.kt")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"compose/content-kind-registry\""));
 }
 
 #[test]
@@ -286,12 +325,14 @@ fn add_component_installs_content_view_with_transitive_deps() {
     assert!(tmp.path().join("Components/NostrContent/NostrContentRenderer.swift").exists());
     assert!(tmp.path().join("Components/NostrContent/ContentTreeWire.swift").exists());
     assert!(tmp.path().join("Components/NostrContent/NostrMediaGrid.swift").exists());
-    assert!(tmp.path().join("Components/NostrContent/NostrQuoteCard.swift").exists());
+    // Event refs now render through the kind-dispatch registry (ADR-0034).
+    assert!(tmp.path().join("Components/NostrContent/NostrKindRegistry.swift").exists());
+    assert!(tmp.path().join("Components/NostrContent/EmbeddedEvent.swift").exists());
 
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
     assert!(lock.contains("id = \"swiftui/content-core\""));
     assert!(lock.contains("id = \"swiftui/content-media-grid\""));
-    assert!(lock.contains("id = \"swiftui/content-quote-card\""));
+    assert!(lock.contains("id = \"swiftui/content-kind-registry\""));
     assert!(lock.contains("id = \"swiftui/content-view\""));
     assert!(lock.contains("role = \"example\""));
     assert!(lock.contains("source_sha256 = \""));
@@ -378,15 +419,20 @@ fn add_component_installs_compose_content_view_with_deps() {
         .path()
         .join("Components/NostrContent/NostrMediaGrid.kt")
         .exists());
+    // Event refs now render through the kind-dispatch registry (ADR-0034).
     assert!(tmp
         .path()
-        .join("Components/NostrContent/NostrQuoteCard.kt")
+        .join("Components/NostrContent/NostrKindRegistry.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/EmbeddedEvent.kt")
         .exists());
 
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
     assert!(lock.contains("id = \"compose/content-core\""));
     assert!(lock.contains("id = \"compose/content-media-grid\""));
-    assert!(lock.contains("id = \"compose/content-quote-card\""));
+    assert!(lock.contains("id = \"compose/content-kind-registry\""));
     assert!(lock.contains("id = \"compose/content-view\""));
     assert!(lock.contains("source_sha256 = \""));
 }

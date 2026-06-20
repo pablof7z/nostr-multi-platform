@@ -12,8 +12,6 @@ pub mod nostr_media_grid;
 pub mod nostr_mention_chip;
 #[path = "../../../../crates/nmp-cli/registry/tui/content-minimal/nostr_minimal_content.rs"]
 pub mod nostr_minimal_content;
-#[path = "../../../../crates/nmp-cli/registry/tui/content-quote-card/nostr_quote_card.rs"]
-pub mod nostr_quote_card;
 #[path = "../../../../crates/nmp-cli/registry/tui/content-core/ratatui_text_wrap.rs"]
 pub mod ratatui_text_wrap;
 

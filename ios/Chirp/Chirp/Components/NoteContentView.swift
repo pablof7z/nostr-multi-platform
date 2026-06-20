@@ -102,11 +102,10 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private func richBody(_ tree: ContentTreeWire) -> some View {
-        // No quoteCardProvider — embed refs flow through the NostrKindRegistry
-        // environment path (EmbeddedEvent) injected by ChirpApp. The legacy
-        // quoteCardProvider closure is intentionally omitted so that quote
-        // cards use the same kind-registry seam as article/highlight embeds
-        // (resolves #1179 / F-CR-05 residual).
+        // Embed refs flow through the NostrKindRegistry environment path
+        // (EmbeddedEvent) injected by ChirpApp via `.embedEnvelopeSource(...)`,
+        // so quote cards use the same kind-registry seam as article/highlight
+        // embeds (ADR-0034 / F-CR-04 — the legacy quote-card path is deleted).
         NostrContentView(
             tree: tree,
             font: font,

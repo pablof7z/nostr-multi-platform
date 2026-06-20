@@ -1,6 +1,6 @@
 import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
-import { webContentCore, webContentMediaGrid, webContentMentionChip, webContentMinimal, webContentQuoteCard, webContentView } from "./contentWeb";
+import { webContentCore, webContentMediaGrid, webContentMentionChip, webContentMinimal, webContentView } from "./contentWeb";
 import { contentKindComponents } from "./contentKindComponents";
 
 // Content — SwiftUI
@@ -12,7 +12,6 @@ const contentViewSwift = nativeSource("registry/swiftui/content-view/NostrConten
 const contentGroupingSwift = nativeSource("registry/swiftui/content-view/NostrContentGrouping.swift");
 const contentViewPreviewSwift = nativeSource("registry/swiftui/content-view/Examples/NostrContentViewPreview.swift");
 const mentionChipSwift = nativeSource("registry/swiftui/content-mention-chip/NostrMentionChip.swift");
-const quoteCardSwift = nativeSource("registry/swiftui/content-quote-card/NostrQuoteCard.swift");
 const mediaGridSwift = nativeSource("registry/swiftui/content-media-grid/NostrMediaGrid.swift");
 
 // Content — Compose
@@ -21,7 +20,6 @@ const composeContentTreeWireKotlin = nativeSource("registry/compose/content-core
 const composeContentViewKotlin = nativeSource("registry/compose/content-view/NostrContentView.kt");
 const composeContentGroupingKotlin = nativeSource("registry/compose/content-view/NostrContentGrouping.kt");
 const composeMentionChipKotlin = nativeSource("registry/compose/content-mention-chip/NostrMentionChip.kt");
-const composeQuoteCardKotlin = nativeSource("registry/compose/content-quote-card/NostrQuoteCard.kt");
 const composeMediaGridKotlin = nativeSource("registry/compose/content-media-grid/NostrMediaGrid.kt");
 
 // Content — Ratatui
@@ -33,7 +31,6 @@ const tuiContentWidgetRust = nativeSource("registry/tui/content-view/nostr_conte
 const tuiMentionChipRust = nativeSource("registry/tui/content-mention-chip/nostr_mention_chip.rs");
 const tuiMinimalContentRust = nativeSource("registry/tui/content-minimal/nostr_minimal_content.rs");
 const tuiMediaGridRust = nativeSource("registry/tui/content-media-grid/nostr_media_grid.rs");
-const tuiQuoteCardRust = nativeSource("registry/tui/content-quote-card/nostr_quote_card.rs");
 
 export const contentComponents: Component[] = [
   {
@@ -145,46 +142,46 @@ export const contentComponents: Component[] = [
   {
     slug: "content-view",
     routeId: "content-view",
-    version: "0.1.1",
+    version: "0.2.0",
     description:
-      "Full ContentTreeWire renderer. Stitches text runs, mentions, quote cards, and media grids into one view.",
+      "Full ContentTreeWire renderer. Stitches text runs, mentions, kind-dispatched event-ref embeds, and media grids into one view.",
     platforms: {
       swiftui: {
         status: "stable",
         installId: "swiftui/content-view",
-        version: "0.1.1",
-        dependencies: ["content-core", "content-media-grid", "content-quote-card"],
+        version: "0.2.0",
+        dependencies: ["content-core", "content-media-grid", "content-kind-registry"],
         files: [{ source: "swiftui/content-view/NostrContentView.swift", target: "Components/NostrContent/NostrContentView.swift", role: "source", content: contentViewSwift }, { source: "swiftui/content-view/NostrContentGrouping.swift", target: "Components/NostrContent/NostrContentGrouping.swift", role: "source", content: contentGroupingSwift }, { source: "swiftui/content-view/Examples/NostrContentViewPreview.swift", target: "Components/NostrContent/Examples/NostrContentViewPreview.swift", role: "example", content: contentViewPreviewSwift }],
         screenshots: ["content-view-ios-gallery-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content`. Each tree node maps to a sub-component you installed alongside it.",
-          "Pin the tree's media layout, quote card style, and mention chip palette by overriding the `NostrContentRenderer` environment value on the parent view.",
+          "Event refs render through the kind-dispatch registry (`content-kind-registry`): bind an `EmbedEnvelopeSource` + `NostrKindRegistry` via `.embedEnvelopeSource(...)` to drive them.",
         ],
       },
       compose: {
         status: "stable",
         installId: "compose/content-view",
-        version: "0.1.0",
-        dependencies: ["content-core", "content-media-grid", "content-quote-card"],
+        version: "0.2.0",
+        dependencies: ["content-core", "content-media-grid", "content-kind-registry"],
         files: [{ source: "compose/content-view/NostrContentView.kt", target: "Components/NostrContent/NostrContentView.kt", role: "source", content: composeContentViewKotlin }, { source: "compose/content-view/NostrContentGrouping.kt", target: "Components/NostrContent/NostrContentGrouping.kt", role: "source", content: composeContentGroupingKotlin }],
         screenshots: ["content-view-kotlin-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` and dispatches each block-level group to the matching sub-component. Customizing usually means editing the sub-component rather than this dispatcher.",
-          "Inline runs are concatenated into a single `AnnotatedString` and rendered through `ClickableText` for tap-offset routing.",
+          "Event refs render through the kind-dispatch registry (`content-kind-registry`): provide `LocalClaimedEventEmbeds` + `LocalNostrKindRegistry` to drive them.",
         ],
       },
       tui: {
         status: "stable",
         installId: "tui/content-view",
-        version: "0.1.3",
-        dependencies: ["content-core", "content-kind-registry", "content-mention-chip", "content-media-grid", "content-quote-card"],
+        version: "0.2.0",
+        dependencies: ["content-core", "content-kind-registry", "content-mention-chip", "content-media-grid"],
         files: [
           { source: "tui/content-view/nostr_content_view.rs", target: "src/components/nostr_content/nostr_content_view.rs", role: "source", content: tuiContentViewRust },
           { source: "tui/content-view/nostr_content_widget.rs", target: "src/components/nostr_content/nostr_content_widget.rs", role: "source", content: tuiContentWidgetRust },
         ],
         screenshots: ["tui-content-view-preview.png"],
         customization: [
-          "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and keeps event refs as quote cards when render data is present.",
+          "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and renders event refs through the kind-dispatch registry (`EmbeddedEvent`) when a host is wired.",
           "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
         ],
       },
@@ -240,57 +237,6 @@ export const contentComponents: Component[] = [
         ],
       },
       web: webContentMentionChip,
-    },
-  },
-  {
-    slug: "content-quote-card",
-    routeId: "content-quote-card",
-    version: "0.1.1",
-    description:
-      "Quoted-note card — author header, content preview, subtle border. Drops into any feed.",
-    platforms: {
-      swiftui: {
-        status: "stable",
-        installId: "swiftui/content-quote-card",
-        version: "0.1.1",
-        dependencies: ["content-core"],
-        files: [
-          { source: "swiftui/content-quote-card/NostrQuoteCard.swift", target: "Components/NostrContent/NostrQuoteCard.swift", role: "source", content: quoteCardSwift },
-        ],
-        screenshots: ["content-quote-card-ios-gallery-preview.png"],
-        customization: [
-          "Renders a hydrated `NostrQuoteCardModel`; apps resolve quoted events from their own state and pass preview text, author display data, and optional media thumbnails.",
-          "Adjust the border, corner radius, and padding directly in the source file — they're literals, not configuration knobs, so they merge cleanly on `nmp update`.",
-        ],
-      },
-      compose: {
-        status: "stable",
-        installId: "compose/content-quote-card",
-        version: "0.1.1",
-        dependencies: ["content-core"],
-        files: [
-          { source: "compose/content-quote-card/NostrQuoteCard.kt", target: "Components/NostrContent/NostrQuoteCard.kt", role: "source", content: composeQuoteCardKotlin },
-        ],
-        screenshots: ["content-quote-card-kotlin-preview.png"],
-        customization: [
-          "Pick the variant per call-site — `Rich` for inline quote cards, `Collapsed` for a `View quote` affordance, `Missing` for an unresolved reference, `Compact` for dense feeds.",
-          "Border, corner radius, and padding are literals so they merge cleanly on `nmp update component`.",
-        ],
-      },
-      tui: {
-        status: "stable",
-        installId: "tui/content-quote-card",
-        version: "0.1.1",
-        dependencies: ["content-core"],
-        files: [
-          { source: "tui/content-quote-card/nostr_quote_card.rs", target: "src/components/nostr_content/nostr_quote_card.rs", role: "source", content: tuiQuoteCardRust },
-        ],
-        screenshots: ["tui-content-quote-card-preview.png"],
-        customization: [
-          "Feed it a `WireNode::EventRef` plus `ContentRenderData`; unresolved references stay visible as a quote placeholder instead of raw `nostr:nevent...` text.",
-        ],
-      },
-      web: webContentQuoteCard,
     },
   },
   {

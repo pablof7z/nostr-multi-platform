@@ -40,25 +40,40 @@ target = "Components/NostrContent/NostrMediaGrid.kt"
 role = "source"
 
 [[components]]
-id = "compose/content-quote-card"
-version = "0.1.1"
+id = "compose/content-kind-registry"
+version = "0.1.0"
 target = "compose"
-description = "Reusable Compose quote/embed card with collapsed, compact, rich, and missing variants."
-dependencies = ["compose/content-core"]
+description = "Compose kind-dispatch registry for embedded Nostr events, including the embed chrome container, embedded-event composable, and default short-note/article/highlight/profile/unknown renderers."
+dependencies = [
+    "compose/content-core",
+    "compose/user-avatar",
+]
 [[components.files]]
-source = "compose/content-quote-card/NostrQuoteCard.kt"
-target = "Components/NostrContent/NostrQuoteCard.kt"
+source = "compose/content-kind-registry/EmbedKindProjection.kt"
+target = "Components/NostrContent/EmbedKindProjection.kt"
+role = "source"
+[[components.files]]
+source = "compose/content-kind-registry/EmbedChromeContainer.kt"
+target = "Components/NostrContent/EmbedChromeContainer.kt"
+role = "source"
+[[components.files]]
+source = "compose/content-kind-registry/NostrKindRegistry.kt"
+target = "Components/NostrContent/NostrKindRegistry.kt"
+role = "source"
+[[components.files]]
+source = "compose/content-kind-registry/EmbeddedEvent.kt"
+target = "Components/NostrContent/EmbeddedEvent.kt"
 role = "source"
 
 [[components]]
 id = "compose/content-view"
-version = "0.1.0"
+version = "0.2.0"
 target = "compose"
-description = "Full Compose ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
+description = "Full Compose ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, kind-dispatched event-ref embeds, and typed placeholders."
 dependencies = [
     "compose/content-core",
     "compose/content-media-grid",
-    "compose/content-quote-card",
+    "compose/content-kind-registry",
 ]
 [[components.files]]
 source = "compose/content-view/NostrContentView.kt"
@@ -74,7 +89,7 @@ id = "compose/content-kind-30023"
 version = "0.1.0"
 target = "compose"
 description = "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author byline."
-dependencies = ["compose/content-core"]
+dependencies = ["compose/content-kind-registry"]
 [[components.files]]
 source = "compose/content-kind-30023/NostrArticleCard.kt"
 target = "Components/NostrContent/NostrArticleCard.kt"
@@ -85,7 +100,7 @@ id = "compose/content-kind-0"
 version = "0.1.0"
 target = "compose"
 description = "Profile metadata (NIP-01, kind:0) embed renderer — avatar, display name, pubkey chip, NIP-05, and about preview."
-dependencies = ["compose/content-core"]
+dependencies = ["compose/content-kind-registry"]
 [[components.files]]
 source = "compose/content-kind-0/NostrProfileCard.kt"
 target = "Components/NostrContent/NostrProfileCard.kt"

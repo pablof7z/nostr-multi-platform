@@ -24,9 +24,11 @@ struct ChirpApp: App {
             RootShell()
                 .environmentObject(model)
                 .environment(\.nostrProfileHost, model)
-                .environment(\.embedHost, model.embedHost)
-                .environment(\.embedClaimSink, model)
-                .environment(\.nostrKindRegistry, kindRegistry)
+                .embedEnvelopeSource(
+                    model.embedHost,
+                    claimSink: model,
+                    registry: kindRegistry
+                )
                 .tint(ChirpColor.accent)
                 .task {
                     // Skip kernel boot when the app is launched as an XCTest
