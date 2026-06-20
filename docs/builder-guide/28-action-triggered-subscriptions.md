@@ -161,6 +161,52 @@ it. The feed primitive's job is admission, canonical row identity, bounded
 storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
 
+## Resetting and replacing a feed on a perspective change
+
+A perspective change (account switch, follow-set replacement, WoT-preset change,
+a kind:3/mute/block/deletion arriving through ingest) can invalidate every
+admission decision a feed has already made. Two narrow, mechanics-only hooks on
+`nmp_feed` express this without the app reaching into feed internals:
+
+- **Reset** — `PullFeedController::reset` (reachable by key via
+  `FeedRegistry::reset(key)`) rewinds the pull cursor to seq 0 and then clears
+  the feed's visible window, returning whether visible state actually changed.
+  These are two sequential steps, not one atomic operation (see below). The
+  two must stay coordinated: dropping the rows without rewinding the cursor
+  would leave older history unreachable on the next `load_older`; rewinding
+  without clearing would double-ingest. Wire the visible-state clear with
+  `FeedReset` (in production `FlatFeed::reset_for_perspective_change`) via
+  `PullFeedController::new_with_perspective`.
+- **Replace** — `FeedReplace` evicts a single superseded source by its hex event
+  id. The controller calls it automatically for every `LogOp::Replaced` row a
+  drain surfaces (the prior version of a replaceable event), so only the current
+  version renders; the superseding version is ingested through `apply` like any
+  other positive row. Wire it with `PullFeedController::new_with_replacement`, or
+  drive it externally by key with `FeedRegistry::replace(key, source_id)`.
+
+Reset/replace are **not** a substitute for open/close (ADR-0042). Releasing an
+interest and ensuring a new one is the right move when the *interest itself*
+changes (different kinds/authors/relays). Reset is for when the interest is
+unchanged but the *admission perspective* shifted, so the same interest must be
+re-evaluated from the current fact — it keeps the registered controller and its
+interest seam, only the visible window and cursor are rewound. Replace is finer
+still: a single replaceable event superseded a prior version, so one source is
+swapped without touching the rest of the window.
+
+**`reset` is a sequential two-step, not an atomic operation.** It takes the
+pager lock, rewinds the cursor, releases the lock, then calls `FeedReset` to
+clear the visible state. The lock is released before the visible clear to
+prevent a deadlock if `FeedReset` acquires any internal lock of its own. The
+tradeoff: a `load_older` invoked concurrently between the two steps would see
+the cursor at seq 0 with the old visible window and double-replay rows. The
+host contract is **serialization**, not cross-thread isolation — always invoke
+`reset` from the same serialized feed/perspective-update path as `load_older`
+(e.g. the same perspective-change callback, not a concurrent thread). A
+poisoned pager lock fails closed (no rewind, no clear, returns `false`) rather
+than panicking. Absent keys through the registry are likewise a silent `false`.
+The hooks name no app primary-kind policy (D0) and hydrate no secondary data
+(D11) — the closures the composition root injects own that.
+
 ## Building the LogicalInterest
 
 Use `ViewDependencies::into_logical_interest`

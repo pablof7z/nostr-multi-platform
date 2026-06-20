@@ -291,6 +291,11 @@ fn test_deleted_rows_skipped_but_advance() {
     let ids: Vec<&str> = out.events.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, ["keep"], "deleted row must not yield an event");
     assert_eq!(pager.after_seq(), 2, "cursor advanced past the deleted row");
+    assert!(
+        out.replaced_ids.is_empty(),
+        "a Deleted row is NOT surfaced as an eviction id — only LogOp::Replaced \
+         feeds replaced_ids; deletions reach the feed via its push projection"
+    );
 }
 
 /// A multi-page drain stops once the visible target grows by one page; the
@@ -316,4 +321,59 @@ fn test_page_filled_stops_drain() {
     assert_eq!(out.events.len(), 2);
     assert_eq!(out.stop, DrainStop::PageFilled);
     assert_eq!(pager.after_seq(), 2);
+}
+
+/// A `LogOp::Replaced` row surfaces the superseded id (hex) in `replaced_ids`
+/// while the superseding event still arrives as a positive `KernelEvent`.
+#[test]
+fn test_replaced_row_surfaces_superseded_id() {
+    let mut pager = FeedPullPager::new(&RealShapeFeed).expect("real shape");
+    let replaced = StoreLogEntry {
+        seq: 1,
+        op: LogOp::Replaced {
+            replaced_id: [0xAB; 32],
+        },
+        event_id: id32(1),
+        raw_event: Some(raw("new_version", 100)),
+        source_relay: Some("wss://r/".to_string()),
+        received_at_ms: 0,
+    };
+    let mut first = Some(one_page(vec![replaced], 1, 1));
+    let out = pager.drain(|_after| first.take().expect("one page"));
+
+    assert_eq!(out.stop, DrainStop::Exhausted);
+    assert_eq!(
+        out.events.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+        ["new_version"],
+        "the superseding version is delivered like any positive row"
+    );
+    let expected_hex: String = (0..32).map(|_| "ab".to_string()).collect();
+    assert_eq!(
+        out.replaced_ids,
+        [expected_hex],
+        "the superseded id is surfaced as lowercase hex for the replace hook"
+    );
+}
+
+/// `rewind` returns the cursor to seq 0 without disturbing the page size, the
+/// scan budget, or a stored shape — only the cursor moves.
+#[test]
+fn test_rewind_resets_cursor_only() {
+    let mut pager = FeedPullPager::new(&RealShapeFeed)
+        .expect("real shape")
+        .with_budgets(3, 17);
+    let mut first = Some(one_page(vec![inserted(1, "e1", 100)], 5, 5));
+    let _ = pager.drain(|_after| first.take().expect("page"));
+    assert_eq!(pager.after_seq(), 5, "cursor advanced");
+
+    pager.rewind();
+    assert_eq!(pager.after_seq(), 0, "rewind returned the cursor to seq 0");
+    assert!(pager.shape().is_some(), "the stored shape is preserved");
+
+    // The next drain replays from seq 0.
+    let mut replay = Some(one_page(vec![inserted(1, "e1", 100)], 1, 1));
+    pager.drain(|after| {
+        assert_eq!(after, 0, "post-rewind drain starts at seq 0");
+        replay.take().expect("replay page")
+    });
 }

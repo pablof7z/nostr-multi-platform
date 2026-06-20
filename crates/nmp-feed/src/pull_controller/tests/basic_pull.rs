@@ -1,131 +1,13 @@
-//! Controller-level tests for the single pull paging path (ADR-0058 §8 step-6B).
-//!
-//! These exercise `PullFeedController::load_older` end-to-end with stub closures
-//! (no real `Kernel`): a fake `pull_fn` feeds canned pages, a fake `apply`
-//! records what the feed ingested, and a fake `advance` counts viewport grows.
-//! Together they prove the 6B contract: late-old completeness rides seq, display
-//! order is left to the snapshot, empty-advancing drains do not loop, `PullGap`
-//! rebases explicitly, inexpressible shapes fail closed, and nothing consumes a
-//! wake.
-
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::KernelEvent;
-use nmp_core::PullScope;
-use nmp_planner::InterestShape;
-use nmp_store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
+use nmp_store::{PullGap, ScanLogResult};
 
-use super::{ClosureInterestShape, FeedAdvance, FeedApply, PullFeedController, PullFn};
+use super::{
+    controller_with_pages, inserted, opaque_shape, page, real_shape, FakeFeed, PullFeedController,
+    PullFn,
+};
 use crate::FeedController;
-
-// ─── fixtures ────────────────────────────────────────────────────────────────
-
-fn real_shape() -> Arc<dyn crate::FeedInterestShape + Send + Sync> {
-    Arc::new(ClosureInterestShape::new(|| {
-        Some(InterestShape {
-            authors: ["a".repeat(64)].into_iter().collect(),
-            kinds: [1u32].into_iter().collect(),
-            ..Default::default()
-        })
-    }))
-}
-
-fn opaque_shape() -> Arc<dyn crate::FeedInterestShape + Send + Sync> {
-    Arc::new(ClosureInterestShape::new(|| None))
-}
-
-fn raw(id: &str, created_at: u64) -> RawEvent {
-    RawEvent {
-        id: id.to_string(),
-        pubkey: "a".repeat(64),
-        created_at,
-        kind: 1,
-        tags: vec![],
-        content: String::new(),
-        sig: "0".repeat(128),
-    }
-}
-
-fn inserted(seq: u64, id: &str, created_at: u64) -> StoreLogEntry {
-    StoreLogEntry {
-        seq,
-        op: LogOp::Inserted,
-        event_id: [seq as u8; 32],
-        raw_event: Some(raw(id, created_at)),
-        source_relay: Some("wss://r/".to_string()),
-        received_at_ms: 0,
-    }
-}
-
-fn page(entries: Vec<StoreLogEntry>, next_after_seq: u64, latest_seq: u64) -> ScanLogResult {
-    ScanLogResult::Page(PullPage {
-        entries,
-        next_after_seq,
-        latest_seq,
-        has_more: next_after_seq < latest_seq,
-    })
-}
-
-/// A test feed: an in-memory ingest sink (deduped by id) plus a viewport-grow
-/// counter, mirroring the engine's `apply` + `grow_visible_window` seam.
-#[derive(Default)]
-struct FakeFeed {
-    ingested: Mutex<Vec<KernelEvent>>,
-    grows: AtomicUsize,
-}
-
-impl FakeFeed {
-    fn apply(self: &Arc<Self>) -> FeedApply {
-        let me = Arc::clone(self);
-        Arc::new(move |ev: &KernelEvent| {
-            let mut g = me.ingested.lock().unwrap();
-            if !g.iter().any(|e| e.id == ev.id) {
-                g.push(ev.clone());
-            }
-        })
-    }
-    fn advance(self: &Arc<Self>) -> FeedAdvance {
-        let me = Arc::clone(self);
-        Arc::new(move || {
-            me.grows.fetch_add(1, Ordering::Relaxed);
-        })
-    }
-    /// Display order the snapshot would render: newest-first by `(created_at, id)`.
-    fn display_order(&self) -> Vec<String> {
-        let g = self.ingested.lock().unwrap();
-        let mut keyed: Vec<(u64, String)> =
-            g.iter().map(|e| (e.created_at, e.id.clone())).collect();
-        keyed.sort_by(|(lt, lid), (rt, rid)| rt.cmp(lt).then_with(|| rid.cmp(lid)));
-        keyed.into_iter().map(|(_, id)| id).collect()
-    }
-}
-
-/// Build a controller whose `pull_fn` replays `pages` (one per call) and records
-/// every `after_seq` it was asked for.
-fn controller_with_pages(
-    feed: &Arc<FakeFeed>,
-    pages: Vec<ScanLogResult>,
-    seen_after: Arc<Mutex<Vec<u64>>>,
-) -> Arc<PullFeedController> {
-    let queue = Arc::new(Mutex::new(std::collections::VecDeque::from(pages)));
-    let pull: PullFn = {
-        let queue = Arc::clone(&queue);
-        let seen = Arc::clone(&seen_after);
-        Arc::new(move |_scope: PullScope, after_seq: u64| {
-            seen.lock().unwrap().push(after_seq);
-            queue
-                .lock()
-                .unwrap()
-                .pop_front()
-                // Default: caught up, empty exhausted page (fail-closed terminator).
-                .unwrap_or_else(|| page(vec![], after_seq, after_seq))
-        })
-    };
-    PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance())
-}
-
-// ─── tests ───────────────────────────────────────────────────────────────────
 
 /// THE bug fix: a low-`created_at` event ingested LATE (higher seq) is NOT
 /// skipped — a later `load_older` drains it by seq, and the feed's display sort
