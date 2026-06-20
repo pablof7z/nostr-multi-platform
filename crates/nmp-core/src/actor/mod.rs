@@ -766,27 +766,30 @@ pub enum ActorCommand {
     RemoveRelay {
         url: String,
     },
-    /// (Re)open the contact-feed subscription for the active account.
+    /// Declare the active-account-follows feed for app primary content kinds.
     ///
-    /// `kinds` is the compiled acquisition kind set the follow-set REQ should
-    /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
-    /// policy belong to the host's app concept; the caller supplies the
-    /// compiled set so the substrate carries no app-specific social knowledge.
+    /// `acquisition_kinds` is the compiled acquisition kind set the follow-set
+    /// REQ should carry. D0: `nmp-core` does not know which primary kinds or
+    /// wrapper policy belong to the host's app concept; the caller supplies
+    /// the compiled set so the substrate carries no app-specific social
+    /// knowledge.
     /// The actor folds it into the kernel via
     /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
     /// follow-feed M2 interests under the new kind set. An empty set is
-    /// equivalent to `CloseContactFeed` — it withdraws all follow-feed interests.
-    OpenContactFeed {
-        kinds: std::collections::BTreeSet<u32>,
+    /// equivalent to `ClearActiveFollowsFeed` — it withdraws all follow-feed
+    /// interests.
+    DeclareActiveFollowsFeed {
+        acquisition_kinds: std::collections::BTreeSet<u32>,
     },
-    /// Tear down the contact-feed subscription opened by `OpenContactFeed`.
+    /// Tear down the active-follows feed declaration.
     ///
     /// Calls `Kernel::set_follow_feed_kinds(BTreeSet::new())`, which clears the
-    /// stored kinds and withdraws all follow-feed M2 interests from the lifecycle
-    /// registry. The unconditional `FollowListChanged` trigger propagates to
-    /// `drain_lifecycle_tick`, which emits CLOSE frames for any live REQs.
-    /// D6: no active account (or no prior open) is a silent no-op.
-    CloseContactFeed,
+    /// stored kinds and withdraws all follow-feed M2 interests from the
+    /// lifecycle registry. The unconditional `FollowListChanged` trigger
+    /// propagates to `drain_lifecycle_tick`, which emits CLOSE frames for any
+    /// live REQs. D6: no active account (or no prior declaration) is a silent
+    /// no-op.
+    ClearActiveFollowsFeed,
     /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
     /// freshness gate so a user-initiated navigation / pull-to-refresh always
     /// re-verifies the cached profile; `force == false` is the lazy, gated

@@ -308,8 +308,8 @@ class KernelModel : ViewModel() {
      *  registered by the view that renders it (`TimelineScreen` →
      *  `LaunchedEffect { model.openHomeFeed() }`), exactly as on iOS
      *  (`HomeFeedView.task { model.openHomeFeed() }`). The kernel now persists
-     *  the host-declared follow-feed kinds even before an account exists
-     *  (#1493 P4 / `open_contact_feed`), so the sign-in reconcile re-registers
+     *  the host-declared active-follows kinds even before an account exists
+     *  (#1493 P4 / active-follows declaration), so the sign-in reconcile re-registers
      *  the feed without the shell re-declaring it. Driving it from the identity
      *  op was a per-platform policy band-aid the shell must not carry (D7). */
     fun signInNsec(secret: String) {

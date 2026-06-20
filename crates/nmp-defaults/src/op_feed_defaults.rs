@@ -12,7 +12,11 @@
 //!
 //! 1. Constructs [`nmp_nip02::ActiveFollowSet`] over the kernel's
 //!    [`ActiveAccountSlot`] (the producer of the follow predicate).
-//! 2. Builds the three inputs `register_op_feed` needs:
+//! 2. Declares the home feed as app-owned primary kinds from the active
+//!    account's reactive follows perspective. The declaration derives repost
+//!    wrapper acquisition below the app boundary and queues the active-follows
+//!    subscription command; it never passes concrete follow pubkeys.
+//! 3. Builds the three inputs `register_op_feed` needs:
 //!    * **follow predicate** — `active_follow_set.predicate()` (live view of
 //!      the active account's follow set);
 //!    * **event lookup** — a synchronous read through the kernel event-store
@@ -20,47 +24,29 @@
 //!      acquisition;
 //!    * **card builder** — supplied inside `register_op_feed` itself
 //!      (`TimelineEventCard::from_event_for_op_feed`).
-//! 3. Registers the returned `Arc<OpFeedEngine>` as a
+//! 4. Registers the returned `Arc<OpFeedEngine>` as a
 //!    [`KernelEventObserver`](nmp_core::KernelEventObserver) (ingest) **and** as
 //!    a [`FeedController`](nmp_feed::FeedController) under
 //!    `"nmp.feed.home"` (output).
-//! 4. Registers the `ActiveFollowSet` as its own `KernelEventObserver` (so
+//! 5. Registers the `ActiveFollowSet` as its own `KernelEventObserver` (so
 //!    kind:3 ingest keeps the follow set current — exactly the pattern the
 //!    sibling `FollowListProjection` already uses).
-//! 5. Registers an `on_change` callback that resets the engine on every
+//! 6. Registers an `on_change` callback that resets the engine on every
 //!    follow-set perspective change.
-//! 6. Registers the follow-set notifier on `NmpApp`'s identity-change observer
+//! 7. Registers the follow-set notifier on `NmpApp`'s identity-change observer
 //!    seam so sign-in, switch, logout, and reset are pushed after the actor has
 //!    written the active-account slot.
 //!
-//! # CRITICAL DECISION — no per-follow interest expansion here
+//! # CRITICAL DECISION — declaration here, no static follow snapshots
 //!
-//! The design doc (`docs/perf/op-centric-feed-architecture.md` §3-D / §5
-//! Stage 5) and [ADR-0036](../../docs/decisions/0036-composition-root-followset-expansion.md)
-//! sketch an `expand_follow_timeline_interests` that registers one
-//! `LogicalInterest` per follow at the composition root, "mirroring the
-//! kernel's existing `sync_follow_feed_interests` semantics."
-//!
-//! **That mirror is a bug, so this function deliberately does NOT do it.** The
-//! kernel still owns `sync_follow_feed_interests`
-//! (`crates/nmp-core/src/kernel/ingest/contacts.rs:119`): on the active
-//! account's kind:3 (`ingest_contacts`) and on every identity change
-//! (`register_follow_feed_for_active_account` /
-//! `reconcile_follow_feed_after_identity_change`) it registers one
-//! multi-author `LogicalInterest` under compiled acquisition kinds AND rebuilds
-//! `timeline_authors`. Those subscriptions are what bring the follow-feed
-//! events onto the wire; the OP-feed engine then observes them via the kernel's
-//! `KernelEventObserver` fan-out. Registering the same interests **again** at
-//! the composition root would be duplicate REQ subscriptions — a wire-level
-//! bug and a no-duplication-rule violation.
-//!
-//! The design doc predates the kernel keeping `sync_follow_feed_interests`
-//! (the v3→v4 override deleted the planner-side `SocialTimeline` seam but the
-//! kernel-side per-follow expansion was never removed — it is still the live
-//! producer of the follow-feed subscription). The composition root therefore
-//! only needs to wire the **engine** (predicate + event_lookup + card builder),
-//! the `ActiveFollowSet` `on_change`, and the app-level
-//! identity-change callback; no interest expansion.
+//! This composition root owns the app-level feed declaration: primary content
+//! kinds from the active account's reactive follows perspective. It does not
+//! compute or pass a static follow list. The active-follow producer and kernel
+//! subscription machinery react to active-account kind:3 replacement, account
+//! switch, logout, mute/block, delete, and replacement changes using the stored
+//! acquisition kinds. The OP-feed engine observes resulting events through the
+//! kernel's `KernelEventObserver` fan-out and clears/regrows its visible window
+//! on perspective changes.
 //!
 //! # `event_lookup` reads the kernel event store (V-83)
 //!
@@ -179,9 +165,9 @@ pub struct OpFeedDefaults {
 ///
 /// # CRITICAL DECISION
 ///
-/// This function registers **no per-follow `LogicalInterest`s** — the kernel's
-/// `sync_follow_feed_interests` already owns the follow-feed subscription.
-/// Re-registering would duplicate REQ subscriptions. See the module docs.
+/// This function declares active-follows acquisition from app primary kinds,
+/// but never passes concrete follow pubkeys or registers a second home-feed
+/// projection. See the module docs.
 ///
 /// # Ordering
 ///
@@ -237,7 +223,15 @@ fn register_op_feed_defaults_inner(
     let follow_set_observer: Arc<dyn KernelEventObserver> = follow_set.clone();
     let _follow_set_observer_id = app.register_event_observer(follow_set_observer);
 
-    // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
+    // ── 2. Declare active-follows acquisition from app primary kinds ─────
+    //
+    // The app/defaults layer owns the primary-kind declaration. The kernel
+    // stores only the adapter-derived acquisition kinds and uses the active
+    // account's current kind:3 as a reactive perspective; concrete follow
+    // pubkeys are never passed through this API.
+    let _declared = app.declare_active_follows_feed(primary_feed_kinds.iter().copied());
+
+    // ── 3. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
     // `Fn(&EventId) -> Option<KernelEvent>`. The engine's repost L-2/L-5
     // backward-hydration paths consult this to read a parent/target/wrapper
@@ -256,15 +250,15 @@ fn register_op_feed_defaults_inner(
     });
     let event_lookup_for_observer = event_lookup.clone();
 
-    // ── 3. Construct the engine ──────────────────────────────────────────
+    // ── 4. Construct the engine ──────────────────────────────────────────
     let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup);
 
-    // ── 4. Register the engine (ingest + output) ─────────────────────────
+    // ── 5. Register the engine (ingest + output) ─────────────────────────
     let observer: Arc<dyn KernelEventObserver> =
         op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
     let _engine_observer_id = app.register_event_observer(observer);
 
-    // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
+    // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //
     // `load_older` is no longer a `created_at` window-grow on the engine (that
     // parallel path was deleted in 6B — the engine is no longer a
@@ -274,8 +268,8 @@ fn register_op_feed_defaults_inner(
     //   * **interest** — a LIVE, fail-closed `InterestShape` recomputed on every
     //     `load_older`: the active account's follow set + the active user as
     //     `authors`, under acquisition kinds derived from app-declared primary
-    //     kinds. This is the same collapsed follow-feed shape the kernel registers for M2
-    //     (`sync_follow_feed_interests`). The controller is registered
+    //     kinds. This is the same active-follows shape the declared feed
+    //     installs for live acquisition. The controller is registered
     //     UNCONDITIONALLY (below); the provider proves a LIVE active account
     //     FIRST and yields `None` on empty kinds or no signed-in account, so a
     //     `load_older` after logout/switch fails closed (no pull, never a
@@ -301,7 +295,7 @@ fn register_op_feed_defaults_inner(
             nmp_nip18::try_acquisition_kinds_for_primary(primary_feed_kinds.iter().copied())
                 .unwrap_or_default();
         Arc::new(ClosureInterestShape::new(move || {
-            live_contact_feed_shape(&account_slot, &follow_set, &kinds)
+            live_active_follows_shape(&account_slot, &follow_set, &kinds)
         }))
     };
     let pull = app.feed_pull_fn();
@@ -325,7 +319,7 @@ fn register_op_feed_defaults_inner(
         app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
     }
 
-    // ── 4b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
+    // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //
     // ADR-0055 Rung 6 Option A (R6-S1): the typed sidecar now uses
     // `FeedEmissionState` to omit an unchanged feed frame when the host has
@@ -450,7 +444,7 @@ fn register_op_feed_defaults_inner(
     OpFeedDefaults { engine, follow_set }
 }
 
-/// Build the LIVE contact-feed pull [`InterestShape`], or `None` to fail closed.
+/// Build the LIVE active-follows pull [`InterestShape`], or `None` to fail closed.
 ///
 /// B1 — race-free fail-close. The active-account slot is read **first**: on
 /// logout / account-switch the actor can null the slot BEFORE the async identity
@@ -462,13 +456,13 @@ fn register_op_feed_defaults_inner(
 /// when there IS a live active account do we form the shape from
 /// `viewer = active account pubkey` + its follows; the viewer is always a member
 /// (self-inclusion), so the author set is never empty.
-fn live_contact_feed_shape(
+fn live_active_follows_shape(
     account_slot: &ActiveAccountSlot,
     follow_set: &ActiveFollowSet,
     kinds: &BTreeSet<u32>,
 ) -> Option<InterestShape> {
     if kinds.is_empty() {
-        return None; // host declared no contact-feed kinds ⇒ fail closed
+        return None; // host declared no active-follows kinds => fail closed
     }
     // Prove a LIVE active account BEFORE touching the (possibly stale) follow
     // set. `None` here is the logout/switch fail-closed path.

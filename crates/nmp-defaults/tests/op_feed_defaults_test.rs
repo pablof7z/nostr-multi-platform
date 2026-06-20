@@ -8,7 +8,7 @@
 //!    engine's `RootFeedSnapshot` shape (`cards` / `page` / `metrics`),
 //!    distinct from `ModularTimelineProjection`'s `OpFeedSnapshot`. This
 //!    is the negative proof of the CRITICAL DECISION: the composition root
-//!    wires the *engine*, not a duplicate kernel subscription.
+//!    wires the *engine*, not a duplicate feed projection.
 //! 2. **Attribution path** — a followed author's reply to a non-followed root,
 //!    driven through the returned `Arc<OpFeedEngine>`, surfaces the root with
 //!    one attribution once the root is supplied (self-inclusion makes the
@@ -19,10 +19,9 @@
 //!    and re-seeds self-inclusion; a subsequent kind:3 ingest repopulates the
 //!    set. Production wiring resets the feed engine on every follow-set
 //!    perspective change, including replacement kind:3 updates.
-//! 4. **No duplicate interest registration** — `register_op_feed_defaults`
-//!    enqueues no `OpenContactFeed` / interest-mutating command on
-//!    the actor channel (the kernel's `sync_follow_feed_interests` already owns
-//!    the follow-feed subscription).
+//! 4. **No duplicate feed state** — `register_op_feed_defaults` declares the
+//!    active-follows acquisition path once, but does not fabricate cards or
+//!    register a second home-feed projection.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -148,8 +147,7 @@ fn registers_op_feed_engine_under_home_key() {
     // `ModularTimelineProjection` would emit a `ModularTimelineSnapshot`
     // (`{ blocks, events, profiles, … }`). Reading the engine's shape here
     // proves the composition root registered the *engine* under the key —
-    // it did NOT register a duplicate kernel follow-feed subscription (the
-    // kernel's `sync_follow_feed_interests` owns that). See the CRITICAL
+    // it did not register a duplicate home-feed projection. See the CRITICAL
     // DECISION in `op_feed_defaults.rs`.
     let snapshot = read_typed_op_feed(app, "nmp.feed.home")
         .expect("`nmp.feed.home` typed projection was not registered or had no data");
@@ -344,26 +342,21 @@ fn kind3_replacement_resets_visible_feed_immediately() {
     nmp_app_free(app);
 }
 
-// ─── 4. No duplicate interest registration ───────────────────────────────────
+// ─── 4. No duplicate feed state ──────────────────────────────────────────────
 
 #[test]
-fn wiring_does_not_register_duplicate_follow_feed_interests() {
-    // The kernel's `sync_follow_feed_interests` already registers per-follow
-    // acquisition interests for primary kind:1 plus derived kind:6 on the active
-    // account's kind:3. The
-    // composition root must NOT register them again — that would be duplicate
-    // REQ subscriptions. We prove the negative two ways:
+fn wiring_declaration_does_not_fabricate_feed_state() {
+    // The composition root declares active-follows acquisition once, using
+    // primary kind:1 plus derived kind:6, and wires the feed engine. It must
+    // not fabricate rows or install a second home-feed projection. We prove
+    // the negative two ways:
     //
     //   (a) the home-feed key resolves to the engine's snapshot shape (the
     //       engine is the only thing wired under it — proven in
     //       `registers_op_feed_engine_under_home_key`); and
     //   (b) `register_op_feed_defaults` returns an engine whose snapshot is
-    //       empty immediately after wiring, i.e. no event/interest side effect
+    //       empty immediately after wiring, i.e. no declaration side effect
     //       fabricated cards out of thin air.
-    //
-    // The structural contract (no `push_interest`, no
-    // `ActorCommand::Open*Subscription`, no `dispatch_action`) is enforced by
-    // the function body — there is no such call in `op_feed_defaults.rs`.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null());

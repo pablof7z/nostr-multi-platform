@@ -58,20 +58,26 @@ impl super::KernelReducer {
         self.kernel.partition_auth_paused(outbound)
     }
 
-    /// Set the event kinds the contact-feed subscription should carry and
-    /// re-register the active account's follow-feed interests under the new
-    /// kind set. An empty `kinds` set deactivates the subscription (withdraws
-    /// every follow-feed interest).
+    /// Declare the compiled acquisition kinds for the active-account-follows
+    /// feed and re-register the active account's follow-feed interests under
+    /// that kind set. An empty `acquisition_kinds` set deactivates the
+    /// declaration (withdraws every follow-feed interest).
     ///
-    /// Called by the host once at startup (before or after `set_active_account`)
-    /// and again whenever the user changes their kind preferences.
-    pub fn set_follow_feed_kinds(
+    /// Called by the composition root once at startup (before or after
+    /// `set_active_account`) and again whenever the app changes its declared
+    /// primary kind policy.
+    pub fn declare_active_follows_feed(
         &mut self,
-        kinds: std::collections::BTreeSet<u32>,
+        acquisition_kinds: std::collections::BTreeSet<u32>,
     ) -> Vec<OutboundMessage> {
-        self.kernel.set_follow_feed_kinds(kinds);
+        self.kernel.set_follow_feed_kinds(acquisition_kinds);
         let outbound = self.kernel.drain_lifecycle_outbound();
         self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// Clear the active-account-follows feed declaration.
+    pub fn clear_active_follows_feed(&mut self) -> Vec<OutboundMessage> {
+        self.declare_active_follows_feed(std::collections::BTreeSet::new())
     }
 
     /// Install `pubkey_hex` as the active viewer account and fan out the

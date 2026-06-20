@@ -10,8 +10,9 @@ App feeds need two different facts from the active account's follow set:
 
 1. a live membership predicate so a projection can decide whether an author's
    event or reference is relevant to the current active user;
-2. an acquisition shape so the kernel can subscribe to the active user's
-   current follow set and recompile that subscription when the list changes.
+2. a reactive perspective so a feed declaration can acquire primary content
+   kinds from the active user's current follows and recompile when the list
+   changes.
 
 The framework must not encode a Chirp-specific "social timeline" shape in the
 planner or in `nmp-feed`. A media app, a long-form app, or a relay-set app must
@@ -20,17 +21,20 @@ different admission/ranking rules.
 
 ## Decision
 
-The active follow set has one producer and one acquisition owner:
+The active follow set has one producer. Feed declarations, not a special
+kernel-owned home-feed API, consume it:
 
 - `nmp-nip02::ActiveFollowSet` produces a reactive pubkey set and a closure
   predicate.
-- `nmp-core::Kernel::sync_follow_feed_interests`
-  (`crates/nmp-core/src/kernel/ingest/contacts.rs:84`) owns the active-user
-  follow-feed acquisition interest — the single owner of follow→interest
-  expansion.
+- app/defaults composition declares a feed as primary content kinds from a
+  perspective such as "the active account's follows".
+- `nmp-core` executes the resulting active-account follow interest and rewires
+  it when the active account, kind:3, mute/block, delete, or replacement inputs
+  change. It does not own a built-in home-feed product shape or primary
+  kind policy.
 
-The composition root wires consumers. It does not duplicate the kernel's
-follow-to-interest expansion.
+The composition root wires consumers and declares the feed. It does not pass a
+static follow list snapshot to the kernel or to native code.
 
 ## Producer
 
@@ -58,23 +62,27 @@ re-registration.
 `ActiveFollowSet::new` takes `ActiveAccountSlot`, not `&NmpApp`, so
 `nmp-nip02` does not depend on `nmp-ffi`.
 
-## Acquisition Owner
+## Feed Declaration
 
-The kernel owns active-user follow-feed subscription state. On active-account
-kind `3` changes, account switches, and contact-feed reopens,
-`sync_follow_feed_interests` withdraws the old interest and registers a single
-multi-author `LogicalInterest` for the active user plus their current follows.
+The app/defaults layer declares a feed as:
 
-The acquisition kinds are app-declared primary content kinds transformed by
-the relevant protocol adapter before they reach the kernel. A Chirp notes feed
+- primary content kinds;
+- a reactive perspective, for this ADR the active account's follows;
+- the feed engine, admission/ranking policy, and projection key that will render
+  the resulting events.
+
+The acquisition kinds are app-declared primary content kinds transformed by the
+relevant protocol adapter before they reach the kernel. A Chirp notes feed
 declares primary kind `[1]`; the NIP-18/NIP-01 adapter may derive kind `6`
 wrapper acquisition. A non-kind-1 feed declares its primary kind, and generic
-repost wrapper acquisition is kind `16`.
+repost wrapper acquisition is kind `16`. The app never declares wrapper kinds as
+primary feed content.
 
 The app must not pass a static copy of "the current user's follows" to native
 or to the kernel. It selects a reactive source such as active-user follows.
-The kernel and protocol modules react to kind `3`, list, account, mute/block,
-and replacement changes.
+The active-follow producer and kernel subscription machinery react to kind `3`,
+list, account, mute/block, delete, and replacement changes and reset/regrow the
+declared feed without UI code re-declaring it.
 
 ## Composition Root
 
@@ -82,20 +90,23 @@ and replacement changes.
 wire:
 
 - the `ActiveFollowSet` observer;
-- the feed engine's membership predicate;
+- the active-follows declared feed and its primary content kinds;
+- the feed engine's membership predicate, admission/ranking policy, and reset
+  hook;
 - event lookup and claim/release closures;
 - identity-change reset hooks;
 - typed projection registration.
 
-They do not register duplicate follow-feed REQs. Duplicating the kernel's
-follow-feed interest would violate D4 and produce duplicate wire
-subscriptions.
+They do not also open a separate home-feed API or pass concrete follow
+pubkeys. Duplicating the active-follows declaration would violate D4 and produce
+duplicate wire subscriptions.
 
 ## Consequences
 
 - `nmp-feed` remains a mechanics crate: windows, controllers, cursors,
   provenance containers, and bounded paging.
-- `nmp-core` owns active-user follow acquisition, but not app feed semantics.
+- `nmp-core` executes active-user follow acquisition declared by apps/defaults,
+  but owns neither app feed semantics nor primary-kind policy.
 - protocol crates derive wrapper kinds and target provenance.
 - app Rust crates choose feed keys, primary kinds, source expressions,
   admission/ranking policy, and row projections.

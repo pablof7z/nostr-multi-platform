@@ -150,8 +150,8 @@ pub use identity::{
     nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline DELETED.
-// Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic
-// nmp_app_open_contact_feed / nmp_app_close_contact_feed verbs below.
+// Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper). The old generic
+// old feed-open symbols remain compatibility shims only.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use lifecycle::{
@@ -200,7 +200,9 @@ pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
     // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
-    // deleted from identity.rs. Replaced by the pair below.
+    // deleted from identity.rs.
+    clear_active_follows_feed,
+    declare_active_follows_feed,
     nmp_app_claim_event,
     nmp_app_claim_profile,
     nmp_app_close_contact_feed,
@@ -1434,6 +1436,38 @@ impl NmpApp {
         #[cfg(test)]
         self.send_cmd_count.fetch_add(1, Ordering::Relaxed);
         let _ = self.tx.send(cmd);
+    }
+
+    /// Declare a feed of app-owned primary kinds from the active account's
+    /// reactive follows perspective.
+    ///
+    /// The caller supplies primary content kinds only. Repost wrappers are
+    /// derived here before the actor receives the compiled acquisition set, so
+    /// `nmp-core` never owns the app's primary-kind policy. A wrapper kind
+    /// supplied as a primary kind is rejected and surfaced as state (toast),
+    /// matching the C-ABI helper's D6 behavior.
+    pub fn declare_active_follows_feed<I>(&self, primary_kinds: I) -> bool
+    where
+        I: IntoIterator<Item = u32>,
+    {
+        let acquisition_kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
+            Ok(kinds) => kinds,
+            Err(_) => {
+                self.send_cmd(ActorCommand::ShowToast {
+                    message:
+                        "declare_active_follows_feed: primary kinds must not include repost wrappers"
+                            .to_string(),
+                });
+                return false;
+            }
+        };
+        self.send_cmd(ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds });
+        true
+    }
+
+    /// Clear the active-follows feed declaration.
+    pub fn clear_active_follows_feed(&self) {
+        self.send_cmd(ActorCommand::ClearActiveFollowsFeed);
     }
 
     /// Register a typed [`nmp_core::substrate::ActionModule`] `M` against the

@@ -74,7 +74,7 @@ impl WasmRuntime {
                 correlation_id: action.correlation_id,
             }]);
         }
-        // PR-3 feed-verb arm: open/close generic interests + contact-feed.
+        // Feed-verb arm: open/close generic interests + active-follows.
         if let Some(interest) = interest_dispatch_from_action(&action) {
             let outbound = execute_interest_dispatch(&mut self.reducer.borrow_mut(), interest);
             self.fan_outbound(outbound);

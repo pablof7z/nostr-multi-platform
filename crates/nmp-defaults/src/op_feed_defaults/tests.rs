@@ -1,4 +1,4 @@
-//! Tests for the OP-feed composition root's live, fail-closed contact-feed
+//! Tests for the OP-feed composition root's live, fail-closed active-follows
 //! shape provider (ADR-0058 §8 6B, B1 logout-race fail-close).
 
 use super::*;
@@ -43,7 +43,7 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
 
     // While signed in, the provider yields a covered shape.
     assert!(
-        live_contact_feed_shape(&slot, &follow_set, &kinds).is_some(),
+        live_active_follows_shape(&slot, &follow_set, &kinds).is_some(),
         "signed-in provider must yield a shape"
     );
 
@@ -58,7 +58,7 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
     // The provider must fail closed: slot read first ⇒ None ⇒ no shape, no
     // stale-viewer pull.
     assert!(
-        live_contact_feed_shape(&slot, &follow_set, &kinds).is_none(),
+        live_active_follows_shape(&slot, &follow_set, &kinds).is_none(),
         "logout race must fail closed: None slot ⇒ no shape despite stale follows"
     );
 }
@@ -70,5 +70,5 @@ fn provider_fails_closed_on_empty_kinds() {
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice)));
     let follow_set = ActiveFollowSet::new(slot.clone());
     let empty: BTreeSet<u32> = BTreeSet::new();
-    assert!(live_contact_feed_shape(&slot, &follow_set, &empty).is_none());
+    assert!(live_active_follows_shape(&slot, &follow_set, &empty).is_none());
 }

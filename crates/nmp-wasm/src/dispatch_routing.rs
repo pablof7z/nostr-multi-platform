@@ -13,9 +13,9 @@
 //!    `KernelReducer` claim surface.
 //!
 //! 3. [`interest_dispatch_from_action`] / [`execute_interest_dispatch`] —
-//!    parse and execute PR-3 feed-verb operations:
+//!    parse and execute feed-verb operations:
 //!    `nmp.kernel.open_interest`, `nmp.kernel.close_interest`,
-//!    `nmp.kernel.open_contact_feed`, `nmp.kernel.close_contact_feed`.
+//!    `nmp.feed.declare_active_follows`, `nmp.feed.clear_active_follows`.
 //!
 //! 4. Stable, host-pattern-matchable reason strings for the two
 //!    write-unavailability states the wasm runtime can honestly report
@@ -239,8 +239,8 @@ pub(crate) fn execute_claim_dispatch(
 // type" and falls through.
 
 /// Decoded feed-subscription verb extracted from an `ActionDispatch` whose
-/// `action_type` is in the `nmp.kernel.open_interest` / `close_interest` /
-/// `open_contact_feed` / `close_contact_feed` namespace.
+/// `action_type` is in the `nmp.kernel.open_interest` / `close_interest` or
+/// active-follows declared-feed namespace.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum InterestDispatch {
     OpenInterest {
@@ -253,15 +253,15 @@ pub(crate) enum InterestDispatch {
         consumer_id: String,
         scope: u32,
     },
-    /// `open_contact_feed {kinds:[1]}` — compiles app-declared primary kinds
-    /// into the follow-feed acquisition kind set and re-registers the active
-    /// account's follow interests.
-    OpenContactFeed {
-        kinds: std::collections::BTreeSet<u32>,
+    /// `nmp.feed.declare_active_follows {primary_kinds:[1]}` — compiles
+    /// app-declared primary kinds into the follow-feed acquisition kind set and
+    /// re-registers the active account's follow interests.
+    DeclareActiveFollowsFeed {
+        acquisition_kinds: std::collections::BTreeSet<u32>,
     },
-    /// `close_contact_feed {}` — clears the follow-feed kind set (no relay
-    /// CLOSE diff is emitted until `drain_lifecycle_outbound` / `tick`).
-    CloseContactFeed,
+    /// Clears the active-follows declaration (no relay CLOSE diff is emitted
+    /// until `drain_lifecycle_outbound` / `tick`).
+    ClearActiveFollowsFeed,
 }
 
 /// Parse an `ActionDispatch` as a feed-subscription verb. Returns `None` if
@@ -297,21 +297,19 @@ pub(crate) fn interest_dispatch_from_action(action: &ActionDispatch) -> Option<I
                 scope,
             })
         }
-        "nmp.kernel.open_contact_feed" => {
-            let primary_kinds: Vec<u32> = action
+        "nmp.feed.declare_active_follows" => {
+            let primary_kinds = action
                 .payload
-                .get("kinds")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .map(|v| v.as_u64().and_then(|n| u32::try_from(n).ok()))
-                        .collect::<Option<Vec<_>>>()
-                })
-                .unwrap_or_else(|| Some(Vec::new()))?;
-            let kinds = nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds).ok()?;
-            Some(InterestDispatch::OpenContactFeed { kinds })
+                .get("primary_kinds")
+                .and_then(Value::as_array)?
+                .iter()
+                .map(|v| v.as_u64().and_then(|n| u32::try_from(n).ok()))
+                .collect::<Option<Vec<_>>>()?;
+            let acquisition_kinds =
+                nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds).ok()?;
+            Some(InterestDispatch::DeclareActiveFollowsFeed { acquisition_kinds })
         }
-        "nmp.kernel.close_contact_feed" => Some(InterestDispatch::CloseContactFeed),
+        "nmp.feed.clear_active_follows" => Some(InterestDispatch::ClearActiveFollowsFeed),
         _ => None,
     }
 }
@@ -334,10 +332,10 @@ pub(crate) fn execute_interest_dispatch(
             consumer_id,
             scope,
         } => reducer.close_interest(&filter_json, &consumer_id, scope),
-        InterestDispatch::OpenContactFeed { kinds } => reducer.set_follow_feed_kinds(kinds),
-        InterestDispatch::CloseContactFeed => {
-            reducer.set_follow_feed_kinds(std::collections::BTreeSet::new())
+        InterestDispatch::DeclareActiveFollowsFeed { acquisition_kinds } => {
+            reducer.declare_active_follows_feed(acquisition_kinds)
         }
+        InterestDispatch::ClearActiveFollowsFeed => reducer.clear_active_follows_feed(),
     }
 }
 

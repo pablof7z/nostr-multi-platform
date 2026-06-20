@@ -67,7 +67,7 @@ impl super::WasmRuntime {
 #[cfg(test)]
 mod set_signer_tests {
     //! B2 — canonicalization guard: `set_signer` with an uppercase pubkey hex
-    //! must store a canonical (lowercase) active account so contact-feed REQs
+    //! must store a canonical (lowercase) active account so active-follows REQs
     //! carry the correct key in their author filters.
     use super::super::WasmRuntime;
     use crate::protocol::{SetSigner, WorkerRequest};
@@ -81,7 +81,7 @@ mod set_signer_tests {
     fn set_signer_uppercase_pubkey_stores_canonical_lowercase_active_account() {
         // B2: raw uppercase pubkey on the wire must be normalised to lowercase
         // before being stored as active_account. Without the fix the kernel
-        // holds an uppercase active_account key, and contact-feed REQs carry
+        // holds an uppercase active_account key, and active-follows REQs carry
         // an uppercase `authors` filter — breaking NIP-01 relay compliance.
         let mut runtime = WasmRuntime::new();
         let result = runtime

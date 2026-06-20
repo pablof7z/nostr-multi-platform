@@ -104,15 +104,17 @@ and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
 | `nmp_app_remove_account` | `(app, identity_id: *const c_char)` | Remove account from the identity store. | Chirp | invalid → early return | n/a |
 | `nmp_app_add_relay` | `(app, url: *const c_char, role: *const c_char)` | Add a relay. `role` NULL defaults to `"both"`. | Chirp | null/empty url → early return | n/a |
 | `nmp_app_remove_relay` | `(app, url: *const c_char)` | Remove a relay by URL. | Chirp | invalid → early return | n/a |
-| `nmp_app_open_contact_feed` | `(app, primary_kinds_json: *const c_char)` | ADR-0042 amendment. Open the contact-feed declaration with app-declared primary kinds (e.g. `"[1]"`). The protocol adapter derives repost wrapper acquisition. Empty array = clear. Malformed/non-array → toast + no-op. | Chirp (via `nmp_app_chirp_open_home_feed`), Android (via Chirp wrapper in JNI) | null app/kinds → early return; malformed → toast | n/a |
-| `nmp_app_close_contact_feed` | `(app)` | ADR-0042 amendment. Close the contact-feed subscription; withdraws all follow-feed M2 interests and emits CLOSE frames. | Chirp (via `nmp_app_chirp_close_home_feed`) | null → silent no-op | n/a |
+| `nmp_app_open_contact_feed` | `(app, primary_kinds_json: *const c_char)` | Legacy compatibility shim. Delegates to `NmpApp::declare_active_follows_feed`; current Rust app/defaults code must use the active-follows declaration method or app wrapper instead. | legacy/native callers only | null app/kinds → early return; malformed → toast | n/a |
+| `nmp_app_close_contact_feed` | `(app)` | Legacy compatibility shim. Delegates to `NmpApp::clear_active_follows_feed`. | legacy/native callers only | null → silent no-op | n/a |
 
-`nmp_app_open_contact_feed` is a declared-feed surface, not a raw kind-list
-escape hatch. The caller supplies primary content kinds only. The protocol
-adapter derives repost-wrapper acquisition from those primary declarations and
-rejects wrapper kinds if they are supplied as primary kinds. `nmp-core` never
-stores a default "social timeline is kind:1" policy; the primary-kind decision
-belongs above the kernel. Feed components that need
+The active-follows feed declaration is not a raw kind-list escape hatch. The
+current Rust app API is `NmpApp::declare_active_follows_feed(primary_kinds)`.
+The caller supplies primary content kinds only and selects the active account's
+reactive follows perspective; it never passes concrete follow pubkeys. The
+protocol adapter derives repost-wrapper acquisition from those primary
+declarations and rejects wrapper kinds if they are supplied as primary kinds.
+`nmp-core` never stores a default "social timeline is kind:1" policy; the
+primary-kind decision belongs above the kernel. Feed components that need
 profiles, missing repost targets, relation counts, or other secondary data claim
 those dependencies independently.
 
@@ -284,8 +286,8 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_cancel_publish` | PASS | PASS | Publish lifecycle control |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
-| `nmp_app_open_contact_feed` | PASS | PASS | ADR-0042 amendment — replaces deleted `nmp_app_open_timeline` |
-| `nmp_app_close_contact_feed` | PASS | PASS | ADR-0042 amendment — symmetric close missing from `nmp_app_open_timeline` |
+| `nmp_app_open_contact_feed` | PASS | PASS | Legacy shim to `NmpApp::declare_active_follows_feed`; not the current app-facing primitive |
+| `nmp_app_close_contact_feed` | PASS | PASS | Legacy shim to `NmpApp::clear_active_follows_feed` |
 | `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic feed-subscription replacement for `open_firehose_tag` and the removed `open_author`/`open_thread` |
 | `nmp_app_close_interest` | PASS | PASS | M2 (ADR-0042) |
 | `nmp_app_open_uri` | PASS | PASS | |

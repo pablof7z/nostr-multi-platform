@@ -3,15 +3,16 @@
 //! `setup_chirp_web_feeds` is the single entry point. It:
 //!
 //! 1. Extracts the kernel's [`ActiveAccountSlot`] from the reducer.
-//! 2. Constructs an [`ActiveFollowSet`] seeded from the active account.
-//! 3. Constructs the NIP-51 mute-list projection for active-account suppression.
-//! 4. Builds an `EventLookup` closure over the kernel's `EventStore` handle.
-//! 5. Constructs the [`OpFeedEngine`] via `register_op_feed`.
-//! 6. Registers the NIP-01 OP-feed observer adapter on the reducer.
-//! 7. Registers the follow set and mute projection as event observers.
-//! 8. Registers `on_change` callbacks that reset the engine on every
+//! 2. Declares Chirp's active-follows home feed from primary kind `[1]`.
+//! 3. Constructs an [`ActiveFollowSet`] seeded from the active account.
+//! 4. Constructs the NIP-51 mute-list projection for active-account suppression.
+//! 5. Builds an `EventLookup` closure over the kernel's `EventStore` handle.
+//! 6. Constructs the [`OpFeedEngine`] via `register_op_feed`.
+//! 7. Registers the NIP-01 OP-feed observer adapter on the reducer.
+//! 8. Registers the follow set and mute projection as event observers.
+//! 9. Registers `on_change` callbacks that reset the engine on every
 //!    follow-set perspective change.
-//! 9. Registers the typed `nmp.feed.home` and `nmp.nip51.mute_list` snapshot
+//! 10. Registers the typed `nmp.feed.home` and `nmp.nip51.mute_list` snapshot
 //!    projections.
 //!
 //! The returned [`ChirpWebFeedSetup`] gives the caller handles to:
@@ -53,6 +54,7 @@ use nmp_nip51::MuteListProjection;
 use nmp_wasm::WasmRuntime;
 
 const MUTE_LIST_SNAPSHOT_KEY: &str = "nmp.nip51.mute_list";
+const CHIRP_HOME_PRIMARY_KINDS: [u32; 1] = [1];
 
 /// Content-parser seam implementation backed by nmp-content.
 ///
@@ -159,15 +161,25 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     // 1. Active-account slot (for follow-set seeding + account switch).
     let active_account_slot = reducer.borrow().active_account_handle();
 
-    // 2. Follow set — seeded immediately from the slot.
+    // 2. Declare the home feed from app primary kinds. The app says kind:1;
+    //    NIP-18 wrapper acquisition is derived below the app boundary.
+    if let Ok(acquisition_kinds) =
+        nmp_nip18::try_acquisition_kinds_for_primary(CHIRP_HOME_PRIMARY_KINDS)
+    {
+        let _ = reducer
+            .borrow_mut()
+            .declare_active_follows_feed(acquisition_kinds);
+    }
+
+    // 3. Follow set — seeded immediately from the slot.
     let follow_set = ActiveFollowSet::new(Arc::clone(&active_account_slot));
 
-    // 3. Active-account NIP-51 mute-list projection. The built-in kernel
+    // 4. Active-account NIP-51 mute-list projection. The built-in kernel
     //    bootstrap self-kinds include kind:10000, so relay-delivered mute
     //    replacements arrive through normal ingest and update this observer.
     let mute = Arc::new(MuteListProjection::new(Arc::clone(&active_account_slot)));
 
-    // 4. Event lookup — captures Arc<dyn EventStore>, not the Rc<RefCell>.
+    // 5. Event lookup — captures Arc<dyn EventStore>, not the Rc<RefCell>.
     //    Uses `event_by_id_from_arc` to share the hex-decode body with
     //    the native seam (ADR §4-B, no duplication).
     let event_store = reducer.borrow().event_store_handle();
@@ -176,11 +188,11 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     });
     let event_lookup_for_observer = Arc::clone(&event_lookup);
 
-    // 5. Build the OP-feed engine.
+    // 6. Build the OP-feed engine.
     let viewer = reducer.borrow().active_account_pubkey().unwrap_or_default();
     let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup);
 
-    // 6. Register the NIP-01 observer adapter (primary kind:1 plus derived
+    // 7. Register the NIP-01 observer adapter (primary kind:1 plus derived
     //    kind:6 wrapper admission, NIP-09 removal, and active-account
     //    suppression). The generic engine remains policy-free.
     let suppression: Arc<dyn SuppressionLookup> = mute.clone();
@@ -189,7 +201,7 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         .borrow()
         .register_event_observer(observer as Arc<dyn KernelEventObserver>);
 
-    // 7. Register the follow set as an event observer (kind:3 ingest).
+    // 8. Register the follow set as an event observer (kind:3 ingest).
     reducer
         .borrow()
         .register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
@@ -197,7 +209,7 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         .borrow()
         .register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
 
-    // 8. Wire perspective-change engine resets.
+    // 9. Wire perspective-change engine resets.
     //
     // `on_change` fires on active-account kind:3 replacement, account switch,
     // and logout. Each invalidates the visible rows admitted under the previous
@@ -213,7 +225,7 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         engine_for_mute.reset_for_perspective_change();
     }));
 
-    // 9. Register the typed snapshot projection under "nmp.feed.home".
+    // 10. Register the typed snapshot projection under "nmp.feed.home".
     let engine_for_projection = Arc::clone(&engine);
     reducer
         .borrow()

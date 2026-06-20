@@ -1,5 +1,5 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, openContactFeedCommand, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
+import { publishNoteAction, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
 import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
 import type { ProfileWire } from "./components/user-avatar/ProfileWire";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
@@ -91,8 +91,6 @@ export default function App() {
         return;
       }
       setSignerConnected(true);
-      // Open the primary kind:1 contact feed; wrapper acquisition is derived in Rust.
-      setSnapshot(await client.dispatchCommand(openContactFeedCommand()));
     } catch {
       // Signer install failed; UI stays disconnected, no crash.
     }

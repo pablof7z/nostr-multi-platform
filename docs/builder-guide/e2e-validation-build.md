@@ -62,13 +62,10 @@ void nmp_app_remove_relay(void *app, const char *url);
 // Sync / sub control
 void nmp_app_trigger_sync(void *app, const char *filter_json, const char *relay_url);
 // ADR-0042 amendment 2026-06-12: nmp_app_open_timeline REMOVED.
-// Use app feed declarations. Chirp declares primary kind "[1]"; protocol
-// adapters derive repost wrapper acquisition below that app-facing API.
+// Current Rust app/defaults code uses NmpApp::declare_active_follows_feed.
+// These old C symbols are compatibility shims only.
 void nmp_app_open_contact_feed(void *app, const char *primary_kinds_json);
 void nmp_app_close_contact_feed(void *app);
-// Chirp-specific wrappers (primary kind [1] defined in nmp-app-chirp):
-// void nmp_app_chirp_open_home_feed(void *app);
-// void nmp_app_chirp_close_home_feed(void *app);
 ```
 
 ### 1.2 AppState update extensions

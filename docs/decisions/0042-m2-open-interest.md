@@ -193,31 +193,40 @@ FlatFeeds and explicit typed-projection teardown.
 - `ffi-surface.md` and the codegen Swift projection registry are updated;
   generated Swift types are regenerated.
 
-## Amendment — active contact-feed verbs (retire `nmp_app_open_timeline`)
+## Amendment — active-follows feed declarations
 
-The active follow feed is **not** expressible through `open_interest` (§2): its
-author set is dynamic kernel-owned state (derived from the active account's
-kind:3, re-evaluated on `FollowListChanged`, re-routed on account switch), not a
-static filter shape. It gets its own pair of verbs, which replace
-`nmp_app_open_timeline`. (The rejected "magic `scope`-2 on `open_interest`"
-alternative is in git history.)
+The active-user follow feed is **not** expressible through `open_interest` (§2):
+its author set is reactive perspective state derived from the active account's
+kind:3, re-evaluated on `FollowListChanged`, and re-routed on account switch.
+It therefore uses a declared-feed path, not a static filter shape and not a
+special kernel-owned home-feed product API.
 
-```c
-void nmp_app_open_contact_feed(NmpApp *app, const char *primary_kinds_json);
-void nmp_app_close_contact_feed(NmpApp *app);
+Apps/defaults declare:
+
+- the primary content kinds they intend to render;
+- the reactive perspective, here "the active account's follows";
+- the feed engine/projection that will render the resulting events.
+
+The app never supplies concrete follow pubkeys and never declares repost
+wrappers as primary feed kinds. Protocol adapters derive wrapper acquisition
+(`6` for kind `1`, `16` for non-kind-1 targets) before the kernel stores the
+concrete acquisition kinds used for subscription compilation.
+
+```rust
+app.declare_active_follows_feed([1]);
+app.clear_active_follows_feed();
 ```
 
-The kernel keeps the author-expansion logic, re-routing, and refcount-of-one.
-The app-facing declaration supplies primary content kinds (e.g. `"[1]"` for
-Chirp notes). The protocol adapter derives wrapper acquisition (`6` for kind
-`1`, `16` for non-kind-1 targets) before the kernel stores the concrete
-acquisition kinds. An empty array `[]` is a legitimate clear.
+The exported C symbols with the old contact-feed names are compatibility shims
+only. They delegate to this declaration path and must not be used by apps as the
+current primitive. An empty primary-kind array `[]` is a legitimate clear.
 
 ### New `ActorCommand` variants
 
-- `OpenContactFeed { kinds: BTreeSet<u32> }` — replaces `OpenContactListSubscription`.
-- `CloseContactFeed` — the missing symmetric close that forced callers to
-  open with an empty set or rely on account-switch side-effects.
+- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }` — installs
+  the adapter-derived acquisition kinds for the active-follows declared feed.
+- `ClearActiveFollowsFeed` — withdraws the declaration and closes the resulting
+  follow-feed interests.
 
 > The `open_author` / `open_thread` names survive correctly as Chirp **app-layer**
 > wrappers (`nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`,
@@ -227,22 +236,24 @@ acquisition kinds. An empty array `[]` is a legitimate clear.
 
 ### Net symbol delta
 
-−1 (`nmp_app_open_timeline`) + 2 (`nmp_app_open_contact_feed` +
-`nmp_app_close_contact_feed`) = **+1** justified by the previously-absent
-close path (D5 cluster was never symmetric before this change).
+`nmp_app_open_timeline` remains retired. Renaming the old feed-open vocabulary to
+active-follows declaration vocabulary is a same-responsibility surface
+correction; it is not permission to add a second follow-feed API.
 
 ### Consequences
 
 - D5 cluster gating is **symmetric**: the home-feed projection cluster
   (`timeline`, `inserted`, `updated`, `removed`) appears only when
-  the active contact feed has concrete acquisition kinds, and disappears when
-  the host calls close or passes an empty primary-kind set.
+  the active-follows feed declaration has concrete acquisition kinds, and
+  disappears when the declaration is cleared or receives an empty primary-kind
+  set.
 - The `timeline_requested` milestone is unaffected: it is flipped by ingest at
   `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
 - All Chirp shells (iOS, Android, TUI, desktop) call the Chirp wrapper or
   app registration path that declares primary kind `[1]`; wrapper kinds are
   derived below that app-facing API.
-- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`; the
-  JNI export name `nativeOpenTimeline` is preserved (Kotlin-facing name
-  stability); the JNI body now calls `nmp_app_chirp_open_home_feed`.
+- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`. Any
+  platform-stable wrapper name that remains for binary/UI compatibility must
+  call the active-follows declaration path; it must not preserve a separate
+  home-feed code path.
 - Completes V-68 Stage 2 (#911).
