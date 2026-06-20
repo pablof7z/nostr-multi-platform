@@ -35,13 +35,14 @@ void nmp_app_reset(void *app);
 // Use nmp_app_chirp_open_author_feed / nmp_app_chirp_open_thread_feed below.
 //
 // M2 (ADR-0042) — generic feed-subscription surface. Replaces the deleted
-// open_firehose_tag verb (a hashtag feed is now open_interest with
-// {"kinds":[1],"#t":["<tag>"]}, scope Global). `filter_json` is a
-// verbatim NIP-01 REQ filter. Declared feeds pass primary kinds only through
-// their typed seam; protocol adapters derive repost wrappers. `consumer_id`
-// refcounts owners across call sites passing the same filter; `scope` is
-// 0 = ActiveAccount (re-route on switch), 1 = Global (account-agnostic, e.g.
-// a hashtag feed).
+// open_firehose_tag verb. Hashtag feeds now use the Chirp-owned tag-feed seam:
+// primary kind `[1]` is declared app-side, repost wrapper acquisition is
+// derived by NIP-18, and the compiled `#t` filter is opened at Global scope.
+// `filter_json` is a verbatim NIP-01 REQ filter. Declared feeds pass primary
+// kinds only through their typed seam; protocol adapters derive repost wrappers.
+// `consumer_id` refcounts owners across call sites passing the same filter;
+// `scope` is 0 = ActiveAccount (re-route on switch), 1 = Global
+// (account-agnostic, e.g. a hashtag feed).
 void nmp_app_open_interest(void *app, const char *filter_json,
                            const char *consumer_id, uint32_t scope);
 void nmp_app_close_interest(void *app, const char *filter_json,
@@ -514,9 +515,10 @@ void nmp_app_chirp_unregister(void *handle);
 // Replace the deleted `author_view` / `thread_view` snapshot projections (and
 // the deleted `nmp_app_open_author` / `nmp_app_open_thread` symbols). Each open
 // registers a flat `FlatFeed` under a per-consumer snapshot key AND pushes the
-// kernel interest that admits the matching kind:1/6 into storage; each close
-// tears both down. The `{1,6}` note-kind policy lives host-side in
-// `nmp-app-chirp` (D0).
+// kernel interest that admits primary kind:1 notes plus NIP-18-derived repost
+// wrappers into storage; each close tears both down. Chirp declares primary
+// kind `[1]`; wrapper acquisition is derived below that app-facing declaration
+// (D0).
 //
 //   • `nmp_app_chirp_open_author_feed(app, pubkey_hex)` — registers
 //     `"nmp.feed.author.<pubkey_hex>"`, read by ProfileView. The feed emits the
@@ -525,7 +527,8 @@ void nmp_app_chirp_unregister(void *handle);
 //     `nmp.feed.home` reader decodes it with no new schema.
 //   • `nmp_app_chirp_open_thread_feed(app, event_id_hex)` — registers
 //     `"nmp.feed.thread.<event_id_hex>"`, read by ThreadScreen: the root by id
-//     plus every kind:1/6 referencing it via `#e`.
+//     plus every admitted primary note or derived repost wrapper referencing it
+//     via `#e`.
 //   • The matching `close_*` symbols drop the feed controller, its snapshot
 //     projection, and its ingest observer, and detach the kernel interest.
 //     Idempotent — closing an unopened feed is a harmless no-op.

@@ -208,12 +208,12 @@ final class KernelHandle {
 
     // M2 (ADR-0042): `openFirehose(tag:)` and the `nmp_app_open_firehose_tag`
     // C symbol it wrapped were deleted. A hashtag feed is now expressed through
-    // `openInterest` below with a `{"kinds":[1],"#t":["<tag>"]}` filter at
-    // `.global` scope — the kind set + `#t` filter that the firehose verb
-    // hardcoded in the substrate now live app-side (D0-correct).
+    // the Chirp-owned tag-feed seam, which declares primary kind `[1]`, derives
+    // NIP-18 repost wrapper acquisition, and opens the compiled `#t` filter at
+    // `.global` scope (D0-correct).
 
     /// M2 (ADR-0042) — generic feed-subscription open. `filterJSON` is a
-    /// verbatim NIP-01 REQ filter (e.g. `{"kinds":[1],"#t":["nostr"]}`).
+    /// verbatim NIP-01 REQ filter.
     /// Declared feeds should pass primary kinds only through their typed seam;
     /// protocol adapters derive repost wrappers. `consumerID` refcounts owners so
     /// repeated opens of the same filter share one live subscription; `scope`
