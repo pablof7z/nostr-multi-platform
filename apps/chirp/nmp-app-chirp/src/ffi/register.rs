@@ -90,20 +90,12 @@ pub extern "C" fn nmp_app_chirp_register(
         }
     };
 
-    // Inherit the canonical NMP composition through one call — NIP-02 /
-    // NIP-17 / NIP-57 / NIP-65 action modules, the kind:10050 ingest
-    // parser, the production routing substrate
-    // (`GenericOutboxRouter` + `InMemoryMailboxCache`), the D2 coverage
-    // hook, and the DM-inbox + zap-receipts runtime controllers. This
-    // is the closure of V-48: a new Nostr app calls
-    // `nmp_defaults::register_defaults` instead of re-deriving the
-    // 130 LOC of wiring this used to live as.
-    //
-    // SAFETY: caller guarantees `app` is a valid pointer from
-    // `nmp_app_new`. No other reference aliases it here — the `&*app`
-    // borrow further down is taken only after this exclusive borrow is
-    // dropped.
-    nmp_defaults::register_defaults(unsafe { &mut *app });
+    // Inherit canonical NMP composition once and keep runtime handles the
+    // Chirp feed needs for app-level wiring.
+    let default_handles = nmp_defaults::register_defaults_with_handles(
+        unsafe { &mut *app },
+        nmp_defaults::NmpDefaults::default(),
+    );
 
     // #1493 P9 — Chirp's `nostrconnect://` NIP-46 perm policy (leaf-app product
     // policy; NMP owns no default), set at this single pre-start chokepoint.
@@ -203,7 +195,12 @@ pub extern "C" fn nmp_app_chirp_register(
     // also registers the `ActiveFollowSet` as its own observer for kind:3
     // ingest and on `NmpApp`'s identity-change observer so sign-in, switch,
     // logout, and reset proactively clear stale OP-feed state.
-    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, viewer, vec![1]);
+    let defaults = match default_handles.mute {
+        Some(mute) => {
+            nmp_defaults::register_op_feed_defaults_with_mute(app_ref, viewer, vec![1], mute)
+        }
+        None => nmp_defaults::register_op_feed_defaults(app_ref, viewer, vec![1]),
+    };
 
     // ADR-0037 typed sidecar for nmp.feed.home IS wired:
     // `register_op_feed_defaults` step 5b (nmp-defaults

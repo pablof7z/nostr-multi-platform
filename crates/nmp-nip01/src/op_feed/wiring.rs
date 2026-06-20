@@ -52,7 +52,8 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{KernelEvent, SuppressionLookup};
+use nmp_core::KernelEventObserver;
 use nmp_feed::{CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed};
 
 use super::attribution::Nip10ReplyAttribution;
@@ -67,6 +68,7 @@ pub type OpFeedEngine = RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, Ti
 /// Chirp's `ModularTimelineProjection` registers today; the swap to this engine
 /// is rung 7, so this rung leaves the key registered ONLY inside tests.
 pub const OP_FEED_SNAPSHOT_KEY: &str = "nmp.feed.home";
+const KIND_EVENT_DELETION: u32 = 5;
 
 /// Construct (but do not register) the NIP-10 OP-feed engine.
 ///
@@ -120,4 +122,111 @@ pub fn register_op_feed(
         event_lookup,
         card_builder,
     ))
+}
+
+/// NIP-01 ingest adapter for an [`OpFeedEngine`].
+///
+/// The generic engine owns root indexing, attribution, ordering, pagination,
+/// and reset mechanics. This adapter owns NIP-01/NIP-18 admission policy:
+/// short-text roots/replies, kind:6 repost wrappers, NIP-09 deletes that can
+/// be validated against the stored card, and caller-supplied suppression.
+pub struct OpFeedObserver {
+    engine: Arc<OpFeedEngine>,
+    event_lookup: EventLookup,
+    suppression: Arc<dyn SuppressionLookup>,
+}
+
+/// Build the NIP-01 observer adapter for an already-constructed OP feed.
+#[must_use]
+pub fn op_feed_observer(
+    engine: Arc<OpFeedEngine>,
+    event_lookup: EventLookup,
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Arc<OpFeedObserver> {
+    Arc::new(OpFeedObserver {
+        engine,
+        event_lookup,
+        suppression,
+    })
+}
+
+impl OpFeedObserver {
+    fn apply_delete(&self, event: &KernelEvent) {
+        for target_id in event.tags.iter().filter_map(|tag| event_tag_id(tag)) {
+            self.engine
+                .remove_root_if(target_id, |card| card.author_pubkey == event.author);
+        }
+    }
+
+    fn remove_if_suppressed_content(&self, event: &KernelEvent) -> bool {
+        if self.suppression.is_suppressed_author(&event.author)
+            || self.suppression.is_suppressed_event(&event.id)
+        {
+            self.engine.remove_root(&event.id);
+            return true;
+        }
+        false
+    }
+
+    fn remove_if_suppressed_repost_target(&self, event: &KernelEvent) -> bool {
+        let Some(record) = nmp_nip18::try_from_kernel_event(event) else {
+            return false;
+        };
+        let Some(target_id) = record.target_event_id else {
+            return false;
+        };
+        if self.suppression.is_suppressed_event(&target_id) {
+            self.engine.remove_root(&target_id);
+            return true;
+        }
+        if record
+            .embedded_event
+            .as_ref()
+            .is_some_and(|target| self.suppression.is_suppressed_author(&target.author))
+        {
+            self.engine.remove_root(&target_id);
+            return true;
+        }
+        if let Some(target) = (self.event_lookup)(&target_id) {
+            if self.suppression.is_suppressed_author(&target.author)
+                || self.suppression.is_suppressed_event(&target.id)
+            {
+                self.engine.remove_root(&target_id);
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl KernelEventObserver for OpFeedObserver {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        if event.kind == KIND_EVENT_DELETION {
+            self.apply_delete(event);
+            return;
+        }
+        if event.kind == crate::kinds::KIND_SHORT_TEXT_NOTE {
+            if !self.remove_if_suppressed_content(event) {
+                self.engine.on_kernel_event(event);
+            }
+            return;
+        }
+        if event.kind == nmp_nip18::KIND_REPOST {
+            if self.suppression.is_suppressed_author(&event.author)
+                || self.suppression.is_suppressed_event(&event.id)
+                || self.remove_if_suppressed_repost_target(event)
+            {
+                return;
+            }
+            self.engine.on_kernel_event(event);
+        }
+    }
+}
+
+fn event_tag_id(tag: &[String]) -> Option<&str> {
+    if tag.first().is_some_and(|name| name == "e") {
+        tag.get(1).map(String::as_str).filter(|id| !id.is_empty())
+    } else {
+        None
+    }
 }

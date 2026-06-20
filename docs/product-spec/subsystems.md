@@ -258,9 +258,10 @@ default social composition). On enable:
 - Computes per-pubkey trust decisions: signed score, hide recommendation, and
   reason bucket. The read surface also supports batch scoring, mutual-follow
   evidence, and graph-size diagnostics.
-- Lets external app crates keep the default runtime handle returned by
+- Lets external app crates keep the default runtime handles returned by
   `nmp_defaults::register_defaults_with_handles` so app-specific feed policy
-  can filter or annotate payloads in Rust without duplicating graph state.
+  can filter, suppress, or annotate payloads in Rust without duplicating graph
+  or mute-list state.
 - Exposes a global filter: when on, every view applies the score threshold
   before emitting; pubkeys below the threshold are tagged but rendered with a
   "low trust" UI hint (the renderer chooses; the payload exposes the score).

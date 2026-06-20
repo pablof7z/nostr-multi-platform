@@ -129,16 +129,17 @@ use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use nmp_planner::InterestShape;
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{empty_suppression_lookup, KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
 use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::op_feed::{register_op_feed, FeedEmissionState, FrameIdentity};
+use nmp_nip01::op_feed::{op_feed_observer, register_op_feed, FeedEmissionState, FrameIdentity};
 use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
+use nmp_nip51::MuteListProjection;
+use nmp_planner::InterestShape;
 
 /// What [`register_op_feed_defaults`] hands back to the composition caller.
 ///
@@ -192,6 +193,35 @@ pub fn register_op_feed_defaults(
     viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
 ) -> OpFeedDefaults {
+    register_op_feed_defaults_inner(app, viewer, primary_feed_kinds, empty_suppression_lookup())
+}
+
+/// Wire the OP-centric home feed with the default NIP-51 mute read model.
+///
+/// Uses the same `MuteListProjection` installed by [`crate::register_defaults`]
+/// and resets the current feed window whenever the active account's mute list
+/// replacement changes.
+pub fn register_op_feed_defaults_with_mute(
+    app: &NmpApp,
+    viewer: Pubkey,
+    primary_feed_kinds: Vec<u32>,
+    mute: Arc<MuteListProjection>,
+) -> OpFeedDefaults {
+    let suppression: Arc<dyn SuppressionLookup> = mute.clone();
+    let defaults = register_op_feed_defaults_inner(app, viewer, primary_feed_kinds, suppression);
+    let engine_for_mute = defaults.engine.clone();
+    mute.on_change(Box::new(move || {
+        engine_for_mute.reset_for_perspective_change();
+    }));
+    defaults
+}
+
+fn register_op_feed_defaults_inner(
+    app: &NmpApp,
+    viewer: Pubkey,
+    primary_feed_kinds: Vec<u32>,
+    suppression: Arc<dyn SuppressionLookup>,
+) -> OpFeedDefaults {
     // ── 1. Follow-set producer ───────────────────────────────────────────
     //
     // Constructed over the kernel's active-account slot exposed by `NmpApp`.
@@ -224,13 +254,15 @@ pub fn register_op_feed_defaults(
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
         nmp_core::slots::event_by_id_from_store(&event_store, id)
     });
+    let event_lookup_for_observer = event_lookup.clone();
 
     // ── 3. Construct the engine ──────────────────────────────────────────
     let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup);
 
     // ── 4. Register the engine (ingest + output) ─────────────────────────
-    let engine_observer: Arc<dyn KernelEventObserver> = engine.clone();
-    let _engine_observer_id = app.register_event_observer(engine_observer);
+    let observer: Arc<dyn KernelEventObserver> =
+        op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
+    let _engine_observer_id = app.register_event_observer(observer);
 
     // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //

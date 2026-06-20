@@ -1,13 +1,13 @@
 //! `SuppressionLookup` — substrate-generic seam for the active account's
 //! "suppress this author / this event" set.
 //!
-//! The timeline projection needs to ask "should this author or event be hidden
-//! from the feed?" when building snapshots. The concrete suppression set
+//! Feed projections need to ask "should this author or event be hidden from
+//! this feed?" when applying active-account policy. The concrete suppression set
 //! (NIP-51 kind:10000 mute list in the canonical case) lives in the
 //! `nmp-nip51` crate so the kernel and projections never name the wire shape
 //! of a kind:10000 event (D0 — `nmp-core` does not embed protocol nouns).
 //!
-//! The timeline projection holds an `Arc<dyn SuppressionLookup>` populated at
+//! A feed projection holds an `Arc<dyn SuppressionLookup>` populated at
 //! composition time; a projection built without any backend uses the
 //! [`EmptySuppressionLookup`] default, which passes everything through.
 //!
@@ -17,10 +17,10 @@
 //!
 //! - The **writer** is `nmp-nip51`'s `MuteListProjection`
 //!   ([`crate::KernelEventObserver`]) — registered at composition time.
-//! - The **reader** is `nmp-nip01`'s `ModularTimelineProjection` — it
-//!   consults this trait through the substrate-generic shape when building
-//!   every snapshot. The timeline projection does NOT know the wire shape of
-//!   a kind:10000 event.
+//! - The **readers** are feed projections such as `nmp-nip01`'s
+//!   `ModularTimelineProjection` and OP-feed observer adapter. They consult
+//!   this trait through the substrate-generic shape and do NOT know the wire
+//!   shape of a kind:10000 event.
 //!
 //! Both ends agree on a shared `Arc<MuteListProjection>` (the concrete type in
 //! `nmp-nip51`) at composition time; the timeline projection sees it only as
@@ -131,8 +131,12 @@ mod tests {
     #[test]
     fn empty_lookup_never_suppresses() {
         let lookup: Arc<dyn SuppressionLookup> = empty_suppression_lookup();
-        assert!(!lookup.is_suppressed_author("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"));
-        assert!(!lookup.is_suppressed_event("0000000000000000000000000000000000000000000000000000000000000001"));
+        assert!(!lookup.is_suppressed_author(
+            "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+        ));
+        assert!(!lookup.is_suppressed_event(
+            "0000000000000000000000000000000000000000000000000000000000000001"
+        ));
     }
 
     #[test]

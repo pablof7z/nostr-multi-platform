@@ -222,6 +222,32 @@ fn reset_for_identity_change_clears_all_state() {
 }
 
 #[test]
+fn remove_root_drops_card_and_attribution_state() {
+    let h = Harness::new(&["alice"]);
+    h.ingest(&reply_event("r1", "alice", 11, "op1"));
+    h.ingest(&root_event("op1", "bob", 10, "hello"));
+    assert_eq!(h.snapshot().cards[0].attribution.len(), 1);
+
+    assert!(h.engine.remove_root("op1"));
+    assert!(h.snapshot().cards.is_empty());
+
+    h.ingest(&root_event("op1", "bob", 12, "again"));
+    assert!(
+        h.snapshot().cards[0].attribution.is_empty(),
+        "stale attribution state must not survive root removal"
+    );
+}
+
+#[test]
+fn remove_root_if_keeps_card_when_predicate_rejects() {
+    let h = Harness::new(&["alice"]);
+    h.ingest(&root_event("op1", "bob", 10, "hello"));
+
+    assert!(!h.engine.remove_root_if("op1", |card| card.body == "nope"));
+    assert_eq!(h.snapshot().cards.len(), 1);
+}
+
+#[test]
 fn perspective_reset_restores_default_window_limit() {
     let h = Harness::new(&["alice"]);
     for i in 0u64..90 {

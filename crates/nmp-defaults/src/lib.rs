@@ -114,7 +114,9 @@ pub mod tiers;
 pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
-pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
+pub use op_feed_defaults::{
+    register_op_feed_defaults, register_op_feed_defaults_with_mute, OpFeedDefaults,
+};
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{register_bookmark_runtime, register_comment_runtime, register_mute_runtime};
 pub use tiers::{register_substrate, NmpDefaults};
@@ -129,6 +131,9 @@ pub struct NmpDefaultRuntimeHandles {
     /// Web-of-trust bootstrap/scoring runtime, present when
     /// [`NmpDefaults::social`] is true and observer installation succeeds.
     pub wot: Option<Arc<nmp_wot::WotBootstrapRuntime>>,
+    /// Active-account mute-list runtime, present when
+    /// [`NmpDefaults::social`] is true.
+    pub mute: Option<Arc<nmp_nip51::MuteListProjection>>,
 }
 
 /// Wire the canonical NMP composition into `app`.
@@ -247,16 +252,10 @@ fn register_defaults_inner(
         // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
         handles.wot = nmp_wot::register_runtime(app);
-        // NIP-51 mute-list observer: installs `MuteListProjection` as a
-        // `KernelEventObserver` for kind:10000 and registers the
-        // `"nmp.nip51.mute_list"` diagnostic snapshot projection. The
-        // `Arc<MuteListProjection>` return is intentionally dropped here:
-        // this is the fire-and-forget conveniences-bundle path. Apps that
-        // need the `Arc` to wire `timeline.set_suppression(mute)` (the
-        // timeline projection is app-owned, so `AppHost` has no
-        // `set_suppression` seam) should call [`register_mute_runtime`]
-        // directly instead of relying on this path.
-        let _ = runtimes::register_mute_runtime(app);
+        // NIP-51 mute-list observer + projection; the handle lets app-level
+        // feed composition reuse the same read model instead of registering a
+        // duplicate observer.
+        handles.mute = Some(runtimes::register_mute_runtime(app));
         // NIP-51 kind:10003 global bookmarks. Registers the active-account
         // observer and the add/remove bookmark action modules against the same
         // read model, so writes merge the latest observed list instead of

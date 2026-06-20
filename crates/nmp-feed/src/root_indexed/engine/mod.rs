@@ -185,6 +185,37 @@ where
         self.reset_for_perspective_change();
     }
 
+    /// Remove one surfaced root and any attribution state keyed to it.
+    ///
+    /// The caller decides *why* the root is no longer admissible: delete,
+    /// mute/block policy, app filter, or perspective-specific pruning. The
+    /// generic engine only owns the mechanical removal.
+    pub fn remove_root(&self, root_id: &str) -> bool {
+        self.remove_root_if(root_id, |_| true)
+    }
+
+    /// Remove one surfaced root only when `predicate` accepts its card.
+    ///
+    /// Used by protocol adapters that need to validate a delete/suppression
+    /// against card data before mutating feed state.
+    pub fn remove_root_if(&self, root_id: &str, predicate: impl FnOnce(&C) -> bool) -> bool {
+        let Ok(mut st) = self.state.lock() else {
+            return false;
+        };
+        let should_remove = st
+            .roots
+            .get(root_id)
+            .map(|slot| predicate(&slot.card))
+            .unwrap_or(false);
+        if !should_remove {
+            return false;
+        }
+        st.roots.remove(root_id);
+        st.attributions.remove(root_id);
+        st.pending_attributions.remove(root_id);
+        true
+    }
+
     /// Grow the **render viewport** by one page, revealing more of the
     /// `(created_at, id)`-sorted roots already ingested.
     ///

@@ -27,7 +27,9 @@ pub use typed_wire::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER,
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
-pub use wiring::{register_op_feed, OpFeedEngine, OP_FEED_SNAPSHOT_KEY};
+pub use wiring::{
+    op_feed_observer, register_op_feed, OpFeedEngine, OpFeedObserver, OP_FEED_SNAPSHOT_KEY,
+};
 
 #[cfg(test)]
 mod test_support;

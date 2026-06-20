@@ -8,11 +8,103 @@
 //! `nmp-feed`'s synthetic-payload tests, so here we assert the NIP-10 *binding*
 //! is correct.
 
-use nmp_feed::AttributionPayload;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
+
+use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
+use nmp_core::KernelEventObserver;
+use nmp_feed::{AttributionPayload, EventLookup, FollowPredicate};
+
+use crate::timeline_projection::TimelineEventCard;
 
 use super::attribution::Nip10ReplyAttribution;
 use super::test_support::*;
-use super::wiring::OP_FEED_SNAPSHOT_KEY;
+use super::wiring::{op_feed_observer, register_op_feed, OP_FEED_SNAPSHOT_KEY};
+
+#[derive(Default)]
+struct TestSuppression {
+    authors: Mutex<HashSet<String>>,
+    events: Mutex<HashSet<String>>,
+}
+
+impl TestSuppression {
+    fn suppress_author(&self, author: &str) {
+        self.authors.lock().unwrap().insert(author.to_string());
+    }
+
+    fn suppress_event(&self, event_id: &str) {
+        self.events.lock().unwrap().insert(event_id.to_string());
+    }
+}
+
+impl SuppressionLookup for TestSuppression {
+    fn is_suppressed_author(&self, author_pubkey: &str) -> bool {
+        self.authors
+            .lock()
+            .map(|authors| authors.contains(author_pubkey))
+            .unwrap_or(false)
+    }
+
+    fn is_suppressed_event(&self, event_id: &str) -> bool {
+        self.events
+            .lock()
+            .map(|events| events.contains(event_id))
+            .unwrap_or(false)
+    }
+}
+
+struct SuppressionHarness {
+    engine: Arc<super::wiring::OpFeedEngine>,
+    observer: Arc<super::wiring::OpFeedObserver>,
+    lookup: Arc<Mutex<HashMap<EventId, KernelEvent>>>,
+    suppression: Arc<TestSuppression>,
+}
+
+impl SuppressionHarness {
+    fn new(follows: &[&str]) -> Self {
+        let follow_set: HashSet<String> = follows.iter().map(|s| (*s).to_string()).collect();
+        let follow: FollowPredicate = Arc::new(move |pk: &str| follow_set.contains(pk));
+        let lookup: Arc<Mutex<HashMap<EventId, KernelEvent>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let lookup_for_cb = Arc::clone(&lookup);
+        let event_lookup: EventLookup =
+            Arc::new(move |id: &EventId| lookup_for_cb.lock().unwrap().get(id).cloned());
+        let suppression = Arc::new(TestSuppression::default());
+        let suppression_lookup: Arc<dyn SuppressionLookup> = suppression.clone();
+        let engine = register_op_feed(ALICE.to_string(), follow, event_lookup.clone());
+        let observer = op_feed_observer(engine.clone(), event_lookup, suppression_lookup);
+        Self {
+            engine,
+            observer,
+            lookup,
+            suppression,
+        }
+    }
+
+    fn observe(&self, event: &KernelEvent) {
+        self.lookup
+            .lock()
+            .unwrap()
+            .insert(event.id.clone(), event.clone());
+        self.observer.on_kernel_event(event);
+    }
+
+    fn snapshot(&self) -> nmp_feed::RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution> {
+        self.engine.snapshot(&nmp_feed::FeedRequest::default())
+    }
+}
+
+fn delete_event(id: &str, author: &str, target: &str) -> KernelEvent {
+    KernelEvent {
+        id: id.to_string(),
+        author: author.to_string(),
+        kind: 5,
+        created_at: 30,
+        tags: vec![vec!["e".to_string(), target.to_string()]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
 
 // ─── Attribution unit tests ─────────────────────────────────────────────────
 
@@ -94,6 +186,78 @@ fn non_follow_reply_is_dropped() {
     let h = Harness::new(&[ALICE]); // Carol not followed.
     h.ingest(&reply_event(REPLY_ID, CAROL, 10, OP_ID));
     assert!(h.snapshot().cards.is_empty());
+}
+
+#[test]
+fn observer_removes_placeholder_when_suppressed_target_arrives() {
+    let h = SuppressionHarness::new(&[ALICE]);
+    h.suppression.suppress_author(BOB);
+
+    h.observe(&repost_etag(REPOST_ID, ALICE, 20, OP_ID));
+    assert_eq!(
+        h.snapshot().cards.len(),
+        1,
+        "e-tag-only repost can only render a placeholder before target author is known"
+    );
+
+    h.observe(&op_event(OP_ID, BOB, 9, "muted target"));
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "target arrival reveals muted author and removes the existing placeholder"
+    );
+}
+
+#[test]
+fn observer_drops_muted_repost_without_removing_visible_target() {
+    let h = SuppressionHarness::new(&[ALICE]);
+    h.observe(&op_event(OP_ID, BOB, 9, "visible root"));
+    h.suppression.suppress_author(ALICE);
+
+    h.observe(&repost_etag(REPOST_ID, ALICE, 20, OP_ID));
+    let snapshot = h.snapshot();
+    assert_eq!(snapshot.cards.len(), 1);
+    assert_eq!(snapshot.cards[0].card.id, OP_ID);
+    assert!(
+        snapshot.cards[0].card.reposted_by.is_none(),
+        "muted reposter must not mutate an already-visible target card"
+    );
+}
+
+#[test]
+fn observer_drops_event_id_suppressed_root_and_repost_target() {
+    let h = SuppressionHarness::new(&[ALICE]);
+    h.suppression.suppress_event(OP_ID);
+
+    h.observe(&op_event(OP_ID, BOB, 9, "muted by id"));
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "event-id suppressed root must not surface"
+    );
+
+    h.observe(&repost_etag(REPOST_ID, ALICE, 20, OP_ID));
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "repost wrapper of an event-id suppressed target must not create a placeholder"
+    );
+}
+
+#[test]
+fn observer_applies_only_author_validated_kind5_deletes() {
+    let h = SuppressionHarness::new(&[ALICE]);
+    h.observe(&op_event(OP_ID, BOB, 9, "visible root"));
+
+    h.observe(&delete_event(REPLY_ID, CAROL, OP_ID));
+    assert_eq!(
+        h.snapshot().cards.len(),
+        1,
+        "foreign kind:5 must not remove someone else's visible row"
+    );
+
+    h.observe(&delete_event(REPOST_ID, BOB, OP_ID));
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "author's own kind:5 removes the visible root"
+    );
 }
 
 #[test]
