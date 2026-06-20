@@ -1,6 +1,9 @@
 # ADR-0050 — Signer-session capability port: `sign | nip44_encrypt | nip44_decrypt`, mailbox-delivered completions
 
-- **Status:** Accepted pending implementation (staged plan below; tracked on #961 / #960).
+- **Status:** Implemented. The port grew `Nip44EncryptForAccount` /
+  `Nip44DecryptForAccount`, `sign_timeout()` was renamed `op_timeout()`, and the
+  `SignerForSeal` trait + `gift_wrap_with_signer` + the driver-thread execution
+  model were deleted — `nmp-nip59` is now pure functions. Tracked on #961 / #960.
 - **Date:** 2026-06-12
 - **Issues:** #961 (V-08 — DM inbox silent failure for bunker accounts; its 2026-06-12 revision names this seam as the prerequisite), #960 (V-06 — NIP-42 AUTH via bunker rides this port), #1124 (F-13 — NIP-55 deadlines).
 - **Related:**
@@ -298,15 +301,17 @@ Decision:
   chain are deleted (§D5). ADR-0026's *trait verbs* on `RemoteSignerHandle` are the
   foundation this ADR builds on and remain.
 
-## Staged plan (one PR per stage, TDD-first)
+## Implementation record (the stages, as landed)
 
-| Stage | Content | Oracles |
-|---|---|---|
-| 1 | This ADR. | — |
-| 2 | D1 verbs + D2 unified park/drain + D3 waking inbox & mailbox completions + D4 deadline fix & `op_timeout` rename. | Existing sign tests green unchanged; encrypt+decrypt round-trip through the port with a stub remote signer; a command send wakes a blocked actor and the completion is delivered without an unrelated wake (no ≤250ms dependence); named roster key with 90s budget does not inherit the active 5s budget; `nmp-signer-broker` tests green unchanged (blanket `PoolEventSink` impl). |
-| 3 | D5 gift-wrap chain + deletions (incl. nmp-marmot pure-function migration). | DM send tests green for BOTH backends; `grep -R "thread::spawn"` finds nothing in the nip59/nip17 send path; `signer_for_seal` slot consumers migrated; both timeout constants gone; mid-chain account-switch test; `cargo test -p nmp-marmot` green. |
-| 4 | D6 unwrap through the port + raw-`Keys` slot deletion. | Inbox test decrypting an envelope with a stub remote signer; local-backend inbox tests green unchanged; no `nostr::Keys` in nmp-nip17; stale-generation continuation discards its message (account-switch leak test). |
-| 5 | D7 policy + projection state + host decoders; file the delegated-session issue. | Bounded-queue admission test; overflow surfaces state, never silence. |
+The work landed one PR per stage, TDD-first:
+
+| Stage | Content |
+|---|---|
+| 1 | This ADR. |
+| 2 | D1 verbs + D2 unified park/drain + D3 waking inbox & mailbox completions + D4 deadline fix & `op_timeout` rename. |
+| 3 | D5 gift-wrap chain + deletions (incl. nmp-marmot pure-function migration). |
+| 4 | D6 unwrap through the port + raw-`Keys` slot deletion. |
+| 5 | D7 policy + projection state + host decoders; the delegated-session issue is filed post-v1. |
 
 ## Consequences
 

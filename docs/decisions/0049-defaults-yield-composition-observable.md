@@ -44,10 +44,9 @@ D6 makes NMP's composition **silent by design**: a yield, an override, or a
 setter dropped because it ran after `nmp_app_start` never surfaces an error.
 Spring proved silent composition is only viable *with* an explain surface — its
 `ConditionEvaluationReport` answers "which beans matched, which were excluded,
-and why". NMP had no analog. Worse, `crates/nmp-defaults/src/builder.rs` already
+and why". NMP had no analog. Worse, `crates/nmp-defaults/src/builder.rs`
 documented a `KernelDiagnostic::LateWiring` diagnostic for the
-setter-after-start case — but it **did not exist**; the gap was named and left
-open.
+setter-after-start case that did not exist — the gap was named and left open.
 
 Bevy's `DefaultPlugins` provides the complementary data point: it detects
 duplicate plugin registration and treats it as an error rather than a silent

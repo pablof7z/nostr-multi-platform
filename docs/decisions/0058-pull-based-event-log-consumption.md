@@ -1,9 +1,14 @@
 # ADR-0058 — Cursor-based event-log consumption (the "pull" model)
 
-- **Status:** Accepted pending implementation (design ratified; PR ladder queued — see §8).
-  Hardened over revisions 2–4 (2026-06-18) against adversarial pre-build review; the body
-  (§1–§9) carries the final decided contract. Inline `(Rev N / R2.x)` tags mark provenance;
-  see the concise **Revision history** at the end.
+- **Status:** Implemented. The pull cursor primitive ships in
+  `crates/nmp-core/src/kernel/pull_cursor.rs` (`PullCursor*` registry,
+  `PullCursorId` / `PullCursorMode`), with the store scan `scan_log_since_seq`
+  (`crates/nmp-core/src/kernel/pull/mod.rs`) and the level-triggered wake batch in
+  `pull_wake.rs`; the `Register` / `Advance` / `UnregisterPullCursor` actor commands are
+  live (`actor/mod.rs`, dispatched in `actor/dispatch.rs`). Design ratified and hardened
+  over revisions 2–4 (2026-06-18) against adversarial pre-build review; the body (§1–§9)
+  carries the decided contract. Inline `(Rev N / R2.x)` tags mark provenance; see the
+  concise **Revision history** at the end.
 - **Date:** 2026-06-18
 - **Doctrine:** `doctrine:d1` (reads-through-store), `doctrine:d4` (single writer),
   `doctrine:d5` (bounded), `doctrine:d8` (no polling)
@@ -216,14 +221,11 @@ MAY honor; it has no NIP equivalent to re-derive, so it is advisory only.
 
 ## 6. Retention / GC
 
-> **Rev 2 correction.** The Rev 1 text here assumed production runs durable LRU
-> eviction at `HOT_EVENT_CEILING = 10_000` and threaded a `protected_log_floor_seq`
-> "through the existing GC pin input." **Both are wrong.** `GcBudget::production()`
-> is `Default` with `max_total_events = usize::MAX` — durable LRU eviction is **OFF
-> by default** (`crates/nmp-store/src/types/gc.rs:34,65,76`); `HOT_EVENT_CEILING` is
-> only an explicit-retention alias. And `gc_step_with_pins` takes event-id pins +
-> `CoverageGuard`s (`events.rs:383-427`) — it has **no** seq-floor seam. The corrected
-> model below (and Rev 2 R2.3 / R2.4) replaces this section.
+> **Rev 2 correction (record).** Durable LRU eviction is OFF by default
+> (`GcBudget::production()` = `Default`, `max_total_events = usize::MAX`;
+> `crates/nmp-store/src/types/gc.rs:34,65,76`) and `gc_step_with_pins` carries no
+> seq-floor seam (event-id pins + `CoverageGuard`s only, `events.rs:383-427`) — so log
+> retention cannot ride the primary-event GC. It is a separate seq-keyed log GC, below.
 
 Log retention is a **separate, seq-keyed GC over `nmp-ingest-log`**, independent of
 primary-event LRU and the K3 coverage-ledger pins (both of which are event-id /

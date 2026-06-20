@@ -1,11 +1,12 @@
 # ADR-0043: `nmp-blossom` protocol crate — idiomatic Blossom uploads via the `ProtocolCommand` seam
 
-Status: PROPOSED
+Status: Implemented
 
-> Numbering note: `0042` is the highest decision in `docs/decisions/` (there is
-> a known `0041` duplicate, both accepted). This stub takes the next free
-> number, `0043`, per the repo's single-source-of-truth / no-duplicate-id
-> discipline. ADRs live in `docs/decisions/NNNN-kebab.md`, not `docs/adr/`.
+> Shipped in `crates/nmp-blossom/` with the module layout below. The
+> backend-transparent `ActorCommand::SignEventForAccount` port is live
+> (`crates/nmp-core/src/actor/dispatch.rs`,
+> `crates/nmp-core/src/actor/continuations.rs`), and the kind:24242 auth builder
+> uses a 5-minute TTL (`AUTH_TTL_SECS`, `crates/nmp-blossom/src/auth.rs`).
 
 ## Context
 
@@ -324,9 +325,10 @@ BlossomUploadCommand::run(ctx):                          [actor thread]
 `SignEventForAccount` seam, and the generic action-result terminals. It imports
 no HTTP crate and names no Blossom token. (D0)
 
-## Implementation plan (for a follow-up Engineer agent)
+## Implementation record
 
-Ordered; the core change (step 1) is flagged because it touches the substrate.
+The work landed in the order below; the core change (step 1) was the only
+substrate-touching step.
 
 1. **[CORE — load-bearing] Add the backend-transparent sign-account port to
    `nmp-core`.** Add `ActorCommand::SignEventForAccount { unsigned,
@@ -395,15 +397,13 @@ No HTTP crate enters `nmp-core`. No Blossom token enters `nmp-core`.
 - `docs/wiki/blossom-upload-signing.md`'s "NMP must not absorb Blossom HTTP"
   stance is **superseded** by this ADR.
 
-## Flagged user-decision questions
+## Resolved decisions (formerly flagged questions)
 
-- **Q1 (recommendation given):** the load-bearing core change is the
-  backend-transparent `SignEventForAccount` port. Recommendation: build it now
-  (it is required for signer transparency and also fixes V-78). Confirm the
-  Engineer should land it as a shared seam coordinated with the V-78 owner
-  rather than two independent sign paths.
-- **Q2 (recommendation given):** v1 takes blob servers from the action payload.
-  Recommendation: defer kind:10063 (BUD-03) ingest to Phase 2. Confirm v1 may
-  ship payload-only server lists, or whether kind:10063 ingest must be in v1.
-- **Q3:** kind:24242 `expiration` window — recommend a short fixed TTL (e.g.
-  60s) computed from `ctx.now_secs()`. Confirm or specify a value.
+- **Q1 — resolved:** the backend-transparent `SignEventForAccount` port was
+  built as the shared seam. It is the sole signing entry point for
+  protocol-crate workers and is signer-transparent (local + bunker).
+- **Q2 — resolved:** v1 takes blob servers from the action payload. kind:10063
+  (BUD-03) ingest stays deferred to Phase 2; no kind:10063 ingest exists in
+  `nmp-blossom` today.
+- **Q3 — resolved:** the kind:24242 `expiration` window is a fixed TTL
+  (`AUTH_TTL_SECS`, 5 minutes) computed from the build `created_at`.
