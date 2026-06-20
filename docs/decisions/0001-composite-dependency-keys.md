@@ -2,11 +2,10 @@
 
 **Date:** 2026-05-17
 **Status:** accepted
-**Supersedes:** initial design in `reactivity.md` rev 0 §3.2
 
 ## Context
 
-The initial reactivity design (`reactivity.md` rev 0 §3.2) proposed registering each view under independent axis buckets — `by_kind`, `by_author`, `by_e_tag`, etc. — and unioning matches on insert. The reactivity-bench harness (run 001, 2026-05-17) showed this produces severe false wakes:
+An earlier reactivity design proposed registering each view under independent axis buckets — `by_kind`, `by_author`, `by_e_tag`, etc. — and unioning matches on insert. The reactivity-bench harness (run 001, 2026-05-17) showed this produces severe false wakes:
 
 - 98% false-wakeup rate in quiet_idle.
 - 49% false-wakeup rate in following_timeline_scroll.
@@ -34,7 +33,7 @@ On insert, the event generates its tuple signature (every `(kind, axis-value)` p
 - Index registration size grows by the product of axis sizes for a view. A timeline with 1k authors × 3 kinds inserts 3k composite entries (vs ~1k under the v0 model). Acceptable; far smaller than the working-set memory budget.
 - Empty composite buckets are free (never inserted).
 - Single-axis registrations are guardrailed but legal.
-- False-wakeup rate becomes a first-class quality gate (ADR-0005? — actually `reactivity.md` §10.3 update).
+- False-wakeup rate becomes a first-class quality gate.
 
 ## Alternatives considered
 

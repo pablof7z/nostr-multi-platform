@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-17
 **Status:** accepted (discipline preserved; positioning modified by ADR-0009)
-**Modified by:** ADR-0009 (the slice is now built on top of the kernel substrate; the kind:0 path is a Profile `ViewModule` in `nmp-nip01`, not a built-in feature of `nmp-core`)
+**Modified by:** ADR-0009 (the slice is built on top of the kernel substrate; the kind:0 profile path lives in a protocol module over `nmp-core`, not as a built-in kernel feature)
 
 ## Context
 
@@ -24,15 +24,15 @@ Phase 1 of the build plan opens with a **vertical slice**: kind:0 profile metada
 ┌──────────────────────────────────────────────────────────────┐
 │  Desktop iced shell (no FFI; direct rlib link)               │
 │  - `Avatar { pubkey }` component                             │
-│  - calls `useProfile(pubkey)` wrapper                        │
+│  - reads profile cache keyed by pubkey                       │
 └──────────────────────▲───────────────────────────────────────┘
                        │ refcount + reactive subscription
 ┌──────────────────────┴───────────────────────────────────────┐
-│  Generated wrapper (ADR-0005, manually written for slice)   │
+│  Domain-keyed shadow seam (ADR-0005)                        │
 │  - refcount per pubkey                                       │
 │  - dispatch OpenView(Profile(pubkey)) on 0→1                 │
 │  - dispatch CloseView(id) after 30s grace on 1→0             │
-│  - write ProfileDelta::Replaced into profiles[pubkey]        │
+│  - write replaced profile payload into the keyed cache      │
 └──────────────────────▲───────────────────────────────────────┘
                        │ AppAction / AppUpdate (no FFI for slice;
                        │ direct fn calls into nmp-core)
