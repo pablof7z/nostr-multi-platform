@@ -15,6 +15,10 @@
 //!    arrives a SECOND time (follow set expands), the M2 registry is updated and
 //!    the next drain emits a REQ for the newly-added author's relay.
 //!
+//! 3. `t140_follow_list_change_withdraws_removed_follow_and_emits_close` — when
+//!    a fresher kind:3 removes a follow, the M2 registry drops that author and
+//!    the next drain emits the CLOSE diff for the removed author's relay.
+//!
 //! The `open_timeline` actor-command test lives in `actor/commands/tests.rs`
 //! because `actor::commands` is a private module not reachable from kernel/.
 //!
@@ -32,6 +36,7 @@ use crate::subs::WireFrame;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const CAROL: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn install_relay_list(kernel: &Kernel, author: &str, write_relays: &[&str]) {
     kernel.seed_mailbox_relay_list(
@@ -60,6 +65,16 @@ fn req_relay_urls(frames: &[WireFrame]) -> Vec<String> {
         .collect()
 }
 
+fn close_relay_urls(frames: &[WireFrame]) -> Vec<String> {
+    frames
+        .iter()
+        .filter_map(|f| match f {
+            WireFrame::Close { relay_url, .. } => Some(relay_url.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 // ─── Test 1 ──────────────────────────────────────────────────────────────────
 
 /// Core T140 discriminator: after `ingest_contacts` for the active account's
@@ -72,8 +87,8 @@ fn req_relay_urls(frames: &[WireFrame]) -> Vec<String> {
 #[test]
 fn t140_ingest_contacts_registers_interests_drain_emits_req() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed the compiled acquisition kinds the app declaration derived. D0: the
+    // substrate no longer hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
     // Active account: ALICE.
@@ -126,8 +141,8 @@ fn t140_ingest_contacts_registers_interests_drain_emits_req() {
 #[test]
 fn t140_follow_list_change_rereg_interests_new_relay_appears() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed the compiled acquisition kinds the app declaration derived. D0: the
+    // substrate no longer hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
 
@@ -174,7 +189,65 @@ fn t140_follow_list_change_rereg_interests_new_relay_appears() {
     );
 }
 
-// ─── Test 3 — #1497 test (a): >500 follows → ONE interest, no cap ─────────────
+/// Follow-list contraction: when a fresher active-account kind:3 removes
+/// CAROL, the M2 registry must drop her from the author set and the lifecycle
+/// diff must emit a CLOSE for her relay while retaining BOB.
+#[test]
+fn t140_follow_list_change_withdraws_removed_follow_and_emits_close() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    kernel.active_account = Some(ALICE.to_string());
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
+
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, BOB, &["wss://bob-t140.relay/"]);
+    install_relay_list(&kernel, CAROL, &["wss://carol-t140.relay/"]);
+
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000020",
+            ALICE,
+            2_000,
+            3,
+            follow_tags(&[ALICE, BOB, CAROL]),
+            "wss://alice-t140.relay/",
+            2_000_000,
+        )
+        .expect("first inject kind:3");
+    let first_frames = kernel.drain_lifecycle_tick();
+    assert!(
+        req_relay_urls(&first_frames)
+            .iter()
+            .any(|u| u == "wss://carol-t140.relay/"),
+        "precondition: initial follow list must open CAROL's relay"
+    );
+
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000021",
+            ALICE,
+            3_000,
+            3,
+            follow_tags(&[ALICE, BOB]),
+            "wss://alice-t140.relay/",
+            3_000_000,
+        )
+        .expect("second inject kind:3 (removed CAROL)");
+    let frames = kernel.drain_lifecycle_tick();
+
+    assert!(kernel.timeline_authors_for_test().contains(BOB));
+    assert!(!kernel.timeline_authors_for_test().contains(CAROL));
+    assert!(
+        close_relay_urls(&frames)
+            .iter()
+            .any(|u| u == "wss://carol-t140.relay/"),
+        "removed follow must close CAROL's prior follow-feed sub; got {frames:?}"
+    );
+}
+
+// ─── Test 4 — #1497 test (a): >500 follows → ONE interest, no cap ─────────────
 
 /// #1497 amendment 5/6 — a follow set well beyond the retired 500-author cap
 /// produces a SINGLE multi-author follow-feed interest whose shape covers EVERY

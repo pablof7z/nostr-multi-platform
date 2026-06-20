@@ -364,8 +364,8 @@ pub enum ActorCommand {
     },
     // V-68 / V-112 (ADR-0042): OpenAuthor{kinds}, OpenThread{kinds} deleted.
     // Apps register a per-app FlatFeed (nmp_app_chirp_open_author_feed etc.)
-    // and call OpenInterest for kernel admission — D0-clean since {1,6} lives
-    // in the app, not in nmp-core.
+    // and call OpenInterest for kernel admission — D0-clean since primary-kind
+    // policy lives in the app, not in nmp-core.
     /// Sign an unsigned event using the named account's signer and park the
     /// result in the `signed_events` snapshot projection keyed by
     /// `correlation_id`. The caller polls the projection to retrieve the

@@ -618,8 +618,8 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
 #[test]
 fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ACCOUNT.to_string());
 

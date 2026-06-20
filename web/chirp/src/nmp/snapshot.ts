@@ -10,7 +10,7 @@ export type AttributionBadge = {
   replyCreatedAt: number;
 };
 
-/** NIP-18 repost badge — who surfaced this note via kind:6. */
+/** NIP-18 repost badge — who surfaced this note. */
 export type RepostBadge = {
   authorPubkey: string;
   authorDisplayName?: string;

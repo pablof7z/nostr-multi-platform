@@ -34,7 +34,7 @@ export type FeedAttribution = {
   replyCreatedAt: number;
 };
 
-/** NIP-18 repost attribution — the follow who surfaced this note via kind:6. */
+/** NIP-18 repost attribution — the follow who surfaced this note. */
 export type FeedRepostBy = {
   /** Raw hex pubkey of the reposter. */
   authorPubkey: string;
@@ -83,7 +83,7 @@ export type FeedItem = {
   relayProvenance: string[];
   /** Known-or-loading relation counts. */
   relationCounts: FeedRelationCounts;
-  /** NIP-18 repost attribution — who surfaced this note via kind:6. */
+  /** NIP-18 repost attribution — who surfaced this note. */
   repostedBy?: FeedRepostBy;
   /**
    * ADR-0035 reply-attribution badges. Length IS the count (op_feed.fbs:62-63);

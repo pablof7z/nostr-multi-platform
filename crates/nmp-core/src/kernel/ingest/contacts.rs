@@ -15,7 +15,7 @@ use std::collections::BTreeSet as BTreeSetInner;
 /// follow set in `authors` (#1497 amendment 5), so the id is keyed on `kinds`
 /// only — the author set lives inside the interest's shape. Changing the follow
 /// set REPLACES the slot's interest in place (same id, `push` = upsert);
-/// switching the host kinds withdraws the old id and registers a fresh one.
+/// switching the compiled acquisition kinds withdraws the old id and registers a fresh one.
 ///
 /// Hashes `("follow-feed-authors", kinds_sorted_string)` so the same `kinds`
 /// set always produces the same id across restarts, enabling stable

@@ -1919,9 +1919,9 @@ fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
 
-    // Call the actor command under test. `open_contact_feed` declares the
-    // host kinds {1, 6} (Chirp's home feed) via `set_follow_feed_kinds`,
-    // which re-registers the active account's M2 follow-feed interests.
+    // Call the actor command under test. `open_contact_feed` receives the
+    // compiled acquisition kinds {1, 6}, which re-register the active account's
+    // M2 follow-feed interests.
     let _outbound = open_contact_feed(
         &id,
         &mut kernel,
@@ -1953,7 +1953,8 @@ fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
 
 // ── open_contact_feed / close_contact_feed (RED tests — Step 1 of TDD) ──────
 
-/// After `open_contact_feed({1,6})` the follow-feed interests are registered;
+/// After `open_contact_feed({1,6})` compiled acquisition kinds are supplied,
+/// the follow-feed interests are registered;
 /// after `close_contact_feed()` they are withdrawn, a CLOSE frame is emitted,
 /// `follow_feed_interest_ids` is empty, and `timeline_authors` is empty.
 ///
@@ -1989,7 +1990,7 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
 
-    // Open with kinds {1, 6}: interests should be registered.
+    // Open with compiled acquisition kinds {1, 6}: interests should be registered.
     let _outbound = open_contact_feed(
         &id,
         &mut kernel,

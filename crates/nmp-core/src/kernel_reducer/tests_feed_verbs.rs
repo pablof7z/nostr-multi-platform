@@ -6,9 +6,9 @@
 //!      no-op (idempotence gate) — it must not re-run the follow-feed
 //!      reconcile / cache-serve teardown on an unchanged account.
 //!
-//! B3 — After `set_active_account` + `set_follow_feed_kinds` + kind:3 ingest,
-//!      `tick()` must emit a contact-feed REQ whose filter carries both the
-//!      followed author pubkeys AND the declared kinds.
+//! B3 — After `set_active_account` + compiled acquisition kinds + kind:3
+//!      ingest, `tick()` must emit a contact-feed REQ whose filter carries both
+//!      the followed author pubkeys AND the compiled acquisition kinds.
 
 use super::*;
 use crate::app::KernelAction;
@@ -45,7 +45,7 @@ fn set_active_account_twice_same_pubkey_is_a_noop() {
 fn kind3_ingest_followed_by_tick_emits_req_with_follows_and_kinds() {
     // B3 — E2E acceptance test: kind:3 arrives for the active viewer →
     // tick() must emit a contact-feed REQ carrying both the followed author
-    // pubkeys AND the declared kinds.
+    // pubkeys AND the compiled acquisition kinds.
     //
     // Negative proof (break-without-fix): if `set_follow_feed_kinds` is
     // skipped, `follow_feed_kinds` is empty and no follow-feed interests are
@@ -59,7 +59,7 @@ fn kind3_ingest_followed_by_tick_emits_req_with_follows_and_kinds() {
     let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
 
-    // Establish viewer identity and declare contact-feed kinds {1, 6}.
+    // Establish viewer identity and seed compiled acquisition kinds {1, 6}.
     let _ = r.set_active_account(viewer_pk.clone());
     let _ = r.set_follow_feed_kinds([1u32, 6u32].into_iter().collect());
 
@@ -103,6 +103,6 @@ fn kind3_ingest_followed_by_tick_emits_req_with_follows_and_kinds() {
         req_texts
             .iter()
             .any(|t| t.contains("\"kinds\"") && t.contains('1') && t.contains('6')),
-        "follow-feed REQ must carry kinds 1 and 6; got: {req_texts:?}"
+        "follow-feed REQ must carry compiled acquisition kinds 1 and 6; got: {req_texts:?}"
     );
 }

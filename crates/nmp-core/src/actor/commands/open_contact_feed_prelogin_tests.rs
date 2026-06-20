@@ -64,7 +64,8 @@ fn open_contact_feed_before_signin_persists_kinds_for_later_reconcile() {
 
     // 3. ALICE has a resolved write relay; a kind:3 listing ALICE arrives. The
     //    kind:3 parser populates the contacts cache and the kernel-owned
-    //    follow-feed effect re-registers under the STORED kinds {1,6}.
+    //    follow-feed effect re-registers under the stored compiled acquisition
+    //    kinds {1,6}.
     kernel.seed_kind10002_for_test(ALICE, &["wss://alice-prelogin.relay/"]);
     kernel
         .lifecycle_mut()
