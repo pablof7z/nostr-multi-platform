@@ -10,10 +10,10 @@ name: codegen-drift
 # Regenerate locally with:
 #   cargo run -p nmp-core --features codegen-schema \
 #       --bin dump_projection_schemas \
-#       | cargo run -p nmp-codegen -- gen swift
+#       | cargo run -p nmp-codegen -- gen swift \
+#           --out ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift
 #
-# See `docs/architecture-audit/v6-codegen-plan.md` §5d and `crates/
-# nmp-codegen/src/swift.rs` for the emitter itself.
+# See `crates/nmp-codegen/src/swift.rs` for the emitter itself.
 #
 # This workflow also hosts the per-language `flatc` binding drift gates that
 # byte-diff the checked-in FlatBuffers bindings against a fresh pinned-flatc
@@ -54,19 +54,25 @@ jobs:
       # Compile + run the schema dump bin once; pipe its output into the
       # emitter's `--check` mode. The bin requires the `codegen-schema`
       # feature; the emitter does not (it is a plain Rust binary).
+      # `--out` is now explicit: the generic tool carries no app-specific
+      # default path (issue #1613).
       - name: Check Swift codegen is up to date
         run: |
           cargo run --quiet -p nmp-core --features codegen-schema \
               --bin dump_projection_schemas \
-            | cargo run --quiet -p nmp-codegen -- gen swift --check
+            | cargo run --quiet -p nmp-codegen -- gen swift --check \
+                --out ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift
 
       # V6 Stage 4 (consumer-side) — the generated typed-FlatBuffer-sidecar
       # decoders (`TypedProjectionDecoders.generated.swift`). Driven by the
       # registry's `typed_sidecar` metadata; no schema-document stdin needed.
       # Fails any PR whose generated Swift differs from a fresh run, so the
       # decoders cannot drift from the registry.
+      # `--out` is now explicit (issue #1613).
       - name: Check typed-decoder codegen is up to date
-        run: cargo run --quiet -p nmp-codegen -- gen typed-decoders --check
+        run: |
+          cargo run --quiet -p nmp-codegen -- gen typed-decoders --check \
+            --out ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift
 
       # ADR-0053 / Workstream-E4 — the kernel built-in projection key const
       # (crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs)

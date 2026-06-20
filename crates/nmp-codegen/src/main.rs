@@ -28,9 +28,10 @@ fn run() -> Result<(), String> {
         // decoders. Writes `TypedProjectionDecoders.generated.swift` from the
         // registry's `typed_sidecar` metadata; no schema-document stdin needed.
         "typed-decoders" => run_gen_typed_decoders(args),
-        // ADR-0055 R3-S3 — generated `ProjectionMergeCache` for iOS. Writes
-        // `ProjectionCache.generated.swift` from the same registry as
-        // `typed-decoders`; implements the D3-3 merge algorithm.
+        // ADR-0055 R3-S3 — generated `ProjectionMergeCache`. Writes
+        // `ProjectionCache.generated.swift` or `ProjectionCache.kt` (per
+        // `--platform`) from the same registry as `typed-decoders`;
+        // implements the D3-3 merge algorithm.
         "projection-cache" => run_gen_projection_cache(args),
         // ADR-0053 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
         // Rust const for `nmp-core`. Writes
@@ -49,23 +50,24 @@ fn run() -> Result<(), String> {
     }
 }
 
-/// `nmp gen swift [--schemas <path>] [--out <path>] [--check]`.
+/// `nmp gen swift [--schemas <path>] --out <path> [--check]`.
 ///
 /// `--schemas` defaults to `-` (stdin). The expected input is whatever
 /// `dump_projection_schemas` writes (see
 /// `crates/nmp-core/src/bin/dump_projection_schemas.rs`).
 ///
-/// `--out` defaults to
-/// `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift` —
-/// matches plan §5b and the xcodegen-swept `Chirp/` source root, so
-/// dropping the file in this location picks it up on the next project
-/// regeneration without a pbxproj edit (xcodegen `sources: - path: Chirp`).
+/// `--out` is required: the caller supplies the app-owned destination path.
+/// For Chirp the path is
+/// `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
+/// (Previously this was the hardcoded default; it is now explicit so no
+/// app identity is baked into the generic tool — issue #1613.)
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift.
-/// The CI gate at `.github/workflows/codegen-drift.yml` uses this mode.
+/// The CI gate at `.github/workflows/codegen-drift.yml` uses this mode
+/// and supplies `--out` explicitly.
 fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
     let mut schemas_path = PathBuf::from("-");
-    let mut out = PathBuf::from("ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift");
+    let mut out: Option<PathBuf> = None;
     let mut check = false;
     let mut index = 0;
     while index < args.len() {
@@ -79,16 +81,22 @@ fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
             }
             "--out" => {
                 index += 1;
-                out = args
-                    .get(index)
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "--out requires a path".to_string())?;
+                out = Some(
+                    args.get(index)
+                        .map(PathBuf::from)
+                        .ok_or_else(|| "--out requires a path".to_string())?,
+                );
             }
             "--check" => check = true,
             other => return Err(format!("unknown argument {other}\n{}", help())),
         }
         index += 1;
     }
+
+    let out = out.ok_or_else(|| {
+        "--out is required (e.g. --out ios/MyApp/Bridge/Generated/KernelTypes.generated.swift)"
+            .to_string()
+    })?;
 
     let json = read_schemas(&schemas_path)?;
 
@@ -107,7 +115,8 @@ fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
                  Regenerate with:\n  \
                  cargo run -p nmp-core --features codegen-schema \
                  --bin dump_projection_schemas \
-                 | cargo run -p nmp-codegen -- gen swift",
+                 | cargo run -p nmp-codegen -- gen swift --out {}",
+                out.display(),
                 out.display()
             ))
         }
@@ -118,7 +127,7 @@ fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
     }
 }
 
-/// `nmp gen typed-decoders [--out <path>] [--check]`.
+/// `nmp gen typed-decoders --out <path> [--check]`.
 ///
 /// Generates `TypedProjectionDecoders.generated.swift` — the per-projection
 /// typed-FlatBuffer-sidecar decoders (consumer side). Driven entirely by the
@@ -126,32 +135,39 @@ fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
 /// `crates/nmp-codegen/src/swift_projections_registry.rs`; takes no schema
 /// stdin.
 ///
-/// `--out` defaults to
-/// `ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift`
-/// (alongside `KernelTypes.generated.swift`, picked up by the xcodegen
-/// `sources: - path: Chirp` sweep without a pbxproj edit).
+/// `--out` is required: the caller supplies the app-owned destination path.
+/// For Chirp the path is
+/// `ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift`.
+/// (Previously this was the hardcoded default; it is now explicit so no
+/// app identity is baked into the generic tool — issue #1613.)
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift. The
-/// CI gate at `.github/workflows/codegen-drift.yml` uses this mode.
+/// CI gate at `.github/workflows/codegen-drift.yml` uses this mode and
+/// supplies `--out` explicitly.
 fn run_gen_typed_decoders(args: Vec<String>) -> Result<(), String> {
-    let mut out =
-        PathBuf::from("ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift");
+    let mut out: Option<PathBuf> = None;
     let mut check = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--out" => {
                 index += 1;
-                out = args
-                    .get(index)
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "--out requires a path".to_string())?;
+                out = Some(
+                    args.get(index)
+                        .map(PathBuf::from)
+                        .ok_or_else(|| "--out requires a path".to_string())?,
+                );
             }
             "--check" => check = true,
             other => return Err(format!("unknown argument {other}\n{}", help())),
         }
         index += 1;
     }
+
+    let out = out.ok_or_else(|| {
+        "--out is required (e.g. --out ios/MyApp/Bridge/Generated/TypedProjectionDecoders.generated.swift)"
+            .to_string()
+    })?;
 
     if check {
         let outcome = nmp_codegen::check_typed_decoders(&out).map_err(|e| e.to_string())?;
@@ -166,7 +182,8 @@ fn run_gen_typed_decoders(args: Vec<String>) -> Result<(), String> {
             Err(format!(
                 "typed-decoder codegen stale at {}{where_diff}.\n\
                  Regenerate with:\n  \
-                 cargo run -p nmp-codegen -- gen typed-decoders",
+                 cargo run -p nmp-codegen -- gen typed-decoders --out {}",
+                out.display(),
                 out.display()
             ))
         }
@@ -177,28 +194,29 @@ fn run_gen_typed_decoders(args: Vec<String>) -> Result<(), String> {
     }
 }
 
-/// `nmp gen projection-cache [--platform swift|kotlin] [--out <path>] [--check]`.
+/// `nmp gen projection-cache --platform swift|kotlin --out <path> [--check]`.
 ///
 /// Generates the NMP-owned rev-aware projection cache implementing the
 /// ADR-0055 D3-3 merge algorithm. Driven by the same registry as
 /// `typed-decoders`; takes no schema stdin.
 ///
-/// `--platform swift` (default): generates
-/// `ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift`.
+/// `--platform swift` (default): generates `ProjectionCache.generated.swift`.
+/// For Chirp: `ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift`.
 ///
-/// `--platform kotlin`: generates
-/// `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
+/// `--platform kotlin`: generates `ProjectionCache.kt`.
+/// For Chirp Android: `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
+///
+/// `--out` is required: the caller supplies the app-owned destination path.
+/// (Previously per-platform paths were hardcoded as defaults; they are now
+/// explicit so no app identity is baked into the generic tool — issue #1613.)
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift. The
-/// CI gate at `.github/workflows/codegen-drift.yml` uses this mode.
+/// CI gate at `.github/workflows/codegen-drift.yml` uses this mode and
+/// supplies `--out` explicitly.
 fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
-    let default_swift =
-        PathBuf::from("ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift");
-    let default_kotlin =
-        PathBuf::from("android/app/src/main/java/org/nmp/android/ProjectionCache.kt");
     let mut platform = "swift".to_string();
     let mut check = false;
-    let mut custom_out: Option<PathBuf> = None;
+    let mut out: Option<PathBuf> = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -211,7 +229,7 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
             }
             "--out" => {
                 index += 1;
-                custom_out = Some(
+                out = Some(
                     args.get(index)
                         .map(PathBuf::from)
                         .ok_or_else(|| "--out requires a path".to_string())?,
@@ -223,9 +241,15 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
         index += 1;
     }
 
+    let out = out.ok_or_else(|| {
+        format!(
+            "--out is required (e.g. --out <app-path>/ProjectionCache.generated.swift \
+             for --platform swift, or --out <app-path>/ProjectionCache.kt for --platform kotlin)"
+        )
+    })?;
+
     match platform.as_str() {
         "swift" => {
-            let out = custom_out.unwrap_or(default_swift);
             if check {
                 let outcome =
                     nmp_codegen::check_projection_cache(&out).map_err(|e| e.to_string())?;
@@ -240,7 +264,8 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
                     Err(format!(
                         "projection-cache (swift) codegen stale at {}{where_diff}.\n\
                          Regenerate with:\n  \
-                         cargo run -p nmp-codegen -- gen projection-cache",
+                         cargo run -p nmp-codegen -- gen projection-cache --out {}",
+                        out.display(),
                         out.display()
                     ))
                 }
@@ -251,7 +276,6 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
             }
         }
         "kotlin" => {
-            let out = custom_out.unwrap_or(default_kotlin);
             if check {
                 let outcome = nmp_codegen::check_kotlin_projection_cache(&out)
                     .map_err(|e| e.to_string())?;
@@ -269,7 +293,9 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
                     Err(format!(
                         "projection-cache (kotlin) codegen stale at {}{where_diff}.\n\
                          Regenerate with:\n  \
-                         cargo run -p nmp-codegen -- gen projection-cache --platform kotlin",
+                         cargo run -p nmp-codegen -- gen projection-cache --platform kotlin \
+                         --out {}",
+                        out.display(),
                         out.display()
                     ))
                 }
@@ -297,6 +323,8 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
 ///
 /// `--out` defaults to
 /// `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`.
+/// This default is intentional: the output belongs to the framework crate
+/// `nmp-core`, not to any app.
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift. The CI
 /// gate at `.github/workflows/codegen-drift.yml` uses this mode.
@@ -423,9 +451,9 @@ fn read_schemas(path: &std::path::Path) -> Result<String, String> {
 
 fn help() -> String {
     "usage:\n  \
-     nmp gen swift             [--schemas - | <path>] [--out <path>] [--check]\n  \
-     nmp gen typed-decoders    [--out <path>] [--check]\n  \
-     nmp gen projection-cache  [--platform swift|kotlin] [--out <path>] [--check]\n  \
+     nmp gen swift             [--schemas - | <path>] --out <path> [--check]\n  \
+     nmp gen typed-decoders    --out <path> [--check]\n  \
+     nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen signer-catalog    [--catalog - | <path>] [--check]"
         .to_string()

@@ -218,7 +218,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let actionStages: [String: [ActionStageEntry]]?
     let actionLifecycle: ActionLifecycleSnapshot?
     let profile: ProfileCard?
-    let homeFeed: ChirpTimelineSnapshot?
+    let homeFeed: OpFeedSnapshot?
     let groupChat: GroupChatSnapshot?
     let dmInbox: DmInboxSnapshot?
     let followList: FollowListSnapshot?

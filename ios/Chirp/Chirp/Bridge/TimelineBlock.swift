@@ -337,10 +337,9 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
 // ─────────────────────────────────────────────────────────────────────────
 // V-80 rung 7 — OP-centric home feed.
 //
-// `projections["nmp.feed.home"]` is now the Rust `RootFeedSnapshot<
-// TimelineEventCard, Nip10ReplyAttribution>` (`apps/chirp/nmp-app-chirp`
-// re-exports it as `ChirpTimelineSnapshot`). Wire shape (after
-// `.convertFromSnakeCase`):
+// `projections["nmp.feed.home"]` is the Rust `RootFeedSnapshot<
+// TimelineEventCard, Nip10ReplyAttribution>` (Rust alias: `OpFeedSnapshot`).
+// Wire shape (after `.convertFromSnakeCase`):
 //
 //   { "cards": [{ "card": ChirpEventCard, "attribution": [ChirpReplyAttribution] }],
 //     "page": TimelineWindowPage?, "metrics": null }
@@ -349,10 +348,9 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
 // reply to a non-followed author's note surfaces THAT note here, tagged with
 // the replier in `attribution`. Replies never get their own row.
 //
-// The Swift type name `ChirpTimelineSnapshot` is unchanged so the generated
-// `SnapshotProjections.homeFeed` binding and the `nmp-codegen` registry need
-// no edit — only the SHAPE behind the name changes (mirrors the Rust
-// `pub type ChirpTimelineSnapshot = RootFeedSnapshot<…>` repoint).
+// The generated `SnapshotProjections.homeFeed` binding uses the framework type
+// name `OpFeedSnapshot` (issue #1613). `ChirpTimelineSnapshot` is a typealias
+// kept for backward compatibility with existing Chirp call sites.
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Raw attribution for one follow's reply to a feed root (mirror of Rust
@@ -399,11 +397,16 @@ struct ChirpRootCard: Decodable, Equatable, Identifiable, Sendable {
 }
 
 /// Decoded OP-centric home projection payload (`RootFeedSnapshot`).
-struct ChirpTimelineSnapshot: Decodable, Equatable {
+///
+/// The framework/protocol name — mirrors the Rust `nmp_nip01::op_feed::OpFeedSnapshot`
+/// type alias (`RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>`). The
+/// `nmp-codegen` registry uses this name in the generated `SnapshotProjections.homeFeed`
+/// binding (issue #1613 — no app names in generic codegen tool).
+struct OpFeedSnapshot: Decodable, Equatable {
     let cards: [ChirpRootCard]
     let page: TimelineWindowPage?
 
-    static let empty = ChirpTimelineSnapshot(cards: [], page: nil)
+    static let empty = OpFeedSnapshot(cards: [], page: nil)
 
     private enum CodingKeys: String, CodingKey {
         case cards
@@ -412,6 +415,10 @@ struct ChirpTimelineSnapshot: Decodable, Equatable {
         // `null`; we do not decode it (D1 forward-compat tolerates extra keys).
     }
 }
+
+/// Backward-compatibility alias. Existing Chirp call sites use this name;
+/// new code should prefer `OpFeedSnapshot` (the framework type name).
+typealias ChirpTimelineSnapshot = OpFeedSnapshot
 
 // ─── nmp-content ContentTreeWire mirror ─────────────────────────────────
 //

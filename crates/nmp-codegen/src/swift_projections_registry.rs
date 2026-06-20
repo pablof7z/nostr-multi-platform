@@ -463,7 +463,13 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     SnapshotProjectionEntry {
         json_key: "nmp.feed.home",
         swift_field: "homeFeed",
-        swift_type: "ChirpTimelineSnapshot",
+        // Framework/protocol type name: `OpFeedSnapshot` mirrors the Rust
+        // `nmp_nip01::op_feed::OpFeedSnapshot` (`RootFeedSnapshot<…>`) without
+        // embedding any app name. The Chirp Swift bridge declares
+        // `typealias ChirpTimelineSnapshot = OpFeedSnapshot` so existing call
+        // sites compile unchanged — see `ios/Chirp/Chirp/Bridge/TimelineBlock.swift`
+        // (issue #1613).
+        swift_type: "OpFeedSnapshot",
         // The op-feed pilot — the ONLY case where producer `key` (here
         // `"nmp.feed.home"`) differs from `schema_id` (`"nmp.nip01.opfeed"`).
         // Already consumed by the hand-written `TypedHomeFeedDecoder` (nested
