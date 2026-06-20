@@ -197,11 +197,10 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     case lastEventToEmitMs = 76
     case maxEventToEmitMs = 78
     case maxEventsPerUpdate = 80
-    case dispatchDropsTotal = 82
-    case claimDropsTotal = 84
-    case makeUpdateUs = 86
-    case serializeUs = 88
-    case updateFrameDegradationsTotal = 90
+    case claimDropsTotal = 82
+    case makeUpdateUs = 84
+    case serializeUs = 86
+    case updateFrameDegradationsTotal = 88
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -245,12 +244,11 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
   public var lastEventToEmitMs: UInt64? { let o = _accessor.offset(VTOFFSET.lastEventToEmitMs.v); return o == 0 ? nil : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var maxEventToEmitMs: UInt64 { let o = _accessor.offset(VTOFFSET.maxEventToEmitMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var maxEventsPerUpdate: UInt64 { let o = _accessor.offset(VTOFFSET.maxEventsPerUpdate.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var dispatchDropsTotal: UInt64 { let o = _accessor.offset(VTOFFSET.dispatchDropsTotal.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var claimDropsTotal: UInt64 { let o = _accessor.offset(VTOFFSET.claimDropsTotal.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var makeUpdateUs: UInt64 { let o = _accessor.offset(VTOFFSET.makeUpdateUs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var serializeUs: UInt64 { let o = _accessor.offset(VTOFFSET.serializeUs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var updateFrameDegradationsTotal: UInt64 { let o = _accessor.offset(VTOFFSET.updateFrameDegradationsTotal.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startMetrics(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 44) }
+  public static func startMetrics(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 43) }
   public static func add(generatedEvents: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: generatedEvents, def: 0, at: VTOFFSET.generatedEvents.p) }
   public static func add(noteEvents: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: noteEvents, def: 0, at: VTOFFSET.noteEvents.p) }
   public static func add(profileEvents: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: profileEvents, def: 0, at: VTOFFSET.profileEvents.p) }
@@ -290,7 +288,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
   public static func add(lastEventToEmitMs: UInt64?, _ fbb: inout FlatBufferBuilder) { fbb.add(element: lastEventToEmitMs, at: VTOFFSET.lastEventToEmitMs.p) }
   public static func add(maxEventToEmitMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: maxEventToEmitMs, def: 0, at: VTOFFSET.maxEventToEmitMs.p) }
   public static func add(maxEventsPerUpdate: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: maxEventsPerUpdate, def: 0, at: VTOFFSET.maxEventsPerUpdate.p) }
-  public static func add(dispatchDropsTotal: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: dispatchDropsTotal, def: 0, at: VTOFFSET.dispatchDropsTotal.p) }
   public static func add(claimDropsTotal: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: claimDropsTotal, def: 0, at: VTOFFSET.claimDropsTotal.p) }
   public static func add(makeUpdateUs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: makeUpdateUs, def: 0, at: VTOFFSET.makeUpdateUs.p) }
   public static func add(serializeUs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: serializeUs, def: 0, at: VTOFFSET.serializeUs.p) }
@@ -337,7 +334,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     lastEventToEmitMs: UInt64? = nil,
     maxEventToEmitMs: UInt64 = 0,
     maxEventsPerUpdate: UInt64 = 0,
-    dispatchDropsTotal: UInt64 = 0,
     claimDropsTotal: UInt64 = 0,
     makeUpdateUs: UInt64 = 0,
     serializeUs: UInt64 = 0,
@@ -383,7 +379,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     nmp_transport_Metrics.add(lastEventToEmitMs: lastEventToEmitMs, &fbb)
     nmp_transport_Metrics.add(maxEventToEmitMs: maxEventToEmitMs, &fbb)
     nmp_transport_Metrics.add(maxEventsPerUpdate: maxEventsPerUpdate, &fbb)
-    nmp_transport_Metrics.add(dispatchDropsTotal: dispatchDropsTotal, &fbb)
     nmp_transport_Metrics.add(claimDropsTotal: claimDropsTotal, &fbb)
     nmp_transport_Metrics.add(makeUpdateUs: makeUpdateUs, &fbb)
     nmp_transport_Metrics.add(serializeUs: serializeUs, &fbb)
@@ -432,7 +427,6 @@ public struct nmp_transport_Metrics: FlatBufferTable, FlatbuffersVectorInitializ
     try _v.visit(field: VTOFFSET.lastEventToEmitMs.p, fieldName: "lastEventToEmitMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.maxEventToEmitMs.p, fieldName: "maxEventToEmitMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.maxEventsPerUpdate.p, fieldName: "maxEventsPerUpdate", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.dispatchDropsTotal.p, fieldName: "dispatchDropsTotal", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.claimDropsTotal.p, fieldName: "claimDropsTotal", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.makeUpdateUs.p, fieldName: "makeUpdateUs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.serializeUs.p, fieldName: "serializeUs", required: false, type: UInt64.self)

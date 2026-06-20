@@ -254,7 +254,7 @@ use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;
 #[cfg(feature = "native")]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 #[cfg(feature = "native")]
 #[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
@@ -1272,12 +1272,6 @@ pub fn run_actor_with_observers(
     let inbox = Inbox::new(inbox_rx);
     let pool = Pool::new(PoolConfig::default(), command_tx_self.relay_sink());
 
-    // T114b — bind a dispatch-drops counter for diagnostic visibility. Under
-    // the new dual-channel design the counter is always zero (commands cannot
-    // be dropped), but the kernel API and the Reset rebind path are kept so
-    // the FFI surface and diagnostic snapshot don't change.
-    let dispatch_drops = Arc::new(AtomicU64::new(0));
-
     // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
     // relay mail stashed while draining the command lane each iteration is
     // replayed in order.
@@ -1288,11 +1282,6 @@ pub fn run_actor_with_observers(
     // `runtime` so registrations and publish-back slots preserve identity.
     let mut kernel =
         config.kernel_with_account_slot(DEFAULT_VISIBLE_LIMIT, Arc::clone(&active_account));
-    // T114b — bind the FFI-channel drop counter so it surfaces on the
-    // diagnostic snapshot (`Metrics::dispatch_drops_total`). A `Reset`
-    // command replaces the kernel; we re-bind there so the counter stays
-    // visible (the underlying `Arc<AtomicU64>` survives Reset).
-    kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
     if let Ok(mut guard) = routing_trace.lock() {
         *guard = Some(kernel.routing_trace());
     }

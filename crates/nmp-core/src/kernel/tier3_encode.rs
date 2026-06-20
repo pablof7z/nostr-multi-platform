@@ -177,7 +177,6 @@ fn encode_metrics<'b>(
             last_event_to_emit_ms: opt_u64_sat(metrics.last_event_to_emit_ms),
             max_event_to_emit_ms: u64_sat(metrics.max_event_to_emit_ms),
             max_events_per_update: metrics.max_events_per_update,
-            dispatch_drops_total: metrics.dispatch_drops_total,
             claim_drops_total: metrics.claim_drops_total,
             make_update_us: u64_sat(metrics.make_update_us),
             serialize_us: u64_sat(metrics.serialize_us),

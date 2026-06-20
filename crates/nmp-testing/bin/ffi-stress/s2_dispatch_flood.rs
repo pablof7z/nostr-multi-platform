@@ -328,10 +328,12 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         verdict,
     ));
 
-    // T114b — surface the bounded-channel + per-pubkey claim drop counters
-    // from the kernel's last snapshot. These prove the caps were exercised
-    // (D6 fire-and-forget bookkeeping) and quantify per-dispatch pressure.
-    let (dispatch_drops_total, claim_drops_total) = {
+    // T114b — surface the per-pubkey claim drop counter from the kernel's last
+    // snapshot. This proves the cap was exercised (D6 fire-and-forget
+    // bookkeeping) and quantifies per-dispatch pressure. (The FFI command
+    // channel is unbounded — ADR-0029's bounded shed-load design was never
+    // built — so there is no FFI-channel drop counter to report.)
+    let claim_drops_total = {
         let last = LAST_PAYLOAD.lock().ok().and_then(|guard| guard.clone());
         match last
             .as_deref()
@@ -339,22 +341,17 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         {
             Some(v) => {
                 let metrics = v.get("metrics").cloned().unwrap_or_default();
-                let dd = metrics
-                    .get("dispatch_drops_total")
-                    .and_then(|x| x.as_u64())
-                    .unwrap_or(0);
-                let cd = metrics
+                metrics
                     .get("claim_drops_total")
                     .and_then(|x| x.as_u64())
-                    .unwrap_or(0);
-                (dd, cd)
+                    .unwrap_or(0)
             }
-            None => (0, 0),
+            None => 0,
         }
     };
     report.notes.push(format!(
-        "T114b counters: dispatch_drops_total={dispatch_drops_total}, \
-         claim_drops_total={claim_drops_total} (per-pubkey cap exercised when >0)",
+        "T114b counters: claim_drops_total={claim_drops_total} \
+         (per-pubkey cap exercised when >0)",
     ));
 
     report.measurements = json!({
@@ -379,7 +376,6 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         "wall_seconds": wall_elapsed,
         "latency_samples": total_samples,
         "hitches_proxy": hitches_proxy,
-        "dispatch_drops_total": dispatch_drops_total,
         "claim_drops_total": claim_drops_total,
     });
 

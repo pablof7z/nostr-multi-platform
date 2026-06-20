@@ -652,11 +652,10 @@ pub mod nmp {
             pub const VT_LAST_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 76;
             pub const VT_MAX_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 78;
             pub const VT_MAX_EVENTS_PER_UPDATE: ::flatbuffers::VOffsetT = 80;
-            pub const VT_DISPATCH_DROPS_TOTAL: ::flatbuffers::VOffsetT = 82;
-            pub const VT_CLAIM_DROPS_TOTAL: ::flatbuffers::VOffsetT = 84;
-            pub const VT_MAKE_UPDATE_US: ::flatbuffers::VOffsetT = 86;
-            pub const VT_SERIALIZE_US: ::flatbuffers::VOffsetT = 88;
-            pub const VT_UPDATE_FRAME_DEGRADATIONS_TOTAL: ::flatbuffers::VOffsetT = 90;
+            pub const VT_CLAIM_DROPS_TOTAL: ::flatbuffers::VOffsetT = 82;
+            pub const VT_MAKE_UPDATE_US: ::flatbuffers::VOffsetT = 84;
+            pub const VT_SERIALIZE_US: ::flatbuffers::VOffsetT = 86;
+            pub const VT_UPDATE_FRAME_DEGRADATIONS_TOTAL: ::flatbuffers::VOffsetT = 88;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -677,7 +676,6 @@ pub mod nmp {
                 builder.add_serialize_us(args.serialize_us);
                 builder.add_make_update_us(args.make_update_us);
                 builder.add_claim_drops_total(args.claim_drops_total);
-                builder.add_dispatch_drops_total(args.dispatch_drops_total);
                 builder.add_max_events_per_update(args.max_events_per_update);
                 builder.add_max_event_to_emit_ms(args.max_event_to_emit_ms);
                 if let Some(x) = args.last_event_to_emit_ms {
@@ -1135,17 +1133,6 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn dispatch_drops_total(&self) -> u64 {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<u64>(Metrics::VT_DISPATCH_DROPS_TOTAL, Some(0))
-                        .unwrap()
-                }
-            }
-            #[inline]
             pub fn claim_drops_total(&self) -> u64 {
                 // Safety:
                 // Created from valid Table for this object
@@ -1281,11 +1268,6 @@ pub mod nmp {
                         Self::VT_MAX_EVENTS_PER_UPDATE,
                         false,
                     )?
-                    .visit_field::<u64>(
-                        "dispatch_drops_total",
-                        Self::VT_DISPATCH_DROPS_TOTAL,
-                        false,
-                    )?
                     .visit_field::<u64>("claim_drops_total", Self::VT_CLAIM_DROPS_TOTAL, false)?
                     .visit_field::<u64>("make_update_us", Self::VT_MAKE_UPDATE_US, false)?
                     .visit_field::<u64>("serialize_us", Self::VT_SERIALIZE_US, false)?
@@ -1338,7 +1320,6 @@ pub mod nmp {
             pub last_event_to_emit_ms: Option<u64>,
             pub max_event_to_emit_ms: u64,
             pub max_events_per_update: u64,
-            pub dispatch_drops_total: u64,
             pub claim_drops_total: u64,
             pub make_update_us: u64,
             pub serialize_us: u64,
@@ -1387,7 +1368,6 @@ pub mod nmp {
                     last_event_to_emit_ms: None,
                     max_event_to_emit_ms: 0,
                     max_events_per_update: 0,
-                    dispatch_drops_total: 0,
                     claim_drops_total: 0,
                     make_update_us: 0,
                     serialize_us: 0,
@@ -1629,14 +1609,6 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_dispatch_drops_total(&mut self, dispatch_drops_total: u64) {
-                self.fbb_.push_slot::<u64>(
-                    Metrics::VT_DISPATCH_DROPS_TOTAL,
-                    dispatch_drops_total,
-                    0,
-                );
-            }
-            #[inline]
             pub fn add_claim_drops_total(&mut self, claim_drops_total: u64) {
                 self.fbb_
                     .push_slot::<u64>(Metrics::VT_CLAIM_DROPS_TOTAL, claim_drops_total, 0);
@@ -1727,7 +1699,6 @@ pub mod nmp {
                 ds.field("last_event_to_emit_ms", &self.last_event_to_emit_ms());
                 ds.field("max_event_to_emit_ms", &self.max_event_to_emit_ms());
                 ds.field("max_events_per_update", &self.max_events_per_update());
-                ds.field("dispatch_drops_total", &self.dispatch_drops_total());
                 ds.field("claim_drops_total", &self.claim_drops_total());
                 ds.field("make_update_us", &self.make_update_us());
                 ds.field("serialize_us", &self.serialize_us());

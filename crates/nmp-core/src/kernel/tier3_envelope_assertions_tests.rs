@@ -86,7 +86,6 @@ pub(super) fn assert_metrics_agree(metrics: &fb::Metrics<'_>, json: &serde_json:
     opt_field!(last_event_to_emit_ms);
     u64_field!(max_event_to_emit_ms);
     u64_field!(max_events_per_update);
-    u64_field!(dispatch_drops_total);
     u64_field!(claim_drops_total);
     u64_field!(make_update_us);
     u64_field!(serialize_us);

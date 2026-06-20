@@ -173,7 +173,6 @@ impl Kernel {
                 max_event_to_emit_ms: self.max_event_to_emit_ms,
                 max_events_per_update: self.max_events_per_update,
                 // T114b — per-dispatch retention audit visibility.
-                dispatch_drops_total: self.dispatch_drops_total(),
                 claim_drops_total: self.claim_drops_total(),
                 make_update_us: self.last_make_update_us,
                 serialize_us: self.last_serialize_us,

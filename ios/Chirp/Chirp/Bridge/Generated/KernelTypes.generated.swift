@@ -28,7 +28,6 @@ public struct KernelMetrics: Decodable, Equatable, Sendable {
     public let contactsAuthors: Int
     public let deleteEvents: UInt64
     public let diagnosticFirehoseEvents: UInt64
-    public let dispatchDropsTotal: UInt64
     public let duplicateEvents: UInt64
     public let emitHzConfigured: UInt32
     public let eoseRx: UInt64
