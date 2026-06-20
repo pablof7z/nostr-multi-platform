@@ -476,6 +476,16 @@ impl<'a> ProtocolCommandContext<'a> {
         }));
     }
 
+    /// D15-wrapped [`ErrorSurface::set_last_error_token`] (issue #1682) — emit a
+    /// structured error token (machine `code` + English fallback prose) so the
+    /// shell renders localized prose.
+    pub fn set_last_error_token(&self, token: &crate::ui_token::UiToken) {
+        let e = self.errors;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            e.set_last_error_token(token);
+        }));
+    }
+
     /// D15-wrapped [`ErrorSurface::record_action_failure`].
     pub fn record_action_failure(&self, correlation_id: String, reason: String) {
         let e = self.errors;

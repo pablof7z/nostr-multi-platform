@@ -222,7 +222,8 @@ enum KernelUpdateFrameDecoder {
             logicalInterests: snapshot.logicalInterests,
             wireSubscriptions: snapshot.wireSubscriptions,
             logs: snapshot.logs,
-            lastErrorToast: snapshot.lastErrorToast
+            lastErrorToast: snapshot.lastErrorToast,
+            lastErrorCategory: snapshot.lastErrorCategory
         )
     }
 

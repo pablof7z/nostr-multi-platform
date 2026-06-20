@@ -559,7 +559,8 @@ enum TypedProjectionGlue {
         logicalInterests: FlatbufferVector<nmp_transport_LogicalInterestStatus>,
         wireSubscriptions: FlatbufferVector<nmp_transport_WireSubscriptionStatus>,
         logs: FlatbufferVector<String?>,
-        lastErrorToast: String?
+        lastErrorToast: String?,
+        lastErrorCategory: String?
     ) -> TypedSnapshotEnvelope {
         TypedSnapshotEnvelope(
             rev: rev,
@@ -569,7 +570,8 @@ enum TypedProjectionGlue {
             logicalInterests: logicalInterests.map(snapshotLogicalInterest),
             wireSubscriptions: wireSubscriptions.map(snapshotWireSubscription),
             logs: logs.map { $0 ?? "" },
-            lastErrorToast: lastErrorToast
+            lastErrorToast: lastErrorToast,
+            lastErrorCategory: lastErrorCategory
         )
     }
 

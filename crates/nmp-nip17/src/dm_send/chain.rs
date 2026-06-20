@@ -265,14 +265,21 @@ pub(super) fn report_envelope_failure(
     correlation_id: &Option<String>,
     reason: String,
 ) {
-    let toast = format!("cannot send DM: gift-wrap ({label}) failed: {reason}");
-    let _ = worker_tx.send(ActorCommand::ShowToast {
-        message: toast.clone(),
-    });
+    // issue #1682 — structured token routed to the actor via `ShowErrorToken`
+    // (this worker thread holds only a `CommandSender`). The envelope `label`
+    // is the shell-interpolatable subject; `reason` is the raw diagnostic.
+    let token = nmp_core::ui_token::UiToken::error(
+        crate::ui_codes::DM_GIFTWRAP_FAILED,
+        format!("cannot send DM: gift-wrap ({label}) failed: {reason}"),
+    )
+    .with_subject(label)
+    .with_detail(reason);
+    let fallback = token.fallback_prose().to_string();
+    let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
     if let Some(id) = correlation_id.clone() {
         let _ = worker_tx.send(ActorCommand::RecordActionFailure {
             correlation_id: id,
-            reason: toast,
+            reason: fallback,
         });
     }
 }

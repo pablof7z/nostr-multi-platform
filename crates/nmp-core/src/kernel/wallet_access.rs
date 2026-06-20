@@ -66,6 +66,12 @@ impl<'a> WalletKernelAccess for KernelWalletAccess<'a> {
         }
     }
 
+    fn set_last_error_token(&self, token: &crate::ui_token::UiToken) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.set_last_error_token(token);
+        }
+    }
+
     fn record_action_failure(&self, correlation_id: String, reason: String) {
         if let Ok(mut k) = self.kernel.try_borrow_mut() {
             k.record_action_failure(correlation_id, reason);

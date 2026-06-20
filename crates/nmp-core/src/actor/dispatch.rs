@@ -1108,6 +1108,15 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::ShowErrorToken { token } => {
+            // issue #1682 — a structured error token from an off-actor worker
+            // thread (it holds only a `CommandSender`). Route to the kernel so
+            // both the machine code (`last_error_category`) and the fallback
+            // prose (`last_error_toast`) become observable snapshot state.
+            ctx.kernel.set_last_error_token(&token);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::MarkChangedSinceEmit => {
             ctx.kernel.mark_changed_since_emit();
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -1142,10 +1151,17 @@ pub(super) fn dispatch_command(
                     KeyringStatus::NotFound | KeyringStatus::Error => {
                         // D6 — surface as a toast so the user can see the
                         // Keychain write failed (session may not persist).
-                        ctx.kernel.set_last_error_toast(Some(format!(
-                            "keyring write failed for account {account_id}: {:?}",
-                            result.status
-                        )));
+                        ctx.kernel.set_last_error_token(
+                            &crate::ui_token::UiToken::error(
+                                crate::ui_token::codes::KEYRING_WRITE_FAILED,
+                                format!(
+                                    "keyring write failed for account {account_id}: {:?}",
+                                    result.status
+                                ),
+                            )
+                            .with_subject(account_id.to_string())
+                            .with_detail(format!("{:?}", result.status)),
+                        );
                         maybe_emit_after_dispatch(
                             ctx.kernel,
                             *ctx.running,

@@ -208,8 +208,8 @@ fn report_envelope_failure_records_action_on_live_inbox() {
     let cmds = drain(&rx);
     assert!(
         cmds.iter()
-            .any(|c| matches!(c, ActorCommand::ShowToast { .. })),
-        "must surface a toast: {cmds:?}"
+            .any(|c| matches!(c, ActorCommand::ShowErrorToken { .. })),
+        "must surface a structured error token: {cmds:?}"
     );
     assert!(
         cmds.iter().any(|c| matches!(

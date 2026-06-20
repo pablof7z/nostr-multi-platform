@@ -173,6 +173,7 @@ pub mod tags;
 // from here so `performance.now()` / `Date.now()` back them on wasm32
 // (where the `std` implementations abort). See `time.rs` for rationale.
 pub mod time;
+pub mod ui_token;
 mod update_envelope;
 pub mod util;
 

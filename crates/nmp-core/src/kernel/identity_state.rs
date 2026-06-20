@@ -368,6 +368,27 @@ impl super::Kernel {
         }
     }
 
+    /// Surface a structured [`UiToken`](crate::ui_token::UiToken) (issue #1682).
+    ///
+    /// Writes the token's English `fallback_prose` to `last_error_toast` (the
+    /// fallback for non-localizing shells / diagnostics) and the stable machine
+    /// `code` to `last_error_category` (the key the shell branches on to render
+    /// localized prose). The raw upstream `raw_detail` is logged for
+    /// diagnostics — it is never the UI contract and never crosses to the host
+    /// as prose. This is the general-toast generalization of the relay-CLOSED
+    /// `error_category` contract.
+    pub fn set_last_error_token(&mut self, token: &crate::ui_token::UiToken) {
+        if let Some(detail) = token.raw_detail() {
+            tracing::warn!(
+                code = token.code(),
+                subject = ?token.subject(),
+                detail = %detail,
+                "UI error token",
+            );
+        }
+        self.set_error_toast_with_category(token.fallback_prose().to_string(), token.code());
+    }
+
     /// Replace the editable relay projection (D4: actor is sole writer).
     /// Also syncs the shared handles so FFI-side reads
     /// and planner/publish routing see the latest rows.
