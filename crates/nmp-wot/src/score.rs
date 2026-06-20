@@ -264,6 +264,44 @@ impl WotGraph {
             mute_authors: self.mute_author_count(),
         }
     }
+
+    /// Return second-degree candidates (not yet followed by `viewer`) ranked by
+    /// how many of `viewer`'s direct follows also follow each candidate.
+    ///
+    /// Results are sorted descending by mutual-follow count, then ascending by
+    /// pubkey for deterministic ordering at equal counts. Up to `limit` entries
+    /// are returned (0 = unlimited).
+    ///
+    /// Each entry is `(candidate_pubkey, mutual_follow_count)`.
+    #[must_use]
+    pub fn ranked_second_degree_candidates(
+        &self,
+        viewer: &str,
+        limit: usize,
+    ) -> Vec<(String, usize)> {
+        let Some(follows) = self.follows_by_author.get(viewer) else {
+            return Vec::new();
+        };
+        let mut counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for followed in follows {
+            if let Some(their_follows) = self.follows_by_author.get(followed) {
+                for candidate in their_follows {
+                    // Skip accounts the viewer already follows and the viewer themselves.
+                    if !follows.contains(candidate) && candidate != viewer {
+                        *counts.entry(candidate.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+        let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
+        // Descending by count, then ascending by pubkey for stability.
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        if limit > 0 {
+            ranked.truncate(limit);
+        }
+        ranked
+    }
 }
 
 struct ScoredParts {
