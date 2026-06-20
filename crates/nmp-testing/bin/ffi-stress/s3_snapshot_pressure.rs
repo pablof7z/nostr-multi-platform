@@ -98,7 +98,7 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
 
     nmp_app_set_update_callback(app, ctx, Some(measure_cb));
     // Configure-not-Start: no relay workers; S3 tests emit serialization, not relay.
-    nmp_app_configure(app, 0, 500, 12);
+    nmp_app_configure(app, 500, 12);
 
     // Inject 100k real Schnorr-signed events via the full verify path (D0: cfg-gated).
     // Each event is signed with Keys::generate(); try_from_raw verifies the signature.
@@ -117,7 +117,7 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
 
     // Trigger configure() bursts to force serialization pressure.
     for _ in 0..cfg.configure_bursts {
-        nmp_app_configure(app, 0, 500, 12);
+        nmp_app_configure(app, 500, 12);
         std::thread::sleep(cfg.burst_interval);
     }
     let burst_elapsed = burst_start.elapsed();

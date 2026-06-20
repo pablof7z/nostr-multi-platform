@@ -52,10 +52,6 @@ pub(super) fn assert_metrics_agree(metrics: &fb::Metrics<'_>, json: &serde_json:
     u64_field!(updated_count);
     u64_field!(removed_count);
     assert_eq!(
-        u64::from(metrics.events_per_second_configured()),
-        json_u64(json, "events_per_second_configured")
-    );
-    assert_eq!(
         u64::from(metrics.emit_hz_configured()),
         json_u64(json, "emit_hz_configured")
     );

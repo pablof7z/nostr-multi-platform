@@ -193,7 +193,7 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
 
     // nmp_app_start sends ActorCommand::Start; the actor enters its main loop
     // and begins emitting snapshot ticks at emit_hz rate.
-    nmp_app_start(app, 0, 64, 8); // emit_hz=8 → ~125 ms cadence
+    nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
 
     // Wire the GroupChatProjection for "test-room".
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.

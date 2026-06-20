@@ -33,7 +33,7 @@ void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback cal
 // NmpConfigStatus_AlreadyStarted if called after nmp_app_start.
 uint32_t nmp_app_set_storage_path(void *app, const char *path);
 
-void nmp_app_start(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
+void nmp_app_start(void *app, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
 
 // ── Profile claim / release (real relay data) ────────────────────────────

@@ -147,7 +147,7 @@ impl AppRuntime {
 
         // SAFETY: `app` is valid.
         unsafe {
-            nmp_app_start(app, 0, 200, 10);
+            nmp_app_start(app, 200, 10);
         }
         nmp_app_chirp_open_home_feed(app);
 

@@ -33,7 +33,6 @@ public struct KernelMetrics: Decodable, Equatable, Sendable {
     public let emitHzConfigured: UInt32
     public let eoseRx: UInt64
     public let estimatedStoreBytes: Int
-    public let eventsPerSecondConfigured: UInt32
     public let eventsRx: UInt64
     public let eventsSinceLastUpdate: UInt64
     public let firstEventMs: UInt64?

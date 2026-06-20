@@ -107,7 +107,7 @@ fn event_by_id_reads_ingested_event_across_the_actor_boundary() {
         );
     }
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     let (id, json) = signed_note("a real ingested note", 1_700_000_100);
     inject_and_wait(app, &id, &json, &rx);
@@ -148,7 +148,7 @@ fn event_by_id_survives_reset() {
     let app = nmp_app_new();
     super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Ingest pre-Reset event.
     let (id_before, json_before) = signed_note("before reset", 1_700_000_200);

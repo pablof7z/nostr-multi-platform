@@ -128,7 +128,7 @@ fn signed_in_app() -> (
     crate::nmp_app_set_capability_callback(app, std::ptr::null_mut(), Some(keyring_handler));
     let handle = crate::app_ref(app).expect("app").active_account_handle();
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
     let secret = CString::new(TEST_NSEC).unwrap();
     crate::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 

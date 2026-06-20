@@ -183,11 +183,11 @@ final class KernelHandle {
     }
 
     func start(visibleLimit: UInt32 = 80, emitHz: UInt32 = 4) {
-        nmp_app_start(raw, 0, visibleLimit, emitHz)
+        nmp_app_start(raw, visibleLimit, emitHz)
     }
 
     func configure(visibleLimit: UInt32, emitHz: UInt32) {
-        nmp_app_configure(raw, 0, visibleLimit, emitHz)
+        nmp_app_configure(raw, visibleLimit, emitHz)
     }
 
     func stop() {

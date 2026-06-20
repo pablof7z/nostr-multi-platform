@@ -111,7 +111,7 @@ fn main() -> std::process::ExitCode {
     // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
     nmp_app_set_update_callback(app, ctx, Some(update_cb));
-    nmp_app_start(app, 200, 80, 4);
+    nmp_app_start(app, 80, 4);
 
     let pubkey_c = CString::new(PABLOF7Z_PUBKEY).expect("pubkey has no NUL");
     let consumer_c = CString::new(CONSUMER_ID).expect("consumer has no NUL");

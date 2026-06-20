@@ -224,7 +224,7 @@ impl LiveKernel {
         let mut bridge = Box::new(UpdateBridge { tx });
         let context = bridge.as_mut() as *mut UpdateBridge as *mut c_void;
         nmp_ffi::nmp_app_set_update_callback(app, context, Some(on_update));
-        nmp_ffi::nmp_app_start(app, 0, 200, 8);
+        nmp_ffi::nmp_app_start(app, 200, 8);
 
         let kernel = Self {
             app,

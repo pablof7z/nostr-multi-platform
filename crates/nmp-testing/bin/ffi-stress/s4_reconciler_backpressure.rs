@@ -118,7 +118,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     let ctx = Box::into_raw(state) as *mut c_void;
 
     nmp_app_set_update_callback(app, ctx, Some(stall_cb));
-    nmp_app_configure(app, 0, 80, cfg.emit_hz);
+    nmp_app_configure(app, 80, cfg.emit_hz);
 
     // Inject real Schnorr-signed events so the kernel has authentic state.
     // S4 uses the full try_from_raw verify path (D0: cfg-gated; 500 events ~10-25 ms ok).
@@ -153,7 +153,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             // Measure configure() latency mid-stall: actor enqueues to mpsc and returns
             // immediately; the sleeping callback does NOT block configure().
             let t_cfg = Instant::now();
-            nmp_app_configure(app, 0, 80, cfg.emit_hz);
+            nmp_app_configure(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             configure_during_stall_us.push(t_cfg.elapsed().as_micros() as u64);
             std::thread::sleep(cfg.stall_duration + Duration::from_millis(50));
@@ -162,7 +162,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             stall_resume_ts_ms.push(wall_start.elapsed().as_millis() as u64);
             // Force immediate emit so apply_burst_ms measures pure actor→callback
             // latency, not configure-interval scheduling noise (up to 500 ms).
-            nmp_app_configure(app, 0, 80, cfg.emit_hz);
+            nmp_app_configure(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             let post = EMIT_COUNT.load(Ordering::Relaxed);
             stall_post_counts.push(post);
@@ -171,7 +171,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         }
 
         if now >= next_configure {
-            nmp_app_configure(app, 0, 80, cfg.emit_hz);
+            nmp_app_configure(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             next_configure = now + configure_interval;
         }

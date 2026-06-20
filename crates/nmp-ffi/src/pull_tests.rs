@@ -204,7 +204,7 @@ fn unknown_cursor_returns_serialized_error() {
     let _rx = install_update_signal();
     let app = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // No cursor registered under id 999 → UNKNOWN_CURSOR (registry is published,
     // but holds no row). Poll briefly so the registry slot is published first.
@@ -234,7 +234,7 @@ fn page_decodes_with_entries_and_cap_clamps() {
     let rx = install_update_signal();
     let app = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Register first (FIFO before the ingests below), then ingest two events.
     register_global_cursor(app, 42, 0);

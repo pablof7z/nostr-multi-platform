@@ -105,7 +105,7 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
         .expect("frame tx slot") = Some(tx);
 
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(forward_frame));
-    nmp_app_start(app, 0, 64, 8);
+    nmp_app_start(app, 64, 8);
 
     // Block until a frame from the REAL kernel arrives (`running == true`).
     // The pre-flight frame (`running == false`) may or may not be observed

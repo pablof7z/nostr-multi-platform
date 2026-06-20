@@ -178,7 +178,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     unsafe { &*app }.set_kernel_clock_for_test(clock.clone());
 
     // Start the actor: constructs the kernel and binds the observer slot.
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Sign in (make active) so the dispatched follow has an authoring identity.
     // FIFO on the actor command channel guarantees this `AddSigner` is processed

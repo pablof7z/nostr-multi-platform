@@ -154,7 +154,6 @@ fn encode_metrics<'b>(
             inserted_count: metrics.inserted_count as u64,
             updated_count: metrics.updated_count as u64,
             removed_count: metrics.removed_count as u64,
-            events_per_second_configured: metrics.events_per_second_configured,
             emit_hz_configured: metrics.emit_hz_configured,
             update_sequence: metrics.update_sequence,
             estimated_store_bytes: metrics.estimated_store_bytes as u64,

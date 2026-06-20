@@ -129,7 +129,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
 ) {
     if let Some(s) = session_arc(handle) {
         s.with_app(|app| {
-            nmp_app_start(app, 0, visible_limit as u32, emit_hz as u32);
+            nmp_app_start(app, visible_limit as u32, emit_hz as u32);
         });
     }
 }

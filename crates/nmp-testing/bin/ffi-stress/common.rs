@@ -23,7 +23,7 @@ pub(crate) fn inject_signed_events(app: *mut NmpApp, base_ts: u64, count: u32) {
 /// Trigger `configure` to force an emit tick and wait `settle_ms` for the
 /// actor to process the event batch and fire the update callback.
 pub(crate) fn configure_and_settle(app: *mut NmpApp, settle_ms: u64) {
-    nmp_app_configure(app, 0, 500, 12);
+    nmp_app_configure(app, 500, 12);
     std::thread::sleep(Duration::from_millis(settle_ms));
 }
 

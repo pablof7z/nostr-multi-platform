@@ -69,7 +69,7 @@ mod tests {
         let app_ref = unsafe { &*app };
         assert_eq!(app_ref.storage_path_for_start(), Some(path_str));
 
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
         assert_eq!(nmp_app_is_alive(app), 1, "start should spawn actor once");
         nmp_app_free(app);
         let _ = std::fs::remove_dir_all(path);
@@ -93,7 +93,7 @@ mod tests {
             nmp_app_set_storage_path(app, c_first.as_ptr()),
             NmpConfigStatus::Ok.code()
         );
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
         assert_eq!(
             nmp_app_set_storage_path(app, c_second.as_ptr()),
             NmpConfigStatus::AlreadyStarted.code()

@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn app_host_setter_after_start_is_rejected_and_recorded() {
         let app = nmp_app_new();
-        nmp_app_start(app, 0, 256, 4);
+        nmp_app_start(app, 256, 4);
 
         let app_ref = unsafe { &*app };
         assert_eq!(

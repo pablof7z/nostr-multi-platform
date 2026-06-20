@@ -397,7 +397,7 @@ fn run_scenario() -> Result<bool, String> {
     //     here.
     //   - `read` so the DmRuntimeController's reconcile observes a non-empty
     //     read-relay set and pushes the inbox interest.
-    nmp_app_start(app, 0, 256, 8); // emit_hz=8 → ~125ms snapshot cadence
+    nmp_app_start(app, 256, 8); // emit_hz=8 → ~125ms snapshot cadence
     let relay_c = CString::new(RELAY).expect("relay url has no nul");
     let role_c = CString::new("both,indexer").expect("role has no nul");
     nmp_app_add_relay(app, relay_c.as_ptr(), role_c.as_ptr());

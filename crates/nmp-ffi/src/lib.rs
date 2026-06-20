@@ -2264,7 +2264,6 @@ pub extern "C" fn nmp_app_set_update_callback(
 #[no_mangle]
 pub extern "C" fn nmp_app_start(
     app: *mut NmpApp,
-    _events_per_second: c_uint,
     visible_limit: c_uint,
     emit_hz: c_uint,
 ) {
@@ -2332,7 +2331,6 @@ pub extern "C" fn nmp_app_start(
 #[no_mangle]
 pub extern "C" fn nmp_app_configure(
     app: *mut NmpApp,
-    _events_per_second: c_uint,
     visible_limit: c_uint,
     emit_hz: c_uint,
 ) {

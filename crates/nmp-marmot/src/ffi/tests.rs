@@ -573,7 +573,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let handler =
         Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
     app_mut.set_host_op_handler(handler);
-    nmp_ffi::nmp_app_start(app, 0, 256, 4);
+    nmp_ffi::nmp_app_start(app, 256, 4);
 
     // Dispatch the legacy envelope through the generic seam. The JSON
     // shape is byte-identical with what iOS used to send to the legacy
@@ -653,7 +653,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let handler =
         Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
     app_mut.set_host_op_handler(handler);
-    nmp_ffi::nmp_app_start(app, 0, 256, 4);
+    nmp_ffi::nmp_app_start(app, 256, 4);
 
     // Generic seam: create the group via dispatch_action.
     let envelope = json!({

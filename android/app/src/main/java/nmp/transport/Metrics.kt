@@ -108,149 +108,144 @@ class Metrics : Table() {
             val o = __offset(34)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val eventsPerSecondConfigured : UInt
+    val emitHzConfigured : UInt
         get() {
             val o = __offset(36)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
-    val emitHzConfigured : UInt
-        get() {
-            val o = __offset(38)
-            return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
-        }
     val updateSequence : ULong
         get() {
-            val o = __offset(40)
+            val o = __offset(38)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val estimatedStoreBytes : ULong
         get() {
-            val o = __offset(42)
+            val o = __offset(40)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val payloadBytes : ULong
         get() {
-            val o = __offset(44)
+            val o = __offset(42)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val storeToPayloadRatio : Double
         get() {
-            val o = __offset(46)
+            val o = __offset(44)
             return if(o != 0) bb.getDouble(o + bb_pos) else 0.0
         }
     val actorQueueDepth : UInt
         get() {
-            val o = __offset(48)
+            val o = __offset(46)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val framesRx : ULong
         get() {
-            val o = __offset(50)
+            val o = __offset(48)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val eventsRx : ULong
         get() {
-            val o = __offset(52)
+            val o = __offset(50)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val eoseRx : ULong
         get() {
-            val o = __offset(54)
+            val o = __offset(52)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val noticesRx : ULong
         get() {
-            val o = __offset(56)
+            val o = __offset(54)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val closedRx : ULong
         get() {
-            val o = __offset(58)
+            val o = __offset(56)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val bytesRx : ULong
         get() {
-            val o = __offset(60)
+            val o = __offset(58)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val bytesTx : ULong
         get() {
-            val o = __offset(62)
+            val o = __offset(60)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val contactsAuthors : ULong
         get() {
-            val o = __offset(64)
+            val o = __offset(62)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val timelineAuthors : ULong
         get() {
-            val o = __offset(66)
+            val o = __offset(64)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val firstEventMs : ULong?
         get() {
-            val o = __offset(68)
+            val o = __offset(66)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else null
         }
     val targetProfileLoadedMs : ULong?
         get() {
-            val o = __offset(70)
+            val o = __offset(68)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else null
         }
     val timelineOpenedMs : ULong?
         get() {
-            val o = __offset(72)
+            val o = __offset(70)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else null
         }
     val timelineFirstItemMs : ULong?
         get() {
-            val o = __offset(74)
+            val o = __offset(72)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else null
         }
     val updateEmittedMs : ULong?
         get() {
-            val o = __offset(76)
+            val o = __offset(74)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else null
         }
     val lastEventToEmitMs : ULong?
         get() {
-            val o = __offset(78)
+            val o = __offset(76)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else null
         }
     val maxEventToEmitMs : ULong
         get() {
-            val o = __offset(80)
+            val o = __offset(78)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val maxEventsPerUpdate : ULong
         get() {
-            val o = __offset(82)
+            val o = __offset(80)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val dispatchDropsTotal : ULong
         get() {
-            val o = __offset(84)
+            val o = __offset(82)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val claimDropsTotal : ULong
         get() {
-            val o = __offset(86)
+            val o = __offset(84)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val makeUpdateUs : ULong
         get() {
-            val o = __offset(88)
+            val o = __offset(86)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val serializeUs : ULong
         get() {
-            val o = __offset(90)
+            val o = __offset(88)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val updateFrameDegradationsTotal : ULong
         get() {
-            val o = __offset(92)
+            val o = __offset(90)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     companion object {
@@ -260,8 +255,8 @@ class Metrics : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createMetrics(builder: FlatBufferBuilder, generatedEvents: ULong, noteEvents: ULong, profileEvents: ULong, duplicateEvents: ULong, deleteEvents: ULong, storedEvents: ULong, tombstones: ULong, visibleItems: ULong, visibleProfiledItems: ULong, visiblePlaceholderAvatarItems: ULong, openViews: UInt, eventsSinceLastUpdate: ULong, diagnosticFirehoseEvents: ULong, insertedCount: ULong, updatedCount: ULong, removedCount: ULong, eventsPerSecondConfigured: UInt, emitHzConfigured: UInt, updateSequence: ULong, estimatedStoreBytes: ULong, payloadBytes: ULong, storeToPayloadRatio: Double, actorQueueDepth: UInt, framesRx: ULong, eventsRx: ULong, eoseRx: ULong, noticesRx: ULong, closedRx: ULong, bytesRx: ULong, bytesTx: ULong, contactsAuthors: ULong, timelineAuthors: ULong, firstEventMs: ULong?, targetProfileLoadedMs: ULong?, timelineOpenedMs: ULong?, timelineFirstItemMs: ULong?, updateEmittedMs: ULong?, lastEventToEmitMs: ULong?, maxEventToEmitMs: ULong, maxEventsPerUpdate: ULong, dispatchDropsTotal: ULong, claimDropsTotal: ULong, makeUpdateUs: ULong, serializeUs: ULong, updateFrameDegradationsTotal: ULong) : Int {
-            builder.startTable(45)
+        fun createMetrics(builder: FlatBufferBuilder, generatedEvents: ULong, noteEvents: ULong, profileEvents: ULong, duplicateEvents: ULong, deleteEvents: ULong, storedEvents: ULong, tombstones: ULong, visibleItems: ULong, visibleProfiledItems: ULong, visiblePlaceholderAvatarItems: ULong, openViews: UInt, eventsSinceLastUpdate: ULong, diagnosticFirehoseEvents: ULong, insertedCount: ULong, updatedCount: ULong, removedCount: ULong, emitHzConfigured: UInt, updateSequence: ULong, estimatedStoreBytes: ULong, payloadBytes: ULong, storeToPayloadRatio: Double, actorQueueDepth: UInt, framesRx: ULong, eventsRx: ULong, eoseRx: ULong, noticesRx: ULong, closedRx: ULong, bytesRx: ULong, bytesTx: ULong, contactsAuthors: ULong, timelineAuthors: ULong, firstEventMs: ULong?, targetProfileLoadedMs: ULong?, timelineOpenedMs: ULong?, timelineFirstItemMs: ULong?, updateEmittedMs: ULong?, lastEventToEmitMs: ULong?, maxEventToEmitMs: ULong, maxEventsPerUpdate: ULong, dispatchDropsTotal: ULong, claimDropsTotal: ULong, makeUpdateUs: ULong, serializeUs: ULong, updateFrameDegradationsTotal: ULong) : Int {
+            builder.startTable(44)
             addUpdateFrameDegradationsTotal(builder, updateFrameDegradationsTotal)
             addSerializeUs(builder, serializeUs)
             addMakeUpdateUs(builder, makeUpdateUs)
@@ -305,11 +300,10 @@ class Metrics : Table() {
             addGeneratedEvents(builder, generatedEvents)
             addActorQueueDepth(builder, actorQueueDepth)
             addEmitHzConfigured(builder, emitHzConfigured)
-            addEventsPerSecondConfigured(builder, eventsPerSecondConfigured)
             addOpenViews(builder, openViews)
             return endMetrics(builder)
         }
-        fun startMetrics(builder: FlatBufferBuilder) = builder.startTable(45)
+        fun startMetrics(builder: FlatBufferBuilder) = builder.startTable(44)
         fun addGeneratedEvents(builder: FlatBufferBuilder, generatedEvents: ULong) = builder.addLong(0, generatedEvents.toLong(), 0)
         fun addNoteEvents(builder: FlatBufferBuilder, noteEvents: ULong) = builder.addLong(1, noteEvents.toLong(), 0)
         fun addProfileEvents(builder: FlatBufferBuilder, profileEvents: ULong) = builder.addLong(2, profileEvents.toLong(), 0)
@@ -326,35 +320,34 @@ class Metrics : Table() {
         fun addInsertedCount(builder: FlatBufferBuilder, insertedCount: ULong) = builder.addLong(13, insertedCount.toLong(), 0)
         fun addUpdatedCount(builder: FlatBufferBuilder, updatedCount: ULong) = builder.addLong(14, updatedCount.toLong(), 0)
         fun addRemovedCount(builder: FlatBufferBuilder, removedCount: ULong) = builder.addLong(15, removedCount.toLong(), 0)
-        fun addEventsPerSecondConfigured(builder: FlatBufferBuilder, eventsPerSecondConfigured: UInt) = builder.addInt(16, eventsPerSecondConfigured.toInt(), 0)
-        fun addEmitHzConfigured(builder: FlatBufferBuilder, emitHzConfigured: UInt) = builder.addInt(17, emitHzConfigured.toInt(), 0)
-        fun addUpdateSequence(builder: FlatBufferBuilder, updateSequence: ULong) = builder.addLong(18, updateSequence.toLong(), 0)
-        fun addEstimatedStoreBytes(builder: FlatBufferBuilder, estimatedStoreBytes: ULong) = builder.addLong(19, estimatedStoreBytes.toLong(), 0)
-        fun addPayloadBytes(builder: FlatBufferBuilder, payloadBytes: ULong) = builder.addLong(20, payloadBytes.toLong(), 0)
-        fun addStoreToPayloadRatio(builder: FlatBufferBuilder, storeToPayloadRatio: Double) = builder.addDouble(21, storeToPayloadRatio, 0.0)
-        fun addActorQueueDepth(builder: FlatBufferBuilder, actorQueueDepth: UInt) = builder.addInt(22, actorQueueDepth.toInt(), 0)
-        fun addFramesRx(builder: FlatBufferBuilder, framesRx: ULong) = builder.addLong(23, framesRx.toLong(), 0)
-        fun addEventsRx(builder: FlatBufferBuilder, eventsRx: ULong) = builder.addLong(24, eventsRx.toLong(), 0)
-        fun addEoseRx(builder: FlatBufferBuilder, eoseRx: ULong) = builder.addLong(25, eoseRx.toLong(), 0)
-        fun addNoticesRx(builder: FlatBufferBuilder, noticesRx: ULong) = builder.addLong(26, noticesRx.toLong(), 0)
-        fun addClosedRx(builder: FlatBufferBuilder, closedRx: ULong) = builder.addLong(27, closedRx.toLong(), 0)
-        fun addBytesRx(builder: FlatBufferBuilder, bytesRx: ULong) = builder.addLong(28, bytesRx.toLong(), 0)
-        fun addBytesTx(builder: FlatBufferBuilder, bytesTx: ULong) = builder.addLong(29, bytesTx.toLong(), 0)
-        fun addContactsAuthors(builder: FlatBufferBuilder, contactsAuthors: ULong) = builder.addLong(30, contactsAuthors.toLong(), 0)
-        fun addTimelineAuthors(builder: FlatBufferBuilder, timelineAuthors: ULong) = builder.addLong(31, timelineAuthors.toLong(), 0)
-        fun addFirstEventMs(builder: FlatBufferBuilder, firstEventMs: ULong) = builder.addLong(32, firstEventMs.toLong(), 0)
-        fun addTargetProfileLoadedMs(builder: FlatBufferBuilder, targetProfileLoadedMs: ULong) = builder.addLong(33, targetProfileLoadedMs.toLong(), 0)
-        fun addTimelineOpenedMs(builder: FlatBufferBuilder, timelineOpenedMs: ULong) = builder.addLong(34, timelineOpenedMs.toLong(), 0)
-        fun addTimelineFirstItemMs(builder: FlatBufferBuilder, timelineFirstItemMs: ULong) = builder.addLong(35, timelineFirstItemMs.toLong(), 0)
-        fun addUpdateEmittedMs(builder: FlatBufferBuilder, updateEmittedMs: ULong) = builder.addLong(36, updateEmittedMs.toLong(), 0)
-        fun addLastEventToEmitMs(builder: FlatBufferBuilder, lastEventToEmitMs: ULong) = builder.addLong(37, lastEventToEmitMs.toLong(), 0)
-        fun addMaxEventToEmitMs(builder: FlatBufferBuilder, maxEventToEmitMs: ULong) = builder.addLong(38, maxEventToEmitMs.toLong(), 0)
-        fun addMaxEventsPerUpdate(builder: FlatBufferBuilder, maxEventsPerUpdate: ULong) = builder.addLong(39, maxEventsPerUpdate.toLong(), 0)
-        fun addDispatchDropsTotal(builder: FlatBufferBuilder, dispatchDropsTotal: ULong) = builder.addLong(40, dispatchDropsTotal.toLong(), 0)
-        fun addClaimDropsTotal(builder: FlatBufferBuilder, claimDropsTotal: ULong) = builder.addLong(41, claimDropsTotal.toLong(), 0)
-        fun addMakeUpdateUs(builder: FlatBufferBuilder, makeUpdateUs: ULong) = builder.addLong(42, makeUpdateUs.toLong(), 0)
-        fun addSerializeUs(builder: FlatBufferBuilder, serializeUs: ULong) = builder.addLong(43, serializeUs.toLong(), 0)
-        fun addUpdateFrameDegradationsTotal(builder: FlatBufferBuilder, updateFrameDegradationsTotal: ULong) = builder.addLong(44, updateFrameDegradationsTotal.toLong(), 0)
+        fun addEmitHzConfigured(builder: FlatBufferBuilder, emitHzConfigured: UInt) = builder.addInt(16, emitHzConfigured.toInt(), 0)
+        fun addUpdateSequence(builder: FlatBufferBuilder, updateSequence: ULong) = builder.addLong(17, updateSequence.toLong(), 0)
+        fun addEstimatedStoreBytes(builder: FlatBufferBuilder, estimatedStoreBytes: ULong) = builder.addLong(18, estimatedStoreBytes.toLong(), 0)
+        fun addPayloadBytes(builder: FlatBufferBuilder, payloadBytes: ULong) = builder.addLong(19, payloadBytes.toLong(), 0)
+        fun addStoreToPayloadRatio(builder: FlatBufferBuilder, storeToPayloadRatio: Double) = builder.addDouble(20, storeToPayloadRatio, 0.0)
+        fun addActorQueueDepth(builder: FlatBufferBuilder, actorQueueDepth: UInt) = builder.addInt(21, actorQueueDepth.toInt(), 0)
+        fun addFramesRx(builder: FlatBufferBuilder, framesRx: ULong) = builder.addLong(22, framesRx.toLong(), 0)
+        fun addEventsRx(builder: FlatBufferBuilder, eventsRx: ULong) = builder.addLong(23, eventsRx.toLong(), 0)
+        fun addEoseRx(builder: FlatBufferBuilder, eoseRx: ULong) = builder.addLong(24, eoseRx.toLong(), 0)
+        fun addNoticesRx(builder: FlatBufferBuilder, noticesRx: ULong) = builder.addLong(25, noticesRx.toLong(), 0)
+        fun addClosedRx(builder: FlatBufferBuilder, closedRx: ULong) = builder.addLong(26, closedRx.toLong(), 0)
+        fun addBytesRx(builder: FlatBufferBuilder, bytesRx: ULong) = builder.addLong(27, bytesRx.toLong(), 0)
+        fun addBytesTx(builder: FlatBufferBuilder, bytesTx: ULong) = builder.addLong(28, bytesTx.toLong(), 0)
+        fun addContactsAuthors(builder: FlatBufferBuilder, contactsAuthors: ULong) = builder.addLong(29, contactsAuthors.toLong(), 0)
+        fun addTimelineAuthors(builder: FlatBufferBuilder, timelineAuthors: ULong) = builder.addLong(30, timelineAuthors.toLong(), 0)
+        fun addFirstEventMs(builder: FlatBufferBuilder, firstEventMs: ULong) = builder.addLong(31, firstEventMs.toLong(), 0)
+        fun addTargetProfileLoadedMs(builder: FlatBufferBuilder, targetProfileLoadedMs: ULong) = builder.addLong(32, targetProfileLoadedMs.toLong(), 0)
+        fun addTimelineOpenedMs(builder: FlatBufferBuilder, timelineOpenedMs: ULong) = builder.addLong(33, timelineOpenedMs.toLong(), 0)
+        fun addTimelineFirstItemMs(builder: FlatBufferBuilder, timelineFirstItemMs: ULong) = builder.addLong(34, timelineFirstItemMs.toLong(), 0)
+        fun addUpdateEmittedMs(builder: FlatBufferBuilder, updateEmittedMs: ULong) = builder.addLong(35, updateEmittedMs.toLong(), 0)
+        fun addLastEventToEmitMs(builder: FlatBufferBuilder, lastEventToEmitMs: ULong) = builder.addLong(36, lastEventToEmitMs.toLong(), 0)
+        fun addMaxEventToEmitMs(builder: FlatBufferBuilder, maxEventToEmitMs: ULong) = builder.addLong(37, maxEventToEmitMs.toLong(), 0)
+        fun addMaxEventsPerUpdate(builder: FlatBufferBuilder, maxEventsPerUpdate: ULong) = builder.addLong(38, maxEventsPerUpdate.toLong(), 0)
+        fun addDispatchDropsTotal(builder: FlatBufferBuilder, dispatchDropsTotal: ULong) = builder.addLong(39, dispatchDropsTotal.toLong(), 0)
+        fun addClaimDropsTotal(builder: FlatBufferBuilder, claimDropsTotal: ULong) = builder.addLong(40, claimDropsTotal.toLong(), 0)
+        fun addMakeUpdateUs(builder: FlatBufferBuilder, makeUpdateUs: ULong) = builder.addLong(41, makeUpdateUs.toLong(), 0)
+        fun addSerializeUs(builder: FlatBufferBuilder, serializeUs: ULong) = builder.addLong(42, serializeUs.toLong(), 0)
+        fun addUpdateFrameDegradationsTotal(builder: FlatBufferBuilder, updateFrameDegradationsTotal: ULong) = builder.addLong(43, updateFrameDegradationsTotal.toLong(), 0)
         fun endMetrics(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

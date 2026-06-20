@@ -81,7 +81,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     // the TCP write buffer and blocking relay threads indefinitely — causing a hang at teardown.
     let app: *mut NmpApp = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(sink_cb));
-    nmp_app_configure(app, 0, 80, 4);
+    nmp_app_configure(app, 80, 4);
 
     let baseline_rss = process_rss_bytes();
     // Counting-allocator baseline. NET live heap (alloc-minus-free) is immune to

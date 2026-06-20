@@ -127,7 +127,7 @@ fn active_account_handle_reflects_real_sign_in() {
         "no account active before sign-in"
     );
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
     super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
@@ -164,7 +164,7 @@ fn active_account_handle_reflects_account_switch() {
     super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
     let handle = super::app_ref(app).expect("app").active_account_handle();
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Sign in account A.
     let nsec_a = std::ffi::CString::new(TEST_NSEC).unwrap();
@@ -205,7 +205,7 @@ fn active_account_handle_survives_reset() {
     let handle = super::app_ref(app).expect("app").active_account_handle();
     let slot_ptr = Arc::as_ptr(&handle);
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
 
     // Sign in account A, then Reset (wipes all kernel state, including the
     // active account → slot returns to `None`).
@@ -265,7 +265,7 @@ fn identity_change_observer_runs_after_slot_update() {
         let _ = tx.send((active, slot_value));
     });
 
-    nmp_app_start(app, 0, 256, 4);
+    nmp_app_start(app, 256, 4);
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
     super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
