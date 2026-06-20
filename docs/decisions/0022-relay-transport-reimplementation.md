@@ -38,11 +38,11 @@ tungstenite = { workspace = true, default-features = false, features = [
     "handshake", "rustls-tls-webpki-roots" ] }
 ```
 
-The relay transport itself is hand-written and lives entirely inside
-`nmp-core`: `crates/nmp-core/src/relay_worker/` (`mod.rs` 452 LOC +
-`tests.rs` 627 LOC = ~1079 LOC), driven by the actor in
-`crates/nmp-core/src/actor/` and fed by the subscription planner in
-`crates/nmp-core/src/planner/`.
+The relay transport itself is hand-written and lives in `nmp-network`:
+`crates/nmp-network/src/relay_worker/` (now split across `mod.rs`,
+`connect.rs`, `socket_io.rs`, `io_ready.rs`, plus `tests.rs` /
+`no_polling_tests.rs`), driven by the actor in
+`crates/nmp-core/src/actor/` and fed by the subscription planner.
 
 This is the textbook "documentation says one thing, code does another"
 defect. The discrepancy is architecturally invisible: a new reader of
@@ -69,8 +69,8 @@ the SDK's relay pool, and §8's `rust-nostr` dependency list drops
 
 The transport contract is:
 
-- `relay_worker/mod.rs` — one `tungstenite` socket per relay URL, each
-  on its own OS thread, communicating with the actor over
+- `crates/nmp-network/src/relay_worker/` — one `tungstenite` socket per
+  relay URL, each on its own OS thread, communicating with the actor over
   `std::sync::mpsc` channels (`RelayEvent` inbound, `RelayCommand`
   outbound). No tokio, no `async`/`await`, no executor.
 - `actor/mod.rs` — the single synchronous owner thread. It blocks on
@@ -89,7 +89,7 @@ tension with `nostr-sdk`'s `RelayPool`.
 `docs/aim.md` §2 makes the execution model
 non-negotiable: "A dedicated OS thread owns `AppState` and runs a
 synchronous event loop." NMP's actor is exactly that — a `std::thread`
-that blocks on `recv_timeout` (`actor/mod.rs:498`,
+that blocks on `recv_timeout` (`actor/mod.rs`,
 `actor/tick.rs::compute_wait`). It is not a tokio task.
 
 `nostr-sdk`'s `Client` / `RelayPool` is tokio-native: relays are
@@ -125,13 +125,13 @@ mean either a second runtime or a polling shim — both forbidden.
 ### 3. Generational relay handles — stale-event rejection without locks
 
 Every `RelayEvent` carries a `generation: u64`
-(`relay_worker/mod.rs:21-75`). When the actor (re)spawns a worker for a
-URL it stamps a fresh, monotonically increasing generation
-(`actor/relay_mgmt.rs:86-95`) and records it in `RelayControl`. On every
-inbound event the actor compares generations:
+(`crates/nmp-network/src/relay_worker/`). When the actor (re)spawns a worker
+for a URL it stamps a fresh, monotonically increasing generation
+(`crates/nmp-core/src/actor/relay_mgmt.rs`) and records it in `RelayControl`.
+On every inbound event the actor compares generations:
 
 ```rust
-// crates/nmp-core/src/actor/mod.rs:501-507
+// crates/nmp-core/src/actor/mod.rs
 let generation = event.generation();
 if relay_controls
     .get(&relay_url)
@@ -167,9 +167,10 @@ own routing — strictly worse than owning the whole path.
 
 **Accepted costs:**
 
-- NMP carries ~1079 LOC of WebSocket transport (`relay_worker/`) plus
-  the actor/planner glue it integrates with. This is code we own,
-  test (`relay_worker/tests.rs`, 627 LOC), and must maintain.
+- NMP carries its own WebSocket transport (`crates/nmp-network/src/relay_worker/`)
+  plus the actor/planner glue it integrates with. This is code we own,
+  test (`relay_worker/tests.rs`, `relay_worker/no_polling_tests.rs`), and
+  must maintain.
 - Transport-layer improvements landing in `nostr-sdk` (e.g. new
   reconnect heuristics, NIP-77 negentropy in the pool, gossip
   integration) do **not** flow in automatically. Each must be
@@ -211,7 +212,7 @@ own routing — strictly worse than owning the whole path.
   second runtime or a polling shim ("No polling — ever").
 - **Fork `nostr-sdk` and strip the async layer.** Rejected: a fork is
   a permanent maintenance liability, and what remains after removing
-  the pool, router, and streams is roughly the ~1079 LOC we already
+  the pool, router, and streams is roughly the transport we already
   have — without the doctrine-shaped design (generational handles,
   lattice planner). `aim.md` §3 explicitly states the protocol crates
   are "dependencies, not forks."
