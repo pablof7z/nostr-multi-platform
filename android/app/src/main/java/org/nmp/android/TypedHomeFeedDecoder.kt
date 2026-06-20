@@ -9,11 +9,13 @@ import nmp.feed.FeedWindow
 import nmp.nip01.OpFeedSnapshot
 import nmp.nip01.ReplyAttribution
 import nmp.nip01.RelationCountState
+import nmp.nip01.RepostAttribution
 import nmp.nip01.RootCard
 import nmp.nip01.TimelineEventCard
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.ChirpReplyAttribution
+import org.nmp.android.model.ChirpRepostAttribution
 import org.nmp.android.model.ChirpRootCard
 import org.nmp.android.model.ContentTreeWire
 import org.nmp.android.model.ContentWireNode
@@ -192,12 +194,23 @@ object TypedHomeFeedDecoder {
             authorDisplayName = if (card?.hasAuthorDisplayName == true) card.authorDisplayName else null,
             authorPictureUrl = if (card?.hasAuthorPictureUrl == true) card.authorPictureUrl else null,
             contentPreview = card?.contentPreview ?: "",
+            repostedBy = makeRepostAttribution(card?.repostedBy),
             relayProvenance = buildList {
                 val count = card?.relayProvenanceLength ?: 0
                 for (i in 0 until count) {
                     card?.relayProvenance(i)?.let { add(it) }
                 }
             },
+        )
+    }
+
+    private fun makeRepostAttribution(entry: RepostAttribution?): ChirpRepostAttribution? {
+        if (entry == null) return null
+        return ChirpRepostAttribution(
+            authorPubkey = entry.authorPubkey ?: "",
+            authorDisplayName = if (entry.hasAuthorDisplayName) entry.authorDisplayName else null,
+            authorPictureUrl = if (entry.hasAuthorPictureUrl) entry.authorPictureUrl else null,
+            noteCreatedAt = entry.noteCreatedAt,
         )
     }
 
