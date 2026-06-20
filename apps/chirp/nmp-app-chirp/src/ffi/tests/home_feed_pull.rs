@@ -41,7 +41,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
