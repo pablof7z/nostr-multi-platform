@@ -54,7 +54,7 @@ use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{ClosureInterestShape, PullFeedController};
 use nmp_ffi::{
-    nmp_app_close_contact_feed, nmp_app_close_interest, nmp_app_open_contact_feed,
+    clear_active_follows_feed, declare_active_follows_feed, nmp_app_close_interest,
     nmp_app_open_interest, NmpApp,
 };
 use nmp_nip01::op_feed::{
@@ -309,36 +309,33 @@ pub extern "C" fn nmp_app_chirp_close_thread_feed(app: *mut NmpApp, event_id_hex
 
 /// Chirp's home-feed primary content kind declaration: kind:1 text notes.
 ///
-/// Repost wrappers are derived by the generic `nmp_app_open_contact_feed` verb;
-/// Chirp does not enumerate kind:6 as primary feed policy.
+/// Repost wrappers are derived below this app-facing declaration; Chirp does
+/// not enumerate kind:6 as primary feed policy.
 ///
 /// `pub(crate)` so in-crate tests can assert the constant value without
 /// duplicating the literal.
 pub(crate) const HOME_FEED_PRIMARY_KINDS_JSON: &str = "[1]";
 
-/// Open Chirp's home (contact) feed — the subscription that REQs kind:1 events
-/// and derived repost wrappers from the active account's follow set.
+/// Declare Chirp's home feed from the active account's current follow set.
 ///
-/// Delegates to the generic `nmp_app_open_contact_feed` with
+/// Delegates to the Rust declared-feed helper with
 /// `HOME_FEED_PRIMARY_KINDS_JSON = "[1]"`. App shells that previously called
-/// `nmp_app_open_timeline` must call this instead (ADR-0042 amendment
-/// 2026-06-12).
+/// `nmp_app_open_timeline` must call this instead.
 ///
-/// D6 — a null `app` is a silent no-op (forwarded by `nmp_app_open_contact_feed`).
+/// D6 — a null `app` is a silent no-op.
 #[no_mangle]
 pub extern "C" fn nmp_app_chirp_open_home_feed(app: *mut NmpApp) {
     if let Ok(kinds_c) = std::ffi::CString::new(HOME_FEED_PRIMARY_KINDS_JSON) {
-        nmp_app_open_contact_feed(app, kinds_c.as_ptr());
+        declare_active_follows_feed(app, kinds_c.as_ptr());
     }
 }
 
-/// Close Chirp's home (contact) feed. Mirrors `nmp_app_chirp_open_home_feed`;
-/// withdraws all follow-feed M2 interests and emits CLOSE frames.
+/// Clear Chirp's active-follows home-feed declaration.
 ///
 /// D6 — a null `app` is a silent no-op.
 #[no_mangle]
 pub extern "C" fn nmp_app_chirp_close_home_feed(app: *mut NmpApp) {
-    nmp_app_close_contact_feed(app);
+    clear_active_follows_feed(app);
 }
 
 /// Refcount-owner key for an author interest. Stable per author so a re-open

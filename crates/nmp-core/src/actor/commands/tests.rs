@@ -1880,14 +1880,14 @@ fn remove_relay_canonical_matches_add_form() {
 /// `LogicalInterest`s in the lifecycle registry (for the active account's
 /// follow set) so that `drain_lifecycle_tick()` emits follow-feed REQ frames.
 ///
-/// Pre-T140: `open_contact_feed` → `open_author` → no follow-feed interests in
+/// Pre-T140: `declare_active_follows_feed` → `open_author` → no follow-feed interests in
 /// registry → `drain_lifecycle_tick` returns `Vec::new()`. FAILS.
 ///
-/// Post-T140: `open_contact_feed` pushes per-follow `LogicalInterest`s → the
+/// Post-T140: `declare_active_follows_feed` pushes per-follow `LogicalInterest`s → the
 /// M2 planner compiles them → `drain_lifecycle_tick` returns REQ frame(s) for
 /// the followed author's NIP-65 write relay. PASSES.
 #[test]
-fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
+fn t140_declare_active_follows_feed_registers_m2_interests_drain_emits_req() {
     const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     let (mut id, mut kernel) = fresh();
@@ -1919,10 +1919,10 @@ fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
 
-    // Call the actor command under test. `open_contact_feed` receives the
+    // Call the actor command under test. `declare_active_follows_feed` receives the
     // compiled acquisition kinds {1, 6}, which re-register the active account's
     // M2 follow-feed interests.
-    let _outbound = open_contact_feed(
+    let _outbound = declare_active_follows_feed(
         &id,
         &mut kernel,
         std::collections::BTreeSet::from([1u32, 6u32]),
@@ -1940,33 +1940,33 @@ fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
 
     assert!(
         !req_urls.is_empty(),
-        "T140: open_contact_feed must register follow-feed M2 interests so \
+        "T140: declare_active_follows_feed must register follow-feed M2 interests so \
          drain_lifecycle_tick emits REQ frames (got {} total frames, 0 REQs)",
         frames.len(),
     );
     assert!(
         req_urls.iter().any(|u| u == "wss://alice-t140.relay/"),
-        "T140: open_contact_feed REQ must target ALICE's resolved write relay \
+        "T140: declare_active_follows_feed REQ must target ALICE's resolved write relay \
          wss://alice-t140.relay/; got urls: {req_urls:?}"
     );
 }
 
-// ── open_contact_feed / close_contact_feed (RED tests — Step 1 of TDD) ──────
+// ── declare_active_follows_feed / clear_active_follows_feed (RED tests — Step 1 of TDD) ──────
 
-/// After `open_contact_feed({1,6})` compiled acquisition kinds are supplied,
+/// After `declare_active_follows_feed({1,6})` compiled acquisition kinds are supplied,
 /// the follow-feed interests are registered;
-/// after `close_contact_feed()` they are withdrawn, a CLOSE frame is emitted,
+/// after `clear_active_follows_feed()` they are withdrawn, a CLOSE frame is emitted,
 /// `follow_feed_interest_ids` is empty, and `timeline_authors` is empty.
 ///
 /// Verifies the full symmetric lifecycle required by the design: D5 cluster is
 /// present after open, absent after close.
 #[test]
-fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
+fn clear_active_follows_feed_withdraws_follow_interests_and_emits_close() {
     const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     let (mut id, mut kernel) = fresh();
 
-    // Sign in so `open_contact_feed` has an active pubkey.
+    // Sign in so `declare_active_follows_feed` has an active pubkey.
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
     let active_pk = id.active_pubkey().expect("active account after sign_in");
 
@@ -1991,7 +1991,7 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         .set_selection_budget(usize::MAX, usize::MAX);
 
     // Open with compiled acquisition kinds {1, 6}: interests should be registered.
-    let _outbound = open_contact_feed(
+    let _outbound = declare_active_follows_feed(
         &id,
         &mut kernel,
         std::collections::BTreeSet::from([1u32, 6u32]),
@@ -2005,11 +2005,11 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         .count();
     assert!(
         req_count_after_open > 0,
-        "open_contact_feed must register follow-feed interests (got 0 REQs after open)"
+        "declare_active_follows_feed must register follow-feed interests (got 0 REQs after open)"
     );
 
     // Close: interests should be withdrawn, CLOSE frames emitted.
-    let _close_out = close_contact_feed(&id, &mut kernel);
+    let _close_out = clear_active_follows_feed(&id, &mut kernel);
 
     let close_frames = kernel.drain_lifecycle_tick();
     let close_count = close_frames
@@ -2018,19 +2018,19 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         .count();
     assert!(
         close_count > 0,
-        "close_contact_feed must emit CLOSE frames (got 0 CLOSEs after close)"
+        "clear_active_follows_feed must emit CLOSE frames (got 0 CLOSEs after close)"
     );
 
     // After close the follow-feed interest registry must be empty.
     assert!(
         kernel.follow_feed_interest_ids.is_empty(),
-        "close_contact_feed must clear follow_feed_interest_ids"
+        "clear_active_follows_feed must clear follow_feed_interest_ids"
     );
 
     // timeline_authors must be cleared as well (the kernel CLEAR branch).
     assert!(
         kernel.timeline_authors.is_empty(),
-        "close_contact_feed must clear timeline_authors"
+        "clear_active_follows_feed must clear timeline_authors"
     );
 
     // Confirm that the kernel never emits the JSON-era timeline/delta keys
@@ -2059,10 +2059,10 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
     );
 }
 
-/// `open_contact_feed` with an empty kinds set acts as a clear (same as close):
+/// `declare_active_follows_feed` with an empty kinds set acts as a clear (same as close):
 /// any previously registered follow-feed interests are withdrawn.
 #[test]
-fn open_contact_feed_empty_kinds_is_clear() {
+fn declare_active_follows_feed_empty_kinds_is_clear() {
     const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
     let (mut id, mut kernel) = fresh();
@@ -2087,7 +2087,7 @@ fn open_contact_feed_empty_kinds_is_clear() {
         .set_selection_budget(usize::MAX, usize::MAX);
 
     // First open with non-empty kinds so there is something to clear.
-    let _ = open_contact_feed(
+    let _ = declare_active_follows_feed(
         &id,
         &mut kernel,
         std::collections::BTreeSet::from([1u32, 6u32]),
@@ -2095,12 +2095,12 @@ fn open_contact_feed_empty_kinds_is_clear() {
     let _ = kernel.drain_lifecycle_tick();
 
     // Now open with empty kinds set — behaves as clear.
-    let _ = open_contact_feed(&id, &mut kernel, std::collections::BTreeSet::new());
+    let _ = declare_active_follows_feed(&id, &mut kernel, std::collections::BTreeSet::new());
     let _ = kernel.drain_lifecycle_tick();
 
     assert!(
         kernel.follow_feed_interest_ids.is_empty(),
-        "open_contact_feed with empty kinds must clear follow_feed_interest_ids"
+        "declare_active_follows_feed with empty kinds must clear follow_feed_interest_ids"
     );
 }
 

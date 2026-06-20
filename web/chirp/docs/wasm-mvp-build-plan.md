@@ -198,7 +198,7 @@ the host only supplies the timer".
 
 ---
 
-### PR-3 — Interest + contact-feed dispatch verbs, viewer-pubkey hand-off (G3)
+### PR-3 — Interest + active-follows declaration, viewer-pubkey hand-off (G3)
 
 **What it builds**
 
@@ -219,11 +219,10 @@ the host only supplies the timer".
     `partition_auth_paused`, same pattern as `handle_relay_connected`,
     `kernel_reducer.rs:138-157`) so an open against already-connected relays
     emits its REQ immediately rather than waiting for the next tick.
-  - `KernelReducer::set_follow_feed_kinds(kinds: BTreeSet<u32>) ->
+  - `KernelReducer::declare_active_follows_feed(kinds: BTreeSet<u32>) ->
     Vec<OutboundMessage>` — forwards to `Kernel::set_follow_feed_kinds`
     (`kernel/ingest/contacts.rs:293-297`), then the same inline drain. This
-    is the reducer twin of the 10-line actor wrappers
-    `open_contact_feed`/`close_contact_feed`
+    is the reducer twin of the actor active-follows declaration wrappers
     (`actor/commands/publish.rs:698-731`), minus the `IdentityRuntime` check
     (replaced by the kernel's own `active_account` gate — `register_follow_
     feed_for_active_account` already early-returns on `None`,
@@ -242,10 +241,10 @@ the host only supplies the timer".
   - `dispatch_routing.rs` — four new verbs:
     `nmp.kernel.open_interest` / `close_interest`
     (payload: `filter_json`, `consumer_id`, `scope`) and
-    `nmp.kernel.open_contact_feed` / `close_contact_feed`
-    (payload: `kinds: [u32]`), mirroring the native FFI names
-    (`docs/ffi-surface.md` §5–6, ADR-0042). Same D6 parse discipline as the
-    existing `ClaimDispatch` arm (`dispatch_routing.rs:62-93`).
+    `nmp.feed.declare_active_follows`
+    (payload: `primary_kinds: [u32]`) / `nmp.feed.clear_active_follows`.
+    Same D6 parse discipline as the existing `ClaimDispatch` arm
+    (`dispatch_routing.rs:62-93`).
   - `runtime.rs` — the claim/verb arm fans the returned outbound through
     `fan_out_outbound` and pushes a snapshot (existing pattern,
     `runtime.rs:388-424`); `set_signer` success additionally calls
@@ -254,7 +253,7 @@ the host only supplies the timer".
 **Acceptance check** (native, `cargo test -p nmp-wasm` + `-p nmp-core`)
 
 - Protocol-conformance test: `SetSigner(nip07, pk)` → `Start` →
-  `handle_relay_connected` → dispatch `open_contact_feed {kinds:[1]}` →
+  `handle_relay_connected` → declared active-follows feed with primary `[1]` →
   feed a kind:3 frame for `pk` with follows → assert the outbound (inline or
   next `tick()`) contains a REQ whose compiled acquisition filter carries `authors = follows, kinds = [1,6]`, while the app-owned declaration remains primary `[1]`.
 - Test: dispatch the declared author-feed seam with primary `[1]`, deriving
@@ -358,7 +357,7 @@ projections from PR-1). This is the PR after which Chirp Web looks like a
 Nostr client.
 
 **Dependencies / degraded mode** — hard on PR-1 (sidecar emission) and PR-3
-(interests, contact feed, viewer pubkey). Absent: timeline events sit in the
+(interests, active-follows declaration, viewer pubkey). Absent: timeline events sit in the
 kernel store invisible to JS; the shell shows the diagnostics panel only —
 honest, but not a product.
 

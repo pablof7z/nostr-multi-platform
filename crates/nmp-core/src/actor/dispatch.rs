@@ -1011,13 +1011,14 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::OpenContactFeed { kinds } => {
-            let outbound = commands::open_contact_feed(ctx.identity, ctx.kernel, kinds);
+        ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds } => {
+            let outbound =
+                commands::declare_active_follows_feed(ctx.identity, ctx.kernel, acquisition_kinds);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::CloseContactFeed => {
-            let outbound = commands::close_contact_feed(ctx.identity, ctx.kernel);
+        ActorCommand::ClearActiveFollowsFeed => {
+            let outbound = commands::clear_active_follows_feed(ctx.identity, ctx.kernel);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

@@ -1,9 +1,9 @@
-//! #1493 P4 — `open_contact_feed` must persist the compiled follow-feed
+//! #1493 P4 — `declare_active_follows_feed` must persist the compiled follow-feed
 //! acquisition kinds even when NO account is active yet.
 //!
 //! Both Chirp shells mount the home-feed view at launch (iOS
 //! `HomeFeedView.task` / Android `TimelineScreen.LaunchedEffect`), which fires
-//! `open_contact_feed` BEFORE the user signs in. The pre-fix no-account branch
+//! `declare_active_follows_feed` BEFORE the user signs in. The pre-fix no-account branch
 //! toasted and DROPPED the kinds, so `kernel.follow_feed_kinds` stayed empty;
 //! after sign-in the reconcile registered an empty follow-feed and the user saw
 //! no timeline until an app restart / tab toggle. Android masked this with an
@@ -33,11 +33,11 @@ fn fresh() -> (IdentityRuntime, Kernel) {
 
 /// View-driven ordering: declare kinds with NO account, THEN sign in, THEN a
 /// kind:3 arrives. `ingest_contacts` re-registers the follow-feed using the
-/// STORED kinds — if `open_contact_feed` had dropped them (the old no-account
+/// STORED kinds — if `declare_active_follows_feed` had dropped them (the old no-account
 /// branch), `follow_feed_kinds` would be empty and `drain_lifecycle_tick` would
 /// emit 0 REQs.
 #[test]
-fn open_contact_feed_before_signin_persists_kinds_for_later_reconcile() {
+fn declare_active_follows_feed_before_signin_persists_kinds_for_later_reconcile() {
     let (mut id, mut kernel) = fresh();
 
     // 1. Home-feed view mounts at launch — declare kinds with NO active account.
@@ -45,7 +45,7 @@ fn open_contact_feed_before_signin_persists_kinds_for_later_reconcile() {
         id.active_pubkey().is_none(),
         "precondition: no account active when the view first opens the feed"
     );
-    let _ = open_contact_feed(
+    let _ = declare_active_follows_feed(
         &id,
         &mut kernel,
         std::collections::BTreeSet::from([1u32, 6u32]),
