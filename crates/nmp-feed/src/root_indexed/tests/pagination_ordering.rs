@@ -57,11 +57,18 @@ fn grow_visible_window_reveals_past_default_window() {
     // First snapshot is bounded to DEFAULT_FEED_WINDOW_LIMIT (80).
     let snap = h.engine.snapshot_current_window();
     assert_eq!(snap.cards.len(), 80, "initial snapshot bounded to 80");
-    assert_eq!(snap.page.as_ref().unwrap().has_more, true, "older roots remain");
+    assert_eq!(
+        snap.page.as_ref().unwrap().has_more,
+        true,
+        "older roots remain"
+    );
 
     // Growing the viewport reveals more and reports it grew.
     let more = h.engine.grow_visible_window();
-    assert!(more, "grow_visible_window must return true when older roots exist");
+    assert!(
+        more,
+        "grow_visible_window must return true when older roots exist"
+    );
 
     // snapshot now honors the grown viewport: all 120 roots.
     let snap_after = h.engine.snapshot_current_window();

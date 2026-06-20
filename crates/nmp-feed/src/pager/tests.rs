@@ -108,13 +108,20 @@ fn test_late_old_event_not_skipped() {
 
     // Drain 1: the recent events at seq 1,2 — the cursor advances PAST them.
     let mut first = Some(one_page(
-        vec![inserted(1, "recent_a", 1_000), inserted(2, "recent_b", 1_100)],
+        vec![
+            inserted(1, "recent_a", 1_000),
+            inserted(2, "recent_b", 1_100),
+        ],
         2,
         2,
     ));
     let out1 = pager.drain(|_after| first.take().expect("first page"));
     assert_eq!(out1.stop, DrainStop::Exhausted);
-    assert_eq!(pager.after_seq(), 2, "cursor advanced past the recent events");
+    assert_eq!(
+        pager.after_seq(),
+        2,
+        "cursor advanced past the recent events"
+    );
 
     // NOW an OLD event (created_at=10, far behind the display cursor) arrives
     // LATE and lands at seq 3 — AHEAD of the cursor in ingest order. A
@@ -128,7 +135,8 @@ fn test_late_old_event_not_skipped() {
 
     let ids: Vec<&str> = out2.events.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(
-        ids, ["late_old"],
+        ids,
+        ["late_old"],
         "the late-arriving old-created_at event is drained by seq, not skipped"
     );
     assert_eq!(pager.after_seq(), 3);
@@ -161,7 +169,11 @@ fn test_empty_advancing_pages_hit_scan_budget() {
         })
     });
 
-    assert_eq!(out.stop, DrainStop::ScanBudget, "must stop at the scan budget");
+    assert_eq!(
+        out.stop,
+        DrainStop::ScanBudget,
+        "must stop at the scan budget"
+    );
     assert!(out.events.is_empty(), "no positive rows matched");
     // Bounded: it visited ~budget seqs, NOT the million-row log. ceil(20/5)=4
     // pulls → after_seq ~20, far below `latest`.
@@ -212,7 +224,11 @@ fn test_pullgap_triggers_rebase() {
         DrainStop::Gap { rebased_to: 42 },
         "gap must surface explicitly"
     );
-    assert_eq!(pager.after_seq(), 42, "cursor rebased to first_available_seq");
+    assert_eq!(
+        pager.after_seq(),
+        42,
+        "cursor rebased to first_available_seq"
+    );
     assert!(out.events.is_empty());
 }
 
@@ -257,7 +273,10 @@ fn test_display_order_after_seq_drain() {
     let shown = display_sorted(&out.events);
     assert_eq!(shown, ["m2", "m1", "late"]);
     // The pager did not reorder for display — the two orders differ.
-    assert_ne!(drain_ids, shown.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_ne!(
+        drain_ids,
+        shown.iter().map(String::as_str).collect::<Vec<_>>()
+    );
 }
 
 /// `Deleted` rows never become events (InterestShape pull is positive-only,
@@ -265,11 +284,7 @@ fn test_display_order_after_seq_drain() {
 #[test]
 fn test_deleted_rows_skipped_but_advance() {
     let mut pager = FeedPullPager::new(&RealShapeFeed).expect("real shape");
-    let page = one_page(
-        vec![inserted(1, "keep", 100), deleted(2, "keep")],
-        2,
-        2,
-    );
+    let page = one_page(vec![inserted(1, "keep", 100), deleted(2, "keep")], 2, 2);
     let mut once = Some(page);
     let out = pager.drain(|_after| once.take().expect("pulled once"));
 

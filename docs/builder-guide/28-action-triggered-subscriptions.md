@@ -129,6 +129,38 @@ The pattern: `SubOwnerKey` folds in `consumer_id` (owner-unique);
 `visible_note_relations_identity` in `nmp-nip01/src/visible_relations.rs:113`
 is the production reference.
 
+## Feed declarations use primary kinds
+
+Feed-opening actions and FFI helpers that expose a feed should declare the
+content the app wants to render, not every protocol wrapper needed to acquire
+it. For a Chirp-style note feed the app says "primary kinds `[1]` from the
+current user's reactive follows." For an Olas-style picture feed it says
+"primary kinds `[20]` from this relay set / WoT / app-defined admission
+function." The protocol adapter compiles that into acquisition kinds:
+`nmp_nip18::try_acquisition_kinds_for_primary([1])` yields `{1, 6}`, and
+`try_acquisition_kinds_for_primary([20])` yields `{20, 16}`.
+
+Kind `6` and kind `16` are never valid primary feed kinds. They are repost
+wrappers derived from the primary target kinds. Supplying them as primary input
+is rejected instead of silently expanded, because otherwise the app keeps
+describing transport mechanics instead of its render intent.
+
+The perspective is equally declarative and reactive. A feed says "from the
+current user's follows", "from the current user's WoT", "from relays A/B/C", or
+"from this app predicate." It must not snapshot "these are my follows" in app
+state. When a kind:3/contact-list, mute, block, deletion, relay-list, or other
+perspective-changing event arrives through normal ingest, the Rust owner of the
+perspective recomputes acquisition/admission and the feed window is reset or
+updated from that current fact.
+
+The feed itself still does not claim secondary data. If a mounted row renders an
+avatar, it opens a profile claim for that pubkey. If a button renders a reply
+count, that relation-count component opens the dependency it needs. If a repost
+row references a missing target, the row/component that wants the target claims
+it. The feed primitive's job is admission, canonical row identity, bounded
+storage, ordering, and pagination over events that have arrived through the
+normal acquisition path.
+
 ## Building the LogicalInterest
 
 Use `ViewDependencies::into_logical_interest`

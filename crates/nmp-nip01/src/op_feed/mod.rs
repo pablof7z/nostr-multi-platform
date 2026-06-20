@@ -5,16 +5,11 @@
 //! module binds it to NIP-10:
 //!
 //! * [`Nip10ReplyAttribution`] — the `AttributionPayload` instance
-//!   (`Profile = ProfileDisplay`), built from a followed author's NIP-10 reply.
+//!   built from a followed author's NIP-10 reply.
 //! * [`register_op_feed`] — constructs
 //!   `RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, TimelineEventCard>`
 //!   and returns it for the composition root (rung 6) to register against an
-//!   `NmpApp`. **This rung ships the instance unwired in production** — only
-//!   tests register it, so Chirp's existing `ModularTimelineProjection` keeps
-//!   ownership of `"nmp.feed.home"` until rung 7.
-//! * [`build_actor_claim_sink`] — turns the engine's `ClaimRequest` stream into
-//!   `ActorCommand::ClaimEvent` / `ReleaseEvent` dispatches, encoding the
-//!   `ThreadPointer` as a `nostr:` URI (`nevent` / `naddr`).
+//!   `NmpApp`.
 //! * [`FeedEmissionState`] — ADR-0055 Rung 6 S1: trap-proof per-tick emission
 //!   state that omits an unchanged feed frame when the host has declared
 //!   incremental-apply capability (exact byte equality, monotonic rev).
@@ -33,8 +28,7 @@ pub use typed_wire::{
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
 pub use wiring::{
-    build_actor_claim_sink, pointer_to_uri, register_op_feed, ActorCommandDispatch, OpFeedEngine,
-    OP_FEED_SNAPSHOT_KEY,
+    op_feed_observer, register_op_feed, OpFeedEngine, OpFeedObserver, OP_FEED_SNAPSHOT_KEY,
 };
 
 #[cfg(test)]

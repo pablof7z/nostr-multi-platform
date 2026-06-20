@@ -73,6 +73,7 @@ nmp-store = { path = "../nmp-store" }
 # resolver duplicate). See issue #1283 and the RECOMMENDATION posted there.
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
+nmp-nip18 = { path = "../nmp-nip18" }
 nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
 nmp-signers = { path = "../nmp-signers", optional = true }

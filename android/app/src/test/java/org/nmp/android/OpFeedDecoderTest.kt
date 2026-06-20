@@ -6,6 +6,7 @@ import nmp.transport.Metrics
 import nmp.transport.SnapshotFrame
 import nmp.transport.UpdateFrame
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -59,6 +60,7 @@ class OpFeedDecoderTest {
         assertEquals(hex32(0x03), root.card.id)
         assertEquals(hex32(0x04), root.card.authorPubkey)
         assertEquals(1, root.card.kind)
+        assertFalse(root.card.isRepost)
         assertEquals(1_700_000_500L, root.card.createdAt)
         assertEquals("a thread root", root.card.content)
         // GH #920: the card encoder no longer denormalizes a render preview;
@@ -92,6 +94,12 @@ class OpFeedDecoderTest {
         val repost = snapshot.cards[1]
         assertEquals(hex32(0x09), repost.card.id)
         assertEquals(6, repost.card.kind)
+        assertTrue(repost.card.isRepost)
+        val repostedBy = requireNotNull(repost.card.repostedBy)
+        assertEquals(hex32(0x42), repostedBy.authorPubkey)
+        assertNull(repostedBy.authorDisplayName)
+        assertNull(repostedBy.authorPictureUrl)
+        assertEquals(1_699_000_000UL, repostedBy.noteCreatedAt)
         // GH #920: the card-level author display is the absent fallback (the
         // attribution table is the populated display surface, not the card).
         assertNull(repost.card.authorDisplayName)

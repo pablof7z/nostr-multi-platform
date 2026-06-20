@@ -175,7 +175,7 @@ class KernelModel : ViewModel() {
         } ?: Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
     }
 
-    /** Open the Chirp home feed (kind:1 + kind:6). */
+    /** Open the Chirp home feed for primary kind:1 notes. Reposts are derived in Rust. */
     fun openHomeFeed() {
         bridge.openHomeFeed()
     }

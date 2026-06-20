@@ -49,6 +49,18 @@ data class ChirpEventCard(
     @SerialName("author_picture_url") val authorPictureUrl: String? = null,
     @SerialName("content_preview") val contentPreview: String = "",
     @SerialName("relay_provenance") val relayProvenance: List<String> = emptyList(),
+    @SerialName("reposted_by") val repostedBy: ChirpRepostAttribution? = null,
+) {
+    val isRepost: Boolean
+        get() = repostedBy != null
+}
+
+@Serializable
+data class ChirpRepostAttribution(
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+    @SerialName("note_created_at") val noteCreatedAt: ULong = 0UL,
 )
 
 @Serializable(with = TimelineBlockSerializer::class)

@@ -3,13 +3,10 @@
 
 use super::*;
 
-fn ev(
-    id: &str,
-    author: &str,
-    kind: u32,
-    created_at: u64,
-    tags: Vec<Vec<String>>,
-) -> KernelEvent {
+use crate::KIND_SHORT_TEXT_NOTE;
+use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
+
+fn ev(id: &str, author: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
     KernelEvent {
         id: id.to_string(),
         author: author.to_string(),
@@ -25,9 +22,22 @@ fn etag(id: &str) -> Vec<String> {
     vec!["e".to_string(), id.to_string()]
 }
 
+fn social_acquisition_kinds() -> Vec<u32> {
+    nmp_nip18::acquisition_kinds_for_primary([KIND_SHORT_TEXT_NOTE])
+        .into_iter()
+        .collect()
+}
+
+fn social_acquisition_set() -> BTreeSet<u32> {
+    social_acquisition_kinds().into_iter().collect()
+}
+
 #[test]
 fn author_feed_admits_only_that_author_and_kinds() {
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
     feed.ingest(&ev("a2", "alice", 6, 101, vec![])); // repost — admitted
     feed.ingest(&ev("a3", "alice", 7, 102, vec![])); // reaction — rejected
@@ -46,7 +56,10 @@ fn author_feed_admits_only_that_author_and_kinds() {
 fn author_feed_includes_replies_to_others_as_top_level_rows() {
     // The exact case RootIndexedFeed cannot express: alice's reply to bob's
     // note is a top-level row in alice's profile, not attribution under bob.
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     feed.ingest(&ev("reply", "alice", 1, 200, vec![etag("bobs_root")]));
     assert_eq!(feed.len(), 1);
     assert_eq!(
@@ -57,7 +70,10 @@ fn author_feed_includes_replies_to_others_as_top_level_rows() {
 
 #[test]
 fn thread_feed_admits_root_by_id_and_referrers_by_etag() {
-    let feed = FlatFeed::new(thread_feed_predicate("root".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(thread_feed_predicate(
+        "root".to_string(),
+        social_acquisition_kinds(),
+    ));
     feed.ingest(&ev("root", "alice", 1, 100, vec![])); // root — by id
     feed.ingest(&ev("reply1", "bob", 1, 101, vec![etag("root")])); // referrer
     feed.ingest(&ev("reply2", "carol", 1, 102, vec![etag("other")])); // unrelated
@@ -73,8 +89,54 @@ fn thread_feed_admits_root_by_id_and_referrers_by_etag() {
 }
 
 #[test]
+fn repost_wrapper_and_target_share_canonical_feed_item() {
+    let feed = FlatFeed::new(thread_feed_predicate(
+        "root".to_string(),
+        social_acquisition_kinds(),
+    ));
+
+    feed.ingest(&ev("repost", "alice", 6, 200, vec![etag("root")]));
+    let placeholder = feed.snapshot(&FeedRequest::default());
+    assert_eq!(placeholder.cards.len(), 1);
+    assert_eq!(placeholder.cards[0].card.id, "root");
+    assert_eq!(placeholder.cards[0].card.created_at, 200);
+    assert_eq!(placeholder.cards[0].card.content, "");
+    assert_eq!(
+        placeholder.cards[0]
+            .card
+            .reposted_by
+            .as_ref()
+            .expect("repost attribution")
+            .author_pubkey,
+        "alice"
+    );
+
+    feed.ingest(&ev("root", "bob", 1, 100, vec![]));
+    let hydrated = feed.snapshot(&FeedRequest::default());
+
+    assert_eq!(hydrated.cards.len(), 1, "target id stays deduped");
+    let card = &hydrated.cards[0].card;
+    assert_eq!(card.id, "root");
+    assert_eq!(card.author_pubkey, "bob");
+    assert_eq!(card.content, "note root");
+    assert_eq!(
+        card.created_at, 200,
+        "feed ordering keeps the repost wrapper timestamp"
+    );
+    let reposted_by = card.reposted_by.as_ref().expect("repost attribution");
+    assert_eq!(reposted_by.author_pubkey, "alice");
+    assert_eq!(
+        reposted_by.note_created_at, 100,
+        "render metadata still exposes the target event timestamp"
+    );
+}
+
+#[test]
 fn reingest_same_id_refreshes_not_duplicates() {
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
     feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
     assert_eq!(feed.len(), 1);
@@ -82,7 +144,10 @@ fn reingest_same_id_refreshes_not_duplicates() {
 
 #[test]
 fn snapshot_windows_to_request_limit_with_cursor() {
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     for i in 0..5u64 {
         feed.ingest(&ev(&format!("a{i}"), "alice", 1, 100 + i, vec![]));
     }
@@ -103,7 +168,10 @@ fn on_kernel_event_observer_entrypoint_renders_matching_event() {
     // `on_kernel_event` once per accepted ingest; this proves the FlatFeed
     // observer entry point forwards through the predicate + render path, so
     // the full chain (admission → fan-out → snapshot) holds end-to-end.
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     // Drive via the KernelEventObserver trait method, exactly as
     // `notify_event_observers` does.
     KernelEventObserver::on_kernel_event(&*feed, &ev("a1", "alice", 1, 100, vec![]));
@@ -121,19 +189,25 @@ fn bare_flat_feed_fails_closed_no_pull_interest() {
     // ADR-0058 §8 6B: a `FlatFeed::new` has no covered pull interest, so it
     // fails closed — a `PullFeedController` would refuse to construct and the
     // feed renders projection-only.
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-    assert!(feed.interest_shape().is_none(), "bare flat feed fails closed");
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
+    assert!(
+        feed.interest_shape().is_none(),
+        "bare flat feed fails closed"
+    );
 }
 
 #[test]
 fn author_feed_shape_is_a_covered_authors_kind_interest() {
-    let shape = author_feed_shape("alice".to_string(), vec![1, 6]);
+    let shape = author_feed_shape("alice".to_string(), social_acquisition_kinds());
     assert_eq!(shape.authors, BTreeSet::from(["alice".to_string()]));
-    assert_eq!(shape.kinds, BTreeSet::from([1, 6]));
+    assert_eq!(shape.kinds, social_acquisition_set());
     assert!(shape.tags.is_empty(), "author feed is authors+kinds only");
     // A feed built with_interest surfaces the shape to the pull controller.
     let feed = FlatFeed::with_interest(
-        author_feed_predicate("alice".to_string(), vec![1, 6]),
+        author_feed_predicate("alice".to_string(), social_acquisition_kinds()),
         Some(shape.clone()),
     );
     assert_eq!(feed.interest_shape(), Some(shape));
@@ -141,12 +215,12 @@ fn author_feed_shape_is_a_covered_authors_kind_interest() {
 
 #[test]
 fn thread_feed_shape_is_a_covered_etag_reply_tail() {
-    let shape = thread_feed_shape("root".to_string(), vec![1, 6]);
-    assert_eq!(shape.kinds, BTreeSet::from([1, 6]));
+    let shape = thread_feed_shape("root".to_string(), social_acquisition_kinds());
+    assert_eq!(shape.kinds, social_acquisition_set());
     assert_eq!(
         shape.tags.get("e"),
         Some(&BTreeSet::from(["root".to_string()])),
-        "thread shape pages the #e reply tail; the root rides the claim path"
+        "thread shape pages the #e reply tail; the root is a separate dependency"
     );
     assert!(shape.authors.is_empty());
     assert!(
@@ -163,7 +237,10 @@ fn grow_visible_window_reveals_rows_past_the_default_first_page() {
     // user never sees the pulled rows. `grow_visible_window` (the host's
     // `advance` step) must widen the EMITTED projection over already-
     // ingested rows.
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     let extra = 25usize;
     let total = DEFAULT_FEED_WINDOW_LIMIT + extra;
     for i in 0..total as u64 {
@@ -179,11 +256,17 @@ fn grow_visible_window_reveals_rows_past_the_default_first_page() {
         DEFAULT_FEED_WINDOW_LIMIT,
         "default window emits only the first page"
     );
-    assert!(first.page.expect("page").has_more, "more rows below the page");
+    assert!(
+        first.page.expect("page").has_more,
+        "more rows below the page"
+    );
 
     // The advance step after a drained page: the viewport grows and the
     // EMITTED projection now includes the previously-hidden older rows.
-    assert!(feed.grow_visible_window(), "viewport grows (more rows to show)");
+    assert!(
+        feed.grow_visible_window(),
+        "viewport grows (more rows to show)"
+    );
     let grown = feed.snapshot_current_window();
     assert_eq!(
         grown.cards.len(),
@@ -206,7 +289,10 @@ fn grow_visible_window_reveals_rows_past_the_default_first_page() {
 fn feed_controller_emits_home_feed_wire_shape() {
     // The snapshot must produce the RootFeedSnapshot shape the home
     // feed emits, so the existing Swift `nmp.feed.home` reader decodes it.
-    let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
+    let feed = FlatFeed::new(author_feed_predicate(
+        "alice".to_string(),
+        social_acquisition_kinds(),
+    ));
     feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
     let snap = feed.snapshot(&nmp_feed::FeedRequest::default());
     assert_eq!(snap.cards.len(), 1);

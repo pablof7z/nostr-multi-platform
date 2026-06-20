@@ -13,19 +13,19 @@
 //! of the Rust module split.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::ActorCommand;
 use nmp_core::__ffi_internal::is_hex_pubkey;
+use nmp_core::ActorCommand;
 use std::ffi::{c_char, c_int};
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
 /// interest. The generic replacement for `nmp_app_open_author` /
 /// `nmp_app_open_thread` / the deleted `nmp_app_open_firehose_tag`: the app
-/// passes a verbatim NIP-01 REQ filter, so the `{1,6}` kind decisions (and the
-/// hashtag `#t` filter the firehose verb hardcoded) live in the app
-/// (D0-correct), not in the substrate.
+/// or protocol composition layer passes a verbatim NIP-01 REQ filter after it
+/// has compiled any primary-kind feed declaration into acquisition kinds. The
+/// substrate owns no app feed-kind policy; it only parses and refcounts the
+/// supplied filter.
 ///
-/// * `filter_json` — standard Nostr REQ filter, e.g.
-///   `{"kinds":[1,6],"authors":["<hex>"]}`. Parsed kernel-side into an
+/// * `filter_json` — standard Nostr REQ filter, parsed kernel-side into an
 ///   `InterestShape`; the shape hash gives deterministic dedup across call
 ///   sites passing the same filter (regardless of JSON key/element ordering).
 /// * `consumer_id` — refcount owner key. Multiple owners sharing the same
@@ -259,7 +259,7 @@ pub extern "C" fn nmp_app_release_event(
 // Apps use their per-app seam (nmp_app_chirp_close_author_feed etc.) which
 // releases the FlatFeed and calls nmp_app_close_interest for kernel cleanup.
 
-/// Parse a `kinds_json` string (e.g. `"[1,6]"`) into a `BTreeSet<u32>`.
+/// Parse a primary-kinds JSON string (e.g. `"[1]"`) into a `BTreeSet<u32>`.
 ///
 /// Returns `None` on the first invalid element (negative integer, float,
 /// string, null, or a value > u32::MAX). An empty array `[]` is a legitimate
@@ -268,9 +268,7 @@ pub extern "C" fn nmp_app_release_event(
 ///
 /// Duplicates within a valid array are silently deduplicated by the set
 /// semantics — this is intentional and consistent with the kernel's registry.
-pub(crate) fn parse_kinds_json(
-    s: &str,
-) -> Option<std::collections::BTreeSet<u32>> {
+pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTreeSet<u32>> {
     let arr = serde_json::from_str::<serde_json::Value>(s)
         .ok()
         .and_then(|v| v.as_array().cloned())?;
@@ -281,40 +279,52 @@ pub(crate) fn parse_kinds_json(
     let mut set = std::collections::BTreeSet::new();
     for element in &arr {
         match element.as_u64().and_then(|n| u32::try_from(n).ok()) {
-            Some(k) => {
+            Some(k) if !nmp_nip18::is_repost_kind(k) => {
                 set.insert(k);
             }
-            None => return None, // first invalid element → bail
+            None => return None,    // first invalid element → bail
+            Some(_) => return None, // repost wrappers are derived, not primary
         }
     }
     Some(set)
 }
 
-/// ADR-0042 amendment (2026-06-12) — open the contact-feed subscription.
+/// ADR-0042 amendment (2026-06-12) — open the contact-feed declaration.
 ///
-/// `kinds_json` is a JSON array of unsigned 32-bit integers identifying the
-/// event kinds the follow-set REQ should carry, e.g. `"[1,6]"`. The host
-/// (e.g. a Chirp wrapper) owns the policy; the substrate carries it verbatim
-/// (D0). An empty array `"[]"` is a legitimate clear — same effect as
-/// `nmp_app_close_contact_feed`. A malformed or non-array value, or any
-/// element that is not a non-negative integer fitting in u32, surfaces a
-/// diagnostic toast rather than a panic or silent registration (D6).
+/// `primary_kinds_json` is a JSON array of unsigned 32-bit integers identifying
+/// the primary content kinds the app wants to render, e.g. `"[1]"` for Chirp.
+/// Repost wrappers are derived here (`6` for primary kind `1`, `16` for every
+/// non-kind-1 primary target) before the compiled acquisition set is sent to
+/// `nmp-core`. An empty array `"[]"` is a legitimate clear — same effect as
+/// `nmp_app_close_contact_feed`. A malformed or non-array value, or any element
+/// that is not a non-negative integer fitting in u32, surfaces a diagnostic
+/// toast rather than a panic or silent registration (D6).
 ///
 /// D8: fire-and-forget; the actor processes the command asynchronously.
 #[no_mangle]
-pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, kinds_json: *const c_char) {
+pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, primary_kinds_json: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let Some(kinds_str) = c_string_argument(kinds_json) else {
+    let Some(kinds_str) = c_string_argument(primary_kinds_json) else {
         return;
     };
 
-    let kinds = match parse_kinds_json(&kinds_str) {
+    let primary_kinds = match parse_primary_kinds_json(&kinds_str) {
         Some(set) => set,
         None => {
             app.send_cmd(nmp_core::ActorCommand::ShowToast {
-                message: "open_contact_feed: malformed kinds JSON".to_string(),
+                message: "open_contact_feed: malformed primary kinds JSON".to_string(),
+            });
+            return;
+        }
+    };
+    let kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
+        Ok(kinds) => kinds,
+        Err(_) => {
+            app.send_cmd(nmp_core::ActorCommand::ShowToast {
+                message: "open_contact_feed: primary kinds must not include repost wrappers"
+                    .to_string(),
             });
             return;
         }
@@ -340,22 +350,22 @@ pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
 
 #[cfg(test)]
 mod kinds_parse_tests {
-    use super::parse_kinds_json;
+    use super::parse_primary_kinds_json;
     use std::collections::BTreeSet;
 
     #[test]
-    fn valid_kinds_parsed_and_deduped() {
-        let result = parse_kinds_json("[1, 6, 1]");
+    fn valid_primary_kinds_parsed_and_deduped() {
+        let result = parse_primary_kinds_json("[1, 20, 1]");
         assert_eq!(
             result,
-            Some(BTreeSet::from([1u32, 6u32])),
+            Some(BTreeSet::from([1u32, 20u32])),
             "duplicate elements must be deduped by BTreeSet"
         );
     }
 
     #[test]
     fn empty_array_is_legitimate_clear() {
-        let result = parse_kinds_json("[]");
+        let result = parse_primary_kinds_json("[]");
         assert_eq!(
             result,
             Some(BTreeSet::new()),
@@ -365,37 +375,37 @@ mod kinds_parse_tests {
 
     #[test]
     fn negative_element_is_rejected() {
-        let result = parse_kinds_json("[1, -1, 6]");
+        let result = parse_primary_kinds_json("[1, -1, 6]");
         assert!(
             result.is_none(),
-            "a negative element must cause parse_kinds_json to return None"
+            "a negative element must cause parse_primary_kinds_json to return None"
         );
     }
 
     #[test]
     fn float_element_is_rejected() {
-        let result = parse_kinds_json("[1, 1.5, 6]");
+        let result = parse_primary_kinds_json("[1, 1.5, 6]");
         assert!(
             result.is_none(),
-            "a float element must cause parse_kinds_json to return None"
+            "a float element must cause parse_primary_kinds_json to return None"
         );
     }
 
     #[test]
     fn string_element_is_rejected() {
-        let result = parse_kinds_json(r#"[1, "six", 6]"#);
+        let result = parse_primary_kinds_json(r#"[1, "six", 6]"#);
         assert!(
             result.is_none(),
-            "a string element must cause parse_kinds_json to return None"
+            "a string element must cause parse_primary_kinds_json to return None"
         );
     }
 
     #[test]
     fn null_element_is_rejected() {
-        let result = parse_kinds_json("[1, null, 6]");
+        let result = parse_primary_kinds_json("[1, null, 6]");
         assert!(
             result.is_none(),
-            "a null element must cause parse_kinds_json to return None"
+            "a null element must cause parse_primary_kinds_json to return None"
         );
     }
 
@@ -403,18 +413,41 @@ mod kinds_parse_tests {
     fn value_above_u32_max_is_rejected() {
         // 4_294_967_296 = u32::MAX + 1. The old `n as u32` cast would have
         // wrapped this to 0 (kind 0), silently registering it.
-        let result = parse_kinds_json("[1, 4294967296, 6]");
+        let result = parse_primary_kinds_json("[1, 4294967296, 6]");
         assert!(
             result.is_none(),
-            "a value > u32::MAX must cause parse_kinds_json to return None (was silently wrapping)"
+            "a value > u32::MAX must cause parse_primary_kinds_json to return None (was silently wrapping)"
         );
     }
 
     #[test]
+    fn repost_wrapper_primary_kinds_are_rejected() {
+        assert!(parse_primary_kinds_json("[1, 6]").is_none());
+        assert!(parse_primary_kinds_json("[16]").is_none());
+    }
+
+    #[test]
     fn non_array_top_level_is_rejected() {
-        assert!(parse_kinds_json(r#"{"kinds":[1,6]}"#).is_none());
-        assert!(parse_kinds_json("1").is_none());
-        assert!(parse_kinds_json("null").is_none());
+        assert!(parse_primary_kinds_json(r#"{"kinds":[1,6]}"#).is_none());
+        assert!(parse_primary_kinds_json("1").is_none());
+        assert!(parse_primary_kinds_json("null").is_none());
+    }
+
+    #[test]
+    fn primary_kind_1_expands_to_kind_6_acquisition() {
+        let primary = parse_primary_kinds_json("[1]").unwrap();
+        assert_eq!(
+            nmp_nip18::acquisition_kinds_for_primary(primary),
+            BTreeSet::from([1u32, 6u32])
+        );
+    }
+
+    #[test]
+    fn non_kind_1_primary_expands_to_kind_16_acquisition() {
+        let primary = parse_primary_kinds_json("[20]").unwrap();
+        assert_eq!(
+            nmp_nip18::acquisition_kinds_for_primary(primary),
+            BTreeSet::from([16u32, 20u32])
+        );
     }
 }
-

@@ -97,7 +97,7 @@ Persistence, the first multi-kind view, and seed-driven discovery.
 
 - Storage backend abstraction: `Box<dyn EventStore>` swap from in-memory to LMDB. LMDB schema design (key encoding, secondary indexes, kind:5 tombstones, watermarks placeholder for 1b).
 - Contacts view kind (parsed kind:3 follow list) per `view-catalog.md` §9. **Multiple Contacts views open simultaneously — one per seed dev account.** Their follow lists union into the timeline's author set.
-- Timeline view kind with fat `TimelineItem` payload per `view-catalog.md` §4. Spec is `{ kinds: [1, 6], authors: <union of seeds' follows>, limit: 200 }`. Subscribes to kind:1 / 6 filtered by that author union; pre-formats display fields via projections.
+- Timeline view kind with fat `TimelineItem` payload per `view-catalog.md` §4. The app-facing spec is a primary kind `[1]` feed from the reactive union of seeds' follows; the protocol adapter derives kind:6 repost-wrapper acquisition and exposes repost provenance. The view pre-formats display fields via projections.
 - iOS shell: home timeline screen (seed-driven by default), tap-to-profile navigation.
 - Projection cache for `author_display`, `author_picture`, `author_nip05` per `reactivity.md` §6.
 - Seed-set bootstrap action: on app launch, open `Contacts` views for each seed pubkey; once the contact lists land (or after a short timeout), open the `Timeline` view with the unioned author set.

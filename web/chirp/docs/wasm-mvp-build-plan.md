@@ -254,14 +254,13 @@ the host only supplies the timer".
 **Acceptance check** (native, `cargo test -p nmp-wasm` + `-p nmp-core`)
 
 - Protocol-conformance test: `SetSigner(nip07, pk)` → `Start` →
-  `handle_relay_connected` → dispatch `open_contact_feed {kinds:[1,6]}` →
+  `handle_relay_connected` → dispatch `open_contact_feed {kinds:[1]}` →
   feed a kind:3 frame for `pk` with follows → assert the outbound (inline or
-  next `tick()`) contains a REQ whose filter carries
-  `authors = follows, kinds = [1,6]`.
-- Test: dispatch `open_interest` with
+  next `tick()`) contains a REQ whose compiled acquisition filter carries `authors = follows, kinds = [1,6]`, while the app-owned declaration remains primary `[1]`.
+- Test: dispatch the declared author-feed seam with primary `[1]`, deriving
   `{"kinds":[1,6],"authors":[pk]}` against a connected relay → REQ emitted
-  inline; matching `close_interest` emits CLOSE. Re-open dedup (second owner
-  attaches, no second REQ) mirrors the existing kernel tests
+  inline; matching close emits CLOSE. Re-open dedup (second owner attaches, no
+  second REQ) mirrors the existing kernel tests
   (`actor/dispatch.rs:2254-2300`).
 - `nmp-core` test: the moved `build_open_interest` keeps its exact behavior
   (existing tests move with it).

@@ -3,15 +3,26 @@
 //! Protocol projections provide feed blocks and render cards; this crate owns
 //! stable cursor ordering, bounded viewport state, transitive card inclusion,
 //! and generic feed-controller registration.
+//!
+//! Doctrine map:
+//! - D0: protocol/app crates supply admission predicates, card builders, and
+//!   merge policy. This crate owns mechanics only and names no app primary-kind
+//!   policy.
+//! - D5: feed state and emitted snapshots are bounded by the visible window.
+//! - D11: feed engines never claim secondary data such as profiles, missing
+//!   targets, relation counts, or previews; components and sibling modules own
+//!   those dependencies.
 
+mod flat;
 mod pager;
 mod pull_controller;
 mod registry;
-pub mod typed_wire;
 mod root_indexed;
+pub mod typed_wire;
 mod types;
 mod window;
 
+pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
@@ -21,9 +32,8 @@ pub use pull_controller::{
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use root_indexed::{
-    AttributionPayload, CardBuilder, ClaimRequest, ClaimSink, EventGate, EventLookup,
-    FollowPredicate, ProfileDetector, RootCard, RootFeedSnapshot, RootIndexedFeed,
-    MAX_ATTRIBUTION_PER_ROOT,
+    AttributionPayload, CardBuilder, EventGate, EventLookup, FollowPredicate, RootCard,
+    RootFeedSnapshot, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,

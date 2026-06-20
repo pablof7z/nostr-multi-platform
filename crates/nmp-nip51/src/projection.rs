@@ -5,8 +5,8 @@
 //! A [`KernelEventObserver`] for kind:10000 (public mute list) events. It
 //! accumulates the active account's muted pubkeys (`p` tags) and muted event
 //! ids (`e` tags) and exposes them through the substrate-generic
-//! [`SuppressionLookup`] trait, which the timeline projection consults when
-//! building snapshots.
+//! [`SuppressionLookup`] trait, which feed/timeline projections consult when
+//! applying active-account suppression.
 //!
 //! # Why kind:10000 via `KernelEventObserver`
 //!
@@ -86,7 +86,7 @@ pub struct MuteListSnapshot {
 /// The `owner_pubkey` is compared against the live `active_pubkey` slot on
 /// every read: if they differ the set is treated as empty (account-switch
 /// safety — see module doc).
-#[derive(Default)]
+#[derive(Default, Eq, PartialEq)]
 struct MuteSet {
     /// Hex pubkey of the account whose kind:10000 populated this set.
     /// `None` means the set has never been populated (initial state).
@@ -96,7 +96,7 @@ struct MuteSet {
 }
 
 /// Accumulates the active account's NIP-51 kind:10000 mute list and exposes
-/// a [`SuppressionLookup`] the timeline projection uses to filter cards.
+/// a [`SuppressionLookup`] feed/timeline projections use to filter cards.
 ///
 /// Construct with a shared `active_pubkey` slot (the same pattern as
 /// [`nmp_nip02::FollowListProjection`]). Register the same `Arc` as a
@@ -110,6 +110,8 @@ pub struct MuteListProjection {
     active_pubkey: Arc<Mutex<Option<String>>>,
     /// The active account's current mute set.
     mute_set: Mutex<MuteSet>,
+    /// Reactive callbacks fired when the active account's mute set changes.
+    on_change: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
 }
 
 impl MuteListProjection {
@@ -119,6 +121,14 @@ impl MuteListProjection {
         Self {
             active_pubkey,
             mute_set: Mutex::new(MuteSet::default()),
+            on_change: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Register a callback fired after the active account's mute set changes.
+    pub fn on_change(&self, callback: Box<dyn Fn() + Send + Sync>) {
+        if let Ok(mut callbacks) = self.on_change.lock() {
+            callbacks.push(callback);
         }
     }
 
@@ -130,9 +140,8 @@ impl MuteListProjection {
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         let snap = self.snapshot();
-        serde_json::to_value(snap).unwrap_or_else(|_| {
-            serde_json::json!({ "muted_pubkeys": [], "muted_event_ids": [] })
-        })
+        serde_json::to_value(snap)
+            .unwrap_or_else(|_| serde_json::json!({ "muted_pubkeys": [], "muted_event_ids": [] }))
     }
 
     /// Build a typed snapshot.
@@ -168,10 +177,15 @@ impl MuteListProjection {
     /// Number of muted pubkeys currently held. Test-only inspector.
     #[cfg(test)]
     pub(crate) fn muted_pubkey_count(&self) -> usize {
-        self.mute_set
-            .lock()
-            .map(|g| g.pubkeys.len())
-            .unwrap_or(0)
+        self.mute_set.lock().map(|g| g.pubkeys.len()).unwrap_or(0)
+    }
+
+    fn notify_changed(&self) {
+        if let Ok(callbacks) = self.on_change.lock() {
+            for callback in callbacks.iter() {
+                callback();
+            }
+        }
     }
 }
 
@@ -230,18 +244,25 @@ impl KernelEventObserver for MuteListProjection {
             })
             .collect();
 
-        let Ok(mut mute_set) = self.mute_set.lock() else {
-            return;
+        let changed = {
+            let Ok(mut mute_set) = self.mute_set.lock() else {
+                return;
+            };
+            let next = MuteSet {
+                owner_pubkey: Some(event.author.clone()),
+                pubkeys,
+                event_ids,
+            };
+            if *mute_set == next {
+                false
+            } else {
+                *mute_set = next;
+                true
+            }
         };
-        // Full replacement on every kind:10000 event — the NIP-51 replaceable
-        // model means the newest event is the complete canonical list.
-        // Store `owner_pubkey` so the read path can gate against the live
-        // active slot (account-switch safety — see module doc).
-        *mute_set = MuteSet {
-            owner_pubkey: Some(event.author.clone()),
-            pubkeys,
-            event_ids,
-        };
+        if changed {
+            self.notify_changed();
+        }
     }
 }
 
@@ -287,8 +308,7 @@ impl SuppressionLookup for MuteListProjection {
         self.mute_set
             .lock()
             .map(|g| {
-                g.owner_pubkey.as_deref() == Some(active.as_str())
-                    && g.event_ids.contains(event_id)
+                g.owner_pubkey.as_deref() == Some(active.as_str()) && g.event_ids.contains(event_id)
             })
             .unwrap_or(false)
     }
@@ -384,7 +404,10 @@ mod tests {
         assert!(proj.is_suppressed_author(BOB));
         // Replacement: Alice removes Bob from mute list, adds Carol.
         proj.on_kernel_event(&mute_event(ALICE, &[CAROL], &[]));
-        assert!(!proj.is_suppressed_author(BOB), "Bob should no longer be muted");
+        assert!(
+            !proj.is_suppressed_author(BOB),
+            "Bob should no longer be muted"
+        );
         assert!(proj.is_suppressed_author(CAROL));
     }
 

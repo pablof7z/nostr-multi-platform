@@ -48,12 +48,9 @@ use nmp_nip01::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
 #[cfg(feature = "harness")]
 pub mod harness;
 
-/// The note kinds the following timeline subscribes to: kind:1 text notes and
-/// kind:6 reposts (NIP-18). This is the only protocol detail the example
-/// declares, and it is a *capability selection* (which note kinds this app
-/// renders), not relay/subscription policy — the kernel turns it into the
-/// follow-feed subscription shape and routes it. Matches Chirp's home feed.
-pub const FOLLOWING_FEED_KINDS: [u32; 2] = [1, 6];
+/// The primary note kinds the following timeline renders: kind:1 text notes.
+/// Repost wrappers are derived below this app-facing declaration.
+pub const FOLLOWING_PRIMARY_FEED_KINDS: [u32; 1] = [1];
 
 /// Step 1 — inherit the canonical NMP composition.
 ///
@@ -82,7 +79,7 @@ pub fn register_following_timeline(app: &NmpApp, viewer_pubkey_hex: impl Into<St
     let _defaults = nmp_defaults::register_op_feed_defaults(
         app,
         viewer_pubkey_hex.into(),
-        FOLLOWING_FEED_KINDS.to_vec(),
+        FOLLOWING_PRIMARY_FEED_KINDS.to_vec(),
     );
 }
 

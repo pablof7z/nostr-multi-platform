@@ -2,11 +2,11 @@
 //! (ADR-0042 §5.1, ADR-0058 §8 6B viewport grow wiring).
 
 use super::*;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 
-use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::WireProjectionState;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
+use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
 
 #[test]
 fn keys_are_namespaced_per_consumer() {
@@ -17,19 +17,38 @@ fn keys_are_namespaced_per_consumer() {
 }
 
 #[test]
-fn filter_json_carries_the_feed_kinds_and_dimension() {
-    // The {1,6} policy in the filter MUST match FEED_KINDS (the predicate
-    // source), or the kernel admits events the feed drops / vice versa.
-    assert_eq!(FEED_KINDS, [1, 6]);
+fn filter_json_carries_derived_acquisition_kinds_and_dimension() {
+    // Chirp declares primary kind 1. The NIP-18 helper derives the kind 6
+    // wrapper for acquisition, so the kernel filter and feed predicate still
+    // agree without the app declaring wrapper kinds as primary policy.
+    assert_eq!(FEED_PRIMARY_KINDS, [1]);
+    let acquisition = feed_acquisition_kinds().expect("primary kind derives acquisition");
+
+    let author_json = feed_filter_json("authors", "abc").expect("author filter");
+    let author_shape = nmp_planner::InterestShape::from_filter_json(&author_json).unwrap();
     assert_eq!(
-        feed_filter_json("authors", "abc"),
-        r#"{"kinds":[1,6],"authors":["abc"]}"#
+        author_shape.kinds,
+        acquisition
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
     );
-    // `r##"…"##` — the inner `"#e"` contains a `"#` sequence that would
-    // terminate a single-hash raw string early.
     assert_eq!(
-        feed_filter_json("#e", "root1"),
-        r##"{"kinds":[1,6],"#e":["root1"]}"##
+        author_shape.authors,
+        std::collections::BTreeSet::from(["abc".to_string()])
+    );
+
+    let thread_json = feed_filter_json("#e", "root1").expect("thread filter");
+    let thread_shape = nmp_planner::InterestShape::from_filter_json(&thread_json).unwrap();
+    assert_eq!(
+        thread_shape.kinds,
+        acquisition
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+    assert_eq!(
+        thread_shape.tags.get("e"),
+        Some(&std::collections::BTreeSet::from(["root1".to_string()]))
     );
 }
 
@@ -38,8 +57,8 @@ fn feed_filter_json_parses_as_a_valid_interest_shape() {
     // Guards the hand-built JSON against the kernel-side parser the open
     // path feeds it into — a malformed filter would be silently rejected.
     for json in [
-        feed_filter_json("authors", "abc"),
-        feed_filter_json("#e", "root1"),
+        feed_filter_json("authors", "abc").expect("valid author filter"),
+        feed_filter_json("#e", "root1").expect("valid thread filter"),
     ] {
         assert!(
             nmp_planner::InterestShape::from_filter_json(&json).is_some(),
@@ -283,7 +302,9 @@ fn insert_raw(store: &MemEventStore, raw: RawEvent) {
 fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
     let app_ref: &NmpApp = unsafe { &*app };
     let projections = app_ref.run_typed_snapshot_projections();
-    let entry = projections.iter().find(|p| p.key == key && !p.payload.is_empty())?;
+    let entry = projections
+        .iter()
+        .find(|p| p.key == key && !p.payload.is_empty())?;
     let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()?;
     Some(snapshot.cards.iter().map(|c| c.card.id.clone()).collect())
 }
@@ -292,5 +313,7 @@ fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
 fn typed_projection_is_gone(app: *mut NmpApp, key: &str) -> bool {
     let app_ref: &NmpApp = unsafe { &*app };
     let projections = app_ref.run_typed_snapshot_projections();
-    projections.iter().all(|p| p.key != key || p.payload.is_empty())
+    projections
+        .iter()
+        .all(|p| p.key != key || p.payload.is_empty())
 }

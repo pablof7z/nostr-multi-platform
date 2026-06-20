@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::nip19::decode_nevent;
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::{ActorCommand, KernelEventObserver};
+use nmp_core::KernelEventObserver;
 use nmp_feed::{EventLookup, FeedRequest, FollowPredicate};
 
 use super::attribution::Nip10ReplyAttribution;
-use super::wiring::{build_actor_claim_sink, register_op_feed, OpFeedEngine};
+use super::wiring::{register_op_feed, OpFeedEngine};
 
 pub(super) const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 pub(super) const BOB: &str = "bbbb000000000000000000000000000000000000000000000000000000000002";
@@ -20,15 +19,8 @@ pub(super) const REPLY_ID: &str =
 pub(super) const REPOST_ID: &str =
     "0000000000000000000000000000000000000000000000000000000000000f06";
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) enum RecordedCmd {
-    Claim { uri: String, consumer_id: String },
-    Release { uri: String, consumer_id: String },
-}
-
 pub(super) struct Harness {
     pub(super) engine: Arc<OpFeedEngine>,
-    claims: Arc<Mutex<Vec<RecordedCmd>>>,
     lookup: Arc<Mutex<HashMap<EventId, KernelEvent>>>,
 }
 
@@ -44,28 +36,8 @@ impl Harness {
         let event_lookup: EventLookup =
             Arc::new(move |id: &EventId| lookup_for_cb.lock().unwrap().get(id).cloned());
 
-        let claims: Arc<Mutex<Vec<RecordedCmd>>> = Arc::new(Mutex::new(Vec::new()));
-        let claims_for_cb = Arc::clone(&claims);
-        let dispatch: super::wiring::ActorCommandDispatch = Arc::new(move |cmd| {
-            let recorded = match cmd {
-                ActorCommand::ClaimEvent {
-                    uri, consumer_id, ..
-                } => RecordedCmd::Claim { uri, consumer_id },
-                ActorCommand::ReleaseEvent { uri, consumer_id } => {
-                    RecordedCmd::Release { uri, consumer_id }
-                }
-                _ => return,
-            };
-            claims_for_cb.lock().unwrap().push(recorded);
-        });
-        let claim_sink = build_actor_claim_sink(dispatch);
-
-        let engine = register_op_feed(ALICE.to_string(), follow, event_lookup, claim_sink);
-        Self {
-            engine,
-            claims,
-            lookup,
-        }
+        let engine = register_op_feed(ALICE.to_string(), follow, event_lookup);
+        Self { engine, lookup }
     }
 
     pub(super) fn ingest(&self, event: &KernelEvent) {
@@ -81,10 +53,6 @@ impl Harness {
             .lock()
             .unwrap()
             .insert(event.id.clone(), event.clone());
-    }
-
-    pub(super) fn claims(&self) -> Vec<RecordedCmd> {
-        self.claims.lock().unwrap().clone()
     }
 
     pub(super) fn snapshot(
@@ -191,33 +159,4 @@ pub(super) fn repost_embedded(
         content: embedded.to_string(),
         relay_provenance: Vec::new(),
     }
-}
-
-pub(super) fn profile_event(author: &str, created_at: u64, display_name: &str) -> KernelEvent {
-    KernelEvent {
-        id: format!("profile-{author}"),
-        author: author.to_string(),
-        kind: 0,
-        created_at,
-        tags: Vec::new(),
-        content: serde_json::json!({ "display_name": display_name }).to_string(),
-        relay_provenance: Vec::new(),
-    }
-}
-
-pub(super) fn claimed_event_ids(claims: &[RecordedCmd]) -> Vec<String> {
-    claims
-        .iter()
-        .filter_map(|c| match c {
-            RecordedCmd::Claim { uri, .. } => Some(uri.clone()),
-            RecordedCmd::Release { .. } => None,
-        })
-        .collect()
-}
-
-pub(super) fn assert_nevent_for(uri: &str, event_id: &str) {
-    let bech = uri.strip_prefix("nostr:").expect("nostr: prefix");
-    assert!(bech.starts_with("nevent1"), "expected nevent, got {bech}");
-    let data = decode_nevent(bech).expect("decodes nevent");
-    assert_eq!(data.event_id, event_id);
 }

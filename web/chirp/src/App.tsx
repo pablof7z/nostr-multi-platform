@@ -91,7 +91,7 @@ export default function App() {
         return;
       }
       setSignerConnected(true);
-      // Open the contact feed (kinds 1 + 6) now that the viewer pubkey is set.
+      // Open the primary kind:1 contact feed; wrapper acquisition is derived in Rust.
       setSnapshot(await client.dispatchCommand(openContactFeedCommand()));
     } catch {
       // Signer install failed; UI stays disconnected, no crash.

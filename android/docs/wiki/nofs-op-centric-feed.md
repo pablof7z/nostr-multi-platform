@@ -28,7 +28,7 @@ The NOFS (Nostr OP-centric Feed System) home feed is OP-centric: it shows the th
 
 ## EventGate kind filter
 
-The RootIndexedFeed engine includes an EventGate predicate in its Capabilities — a caller-supplied closure that determines whether an event is a feed-eligible kind. The gate runs at the very top of ingest(), before profile_detector or any state mutation. This prevents protocol-sourced non-feed events (kind:3 contacts, kind:10002 relay lists) from becoming phantom root cards when a relay echoes them back. The gate is set by the NIP-10 wiring layer to accept kind:0 || kind:1 || kind:6. Kind:0 is admitted because the existing profile_refresh_updates_buffered_attribution test ingests kind:0 through the engine to verify profile display refresh, and event_gate runs before profile_detector — a kind:1/6-only gate would silently break that path. Kind:0 was never a phantom root (profile_detector would short-circuit it anyway), so admitting it is safe. Kind:3 and kind:10002 remain blocked. [^855be-6]
+The RootIndexedFeed engine includes an EventGate predicate in its Capabilities — a caller-supplied closure that determines whether an event is a feed-eligible kind. The gate runs at the very top of ingest(), before any state mutation. This prevents protocol-sourced non-feed events (kind:3 contacts, kind:10002 relay lists, and kind:0 profiles) from becoming phantom root cards when a relay echoes them back. The current NIP-01 wiring layer accepts only primary kind:1 notes and NIP-18-derived kind:6 repost wrappers. Profile kind:0 is intentionally excluded: profile acquisition and rendering are owned by mounted profile components through their own profile claims, not by the feed declaration. Kind:3 and kind:10002 remain blocked. [^855be-6]
 
 
 The EventGate fix was delivered in PR #786 alongside the Android Diagnostics LazyColumn duplicate key fix, merged to master as commit 59874e5c. [^855be-21]
@@ -51,4 +51,3 @@ run_publish_engine never pre-stores events in the kernel store — events are on
 ## See Also
 - [[account-creation-autofollow|Account Creation & Autofollow]] — related guide
 - [[cross-platform-architecture|Cross-Platform Architecture]] — related guide
-

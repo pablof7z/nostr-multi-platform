@@ -19,12 +19,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::KernelEvent;
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 // `on_kernel_event` is a `KernelEventObserver` method (the engine impls it).
 use nmp_core::KernelEventObserver as _;
-// `AttributionPayload` brings `author_pubkey()` into scope for the L-2 assertion.
-use nmp_feed::AttributionPayload as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
@@ -191,10 +189,12 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+            .engine;
 
     // 1. The repost wrapper arrives (fan-out). Placeholder keyed by the target,
-    //    provenance recorded, target not local yet → claim emitted.
+    //    provenance recorded, target not local yet. The feed does not claim the
+    //    target; it waits for normal event ingest or a component-owned claim.
     engine.on_kernel_event(&repost_kernel_event(REPOST_ID, CAROL, 20, OP_ID));
     let before = engine.snapshot(&nmp_feed::FeedRequest::default());
     assert_eq!(before.cards.len(), 1, "placeholder card keyed by target");
@@ -263,7 +263,8 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1, 6]).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+            .engine;
 
     // The target OP is observed (so it is a live root) and the wrapper too.
     engine.on_kernel_event(&op_event(OP_ID, BOB, 9, "Bob's original"));
@@ -283,7 +284,7 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
         1,
         "attribution re-keyed onto the wrapped target via the real event_lookup (L-2)"
     );
-    assert_eq!(target_card.attribution[0].author_pubkey(), ALICE);
+    assert_eq!(target_card.attribution[0].author_pubkey, ALICE);
 
     nmp_app_free(app);
 }
@@ -309,7 +310,8 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
     );
 
     set_app_active(app, Some(ALICE));
-    let engine = nmp_defaults::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1, 6]).engine;
+    let engine =
+        nmp_defaults::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1]).engine;
 
     // Drive the L-5 sequence with no published store: placeholder, then hydrate
     // body — but provenance is absent (no wrapper read possible), and crucially

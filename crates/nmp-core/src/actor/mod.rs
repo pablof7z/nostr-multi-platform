@@ -364,8 +364,8 @@ pub enum ActorCommand {
     },
     // V-68 / V-112 (ADR-0042): OpenAuthor{kinds}, OpenThread{kinds} deleted.
     // Apps register a per-app FlatFeed (nmp_app_chirp_open_author_feed etc.)
-    // and call OpenInterest for kernel admission — D0-clean since {1,6} lives
-    // in the app, not in nmp-core.
+    // and call OpenInterest for kernel admission — D0-clean since primary-kind
+    // policy lives in the app, not in nmp-core.
     /// Sign an unsigned event using the named account's signer and park the
     /// result in the `signed_events` snapshot projection keyed by
     /// `correlation_id`. The caller polls the projection to retrieve the
@@ -768,11 +768,11 @@ pub enum ActorCommand {
     },
     /// (Re)open the contact-feed subscription for the active account.
     ///
-    /// `kinds` is the host-declared event-kind set the follow-set REQ should
-    /// carry. D0: `nmp-core` does not know which kinds belong to the host's
-    /// app concept (Chirp's home feed declares {1, 6}; a long-form app might
-    /// declare {30023}); the host supplies the set so the substrate carries no
-    /// app-specific social knowledge. The actor folds it into the kernel via
+    /// `kinds` is the compiled acquisition kind set the follow-set REQ should
+    /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
+    /// policy belong to the host's app concept; the caller supplies the
+    /// compiled set so the substrate carries no app-specific social knowledge.
+    /// The actor folds it into the kernel via
     /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
     /// follow-feed M2 interests under the new kind set. An empty set is
     /// equivalent to `CloseContactFeed` — it withdraws all follow-feed interests.
@@ -1092,10 +1092,15 @@ pub enum ActorCommand {
     /// `after_seq` (`max(old, new)`). Fire-and-forget. Re-arms an immediate
     /// pull wake when the cursor is still behind the store head. Unknown id is
     /// a no-op.
-    AdvancePullCursor { cursor_id: u64, after_seq: u64 },
+    AdvancePullCursor {
+        cursor_id: u64,
+        after_seq: u64,
+    },
     /// ADR-0058 §10, step 3a — remove a cursor's registry row AND any pending
     /// pull wake entry. Fire-and-forget.
-    UnregisterPullCursor { cursor_id: u64 },
+    UnregisterPullCursor {
+        cursor_id: u64,
+    },
     /// M2 (ADR-0042) — the generic FFI-facing feed-subscription front door that
     /// replaced the bespoke `OpenAuthor` / `OpenThread` / `OpenFirehoseTag`
     /// variants. The host passes a verbatim NIP-01 REQ filter; the dispatch arm
@@ -1105,14 +1110,15 @@ pub enum ActorCommand {
     /// `registry_mut().ensure_sub` + `CompileTrigger` body as
     /// [`EnsureInterest`](Self::EnsureInterest). Lifecycle is always `Tailing`.
     ///
-    /// D0: `nmp-core` carries the filter as opaque shape data — the app owns the
-    /// kind set (`{1,6}` etc. now live in Swift, not the substrate). The
+    /// D0: `nmp-core` carries the filter as opaque shape data. Declared feed
+    /// seams accept app-owned primary kinds; protocol adapters derive wrapper
+    /// acquisition outside the substrate. The
     /// `InterestShape` hash gives deterministic dedup: two call sites passing
     /// the same filter (regardless of JSON key/element ordering) map to the same
     /// slot.
     OpenInterest {
         /// Verbatim NIP-01 REQ filter JSON, e.g.
-        /// `{"kinds":[1,6],"authors":["<hex>"]}`.
+        /// `{"kinds":[1],"#t":["nostr"]}`.
         filter_json: String,
         /// Refcount owner key — deduplicates the live subscription across call
         /// sites that register the same filter.

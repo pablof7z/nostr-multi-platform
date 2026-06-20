@@ -237,9 +237,9 @@ impl InterestShape {
     /// is substrate: it carries whatever kind set a host or NIP module declares
     /// as filter data, but it must not choose app concepts like "a social
     /// timeline means kind:1 + kind:6" (V-68 / D0). The follow-feed call site
-    /// threads the host-declared set (e.g. Chirp's `{1, 6}` from
-    /// `ActorCommand::OpenContactFeed { kinds }`); a long-form app would pass
-    /// `{30023}`. An empty set yields a wildcard-kinds shape.
+    /// threads a compiled acquisition set derived above the planner; app-facing
+    /// primary-kind declarations do not live here. An empty set yields a
+    /// wildcard-kinds shape.
     #[must_use]
     pub fn timeline_for(authors: BTreeSet<Pubkey>, kinds: BTreeSet<u32>) -> Self {
         Self {
@@ -254,7 +254,7 @@ impl InterestShape {
     /// This is the inverse of `nmp_core::subs::wire::filter_json_for` and the
     /// app-facing entry point for the M2 `open_interest` / `close_interest`
     /// C-ABI surface (ADR-0042): the host passes a verbatim Nostr filter string
-    /// (e.g. `{"kinds":[1,6],"authors":["<hex>"]}`) and the substrate derives a
+    /// (e.g. `{"kinds":[1],"#t":["nostr"]}`) and the substrate derives a
     /// deterministically-hashable shape from it. Two call sites passing the same
     /// filter — regardless of JSON key ordering or array element ordering — map
     /// to the same shape (every collection field is a sorted container), which

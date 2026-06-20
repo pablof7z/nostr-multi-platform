@@ -21,10 +21,11 @@ const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 fn fresh() -> (IdentityRuntime, Kernel) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-feed subscription REQs for,
-    // as `nmp_app_chirp_open_home_feed` does in production. Without this the
-    // kernel's `follow_feed_kinds` is empty and follow-feed registration is a
-    // no-op (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}, as
+    // `nmp_app_chirp_open_home_feed` derives from the app's primary declaration
+    // in production. Without this the kernel's `follow_feed_kinds` is empty and
+    // follow-feed registration is a no-op (D0: the substrate no longer hardcodes
+    // a kind set).
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     (
         IdentityRuntime::new(
@@ -145,7 +146,14 @@ fn t168_switch_active_reconciles_followfeed_to_new_account() {
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
     create_account(
-        &mut id, &mut kernel, false, &profile, &relays, &[], false, true,
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
     );
     let second_id = id.active_pubkey().expect("second account active");
     switch_active(&mut id, &mut kernel, &a, false);

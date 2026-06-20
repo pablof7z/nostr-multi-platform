@@ -41,3 +41,7 @@ pub type FeedEmissionState = TypedProjectionEmissionState;
 #[cfg(test)]
 #[path = "emission_state_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "emission_state_host_tests.rs"]
+mod host_tests;

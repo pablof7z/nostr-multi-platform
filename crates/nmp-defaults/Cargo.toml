@@ -61,10 +61,11 @@ nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 # `NmpApp` (`nmp-ffi`) in production — every other crate goes through the
 # `AppHost` trait or `nmp-core` primitives to avoid the dependency-graph
 # inversion rungs 4/5 rejected. `nmp-nip01` supplies the NIP-10 OP-feed
-# instance (`register_op_feed`, `build_actor_claim_sink`); `nmp-feed`
-# supplies the `FeedController` / `EventLookup` types the engine is cast to.
+# instance (`register_op_feed`); `nmp-feed` supplies the `FeedController` /
+# `EventLookup` types the engine is cast to.
 nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip18 = { path = "../nmp-nip18" }
 nmp-feed = { path = "../nmp-feed" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"

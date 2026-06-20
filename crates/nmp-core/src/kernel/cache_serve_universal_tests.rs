@@ -159,11 +159,7 @@ fn gift_wrap_json(
 
 /// Construct a `SubIdentity` for opening a generic non-feed interest.
 fn sub_identity(seed: u64) -> SubIdentity {
-    SubIdentity::new(
-        SubOwnerKey::new(seed),
-        SubKey::new(seed),
-        SubScope::Global,
-    )
+    SubIdentity::new(SubOwnerKey::new(seed), SubKey::new(seed), SubScope::Global)
 }
 
 /// Open a cache-serve interest for `shape` and return whether it was newly
@@ -180,17 +176,21 @@ fn open_interest(kernel: &mut Kernel, seed: u64, shape: InterestShape) -> bool {
     kernel.open_interest_sub(sub_identity(seed), interest)
 }
 
-/// Enqueue a single cache-serve interest via `register_interest`.
-///
-/// Wraps the `&[InterestRegistration { identity, interest, policy }]` boilerplate
-/// shared by every call site. `policy` is always `EnsureAbsent` (install a fresh
-/// slot so `changed=true` fires the serve — the right semantic for test phases
-/// that deliberately use distinct keys to bypass the idempotency guard).
-fn register_one(kernel: &mut Kernel, owner: &'static str, key: SubKey, shape: InterestShape, reason: &'static str) {
+/// Enqueue a fresh cache-serve interest via `register_interest`.
+fn register_one(
+    kernel: &mut Kernel,
+    owner: &'static str,
+    key: SubKey,
+    shape: InterestShape,
+    reason: &'static str,
+) {
     kernel.register_interest(
         &[InterestRegistration {
             identity: SubIdentity::new(SubOwnerKey::new(owner), key, SubScope::Global),
-            interest: LogicalInterest { shape, ..Default::default() },
+            interest: LogicalInterest {
+                shape,
+                ..Default::default()
+            },
             policy: InterestWrite::EnsureAbsent,
         }],
         reason,
@@ -271,11 +271,21 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
         &sender_keys,
         1,
         "thread reply content",
-        vec![vec!["e".to_string(), parent_id_hex.clone(), String::new(), "reply".to_string()]],
+        vec![vec![
+            "e".to_string(),
+            parent_id_hex.clone(),
+            String::new(),
+            "reply".to_string(),
+        ]],
         base_ts + 2,
     );
     let thread_id = thread_ev["id"].as_str().unwrap().to_string();
-    kernel.handle_event(RelayRole::Content, "wss://seed.relay/", "thread", &thread_ev);
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://seed.relay/",
+        "thread",
+        &thread_ev,
+    );
 
     // ── Seed: 1 long-form article (kind:30023 with #d tag) ───────────────────
     // kind:30023 goes through the wildcard arm in `handle_event` — stored
@@ -292,7 +302,12 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
         base_ts + 3,
     );
     let longform_id = longform_ev["id"].as_str().unwrap().to_string();
-    kernel.handle_event(RelayRole::Content, "wss://seed.relay/", "longform", &longform_ev);
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://seed.relay/",
+        "longform",
+        &longform_ev,
+    );
 
     // ── Seed: 1 DM gift-wrap (kind:1059, #p receiver_hex) ────────────────────
     // kind:1059 also goes through the wildcard arm — stored unconditionally.
@@ -342,62 +357,82 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     simulate_cold_restart(&mut kernel);
     dm_ingest_parser.clear();
 
-    assert!(kernel.events.is_empty(), "Phase 2: events cache must be empty after restart");
-    assert!(kernel.timeline.is_empty(), "Phase 2: timeline must be empty after restart");
+    assert!(
+        kernel.events.is_empty(),
+        "Phase 2: events cache must be empty after restart"
+    );
+    assert!(
+        kernel.timeline.is_empty(),
+        "Phase 2: timeline must be empty after restart"
+    );
     assert!(
         dm_ingest_parser.seen().is_empty(),
         "Phase 2: IngestParser seen list must be cleared before serve"
     );
 
     // ── Phase 3: open interests and drain cache-serves (ZERO relay) ───────────
-    //
-    // `register_interest` only enqueues a serve when `changed=true` (i.e. the
-    // slot is newly installed or its shape changed). The thread interest was
-    // pre-opened in Phase 1 so the registry still holds the slot under the
-    // Phase-1 key. We use DISTINCT fresh keys ("thread-phase3", …) that are not
-    // in the pre-open slot — `EnsureAbsent` with a fresh key installs a new slot
-    // (`newly_installed=true`, `changed=true`) and enqueues the serve.
-    // `simulate_cold_restart` cleared `served_interest_shapes`, so the completion
-    // key is fresh and the idempotency guard does not suppress the serve.
-    //
-    // For the feed we use `sync_follow_feed_interests` (the production entry
-    // point), which derives its own InterestId from the host-declared kinds
-    // (the follow set lives in the interest's shape, #1497) and is not affected
-    // by the registry collision.
-
-    // E1 — feed: sync_follow_feed_interests registers ONE multi-author follow
-    // interest (#1497). With a single author here its cache-serve maps to one
-    // `AuthorKind`; for >1 author it maps to one multi-author `AuthorsKind` —
-    // no per-author fan-out either way.
+    // Fresh keys force `changed=true` after the Phase-1 pre-open. The feed uses
+    // the production follow-feed sync path.
     kernel.sync_follow_feed_interests(&[feed_author.clone()]);
 
     // E3 — thread: register Etag interest with a fresh key → newly_installed=true.
     {
-        let mut thread_shape = InterestShape { kinds: BTreeSet::from([1u32]), ..Default::default() };
-        thread_shape.tags.insert("e".to_string(), BTreeSet::from([parent_id_hex.clone()]));
+        let mut thread_shape = InterestShape {
+            kinds: BTreeSet::from([1u32]),
+            ..Default::default()
+        };
+        thread_shape
+            .tags
+            .insert("e".to_string(), BTreeSet::from([parent_id_hex.clone()]));
         let thread_key = SubKey::new(("thread-phase3", &parent_id_hex));
-        register_one(&mut kernel, "test-thread-phase3", thread_key, thread_shape, "test-phase3-thread");
+        register_one(
+            &mut kernel,
+            "test-thread-phase3",
+            thread_key,
+            thread_shape,
+            "test-phase3-thread",
+        );
     }
 
     // E3 — long-form: register KindDtag interest with a fresh key.
     {
         let author_for_longform = sender_keys.public_key().to_hex();
-        let mut longform_shape = InterestShape { kinds: BTreeSet::from([30023u32]), ..Default::default() };
+        let mut longform_shape = InterestShape {
+            kinds: BTreeSet::from([30023u32]),
+            ..Default::default()
+        };
         longform_shape.addresses.insert(NaddrCoord {
             pubkey: author_for_longform.clone(),
             kind: 30023,
             d_tag: d_tag.to_string(),
         });
         let lf_key = SubKey::new(("longform-phase3", &author_for_longform, d_tag));
-        register_one(&mut kernel, "test-longform-phase3", lf_key, longform_shape, "test-phase3-longform");
+        register_one(
+            &mut kernel,
+            "test-longform-phase3",
+            lf_key,
+            longform_shape,
+            "test-phase3-longform",
+        );
     }
 
     // E2 — DM inbox: register Ptag interest with a fresh key.
     {
-        let mut dm_shape = InterestShape { kinds: BTreeSet::from([1059u32]), ..Default::default() };
-        dm_shape.tags.insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let mut dm_shape = InterestShape {
+            kinds: BTreeSet::from([1059u32]),
+            ..Default::default()
+        };
+        dm_shape
+            .tags
+            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
         let dm_key = SubKey::new(("dm-phase3", &receiver_hex));
-        register_one(&mut kernel, "test-dm-phase3", dm_key, dm_shape, "test-phase3-dm");
+        register_one(
+            &mut kernel,
+            "test-dm-phase3",
+            dm_key,
+            dm_shape,
+            "test-phase3-dm",
+        );
     }
 
     // Drain: `sync_follow_feed_interests` ran one synchronous step; continue
@@ -416,7 +451,10 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
         "E1 FAIL: feed_ev_2 ({feed_id_2}) must be in events cache after cold-restart serve"
     );
     assert!(
-        kernel.timeline.iter().any(|id| id == &feed_id_1 || id == &feed_id_2),
+        kernel
+            .timeline
+            .iter()
+            .any(|id| id == &feed_id_1 || id == &feed_id_2),
         "E1 FAIL: at least one feed event must appear in the timeline after cache-serve \
          (timeline len={})",
         kernel.timeline.len()
@@ -454,13 +492,7 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     );
 }
 
-/// PR-2 rawtap retirement — cache-serve feeds kind:1059 exclusively via IngestParser.
-///
-/// Verifies that `feed_served_event` dispatches kind:1059 events ONLY through the
-/// `EventIngestDispatcher` seam after PR-2 removes the transitional dual fan-out.
-/// No raw-observer delivery from cache-serve — all former raw-tap consumers
-/// (NIP-17 DM inbox since PR-1, Marmot since PR-2) now ride `IngestParser`.
-/// Uses a `CapturingIngestParser` to avoid the circular dep on `nmp-nip17`.
+/// PR-2 rawtap retirement: cache-serve feeds kind:1059 via IngestParser only.
 #[test]
 fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
     let base_ts: u64 = 1_700_000_000;
@@ -508,10 +540,21 @@ fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
 
     // ── Phase 3: register interest and drain cache-serve for kind:1059 ──────────
     {
-        let mut dm_shape = InterestShape { kinds: BTreeSet::from([1059u32]), ..Default::default() };
-        dm_shape.tags.insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let mut dm_shape = InterestShape {
+            kinds: BTreeSet::from([1059u32]),
+            ..Default::default()
+        };
+        dm_shape
+            .tags
+            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
         let dm_key = SubKey::new(("ingest-parser-test", &receiver_hex));
-        register_one(&mut kernel, "test-ingest-parser", dm_key, dm_shape, "test-ingest-parser-dm");
+        register_one(
+            &mut kernel,
+            "test-ingest-parser",
+            dm_key,
+            dm_shape,
+            "test-ingest-parser-dm",
+        );
     }
     drain_cache_serves(&mut kernel, 10);
 

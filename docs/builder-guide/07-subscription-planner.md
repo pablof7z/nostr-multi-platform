@@ -57,9 +57,11 @@ rule semantics; do not re-derive them in app code.
 ## Deliverable: CompiledPlan for "5 followed authors × 2 relays each"
 
 Five authors A–E. A,B,C declare `{relay1, relay2}`; D,E declare
-`{relay2, relay3}`. One `Timeline` interest, `kinds {1,6}`, `Tailing`. The
-union of write relays is `{relay1, relay2, relay3}`; each relay's sub-shape
-carries only its declared author subset, merged into one REQ:
+`{relay2, relay3}`. A notes feed declares primary kind `{1}` with reposts
+enabled; the protocol adapter compiles that into acquisition kinds `{1,6}`.
+One tailing interest reaches the planner. The union of write relays is
+`{relay1, relay2, relay3}`; each relay's sub-shape carries only its declared
+author subset, merged into one REQ:
 
 ```
 CompiledPlan { plan_id: "p-9c3a…", per_relay: BTreeMap {

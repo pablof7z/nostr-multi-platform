@@ -68,16 +68,17 @@
 //! does not cover logout — there is no logout-triggered kind:3 — so the
 //! explicit seam is required for correctness, not convenience.
 //!
-//! # Host-declared follow-feed kinds
+//! # Compiled follow-feed acquisition kinds
 //!
 //! `fix(nmp-core): keep follow-feed kinds host-declared` (commit `2f06cc66`)
-//! made the *follow-feed subscription* REQ kinds host-declared. That change
+//! made the *follow-feed subscription* REQ kinds caller-supplied. Today that
+//! set is compiled acquisition data derived above `nmp-core`. That change
 //! touches which kinds the contact-list-authors REQ carries; it does **not**
 //! touch the kind:3 ingest fan-out that `ActiveFollowSet` observes. The
 //! sibling `FollowListProjection` (untouched by `2f06cc66`) is the living
 //! proof: kind:3 events still fan out to `KernelEventObserver`s gated purely on
-//! `event.kind == 3` and author == active, regardless of the host-declared
-//! follow-feed kind set.
+//! `event.kind == 3` and author == active, regardless of the compiled
+//! follow-feed acquisition kind set.
 //!
 //! # D-doctrine
 //!
@@ -331,9 +332,7 @@ impl KernelEventObserver for ActiveFollowSet {
         // wire subscription cover the same authors. The shared function dedups
         // nothing and preserves order; the `BTreeSet` here de-duplicates and
         // sorts for membership lookup.
-        let mut rebuilt: BTreeSet<String> = contact_follows(&event.tags)
-            .into_iter()
-            .collect();
+        let mut rebuilt: BTreeSet<String> = contact_follows(&event.tags).into_iter().collect();
         // Self-inclusion: the active account's own pubkey is always a member.
         rebuilt.insert(active);
 

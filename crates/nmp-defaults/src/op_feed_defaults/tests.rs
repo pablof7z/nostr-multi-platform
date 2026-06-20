@@ -4,8 +4,10 @@
 use super::*;
 
 fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
-    let mut tags: Vec<Vec<String>> =
-        follows.iter().map(|p| vec!["p".to_string(), (*p).to_string()]).collect();
+    let mut tags: Vec<Vec<String>> = follows
+        .iter()
+        .map(|p| vec!["p".to_string(), (*p).to_string()])
+        .collect();
     // A non-`p` tag to prove the follow-derivation ignores it.
     tags.push(vec!["client".to_string(), "test".to_string()]);
     KernelEvent {

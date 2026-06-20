@@ -2,10 +2,7 @@
 
 use std::sync::Arc;
 
-use nmp_app_chirp_web::{
-    claim_queue::{build_queuing_claim_sink, drain_pending_claims, new_pending_claim_queue},
-    composition::setup_chirp_web_feeds,
-};
+use nmp_app_chirp_web::composition::setup_chirp_web_feeds;
 use nmp_core::{substrate::KernelEvent, KernelEventObserver};
 use nmp_feed::FeedRequest;
 use nmp_nip01::op_feed::{register_op_feed, OP_FEED_SNAPSHOT_KEY};
@@ -72,15 +69,8 @@ fn engine_observes_kind1_event_via_direct_observer_call() {
     let follow_predicate: nmp_feed::FollowPredicate =
         Arc::new(move |pk: &str| follow_set.contains(pk));
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |_id: &String| None);
-    let queue = new_pending_claim_queue();
-    let claim_sink = build_queuing_claim_sink(Arc::clone(&queue));
 
-    let engine = register_op_feed(
-        ALICE.to_string(),
-        follow_predicate,
-        event_lookup,
-        claim_sink,
-    );
+    let engine = register_op_feed(ALICE.to_string(), follow_predicate, event_lookup);
 
     // Deliver a kind:1 from Alice.
     let note = make_kind1(OP_ID, ALICE, "hello web");
@@ -93,63 +83,6 @@ fn engine_observes_kind1_event_via_direct_observer_call() {
         "engine should have one root card after observing Alice's kind:1"
     );
     assert_eq!(snapshot.cards[0].card.id, OP_ID);
-}
-
-#[test]
-fn reentrant_claim_sink_queues_without_panic() {
-    // Simulate the re-entrancy hazard: the engine fires its ClaimSink from
-    // within an on_kernel_event call that is itself called while the reducer
-    // is mutably borrowed (the handle_relay_frame window).
-    //
-    // Contract: the queuing claim sink MUST park the ClaimRequest without
-    // attempting to call reducer.borrow_mut() — doing so would panic with
-    // "already mutably borrowed". This test asserts the no-panic invariant
-    // and verifies the request lands in the queue.
-
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
-    let reducer = runtime.reducer_handle();
-
-    // Build a standalone follow predicate that always returns true so
-    // Alice's reply triggers a claim.
-    let always_follows: nmp_feed::FollowPredicate = Arc::new(|_: &str| true);
-    let event_lookup: nmp_feed::EventLookup = Arc::new(move |_id: &String| None);
-    let queue = new_pending_claim_queue();
-    let queuing_sink = build_queuing_claim_sink(Arc::clone(&queue));
-    let engine = register_op_feed(
-        ALICE.to_string(),
-        always_follows,
-        event_lookup,
-        queuing_sink,
-    );
-
-    // Take a mutable borrow of the reducer — simulating the window inside
-    // handle_relay_frame where the borrow is held.
-    {
-        let _guard = reducer.borrow_mut();
-        // While the reducer is borrowed, fire on_kernel_event with a reply
-        // whose root is unknown. The engine should emit a ClaimRequest via
-        // the queuing sink WITHOUT touching the reducer (no panic).
-        let reply = make_reply(REPLY_ID, ALICE, OP_ID);
-        engine.on_kernel_event(&reply);
-    }
-    // _guard dropped here — borrow released.
-
-    // The queuing sink must have captured the claim without panicking.
-    let queue_len = { queue.lock().unwrap().len() };
-    assert!(
-        queue_len > 0,
-        "claim sink should have queued at least one ClaimRequest; got {queue_len}"
-    );
-
-    // drain_pending_claims processes the queue and calls claim_event on the
-    // reducer with can_send=false. No panic expected.
-    drain_pending_claims(&queue, &reducer);
-
-    let remaining = queue.lock().unwrap().len();
-    assert_eq!(remaining, 0, "queue should be empty after drain");
-
-    let _ = setup; // keep alive
 }
 
 #[test]
@@ -193,8 +126,7 @@ fn wired_path_follow_feed_populates_snapshot() {
 
     // Notify the follow set of the account change. This seeds ALICE (self-
     // inclusion) into the follow set so the engine's follow predicate returns
-    // `true` for ALICE's events. Also triggers the engine reset guard (first
-    // account set, so last_seen transitions None → Some(ALICE) → engine reset).
+    // `true` for ALICE's events and resets the feed perspective.
     setup.notify_account_changed();
 
     // Deliver ALICE's kind:1 through the wired observer slot — NOT via
@@ -223,7 +155,8 @@ fn wired_path_follow_feed_populates_snapshot() {
 fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
     // Regression guard for the wasm composition substrate wiring:
     //   1. web installs the same ContactsCache as kernel reader + kind:3 parser
-    //   2. host opens the contact-feed interest for kinds 1/6
+    //   2. host opens the contact-feed interest for primary kind 1, with
+    //      kind 6 derived by the NIP-18 acquisition helper
     //   3. the active account's kind:3 arrives through the projection chokepoint
     //   4. the kernel's follow-feed author set expands from self-only to include
     //      BOB, so the wasm relay pool can subscribe to BOB's notes.
@@ -237,7 +170,7 @@ fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
     runtime
         .handle(WorkerRequest::Dispatch(ActionDispatch {
             action_type: "nmp.kernel.open_contact_feed".to_string(),
-            payload: serde_json::json!({ "kinds": [1, 6] }),
+            payload: serde_json::json!({ "kinds": [1] }),
             correlation_id: "open-contact-feed".to_string(),
         }))
         .expect("open_contact_feed dispatch must be accepted");
@@ -269,20 +202,18 @@ fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
 }
 
 #[test]
-fn wired_path_attribution_surfaces_after_post_tick_drain() {
+fn wired_path_attribution_surfaces_when_missing_root_arrives() {
     // ADR-0035 product semantics on the wired path:
     //   A followed-user reply to a non-followed root surfaces that root with
-    //   attribution after the post-tick drain, going through the registered
-    //   observer slot.
+    //   attribution after the root arrives, going through the registered
+    //   observer slot. The feed does not claim or fetch the missing root.
     //
     // Sequence:
     //   1. setup + set ALICE as viewer → ALICE is a follow (self-inclusion)
     //   2. ALICE (follow) replies to BOB's OP (not yet seen) via observer
     //   3. assert no card yet — root absent
-    //   4. assert claim queue has a pending request (engine requested BOB's root)
-    //   5. drain pending claims (the post-tick drain the wasm runtime calls)
-    //   6. BOB's root arrives via observer
-    //   7. assert 1 card with ALICE's attribution
+    //   4. BOB's root arrives via observer
+    //   5. assert 1 card with ALICE's attribution
     let runtime = WasmRuntime::new();
     let setup = setup_chirp_web_feeds(&runtime);
 
@@ -307,31 +238,12 @@ fn wired_path_attribution_surfaces_after_post_tick_drain() {
         before.cards.len()
     );
 
-    // Step 4: the engine should have emitted a ClaimRequest for BOB's root.
-    // The queuing sink parks it — verify via direct engine introspection is
-    // not available, but the claim drain path verifies the queue is non-empty
-    // and can be drained without panic.
-
-    // Step 5: drain pending claims (mirrors the post-tick hook in production).
+    // Step 4: BOB's root arrives via the wired slot.
     let reducer = runtime.reducer_handle();
-    {
-        let queue_guard = {
-            // Access the claim queue through the public claim_queue API:
-            // build a second queuing sink on the same queue, drain it.
-            // The real queue is internal to the setup; we test the drain
-            // indirectly by verifying it doesn't panic and the engine
-            // subsequently surfaces the card.
-        };
-        // The production drain is installed via `install_post_tick_drain`;
-        // here we call it implicitly by delivering the root (step 6).
-        let _ = queue_guard;
-    }
-
-    // Step 6: BOB's root arrives via the wired slot.
     let root = make_kind1(OP_ID, BOB, "BOB's root note");
     reducer.borrow().fire_event_observers_for_test(&root);
 
-    // Step 7: root now present → card surfaces with ALICE's attribution.
+    // Step 5: root now present → card surfaces with ALICE's attribution.
     let after = setup.engine.snapshot(&FeedRequest::default());
     assert_eq!(
         after.cards.len(),
@@ -349,11 +261,8 @@ fn wired_path_attribution_surfaces_after_post_tick_drain() {
         "ALICE's reply must attach one attribution to BOB's root; got {}",
         after.cards[0].attribution.len()
     );
-    // Use the public `author_pubkey()` accessor from `AttributionPayload`.
-    use nmp_feed::AttributionPayload as _;
     assert_eq!(
-        after.cards[0].attribution[0].author_pubkey(),
-        ALICE,
+        after.cards[0].attribution[0].author_pubkey, ALICE,
         "attribution must carry ALICE's pubkey"
     );
 }
@@ -396,6 +305,15 @@ fn setup_chirp_web_feeds_projection_appears_in_snapshot() {
     assert_eq!(
         feed_proj.schema_id, OP_FEED_SCHEMA_ID,
         "nmp.feed.home projection must carry schema_id \"nmp.nip01.opfeed\""
+    );
+    let mute_proj = projections
+        .iter()
+        .find(|p| p.key == "nmp.nip51.mute_list")
+        .expect("typed projections must include the active-account mute-list read model");
+    assert_eq!(
+        mute_proj.schema_id,
+        nmp_nip51::MUTE_LIST_SCHEMA_ID,
+        "mute projection must carry the NIP-51 mute-list schema id"
     );
 }
 

@@ -38,8 +38,8 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
     // each carrying only the authors that relay serves — never a hardcoded
     // `RelayRole::Content` URL.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     kernel
@@ -154,8 +154,8 @@ fn cold_start_routes_to_bootstrap_then_replans_after_nip65_arrives() {
     // kind:10002 arrives (Nip65Arrived trigger), the second M2 drain emits a
     // REQ for alice's resolved write relay and CLOSEs the prior fallback REQ.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     kernel

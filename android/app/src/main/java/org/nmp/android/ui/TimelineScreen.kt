@@ -412,6 +412,17 @@ internal fun NoteRow(
             }
         }
         Spacer(Modifier.size(6.dp))
+        val repost = card?.repostedBy
+        if (repost != null) {
+            val repostAuthor = repost.authorDisplayName?.nonEmptyOrNull()
+                ?: repost.authorPubkey.take(8)
+            Text(
+                "Repost by $repostAuthor",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(4.dp))
+        }
         NostrRichText(
             content = content,
             contentTree = card?.contentTree,

@@ -6,15 +6,10 @@
 mod pagination_ordering;
 mod support;
 
-use nmp_threading::pointer::ThreadPointer;
-
 use crate::root_indexed::card::RootFeedSnapshot;
-use crate::root_indexed::claim::ClaimRequest;
 use crate::root_indexed::engine::MAX_ATTRIBUTION_PER_ROOT;
-use crate::FeedRequest;
-use support::{
-    profile_event, reply_event, repost_event, root_event, Harness, TestCard, TestPayload,
-};
+use crate::{FeedRequest, DEFAULT_FEED_WINDOW_LIMIT};
+use support::{reply_event, repost_event, root_event, Harness, TestCard, TestPayload};
 
 #[test]
 fn root_first_arrival_surfaces_root() {
@@ -25,32 +20,15 @@ fn root_first_arrival_surfaces_root() {
     assert_eq!(snap.cards.len(), 1);
     assert_eq!(snap.cards[0].card.root_id, "op1");
     assert!(snap.cards[0].attribution.is_empty());
-    // A root that is locally present needs no claim.
-    assert!(h.claims().is_empty());
 }
 
 #[test]
-fn reply_before_root_buffers_and_emits_claim() {
+fn reply_before_root_buffers_without_claiming_secondary_data() {
     let h = Harness::new(&["alice"]);
     h.ingest(&reply_event("r1", "alice", 11, "op1"));
 
     // No root yet → nothing surfaces.
     assert!(h.snapshot().cards.is_empty());
-
-    // Exactly one Claim for the missing root, carrying an Event pointer.
-    let claims = h.claims();
-    assert_eq!(claims.len(), 1);
-    match &claims[0] {
-        ClaimRequest::Claim {
-            pointer,
-            consumer_id,
-            ..
-        } => {
-            assert_eq!(pointer.event_id(), Some("op1"));
-            assert_eq!(consumer_id, "nmp.feed.home");
-        }
-        other => panic!("expected Claim, got {other:?}"),
-    }
 }
 
 #[test]
@@ -59,8 +37,6 @@ fn reply_from_non_follow_is_dropped() {
     h.ingest(&reply_event("r1", "mallory", 11, "op1"));
 
     assert!(h.snapshot().cards.is_empty());
-    // Non-follow reply produced no claim and no buffered attribution.
-    assert!(h.claims().is_empty());
 }
 
 #[test]
@@ -73,60 +49,20 @@ fn root_arrival_drains_pending_attribution() {
     assert_eq!(snap.cards.len(), 1);
     assert_eq!(snap.cards[0].attribution.len(), 1);
     assert_eq!(snap.cards[0].attribution[0].author, "alice");
-
-    // Claim emitted for the buffered reply, then Release once the root landed.
-    let claims = h.claims();
-    assert_eq!(claims.len(), 2);
-    assert!(matches!(claims[0], ClaimRequest::Claim { .. }));
-    assert!(matches!(claims[1], ClaimRequest::Release { .. }));
 }
 
 #[test]
-fn profile_refresh_fans_into_attribution() {
-    let h = Harness::new(&["alice"]);
-    h.ingest(&reply_event("r1", "alice", 11, "op1"));
-    h.ingest(&root_event("op1", "bob", 10, "hello"));
-    // No display name yet.
-    assert_eq!(h.snapshot().cards[0].attribution[0].display_name, None);
-
-    h.ingest(&profile_event("alice", "alice", "Alice A."));
-    assert_eq!(
-        h.snapshot().cards[0].attribution[0].display_name,
-        Some("Alice A.".to_string())
-    );
-}
-
-#[test]
-fn profile_refresh_reaches_pending_attribution() {
-    let h = Harness::new(&["alice"]);
-    h.ingest(&reply_event("r1", "alice", 11, "op1"));
-    // Profile arrives while attribution is still pending (root absent).
-    h.ingest(&profile_event("alice", "alice", "Alice A."));
-    // Root arrives last → drained attribution must already carry the name.
-    h.ingest(&root_event("op1", "bob", 10, "hello"));
-
-    assert_eq!(
-        h.snapshot().cards[0].attribution[0].display_name,
-        Some("Alice A.".to_string())
-    );
-}
-
-#[test]
-fn repost_l1_surfaces_target_and_claims_when_absent() {
+fn repost_l1_surfaces_target_placeholder_without_claiming_when_absent() {
     let h = Harness::new(&["alice"]);
     // Followed user reposts an OP we do not hold.
     h.ingest(&repost_event("rp1", "alice", 20, "op1", ""));
 
     // The target op1 is surfaced as a single root (keyed under op1 even though
     // only the wrapper rp1 is local — the card body is the wrapper's until the
-    // target hydrates via L-5).
+    // target arrives via L-5).
     let snap = h.snapshot();
     assert_eq!(snap.cards.len(), 1);
-
-    // Exactly one Claim, for the absent target op1.
-    let claims = h.claims();
-    assert_eq!(claims.len(), 1);
-    assert_eq!(claims[0].pointer().event_id(), Some("op1"));
+    assert_eq!(snap.cards[0].card.root_id, "op1");
 
     // When op1 lands, L-5 rebuilds the card body and the slot stays single.
     h.ingest(&root_event("op1", "bob", 10, "the real post"));
@@ -163,7 +99,7 @@ fn repost_l2_reply_to_wrapper_rekeys_to_target() {
 }
 
 #[test]
-fn repost_l5_etag_only_hydrates_when_target_arrives() {
+fn repost_l5_etag_only_rebuilds_when_target_arrives() {
     let h = Harness::new(&["alice"]);
     // E-tag-only repost: empty content, target not yet local.
     h.ingest(&repost_event("rp1", "alice", 20, "op1", ""));
@@ -171,7 +107,7 @@ fn repost_l5_etag_only_hydrates_when_target_arrives() {
     assert_eq!(early.cards[0].card.body, "", "card empty before target");
 
     // Target arrives later → card rebuilds from the (wrapper, target) pair,
-    // hydrating the body AND preserving the repost provenance (L-5 backward).
+    // rebuilding the body AND preserving the repost provenance (L-5).
     h.ingest(&root_event("op1", "bob", 10, "the real post"));
     let late = h.snapshot();
     let op1 = late
@@ -179,16 +115,16 @@ fn repost_l5_etag_only_hydrates_when_target_arrives() {
         .iter()
         .find(|c| c.card.root_id == "op1")
         .expect("op1 surfaced");
-    assert_eq!(op1.card.body, "the real post", "card hydrated after target");
+    assert_eq!(op1.card.body, "the real post", "card rebuilt after target");
     assert_eq!(
         op1.card.reposted_by,
         Some("alice".to_string()),
-        "repost provenance survives L-5 backward hydration"
+        "repost provenance survives L-5 rebuild"
     );
 }
 
 #[test]
-fn address_pointer_emits_address_claim() {
+fn address_pointer_buffers_without_claiming() {
     let h = Harness::new(&["alice"]);
     let mut reply = reply_event("r1", "alice", 11, "ignored");
     reply.tags = vec![vec![
@@ -197,12 +133,7 @@ fn address_pointer_emits_address_claim() {
     ]];
     h.ingest(&reply);
 
-    let claims = h.claims();
-    assert_eq!(claims.len(), 1);
-    match claims[0].pointer() {
-        ThreadPointer::Address { coord, .. } => assert_eq!(coord, "30023:bob:my-article"),
-        other => panic!("expected Address pointer, got {other:?}"),
-    }
+    assert!(h.snapshot().cards.is_empty());
 }
 
 #[test]
@@ -215,8 +146,6 @@ fn external_pointer_attaches_surrogate_no_claim() {
     ]];
     h.ingest(&reply);
 
-    // External roots are terminal: no claim emitted.
-    assert!(h.claims().is_empty());
     // Attribution is buffered against the surrogate (no surfaced card, since
     // an external root is never hydrated into `roots`).
     assert!(h.snapshot().cards.is_empty());
@@ -239,11 +168,6 @@ fn per_root_submap_evicts_oldest_without_release() {
         MAX_ATTRIBUTION_PER_ROOT,
         "per-root attribution bounded by D5 cap"
     );
-    // No Release was emitted: the root is still referenced.
-    assert!(h
-        .claims()
-        .iter()
-        .all(|c| !matches!(c, ClaimRequest::Release { .. })));
 }
 
 #[test]
@@ -287,42 +211,6 @@ fn snapshot_serde_round_trips() {
 }
 
 #[test]
-fn claim_request_carries_event_thread_pointer() {
-    let h = Harness::new(&["alice"]);
-    h.ingest(&reply_event("r1", "alice", 11, "op1"));
-    let claims = h.claims();
-    match &claims[0] {
-        ClaimRequest::Claim { pointer, .. } => {
-            assert!(matches!(pointer, ThreadPointer::Event { .. }));
-            assert_eq!(pointer.event_id(), Some("op1"));
-        }
-        other => panic!("expected Claim, got {other:?}"),
-    }
-}
-
-#[test]
-fn v81_release_signal_does_not_drop_pending_attribution() {
-    let h = Harness::new(&["alice"]);
-    h.ingest(&reply_event("r1", "alice", 11, "op1"));
-
-    // A Phase-1-EOSE release signal fires for the still-claimed root.
-    h.engine.on_event_claim_released(&"op1".to_string());
-    assert_eq!(h.engine.released_signals_seen(), 1);
-
-    // V-81: the pending attribution MUST survive — Phase-2 retargeting may
-    // still fetch the root. Prove it by delivering the root afterwards and
-    // observing the attribution still attaches.
-    h.ingest(&root_event("op1", "bob", 10, "hello"));
-    let snap = h.snapshot();
-    assert_eq!(snap.cards.len(), 1);
-    assert_eq!(
-        snap.cards[0].attribution.len(),
-        1,
-        "release signal must not have evicted the pending attribution (V-81)"
-    );
-}
-
-#[test]
 fn reset_for_identity_change_clears_all_state() {
     let h = Harness::new(&["alice"]);
     h.ingest(&reply_event("r1", "alice", 11, "op1"));
@@ -334,45 +222,62 @@ fn reset_for_identity_change_clears_all_state() {
 }
 
 #[test]
-fn reset_for_identity_change_releases_pending_claims() {
+fn remove_root_drops_card_and_attribution_state() {
     let h = Harness::new(&["alice"]);
     h.ingest(&reply_event("r1", "alice", 11, "op1"));
-    h.ingest(&reply_event("r2", "alice", 12, "op2"));
+    h.ingest(&root_event("op1", "bob", 10, "hello"));
+    assert_eq!(h.snapshot().cards[0].attribution.len(), 1);
 
-    let before = h.claims();
-    assert_eq!(
-        before
-            .iter()
-            .filter(|c| matches!(c, ClaimRequest::Claim { .. }))
-            .count(),
-        2,
-        "two missing roots should be claimed before reset"
-    );
+    assert!(h.engine.remove_root("op1"));
+    assert!(h.snapshot().cards.is_empty());
 
-    h.engine.reset_for_identity_change();
-
-    let claims = h.claims();
-    let released = claims
-        .iter()
-        .filter_map(|c| match c {
-            ClaimRequest::Release {
-                pointer,
-                consumer_id,
-            } => Some((pointer.event_id(), consumer_id.as_str())),
-            ClaimRequest::Claim { .. } => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        released,
-        vec![
-            (Some("op1"), "nmp.feed.home"),
-            (Some("op2"), "nmp.feed.home")
-        ],
-        "identity reset must release every outstanding engine-owned claim"
-    );
+    h.ingest(&root_event("op1", "bob", 12, "again"));
     assert!(
-        h.snapshot().cards.is_empty(),
-        "reset still clears visible state"
+        h.snapshot().cards[0].attribution.is_empty(),
+        "stale attribution state must not survive root removal"
+    );
+}
+
+#[test]
+fn remove_root_if_keeps_card_when_predicate_rejects() {
+    let h = Harness::new(&["alice"]);
+    h.ingest(&root_event("op1", "bob", 10, "hello"));
+
+    assert!(!h.engine.remove_root_if("op1", |card| card.body == "nope"));
+    assert_eq!(h.snapshot().cards.len(), 1);
+}
+
+#[test]
+fn perspective_reset_restores_default_window_limit() {
+    let h = Harness::new(&["alice"]);
+    for i in 0u64..90 {
+        h.ingest(&root_event(
+            &format!("old{i}"),
+            "alice",
+            1_000 + i,
+            "old body",
+        ));
+    }
+    assert!(
+        h.engine.grow_visible_window(),
+        "precondition: visible window grew past the default"
+    );
+    assert_eq!(h.engine.snapshot_current_window().cards.len(), 90);
+
+    h.engine.reset_for_perspective_change();
+
+    for i in 0u64..90 {
+        h.ingest(&root_event(
+            &format!("new{i}"),
+            "alice",
+            2_000 + i,
+            "new body",
+        ));
+    }
+    assert_eq!(
+        h.engine.snapshot_current_window().cards.len(),
+        DEFAULT_FEED_WINDOW_LIMIT,
+        "a perspective reset must return paging to the first window"
     );
 }
 
@@ -399,9 +304,8 @@ fn gated_out_kind_never_becomes_a_phantom_root() {
     };
     h.ingest(&contacts);
 
-    // Gate dropped it before any state was touched: no card, no claim.
+    // Gate dropped it before any state was touched: no card.
     assert!(h.snapshot().cards.is_empty());
-    assert!(h.claims().is_empty());
 
     // A real kind:1 root still surfaces, proving the gate only filters kinds.
     h.ingest(&root_event("op1", "bob", 10, "hello"));

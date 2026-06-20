@@ -73,8 +73,8 @@ fn req_sub_ids_from_outbound(out: &[crate::relay::OutboundMessage]) -> Vec<Strin
 #[test]
 fn live_follow_feed_path_emits_no_seed_timeline_req() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
@@ -153,8 +153,8 @@ fn live_follow_feed_path_emits_no_seed_timeline_req() {
 #[test]
 fn m2_follow_feed_sub_survives_eose() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
@@ -212,8 +212,8 @@ fn m2_follow_feed_sub_survives_eose() {
 #[test]
 fn m2_follow_feed_interest_is_collapsed_limitless_multi_author() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     // Both ALICE and BOB write to the same relay so the collapsed multi-author
@@ -262,8 +262,8 @@ fn m2_follow_feed_interest_is_collapsed_limitless_multi_author() {
 #[test]
 fn empty_follows_clears_timeline_authors_and_interests() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
@@ -338,8 +338,8 @@ fn empty_follows_clears_timeline_authors_and_interests() {
 #[test]
 fn empty_kind_10002_emits_nip65_arrived() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
 
@@ -403,8 +403,8 @@ fn empty_kind_10002_emits_nip65_arrived() {
 #[test]
 fn active_account_timeline_authors_excludes_seeds() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set).
+    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
+    // hardcodes a social kind set.
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
 

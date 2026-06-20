@@ -18,6 +18,7 @@ crate-type = ["cdylib", "rlib"]
 # wire NmpApp into WasmRuntime using a WASM-compatible transport
 # (web_sys::WebSocket + IndexedDB store).
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-nip18 = { path = "../nmp-nip18" }
 # Step 8 phase A: the `relay_protocol` constants moved from
 # `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the
 # pure-Rust `native = false` slice of nmp-network (no tungstenite/mio/rustls).

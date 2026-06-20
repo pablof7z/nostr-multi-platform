@@ -175,6 +175,7 @@ fn op_feed_snapshot_value() -> Value {
                     "replies": { "state": "known", "count": 2 },
                     "reactions": { "state": "known", "count": 0 },
                     "reposts": { "state": "known", "count": 0 },
+                    "comments": { "state": "known", "count": 0 },
                     "zaps": { "state": "known", "count": 0 }
                 }
             },
