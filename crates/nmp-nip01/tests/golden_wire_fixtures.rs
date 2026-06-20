@@ -66,6 +66,7 @@ fn repost_card() -> TimelineEventCard {
             zaps: RelationCount::Loading {
                 interest: RelationCountInterest::zaps(&event_id(0xaa)),
             },
+            comments: RelationCount::Known { count: 3 },
         },
         reposted_by: Some(RepostAttribution {
             author_pubkey: event_id(0x42),

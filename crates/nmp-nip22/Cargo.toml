@@ -1,0 +1,19 @@
+[package]
+name = "nmp-nip22"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-22 comment (kind:1111) decode, threaded comment projection, and post-comment action for NMP apps."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-kinds = { path = "../nmp-kinds" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

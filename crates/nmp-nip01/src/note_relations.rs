@@ -16,6 +16,10 @@ pub struct NoteRelationCounts {
     pub reactions: RelationCount,
     pub reposts: RelationCount,
     pub zaps: RelationCount,
+    /// NIP-22 kind:1111 comments rooted at this event/address/external id.
+    /// Distinct from `replies` (kind:1 NIP-10 threaded notes) — a node can have
+    /// both. Counted against the comment's UPPERCASE root scope target.
+    pub comments: RelationCount,
 }
 
 impl NoteRelationCounts {
@@ -26,6 +30,7 @@ impl NoteRelationCounts {
             reactions: RelationCount::known(counts.reactions),
             reposts: RelationCount::known(counts.reposts),
             zaps: RelationCount::known(counts.zaps),
+            comments: RelationCount::known(counts.comments),
         }
     }
 }
@@ -83,6 +88,18 @@ impl RelationCountInterest {
             tag: "e".to_string(),
         }
     }
+
+    /// Interest in NIP-22 kind:1111 comments rooted at `root_tag_value`. The
+    /// uppercase root tag is `E` for an event root (the common card case);
+    /// `A`/`I` roots use the same namespace with their own scope tag.
+    #[must_use]
+    pub fn comments(root_tag_value: &str) -> Self {
+        Self {
+            namespace: "nmp.nip22.comments".to_string(),
+            target_event_id: root_tag_value.to_string(),
+            tag: "E".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -91,6 +108,7 @@ pub struct TargetRelationCounts {
     pub reactions: u64,
     pub reposts: u64,
     pub zaps: u64,
+    pub comments: u64,
 }
 
 pub struct NoteRelationIndex {
@@ -146,6 +164,7 @@ impl NoteRelationIndex {
             RelationKind::Reaction => &mut counts.reactions,
             RelationKind::Repost => &mut counts.reposts,
             RelationKind::Zap => &mut counts.zaps,
+            RelationKind::Comment => &mut counts.comments,
         };
         match direction {
             Direction::Up => *slot = slot.saturating_add(1),
@@ -169,6 +188,18 @@ impl IndexedRelation {
             return note.refs.reply.or(note.refs.root).map(|reply| Self {
                 target: reply.id,
                 kind: RelationKind::Reply,
+            });
+        }
+        // NIP-22 kind:1111 comment — counted against its UPPERCASE root scope
+        // target (the artifact the thread hangs off), so an event/article/
+        // external root surfaces a comment count.
+        if let Some(comment) = nmp_nip22::try_from_kernel_event(event) {
+            if comment.root_tag_value.is_empty() {
+                return None;
+            }
+            return Some(Self {
+                target: comment.root_tag_value,
+                kind: RelationKind::Comment,
             });
         }
         if event.kind == nmp_nip18::KIND_REPOST {
@@ -200,6 +231,7 @@ enum RelationKind {
     Reaction,
     Repost,
     Zap,
+    Comment,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -323,5 +355,32 @@ mod tests {
         assert_eq!(counts.reactions, RelationCount::Known { count: 0 });
         assert_eq!(counts.reposts, RelationCount::Known { count: 0 });
         assert_eq!(counts.zaps, RelationCount::Known { count: 0 });
+        assert_eq!(counts.comments, RelationCount::Known { count: 0 });
+    }
+
+    #[test]
+    fn counts_nip22_comments_against_their_root_target() {
+        let mut index = NoteRelationIndex::default();
+        let root = "r".repeat(64);
+        let comment = KernelEvent {
+            id: "c".repeat(64),
+            author: "a".repeat(64),
+            kind: nmp_nip22::KIND_COMMENT,
+            created_at: 1,
+            tags: vec![
+                vec!["E".to_string(), root.clone()],
+                vec!["K".to_string(), "11".to_string()],
+                vec!["e".to_string(), root.clone()],
+                vec!["k".to_string(), "11".to_string()],
+            ],
+            content: "great".to_string(),
+            relay_provenance: Vec::new(),
+        };
+
+        assert_eq!(index.ingest(&comment), vec![root.clone()]);
+        let counts = index.counts_for(&root);
+        assert_eq!(counts.comments, RelationCount::Known { count: 1 });
+        // A comment is not also tallied as a kind:1 reply.
+        assert_eq!(counts.replies, RelationCount::Known { count: 0 });
     }
 }

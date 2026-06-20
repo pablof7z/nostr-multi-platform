@@ -1321,6 +1321,7 @@ pub mod nmp {
             pub const VT_REACTIONS: ::flatbuffers::VOffsetT = 6;
             pub const VT_REPOSTS: ::flatbuffers::VOffsetT = 8;
             pub const VT_ZAPS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_COMMENTS: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1337,6 +1338,9 @@ pub mod nmp {
                 args: &'args NoteRelationCountsArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'bldr>> {
                 let mut builder = NoteRelationCountsBuilder::new(_fbb);
+                if let Some(x) = args.comments {
+                    builder.add_comments(x);
+                }
                 if let Some(x) = args.zaps {
                     builder.add_zaps(x);
                 }
@@ -1404,6 +1408,19 @@ pub mod nmp {
                         )
                 }
             }
+            #[inline]
+            pub fn comments(&self) -> Option<RelationCount<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                            NoteRelationCounts::VT_COMMENTS,
+                            None,
+                        )
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for NoteRelationCounts<'_> {
@@ -1433,6 +1450,11 @@ pub mod nmp {
                         Self::VT_ZAPS,
                         false,
                     )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                        "comments",
+                        Self::VT_COMMENTS,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -1442,6 +1464,7 @@ pub mod nmp {
             pub reactions: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
             pub reposts: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
             pub zaps: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
+            pub comments: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
         }
         impl<'a> Default for NoteRelationCountsArgs<'a> {
             #[inline]
@@ -1451,6 +1474,7 @@ pub mod nmp {
                     reactions: None,
                     reposts: None,
                     zaps: None,
+                    comments: None,
                 }
             }
         }
@@ -1496,6 +1520,14 @@ pub mod nmp {
                     );
             }
             #[inline]
+            pub fn add_comments(&mut self, comments: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
+                        NoteRelationCounts::VT_COMMENTS,
+                        comments,
+                    );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> NoteRelationCountsBuilder<'a, 'b, A> {
@@ -1519,6 +1551,7 @@ pub mod nmp {
                 ds.field("reactions", &self.reactions());
                 ds.field("reposts", &self.reposts());
                 ds.field("zaps", &self.zaps());
+                ds.field("comments", &self.comments());
                 ds.finish()
             }
         }

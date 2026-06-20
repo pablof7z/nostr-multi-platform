@@ -64,6 +64,15 @@ class NoteRelationCounts : Table() {
             null
         }
     }
+    val comments : nmp.nip01.RelationCount? get() = comments(nmp.nip01.RelationCount())
+    fun comments(obj: nmp.nip01.RelationCount) : nmp.nip01.RelationCount? {
+        val o = __offset(12)
+        return if (o != 0) {
+            obj.__assign(__indirect(o + bb_pos), bb)
+        } else {
+            null
+        }
+    }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsNoteRelationCounts(_bb: ByteBuffer): NoteRelationCounts = getRootAsNoteRelationCounts(_bb, NoteRelationCounts())
@@ -71,19 +80,21 @@ class NoteRelationCounts : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createNoteRelationCounts(builder: FlatBufferBuilder, repliesOffset: Int, reactionsOffset: Int, repostsOffset: Int, zapsOffset: Int) : Int {
-            builder.startTable(4)
+        fun createNoteRelationCounts(builder: FlatBufferBuilder, repliesOffset: Int, reactionsOffset: Int, repostsOffset: Int, zapsOffset: Int, commentsOffset: Int) : Int {
+            builder.startTable(5)
+            addComments(builder, commentsOffset)
             addZaps(builder, zapsOffset)
             addReposts(builder, repostsOffset)
             addReactions(builder, reactionsOffset)
             addReplies(builder, repliesOffset)
             return endNoteRelationCounts(builder)
         }
-        fun startNoteRelationCounts(builder: FlatBufferBuilder) = builder.startTable(4)
+        fun startNoteRelationCounts(builder: FlatBufferBuilder) = builder.startTable(5)
         fun addReplies(builder: FlatBufferBuilder, replies: Int) = builder.addOffset(0, replies, 0)
         fun addReactions(builder: FlatBufferBuilder, reactions: Int) = builder.addOffset(1, reactions, 0)
         fun addReposts(builder: FlatBufferBuilder, reposts: Int) = builder.addOffset(2, reposts, 0)
         fun addZaps(builder: FlatBufferBuilder, zaps: Int) = builder.addOffset(3, zaps, 0)
+        fun addComments(builder: FlatBufferBuilder, comments: Int) = builder.addOffset(4, comments, 0)
         fun endNoteRelationCounts(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

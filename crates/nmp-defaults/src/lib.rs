@@ -116,7 +116,7 @@ pub mod topic_articles;
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
-pub use runtimes::{register_bookmark_runtime, register_mute_runtime};
+pub use runtimes::{register_bookmark_runtime, register_comment_runtime, register_mute_runtime};
 pub use tiers::{register_substrate, NmpDefaults};
 
 /// Runtime read handles installed by [`register_defaults_with_handles`].
@@ -262,6 +262,12 @@ fn register_defaults_inner(
         // read model, so writes merge the latest observed list instead of
         // overwriting it through PublishRaw.
         let _ = runtimes::register_bookmark_runtime(app);
+        // NIP-22 kind:1111 comments. Installs the threaded comment-thread
+        // observer and registers the `nmp.nip22.post_comment` action. The
+        // `Arc<CommentThreadProjection>` is dropped here (fire-and-forget
+        // bundle path); apps that render comment threads call
+        // [`register_comment_runtime`] directly to keep the snapshot handle.
+        let _ = runtimes::register_comment_runtime(app);
     }
 
     if dms {

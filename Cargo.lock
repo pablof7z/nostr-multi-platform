@@ -4551,6 +4551,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip11",
  "nmp-nip17",
+ "nmp-nip22",
  "nmp-nip25",
  "nmp-nip47",
  "nmp-nip51",
@@ -4690,6 +4691,7 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
+ "nmp-nip22",
  "nmp-nip57",
  "nmp-planner",
  "nmp-store",
@@ -4744,6 +4746,16 @@ name = "nmp-nip18"
 version = "0.8.0"
 dependencies = [
  "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip22"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-kinds",
  "serde",
  "serde_json",
 ]

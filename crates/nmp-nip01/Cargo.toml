@@ -18,6 +18,9 @@ nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }
+# Direct dep on nmp-nip22 for kind:1111 comment decode — the comment-count
+# relation tally recognises NIP-22 comments alongside replies/reactions/zaps.
+nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-threading = { path = "../nmp-threading" }
 serde = { workspace = true, features = ["derive"] }

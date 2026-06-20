@@ -347,6 +347,7 @@ public struct nmp_nip01_NoteRelationCounts: FlatBufferTable, FlatbuffersVectorIn
     case reactions = 6
     case reposts = 8
     case zaps = 10
+    case comments = 12
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -355,24 +356,28 @@ public struct nmp_nip01_NoteRelationCounts: FlatBufferTable, FlatbuffersVectorIn
   public var reactions: nmp_nip01_RelationCount? { let o = _accessor.offset(VTOFFSET.reactions.v); return o == 0 ? nil : nmp_nip01_RelationCount(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
   public var reposts: nmp_nip01_RelationCount? { let o = _accessor.offset(VTOFFSET.reposts.v); return o == 0 ? nil : nmp_nip01_RelationCount(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
   public var zaps: nmp_nip01_RelationCount? { let o = _accessor.offset(VTOFFSET.zaps.v); return o == 0 ? nil : nmp_nip01_RelationCount(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startNoteRelationCounts(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
+  public var comments: nmp_nip01_RelationCount? { let o = _accessor.offset(VTOFFSET.comments.v); return o == 0 ? nil : nmp_nip01_RelationCount(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
+  public static func startNoteRelationCounts(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 5) }
   public static func add(replies: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: replies, at: VTOFFSET.replies.p) }
   public static func add(reactions: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: reactions, at: VTOFFSET.reactions.p) }
   public static func add(reposts: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: reposts, at: VTOFFSET.reposts.p) }
   public static func add(zaps: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: zaps, at: VTOFFSET.zaps.p) }
+  public static func add(comments: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: comments, at: VTOFFSET.comments.p) }
   public static func endNoteRelationCounts(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createNoteRelationCounts(
     _ fbb: inout FlatBufferBuilder,
     repliesOffset replies: Offset = Offset(),
     reactionsOffset reactions: Offset = Offset(),
     repostsOffset reposts: Offset = Offset(),
-    zapsOffset zaps: Offset = Offset()
+    zapsOffset zaps: Offset = Offset(),
+    commentsOffset comments: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip01_NoteRelationCounts.startNoteRelationCounts(&fbb)
     nmp_nip01_NoteRelationCounts.add(replies: replies, &fbb)
     nmp_nip01_NoteRelationCounts.add(reactions: reactions, &fbb)
     nmp_nip01_NoteRelationCounts.add(reposts: reposts, &fbb)
     nmp_nip01_NoteRelationCounts.add(zaps: zaps, &fbb)
+    nmp_nip01_NoteRelationCounts.add(comments: comments, &fbb)
     return nmp_nip01_NoteRelationCounts.endNoteRelationCounts(&fbb, start: __start)
   }
 
@@ -382,6 +387,7 @@ public struct nmp_nip01_NoteRelationCounts: FlatBufferTable, FlatbuffersVectorIn
     try _v.visit(field: VTOFFSET.reactions.p, fieldName: "reactions", required: false, type: ForwardOffset<nmp_nip01_RelationCount>.self)
     try _v.visit(field: VTOFFSET.reposts.p, fieldName: "reposts", required: false, type: ForwardOffset<nmp_nip01_RelationCount>.self)
     try _v.visit(field: VTOFFSET.zaps.p, fieldName: "zaps", required: false, type: ForwardOffset<nmp_nip01_RelationCount>.self)
+    try _v.visit(field: VTOFFSET.comments.p, fieldName: "comments", required: false, type: ForwardOffset<nmp_nip01_RelationCount>.self)
     _v.finish()
   }
 }

@@ -29,6 +29,9 @@ nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 # `register_defaults` wholesale.
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip25 = { path = "../nmp-nip25" }
+# NIP-22 comments: `register_comment_runtime` installs the kind:1111
+# `CommentThreadProjection` observer + the `nmp.nip22.post_comment` action.
+nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip11 = { path = "../nmp-nip11" }
 nmp-nip17 = { path = "../nmp-nip17" }
 # NIP-47 Nostr Wallet Connect: `register_wallet` is wired through the

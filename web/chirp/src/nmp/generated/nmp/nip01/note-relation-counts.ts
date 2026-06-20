@@ -45,8 +45,13 @@ zaps(obj?:RelationCount):RelationCount|null {
   return offset ? (obj || new RelationCount()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+comments(obj?:RelationCount):RelationCount|null {
+  const offset = this.bb!.__offset(this.bb_pos, 12);
+  return offset ? (obj || new RelationCount()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
+}
+
 static startNoteRelationCounts(builder:flatbuffers.Builder) {
-  builder.startObject(4);
+  builder.startObject(5);
 }
 
 static addReplies(builder:flatbuffers.Builder, repliesOffset:flatbuffers.Offset) {
@@ -63,6 +68,10 @@ static addReposts(builder:flatbuffers.Builder, repostsOffset:flatbuffers.Offset)
 
 static addZaps(builder:flatbuffers.Builder, zapsOffset:flatbuffers.Offset) {
   builder.addFieldOffset(3, zapsOffset, 0);
+}
+
+static addComments(builder:flatbuffers.Builder, commentsOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(4, commentsOffset, 0);
 }
 
 static endNoteRelationCounts(builder:flatbuffers.Builder):flatbuffers.Offset {
