@@ -97,9 +97,12 @@ The doctrines from `product-spec.md` §1.5 (D1 best-effort rendering, D2 negentr
 ## Consequences
 
 - **Smaller kernel, larger ecosystem surface.** `nmp-core` shrinks substantially. The ecosystem grows: `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip25`, `nmp-nip29`, `nmp-nip65`, `nmp-nip77`, `nmp-blossom`, `nmp-nwc`, `nmp-cashu` become first-class protocol modules.
-- **Codegen is critical-path infrastructure.** Without `nmp gen modules` producing per-app concrete enums and platform wrappers, every app reinvents the EventBridge pattern. The codegen tool ships in v1.
-- **Phase 1a takes longer.** ADR-0008's 8-week estimate grows to roughly 12–15 weeks. The kernel substrate (1a.1) and tiny fixture module land before the first Nostr-shaped extension module. Twitter clone follows on top.
-- **Two fixture apps prove the boundary in v1.** A tiny non-Nostr-shaped fixture (e.g., a TODO/notes module with an app-local identity) lands in 1a.1; the Twitter clone is the first Nostr-shaped extension module. Together they prove the kernel works in both directions.
+- **Composition is a library call, not a codegen step.** `nmp-defaults::register_defaults` wires
+  the standard module set; `nmp init` scaffolds a thin `<name>-core` crate that calls it.
+  (`nmp gen modules` — the per-app FFI-crate generator originally proposed here — was deleted
+  by ADR-0046.)
+- **Phase 1a takes longer.** ADR-0008's 8-week estimate grows to roughly 12–15 weeks. The kernel substrate (1a.1) and the composition-root library land before the first Nostr-shaped extension module.
+- **External consumers prove the boundary.** `win-the-day`, `hl`, and `podcast-player` pin NMP by git rev and compose via `register_defaults` / `register_substrate`. The internal fixture app (`apps/fixture`) was deleted by ADR-0046 — it was generated but never functionally wired.
 - **The proof slices from the proposal (Highlighter-lite, Personal-coach-lite, TENEX-lite, Podcast-lite) become post-v1 demonstrations.** They are not v1 deliverables. They are evidence the boundary is right.
 - **Future protocol-spec evolution is cleaner.** A new NIP (say NIP-100) becomes a new crate, not a `nmp-core` patch.
 

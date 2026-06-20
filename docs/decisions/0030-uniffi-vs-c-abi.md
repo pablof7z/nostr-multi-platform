@@ -141,10 +141,11 @@ Rationale:
    C-ABI" is paid once, in `KernelBridge`'s pointer-wrangling code — not by
    downstream consumers.
 3. **UniFFI carries a build-system cost.** UniFFI requires its own bindgen
-   pipeline, xcframework integration, generated-bindings-as-checked-in-code
-   discipline, and a CI gate (`nmp gen modules --check`). M14's exit gate
-   names these explicitly. Paying that cost while the write surface is
-   still consolidating is poor sequencing.
+   pipeline, xcframework integration, and generated-bindings-as-checked-in-code
+   discipline. M14's exit gate names these explicitly. Paying that cost while
+   the write surface is still consolidating is poor sequencing.
+   (`nmp gen modules --check` was deleted by ADR-0046; the CI gate is now
+   `just gen bindings` + diff check.)
 4. **ADR-0027 precedent.** The unified `ActionModule` trait already decided
    the dispatch seam is "Rust-only; no useful C-ABI shape" because
    `Self::Action` and `ActorCommand` are Rust types with no stable C
@@ -233,7 +234,7 @@ no code ships with this ADR.
   distinct. This is structural complexity in `nmp-codegen` that we accept.
 - **A `bindings/swift/` checked-in path is new.** The aim doc reserved it
   (§5 lines 203–204) but the repo does not have it today. Introducing it
-  costs a CI gate (`nmp gen modules --check` against the projection
+  costs a CI gate (`just gen bindings` + diff check against the projection
   schema) and a small amount of repo discipline. The cost is paid once.
 - **Codegen output must be deterministic.** The M14 exit gate already
   names this for the Rust scaffolding ("repeated runs produce byte-identical

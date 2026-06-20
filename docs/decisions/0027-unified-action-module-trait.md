@@ -142,11 +142,9 @@ Files, verified against the code at commit `a1dcc568`:
   `UnfollowModule;` wrapping the already-existing `ReactAction`
   (`ffi.rs:585`) and `PubkeyAction` (`:597`) input types. Drop the inline
   registration; call `register_action_module::<ReactModule>()` etc.
-- **`apps/fixture/fixture-todo-core/src/lib.rs:199`** — `TodoActionModule`. The
-  fixture's executor lives in the codegen-driven app shell; the trait's
-  `execute` body is a non-trivial migration target (it constructs the
-  fixture's action update enum). Implement `execute` with the existing logic;
-  no separate `_command` helper exists today.
+- **`apps/fixture/fixture-todo-core/src/lib.rs:199`** — `TodoActionModule`.
+  *(Historical: `apps/fixture` and `fixture-todo-core` were deleted by ADR-0046.
+  This migration site no longer exists.)*
 - **`apps/chirp/nmp-app-chirp/src/ffi.rs:67-88`** — `wire_action!` macro. After
   the trait change, three lines collapse to one: every `wire_action!(app,
   Action, Input, command)` call becomes

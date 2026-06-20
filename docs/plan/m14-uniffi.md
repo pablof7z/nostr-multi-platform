@@ -2,18 +2,24 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
-**Demo product:** iOS app, podcast app, and (incoming) Android/Desktop/Web shells all bind to the kernel via generated bindings produced by `nmp gen modules`, not raw C FFI. Runtime update payloads use the canonical FlatBuffers schema; UniFFI owns object lifecycle, callback registration, and capability interfaces.
+**Demo product:** iOS app, podcast app, and (incoming) Android/Desktop/Web shells all bind to the kernel via generated host bindings (`nmp gen swift` / `nmp gen typed-decoders`), not raw C FFI. Runtime update payloads use the canonical FlatBuffers schema; UniFFI owns object lifecycle, callback registration, and capability interfaces.
 
-**Scope.** Replace the current raw C/JNI lifecycle/action FFI surface in `crates/nmp-ffi` with the per-app generated `nmp-app-<name>` crate per ADR-0010. The iOS app stops importing `NmpCore.h` and instead imports the generated Swift module. This milestone does **not** make UniFFI the hot payload format: `AppUpdate` frames remain FlatBuffers, and there is no JSON runtime fallback.
+> **ADR-0046 update.** The original scope referred to a per-app `nmp-app-<name>` generated
+> crate via `nmp gen modules`. That generator was deleted. Composition is now a library call
+> (`nmp-defaults::register_defaults`); the M14 milestone is now about host-binding codegen
+> (`gen swift` / `gen typed-decoders`) replacing raw C/JNI FFI, not about generating a wiring
+> crate. `apps/fixture/nmp-app-fixture` referenced below does not exist.
+
+**Scope.** Replace the current raw C/JNI lifecycle/action FFI surface in `crates/nmp-ffi` with the UniFFI-generated host bindings. The iOS app stops importing `NmpCore.h` and instead imports the generated Swift module. This milestone does **not** make UniFFI the hot payload format: `AppUpdate` frames remain FlatBuffers, and there is no JSON runtime fallback.
 
 **Subsystem deliverables.**
 
-- `nmp-codegen` extended to produce UniFFI scaffolding in the generated per-app crate.
-- `apps/chirp/nmp-app-chirp` and `apps/fixture/nmp-app-fixture` as the first real per-app crates.
-- `xcframework` build pipeline for each per-app crate.
+- `nmp-codegen` extended to produce UniFFI scaffolding via `gen swift` / `gen typed-decoders`.
+- `apps/chirp/nmp-app-chirp` as the reference per-app crate demonstrating the library composition model.
+- `xcframework` build pipeline for `nmp-app-chirp`.
 - Generated Swift wrappers: `useProfile`, `@Profile`, `useTimeline`, `@Wallet`, etc.
 - Generated FlatBuffers readers/writers for the canonical `AppUpdate` schema used by Swift/Kotlin/TS shells.
-- CI gate: `nmp gen modules --check` fails the build if bindings drift.
+- CI gate: `just gen bindings` + diff check fails the build if bindings drift.
 
 **Exit gate.**
 
