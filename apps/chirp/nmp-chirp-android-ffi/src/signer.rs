@@ -44,25 +44,22 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCancelBunkerHands
     }
 }
 
+/// D3: relay selection is Rust-owned. The JNI bridge passes only the optional
+/// platform callback scheme; the `relay_url` param was removed in #1615.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNostrConnectUri(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
-    relay_url: JString,
     callback_scheme: JString,
 ) -> jstring {
     let Some(s) = session_arc(handle) else {
         return ptr::null_mut();
     };
-    let relay_url = optional_jstring_to_cstring(&mut env, &relay_url);
     let callback_scheme = optional_jstring_to_cstring(&mut env, &callback_scheme);
     let Some(ptr) = s.with_app(|app| {
         nmp_app_nostrconnect_uri(
             app,
-            relay_url
-                .as_ref()
-                .map_or(ptr::null(), |value| value.as_ptr()),
             callback_scheme
                 .as_ref()
                 .map_or(ptr::null(), |value| value.as_ptr()),

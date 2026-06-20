@@ -335,8 +335,8 @@ class KernelModel : ViewModel() {
         bridge.cancelBunkerHandshake()
     }
 
-    fun nostrConnectUri(relayUrl: String? = null, callbackScheme: String? = null): String? =
-        bridge.nostrConnectUri(relayUrl, callbackScheme)
+    fun nostrConnectUri(callbackScheme: String? = null): String? =
+        bridge.nostrConnectUri(callbackScheme)
 
     /** Create a new local account with the given display name.
      *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */

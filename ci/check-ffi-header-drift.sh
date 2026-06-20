@@ -109,6 +109,11 @@ FFI_FILE_ROOTS=(
     # M2 per-open flat author/thread feeds (ADR-0042 §5.1, V-112): the four
     # nmp_app_chirp_{open,close}_{author,thread}_feed symbols.
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs"
+    # NIP-29 group-chat + group-discovery FFI entry points (split from
+    # register.rs to keep each file under the 500-LOC cap):
+    #   nmp_app_chirp_register_group_chat
+    #   nmp_app_chirp_open_group_discovery / nmp_app_chirp_close_group_discovery
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/group.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
     # Chirp relay-bootstrap seeding (nmp_app_chirp_seed_default_relays /
     # nmp_app_chirp_seed_relays_from_json): wraps nmp-chirp-config so the

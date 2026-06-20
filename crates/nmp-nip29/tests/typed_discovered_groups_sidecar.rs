@@ -1,6 +1,6 @@
 //! NIP-29 discovered-groups typed-projection sidecar proof (Wave A producer-typing).
 //!
-//! Proves `nmp_nip29::register::wire_group_discovery` now emits a typed
+//! Proves `nmp_nip29::register::open_group_discovery` emits a typed
 //! FlatBuffers sidecar (ADR-0037, `NDGS`) ALONGSIDE the existing generic
 //! `serde_json::Value` projection under `"nmp.nip29.discovered_groups"`. Drives
 //! the full FFI snapshot path, decodes the frame with `decode_snapshot_typed_projections`,
@@ -12,7 +12,7 @@ mod common;
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
 use nmp_store::VerifiedEvent;
-use nmp_nip29::register::wire_group_discovery;
+use nmp_nip29::register::open_group_discovery;
 use nmp_nip29::{
     decode_discovered_groups_snapshot, DISCOVERED_GROUPS_FILE_IDENTIFIER,
     DISCOVERED_GROUPS_SCHEMA_ID,
@@ -27,7 +27,7 @@ fn discovered_groups_typed_sidecar_round_trips() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    wire_group_discovery(unsafe { &*app }, HOST.to_string());
+    let _handle = open_group_discovery(unsafe { &*app }, HOST.to_string());
 
     let meta = VerifiedEvent::from_raw_unchecked(raw_event(
         &"1".repeat(64),
@@ -95,7 +95,7 @@ fn discovered_groups_typed_sidecar_reflects_superseding() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    wire_group_discovery(unsafe { &*app }, HOST.to_string());
+    let _handle = open_group_discovery(unsafe { &*app }, HOST.to_string());
 
     let older = VerifiedEvent::from_raw_unchecked(raw_event(
         &"3".repeat(64),

@@ -5,13 +5,14 @@ use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    follow_spec, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_identity_restore,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
+    follow_spec, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_group_discovery,
+    nmp_app_chirp_close_thread_feed, nmp_app_chirp_declare_consumed_projections,
+    nmp_app_chirp_identity_restore, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
     nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
     ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
+use nmp_nip29::register::GroupDiscoveryHandle;
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
 
@@ -32,6 +33,9 @@ pub struct AppRuntime {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
     pub(crate) marmot: Cell<*mut MarmotHandle>,
+    /// Open group-discovery handle; closed (and replaced) on each `discover_groups`
+    /// call, then finally freed in `Drop`. `null_mut()` when inactive.
+    pub(crate) discovery: Cell<*mut GroupDiscoveryHandle>,
     update_bridge: Option<Box<NmpUpdateBridge>>,
 }
 
@@ -101,6 +105,7 @@ impl AppRuntime {
                 app,
                 chirp,
                 marmot: Cell::new(initial_marmot),
+                discovery: Cell::new(ptr::null_mut()),
                 update_bridge: Some(bridge),
             },
             rx,
@@ -291,6 +296,10 @@ impl Drop for AppRuntime {
         if !self.chirp.is_null() {
             nmp_app_chirp_unregister(self.chirp);
             self.chirp = ptr::null_mut();
+        }
+        if !self.discovery.get().is_null() {
+            nmp_app_chirp_close_group_discovery(self.discovery.get());
+            self.discovery.set(ptr::null_mut());
         }
         if !self.marmot.get().is_null() {
             nmp_marmot_unregister(self.marmot.get());

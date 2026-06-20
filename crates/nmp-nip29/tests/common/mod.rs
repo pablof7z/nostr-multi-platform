@@ -5,7 +5,7 @@
 //! every emitted `UpdateFrame`, decode each with `decode_snapshot_typed_projections`,
 //! and surface the typed sidecar entry for a key once a predicate accepts it.
 //! This is the same path any host shell reads from; the projections are wired by
-//! `nmp_nip29::register::{wire_group_chat, wire_group_discovery}`, which now emit
+//! `nmp_nip29::register::{wire_group_chat, open_group_discovery}`, which emit
 //! a typed FlatBuffers sidecar (ADR-0037) alongside the generic `Value` tree.
 //!
 //! Split out of a single test file so each test file stays under the AGENTS.md

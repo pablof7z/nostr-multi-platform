@@ -331,11 +331,12 @@ class KernelBridge {
     }
 
     /**
-     * Generate a fresh `nostrconnect://` URI. Rust chooses relay/session
-     * details; Android supplies only optional platform callback information.
+     * Generate a fresh `nostrconnect://` URI. Rust selects the relay from the
+     * kernel's relay config (D3: relay selection is Rust-owned). Android
+     * supplies only the optional platform callback scheme.
      */
-    fun nostrConnectUri(relayUrl: String? = null, callbackScheme: String? = null): String? =
-        if (handle != 0L) nativeNostrConnectUri(handle, relayUrl, callbackScheme) else null
+    fun nostrConnectUri(callbackScheme: String? = null): String? =
+        if (handle != 0L) nativeNostrConnectUri(handle, callbackScheme) else null
 
     /** Switch the active account to the given pubkey (calls nmp_app_switch_active directly). */
     fun switchAccount(pubkey: String) {
@@ -485,7 +486,7 @@ class KernelBridge {
     private external fun nativeSetSignerRequestListener(handle: Long, listener: KernelSignerRequestListener)
     private external fun nativeClearSignerRequestListener(handle: Long)
     private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
-    private external fun nativeNostrConnectUri(handle: Long, relayUrl: String?, callbackScheme: String?): String?
+    private external fun nativeNostrConnectUri(handle: Long, callbackScheme: String?): String?
     private external fun nativeSwitchAccount(handle: Long, pubkey: String)
     private external fun nativeRemoveAccount(handle: Long, pubkey: String)
     private external fun nativeMarmotRegisterActive(handle: Long, dbDir: String): Boolean

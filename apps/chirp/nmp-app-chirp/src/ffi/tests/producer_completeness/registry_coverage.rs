@@ -64,9 +64,9 @@ use nmp_ffi::{
 };
 
 use super::super::super::{
+    nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
-    nmp_app_chirp_unregister,
+    nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister,
 };
 
 /// `extern "C"` callbacks cannot capture; park the frame `Sender` in a static
@@ -136,8 +136,9 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
     nmp_app_chirp_register_dm_inbox(app);
     let active = CString::new("aa".repeat(32)).unwrap();
     nmp_app_chirp_register_follow_list(app, active.as_ptr());
+    // open_group_discovery returns a handle that must be closed before nmp_app_free.
     let host = CString::new("wss://groups.example.com").unwrap();
-    nmp_app_chirp_register_group_discovery(app, host.as_ptr());
+    let discovery_handle = nmp_app_chirp_open_group_discovery(app, host.as_ptr());
     // NOTE: the typed `GroupId` shape is `{host_relay_url, local_id}` — the
     // sibling gate originally passed `{host, id}`, which fails deserialization
     // and silently no-ops the registration (D6). This gate caught that: the
@@ -214,6 +215,9 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
     nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
     if let Some(slot) = FRAME_TX.get() {
         *slot.lock().expect("frame tx slot") = None;
+    }
+    if !discovery_handle.is_null() {
+        nmp_app_chirp_close_group_discovery(discovery_handle);
     }
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);

@@ -10,6 +10,7 @@ mod identity;
 mod interest_feed;
 mod nip17;
 mod nip29;
+mod nip29_registration;
 mod nip57;
 mod producer_completeness;
 mod register;

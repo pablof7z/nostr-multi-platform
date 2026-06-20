@@ -113,19 +113,23 @@ pub extern "C" fn nmp_app_cancel_bunker_handshake(app: *mut NmpApp) {
 
 /// Return a freshly generated `nostrconnect://` URI string. The caller must
 /// free the returned pointer via `nmp_free_string`. Returns null if the
-/// broker is not yet initialised or if string allocation fails.
+/// broker is not yet initialised, no write relay is configured, or string
+/// allocation fails.
+///
+/// D3: relay selection is Rust-owned — the URI embeds the first
+/// write-capable relay from the kernel's relay config
+/// (`NmpApp::nostrconnect_relay_url`). The caller supplies only optional
+/// platform callback information; it does not choose the relay.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nmp_app_nostrconnect_uri(
     app: *mut NmpApp,
-    relay_url: *const c_char,
     callback_scheme: *const c_char,
 ) -> *mut c_char {
-    // V-65: `relay_url_from_arg_or_app` now returns `Option<String>`. A
-    // `None` here means neither an explicit relay arg nor a host-registered
-    // bootstrap relay is available — return null rather than using any
-    // hardcoded third-party URL (D0).
-    let Some(relay) = relay_url_from_arg_or_app(app, relay_url) else {
+    // D3 / V-65: relay is always Rust-chosen; there is no caller override.
+    // `None` means no write relay is configured — return null so the UI can
+    // surface a "add a relay first" prompt rather than using any hardcoded URL.
+    let Some(relay) = app_ref(app).and_then(NmpApp::nostrconnect_relay_url) else {
         return std::ptr::null_mut();
     };
     let callback: Option<&str> = if callback_scheme.is_null() {
@@ -155,28 +159,6 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
-}
-
-/// Resolve the relay URL for a `nostrconnect://` handshake.
-///
-/// Resolution order:
-/// 1. An explicit `relay_url` C-string argument (non-null, non-empty).
-/// 2. The app's configured write relay or host-registered bootstrap relay
-///    (`NmpApp::nostrconnect_relay_url`).
-///
-/// Returns `None` when neither source provides a relay — the caller must NOT
-/// fall back to any hardcoded URL (V-65 / D0).
-fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const c_char) -> Option<String> {
-    if !relay_url.is_null() {
-        // SAFETY: caller guarantees non-null means a valid C string for the
-        // call duration.
-        if let Ok(relay) = unsafe { CStr::from_ptr(relay_url).to_str() } {
-            if !relay.is_empty() {
-                return Some(relay.to_string());
-            }
-        }
-    }
-    app_ref(app).and_then(NmpApp::nostrconnect_relay_url)
 }
 
 /// Adapter: `Box<dyn RemoteSignerHandle>` from an `Arc<Nip46Signer>`.
@@ -220,30 +202,9 @@ impl RemoteSignerHandle for ArcRemoteSigner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
     use std::time::Duration;
 
     use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError};
-
-    #[test]
-    fn explicit_relay_arg_still_overrides_kernel_selection() {
-        let relay = CString::new("wss://explicit.example").expect("valid CString");
-
-        assert_eq!(
-            relay_url_from_arg_or_app(std::ptr::null_mut(), relay.as_ptr()),
-            Some("wss://explicit.example".to_string())
-        );
-    }
-
-    #[test]
-    fn null_app_null_relay_returns_none() {
-        // V-65: no hardcoded fallback — null app + null relay arg means no
-        // relay is available; the caller must handle this as a typed error.
-        assert_eq!(
-            relay_url_from_arg_or_app(std::ptr::null_mut(), std::ptr::null()),
-            None
-        );
-    }
 
     #[derive(Debug, Default)]
     struct AcceptingTransport;

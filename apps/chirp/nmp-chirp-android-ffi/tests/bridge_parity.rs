@@ -70,7 +70,7 @@ fn rust_path_reexports_cover_android_parity_surface() {
     let _ = nmp_app_chirp::nmp_signer_broker_init as extern "C" fn(*mut nmp_ffi::NmpApp) -> u32;
     let _ = nmp_app_chirp::nmp_app_cancel_bunker_handshake as extern "C" fn(*mut nmp_ffi::NmpApp);
     let _ = nmp_app_chirp::nmp_app_nostrconnect_uri
-        as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char, *const c_char) -> *mut c_char;
+        as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char) -> *mut c_char;
     let _ = nmp_ffi::nmp_free_string as extern "C" fn(*mut c_char);
     // ADR-0048 Stage 2 — NIP-55 external-signer driver surface.
     let _ = nmp_ffi::nmp_external_signer_init as extern "C" fn(*mut nmp_ffi::NmpApp);
