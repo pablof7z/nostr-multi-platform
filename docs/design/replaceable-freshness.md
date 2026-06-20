@@ -115,7 +115,7 @@ frozen:
 Modifying a function signature is invisible to the name-based ffi-drift /
 surface-freeze gates; `NmpCore.h` is updated to the 4-arg form. The earlier
 `nmp_app_refresh_replaceable` symbol was removed. See
-[ADR-0041 — F-TTL FFI surface](../decisions/0041-f-ttl-ffi-surface.md) for the
+[ADR-0016 — F-TTL FFI surface](../decisions/0016-f-ttl-ffi-surface.md) for the
 decision that superseded the standalone-symbol approach.
 
 ## Testing
