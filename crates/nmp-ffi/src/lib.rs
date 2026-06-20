@@ -34,6 +34,7 @@ mod app_config_substrate;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
 mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
+mod following_count; // `nmp_app_active_following_count` — live kind:3 follow-count read for profile headers.
 
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
@@ -195,6 +196,7 @@ pub use snapshot::{
 };
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
+pub use following_count::nmp_app_active_following_count;
 #[cfg(feature = "native")]
 pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
