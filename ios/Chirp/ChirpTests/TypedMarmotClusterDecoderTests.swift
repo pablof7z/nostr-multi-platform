@@ -22,10 +22,11 @@ import FlatBuffers
 ///
 /// `has_*` companion-bool semantics (`hasUnreadCount`/`hasLastMsgAt` on a group,
 /// `hasDTag`/`hasAgeSecs` on the key package,
-/// `hasInvitesChipLabel` on the snapshot, `hasEpoch` on a message) are pinned to
+/// `hasEpoch` on a message) are pinned to
 /// map `false → nil`, reproducing the JSON `null`-when-`None` shape regardless of
 /// the empty value slot — the parity the `MarmotStore.apply` `Equatable` compare
-/// depends on.
+/// depends on. `invitesChipLabel` and `displayName`/`initials` are shell-computed
+/// (aim.md §2) and are no longer wire fields (schema v4+).
 final class TypedMarmotClusterDecoderTests: XCTestCase {
 
     // MARK: - nmp.marmot.snapshot (NMMS)
@@ -46,27 +47,25 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
                 groups: [
                     GroupFixture(
                         idHex: "typedgroupA", name: "Typed Group A",
-                        displayName: "Typed Group A", initials: "TA",
                         members: ["typedmemberA1", "typedmemberA2"],
                         memberCount: 2,
                         unreadCount: 7, lastMsgAt: 1_700_000_111),
                     // `has_unread_count == false` / `has_last_msg_at == false`
                     // → both must surface nil (the JSON `null` shape).
                     GroupFixture(
-                        idHex: "typedgroupB", name: "", displayName: "Untitled group",
-                        initials: "UG", members: [], memberCount: 0,
+                        idHex: "typedgroupB", name: "",
+                        members: [], memberCount: 0,
                         unreadCount: nil, lastMsgAt: nil),
                 ],
                 pendingWelcomes: [
                     WelcomeFixture(
                         idHex: "typedwelcome1", groupName: "Typed Invite",
-                        displayName: "Typed Invite", inviterNpub: "typedinviterpk"),
+                        inviterNpub: "typedinviterpk"),
                 ],
                 keyPackage: KeyPackageFixture(
                     published: true, dTag: "typed-d-tag", ageSecs: 4242,
                     stale: false, isRegistered: true),
                 cachedKpPubkeys: ["typedcached1", "typedcached2"],
-                invitesChipLabel: "1 invite",
                 isRegistered: true))
 
         let snap = try XCTUnwrap(
@@ -78,7 +77,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         let groupA = snap.groups[0]
         XCTAssertEqual(groupA.name, "Typed Group A")
         XCTAssertEqual(groupA.displayName, "Typed Group A")
-        XCTAssertEqual(groupA.initials, "TA")
+        XCTAssertEqual(groupA.initials, "TY")
         XCTAssertEqual(groupA.members, ["typedmemberA1", "typedmemberA2"])
         XCTAssertEqual(groupA.memberCount, 2)
         XCTAssertEqual(groupA.unreadCount, 7)
@@ -108,8 +107,9 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
     }
 
     /// The key-package `has_*` companions all `false` → every optional field nil,
-    /// and `has_invites_chip_label == false` → nil. Pins the JSON-`null` parity
-    /// the `Equatable` compare in `MarmotStore.apply` depends on.
+    /// and `invitesChipLabel` (shell-computed from `pendingWelcomes.count`) returns
+    /// nil when there are no pending welcomes. Pins the JSON-`null` parity the
+    /// `Equatable` compare in `MarmotStore.apply` depends on.
     func testTypedMarmotSnapshotCompanionFalseYieldsNil() throws {
         let envelope = TypedProjectionEnvelope(
             key: TypedMarmotSnapshotDecoder.key,
@@ -123,7 +123,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
                     published: false, dTag: nil, ageSecs: nil, stale: false,
                     isRegistered: false),
                 cachedKpPubkeys: [],
-                invitesChipLabel: nil,
                 isRegistered: false))
 
         let snap = try XCTUnwrap(TypedMarmotSnapshotDecoder.decode(from: [envelope]))
@@ -145,7 +144,7 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
             payload: buildMarmotSnapshot(
                 groups: [], pendingWelcomes: [],
                 keyPackage: KeyPackageFixture.empty,
-                cachedKpPubkeys: [], invitesChipLabel: nil, isRegistered: false))
+                cachedKpPubkeys: [], isRegistered: false))
         XCTAssertNil(TypedMarmotSnapshotDecoder.decode(from: [envelope]))
     }
 
@@ -228,8 +227,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
     private struct GroupFixture {
         let idHex: String
         let name: String
-        let displayName: String
-        let initials: String
         let members: [String]
         let memberCount: UInt32
         let unreadCount: UInt32?
@@ -239,7 +236,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
     private struct WelcomeFixture {
         let idHex: String
         let groupName: String
-        let displayName: String
         let inviterNpub: String
     }
 
@@ -260,7 +256,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         pendingWelcomes: [WelcomeFixture],
         keyPackage: KeyPackageFixture,
         cachedKpPubkeys: [String],
-        invitesChipLabel: String?,
         isRegistered: Bool
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 1024)
@@ -268,16 +263,12 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         let groupOffsets: [Offset] = groups.map { g in
             let idOff = fbb.create(string: g.idHex)
             let nameOff = fbb.create(string: g.name)
-            let displayOff = fbb.create(string: g.displayName)
-            let initialsOff = fbb.create(string: g.initials)
             let membersVec = fbb.createVector(
                 ofOffsets: g.members.map { fbb.create(string: $0) })
             return nmp_marmot_MarmotGroupRow.createMarmotGroupRow(
                 &fbb,
                 idHexOffset: idOff,
                 nameOffset: nameOff,
-                displayNameOffset: displayOff,
-                initialsOffset: initialsOff,
                 membersVectorOffset: membersVec,
                 memberCount: g.memberCount,
                 hasUnreadCount: g.unreadCount != nil,
@@ -290,13 +281,11 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
         let welcomeOffsets: [Offset] = pendingWelcomes.map { w in
             let idOff = fbb.create(string: w.idHex)
             let groupNameOff = fbb.create(string: w.groupName)
-            let displayOff = fbb.create(string: w.displayName)
             let inviterOff = fbb.create(string: w.inviterNpub)
             return nmp_marmot_PendingWelcomeRow.createPendingWelcomeRow(
                 &fbb,
                 idHexOffset: idOff,
                 groupNameOffset: groupNameOff,
-                displayNameOffset: displayOff,
                 inviterNpubOffset: inviterOff)
         }
         let welcomesVec = fbb.createVector(ofOffsets: welcomeOffsets)
@@ -314,7 +303,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
 
         let cachedVec = fbb.createVector(
             ofOffsets: cachedKpPubkeys.map { fbb.create(string: $0) })
-        let chipOff = invitesChipLabel.map { fbb.create(string: $0) } ?? Offset()
 
         let root = nmp_marmot_MarmotSnapshot.createMarmotSnapshot(
             &fbb,
@@ -322,8 +310,6 @@ final class TypedMarmotClusterDecoderTests: XCTestCase {
             pendingWelcomesVectorOffset: welcomesVec,
             keyPackageOffset: keyPackageOff,
             cachedKpPubkeysVectorOffset: cachedVec,
-            hasInvitesChipLabel: invitesChipLabel != nil,
-            invitesChipLabelOffset: chipOff,
             isRegistered: isRegistered)
         nmp_marmot_MarmotSnapshot.finish(&fbb, end: root)
         return fbb.data
