@@ -265,6 +265,7 @@ class TypedHomeFeedDecoderContractTest {
             reactions,
             reposts,
             zaps,
+            0,
         )
         val card = FbTimelineEventCard.createTimelineEventCard(
             builder,
