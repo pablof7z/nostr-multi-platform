@@ -128,6 +128,23 @@ fn later_repost_bumps_sort_without_changing_target_timestamp() {
 }
 
 #[test]
+fn perspective_reset_removes_existing_picture_rows() {
+    let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
+    feed.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
+    feed.on_kernel_event(&repost(
+        "wrapper",
+        "carol",
+        &event("other", "dave", KIND_PICTURE_EVENT, 10),
+        30,
+    ));
+
+    assert_eq!(feed.snapshot(&FeedRequest::default()).cards.len(), 2);
+    assert!(feed.reset_for_perspective_change());
+    assert!(feed.snapshot(&FeedRequest::default()).cards.is_empty());
+    assert!(!feed.reset_for_perspective_change());
+}
+
+#[test]
 fn tag_only_repost_creates_placeholder_then_target_hydrates_it() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
     let wrapper = KernelEvent {

@@ -289,6 +289,24 @@ where
         removed
     }
 
+    /// Clear all rows and return the visible window to the first page.
+    ///
+    /// App/protocol adapters call this when the perspective changes in a way
+    /// that invalidates every current admission decision (account switch, follow
+    /// set replacement, WoT preset change). The feed does not reinterpret the
+    /// predicate over historical rows; it drops the stale window and lets live
+    /// ingest/cache-serve refill it under the new perspective.
+    pub fn reset_for_perspective_change(&self) -> bool {
+        let Ok(mut st) = self.state.lock() else {
+            return false;
+        };
+        let had_rows = !st.rows.is_empty();
+        st.rows.clear();
+        self.visible_limit
+            .store(DEFAULT_FEED_WINDOW_LIMIT, Ordering::Relaxed);
+        had_rows
+    }
+
     /// Snapshot using the current render viewport.
     #[must_use]
     pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C, ()> {

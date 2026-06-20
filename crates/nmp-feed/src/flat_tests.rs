@@ -145,6 +145,31 @@ fn removing_matching_sources_drops_empty_rows_only() {
 }
 
 #[test]
+fn perspective_reset_clears_rows_and_restores_first_window() {
+    let feed = FlatFeed::new(
+        Arc::new(|_| true),
+        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+    );
+
+    let total_rows = DEFAULT_FEED_WINDOW_LIMIT + 5;
+    for idx in 0..total_rows {
+        feed.on_kernel_event(&event(&format!("event-{idx:02}"), 1, idx as u64, "row"));
+    }
+    assert_eq!(
+        feed.snapshot_current_window().cards.len(),
+        DEFAULT_FEED_WINDOW_LIMIT
+    );
+    assert!(feed.grow_visible_window());
+    assert_eq!(feed.snapshot_current_window().cards.len(), total_rows);
+
+    assert!(feed.reset_for_perspective_change());
+    let snap = feed.snapshot_current_window();
+    assert!(snap.cards.is_empty());
+    assert_eq!(snap.page.unwrap().limit, DEFAULT_FEED_WINDOW_LIMIT);
+    assert!(!feed.reset_for_perspective_change());
+}
+
+#[test]
 fn custom_merge_can_hydrate_existing_bumped_item() {
     let merge: FlatFeedMerge<String> = Arc::new(|existing, incoming| {
         if let Some(existing) = existing {

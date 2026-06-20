@@ -118,6 +118,10 @@ impl PictureFeed {
         self.inner.remove_sources_if(predicate)
     }
 
+    pub fn reset_for_perspective_change(&self) -> bool {
+        self.inner.reset_for_perspective_change()
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.inner.len()
