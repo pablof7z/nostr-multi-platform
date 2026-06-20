@@ -21,6 +21,8 @@ the spec itself; this file no longer mirrors it.
 
 - 2026-06-20 — **Issue #1616: Purge stale generated-module and fixture authority from docs (P2)**. Branch: `worktree-agent-1616-docs-fixture-authority`. Worktree: `/tmp/worktrees/nmp-1616-docs-fixture-authority`. Replaces `nmp gen modules`/`apps/fixture`/`@Twitter` references with current `nmp-defaults`/`register_defaults` model; annotates ADR history as superseded.
 
+- 2026-06-20 — **Issue #1615: Remove relay URL overrides from signer and discovery APIs (P2, D3/D7)**. Branch: `worktree-agent-1615-relay-url-overrides`. Worktree: `/private/tmp/worktrees/nmp-1615-relay-url-overrides`. (A) Removes `relay_url` override param from `nmp_app_nostrconnect_uri` (C ABI, iOS, Android, TUI, desktop) — relay now always Rust-selected via `NmpApp::nostrconnect_relay_url`. (B) Replaces fire-and-forget `nmp_app_chirp_register_group_discovery` with open/close lifecycle pair: `nmp_app_chirp_open_group_discovery` → `*mut GroupDiscoveryHandle`, `nmp_app_chirp_close_group_discovery(handle)`. Remove when merged.
+
 - 2026-06-20 — **Issue #1614: Make wasm protocol failures data, not JS exceptions (P2, D6)**. Branch: `worktree-agent-1614-wasm-failures-data`. Worktree: `/tmp/worktrees/nmp-1614-wasm-failures-data`. `handle_json` parse/invalid-config failures now resolve as `WorkerEvent::Error`; `dispatch_app_action_async` parse failures resolve as `WorkerEvent::CapabilityFailure`; only `KernelContract` violations and serde regressions reject.
 
 - 2026-06-19 — **Issue #1606: Remove expired Marmot legacy/app-named external surface (P1, D0)**. Branch: `worktree-agent-1606-marmot-surface`. Worktree: `/tmp/worktrees/nmp-1606-marmot-surface`. Deletes kind:443 dual-publish/lookup/ingest, makes keyring service id caller-scoped.

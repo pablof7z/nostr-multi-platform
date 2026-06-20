@@ -1,5 +1,5 @@
 //! NIP-29 group-chat / discovery / join dispatch + executor proofs, plus
-//! the host-side `register_group_chat` / `register_group_discovery`
+//! the host-side `register_group_chat` / `open_group_discovery` / `close_group_discovery`
 //! wiring proofs.
 
 use std::ffi::CString;
@@ -15,8 +15,8 @@ use nmp_nip29::group_id::GroupId;
 use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
 
 use super::super::{
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
-    nmp_app_chirp_unregister,
+    nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
+    nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister,
 };
 use super::helpers::{dispatch, register_app, run_module_execute};
 
@@ -351,35 +351,44 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
     }
 }
 
-/// THE DISCOVERY REGISTRATION WIRING PROOF: `nmp_app_chirp_register_group_discovery`
+/// THE DISCOVERY REGISTRATION WIRING PROOF: `nmp_app_chirp_open_group_discovery`
 /// registers a `DiscoveredGroupsProjection` against `app` for a well-formed
 /// relay URL — it runs to completion (event-observer + snapshot-projection
-/// registration) without panicking. The snapshot closure surfacing under
-/// `"nmp.nip29.discovered_groups"` is proven end-to-end by the generic seam
-/// tests in `nmp-core` and the projection's own tests in `nmp-nip29`.
+/// registration) without panicking and returns a non-null handle. The snapshot
+/// closure surfacing under `"nmp.nip29.discovered_groups"` is proven end-to-end
+/// by the generic seam tests in `nmp-core` and the projection's own tests in
+/// `nmp-nip29`. The returned handle must be closed before `nmp_app_free`.
 #[test]
-fn register_group_discovery_runs_for_well_formed_relay_url() {
+fn open_group_discovery_runs_for_well_formed_relay_url() {
     let app = nmp_app_new();
     let relay = CString::new("wss://groups.example.com").unwrap();
-    nmp_app_chirp_register_group_discovery(app, relay.as_ptr());
+    let handle = nmp_app_chirp_open_group_discovery(app, relay.as_ptr());
+    assert!(
+        !handle.is_null(),
+        "open_group_discovery must return a non-null handle for a well-formed relay URL"
+    );
+    nmp_app_chirp_close_group_discovery(handle);
     nmp_app_free(app);
 }
 
-/// D6: a null `app`, a null `host_relay_url`, an empty `host_relay_url`,
-/// and non-UTF-8 garbage all degrade to a silent no-op — the function
-/// must never panic across the FFI boundary.
+/// D6: a null `app`, a null `host_relay_url`, and an empty `host_relay_url`
+/// all degrade to a null return — the function must never panic across the
+/// FFI boundary.
 #[test]
-fn register_group_discovery_null_and_empty_input_are_silent_noops() {
+fn open_group_discovery_null_and_empty_input_are_silent_noops() {
     let relay = CString::new("wss://groups.example.com").unwrap();
-    // Null app — must not dereference.
-    nmp_app_chirp_register_group_discovery(std::ptr::null_mut(), relay.as_ptr());
+    // Null app — must not dereference; returns null.
+    let h = nmp_app_chirp_open_group_discovery(std::ptr::null_mut(), relay.as_ptr());
+    assert!(h.is_null(), "null app must return null handle");
 
     let app = nmp_app_new();
     // Null host_relay_url — silent return.
-    nmp_app_chirp_register_group_discovery(app, std::ptr::null());
+    let h = nmp_app_chirp_open_group_discovery(app, std::ptr::null());
+    assert!(h.is_null(), "null relay_url must return null handle");
     // Empty string — silent return.
     let empty = CString::new("").unwrap();
-    nmp_app_chirp_register_group_discovery(app, empty.as_ptr());
+    let h = nmp_app_chirp_open_group_discovery(app, empty.as_ptr());
+    assert!(h.is_null(), "empty relay_url must return null handle");
     nmp_app_free(app);
 }
 

@@ -12,6 +12,12 @@
 //!   `GroupChatProjection` for one group into the kernel: an event observer
 //!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
 //!   consumption — no handle, no actions, no unregister.
+//! - [`nmp_app_chirp_open_group_discovery`] /
+//!   [`nmp_app_chirp_close_group_discovery`] — open/close lifecycle for the
+//!   NIP-29 group-discovery session (replaces the removed fire-and-forget
+//!   the removed fire-and-forget `nmp_app_chirp_register_group_discovery`). Returns a heap-owned handle
+//!   that MUST be freed via `close`; `close` unregisters the observer and
+//!   removes the `"nmp.nip29.discovered_groups"` snapshot projection.
 //! - [`nmp_app_chirp_register_dm_inbox`] — host entry point for the NIP-17 DM
 //!   runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
 //!   `IngestParser` (slot `"nip17.dm_inbox"`, fires on live ingest and
@@ -81,8 +87,9 @@ pub use interest_feed::{
     nmp_app_chirp_open_thread_feed,
 };
 pub use register::{
+    nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery, NmpRegisterStatus,
+    nmp_app_chirp_register_group_chat, NmpRegisterStatus,
 };
 pub use relay_seeding::{nmp_app_chirp_seed_default_relays, nmp_app_chirp_seed_relays_from_json};
 pub use snapshot::nmp_app_chirp_unregister;

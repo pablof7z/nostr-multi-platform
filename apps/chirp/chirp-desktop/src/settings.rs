@@ -110,17 +110,12 @@ impl DesktopApp {
 
         // Bunker login section — decode the typed bunker_handshake sidecar so
         // connect-QR progress/success/failure is reflected in real time.
+        // D3: the relay is Rust-owned (selected from the kernel relay config);
+        // the shell no longer presents a relay input field.
         if snap.active_account.is_none() {
             ui.horizontal(|ui| {
-                ui.add(
-                    TextEdit::singleline(&mut self.bunker_relay_input)
-                        .hint_text("wss://relay.example.com")
-                        .desired_width(260.0),
-                );
-                if ui.button("Connect with bunker").clicked()
-                    && !self.bunker_relay_input.trim().is_empty()
-                {
-                    match self.bridge.connect_bunker(self.bunker_relay_input.trim()) {
+                if ui.button("Connect with bunker").clicked() {
+                    match self.bridge.connect_bunker() {
                         Ok(uri) => self.bunker_uri = Some(uri),
                         Err(e) => eprintln!("bunker connect error: {e}"),
                     }

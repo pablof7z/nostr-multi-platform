@@ -11,7 +11,8 @@ use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::register::{wire_group_chat, wire_group_discovery};
+use nmp_nip29::register::{close_group_discovery, open_group_discovery, wire_group_chat};
+use nmp_nip29::register::GroupDiscoveryHandle;
 
 use nmp_nip02::FollowListProjection;
 
@@ -296,66 +297,72 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
     wire_group_chat(app_ref, group_id);
 }
 
-/// Wire a NIP-29 [`DiscoveredGroupsProjection`] for one host relay into `app`.
+/// Open a NIP-29 group-discovery session for one host relay.
 ///
 /// This is the **read side** of the NIP-29 group-discovery flow. It
-/// constructs a projection scoped to the supplied relay URL, plugs it in
-/// as a [`KernelEventObserver`] (ingest), and registers its
-/// [`DiscoveredGroupsProjection::snapshot_json`] read under the snapshot key
-/// `"nmp.nip29.discovered_groups"` (output). Kind:39000/39001/39002 events for
-/// that host relay then surface on every snapshot tick under that key.
+/// constructs a [`DiscoveredGroupsProjection`] scoped to the supplied relay
+/// URL, plugs it in as a [`KernelEventObserver`] (ingest), and registers its
+/// snapshot read under `"nmp.nip29.discovered_groups"` (output).
+/// Kind:39000/39001/39002 events for that relay then surface on every
+/// snapshot tick under that key.
 ///
 /// The companion publish side is the `nmp.nip29.discover` action — its
-/// executor pushes a relay-pinned [`LogicalInterest`] (kinds
-/// 39000/39001/39002) so the kernel opens a REQ and metadata events
-/// actually arrive. The projection registered here is *inert* without that
-/// interest. A host shell drives both halves from one user gesture
-/// ("discover groups on this relay"): first this FFI registers the read
-/// projection, then `nmp_app_dispatch_action("nmp.nip29.discover", ...)`
-/// pushes the interest.
+/// executor pushes a relay-pinned `LogicalInterest` so the kernel opens a
+/// REQ and metadata events actually arrive. This FFI symbol registers only
+/// the *read* side; both halves are needed for events to surface (the read
+/// projection is inert without the dispatch).
 ///
-/// `host_relay_url` is a plain C string (`wss://groups.example.com`). The
-/// Rust side accepts it verbatim — same canonicalisation rules as
-/// `LogicalInterest::relay_pin`.
+/// Returns a heap-allocated opaque handle the caller MUST free via
+/// `nmp_app_chirp_close_group_discovery`. A null `app`, null/non-UTF-8
+/// `host_relay_url`, or poisoned observer slot returns NULL (D6).
 ///
-/// D6 — fire-and-forget. A null `app`, a null or non-UTF-8
-/// `host_relay_url`, or a poisoned observer slot all degrade to a silent
-/// return — nothing is registered and no error crosses the FFI.
-///
-/// SCOPE — single-screen, no unregister. Like
-/// [`nmp_app_chirp_register_group_chat`], this returns no handle and has no
-/// companion unregister. Calling it twice overwrites the
-/// `"nmp.nip29.discovered_groups"` snapshot key with the newer projection and
-/// leaves the older event observer registered for the life of the `app`
-/// (a small, bounded leak). The Swift `JoinGroupView` drives one relay at
-/// a time, so this is acceptable for v1; a multi-relay discovery screen
-/// would need a handle-returning variant.
-///
-/// `app` MUST outlive the registration. It is only borrowed for the
-/// duration of this call; the projection it registers is owned by the
-/// kernel.
+/// `app` MUST outlive the handle. Call `nmp_app_chirp_close_group_discovery`
+/// before `nmp_app_free`.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_register_group_discovery(
+pub extern "C" fn nmp_app_chirp_open_group_discovery(
     app: *mut NmpApp,
     host_relay_url: *const c_char,
-) {
+) -> *mut GroupDiscoveryHandle {
     if app.is_null() {
-        return;
+        return std::ptr::null_mut();
     }
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
-    // live for the duration of this call. The borrow is not held past return.
+    // live for the duration of this call and the returned handle.
     let app_ref = unsafe { &*app };
 
-    // Reject silently on a missing or malformed relay URL — D6.
     let Some(relay_url) = c_string_opt(host_relay_url).filter(|s| !s.is_empty()) else {
-        return;
+        return std::ptr::null_mut();
     };
 
-    // Delegate observer + snapshot-projection wiring to the typed host-wiring
-    // helper in the protocol crate. Thin-shell rule: this FFI symbol only
-    // parses the C string and calls `nmp_nip29::register::wire_group_discovery`.
-    wire_group_discovery(app_ref, relay_url);
+    // Thin-shell rule: parse C string, delegate to typed protocol helper.
+    match open_group_discovery(app_ref, relay_url) {
+        Some(handle) => Box::into_raw(Box::new(handle)),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Close a NIP-29 group-discovery session opened by
+/// `nmp_app_chirp_open_group_discovery`.
+///
+/// Unregisters the event observer and removes the
+/// `"nmp.nip29.discovered_groups"` typed snapshot projection so no stale
+/// group catalog is emitted after the discover screen is dismissed. The
+/// handle memory is reclaimed; the pointer MUST NOT be used after this call.
+///
+/// D6 — a null `handle` is a silent no-op.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_close_group_discovery(handle: *mut GroupDiscoveryHandle) {
+    if handle.is_null() {
+        return;
+    }
+    // SAFETY: `handle` is a valid pointer returned by
+    // `nmp_app_chirp_open_group_discovery` and must not be used after this
+    // call. `Box::from_raw` takes ownership; `close_group_discovery` tears
+    // down the observer + projection before the box is dropped.
+    let handle = unsafe { *Box::from_raw(handle) };
+    close_group_discovery(handle);
 }
 
 /// Wire the NIP-17 DM runtime into `app`.

@@ -1793,6 +1793,22 @@ impl NmpApp {
         unregister_observer(&self.event_observers, id);
     }
 
+    /// Remove a typed snapshot projection registered under `key`.
+    ///
+    /// Idempotent: an unknown key is a silent no-op (D6). Signals a
+    /// `MarkChangedSinceEmit` so the next snapshot tick reflects the removal
+    /// (the stale projection stops emitting its subtree).
+    pub fn remove_snapshot_projection(&self, key: &str) {
+        let removed = self
+            .snapshot_projections
+            .lock()
+            .map(|mut registry| registry.remove(key))
+            .unwrap_or(false);
+        if removed {
+            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+        }
+    }
+
     /// T146 — clone of the kernel event observer slot. The `ffi::event_observer`
     /// FFI surface uses this to plug C-ABI registrations into the same slot
     /// that backs the typed Rust API above. Crate-private because external

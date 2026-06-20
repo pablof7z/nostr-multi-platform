@@ -3,8 +3,9 @@ use std::ptr;
 
 use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
+    nmp_app_chirp_register_group_chat,
 };
+use nmp_app_chirp::{nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery};
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_create_new_account,
     nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_open_tag_feed, nmp_app_nostrconnect_uri,
@@ -62,7 +63,7 @@ impl AppRuntime {
     pub fn nostrconnect_uri(&self) -> Result<String> {
         let callback =
             CString::new("chirp://nip46").map_err(|_| "callback contains NUL byte".to_string())?;
-        let ptr = nmp_app_nostrconnect_uri(self.app_ptr(), ptr::null(), callback.as_ptr());
+        let ptr = nmp_app_nostrconnect_uri(self.app_ptr(), callback.as_ptr());
         take_broker_string(ptr, "nostrconnect uri")
     }
 
@@ -208,9 +209,15 @@ impl AppRuntime {
     }
 
     pub fn discover_groups(&self, relay: &str) -> Result<String> {
-        self.with_cstr(relay, |c| {
-            nmp_app_chirp_register_group_discovery(self.app_ptr(), c.as_ptr())
+        // Close any prior discovery session before opening a new one (relay switch).
+        let old = self.discovery.replace(ptr::null_mut());
+        if !old.is_null() {
+            nmp_app_chirp_close_group_discovery(old);
+        }
+        let handle = self.with_cstr(relay, |c| {
+            nmp_app_chirp_open_group_discovery(self.app_ptr(), c.as_ptr())
         })?;
+        self.discovery.set(handle);
         self.dispatch_action_value("nmp.nip29.discover", &json!({ "relay_url": relay }))
     }
 

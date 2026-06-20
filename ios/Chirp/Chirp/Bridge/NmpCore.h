@@ -443,14 +443,14 @@ uint32_t nmp_signer_broker_init(void *app);
 void nmp_app_cancel_bunker_handshake(void *app);
 // Generate a nostrconnect:// URI for the QR-code NIP-46 sign-in flow.
 // The returned string must be freed via nmp_free_string.
-// Returns NULL if the broker is not yet initialised.
-// relay_url may be NULL. When NULL, Rust chooses the first configured
-// write-capable relay from the app kernel, falling back to its default.
+// Returns NULL if the broker is not yet initialised or no write relay is
+// configured (D3: relay selection is Rust-owned — the caller supplies only
+// the optional platform callback scheme, never the relay URL).
 // callback_scheme may be NULL. When non-null, Rust appends
 // `&callback=<percent-encoded callback_scheme>` to the URI so the signer
 // app deep-links back to the host on approval. Hosts MUST NOT compose this
 // suffix themselves — protocol-owned strings stay in Rust.
-char *nmp_app_nostrconnect_uri(void *app, const char *relay_url, const char *callback_scheme);
+char *nmp_app_nostrconnect_uri(void *app, const char *callback_scheme);
 
 // ── T146: nmp-app-chirp per-app FFI ──────────────────────────────────────
 //
@@ -558,36 +558,33 @@ void nmp_app_chirp_close_thread_feed(void *app, const char *event_id_hex);
 //     duration of this call.
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 
-// ── NIP-29 group-discovery read projection ───────────────────────────────
+// ── NIP-29 group-discovery open/close lifecycle ──────────────────────────
 //
-// Wires a single host relay's NIP-29 group catalog (kinds 39000/39001/39002)
-// into the kernel. Pure consumption — the read side of a group-discovery /
-// join screen.
+// Open a group-discovery session for a single host relay. The session owns
+// a `DiscoveredGroupsProjection` for kinds 39000/39001/39002 — the read side
+// of a discover/join screen. Tear it down with
+// `nmp_app_chirp_close_group_discovery` when the screen is dismissed; the
+// companion publish side is the `nmp.nip29.discover` dispatch action.
 //
+// `nmp_app_chirp_open_group_discovery`:
 //   • `host_relay_url` is the relay to discover groups on (`wss://…`).
-//     This projection is per-relay scoped; two relays with the same
-//     `local_id` are two different groups (NIP-29 identity is the pair).
-//   • Returns void — registers no handle and exports no companion
-//     `unregister`. Discovered groups surface on every kernel snapshot
-//     tick under the `projections` key `"nmp.nip29.discovered_groups"`,
-//     shaped `{ "host_relay_url": "wss://…", "groups": [
-//     { group_id, host_relay_url, name?, picture?, about?, member_count,
-//       admin_count, public, open } ] }` ordered alphabetically by
-//     `group_id`.
-//   • The companion publish side is the `nmp.nip29.discover` action — its
-//     executor pushes the kind:39000/39001/39002 LogicalInterest so the
-//     kernel opens a REQ. This FFI symbol registers the *read* side; both
-//     halves are needed for events to surface (registration alone is
-//     inert).
-//   • Single-screen scope: calling it twice overwrites the snapshot key
-//     and leaks the older event observer for the life of `app` (a small,
-//     bounded leak). A multi-relay discovery host would need a
-//     handle-returning variant.
-//   • Fire-and-forget (D6): a null `app`, null / invalid-UTF-8
-//     `host_relay_url`, or an empty string all degrade to a silent no-op.
-//   • `app` MUST outlive the registration; it is borrowed only for the
-//     duration of this call.
-void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_url);
+//   • Returns an opaque `void *` handle on success, NULL on failure (D6:
+//     null `app`, null/invalid-UTF-8/empty `host_relay_url`, or internal
+//     registration failure all return NULL).
+//   • Discovered groups surface under the `projections` key
+//     `"nmp.nip29.discovered_groups"` on every snapshot tick until the
+//     session is closed.
+//   • `app` MUST outlive the handle. Call
+//     `nmp_app_chirp_close_group_discovery` before `nmp_app_free`.
+//
+// `nmp_app_chirp_close_group_discovery`:
+//   • Unregisters the event observer and removes the
+//     `"nmp.nip29.discovered_groups"` snapshot projection so no stale
+//     group catalog is emitted after the screen is dismissed.
+//   • Reclaims the handle; the pointer MUST NOT be used after this call.
+//   • D6: a null `handle` is a silent no-op.
+void *nmp_app_chirp_open_group_discovery(void *app, const char *host_relay_url);
+void nmp_app_chirp_close_group_discovery(void *handle);
 
 // ── NIP-17 private direct-message inbox read projection ───────────────────
 //

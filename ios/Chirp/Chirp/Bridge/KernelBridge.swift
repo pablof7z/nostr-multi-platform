@@ -353,14 +353,14 @@ final class KernelHandle {
     func nostrConnectURI(callbackScheme: String? = nil) -> String? {
         if let cb = callbackScheme {
             return cb.withCString { cbPtr in
-                guard let ptr = nmp_app_nostrconnect_uri(raw, nil, cbPtr) else {
+                guard let ptr = nmp_app_nostrconnect_uri(raw, cbPtr) else {
                     return nil
                 }
                 defer { nmp_free_string(ptr) }
                 return String(cString: ptr)
             }
         }
-        guard let ptr = nmp_app_nostrconnect_uri(raw, nil, nil) else {
+        guard let ptr = nmp_app_nostrconnect_uri(raw, nil) else {
             return nil
         }
         defer { nmp_free_string(ptr) }

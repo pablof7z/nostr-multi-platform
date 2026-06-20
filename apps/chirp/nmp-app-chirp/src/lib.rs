@@ -61,9 +61,10 @@ pub use action_specs::{
     zap_spec, ActionDispatchSpec, ChirpActionIntent, ReplyTargetInput,
 };
 pub use ffi::{
-    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
-    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
-    nmp_app_chirp_open_tag_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_group_discovery,
+    nmp_app_chirp_close_home_feed, nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_group_discovery,
+    nmp_app_chirp_open_home_feed, nmp_app_chirp_open_tag_feed, nmp_app_chirp_open_thread_feed,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,

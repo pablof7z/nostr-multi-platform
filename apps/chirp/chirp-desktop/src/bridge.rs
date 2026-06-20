@@ -244,26 +244,25 @@ impl AppRuntime {
         let _ = self.client.sign_in_nsec(secret);
     }
 
-    pub fn connect_bunker(&self, relay_url: &str) -> Result<String, String> {
+    /// Generate a `nostrconnect://` URI. Rust selects the relay from the
+    /// kernel's relay configuration (D3: relay policy is Rust-owned).
+    /// Returns `Err` when no write relay is configured or the broker is not
+    /// yet initialised.
+    pub fn connect_bunker(&self) -> Result<String, String> {
         if self.app.is_null() {
             return Err("runtime app is not available".to_string());
         }
-        let relay = CString::new(relay_url)
-            .map_err(|_| "relay URL contains NUL byte".to_string())?;
         let callback = CString::new("chirp://nip46")
             .map_err(|_| "callback URL contains NUL byte".to_string())?;
 
-        // SAFETY: `app` is valid, relay_ptr is valid, callback_ptr is valid.
-        let ptr = unsafe {
-            nmp_app_nostrconnect_uri(
-                self.app,
-                relay.as_ptr(),
-                callback.as_ptr(),
-            )
-        };
+        // SAFETY: `app` is valid, callback.as_ptr() is valid for the call.
+        let ptr = unsafe { nmp_app_nostrconnect_uri(self.app, callback.as_ptr()) };
 
         if ptr.is_null() {
-            return Err("nostrconnect_uri returned null".to_string());
+            return Err(
+                "nostrconnect_uri returned null — broker not initialised or no relay configured"
+                    .to_string(),
+            );
         }
 
         let text = unsafe { CStr::from_ptr(ptr) }

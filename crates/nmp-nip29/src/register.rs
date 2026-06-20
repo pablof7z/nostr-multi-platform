@@ -19,8 +19,31 @@
 
 use std::sync::Arc;
 
-use nmp_core::KernelEventObserver;
+use nmp_core::{KernelEventObserver, KernelEventObserverId};
 use nmp_ffi::NmpApp;
+
+/// Opaque handle for a single group-discovery session.
+///
+/// Created by [`open_group_discovery`] and torn down by
+/// [`close_group_discovery`]. The handle holds a borrow-free reference to the
+/// kernel via the `snapshot_projections` key string and the registered
+/// observer id; on close both are revoked cleanly so there is no bounded
+/// event-observer leak between relay switches or screen dismissals.
+pub struct GroupDiscoveryHandle {
+    /// Borrowed app pointer. Lives for the duration of the handle's existence;
+    /// the caller MUST drop this handle before freeing the app (same contract
+    /// as every other FFI handle).
+    app: *const NmpApp,
+    /// The observer registered with the kernel at open time.
+    observer_id: KernelEventObserverId,
+}
+
+// SAFETY: `GroupDiscoveryHandle` is Send because `NmpApp` is `Sync + Send`
+// and we only access it through shared-ref methods (`remove_snapshot_projection`,
+// `unregister_event_observer`) which are internally lock-guarded.
+unsafe impl Send for GroupDiscoveryHandle {}
+// SAFETY: Same rationale — all mutations go through Mutex-guarded internals.
+unsafe impl Sync for GroupDiscoveryHandle {}
 
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
@@ -90,28 +113,34 @@ pub fn wire_group_chat(app: &NmpApp, group_id: GroupId) {
     });
 }
 
-/// Wire a [`DiscoveredGroupsProjection`] for `relay_url` into `app`.
+/// Open a group-discovery session for `relay_url` and wire the read
+/// projection into `app`.
 ///
-/// Registers the projection as a [`KernelEventObserver`] (ingest) and
-/// exposes its `snapshot_json` read under `"nmp.nip29.discovered_groups"`.
-/// Kind:39000/39001/39002 events for that relay then appear on every
-/// snapshot tick under that key.
+/// Registers the [`DiscoveredGroupsProjection`] as a [`KernelEventObserver`]
+/// (ingest) and exposes its snapshot read under
+/// `"nmp.nip29.discovered_groups"`. Kind:39000/39001/39002 events for that
+/// relay then appear on every snapshot tick under that key.
 ///
-/// An empty `relay_url` is a silent no-op. `app` must outlive the
-/// registration.
-pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
+/// Returns a [`GroupDiscoveryHandle`] the caller MUST pass to
+/// [`close_group_discovery`] to tear down the observer and remove the
+/// projection when the session ends (e.g. the discover screen is dismissed or
+/// the user switches to a different relay). Returns `None` on a null-app
+/// pointer, an empty URL, or a poisoned observer slot.
+///
+/// `app` must outlive the returned handle.
+pub fn open_group_discovery(app: &NmpApp, relay_url: String) -> Option<GroupDiscoveryHandle> {
     if relay_url.is_empty() {
-        return;
+        return None;
     }
     let projection = Arc::new(DiscoveredGroupsProjection::new(relay_url));
     let observer_id =
         app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     if observer_id.0 == 0 {
-        return;
+        return None;
     }
     // Typed FlatBuffers sidecar (ADR-0037), registered ALONGSIDE the generic
-    // `Value` projection under the same key. Clone the `Arc` first: the generic
-    // closure below consumes `projection`.
+    // `Value` projection under the same key. Clone the `Arc` first so the
+    // typed closure gets its own handle while the observer holds another.
     let projection_typed = Arc::clone(&projection);
     app.register_typed_snapshot_projection("nmp.nip29.discovered_groups", move || {
         let snapshot = projection_typed.snapshot();
@@ -129,6 +158,23 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
             ..Default::default()
         })
     });
+    Some(GroupDiscoveryHandle { app: app as *const NmpApp, observer_id })
+}
+
+/// Tear down the group-discovery session opened by [`open_group_discovery`].
+///
+/// Unregisters the event observer and removes the
+/// `"nmp.nip29.discovered_groups"` typed snapshot projection so no stale
+/// subtree is emitted after the session ends. Idempotent on the `NmpApp`
+/// internals (unknown observer ids / projection keys are silent no-ops).
+/// The `handle` itself is consumed and must not be used after this call.
+pub fn close_group_discovery(handle: GroupDiscoveryHandle) {
+    // SAFETY: `app` is a pointer that was derived from a `&NmpApp` reference
+    // at open time. The caller's contract is that `app` outlives the handle;
+    // the only time `close_group_discovery` is called is before `app` is freed.
+    let app = unsafe { &*handle.app };
+    app.unregister_event_observer(handle.observer_id);
+    app.remove_snapshot_projection("nmp.nip29.discovered_groups");
 }
 
 /// Wire the active account's joined-groups projection into `app`.
@@ -214,7 +260,7 @@ pub fn wire_group_events(app: &NmpApp, group_id: GroupId) {
 /// shell reads the same default off the kernel snapshot instead of hardcoding
 /// it in the shell.
 ///
-/// Output-only: unlike [`wire_group_chat`] / [`wire_group_discovery`] this
+/// Output-only: unlike [`wire_group_chat`] / [`open_group_discovery`] this
 /// projection observes no kernel events — its snapshot is a pure function of
 /// the crate constant — so no [`KernelEventObserver`] is registered. `app` must
 /// outlive the registration.

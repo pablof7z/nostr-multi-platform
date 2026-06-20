@@ -17,17 +17,13 @@ import os.log
 //
 // ── Read side ─────────────────────────────────────────────────────────────
 //
-//   • `registerGroupDiscovery(hostRelayUrl:)` wires a
-//     `DiscoveredGroupsProjection` for one host relay into the kernel. It
-//     registers no handle and exports no `unregister` — the relay's group
-//     catalog surfaces on every kernel snapshot under the `projections`
-//     key `"nmp.nip29.discovered_groups"` (decoded by
-//     `SnapshotProjections.discoveredGroups` in `KernelBridge.swift`).
-//   • Single-screen scope: per the FFI contract, calling it twice
-//     overwrites the snapshot key and leaks the older event observer for
-//     the life of the `app`. `DiscoveredGroupsStore.registerOnce`
-//     guards against a re-register on the SAME relay; switching to a new
-//     relay deliberately overwrites (UX expectation: pick one at a time).
+//   • `openGroupDiscovery(hostRelayUrl:)` opens a scoped group-discovery
+//     session, returning an opaque handle. The relay's group catalog surfaces
+//     under `"nmp.nip29.discovered_groups"` on every snapshot tick.
+//   • `closeGroupDiscovery(_:)` tears down the session: unregisters the
+//     observer and removes the snapshot projection.
+//   • `DiscoveredGroupsStore` holds the live handle and closes it on relay
+//     switch or deinit.
 //
 // ── Write side ────────────────────────────────────────────────────────────
 //
@@ -47,29 +43,41 @@ private let gdLog = Logger(subsystem: "io.f7z.chirp", category: "GroupDiscoveryB
 // ── KernelHandle NIP-29 discovery + join extension (C-FFI surface) ────────
 
 extension KernelHandle {
-    /// Wire a NIP-29 `DiscoveredGroupsProjection` for `hostRelayUrl` into
-    /// the kernel.
+    /// Open a NIP-29 group-discovery session for `hostRelayUrl`.
     ///
-    /// Pure consumption — registers no handle. The relay's group catalog
-    /// surfaces on every kernel snapshot under the `projections` key
-    /// `"nmp.nip29.discovered_groups"`.
+    /// Returns an opaque handle the caller MUST pass to
+    /// `closeGroupDiscovery(_:)` when the session ends (screen dismissed or
+    /// relay switched). Returns `nil` when the relay URL is empty or
+    /// registration fails (D6).
+    func openGroupDiscovery(hostRelayUrl: String) -> OpaquePointer? {
+        guard !hostRelayUrl.isEmpty else { return nil }
+        let ptr = hostRelayUrl.withCString {
+            nmp_app_chirp_open_group_discovery(raw, $0)
+        }
+        guard let ptr else { return nil }
+        gdLog.info("opened NIP-29 discovery session for \(hostRelayUrl, privacy: .public)")
+        return OpaquePointer(ptr)
+    }
+
+    /// Close a group-discovery session previously opened with
+    /// `openGroupDiscovery(hostRelayUrl:)`.
     ///
-    /// Single-screen scope: per the FFI contract, a second call overwrites
-    /// the snapshot key and leaks the prior observer. `DiscoveredGroupsStore`
-    /// guards re-registration; this method itself is not idempotent.
-    func registerGroupDiscovery(hostRelayUrl: String) {
-        hostRelayUrl.withCString { nmp_app_chirp_register_group_discovery(raw, $0) }
-        gdLog.info(
-            "registered NIP-29 discovery projection for \(hostRelayUrl, privacy: .public)")
+    /// Unregisters the observer and removes the snapshot projection so no
+    /// stale group catalog is emitted after the session ends. The `handle`
+    /// MUST NOT be used after this call. A nil handle is a no-op.
+    func closeGroupDiscovery(_ handle: OpaquePointer?) {
+        guard let handle else { return }
+        nmp_app_chirp_close_group_discovery(UnsafeMutableRawPointer(handle))
+        gdLog.info("closed NIP-29 discovery session")
     }
 
     /// Dispatch a `nmp.nip29.discover` action — push the relay-pinned
     /// `LogicalInterest` for kinds 39000/39001/39002 so the kernel opens a
     /// REQ for that relay's group catalog. Fire-and-forget; the catalog
     /// surfaces through the next `nmp.nip29.discovered_groups` snapshot tick.
-    /// Without a successful prior `registerGroupDiscovery` the projection
-    /// is missing and the snapshot key stays nil (the executor still
-    /// pushes the interest, but no Swift consumer mirrors it).
+    /// Without a successful prior `openGroupDiscovery` the projection is
+    /// missing and the snapshot key stays nil (the executor still pushes the
+    /// interest, but no Swift consumer mirrors it).
     func discoverGroups(relayUrl: String) {
         let payload: [String: Any] = ["relay_url": relayUrl]
         dispatchNip29Discovery(
@@ -132,15 +140,14 @@ extension KernelHandle {
 /// dispatchers — no Swift owns any group state, ordering, or protocol
 /// decision (thin-shell rule).
 ///
-/// Lifecycle is lazy + relay-keyed: the store starts un-registered; the
-/// view's "Search" action sets the relay URL, which registers the read
-/// projection (idempotent on the same URL) and immediately dispatches
-/// `nmp.nip29.discover`. Switching relays overwrites the snapshot key
-/// (FFI contract: single-screen scope).
+/// Lifecycle is handle-keyed: on the first search against a relay
+/// `openGroupDiscovery` is called to register the read projection and a
+/// handle is stored here. On relay switch the old handle is closed before
+/// opening a new one so there is never a bounded observer leak.
 @MainActor
 final class DiscoveredGroupsStore: ObservableObject {
-    /// The relay this store is currently scoped to. Empty / nil until the
-    /// user enters one and taps Search. `groups` is `[]` while empty.
+    /// The relay this store is currently scoped to. Empty until the user
+    /// enters one and taps Search. `groups` is `[]` while empty.
     @Published private(set) var hostRelayUrl: String = ""
 
     /// Alphabetically-ordered discovered groups, mirrored verbatim from the
@@ -156,46 +163,50 @@ final class DiscoveredGroupsStore: ObservableObject {
 
     /// `nil` in steady state. Set to the group_id Swift just dispatched a
     /// `nmp.nip29.join` for, so `JoinGroupView` can flip the row to
-    /// "Requested" until the user dismisses the screen. The relay's
-    /// kind:39002 response surfaces in `groups` on the next tick; reading
-    /// "joined" from that requires the active account's pubkey and is a
-    /// follow-up — see the PR description.
+    /// "Requested" until the user dismisses the screen.
     @Published private(set) var lastJoinedGroupId: String?
 
     private unowned let kernel: KernelHandle
 
-    /// The relay URL the read projection is currently registered for.
-    /// Empty until first search. Comparing against `hostRelayUrl` on the
-    /// next search keeps the per-URL `registerOnce` guard correct across
-    /// relay switches (the FFI overwrites the snapshot key intentionally;
-    /// the guard prevents redundant calls for the SAME URL).
-    private var registeredRelayUrl: String = ""
+    /// The opaque Rust handle for the currently-open discovery session.
+    /// `nil` until the user first searches. Closed on relay switch or deinit.
+    private var discoveryHandle: OpaquePointer?
 
     init(kernel: KernelHandle) {
         self.kernel = kernel
     }
 
-    /// Begin a discover session against `relayUrl`: ensure the read
-    /// projection is registered for this relay (re-registering on a
-    /// change is intentional — single-screen scope) and dispatch
+    deinit {
+        // Close the Rust-side discovery session when the store is torn down
+        // so the event observer and snapshot projection are reclaimed.
+        if let handle = discoveryHandle {
+            kernel.closeGroupDiscovery(handle)
+        }
+    }
+
+    /// Begin a discover session against `relayUrl`: open the read projection
+    /// for this relay (closing any prior session) and dispatch
     /// `nmp.nip29.discover`. Whitespace / empty input is dropped here
-    /// (the Rust validator also rejects empty/non-wss input, but skipping
-    /// the FFI round-trip is free).
+    /// (the Rust validator also rejects empty/non-wss input).
     func searchGroups(relayUrl: String) {
         let trimmed = relayUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        // Switching relays: clear the prior snapshot so the view shows the
-        // empty/loading state until the new relay's catalog arrives.
+        // Switching relays: close the prior session and clear the snapshot
+        // so the view shows the empty/loading state until the new relay's
+        // catalog arrives.
         if trimmed != hostRelayUrl {
+            kernel.closeGroupDiscovery(discoveryHandle)
+            discoveryHandle = nil
             groups = []
             lastJoinedGroupId = nil
         }
         hostRelayUrl = trimmed
 
-        if trimmed != registeredRelayUrl {
-            kernel.registerGroupDiscovery(hostRelayUrl: trimmed)
-            registeredRelayUrl = trimmed
+        // Open a session for this relay when none is held yet (first search
+        // or after a relay switch above).
+        if discoveryHandle == nil {
+            discoveryHandle = kernel.openGroupDiscovery(hostRelayUrl: trimmed)
         }
         isSearching = true
         kernel.discoverGroups(relayUrl: trimmed)
@@ -210,13 +221,9 @@ final class DiscoveredGroupsStore: ObservableObject {
         guard let snapshot else { return }
         // Ignore stale snapshots from a previous relay registration.
         guard snapshot.hostRelayUrl == hostRelayUrl else { return }
-        // Mirror the rows.
         if snapshot.groups != groups {
             groups = snapshot.groups
         }
-        // Clear the searching indicator on the first tick after a
-        // dispatch — even when the catalog is empty (the relay returned
-        // EOSE with nothing).
         if isSearching {
             isSearching = false
         }
