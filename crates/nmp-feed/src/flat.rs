@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::InterestShape;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
+use nmp_planner::InterestShape;
 use serde::Serialize;
 
 use crate::{
