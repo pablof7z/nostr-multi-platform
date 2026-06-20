@@ -4,6 +4,7 @@
 //! sub-modules (V-09b) so each test file stays under the 500-LOC ceiling.
 
 mod helpers;
+mod home_feed_pull;
 #[cfg(feature = "marmot")]
 mod identity;
 mod interest_feed;
