@@ -33,10 +33,10 @@
 //! wake consumer. No `nmp.pull.wake` decode, no host pull accessor (ADR-0039
 //! §6.1 preserved). 6B wires concrete feeds.
 
-use nmp_planner::InterestShape;
-use nmp_store::{LogOp, ScanLogResult, StoreLogEntry};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
+use nmp_planner::InterestShape;
+use nmp_store::{LogOp, ScanLogResult, StoreLogEntry};
 
 /// Default number of *visible* events one `load_older` drain targets — one page.
 /// Matches the feed window page (`DEFAULT_FEED_WINDOW_LIMIT`).

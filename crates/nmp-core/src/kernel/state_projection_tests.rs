@@ -168,7 +168,10 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
         Some("https://example.com/sat.png"),
         "kind:0 picture must be projected into profile.picture_url",
     );
-    assert_eq!(card["banner"].as_str(), Some("https://example.com/banner.png"));
+    assert_eq!(
+        card["banner"].as_str(),
+        Some("https://example.com/banner.png")
+    );
     assert_eq!(card["website"].as_str(), Some("https://satoshi.example"));
     assert_eq!(
         card["nip05"].as_str(),
@@ -554,7 +557,13 @@ fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
 #[test]
 fn claimed_profiles_projection_refines_claimed_pubkey() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let _ = kernel.claim_profile(ACCOUNT.to_string(), "avatar".to_string(), false, false, crate::kernel::ProfileLiveness::CacheOk);
+    let _ = kernel.claim_profile(
+        ACCOUNT.to_string(),
+        "avatar".to_string(),
+        false,
+        false,
+        crate::kernel::ProfileLiveness::CacheOk,
+    );
 
     let before = snapshot(&mut kernel);
     let entry = &before["projections"]["claimed_profiles"][ACCOUNT];
@@ -569,7 +578,10 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
         entry.get("npub").is_none(),
         "claimed_profiles entry must not carry npub — shells encode bech32"
     );
-    assert!(entry.get("has_profile").is_none(), "D1 #606: render-gate field removed");
+    assert!(
+        entry.get("has_profile").is_none(),
+        "D1 #606: render-gate field removed"
+    );
     assert!(entry["display_name"].is_null());
     assert!(entry["picture_url"].is_null());
 
@@ -586,7 +598,10 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
 
     let after = snapshot(&mut kernel);
     let entry = &after["projections"]["claimed_profiles"][ACCOUNT];
-    assert!(entry.get("has_profile").is_none(), "D1 #606: render-gate field removed");
+    assert!(
+        entry.get("has_profile").is_none(),
+        "D1 #606: render-gate field removed"
+    );
     assert_eq!(entry["display_name"].as_str(), Some("Claimed Profile"));
     assert_eq!(
         entry["picture_url"].as_str(),

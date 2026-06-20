@@ -32,13 +32,13 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use nmp_planner::InterestShape;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
     FeedController, FeedInterestShape, FeedRequest, FlatFeed as GenericFlatFeed, FlatFeedItem,
     FlatFeedItemBuilder, FlatFeedMerge, RootCard, RootFeedSnapshot,
 };
+use nmp_planner::InterestShape;
 
 use crate::timeline_projection::RepostAttribution;
 use crate::{Nip10ReplyAttribution, TimelineEventCard};

@@ -51,14 +51,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, NOS_LOL, PURPLEPAG_ES};
-use nmp_planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
-};
 use nmp_core::substrate::{
     BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutingContext, RoutingSource,
     SessionKeySet,
 };
 use nmp_core::RoutingTraceProjection;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Kind10002Parser};
 use nmp_store::{RawEvent, VerifiedEvent};
 use serde_json::Value;

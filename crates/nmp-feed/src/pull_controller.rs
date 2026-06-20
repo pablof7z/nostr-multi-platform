@@ -30,10 +30,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_planner::InterestShape;
-use nmp_store::ScanLogResult;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
+use nmp_planner::InterestShape;
+use nmp_store::ScanLogResult;
 
 use crate::pager::{FeedInterestShape, FeedPullPager};
 use crate::FeedController;

@@ -35,12 +35,12 @@ use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use nmp_planner::InterestShape;
-use nmp_store::{EventStore, MemEventStore, PullPage, RawEvent, ScanLogResult, VerifiedEvent};
 use nmp_core::KernelEventObserver;
 use nmp_core::{pull_page_over, PullLimits, PullScope};
 use nmp_feed::{ClosureInterestShape, FeedController, PullFeedController};
 use nmp_nip01::op_feed::register_op_feed;
+use nmp_planner::InterestShape;
+use nmp_store::{EventStore, MemEventStore, PullPage, RawEvent, ScanLogResult, VerifiedEvent};
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 

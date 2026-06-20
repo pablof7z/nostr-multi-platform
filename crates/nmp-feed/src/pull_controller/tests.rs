@@ -11,10 +11,10 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use nmp_planner::InterestShape;
-use nmp_store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
+use nmp_planner::InterestShape;
+use nmp_store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
 
 use super::{ClosureInterestShape, FeedAdvance, FeedApply, PullFeedController, PullFn};
 use crate::FeedController;
