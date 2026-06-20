@@ -93,11 +93,12 @@ class TypedDmWalletRelayDecoderTest {
 
     // ── wallet ───────────────────────────────────────────────────────────────
 
+    // RAW-DATA DOCTRINE (aim.md §2 / ADR-0032): the wire carries only the raw
+    // `status` token + raw `balance_sats`. The decoder derives label/tone and
+    // formats the balance shell-side — no presentation strings on the buffer.
     private fun walletBuffer(
-        balanceDisplay: String?,
+        balanceSats: ULong?,
         wireStatus: String = "ready",
-        statusLabel: String? = "Ready",
-        statusTone: String? = "active",
         isReady: Boolean = true,
         isConnected: Boolean = true,
     ): ByteArray {
@@ -105,56 +106,47 @@ class TypedDmWalletRelayDecoderTest {
         val status = builder.createString(wireStatus)
         val relayUrl = builder.createString("wss://nwc.example")
         val npub = builder.createString("npub1wallet")
-        val balDisp = if (balanceDisplay != null) builder.createString(balanceDisplay) else 0
         val npubShort = builder.createString("npub1wa…et")
         val pkHex = builder.createString(hex(0x44))
-        // ADR-0032 / #623: status_label + status_tone are tail-appended additive
-        // fields. Offset 0 omits them — exercising the decoder's forward-compat
-        // fallback (re-derive from the wire status token).
-        val labelOff = if (statusLabel != null) builder.createString(statusLabel) else 0
-        val toneOff = if (statusTone != null) builder.createString(statusTone) else 0
         val w = FbWalletStatus.createWalletStatus(
             builder,
             status,
             relayUrl,
             npub,
             false, 0UL, // msats
-            false, 0UL, // sats
-            balanceDisplay != null, balDisp,
+            balanceSats != null, balanceSats ?: 0UL, // sats
             npubShort,
             isReady, isConnected, // is_ready, is_connected
             false, 0u, // connection_state
             pkHex,
-            labelOff,
-            toneOff,
         )
         FbWalletStatus.finishWalletStatusBuffer(builder, w)
         return builder.sizedByteArray()
     }
 
     @Test
-    fun walletHappyPathMapsStatusAndBalance() {
-        val out = requireNotNull(TypedWalletDecoder.decode(walletBuffer("1,234 sats")))
+    fun walletHappyPathMapsStatusAndFormatsBalanceShellSide() {
+        val out = requireNotNull(TypedWalletDecoder.decode(walletBuffer(1_234UL)))
         assertEquals("ready", out.status)
-        assertEquals("1,234 sats", out.balanceDisplay)
+        // The shell formats the raw balance_sats with thousands separators.
+        assertEquals("1,234", out.balanceDisplay)
     }
 
     @Test
-    fun walletAbsentBalanceDisplayIsNull() {
+    fun walletAbsentBalanceIsNull() {
         val out = requireNotNull(TypedWalletDecoder.decode(walletBuffer(null)))
         assertEquals("ready", out.status)
-        assertNull(out.balanceDisplay) // has_balance_sats_display == false → null
+        assertNull(out.balanceDisplay) // has_balance_sats == false → null
     }
 
     @Test
     fun walletSurfacesRustIsConnectedVerbatim() {
-        // #1493 P4: the shell must bind the Rust-computed `is_connected` flag
-        // rather than re-deriving connectedness from `statusTone` in Kotlin
-        // (native branch on a wire discriminant; D7). Decoder surfaces both
-        // values verbatim.
+        // #1493 P4: the shell binds the Rust-computed `is_connected` flag rather
+        // than re-deriving connectedness from `statusTone` in Kotlin (native
+        // branch on a wire discriminant; D7).
         val connected = requireNotNull(
             TypedWalletDecoder.decode(
-                walletBuffer(balanceDisplay = "5 sats", wireStatus = "ready", isConnected = true),
+                walletBuffer(balanceSats = 5UL, wireStatus = "ready", isConnected = true),
             ),
         )
         assertTrue(connected.isConnected)
@@ -162,10 +154,8 @@ class TypedDmWalletRelayDecoderTest {
         val disconnected = requireNotNull(
             TypedWalletDecoder.decode(
                 walletBuffer(
-                    balanceDisplay = null,
+                    balanceSats = null,
                     wireStatus = "disconnected",
-                    statusLabel = "Disconnected",
-                    statusTone = "inactive",
                     isReady = false,
                     isConnected = false,
                 ),
@@ -175,50 +165,22 @@ class TypedDmWalletRelayDecoderTest {
     }
 
     @Test
-    fun walletReadsPreComputedLabelAndTone() {
-        // ADR-0032 / #623: when the buffer carries the tail-appended fields, the
-        // decoder surfaces them verbatim (display decisions live in Rust).
-        val out = requireNotNull(
-            TypedWalletDecoder.decode(
-                walletBuffer(
-                    balanceDisplay = "5 sats",
-                    wireStatus = "ready",
-                    statusLabel = "Ready",
-                    statusTone = "active",
-                ),
-            ),
-        )
-        assertEquals("Ready", out.statusLabel)
-        assertEquals("active", out.statusTone)
-    }
+    fun walletDerivesLabelAndToneFromRawStatusToken() {
+        // RAW-DATA DOCTRINE: label/tone are derived shell-side from the raw wire
+        // status token (parity with iOS WalletStatusTone), never read off the
+        // buffer.
+        val ready = requireNotNull(TypedWalletDecoder.decode(walletBuffer(5UL, "ready")))
+        assertEquals("Ready", ready.statusLabel)
+        assertEquals("active", ready.statusTone)
 
-    @Test
-    fun walletDerivesLabelAndToneForOlderBuffers() {
-        // ADR-0032 / #623 forward-compat: a buffer that predates the additive
-        // fields (offsets omitted) must re-derive label/tone from the wire token,
-        // mirroring the Rust status_label()/status_tone() logic (D1).
         val connecting = requireNotNull(
-            TypedWalletDecoder.decode(
-                walletBuffer(
-                    balanceDisplay = null,
-                    wireStatus = "connecting",
-                    statusLabel = null,
-                    statusTone = null,
-                ),
-            ),
+            TypedWalletDecoder.decode(walletBuffer(null, "connecting")),
         )
         assertEquals("Connecting", connecting.statusLabel)
         assertEquals("warning", connecting.statusTone)
 
         val errored = requireNotNull(
-            TypedWalletDecoder.decode(
-                walletBuffer(
-                    balanceDisplay = null,
-                    wireStatus = "error",
-                    statusLabel = null,
-                    statusTone = null,
-                ),
-            ),
+            TypedWalletDecoder.decode(walletBuffer(null, "error")),
         )
         assertEquals("Error", errored.statusLabel)
         assertEquals("error", errored.statusTone)
@@ -231,9 +193,9 @@ class TypedDmWalletRelayDecoderTest {
             schemaId = TypedWalletDecoder.SCHEMA_ID, // "nmp.nip47.wallet" (≠ key)
             schemaVersion = 1u,
             fileIdentifier = TypedWalletDecoder.FILE_IDENTIFIER,
-            payload = walletBuffer("9 sats"),
+            payload = walletBuffer(9UL),
         )
-        assertEquals("9 sats", requireNotNull(TypedWalletDecoder.decode(listOf(env))).balanceDisplay)
+        assertEquals("9", requireNotNull(TypedWalletDecoder.decode(listOf(env))).balanceDisplay)
         // Wrong schema id (matching key only) → no match.
         assertNull(
             TypedWalletDecoder.decode(
@@ -244,7 +206,7 @@ class TypedDmWalletRelayDecoderTest {
 
     @Test
     fun walletMalformedBufferReturnsNull() {
-        val garbled = walletBuffer("x").copyOf()
+        val garbled = walletBuffer(1UL).copyOf()
         garbled[4] = 'Z'.code.toByte() // clobber NWST identifier
         assertNull(TypedWalletDecoder.decode(garbled))
     }

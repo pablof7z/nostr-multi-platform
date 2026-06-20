@@ -1,10 +1,13 @@
 # ADR-0052: Instance-scoped extension seams — register values, not types
 
-Status: PROPOSED
+Status: Implemented
 
-> Numbering note: `0051` is the highest decision in `docs/decisions/`. This
-> takes the next free number, `0052`, per the single-source-of-truth /
-> no-duplicate-id discipline.
+> All six rungs shipped: `register_action` is value-registered;
+> `ACTIVE_WALLET_RUNTIME`, `GLOBAL_BROKER`, `GLOBAL_DRIVER`, and both `nmp-core`
+> hook statics were deleted in favour of per-app slots; `DispatchHostOp` was
+> collapsed into the `HostOpCommand` / `Protocol` seam; `kernel_mut()` was
+> deleted; and doctrine-lint D21 (no ambient authority) is live at
+> `crates/nmp-testing/bin/doctrine-lint/rules/d21.rs`.
 
 ## Context
 
@@ -193,46 +196,21 @@ known remaining global, each entry citing a tracking issue, with the documented
 goal of an **empty** allowlist. The existing `active_pubkey` / pubkey-only
 slot sweep (tactical PR #1191) is verified-not-redone if already landed.
 
-**Rule number.** The highest doctrine rule on `master` is **D19**
-(`crates/nmp-testing/bin/doctrine-lint/rules/d19.rs`); there is no D20 in the
-rules dir yet. In-flight PR #1311 takes **D20** for an unrelated wasm-time lint
-(bans `Instant::now`/`SystemTime::now`). K2 therefore takes **D21**. This is
-resolved at rung 5.6 time, not now: if #1311 has merged, D20 is taken and K2 is
-D21; if #1311 has died, K2 reclaims **D20**. (No durable doc reserves D21 for
-another meaning — a reviewer claim of a "correlation-linearity" reservation in
-`docs/wiki/episodes/…` was checked and the cited file does not exist.)
+**Rule number.** K2 took **D21** (`crates/nmp-testing/bin/doctrine-lint/rules/d21.rs`);
+the unrelated wasm-time lint (#1311) took D20.
 
-## Sequencing (one PR per rung; TDD-first)
+## Implementation record (the rungs, as landed)
 
-| Rung | Scope | Oracle |
-|------|-------|--------|
-| 5.1  | This ADR | review sign-off |
-| 5.2  | D1 + migrate nmp-nip47; delete `ACTIVE_WALLET_RUNTIME`; fix the self-admitted test race | **two-instance interop test**: two `NmpApp`s, two wallets, zero crosstalk |
-| 5.3  | D3 per-app bunker + NIP-55 ports; delete `GLOBAL_BROKER`, `GLOBAL_DRIVER`, **both** nmp-core hook statics (`bunker_hook`, `external_signer_hook`); correlation token | **free + new-app recreation test** (Android process-reuse) |
-| 5.4  | D4 add whole-body `catch_unwind` to `Protocol` arm + persistent-handler factory slot, then delete `DispatchHostOp`/`HostOpHandler` | **panicking-handler behavioural test**: host op whose handler panics still returns `{"ok":false}`, actor survives |
-| 5.5  | D5 delete `kernel_mut()`; move `lnurl_for_pubkey` to a carried capability | type-level: `kernel_mut` no longer compiles-exists |
-| 5.6  | D6 doctrine-lint D21 (or D20 if #1311 died) + allowlist | lint fails on a planted global (pos fixture), passes clean tree (neg fixture) |
+The work landed one PR per rung, TDD-first:
 
-Each rung rebases on `origin/master` first and rechecks the live seam (the repo
-moves fast; line refs above are 2026-06-13 snapshots and MUST be re-verified).
-
-### Collision sequencing (open PRs as of 2026-06-13)
-
-- **PR #1312 (`fix/issue-619-walletruntime-ordering`, OPEN, currently red)
-  directly collides with rung 5.2.** It builds *more* on the exact global 5.2
-  deletes: it lifts wallet wiring into `nmp-defaults::NmpAppBuilder::with_wallet`,
-  calls the **type-registered** `register_action::<WalletConnectModule>()` form
-  that D1 replaces with the value form, and type-enforces the
-  `install_wallet_runtime` `OnceLock` ordering that 5.2 removes. They **cannot
-  both merge as-is.** Resolution: if #1312 lands first, rung 5.2 rebases over it
-  — converting its `register_action::<M>()` call sites to value form and
-  replacing the `OnceLock`-ordering contract with builder-time composition
-  (the `.with_wallet()` step composes the module *value* that owns the runtime
-  handle, so install-before-dispatch is still type-expressed, now without a
-  global). If #1312 is abandoned, 5.2 supersedes it.
-- **PR #1311 (`d20-wasm-time-lint`, OPEN, red)** claims D20 — see the D6 rule-number note.
-- **PR #1305 (`android-signer-push`)** touches only `nmp-android-ffi/src/external_signer.rs`,
-  a different crate from K2's `nmp-ffi`/`nmp-core` seams — **not** a collision.
+| Rung | Scope |
+|------|-------|
+| 5.1  | This ADR. |
+| 5.2  | D1 + migrate nmp-nip47; delete `ACTIVE_WALLET_RUNTIME`; fix the self-admitted test race. |
+| 5.3  | D3 per-app bunker + NIP-55 ports; delete `GLOBAL_BROKER`, `GLOBAL_DRIVER`, and both nmp-core hook statics (`bunker_hook`, `external_signer_hook`); correlation token. |
+| 5.4  | D4 add whole-body `catch_unwind` to the `Protocol` arm + persistent-handler factory slot, then collapse `DispatchHostOp`/`HostOpHandler` into the `HostOpCommand` seam. |
+| 5.5  | D5 delete `kernel_mut()`; move `lnurl_for_pubkey` to a carried capability. |
+| 5.6  | D6 doctrine-lint D21 + allowlist. |
 
 ## Consequences
 

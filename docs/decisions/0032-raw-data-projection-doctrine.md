@@ -191,13 +191,20 @@ not banned `display::*` forwarders.
 - Helpers `account_npub_short`, `account_avatar_initials`,
   `account_avatar_color_hex`, and `display_name_from_hex` deleted.
 
-**`nmp-core::WalletStatus`** (`crates/nmp-core/src/actor/commands/wallet.rs`):
+**`WalletStatus`** (now `nmp-nip47::status::WalletStatus`; was
+`nmp-core::actor::commands::wallet`):
 - Added `wallet_pubkey_hex: String` (raw hex extracted from the
   private `WalletConnection.wallet_pubkey_hex`).
-- `wallet_npub_short: String` deleted.
-- `balance_sats_display: Option<String>` deleted; the raw
-  `balance_sats: Option<u64>` stays.
-- Helper `format_sats_display` deleted.
+- `wallet_npub_short: String` is kept (an abbreviation, but a cheap
+  byte-truncation, not English prose — left as a thin-shell convenience).
+- `balance_sats_display: Option<String>`, `status_label: String`,
+  `status_tone: String`, and the `format_sats_display` / `status_label` /
+  `status_tone` helpers were **NOT** removed by this ADR's original change —
+  the wallet projection survived the first sweep, and #623 later re-introduced
+  `status_label` / `status_tone`. That precompute was finally removed by the
+  **wallet_status sweep** (see Amendments below), at which point the raw
+  `balance_sats: Option<u64>` + raw `status` token became the only wire surface
+  and the shells took over label/tone/balance formatting.
 
 **`nmp-core::kernel::types::Profile` cache**:
 - `avatar_initials: String` deleted.
@@ -301,6 +308,37 @@ was unchanged. (`status_tone` was redundant precompute: it is 1:1 derivable from
 the `state` enum the shell already has, so it was removed rather than kept as a
 token.)
 
+### 2026-06-21 — wallet_status precompute removed (wallet_status sweep)
+
+The signer-state sweep (#1580, above) left an **un-swept sibling**:
+`nmp-nip47::WalletStatus` still shipped the exact same class of precompute —
+`status_label` ("Connecting"/"Ready"/"Error"/"Disconnected"), `status_tone`
+("active"/"warning"/"error"/"inactive"), and a thousands-separated
+`balance_sats_display` ("12,345") — and `wallet_status.fbs` even **miscited
+ADR-0032 / #623** as the *justification* for keeping them. This ADR mandates the
+opposite. The "What changed" section above had also claimed these were deleted
+by the original ADR change; that claim was false (the wallet projection
+survived, and #623 re-added the label/tone). This sweep makes the wallet
+projection actually conform, analogous to the #1580 signer-state amendment:
+
+- `wallet_status.fbs`: removed `balance_sats_display` (+ `has_balance_sats_display`),
+  `status_label`, `status_tone`. The raw `status` token, `balance_sats:u64`,
+  `is_connected`/`is_ready` predicates, and `connection_state` enum remain.
+- `nmp-nip47::status`: deleted `format_sats_display`, `status_label`,
+  `status_tone`, the `tone` constant module, and the three `WalletStatus`
+  precompute fields. `runtime.rs` / `wire/typed_fb.rs` emit only raw tokens.
+
+The shells now derive the label + tone and format the balance from the raw
+tokens via a shared, parity-consistent mapping — iOS `WalletStatusTone`
+(`label` / `tone` / `formattedSats`) and Android
+`TypedWalletDecoder.deriveStatusLabel` / `deriveStatusTone` / `formatSats`.
+Behavioural note preserved from #1493 P4: the shells bind the Rust-computed
+`is_connected` flag verbatim (which treats `"error"` as **not** connected),
+rather than re-deriving connectedness from the tone — the old tone-based
+derivation treated `"error"` as connected. The TUI (`chirp-tui`) and desktop
+(`chirp-desktop`) wallet views already rendered from raw tokens and were
+unchanged.
+
 ## References
 
 - `docs/aim.md` §2 (post-`ec8decad`) — the current canonical doctrine
@@ -310,3 +348,8 @@ token.)
 - #1099 — added the signer `status_label`/`status_tone` precompute (the
   regression amended above).
 - #1580 (#1493 P9) — removed it; signer/bunker labels now derive in the shells.
+- #623 — re-added the wallet `status_label`/`status_tone` precompute (the
+  regression amended in the wallet_status sweep).
+- wallet_status sweep — removed the wallet `status_label`/`status_tone`/
+  `balance_sats_display` precompute; wallet label/tone/balance now derive in the
+  shells, mirroring the signer-state sweep.

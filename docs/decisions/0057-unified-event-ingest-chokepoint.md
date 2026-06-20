@@ -1,6 +1,11 @@
 # ADR-0057 — Unified kind-agnostic accepted-event ingest chokepoint: persistence ≠ admission ≠ projection
 
-- **Status:** Proposed (2026-06-15)
+- **Status:** Implemented. The kind-agnostic chokepoint is live:
+  `ingest_accepted_event` / `project_accepted_event` / `verify_and_persist`
+  (`crates/nmp-core/src/kernel/ingest/`), with `record_local_publish_intent` /
+  `local_publish_intent.rs` / `pre_kind3_buffer` deleted; coverage in
+  `crates/nmp-core/src/kernel/chokepoint_tests.rs` and
+  `contacts_chokepoint_pr3_tests.rs`.
 - **Date:** 2026-06-15
 - **Issues:** #1440 (ghost-post — no optimistic local echo for non-replaceable
   kinds), #1442 (persistence entangled with relevance — the authoritative store
@@ -102,9 +107,9 @@ fix**: separate the three concerns into three layers behind one chokepoint.
 
 ## Decision
 
-Replace the two per-kind ingest ladders with **one kind-agnostic, source-agnostic
-accepted-event chokepoint**. The three fused concerns become three distinct
-layers:
+The two per-kind ingest ladders were replaced with **one kind-agnostic,
+source-agnostic accepted-event chokepoint**. The three fused concerns became three
+distinct layers:
 
 ### 1. Admission to the chokepoint = valid signature. Nothing else.
 
@@ -309,14 +314,13 @@ durable rows:
 
 ---
 
-## Scope and sequencing (one plan, no deferred debt)
+## Scope and sequencing (landed record)
 
-This ADR establishes the architecture. The code lands as an ordered PR sequence,
-tracked tactically in `docs/plans/arch-fixes.md` §5 (temporal — see header); the
-endpoint work is split into follow-on PRs **within the same sequence**, not dropped
-into a someday-issue.
+This ADR established the architecture; the code landed as the ordered PR sequence
+below. All three PRs shipped — the chokepoint is live and contacts/profile parsing
+reached the D0 finish-line (`contacts_chokepoint_pr3_tests.rs`).
 
-- **PR 1 — core fix (atomic; closes #1442 + #1440).** Move `notify_event_observers`
+- **PR 1 — core fix (atomic; closed #1442 + #1440).** Moved `notify_event_observers`
   inside `verify_and_persist` gated `Inserted | Replaced | Ephemeral`; introduce
   the `ingest_accepted_event(source, event)` chokepoint at `ingest/mod.rs:281→282`;
   route kind:1|6 through `verify_and_persist` and demote `should_store_event` to the
@@ -327,9 +331,9 @@ into a someday-issue.
   tests; upgrade the NMP consumer apps and cut a new NMP version. **profile and
   contacts caches stay kernel-owned for now** but are CALLED BY the chokepoint
   post-`verify_and_persist` (no scattered ladder).
-- **PR 2 — `profiles` → capability-owned cache.** Add a `ProfileLookup`-style read
-  trait, migrate the ~10 synchronous profile readers, move kind:0 parsing to a
-  registered `IngestParser`; drop the kernel arm.
+- **PR 2 — `profiles` → capability-owned cache.** Added a `ProfileLookup`-style read
+  trait, migrated the synchronous profile readers, moved kind:0 parsing to a
+  registered `IngestParser`; dropped the kernel arm.
 - **PR 3 — `contacts` → parser + kernel-owned effect seam (the D0 finish-line).**
   A kind:3 parser writes the cache and emits a typed "contacts changed" signal the
   kernel reacts to on its tick (keeping `sync_follow_feed_interests` /
@@ -411,14 +415,15 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
   timeline) is rebuildable on restart with no relevance-shaped holes.
 - **Deletions:** `record_local_publish_intent`, `local_publish_intent.rs`,
   `pre_kind3_buffer`, and `should_store_event`'s persistence authority.
-- **Doctrine gates (Workstream F, plan §8):** a lint banning `store.insert` outside
-  the single accepted-event ingest module, and a lint banning
-  `notify_event_observers` outside the chokepoint / cache-replay seam, will lock
-  this architecture in (tracked in the plan, not this ADR).
-- **Docs to amend** (PR 0 / PR 1): ADR-0042 (above), plus the durable docs that
-  echo the `should_store_event`-as-admission framing —
-  `docs/product-spec/subsystems.md`, `docs/builder-guide/08-eventstore.md`,
-  `docs/builder-guide/12-publish-and-ledger.md`.
+- **Doctrine gates (landed):** doctrine-lint **D23** bans `store.insert` outside
+  the single accepted-event ingest module (`verify_and_persist`), and **D24** bans
+  `notify_event_observers` outside the shared `project_accepted_event` seam —
+  locking this architecture in
+  (`crates/nmp-testing/bin/doctrine-lint/rules/d23.rs`, `d24.rs`).
+- **Docs amended:** ADR-0042 (above), and the durable docs that echoed the
+  `should_store_event`-as-admission framing
+  (`docs/product-spec/subsystems.md`, `docs/builder-guide/08-eventstore.md`,
+  `docs/builder-guide/12-publish-and-ledger.md`) no longer carry that framing.
 
 ---
 

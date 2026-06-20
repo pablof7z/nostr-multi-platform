@@ -29,6 +29,20 @@ targets:
         UILaunchScreen: {}
         CFBundleDisplayName: Chirp7z
         UIApplicationSupportsIndirectInputEvents: true
+        # App Store upload requires an explicit icon name and orientation set
+        # (validation errors 90713 / 90474). Declared here so xcodegen does not
+        # strip them from Info.plist on the next `xcodegen generate`.
+        CFBundleIconName: AppIcon
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         LSApplicationQueriesSchemes:
           - nostrsigner
           - primal
@@ -45,6 +59,7 @@ targets:
         # Monochrome global accent (black in light, white in dark) so every
         # system-accent consumer — List/Form row icons, cursors, switches —
         # resolves to the single black accent, not iOS default blue.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
         GENERATE_INFOPLIST_FILE: NO

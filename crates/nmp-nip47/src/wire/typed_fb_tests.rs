@@ -13,13 +13,10 @@ fn full_status() -> WalletStatus {
         wallet_pubkey_hex: "ab".repeat(32),
         balance_msats: Some(12_345_000),
         balance_sats: Some(12_345),
-        balance_sats_display: Some("12,345".to_string()),
         wallet_npub_short: "npub1walle…ch32".to_string(),
         is_ready: true,
         is_connected: true,
         connection_state: Some(NwcConnectionState::Connected),
-        status_label: "Ready".to_string(),
-        status_tone: "active".to_string(),
     }
 }
 
@@ -41,29 +38,16 @@ fn round_trips_disconnected_status_with_all_options_none() {
         wallet_pubkey_hex: String::new(),
         balance_msats: None,
         balance_sats: None,
-        balance_sats_display: None,
         wallet_npub_short: String::new(),
         is_ready: false,
         is_connected: false,
         connection_state: None,
-        status_label: "Disconnected".to_string(),
-        status_tone: "inactive".to_string(),
     };
     let bytes = encode_wallet_status(&status);
     let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
     assert_eq!(decoded, status);
     assert!(decoded.balance_msats.is_none());
     assert!(decoded.connection_state.is_none());
-}
-
-#[test]
-fn present_empty_string_option_round_trips_distinctly_from_none() {
-    // `Some("")` must NOT collapse to `None` — the `has_*` flag carries presence.
-    let mut status = full_status();
-    status.balance_sats_display = Some(String::new());
-    let bytes = encode_wallet_status(&status);
-    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
-    assert_eq!(decoded.balance_sats_display, Some(String::new()));
 }
 
 #[test]
@@ -100,72 +84,18 @@ fn schema_constants_match_the_fbs() {
     assert_eq!(SCHEMA_VERSION, 1);
 }
 
-// ADR-0032 / #623: label and tone round-trip through the FlatBuffers wire.
-
+// Raw-data doctrine (aim.md §2 / ADR-0032): the wire carries the raw `status`
+// token verbatim — shells map it to a label/tone themselves. The deleted
+// `status_label` / `status_tone` / `balance_sats_display` precompute fields are
+// gone (wallet_status sweep). This proves the raw token survives the round-trip
+// for every wire status the shells branch on.
 #[test]
-fn status_label_and_tone_round_trip_for_connecting() {
-    let status = WalletStatus {
-        status: "connecting".to_string(),
-        relay_url: String::new(),
-        wallet_npub: String::new(),
-        wallet_pubkey_hex: String::new(),
-        balance_msats: None,
-        balance_sats: None,
-        balance_sats_display: None,
-        wallet_npub_short: String::new(),
-        is_ready: false,
-        is_connected: true,
-        connection_state: None,
-        status_label: "Connecting".to_string(),
-        status_tone: "warning".to_string(),
-    };
-    let bytes = encode_wallet_status(&status);
-    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
-    assert_eq!(decoded.status_label, "Connecting");
-    assert_eq!(decoded.status_tone, "warning");
-}
-
-#[test]
-fn status_label_and_tone_round_trip_for_ready() {
-    let status = full_status();
-    let bytes = encode_wallet_status(&status);
-    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
-    assert_eq!(decoded.status_label, "Ready");
-    assert_eq!(decoded.status_tone, "active");
-}
-
-#[test]
-fn status_label_and_tone_round_trip_for_error() {
-    let mut status = full_status();
-    status.status = "error".to_string();
-    status.status_label = "Error".to_string();
-    status.status_tone = "error".to_string();
-    status.is_ready = false;
-    let bytes = encode_wallet_status(&status);
-    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
-    assert_eq!(decoded.status_label, "Error");
-    assert_eq!(decoded.status_tone, "error");
-}
-
-#[test]
-fn status_label_and_tone_round_trip_for_disconnected() {
-    let status = WalletStatus {
-        status: "disconnected".to_string(),
-        relay_url: String::new(),
-        wallet_npub: String::new(),
-        wallet_pubkey_hex: String::new(),
-        balance_msats: None,
-        balance_sats: None,
-        balance_sats_display: None,
-        wallet_npub_short: String::new(),
-        is_ready: false,
-        is_connected: false,
-        connection_state: None,
-        status_label: "Disconnected".to_string(),
-        status_tone: "inactive".to_string(),
-    };
-    let bytes = encode_wallet_status(&status);
-    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
-    assert_eq!(decoded.status_label, "Disconnected");
-    assert_eq!(decoded.status_tone, "inactive");
+fn raw_status_token_round_trips_for_every_wire_state() {
+    for wire in ["connecting", "ready", "error", "disconnected"] {
+        let mut status = full_status();
+        status.status = wire.to_string();
+        let bytes = encode_wallet_status(&status);
+        let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
+        assert_eq!(decoded.status, wire);
+    }
 }

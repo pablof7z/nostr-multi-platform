@@ -4,12 +4,27 @@ use serde::Serialize;
 
 use crate::interest::{is_hex_pubkey, KIND_CONTACT_LIST, KIND_MUTE_LIST};
 
-const SELF_SCORE: i32 = 1_000;
-const DIRECT_FOLLOW_SCORE: i32 = 100;
-const SECOND_DEGREE_SCORE: i32 = 10;
-const SELF_MUTE_SCORE: i32 = -1_000;
-const FOLLOWED_MUTE_SCORE: i32 = -25;
-const AUTO_HIDE_SCORE: i32 = -50;
+/// Trust score awarded to the viewer for itself. Always sorts first and is
+/// never hidden.
+pub const SELF_SCORE: i32 = 1_000;
+/// Trust score for a pubkey the viewer directly follows (kind:3 `p` tag).
+pub const DIRECT_FOLLOW_SCORE: i32 = 100;
+/// Trust contribution per follow-of-a-follow edge (summed across the viewer's
+/// follows who also follow the candidate).
+pub const SECOND_DEGREE_SCORE: i32 = 10;
+/// Trust score for a pubkey the viewer has muted (kind:10000 `p` tag). Always
+/// hides regardless of any caller threshold.
+pub const SELF_MUTE_SCORE: i32 = -1_000;
+/// Trust contribution per "muted by someone the viewer follows" edge.
+pub const FOLLOWED_MUTE_SCORE: i32 = -25;
+/// Default auto-hide threshold used by [`WotGraph::score`]: a candidate whose
+/// score is at or below this value is hidden by the default policy.
+///
+/// Exposed as NMP-owned policy so app crates can build stricter or looser
+/// presets (passed to [`WotGraph::score_with_minimum_score`] /
+/// [`WotGraph::batch_score_with_minimum_score`]) by referencing the authoritative
+/// tier constants above rather than cloning magic numbers locally.
+pub const DEFAULT_AUTO_HIDE_SCORE: i32 = -50;
 
 /// Local client-side follow/mute graph used for web-of-trust decisions.
 #[derive(Default, Debug)]
@@ -72,7 +87,7 @@ impl WotGraph {
     #[must_use]
     pub fn score(&self, viewer: &str, candidate: &str) -> TrustDecision {
         let scored = self.score_parts(viewer, candidate);
-        let hide = scored.self_muted || scored.score <= AUTO_HIDE_SCORE;
+        let hide = scored.self_muted || scored.score <= DEFAULT_AUTO_HIDE_SCORE;
         TrustDecision {
             score: scored.score,
             hide,
@@ -211,7 +226,7 @@ impl WotGraph {
             }
         }
 
-        let default_hide = score <= AUTO_HIDE_SCORE;
+        let default_hide = score <= DEFAULT_AUTO_HIDE_SCORE;
         let reason = if default_hide {
             "muted-by-followed"
         } else if second_degree > 0 {

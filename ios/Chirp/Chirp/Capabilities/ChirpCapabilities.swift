@@ -7,37 +7,31 @@ import Foundation
 /// implementations are constructed and started, mirroring the thin-bridge
 /// pattern in `Bridge/KernelBridge.swift`.
 ///
-/// It owns the `KeychainCapability` (at-rest secret storage) and the
-/// `HttpCapability` (host HTTP transport — used by the NIP-57 LNURL-pay leg).
-/// Rust decides when and what to call; Swift only executes the request and
-/// reports the raw result (D7).
+/// It owns the `KeychainCapability` (at-rest secret storage). Rust decides
+/// when and what to call; Swift only executes the request and reports the raw
+/// result (D7).
 ///
 /// There is a single C capability callback (`nmp_app_set_capability_callback`);
 /// it routes by the `namespace` field of the incoming `CapabilityRequest` —
 /// see [`handleJSON(_:)`].
 final class ChirpCapabilities {
     let keyring: KeychainCapability
-    let http: HttpCapability
 
     init(
-        keyring: KeychainCapability = KeychainCapability(),
-        http: HttpCapability = HttpCapability()
+        keyring: KeychainCapability = KeychainCapability()
     ) {
         self.keyring = keyring
-        self.http = http
     }
 
     /// Idempotent: start all owned capabilities. Safe to call on every app
     /// foreground.
     func start() {
         keyring.start()
-        http.start()
     }
 
     /// Idempotent: mark capabilities inactive. Does not erase stored secrets.
     func stop() {
         keyring.stop()
-        http.stop()
     }
 
     /// Single capability-callback entry point. Routes the raw kernel
@@ -62,8 +56,6 @@ final class ChirpCapabilities {
         switch request.namespace {
         case KeychainCapability.namespace:
             return keyring.handleJSON(requestJSON)
-        case HttpCapability.namespace:
-            return http.handleJSON(requestJSON)
         default:
             // D6 — an unknown namespace is data, not a crash. Echo the
             // correlation id so the issuing kernel module can still correlate.

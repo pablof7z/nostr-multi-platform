@@ -39,7 +39,7 @@
 //!
 //! | Path                         | Structure                          | Pre-fix    | Bound                                |
 //! |------------------------------|------------------------------------|------------|---------------------------------------|
-//! | bounded FFI channel          | `actor_tx` mpsc                    | unbounded  | `BOUNDED_ACTOR_CMD_CAPACITY=4096` (T114 part 1, `44cbfd2`) — drop-newest + `dispatch_drops_total` |
+//! | FFI command channel          | `command_tx` mpsc                  | unbounded  | unbounded (ADR-0029's bounded shed-load design was never built — see ADR-0029, marked Not implemented); depth is observable via `actor_queue_depth` |
 //! | view-command emit gate       | per-dispatch `emit_now`            | unconditional | `maybe_emit_after_dispatch` skips when `running=false` (this fix — load-bearing) |
 //! | `claim_profile`              | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
 //! | latency sketch (harness)     | `Vec<u64>` per-sample              | unbounded  | fixed 32-bucket log2 histogram (`s2_dispatch_flood.rs::LatencyHistogram`) — 256 B per thread |
@@ -52,11 +52,13 @@
 //! | `pending_profiles`           | `BTreeSet<pubkey>`                 | bounded    | keyed by pubkey (O(working-set))            |
 //! | profile/author/firehose seq  | `u64` counters                     | bounded    | saturating; 8 B fixed                       |
 //!
-//! Under the S2 spec mix, `claim_drops_total = 0` and `dispatch_drops_total = 0`
-//! at flood end — neither cap is being exercised. That is the correct outcome:
-//! the working set (50 pubkeys × ≤256 consumers) fits inside both bounds. The
-//! caps surface on `Metrics` (`update.rs`) for diagnostic visibility; their
-//! unit tests below pin the drop-newest semantics for the pathological cases.
+//! Under the S2 spec mix, `claim_drops_total = 0` at flood end — the cap is
+//! not being exercised. That is the correct outcome: the working set (50
+//! pubkeys × ≤256 consumers) fits inside the bound. The cap surfaces on
+//! `Metrics` (`update.rs`) for diagnostic visibility; its unit tests below pin
+//! the drop-newest semantics for the pathological cases. (The FFI command
+//! channel itself is unbounded — ADR-0029's bounded shed-load design was never
+//! built — so there is no FFI-channel drop counter.)
 //!
 //! Production paths that DO populate `wire_subs` (post-`Start`) are bounded
 //! by the planner CLOSE diff (`drain_lifecycle_tick` behind `close_interest`)
@@ -229,48 +231,10 @@ fn claim_recovers_after_release_post_drop() {
     );
 }
 
-/// T114b — the FFI-channel drop counter (`dispatch_drops`) round-trips
-/// through the kernel snapshot. This pins the surface advisor flagged: the
-/// counter must not be `let _ = …`'d into oblivion — it has to reach the
-/// diagnostic surface so operators can observe FFI-channel pressure.
-#[test]
-fn dispatch_drops_handle_surfaces_on_kernel() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    assert_eq!(
-        kernel.dispatch_drops_total(),
-        0,
-        "unbound kernel reports zero"
-    );
-
-    let handle = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.set_dispatch_drops_handle(std::sync::Arc::clone(&handle));
-
-    // External mutation (mirrors the FFI forwarder thread incrementing on Full).
-    handle.fetch_add(42, Ordering::Relaxed);
-    assert_eq!(
-        kernel.dispatch_drops_total(),
-        42,
-        "kernel must observe external Arc increments"
-    );
-
-    // Reset round-trip: extract → reinstall onto fresh kernel.
-    let extracted = kernel.take_dispatch_drops_handle_for_reset();
-    assert!(extracted.is_some());
-    let mut fresh = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    fresh.set_dispatch_drops_handle(extracted.unwrap());
-    handle.fetch_add(1, Ordering::Relaxed);
-    assert_eq!(
-        fresh.dispatch_drops_total(),
-        43,
-        "Reset must preserve counter via take→set round-trip"
-    );
-}
-
 /// G-S4 — the actor command-channel depth counter (`queue_depth`)
-/// round-trips through the kernel snapshot accessor. Mirrors
-/// `dispatch_drops_handle_surfaces_on_kernel`: the `Arc<AtomicU64>` shared
-/// with `NmpApp::send_cmd` must reach `actor_queue_depth()` so the snapshot
-/// surfaces real command-channel occupancy, and must survive `Reset`.
+/// round-trips through the kernel snapshot accessor. The `Arc<AtomicU64>`
+/// shared with `NmpApp::send_cmd` must reach `actor_queue_depth()` so the
+/// snapshot surfaces real command-channel occupancy, and must survive `Reset`.
 #[test]
 fn queue_depth_handle_surfaces_on_kernel() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

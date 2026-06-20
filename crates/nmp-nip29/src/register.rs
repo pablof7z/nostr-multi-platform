@@ -47,8 +47,8 @@ unsafe impl Sync for GroupDiscoveryHandle {}
 
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
-    PostChatMessageAction, PutUserAction, ReactInGroupAction, RepostInGroupAction,
-    ShareEventInGroupAction,
+    LeaveGroupAction, PostChatMessageAction, PutUserAction, ReactInGroupAction,
+    RepostInGroupAction, ShareEventInGroupAction,
 };
 use crate::group_id::GroupId;
 use crate::projection::{
@@ -295,6 +295,7 @@ pub fn wire_group_defaults(app: &NmpApp) {
 /// - `nmp.nip29.create_public_group`
 /// - `nmp.nip29.discover`
 /// - `nmp.nip29.join`
+/// - `nmp.nip29.leave`
 /// - `nmp.nip29.put_user`
 /// - `nmp.nip29.create_invite`
 ///
@@ -309,6 +310,7 @@ pub fn register_actions(app: &mut NmpApp) {
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
+    app.register_action(LeaveGroupAction);
     app.register_action(PutUserAction);
     app.register_action(CreateInviteAction);
 }

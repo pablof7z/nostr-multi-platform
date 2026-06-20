@@ -128,16 +128,12 @@ pub mod nmp {
             pub const VT_BALANCE_MSATS: ::flatbuffers::VOffsetT = 12;
             pub const VT_HAS_BALANCE_SATS: ::flatbuffers::VOffsetT = 14;
             pub const VT_BALANCE_SATS: ::flatbuffers::VOffsetT = 16;
-            pub const VT_HAS_BALANCE_SATS_DISPLAY: ::flatbuffers::VOffsetT = 18;
-            pub const VT_BALANCE_SATS_DISPLAY: ::flatbuffers::VOffsetT = 20;
-            pub const VT_WALLET_NPUB_SHORT: ::flatbuffers::VOffsetT = 22;
-            pub const VT_IS_READY: ::flatbuffers::VOffsetT = 24;
-            pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 26;
-            pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 28;
-            pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 30;
-            pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 32;
-            pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 34;
-            pub const VT_STATUS_TONE: ::flatbuffers::VOffsetT = 36;
+            pub const VT_WALLET_NPUB_SHORT: ::flatbuffers::VOffsetT = 18;
+            pub const VT_IS_READY: ::flatbuffers::VOffsetT = 20;
+            pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 24;
+            pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 26;
+            pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 28;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -156,20 +152,11 @@ pub mod nmp {
                 let mut builder = WalletStatusBuilder::new(_fbb);
                 builder.add_balance_sats(args.balance_sats);
                 builder.add_balance_msats(args.balance_msats);
-                if let Some(x) = args.status_tone {
-                    builder.add_status_tone(x);
-                }
-                if let Some(x) = args.status_label {
-                    builder.add_status_label(x);
-                }
                 if let Some(x) = args.wallet_pubkey_hex {
                     builder.add_wallet_pubkey_hex(x);
                 }
                 if let Some(x) = args.wallet_npub_short {
                     builder.add_wallet_npub_short(x);
-                }
-                if let Some(x) = args.balance_sats_display {
-                    builder.add_balance_sats_display(x);
                 }
                 if let Some(x) = args.wallet_npub {
                     builder.add_wallet_npub(x);
@@ -184,7 +171,6 @@ pub mod nmp {
                 builder.add_has_connection_state(args.has_connection_state);
                 builder.add_is_connected(args.is_connected);
                 builder.add_is_ready(args.is_ready);
-                builder.add_has_balance_sats_display(args.has_balance_sats_display);
                 builder.add_has_balance_sats(args.has_balance_sats);
                 builder.add_has_balance_msats(args.has_balance_msats);
                 builder.finish()
@@ -269,29 +255,6 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn has_balance_sats_display(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(WalletStatus::VT_HAS_BALANCE_SATS_DISPLAY, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn balance_sats_display(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        WalletStatus::VT_BALANCE_SATS_DISPLAY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
             pub fn wallet_npub_short(&self) -> Option<&'a str> {
                 // Safety:
                 // Created from valid Table for this object
@@ -362,30 +325,6 @@ pub mod nmp {
                     )
                 }
             }
-            #[inline]
-            pub fn status_label(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        WalletStatus::VT_STATUS_LABEL,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn status_tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        WalletStatus::VT_STATUS_TONE,
-                        None,
-                    )
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for WalletStatus<'_> {
@@ -414,16 +353,6 @@ pub mod nmp {
                     .visit_field::<u64>("balance_msats", Self::VT_BALANCE_MSATS, false)?
                     .visit_field::<bool>("has_balance_sats", Self::VT_HAS_BALANCE_SATS, false)?
                     .visit_field::<u64>("balance_sats", Self::VT_BALANCE_SATS, false)?
-                    .visit_field::<bool>(
-                        "has_balance_sats_display",
-                        Self::VT_HAS_BALANCE_SATS_DISPLAY,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "balance_sats_display",
-                        Self::VT_BALANCE_SATS_DISPLAY,
-                        false,
-                    )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "wallet_npub_short",
                         Self::VT_WALLET_NPUB_SHORT,
@@ -446,16 +375,6 @@ pub mod nmp {
                         Self::VT_WALLET_PUBKEY_HEX,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "status_label",
-                        Self::VT_STATUS_LABEL,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "status_tone",
-                        Self::VT_STATUS_TONE,
-                        false,
-                    )?
                     .finish();
                 Ok(())
             }
@@ -468,16 +387,12 @@ pub mod nmp {
             pub balance_msats: u64,
             pub has_balance_sats: bool,
             pub balance_sats: u64,
-            pub has_balance_sats_display: bool,
-            pub balance_sats_display: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub wallet_npub_short: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub is_ready: bool,
             pub is_connected: bool,
             pub has_connection_state: bool,
             pub connection_state: NwcConnectionState,
             pub wallet_pubkey_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub status_label: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub status_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for WalletStatusArgs<'a> {
             #[inline]
@@ -490,16 +405,12 @@ pub mod nmp {
                     balance_msats: 0,
                     has_balance_sats: false,
                     balance_sats: 0,
-                    has_balance_sats_display: false,
-                    balance_sats_display: None,
                     wallet_npub_short: None,
                     is_ready: false,
                     is_connected: false,
                     has_connection_state: false,
                     connection_state: NwcConnectionState::Connected,
                     wallet_pubkey_hex: None,
-                    status_label: None,
-                    status_tone: None,
                 }
             }
         }
@@ -557,24 +468,6 @@ pub mod nmp {
                     .push_slot::<u64>(WalletStatus::VT_BALANCE_SATS, balance_sats, 0);
             }
             #[inline]
-            pub fn add_has_balance_sats_display(&mut self, has_balance_sats_display: bool) {
-                self.fbb_.push_slot::<bool>(
-                    WalletStatus::VT_HAS_BALANCE_SATS_DISPLAY,
-                    has_balance_sats_display,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_balance_sats_display(
-                &mut self,
-                balance_sats_display: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    WalletStatus::VT_BALANCE_SATS_DISPLAY,
-                    balance_sats_display,
-                );
-            }
-            #[inline]
             pub fn add_wallet_npub_short(
                 &mut self,
                 wallet_npub_short: ::flatbuffers::WIPOffset<&'b str>,
@@ -621,20 +514,6 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_status_label(&mut self, status_label: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    WalletStatus::VT_STATUS_LABEL,
-                    status_label,
-                );
-            }
-            #[inline]
-            pub fn add_status_tone(&mut self, status_tone: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    WalletStatus::VT_STATUS_TONE,
-                    status_tone,
-                );
-            }
-            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletStatusBuilder<'a, 'b, A> {
@@ -661,16 +540,12 @@ pub mod nmp {
                 ds.field("balance_msats", &self.balance_msats());
                 ds.field("has_balance_sats", &self.has_balance_sats());
                 ds.field("balance_sats", &self.balance_sats());
-                ds.field("has_balance_sats_display", &self.has_balance_sats_display());
-                ds.field("balance_sats_display", &self.balance_sats_display());
                 ds.field("wallet_npub_short", &self.wallet_npub_short());
                 ds.field("is_ready", &self.is_ready());
                 ds.field("is_connected", &self.is_connected());
                 ds.field("has_connection_state", &self.has_connection_state());
                 ds.field("connection_state", &self.connection_state());
                 ds.field("wallet_pubkey_hex", &self.wallet_pubkey_hex());
-                ds.field("status_label", &self.status_label());
-                ds.field("status_tone", &self.status_tone());
                 ds.finish()
             }
         }

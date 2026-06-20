@@ -71,10 +71,7 @@ use nmp_nwc::NwcMethod;
 use crate::crypto::{build_event_json, sign_nwc_request, sign_with};
 use crate::payment_store::{FsPaymentStore, PaymentRecord, PaymentState};
 use crate::reconcile::{correct_unresolved_record, settle_payment_failure, settle_payment_success};
-use crate::status::{
-    format_sats_display, status_label, status_tone, NwcConnectionState, WalletStatus,
-    WalletStatusSlot,
-};
+use crate::status::{NwcConnectionState, WalletStatus, WalletStatusSlot};
 
 /// TTL for inflight `pay_invoice` requests. Entries older than this are
 /// swept by the idle-tick hook and reported as timed-out failures via
@@ -700,13 +697,10 @@ fn wallet_disconnect_inner(
             wallet_pubkey_hex: conn.wallet_pubkey_hex.clone(),
             balance_msats: conn.balance_msats,
             balance_sats,
-            balance_sats_display: balance_sats.map(format_sats_display),
             wallet_npub_short: short_npub(&conn.wallet_npub),
             is_ready: false,
             is_connected: false,
             connection_state: None,
-            status_label: status_label(wire),
-            status_tone: status_tone(wire),
         });
     }
     match close_msg_opt {
@@ -1145,15 +1139,12 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &dyn WalletKernelAccess) {
     let status = wallet.connection.as_ref().map(|c| {
         let balance_sats = c.balance_msats.map(|m| m / 1000);
         WalletStatus {
-            status_label: status_label(&c.status),
-            status_tone: status_tone(&c.status),
             status: c.status.clone(),
             relay_url: c.relay_url.clone(),
             wallet_npub: c.wallet_npub.clone(),
             wallet_pubkey_hex: c.wallet_pubkey_hex.clone(),
             balance_msats: c.balance_msats,
             balance_sats,
-            balance_sats_display: balance_sats.map(format_sats_display),
             wallet_npub_short: short_npub(&c.wallet_npub),
             is_ready: c.status == "ready",
             is_connected: c.status == "connecting" || c.status == "ready",

@@ -1,10 +1,10 @@
 # ADR-0051: First-class NIP-11 relay-information documents in NMP
 
-Status: PROPOSED
+Status: Accepted / Implemented
 
-> Numbering note: `0048` is the highest decision in `docs/decisions/`. This
-> takes the next free number, `0049`, per the single-source-of-truth /
-> no-duplicate-id discipline.
+> Implemented in `crates/nmp-nip11` (`RelayInfoDoc`, the fetch/parse helpers),
+> with `ActorCommand::SetRelayInfo` and the `RelayConnectedHook` seam live in
+> `nmp-core`.
 
 ## Context
 

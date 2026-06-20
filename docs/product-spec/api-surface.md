@@ -311,7 +311,13 @@ installed `nmp_nip51::MuteListProjection` for active-account suppression reads
 and feed resets. External consumers such as Olas apply product-specific feed
 thresholds in their Rust app crate against those handles; platform wrappers
 provide user input and render the resulting payloads but do not own the scoring
-or suppression policy.
+or suppression policy. Apps that need stricter or looser presets pass a
+minimum-score floor to `score_with_minimum_score` /
+`batch_score_with_minimum_score`, building that floor from the public NMP-owned
+policy constants (`nmp_wot::{SELF_SCORE, DIRECT_FOLLOW_SCORE,
+SECOND_DEGREE_SCORE, FOLLOWED_MUTE_SCORE, SELF_MUTE_SCORE,
+DEFAULT_AUTO_HIDE_SCORE}`) rather than cloning the magic numbers — so the trust
+tier values stay single-sourced in `nmp-wot`.
 
 Optimization escape hatch: a future `ViewHandle` opaque type can be added as an opt-in for very high-rate views (e.g., NIP-77 sync progress) where round-tripping through `AppUpdate` is wasteful. v1 does not ship this.
 

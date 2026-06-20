@@ -90,6 +90,20 @@ pub fn raw_to_kernel_event(entry: &StoreLogEntry) -> Option<KernelEvent> {
     })
 }
 
+/// Lowercase-hex encode a 32-byte event id (a `LogOp::Replaced` `replaced_id`)
+/// so it matches the `KernelEvent::id` form a feed keys its sources by. The
+/// store records replacements by raw 32-byte id; feeds dedup by hex string.
+#[must_use]
+fn event_id_hex(id: &[u8; 32]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(64);
+    for &byte in id {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
 // ─── Drain results ──────────────────────────────────────────────────────────────
 
 /// Why a bounded drain loop stopped.
@@ -117,6 +131,20 @@ pub struct DrainOutcome {
     /// applies them through the normal feed ingest path; display order is the
     /// snapshot's `(created_at, id)` sort, applied separately.
     pub events: Vec<KernelEvent>,
+    /// Lowercase-hex ids of events that a `LogOp::Replaced` row in this drain
+    /// superseded — the prior version of a replaceable event. The caller evicts
+    /// each from the feed's visible state (via a [`FeedReplace`] hook) so the old
+    /// version stops rendering; the superseding version arrives in `events` like
+    /// any other positive row. Empty when no replacements were drained.
+    ///
+    /// Scope: ONLY `LogOp::Replaced` rows surface here. `LogOp::Deleted` rows are
+    /// deliberately NOT surfaced as eviction ids — `InterestShape` pull delivers
+    /// positive rows only (ADR-0058 §10), and a NIP-09 deletion reaches the feed
+    /// through its push projection, never through the pager. Widening this to
+    /// deletes would double-evict (push + pull) and is out of scope here.
+    ///
+    /// [`FeedReplace`]: crate::FeedReplace
+    pub replaced_ids: Vec<String>,
     /// Why the loop stopped.
     pub stop: DrainStop,
 }
@@ -202,6 +230,17 @@ impl FeedPullPager {
         self.after_seq
     }
 
+    /// Rewind the seq cursor to the start so the next [`drain`](Self::drain)
+    /// replays from seq 0. Page size, scan budget, and any stored shape are
+    /// preserved — only the cursor moves. Used by
+    /// [`PullFeedController::reset`](crate::PullFeedController::reset) when a
+    /// perspective change invalidates the feed's visible window: clearing the
+    /// rows without rewinding the cursor would leave the older history
+    /// unreachable, so the two move together.
+    pub fn rewind(&mut self) {
+        self.after_seq = 0;
+    }
+
     /// Bounded on-demand drain — the loop `load_older` rides.
     ///
     /// Repeatedly calls `pull_fn(after_seq)` (in production:
@@ -216,6 +255,7 @@ impl FeedPullPager {
     /// must rebase its scoped state, never silently claim continuity.
     pub fn drain(&mut self, mut pull_fn: impl FnMut(u64) -> ScanLogResult) -> DrainOutcome {
         let mut events: Vec<KernelEvent> = Vec::new();
+        let mut replaced_ids: Vec<String> = Vec::new();
         let mut scanned: usize = 0;
 
         loop {
@@ -225,6 +265,7 @@ impl FeedPullPager {
                     self.after_seq = gap.first_available_seq;
                     return DrainOutcome {
                         events,
+                        replaced_ids,
                         stop: DrainStop::Gap {
                             rebased_to: gap.first_available_seq,
                         },
@@ -237,6 +278,12 @@ impl FeedPullPager {
             let old_after_seq = self.after_seq;
             let advanced = page.next_after_seq > self.after_seq;
             for entry in &page.entries {
+                // A `Replaced` row carries the superseded id: surface it so the
+                // caller evicts the stale source. The new version still converts
+                // to a positive `KernelEvent` below (dedup/projection unchanged).
+                if let LogOp::Replaced { replaced_id } = &entry.op {
+                    replaced_ids.push(event_id_hex(replaced_id));
+                }
                 if let Some(ev) = raw_to_kernel_event(entry) {
                     events.push(ev);
                 }
@@ -266,6 +313,7 @@ impl FeedPullPager {
             if !page.has_more {
                 return DrainOutcome {
                     events,
+                    replaced_ids,
                     stop: DrainStop::Exhausted,
                 };
             }
@@ -273,6 +321,7 @@ impl FeedPullPager {
             if events.len() >= self.page_size {
                 return DrainOutcome {
                     events,
+                    replaced_ids,
                     stop: DrainStop::PageFilled,
                 };
             }
@@ -281,6 +330,7 @@ impl FeedPullPager {
             if !advanced && rows == 0 {
                 return DrainOutcome {
                     events,
+                    replaced_ids,
                     stop: DrainStop::ScanBudget,
                 };
             }
@@ -288,6 +338,7 @@ impl FeedPullPager {
             if scanned >= self.scan_budget {
                 return DrainOutcome {
                     events,
+                    replaced_ids,
                     stop: DrainStop::ScanBudget,
                 };
             }

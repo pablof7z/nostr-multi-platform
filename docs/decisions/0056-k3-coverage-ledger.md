@@ -1,6 +1,6 @@
 # ADR-0056 — K3 coverage ledger: staged migration from presence-floor to per-(filter, relay) coverage
 
-- Status: Accepted (Stage A landed; Stages B–E queued)
+- Status: Accepted / Implemented (Stages A–E all landed)
 - Date: 2026-06-14
 - Keystone: K3 (read-path soundness) of the nmp-multi-platform excellence program
 - Doctrine: `doctrine:d2` (negentropy-first), `doctrine:d8` (bounded work)

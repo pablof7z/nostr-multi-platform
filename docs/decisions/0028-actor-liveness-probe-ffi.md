@@ -7,7 +7,7 @@ Deciders: NMP team
 ## Context
 
 The actor thread in `nmp-core` owns the kernel loop. When it panics, the
-FFI supervisor closure in `crates/nmp-core/src/ffi/mod.rs::nmp_app_new` wraps
+FFI supervisor closure in `crates/nmp-ffi/src/lifecycle.rs::nmp_app_new` wraps
 the actor in `std::panic::catch_unwind` and emits exactly one
 `UpdateEnvelope::Panic` frame (`{"t":"panic","v":{"msg":...}}`) on the update
 channel before the channel closes (`docs/architecture/d7-actor-death-contract.md`
@@ -36,7 +36,7 @@ sibling for the case above.
 ## Decision
 
 Add one new `#[no_mangle] pub extern "C" fn nmp_app_is_alive(*mut NmpApp) -> u8`
-to `crates/nmp-core/src/ffi/lifecycle.rs`. Semantics:
+at `crates/nmp-ffi/src/lifecycle.rs:126`. Semantics:
 
 - `app == NULL` → `0`
 - `actor` mutex poisoned → `0` (kernel state irrecoverable)

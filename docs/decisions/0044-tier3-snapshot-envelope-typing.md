@@ -163,105 +163,22 @@ they were deliberately de-typed into the map). They migrate under Tier-2.
 `relay_statuses`, `logical_interests`, `wire_subscriptions`, `logs`); everything
 else is a scalar or optional scalar.
 
-## 2. The two options
+## 2. Decision — typed fields directly on `SnapshotFrame`
 
-### Option (a) — typed fields directly on `SnapshotFrame`
+Every Tier-3 field is a first-class typed field on the `SnapshotFrame` table in
+`nmp_update.fbs`, with the five nested populations (`Metrics`, `RelayStatus`,
+`LogicalInterestStatus`, `WireSubscriptionStatus`, plus the `logs` string vector)
+declared as new tables in the `nmp.transport` namespace, appended after
+`typed_projections`. They were *not* routed through the ADR-0037 app-projection
+sidecar: that sidecar exists to keep **app nouns** out of `nmp-core` transport,
+and Tier-3 is the opposite category — framework-owned envelope metadata that
+`nmp-core` already declares in its own `types.rs`. `schema_version`,
+`last_tick_ms`, `running`, and `update_kind` must be plain envelope fields anyway:
+they are read to interpret the frame and detect liveness/version-skew *before* any
+projection decode (a versioned field cannot live inside a versioned opaque
+payload).
 
-Add the Tier-3 fields as first-class typed fields on the `SnapshotFrame` table in
-`nmp_update.fbs` (with new nested tables `Metrics`, `RelayStatus`,
-`LogicalInterestStatus`, `WireSubscriptionStatus` in the `nmp.transport`
-namespace), appended after `typed_projections`.
-
-### Option (b) — a typed `nmp.kernel.status` projection in the sidecar
-
-Route the Tier-3 fields through one (or a few) `typed_projections` entries keyed
-e.g. `nmp.kernel.status`, exactly like the Tier-1 built-ins — `nmp-core` would
-own the schema crate-side and emit the bytes through the same sidecar path.
-
-### Evaluation
-
-| Criterion | (a) SnapshotFrame fields | (b) `nmp.kernel.status` projection |
-|---|---|---|
-| **Schema cleanliness** | Edits the shared transport root — but with *framework-owned* envelope types, which is what an envelope root is *for*. Clean. | Leaves `SnapshotFrame` untouched, but pushes always-present framework metadata into the app-projection escape hatch — semantically wrong (see below). |
-| **Consumer-decode ergonomics** | Host reads `frame.snapshot.metrics.storedEvents` etc. by field offset — zero string-keyed map lookups. Replaces today's generic `FlatBufferValueDecoder` walk of `payload`. Cleanest possible read. | Host must: find the sidecar entry by key, match the descriptor, then decode a *second* opaque buffer — to learn whether the kernel is even `running`. Indirection on the most-read fields. |
-| **Additivity / safety** | New fields appended at the table tail → existing `payload`-readers byte-compatible; FlatBuffers default-on-absent makes an old reader see an empty frame, never a mis-decode. | Additive too (new sidecar entry), but `schema_version` can't live here — chicken-and-egg (you'd need to decode a versioned payload to learn the version that tells you how to decode payloads). |
-| **Uniformity with Tier-1/Tier-2** | *Different* from Tier-1/2 — but correctly so: those are app/protocol-owned shapes the sidecar exists to keep out of nmp-core; Tier-3 is the opposite category. | Superficially uniform ("just another projection"), but the uniformity is false: it equates framework envelope metadata with app projections. |
-| **Unblocks deleting `payload:Value`** | Yes — once hosts read the typed fields, the Tier-3 top-level keys no longer need the generic tree. | Yes, mechanically — but only by relocating the same data into a sidecar entry, adding a decode hop for no ownership benefit. |
-
-### The discriminating principle: ownership, not shape
-
-ADR-0037's sidecar exists for exactly one reason (its Commitment 1): keep **app
-nouns** — `Feed`, `Dm`, `Group`, `Article` — out of `nmp-core` transport, so
-`nmp-core` never declares an app table type and never regenerates bindings for app
-churn. The cut that justifies the sidecar is **ownership**: app-owned shapes go in
-the opaque sidecar; the transport schema stays closed against them.
-
-Every Tier-3 field is the **opposite category**. `rev`, `running`,
-`last_tick_ms`, `Metrics`, `RelayStatus` already live in `nmp-core`'s own
-`types.rs`. `nmp-core` declaring its *own* envelope types in its *own* transport
-schema is not the ADR-0037 anti-pattern — it is the framework owning its envelope.
-The "closed against app churn" property is **fully preserved**, because no app will
-ever add a field to this set. Routing them through the app-projection sidecar buys
-*nothing*: nmp-core owns the schema either way, so there is no "keep nmp-core from
-learning the type" benefit to capture. It is pure indirection.
-
-So the cut is: **app-owned → opaque sidecar (b's mechanism); framework-owned →
-first-class `SnapshotFrame` fields (a).** Tier-3 is entirely framework-owned →
-all of it is option (a).
-
-### The functional argument that makes (b) not merely messier but wrong
-
-`schema_version`, `last_tick_ms`, `running`, and `update_kind` are needed to
-**interpret the frame and detect liveness / version-skew — before and
-independently of any projection decode**:
-
-- `schema_version` is the version discriminator the host uses to decide whether it
-  can decode *anything* in the frame. It cannot itself live inside a versioned
-  opaque payload — that is circular (you would need to decode a projection to learn
-  the version that tells you how to decode projections). It must be a plain field
-  on the envelope.
-- `last_tick_ms` is the actor-liveness signal (ADR-0028): a host watches it stop
-  advancing to detect a frozen actor thread. Burying it one opaque-decode deep
-  makes the liveness probe pay for a projection decode.
-- `running` / `update_kind` classify the frame itself.
-
-These are functional necessities of the envelope, not cleanliness preferences.
-That is the lead reason to reject (b).
-
-### Reject the shape-based hybrid (scalars on the frame, vectors in the sidecar)
-
-A tempting middle path puts the scalars on `SnapshotFrame` but routes the big
-vectors (`metrics`, `relay_statuses`, `logs`) through the sidecar "to avoid paying
-for them every frame." **Reject it** — it splits *framework-owned* state by shape,
-which is not a principle:
-
-- The vectors are **still framework-owned**, not app nouns. nmp-core owns
-  `Metrics` / `RelayStatus` / `LogicalInterestStatus` / `WireSubscriptionStatus`
-  whether they sit on the frame or in a sidecar buffer — there is no
-  "keep nmp-core from learning the type" benefit to capture, so the sidecar earns
-  nothing.
-- **FlatBuffers is lazy / zero-copy.** A typed vector *field* on `SnapshotFrame`
-  is not deserialized until a consumer accesses it. A diagnostics-only host that
-  never reads `logs` or `wire_subscriptions` does not pay to decode them — the
-  field is an offset it never follows. The "don't pay for big vectors every frame"
-  motivation does not exist, so the hybrid's only perf argument is empty.
-  *(Implementation note: confirm against each platform's generated accessors that
-  vector access is offset-on-demand, not eager — this is the standard FlatBuffers
-  contract but should be spot-checked when the bindings are generated.)*
-
-The hybrid trades a clean single category boundary for an indirection with no
-payoff. One uniform rule — *all* of Tier-3 as typed `SnapshotFrame` fields — is
-both simpler and more correct.
-
-## 3. Recommendation — Option (a), for all Tier-3 fields
-
-Add every Tier-3 field as a first-class typed field on `SnapshotFrame`, with the
-five nested populations declared as new tables in the `nmp.transport` namespace.
-Append all new fields at the **tail** of `SnapshotFrame` so existing `payload`
-readers stay byte-compatible (FlatBuffers identifies fields by vtable slot; new
-trailing fields read as default/absent on an old reader).
-
-### Additive schema sketch (target — not shipped with this ADR)
+### Typed `SnapshotFrame` schema sketch
 
 ```fbs
 // New nested tables in namespace nmp.transport. Each mirrors the nmp-core
@@ -370,32 +287,15 @@ Notes on the sketch:
   fields (`store_open_failure`, `no_configured_relays`, the `last_error_*` set):
   they are optional fields, absent = healthy.
 
-### Why not a hybrid
+**Reverses ADR-0037's `payload:Value` permanence commitment.** ADR-0037 recorded
+that `payload:Value` stays in `SnapshotFrame` permanently and "does not schedule
+removal of the generic tree." Typing Tier-3 (this ADR) plus typing Tier-2 removed
+both blockers, and `payload:Value` and the `Value`/`Pair` variant tree were
+deleted from `nmp_update.fbs` (2026-06-16). The "permanent" wording was correct
+only while the generic tree was the sole home for envelope metadata and untyped
+projections.
 
-Evaluated and rejected above (§2): the shape-based hybrid splits framework-owned
-state on a non-principle, and FlatBuffers laziness removes its only perf argument.
-The recommendation is the *uniform* rule.
-
-## The reversal (must be stated head-on)
-
-ADR-0037 explicitly recorded that `payload:Value` **stays in `SnapshotFrame`
-permanently** and that it **"does not schedule removal of the generic tree"**
-(ADR-0037 Consequences → "What this does NOT change", lines 203–206). This ADR is
-part of the program that **reverses that commitment**: the end state of the
-typed-snapshot migration is the deletion of `payload:Value`.
-
-No intervening ADR scheduled that deletion (verified: a scan of `docs/decisions/`
-and the recent git history finds the Tier-1 sidecar waves but no superseding
-"delete `payload:Value`" decision). **This ADR is therefore the record that
-re-opens the question for the Tier-3 half**, and it states plainly: the ADR-0037
-"permanent" wording was correct *while the generic tree was the only home for
-envelope metadata and untyped projections*. It ceases to be correct once (Tier-3)
-the envelope is typed and (Tier-2) the projection map is typed. This ADR removes
-**one of the two** Tier-3/Tier-2 blockers; it does **not** itself schedule the
-deletion — the deletion is a later, separate decision that can only land after
-*both* halves are done (see §4 and Open risks).
-
-## 4. Consumer impact and migration sequencing
+## 3. Consumer impact
 
 ### Current emitter (`nmp-core`)
 
@@ -435,35 +335,11 @@ Tier-3 envelope fields  ──────────┘
 This ADR was the Tier-3 decision that made the final schema cleanup possible. The
 current transport contract is typed-only.
 
-## 5. Open risks
+## 4. Two version axes (durable note)
 
-- **`Metrics` / `logs` shape churn.** `Metrics` is a wide, frequently-extended bag
-  (the perf trio and the `Option<u128>` timing cluster were added incrementally).
-  As a typed table it must absorb additions by **appending fields at the tail**
-  (never reordering), and a host on an older binding simply doesn't see new tail
-  fields. `logs` (`[string]`) is low-risk but unbounded — sizing/truncation policy
-  is unchanged by typing and stays an emitter concern.
-- **`relay_statuses` is a vector, not a map.** It is `[RelayStatus]` on the wire;
-  consumers that want O(1) lookup key it by `relay_url` host-side. No map type is
-  introduced. (The singular `relay_status` aggregate and the plural vector reuse
-  the *same* `RelayStatus` table — fine, but a reader must not assume the singular
-  is element 0 of the plural; they are computed independently in `make_update`,
-  `update.rs:153`–`154`.)
-- **Present-only-when-active diagnostics.** `store_open_failure`,
-  `no_configured_relays`, and the `last_error_*` trio are absent in the healthy
-  case (`skip_serializing_if` today). As native-optional FlatBuffers fields,
-  absent reads back as null — hosts must treat "field absent" as "condition not
-  active," never as a decode error. (This Tier-3 set is distinct from the
-  *open-view* payloads — `author_view` / `thread_view` — which are present-only
-  entries in the **Tier-2 projections map**, not Tier-3 fields, and are out of
-  scope here.)
-- **No generic-Value escape hatch.** ADR-0037 argued the long tail of low-frequency
-  projections "never needs typing" because the generic tree is always available.
-  That is no longer true for host-visible update frames. Any host-visible
-  projection must have a typed envelope/sidecar home; internal Rust-only
-  `serde_json::Value` projections do not cross the update transport boundary.
-- **Two version axes.** Introducing `kernel_schema_version` alongside the existing
-  transport `schema_version` on the same table risks confusion. The decision keeps
-  both as first-class scalars (they answer different questions: transport-frame
-  compatibility vs kernel-vs-shell compatibility); implementation must document the
-  distinction at the field site.
+`SnapshotFrame` carries two distinct version scalars and they must not be
+conflated: the existing `schema_version` is the **transport-frame** schema
+version, and `kernel_schema_version` is `KERNEL_SCHEMA_VERSION` (kernel-vs-shell
+mismatch detection, `types.rs:804`). Both are first-class envelope scalars because
+they answer different questions (transport-frame compatibility vs kernel-vs-shell
+compatibility); the field site documents the distinction.
