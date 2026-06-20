@@ -35,7 +35,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::RelayEntry;
 use crate::{
     interest::{InterestShape, LogicalInterest, RelayUrl},
-    plan::{HintOrigin, InterestAttribution, RelayAttribution, RoutingSource, UserConfiguredCategory},
+    plan::{
+        HintOrigin, InterestAttribution, RelayAttribution, RoutingSource, UserConfiguredCategory,
+    },
 };
 
 /// Route no-author hints. Stacks with the normal Case D sources.
@@ -212,6 +214,20 @@ mod tests {
         }
     }
 
+    fn no_author_kind_interest(id: u64, kind: u32) -> LogicalInterest {
+        LogicalInterest {
+            id: InterestId(id),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                kinds: [kind].into_iter().collect(),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
+        }
+    }
+
     /// active_account ∪ app_relays — both lanes recorded on the union URL.
     #[test]
     fn case_d_unions_active_account_with_app_relays() {
@@ -288,6 +304,37 @@ mod tests {
             !plan.per_relay.contains_key("wss://purplepag.es"),
             "indexer must NOT be touched when app_relays carry the firehose"
         );
+    }
+
+    #[test]
+    fn case_d_relay_set_feed_keeps_no_authors_filter() {
+        let cache = InMemoryMailboxCache::new();
+        let indexer = vec!["wss://purplepag.es".to_string()];
+        let app = vec![
+            "wss://relay-a.example".to_string(),
+            "wss://relay-b.example".to_string(),
+            "wss://relay-c.example".to_string(),
+        ];
+        let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &app);
+
+        let plan = compiler
+            .compile(&[no_author_kind_interest(1, 30_023)])
+            .expect("compile");
+
+        assert_eq!(
+            plan.per_relay.keys().cloned().collect::<BTreeSet<_>>(),
+            app.into_iter().collect::<BTreeSet<_>>(),
+            "relay-set style feeds should target app relays only, not indexers"
+        );
+        for relay in plan.per_relay.values() {
+            assert_eq!(relay.sub_shapes.len(), 1);
+            let shape = &relay.sub_shapes[0].shape;
+            assert!(
+                shape.authors.is_empty(),
+                "relay-set feeds must not gain an authors filter"
+            );
+            assert_eq!(shape.kinds, [30_023u32].into_iter().collect());
+        }
     }
 
     fn hex(byte: &str) -> String {
