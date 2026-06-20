@@ -5,6 +5,10 @@
 //! `self.events` and fires the global fan-out), THEN registers a muted
 //! observer and calls `open_interest_with_observer_replay`, and asserts
 //! that matching events replay to that observer only.
+//!
+//! NIT-1 store-point-lookup tests (eviction + dedup) live in the sibling
+//! `observer_replay_store_tests` module to keep each file within the 500 LOC
+//! ceiling (AGENTS.md § file-size rules).
 
 use super::*;
 use crate::actor::{
@@ -301,3 +305,4 @@ fn replay_clamps_future_dated_events_to_now() {
         now
     );
 }
+

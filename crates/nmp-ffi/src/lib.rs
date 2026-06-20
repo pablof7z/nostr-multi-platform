@@ -1539,29 +1539,17 @@ impl NmpApp {
     /// [`nmp_feed::FeedController`] under `key` in the feed registry (the
     /// render payload is emitted by a separately-registered typed snapshot
     /// projection, e.g. `register_typed_feed_sidecar`, not by this call) — AND
-    /// additionally plugs `observer` into the kernel's
-    /// [`KernelEventObserver`] registry so the
-    /// feed receives ingested events, **tracking the returned observer id
-    /// under `key`** so [`Self::unregister_feed`] can revoke it. The caller
-    /// typically passes the same `Arc<FlatFeed>` as both `controller` and
-    /// `observer`.
+    /// additionally installs `observer` into the kernel's
+    /// [`KernelEventObserver`] registry in **muted** state (ADR-0062).  The
+    /// observer will NOT fire from the global fan-out until the caller passes
+    /// the returned id to [`Self::open_observed_interest`], which replays the
+    /// in-memory read-cache (and, for explicit `ids`-bearing shapes, the durable
+    /// store) to the observer and then activates it.  The caller typically
+    /// passes the same `Arc<FlatFeed>` as both `controller` and `observer`.
     ///
     /// Registering the same `key` twice replaces the controller / projection
     /// (last-writer-wins) and revokes the previously-tracked observer before
     /// installing the new one, so a re-open never leaks the prior observer.
-    ///
-    /// D6 — a poisoned bookkeeping mutex degrades to "observer registered but
-    /// untracked": the feed still works, but its observer outlives the screen
-    /// (a bounded soft-leak, never a crash). D8 — `register_event_observer` is
-    /// an init-style registry push, not a hot-path call.
-    /// Register a feed controller and install the observer in **muted** state
-    /// (ADR-0062). Returns the observer id so the caller can pass it to
-    /// `open_observed_interest` for the catch-up replay + activation step.
-    ///
-    /// The returned observer will NOT fire from the global fan-out until
-    /// `open_observed_interest` activates it after replaying the read-cache.
-    /// Registering the same `key` twice replaces the controller / projection
-    /// (last-writer-wins) and revokes the previously-tracked observer.
     ///
     /// D6 — a poisoned bookkeeping mutex degrades to "observer registered but
     /// untracked": the feed still works, but its observer outlives the screen

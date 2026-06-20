@@ -156,6 +156,8 @@ mod observer_replay;
 pub(crate) use observer_replay::ObserverReplayRequest;
 #[cfg(test)]
 mod observer_replay_tests;
+#[cfg(test)]
+mod observer_replay_store_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)]

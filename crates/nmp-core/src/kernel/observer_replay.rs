@@ -30,6 +30,20 @@
 //! `self.events` means the observer sees exactly the events that already fired
 //! the global fan-out — no store query, no double-count risk.
 //!
+//! ## Store point-lookup extension (NIT-1)
+//!
+//! For shapes carrying an `event_ids` set (e.g. the `{ids:[root]}` thread-root
+//! hydration shape), `replay_read_cache_to_observer` additionally looks up each
+//! id that is NOT in `self.events` via `EventStore::get_by_id` (a O(1)
+//! point-read).  The thread root is NOT pinned by `open_view_pins` (the open
+//! interest is keyed on `#e` replies, not on the root id itself), so it is a
+//! prime LRU-eviction candidate in a long session (>1 000 cached events).
+//! Without this extension the root would be absent from the catch-up batch
+//! until a live relay re-fetch completed.  The store fetch is READ-ONLY and
+//! does NOT mutate `self.events`, metrics, or served-event state — only the
+//! observer receives the event, through the same `notify_event_observer_by_id`
+//! path as the RAM-tier hits.
+//!
 //! ## D9 clock clamp
 //!
 //! `replay_read_cache_to_observer` clamps `created_at` to `now_secs()` for
@@ -110,9 +124,11 @@ impl Kernel {
     }
 
     /// Scan `self.events` (the in-memory read-cache) for entries matching any
-    /// of `replay.shapes`, select the newest `replay.limit` events, and
-    /// deliver them oldest-first to `replay.observer_id` via
-    /// `notify_event_observer_by_id`.
+    /// of `replay.shapes`, then — for shapes carrying a non-empty `event_ids`
+    /// set — additionally look up each id absent from the RAM cache via the
+    /// store's `get_by_id` point-read (NIT-1 fix: serves evicted thread roots).
+    /// Selects the newest `replay.limit` events across both sources and delivers
+    /// them oldest-first to `replay.observer_id` via `notify_event_observer_by_id`.
     ///
     /// # Invariants
     ///
@@ -120,8 +136,11 @@ impl Kernel {
     ///   `note_store_mutation` / `cache_event_for_matching_open_interest`.
     /// - MUST NOT mutate `self.events`, metrics, served-interest state,
     ///   pending serves, wakeups, or `changed_since_emit`.
+    /// - Store lookup is READ-ONLY: `get_by_id` only, no scan.
     /// - `created_at` is D9-clamped to `now_secs()` (future-dated defence,
     ///   same as `ingest/projection.rs:87`).
+    /// - Dedup: a RAM-matched id is never fetched from the store; an id
+    ///   referenced by multiple shapes is fetched at most once.
     ///
     /// Returns the number of events delivered.
     fn replay_read_cache_to_observer(&self, replay: &ObserverReplayRequest) -> usize {
@@ -161,6 +180,58 @@ impl Kernel {
                     kind: stored.kind,
                     tags: stored.tags.clone(),
                     content: stored.content.clone(),
+                });
+            }
+        }
+
+        // ── Store point-lookups for explicit event_ids evicted from RAM ──────
+        //
+        // For every shape carrying a non-empty `event_ids` set, look up each
+        // id absent from the in-RAM cache via the store's O(1) point-read.
+        // The thread-root id is the canonical case: the open interest is keyed
+        // on `#e` replies (keeping the root un-pinned by `open_view_pins`), so
+        // in a long session the root is a prime LRU-eviction candidate.
+        //
+        // Constraints — READ-ONLY:
+        //   • No `self.events` mutation — the cache is never written here.
+        //   • No metrics / served-event accounting / wakeups.
+        //   • Only `event_ids` consulted — no store scan for other dimensions.
+        //   • Dedup across shapes: collect unique candidates first, then fetch.
+        //
+        // The collected candidates exclude ids already present in `self.events`
+        // (those were handled by the RAM scan above) so there is no risk of
+        // double-delivering a root that IS still in RAM.
+        {
+            // Unique hex ids absent from the RAM cache, across all shapes.
+            // BTreeSet gives deterministic iteration order and free dedup.
+            let mut store_candidates: std::collections::BTreeSet<&str> =
+                std::collections::BTreeSet::new();
+            for shape in &replay.shapes {
+                for hex_id in &shape.event_ids {
+                    if !self.events.contains_key(hex_id.as_str()) {
+                        store_candidates.insert(hex_id.as_str());
+                    }
+                }
+            }
+            // Point-lookup each candidate. `hex_to_pubkey_bytes` converts the
+            // 64-char hex id to the store's `[u8; 32]` key; skip malformed
+            // entries (impossible in practice — relay-sourced ids are always
+            // valid 64-char hex after the ingest gate).
+            for hex_id in store_candidates {
+                let Some(id_bytes) = super::hex_to_pubkey_bytes(hex_id) else {
+                    continue;
+                };
+                let Ok(Some(stored)) = self.store.get_by_id(&id_bytes) else {
+                    continue;
+                };
+                let raw = &stored.raw;
+                matched.push(CachedEntry {
+                    created_at: raw.created_at,
+                    id: raw.id.clone(),
+                    author: raw.pubkey.clone(),
+                    kind: raw.kind,
+                    tags: raw.tags.clone(),
+                    content: raw.content.clone(),
                 });
             }
         }
