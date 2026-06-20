@@ -6,7 +6,11 @@
 > sidecar path and the update transport schema no longer carries a generic
 > payload tree.
 
-- **Status:** Proposed (2026-05-29)
+- **Status:** Accepted / Implemented — `encode_op_feed_snapshot` /
+  `OpFeedSnapshot` / `OP_FEED_SCHEMA_ID` (`NOFS`) are live; the OP-feed projection
+  ships typed-only. The generic-`Value` fallback described in the historical
+  Commitment 4 / rollout text below was removed by ADR-0044 (no generic payload
+  tree in the update transport).
 - **Relates to:** ADR-0037 (typed FlatBuffers runtime projections — the
   sidecar transport, the `(schema_id, schema_version, file_identifier)`
   descriptor, the host preference/fallback contract this ADR instantiates a
@@ -184,24 +188,18 @@ the encode path. Typing is a transport optimization, not a license to
 pre-format. The `Vec<A>` attribution length IS the count (V-80 Q1 decision); the
 schema carries no `attribution_total`.
 
-### Commitment 4 — host preference and fallback (ADR-0037 Commitment 4, instantiated)
+### Commitment 4 — host decode of the `NOFS` descriptor
 
-Per snapshot, for key `nmp.feed.home`, a host applies the ADR-0037 rule:
+For key `nmp.feed.home`, a host validates the `NOFS` descriptor (`schema_id
+"nmp.nip01.opfeed"` + `schema_version 1` + `file_identifier "NOFS"`) and decodes
+the typed `OpFeedSnapshot`.
 
-1. If `typed_projections` contains a `nmp.feed.home` entry whose descriptor is
-   `schema_id "nmp.nip01.opfeed"` + `schema_version 1` + `file_identifier
-   "NOFS"` **and** the host has a `NOFS` decoder, the host **MUST** prefer the
-   typed payload and **MUST ignore** the generic `Value` subtree under
-   `projections["nmp.feed.home"]`.
-2. Otherwise (no typed entry, or an unrecognized descriptor — e.g. a host that
-   only knows `NFTS`, or a host with no typed decoder at all), the host falls
-   back to the generic `Value` `RootFeedSnapshot`.
-
-During the rollout the emitter produces **both** the `NOFS` typed sidecar and
-the generic `Value` `RootFeedSnapshot` for `nmp.feed.home` (PR #747's emission
-is the fallback layer; this ADR adds the typed layer beside it). The generic
-subtree is dropped only when the per-key staged-removal window closes (all
-in-scope hosts ship the `NOFS` decoder — see §Migration).
+> The original ADR carried a host preference/fallback contract and a dual-emission
+> rollout (typed `NOFS` sidecar + generic `Value` `RootFeedSnapshot`). ADR-0044
+> removed the generic `Value` tree from the update transport, so there is no
+> fallback representation: the `NOFS` decoder validates the descriptor and fails
+> closed (the projection is simply absent for that tick) on mismatch. The
+> superseded dual-emission text is in git history.
 
 ### Commitment 5 — the registration site is `nmp-app-template`, not `nmp-nip01`
 
@@ -436,9 +434,6 @@ The retirement is safe.
 
 ### What this does NOT change
 
-- The generic `Value` `RootFeedSnapshot` emission from PR #747 is **permanent**
-  fallback (ADR-0037 §"What this does NOT change": `payload:Value` stays
-  forever). #747 is **folded in, not superseded** (see §Interaction with rung 7).
 - The ADR-0037 sidecar transport, `TypedProjection`/`TypedPayload` tables,
   `TypedProjectionFn` registry, and every `nmp-core` binding — untouched.
   `nmp-core` never learns the noun `OpFeed`; the descriptor is opaque strings.
@@ -468,109 +463,36 @@ The retirement is safe.
   new Kotlin `NOFS` decoder that bakes a `FLATBUFFERS_25_2_10()` guard is
   covered by the existing glob — no script change needed unless the decoder
   lands outside that tree (then add a `require_line` for it).
-- **Dual emission widens the wire** for `nmp.feed.home` during the rollout
-  (typed `NOFS` + generic `Value`). Bounded: ends when the staged-removal
-  window closes. Plus the known duplicate `engine.snapshot(...)` per tick
-  (Commitment 5), deferred.
-
-### Migration & staged-removal window
-
-Per ADR-0037, removal of the generic `Value` subtree for `nmp.feed.home` is
-**per key, never global**. The emitter (`register_op_feed_defaults`) emits both
-the `NOFS` sidecar and the generic `Value` subtree until **every in-scope host**
-ships a `NOFS` decoder. In-scope hosts for this key are **iOS, chirp-tui, and
-Android** (web is out of scope — see §Open question 3). When all three ship the
-`NOFS` v1 decoder, the emitter may stop emitting the generic subtree for
-`nmp.feed.home`. Until then, both are emitted. No flag day.
+- The known duplicate `engine.snapshot(...)` per tick (Commitment 5) is deferred.
 
 ---
 
-## Staged implementation ladder
+## Implementation (shipped)
 
-Each stage is independently mergeable and leaves master green. Stages are named
-`T1…T4` to disambiguate from the V-80 `rung 1…7` ladder.
-
-### Stage T1 — Rust typed schema + encoder + emission wiring + retire NFTS-for-feed tests
-
-| File | Change |
-|---|---|
-| `crates/nmp-nip01/schema/op_feed.fbs` | **NEW** — the schema above (`include "timeline_snapshot.fbs"`, `ReplyAttribution`, `RootCard`, `OpFeedSnapshot`, root `OpFeedSnapshot`, `file_identifier "NOFS"`). |
-| `crates/nmp-nip01/src/wire/generated/op_feed_generated.rs` | **NEW** — checked-in `flatc --rust` output (no `--gen-all`; references the sibling `timeline_snapshot_generated` module). |
-| `crates/nmp-nip01/src/op_feed/typed_wire.rs` | **NEW** — `encode_op_feed_snapshot` / `decode_op_feed_snapshot`; `OP_FEED_SCHEMA_ID` / `OP_FEED_FILE_IDENTIFIER` / `OP_FEED_SCHEMA_VERSION`. Encodes `RootCard.card` by delegating to the existing `TimelineEventCard` typed encoder; embeds `nmp_feed::encode_feed_window` bytes for the window. |
-| `crates/nmp-nip01/src/op_feed/mod.rs` | Wire the `typed_wire` submodule; re-export the public encode/decode + descriptor consts. |
-| `crates/nmp-nip01/src/lib.rs` | Export `op_feed::{encode_op_feed_snapshot, decode_op_feed_snapshot, OP_FEED_*}`. |
-| `crates/nmp-app-template/src/op_feed_defaults.rs` | Add the `register_typed_snapshot_projection("nmp.feed.home", …)` closure beside the existing generic `FeedController` registration (Commitment 5). |
-| `crates/nmp-nip01/tests/op_feed_golden_wire.rs` | **NEW** — golden-wire fixtures for `OpFeedSnapshot` (empty + a populated root-with-attribution + a repost-keyed root). Mirrors `golden_wire_fixtures.rs`: pin the binary bytes + assert `FILE_IDENTIFIER`/`SCHEMA_ID`/`SCHEMA_VERSION` + ADR-0037 parity (typed decode ≡ serde `RootFeedSnapshot`). |
-| `apps/chirp/nmp-app-chirp/tests/typed_feed_parity.rs` | **RESHAPE** — replace the NFTS-at-`nmp.feed.home` assertions with the `NOFS` round-trip through `encode_snapshot_with_typed` / `decode_snapshot_with_typed`. |
-| `ci/check-flatbuffers-version-pins.sh` | No change (Rust pin is shared; the new schema regenerates against the same `Cargo.toml` pin). Add a `require_line` only if a platform decoder lands outside the existing globbed trees (T3/T4). |
-
-Current state after transport cleanup: `NOFS` is the load-bearing OP-feed
-projection representation. The update frame no longer carries a generic
-`payload:Value` tree, so absence of the typed sidecar means the projection is
-unavailable for that tick rather than recoverable through a compatibility path.
-
-### Stage T2 — chirp-tui typed decoder
-
-| File | Change |
-|---|---|
-| `apps/chirp/chirp-tui/src/snapshot.rs` | Rebind `typed_home_feed_from_projections` from NFTS (`nmp_nip01::typed_wire::SCHEMA_ID`, `decode_modular_timeline_snapshot`) to NOFS (`nmp_nip01::op_feed::OP_FEED_SCHEMA_ID`, `decode_op_feed_snapshot`). `merge_home_feed_projection` re-serializes the decoded `RootFeedSnapshot` into `projections["nmp.feed.home"]` — same parity-by-construction round-trip the NFTS path used (the generic projection is itself `serde_json::to_value(RootFeedSnapshot)`, so the typed-derived value is byte-identical). The rung-7 render in `timeline.rs` consumes it unchanged. |
-| `apps/chirp/chirp-tui/src/snapshot/tests.rs` | Update fixtures: typed `NOFS` sidecar present → decoded; absent → projection unavailable for that tick. |
-
-The rung-7 render changes (`timeline.rs`, `ui/post_list.rs`) are **already on
-master** (PR #747). T2 only changes which descriptor the typed-read prefers; it
-does not re-do the render. Master after T2: chirp-tui reads the typed `NOFS`
-path when present, identical output to the generic path it already renders.
-
-### Stage T3 — iOS decoder + bindings + render
-
-| File | Change |
-|---|---|
-| `ios/Chirp/Chirp/Bridge/Generated/OpFeedSnapshot.generated.swift` (+ regenerated `TimelineSnapshot.generated.swift` if the include changes its module) | **NEW/regenerated** — `flatc --swift` output for `op_feed.fbs`. |
-| `ios/Chirp/Chirp/Bridge/TypedHomeFeedDecoder.swift` | Repoint `schemaId` → `"nmp.nip01.opfeed"`, `fileIdentifier` → `"NOFS"`, root → `nmp_nip01_OpFeedSnapshot`; map `RootCard{card,attribution}` into the Swift feed model. Keep the graceful-`nil`-on-mismatch contract. |
-| `ios/Chirp/Chirp/Bridge/ModularTimelineBridge.swift`, `HomeFeedView.swift` (+ `KernelBridge.swift`/`KernelModel.swift` as needed) | Update **both** read paths for `nmp.feed.home` to the OP-centric `{cards:[{card,attribution}],page,metrics}` shape: (a) the new typed `NOFS` decode, and (b) the generic-`Value` decode (currently stale — see §Context). Both must render the new shape correctly. The generic path stays load-bearing throughout the rollout: until all three hosts ship `NOFS`, the emitter sends both representations, and the fallback must render correctly if the typed decode ever returns `nil` (ADR-0037 Commitment 4 — the per-key staged-removal window is meaningful only while the fallback is correct). This dual update IS the iOS bug fix from §Context. |
-| `ios/Chirp/ChirpTests/**` | Add an `OpFeedSnapshot` Decodable / typed-decode test + a `RootFeedSnapshot` JSON fixture. |
-| `ci/check-flatbuffers-version-pins.sh` | No change — the Swift `25.12.19` pin (`ios/Chirp/project.yml`, `Package.resolved`) is already required; the new generated file uses the same runtime. |
-
-Master after T3: iOS reads the typed `NOFS` feed and renders the OP-centric
-shape correctly — the user-visible breakage from §Context is fixed.
-
-### Stage T4 — Android decoder + bindings (follow-up; NOT a blocker)
-
-| File | Change |
-|---|---|
-| `apps/nmp-gallery/android/app/src/main/kotlin/nmp/.../OpFeedSnapshot*.kt` (+ generated) | **NEW** — `flatc --kotlin` output (runtime `25.2.10`) + the typed model. |
-| `android/app/src/main/java/org/nmp/android/TypedHomeFeedDecoder.kt` (+ gallery decoder) | Repoint to the `NOFS` descriptor + `OpFeedSnapshot`; map to the Android feed model. |
-| `ci/check-flatbuffers-version-pins.sh` | Add a `require_line` only if the new decoder lands outside the existing `fun validateVersion` glob. |
-
-Because of graceful fallback (Commitment 4), Android is **not a blocker**: until
-its `NOFS` decoder ships it sees an unrecognized descriptor and falls back to
-the generic `Value` `RootFeedSnapshot`. Android must update its generic-`Value`
-renderer to the new shape independently (same stale-renderer class as iOS), or
-accept degraded feed rendering until T4. **Confirmed: Android last, per
-ADR-0037 rollout order.**
-
-Once T2 + T3 + T4 have all shipped the `NOFS` decoder, the staged-removal window
-closes and `register_op_feed_defaults` may stop emitting the generic `Value`
-subtree for `nmp.feed.home` (a one-line follow-up; tracked, not in this ladder).
+The typed OP-feed path landed as specified: the `nmp-nip01`-owned
+`encode_op_feed_snapshot` / `decode_op_feed_snapshot` codec + `OpFeedSnapshot`
+schema, the `OP_FEED_SCHEMA_ID` (`NOFS`) descriptor, the
+`register_typed_snapshot_projection("nmp.feed.home", …)` closure in
+`register_op_feed_defaults`, and the iOS/TUI/Android typed decoders. The
+update frame is now typed-only (ADR-0044): `NOFS` is the load-bearing OP-feed
+projection representation, and absence of the typed sidecar means the projection
+is unavailable for that tick rather than recoverable through a compatibility
+path. The original `T1…T4` staged ladder and its per-stage file tables are in
+git history.
 
 ---
 
 ## Interaction with V-80 rung 7 / PR #747
 
-**Folded in, not superseded.** PR #747 did two things this ADR depends on:
+**Folded in, not superseded.** PR #747 did the producer swap this ADR depends
+on: `register_op_feed_defaults` replaced `ModularTimelineProjection` at
+`nmp.feed.home`, providing the `RootFeedSnapshot` that the typed encoder
+serializes. #747's chirp-tui render rewrite (`timeline.rs`, `ui/post_list.rs`)
+is kept verbatim. (#747 also emitted a generic `Value` `RootFeedSnapshot`
+fallback layer; ADR-0044 later removed the generic tree, so the OP feed is now
+typed-only.)
 
-1. **Producer swap** — `register_op_feed_defaults` replaced
-   `ModularTimelineProjection` at `nmp.feed.home`. This is the source of the
-   `RootFeedSnapshot` that T1's typed encoder serializes. Stays.
-2. **Generic `Value` emission** — the engine is registered as a
-   `FeedController`, emitting `RootFeedSnapshot` JSON under
-   `projections["nmp.feed.home"]`. Per ADR-0037 Commitment 4 this is the
-   **permanent fallback layer**. Stays.
-
-#747's chirp-tui render rewrite (`timeline.rs`, `ui/post_list.rs`) is also kept
-verbatim — T2 changes only the *typed-read descriptor*, feeding the same render.
-
-This ADR **adds** the typed `NOFS` layer beside #747's generic layer. It removes
+This ADR **adds** the typed `NOFS` layer. It removes
 nothing #747 added. The only thing it retires is the **NFTS-for-feed
 decoder/test wiring from ADR-0037 (PR #739)** — work that predates #747 and was
 already dead for the feed (no live emission). The #747 author's deferral comment
@@ -595,31 +517,8 @@ schema") is precisely the follow-up this ADR specifies.
 | **D11** (no new bespoke C-ABI symbol) | Uses the existing `register_typed_snapshot_projection` Rust seam (ADR-0037). No new `extern "C"`. ✅ |
 | **Planning discipline** | This ADR is the single source for the typed-OP-feed decision; the V-80 architecture doc tracks the product-model work; the issue tracker gets one V-entry pointing here. ✅ |
 
----
-
-## Open questions needing user input
-
-1. **Window-request parameter.** T1's typed closure snapshots
-   `engine.snapshot(&FeedRequest::default())` — the default window. The generic
-   `FeedController` path is viewport-aware (it advances cursors via
-   `load_older_feed`). Should the typed sidecar mirror the *current* viewport
-   request rather than the default window? For T1 the default is acceptable
-   (matches the diagnostics-handle path), but a viewport-aware typed emit is a
-   real follow-up if the typed path becomes the *sole* read (post staged
-   removal). **Recommendation:** ship T1 with default window; track
-   viewport-aware typed emit as a follow-up tied to the staged-removal close.
-2. **NFTS codec disposition.** This ADR keeps the NFTS codec as
-   available-but-unused infrastructure (NOFS includes its `TimelineEventCard`
-   table; it is the natural thread-detail typed shape). **Confirm keep**, or
-   request deletion (which would force re-deriving `TimelineEventCard`'s typed
-   table inside `op_feed.fbs`).
-3. **Web scope.** ADR-0037's rollout is iOS → TUI → web → Android. The task
-   scopes this work to iOS → TUI → Android, omitting web. Confirmed
-   code-grounded: `web/chirp/src/nmp/snapshot.ts` consumes the feed via the
-   **generic `Value`** path (`ChirpTimelineSnapshot = {blocks, cards}`) and has
-   **no typed decoder at all** — it never read NFTS. So web is unaffected by the
-   typed collision; it only needs its generic-`Value` reader updated to the new
-   `RootFeedSnapshot` shape, which is a V-80 product-model task, not a
-   typed-sidecar task. **Recommendation:** web is OUT of scope for ADR-0038
-   (no typed decoder to migrate); its generic-`Value` shape update tracks under
-   V-80. Confirm.
+The NFTS codec is **kept** as available-but-unused infrastructure: NOFS
+`include`s `timeline_snapshot.fbs` and reuses its `TimelineEventCard` /
+`AuthorDisplay` tables, so the NFTS schema is a live dependency of NOFS even
+though the NFTS root (`ModularTimelineSnapshot`) is no longer emitted. See §What
+this retires.

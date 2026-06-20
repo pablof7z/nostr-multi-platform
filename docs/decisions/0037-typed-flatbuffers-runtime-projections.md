@@ -11,7 +11,9 @@
 > `SnapshotEnvelope` fields plus `typed_projections` sidecars only. The text
 > below is the historical migration decision record.
 
-- **Status:** Accepted / Partially implemented (2026-05-28; PR-B in progress 2026-06-11)
+- **Status:** Accepted / Implemented — the typed sidecar shipped; the
+  `payload:Value` permanence claim is **superseded by ADR-0044** (the generic
+  `Value` tree was removed from `nmp_update.fbs`). See the status note above.
 - **Relates to:** the FlatBuffers update-transport envelope (commits `021ba295`
   "Replace update transport with FlatBuffers" and `716eac9c` "Address FlatBuffers
   transport review feedback"), ADR-0032 (raw-data projection doctrine), ADR-0033
@@ -30,24 +32,17 @@
 The NMP update transport already uses FlatBuffers for the **envelope**:
 `UpdateFrame` wraps a `SnapshotFrame` or a `PanicFrame`, with `file_identifier
 "NMPU"` (landed via commit `021ba295` "Replace update transport with
-FlatBuffers"). But the **payload content** inside a `SnapshotFrame` is still a
-generic, self-describing `Value` tree:
+FlatBuffers"). At the time of this decision, the **payload content** inside a
+`SnapshotFrame` was a generic, self-describing `Value` tree (the JSON-equivalent
+variant `Null | Bool | Int | UInt | Float | String | List | Map`). Every
+projection — including high-volume ones like the Chirp home feed — was
+serialized into that tree and walked field-by-field by each host on every
+snapshot tick. (ADR-0044 later removed the `Value` tree from the schema
+entirely; see the status note above. This section is the historical motivation.)
 
-```fbs
-table SnapshotFrame {
-  schema_version:uint = 1;
-  payload:Value;            // historical: removed from the current schema
-}
-```
-
-`Value` is the JSON-equivalent variant tree (`Null | Bool | Int | UInt | Float |
-String | List | Map`). Every projection — including high-volume ones like the
-Chirp home feed — is currently serialized into this tree and walked field-by-field
-by each host on every snapshot tick.
-
-This generic tree is the right substrate for the long tail of low-frequency
+That generic tree was the right substrate for the long tail of low-frequency
 projections: it is fully app-agnostic, needs no per-projection schema, and a host
-can decode an unknown projection by walking the map. It is the wrong substrate for
+can decode an unknown projection by walking the map. It was the wrong substrate for
 the **hot path**. The home feed re-serializes a list of event cards (author hex,
 content tree, timestamps, reaction/zap counts, embedded-event cards) into a
 deeply-nested `Value`/`Pair`/`List`/`Map` structure on every tick, and each host
@@ -68,10 +63,10 @@ transport must not learn the names `Feed`, `Dm`, `Group`, or `Article`.
 
 ## Decision
 
-Add a **typed projection sidecar** to `SnapshotFrame`, alongside — not replacing —
-the existing generic `payload:Value`. The sidecar is **additive and
-backward-compatible**: a host that does not understand the typed payload continues
-to read `payload`.
+Add a **typed projection sidecar** to `SnapshotFrame`. (As decided here, the
+sidecar was additive alongside the generic `payload:Value`; ADR-0044 later removed
+the generic tree, making the typed sidecar the sole host-visible projection
+carrier. The historical additive framing is preserved below for context.)
 
 ### Commitment 1 — the sidecar is opaque bytes keyed by a schema URI, never a union
 
@@ -105,11 +100,11 @@ table TypedProjection {
 
 table SnapshotFrame {
   schema_version:uint = 1;
-  // Historical migration slot: removed from the current schema.
-  payload:Value;
-  typed_projections:[TypedProjection];    // new: typed sidecar, may be empty/absent
+  typed_projections:[TypedProjection];    // typed sidecar, may be empty/absent
 }
 ```
+(The `payload:Value` field shown in earlier revisions of this ADR was removed
+from `nmp_update.fbs` by ADR-0044.)
 
 The reason this descriptor beats a FlatBuffers union: a union would force every
 app's root table to be declared inside `nmp_update.fbs` and force a `nmp-core`
@@ -155,29 +150,16 @@ in a `Value`-tree projection. Typing is a transport optimization, not a license 
 pre-format.
 
 The pilot is a strict typed slice: no production JSON subpayloads are allowed
-inside the typed `nmp.feed.home` payload. Low-frequency, not-yet-typed
-projections may continue to use the generic `payload:Value` tree, but once a
-field is inside the NFTS/NFCT/NFWM sidecar path it is represented by typed
-FlatBuffers tables or typed FlatBuffers sub-buffers.
+inside the typed `nmp.feed.home` payload. Once a field is inside the
+NFTS/NFCT/NFWM sidecar path it is represented by typed FlatBuffers tables or
+typed FlatBuffers sub-buffers.
 
-### Commitment 4 — the host preference and fallback contract
-
-For a given projection key, a host applies this rule per snapshot:
-
-1. If `typed_projections` contains an entry whose `key` matches the projection the
-   host wants **and** whose `payload` descriptor (`schema_id` + `schema_version` +
-   `file_identifier`) names a schema the host can decode, the host **MUST** prefer
-   the typed payload and **MUST ignore** the corresponding subtree under
-   `payload:Value`.
-2. Otherwise (no typed entry, or an unrecognized descriptor), the host falls back
-   to walking `payload:Value`.
-
-During migration, the emitter produces **both** representations for a piloted key:
-the typed sidecar entry **and** the generic `Value` subtree. This is what makes the
-change backward-compatible — an un-migrated host on an older binary keeps working
-unchanged off `payload`, while a migrated host transparently upgrades to the typed
-read. The generic subtree for a piloted key is only dropped once the per-key
-**staged removal window** closes (see Consequences).
+> The original ADR carried a "Commitment 4 — host preference and fallback
+> contract" plus a "Migration & staged removal window" describing dual emission
+> (typed sidecar + generic `Value` subtree) and per-key removal of the generic
+> tree. ADR-0044 removed the generic tree wholesale, so there is no fallback
+> path and no dual emission: a host-visible projection has a typed sidecar or it
+> is not host-visible. The superseded text is in git history.
 
 ## Consequences
 
@@ -224,26 +206,12 @@ methods, so adding one more generic method changes no object-safety property.
   `nmp_app_register_snapshot_projection` seam — `TypedProjection.key` reuses the
   same keys.
 
-### Migration & staged removal window
-
-Removal of a piloted key's generic `Value` subtree is **per key**, never global.
-For each piloted projection key, the emitter emits both the typed sidecar and the
-generic subtree until every in-scope platform host ships a decoder for that key's
-current descriptor. For v1, the native removal window covers iOS, TUI/desktop,
-and Android. Web participates in the same per-key removal rule after the
-post-v1 web/wasm milestone. Until then, both are emitted. No global flag day;
-each key migrates on its own schedule.
-
 ### Legacy diagnostics path
 
-`nmp_app_chirp_snapshot` (returns a JSON C string, `*mut c_char`, defined at
-`apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs:14`) is **quarantined as
-diagnostics-only and is NOT removed at runtime**. It still has live callers in the
-REPL (`apps/chirp/chirp-repl/src/app.rs:237`) and the Android FFI smoke shim
-(`crates/nmp-android-ffi/src/lib.rs:222`). It is not part of the typed-projection
-path and is not a showcase render path (the showcase home-feed path already reads
-the `"nmp.feed.home"` projection from the update stream per ADR-0033). It remains a
-legacy pull helper for REPL/tests/diagnostics.
+The former `nmp_app_chirp_snapshot` JSON pull helper has been **deleted** (the
+`nmp-app-chirp` crate is gone; see ADR-0039 on the push-projection seam). There
+is no JSON snapshot pull path; host-visible state is read from the typed update
+stream.
 
 ### Risks
 
@@ -253,13 +221,12 @@ legacy pull helper for REPL/tests/diagnostics.
   its typed schema and checked-in bindings, every such schema must observe the same
   per-platform pin discipline enforced by `ci/check-flatbuffers-version-pins.sh`.
   This is the largest ongoing maintenance cost of the design.
-- **Dual emission during migration** temporarily widens the wire (typed sidecar +
-  generic subtree) for piloted keys. Bounded: it ends per key when the staged
-  removal window closes, and it only applies to keys that have opted into typing.
 - **Schema-version skew.** A host on a newer `schema_version` than the emitter, or
-  vice versa, must fall back to `payload:Value` rather than mis-decode. The
-  preference/fallback contract (Commitment 4) makes this safe — an unrecognized
-  descriptor is treated as "no typed payload available."
+  vice versa, must treat an unrecognized descriptor as "no typed payload
+  available" (the projection is simply absent for that host) rather than
+  mis-decode. With the generic `Value` tree removed (ADR-0044), there is no
+  fallback representation, so the schema-owning crate bumps `schema_version` only
+  for shape changes a host must distinguish.
 
 ## Pilot
 
@@ -284,6 +251,3 @@ then **web/TypeScript** after the post-v1 web/wasm milestone:
    the typed schema has stabilized on the platforms with newer runtimes.
 4. **Web/TypeScript** — post-v1 runtime lane; current pin remains documented in
    `nmp_update.fbs` when the web milestone resumes.
-
-The generic `Value` subtree for `nmp.feed.home` is only retired for a platform
-scope once every host in that scope has shipped the `nmp.feed.home` v1 decoder.

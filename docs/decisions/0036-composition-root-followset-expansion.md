@@ -24,8 +24,10 @@ The active follow set has one producer and one acquisition owner:
 
 - `nmp-nip02::ActiveFollowSet` produces a reactive pubkey set and a closure
   predicate.
-- `nmp-core::Kernel::sync_follow_feed_interests` owns the active-user
-  follow-feed acquisition interest.
+- `nmp-core::Kernel::sync_follow_feed_interests`
+  (`crates/nmp-core/src/kernel/ingest/contacts.rs:84`) owns the active-user
+  follow-feed acquisition interest — the single owner of follow→interest
+  expansion.
 
 The composition root wires consumers. It does not duplicate the kernel's
 follow-to-interest expansion.

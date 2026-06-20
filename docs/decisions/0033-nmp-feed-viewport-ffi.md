@@ -58,7 +58,4 @@ in `nmp-feed`.
 - The C ABI grows by one generic feed viewport intent, not a Chirp-specific
   timeline/window protocol.
 - Chirp consumes a standard feed projection and stays a showcase app.
-- Existing `nmp_app_chirp_snapshot` remains a legacy pull helper for REPL/tests,
-  but the iOS and TUI showcase paths no longer use it for the home feed.
-- `nmp_app_chirp_snapshot_window` is not exported.
 - The ABI freeze override applies only to `nmp_app_load_older_feed`.
