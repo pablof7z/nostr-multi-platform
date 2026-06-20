@@ -373,13 +373,18 @@ struct DmInboxSnapshot: Decodable, Equatable {
 /// maps Rust snake_case (`balance_sats`, `wallet_npub_short`, …) onto these
 /// camelCase properties automatically.
 ///
-/// ADR-0032: `balanceSatsDisplay` and `walletNpubShort` are no longer
-/// emitted by the kernel. The presentation layer formats the satoshi
-/// balance and abbreviates the wallet npub locally. `isReady` /
-/// `isConnected` remain pre-computed because they encode protocol
-/// semantics, not display formatting.
+/// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032 /
+/// docs/wiki/guides/shell-formatting-boundary.md): the kernel ships only raw
+/// tokens. `statusLabel` / `statusTone` / `balanceSatsDisplay` / `walletNpubShort`
+/// are NOT on the wire — the shell derives the label, tone, and formatted balance
+/// from the raw `status` token + `balanceSats` (see `WalletStatusTone`). The
+/// `status_label` / `status_tone` / `balance_sats_display` precompute was a
+/// regression (#623) removed in the wallet_status sweep. `isReady` / `isConnected`
+/// remain pre-computed because they encode protocol semantics (a boolean
+/// predicate over the status token), not display formatting.
 struct WalletStatusData: Decodable, Equatable {
-    /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
+    /// Raw NIP-47 status token: `"connecting"` | `"ready"` | `"error"` |
+    /// `"disconnected"`. The shell maps this to a label/tone itself.
     let status: String
     let relayUrl: String
     /// Wallet service pubkey, hex (64 chars). Presentation layer formats
@@ -394,8 +399,10 @@ struct WalletStatusData: Decodable, Equatable {
     let isReady: Bool
     /// `status == "connecting" || status == "ready"` pre-computed in Rust.
     let isConnected: Bool
-    /// ADR-0032 / #623: pre-computed label, bound verbatim (thin-shell rule).
-    let statusLabel: String
-    /// ADR-0032 / #623: tone `"active"|"warning"|"error"|"inactive"` → colour.
-    let statusTone: String
+
+    /// Human-readable label derived locally from the raw `status` token.
+    var statusLabel: String { WalletStatusTone.label(status) }
+    /// Semantic tone (`"active"|"warning"|"error"|"inactive"`) derived locally
+    /// from the raw `status` token; the view maps it → colour.
+    var statusTone: String { WalletStatusTone.tone(status) }
 }

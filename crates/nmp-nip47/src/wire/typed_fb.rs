@@ -76,14 +76,8 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
     let status_str = fbb.create_string(&status.status);
     let relay_url = fbb.create_string(&status.relay_url);
     let wallet_npub = fbb.create_string(&status.wallet_npub);
-    let balance_sats_display = status
-        .balance_sats_display
-        .as_ref()
-        .map(|s| fbb.create_string(s));
     let wallet_npub_short = fbb.create_string(&status.wallet_npub_short);
     let wallet_pubkey_hex = fbb.create_string(&status.wallet_pubkey_hex);
-    let status_label = fbb.create_string(&status.status_label);
-    let status_tone = fbb.create_string(&status.status_tone);
 
     let root = fb::WalletStatus::create(
         &mut fbb,
@@ -95,8 +89,6 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
             balance_msats: status.balance_msats.unwrap_or_default(),
             has_balance_sats: status.balance_sats.is_some(),
             balance_sats: status.balance_sats.unwrap_or_default(),
-            has_balance_sats_display: status.balance_sats_display.is_some(),
-            balance_sats_display,
             wallet_npub_short: Some(wallet_npub_short),
             is_ready: status.is_ready,
             is_connected: status.is_connected,
@@ -107,8 +99,6 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
                 .map(|s| connection_state_to_fb(s.clone()))
                 .unwrap_or(fb::NwcConnectionState::Connected),
             wallet_pubkey_hex: Some(wallet_pubkey_hex),
-            status_label: Some(status_label),
-            status_tone: Some(status_tone),
         },
     );
     fb::finish_wallet_status_buffer(&mut fbb, root);
@@ -133,10 +123,6 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
         wallet_npub: str_field(root.wallet_npub(), "WalletStatus.wallet_npub")?,
         balance_msats: optional_u64(root.has_balance_msats(), root.balance_msats()),
         balance_sats: optional_u64(root.has_balance_sats(), root.balance_sats()),
-        balance_sats_display: optional_string(
-            root.has_balance_sats_display(),
-            root.balance_sats_display(),
-        ),
         wallet_npub_short: str_field(root.wallet_npub_short(), "WalletStatus.wallet_npub_short")?,
         wallet_pubkey_hex: str_field(
             root.wallet_pubkey_hex(),
@@ -149,17 +135,6 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
         } else {
             None
         },
-        // Tail-appended fields (absent in older buffers) — fall back to
-        // re-deriving from the authoritative `status` token so an older
-        // buffer still yields a correct domain value (forward-compat, D1).
-        status_label: root
-            .status_label()
-            .map(str::to_string)
-            .unwrap_or_else(|| crate::status::status_label(root.status().unwrap_or_default())),
-        status_tone: root
-            .status_tone()
-            .map(str::to_string)
-            .unwrap_or_else(|| crate::status::status_tone(root.status().unwrap_or_default())),
     })
 }
 
@@ -174,16 +149,6 @@ fn str_field(value: Option<&str>, ctx: &str) -> Result<String, String> {
 /// Reconstruct an `Option<u64>` from a `has_*` flag + the wire value.
 fn optional_u64(present: bool, value: u64) -> Option<u64> {
     present.then_some(value)
-}
-
-/// Reconstruct an `Option<String>` from a `has_*` flag + the wire string,
-/// distinguishing absent (`None`) from present-empty (`Some("")`).
-fn optional_string(present: bool, value: Option<&str>) -> Option<String> {
-    if present {
-        Some(value.unwrap_or_default().to_string())
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

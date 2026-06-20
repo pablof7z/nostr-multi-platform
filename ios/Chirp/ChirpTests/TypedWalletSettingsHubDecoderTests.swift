@@ -206,7 +206,6 @@ final class TypedWalletSettingsHubDecoderTests: XCTestCase {
             balanceMsats: balanceMsats ?? 0,
             hasBalanceSats: balanceSats != nil,
             balanceSats: balanceSats ?? 0,
-            hasBalanceSatsDisplay: false,
             walletNpubShortOffset: walletNpubShortOff,
             isReady: isReady,
             isConnected: isConnected,

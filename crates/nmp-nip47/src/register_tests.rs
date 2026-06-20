@@ -25,13 +25,10 @@ fn sample_status() -> WalletStatus {
         wallet_pubkey_hex: "ab".repeat(32),
         balance_msats: Some(7_000_000),
         balance_sats: Some(7_000),
-        balance_sats_display: Some("7,000".to_string()),
         wallet_npub_short: "npub1walle…ch32".to_string(),
         is_ready: true,
         is_connected: true,
         connection_state: Some(NwcConnectionState::Connected),
-        status_label: "Ready".to_string(),
-        status_tone: "active".to_string(),
     }
 }
 

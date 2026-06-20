@@ -67,7 +67,7 @@ pub use runtime::{
     PENDING_PAYMENT_TTL_SECS,
 };
 pub use status::{
-    format_sats_display, new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot,
+    new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot,
 };
 pub use wire::typed_fb::{
     decode_wallet_status, encode_wallet_status, FILE_IDENTIFIER as WALLET_STATUS_FILE_IDENTIFIER,
