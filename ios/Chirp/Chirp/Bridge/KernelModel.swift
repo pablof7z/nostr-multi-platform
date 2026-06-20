@@ -200,7 +200,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     // ── Stores & capabilities (non-published) ────────────────────────────
 
-    private let kernel = KernelHandle()
+    let kernel = KernelHandle()
     /// Re-entrance guard for `start()`. The snapshot-driven `isRunning`
     /// accessor only flips after the first tick lands, so a re-entrant
     /// `start()` before then would dispatch the FFI twice.
