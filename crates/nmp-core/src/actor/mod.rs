@@ -123,6 +123,14 @@ use commands::IdentityRuntime;
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
 pub(crate) use commands::notify_observers;
+// ADR-0062: targeted observer delivery and muted-registration helpers.
+// `notify_observer_by_id` is crate-internal (kernel replay path only).
+// `register_rust_observer_muted` is pub so nmp-ffi can call it.
+// `activate_observer` is native-only (used by the FFI dispatch path).
+pub(crate) use commands::notify_observer_by_id;
+pub use commands::register_rust_observer_muted;
+#[cfg(feature = "native")]
+pub use commands::activate_observer;
 // `KernelEventObserverSlot` and `register_rust_observer` are `pub`
 // unconditionally so `nmp-ffi` and wasm32 composition roots can register
 // observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
@@ -1126,6 +1134,39 @@ pub enum ActorCommand {
         /// `0` = `InterestScope::ActiveAccount` (re-route on account switch),
         /// `1` = `InterestScope::Global` (account-agnostic).
         scope: u32,
+    },
+    /// ADR-0062 — open an interest AND simultaneously replay matching
+    /// in-memory cached events to a single muted observer, then activate it.
+    ///
+    /// This solves the late-joiner problem: a per-open feed observer that
+    /// registers AFTER events have been accepted and cached by the kernel
+    /// would otherwise miss those events (the global fan-out is one-shot).
+    ///
+    /// Protocol:
+    /// 1. The caller registers the observer in **muted** state via
+    ///    `register_rust_observer_muted`, capturing the returned id.
+    /// 2. The caller sends `OpenObservedInterest` with that id and the
+    ///    shapes to replay.
+    /// 3. The actor dispatches: `open_interest_with_observer_replay` runs
+    ///    `register_interest` (relay-subscribe), then replays `self.events`,
+    ///    then calls `activate_observer`. From that point the observer
+    ///    participates in the normal global fan-out.
+    OpenObservedInterest {
+        /// Verbatim NIP-01 REQ filter JSON — same semantic as `OpenInterest`.
+        filter_json: String,
+        /// Refcount owner key — same semantic as `OpenInterest`.
+        consumer_id: String,
+        /// Scope — same semantic as `OpenInterest`.
+        scope: u32,
+        /// The muted observer id to replay events to and then activate.
+        observer_id: KernelEventObserverId,
+        /// `InterestShape`s used to match events in the read-cache during
+        /// replay. May differ from the filter (e.g. thread feed uses two
+        /// shapes: `#e` replies + root-by-id).
+        replay_shapes: Vec<crate::planner::InterestShape>,
+        /// Maximum events to replay (newest-first selection, oldest-first
+        /// delivery). Typically the feed's visible window limit.
+        replay_limit: usize,
     },
     /// M2 (ADR-0042) — detach one owner from an interest registered via
     /// [`OpenInterest`](Self::OpenInterest). Drops the live subscription when

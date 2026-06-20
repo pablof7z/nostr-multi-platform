@@ -20,6 +20,7 @@
 //! ADR-0009.
 
 use super::Kernel;
+use crate::actor::KernelEventObserverId;
 use crate::actor::KernelEventObserverSlot;
 use crate::substrate::KernelEvent;
 
@@ -67,5 +68,30 @@ impl Kernel {
                 super::provenance::relay_urls_for_event(&*self.store, &event.id);
         }
         crate::actor::notify_observers(slot, &event);
+    }
+
+    /// Deliver one event to a single named observer (ADR-0062 targeted replay).
+    ///
+    /// Enriches `relay_provenance` from the store when empty (same as
+    /// `notify_event_observers`), then calls `notify_observer_by_id` — which
+    /// delivers regardless of the observer's `active` flag, so this works for
+    /// muted registrations installed before catch-up replay.
+    ///
+    /// Returns `true` iff the registration was found. D6 — missing slot,
+    /// poisoned mutex, and observer panics are all silent no-ops.
+    pub(in crate::kernel) fn notify_event_observer_by_id(
+        &self,
+        id: KernelEventObserverId,
+        event: &KernelEvent,
+    ) -> bool {
+        let Some(slot) = &self.event_observers else {
+            return false;
+        };
+        let mut event = event.clone();
+        if event.relay_provenance.is_empty() {
+            event.relay_provenance =
+                super::provenance::relay_urls_for_event(&*self.store, &event.id);
+        }
+        crate::actor::notify_observer_by_id(slot, id, &event)
     }
 }

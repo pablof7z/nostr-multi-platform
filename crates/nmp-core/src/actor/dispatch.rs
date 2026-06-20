@@ -1417,6 +1417,36 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::OpenObservedInterest {
+            filter_json,
+            consumer_id,
+            scope,
+            observer_id,
+            replay_shapes,
+            replay_limit,
+        } => {
+            // ADR-0062 — open interest + catch-up replay to a single muted
+            // observer, then activate it. Reuses the same filter→interest
+            // parsing as OpenInterest; D6: a malformed filter is a silent
+            // no-op (the FFI shim already surfaced a toast before sending).
+            if let Some((identity, interest)) =
+                build_open_interest(&filter_json, &consumer_id, scope)
+            {
+                let replay = crate::kernel::ObserverReplayRequest {
+                    observer_id,
+                    shapes: replay_shapes,
+                    limit: replay_limit,
+                };
+                let _ = ctx.kernel.open_interest_with_observer_replay(
+                    identity,
+                    interest,
+                    replay,
+                    "open-observed-interest",
+                );
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::CloseInterest {
             filter_json,
             consumer_id,
