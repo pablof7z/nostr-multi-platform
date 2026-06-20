@@ -17,6 +17,12 @@ fn event(id: &str, kind: u32, created_at: u64, content: &str) -> KernelEvent {
     }
 }
 
+fn ranked_event(id: &str, created_at: u64, rank: u64, content: &str) -> KernelEvent {
+    let mut event = event(id, 30_023, created_at, content);
+    event.tags.push(vec!["rank".to_string(), rank.to_string()]);
+    event
+}
+
 fn item(id: &str, sort_created_at: u64, card: &str) -> FlatFeedItem<String> {
     FlatFeedItem {
         id: id.to_string(),
@@ -68,4 +74,47 @@ fn custom_merge_can_hydrate_existing_bumped_item() {
     let snap = feed.snapshot(&FeedRequest::default());
     assert_eq!(snap.cards[0].card, "original+repost");
     assert_eq!(snap.cards[0].attribution, Vec::<()>::new());
+}
+
+#[test]
+fn caller_supplied_admission_and_rank_key_drive_flat_feed() {
+    let feed = FlatFeed::new(
+        Arc::new(|event| event.content.split_whitespace().count() >= 4),
+        Arc::new(|event| {
+            let rank = event
+                .tags
+                .iter()
+                .find(|tag| tag.first().is_some_and(|key| key == "rank"))
+                .and_then(|tag| tag.get(1))
+                .and_then(|raw| raw.parse::<u64>().ok())?;
+            Some(item(&event.id, rank, &event.content))
+        }),
+    );
+
+    feed.on_kernel_event(&ranked_event("short-high", 100, 1_000, "too short"));
+    feed.on_kernel_event(&ranked_event(
+        "old-high",
+        10,
+        900,
+        "high quality article with old timestamp",
+    ));
+    feed.on_kernel_event(&ranked_event(
+        "new-low",
+        100,
+        100,
+        "acceptable article with newer timestamp",
+    ));
+
+    let snap = feed.snapshot(&FeedRequest::default());
+    assert_eq!(
+        snap.cards
+            .iter()
+            .map(|row| row.card.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "high quality article with old timestamp",
+            "acceptable article with newer timestamp"
+        ],
+        "admission and ordering are owned by caller-supplied closures"
+    );
 }
