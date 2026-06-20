@@ -258,8 +258,8 @@ use nmp_core::__ffi_internal::{
     DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
-// host (per-app crate) constructs the slot and registers it via
-// `register_snapshot_projection("wallet", …)` itself.
+// host (per-app crate) constructs the slot and registers the typed
+// `"wallet"` sidecar via `register_typed_snapshot_projection` (ADR-0037).
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
     new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
@@ -877,8 +877,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_snapshot_projections = Arc::clone(&snapshot_projections);
     // V-38: the shared `WalletStatusSlot` + the `"wallet"` snapshot
     // projection moved to `crates/nmp-nip47`. The host (per-app crate)
-    // builds those itself and calls
-    // `nmp_app_register_snapshot_projection("wallet", …)` for the read side.
+    // builds those itself and registers the typed `"wallet"` sidecar via
+    // `register_typed_snapshot_projection` (ADR-0037) for the read side.
     // ADR-0052 rung 5.2: the write side is the per-app `WalletRuntimeHandle`
     // owned BY VALUE inside the wallet `ActionModule`s (no process-global
     // install). The actor now only carries a substrate-generic relay-text
@@ -1386,9 +1386,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         gc_budget_ceiling,
     };
     // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.
-    // The host (per-app crate) registers it themselves on the `NmpApp`
-    // via `register_snapshot_projection("wallet", …)` after constructing
-    // the `WalletStatusSlot` from `nmp_nip47`.
+    // The host (per-app crate) registers it themselves on the `NmpApp` as a
+    // typed `"wallet"` sidecar via `register_typed_snapshot_projection`
+    // (ADR-0037) after constructing the `WalletStatusSlot` from `nmp_nip47`.
     //
     // D0 — the built-in `"bunker_handshake"` projection is registered inside
     // `run_actor_with_observers` (at the actor wiring site), not here: it
