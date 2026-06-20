@@ -1182,11 +1182,6 @@ pub(super) fn dispatch_command(
                 ctx.kernel,
             );
             ctx.connected_urls.clear();
-            // T114b — preserve the FFI-channel drop-counter handle across
-            // Reset (the underlying Arc<AtomicU64> is shared with the FFI
-            // forwarder thread and must NOT be replaced; the counter is
-            // process-lifetime).
-            let drops_handle = ctx.kernel.take_dispatch_drops_handle_for_reset();
             // G-S4 — preserve the actor command-channel depth counter across
             // Reset for the same reason: the `Arc<AtomicU64>` is shared with
             // `NmpApp::send_cmd`; replacing it would orphan the counter so
@@ -1229,9 +1224,6 @@ pub(super) fn dispatch_command(
             // poisoned lock → silent no-op, matching the other slots' policy.
             if let Ok(mut guard) = ctx.active_account_slot.lock() {
                 *guard = None;
-            }
-            if let Some(handle) = drops_handle {
-                ctx.kernel.set_dispatch_drops_handle(handle);
             }
             if let Some(handle) = queue_depth_handle {
                 ctx.kernel.set_queue_depth_handle(handle);

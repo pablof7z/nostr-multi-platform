@@ -429,9 +429,8 @@ struct ProfileAction: Equatable {
 // the Rust definitions.
 //
 // The generated `KernelMetrics` adds transport/drop counters the hand-written
-// shape was missing — `dispatchDropsTotal`, `claimDropsTotal`, and
-// `updateFrameDegradationsTotal` — all non-optional `UInt64`. The Rust kernel
-// always emits them
+// shape was missing — `claimDropsTotal` and `updateFrameDegradationsTotal` —
+// both non-optional `UInt64`. The Rust kernel always emits them
 // (`update.rs::metrics_snapshot`), so the now-stricter Swift decode is
 // safe against any live snapshot.
 //

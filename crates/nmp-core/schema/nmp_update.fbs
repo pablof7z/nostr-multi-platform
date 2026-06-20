@@ -108,7 +108,6 @@ table Metrics {
   last_event_to_emit_ms:ulong = null;
   max_event_to_emit_ms:ulong;             // u128 -> ulong
   max_events_per_update:ulong;
-  dispatch_drops_total:ulong;
   claim_drops_total:ulong;
   make_update_us:ulong;                   // u128 -> ulong
   serialize_us:ulong;                     // u128 -> ulong

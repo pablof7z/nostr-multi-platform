@@ -66,7 +66,6 @@ export type DecodedMetrics = {
   actorQueueDepth: number;
   openViews: number;
   makeUpdateUs: bigint;
-  dispatchDropsTotal: bigint;
   claimDropsTotal: bigint;
 };
 
@@ -146,7 +145,6 @@ function decodeMetrics(m: Metrics): DecodedMetrics {
     actorQueueDepth: m.actorQueueDepth(),
     openViews: m.openViews(),
     makeUpdateUs: m.makeUpdateUs(),
-    dispatchDropsTotal: m.dispatchDropsTotal(),
     claimDropsTotal: m.claimDropsTotal(),
   };
 }

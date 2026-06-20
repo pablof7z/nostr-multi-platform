@@ -217,33 +217,28 @@ maxEventsPerUpdate():bigint {
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-dispatchDropsTotal():bigint {
+claimDropsTotal():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 82);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-claimDropsTotal():bigint {
+makeUpdateUs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 84);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-makeUpdateUs():bigint {
+serializeUs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 86);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-serializeUs():bigint {
+updateFrameDegradationsTotal():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 88);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-updateFrameDegradationsTotal():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 90);
-  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
-}
-
 static startMetrics(builder:flatbuffers.Builder) {
-  builder.startObject(44);
+  builder.startObject(43);
 }
 
 static addGeneratedEvents(builder:flatbuffers.Builder, generatedEvents:bigint) {
@@ -402,24 +397,20 @@ static addMaxEventsPerUpdate(builder:flatbuffers.Builder, maxEventsPerUpdate:big
   builder.addFieldInt64(38, maxEventsPerUpdate, BigInt('0'));
 }
 
-static addDispatchDropsTotal(builder:flatbuffers.Builder, dispatchDropsTotal:bigint) {
-  builder.addFieldInt64(39, dispatchDropsTotal, BigInt('0'));
-}
-
 static addClaimDropsTotal(builder:flatbuffers.Builder, claimDropsTotal:bigint) {
-  builder.addFieldInt64(40, claimDropsTotal, BigInt('0'));
+  builder.addFieldInt64(39, claimDropsTotal, BigInt('0'));
 }
 
 static addMakeUpdateUs(builder:flatbuffers.Builder, makeUpdateUs:bigint) {
-  builder.addFieldInt64(41, makeUpdateUs, BigInt('0'));
+  builder.addFieldInt64(40, makeUpdateUs, BigInt('0'));
 }
 
 static addSerializeUs(builder:flatbuffers.Builder, serializeUs:bigint) {
-  builder.addFieldInt64(42, serializeUs, BigInt('0'));
+  builder.addFieldInt64(41, serializeUs, BigInt('0'));
 }
 
 static addUpdateFrameDegradationsTotal(builder:flatbuffers.Builder, updateFrameDegradationsTotal:bigint) {
-  builder.addFieldInt64(43, updateFrameDegradationsTotal, BigInt('0'));
+  builder.addFieldInt64(42, updateFrameDegradationsTotal, BigInt('0'));
 }
 
 static endMetrics(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -427,7 +418,7 @@ static endMetrics(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createMetrics(builder:flatbuffers.Builder, generatedEvents:bigint, noteEvents:bigint, profileEvents:bigint, duplicateEvents:bigint, deleteEvents:bigint, storedEvents:bigint, tombstones:bigint, visibleItems:bigint, visibleProfiledItems:bigint, visiblePlaceholderAvatarItems:bigint, openViews:number, eventsSinceLastUpdate:bigint, diagnosticFirehoseEvents:bigint, insertedCount:bigint, updatedCount:bigint, removedCount:bigint, emitHzConfigured:number, updateSequence:bigint, estimatedStoreBytes:bigint, payloadBytes:bigint, storeToPayloadRatio:number, actorQueueDepth:number, framesRx:bigint, eventsRx:bigint, eoseRx:bigint, noticesRx:bigint, closedRx:bigint, bytesRx:bigint, bytesTx:bigint, contactsAuthors:bigint, timelineAuthors:bigint, firstEventMs:bigint|null, targetProfileLoadedMs:bigint|null, timelineOpenedMs:bigint|null, timelineFirstItemMs:bigint|null, updateEmittedMs:bigint|null, lastEventToEmitMs:bigint|null, maxEventToEmitMs:bigint, maxEventsPerUpdate:bigint, dispatchDropsTotal:bigint, claimDropsTotal:bigint, makeUpdateUs:bigint, serializeUs:bigint, updateFrameDegradationsTotal:bigint):flatbuffers.Offset {
+static createMetrics(builder:flatbuffers.Builder, generatedEvents:bigint, noteEvents:bigint, profileEvents:bigint, duplicateEvents:bigint, deleteEvents:bigint, storedEvents:bigint, tombstones:bigint, visibleItems:bigint, visibleProfiledItems:bigint, visiblePlaceholderAvatarItems:bigint, openViews:number, eventsSinceLastUpdate:bigint, diagnosticFirehoseEvents:bigint, insertedCount:bigint, updatedCount:bigint, removedCount:bigint, emitHzConfigured:number, updateSequence:bigint, estimatedStoreBytes:bigint, payloadBytes:bigint, storeToPayloadRatio:number, actorQueueDepth:number, framesRx:bigint, eventsRx:bigint, eoseRx:bigint, noticesRx:bigint, closedRx:bigint, bytesRx:bigint, bytesTx:bigint, contactsAuthors:bigint, timelineAuthors:bigint, firstEventMs:bigint|null, targetProfileLoadedMs:bigint|null, timelineOpenedMs:bigint|null, timelineFirstItemMs:bigint|null, updateEmittedMs:bigint|null, lastEventToEmitMs:bigint|null, maxEventToEmitMs:bigint, maxEventsPerUpdate:bigint, claimDropsTotal:bigint, makeUpdateUs:bigint, serializeUs:bigint, updateFrameDegradationsTotal:bigint):flatbuffers.Offset {
   Metrics.startMetrics(builder);
   Metrics.addGeneratedEvents(builder, generatedEvents);
   Metrics.addNoteEvents(builder, noteEvents);
@@ -474,7 +465,6 @@ static createMetrics(builder:flatbuffers.Builder, generatedEvents:bigint, noteEv
     Metrics.addLastEventToEmitMs(builder, lastEventToEmitMs);
   Metrics.addMaxEventToEmitMs(builder, maxEventToEmitMs);
   Metrics.addMaxEventsPerUpdate(builder, maxEventsPerUpdate);
-  Metrics.addDispatchDropsTotal(builder, dispatchDropsTotal);
   Metrics.addClaimDropsTotal(builder, claimDropsTotal);
   Metrics.addMakeUpdateUs(builder, makeUpdateUs);
   Metrics.addSerializeUs(builder, serializeUs);

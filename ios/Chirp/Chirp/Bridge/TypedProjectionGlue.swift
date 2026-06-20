@@ -586,7 +586,6 @@ enum TypedProjectionGlue {
             contactsAuthors: Int(m.contactsAuthors),
             deleteEvents: m.deleteEvents,
             diagnosticFirehoseEvents: m.diagnosticFirehoseEvents,
-            dispatchDropsTotal: m.dispatchDropsTotal,
             duplicateEvents: m.duplicateEvents,
             emitHzConfigured: m.emitHzConfigured,
             eoseRx: m.eoseRx,

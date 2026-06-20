@@ -66,7 +66,6 @@ export function PanelOverview(props: {
           <Row label="Update seq" value={m().updateSequence.toString()} testId="inspector-update-seq" />
           <Row label="make_update" value={fmtUs(m().makeUpdateUs)} />
           <Row label="Actor queue" value={m().actorQueueDepth.toString()} />
-          <Row label="Dispatch drops" value={m().dispatchDropsTotal.toString()} />
         </>}
       </Show>
       <Show when={!ds()?.metrics}>
