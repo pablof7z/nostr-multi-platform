@@ -81,7 +81,7 @@ class KernelBridge {
 
     fun isAlive(): Boolean = handle != 0L && nativeIsAlive(handle)
 
-    /** Open the Chirp home feed for primary kind:1 notes. Reposts are derived in Rust. */
+    /** Open the Chirp home feed for primary kind:1 notes. */
     fun openHomeFeed() {
         if (handle != 0L) nativeOpenHomeFeed(handle)
     }
@@ -205,8 +205,7 @@ class KernelBridge {
 
     /**
      * Open a thread by note ID. Rust registers `nmp.feed.thread.<noteId>` and
-     * admits primary kind:1 notes plus NIP-18-derived repost wrappers for
-     * rendering.
+     * admits primary kind:1 notes plus derived repost wrappers for rendering.
      *
      * D6: null handle or invalid note_id is a silent no-op.
      */
@@ -223,9 +222,8 @@ class KernelBridge {
 
     /**
      * Open an author profile by pubkey. Rust registers
-     * `nmp.feed.author.<pubkey>` and admits primary kind:1 notes plus
-     * NIP-18-derived repost wrappers for rendering. Profile metadata is
-     * fetched via [claimProfile].
+     * `nmp.feed.author.<pubkey>` and admits primary kind:1 notes plus derived
+     * repost wrappers for rendering. Profile metadata is fetched via [claimProfile].
      *
      * D6: null handle or invalid pubkey is a silent no-op.
      */

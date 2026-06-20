@@ -550,10 +550,7 @@ fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
     );
 }
 
-/// `claim_profile` is the registry-component lifecycle path. A component that
-/// only knows a pubkey must see a stable projection slot immediately, then the
-/// real profile fields after kind:0 arrives, without opening an author view or
-/// building a screen-local profile map.
+/// Claimed profiles project immediately, then refine after kind:0 arrives.
 #[test]
 fn claimed_profiles_projection_refines_claimed_pubkey() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -572,8 +569,7 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
         "claimed_profiles must carry a placeholder for every claimed pubkey"
     );
     assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
-    // ADR-0032 / V-115: `npub` bech32 field removed from projection; shells
-    // encode bech32 themselves.
+    // ADR-0032 / V-115: shells encode bech32 themselves.
     assert!(
         entry.get("npub").is_none(),
         "claimed_profiles entry must not carry npub — shells encode bech32"
@@ -617,19 +613,9 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
     );
 }
 
-// Issue #920 (Step 3A): the home-feed projection was removed, so the two tests
-// that asserted on `projections.timeline` directly — V-31
-// `mention_profiles_projection_covers_home_timeline_when_no_view_open` and
-// `timeline_item_picks_up_profile_after_later_kind0_ingest` — were removed with
-// it. The `timeline_item()` profile-join those tests covered is exercised through
-// `d1_offline_bootstrap_tests` (V-112: author_view / thread_view deleted).
-
 // ─── kind:3 contacts → metrics projection ────────────────────────────────────
 
-/// A kind:3 ingest for the active account must surface its follow count in the
-/// snapshot. There is no top-level `contacts` field — the projection is
-/// `metrics.contacts_authors` (every cached kind:3's follows summed) and, for
-/// the active account, `metrics.timeline_authors` (the follow-feed author set).
+/// Active kind:3 ingest surfaces follow counts in snapshot metrics.
 #[test]
 fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

@@ -176,12 +176,7 @@ fn open_interest(kernel: &mut Kernel, seed: u64, shape: InterestShape) -> bool {
     kernel.open_interest_sub(sub_identity(seed), interest)
 }
 
-/// Enqueue a single cache-serve interest via `register_interest`.
-///
-/// Wraps the `&[InterestRegistration { identity, interest, policy }]` boilerplate
-/// shared by every call site. `policy` is always `EnsureAbsent` (install a fresh
-/// slot so `changed=true` fires the serve — the right semantic for test phases
-/// that deliberately use distinct keys to bypass the idempotency guard).
+/// Enqueue a fresh cache-serve interest via `register_interest`.
 fn register_one(
     kernel: &mut Kernel,
     owner: &'static str,
@@ -376,25 +371,8 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     );
 
     // ── Phase 3: open interests and drain cache-serves (ZERO relay) ───────────
-    //
-    // `register_interest` only enqueues a serve when `changed=true` (i.e. the
-    // slot is newly installed or its shape changed). The thread interest was
-    // pre-opened in Phase 1 so the registry still holds the slot under the
-    // Phase-1 key. We use DISTINCT fresh keys ("thread-phase3", …) that are not
-    // in the pre-open slot — `EnsureAbsent` with a fresh key installs a new slot
-    // (`newly_installed=true`, `changed=true`) and enqueues the serve.
-    // `simulate_cold_restart` cleared `served_interest_shapes`, so the completion
-    // key is fresh and the idempotency guard does not suppress the serve.
-    //
-    // For the feed we use `sync_follow_feed_interests` (the production entry
-    // point), which derives its own InterestId from the compiled acquisition
-    // kinds (the follow set lives in the interest's shape, #1497) and is not
-    // affected by the registry collision.
-
-    // E1 — feed: sync_follow_feed_interests registers ONE multi-author follow
-    // interest (#1497). With a single author here its cache-serve maps to one
-    // `AuthorKind`; for >1 author it maps to one multi-author `AuthorsKind` —
-    // no per-author fan-out either way.
+    // Fresh keys force `changed=true` after the Phase-1 pre-open. The feed uses
+    // the production follow-feed sync path.
     kernel.sync_follow_feed_interests(&[feed_author.clone()]);
 
     // E3 — thread: register Etag interest with a fresh key → newly_installed=true.
@@ -514,13 +492,7 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     );
 }
 
-/// PR-2 rawtap retirement — cache-serve feeds kind:1059 exclusively via IngestParser.
-///
-/// Verifies that `feed_served_event` dispatches kind:1059 events ONLY through the
-/// `EventIngestDispatcher` seam after PR-2 removes the transitional dual fan-out.
-/// No raw-observer delivery from cache-serve — all former raw-tap consumers
-/// (NIP-17 DM inbox since PR-1, Marmot since PR-2) now ride `IngestParser`.
-/// Uses a `CapturingIngestParser` to avoid the circular dep on `nmp-nip17`.
+/// PR-2 rawtap retirement: cache-serve feeds kind:1059 via IngestParser only.
 #[test]
 fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
     let base_ts: u64 = 1_700_000_000;
