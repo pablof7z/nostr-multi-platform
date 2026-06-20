@@ -107,6 +107,15 @@ and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
 | `nmp_app_open_contact_feed` | `(app, primary_kinds_json: *const c_char)` | ADR-0042 amendment. Open the contact-feed declaration with app-declared primary kinds (e.g. `"[1]"`). The protocol adapter derives repost wrapper acquisition. Empty array = clear. Malformed/non-array → toast + no-op. | Chirp (via `nmp_app_chirp_open_home_feed`), Android (via Chirp wrapper in JNI) | null app/kinds → early return; malformed → toast | n/a |
 | `nmp_app_close_contact_feed` | `(app)` | ADR-0042 amendment. Close the contact-feed subscription; withdraws all follow-feed M2 interests and emits CLOSE frames. | Chirp (via `nmp_app_chirp_close_home_feed`) | null → silent no-op | n/a |
 
+`nmp_app_open_contact_feed` is a declared-feed surface, not a raw kind-list
+escape hatch. The caller supplies primary content kinds only. The protocol
+adapter derives repost-wrapper acquisition (`6` for kind `1`, `16` for
+non-kind-1 targets) and rejects wrapper kinds if they are supplied as primary
+kinds. `nmp-core` never stores a default "social timeline is kind:1" policy; the
+primary-kind decision belongs above the kernel. Feed components that need
+profiles, missing repost targets, relation counts, or other secondary data claim
+those dependencies independently.
+
 Threading: dispatch/enqueue symbols run on the calling thread and hand work to
 the actor asynchronously; none wait for a state result.
 

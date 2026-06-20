@@ -3,7 +3,17 @@
 //! Protocol projections provide feed blocks and render cards; this crate owns
 //! stable cursor ordering, bounded viewport state, transitive card inclusion,
 //! and generic feed-controller registration.
+//!
+//! Doctrine map:
+//! - D0: protocol/app crates supply admission predicates, card builders, and
+//!   merge policy. This crate owns mechanics only and names no app primary-kind
+//!   policy.
+//! - D5: feed state and emitted snapshots are bounded by the visible window.
+//! - D11: feed engines never claim secondary data such as profiles, missing
+//!   targets, relation counts, or previews; components and sibling modules own
+//!   those dependencies.
 
+mod flat;
 mod pager;
 mod pull_controller;
 mod registry;
@@ -12,6 +22,7 @@ pub mod typed_wire;
 mod types;
 mod window;
 
+pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,

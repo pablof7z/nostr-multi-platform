@@ -139,10 +139,10 @@ fn feed_filter_json(dimension: &str, value: &str) -> String {
 ///
 /// Registers a [`FlatFeed`] under `nmp.feed.author.<pubkey_hex>` (read by
 /// `ProfileView`) and pushes the kernel interest that admits the author's
-/// kind:1/6 into storage. Idempotent at the registry level: a re-open of the
-/// same author replaces the controller and revokes the prior observer (see
-/// [`NmpApp::register_feed_with_observer`]); the kernel `open_interest`
-/// refcounts the `author-<pk>` consumer.
+/// primary kind:1 plus derived kind:6 reposts into storage. Idempotent at the
+/// registry level: a re-open of the same author replaces the controller and
+/// revokes the prior observer (see [`NmpApp::register_feed_with_observer`]);
+/// the kernel `open_interest` refcounts the `author-<pk>` consumer.
 ///
 /// D6 — a null `app` or non-UTF-8 `pubkey_hex` is a silent no-op.
 ///
@@ -228,12 +228,12 @@ pub extern "C" fn nmp_app_chirp_close_author_feed(app: *mut NmpApp, pubkey_hex: 
 /// Open the flat thread feed for `event_id_hex` (the thread root).
 ///
 /// Registers a [`FlatFeed`] under `nmp.feed.thread.<event_id_hex>` (read by
-/// `ThreadScreen`) whose predicate admits the root by id AND every kind:1/6
-/// that references it via an `#e` tag, and pushes the kernel interest that
-/// admits those `#e` referrers into storage. (The root itself arrives through
-/// whatever interest opened the screen that linked here — the predicate admits
-/// it by id when it is already stored, and the `#e` interest pulls the
-/// replies.)
+/// `ThreadScreen`) whose predicate admits the root by id AND every admitted
+/// kind:1/kind:6 event that references it via an `#e` tag, and pushes the
+/// kernel interest that admits those `#e` referrers into storage. (The root
+/// itself arrives through whatever interest opened the screen that linked here
+/// — the predicate admits it by id when it is already stored, and the `#e`
+/// interest pulls the replies.)
 ///
 /// D6 — a null `app` or non-UTF-8 `event_id_hex` is a silent no-op.
 #[no_mangle]

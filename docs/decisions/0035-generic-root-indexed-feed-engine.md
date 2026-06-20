@@ -75,12 +75,24 @@ until the target arrives through normal event ingest. The outer maps are
 
 ## Secondary Data Boundary
 
-The feed engine does not emit `claim_event`, observe `event_claim_released`, or
-translate pointers into `nostr:` URIs. Missing roots remain bounded pending feed
-state until the root arrives, a perspective reset clears the feed, or D5
+Firm rule (D0 + D11): the feed engine acquires events only through the
+`KernelEventObserver` ingest path. It does not emit `claim_event`, observe
+`event_claim_released`, call `release_claim_expansion`, translate pointers into
+`nostr:` URIs, or otherwise turn a rendered edge into a new acquisition request.
+
+Why: a feed is a bounded indexing and viewport machine. Missing targets,
+profiles, ancestors, relation counts, previews, and other secondary data are
+dependencies of the component or sibling module that renders or calculates with
+them. Putting those claims in the feed would couple the feed primitive to one
+protocol's event model and make it an oversized building block.
+
+Consequence: missing roots remain bounded pending feed state until the root
+arrives through normal ingest, a perspective reset clears the feed, or D5
 eviction removes the pending attribution. E-tag-only reposts may surface a
 target-keyed placeholder; target acquisition belongs to a mounted row/component
-or another module that explicitly needs the target.
+or another module that explicitly needs the target. The `EventLookup` callback
+is a local read-cache lookup for repost rebuilds only; it may return already
+cached events but must never acquire.
 
 Profile kind:0 data is also outside this engine. A profile/avatar component
 that renders a pubkey owns the profile dependency regardless of whether that
@@ -110,8 +122,8 @@ surface.
   feed) composes with `(R, A, C)` only — zero engine changes.
 - **L-5 late-target rebuilds from the `(wrapper, target)` pair.** When a
   repost wrapper keys a target id before the target arrives, the slot records
-  `wrapper_event_id`; on target arrival the engine re-fetches the wrapper via
-  `event_lookup` and calls `card_builder(wrapper, Some(target))`, so a renderer
+  `wrapper_event_id`; on target arrival the engine reads the already-cached
+  wrapper via `event_lookup` and calls `card_builder(wrapper, Some(target))`, so a renderer
   can still produce the "reposted by" provenance after late target arrival.
 
 ## Alternatives considered

@@ -3,13 +3,9 @@
 
 use super::*;
 
-fn ev(
-    id: &str,
-    author: &str,
-    kind: u32,
-    created_at: u64,
-    tags: Vec<Vec<String>>,
-) -> KernelEvent {
+use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
+
+fn ev(id: &str, author: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
     KernelEvent {
         id: id.to_string(),
         author: author.to_string(),
@@ -73,6 +69,46 @@ fn thread_feed_admits_root_by_id_and_referrers_by_etag() {
 }
 
 #[test]
+fn repost_wrapper_and_target_share_canonical_feed_item() {
+    let feed = FlatFeed::new(thread_feed_predicate("root".to_string(), vec![1, 6]));
+
+    feed.ingest(&ev("repost", "alice", 6, 200, vec![etag("root")]));
+    let placeholder = feed.snapshot(&FeedRequest::default());
+    assert_eq!(placeholder.cards.len(), 1);
+    assert_eq!(placeholder.cards[0].card.id, "root");
+    assert_eq!(placeholder.cards[0].card.created_at, 200);
+    assert_eq!(placeholder.cards[0].card.content, "");
+    assert_eq!(
+        placeholder.cards[0]
+            .card
+            .reposted_by
+            .as_ref()
+            .expect("repost attribution")
+            .author_pubkey,
+        "alice"
+    );
+
+    feed.ingest(&ev("root", "bob", 1, 100, vec![]));
+    let hydrated = feed.snapshot(&FeedRequest::default());
+
+    assert_eq!(hydrated.cards.len(), 1, "target id stays deduped");
+    let card = &hydrated.cards[0].card;
+    assert_eq!(card.id, "root");
+    assert_eq!(card.author_pubkey, "bob");
+    assert_eq!(card.content, "note root");
+    assert_eq!(
+        card.created_at, 200,
+        "feed ordering keeps the repost wrapper timestamp"
+    );
+    let reposted_by = card.reposted_by.as_ref().expect("repost attribution");
+    assert_eq!(reposted_by.author_pubkey, "alice");
+    assert_eq!(
+        reposted_by.note_created_at, 100,
+        "render metadata still exposes the target event timestamp"
+    );
+}
+
+#[test]
 fn reingest_same_id_refreshes_not_duplicates() {
     let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
     feed.ingest(&ev("a1", "alice", 1, 100, vec![]));
@@ -122,7 +158,10 @@ fn bare_flat_feed_fails_closed_no_pull_interest() {
     // fails closed — a `PullFeedController` would refuse to construct and the
     // feed renders projection-only.
     let feed = FlatFeed::new(author_feed_predicate("alice".to_string(), vec![1, 6]));
-    assert!(feed.interest_shape().is_none(), "bare flat feed fails closed");
+    assert!(
+        feed.interest_shape().is_none(),
+        "bare flat feed fails closed"
+    );
 }
 
 #[test]
@@ -146,7 +185,7 @@ fn thread_feed_shape_is_a_covered_etag_reply_tail() {
     assert_eq!(
         shape.tags.get("e"),
         Some(&BTreeSet::from(["root".to_string()])),
-        "thread shape pages the #e reply tail; the root rides the claim path"
+        "thread shape pages the #e reply tail; the root is a separate dependency"
     );
     assert!(shape.authors.is_empty());
     assert!(
@@ -179,11 +218,17 @@ fn grow_visible_window_reveals_rows_past_the_default_first_page() {
         DEFAULT_FEED_WINDOW_LIMIT,
         "default window emits only the first page"
     );
-    assert!(first.page.expect("page").has_more, "more rows below the page");
+    assert!(
+        first.page.expect("page").has_more,
+        "more rows below the page"
+    );
 
     // The advance step after a drained page: the viewport grows and the
     // EMITTED projection now includes the previously-hidden older rows.
-    assert!(feed.grow_visible_window(), "viewport grows (more rows to show)");
+    assert!(
+        feed.grow_visible_window(),
+        "viewport grows (more rows to show)"
+    );
     let grown = feed.snapshot_current_window();
     assert_eq!(
         grown.cards.len(),

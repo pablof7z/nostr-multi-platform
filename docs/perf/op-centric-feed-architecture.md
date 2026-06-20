@@ -1,11 +1,12 @@
-# OP-Centric Home Feed — Historical Architecture Proposal
+# OP-Centric Home Feed Architecture
 
-> **Status:** Historical proposal, not current implementation guidance. Keep
-> this file only as design history. Current feed behavior is owned by the
-> durable docs and live code: `nmp-feed` provides mechanics; protocol/app
-> layers declare primary kinds and perspectives; `nmp-core` owns active-user
-> follow acquisition; `nmp-defaults` wires consumers and resets the feed on
-> perspective changes.
+> **Status:** Architecture record with design history. The current shipped
+> invariants are: `nmp-feed` provides bounded feed mechanics only; protocol/app
+> layers declare primary kinds and perspectives; protocol adapters derive repost
+> wrapper acquisition; `nmp-core` owns active-user follow acquisition but no
+> app primary-kind policy; `nmp-defaults` wires consumers and resets the feed on
+> perspective changes; secondary data is claimed by the component or sibling
+> module that needs it, not by the feed.
 > **Author:** Architect (Serena Blackwood)
 > **Revision:** 2026-05-27d (post-codex-v2 + user decisions). This is the
 > implementation-input draft. Subsequent residual concerns track in GitHub Issues,

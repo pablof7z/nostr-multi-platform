@@ -21,7 +21,7 @@ fn home_feed_primary_kinds_json_is_chirp_social_policy() {
 /// `close_contact_feed_withdraws_follow_interests_and_emits_close` test in
 /// `nmp-core`.
 #[test]
-fn chirp_open_home_feed_threads_1_6() {
+fn chirp_open_home_feed_threads_primary_kind_declaration() {
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new must return a non-null handle");
 

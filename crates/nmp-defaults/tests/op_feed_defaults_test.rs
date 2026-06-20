@@ -349,7 +349,8 @@ fn kind3_replacement_resets_visible_feed_immediately() {
 #[test]
 fn wiring_does_not_register_duplicate_follow_feed_interests() {
     // The kernel's `sync_follow_feed_interests` already registers per-follow
-    // kind:1/6 `LogicalInterest`s on the active account's kind:3. The
+    // acquisition interests for primary kind:1 plus derived kind:6 on the active
+    // account's kind:3. The
     // composition root must NOT register them again — that would be duplicate
     // REQ subscriptions. We prove the negative two ways:
     //

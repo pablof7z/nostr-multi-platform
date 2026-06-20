@@ -69,7 +69,7 @@ fn insert(store: &MemEventStore, raw: RawEvent) {
         .expect("insert must succeed");
 }
 
-/// Build a follow-set shape for ALICE only — kind:1/6.
+/// Build a follow-set shape for ALICE only: primary kind:1 plus derived kind:6.
 fn alice_shape() -> InterestShape {
     InterestShape {
         authors: [ALICE.to_string()].into_iter().collect::<BTreeSet<_>>(),

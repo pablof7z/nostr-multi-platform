@@ -6,86 +6,56 @@
 //! *attribution* metadata, a profile screen and a thread screen each render a
 //! **flat list** where every matching note is its own top-level row:
 //!
-//! * **Author feed** — every kind:1/6 authored by one pubkey (including that
-//!   author's replies to other people), shown as top-level rows. The
-//!   root-indexed engine structurally cannot express this (it would hide the
-//!   replies under other people's roots).
-//! * **Thread feed** — the root note plus every kind:1/6 that references it via
-//!   `#e`, each as its own row (`ThreadScreen` does `ForEach(thread.items)`).
+//! * **Author feed** — every primary kind:1 event plus derived kind:6 repost
+//!   wrapper authored by one pubkey (including that author's replies to other
+//!   people), shown as top-level rows. The root-indexed engine structurally
+//!   cannot express this (it would hide the replies under other people's roots).
+//! * **Thread feed** — the root note plus every admitted kind:1/kind:6 event
+//!   that references it via `#e`, each as its own row (`ThreadScreen` does
+//!   `ForEach(thread.items)`).
 //!
 //! Both are the same machine: a flat, newest-first, D5-windowed list of
 //! [`TimelineEventCard`]s, gated by an injected admission predicate. The
 //! emitted snapshot is the **same** [`RootFeedSnapshot`] wire shape the home
 //! feed emits (`RootCard { card, attribution }`), with `attribution` always
 //! empty — so the iOS/Android shells decode it through the existing
-//! `nmp.feed.home` reader with zero new FlatBuffers schema or codegen. The kind
-//! decisions (`{1,6}`) live in the host that builds the predicate (D0-correct);
-//! `nmp-nip01` only knows how to render a kind:1/6 card.
+//! `nmp.feed.home` reader with zero new FlatBuffers schema or codegen. Apps
+//! declare primary kinds (`[1]` for Chirp); the NIP-18 adapter derives the
+//! compiled acquisition set (`{1,6}`), and this protocol adapter renders those
+//! admitted events. `nmp-core` never owns the primary-kind policy.
 //!
 //! Registration mirrors [`crate::register_op_feed`]: the host registers a
 //! `FlatFeed` as both a [`KernelEventObserver`] (ingest fan-out) and a
 //! [`FeedController`] under its own snapshot key (`nmp.feed.author.<pk>` /
 //! `nmp.feed.thread.<id>`).
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use nmp_planner::InterestShape;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
-    FeedController, FeedCursor, FeedInterestShape, FeedPage, FeedRequest, RootCard, RootFeedSnapshot,
-    DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT,
+    FeedController, FeedInterestShape, FeedRequest, FlatFeed as GenericFlatFeed, FlatFeedItem,
+    FlatFeedItemBuilder, FlatFeedMerge, RootCard, RootFeedSnapshot,
 };
 
+use crate::timeline_projection::RepostAttribution;
 use crate::{Nip10ReplyAttribution, TimelineEventCard};
 
 /// Admission predicate: `true` when `event` belongs in this flat feed.
 ///
-/// The host builds this — e.g. `move |e| e.author == pk && (e.kind == 1 ||
-/// e.kind == 6)` for an author feed, or a root-plus-`#e`-referrers test for a
-/// thread feed. Keeping the predicate host-supplied is what keeps the `{1,6}`
-/// kind policy out of the substrate (D0).
+/// The host/protocol adapter builds this from the declared perspective and the
+/// compiled acquisition kind set — e.g. `move |e| e.author == pk && (e.kind == 1
+/// || e.kind == 6)` for an author feed, or a root-plus-`#e`-referrers test for a
+/// thread feed. Keeping the predicate supplied from above the substrate is what
+/// keeps primary-kind policy out of `nmp-core` (D0).
 pub type FlatFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
-
-/// One stored row, keyed for newest-first ordering and de-dup by id.
-#[derive(Clone)]
-struct FlatRow {
-    created_at: u64,
-    card: TimelineEventCard,
-}
-
-#[derive(Default)]
-struct FlatFeedState {
-    /// `event_id -> row`. A re-arrival of the same id refreshes the card
-    /// (mirrors the kernel's replace semantics — the observer only fires on a
-    /// genuine insert/replace, so a refresh here is a real update).
-    rows: BTreeMap<String, FlatRow>,
-}
 
 /// A flat, predicate-gated note feed. Wire-compatible with the home feed's
 /// [`RootFeedSnapshot`] (empty `attribution`).
 pub struct FlatFeed {
-    predicate: FlatFeedPredicate,
-    /// The feed's pull interest, or `None` to fail closed.
-    ///
-    /// ADR-0058 §8 step-6B: a `Some(shape)` lets the host wire this feed to the
-    /// seq-ordered pull pager (`nmp_feed::PullFeedController`) so `load_older`
-    /// drains older notes. `None` is the fail-closed signal — the feed renders
-    /// from its push projection only and never broad-scans. The predicate alone
-    /// is not enough: pull needs a *covered* `InterestShape` (D5).
-    interest: Option<InterestShape>,
-    state: Mutex<FlatFeedState>,
-    /// The render-viewport limit — how many of the `(created_at, id)`-sorted
-    /// rows [`Self::snapshot_current_window`] emits. Starts at
-    /// `DEFAULT_FEED_WINDOW_LIMIT` (the first page) and grows one page per
-    /// [`Self::grow_visible_window`] call, capped at `MAX_FEED_WINDOW_LIMIT`
-    /// (D5). This mirrors the OP engine's `window_limit`
-    /// (`root_indexed/engine`); without it a `load_older` pull would ingest
-    /// older rows that stay BELOW the emitted first page forever (they sort
-    /// after the newest page), so the user would never see them.
-    visible_limit: AtomicUsize,
+    inner: Arc<GenericFlatFeed<TimelineEventCard>>,
 }
 
 impl FlatFeed {
@@ -98,10 +68,12 @@ impl FlatFeed {
     #[must_use]
     pub fn new(predicate: FlatFeedPredicate) -> Arc<Self> {
         Arc::new(Self {
-            predicate,
-            interest: None,
-            state: Mutex::new(FlatFeedState::default()),
-            visible_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
+            inner: GenericFlatFeed::with_merge(
+                predicate,
+                timeline_item_builder(),
+                None,
+                timeline_merge(),
+            ),
         })
     }
 
@@ -114,35 +86,23 @@ impl FlatFeed {
     /// `(created_at, id)`. Pass `None` to fail closed (equivalent to
     /// [`Self::new`]).
     #[must_use]
-    pub fn with_interest(predicate: FlatFeedPredicate, interest: Option<InterestShape>) -> Arc<Self> {
+    pub fn with_interest(
+        predicate: FlatFeedPredicate,
+        interest: Option<InterestShape>,
+    ) -> Arc<Self> {
         Arc::new(Self {
-            predicate,
-            interest,
-            state: Mutex::new(FlatFeedState::default()),
-            visible_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
+            inner: GenericFlatFeed::with_merge(
+                predicate,
+                timeline_item_builder(),
+                interest,
+                timeline_merge(),
+            ),
         })
     }
 
-    /// Ingest one event: render and store it iff the predicate admits it.
-    ///
-    /// Cheap and panic-free — runs on the actor thread between relay frames
-    /// (the [`KernelEventObserver`] contract). A poisoned lock is a silent
-    /// no-op (D6): the feed degrades to whatever it last held rather than
-    /// aborting ingest.
+    #[cfg(test)]
     fn ingest(&self, event: &KernelEvent) {
-        if !(self.predicate)(event) {
-            return;
-        }
-        let card = TimelineEventCard::from_event_for_op_feed(event, None);
-        if let Ok(mut st) = self.state.lock() {
-            st.rows.insert(
-                event.id.clone(),
-                FlatRow {
-                    created_at: event.created_at,
-                    card,
-                },
-            );
-        }
+        self.inner.on_kernel_event(event);
     }
 
     /// Build the visible-window snapshot: cards newest-first by
@@ -153,114 +113,128 @@ impl FlatFeed {
         &self,
         request: &FeedRequest,
     ) -> RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution> {
-        let Ok(st) = self.state.lock() else {
-            return RootFeedSnapshot {
-                cards: Vec::new(),
-                page: None,
-                metrics: None,
-            };
-        };
-
-        // Order newest-first by (created_at, id) — same ordering as the
-        // RootIndexedFeed snapshot so the two feeds sort identically.
-        let mut ordered: Vec<(u64, &String, &TimelineEventCard)> = st
-            .rows
-            .iter()
-            .map(|(id, row)| (row.created_at, id, &row.card))
-            .collect();
-        ordered.sort_by(|(lt, lid, _), (rt, rid, _)| rt.cmp(lt).then_with(|| rid.cmp(lid)));
-
-        let limit = request.bounded_limit();
-        let total = ordered.len();
-        let end = limit.min(total);
-        let has_more = end < total;
-        let next_cursor = if has_more {
-            ordered.get(end - 1).map(|(created_at, id, _)| FeedCursor {
-                created_at: *created_at,
-                id: (*id).clone(),
-            })
-        } else {
-            None
-        };
-
-        let cards = ordered[..end]
-            .iter()
-            .map(|(_, _, card)| RootCard {
-                card: (*card).clone(),
-                attribution: Vec::new(),
-            })
-            .collect::<Vec<_>>();
-
+        let snap = self.inner.snapshot(request);
         RootFeedSnapshot {
-            cards,
-            page: Some(FeedPage {
-                limit,
-                next_cursor,
-                has_more,
-                total_blocks: total,
-            }),
-            metrics: None,
+            cards: snap
+                .cards
+                .into_iter()
+                .map(|card| RootCard {
+                    card: card.card,
+                    attribution: Vec::new(),
+                })
+                .collect(),
+            page: snap.page,
+            metrics: snap.metrics,
         }
-    }
-
-    /// Grow the **render viewport** by one page, revealing more of the
-    /// `(created_at, id)`-sorted rows already ingested.
-    ///
-    /// ADR-0058 §8 step-6B: the viewport step of the single pull paging path,
-    /// mirroring the OP engine's `grow_visible_window`
-    /// (`root_indexed/engine`). It is called ONLY by
-    /// [`nmp_feed::PullFeedController`] (via the host's `advance` closure) after
-    /// a successful seq-ordered pull drain has ingested a page of (possibly
-    /// older) rows through [`KernelEventObserver::on_kernel_event`]. It is a
-    /// pure viewport widening over ALREADY-ingested rows — NOT a second pull or
-    /// completeness path: it never reads the store, never sorts, never touches
-    /// the cursor. Display order is unchanged.
-    ///
-    /// Returns `true` when the viewport actually grew (there were more rows to
-    /// reveal and the `MAX_FEED_WINDOW_LIMIT` ceiling was not yet hit), `false`
-    /// when everything is already visible or the cap is reached (D5).
-    pub fn grow_visible_window(&self) -> bool {
-        let total = self.state.lock().map(|st| st.rows.len()).unwrap_or(0);
-        let current = self.visible_limit.load(Ordering::Relaxed);
-        if current >= total || current >= MAX_FEED_WINDOW_LIMIT {
-            return false;
-        }
-        let new_limit = (current + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
-        self.visible_limit.store(new_limit, Ordering::Relaxed);
-        true
     }
 
     /// Build the visible-window snapshot using the feed's current render
     /// viewport limit. This honors any prior [`Self::grow_visible_window`] call
-    /// that widened the viewport beyond `DEFAULT_FEED_WINDOW_LIMIT`, so rows
-    /// revealed by `load_older` are emitted (the typed sidecar reads this, not a
-    /// fixed `FeedRequest::default()`).
+    /// that widened the viewport beyond the first page.
     #[must_use]
     pub fn snapshot_current_window(
         &self,
     ) -> RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution> {
-        let limit = self.visible_limit.load(Ordering::Relaxed);
-        self.snapshot(&FeedRequest::newest(limit))
+        let snap = self.inner.snapshot_current_window();
+        RootFeedSnapshot {
+            cards: snap
+                .cards
+                .into_iter()
+                .map(|card| RootCard {
+                    card: card.card,
+                    attribution: Vec::new(),
+                })
+                .collect(),
+            page: snap.page,
+            metrics: snap.metrics,
+        }
     }
 
-    /// Number of rows currently held (drives the host's `noteCountDisplay`
-    /// composition — the count the deleted `author_view.noteCountDisplay`
-    /// formatted).
+    /// Number of rows currently held.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.state.lock().map(|st| st.rows.len()).unwrap_or(0)
+        self.inner.len()
     }
 
     /// `true` when no rows are held.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.inner.is_empty()
     }
+
+    /// Grow the render viewport by one page over already-ingested rows.
+    pub fn grow_visible_window(&self) -> bool {
+        self.inner.grow_visible_window()
+    }
+}
+
+fn timeline_item_builder() -> FlatFeedItemBuilder<TimelineEventCard> {
+    Arc::new(|event| {
+        let card = TimelineEventCard::from_event_for_op_feed(event, None);
+        Some(FlatFeedItem {
+            id: card.id.clone(),
+            sort_created_at: card.created_at,
+            card,
+        })
+    })
+}
+
+fn timeline_merge() -> FlatFeedMerge<TimelineEventCard> {
+    Arc::new(|existing, incoming| match existing {
+        Some(existing) if existing.sort_created_at > incoming.sort_created_at => {
+            merge_older_target_into_bumped_row(existing, incoming)
+        }
+        Some(existing) if existing.sort_created_at == incoming.sort_created_at => {
+            prefer_hydrated_card(existing, incoming)
+        }
+        _ => incoming,
+    })
+}
+
+fn merge_older_target_into_bumped_row(
+    existing: &FlatFeedItem<TimelineEventCard>,
+    incoming: FlatFeedItem<TimelineEventCard>,
+) -> FlatFeedItem<TimelineEventCard> {
+    let Some(existing_repost) = existing.card.reposted_by.clone() else {
+        return existing.clone();
+    };
+    if incoming.card.reposted_by.is_some() {
+        return existing.clone();
+    }
+    let mut card = incoming.card;
+    card.reposted_by = Some(RepostAttribution {
+        author_pubkey: existing_repost.author_pubkey,
+        note_created_at: card.created_at,
+    });
+    card.created_at = existing.sort_created_at;
+    FlatFeedItem {
+        id: existing.id.clone(),
+        sort_created_at: existing.sort_created_at,
+        card,
+    }
+}
+
+fn prefer_hydrated_card(
+    existing: &FlatFeedItem<TimelineEventCard>,
+    incoming: FlatFeedItem<TimelineEventCard>,
+) -> FlatFeedItem<TimelineEventCard> {
+    if card_is_placeholder(&existing.card) && !card_is_placeholder(&incoming.card) {
+        return FlatFeedItem {
+            id: incoming.id,
+            sort_created_at: existing.sort_created_at,
+            card: incoming.card,
+        };
+    }
+    incoming
+}
+
+fn card_is_placeholder(card: &TimelineEventCard) -> bool {
+    card.content.is_empty() && card.reposted_by.is_some()
 }
 
 impl KernelEventObserver for FlatFeed {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        self.ingest(event);
+        self.inner.on_kernel_event(event);
     }
 }
 
@@ -271,21 +245,13 @@ impl FeedInterestShape for FlatFeed {
     /// every call and fails closed (returns `false`, no pull, no broad-scan)
     /// whenever it yields `None`.
     fn interest_shape(&self) -> Option<InterestShape> {
-        self.interest.clone()
+        self.inner.interest_shape()
     }
 }
 
 impl FeedController for FlatFeed {
     fn load_older(&self) -> bool {
-        // Projection-only fallback (ADR-0058 §8 6B). The single pull paging path
-        // is `nmp_feed::PullFeedController`, which the host wires around this
-        // feed when [`FlatFeed::with_interest`] gave it a covered shape; the
-        // controller (NOT this method) drives the seq-ordered drain. A bare
-        // `FlatFeed` registered without that controller has no covered interest,
-        // so it fails closed here: all admitted rows are already held in memory
-        // bounded by D5 retention, and there is no `created_at` window-grow
-        // paging in the feed itself.
-        false
+        self.inner.load_older()
     }
 }
 
@@ -293,7 +259,8 @@ impl FeedController for FlatFeed {
 /// the covered E1 `AuthorsKind` shape the kernel pull substrate maps to
 /// `idx_kind_author_time` (ADR-0045). Pair with [`author_feed_predicate`] and a
 /// `nmp_feed::PullFeedController` so `load_older` drains older notes by that
-/// author. The `{1,6}` kind policy lives in the host that calls this helper.
+/// author. The `kinds` argument is the compiled acquisition set derived from the
+/// app's primary-kind declaration.
 #[must_use]
 pub fn author_feed_shape(author: String, kinds: Vec<u32>) -> InterestShape {
     InterestShape::timeline_for(
@@ -305,25 +272,27 @@ pub fn author_feed_shape(author: String, kinds: Vec<u32>) -> InterestShape {
 /// Build the **thread-feed reply-tail** pull [`InterestShape`]:
 /// `{kinds, #e:[root]}` — the covered E2 `Etag` shape. This pages the *replies*
 /// that reference `root_id` via `#e`; the root note itself is an event-id-only
-/// interest that the pull substrate does not cover, so it stays hydrated through
-/// the existing claim path (ADR-0058 §8 6B). Pair with [`thread_feed_predicate`]
-/// (which still admits the root by id) and a `nmp_feed::PullFeedController`.
+/// interest that the pull substrate does not cover, so the screen/component that
+/// needs the root owns that separate dependency (ADR-0058 §8 6B). Pair with
+/// [`thread_feed_predicate`] (which still admits the root by id) and a
+/// `nmp_feed::PullFeedController`.
 #[must_use]
 pub fn thread_feed_shape(root_id: String, kinds: Vec<u32>) -> InterestShape {
     let mut shape = InterestShape {
         kinds: kinds.into_iter().collect::<BTreeSet<u32>>(),
         ..Default::default()
     };
-    shape.tags.insert("e".to_string(), BTreeSet::from([root_id]));
+    shape
+        .tags
+        .insert("e".to_string(), BTreeSet::from([root_id]));
     shape
 }
 
-/// Build an **author-feed** predicate: a host-chosen kind set authored by one
-/// pubkey. The `{1,6}` decision lives here (in nmp-nip01's helper, callable by
-/// the host) — the substrate never sees it.
+/// Build an **author-feed** predicate: a compiled acquisition kind set authored
+/// by one pubkey. For a primary kind `[1]` feed, the caller passes the adapter-
+/// derived `{1,6}` set; the substrate never chooses that policy.
 ///
-/// `kinds` is the host's note-kind policy (Chirp passes `[1, 6]`). `author` is
-/// the raw hex pubkey.
+/// `kinds` is the compiled acquisition kind set. `author` is the raw hex pubkey.
 #[must_use]
 pub fn author_feed_predicate(author: String, kinds: Vec<u32>) -> FlatFeedPredicate {
     Arc::new(move |event: &KernelEvent| event.author == author && kinds.contains(&event.kind))
