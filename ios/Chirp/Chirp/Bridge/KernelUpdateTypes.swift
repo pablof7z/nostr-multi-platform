@@ -256,20 +256,31 @@ enum DispatchResult: Equatable {
     /// Parse the JSON envelope returned by `nmp_app_dispatch_action`.
     ///
     /// The kernel's contract (`ffi/action.rs`): every non-null app returns
-    /// either `{"correlation_id":"<32-hex or event-id>"}` or
-    /// `{"error":"<reason>"}`. Anything else (malformed JSON, missing fields)
-    /// degrades to `.failure` so the caller never silently loses an action.
+    /// either `{"correlation_id":"<32-hex or event-id>"}` (accepted) or an
+    /// envelope carrying an `error`. A *synchronous rejection that still minted
+    /// a correlation_id* returns BOTH fields
+    /// (`{"correlation_id":…,"error":…}`) — the action was assigned an id but
+    /// then refused before any work was enqueued.
+    ///
+    /// #1676 BUG-C: `error` is inspected FIRST. The prior order read
+    /// `correlation_id` first and returned `.accepted` whenever it was present,
+    /// silently discarding the `error` string on the both-fields envelope — the
+    /// sync failure vanished and only ever surfaced (if at all) via a later
+    /// async terminal. Surfacing the error here means the caller shows the
+    /// rejection toast immediately; the kernel still records the matching
+    /// `Failed` terminal under the same id for any host watching the lifecycle
+    /// projection.
     static func parse(envelope: String) -> DispatchResult {
         guard let data = envelope.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             return .failure("dispatch envelope was not a JSON object (bytes=\(envelope.utf8.count))")
         }
-        if let correlationId = object["correlation_id"] as? String, !correlationId.isEmpty {
-            return .accepted(correlationId: correlationId)
-        }
         if let message = object["error"] as? String {
             return .failure(message)
+        }
+        if let correlationId = object["correlation_id"] as? String, !correlationId.isEmpty {
+            return .accepted(correlationId: correlationId)
         }
         return .failure("dispatch envelope missing both correlation_id and error (bytes=\(envelope.utf8.count))")
     }

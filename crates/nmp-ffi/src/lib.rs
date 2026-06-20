@@ -1672,10 +1672,14 @@ impl NmpApp {
         namespace: &str,
         action_json: &str,
     ) -> Result<(), String> {
+        // #1676: `ActionRegistry::execute` now returns a typed
+        // `ActionExecuteFailure`; this test seam keeps its `String` surface by
+        // flattening to the failure message.
         self.action_registry
             .execute(namespace, action_json, "test-correlation-id", &|cmd| {
                 self.send_cmd(cmd)
             })
+            .map_err(|failure| failure.message)
     }
 
     /// Set the one-shot MLS-autopublish intent (consumed by
