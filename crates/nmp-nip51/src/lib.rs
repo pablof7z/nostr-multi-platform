@@ -68,9 +68,12 @@
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 
 pub mod bookmarks;
+pub mod interests;
 pub mod projection;
 pub mod search_relays;
 pub mod wire;
+
+pub use interests::{active_mute_list_interest, active_mute_list_interest_id};
 
 pub use bookmarks::{
     build_bookmark_list_event, register_bookmark_actions, AddBookmarkAction, BookmarkItem,

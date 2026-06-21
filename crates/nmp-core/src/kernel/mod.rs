@@ -363,6 +363,8 @@ mod auth_url_threading_tests;
 mod contacts_chokepoint_pr3_tests;
 #[cfg(test)]
 mod contacts_fanout_tests;
+#[cfg(test)]
+mod mute_cold_start_tests;
 
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ};
 // `chrono::Local` reads the OS-local wall clock; the `clock` feature it lives

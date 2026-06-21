@@ -507,6 +507,12 @@ pub use comments_runtime::register_comment_runtime;
 #[path = "runtimes_zap_tests.rs"]
 mod zap_tests;
 
+// Mute-list runtime controller unit tests — mirrors runtimes_zap_tests.rs but
+// for the MuteRuntimeController (kind:10000 authors=[active_pubkey] interest).
+#[cfg(test)]
+#[path = "runtimes_mute_tests.rs"]
+mod mute_tests;
+
 // DM inbox account-switch teardown tests — verifies issue #1138 fix.
 #[cfg(test)]
 #[path = "runtimes_dm_inbox_tests.rs"]
