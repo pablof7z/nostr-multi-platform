@@ -2,10 +2,9 @@ import * as flatbuffers from "flatbuffers";
 
 import { OpFeedSnapshot, RelationCount, ReplyAttribution, RootCard } from "./generated/nmp/nip01";
 import { RelationCountState } from "./generated/nmp/nip01/relation-count-state";
-import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
-import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
+import { REFS_PROFILE_KEY } from "./refProfileStore";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 
@@ -14,9 +13,12 @@ const NOFS_SCHEMA_VERSION = 1;
 const NOFS_FILE_IDENTIFIER = "NOFS";
 const NOFS_PROJECTION_KEY = "nmp.feed.home";
 
-// `resolved_profiles` typed projection (KRPR) — kernel-owned profile map.
-const KRPR_FILE_IDENTIFIER = "KRPR";
-const KRPR_PROJECTION_KEY = "resolved_profiles";
+// `refs.profile` typed projection (NRRD row-delta carrier) — the kernel-owned
+// per-key reference-resolution projection that replaced the whole-map
+// `resolved_profiles` (KRPR). The opaque payload is an NRRD batch the stateful
+// `RefProfileStore`/`RefRowCache` merges; this module only extracts the raw
+// sidecar bytes for the client to feed into the cache.
+const NRRD_FILE_IDENTIFIER = "NRRD";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -112,10 +114,10 @@ function decodeAttribution(ra: ReplyAttribution): FeedAttribution {
   const display = ra.authorDisplay();
   if (display?.hasName()) {
     // Guard against empty string: `?? ""` would set authorDisplayName="" which
-    // blocks the resolvedProfiles (KRPR) fallback in feedItemsToRows because
+    // blocks the refs.profile display-name fallback in feedItemsToRows because
     // `"" ?? resolvedProfiles.get(pubkey)` returns "" (nullish coalescing only
     // bypasses null/undefined, not empty string).  Leave undefined so the
-    // presentation-layer join can supply the name from KRPR.
+    // presentation-layer join can supply the name from the refs.profile cache.
     const dn = display.name();
     if (dn) out.authorDisplayName = dn;
   }
@@ -272,110 +274,28 @@ export function decodeHomeFeed(snapshot: SnapshotFrame): { items: FeedItem[] } |
 }
 
 /**
- * Decode the `resolved_profiles` KRPR typed projection from a `SnapshotFrame`.
+ * Extract the raw `refs.profile` (NRRD) sidecar payload bytes from a
+ * `SnapshotFrame`, or `undefined` when the projection is absent / empty / carries
+ * the wrong file identifier.
  *
- * Returns a `Map<string, string>` mapping hex pubkey → display name for every
- * profile entry that has a display name. Entries without a kind:0 display name
- * (`hasDisplayName() === false`) are omitted — the caller falls back to
- * `shortKey(pubkey)` for those.
- *
- * Returns `undefined` when the projection is absent or the buffer is corrupt.
- * Callers should keep the last-good map (keep-last-good).
+ * The `refs.profile` projection is a per-KEY row-delta carrier: its payload is an
+ * NRRD `RefRowDeltaBatch` that MUST be merged into the stateful `RefProfileStore`
+ * (`RefRowCache`), not decoded in isolation. This function only returns the bytes;
+ * the client feeds them to `RefProfileStore.applySidecar(payload, sessionId,
+ * snapshotEpoch)`. A frame with NO `refs.profile` entry returns `undefined` and
+ * the caller leaves the persistent cache untouched (keep-last-good).
  */
-export function decodeResolvedProfiles(snapshot: SnapshotFrame): Map<string, string> | undefined {
+export function findRefsProfileSidecar(snapshot: SnapshotFrame): Uint8Array | undefined {
   for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
     const proj = snapshot.typedProjections(i);
-    if (!proj || proj.key() !== KRPR_PROJECTION_KEY) {
-      continue;
-    }
+    if (!proj || proj.key() !== REFS_PROFILE_KEY) continue;
     const payload = proj.payload();
-    if (!payload || payload.fileIdentifier() !== KRPR_FILE_IDENTIFIER) {
-      return undefined;
-    }
-    const payloadBytes = payload.payloadArray();
-    if (!payloadBytes || payloadBytes.length === 0) {
-      return undefined;
-    }
-    try {
-      const bb = new flatbuffers.ByteBuffer(payloadBytes);
-      if (!ResolvedProfilesSnapshot.bufferHasIdentifier(bb)) {
-        return undefined;
-      }
-      const root = ResolvedProfilesSnapshot.getRootAsResolvedProfilesSnapshot(bb);
-      const result = new Map<string, string>();
-      for (let j = 0; j < root.entriesLength(); j += 1) {
-        const entry = root.entries(j);
-        if (!entry) continue;
-        const key = entry.key();
-        const value = entry.value();
-        if (!key || !value) continue;
-        if (value.hasDisplayName()) {
-          const displayName = value.displayName();
-          if (displayName) {
-            result.set(key, displayName);
-          }
-        }
-      }
-      return result;
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Decode the resolved_profiles (KRPR) typed projection into a full
- * pubkey→ProfileWire map (display name + picture + nip05 + about + lnurl) for
- * the registry user-* components (NostrAvatar / NostrProfileName / Nip05Badge).
- * The name-only `decodeResolvedProfiles` above is kept for the feed-row
- * presentation join; this carries the picture URL the avatar needs.
- * Returns `undefined` on missing/corrupt projection (keep-last-good).
- */
-export function decodeResolvedProfileCards(
-  snapshot: SnapshotFrame,
-): Map<string, ProfileWire> | undefined {
-  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
-    const proj = snapshot.typedProjections(i);
-    if (!proj || proj.key() !== KRPR_PROJECTION_KEY) continue;
-    const payload = proj.payload();
-    if (!payload || payload.fileIdentifier() !== KRPR_FILE_IDENTIFIER) return undefined;
+    if (!payload || payload.fileIdentifier() !== NRRD_FILE_IDENTIFIER) return undefined;
     const payloadBytes = payload.payloadArray();
     if (!payloadBytes || payloadBytes.length === 0) return undefined;
-    try {
-      const bb = new flatbuffers.ByteBuffer(payloadBytes);
-      if (!ResolvedProfilesSnapshot.bufferHasIdentifier(bb)) return undefined;
-      const root = ResolvedProfilesSnapshot.getRootAsResolvedProfilesSnapshot(bb);
-      const out = new Map<string, ProfileWire>();
-      for (let j = 0; j < root.entriesLength(); j += 1) {
-        const entry = root.entries(j);
-        if (!entry) continue;
-        const key = entry.key();
-        const card = entry.value();
-        if (!key || !card) continue;
-        const wire: ProfileWire = { pubkey: key };
-        if (card.hasDisplayName()) {
-          const v = card.displayName();
-          if (v) wire.displayName = v;
-        }
-        if (card.hasPictureUrl()) {
-          const v = card.pictureUrl();
-          if (v) wire.pictureUrl = v;
-        }
-        const nip05 = card.nip05();
-        if (nip05) wire.nip05 = nip05;
-        const about = card.about();
-        if (about) wire.about = about;
-        if (card.hasLnurl()) {
-          const v = card.lnurl();
-          if (v) wire.lnurl = v;
-        }
-        out.set(key, wire);
-      }
-      return out;
-    } catch {
-      return undefined;
-    }
+    // payloadArray() is a view over the frame buffer; the cache copies the rows
+    // it commits, so passing the view through is safe (no retained reference).
+    return payloadBytes;
   }
   return undefined;
 }

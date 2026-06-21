@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { MessageSquare, Reply, Send, Star, UserRound, Repeat2, CornerDownRight } from "lucide-solid";
 import {
-  claimProfileCommand,
+  resolveProfileCommand,
   followCommand,
   openProfileCommand,
   openThreadCommand,
@@ -161,7 +161,7 @@ function Post(props: {
     if (badge.authorPubkey) {
       const badgeConsumerId = `chirp-web-attr-${props.item.id}-${badge.authorPubkey}`;
       const badgePubkey = badge.authorPubkey;
-      onMount(() => claim(claimProfileCommand(badgePubkey, badgeConsumerId)));
+      onMount(() => claim(resolveProfileCommand(badgePubkey, badgeConsumerId)));
       onCleanup(() => claim(releaseProfileCommand(badgePubkey, badgeConsumerId)));
     }
   }

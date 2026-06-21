@@ -1,5 +1,5 @@
-//! Tests for `dispatch_routing` — claim/release parsing, PR-3 interest
-//! dispatch parsing, and the stable reason strings.
+//! Tests for `dispatch_routing` — ADR-0063 reference-resolution parsing, PR-3
+//! interest dispatch parsing, and the stable reason strings.
 //!
 //! Moved out of `dispatch_routing.rs` (NMP #169-style file-size split) to
 //! keep the module root under the 500-LOC hard ceiling.
@@ -7,101 +7,176 @@
 use super::*;
 
 #[test]
-fn claim_dispatch_from_action_routes_claim_profile() {
+fn ref_dispatch_routes_resolve_profile() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.claim_profile".to_string(),
-        payload: serde_json::json!({"pubkey": "abc123", "consumer_id": "chirp-web-author-1"}),
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0, "key": "abc123", "consumer_id": "chirp-web-author-1",
+            "shape": 0, "liveness": 0,
+        }),
         correlation_id: "x".to_string(),
     };
     assert_eq!(
-        claim_dispatch_from_action(&action),
-        Some(ClaimDispatch::ClaimProfile {
-            pubkey: "abc123".to_string(),
+        ref_dispatch_from_action(&action),
+        Some(RefDispatch::Resolve {
+            namespace: RefNamespace::Profile,
+            key: "abc123".to_string(),
             consumer_id: "chirp-web-author-1".to_string(),
+            shape: RefShape::Profile(ProfileShape::Ref),
+            liveness: RefLiveness::CacheOk,
         })
     );
 }
 
 #[test]
-fn claim_dispatch_from_action_routes_release_profile() {
+fn ref_dispatch_routes_resolve_profile_card_live() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.release_profile".to_string(),
-        payload: serde_json::json!({"pubkey": "abc123", "consumer_id": "chirp-web-author-1"}),
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0, "key": "abc123", "consumer_id": "screen",
+            "shape": 1, "liveness": 1,
+        }),
         correlation_id: "x".to_string(),
     };
     assert_eq!(
-        claim_dispatch_from_action(&action),
-        Some(ClaimDispatch::ReleaseProfile {
-            pubkey: "abc123".to_string(),
-            consumer_id: "chirp-web-author-1".to_string(),
+        ref_dispatch_from_action(&action),
+        Some(RefDispatch::Resolve {
+            namespace: RefNamespace::Profile,
+            key: "abc123".to_string(),
+            consumer_id: "screen".to_string(),
+            shape: RefShape::Profile(ProfileShape::Card),
+            liveness: RefLiveness::Live,
         })
     );
 }
 
 #[test]
-fn claim_dispatch_from_action_routes_claim_event() {
+fn ref_dispatch_routes_resolve_event() {
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 1, "key": "deadbeef", "consumer_id": "embed-1",
+            "shape": 0, "liveness": 0,
+        }),
+        correlation_id: "x".to_string(),
+    };
+    assert_eq!(
+        ref_dispatch_from_action(&action),
+        Some(RefDispatch::Resolve {
+            namespace: RefNamespace::Event,
+            key: "deadbeef".to_string(),
+            consumer_id: "embed-1".to_string(),
+            shape: RefShape::Event(EventShape::Embed),
+            liveness: RefLiveness::CacheOk,
+        })
+    );
+}
+
+#[test]
+fn ref_dispatch_routes_release_ref() {
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.release_ref".to_string(),
+        payload: serde_json::json!({"namespace": 0, "key": "abc123", "consumer_id": "c"}),
+        correlation_id: "x".to_string(),
+    };
+    assert_eq!(
+        ref_dispatch_from_action(&action),
+        Some(RefDispatch::Release {
+            namespace: RefNamespace::Profile,
+            key: "abc123".to_string(),
+            consumer_id: "c".to_string(),
+        })
+    );
+}
+
+#[test]
+fn ref_dispatch_routes_legacy_event_uri_front_door() {
     let uri = "nostr:note1abc".to_string();
     let action = ActionDispatch {
         action_type: "nmp.kernel.claim_event".to_string(),
-        payload: serde_json::json!({"uri": uri, "consumer_id": "chirp-web-embed-1"}),
+        payload: serde_json::json!({"uri": uri, "consumer_id": "embed-1"}),
         correlation_id: "x".to_string(),
     };
     assert_eq!(
-        claim_dispatch_from_action(&action),
-        Some(ClaimDispatch::ClaimEvent {
+        ref_dispatch_from_action(&action),
+        Some(RefDispatch::ClaimEventUri {
             uri,
-            consumer_id: "chirp-web-embed-1".to_string(),
+            consumer_id: "embed-1".to_string(),
         })
     );
 }
 
 #[test]
-fn claim_dispatch_from_action_routes_release_event() {
-    let uri = "nostr:note1abc".to_string();
-    let action = ActionDispatch {
-        action_type: "nmp.kernel.release_event".to_string(),
-        payload: serde_json::json!({"uri": uri, "consumer_id": "chirp-web-embed-1"}),
-        correlation_id: "x".to_string(),
-    };
-    assert_eq!(
-        claim_dispatch_from_action(&action),
-        Some(ClaimDispatch::ReleaseEvent {
-            uri,
-            consumer_id: "chirp-web-embed-1".to_string(),
-        })
-    );
-}
-
-#[test]
-fn claim_dispatch_from_action_returns_none_for_non_claim_type() {
+fn ref_dispatch_returns_none_for_non_ref_type() {
     let action = ActionDispatch {
         action_type: "nmp.publish".to_string(),
         payload: serde_json::json!({}),
         correlation_id: "x".to_string(),
     };
-    assert!(claim_dispatch_from_action(&action).is_none());
+    assert!(ref_dispatch_from_action(&action).is_none());
 }
 
 #[test]
-fn claim_dispatch_from_action_returns_none_for_missing_field() {
+fn ref_dispatch_returns_none_for_missing_field() {
     // Missing consumer_id — defensive parse returns None (D6).
     let action = ActionDispatch {
-        action_type: "nmp.kernel.claim_profile".to_string(),
-        payload: serde_json::json!({"pubkey": "abc123"}),
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({"namespace": 0, "key": "abc123", "shape": 0, "liveness": 0}),
         correlation_id: "x".to_string(),
     };
-    assert!(claim_dispatch_from_action(&action).is_none());
+    assert!(ref_dispatch_from_action(&action).is_none());
 }
 
 #[test]
-fn claim_dispatch_from_action_returns_none_for_null_payload() {
+fn ref_dispatch_returns_none_for_null_payload() {
     // Payload is null (not a JSON object) — must not panic (D6).
     let action = ActionDispatch {
-        action_type: "nmp.kernel.claim_profile".to_string(),
+        action_type: "nmp.kernel.resolve_ref".to_string(),
         payload: serde_json::Value::Null,
         correlation_id: "x".to_string(),
     };
-    assert!(claim_dispatch_from_action(&action).is_none());
+    assert!(ref_dispatch_from_action(&action).is_none());
+}
+
+#[test]
+fn ref_dispatch_fails_closed_on_unknown_namespace_discriminant() {
+    // namespace = 99 is neither Profile (0) nor Event (1). It MUST reject, NOT
+    // coerce to a default namespace (D6, fail-closed).
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 99, "key": "abc", "consumer_id": "c", "shape": 0, "liveness": 0,
+        }),
+        correlation_id: "x".to_string(),
+    };
+    assert!(ref_dispatch_from_action(&action).is_none());
+}
+
+#[test]
+fn ref_dispatch_fails_closed_on_unknown_shape_discriminant() {
+    // shape = 7 is not a valid profile shape (0 = ref, 1 = card). Reject, never
+    // coerce to a default shape (D6).
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0, "key": "abc", "consumer_id": "c", "shape": 7, "liveness": 0,
+        }),
+        correlation_id: "x".to_string(),
+    };
+    assert!(ref_dispatch_from_action(&action).is_none());
+}
+
+#[test]
+fn ref_dispatch_fails_closed_on_unknown_liveness_discriminant() {
+    // liveness = 5 is neither CacheOk (0) nor Live (1). Reject (D6).
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0, "key": "abc", "consumer_id": "c", "shape": 0, "liveness": 5,
+        }),
+        correlation_id: "x".to_string(),
+    };
+    assert!(ref_dispatch_from_action(&action).is_none());
 }
 
 #[test]
@@ -271,7 +346,7 @@ fn interest_dispatch_parses_clear_active_follows_feed() {
 #[test]
 fn interest_dispatch_returns_none_for_unknown_type() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.claim_profile".to_string(),
+        action_type: "nmp.kernel.resolve_ref".to_string(),
         payload: serde_json::json!({}),
         correlation_id: "x".to_string(),
     };

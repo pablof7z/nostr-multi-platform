@@ -4,25 +4,25 @@
 
 import * as flatbuffers from 'flatbuffers';
 
-import { ProfileCard } from '../../nmp/kernel/profile-card.js';
+import { ClaimedEvent } from '../../nmp/kernel/claimed-event.js';
 
 
-export class ResolvedProfileEntry {
+export class ClaimedEventEntry {
   bb: flatbuffers.ByteBuffer|null = null;
   bb_pos = 0;
-  __init(i:number, bb:flatbuffers.ByteBuffer):ResolvedProfileEntry {
+  __init(i:number, bb:flatbuffers.ByteBuffer):ClaimedEventEntry {
   this.bb_pos = i;
   this.bb = bb;
   return this;
 }
 
-static getRootAsResolvedProfileEntry(bb:flatbuffers.ByteBuffer, obj?:ResolvedProfileEntry):ResolvedProfileEntry {
-  return (obj || new ResolvedProfileEntry()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+static getRootAsClaimedEventEntry(bb:flatbuffers.ByteBuffer, obj?:ClaimedEventEntry):ClaimedEventEntry {
+  return (obj || new ClaimedEventEntry()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
-static getSizePrefixedRootAsResolvedProfileEntry(bb:flatbuffers.ByteBuffer, obj?:ResolvedProfileEntry):ResolvedProfileEntry {
+static getSizePrefixedRootAsClaimedEventEntry(bb:flatbuffers.ByteBuffer, obj?:ClaimedEventEntry):ClaimedEventEntry {
   bb.setPosition(bb.position() + flatbuffers.SIZE_PREFIX_LENGTH);
-  return (obj || new ResolvedProfileEntry()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+  return (obj || new ClaimedEventEntry()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
 key():string|null
@@ -32,12 +32,12 @@ key(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-value(obj?:ProfileCard):ProfileCard|null {
+value(obj?:ClaimedEvent):ClaimedEvent|null {
   const offset = this.bb!.__offset(this.bb_pos, 6);
-  return offset ? (obj || new ProfileCard()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
+  return offset ? (obj || new ClaimedEvent()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
-static startResolvedProfileEntry(builder:flatbuffers.Builder) {
+static startClaimedEventEntry(builder:flatbuffers.Builder) {
   builder.startObject(2);
 }
 
@@ -49,7 +49,7 @@ static addValue(builder:flatbuffers.Builder, valueOffset:flatbuffers.Offset) {
   builder.addFieldOffset(1, valueOffset, 0);
 }
 
-static endResolvedProfileEntry(builder:flatbuffers.Builder):flatbuffers.Offset {
+static endClaimedEventEntry(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
