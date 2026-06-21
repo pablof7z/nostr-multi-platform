@@ -1,6 +1,6 @@
 //! Cold-start REQ emission: self profile / NIP-65 relay list / NIP-17 DM relay
-//! list / kind:10000 mute list / kind:10006 blocked-relay list, and the active
-//! account's kind:3 follow list. No hardcoded seed timeline.
+//! list / kind:10006 blocked-relay list, and the active account's kind:3 follow
+//! list. No hardcoded seed timeline.
 
 use super::super::{Duration, Instant, Kernel, OutboundMessage};
 use crate::planner::{
@@ -12,8 +12,8 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// keeps live after sign-in.
 ///
 /// Reactive design: the host wires up its kind:0 / kind:3 / kind:10002 /
-/// kind:10000 / kind:10006 readers exactly once at sign-in and gets fresh
-/// data automatically whenever the account republishes any of these. The
+/// kind:10006 readers exactly once at sign-in and gets fresh data
+/// automatically whenever the account republishes any of these. The
 /// pre-V-04 model fired a one-shot REQ per kind and closed it on EOSE,
 /// which left apps stale after the first round-trip and forced ad-hoc
 /// re-fetch loops in each view module.
@@ -23,11 +23,17 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 ///   fresh as the user mutes / unfollows)
 /// - **10002**: NIP-65 relay list (mailboxes — routing decisions must
 ///   re-resolve when the user edits this from a second device)
-/// - **10000**: mute list
 /// - **10006**: blocked-relay list (fed into the [`crate::substrate::BlockedRelayLookup`]
 ///   handle so the router's subtractive blocked-set post-pass picks up
 ///   changes mid-session)
-const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10000, 10006];
+///
+/// kind:10000 (mute list) is intentionally excluded: the host-side
+/// `MuteRuntimeController` (in `nmp-defaults`) owns a dedicated
+/// `authors=[active_pubkey] / kinds=[10000]` interest and pushes it via
+/// `PushInterest` on sign-in. Free-riding on this bundle would route mute
+/// lists through the wrong interest scope — D0 forbids the kernel knowing
+/// about NIP-51 mute semantics.
+const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10006];
 
 impl Kernel {
     pub(crate) fn startup_requests(&mut self) -> Vec<OutboundMessage> {
@@ -104,7 +110,7 @@ impl Kernel {
         // ── Reactive tailing self-kind subscription ──────────────────────
         //
         // One Tailing interest carrying every account-config kind in
-        // `SELF_KINDS_TAILING` (kinds 0, 3, 10002, 10000, 10006). The
+        // `SELF_KINDS_TAILING` (kinds 0, 3, 10002, 10006). The
         // planner coalesces these into a single REQ on the active
         // account's outbox (NIP-65 write set when known, falling back to
         // `bootstrap_indexer_relays` while the kind:10002 round-trip is
@@ -333,8 +339,9 @@ mod tests {
 
     /// Active-account bootstrap must emit:
     /// 1. One reactive Tailing REQ for the self-kinds (kinds 0, 3, 10002,
-    ///    10000, 10006) pinned to the active account with NO `limit` —
-    ///    fresh data flows in as the account republishes any of them.
+    ///    10006) pinned to the active account with NO `limit` — fresh data
+    ///    flows in as the account republishes any of them. kind:10000 (mute
+    ///    list) is owned by `MuteRuntimeController` and excluded here.
     /// 2. A kind:10050 OneShot pinned to the active account with `limit:1`
     ///    (NIP-17 DM relay list — F-02 cold-start fetch, intentionally
     ///    NOT folded into the tailing REQ because the DM gift-wrap
@@ -361,8 +368,9 @@ mod tests {
         let msgs = kernel.drain_lifecycle_outbound();
         assert!(!msgs.is_empty(), "planner must emit bootstrap wire frames");
 
-        // (1) Reactive Tailing self-kinds REQ — kinds [0,3,10002,10000,10006],
+        // (1) Reactive Tailing self-kinds REQ — kinds [0,3,10002,10006],
         // pinned to ALICE, NO `limit` (no truncation of mid-session updates).
+        // kind:10000 excluded — owned by MuteRuntimeController.
         assert!(
             has_filter_for(&msgs, ALICE, SELF_KINDS_TAILING, None),
             "bootstrap must emit a Tailing REQ for kinds {:?} pinned to \

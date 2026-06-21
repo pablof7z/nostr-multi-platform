@@ -46,10 +46,12 @@
 //!
 //! # Standing subscription
 //!
-//! The WOT bootstrap interest pushed by `nmp-wot` includes kind:10000 in its
-//! `WOT_BOOTSTRAP_KINDS` list (see `nmp-wot/src/interest.rs`). No separate
-//! interest push is needed — the observer will receive the active account's
-//! kind:10000 as it arrives.
+//! The `MuteRuntimeController` (see
+//! `crates/nmp-defaults/src/runtimes/mute_runtime.rs`) pushes a
+//! `active_mute_list_interest(pubkey)` on sign-in so the kernel has a live
+//! `authors=[active_pubkey] / kinds=[10000]` subscription. No separate
+//! interest push is needed in this crate — wiring is the host's
+//! responsibility via the runtime controller.
 //!
 //! # D-doctrine
 //!
@@ -202,8 +204,8 @@ impl KernelEventObserver for MuteListProjection {
     ///
     /// `is_suppressed_author` only uses the active account's mute set, so
     /// kind:10000 events authored by anyone else would accumulate as dead
-    /// weight. On account switch, the kernel re-fetches kind:10000 via the
-    /// WOT bootstrap interest so the new active account's mute list
+    /// weight. On account switch, `MuteRuntimeController` withdraws the old
+    /// interest and pushes a new one so the new active account's mute list
     /// repopulates on its own.
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_MUTE_LIST {
