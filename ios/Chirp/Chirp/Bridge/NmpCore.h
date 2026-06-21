@@ -83,7 +83,7 @@ void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 // The old claim_*/release_* symbols are kept until Lane H deletes them.
 //
 // `namespace` — 0 = profile (kind:0), 1 = event.
-// `key` — 64-hex pubkey for profile; event-id hex or "kind:pubkey:d" for event.
+// `key` — lowercase 64-hex pubkey for profile; lowercase event-id hex or "kind:pubkey:d" for event.
 // `consumer_id` — opaque refcount owner key (e.g. SwiftUI view identity).
 // `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
 //   Globally unique across namespaces; kernel fails closed on namespace/shape mismatch.

@@ -22,6 +22,7 @@ mod startup;
 
 pub use profile::ProfileLiveness;
 // ADR-0063 (#1671 Lane D): the canonical cold-start-parked event target.
+pub(in crate::kernel) use event_key::parse_event_key;
 pub(in crate::kernel) use event_key::PendingEventClaim;
 
 use super::{
