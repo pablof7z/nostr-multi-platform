@@ -2,7 +2,7 @@
 title: Dispatch Action Seam
 slug: dispatch-action-seam
 topic: ffi-runtime
-summary: The dispatch_action seam is structurally vestigial â 70 C-ABI symbols exist but only 3 are routed through dispatch_action
+summary: ADR-0064 collapses the write path to a single byte-transport doorway (one doorway per boundary). Multiple bespoke event-producing C symbols previously bypassed the dispatch_action doorway; migration to eliminate those bypasses is in progress.
 tags:
   - capture
 volatility: warm
@@ -25,7 +25,7 @@ sources:
 
 ## Coverage and Bypasses
 
-The dispatch_action seam is structurally vestigial — 70 C-ABI symbols exist but only 3 are routed through dispatch_action. The remaining bypasses use direct send_cmd calls. PublishSignedEvent FFI bypasses PublishModule::start validation, allowing malformed signed events to reach the actor without validation. nmp_app_publish_unsigned_event is also an event-producing FFI bypass. Marmot depends on nmp_app_publish_signed_event_to via extern C call across crate boundaries, which was replaced by the internal kernel API NmpApp::publish_signed_explicit. WalletConnect, WalletDisconnect, and WalletPayInvoice ActorCommand variants have no ActionModule implementations and are called via direct send_cmd from ffi/wallet.rs. Do not migrate WalletConnect/Disconnect/PayInvoice to dispatch_action; they are wallet session lifecycle, not event production. The Theme A discriminator is specifically 'generic user/app-authored publish-engine events' — NWC pay-invoice signs kind:23194 but is wallet lifecycle, so it stays bespoke.
+The dispatch_action seam was structurally vestigial — multiple bespoke event-producing C symbols bypassed the one correct doorway (dispatch_action) via direct send_cmd calls. ADR-0064 (2026-06-21) collapses this to one byte-transport doorway; migration is in progress. PublishSignedEvent FFI bypassed PublishModule::start validation, allowing malformed signed events to reach the actor without validation. nmp_app_publish_unsigned_event was also an event-producing FFI bypass. Marmot depended on nmp_app_publish_signed_event_to via extern C call across crate boundaries, which was replaced by the internal kernel API NmpApp::publish_signed_explicit. WalletConnect, WalletDisconnect, and WalletPayInvoice ActorCommand variants have no ActionModule implementations and are called via direct send_cmd from ffi/wallet.rs. Do not migrate WalletConnect/Disconnect/PayInvoice to dispatch_action; they are wallet session lifecycle, not event production. The Theme A discriminator is specifically 'generic user/app-authored publish-engine events' — NWC pay-invoice signs kind:23194 but is wallet lifecycle, so it stays bespoke.
 
 V-38 (NWC wallet), V-39 (DM send), V-40 (DM ingest), V-41 (zap LNURL), and V-50 (outbox routing) are all post-v1 violations requiring the open-ActorCommand seam as a shared prerequisite. V-77 (nmp-nwc MakeInvoice) has a fully typed enum variant, params struct, result struct, and builder function but zero runtime dispatch end-to-end. The ActorCommand open seam for write-path protocol commands is ActorCommand::Protocol(Box<dyn ProtocolCommand>); NIP crates dispatch commands without the kernel knowing NIP nouns.
 
@@ -41,7 +41,7 @@ HttpCapability exists on the iOS side but has no Rust-side implementation; it wa
 
 Do not add ViewModule or IdentityModule traits; they were deliberately deleted because no registry drove them.
 
-No new C-ABI symbols should be added; new projection fields and dispatch specs route through the existing nmp_app_dispatch_action seam and built-in snapshot projection map. A C-ABI freeze must be enforced via CI lint to prevent further direct C-ABI symbol growth outside dispatch_action. The nmp_app_register_action_executor C-ABI symbol and the register_action_executor Rust method are deleted; action registration is now a single typed app.register_action::<M>() call. The wire_action! macro is also deleted; action wiring no longer requires a paired macro to avoid the two-call footgun.
+No event-producing bypass of the one doorway should be added; new projection fields and dispatch specs route through the existing nmp_app_dispatch_action seam and built-in snapshot projection map. The D11 lint enforces this: no new bespoke event-producing FFI symbol that bypasses the dispatch_action doorway. The nmp_app_register_action_executor C-ABI symbol and the register_action_executor Rust method are deleted; action registration is now a single typed app.register_action::<M>() call. The wire_action! macro is also deleted; action wiring no longer requires a paired macro to avoid the two-call footgun.
 
 The ActionModule trait has a required fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> method, ensuring validator-executor symmetry is a type-level fact rather than a manual two-call contract.
 
