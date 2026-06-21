@@ -85,6 +85,25 @@ pub fn note_body(
     });
 }
 
+/// ADR-0063 (#1671 Lane F) — collect every profile-mention pubkey the note body
+/// renders, using the SAME tokenisation `note_body` walks so the resolved set
+/// matches exactly what's on screen (a mention the renderer draws via
+/// `mention_label` is exactly a `Segment::Mention(NostrUri::Profile{pubkey})`).
+/// Raw hex only (ADR-0032). Best-effort (D1): unparseable content yields nothing.
+pub fn collect_body_mention_pubkeys(content: &str, out: &mut std::collections::HashSet<String>) {
+    if content.is_empty() {
+        return;
+    }
+    let tree = tokenize_with_kind(content, &[], RenderMode::Auto, 1);
+    for seg in &tree.segments {
+        if let Segment::Mention(NostrUri::Profile { pubkey, .. }) = seg {
+            if !pubkey.is_empty() {
+                out.insert(pubkey.clone());
+            }
+        }
+    }
+}
+
 fn mention_label(uri: &NostrUri, profiles: &HashMap<String, ProfileCard>) -> String {
     let NostrUri::Profile { pubkey, .. } = uri else {
         return "@mention".to_string();
@@ -259,6 +278,32 @@ mod tests {
             mention_label(&uri, &profiles),
             format!("@{}", nmp_core::display::short_npub(&pubkey))
         );
+    }
+
+    #[test]
+    fn collect_body_mention_pubkeys_extracts_rendered_profile_mention() {
+        // The SAME tokenisation note_body walks: a `nostr:npub…` in the body is
+        // a Segment::Mention(Profile{pubkey}), so the resolved set must contain
+        // exactly that pubkey (matching what mention_label draws on screen).
+        let pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let npub = nmp_core::nip19::encode_npub(pubkey).expect("fixture npub encodes");
+        let content = format!("hello nostr:{npub} how are you");
+
+        let mut out = std::collections::HashSet::new();
+        collect_body_mention_pubkeys(&content, &mut out);
+
+        assert!(
+            out.contains(pubkey),
+            "a rendered profile mention must be collected so its ref resolves"
+        );
+        assert_eq!(out.len(), 1, "only the mentioned pubkey, nothing else");
+    }
+
+    #[test]
+    fn collect_body_mention_pubkeys_ignores_plain_text() {
+        let mut out = std::collections::HashSet::new();
+        collect_body_mention_pubkeys("just a plain note with no mentions", &mut out);
+        assert!(out.is_empty(), "no mention segments → nothing to resolve");
     }
 
     #[test]
