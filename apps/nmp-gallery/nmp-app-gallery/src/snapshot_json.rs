@@ -144,6 +144,17 @@ fn accounts_json(entry: Option<&TypedProjectionData>) -> Result<Value, String> {
     Ok(accounts_model_json(&model))
 }
 
+/// Shell-side signer label derived from the raw `signer_kind` wire token. The
+/// kernel no longer ships a pre-rendered `signer_label` (#1712, D7/D27 —
+/// presentation artifact); the gallery shell derives it.
+fn signer_label_for_kind(kind: &str) -> &str {
+    match kind {
+        "local" => "Local key",
+        "nip46" => "NIP-46",
+        other => other,
+    }
+}
+
 fn accounts_model_json(model: &AccountsModel) -> Value {
     let accounts = model
         .accounts
@@ -156,7 +167,7 @@ fn accounts_model_json(model: &AccountsModel) -> Value {
                 "display_name": row.display_name,
                 "signer_kind": row.signer_kind,
                 "status": row.status,
-                "signer_label": row.signer_label,
+                "signer_label": signer_label_for_kind(&row.signer_kind),
                 "signer_is_remote": row.signer_is_remote,
                 "is_active": row.is_active,
                 "active": row.is_active,
@@ -181,9 +192,10 @@ fn relay_role_options_model_json(model: &RelayRoleOptionsModel) -> Value {
             .options
             .iter()
             .map(|option| {
+                // `label` removed from the wire (#1678, D7) — shells map
+                // value→label themselves.
                 json!({
                     "value": option.value,
-                    "label": option.label,
                     "tint": option.tint,
                     "is_default": option.is_default,
                 })

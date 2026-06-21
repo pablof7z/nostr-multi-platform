@@ -122,9 +122,26 @@ struct Nip46Onboarding: Decodable, Equatable {
     /// `UIApplication.canOpenURL` (a platform capability per aim.md §4.6).
     struct SignerApp: Decodable, Equatable, Identifiable {
         let scheme: String
-        let displayLabel: String
         let signerKind: String
         var id: String { scheme }
+
+        /// Human-readable brand name derived from the raw `scheme` token.
+        ///
+        /// `display_label` was removed from the `nip46_onboarding` wire (#1712,
+        /// D7/D27 — presentation artifact). The kernel now ships only the raw
+        /// `scheme`; the shell maps it to a brand name here (the same set Rust's
+        /// signer catalog owns). Unknown schemes fall back to a humanized scheme.
+        var displayLabel: String {
+            switch scheme {
+            case "nostrsigner://":  return "Amber"
+            case "primal://":       return "Primal"
+            case "nostrconnect://": return "Nostr Connect"
+            default:
+                return scheme
+                    .replacingOccurrences(of: "://", with: "")
+                    .capitalized
+            }
+        }
     }
 
     /// Typed stage token. `nil` when no handshake is in flight (mirrors the

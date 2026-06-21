@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "is chirp ios using nmp ui components for avatar in thread replies?"
+  ],
+  [
+    "assistant",
+    "The system reminder context about the wiki mentioning `ChirpAvatar` is stale — the code now uses `NostrAvatar` everywhere. I don't need to update a memory file for this since the wiki itself should be updated. The answer stands: yes, thread replies use the registry `NostrAvatar` component."
+  ]
+]

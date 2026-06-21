@@ -26,7 +26,6 @@ use crate::{
     nostr_nip05_badge::NostrNip05Badge,
     nostr_npub_chip::NostrNpubChip,
     nostr_profile_name::NostrProfileName,
-    nostr_quote_card::NostrQuoteCard,
     nostr_user_card::NostrUserCard,
 };
 
@@ -68,7 +67,7 @@ pub fn plain_lines(
         "content-view" => content_view_lines(&data.content_view, width),
         "content-mention-chip" => content_view_lines(&data.content_mention_chip, width),
         "content-media-grid" => content_view_lines(&data.content_media_grid, width),
-        "content-quote-card" => quote_card_lines(&data.content_quote_card, width),
+        "content-kind-registry" => content_view_lines(&data.content_quote_card, width),
         "user-avatar" => vec![format!("avatar {}", primary.initials())],
         "user-name" => vec![primary.display().to_string()],
         "user-nip05" => vec![primary.nip05().unwrap_or("").to_string()],
@@ -138,7 +137,7 @@ pub fn render_body(
             &media_images,
             embed_ctx,
         ),
-        "content-quote-card" => {
+        "content-kind-registry" => {
             render_embed_showcase("embed-note", area, buf, data, &media_images, embed_ctx)
         }
         "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
@@ -378,32 +377,11 @@ fn content_view_lines(example: &ContentExample, width: usize) -> Vec<String> {
         .collect()
 }
 
-fn quote_card_lines(example: &ContentExample, width: usize) -> Vec<String> {
-    first_event_ref(example)
-        .map(|node| {
-            NostrQuoteCard::new(&example.tree, node)
-                .render_data(Some(&example.render_data))
-                .lines(width)
-                .iter()
-                .map(line_text)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 fn first_mention(example: &ContentExample) -> Option<&crate::content_tree_wire::WireUri> {
     example.tree.nodes.iter().find_map(|node| match node {
         WireNode::Mention(uri) => Some(uri),
         _ => None,
     })
-}
-
-fn first_event_ref(example: &ContentExample) -> Option<&WireNode> {
-    example
-        .tree
-        .nodes
-        .iter()
-        .find(|node| matches!(node, WireNode::EventRef(_)))
 }
 
 fn paragraph(lines: Vec<Line<'static>>) -> Paragraph<'static> {
@@ -499,10 +477,10 @@ mod tests {
     }
 
     #[test]
-    fn quote_card_uses_real_reference_fallback() {
+    fn kind_registry_embed_uses_real_reference_fallback() {
         let data = GalleryData::render_test_data();
         let profiles = LiveProfileMap::new();
-        let lines = plain_lines("content-quote-card", &data, &profiles, 80).join(" ");
+        let lines = plain_lines("content-kind-registry", &data, &profiles, 80).join(" ");
         assert!(lines.contains("quote 276d69"), "{lines}");
         assert!(lines.contains("276d69"), "{lines}");
         assert!(!lines.contains("Quoted event body"), "{lines}");

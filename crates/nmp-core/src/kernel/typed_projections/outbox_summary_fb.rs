@@ -47,7 +47,7 @@ pub const OUTBOX_SUMMARY_SCHEMA_VERSION: u32 = 1;
 
 /// The `"outbox_summary"` read model — a field-for-field mirror of the
 /// SERIALISED [`OutboxSummarySnapshot`](crate::kernel::OutboxSummarySnapshot).
-/// ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings
+/// ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
 /// removed; shells derive display strings from the raw counters.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OutboxSummaryModel {

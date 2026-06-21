@@ -1,0 +1,22 @@
+[
+  [
+    "user",
+    "read issue 1523"
+  ],
+  [
+    "assistant",
+    "Summarized epic #1523: adopting nostrdb cache lessons without direct dependency, with 9 sub-issues (#1515–#1524) and key constraints (no second LMDB writer, no nostrdb source copy, no polling, baseline capture as hard precondition)."
+  ],
+  [
+    "user",
+    "work one by one and land them all in master, pr, use opus agent to plan, sonnet agent to code, codex exec to review the work done -- no technical debt allowed, no hacks, perfect engineering, do the right thing, not the easy thing"
+  ],
+  [
+    "assistant",
+    "#1517 plan is test+doc only — no production code changes, no dependency on #1522. Launching Sonnet for #1517 immediately in parallel."
+  ],
+  [
+    "assistant",
+    "17/21 checks passing, 4 pending (cargo test, android-ffi, Vercel builds). I'll wait for the notification when CI completes rather than polling."
+  ]
+]

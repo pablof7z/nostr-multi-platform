@@ -3,11 +3,11 @@ import SwiftUI
 // Per-row UI for `NotificationsView`. Lifted into a sibling file so the
 // parent screen stays focused on the summary + section composition.
 //
-// ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`, `systemImage`
+// ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`, `systemImage`
 // are no longer carried on the wire projection. This file owns the shell-side
 // presentation helpers (`kindTitle`, `iconName`, `preview`, `statusLabel`).
 // The kernel still owns policy: `canRetry`, raw `status` token, `attempt`
-// count. Presentation chooses colors (aim.md §4.4: no kind-number switches
+// count. Presentation chooses colors (aim.md §2 #4: no kind-number switches
 // drive _policy_ — only icon/label presentation here).
 //
 // ADR-0032 / V-115: `targetSummary` and `createdAtDisplay` were removed from
@@ -83,6 +83,29 @@ extension PublishOutboxRelay {
     /// of the removed `publish_outbox_attempt_label()` Rust function.
     var attemptLabel: String {
         attempt == 0 ? "" : "try \(attempt)"
+    }
+
+    /// Human-readable relay-reason label derived from the raw `relayReason`
+    /// token. Parameterised tokens are parsed; unknown tokens pass through.
+    var relayReasonDisplay: String {
+        let token = relayReason
+        if token.isEmpty { return "" }
+        let discoveryPrefix = "discovery_indexer:"
+        if token.hasPrefix(discoveryPrefix) {
+            let kind = token.dropFirst(discoveryPrefix.count)
+            return "Discovery indexer (kind \(kind))"
+        }
+        let inboxPrefix = "recipient_inbox:"
+        if token.hasPrefix(inboxPrefix) {
+            let pubkey = token.dropFirst(inboxPrefix.count)
+            return "Inbox relay for \(pubkey)"
+        }
+        switch token {
+        case "nip65_write": return "NIP-65 write relay"
+        case "local_config": return "App relay (local config)"
+        case "explicit": return "Explicit relay"
+        default: return token
+        }
     }
 }
 
@@ -197,8 +220,8 @@ struct OutboxRelayRow: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
             }
-            if !relay.relayReason.isEmpty {
-                Text(relay.relayReason)
+            if !relay.relayReasonDisplay.isEmpty {
+                Text(relay.relayReasonDisplay)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 16)

@@ -18,6 +18,7 @@
 		13D4526BBD8ABC5597F752E9 /* TypedWalletSettingsHubDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D01D83910F871CF0BD05DC2 /* TypedWalletSettingsHubDecoderTests.swift */; };
 		159A0AB673722908A2785D5C /* ComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C239DE349111247765A86A53 /* ComposeView.swift */; };
 		16872F2668C9362DAB33840B /* KernelSnapshotTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414042D5889A82ADEF944C5A /* KernelSnapshotTypes.swift */; };
+		F1E2D3C4B5A6F7E8D9C0B1A2 /* KernelModel+EventClaimSink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* KernelModel+EventClaimSink.swift */; };
 		171511AA2A0B0F7A72E4D56E /* KernelModel+Projections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D80AA404D023B2E0F164E07 /* KernelModel+Projections.swift */; };
 		192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */; };
 		1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */; };
@@ -156,7 +157,7 @@
 		EEBFA2C5B3FD26D4D283171D /* TypedSnapshotEnvelopeDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75AD879AFFFE52F0898A0CED /* TypedSnapshotEnvelopeDecoderTests.swift */; };
 		EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22815F76AA03DAE183DBA656 /* GroupChatView.swift */; };
 		F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */; };
-		F1EA6E7AABA81D70DD3C93F2 /* NostrQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181DB651D587AA70439571C4 /* NostrQuoteCard.swift */; };
+		0F0961A2724B7C90FB8C4C63 /* EmbedHostEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED80DC9E0EA7E945BF696B3E /* EmbedHostEnvironment.swift */; };
 		F527E776FA6D9D8407777F4D /* NostrRelayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E15791A2205C8614CDA8D4B /* NostrRelayList.swift */; };
 		F5855D7CD651AF7B2D3AF696 /* ActionLifecycle.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EEBF0C891ECD1257BB81163 /* ActionLifecycle.generated.swift */; };
 		F5E5940625200643254B4588 /* NostrContentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475509EE4AB3F523D5551F7 /* NostrContentRenderer.swift */; };
@@ -200,7 +201,7 @@
 		14F6832910B9E6ED7CCDE701 /* DmRelayList.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmRelayList.generated.swift; sourceTree = "<group>"; };
 		1692F1978AC66F1FF51180F7 /* NostrNpubChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrNpubChip.swift; sourceTree = "<group>"; };
 		17C13BDDC2BB37FD854A42B7 /* ContentTree.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentTree.generated.swift; sourceTree = "<group>"; };
-		181DB651D587AA70439571C4 /* NostrQuoteCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrQuoteCard.swift; sourceTree = "<group>"; };
+		ED80DC9E0EA7E945BF696B3E /* EmbedHostEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedHostEnvironment.swift; sourceTree = "<group>"; };
 		18F55EDA0CB6D234B934C44A /* NoteEntityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEntityViews.swift; sourceTree = "<group>"; };
 		1B303905AEF1833128E7C6BC /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
 		1D432D59A7DF3AB9BA0C78DB /* EventClaimSink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventClaimSink.swift; sourceTree = "<group>"; };
@@ -263,6 +264,7 @@
 		7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHubView.swift; sourceTree = "<group>"; };
 		7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModularTimelineBridge.swift; sourceTree = "<group>"; };
 		7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRowView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* KernelModel+EventClaimSink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KernelModel+EventClaimSink.swift"; sourceTree = "<group>"; };
 		7D80AA404D023B2E0F164E07 /* KernelModel+Projections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KernelModel+Projections.swift"; sourceTree = "<group>"; };
 		7EBA5F3EB2AE0217C0925F75 /* ProjectionCache.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionCache.generated.swift; sourceTree = "<group>"; };
 		80CA160BF8239675560E695A /* GroupChatDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatDecodeTests.swift; sourceTree = "<group>"; };
@@ -600,6 +602,7 @@
 				50AA40CD68CFA1E2FF7B2C28 /* KernelActionTypes.swift */,
 				1B303905AEF1833128E7C6BC /* KernelBridge.swift */,
 				3808C5C6482C44109C442925 /* KernelModel.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* KernelModel+EventClaimSink.swift */,
 				7D80AA404D023B2E0F164E07 /* KernelModel+Projections.swift */,
 				00F533A3AC912144258E144E /* KernelSignerTypes.swift */,
 				414042D5889A82ADEF944C5A /* KernelSnapshotTypes.swift */,
@@ -645,7 +648,7 @@
 				98164B81790316FE7AF3736A /* NostrMediaGrid.swift */,
 				94EC16BCFE57ED331BD311DC /* NostrMentionChip.swift */,
 				E0E197335AFEEA7FFCA5CE05 /* NostrMinimalContentView.swift */,
-				181DB651D587AA70439571C4 /* NostrQuoteCard.swift */,
+				ED80DC9E0EA7E945BF696B3E /* EmbedHostEnvironment.swift */,
 			);
 			path = NostrContent;
 			sourceTree = "<group>";
@@ -893,6 +896,7 @@
 				1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */,
 				C39EA68411B3B84D8D56B1CC /* KernelActionTypes.swift in Sources */,
 				68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */,
+				F1E2D3C4B5A6F7E8D9C0B1A2 /* KernelModel+EventClaimSink.swift in Sources */,
 				171511AA2A0B0F7A72E4D56E /* KernelModel+Projections.swift in Sources */,
 				D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */,
 				0317A1EA23F30433A9A81379 /* KernelSignerTypes.swift in Sources */,
@@ -926,7 +930,7 @@
 				CC9A5D2B9A8C2C03F84F380C /* NostrNpubChip.swift in Sources */,
 				FF7FE7A227B906F0BA447517 /* NostrProfileHost.swift in Sources */,
 				AC54835CF70CDC28555DB2F0 /* NostrProfileName.swift in Sources */,
-				F1EA6E7AABA81D70DD3C93F2 /* NostrQuoteCard.swift in Sources */,
+				0F0961A2724B7C90FB8C4C63 /* EmbedHostEnvironment.swift in Sources */,
 				F527E776FA6D9D8407777F4D /* NostrRelayList.swift in Sources */,
 				2BE542A6C5F90059C3F4C997 /* NostrUserCard.swift in Sources */,
 				EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */,

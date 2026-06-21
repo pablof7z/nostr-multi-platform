@@ -124,12 +124,8 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
             fileIdentifier: TypedNip46OnboardingDecoder.fileIdentifier,
             payload: buildNip46Onboarding(
                 signerApps: [
-                    SignerAppFixture(
-                        scheme: "typedsigner://", displayLabel: "Typed Signer",
-                        signerKind: "nip46"),
-                    SignerAppFixture(
-                        scheme: "typedprimal://", displayLabel: "Typed Primal",
-                        signerKind: "nip46"),
+                    SignerAppFixture(scheme: "nostrsigner://", signerKind: "nip46"),
+                    SignerAppFixture(scheme: "typedprimal://", signerKind: "nip46"),
                 ],
                 stageKind: "awaiting_pubkey",
                 progressMessage: "typed waiting for approval",
@@ -143,8 +139,11 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
             "well-formed KN46 sidecar must decode")
 
         // Signer-app order preserved verbatim (Rust owns the table).
-        XCTAssertEqual(dto.signerApps.map(\.scheme), ["typedsigner://", "typedprimal://"])
-        XCTAssertEqual(dto.signerApps[0].displayLabel, "Typed Signer")
+        XCTAssertEqual(dto.signerApps.map(\.scheme), ["nostrsigner://", "typedprimal://"])
+        // displayLabel is shell-derived from scheme (#1712): a known scheme maps
+        // to its brand name, an unknown one humanizes the scheme.
+        XCTAssertEqual(dto.signerApps[0].displayLabel, "Amber")
+        XCTAssertEqual(dto.signerApps[1].displayLabel, "Typedprimal")
         XCTAssertEqual(dto.signerApps[0].signerKind, "nip46")
         // The snake_case wire token re-types to the SAME StageKind enum.
         XCTAssertEqual(dto.stageKind, .awaitingPubkey)
@@ -163,9 +162,7 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
             TypedNip46OnboardingDecoder.decode(
                 bytes: buildNip46Onboarding(
                     signerApps: [
-                        SignerAppFixture(
-                            scheme: "nostrsigner://", displayLabel: "Signer",
-                            signerKind: "nip46"),
+                        SignerAppFixture(scheme: "nostrsigner://", signerKind: "nip46"),
                     ],
                     stageKind: nil,
                     progressMessage: nil,
@@ -248,7 +245,6 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
 
     private struct SignerAppFixture {
         let scheme: String
-        let displayLabel: String
         let signerKind: String
     }
 
@@ -263,13 +259,13 @@ final class TypedNip46ClusterDecoderTests: XCTestCase {
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 512)
         let appOffsets: [Offset] = signerApps.map { app in
+            // `display_label` was removed from the wire (#1712); the shell
+            // derives the brand name from `scheme`, so it is not built here.
             let schemeOff = fbb.create(string: app.scheme)
-            let labelOff = fbb.create(string: app.displayLabel)
             let kindOff = fbb.create(string: app.signerKind)
             return nmp_kernel_SignerApp.createSignerApp(
                 &fbb,
                 schemeOffset: schemeOff,
-                displayLabelOffset: labelOff,
                 signerKindOffset: kindOff)
         }
         let appsVec = fbb.createVector(ofOffsets: appOffsets)

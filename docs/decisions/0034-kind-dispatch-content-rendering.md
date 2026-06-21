@@ -108,14 +108,18 @@ pub struct RenderContextWire {
 
 ### Commitment 2 — `ContentTreeWire` is the single wire format across all platforms
 
-iOS and TUI already consume `ContentTreeWire`. Android gallery currently consumes the
-legacy `ContentTreeDto` / `SegmentDto` format. Android must migrate to `ContentTreeWire`
-as part of this work. After migration, `ContentTreeDto` / `SegmentDto` / `MarkdownNodeDto`
-are deleted from `nmp-content-fixtures::dto`.
+iOS and TUI already consume `ContentTreeWire`. The Android **app module** now consumes
+`ContentTreeWire` (`android/app/src/main/java/nmp/content/ContentTreeWire.kt`) and renders
+embeds through the kind registry. `ContentTreeDto` / `SegmentDto` / `MarkdownNodeDto`
+**remain** in `crates/nmp-content-fixtures::dto` as a fixtures-only serde mirror used to
+build deterministic golden bundles for the standalone gallery showcases — they are NOT on
+the production embed-host wire path. (An earlier draft of this ADR said they would be
+"deleted"; that is corrected here — they are legitimately retained as a fixtures-only
+type. The production Android wire format is `ContentTreeWire`.)
 
 Rationale: kind-dispatch requires one rendering engine; one rendering engine requires one
-wire format. Maintaining two parsing layers on Android would mean duplicating every
-kind handler or writing an adapter layer — both are worse than a one-time migration.
+wire format on the production path. The fixtures DTO is a separate, build-time-only
+concern and does not duplicate any kind handler.
 
 ### Commitment 3 — `nmp-content::RenderContext` is the single recursion guard
 
@@ -180,16 +184,29 @@ Third parties can publish kind handler components to any jsrepo-compatible regis
 
 ### What this changes
 
-- `crates/nmp-content-fixtures/src/dto.rs`: `EmbedEntry.article` and `EmbedEntry.list`
-  ad-hoc fields are replaced by `EmbeddedEventEnvelope.projection`. The `ContentTreeDto`
-  / `SegmentDto` format is deleted after Android migrates.
-- `crates/nmp-cli/registry/*/content-quote-card/`: the `NostrQuoteCard` widgets become
-  the built-in `ShortNote` + `Unknown` handlers inside `content-kind-registry`. The old
-  `content-quote-card` component is retired after migration.
-- `ios/Chirp/.../NostrContentView.swift`: the `quoteCardProvider` closure API is
-  deprecated (one release) in favour of `NostrKindRegistry`.
-- `android/gallery/.../EmbedCard.kt`: deleted after migration, replaced by
-  `EmbeddedEvent` composable consulting `NostrKindRegistry`.
+- `crates/nmp-content-fixtures/src/dto.rs`: `ContentTreeDto` / `SegmentDto` /
+  `MarkdownNodeDto` are **retained** as a fixtures-only serde mirror for the gallery
+  golden bundles. They are not on the production embed-host wire path (`ContentTreeWire`
+  is). (Corrected from the original draft, which incorrectly said they would be deleted.)
+- `crates/nmp-cli/registry/*/content-quote-card/`: **DELETED (F-CR-04).** The
+  `NostrQuoteCard` widgets are superseded by the built-in `ShortNote` + `Unknown` (and
+  Article/Highlight/Profile) handlers inside `content-kind-registry`. All three platform
+  registries (`swiftui` / `compose` / `tui`) now ship a `content-kind-registry`
+  component; the three `content-view` components depend on it and route every
+  `nostr:` event ref through `EmbeddedEvent` instead of a quote card.
+- `ios/Chirp/.../NostrContentView.swift`: **DONE.** The `quoteCardProvider` closure API is
+  removed; event refs render through the `NostrKindRegistry` seam, bound by the app via
+  `.embedEnvelopeSource(source, claimSink:registry:)` (defined in the registry's
+  `EmbedHostEnvironment.swift`). `ios/Chirp/.../NostrQuoteCard.swift` is deleted.
+- TUI `NostrQuoteCard` (`tui/content-quote-card`): **DELETED.** Markdown blockquote
+  rendering moved inline into `content-view`; event refs render through the kind registry.
+- `android/gallery/.../EmbedCard.kt`: **NOT YET migrated (deferred).** The standalone
+  Android `gallery` module still renders its static `GalleryBundle` `EmbedEntry` DTOs via
+  `EmbedCard.kt`; migrating it requires regenerating the bundle format to ship
+  `EmbedKindProjection` envelopes (a separate bundle-generation change, out of F-CR-04
+  scope). The production Android **app** already routes embeds through the kind registry
+  (`android/app/.../ui/embed/EmbeddedEvent.kt` + `NostrKindRegistry.kt`). The standalone
+  iOS/desktop/web gallery showcases similarly keep their own quote-card demo surfaces.
 
 ### What this does NOT change
 

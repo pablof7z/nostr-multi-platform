@@ -26,7 +26,6 @@ public struct nmp_kernel_AccountSummaryRow: FlatBufferTable, FlatbuffersVectorIn
     case displayName = 10
     case signerKind = 12
     case status = 14
-    case signerLabel = 16
     case signerIsRemote = 18
     case isActive = 20
     case hasPictureUrl = 22
@@ -46,8 +45,6 @@ public struct nmp_kernel_AccountSummaryRow: FlatBufferTable, FlatbuffersVectorIn
   public var signerKindSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.signerKind.v) }
   public var status: String? { let o = _accessor.offset(VTOFFSET.status.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var statusSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.status.v) }
-  public var signerLabel: String? { let o = _accessor.offset(VTOFFSET.signerLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var signerLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.signerLabel.v) }
   public var signerIsRemote: Bool { let o = _accessor.offset(VTOFFSET.signerIsRemote.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isActive: Bool { let o = _accessor.offset(VTOFFSET.isActive.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var hasPictureUrl: Bool { let o = _accessor.offset(VTOFFSET.hasPictureUrl.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
@@ -61,7 +58,6 @@ public struct nmp_kernel_AccountSummaryRow: FlatBufferTable, FlatbuffersVectorIn
   public static func add(displayName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayName, at: VTOFFSET.displayName.p) }
   public static func add(signerKind: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: signerKind, at: VTOFFSET.signerKind.p) }
   public static func add(status: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: status, at: VTOFFSET.status.p) }
-  public static func add(signerLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: signerLabel, at: VTOFFSET.signerLabel.p) }
   public static func add(signerIsRemote: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: signerIsRemote, def: false,
    at: VTOFFSET.signerIsRemote.p) }
   public static func add(isActive: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isActive, def: false,
@@ -78,7 +74,6 @@ public struct nmp_kernel_AccountSummaryRow: FlatBufferTable, FlatbuffersVectorIn
     displayNameOffset displayName: Offset = Offset(),
     signerKindOffset signerKind: Offset = Offset(),
     statusOffset status: Offset = Offset(),
-    signerLabelOffset signerLabel: Offset = Offset(),
     signerIsRemote: Bool = false,
     isActive: Bool = false,
     hasPictureUrl: Bool = false,
@@ -91,7 +86,6 @@ public struct nmp_kernel_AccountSummaryRow: FlatBufferTable, FlatbuffersVectorIn
     nmp_kernel_AccountSummaryRow.add(displayName: displayName, &fbb)
     nmp_kernel_AccountSummaryRow.add(signerKind: signerKind, &fbb)
     nmp_kernel_AccountSummaryRow.add(status: status, &fbb)
-    nmp_kernel_AccountSummaryRow.add(signerLabel: signerLabel, &fbb)
     nmp_kernel_AccountSummaryRow.add(signerIsRemote: signerIsRemote, &fbb)
     nmp_kernel_AccountSummaryRow.add(isActive: isActive, &fbb)
     nmp_kernel_AccountSummaryRow.add(hasPictureUrl: hasPictureUrl, &fbb)
@@ -107,7 +101,6 @@ public struct nmp_kernel_AccountSummaryRow: FlatBufferTable, FlatbuffersVectorIn
     try _v.visit(field: VTOFFSET.displayName.p, fieldName: "displayName", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.signerKind.p, fieldName: "signerKind", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.status.p, fieldName: "status", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.signerLabel.p, fieldName: "signerLabel", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.signerIsRemote.p, fieldName: "signerIsRemote", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isActive.p, fieldName: "isActive", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.hasPictureUrl.p, fieldName: "hasPictureUrl", required: false, type: Bool.self)

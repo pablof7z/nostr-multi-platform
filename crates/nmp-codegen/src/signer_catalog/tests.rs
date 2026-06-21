@@ -4,17 +4,19 @@ use super::*;
 
 /// The exact JSON shape `dump_signer_catalog` emits (3 apps; Primal omits
 /// `content_authority`, Nostr Connect omits `android`).
+/// Note: `install_hint` prose is NOT in the catalog JSON (#1681) — that is UI
+/// copy owned by shells, not signer identity. Shells format their own hint from
+/// `display_label` (e.g. "Install {displayName} for one-tap sign-in").
 const CATALOG_JSON: &str = r#"[
   { "app_id": "amber", "display_label": "Amber", "capabilities": ["nip55","nip46"],
     "android": { "intent_scheme": "nostrsigner", "package_name": "com.greenart7c3.nostrsigner",
-                 "content_authority": "com.greenart7c3.nostrsigner", "install_hint": "Install Amber for one-tap sign-in" },
-    "ios": { "url_scheme": "nostrsigner", "install_hint": "Install Amber for one-tap sign-in" } },
+                 "content_authority": "com.greenart7c3.nostrsigner" },
+    "ios": { "url_scheme": "nostrsigner" } },
   { "app_id": "primal", "display_label": "Primal", "capabilities": ["nip46"],
-    "android": { "intent_scheme": "primal", "package_name": "net.primal.android",
-                 "install_hint": "Install Primal for one-tap sign-in" },
-    "ios": { "url_scheme": "primal", "install_hint": "Install Primal for one-tap sign-in" } },
+    "android": { "intent_scheme": "primal", "package_name": "net.primal.android" },
+    "ios": { "url_scheme": "primal" } },
   { "app_id": "nostr_connect", "display_label": "Nostr Connect", "capabilities": ["nip46"],
-    "ios": { "url_scheme": "nostrconnect", "install_hint": "Connect a remote signer" } }
+    "ios": { "url_scheme": "nostrconnect" } }
 ]"#;
 
 fn apps() -> Vec<SignerApp> {

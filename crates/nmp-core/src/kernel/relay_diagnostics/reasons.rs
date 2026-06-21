@@ -1,4 +1,6 @@
-//! Human-readable relay connection reason strings derived from [`RelayAttribution`].
+//! Machine-token relay connection reasons derived from [`RelayAttribution`].
+//!
+//! Raw tokens are emitted on the wire; shells format them for display.
 
 use nmp_planner::plan::{HintOrigin, InterestAttribution, RelayAttribution, UserConfiguredCategory};
 use serde::{Deserialize, Serialize};
@@ -10,14 +12,14 @@ const AUTHOR_CAP: usize = 8;
 
 /// One entry in the `reasons` list on a [`super::RelayDiagnosticsRow`].
 ///
-/// `kind` is a stable machine tag; `label` is the pre-formatted human label
-/// the shell renders directly — no translation, no protocol-number parsing in
-/// the shell (aim.md §4.5).
+/// `kind` is a stable machine tag; all other fields carry raw structured
+/// payload — shells derive display strings from them (aim.md §4.5).
 ///
-/// The struct carries all structured payload the shell needs per reason:
-/// - `author_pubkeys` / `author_total` for outbox and interest rows
-///   (capped at [`AUTHOR_CAP`], with exact total so the UI can render "+N").
-/// - `kinds_label` for interest rows (pre-formatted "kind:0, kind:1").
+/// Structured payload per reason type:
+/// - `author_pubkeys` / `author_total` for outbox (`"nip65"`) and interest
+///   rows (capped at [`AUTHOR_CAP`], with exact total so the UI can render "+N").
+/// - `kinds` for interest rows: raw kind numbers the shell formats (e.g.
+///   `"kind:0, kind:1"`).  Non-empty for `"interest"` variants only.
 /// - `source_event_id` for hint rows (the originating event id hex, when known).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RelayConnectionReason {
@@ -25,8 +27,6 @@ pub(crate) struct RelayConnectionReason {
     /// `"account_write"` | `"indexer"` | `"app_relay"` | `"debug"` |
     /// `"bootstrap"` | `"blocked"` | `"interest"`.
     pub(crate) kind: String,
-    /// Pre-formatted headline, e.g. `"Outbox of 150 people"`, `"App relay"`.
-    pub(crate) label: String,
     /// Semantic hue key reusing the existing tone vocabulary:
     /// `"ok"` | `"warn"` | `"accent"` | `"muted"` | `"error"`.
     pub(crate) tone: String,
@@ -35,9 +35,9 @@ pub(crate) struct RelayConnectionReason {
     pub(crate) author_pubkeys: Vec<String>,
     /// Exact author total (>= `author_pubkeys.len()`). Zero when not applicable.
     pub(crate) author_total: u32,
-    /// Pre-formatted kinds label (`"kind:0, kind:1"`). Non-empty for interest
-    /// reasons only; empty for all other variants.
-    pub(crate) kinds_label: String,
+    /// Raw kind numbers for interest reasons. Non-empty for `"interest"`
+    /// variants only; empty for all other reason kinds.
+    pub(crate) kinds: Vec<u32>,
     /// Hint origin event id (hex) when known; `None` for non-hint reasons.
     pub(crate) source_event_id: Option<String>,
 }
@@ -53,8 +53,9 @@ pub(crate) struct RelayConnectionReason {
 /// the blocked sentinel must be first when present so the shell can surface the
 /// icon/tone before checking `connection_tone`.
 ///
-/// Capping and label/tone formatting happens here — the planner stays
-/// noun-free (D0).
+/// Capping and tone assignment happens here — the planner stays noun-free (D0).
+/// Shells derive display labels from the raw `kind`, `author_total`, and `kinds`
+/// fields; no English prose is emitted by this function.
 pub(crate) fn build_reasons(
     attr: Option<&RelayAttribution>,
     is_blocked: bool,
@@ -64,11 +65,10 @@ pub(crate) fn build_reasons(
     if is_blocked {
         out.push(RelayConnectionReason {
             kind: "blocked".to_string(),
-            label: "Blocked".to_string(),
             tone: "muted".to_string(),
             author_pubkeys: Vec::new(),
             author_total: 0,
-            kinds_label: String::new(),
+            kinds: Vec::new(),
             source_event_id: None,
         });
     }
@@ -86,15 +86,10 @@ pub(crate) fn build_reasons(
             .collect();
         out.push(RelayConnectionReason {
             kind: "nip65".to_string(),
-            label: if outbox_total == 1 {
-                "Outbox of 1 person".to_string()
-            } else {
-                format!("Outbox of {outbox_total} people")
-            },
             tone: "accent".to_string(),
             author_total: outbox_total as u32,
             author_pubkeys,
-            kinds_label: String::new(),
+            kinds: Vec::new(),
             source_event_id: None,
         });
     }
@@ -109,32 +104,30 @@ pub(crate) fn build_reasons(
         });
         out.push(RelayConnectionReason {
             kind: "hint".to_string(),
-            label: "Relay hint".to_string(),
             tone: "warn".to_string(),
             author_pubkeys: Vec::new(),
             author_total: 0,
-            kinds_label: String::new(),
+            kinds: Vec::new(),
             source_event_id,
         });
     }
 
     // User-configured sub-categories (App relay, Account read/write, etc.).
     for cat in &attr.user_configured {
-        let (kind, label) = match cat {
-            UserConfiguredCategory::AccountRead => ("account_read", "Account read relay"),
-            UserConfiguredCategory::AccountWrite => ("account_write", "Account write relay"),
-            UserConfiguredCategory::Indexer => ("indexer", "Indexer relay"),
-            UserConfiguredCategory::AppRelay => ("app_relay", "App relay"),
-            UserConfiguredCategory::Debug => ("debug", "Debug relay"),
-            UserConfiguredCategory::Bootstrap => ("bootstrap", "Bootstrap relay"),
+        let kind = match cat {
+            UserConfiguredCategory::AccountRead => "account_read",
+            UserConfiguredCategory::AccountWrite => "account_write",
+            UserConfiguredCategory::Indexer => "indexer",
+            UserConfiguredCategory::AppRelay => "app_relay",
+            UserConfiguredCategory::Debug => "debug",
+            UserConfiguredCategory::Bootstrap => "bootstrap",
         };
         out.push(RelayConnectionReason {
             kind: kind.to_string(),
-            label: label.to_string(),
             tone: "ok".to_string(),
             author_pubkeys: Vec::new(),
             author_total: 0,
-            kinds_label: String::new(),
+            kinds: Vec::new(),
             source_event_id: None,
         });
     }
@@ -152,35 +145,15 @@ pub(crate) fn build_reasons(
 fn interest_reason(ia: &InterestAttribution) -> RelayConnectionReason {
     let total = ia.authors.len();
     let author_pubkeys: Vec<String> = ia.authors.iter().take(AUTHOR_CAP).cloned().collect();
-    let kinds_label = kinds_label_from_kinds(ia.kinds.iter().copied());
-    let label = if kinds_label.is_empty() {
-        "Interest".to_string()
-    } else {
-        format!("Interest: {kinds_label}")
-    };
+    let mut kinds: Vec<u32> = ia.kinds.iter().copied().collect();
+    kinds.sort_unstable();
+    kinds.dedup();
     RelayConnectionReason {
         kind: "interest".to_string(),
-        label,
         tone: "ok".to_string(),
         author_pubkeys,
         author_total: total as u32,
-        kinds_label,
+        kinds,
         source_event_id: None,
     }
-}
-
-/// Format a sorted iterator of kind numbers as `"kind:0, kind:1"`.
-/// Mirrors the `discovery_kinds_label` precedent in `discovery.rs`.
-pub(crate) fn kinds_label_from_kinds(kinds: impl Iterator<Item = u32>) -> String {
-    let mut sorted: Vec<u32> = kinds.collect();
-    sorted.sort_unstable();
-    sorted.dedup();
-    if sorted.is_empty() {
-        return String::new();
-    }
-    sorted
-        .into_iter()
-        .map(|k| format!("kind:{k}"))
-        .collect::<Vec<_>>()
-        .join(", ")
 }

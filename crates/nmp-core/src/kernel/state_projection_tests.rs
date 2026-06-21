@@ -248,23 +248,23 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     assert_eq!(outbox.len(), 1);
     assert_eq!(outbox[0]["handle"].as_str(), Some(signed.id.as_str()));
     assert_eq!(outbox[0]["kind"].as_u64(), Some(1));
-    // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`, `status_label`
+    // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`, `status_label`
     // removed from the projection — shells own all presentation formatting.
     assert!(
         outbox[0].get("title").is_none(),
-        "title must be absent from projection (doctrine §4.4)"
+        "title must be absent from projection (aim.md §2 #4)"
     );
     assert!(
         outbox[0].get("preview").is_none(),
-        "preview must be absent from projection (doctrine §4.4)"
+        "preview must be absent from projection (aim.md §2 #4)"
     );
     assert!(
         outbox[0].get("system_image").is_none(),
-        "system_image must be absent from projection (doctrine §4.4)"
+        "system_image must be absent from projection (aim.md §2 #4)"
     );
     assert!(
         outbox[0].get("status_label").is_none(),
-        "status_label must be absent from projection (doctrine §4.4)"
+        "status_label must be absent from projection (aim.md §2 #4)"
     );
     // Raw content is emitted so shells can render their own kind-appropriate preview.
     assert_eq!(
@@ -300,15 +300,15 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
         outbox[0]["relays"][0]["relay_url"].as_str(),
         Some("wss://outbox.test")
     );
-    // ADR-0032 / doctrine §4.4: `status_label` and `attempt_label` removed —
+    // ADR-0032 / aim.md §2 #4: `status_label` and `attempt_label` removed —
     // shells compute these from the raw `status` token and `attempt` counter.
     assert!(
         outbox[0]["relays"][0].get("status_label").is_none(),
-        "relay status_label must be absent (doctrine §4.4)"
+        "relay status_label must be absent (aim.md §2 #4)"
     );
     assert!(
         outbox[0]["relays"][0].get("attempt_label").is_none(),
-        "relay attempt_label must be absent (doctrine §4.4)"
+        "relay attempt_label must be absent (aim.md §2 #4)"
     );
     assert_eq!(outbox[0]["relays"][0]["status"].as_str(), Some("sending"));
     assert_eq!(outbox[0]["relays"][0]["attempt"].as_u64(), Some(1));
@@ -316,9 +316,9 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
 
 /// Per-relay rationale ("why was this relay targeted?") threads from the
 /// outbox resolver all the way through to the JSON projection that crosses
-/// the C-ABI. Apps render `relay_reason` verbatim — this test pins the field
-/// to the resolver's exact string so a regression that drops the value (or
-/// stops serializing it) is caught at the projection boundary.
+/// the C-ABI. Apps parse `relay_reason` as a machine token and format it
+/// locally. This test pins the raw token so a regression that drops the
+/// value (or stops serializing it) is caught at the projection boundary.
 ///
 /// Pairs with `relay_reasons_are_threaded_from_resolver_through_snapshot` in
 /// `tests/publish_engine_relay_reasons.rs`, which pins the engine surface.
@@ -340,8 +340,8 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
 
     // `PublishTarget::Explicit` exercises the resolver's short-circuit lane —
     // the kernel's installed resolver (`Nip65OutboxResolver` /
-    // `TestKind10002OutboxResolver`) returns
-    // `ResolvedRelay { reason: "Explicit relay", .. }` for each URL.
+    // `TestKind10002OutboxResolver`) emits `RelaySelectionReason::Explicit`
+    // which is formatted as the raw token `"explicit"`.
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
@@ -362,8 +362,8 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
     assert_eq!(relay["relay_url"].as_str(), Some("wss://reason.test"));
     assert_eq!(
         relay["relay_reason"].as_str(),
-        Some("Explicit relay"),
-        "kernel projection must surface the resolver's reason verbatim",
+        Some("explicit"),
+        "kernel projection must surface the raw reason token (shells format it)",
     );
 }
 
@@ -429,21 +429,21 @@ fn publish_outbox_omits_empty_relay_reason_from_json() {
 }
 
 /// `outbox_summary` projects raw per-status counters when nothing is pending.
-/// ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings are
+/// ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings are
 /// NOT emitted from the kernel — shells compute display strings from counters.
 #[test]
 fn outbox_summary_projects_empty_state_strings() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let snap = snapshot(&mut kernel);
     let summary = &snap["projections"]["outbox_summary"];
-    // Doctrine §4.4: title and subtitle must NOT appear in the kernel projection.
+    // aim.md §2 #4: title and subtitle must NOT appear in the kernel projection.
     assert!(
         summary.get("title").is_none(),
-        "title must be absent from outbox_summary projection (doctrine §4.4)"
+        "title must be absent from outbox_summary projection (aim.md §2 #4)"
     );
     assert!(
         summary.get("subtitle").is_none(),
-        "subtitle must be absent from outbox_summary projection (doctrine §4.4)"
+        "subtitle must be absent from outbox_summary projection (aim.md §2 #4)"
     );
     assert_eq!(summary["total"].as_u64(), Some(0));
     assert_eq!(summary["sending"].as_u64(), Some(0));
@@ -453,7 +453,7 @@ fn outbox_summary_projects_empty_state_strings() {
 }
 
 /// `outbox_summary` projects raw per-status counters when rows are in flight.
-/// ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings are
+/// ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings are
 /// NOT emitted from the kernel — shells compute display strings from counters.
 #[test]
 fn outbox_summary_projects_sending_counters_and_strings() {
@@ -483,14 +483,14 @@ fn outbox_summary_projects_sending_counters_and_strings() {
 
     let snap = snapshot(&mut kernel);
     let summary = &snap["projections"]["outbox_summary"];
-    // Doctrine §4.4: title and subtitle must NOT appear in the kernel projection.
+    // aim.md §2 #4: title and subtitle must NOT appear in the kernel projection.
     assert!(
         summary.get("title").is_none(),
-        "title must be absent from outbox_summary projection (doctrine §4.4)"
+        "title must be absent from outbox_summary projection (aim.md §2 #4)"
     );
     assert!(
         summary.get("subtitle").is_none(),
-        "subtitle must be absent from outbox_summary projection (doctrine §4.4)"
+        "subtitle must be absent from outbox_summary projection (aim.md §2 #4)"
     );
     assert_eq!(summary["total"].as_u64(), Some(1));
     assert_eq!(summary["sending"].as_u64(), Some(1));

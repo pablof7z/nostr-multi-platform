@@ -130,7 +130,6 @@ public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
     public let pictureUrl: String?
     public let signerIsRemote: Bool
     public let signerKind: String
-    public let signerLabel: String
     public let status: String
 }
 
@@ -147,7 +146,6 @@ public struct AppRelay: Decodable, Equatable, Identifiable, Sendable {
 // Source: nmp_core::actor::relay_roles::RelayRoleOption
 public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
     public let isDefault: Bool
-    public let label: String
     public let tint: String
     public let value: String
 

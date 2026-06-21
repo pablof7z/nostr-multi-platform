@@ -47,7 +47,9 @@ pub enum NwcConnectionState {
 /// themselves from the raw `status` token + `balance_sats`. The earlier
 /// `status_label` / `status_tone` / `balance_sats_display` precompute was a
 /// presentation regression (#623) removed in the wallet_status sweep (analogous
-/// to the #1580 signer-state sweep).
+/// to the #1580 signer-state sweep). `wallet_npub_short` was a further
+/// presentation regression (#1678, D7) removed similarly — shells abbreviate
+/// `wallet_npub` themselves.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct WalletStatus {
     /// Raw NIP-47 status token the shells map to a label/tone themselves:
@@ -68,9 +70,6 @@ pub struct WalletStatus {
     /// responds to `get_balance`. The shell applies its own thousands-separator
     /// formatting when rendering (raw-data doctrine).
     pub balance_sats: Option<u64>,
-    /// Abbreviated npub: first 10 chars + `"…"` + last 6 chars. Replaces
-    /// the Swift `shortNpub()` helper (thin-shell V-23).
-    pub wallet_npub_short: String,
     /// `status == "ready"`. A raw boolean predicate over the status token (not a
     /// presentation string) — pre-computed so the shell can bind a `Bool`
     /// without re-deriving from the status string (thin-shell V-23).

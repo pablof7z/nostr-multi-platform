@@ -46,7 +46,6 @@ pub(crate) const NIP46_ONBOARDING_SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SignerAppRow {
     pub scheme: String,
-    pub display_label: String,
     pub signer_kind: String,
 }
 
@@ -72,13 +71,11 @@ fn create_signer_app<'a>(
     row: &SignerAppRow,
 ) -> WIPOffset<fb::SignerApp<'a>> {
     let scheme = fbb.create_string(&row.scheme);
-    let display_label = fbb.create_string(&row.display_label);
     let signer_kind = fbb.create_string(&row.signer_kind);
     fb::SignerApp::create(
         fbb,
         &fb::SignerAppArgs {
             scheme: Some(scheme),
-            display_label: Some(display_label),
             signer_kind: Some(signer_kind),
         },
     )
@@ -134,7 +131,6 @@ pub fn decode_nip46_onboarding(bytes: &[u8]) -> Result<Nip46OnboardingModel, Str
         for app in apps.iter() {
             signer_apps.push(SignerAppRow {
                 scheme: app.scheme().unwrap_or_default().to_string(),
-                display_label: app.display_label().unwrap_or_default().to_string(),
                 signer_kind: app.signer_kind().unwrap_or_default().to_string(),
             });
         }

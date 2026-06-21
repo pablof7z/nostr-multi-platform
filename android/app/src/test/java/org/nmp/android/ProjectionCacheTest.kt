@@ -451,11 +451,11 @@ class ProjectionCacheTest {
         val dnOff = b.createString(displayName)
         val skOff = b.createString("local")
         val statusOff = b.createString("active")
-        val slOff = b.createString("nsec")
+        // signer_label removed from the wire (#1712) — derived shell-side.
         val row = AccountSummaryRow.createAccountSummaryRow(
             b, idOff, npubOff,
             /* hasDisplayName = */ true, dnOff,
-            skOff, statusOff, slOff,
+            skOff, statusOff,
             /* signerIsRemote = */ false,
             /* isActive = */ true,
             /* hasPictureUrl = */ false, /* pictureUrl = */ 0,

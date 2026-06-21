@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - OutboxSummary display helpers
 
-// ADR-0032 / doctrine §4.4: `title` and `subtitle` removed from the wire.
+// ADR-0032 / aim.md §2 #4: `title` and `subtitle` removed from the wire.
 // The shell computes them from the raw counters.
 extension OutboxSummary {
     /// Primary headline for the outbox summary section.

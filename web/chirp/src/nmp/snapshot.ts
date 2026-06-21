@@ -190,13 +190,28 @@ export function shortKey(value?: string): string {
   return value.length > 12 ? `${value.slice(0, 8)}..${value.slice(-4)}` : value;
 }
 
+// Shell-side signer label derived from the raw `signer_kind` wire token. The
+// kernel no longer ships a pre-rendered `signer_label` (#1712, D7/D27 —
+// presentation artifact); the web shell derives it. Unknown kinds fall back to
+// the raw token.
+function signerLabelForKind(kind: string): string {
+  switch (kind) {
+    case "local":
+      return "Local key";
+    case "nip46":
+      return "NIP-46";
+    default:
+      return kind;
+  }
+}
+
 function accountFrom(value: unknown): AccountLine {
   const row = objectRecord(value) ?? {};
   return {
     id: str(row.id),
     display: first(row, "display_name", "displayName", "npub"),
     npub: str(row.npub),
-    signer: first(row, "signer_label", "signerLabel", "signer_kind"),
+    signer: signerLabelForKind(first(row, "signer_kind", "signerKind")),
     active: bool(row.is_active) || bool(row.isActive),
   };
 }

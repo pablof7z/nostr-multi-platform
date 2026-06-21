@@ -46,7 +46,10 @@ class TypedAccountsDecoderTest {
         assertEquals(npubFull, out[0].npub) // full npub, NOT abbreviated
         assertEquals("Alice", out[0].displayName)
         assertEquals("active", out[0].status)
-        assertEquals("nsec", out[0].signerLabel)
+        // signerLabel is shell-derived from signerKind (#1712), not on the wire.
+        assertEquals("local", out[0].signerKind)
+        assertEquals("Local key", out[0].signerLabel)
+        assertEquals("NIP-46", out[1].signerLabel)
     }
 
     @Test
@@ -195,20 +198,21 @@ class TypedAccountsDecoderTest {
     /** Two-account `KACC` buffer: row 0 active+named, row 1 idle+no-display-name. */
     private fun accountsBuffer(): ByteArray {
         val b = FlatBufferBuilder(512)
+        // `signer_label` was removed from the wire (#1712); rows carry only the
+        // raw `signerKind` token, from which the model derives the label.
         fun row(
             id: String,
             npub: String,
             hasDisplayName: Boolean,
             displayName: String,
             status: String,
-            signerLabel: String,
+            signerKind: String,
         ): Int {
             val idOff = b.createString(id)
             val npubOff = b.createString(npub)
             val dnOff = if (hasDisplayName) b.createString(displayName) else 0
-            val skOff = b.createString("local")
+            val skOff = b.createString(signerKind)
             val statusOff = b.createString(status)
-            val slOff = b.createString(signerLabel)
             val puOff = 0
             return AccountSummaryRow.createAccountSummaryRow(
                 b,
@@ -217,15 +221,14 @@ class TypedAccountsDecoderTest {
                 hasDisplayName, dnOff,
                 skOff,
                 statusOff,
-                slOff,
                 false, // signer_is_remote
                 status == "active", // is_active
                 false, puOff, // has_picture_url, picture_url
             )
         }
         val rows = intArrayOf(
-            row("idhex-active", npubFull, true, "Alice", "active", "nsec"),
-            row("idhex-idle", "npub1idle", false, "", "idle", "NIP-46"),
+            row("idhex-active", npubFull, true, "Alice", "active", "local"),
+            row("idhex-idle", "npub1idle", false, "", "idle", "nip46"),
         )
         val vec = AccountsSnapshot.createAccountsVector(b, rows)
         val snap = AccountsSnapshot.createAccountsSnapshot(b, vec)

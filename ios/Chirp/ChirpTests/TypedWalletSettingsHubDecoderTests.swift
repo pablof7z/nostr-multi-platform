@@ -195,8 +195,8 @@ final class TypedWalletSettingsHubDecoderTests: XCTestCase {
         let statusOff = fbb.create(string: status)
         let relayUrlOff = fbb.create(string: relayUrl)
         let walletNpubOff = fbb.create(string: walletNpub)
-        let walletNpubShortOff = fbb.create(string: "")
         let walletPubkeyHexOff = fbb.create(string: walletPubkeyHex)
+        // `wallet_npub_short` vtable slot deprecated (#1678, D7); not written.
         let root = nmp_nip47_WalletStatus.createWalletStatus(
             &fbb,
             statusOffset: statusOff,
@@ -206,7 +206,6 @@ final class TypedWalletSettingsHubDecoderTests: XCTestCase {
             balanceMsats: balanceMsats ?? 0,
             hasBalanceSats: balanceSats != nil,
             balanceSats: balanceSats ?? 0,
-            walletNpubShortOffset: walletNpubShortOff,
             isReady: isReady,
             isConnected: isConnected,
             hasConnectionState: false,

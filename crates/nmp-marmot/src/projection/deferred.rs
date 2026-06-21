@@ -20,8 +20,8 @@ use super::state::{op_tag_of, InnerHandle};
 
 /// Build the snapshot-visible [`PendingOpRow`]s from the pending-op store.
 /// `now_secs` drives the per-row `age_secs` (elapsed wait since the op was
-/// parked). The `display_label` is Rust-owned (aim.md §2 — the projection
-/// owns formatting; native renders verbatim).
+/// parked). Shells derive display copy from `op_tag` + `missing_count`
+/// (aim.md §2 — presentation belongs in the shell, not the projection).
 #[must_use]
 pub(super) fn pending_op_rows(store: &PendingOpsStore, now_secs: u64) -> Vec<PendingOpRow> {
     store
@@ -29,7 +29,6 @@ pub(super) fn pending_op_rows(store: &PendingOpsStore, now_secs: u64) -> Vec<Pen
         .map(|op| {
             let op_tag = op_tag_of(&op.action_json);
             let missing_count = u32::try_from(op.missing_pubkeys.len()).unwrap_or(u32::MAX);
-            let display_label = format!("Waiting for key packages ({missing_count})\u{2026}");
             // `saturating_sub` guards against a snapshot whose `now_secs`
             // predates the park time (clock skew / synthetic test time).
             let age_secs = now_secs.saturating_sub(op.created_at_secs);
@@ -37,7 +36,6 @@ pub(super) fn pending_op_rows(store: &PendingOpsStore, now_secs: u64) -> Vec<Pen
                 correlation_id: op.correlation_id.clone(),
                 op_tag,
                 missing_count,
-                display_label,
                 age_secs,
             }
         })

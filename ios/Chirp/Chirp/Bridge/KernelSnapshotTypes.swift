@@ -370,18 +370,20 @@ struct DmInboxSnapshot: Decodable, Equatable {
 /// NIP-47 wallet connection status, projected from the kernel snapshot.
 ///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// maps Rust snake_case (`balance_sats`, `wallet_npub_short`, …) onto these
-/// camelCase properties automatically.
+/// maps Rust snake_case (`balance_sats`, …) onto these camelCase properties
+/// automatically.
 ///
 /// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032 /
 /// docs/wiki/guides/shell-formatting-boundary.md): the kernel ships only raw
-/// tokens. `statusLabel` / `statusTone` / `balanceSatsDisplay` / `walletNpubShort`
-/// are NOT on the wire — the shell derives the label, tone, and formatted balance
-/// from the raw `status` token + `balanceSats` (see `WalletStatusTone`). The
-/// `status_label` / `status_tone` / `balance_sats_display` precompute was a
-/// regression (#623) removed in the wallet_status sweep. `isReady` / `isConnected`
-/// remain pre-computed because they encode protocol semantics (a boolean
-/// predicate over the status token), not display formatting.
+/// tokens. `statusLabel` / `statusTone` / `balanceSatsDisplay` are NOT on the
+/// wire — the shell derives the label, tone, and formatted balance from the raw
+/// `status` token + `balanceSats` (see `WalletStatusTone`). The `status_label` /
+/// `status_tone` / `balance_sats_display` precompute was a regression (#623)
+/// removed in the wallet_status sweep. `wallet_npub_short` was a further
+/// presentation regression (#1678, D7) removed similarly — shells abbreviate
+/// `walletPubkeyHex` using `.shortHex`. `isReady` / `isConnected` remain
+/// pre-computed because they encode protocol semantics (a boolean predicate over
+/// the status token), not display formatting.
 struct WalletStatusData: Decodable, Equatable {
     /// Raw NIP-47 status token: `"connecting"` | `"ready"` | `"error"` |
     /// `"disconnected"`. The shell maps this to a label/tone itself.
@@ -405,4 +407,45 @@ struct WalletStatusData: Decodable, Equatable {
     /// Semantic tone (`"active"|"warning"|"error"|"inactive"`) derived locally
     /// from the raw `status` token; the view maps it → colour.
     var statusTone: String { WalletStatusTone.tone(status) }
+}
+
+// ─── RelayRoleOption shell-side label ─────────────────────────────────────
+//
+// `label` was removed from the `relay_role_options` wire (#1678, D7 —
+// presentation artifact; raw-data doctrine aim.md §2 / ADR-0032). The kernel
+// now ships only the raw `value` token; the shell maps it to a human-readable
+// label here.
+
+extension RelayRoleOption {
+    /// Human-readable label derived from the raw `value` token.
+    /// Shells own this mapping (#1678); the kernel no longer pre-renders it.
+    var label: String {
+        switch value {
+        case "both,indexer": return "Both + Index"
+        case "both":         return "Both"
+        case "read":         return "Read"
+        case "write":        return "Write"
+        case "indexer":      return "Index"
+        default:             return value
+        }
+    }
+}
+
+// ─── AccountSummary shell-side signer label ───────────────────────────────
+//
+// `signer_label` was removed from the `accounts` wire (#1712, D7/D27 —
+// presentation artifact; raw-data doctrine aim.md §2 / ADR-0032). The kernel
+// now ships only the raw `signerKind` token; the shell maps it to a
+// human-readable label here.
+
+extension AccountSummary {
+    /// Human-readable signer label derived from the raw `signerKind` token.
+    /// Shells own this mapping (#1712); the kernel no longer pre-renders it.
+    var signerLabel: String {
+        switch signerKind {
+        case "local": return "Local key"
+        case "nip46": return "NIP-46"
+        default:      return signerKind
+        }
+    }
 }

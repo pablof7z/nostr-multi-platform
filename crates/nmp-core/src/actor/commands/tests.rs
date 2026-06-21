@@ -122,10 +122,11 @@ fn sign_in_nsec_adds_active_account_and_projects_it() {
     assert!(accounts[0].npub.starts_with("npub1"));
 }
 
-/// aim.md §4.4 / §4.5: native cannot derive signer-display labels with a
-/// `switch` on a wire token, nor scope a "remote signers" list with a
-/// lowercased string comparison, nor compute `isActive` from `status == ..`.
-/// The actor pre-classifies all three on every row.
+/// aim.md §2 #4 / §4.5: native cannot derive signer-display labels with a
+/// scope a "remote signers" list with a lowercased string comparison, nor
+/// compute `isActive` from `status == ..`. The actor pre-classifies the
+/// semantic flags on every row; the human-readable signer label is derived by
+/// the shell from the raw `signer_kind` token (#1712, D7/D27).
 #[test]
 fn local_account_projection_carries_preclassified_signer_fields() {
     let (mut id, mut kernel) = fresh();
@@ -133,7 +134,6 @@ fn local_account_projection_carries_preclassified_signer_fields() {
     let (accounts, _) = kernel.account_snapshot();
     let row = &accounts[0];
     assert_eq!(row.signer_kind, "local");
-    assert_eq!(row.signer_label, "Local key");
     assert!(!row.signer_is_remote);
     assert!(row.is_active);
 }
@@ -1754,7 +1754,8 @@ fn snapshot_json_carries_new_projections() {
         .as_array()
         .expect("relay_role_options must be a projection array");
     assert_eq!(role_options[0]["value"].as_str(), Some("both,indexer"));
-    assert_eq!(role_options[0]["label"].as_str(), Some("Both + Index"));
+    // `label` removed from the wire (#1678, D7) — shells map value→label.
+    assert!(role_options[0].get("label").is_none(), "label must not appear on the wire");
     assert_eq!(role_options[0]["tint"].as_str(), Some("accent"));
     assert_eq!(role_options[1]["value"].as_str(), Some("both"));
     assert_eq!(role_options[1]["is_default"].as_bool(), Some(true));

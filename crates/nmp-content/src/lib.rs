@@ -49,9 +49,6 @@ mod tokenizer;
 pub mod wire;
 
 pub use context::{render_context_can_descend, RenderContext};
-pub use longform::{
-    ArticleFeedItem, LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY,
-};
 pub use embed_projection::{
     resolve_embed_projection, ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope,
     HighlightProjection, ProfileProjection, RenderContextWire, ShortNoteProjection,
@@ -60,6 +57,11 @@ pub use embed_projection::{
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
     EmbedRegistrySnapshot, EmbedTarget, EventClaimSink, NoopEventClaimSink,
+};
+pub use longform::{
+    longform_acquisition_kinds, longform_feed_predicate, ArticleFeedItem, LongformFeed,
+    LongformFeedEntry, LongformFeedPredicate, LongformProjection, LongformRepostAttribution,
+    KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY,
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};

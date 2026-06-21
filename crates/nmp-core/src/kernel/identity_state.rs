@@ -42,13 +42,12 @@ pub fn new_active_account_slot() -> ActiveAccountSlot {
 
 /// One account row in the snapshot.
 ///
-/// `signer_kind` is the stable wire token (`"local"` | `"nip46"` | …) other
-/// platforms switch on; it is kept for backward compatibility with Android +
-/// diagnostic surfaces, but Swift no longer derives display labels from it
-/// (aim.md §4.4 / §4.5). Native should bind the pre-classified fields below.
+/// `signer_kind` is the stable wire token (`"local"` | `"nip46"` | …) every
+/// platform switches on. The pre-rendered `signer_label` English string was
+/// removed from the wire (#1712, D7/D27 — presentation artifact); shells now
+/// derive the label from `signer_kind` themselves (aim.md §2 #4 / §4.5).
 ///
 /// Pre-classified fields (D4: actor populates, Swift binds):
-/// - `signer_label` — human-readable label for the row's signer.
 /// - `signer_is_remote` — `true` for any signer whose key material lives
 ///   outside the kernel (NIP-46 today, NIP-07 / hardware later). Lets the UI
 ///   scope a "remote signers" section without lowercased string filtering.
@@ -71,10 +70,6 @@ pub(crate) struct AccountSummary {
     pub(crate) signer_kind: String,
     /// `"active"` for the active account, `"idle"` otherwise.
     pub(crate) status: String,
-    /// Pre-classified, human-readable signer label (e.g. `"nsec"`,
-    /// `"NIP-46"`). Free-form signer classification; the host renders this
-    /// verbatim instead of switching on `signer_kind`.
-    pub(crate) signer_label: String,
     /// `true` when the signer's key material lives outside the kernel
     /// (NIP-46 bunker today, NIP-07 / hardware later). Lets native scope
     /// remote-signer-only sections without string-matching `signer_kind`.
@@ -331,7 +326,7 @@ impl super::Kernel {
             return;
         }
         entry.status = status.to_string();
-        entry.can_retry = publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
+        entry.can_retry = publish_queue::publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump publish_ver on terminal state transition.
@@ -366,6 +361,27 @@ impl super::Kernel {
             self.last_error_category = category;
             self.changed_since_emit = true;
         }
+    }
+
+    /// Surface a structured [`UiToken`](crate::ui_token::UiToken) (issue #1682).
+    ///
+    /// Writes the token's English `fallback_prose` to `last_error_toast` (the
+    /// fallback for non-localizing shells / diagnostics) and the stable machine
+    /// `code` to `last_error_category` (the key the shell branches on to render
+    /// localized prose). The raw upstream `raw_detail` is logged for
+    /// diagnostics — it is never the UI contract and never crosses to the host
+    /// as prose. This is the general-toast generalization of the relay-CLOSED
+    /// `error_category` contract.
+    pub fn set_last_error_token(&mut self, token: &crate::ui_token::UiToken) {
+        if let Some(detail) = token.raw_detail() {
+            tracing::warn!(
+                code = token.code(),
+                subject = ?token.subject(),
+                detail = %detail,
+                "UI error token",
+            );
+        }
+        self.set_error_toast_with_category(token.fallback_prose().to_string(), token.code());
     }
 
     /// Replace the editable relay projection (D4: actor is sole writer).
@@ -471,19 +487,8 @@ impl super::Kernel {
     }
 }
 
-pub(in crate::kernel) fn publish_entry_can_retry(
-    status: &str,
-    outcomes: &[RelayAckOutcome],
-    has_retry_payload: bool,
-) -> bool {
-    if !has_retry_payload {
-        return false;
-    }
-    status == "failed"
-        || status == "pending_relays_unknown"
-        || outcomes.iter().any(|relay| relay.status == "failed")
-}
-
+#[path = "identity_state/publish_queue.rs"]
+pub(in crate::kernel) mod publish_queue;
 #[cfg(test)]
 #[path = "identity_state/tests.rs"]
 mod tests;

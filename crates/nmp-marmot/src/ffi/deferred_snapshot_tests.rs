@@ -29,7 +29,7 @@ fn make_kp_event(keys: &Keys) -> nostr::Event {
 }
 
 /// While a create_group op is parked the snapshot surfaces a `pending_ops` row
-/// with a `display_label` + `age_secs` (elapsed wait). Once the KP arrives and
+/// with `missing_count` + `age_secs` (elapsed wait). Once the KP arrives and
 /// the op completes, `pending_ops` must be empty.
 #[test]
 fn pending_op_appears_in_snapshot_and_clears_after_retry() {
@@ -75,10 +75,9 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
     assert_eq!(row.op_tag, "create_group");
     assert_eq!(row.missing_count, 1);
     assert_eq!(row.age_secs, 3, "age_secs = now 1_004 - parked 1_001: {row:?}");
-    assert!(
-        row.display_label.contains("(1)"),
-        "display_label must include the missing count: {}",
-        row.display_label
+    assert_eq!(
+        row.missing_count, 1,
+        "missing_count must equal the number of pending KPs: {row:?}"
     );
 
     // Ingest Bob's KP → retry fires → pending_ops must clear.

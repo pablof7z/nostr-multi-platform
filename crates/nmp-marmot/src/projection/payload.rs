@@ -15,15 +15,10 @@
 //! sends raw protocol data (hex pubkeys, Unix timestamps, raw counts).
 //! Presentation layers (Swift, Kotlin, TUI, web) own all formatting:
 //! bech32 encoding, abbreviation, avatar initials/tints for pubkeys,
-//! relative-time labels, plural-count strings. This module ships counts
-//! as `u32`/`u64`, timestamps as `u64`, pubkeys as 64-char hex.
-//!
-//! Free-form metadata fallbacks (empty group name → "Untitled group",
-//! empty welcome name → "Group invite", pluralised invite chip label,
-//! 2-char initials over the group name) are still computed here — those
-//! are protocol-level decisions about how to surface a name field with
-//! no kind-defined empty-string semantics, not banned helper
-//! forwarders.
+//! relative-time labels, plural-count strings, empty-name fallbacks.
+//! This module ships counts as `u32`/`u64`, timestamps as `u64`, pubkeys
+//! as 64-char hex, and raw group `name` (which may be empty — shells
+//! apply the "Untitled group" / "Group invite" fallback themselves).
 
 use serde::{Deserialize, Serialize};
 
@@ -33,17 +28,9 @@ use serde::{Deserialize, Serialize};
 pub struct MarmotGroupRow {
     pub id_hex: String,
     /// Group name verbatim from MLS metadata. May be empty — presentation
-    /// layers own the rendering decision (typically a fallback string).
+    /// layers own the rendering decision (typically "Untitled group").
+    /// Shells compute 2-char initials for the avatar tile from this field.
     pub name: String,
-    /// Group name with an empty-name fallback ("Untitled group") so the UI
-    /// can render `display_name` unconditionally. Free-form metadata
-    /// fallback for the name field, NOT a banned pubkey/timestamp
-    /// formatter — see aim.md §2.
-    pub display_name: String,
-    /// 2-char ASCII initials for the avatar tile derived from `name`
-    /// (rendered on a flat background by the UI). Free-form metadata
-    /// derivation, not a banned pubkey/timestamp formatter.
-    pub initials: String,
     /// Member Nostr pubkeys (hex, 64 chars), sorted (BTreeSet order from
     /// MDK). Presentation layer formats each entry for display.
     pub members: Vec<String>,
@@ -72,12 +59,8 @@ pub struct PendingWelcomeRow {
     /// to the `accept_welcome` / `decline_welcome` dispatch ops.
     pub id_hex: String,
     /// Group name verbatim from the Welcome envelope. May be empty —
-    /// presentation layers own the empty-name fallback.
+    /// shells apply the "Group invite" fallback for display.
     pub group_name: String,
-    /// Empty-name fallback ("Group invite") so the UI renders this string
-    /// unconditionally. Free-form metadata fallback, not a banned
-    /// pubkey/timestamp formatter — see aim.md §2.
-    pub display_name: String,
     /// The inviter's Nostr pubkey (hex, 64 chars — the field name is
     /// historical; the value is hex, not bech32). The gift-wrap seal
     /// sender. Presentation layer formats for display.
@@ -111,8 +94,8 @@ pub struct KeyPackageStatus {
 }
 
 /// Summary of one pending (deferred) op waiting for a peer's KP to arrive.
-/// Surfaced in the snapshot so native can render "Waiting for key packages…"
-/// state without polling. Rust owns the `display_label` string.
+/// Surfaced in the snapshot so native can render a waiting state without
+/// polling. Shells format the display copy from `op_tag` / `missing_count`.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct PendingOpRow {
     /// Original action correlation_id minted when the op was dispatched.
@@ -121,9 +104,6 @@ pub struct PendingOpRow {
     pub op_tag: String,
     /// Number of peer KPs still missing.
     pub missing_count: u32,
-    /// Rust-owned display string (e.g. "Waiting for key packages (1)…"). The
-    /// projection owns formatting; native renders verbatim.
-    pub display_label: String,
     /// Wall-clock seconds since the op was parked (`now_secs - created_at`),
     /// computed fresh at snapshot time. Gives the host temporal context to
     /// show elapsed wait time / fade a spinner as the 60 s deadline nears.
@@ -159,11 +139,6 @@ pub struct MarmotSnapshot {
     /// delivers a peer's kind:30443/443 event. Native renders this as
     /// pending/completed state; Rust owns when lookup interests are opened.
     pub cached_kp_pubkeys: Vec<String>,
-    /// Pluralised label for the top-of-list pending-invites chip
-    /// (`"1 invite"` / `"3 invites"`), or `None` when there are no
-    /// pending welcomes. The UI renders this string verbatim — no
-    /// `.count == 1 ? "" : "s"` decision in Swift.
-    pub invites_chip_label: Option<String>,
     /// `true` when this snapshot was built against a registered Marmot
     /// signing identity. `false` only for `empty()` (no handle on the iOS
     /// side, so the snapshot path was never taken in Rust). Lets the host
@@ -198,9 +173,9 @@ pub struct MarmotSnapshot {
     #[serde(default)]
     pub keyring_unavailable: bool,
     /// Ops parked in the deferred-completion store, waiting for peer KPs.
-    /// Empty when no ops are pending. Native renders each row's `display_label`
-    /// verbatim alongside the relevant group action's spinner. Additive —
-    /// older hosts that do not read this field degrade gracefully.
+    /// Empty when no ops are pending. Shells derive display copy from
+    /// `op_tag` and `missing_count` (aim.md §2). Additive — older hosts
+    /// that do not read this field degrade gracefully.
     #[serde(default)]
     pub pending_ops: Vec<PendingOpRow>,
     /// Most recent terminal op failure, or `None` when no op has failed this
@@ -223,7 +198,6 @@ impl MarmotSnapshot {
             pending_welcomes: Vec::new(),
             key_package: kp,
             cached_kp_pubkeys: Vec::new(),
-            invites_chip_label: None,
             is_registered: false,
             orphaned_commit_count: 0,
             keyring_unavailable: false,

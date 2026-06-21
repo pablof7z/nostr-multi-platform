@@ -10,10 +10,10 @@ use crate::feature_snapshot::{
     AccountLine, DmConversationLine, FeatureSnapshot, GroupLine, HistoryRelayLine, MessageLine,
     OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
 };
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot {
-    let typed = nmp_core::decode_snapshot_typed_projections(bytes)
-        .unwrap_or_default();
+    let typed = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
 
     // Helper closure: find a sidecar entry by its projection KEY.
     let find = |key: &str| -> Option<&[u8]> {
@@ -36,11 +36,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| row.npub.clone()),
                     npub: row.npub,
-                    signer: if !row.signer_label.is_empty() {
-                        row.signer_label
-                    } else {
-                        row.signer_kind
-                    },
+                    signer: crate::feature_snapshot::signer_label_for_kind(&row.signer_kind),
                     active: row.is_active,
                 })
                 .collect()
@@ -54,28 +50,25 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .unwrap_or_default();
 
     // configured_relays (key == schema_id == "configured_relays")
-    let configured_relays =
-        find(nmp_core::typed_projections::CONFIGURED_RELAYS_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_configured_relays(b).ok())
-            .map(|m| {
-                m.relays
-                    .into_iter()
-                    .map(|row| RelayEditLine {
-                        url: row.url,
-                        role: row.role,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    let configured_relays = find(nmp_core::typed_projections::CONFIGURED_RELAYS_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_configured_relays(b).ok())
+        .map(|m| {
+            m.relays
+                .into_iter()
+                .map(|row| RelayEditLine {
+                    url: row.url,
+                    role: row.role,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     // settings_hub (key == schema_id == "settings_hub")
     let settings_hub = find(nmp_core::typed_projections::SETTINGS_HUB_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_settings_hub(b).ok())
-        .map(|m| {
-            SummaryLine {
-                title: "Settings".to_string(),
-                subtitle: crate::feature_snapshot::relay_count_subtitle(m.relay_count as u64),
-            }
+        .map(|m| SummaryLine {
+            title: "Settings".to_string(),
+            subtitle: crate::feature_snapshot::relay_count_subtitle(m.relay_count as u64),
         })
         .unwrap_or_else(|| SummaryLine {
             title: "Settings".to_string(),
@@ -83,7 +76,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         });
 
     // publish_outbox (key == schema_id == "publish_outbox")
-    // doctrine §4.4: title/preview/status_label removed from wire. TUI shell
+    // aim.md §2 #4: title/preview/status_label removed from wire. TUI shell
     // computes them from raw kind/content/status (same as iOS/Android shells).
     let outbox = find(nmp_core::typed_projections::PUBLISH_OUTBOX_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_publish_outbox(b).ok())
@@ -102,8 +95,8 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
                         .map(|r| OutboxRelayLine {
                             relay_url: r.relay_url,
                             status_label: outbox_relay_status_label(&r.status),
-                            reason: r.relay_reason,
-                            message: r.message,
+                            reason: format_relay_reason_token(&r.relay_reason),
+                            message: format_relay_message_token(&r.message),
                         })
                         .collect(),
                 })
@@ -112,7 +105,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .unwrap_or_default();
 
     // outbox_summary (key == schema_id == "outbox_summary")
-    // doctrine §4.4: title/subtitle removed from wire. TUI shell computes
+    // aim.md §2 #4: title/subtitle removed from wire. TUI shell computes
     // them from raw per-status counters.
     let outbox_summary = find(nmp_core::typed_projections::OUTBOX_SUMMARY_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_outbox_summary(b).ok())
@@ -128,10 +121,9 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .map(publish_history_from_queue)
         .unwrap_or_default();
 
-    // V-112 (ADR-0042): author_view / thread_view projections deleted; the
-    // profile pane now reads from claim_profile → claimed_profiles, and the
-    // feed pane reads from the dynamic nmp.feed.author.* / nmp.feed.thread.*
-    // FlatFeed registrations (nmp_app_chirp_open_author_feed / _open_thread_feed).
+    // V-112 (ADR-0042): author_view / thread_view projections deleted.
+    // SharedSnapshot decodes dynamic nmp.feed.author.* / nmp.feed.thread.*
+    // FlatFeed registrations for the profile and detail panes.
 
     // Host-registered: nmp.nip17.dm_inbox (key == "nmp.nip17.dm_inbox")
     let dm_conversations = find("nmp.nip17.dm_inbox")
@@ -232,6 +224,16 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         })
         .unwrap_or_default();
 
+    let resolved_profiles = find(nmp_core::typed_projections::RESOLVED_PROFILES_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_resolved_profiles(b).ok())
+        .map(|m| {
+            m.entries
+                .into_iter()
+                .map(|(key, card)| (key.clone(), profile_wire_from_card(&key, card)))
+                .collect()
+        })
+        .unwrap_or_default();
+
     FeatureSnapshot {
         accounts,
         active_account,
@@ -245,6 +247,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         discovered_groups,
         follow_count,
         settings_hub,
+        resolved_profiles,
     }
 }
 
@@ -268,8 +271,8 @@ fn publish_history_from_queue(
                 .map(|r| HistoryRelayLine {
                     relay_url: r.relay_url,
                     status: r.status,
-                    relay_reason: r.relay_reason,
-                    message: r.message,
+                    relay_reason: format_relay_reason_token(&r.relay_reason),
+                    message: format_relay_message_token(&r.message),
                 })
                 .collect();
             PublishHistoryLine {
@@ -284,11 +287,72 @@ fn publish_history_from_queue(
         .collect()
 }
 
+fn profile_wire_from_card(
+    key: &str,
+    card: nmp_core::typed_projections::ProfileCardModel,
+) -> ProfileWire {
+    let pubkey = if card.pubkey.is_empty() {
+        key.to_string()
+    } else {
+        card.pubkey
+    };
+    ProfileWire {
+        npub: nmp_core::display::to_npub(&pubkey),
+        npub_short: nmp_core::display::short_npub(&pubkey),
+        pubkey,
+        display_name: card
+            .display_name
+            .or(card.name)
+            .filter(|value| !value.trim().is_empty()),
+        about: nonempty(card.about),
+        picture_url: card.picture_url.filter(|value| !value.trim().is_empty()),
+        nip05: nonempty(card.nip05),
+    }
+}
+
+fn nonempty(value: String) -> Option<String> {
+    (!value.trim().is_empty()).then_some(value)
+}
+
 // ── Publish-outbox shell-side presentation helpers ─────────────────────────
 //
-// doctrine §4.4: title/preview/status_label removed from the nmp-core wire.
+// aim.md §2 #4: title/preview/status_label removed from the nmp-core wire.
 // The TUI shell computes them here from raw kind/content/status, mirroring the
 // iOS (`NotificationsView+OutboxRow.swift`) and Android display layers.
+
+/// Format a raw relay-reason token (e.g. `"nip65_write"`) into the display
+/// string the TUI renders. Parameterised tokens (`"discovery_indexer:{kind}"`,
+/// `"recipient_inbox:{pubkey}"`) are parsed and formatted here.
+/// Unknown tokens pass through verbatim.
+fn format_relay_reason_token(token: &str) -> String {
+    if token.is_empty() {
+        return String::new();
+    }
+    if let Some(kind) = token.strip_prefix("discovery_indexer:") {
+        return format!("Discovery indexer (kind {kind})");
+    }
+    if let Some(pubkey) = token.strip_prefix("recipient_inbox:") {
+        return format!("Inbox relay for {pubkey}");
+    }
+    match token {
+        "nip65_write" => "NIP-65 write relay".to_string(),
+        "local_config" => "App relay (local config)".to_string(),
+        "explicit" => "Explicit relay".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Format a raw relay-message token (e.g. `"waiting_for_ok"`) into the display
+/// string the TUI renders. Raw relay protocol error text passes through verbatim.
+fn format_relay_message_token(token: &str) -> String {
+    match token {
+        "waiting_for_connection" => "Waiting for relay connection".to_string(),
+        "waiting_for_ok" => "Waiting for relay OK".to_string(),
+        "accepted" => "Relay accepted the event".to_string(),
+        "timed_out" => "No response from relay".to_string(),
+        other => other.to_string(),
+    }
+}
 
 fn outbox_kind_title(kind: u32) -> String {
     match kind {
@@ -355,7 +419,13 @@ fn outbox_summary_title(total: u32) -> String {
     format!("{total} pending publish{suffix}")
 }
 
-fn outbox_summary_subtitle(total: u32, sending: u32, retrying: u32, queued: u32, failed: u32) -> String {
+fn outbox_summary_subtitle(
+    total: u32,
+    sending: u32,
+    retrying: u32,
+    queued: u32,
+    failed: u32,
+) -> String {
     if total == 0 {
         return "Your local outbox is clear.".to_string();
     }

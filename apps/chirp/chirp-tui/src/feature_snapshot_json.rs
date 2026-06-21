@@ -5,12 +5,16 @@
 //! are used ONLY by `FeatureSnapshot::from_projections` (the test/dev fixture
 //! path — ADR-0037). The live FlatBuffers path lives in `feature_snapshot_typed`.
 
+use std::collections::HashMap;
+
 use serde_json::Value;
 
 use crate::feature_snapshot::{
-    relay_count_subtitle, AccountLine, DmConversationLine, GroupLine, HistoryRelayLine, MessageLine,
-    OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
+    relay_count_subtitle, AccountLine, DmConversationLine, GroupLine, HistoryRelayLine,
+    MessageLine, OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine,
+    WalletLine,
 };
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) fn accounts_from(projections: &Value) -> Vec<AccountLine> {
     projections
@@ -22,7 +26,10 @@ pub(crate) fn accounts_from(projections: &Value) -> Vec<AccountLine> {
             id: string_field(row, "id"),
             display: first_nonempty(row, &["display_name", "displayName", "npub"]),
             npub: string_field(row, "npub"),
-            signer: first_nonempty(row, &["signer_label", "signerLabel", "signer_kind"]),
+            signer: crate::feature_snapshot::signer_label_for_kind(&first_nonempty(
+                row,
+                &["signer_kind", "signerKind"],
+            )),
             active: bool_field(row, "is_active") || bool_field(row, "isActive"),
         })
         .collect()
@@ -43,7 +50,7 @@ pub(crate) fn outbox_from(projections: &Value) -> Vec<OutboxLine> {
                 .unwrap_or_default();
             let content = string_field(row, "content");
             let status = first_nonempty(row, &["status"]);
-            // doctrine §4.4: title/preview/status_label removed from wire.
+            // aim.md §2 #4: title/preview/status_label removed from wire.
             // JSON path computes from raw kind/content/status (mirrors typed path).
             OutboxLine {
                 handle: string_field(row, "handle"),
@@ -84,8 +91,8 @@ pub(crate) fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLin
                 .map(|r| HistoryRelayLine {
                     relay_url: string_field(r, "relay_url"),
                     status: string_field(r, "status"),
-                    relay_reason: string_field(r, "relay_reason"),
-                    message: string_field(r, "message"),
+                    relay_reason: format_relay_reason_token(&string_field(r, "relay_reason")),
+                    message: format_relay_message_token(&string_field(r, "message")),
                 })
                 .collect();
             PublishHistoryLine {
@@ -116,10 +123,10 @@ pub(crate) fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
             let status = first_nonempty(r, &["status"]);
             OutboxRelayLine {
                 relay_url: string_field(r, "relay_url"),
-                // doctrine §4.4: status_label removed from wire. Compute from status.
+                // aim.md §2 #4: status_label removed from wire. Compute from status.
                 status_label: json_outbox_relay_status_label(&status),
-                reason: string_field(r, "relay_reason"),
-                message: string_field(r, "message"),
+                reason: format_relay_reason_token(&string_field(r, "relay_reason")),
+                message: format_relay_message_token(&string_field(r, "message")),
             }
         })
         .collect()
@@ -224,17 +231,32 @@ pub(crate) fn follow_count_from(projections: &Value) -> usize {
         .map_or(0, Vec::len)
 }
 
+pub(crate) fn resolved_profiles_from(projections: &Value) -> HashMap<String, ProfileWire> {
+    projection(projections, "resolved_profiles")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|profiles| profiles.iter())
+        .map(|(key, value)| (key.clone(), profile_wire_from_value(key, value)))
+        .collect()
+}
+
+fn profile_wire_from_value(key: &str, value: &Value) -> ProfileWire {
+    let pubkey = optional_string(value, "pubkey").unwrap_or_else(|| key.to_string());
+    ProfileWire {
+        npub: nmp_core::display::to_npub(&pubkey),
+        npub_short: nmp_core::display::short_npub(&pubkey),
+        pubkey,
+        display_name: first_nonempty_option(value, &["display_name", "displayName", "name"]),
+        about: optional_string(value, "about"),
+        picture_url: first_nonempty_option(value, &["picture_url", "pictureUrl"]),
+        nip05: optional_string(value, "nip05"),
+    }
+}
+
 // V-112 (ADR-0042): profile_from / thread_from deleted — the author_view /
 // thread_view projections they decoded are removed from the kernel.
 
-pub(crate) fn summary_from(value: Option<&Value>) -> SummaryLine {
-    value.map_or_else(SummaryLine::default, |v| SummaryLine {
-        title: string_field(v, "title"),
-        subtitle: string_field(v, "subtitle"),
-    })
-}
-
-/// Parse `projections.outbox_summary` into a `SummaryLine`. doctrine §4.4:
+/// Parse `projections.outbox_summary` into a `SummaryLine`. aim.md §2 #4:
 /// `title`/`subtitle` removed from wire — compute from raw per-status counters.
 pub(crate) fn outbox_summary_from(value: Option<&Value>) -> SummaryLine {
     let Some(v) = value else {
@@ -296,9 +318,11 @@ pub(crate) fn projection<'a>(projections: &'a Value, key: &str) -> Option<&'a Va
 }
 
 pub(crate) fn first_nonempty(value: &Value, keys: &[&str]) -> String {
-    keys.iter()
-        .find_map(|key| optional_string(value, key))
-        .unwrap_or_default()
+    first_nonempty_option(value, keys).unwrap_or_default()
+}
+
+fn first_nonempty_option(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| optional_string(value, key))
 }
 
 pub(crate) fn string_field(value: &Value, key: &str) -> String {
@@ -323,7 +347,7 @@ pub(crate) fn number_field(value: &Value, key: &str) -> u64 {
 
 // ── Publish-outbox JSON-path presentation helpers ───────────────────────────
 //
-// doctrine §4.4: title/preview/status_label removed from the nmp-core wire.
+// aim.md §2 #4: title/preview/status_label removed from the nmp-core wire.
 // The JSON path computes them from raw kind/content/status, mirroring the
 // typed path (`feature_snapshot_typed`) and the iOS/Android shells.
 
@@ -361,6 +385,38 @@ fn json_outbox_relay_status_label(status: &str) -> String {
         other => other,
     }
     .to_string()
+}
+
+/// Format a raw relay-reason token (e.g. `"nip65_write"`) into a display string.
+/// Parameterised tokens are parsed; unknown tokens pass through verbatim.
+fn format_relay_reason_token(token: &str) -> String {
+    if token.is_empty() {
+        return String::new();
+    }
+    if let Some(kind) = token.strip_prefix("discovery_indexer:") {
+        return format!("Discovery indexer (kind {kind})");
+    }
+    if let Some(pubkey) = token.strip_prefix("recipient_inbox:") {
+        return format!("Inbox relay for {pubkey}");
+    }
+    match token {
+        "nip65_write" => "NIP-65 write relay".to_string(),
+        "local_config" => "App relay (local config)".to_string(),
+        "explicit" => "Explicit relay".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Format a raw relay-message token (e.g. `"waiting_for_ok"`) into a display
+/// string. Raw relay protocol error text passes through verbatim.
+fn format_relay_message_token(token: &str) -> String {
+    match token {
+        "waiting_for_connection" => "Waiting for relay connection".to_string(),
+        "waiting_for_ok" => "Waiting for relay OK".to_string(),
+        "accepted" => "Relay accepted the event".to_string(),
+        "timed_out" => "No response from relay".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn json_outbox_preview(kind: u32, content: &str) -> String {

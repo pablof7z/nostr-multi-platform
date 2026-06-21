@@ -253,10 +253,15 @@ impl BunkerStageKind {
     }
 }
 
-/// One row of the static NIP-46 signer-app table — `(URL scheme, label)`
-/// the host shows the user. The table is owned by Rust so the protocol layer
-/// (not the platform shell) decides which signer apps qualify as "NIP-46
-/// compatible" and how each is labelled.
+/// One row of the static NIP-46 signer-app table — the `(URL scheme,
+/// signer_kind)` pair the host probes for. The table is owned by Rust so the
+/// protocol layer (not the platform shell) decides which signer apps qualify as
+/// "NIP-46 compatible".
+///
+/// The pre-rendered `display_label` vendor name ("Amber"/"Primal"/"Nostr
+/// Connect") was removed from the wire (#1712, D7/D27 — presentation artifact);
+/// shells resolve the brand name from their own generated signer catalog
+/// (`KnownSigners.generated.{swift,kt}`) keyed by `scheme`.
 ///
 /// `signer_kind` is the stable label that matches `AccountSummary.signer_kind`
 /// once the user signs in through this app — exposed so hosts that want to
@@ -266,8 +271,6 @@ pub(crate) struct SignerAppDescriptor {
     /// Platform URL scheme to probe (`"nostrsigner://"`, `"primal://"`,
     /// `"nostrconnect://"`, …).
     pub(crate) scheme: String,
-    /// Human-readable name hosts use in detected-signer CTAs.
-    pub(crate) display_label: String,
     /// Stable signer-kind token. All entries here are NIP-46 brokered
     /// signers, so this is always `"nip46"` today; carried as a field so a
     /// future NIP-55 / hardware-signer entry can populate a different kind.
@@ -278,7 +281,7 @@ pub(crate) struct SignerAppDescriptor {
 /// single Rust-owned [`crate::signer_catalog`]** (#1493 P9), no longer a
 /// hand-authored list. The platform shell iterates it and uses its platform
 /// capability (`UIApplication.canOpenURL`) to detect which entry is installed,
-/// then renders the matching `display_label`.
+/// then resolves the matching brand name from its own generated signer catalog.
 ///
 /// This surface is the iOS onboarding catalog, so it is exactly the catalog
 /// entries that (a) are offered on iOS (`ios.is_some()`) and (b) speak NIP-46.
@@ -299,7 +302,6 @@ fn signer_apps_table() -> Vec<SignerAppDescriptor> {
             }
             Some(SignerAppDescriptor {
                 scheme: format!("{}://", ios.url_scheme),
-                display_label: app.display_label.to_string(),
                 signer_kind: SignerCapability::Nip46.as_token().to_string(),
             })
         })
@@ -324,8 +326,8 @@ fn signer_apps_table() -> Vec<SignerAppDescriptor> {
 /// as a typed `KernelSnapshot` field.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Nip46OnboardingDto {
-    /// Static table of `(scheme, display_label, signer_kind)` the host probes
-    /// for installed signer apps. Always present — never empty.
+    /// Static table of `(scheme, signer_kind)` the host probes for installed
+    /// signer apps. Always present — never empty.
     pub(crate) signer_apps: Vec<SignerAppDescriptor>,
     /// Typed handshake stage; `None` when no handshake is in flight (mirrors
     /// the bunker slot's `None` semantic).
@@ -770,15 +772,6 @@ fn npub_from_hex(hex: &str) -> String {
         .unwrap_or_else(|| hex.to_string())
 }
 
-/// Pre-classified human-readable label for the row's signer.
-fn signer_label_for_kind(kind: &str) -> String {
-    match kind {
-        "local" => "Local key".to_string(),
-        "nip46" => "NIP-46".to_string(),
-        other => other.to_string(),
-    }
-}
-
 /// Push the account projection + rebind the kernel's NIP-42 signer to the
 /// active key (D4 single-writer: this is the only path that mutates either).
 ///
@@ -810,7 +803,6 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
                 // fallback. `Kernel::accounts_enriched` populates this
                 // once kind:0 arrives.
                 display_name: None,
-                signer_label: signer_label_for_kind(&signer_kind),
                 signer_kind,
                 signer_is_remote,
                 status: if is_active { "active" } else { "idle" }.to_string(),
@@ -980,9 +972,19 @@ pub(crate) fn create_account(
     // here and baked Chirp's seed pubkeys into the framework — #1493). An empty
     // `initial_follows` means the account starts with no contacts and no
     // cold-start kind:3 is published.
-    if !initial_follows.is_empty() {
-        kernel.prepopulate_contacts(id.clone(), initial_follows.to_vec());
-    }
+    //
+    // Seed the contacts cache with the (possibly empty) known follow set so the
+    // account's contact list is recorded as KNOWN rather than UNSYNCED. A
+    // brand-new local account has, by construction, no REMOTE kind:3 to wait
+    // for — its empty follow set is authoritative immediately. This is the
+    // signal the `follow` / `follow_many` fail-closed gate
+    // (`Kernel::try_current_kind3_event_for_edit`) reads to distinguish a fresh
+    // local account (safe to publish its FIRST kind:3, e.g. when onboarding
+    // applies follow packs after account creation) from an EXISTING account
+    // whose remote kind:3 has not synced (must fail closed to avoid clobbering
+    // it). Seeding the cache publishes nothing — #1493 still holds: an empty
+    // `initial_follows` emits no cold-start kind:3 and NMP hardcodes no follows.
+    kernel.prepopulate_contacts(id.clone(), initial_follows.to_vec());
 
     let mut publish_outbound = Vec::new();
     // ── Publish kind:0 metadata ──────────────────────────────────
@@ -1434,8 +1436,9 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
     // `BunkerHandshakeProgress` + `AddSigner { RemoteHandle, .. }`. D0 stays
     // clean: `nmp-core` imports neither the broker crate nor `nmp-signers`.
     if parse_bunker_remote(uri).is_none() {
-        kernel.set_last_error_toast(Some(
-            "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_BUNKER_INVALID_URI,
+            "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…",
         ));
         return;
     }
@@ -1450,8 +1453,9 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
         // toast and clear the progress projection (D6 — error becomes state,
         // never panic across FFI).
         identity.set_bunker_handshake(None);
-        kernel.set_last_error_toast(Some(
-            "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_BROKER_NOT_INITIALISED,
+            "NIP-46 broker not initialised — call nmp_signer_broker_init",
         ));
     }
 }
@@ -1468,8 +1472,9 @@ pub(crate) fn restore_bunker_session(
     kernel.mark_changed_since_emit();
     if !identity.invoke_bunker_restore_hook(payload_json) {
         identity.set_bunker_handshake(None);
-        kernel.set_last_error_toast(Some(
-            "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_BROKER_NOT_INITIALISED,
+            "NIP-46 broker not initialised — call nmp_signer_broker_init",
         ));
     }
 }
@@ -1492,8 +1497,9 @@ pub(crate) fn restore_nip55_session(
             "unavailable".to_string(),
             Some("NIP-55 driver not initialised".to_string()),
         )));
-        kernel.set_last_error_toast(Some(
-            "NIP-55 driver not initialised — call nmp_external_signer_init".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_NIP55_DRIVER_NOT_INITIALISED,
+            "NIP-55 driver not initialised — call nmp_external_signer_init",
         ));
         kernel.mark_changed_since_emit();
     }

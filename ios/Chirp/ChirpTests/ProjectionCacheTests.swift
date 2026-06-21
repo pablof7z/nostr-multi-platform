@@ -35,7 +35,7 @@ final class ProjectionCacheTests: XCTestCase {
         let npubOff = fbb.create(string: npub)
         let kindOff = fbb.create(string: "local")
         let statusOff = fbb.create(string: "ready")
-        let labelOff = fbb.create(string: "Local Key")
+        // signer_label removed from the wire (#1712) — derived shell-side.
         let rowOffset = nmp_kernel_AccountSummaryRow.createAccountSummaryRow(
             &fbb,
             idOffset: idOff,
@@ -44,7 +44,6 @@ final class ProjectionCacheTests: XCTestCase {
             displayNameOffset: Offset(),
             signerKindOffset: kindOff,
             statusOffset: statusOff,
-            signerLabelOffset: labelOff,
             signerIsRemote: false,
             isActive: true,
             hasPictureUrl: false,

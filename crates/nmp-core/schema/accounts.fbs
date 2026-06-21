@@ -34,8 +34,13 @@ table AccountSummaryRow {
   signer_kind:string;
   // `active` for the active account, `idle` otherwise.
   status:string;
-  // Pre-classified human-readable signer label (e.g. `nsec`, `NIP-46`).
-  signer_label:string;
+  // `signer_label` (a pre-rendered "Local key" / "NIP-46" English string) was
+  // removed from the wire (#1712, D7/D27 — presentation artifact). The raw
+  // `signer_kind` token above is already present; shells derive the label
+  // locally (iOS: `AccountSummary.signerLabel`; Android: `signerLabel` get();
+  // web: `signerLabelForKind`). Slot reserved to preserve vtable order — no
+  // break for in-flight clients.
+  _reserved_was_signer_label:string (deprecated);
   // True when the signer's key material lives outside the kernel.
   signer_is_remote:bool;
   // Pre-derived `status == "active"`.

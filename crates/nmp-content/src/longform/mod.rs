@@ -69,10 +69,17 @@ use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{KernelEventObserver, TypedProjectionData};
+use serde::{Deserialize, Serialize};
 
 use crate::context::RenderContext;
 use crate::embed_projection::{resolve_embed_projection, ArticleProjection, EmbedKindProjection};
 use crate::wire::longform_fb;
+
+mod feed;
+pub use feed::{
+    longform_acquisition_kinds, longform_feed_predicate, LongformFeed, LongformFeedEntry,
+    LongformFeedPredicate, LongformRepostAttribution,
+};
 
 /// NIP-23 long-form article kind.
 pub const KIND_LONG_FORM_ARTICLE: u32 = 30_023;
@@ -85,7 +92,7 @@ pub const LONGFORM_PROJECTION_KEY: &str = "nmp.nip23.articles";
 /// Deliberately omits the full `content_tree` the open-document shape carries —
 /// a feed list never renders the article body. Display fields are non-`Option`
 /// placeholders (D1): a missing tag yields an empty string, not a hidden row.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArticleFeedItem {
     /// Addressable coordinate `kind:author_hex:d_tag` — the stable identity an
     /// app uses to open the full document.

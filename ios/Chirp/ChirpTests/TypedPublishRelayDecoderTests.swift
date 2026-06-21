@@ -70,14 +70,16 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── relay_role_options (KRRO) ────────────────────────────────────────────
 
     func testTypedRelayRoleOptionsSidecarDecodes() throws {
+        // `label` was removed from the wire (#1678, D7). Tuples are now
+        // (value, tint, isDefault); the shell computes `label` from `value`.
         let envelope = TypedProjectionEnvelope(
             key: TypedRelayRoleOptionsDecoder.key,
             schemaId: TypedRelayRoleOptionsDecoder.schemaId,
             schemaVersion: 1,
             fileIdentifier: TypedRelayRoleOptionsDecoder.fileIdentifier,
             payload: buildRelayRoleOptions([
-                ("both", "Read & Write", "accent", true),
-                ("indexer", "Indexer Only", "info", false),
+                ("both", "accent", true),
+                ("indexer", "info", false),
             ]))
 
         let options = try XCTUnwrap(
@@ -86,11 +88,12 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
 
         XCTAssertEqual(options.count, 2)
         XCTAssertEqual(options[0].value, "both")
-        XCTAssertEqual(options[0].label, "Read & Write")
+        // `label` is a computed shell property mapping value → English string (#1678).
+        XCTAssertEqual(options[0].label, "Both")
         XCTAssertEqual(options[0].tint, "accent")
         XCTAssertTrue(options[0].isDefault)
         XCTAssertEqual(options[1].value, "indexer")
-        XCTAssertEqual(options[1].label, "Indexer Only")
+        XCTAssertEqual(options[1].label, "Index")
         XCTAssertEqual(options[1].tint, "info")
         XCTAssertFalse(options[1].isDefault)
     }
@@ -109,7 +112,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── outbox_summary (KOXS) ────────────────────────────────────────────────
 
     func testTypedOutboxSummarySidecarDecodes() throws {
-        // ADR-0032 / doctrine §4.4: `title` / `subtitle` removed from the wire.
+        // ADR-0032 / aim.md §2 #4: `title` / `subtitle` removed from the wire.
         let envelope = TypedProjectionEnvelope(
             key: TypedOutboxSummaryDecoder.key,
             schemaId: TypedOutboxSummaryDecoder.schemaId,
@@ -146,7 +149,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     // ── publish_outbox (KPBO) ────────────────────────────────────────────────
 
     func testTypedPublishOutboxSidecarDecodes() throws {
-        // ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`,
+        // ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`,
         // `systemImage` removed from the wire; `content` added.
         let envelope = TypedProjectionEnvelope(
             key: TypedPublishOutboxDecoder.key,
@@ -268,14 +271,15 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    private func buildRelayRoleOptions(_ rows: [(String, String, String, Bool)]) -> Data {
+    // `label` removed from wire (#1678, D7). Tuple is now (value, tint, isDefault).
+    private func buildRelayRoleOptions(_ rows: [(String, String, Bool)]) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 512)
-        let rowOffsets: [Offset] = rows.map { (value, label, tint, isDefault) in
+        let rowOffsets: [Offset] = rows.map { (value, tint, isDefault) in
             let valueOff = fbb.create(string: value)
-            let labelOff = fbb.create(string: label)
             let tintOff = fbb.create(string: tint)
+            // `labelOffset` vtable slot deprecated; omit — default Offset() writes nothing.
             return nmp_kernel_RelayRoleOption.createRelayRoleOption(
-                &fbb, valueOffset: valueOff, labelOffset: labelOff,
+                &fbb, valueOffset: valueOff,
                 tintOffset: tintOff, isDefault: isDefault)
         }
         let vec = fbb.createVector(ofOffsets: rowOffsets)
@@ -289,7 +293,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         total: UInt32, sending: UInt32,
         retrying: UInt32, queued: UInt32, failed: UInt32
     ) -> Data {
-        // ADR-0032 / doctrine §4.4: `title` / `subtitle` removed from the wire.
+        // ADR-0032 / aim.md §2 #4: `title` / `subtitle` removed from the wire.
         var fbb = FlatBufferBuilder(initialSize: 256)
         let root = nmp_kernel_OutboxSummarySnapshot.createOutboxSummarySnapshot(
             &fbb, total: total, sending: sending, retrying: retrying,
@@ -299,7 +303,7 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
     }
 
     private func buildPublishOutbox() -> Data {
-        // ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`,
+        // ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`,
         // `systemImage`, relay `statusLabel`, relay `attemptLabel` removed.
         // `content` added to item.
         var fbb = FlatBufferBuilder(initialSize: 1024)

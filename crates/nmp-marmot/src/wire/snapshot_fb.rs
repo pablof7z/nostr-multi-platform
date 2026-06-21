@@ -53,7 +53,11 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NMMS";
 /// `pending_ops` / `last_op_error` fields on `MarmotSnapshot`.
 /// v3: removed `age_display` / `subtitle` / `action_label` from `KeyPackageStatus`
 /// (presentation formatting moved to shells per aim.md §2); added `is_registered`.
-pub const SCHEMA_VERSION: u32 = 3;
+/// v4: removed presentation fields (`display_name` / `initials` from `MarmotGroupRow`;
+/// `display_name` from `PendingWelcomeRow`; `display_label` from `PendingOpRow`;
+/// `has_invites_chip_label` + `invites_chip_label` from `MarmotSnapshot`).
+/// Shells now own all fallback copy, initials computation, and pluralisation.
+pub const SCHEMA_VERSION: u32 = 4;
 
 // --- typed-projection envelope -------------------------------------------
 
@@ -104,11 +108,6 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
         .collect();
     let cached_kp_pubkeys = fbb.create_vector(&cached);
 
-    let invites_chip_label = snapshot
-        .invites_chip_label
-        .as_ref()
-        .map(|s| fbb.create_string(s));
-
     let pending_op_offsets: Vec<_> = snapshot
         .pending_ops
         .iter()
@@ -129,8 +128,6 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
             pending_welcomes: Some(pending_welcomes),
             key_package: Some(key_package),
             cached_kp_pubkeys: Some(cached_kp_pubkeys),
-            has_invites_chip_label: snapshot.invites_chip_label.is_some(),
-            invites_chip_label,
             is_registered: snapshot.is_registered,
             orphaned_commit_count: snapshot.orphaned_commit_count,
             keyring_unavailable: snapshot.keyring_unavailable,
@@ -150,14 +147,12 @@ fn encode_pending_op_row<'a>(
 ) -> Off<'a, fb::PendingOpRow<'a>> {
     let correlation_id = fbb.create_string(&op.correlation_id);
     let op_tag = fbb.create_string(&op.op_tag);
-    let display_label = fbb.create_string(&op.display_label);
     fb::PendingOpRow::create(
         fbb,
         &fb::PendingOpRowArgs {
             correlation_id: Some(correlation_id),
             op_tag: Some(op_tag),
             missing_count: op.missing_count,
-            display_label: Some(display_label),
             age_secs: op.age_secs,
         },
     )
@@ -187,8 +182,6 @@ fn encode_group_row<'a>(
 ) -> Off<'a, fb::MarmotGroupRow<'a>> {
     let id_hex = fbb.create_string(&g.id_hex);
     let name = fbb.create_string(&g.name);
-    let display_name = fbb.create_string(&g.display_name);
-    let initials = fbb.create_string(&g.initials);
     let members: Vec<_> = g.members.iter().map(|m| fbb.create_string(m)).collect();
     let members = fbb.create_vector(&members);
     fb::MarmotGroupRow::create(
@@ -196,8 +189,6 @@ fn encode_group_row<'a>(
         &fb::MarmotGroupRowArgs {
             id_hex: Some(id_hex),
             name: Some(name),
-            display_name: Some(display_name),
-            initials: Some(initials),
             members: Some(members),
             member_count: g.member_count,
             has_unread_count: g.unread_count.is_some(),
@@ -214,14 +205,12 @@ fn encode_welcome_row<'a>(
 ) -> Off<'a, fb::PendingWelcomeRow<'a>> {
     let id_hex = fbb.create_string(&w.id_hex);
     let group_name = fbb.create_string(&w.group_name);
-    let display_name = fbb.create_string(&w.display_name);
     let inviter_npub = fbb.create_string(&w.inviter_npub);
     fb::PendingWelcomeRow::create(
         fbb,
         &fb::PendingWelcomeRowArgs {
             id_hex: Some(id_hex),
             group_name: Some(group_name),
-            display_name: Some(display_name),
             inviter_npub: Some(inviter_npub),
         },
     )
@@ -281,10 +270,6 @@ pub fn decode_marmot_snapshot(bytes: &[u8]) -> Result<MarmotSnapshot, String> {
         pending_welcomes,
         key_package: root.key_package().map(decode_key_package).unwrap_or_default(),
         cached_kp_pubkeys,
-        invites_chip_label: optional_string(
-            root.has_invites_chip_label(),
-            root.invites_chip_label(),
-        ),
         is_registered: root.is_registered(),
         orphaned_commit_count: root.orphaned_commit_count(),
         keyring_unavailable: root.keyring_unavailable(),
@@ -298,7 +283,6 @@ fn decode_pending_op_row(op: fb::PendingOpRow<'_>) -> PendingOpRow {
         correlation_id: op.correlation_id().unwrap_or_default().to_string(),
         op_tag: op.op_tag().unwrap_or_default().to_string(),
         missing_count: op.missing_count(),
-        display_label: op.display_label().unwrap_or_default().to_string(),
         age_secs: op.age_secs(),
     }
 }
@@ -316,8 +300,6 @@ fn decode_group_row(g: fb::MarmotGroupRow<'_>) -> MarmotGroupRow {
     MarmotGroupRow {
         id_hex: g.id_hex().unwrap_or_default().to_string(),
         name: g.name().unwrap_or_default().to_string(),
-        display_name: g.display_name().unwrap_or_default().to_string(),
-        initials: g.initials().unwrap_or_default().to_string(),
         members: g
             .members()
             .map(|v| v.iter().map(str::to_string).collect())
@@ -332,7 +314,6 @@ fn decode_welcome_row(w: fb::PendingWelcomeRow<'_>) -> PendingWelcomeRow {
     PendingWelcomeRow {
         id_hex: w.id_hex().unwrap_or_default().to_string(),
         group_name: w.group_name().unwrap_or_default().to_string(),
-        display_name: w.display_name().unwrap_or_default().to_string(),
         inviter_npub: w.inviter_npub().unwrap_or_default().to_string(),
     }
 }
@@ -349,6 +330,7 @@ fn decode_key_package(kp: fb::KeyPackageStatus<'_>) -> KeyPackageStatus {
 
 /// Reconstruct an `Option<String>` from a `has_*` flag + the wire string,
 /// distinguishing absent (`None`) from present-empty (`Some("")`).
+/// Used for `KeyPackageStatus.d_tag` (the only remaining optional string field).
 fn optional_string(present: bool, value: Option<&str>) -> Option<String> {
     present.then(|| value.unwrap_or_default().to_string())
 }

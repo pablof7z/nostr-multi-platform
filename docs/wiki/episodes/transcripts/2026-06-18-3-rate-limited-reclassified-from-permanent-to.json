@@ -1,0 +1,22 @@
+[
+  [
+    "user",
+    "read 1493 issue"
+  ],
+  [
+    "assistant",
+    "Summarized issue #1493: a 25-agent audit identifying 9 cross-cutting architectural violations (P1–P9) in the NMP codebase, with top items being divergent is_replaceable logic, NIP-17 DM relay pruning, missing async success-terminal recording, and SF Symbols in the kernel."
+  ],
+  [
+    "user",
+    "send an opus agent to work on some of them and land them, have a review from `codex exec` before it's PRed and have the agent land the PR and merge into master: P1, P2, P3, P9 (hardocded relays and pubkeys belong ONLY in app level code, not NMP itself), P7, P4. For these critical items, before designing a solution get a `codex exec` solution to design the problem: point 5 (this one sounds critical!), 1, 2, 3, P5, P7, P4\n\nwhatever work can be done in parallel, fan out workflows with these guidelines, as much parallel work as possible within safety (i.e. ensuring we don't get agents stepping on each other's work) -- each agent must work on its work git worktree and not touch the main branch -- in fact, here in the main thread I want you to monitor in some way (like with a script or something that wakes you up) whenever an agent moves away from master so you get awaken the moment the base dir is not on master so you can redirect the offending agent"
+  ],
+  [
+    "assistant",
+    "Noted the Android JUnit assertion failure is being diagnosed locally with no cross-lane impact; no intervention warranted."
+  ],
+  [
+    "assistant",
+    "Coordinated all lanes and compiled a full status ledger: #1530 and #1532 merged; six PRs in CI cleared to self-merge on green; p9, p4, p2, and p5 actively working on next slices; several findings triaged as stale or not-a-defect; #1538 filed for publish-path follow-up; p3-kind-fragmentation still pending substantive report."
+  ]
+]

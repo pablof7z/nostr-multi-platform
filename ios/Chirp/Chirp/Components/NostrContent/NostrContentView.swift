@@ -11,30 +11,30 @@ import UIKit
 ///   • Theming + tap callbacks come from `NostrContentRenderer` in the
 ///     SwiftUI environment (see `swiftui/content-core`).
 ///   • Mention display labels are provided by the app via `mentionLabel`.
-///   • Quote/embed cards are app-owned: the app passes a `quoteCardProvider`
-///     closure that returns a `NostrQuoteCardModel` for an event-ref URI.
-///     When `nil`, the view falls back to a `.collapsed` quote card.
+///   • Embedded events (`nostr:nevent…` / `nostr:naddr…`) render through the
+///     kind-dispatch registry (ADR-0034): the app binds an `EmbedEnvelopeSource`
+///     + claim sink + `NostrKindRegistry` via `.embedEnvelopeSource(...)` and
+///     `eventRefView` dispatches through `EmbeddedEvent`. With no host bound,
+///     `EmbeddedEvent` still renders a loading placeholder via the default
+///     registry — there is no separate quote-card fallback.
 public struct NostrContentView: View {
     public var tree: ContentTreeWire
     public var font: Font
     public var mentionLabel: (NostrWireUri) -> String
-    public var quoteCardProvider: ((NostrWireUri) -> NostrQuoteCardModel?)?
 
     @Environment(\.nostrContentRenderer) private var renderer
-    @Environment(\.embedHost) private var embedHost
+    @Environment(\.embedEnvelopeSource) private var embedEnvelopeSource
     @Environment(\.embedClaimSink) private var embedClaimSink
     @Environment(\.nostrKindRegistry) private var nostrKindRegistry
 
     public init(
         tree: ContentTreeWire,
         font: Font = .body,
-        mentionLabel: @escaping (NostrWireUri) -> String = NostrContentView.defaultMentionLabel,
-        quoteCardProvider: ((NostrWireUri) -> NostrQuoteCardModel?)? = nil
+        mentionLabel: @escaping (NostrWireUri) -> String = NostrContentView.defaultMentionLabel
     ) {
         self.tree = tree
         self.font = font
         self.mentionLabel = mentionLabel
-        self.quoteCardProvider = quoteCardProvider
     }
 
     public var body: some View {
@@ -211,50 +211,19 @@ public struct NostrContentView: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
     private func eventRefView(_ uri: NostrWireUri) -> some View {
-        if let registry = nostrKindRegistry, embedHost != nil || embedClaimSink != nil {
-            // Kind-dispatch path (ADR-0034 / M16). `EmbeddedEvent` owns the
-            // claim/release lifecycle via `task(id:)` + `onDisappear`; the
-            // registry picks the renderer for the resolved projection. The
-            // view always renders even if the host doesn't have the envelope
-            // yet (loading placeholder via `EmbedChromeContainer`).
-            EmbeddedEvent(
-                uri: uri.uri,
-                envelope: embedHost?.envelopeForPrimaryID(uri.primaryId)
-                    ?? embedHost?.envelopeForURI(uri.uri),
-                registry: registry,
-                claimSink: embedClaimSink
-            )
-        } else {
-            // Legacy quote-card path. Kept so existing content-quote-card
-            // showcases keep working — the new embed environment opts in
-            // when an EmbedHost is bound by the gallery shell.
-            legacyQuoteCardView(uri)
-        }
-    }
-
-    /// Legacy `eventRefView` body — split into its own helper so the parent
-    /// `@ViewBuilder` doesn't see the `let variant: ... if {} else {}`
-    /// pattern (Swift's ViewBuilder treats the assignments as Views).
-    private func legacyQuoteCardView(_ uri: NostrWireUri) -> NostrQuoteCard {
-        let providedModel = quoteCardProvider?(uri)
-        let variant: NostrQuoteCardVariant
-        let model: NostrQuoteCardModel
-        if quoteCardProvider == nil {
-            variant = .collapsed
-            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-        } else if let providedModel {
-            variant = .rich
-            model = providedModel
-        } else {
-            variant = .missing
-            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-        }
-        return NostrQuoteCard(
-            model: model,
-            variant: variant,
-            onTap: { renderer.callbacks.onEventRefTap(uri.primaryId) }
+        // Kind-dispatch path (ADR-0034 / F-CR-04). `EmbeddedEvent` owns the
+        // claim/release lifecycle via `task(id:)` + `onDisappear`; the registry
+        // picks the renderer for the resolved projection. The view always
+        // renders even if the host hasn't resolved the envelope yet (loading
+        // placeholder via `EmbedChromeContainer`). With no registry bound, the
+        // built-in defaults render.
+        EmbeddedEvent(
+            uri: uri.uri,
+            envelope: embedEnvelopeSource?.envelopeForPrimaryID(uri.primaryId)
+                ?? embedEnvelopeSource?.envelopeForURI(uri.uri),
+            registry: nostrKindRegistry ?? NostrKindRegistry.makeDefault(),
+            claimSink: embedClaimSink
         )
     }
 

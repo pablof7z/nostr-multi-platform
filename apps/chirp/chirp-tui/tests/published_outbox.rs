@@ -28,7 +28,7 @@ fn publish_history_keeps_retry_decision_and_failure_detail() {
                   {
                     "relay_url": "wss://relay.example",
                     "status": "failed",
-                    "relay_reason": "NIP-65 write relay",
+                    "relay_reason": "nip65_write",
                     "message": "blocked: spam"
                   }
                 ]
@@ -90,7 +90,7 @@ fn published_history_selection_renders_detail_without_live_relay() {
                 "id": "account-1",
                 "display_name": "Tester",
                 "npub": "npub1fixture",
-                "signer_label": "local",
+                "signer_kind": "local",
                 "is_active": true
               }
             ],
@@ -105,7 +105,7 @@ fn published_history_selection_renders_detail_without_live_relay() {
                   {
                     "relay_url": "wss://relay.fixture",
                     "status": "ok",
-                    "relay_reason": "NIP-65 write relay",
+                    "relay_reason": "nip65_write",
                     "message": "accepted"
                   }
                 ]

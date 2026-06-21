@@ -5,7 +5,7 @@ use super::*;
 fn sample() -> PublishOutboxModel {
     // ADR-0032 / V-115: `created_at` is raw Unix seconds; `target_summary`
     // removed. Shells format timestamps and compose "N relays · time" themselves.
-    // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`, `status_label`
+    // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`, `status_label`
     // removed; `content` (raw event content) added.
     PublishOutboxModel {
         items: vec![
@@ -23,14 +23,14 @@ fn sample() -> PublishOutboxModel {
                         relay_url: "wss://relay.one/".to_string(),
                         status: "sending".to_string(),
                         attempt: 0,
-                        message: "Waiting for relay OK".to_string(),
-                        relay_reason: "NIP-65 write relay".to_string(),
+                        message: "waiting_for_ok".to_string(),
+                        relay_reason: "nip65_write".to_string(),
                     },
                     PublishOutboxRelayRow {
                         relay_url: "wss://relay.two/".to_string(),
                         status: "retrying".to_string(),
                         attempt: 3,
-                        message: "No response from relay".to_string(),
+                        message: "timed_out".to_string(),
                         relay_reason: String::new(),
                     },
                 ],

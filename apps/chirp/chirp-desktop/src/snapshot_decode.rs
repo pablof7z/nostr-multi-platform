@@ -14,22 +14,25 @@ use crate::snapshot::Snapshot;
 // Helper functions — typed OP-feed decode (mirrors chirp-tui approach)
 // ---------------------------------------------------------------------------
 
-/// Extract the typed OP-feed `nmp.feed.home` sidecar and re-serialize it as a
-/// generic `Value` for insertion into the snapshot projections map.
+/// Extract typed OP-feed sidecars and re-serialize each as a generic `Value`
+/// for insertion into the snapshot projections map under its original key.
 ///
-/// Returns `None` when the projection is absent, the schema id does not match
-/// [`nmp_nip01::OP_FEED_SCHEMA_ID`], or the FlatBuffers payload is corrupt.
-/// Both of these cases fall back to the generic `Value` projection that the
-/// snapshot already carries.
-fn extract_home_feed_from_typed(
+/// Returns only valid `nmp.feed.*` projections with the NOFS schema. Absent,
+/// wrong-schema, or corrupt sidecars are ignored; desktop has no generic
+/// `payload:Value` fallback.
+fn extract_op_feeds_from_typed(
     projections: &[nmp_core::TypedProjectionData],
-) -> Option<serde_json::Value> {
-    let proj = projections
+) -> Vec<(String, serde_json::Value)> {
+    projections
         .iter()
-        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
-    nmp_nip01::decode_op_feed_snapshot(&proj.payload)
-        .ok()
-        .and_then(|snapshot| serde_json::to_value(&snapshot).ok())
+        .filter(|p| p.key.starts_with("nmp.feed.") && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)
+        .filter_map(|proj| {
+            nmp_nip01::decode_op_feed_snapshot(&proj.payload)
+                .ok()
+                .and_then(|snapshot| serde_json::to_value(&snapshot).ok())
+                .map(|value| (proj.key.clone(), value))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -143,9 +146,10 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
     // are present in the typed sidecar list with schema_id "nmp.nip01.opfeed"
     // and are decoded/inserted below alongside the home feed.
 
-    // nmp.feed.home — typed OP-feed sidecar (same path as chirp-tui).
-    if let Some(feed) = extract_home_feed_from_typed(&typed) {
-        projections.insert("nmp.feed.home".to_string(), feed);
+    // nmp.feed.* — typed OP-feed sidecars. Home, author, and thread feeds all
+    // use the same NOFS schema and differ only by their projection key.
+    for (key, feed) in extract_op_feeds_from_typed(&typed) {
+        projections.insert(key, feed);
     }
 
     // nmp.follow_list — active account's NIP-02 follow set. Desktop consumes
@@ -252,9 +256,11 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             .signer_apps
             .iter()
             .map(|a| {
+                // `display_label` was removed from the wire (#1712, D7/D27); the
+                // raw `scheme` token is enough for the desktop shell, which has
+                // no onboarding-label surface that consumes a brand name.
                 serde_json::json!({
                     "scheme": a.scheme,
-                    "display_label": a.display_label,
                     "signer_kind": a.signer_kind,
                 })
             })
@@ -346,6 +352,10 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
 #[cfg(test)]
 #[path = "snapshot_decode_roundtrip_tests.rs"]
 mod roundtrip_tests;
+
+#[cfg(test)]
+#[path = "snapshot_decode_feed_tests.rs"]
+mod feed_tests;
 
 #[cfg(test)]
 mod signer_projection_decode_tests {

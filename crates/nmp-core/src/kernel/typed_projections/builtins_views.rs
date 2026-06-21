@@ -61,7 +61,6 @@ impl super::super::Kernel {
                     display_name: acc.display_name.clone(),
                     signer_kind: acc.signer_kind.clone(),
                     status: acc.status.clone(),
-                    signer_label: acc.signer_label.clone(),
                     signer_is_remote: acc.signer_is_remote,
                     is_active: acc.is_active,
                     picture_url: acc.picture_url.clone(),

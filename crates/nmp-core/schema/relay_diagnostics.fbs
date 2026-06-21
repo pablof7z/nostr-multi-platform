@@ -124,15 +124,14 @@ table RelayDiagnosticsNotice {
 }
 
 // One entry in the `reasons` list explaining why a relay was placed in the plan
-// (mirror of `RelayConnectionReason`). Kind is a stable machine tag; label is
-// the pre-formatted human string the shell renders directly.
+// (mirror of `RelayConnectionReason`). All fields carry raw structured data;
+// shells derive display labels (e.g. "Outbox of N people", "kind:0, kind:1")
+// from the machine fields at render time (aim.md §4.5).
 table RelayConnectionReason {
   // Stable machine tag: `"nip65"` / `"hint"` / `"account_read"` /
   // `"account_write"` / `"indexer"` / `"app_relay"` / `"debug"` /
   // `"bootstrap"` / `"blocked"` / `"interest"`.
   kind:string;
-  // Pre-formatted human label (`"Outbox of 3 people"`, `"App relay"`, …).
-  label:string;
   // Semantic hue key reusing the existing tone vocabulary
   // (`"ok"` / `"warn"` / `"accent"` / `"muted"`).
   tone:string;
@@ -141,9 +140,9 @@ table RelayConnectionReason {
   author_pubkeys:[string];
   // Exact author total (>= len(author_pubkeys)). Zero when not applicable.
   author_total:uint;
-  // Pre-formatted kinds label (`"kind:0, kind:1"`). Non-empty for
-  // `"interest"` variants only.
-  kinds_label:string;
+  // Raw kind numbers for interest reasons. Non-empty for `"interest"`
+  // variants only; empty for all other reason kinds.
+  kinds:[uint];
   // Hint origin event id (hex). Absent for non-hint reasons.
   has_source_event_id:bool;
   source_event_id:string;

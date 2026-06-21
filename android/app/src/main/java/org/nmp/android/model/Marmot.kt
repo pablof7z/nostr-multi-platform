@@ -17,18 +17,14 @@ import kotlinx.serialization.Serializable
  * change for both native shells. Every field is nullable / defaulted so an
  * older or trimmed kernel build still decodes (D1: best-effort, fail-closed).
  *
- * NO derived state lives here — verbatim mirror (aim.md §2, D8). Pre-formatted
- * display strings (`subtitle`, `actionLabel`, `invitesChipLabel`, `initials`,
- * `displayName`) are Rust-owned; the Compose layer renders them as-is.
+ * Raw data only (aim.md §2): presentation strings ([displayName], [initials],
+ * [invitesChipLabel], [displayLabel]) are computed by the shell (Compose /
+ * SwiftUI), NOT emitted by Rust. The Compose layer renders the computed values.
  */
 @Serializable
 data class MarmotGroup(
     @SerialName("id_hex") val idHex: String = "",
     val name: String = "",
-    /** Empty-name fallback already applied by Rust ("Untitled group"). */
-    @SerialName("display_name") val displayName: String = "",
-    /** 2-char Rust-derived avatar initials (free-form metadata, not a banned formatter). */
-    val initials: String = "",
     /** Member Nostr pubkeys, hex (64 chars). Presentation layer formats each. */
     val members: List<String> = emptyList(),
     @SerialName("member_count") val memberCount: Int = 0,
@@ -37,18 +33,39 @@ data class MarmotGroup(
     @SerialName("last_msg_at") val lastMsgAt: Long? = null,
 ) {
     val id: String get() = idHex
+
+    // ── Shell-owned presentation (aim.md §2) ──────────────────────────────
+
+    /** Empty-name fallback applied in the shell (D7 — not emitted by Rust). */
+    val displayName: String get() = if (name.isEmpty()) "Untitled group" else name
+
+    /**
+     * 2-char uppercase initials for the avatar tile, derived from [name].
+     * Returns `"?"` when name is blank. Shell-computed per aim.md §2.
+     */
+    val initials: String
+        get() {
+            val nonWhitespace = name.filter { !it.isWhitespace() }
+            if (nonWhitespace.isEmpty()) return "?"
+            val first = nonWhitespace[0]
+            val second = nonWhitespace.getOrNull(1)
+            return if (second != null) "$first$second".uppercase() else first.uppercase().toString()
+        }
 }
 
 @Serializable
 data class MarmotPendingWelcome(
     @SerialName("id_hex") val idHex: String = "",
     @SerialName("group_name") val groupName: String = "",
-    /** Empty-name fallback already applied by Rust ("Group invite"). */
-    @SerialName("display_name") val displayName: String = "",
     /** Inviter Nostr pubkey, hex (field name is historical; value is hex). */
     @SerialName("inviter_npub") val inviterNpub: String = "",
 ) {
     val id: String get() = idHex
+
+    // ── Shell-owned presentation (aim.md §2) ──────────────────────────────
+
+    /** Empty-name fallback applied in the shell (D7 — not emitted by Rust). */
+    val displayName: String get() = if (groupName.isEmpty()) "Group invite" else groupName
 }
 
 /**
@@ -75,11 +92,17 @@ data class MarmotPendingOp(
     val correlationId: String = "",
     val opTag: String = "",
     val missingCount: Int = 0,
-    /** Rust-owned display string, rendered verbatim. */
-    val displayLabel: String = "",
     /** Wall-clock seconds since the op was parked (now - created_at). */
     val ageSecs: Long = 0,
-)
+) {
+    // ── Shell-owned presentation (aim.md §2) ──────────────────────────────
+
+    /**
+     * Human-readable label derived from [missingCount]. Shell-computed per
+     * aim.md §2 — the projection sends raw counts, not display strings.
+     */
+    val displayLabel: String get() = "Waiting for key packages ($missingCount)…"
+}
 
 /**
  * The most recent terminal op FAILURE (deferred-op expiry or a failed retry),
@@ -104,8 +127,6 @@ data class MarmotSnapshot(
     @SerialName("pending_welcomes") val pendingWelcomes: List<MarmotPendingWelcome> = emptyList(),
     @SerialName("key_package") val keyPackage: MarmotKeyPackage = MarmotKeyPackage(),
     @SerialName("cached_kp_pubkeys") val cachedKpPubkeys: List<String> = emptyList(),
-    /** Rust-owned plural label ("1 invite" / "3 invites"), or null when none. */
-    @SerialName("invites_chip_label") val invitesChipLabel: String? = null,
     /** True when the snapshot came from a registered Marmot signing identity. */
     @SerialName("is_registered") val isRegistered: Boolean = false,
     /** V-61 diagnostic: local MLS state may have diverged from the relay epoch. */
@@ -124,7 +145,21 @@ data class MarmotSnapshot(
      */
     @kotlinx.serialization.Transient
     val lastOpError: MarmotLastOpError? = null,
-)
+) {
+    // ── Shell-owned presentation (aim.md §2) ──────────────────────────────
+
+    /**
+     * Pluralised label for the pending-invites chip, or null when none.
+     * Computed in the shell from raw count (aim.md §2 — pluralisation is
+     * presentation, not protocol data).
+     */
+    val invitesChipLabel: String?
+        get() = when (pendingWelcomes.size) {
+            0 -> null
+            1 -> "1 invite"
+            else -> "${pendingWelcomes.size} invites"
+        }
+}
 
 @Serializable
 data class MarmotMessage(

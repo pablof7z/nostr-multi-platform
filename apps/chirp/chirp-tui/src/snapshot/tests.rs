@@ -205,10 +205,14 @@ fn op_feed_snapshot_value() -> Value {
 /// encodes it with the OP-feed encoder — exactly the path the producer's
 /// `register_typed_snapshot_projection` closure takes (ADR-0038 Commitment 5).
 fn nofs_projection(snapshot: &Value) -> nmp_core::TypedProjectionData {
+    nofs_projection_for("nmp.feed.home", snapshot)
+}
+
+fn nofs_projection_for(key: &str, snapshot: &Value) -> nmp_core::TypedProjectionData {
     let typed: nmp_nip01::OpFeedSnapshot =
         serde_json::from_value(snapshot.clone()).expect("value decodes as OpFeedSnapshot");
     nmp_core::TypedProjectionData {
-        key: "nmp.feed.home".to_string(),
+        key: key.to_string(),
         schema_id: nmp_nip01::OP_FEED_SCHEMA_ID.to_string(),
         schema_version: nmp_nip01::OP_FEED_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(nmp_nip01::OP_FEED_FILE_IDENTIFIER).into_owned(),
@@ -275,10 +279,76 @@ fn typed_home_feed_sidecar_produces_feed_rows() {
     let typed_snapshot =
         SharedSnapshot::from_transport_payload(&flatbuffer_payload(&[nofs_projection(&source)]));
 
-    let typed_rows = TimelineRow::from_snapshot(
-        typed_snapshot.home_feed.as_ref().expect("typed home feed"),
+    let typed_rows =
+        TimelineRow::from_snapshot(typed_snapshot.home_feed.as_ref().expect("typed home feed"));
+    assert!(
+        !typed_rows.is_empty(),
+        "typed NOFS sidecar must yield at least one row"
     );
-    assert!(!typed_rows.is_empty(), "typed NOFS sidecar must yield at least one row");
+}
+
+#[test]
+fn decodes_dynamic_author_and_thread_op_feed_sidecars() {
+    let home = op_feed_snapshot_value();
+    let mut author = op_feed_snapshot_value();
+    author["cards"][0]["card"]["id"] = Value::String("author-row".to_string());
+    let mut thread = op_feed_snapshot_value();
+    thread["cards"][0]["card"]["id"] = Value::String("thread-row".to_string());
+    let author_key = format!("nmp.feed.author.{}", "aa".repeat(32));
+    let thread_key = format!("nmp.feed.thread.{}", "bb".repeat(32));
+    let typed = vec![
+        nofs_projection_for("nmp.feed.home", &home),
+        nofs_projection_for(&author_key, &author),
+        nofs_projection_for(&thread_key, &thread),
+    ];
+
+    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));
+
+    assert_eq!(snapshot.feeds.len(), 3);
+    assert_eq!(
+        snapshot
+            .feeds
+            .get(&author_key)
+            .and_then(FeedProjection::as_value)
+            .and_then(|feed| feed.get("cards"))
+            .and_then(Value::as_array)
+            .and_then(|cards| cards.first())
+            .and_then(|entry| entry.get("card"))
+            .and_then(|card| card.get("id"))
+            .and_then(Value::as_str),
+        Some("author-row")
+    );
+    assert_eq!(
+        snapshot
+            .feeds
+            .get(&thread_key)
+            .and_then(FeedProjection::as_value)
+            .and_then(|feed| feed.get("cards"))
+            .and_then(Value::as_array)
+            .and_then(|cards| cards.first())
+            .and_then(|entry| entry.get("card"))
+            .and_then(|card| card.get("id"))
+            .and_then(Value::as_str),
+        Some("thread-row")
+    );
+}
+
+#[test]
+fn typed_cleared_dynamic_feed_sidecar_is_preserved() {
+    let author_key = format!("nmp.feed.author.{}", "aa".repeat(32));
+    let typed = vec![nmp_core::TypedProjectionData {
+        key: author_key.clone(),
+        state: nmp_core::WireProjectionState::Cleared,
+        ..Default::default()
+    }];
+
+    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));
+
+    assert_eq!(
+        snapshot.feeds.get(&author_key),
+        Some(&FeedProjection::Cleared),
+        "a Cleared dynamic feed row must survive decode so AppState can tear down stale rows"
+    );
 }
 
 /// PR-B: after `payload:Value` is `(deprecated)`, a FlatBuffers frame with no
@@ -289,8 +359,7 @@ fn no_typed_sidecar_yields_none_home_feed() {
     let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&[]));
 
     assert_eq!(
-        snapshot.home_feed,
-        None,
+        snapshot.home_feed, None,
         "PR-B: no typed sidecar → home_feed must be None (generic fallback removed)"
     );
 }
@@ -312,8 +381,7 @@ fn ignores_typed_projection_with_wrong_schema_id() {
     let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));
 
     assert_eq!(
-        snapshot.home_feed,
-        None,
+        snapshot.home_feed, None,
         "PR-B: schema-id mismatch → home_feed must be None (generic fallback removed)"
     );
 }

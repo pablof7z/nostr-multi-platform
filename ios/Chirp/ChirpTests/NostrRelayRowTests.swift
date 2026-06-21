@@ -4,16 +4,17 @@ import XCTest
 
 /// Issue #996 — `NostrRelayRow` is the gallery relay-row primitive and the ONLY
 /// presentation logic it owns is `tintColor(for:)` (a semantic-token → SwiftUI
-/// `Color` mapping). The role → label / role → tint *selection* is the kernel's
-/// job: it flows from the `relay_role_options` projection
-/// (`RelayRoleOption.label` / `.tint`) and the shell hands those strings to the
-/// row verbatim. These tests pin both halves of that contract:
+/// `Color` mapping). The role → tint selection comes from the kernel's
+/// `relay_role_options` projection (`RelayRoleOption.tint`). The role → label
+/// mapping is now a computed shell property (`RelayRoleOption.label`, #1678 /
+/// D7 — removed from the wire, derived from `value` in the shell). These tests
+/// pin both halves of that contract:
 ///
 ///  1. `tintColor(for:)` resolves the kernel's semantic tint tokens (and a hex
 ///     fallback) — the one rendering computation the component is allowed to do.
 ///  2. Resolving a relay's role against `relayRoleOptions` yields the
-///     kernel-emitted `label`/`tint`, never a Swift-derived string — the same
-///     lookup `RelayConfigRow` performs before constructing a `NostrRelayRow`.
+///     shell-computed `label` and kernel-emitted `tint` — the same lookup
+///     `RelayConfigRow` performs before constructing a `NostrRelayRow`.
 @MainActor
 final class NostrRelayRowTests: XCTestCase {
 
@@ -48,16 +49,20 @@ final class NostrRelayRowTests: XCTestCase {
 
     // MARK: role → label/tint comes from the kernel options, not Swift
 
-    /// The kernel's `relay_role_options` projection is the single source of
-    /// truth for a role's label + tint. Resolving a relay row's role against it
-    /// is the entire derivation Chirp's `RelayConfigRow` performs — no Swift
-    /// `switch role { … }` exists anymore.
-    func testRoleResolvesToKernelEmittedLabelAndTint() {
+    /// The kernel's `relay_role_options` projection provides `value` + `tint`
+    /// for each role option. The `label` is now a computed shell property
+    /// mapping `value` → English string (#1678 / D7). Resolving a relay row's
+    /// role against the options yields the correct label (via `RelayRoleOption
+    /// .label`) and the kernel-emitted tint — the same lookup `RelayConfigRow`
+    /// performs before constructing a `NostrRelayRow`.
+    func testRoleResolvesToLabelAndTint() {
+        // `label` is no longer a stored property: remove it from the initialiser.
+        // The computed property derives it from `value` in the shell.
         let options = [
-            RelayRoleOption(isDefault: true, label: "Both", tint: "accent", value: "both"),
-            RelayRoleOption(isDefault: false, label: "Read", tint: "info", value: "read"),
-            RelayRoleOption(isDefault: false, label: "Index", tint: "neutral", value: "indexer"),
-            RelayRoleOption(isDefault: false, label: "Both + Index", tint: "accent", value: "both,indexer"),
+            RelayRoleOption(isDefault: true, tint: "accent", value: "both"),
+            RelayRoleOption(isDefault: false, tint: "info", value: "read"),
+            RelayRoleOption(isDefault: false, tint: "neutral", value: "indexer"),
+            RelayRoleOption(isDefault: false, tint: "accent", value: "both,indexer"),
         ]
 
         func resolve(_ role: String) -> (label: String, tint: String) {

@@ -21,6 +21,7 @@ import kotlin.math.sign
 /**
  * One parked (deferred) op waiting for a peer's KP to arrive.
  * Mirrors `crate::projection::payload::PendingOpRow`.
+ * Shells format display copy from op_tag + missing_count (aim.md §2).
  */
 @Suppress("unused")
 class PendingOpRow : Table() {
@@ -59,20 +60,9 @@ class PendingOpRow : Table() {
             val o = __offset(8)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
-    val displayLabel : String?
-        get() {
-            val o = __offset(10)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val displayLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun displayLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val ageSecs : ULong
         get() {
-            val o = __offset(12)
+            val o = __offset(10)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     companion object {
@@ -82,21 +72,19 @@ class PendingOpRow : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createPendingOpRow(builder: FlatBufferBuilder, correlationIdOffset: Int, opTagOffset: Int, missingCount: UInt, displayLabelOffset: Int, ageSecs: ULong) : Int {
-            builder.startTable(5)
+        fun createPendingOpRow(builder: FlatBufferBuilder, correlationIdOffset: Int, opTagOffset: Int, missingCount: UInt, ageSecs: ULong) : Int {
+            builder.startTable(4)
             addAgeSecs(builder, ageSecs)
-            addDisplayLabel(builder, displayLabelOffset)
             addMissingCount(builder, missingCount)
             addOpTag(builder, opTagOffset)
             addCorrelationId(builder, correlationIdOffset)
             return endPendingOpRow(builder)
         }
-        fun startPendingOpRow(builder: FlatBufferBuilder) = builder.startTable(5)
+        fun startPendingOpRow(builder: FlatBufferBuilder) = builder.startTable(4)
         fun addCorrelationId(builder: FlatBufferBuilder, correlationId: Int) = builder.addOffset(0, correlationId, 0)
         fun addOpTag(builder: FlatBufferBuilder, opTag: Int) = builder.addOffset(1, opTag, 0)
         fun addMissingCount(builder: FlatBufferBuilder, missingCount: UInt) = builder.addInt(2, missingCount.toInt(), 0)
-        fun addDisplayLabel(builder: FlatBufferBuilder, displayLabel: Int) = builder.addOffset(3, displayLabel, 0)
-        fun addAgeSecs(builder: FlatBufferBuilder, ageSecs: ULong) = builder.addLong(4, ageSecs.toLong(), 0)
+        fun addAgeSecs(builder: FlatBufferBuilder, ageSecs: ULong) = builder.addLong(3, ageSecs.toLong(), 0)
         fun endPendingOpRow(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

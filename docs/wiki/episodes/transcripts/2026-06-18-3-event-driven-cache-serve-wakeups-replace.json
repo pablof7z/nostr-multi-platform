@@ -1,0 +1,34 @@
+[
+  [
+    "user",
+    "read issue 1523"
+  ],
+  [
+    "assistant",
+    "Summarized epic #1523, which tracks adopting nostrdb cache techniques without direct dependency, listing 9 sub-issues (#1515–#1524) and key constraints (no second LMDB writer, no nostrdb source copy, no polling, baseline capture is hard precondition)."
+  ],
+  [
+    "user",
+    "work one by one and land them all in master, pr, use opus agent to plan, sonnet agent to code, codex exec to review the work done -- no technical debt allowed, no hacks, perfect engineering, do the right thing, not the easy thing"
+  ],
+  [
+    "assistant",
+    "#1517 plan is test+doc only — no production code changes, no dependency on #1522. Launching Sonnet for #1517 immediately in parallel."
+  ],
+  [
+    "assistant",
+    "4 CI checks still pending (cargo test, android-ffi, Vercel). Plans for #1516 and #1518 are complete and ready to launch in parallel once #1527 merges; noted both touch store_impl.rs and will need merge-conflict resolution on whichever lands second."
+  ],
+  [
+    "assistant",
+    "Will fix the file size issue by splitting build_filter and run_filter_visit into a new query_streaming.rs file in the existing worktree branch."
+  ],
+  [
+    "assistant",
+    "Epic progress: 5/9 sub-issues merged (#1515, #1522, #1517, #1516, #1518). 2 PRs in CI (#1541 for #1520, #1543 for #1521), #1519 agent implementing, #1524 not yet started."
+  ],
+  [
+    "assistant",
+    "All jobs running: #1541 and #1543 CI re-running after a flaky unrelated test failure (local_follow_then_unfollow in nmp-nip02), both auto-merge when green; #1519 Sonnet agent still implementing; #1524 Sonnet agent just launched with Opus plan."
+  ]
+]

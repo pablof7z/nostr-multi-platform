@@ -1,7 +1,7 @@
 // Requires: compose-ui, compose-foundation, compose-material3,
 // androidx.compose.material:material-icons-extended (for ExpandMore,
 // HelpOutline, PlayArrow, VolumeUp). Pulls `compose/content-media-grid` and
-// `compose/content-quote-card` as registry deps. Kotlin 1.9+.
+// `compose/content-kind-registry` as registry deps. Kotlin 1.9+.
 //
 // Compose mirror of the SwiftUI `NostrContentView`. Walks a
 // `ContentTreeWire`, flattens the arena into block-level groups via
@@ -12,9 +12,12 @@
 //   - Theming + tap callbacks come from `LocalNostrContentRenderer`
 //     (see `compose/content-core`).
 //   - Mention display labels are provided by the app via `mentionLabel`.
-//   - Quote / embed cards are app-owned: pass a `quoteCardProvider` closure
-//     that returns a `NostrQuoteCardModel` for an event-ref URI. When `null`,
-//     the view falls back to a `.Collapsed` quote card.
+//   - Embedded events (`nostr:nevent…` / `nostr:naddr…`) render via the
+//     kind-dispatch registry (ADR-0034): `EventRefBlock` delegates to the
+//     `EmbeddedEvent` composable from `compose/content-kind-registry`, which
+//     claims the URI, reads the kernel-resolved `EmbeddedEventEnvelope` from
+//     `LocalClaimedEventEmbeds`, and dispatches to the per-kind renderer in
+//     `LocalNostrKindRegistry`.
 //
 // Inline runs are flattened into a single `AnnotatedString` (with per-run
 // styling) and shown as a `ClickableText` so tap-offset → annotation routing
@@ -70,7 +73,6 @@ public fun NostrContentView(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     mentionLabel: (WireNostrUri) -> String = ::defaultMentionLabel,
-    quoteCardProvider: ((WireNostrUri) -> NostrQuoteCardModel?)? = null,
 ) {
     val groups = nostrContentGroups(tree)
     if (groups.isEmpty()) return
@@ -85,7 +87,6 @@ public fun NostrContentView(
                 tree = tree,
                 textStyle = textStyle,
                 mentionLabel = mentionLabel,
-                quoteCardProvider = quoteCardProvider,
             )
         }
     }
@@ -107,7 +108,6 @@ private fun RenderGroup(
     tree: ContentTreeWire,
     textStyle: TextStyle,
     mentionLabel: (WireNostrUri) -> String,
-    quoteCardProvider: ((WireNostrUri) -> NostrQuoteCardModel?)?,
 ) {
     when (group) {
         is NostrContentGroup.Inline -> InlineGroup(
@@ -123,7 +123,6 @@ private fun RenderGroup(
         )
         is NostrContentGroup.EventRefGroup -> EventRefBlock(
             uri = group.uri,
-            quoteCardProvider = quoteCardProvider,
         )
         is NostrContentGroup.CodeBlockGroup -> CodeBlockBlock(
             info = group.info,
@@ -428,32 +427,15 @@ private fun MediaRow(url: String, isAudio: Boolean) {
 @Composable
 private fun EventRefBlock(
     uri: WireNostrUri,
-    quoteCardProvider: ((WireNostrUri) -> NostrQuoteCardModel?)?,
 ) {
-    // Variant selection mirrors SwiftUI: provider missing → .Collapsed,
-    // provider hit → .Rich, provider miss → .Missing.
-    val providedModel = quoteCardProvider?.invoke(uri)
-    val variant: NostrQuoteCardVariant
-    val model: NostrQuoteCardModel
-    when {
-        quoteCardProvider == null -> {
-            variant = NostrQuoteCardVariant.Collapsed
-            model = NostrQuoteCardModel(id = uri.primaryId, unresolvedUri = uri.uri)
-        }
-        providedModel != null -> {
-            variant = NostrQuoteCardVariant.Rich
-            model = providedModel
-        }
-        else -> {
-            variant = NostrQuoteCardVariant.Missing
-            model = NostrQuoteCardModel(id = uri.primaryId, unresolvedUri = uri.uri)
-        }
-    }
-    val renderer = LocalNostrContentRenderer.current
-    NostrQuoteCard(
-        model = model,
-        variant = variant,
-        onTap = { renderer.callbacks.onEventRefTap(uri.primaryId) },
+    // Kind-dispatch path (ADR-0034 / F-CR-04). `EmbeddedEvent` owns the
+    // claim/release lifecycle, reads the kernel-resolved envelope from
+    // `LocalClaimedEventEmbeds`, and dispatches to the per-kind renderer in
+    // `LocalNostrKindRegistry`. It always renders — a loading placeholder
+    // (via `EmbedChromeContainer`) shows until the host resolves the envelope.
+    EmbeddedEvent(
+        uri = uri.uri,
+        primaryId = uri.primaryId,
     )
 }
 

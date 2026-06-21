@@ -23,8 +23,10 @@ namespace nmp.kernel;
 table RelayRoleOption {
   // Canonical role token written into `AppRelay.role` when picked.
   value:string;
-  // Human-readable picker label.
-  label:string;
+  // `label` removed (#1678, D7): presentation artifact — shells map
+  // `value` → label themselves.  The vtable slot is reserved as
+  // `_reserved_was_label:string` to prevent accidental slot reuse.
+  _reserved_was_label:string (deprecated);
   // Semantic tint token (`accent` / `info` / `success` / `neutral`).
   tint:string;
   // Whether this is the default role offered for a newly-added relay.

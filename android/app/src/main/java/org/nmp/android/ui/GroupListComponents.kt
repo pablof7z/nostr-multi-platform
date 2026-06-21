@@ -45,10 +45,11 @@ import org.nmp.android.model.MarmotSnapshot
  * Row / banner / dialog composables for the Marmot group list — extracted from
  * `GroupsScreen.kt` so neither file crosses the 500-LOC hard cap (AGENTS.md).
  *
- * Thin-shell rule (aim.md §2): ZERO protocol logic. Every Rust-owned string
- * (`displayLabel`, `lastOpError`) is rendered verbatim; the only shell-side
- * copy is structural chrome (section headers, field labels) and the key-package
- * subtitle / action label derived from raw status fields.
+ * Thin-shell rule (aim.md §2): ZERO protocol logic. Presentation strings
+ * (`displayLabel`, `displayName`, `initials`, `invitesChipLabel`) are computed
+ * by the shell from raw wire data; `lastOpError` machine codes are mapped to
+ * banner copy here too. The only structural chrome is section headers /
+ * field labels and the key-package subtitle / action label.
  */
 @Composable
 internal fun KeyPackageRow(model: KernelModel, snapshot: MarmotSnapshot) {
@@ -104,7 +105,7 @@ internal fun PendingOpRow(op: MarmotPendingOp) {
     ) {
         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
         Spacer(Modifier.size(8.dp))
-        // Rust-owned display_label rendered verbatim.
+        // Shell-computed display label (aim.md §2 — presentation, not wire data).
         Text(
             op.displayLabel,
             style = MaterialTheme.typography.bodySmall,
@@ -200,7 +201,7 @@ internal fun CreateGroupDialog(
                     label = { Text("Invite npubs (optional)") },
                     enabled = !isWaiting,
                 )
-                // Pending row: Rust-owned displayLabel verbatim.
+                // Pending row: shell-computed displayLabel (aim.md §2).
                 if (pendingOpRow != null) {
                     Spacer(Modifier.size(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

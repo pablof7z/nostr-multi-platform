@@ -90,7 +90,7 @@ fn run(args: Args) -> Result<()> {
             UiEvent::Nmp(event) => state.apply_nmp_event(&runtime, event),
             UiEvent::Media(event) => media_cache.apply_fetch(event),
         }
-        let diff = render_intents.sync_rows(&state.rows);
+        let diff = render_intents.sync_rows(state.render_intent_rows());
         apply_render_intents(&runtime, diff).map_err(|e| eyre!(e))?;
         media_cache.sync_urls(visible_media_urls(&state), media_tx.clone());
         draw(&mut terminal, &state, &media_cache)?;

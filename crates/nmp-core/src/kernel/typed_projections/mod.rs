@@ -305,7 +305,6 @@ impl super::Kernel {
                 .iter()
                 .map(|option| RelayRoleOptionRow {
                     value: option.value.clone(),
-                    label: option.label.clone(),
                     tint: option.tint.clone(),
                     is_default: option.is_default,
                 })

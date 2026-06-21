@@ -32,12 +32,13 @@ final class TypedAccountsDecoderTests: XCTestCase {
             schemaVersion: 1,
             fileIdentifier: TypedAccountsDecoder.fileIdentifier,
             payload: buildAccountsSnapshot([
-                // (id, npub, displayName?, pictureUrl?, signerKind, signerLabel,
-                //  status, signerIsRemote, isActive)
+                // (id, npub, displayName?, pictureUrl?, signerKind,
+                //  status, signerIsRemote, isActive) — signer_label is derived
+                //  shell-side from signerKind (#1712), not carried on the wire.
                 ("acct-typed-1", "npub1typed1", "Typed Alice", "https://t/1.png",
-                 "local", "Local Key", "ready", false, true),
+                 "local", "ready", false, true),
                 ("acct-typed-2", "npub1typed2", nil, nil,
-                 "bunker", "Remote Signer", "connecting", true, false),
+                 "nip46", "connecting", true, false),
             ]))
 
         let accounts = try XCTUnwrap(
@@ -51,7 +52,8 @@ final class TypedAccountsDecoderTests: XCTestCase {
         XCTAssertEqual(accounts[0].displayName, "Typed Alice")
         XCTAssertEqual(accounts[0].pictureUrl, "https://t/1.png")
         XCTAssertEqual(accounts[0].signerKind, "local")
-        XCTAssertEqual(accounts[0].signerLabel, "Local Key")
+        // signerLabel is shell-derived from signerKind (#1712), not on the wire.
+        XCTAssertEqual(accounts[0].signerLabel, "Local key")
         XCTAssertEqual(accounts[0].status, "ready")
         XCTAssertFalse(accounts[0].signerIsRemote)
         XCTAssertTrue(accounts[0].isActive)
@@ -60,6 +62,8 @@ final class TypedAccountsDecoderTests: XCTestCase {
         // ADR-0032: absent display mirrors (has_* == false) decode to nil, not "".
         XCTAssertNil(accounts[1].displayName)
         XCTAssertNil(accounts[1].pictureUrl)
+        XCTAssertEqual(accounts[1].signerKind, "nip46")
+        XCTAssertEqual(accounts[1].signerLabel, "NIP-46")
         XCTAssertTrue(accounts[1].signerIsRemote)
         XCTAssertFalse(accounts[1].isActive)
     }
@@ -140,17 +144,18 @@ final class TypedAccountsDecoderTests: XCTestCase {
     /// honouring the ADR-0032 `has_*` companion bools (a nil display
     /// name / picture url sets the companion bool to false and omits the string).
     private func buildAccountsSnapshot(
-        _ rows: [(String, String, String?, String?, String, String, String, Bool, Bool)]
+        _ rows: [(String, String, String?, String?, String, String, Bool, Bool)]
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 1024)
         let rowOffsets: [Offset] = rows.map { row in
-            let (id, npub, displayName, pictureUrl, signerKind, signerLabel, status,
+            // `signer_label` was removed from the wire (#1712); the shell derives
+            // the label from `signerKind`, so it is no longer built here.
+            let (id, npub, displayName, pictureUrl, signerKind, status,
                  signerIsRemote, isActive) = row
             let idOff = fbb.create(string: id)
             let npubOff = fbb.create(string: npub)
             let signerKindOff = fbb.create(string: signerKind)
             let statusOff = fbb.create(string: status)
-            let signerLabelOff = fbb.create(string: signerLabel)
             let displayNameOff = displayName.map { fbb.create(string: $0) } ?? Offset()
             let pictureUrlOff = pictureUrl.map { fbb.create(string: $0) } ?? Offset()
             return nmp_kernel_AccountSummaryRow.createAccountSummaryRow(
@@ -161,7 +166,6 @@ final class TypedAccountsDecoderTests: XCTestCase {
                 displayNameOffset: displayNameOff,
                 signerKindOffset: signerKindOff,
                 statusOffset: statusOff,
-                signerLabelOffset: signerLabelOff,
                 signerIsRemote: signerIsRemote,
                 isActive: isActive,
                 hasPictureUrl: pictureUrl != nil,

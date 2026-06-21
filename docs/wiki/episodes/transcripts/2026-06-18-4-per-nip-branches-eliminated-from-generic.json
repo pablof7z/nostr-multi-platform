@@ -1,0 +1,50 @@
+[
+  [
+    "user",
+    "read 1493 issue"
+  ],
+  [
+    "assistant",
+    "Summarized issue #1493 — a 25-agent read-only audit identifying 9 cross-cutting architectural exception patterns (P1–P9) where bespoke code violated uniform architecture, with top actionable items being divergent `is_replaceable`, NIP-17 DM relay pruning, and SF Symbols in nmp-core."
+  ],
+  [
+    "user",
+    "send an opus agent to work on some of them and land them, have a review from `codex exec` before it's PRed and have the agent land the PR and merge into master: P1, P2, P3, P9 (hardocded relays and pubkeys belong ONLY in app level code, not NMP itself), P7, P4. For these critical items, before designing a solution get a `codex exec` solution to design the problem: point 5 (this one sounds critical!), 1, 2, 3, P5, P7, P4\n\nwhatever work can be done in parallel, fan out workflows with these guidelines, as much parallel work as possible within safety (i.e. ensuring we don't get agents stepping on each other's work) -- each agent must work on its work git worktree and not touch the main branch -- in fact, here in the main thread I want you to monitor in some way (like with a script or something that wakes you up) whenever an agent moves away from master so you get awaken the moment the base dir is not on master so you can redirect the offending agent"
+  ],
+  [
+    "assistant",
+    "The Android JUnit agent was still working on its assertion failure; no intervention warranted."
+  ],
+  [
+    "assistant",
+    "Consolidated campaign status: 9 PRs merged to master (P7 #1532, P3 #1534, P5 #1540, P1 #1528/#1536/#1537, P2 #1529/#1533, P4 #1530); 4 in CI self-merging (#1539 pt3, #1542 p2-nip19, #1545 p4, #1547 p5); p9 relays/pubkeys vertical is the main remaining work; p1's last 2 slices blocked on #1525; follow-ups #1538 and #1546 filed."
+  ],
+  [
+    "assistant",
+    "All decisions dispatched; campaign in final phase with 9+ PRs merged, 4 in CI, p9 and p1 remaining."
+  ],
+  [
+    "assistant",
+    "P4 idle, waiting on #1545's CI to merge — no action needed."
+  ],
+  [
+    "assistant",
+    "p9 cleared to merge #1550 and proceed through PR1b→PR2→PR3; #1539, #1542, #1545, #1547 in CI self-merging; p1 last 2 slices blocked on #1525; everything else done or self-merging."
+  ],
+  [
+    "assistant",
+    "Redirected p9 to phased PR2 (PR2a closes drift bug today, PR2b does codegen restructure after) instead of a monolithic PR, due to embedded-section-in-triple-vendored-file complexity making the full diff too risky to review well."
+  ],
+  [
+    "assistant",
+    "Aligned with p9 on phased PR2 approach and granted autonomy through PR2a→PR2b→PR3; no open decisions across any lane; campaign self-driving."
+  ],
+  [
+    "assistant",
+    "Duplicate of p9's phased PR2 message already confirmed — no new action needed."
+  ],
+  [
+    "assistant",
+    "Final tally: ~14 PRs merged; #1567 (p9 PR2a signer catalog) and #1547 (p5 handshake) in CI; p9 continuing PR3→PR2b→PR1b; p1 finishing last 2 slices. Taking on merge-sweep role since agents don't auto-wake on CI completion — will check for clean-but-open campaign PRs and merge them each invocation."
+  ]
+]

@@ -765,6 +765,28 @@ pub enum ActorCommand {
         /// spinner round-trip contract.
         correlation_id: Option<String>,
     },
+    /// Bulk follow — append the full `pubkeys` set to the active account's
+    /// kind:3 and re-publish it ONCE.
+    ///
+    /// Unlike dispatching N sequential `Follow` commands (which race: each
+    /// reads the current kind:3 before the prior signed event is ingested,
+    /// so each publishes a kind:3 with only +1 p-tag and last-write-wins
+    /// silently drops every follow but the last), this command reads kind:3
+    /// EXACTLY ONCE, folds all target pubkeys via `kind3_tags_after_add` in
+    /// a single pass, and produces ONE signed kind:3. The race is
+    /// structurally impossible: a single command = a single actor-thread
+    /// execution slot = one atomic read-modify-write.
+    ///
+    /// Invalid (non-64-hex) entries and the active account's own pubkey are
+    /// silently dropped; the remaining set is deduped preserving document
+    /// order (idempotent adds keep the first occurrence).
+    FollowMany {
+        pubkeys: Vec<String>,
+        /// Registry-minted action id forwarded to the publish-engine terminal
+        /// verdict. Matches the value returned by `nmp_app_dispatch_action`
+        /// so the host spinner closes on the `nmp.follow_many` action.
+        correlation_id: Option<String>,
+    },
     /// T66a relay edit — add a relay row (role: `read` | `write` | `both`).
     AddRelay {
         url: String,
@@ -1052,6 +1074,15 @@ pub enum ActorCommand {
     /// observable state, never a silent no-op.
     ShowToast {
         message: String,
+    },
+    /// D6 + issue #1682 — surface a structured error [`UiToken`] from an
+    /// off-actor worker thread (e.g. the NIP-17 gift-wrap publish continuation),
+    /// which holds only a `CommandSender`, not a kernel reference. The actor
+    /// thread routes it to `kernel.set_last_error_token`, writing both the
+    /// machine `code` (`last_error_category`) and the English fallback prose
+    /// (`last_error_toast`) so the shell can render localized prose.
+    ShowErrorToken {
+        token: crate::ui_token::UiToken,
     },
     /// Mark the kernel dirty so host-registered snapshot projections re-emit.
     ///
