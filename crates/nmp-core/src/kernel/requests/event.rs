@@ -470,6 +470,10 @@ impl Kernel {
         // BLOCKING 1 — detach THIS consumer's `Live` tailing owner on EVERY release
         // (no-op for CacheOk-only); the slot tears down on the last live owner.
         self.release_event_claim_interest(&primary_id, consumer_id);
+        // ADR-0063 Lane B — drop THIS consumer's COLD-PARK stake from
+        // `pending_event_claims` so a hintless claim released before the
+        // relay-ready drain is not resurrected (rationale on the fn).
+        self.remove_parked_event_claim(&primary_id, consumer_id);
         if remove_claim {
             // BLOCKING 1 — route last-consumer teardown through the SINGLE unified
             // key-teardown fn shared with the terminal-miss path (D4: one writer).
