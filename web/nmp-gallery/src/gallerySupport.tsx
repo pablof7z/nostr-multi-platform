@@ -1,6 +1,6 @@
 import { type JSX } from "solid-js";
 
-import type { EmbeddedEventModel } from "./components/content-kind-registry/NostrKindRegistry";
+import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import { WireNodeKind } from "./nmp/generated/nmp/content/wire-node-kind";
 import { type ClaimedEventWire, type RelayStatusRow, tagValue } from "./nmp/profileHost";
 

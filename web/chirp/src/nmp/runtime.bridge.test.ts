@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { publishNoteAction } from "./actions";
-import type { WorkerEvent, WorkerRequest } from "./protocol";
-import { protocolVersion } from "./protocol";
+import type { WorkerEvent, WorkerRequest } from "@nmp/runtime-web";
+import { protocolVersion } from "@nmp/runtime-web";
 
 type WorkerHarness = {
   onmessage: ((message: MessageEvent<WorkerRequest>) => void) | null;
@@ -23,7 +23,7 @@ describe("worker runtime bridge", () => {
     vi.stubGlobal("location", { origin: "http://localhost" });
     vi.stubGlobal("self", harness);
 
-    await import("./worker");
+    await import("@nmp/runtime-web/worker");
 
     await sendWorkerRequest(harness, {
       type: "hello",

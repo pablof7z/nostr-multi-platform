@@ -7,7 +7,7 @@
  * and an honest placeholder for the rest.
  */
 import type { RuntimeSnapshot } from "../../nmp/client";
-import { protocolVersion } from "../../nmp/protocol";
+import { protocolVersion } from "@nmp/runtime-web";
 
 export function PanelSigner(props: { snapshot: RuntimeSnapshot }) {
   return (

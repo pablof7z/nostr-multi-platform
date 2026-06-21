@@ -1,4 +1,4 @@
-import type { ChirpAction } from "./protocol";
+import type { ChirpAction } from "@nmp/runtime-web";
 
 export type RuntimeCommand = {
   actionType: string;

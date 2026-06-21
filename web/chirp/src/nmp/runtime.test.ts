@@ -8,10 +8,10 @@ import {
   walletCommand,
 } from "./actions";
 import { createNmpClient, makeCorrelationId, type RuntimeSnapshot } from "./client";
-import { DegradedRuntime } from "./degradedRuntime";
+import { DegradedRuntime } from "@nmp/runtime-web";
 import * as flatbuffers from "flatbuffers";
-import type { WorkerEvent, WorkerRequest } from "./protocol";
-import { eventCorrelationId, protocolVersion } from "./protocol";
+import type { WorkerEvent, WorkerRequest } from "@nmp/runtime-web";
+import { eventCorrelationId, protocolVersion } from "@nmp/runtime-web";
 import { chirpTimelineFromEnvelope, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
 import { FrameKind, PanicFrame, RelayStatus, SnapshotFrame, UpdateFrame } from "./generated/nmp/transport";
 import { decodeUpdateFrameBytes, UpdateFrameDecodeError } from "./updateFrame";

@@ -7,8 +7,8 @@
 // `crates/nmp-cli/tests/export.rs`. There is no hand-copied vendor fork to
 // drift: this is the one canonical path.
 //
-// The web component templates (`vendor/web/*.tsx`) are deliberately NOT sourced
-// here — they are canonical in `src/vendor/web` and gated by the gallery.
+// The web component templates are canonical in `@nmp/components-web` and gated
+// by the gallery; they are imported with `?raw` directly from that package.
 import registryJson from "../../public/registry.json";
 
 interface RegistryFile {

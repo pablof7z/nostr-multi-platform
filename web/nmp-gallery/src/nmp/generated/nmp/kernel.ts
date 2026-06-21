@@ -2,10 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
-export { RelayConnectionReason } from './kernel/relay-connection-reason.js';
-export { RelayDiagnosticsInfo } from './kernel/relay-diagnostics-info.js';
-export { RelayDiagnosticsInterest } from './kernel/relay-diagnostics-interest.js';
-export { RelayDiagnosticsNotice } from './kernel/relay-diagnostics-notice.js';
-export { RelayDiagnosticsRow } from './kernel/relay-diagnostics-row.js';
-export { RelayDiagnosticsSnapshot } from './kernel/relay-diagnostics-snapshot.js';
-export { RelayDiagnosticsWireSub } from './kernel/relay-diagnostics-wire-sub.js';
+export { ClaimedEvent } from './kernel/claimed-event.js';
+export { ClaimedEventEntry } from './kernel/claimed-event-entry.js';
+export { ClaimedEventsSnapshot } from './kernel/claimed-events-snapshot.js';
+export { TagRow } from './kernel/tag-row.js';

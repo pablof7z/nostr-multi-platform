@@ -82,5 +82,5 @@ CC_wasm32_unknown_unknown=clang wasm-pack build \
 # 4. Build the Chirp web app (TypeScript check + Vite bundle)
 # ---------------------------------------------------------------------------
 echo "[build] Building Chirp web..."
-cd "$WEB_CHIRP_DIR"
-npm run build
+npm --prefix "$REPO_ROOT/web" install
+npm --prefix "$REPO_ROOT/web" run build -w @nmp/chirp-web

@@ -1,14 +1,14 @@
 import type { PlatformImpl } from "./types";
 
-import webArticleCardTsx from "../vendor/web/content-kind-30023/NostrArticleCard.tsx?raw";
-import webHighlightCardTsx from "../vendor/web/content-kind-9802/NostrHighlightCard.tsx?raw";
-import webKindRegistryTsx from "../vendor/web/content-kind-registry/NostrKindRegistry.tsx?raw";
-import webContentCoreTs from "../vendor/web/content-core/decodeContentTree.ts?raw";
-import webMediaGridTsx from "../vendor/web/content-media-grid/NostrMediaGrid.tsx?raw";
-import webMentionChipTsx from "../vendor/web/content-mention-chip/NostrMentionChip.tsx?raw";
-import webContentMinimalTsx from "../vendor/web/content-minimal/NostrMinimalContentView.tsx?raw";
-import webQuoteCardTsx from "../vendor/web/content-quote-card/NostrQuoteCard.tsx?raw";
-import webContentViewTsx from "../vendor/web/content-view/NostrContentView.tsx?raw";
+import webArticleCardTsx from "@nmp/components-web/src/content-kind-30023/NostrArticleCard.tsx?raw";
+import webHighlightCardTsx from "@nmp/components-web/src/content-kind-9802/NostrHighlightCard.tsx?raw";
+import webKindRegistryTsx from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry.tsx?raw";
+import webContentCoreTs from "@nmp/components-web/src/content-core/decodeContentTree.ts?raw";
+import webMediaGridTsx from "@nmp/components-web/src/content-media-grid/NostrMediaGrid.tsx?raw";
+import webMentionChipTsx from "@nmp/components-web/src/content-mention-chip/NostrMentionChip.tsx?raw";
+import webContentMinimalTsx from "@nmp/components-web/src/content-minimal/NostrMinimalContentView.tsx?raw";
+import webQuoteCardTsx from "@nmp/components-web/src/content-quote-card/NostrQuoteCard.tsx?raw";
+import webContentViewTsx from "@nmp/components-web/src/content-view/NostrContentView.tsx?raw";
 
 export const webContentCore: PlatformImpl = {
   status: "stable",

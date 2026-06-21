@@ -6,6 +6,11 @@ export default defineConfig({
   build: {
     target: "es2020",
   },
+  // @nmp/runtime-web is source-only; exclude from esbuild pre-bundling so
+  // the Solid transform runs on package sources through the plugin chain.
+  optimizeDeps: {
+    exclude: ["@nmp/runtime-web"],
+  },
   test: {
     environment: "node",
     // Only pick up unit tests from src/ — exclude the Playwright E2E tests

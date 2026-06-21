@@ -27,7 +27,7 @@ require_line "ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
 require_line "apps/nmp-gallery/android/app/build.gradle.kts" 'implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")'
 require_line "android/app/build.gradle.kts" 'implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")'
 require_line "web/chirp/package.json" '"flatbuffers": "^25.9.23"'
-require_line "web/chirp/package-lock.json" '"version": "25.9.23"'
+require_line "web/package-lock.json" '"version": "25.9.23"'
 require_line "ci/regenerate-flatbuffers.sh" 'run_with_flatc 25.12.19 bash ci/check-rust-flatc-drift.sh --write'
 require_line "ci/regenerate-flatbuffers.sh" 'run_with_flatc 25.2.10 bash ci/check-kotlin-flatc-drift.sh --write'
 require_line "ci/regenerate-flatbuffers.sh" 'run_with_flatc 25.9.23 bash ci/check-ts-flatc-drift.sh --write'

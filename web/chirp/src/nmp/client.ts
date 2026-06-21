@@ -1,6 +1,6 @@
 import * as flatbuffers from "flatbuffers";
 
-import { DegradedRuntime } from "./degradedRuntime";
+import { DegradedRuntime } from "@nmp/runtime-web";
 import { decodeHomeFeed, decodeResolvedProfiles, decodeResolvedProfileCards, type FeedItem } from "./feedProjection";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { decodeKrdgTones } from "./relayDiagnosticsProjection";
@@ -12,7 +12,7 @@ import {
   type WorkerEvent,
   type WorkerRequest,
   type ChirpAction,
-} from "./protocol";
+} from "@nmp/runtime-web";
 import type { RuntimeCommand } from "./actions";
 import {
   CHIRP_RELAY_BOOTSTRAP,
@@ -301,7 +301,7 @@ abstract class BaseClient implements NmpClient {
 }
 
 class WorkerNmpClient extends BaseClient {
-  private readonly worker = new Worker(new URL("./worker.ts", import.meta.url), {
+  private readonly worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), {
     type: "module",
   });
   private readonly pending = new Map<string, (snapshot: RuntimeSnapshot) => void>();
