@@ -22,7 +22,7 @@
 //! direct consequence of a state mutation — never in a timer, never in a
 //! polling loop. Bumps are O(1) `u64::saturating_add(1)`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use super::{
     SRC_ACCOUNTS, SRC_ACTIVE_ACCOUNT, SRC_CLAIMED_EVENT_CONTENT, SRC_CONFIGURED_RELAYS,
@@ -136,14 +136,37 @@ pub(crate) struct SourceVersions {
     /// Bumped at three sites: resolve (`resolve_profile_ref`), release
     /// (`release_profile_ref`), and the kind:0 ingest chokepoint
     /// (`project_accepted_event`, gated on a live claim). Monotonic; reset only
-    /// on `Kernel` rebuild. Bounded to claimed pubkeys (ingest only bumps a
-    /// claimed author; unclaimed authors never enter the map).
+    /// on `Kernel` rebuild.
+    ///
+    /// ## Bounded-cleanup lifecycle (BLOCKING 2 fix)
+    ///
+    /// An entry is created ONLY when a row is actually mutated: every call site
+    /// gates the bump on a real claim / real refcount change / live-claimed
+    /// ingest, so a spurious release of a never-claimed key never inserts a row
+    /// (see the gated `bump_*_row` callers). When a row is fully released its
+    /// rev is retained (the value the `Cleared` frame must carry) and the key is
+    /// recorded in [`Self::profile_rows_pending_clear`]. Lane A drops the entry
+    /// via [`Self::reap_cleared_profile_rows`] **after** emitting that key's
+    /// `Cleared` row, keeping the map bounded to {live ∪ not-yet-emitted-cleared}
+    /// keys. A re-resolve before the reap cancels the pending clear (the bump
+    /// removes the key from the pending set), so the rev stays monotonic and a
+    /// re-resolved key is never reaped out from under a live consumer.
     pub(crate) profile_row_revs: HashMap<String, u64>,
     /// Per-KEY revision for `refs.event` rows (keyed by `primary_id`: hex64 id or
     /// `kind:pubkey:d` coord). Event twin of [`Self::profile_row_revs`]; bumped at
     /// resolve/release (`requests/event.rs`) and the store-ingest chokepoint
-    /// (`maybe_bump_claimed_event_content`, already gated on a live claim).
+    /// (`maybe_bump_claimed_event_content`, already gated on a live claim). Same
+    /// bounded-cleanup lifecycle as `profile_row_revs`.
     pub(crate) event_row_revs: HashMap<String, u64>,
+
+    /// Keys whose `refs.profile` row was fully released (last consumer gone) but
+    /// whose per-key rev entry is retained until Lane A emits the `Cleared` row.
+    /// See the lifecycle doc on [`Self::profile_row_revs`]. Reaped by
+    /// [`Self::reap_cleared_profile_rows`]; a re-resolve removes the key here via
+    /// [`Self::bump_profile_row`].
+    pub(crate) profile_rows_pending_clear: BTreeSet<String>,
+    /// Event twin of [`Self::profile_rows_pending_clear`].
+    pub(crate) event_rows_pending_clear: BTreeSet<String>,
 }
 
 impl SourceVersions {
@@ -239,15 +262,76 @@ impl SourceVersions {
     }
 
     /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.profile` row.
+    ///
+    /// Callers MUST gate this on an actual row mutation (a real claim, a real
+    /// refcount change, or a live-claimed ingest) so the map stays bounded to
+    /// claimed keys — a spurious bump for a never-claimed key would create a
+    /// permanent row (BLOCKING 2). A bump also cancels any pending clear: the row
+    /// is live/changing again, so a re-resolve keeps the monotonic rev and is
+    /// never reaped (no stale-low rev reuse).
     pub(crate) fn bump_profile_row(&mut self, key: &str) {
         let rev = self.profile_row_revs.entry(key.to_string()).or_insert(0);
         *rev = rev.saturating_add(1);
+        self.profile_rows_pending_clear.remove(key);
     }
 
     /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
+    /// Same gating + pending-clear cancellation contract as
+    /// [`Self::bump_profile_row`].
     pub(crate) fn bump_event_row(&mut self, key: &str) {
         let rev = self.event_row_revs.entry(key.to_string()).or_insert(0);
         *rev = rev.saturating_add(1);
+        self.event_rows_pending_clear.remove(key);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — record that `(namespace, key)`'s row has been
+    /// fully released (`Cleared`). The rev entry is RETAINED (it is the rev the
+    /// `Cleared` frame must carry); the key becomes eligible for reaping once
+    /// Lane A has emitted that frame. No-op when the key has no rev entry (a
+    /// never-claimed key never reached the `Cleared` state). Call AFTER the
+    /// release's `bump_*_row` so the retained rev is the post-clear value.
+    pub(crate) fn mark_row_cleared(&mut self, namespace: RefNamespace, key: &str) {
+        match namespace {
+            RefNamespace::Profile => {
+                if self.profile_row_revs.contains_key(key) {
+                    self.profile_rows_pending_clear.insert(key.to_string());
+                }
+            }
+            RefNamespace::Event => {
+                if self.event_row_revs.contains_key(key) {
+                    self.event_rows_pending_clear.insert(key.to_string());
+                }
+            }
+        }
+    }
+
+    /// ADR-0063 (#1671 Lane B) — Lane A cleanup hook. Drops the per-key rev entry
+    /// for every `refs.profile` key whose `Cleared` row has been emitted, keeping
+    /// the map bounded to {live ∪ not-yet-emitted-cleared}. Returns the reaped
+    /// keys (for the caller's own bookkeeping / tests).
+    ///
+    /// **Cross-lane contract (Lane A):** call this ONLY after the `Cleared` row
+    /// for each pending key has crossed FFI carrying its final rev. A key that is
+    /// re-resolved before the reap is removed from the pending set by
+    /// [`Self::bump_profile_row`], so it is never reaped while live — guaranteeing
+    /// a re-resolve never reuses a stale-low rev.
+    pub(crate) fn reap_cleared_profile_rows(&mut self) -> Vec<String> {
+        let keys: Vec<String> =
+            std::mem::take(&mut self.profile_rows_pending_clear).into_iter().collect();
+        for key in &keys {
+            self.profile_row_revs.remove(key);
+        }
+        keys
+    }
+
+    /// Event twin of [`Self::reap_cleared_profile_rows`].
+    pub(crate) fn reap_cleared_event_rows(&mut self) -> Vec<String> {
+        let keys: Vec<String> =
+            std::mem::take(&mut self.event_rows_pending_clear).into_iter().collect();
+        for key in &keys {
+            self.event_row_revs.remove(key);
+        }
+        keys
     }
 
     /// ADR-0063 (#1671 Lane B) — read the per-KEY rev for `(namespace, key)`.
