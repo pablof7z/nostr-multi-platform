@@ -186,6 +186,8 @@ pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_P
 // `KernelEventObserverSlot` and `notify_observers` are used by kernel/event_observer.rs
 // unconditionally. The slot constructors and registration helpers are native FFI only.
 pub(crate) use event_observer::notify_observers;
+// ADR-0062: targeted observer delivery (crate-internal replay path).
+pub(crate) use event_observer::notify_observer_by_id;
 // `KernelEventObserverSlot` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::KernelEventObserverSlot`.
 pub use event_observer::KernelEventObserverSlot;
@@ -201,6 +203,12 @@ pub(crate) use event_observer::new_event_observer_slot_headless;
 // KernelEventObservers. `new_event_observer_slot` and `unregister_observer`
 // remain native-only (used by the FFI / actor-thread shutdown path).
 pub use event_observer::register_rust_observer;
+// ADR-0062: muted observer registration — available on all targets (same
+// gate as `register_rust_observer`). `activate_observer` is native-only
+// (consumed by `nmp-ffi` and the actor dispatch arm).
+pub use event_observer::register_rust_observer_muted;
+#[cfg(feature = "native")]
+pub use event_observer::activate_observer;
 // Slot constructor + unregister helper reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`.
 #[cfg(feature = "native")]

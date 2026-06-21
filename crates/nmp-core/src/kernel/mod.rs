@@ -148,6 +148,16 @@ mod event_claim_released_tests;
 mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
+// ADR-0062 — observer-scoped read-model catch-up. Provides
+// `open_interest_with_observer_replay` and `replay_read_cache_to_observer`.
+// `ObserverReplayRequest` is re-exported so the actor dispatch arm can
+// construct one without naming the private `kernel` module types directly.
+mod observer_replay;
+pub(crate) use observer_replay::ObserverReplayRequest;
+#[cfg(test)]
+mod observer_replay_tests;
+#[cfg(test)]
+mod observer_replay_store_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)]

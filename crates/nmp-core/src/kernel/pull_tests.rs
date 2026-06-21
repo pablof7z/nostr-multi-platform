@@ -276,6 +276,9 @@ mod gap_store {
         fn get_by_id(&self, _id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
             unimplemented!("GapStore is gap-only")
         }
+        fn peek_by_id(&self, _id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
+            unimplemented!("GapStore is gap-only")
+        }
         fn scan_by_author_kind<'a>(
             &'a self, _author: &PubKey, _kinds: &[u32],
             _since: Option<u64>, _until: Option<u64>, _limit: usize,

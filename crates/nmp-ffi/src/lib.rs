@@ -255,7 +255,7 @@ use nmp_core::__ffi_internal::{
     default_registry, dispatch_capability, new_app_relay_slot, new_bunker_handshake_slot,
     new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
     new_signer_state_slot, new_snapshot_projection_slot,
-    register_rust_observer, run_actor_with_observers,
+    register_rust_observer, register_rust_observer_muted, run_actor_with_observers,
     unregister_observer, ActionRegistry, ActorChannels,
     ActorConfigSources, ActorRuntimeSlots, CapabilityCallbackSlot, KernelEventObserverSlot,
     LifecycleObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
@@ -1575,12 +1575,13 @@ impl NmpApp {
     /// [`nmp_feed::FeedController`] under `key` in the feed registry (the
     /// render payload is emitted by a separately-registered typed snapshot
     /// projection, e.g. `register_typed_feed_sidecar`, not by this call) — AND
-    /// additionally plugs `observer` into the kernel's
-    /// [`KernelEventObserver`] registry so the
-    /// feed receives ingested events, **tracking the returned observer id
-    /// under `key`** so [`Self::unregister_feed`] can revoke it. The caller
-    /// typically passes the same `Arc<FlatFeed>` as both `controller` and
-    /// `observer`.
+    /// additionally installs `observer` into the kernel's
+    /// [`KernelEventObserver`] registry in **muted** state (ADR-0062).  The
+    /// observer will NOT fire from the global fan-out until the caller passes
+    /// the returned id to [`Self::open_observed_interest`], which replays the
+    /// in-memory read-cache (and, for explicit `ids`-bearing shapes, the durable
+    /// store) to the observer and then activates it.  The caller typically
+    /// passes the same `Arc<FlatFeed>` as both `controller` and `observer`.
     ///
     /// Registering the same `key` twice replaces the controller / projection
     /// (last-writer-wins) and revokes the previously-tracked observer before
@@ -1588,17 +1589,19 @@ impl NmpApp {
     ///
     /// D6 — a poisoned bookkeeping mutex degrades to "observer registered but
     /// untracked": the feed still works, but its observer outlives the screen
-    /// (a bounded soft-leak, never a crash). D8 — `register_event_observer` is
-    /// an init-style registry push, not a hot-path call.
+    /// (a bounded soft-leak, never a crash). D8 — init-style registry push.
+    #[must_use = "pass the returned id to open_observed_interest for catch-up"]
     pub fn register_feed_with_observer(
         &self,
         key: impl Into<String>,
         controller: std::sync::Arc<dyn nmp_feed::FeedController>,
         observer: std::sync::Arc<dyn KernelEventObserver>,
-    ) {
+    ) -> KernelEventObserverId {
         let key = key.into();
         self.register_feed(key.clone(), controller);
-        let observer_id = self.register_event_observer(observer);
+        // ADR-0062: register muted so the observer doesn't receive events
+        // from the global fan-out until the replay+activate step completes.
+        let observer_id = register_rust_observer_muted(&self.event_observers, observer);
         if let Ok(mut map) = self.interest_feed_observers.lock() {
             if let Some(previous) = map.insert(key, observer_id) {
                 // A re-open under the same key: the new observer is now
@@ -1607,6 +1610,43 @@ impl NmpApp {
                 self.unregister_event_observer(previous);
             }
         }
+        observer_id
+    }
+
+    /// ADR-0062 — open an interest with read-model catch-up replay to the
+    /// muted observer identified by `observer_id`, then activate it.
+    ///
+    /// Validates the filter JSON via `InterestShape::from_filter_json` and
+    /// sends `ActorCommand::OpenObservedInterest`. A malformed filter emits a
+    /// toast (same as `nmp_app_open_interest`) and returns without sending.
+    ///
+    /// `replay_shapes` are the `InterestShape`s used to match events in the
+    /// kernel's read-cache during replay. These may differ from the filter
+    /// (e.g. a thread feed uses two shapes: `#e` replies + root-by-id).
+    pub fn open_observed_interest(
+        &self,
+        filter_json: &str,
+        consumer_id: &str,
+        scope: u32,
+        observer_id: KernelEventObserverId,
+        replay_shapes: Vec<nmp_planner::InterestShape>,
+        replay_limit: usize,
+    ) {
+        // Validate filter — same guard as nmp_app_open_interest.
+        if nmp_planner::InterestShape::from_filter_json(filter_json).is_none() {
+            // D6: invalid filter is a no-op (the caller already surfaced a
+            // toast via the validated FFI path; this internal helper does not
+            // cross C ABI so we can stay silent here).
+            return;
+        }
+        self.send_cmd(ActorCommand::OpenObservedInterest {
+            filter_json: filter_json.to_string(),
+            consumer_id: consumer_id.to_string(),
+            scope,
+            observer_id,
+            replay_shapes,
+            replay_limit,
+        });
     }
 
     /// Tear down a feed registered through [`Self::register_feed_with_observer`].
