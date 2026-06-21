@@ -342,3 +342,92 @@ fn event_no_op_re_resolve_does_not_advance_per_key_rev() {
         "a duplicate identical event re-resolve must not advance the per-key rev (BLOCKING 3)"
     );
 }
+
+// ─── Lane B: released-before-drain parked claim is not resurrected ────────────
+
+/// ADR-0063 (#1671 Lane B, codex re-review) — a hintless event claim that PARKS
+/// in `pending_event_claims` (no relay connected) and is then RELEASED before
+/// the relay-ready drain runs must NOT be resurrected by
+/// `pending_event_claim_requests`.
+///
+/// PRE-FIX bug: the unified `teardown_event_claim_key` cleaned only the LIVE
+/// per-key maps (`event_claims`, `ref_event_shapes`, the `Live` slot, the rev),
+/// never the cold-park queue. The drain then replayed the stale `(uri, consumer)`
+/// pair UNCONDITIONALLY, re-inserting a refcount row, a fresh rev, and an
+/// in-flight discovery REQ for a claim nobody holds — a D4/lifecycle violation.
+/// On the pre-fix code this test fails at the `event_claims`/rev/requested
+/// assertions below (the released key is resurrected). It passes once release
+/// removes the parked stake and the drain skips a released pair.
+#[test]
+fn parked_event_claim_released_before_drain_is_not_resurrected() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    // 1. NO relay connected → `any_relay_connected()` is false, so the hintless
+    //    claim takes the cold-park branch.
+    assert!(
+        !kernel.any_relay_connected(),
+        "precondition: no relay connected so the claim parks"
+    );
+    let id = hex64("dead10");
+    let uri = nevent_uri(&id); // immutable nevent, NO relay TLVs → must park
+
+    // 2. resolve_ref parks the claim: queued in `pending_event_claims`, no live
+    //    claim and no registered interest yet (nowhere to send a REQ).
+    kernel.resolve_ref(
+        RefNamespace::Event,
+        uri.clone(),
+        "view".into(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    assert_eq!(
+        kernel.pending_event_claims_len_for_test(),
+        1,
+        "a hintless cold claim parks in pending_event_claims"
+    );
+    assert!(
+        !kernel.event_claim_is_requested_for_test(&id),
+        "a parked claim registers no OneshotApi interest yet"
+    );
+    assert!(
+        !kernel.live_event_claims.contains_key(&id),
+        "a CacheOk claim registers no Live tailing slot"
+    );
+
+    // 3. release BEFORE any relay connects.
+    kernel.release_ref(RefNamespace::Event, &uri, "view");
+    assert_eq!(
+        kernel.pending_event_claims_len_for_test(),
+        0,
+        "release must drop the consumer's parked stake (primary fix)"
+    );
+
+    // 4. connect a relay and run the drain.
+    kernel.relay_connected(RelayRole::Content);
+    assert!(kernel.any_relay_connected(), "relay is now connected");
+    let frames = kernel.pending_event_claim_requests();
+
+    // 5. the released parked claim was NOT resurrected.
+    assert!(
+        kernel.event_claims.get(&id).is_none(),
+        "drain must NOT recreate an event_claims refcount row for a released key"
+    );
+    assert_eq!(
+        kernel.ref_row_rev(RefNamespace::Event, &id),
+        0,
+        "drain must NOT bump a fresh per-key rev for a released key"
+    );
+    assert!(
+        !kernel.event_claim_is_requested_for_test(&id),
+        "drain must NOT register an in-flight discovery REQ for a released key"
+    );
+    assert!(
+        !kernel.live_event_claims.contains_key(&id),
+        "drain must NOT register a Live slot for a released key"
+    );
+    assert!(
+        frames.is_empty(),
+        "a fully-released parked claim emits no wire frames on drain: {frames:?}"
+    );
+}

@@ -6,6 +6,7 @@
 //! ceiling (AGENTS.md). All bodies are `impl Kernel`; no new state lives here.
 
 use super::super::{Kernel, OutboundMessage};
+use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
@@ -187,6 +188,14 @@ impl Kernel {
     /// `pending_profile_claim_requests` semantics: processes each parked
     /// `(uri, consumer_id)` pair as a warm claim, skipping any that are
     /// already resolved or already in-flight.
+    ///
+    /// Defensive (D4 / lifecycle): a parked pair whose consumer has since
+    /// RELEASED its claim (`event_claims[primary_id]` no longer holds it) must
+    /// NOT be replayed — replaying would resurrect a released claim with a fresh
+    /// rev. The primary fix removes the parked stake on release
+    /// (`release_event_ref` → `remove_parked_event_claim`); this filter is a
+    /// belt-and-suspenders guard so the drain can never resurrect a key whose
+    /// refcount row is gone.
     pub(crate) fn pending_event_claim_requests(&mut self) -> Vec<OutboundMessage> {
         if self.pending_event_claims.is_empty() {
             return Vec::new();
@@ -194,6 +203,17 @@ impl Kernel {
         let parked: Vec<(String, String)> = std::mem::take(&mut self.pending_event_claims);
         let mut out = Vec::new();
         for (uri, consumer_id) in parked {
+            // Skip a pair whose consumer no longer holds a live refcount on the
+            // resolved key — it was released before the drain ran.
+            if let Some(primary_id) = parked_event_primary_id(&uri) {
+                let still_claimed = self
+                    .event_claims
+                    .get(&primary_id)
+                    .is_some_and(|consumers| consumers.contains(&consumer_id));
+                if !still_claimed {
+                    continue;
+                }
+            }
             // Cold-start replay is the gated path (`force = false`): a parked
             // claim is for an as-yet-unknown event, so it cold-fetches fresh
             // on replay regardless — force only matters for an already-cached
@@ -201,6 +221,35 @@ impl Kernel {
             out.extend(self.claim_event(uri, consumer_id, true, false));
         }
         out
+    }
+
+    /// ADR-0063 (#1671 Lane B) — drop `consumer_id`'s COLD-PARK stake for
+    /// `primary_id` from `pending_event_claims`, the queue the relay-ready drain
+    /// replays. Called from the release path BEFORE `teardown_event_claim_key`:
+    /// the unified teardown only cleans the LIVE per-key maps (`event_claims`,
+    /// `ref_event_shapes`, the `Live` slot, the rev), so without this a claim
+    /// that PARKED hintless (no relay connected) and was then RELEASED before the
+    /// drain ran would be resurrected with a fresh rev when
+    /// `pending_event_claim_requests` later replays the stale pair — a cleared+
+    /// removed key with a still-parked reference (D4 / lifecycle violation).
+    ///
+    /// Refcount/owner semantics mirror `event_claims`: only THIS consumer's
+    /// parked stake for the key is removed; any parked entry belonging to another
+    /// consumer (or to a different key whose URI happens to share a prefix) is
+    /// left intact, so a sibling parked claim still drains on relay-ready.
+    pub(in crate::kernel) fn remove_parked_event_claim(
+        &mut self,
+        primary_id: &str,
+        consumer_id: &str,
+    ) {
+        self.pending_event_claims.retain(|(uri, parked_consumer)| {
+            if parked_consumer != consumer_id {
+                return true;
+            }
+            // Keep entries whose URI resolves to a DIFFERENT key. An unparseable
+            // parked URI can never have produced this `primary_id`, so keep it.
+            parked_event_primary_id(uri).as_deref() != Some(primary_id)
+        });
     }
 
     /// ADR-0063 (#1671 Lane B, BLOCKING 1 + 2) — the SINGLE internal teardown for a
@@ -264,6 +313,25 @@ impl Kernel {
             .source_versions
             .clear_event_row(primary_id);
         let _ = had_claim;
+    }
+}
+
+/// Map a parked `nostr:` URI back to the `primary_id` the resolver computed for
+/// it (hex64 id for nevent/note, `kind:pubkey:d_tag` for naddr). Returns `None`
+/// for a Profile URI or an unparseable string — neither can ever be an event
+/// claim's parked key, so callers leave such entries untouched. The
+/// id/coordinate derivation MUST match `resolve_event_ref` / `release_event_ref`
+/// exactly so a release reliably finds the stake its claim parked.
+fn parked_event_primary_id(uri: &str) -> Option<String> {
+    match parse_nostr_uri(uri).ok()? {
+        NostrUri::Event { event_id, .. } => Some(event_id),
+        NostrUri::Address {
+            identifier,
+            pubkey,
+            kind,
+            ..
+        } => Some(format!("{kind}:{pubkey}:{identifier}")),
+        NostrUri::Profile { .. } => None,
     }
 }
 
