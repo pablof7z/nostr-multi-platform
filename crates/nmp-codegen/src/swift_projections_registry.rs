@@ -846,6 +846,58 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     },
 ];
 
+/// ADR-0063 Lane A (#1671) — one KEYED (row-grain) reference projection.
+///
+/// Keyed projections (`refs.profile` / `refs.event`) are a DIFFERENT shape from
+/// the whole-value `SnapshotProjectionEntry` above: their `TypedPayload.payload`
+/// is a `nmp.refs.RefRowDeltaBatch` (a per-key row delta), and the host caches
+/// them as `key -> rowPayload` with per-key observable slots, not as one value.
+///
+/// They live in a DEDICATED registry (not a `keyed: bool` flag on
+/// `SnapshotProjectionEntry`) on purpose: the whole-value registry already
+/// drives three generators that assume one value per key — the JSON
+/// `SnapshotProjections` struct + `CodingKeys` (`crate::swift`), the typed
+/// decoders (`crate::swift_typed_decoders`), and the projection cache
+/// (`crate::swift_projection_cache`). A keyed projection must NOT appear in the
+/// JSON struct (it is typed-only) and must NOT generate a whole-value decoder.
+/// A boolean flag would force every one of those generators to branch; a
+/// separate list keeps each generator's contract honest and the blast radius
+/// zero. The keyed-cache generators consume THIS list exclusively.
+pub struct KeyedProjectionEntry {
+    /// Kernel-emitted projection key, e.g. `"refs.profile"`. The host's
+    /// `ProjectionMergeCache` routes a frame's `TypedProjection.key` to the
+    /// keyed cache by matching this.
+    pub projection_key: &'static str,
+    /// The resolver namespace inside the `RefRowDeltaBatch`, e.g. `"profile"`.
+    pub namespace: &'static str,
+    /// The generated per-key accessor base name, e.g. `"profile"` →
+    /// `profile(pubkey) -> Data?` (Swift) / `profile(key) -> ByteArray?`
+    /// (Kotlin). Always a valid lowerCamelCase identifier.
+    pub accessor: &'static str,
+    /// `TypedPayload.schema_id` the producer stamps on the keyed projection.
+    pub schema_id: &'static str,
+    /// FlatBuffers `file_identifier` of the row-delta batch payload (`NRRD`).
+    pub file_identifier: &'static str,
+}
+
+/// The keyed reference projections (ADR-0063 / #1671). Ship `profile` + `event`
+/// only (issue #1671 scope limit — no speculative namespaces).
+pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
+    KeyedProjectionEntry {
+        projection_key: "refs.profile",
+        namespace: "profile",
+        accessor: "profile",
+        schema_id: "nmp.refs.rowdelta",
+        file_identifier: "NRRD",
+    },
+    KeyedProjectionEntry {
+        projection_key: "refs.event",
+        namespace: "event",
+        accessor: "event",
+        schema_id: "nmp.refs.rowdelta",
+        file_identifier: "NRRD",
+    },
+];
 
 #[cfg(test)]
 #[path = "swift_projections_registry_tests.rs"]

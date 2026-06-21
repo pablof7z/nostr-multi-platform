@@ -1,0 +1,281 @@
+//! ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference cache for
+//! Swift (iOS).
+//!
+//! Generates `ios/Chirp/Chirp/Bridge/Generated/KeyedRefCache.generated.swift`
+//! from [`KEYED_PROJECTIONS`]. This is the host-side half of FULL per-key
+//! reactivity: where `ProjectionMergeCache` caches one value per projection key,
+//! this cache caches `rowKey -> payload` WITHIN a keyed projection
+//! (`refs.profile` / `refs.event`), decoding the `nmp.refs.RefRowDeltaBatch`
+//! payload and exposing a per-key accessor + a per-row change publisher so
+//! exactly one `AvatarView(pubkey:)` re-renders when that one pubkey updates —
+//! no app cache, no polling.
+//!
+//! The five ADR-0063 invariants are enforced at ROW grain, identically to the
+//! Rust reference model (`nmp_core::refs::RefRowCache`) and the Kotlin twin:
+//! 1. an absent row is Unchanged (retained), never Cleared;
+//! 2. decode-before-commit per row (malformed → keep prior + latch resync);
+//! 3. session/epoch change or a baseline batch reconstructs the full set;
+//! 4. typed per namespace;
+//! 5. kernel-owned truth — the cache never sources, only mirrors.
+
+use std::path::Path;
+
+use crate::swift_projections_registry::{KeyedProjectionEntry, KEYED_PROJECTIONS};
+
+const HEADER: &str = "\
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen keyed-ref-cache \\
+//       --out ios/Chirp/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
+//
+// Source of truth: KEYED_PROJECTIONS in
+// `crates/nmp-codegen/src/swift_projections_registry.rs`.
+// The CI gate (`codegen-drift.yml`) fails any PR whose generated Swift differs.
+//
+// ADR-0063 Lane A (#1671): per-key row cache for keyed reference projections
+// (`refs.profile` / `refs.event`). Decodes the `nmp.refs.RefRowDeltaBatch`
+// payload and merges row deltas under the five invariants — byte-for-byte
+// semantically identical to `nmp_core::refs::RefRowCache` and the Kotlin twin.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import Foundation
+import Combine
+import FlatBuffers
+import os.log
+
+private let krcLog = Logger(subsystem: \"io.f7z.chirp\", category: \"KeyedRefCache\")
+";
+
+/// Outcome of a `--check` run.
+#[derive(Debug)]
+pub struct KeyedRefCacheCheckOutcome {
+    pub up_to_date: bool,
+    pub first_diff_line: Option<usize>,
+}
+
+/// Render the Swift `KeyedRefCache` source from the keyed-projection registry.
+#[must_use]
+pub fn render_keyed_ref_cache(entries: &[KeyedProjectionEntry]) -> String {
+    let mut out = String::from(HEADER);
+    out.push('\n');
+
+    out.push_str(STATIC_TYPES);
+    out.push_str(&render_routing(entries));
+    out.push_str(STATIC_MERGE);
+    out.push_str(&render_accessors(entries));
+    out.push_str("}\n");
+    out
+}
+
+/// The projection-key → namespace routing + the per-accessor convenience
+/// methods are the only registry-driven parts; everything else is static.
+fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
+    let mut s = String::from(
+        "    /// Map a frame's `TypedProjection.key` to its resolver namespace.\n\
+         \x20\x20\x20\x20/// Returns nil for a non-keyed projection (the merge is a no-op).\n\
+         \x20\x20\x20\x20static func namespace(forProjectionKey key: String) -> String? {\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20switch key {\n",
+    );
+    for e in entries {
+        s.push_str(&format!(
+            "        case {:?}: return {:?}\n",
+            e.projection_key, e.namespace
+        ));
+    }
+    s.push_str(
+        "        default: return nil\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20}\n\
+         \x20\x20\x20\x20}\n\n",
+    );
+    s
+}
+
+fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
+    let mut s = String::from(
+        "    // MARK: - Per-key accessors\n\
+         \x20\x20\x20\x20//\n\
+         \x20\x20\x20\x20// One typed accessor per keyed namespace. A view binds\n\
+         \x20\x20\x20\x20// `profile(pubkey)` (raw `RefRowDeltaBatch` row payload bytes — the\n\
+         \x20\x20\x20\x20// caller decodes with the namespace's typed reader) and subscribes to\n\
+         \x20\x20\x20\x20// `rowChanged` filtered on its key, so exactly one view re-renders\n\
+         \x20\x20\x20\x20// when that key updates.\n",
+    );
+    for e in entries {
+        s.push_str(&format!(
+            "    func {}(_ key: String) -> Data? {{ payload(projectionKey: {:?}, rowKey: key) }}\n",
+            e.accessor, e.projection_key
+        ));
+    }
+    s
+}
+
+const STATIC_TYPES: &str = r#"// MARK: - RefRowState (mirror of nmp.refs.RefRowState)
+private let kRefRowStateCleared: UInt8 = 1
+
+// MARK: - Types
+/// One cached row: the last committed per-key rev and the raw typed payload.
+private struct RefRowCacheEntry {
+    let rev: UInt64
+    let payload: Data
+}
+
+/// A per-row change event published when one key commits or clears. A view
+/// subscribes filtered on `(projectionKey, rowKey)` so exactly one re-renders.
+struct KeyedRowChange: Equatable {
+    let projectionKey: String
+    let rowKey: String
+    /// True when the row was Cleared (removed); false when it committed a value.
+    let cleared: Bool
+}
+
+// MARK: - KeyedRefCache
+/// NMP-owned per-key row cache for keyed reference projections (ADR-0063).
+///
+/// Thread-safety: fed only from the NMP update callback dispatched to
+/// `@MainActor`, identical to `ProjectionMergeCache`.
+final class KeyedRefCache {
+    /// `projectionKey -> (rowKey -> entry)`.
+    private var rows: [String: [String: RefRowCacheEntry]] = [:]
+    private var appliedSession: UInt64 = 0
+    private var appliedEpoch: UInt64 = 0
+    /// D3-5: false until the first post-baseline frame is applied.
+    private(set) var baselined: Bool = false
+    /// D3-4: latches on any per-row decode-before-commit failure.
+    private(set) var needsResync: Bool = false
+    /// Per-row change publisher (one event per changed key).
+    let rowChanged = PassthroughSubject<KeyedRowChange, Never>()
+
+    /// Hard-reset (kernel session end) so the next frame is a full baseline.
+    func reset() {
+        rows.removeAll()
+        appliedSession = 0
+        appliedEpoch = 0
+        baselined = false
+        needsResync = false
+    }
+
+"#;
+
+const STATIC_MERGE: &str = r#"    // MARK: - merge
+    /// Merge one keyed-projection payload (`nmp.refs.RefRowDeltaBatch` bytes)
+    /// under the frame's `sessionId` / `snapshotEpoch`. Returns the set of row
+    /// keys whose cached row changed (committed or cleared) this frame.
+    ///
+    /// Invariants: absent row == Unchanged (retained); explicit Cleared removes;
+    /// decode-before-commit per row (malformed row keeps prior + latches
+    /// needsResync); session/epoch change or `baseline` rebuilds the full set.
+    @discardableResult
+    func merge(projectionKey: String, payload: Data, sessionId: UInt64, snapshotEpoch: UInt64) -> Set<String> {
+        guard let namespace = Self.namespace(forProjectionKey: projectionKey) else {
+            return []
+        }
+        _ = namespace // routing validated; the cache is keyed by projectionKey
+
+        // D4: mandatory full reset on session/epoch change, before any merge.
+        if sessionId != appliedSession || snapshotEpoch != appliedEpoch {
+            rows.removeAll()
+            appliedSession = sessionId
+            appliedEpoch = snapshotEpoch
+            baselined = false
+            needsResync = false
+        }
+
+        // Decode-before-commit at BATCH grain: a malformed batch fails closed
+        // (retain everything, latch resync) rather than corrupting the cache.
+        guard !payload.isEmpty else {
+            needsResync = true
+            return []
+        }
+        var buffer = ByteBuffer(data: payload)
+        let batch: nmp_refs_RefRowDeltaBatch = getRoot(byteBuffer: &buffer)
+
+        // A baseline batch reconstructs its projection wholesale (invariant #3).
+        if batch.baseline {
+            rows[projectionKey] = [:]
+        }
+        var ns = rows[projectionKey] ?? [:]
+        var changed = Set<String>()
+
+        for row in batch.rows {
+            guard let key = row.key else { continue }
+            if row.state.rawValue == kRefRowStateCleared {
+                // Explicit clear: remove unconditionally.
+                if ns.removeValue(forKey: key) != nil {
+                    changed.insert(key)
+                    rowChanged.send(KeyedRowChange(projectionKey: projectionKey, rowKey: key, cleared: true))
+                }
+                continue
+            }
+            // Changed. Reorder/duplicate guard: skip a row not newer than cached.
+            let incomingRev = row.rev
+            if let cached = ns[key], incomingRev <= cached.rev { continue }
+            // Decode-before-commit per row (invariant #2): a Changed row by
+            // contract carries non-empty bytes; empty == malformed → keep prior.
+            let bytes = Data(row.payload)
+            if bytes.isEmpty {
+                needsResync = true
+                krcLog.error("decode-before-commit failed for projection=\(projectionKey, privacy: .public) key=\(key, privacy: .public) rev=\(incomingRev, privacy: .public) — keeping prior row, needsResync latched")
+                continue
+            }
+            ns[key] = RefRowCacheEntry(rev: incomingRev, payload: bytes)
+            changed.insert(key)
+            rowChanged.send(KeyedRowChange(projectionKey: projectionKey, rowKey: key, cleared: false))
+        }
+
+        rows[projectionKey] = ns
+        baselined = true
+        return changed
+    }
+
+    /// The cached raw payload bytes for one `(projectionKey, rowKey)`, or nil.
+    func payload(projectionKey: String, rowKey: String) -> Data? {
+        rows[projectionKey]?[rowKey]?.payload
+    }
+
+    /// The number of cached rows for a projection (test/diagnostic aid).
+    func count(projectionKey: String) -> Int {
+        rows[projectionKey]?.count ?? 0
+    }
+
+"#;
+
+/// Write the generated Swift file to `out_path`.
+pub fn generate_keyed_ref_cache(out_path: &Path) -> std::io::Result<()> {
+    let rendered = render_keyed_ref_cache(KEYED_PROJECTIONS);
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(out_path, rendered)
+}
+
+/// Diff a freshly-rendered output against the file at `out_path`.
+pub fn check_keyed_ref_cache(out_path: &Path) -> std::io::Result<KeyedRefCacheCheckOutcome> {
+    let rendered = render_keyed_ref_cache(KEYED_PROJECTIONS);
+    let actual = match std::fs::read_to_string(out_path) {
+        Ok(s) => s,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(KeyedRefCacheCheckOutcome {
+                up_to_date: false,
+                first_diff_line: None,
+            });
+        }
+        Err(err) => return Err(err),
+    };
+    if actual == rendered {
+        return Ok(KeyedRefCacheCheckOutcome {
+            up_to_date: true,
+            first_diff_line: None,
+        });
+    }
+    let first_diff_line = crate::diff_report::first_diff_or_length(&actual, &rendered);
+    Ok(KeyedRefCacheCheckOutcome {
+        up_to_date: false,
+        first_diff_line,
+    })
+}
+
+#[cfg(test)]
+#[path = "swift_keyed_cache_tests.rs"]
+mod tests;

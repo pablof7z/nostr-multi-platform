@@ -1,6 +1,6 @@
 use std::env;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     match run() {
@@ -33,6 +33,11 @@ fn run() -> Result<(), String> {
         // `--platform`) from the same registry as `typed-decoders`;
         // implements the D3-3 merge algorithm.
         "projection-cache" => run_gen_projection_cache(args),
+        // ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference
+        // cache for keyed projections (`refs.profile` / `refs.event`). Writes
+        // `KeyedRefCache.generated.swift` or `KeyedRefCache.kt` (per
+        // `--platform`) from `KEYED_PROJECTIONS`; decodes `RefRowDeltaBatch`.
+        "keyed-ref-cache" => run_gen_keyed_ref_cache(args),
         // ADR-0053 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
         // Rust const for `nmp-core`. Writes
         // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
@@ -314,6 +319,97 @@ fn run_gen_projection_cache(args: Vec<String>) -> Result<(), String> {
     }
 }
 
+/// `nmp gen keyed-ref-cache --platform swift|kotlin --out <path> [--check]`.
+///
+/// ADR-0063 Lane A (#1671) — generates the per-key (row-keyed) reference cache
+/// (`KeyedRefCache`) for keyed projections (`refs.profile` / `refs.event`).
+/// Driven by `KEYED_PROJECTIONS`; takes no schema stdin. Mirrors
+/// `gen projection-cache`: `--out` required, `--check` diffs on disk.
+fn run_gen_keyed_ref_cache(args: Vec<String>) -> Result<(), String> {
+    let mut platform = "swift".to_string();
+    let mut check = false;
+    let mut out: Option<PathBuf> = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--platform" => {
+                index += 1;
+                platform = args
+                    .get(index)
+                    .cloned()
+                    .ok_or_else(|| "--platform requires swift|kotlin".to_string())?;
+            }
+            "--out" => {
+                index += 1;
+                out = Some(
+                    args.get(index)
+                        .map(PathBuf::from)
+                        .ok_or_else(|| "--out requires a path".to_string())?,
+                );
+            }
+            "--check" => check = true,
+            other => return Err(format!("unknown argument {other}\n{}", help())),
+        }
+        index += 1;
+    }
+    let out = out.ok_or_else(|| "--out is required (the app-owned destination path)".to_string())?;
+
+    match platform.as_str() {
+        "swift" => {
+            if check {
+                let outcome =
+                    nmp_codegen::check_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
+                if outcome.up_to_date {
+                    println!("nmp gen keyed-ref-cache --check: ok ({})", out.display());
+                    Ok(())
+                } else {
+                    Err(stale_message("keyed-ref-cache (swift)", &out, outcome.first_diff_line))
+                }
+            } else {
+                nmp_codegen::generate_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
+                println!("wrote {}", out.display());
+                Ok(())
+            }
+        }
+        "kotlin" => {
+            if check {
+                let outcome =
+                    nmp_codegen::check_kotlin_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
+                if outcome.up_to_date {
+                    println!(
+                        "nmp gen keyed-ref-cache --platform kotlin --check: ok ({})",
+                        out.display()
+                    );
+                    Ok(())
+                } else {
+                    Err(stale_message("keyed-ref-cache (kotlin)", &out, outcome.first_diff_line))
+                }
+            } else {
+                nmp_codegen::generate_kotlin_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
+                println!("wrote {}", out.display());
+                Ok(())
+            }
+        }
+        other => Err(format!(
+            "unknown --platform {other:?}: expected swift or kotlin\n{}",
+            help()
+        )),
+    }
+}
+
+/// Shared stale-codegen `--check` error message.
+fn stale_message(what: &str, out: &Path, first_diff_line: Option<usize>) -> String {
+    let where_diff = first_diff_line
+        .map(|n| format!(" (first differing line {n})"))
+        .unwrap_or_else(|| " (file missing)".to_string());
+    format!(
+        "{what} codegen stale at {}{where_diff}.\nRegenerate with:\n  \
+         cargo run -p nmp-codegen -- gen keyed-ref-cache --out {}",
+        out.display(),
+        out.display()
+    )
+}
+
 /// `nmp gen builtin-keys [--out <path>] [--check]`.
 ///
 /// Generates `KERNEL_BUILTIN_PROJECTION_KEYS` — the Tier-2 kernel-owned built-in
@@ -454,6 +550,7 @@ fn help() -> String {
      nmp gen swift             [--schemas - | <path>] --out <path> [--check]\n  \
      nmp gen typed-decoders    --out <path> [--check]\n  \
      nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
+     nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen signer-catalog    [--catalog - | <path>] [--check]"
         .to_string()
