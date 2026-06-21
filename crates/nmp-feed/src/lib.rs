@@ -17,6 +17,7 @@ mod flat;
 mod pager;
 mod pull_controller;
 mod registry;
+mod render_source;
 mod root_indexed;
 pub mod typed_wire;
 mod types;
@@ -32,9 +33,11 @@ pub use pull_controller::{
     PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
+pub use render_source::FeedRenderSource;
 pub use root_indexed::{
-    AttributionPayload, CardBuilder, EventGate, EventLookup, FollowPredicate, RootCard,
-    RootFeedSnapshot, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
+    AttributionAuthors, AttributionPayload, CardAuthors, CardBuilder, EventGate, EventLookup,
+    FeedAuthorRefs, FollowPredicate, RootCard, RootFeedSnapshot, RootIndexedFeed,
+    MAX_ATTRIBUTION_PER_ROOT,
 };
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,

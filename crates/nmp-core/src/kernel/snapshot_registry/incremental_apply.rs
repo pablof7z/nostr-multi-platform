@@ -57,6 +57,24 @@ impl SnapshotRegistry {
         self.frame_snapshot_epoch
             .store(snapshot_epoch, Ordering::Release);
     }
+
+    /// ADR-0063 D7 (#1671 Lane H) — a clone of the per-tick rev handle.
+    ///
+    /// A [`FeedRenderSource`](nmp_feed::FeedRenderSource) captures this and reads
+    /// it lock-free to key its per-tick window memo, so the author provider and
+    /// the typed producer (two reads in one tick) share one materialization.
+    #[must_use]
+    pub fn frame_tick_rev_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.frame_tick_rev)
+    }
+
+    /// ADR-0063 D7 (#1671 Lane H) — bump the per-tick rev. Called by the kernel at
+    /// the TOP of `make_update` (alongside `publish_frame_identity`), BEFORE any
+    /// feed-author provider or typed producer runs, so every closure this tick
+    /// reads the SAME rev. A monotone `Release` add (the readers use `Acquire`).
+    pub fn bump_frame_tick_rev(&self) {
+        self.frame_tick_rev.fetch_add(1, Ordering::Release);
+    }
     /// ADR-0055 Rung 3 — declare that this host's runtime owns the NMP
     /// cache-merge layer (D3-3) and can therefore receive frames with
     /// `Unchanged` projections omitted.
