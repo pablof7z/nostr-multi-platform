@@ -42,7 +42,7 @@ crates/nmp-core/src/kernel/discovery_tests.rs	604
 crates/nmp-core/src/kernel/event_claim_tests.rs	560
 crates/nmp-core/src/kernel/ingest_tests.rs	952
 crates/nmp-core/src/kernel/mailboxes.rs	506
-crates/nmp-core/src/kernel/mod.rs	2797
+crates/nmp-core/src/kernel/mod.rs	2799
 crates/nmp-core/src/kernel/publish_engine_tests.rs	852
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	546
@@ -52,7 +52,8 @@ crates/nmp-core/src/kernel/state_projection_tests.rs	742
 crates/nmp-core/src/kernel/test_support.rs	538
 crates/nmp-core/src/kernel/tests.rs	708
 crates/nmp-core/src/kernel/types.rs	882
-crates/nmp-core/src/lib.rs	602
+crates/nmp-core/src/lib.rs	603
+crates/nmp-core/src/publish/engine.rs	518
 crates/nmp-core/src/publish/engine/tests.rs	506
 crates/nmp-core/src/subs/lifecycle_tests.rs	965
 crates/nmp-core/src/subs/wire.rs	543
