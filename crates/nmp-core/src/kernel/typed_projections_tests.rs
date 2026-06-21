@@ -121,7 +121,8 @@ fn relay_settings_builtins_emit_typed_sidecars_alongside_json() {
         !decoded_options.options.is_empty(),
         "relay_role_options is a static non-empty option set"
     );
-    // Field-for-field agreement on the first option (value/label/tint/is_default).
+    // Field-for-field agreement on the first option (value/tint/is_default).
+    // `label` removed from the wire (#1678, D7) — shells map value→label.
     let first_typed = &decoded_options.options[0];
     let first_json = &json_options[0];
     assert_eq!(

@@ -147,7 +147,6 @@ public struct AppRelay: Decodable, Equatable, Identifiable, Sendable {
 // Source: nmp_core::actor::relay_roles::RelayRoleOption
 public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
     public let isDefault: Bool
-    public let label: String
     public let tint: String
     public let value: String
 

@@ -37,8 +37,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val statusAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
-    fun statusInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
+    val statusAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
+    fun statusInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
     val relayUrl : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val relayUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
     val walletNpub : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val walletNpubAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun walletNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val walletNpubAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
+    fun walletNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
     val hasBalanceMsats : Boolean
         get() {
             val o = __offset(10)
@@ -81,17 +81,6 @@ class WalletStatus : Table() {
             val o = __offset(16)
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
-    val walletNpubShort : String?
-        get() {
-            val o = __offset(18)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val walletNpubShortAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
-    fun walletNpubShortInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     val isReady : Boolean
         get() {
             val o = __offset(20)
@@ -121,8 +110,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val walletPubkeyHexAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(28, 1)
-    fun walletPubkeyHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 28, 1)
+    val walletPubkeyHexAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(28, 1)
+    fun walletPubkeyHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 28, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsWalletStatus(_bb: ByteBuffer): WalletStatus = getRootAsWalletStatus(_bb, WalletStatus())
@@ -131,12 +120,11 @@ class WalletStatus : Table() {
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
         fun WalletStatusBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "NWST")
-        fun createWalletStatus(builder: FlatBufferBuilder, statusOffset: Int, relayUrlOffset: Int, walletNpubOffset: Int, hasBalanceMsats: Boolean, balanceMsats: ULong, hasBalanceSats: Boolean, balanceSats: ULong, walletNpubShortOffset: Int, isReady: Boolean, isConnected: Boolean, hasConnectionState: Boolean, connectionState: UByte, walletPubkeyHexOffset: Int) : Int {
+        fun createWalletStatus(builder: FlatBufferBuilder, statusOffset: Int, relayUrlOffset: Int, walletNpubOffset: Int, hasBalanceMsats: Boolean, balanceMsats: ULong, hasBalanceSats: Boolean, balanceSats: ULong, isReady: Boolean, isConnected: Boolean, hasConnectionState: Boolean, connectionState: UByte, walletPubkeyHexOffset: Int) : Int {
             builder.startTable(13)
             addBalanceSats(builder, balanceSats)
             addBalanceMsats(builder, balanceMsats)
             addWalletPubkeyHex(builder, walletPubkeyHexOffset)
-            addWalletNpubShort(builder, walletNpubShortOffset)
             addWalletNpub(builder, walletNpubOffset)
             addRelayUrl(builder, relayUrlOffset)
             addStatus(builder, statusOffset)
@@ -156,7 +144,6 @@ class WalletStatus : Table() {
         fun addBalanceMsats(builder: FlatBufferBuilder, balanceMsats: ULong) = builder.addLong(4, balanceMsats.toLong(), 0)
         fun addHasBalanceSats(builder: FlatBufferBuilder, hasBalanceSats: Boolean) = builder.addBoolean(5, hasBalanceSats, false)
         fun addBalanceSats(builder: FlatBufferBuilder, balanceSats: ULong) = builder.addLong(6, balanceSats.toLong(), 0)
-        fun addWalletNpubShort(builder: FlatBufferBuilder, walletNpubShort: Int) = builder.addOffset(7, walletNpubShort, 0)
         fun addIsReady(builder: FlatBufferBuilder, isReady: Boolean) = builder.addBoolean(8, isReady, false)
         fun addIsConnected(builder: FlatBufferBuilder, isConnected: Boolean) = builder.addBoolean(9, isConnected, false)
         fun addHasConnectionState(builder: FlatBufferBuilder, hasConnectionState: Boolean) = builder.addBoolean(10, hasConnectionState, false)

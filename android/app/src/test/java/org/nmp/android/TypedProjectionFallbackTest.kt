@@ -122,13 +122,12 @@ class TypedProjectionFallbackTest {
 
     private fun relayRoleSidecarBytes(): ByteArray {
         val b = FlatBufferBuilder(256)
-        fun opt(value: String, label: String, tint: String, isDefault: Boolean): Int {
+        fun opt(value: String, tint: String, isDefault: Boolean): Int {
             val v = b.createString(value)
-            val l = b.createString(label)
             val t = b.createString(tint)
-            return FbRelayRoleOption.createRelayRoleOption(b, v, l, t, isDefault)
+            return FbRelayRoleOption.createRelayRoleOption(b, v, t, isDefault)
         }
-        val vec = RelayRoleOptionsSnapshot.createOptionsVector(b, intArrayOf(opt("both", "Both", "accent", true), opt("read", "Read", "info", false)))
+        val vec = RelayRoleOptionsSnapshot.createOptionsVector(b, intArrayOf(opt("both", "accent", true), opt("read", "info", false)))
         val snap = RelayRoleOptionsSnapshot.createRelayRoleOptionsSnapshot(b, vec)
         RelayRoleOptionsSnapshot.finishRelayRoleOptionsSnapshotBuffer(b, snap)
         return b.sizedByteArray()

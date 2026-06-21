@@ -3,20 +3,38 @@ package org.nmp.android.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/**
+ * A single relay-role option emitted by the `relay_role_options` projection.
+ *
+ * `label` was removed from the wire (#1678, D7 — presentation artifact); it is
+ * now a computed shell property derived from `value`. Class-body properties are
+ * automatically excluded from kotlinx.serialization (not in the primary
+ * constructor), so no `@Transient` is required.
+ */
 @Serializable
 data class RelayRoleOption(
     val value: String = "",
-    val label: String = "",
     val tint: String = "",
     @SerialName("is_default") val isDefault: Boolean = false,
-)
+) {
+    /** Human-readable label derived from the raw `value` token (#1678 / D7). */
+    val label: String
+        get() = when (value) {
+            "both,indexer" -> "Both + Index"
+            "both"         -> "Both"
+            "read"         -> "Read"
+            "write"        -> "Write"
+            "indexer"      -> "Index"
+            else           -> value
+        }
+}
 
 fun defaultRelayRoleOptions(): List<RelayRoleOption> = listOf(
-    RelayRoleOption(value = "both,indexer", label = "Both + Index", tint = "accent"),
-    RelayRoleOption(value = "both", label = "Both", tint = "accent", isDefault = true),
-    RelayRoleOption(value = "read", label = "Read", tint = "info"),
-    RelayRoleOption(value = "write", label = "Write", tint = "success"),
-    RelayRoleOption(value = "indexer", label = "Index", tint = "neutral"),
+    RelayRoleOption(value = "both,indexer", tint = "accent"),
+    RelayRoleOption(value = "both", tint = "accent", isDefault = true),
+    RelayRoleOption(value = "read", tint = "info"),
+    RelayRoleOption(value = "write", tint = "success"),
+    RelayRoleOption(value = "indexer", tint = "neutral"),
 )
 
 fun defaultRelayRoleValue(options: List<RelayRoleOption>): String =
