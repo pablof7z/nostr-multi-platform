@@ -199,10 +199,9 @@ pub use signed_events_fb::{
 };
 
 // ADR-0063 (#1671 integration glue) — the two keyed row-delta sidecar keys.
-// Re-exported for the in-crate integration test (the producer in `builtins_refs`
-// uses the originals directly); test-only so a production build sees no unused
-// re-export.
-#[cfg(test)]
+// Re-exported for the in-crate integration test AND for `make_update`'s ADR-0053
+// per-key permit gate (`kernel/update.rs`), which reads `declared.permits(key)`
+// for each refs.* key before invoking the producer.
 pub(crate) use builtins_refs::{REFS_EVENT_KEY, REFS_PROFILE_KEY};
 
 pub use relay_role_options_fb::decode_relay_role_options;
