@@ -84,8 +84,8 @@ pub(crate) fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLin
                 .map(|r| HistoryRelayLine {
                     relay_url: string_field(r, "relay_url"),
                     status: string_field(r, "status"),
-                    relay_reason: string_field(r, "relay_reason"),
-                    message: string_field(r, "message"),
+                    relay_reason: format_relay_reason_token(&string_field(r, "relay_reason")),
+                    message: format_relay_message_token(&string_field(r, "message")),
                 })
                 .collect();
             PublishHistoryLine {
@@ -118,8 +118,8 @@ pub(crate) fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
                 relay_url: string_field(r, "relay_url"),
                 // aim.md §2 #4: status_label removed from wire. Compute from status.
                 status_label: json_outbox_relay_status_label(&status),
-                reason: string_field(r, "relay_reason"),
-                message: string_field(r, "message"),
+                reason: format_relay_reason_token(&string_field(r, "relay_reason")),
+                message: format_relay_message_token(&string_field(r, "message")),
             }
         })
         .collect()
@@ -361,6 +361,38 @@ fn json_outbox_relay_status_label(status: &str) -> String {
         other => other,
     }
     .to_string()
+}
+
+/// Format a raw relay-reason token (e.g. `"nip65_write"`) into a display string.
+/// Parameterised tokens are parsed; unknown tokens pass through verbatim.
+fn format_relay_reason_token(token: &str) -> String {
+    if token.is_empty() {
+        return String::new();
+    }
+    if let Some(kind) = token.strip_prefix("discovery_indexer:") {
+        return format!("Discovery indexer (kind {kind})");
+    }
+    if let Some(pubkey) = token.strip_prefix("recipient_inbox:") {
+        return format!("Inbox relay for {pubkey}");
+    }
+    match token {
+        "nip65_write" => "NIP-65 write relay".to_string(),
+        "local_config" => "App relay (local config)".to_string(),
+        "explicit" => "Explicit relay".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Format a raw relay-message token (e.g. `"waiting_for_ok"`) into a display
+/// string. Raw relay protocol error text passes through verbatim.
+fn format_relay_message_token(token: &str) -> String {
+    match token {
+        "waiting_for_connection" => "Waiting for relay connection".to_string(),
+        "waiting_for_ok" => "Waiting for relay OK".to_string(),
+        "accepted" => "Relay accepted the event".to_string(),
+        "timed_out" => "No response from relay".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn json_outbox_preview(kind: u32, content: &str) -> String {

@@ -39,7 +39,7 @@ class RelayConnectionReason : Table() {
         }
     val kindAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun kindInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
-    val label : String?
+    val tone : String?
         get() {
             val o = __offset(6)
             return if (o != 0) {
@@ -48,21 +48,10 @@ class RelayConnectionReason : Table() {
                 null
             }
         }
-    val labelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun labelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
-    val tone : String?
-        get() {
-            val o = __offset(8)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val toneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun toneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val toneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun toneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     fun authorPubkeys(j: Int) : String? {
-        val o = __offset(10)
+        val o = __offset(8)
         return if (o != 0) {
             __string(__vector(o) + j * 4)
         } else {
@@ -71,40 +60,43 @@ class RelayConnectionReason : Table() {
     }
     val authorPubkeysLength : Int
         get() {
-            val o = __offset(10); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(8); return if (o != 0) __vector_len(o) else 0
         }
     val authorTotal : UInt
         get() {
-            val o = __offset(12)
+            val o = __offset(10)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
-    val kindsLabel : String?
-        get() {
-            val o = __offset(14)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
+    fun kinds(j: Int) : UInt {
+        val o = __offset(12)
+        return if (o != 0) {
+            bb.getInt(__vector(o) + j * 4).toUInt()
+        } else {
+            0u
         }
-    val kindsLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
-    fun kindsLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
+    }
+    val kindsLength : Int
+        get() {
+            val o = __offset(12); return if (o != 0) __vector_len(o) else 0
+        }
+    val kindsAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 4)
+    fun kindsInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 4)
     val hasSourceEventId : Boolean
         get() {
-            val o = __offset(16)
+            val o = __offset(14)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     val sourceEventId : String?
         get() {
-            val o = __offset(18)
+            val o = __offset(16)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val sourceEventIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
-    fun sourceEventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
+    val sourceEventIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun sourceEventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelayConnectionReason(_bb: ByteBuffer): RelayConnectionReason = getRootAsRelayConnectionReason(_bb, RelayConnectionReason())
@@ -112,23 +104,21 @@ class RelayConnectionReason : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createRelayConnectionReason(builder: FlatBufferBuilder, kindOffset: Int, labelOffset: Int, toneOffset: Int, authorPubkeysOffset: Int, authorTotal: UInt, kindsLabelOffset: Int, hasSourceEventId: Boolean, sourceEventIdOffset: Int) : Int {
-            builder.startTable(8)
+        fun createRelayConnectionReason(builder: FlatBufferBuilder, kindOffset: Int, toneOffset: Int, authorPubkeysOffset: Int, authorTotal: UInt, kindsOffset: Int, hasSourceEventId: Boolean, sourceEventIdOffset: Int) : Int {
+            builder.startTable(7)
             addSourceEventId(builder, sourceEventIdOffset)
-            addKindsLabel(builder, kindsLabelOffset)
+            addKinds(builder, kindsOffset)
             addAuthorTotal(builder, authorTotal)
             addAuthorPubkeys(builder, authorPubkeysOffset)
             addTone(builder, toneOffset)
-            addLabel(builder, labelOffset)
             addKind(builder, kindOffset)
             addHasSourceEventId(builder, hasSourceEventId)
             return endRelayConnectionReason(builder)
         }
-        fun startRelayConnectionReason(builder: FlatBufferBuilder) = builder.startTable(8)
+        fun startRelayConnectionReason(builder: FlatBufferBuilder) = builder.startTable(7)
         fun addKind(builder: FlatBufferBuilder, kind: Int) = builder.addOffset(0, kind, 0)
-        fun addLabel(builder: FlatBufferBuilder, label: Int) = builder.addOffset(1, label, 0)
-        fun addTone(builder: FlatBufferBuilder, tone: Int) = builder.addOffset(2, tone, 0)
-        fun addAuthorPubkeys(builder: FlatBufferBuilder, authorPubkeys: Int) = builder.addOffset(3, authorPubkeys, 0)
+        fun addTone(builder: FlatBufferBuilder, tone: Int) = builder.addOffset(1, tone, 0)
+        fun addAuthorPubkeys(builder: FlatBufferBuilder, authorPubkeys: Int) = builder.addOffset(2, authorPubkeys, 0)
         fun createAuthorPubkeysVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {
@@ -137,10 +127,19 @@ class RelayConnectionReason : Table() {
             return builder.endVector()
         }
         fun startAuthorPubkeysVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addAuthorTotal(builder: FlatBufferBuilder, authorTotal: UInt) = builder.addInt(4, authorTotal.toInt(), 0)
-        fun addKindsLabel(builder: FlatBufferBuilder, kindsLabel: Int) = builder.addOffset(5, kindsLabel, 0)
-        fun addHasSourceEventId(builder: FlatBufferBuilder, hasSourceEventId: Boolean) = builder.addBoolean(6, hasSourceEventId, false)
-        fun addSourceEventId(builder: FlatBufferBuilder, sourceEventId: Int) = builder.addOffset(7, sourceEventId, 0)
+        fun addAuthorTotal(builder: FlatBufferBuilder, authorTotal: UInt) = builder.addInt(3, authorTotal.toInt(), 0)
+        fun addKinds(builder: FlatBufferBuilder, kinds: Int) = builder.addOffset(4, kinds, 0)
+        @kotlin.ExperimentalUnsignedTypes
+        fun createKindsVector(builder: FlatBufferBuilder, data: UIntArray) : Int {
+            builder.startVector(4, data.size, 4)
+            for (i in data.size - 1 downTo 0) {
+                builder.addInt(data[i].toInt())
+            }
+            return builder.endVector()
+        }
+        fun startKindsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
+        fun addHasSourceEventId(builder: FlatBufferBuilder, hasSourceEventId: Boolean) = builder.addBoolean(5, hasSourceEventId, false)
+        fun addSourceEventId(builder: FlatBufferBuilder, sourceEventId: Int) = builder.addOffset(6, sourceEventId, 0)
         fun endRelayConnectionReason(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

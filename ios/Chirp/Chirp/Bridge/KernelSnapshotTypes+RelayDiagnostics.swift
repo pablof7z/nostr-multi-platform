@@ -102,20 +102,51 @@ struct RelayDiagnosticsNotice: Decodable, Identifiable, Equatable {
 /// One routing provenance reason explaining why a relay was placed in the plan.
 /// Mirrors the Rust `RelayConnectionReason` struct.
 ///
-/// `kind` is a stable machine tag for icon/tone lookups; `label` is the
-/// pre-formatted human string the shell renders directly.
-/// `tone` is the semantic hue key (`"ok"` / `"warn"` / `"accent"` / `"muted"`).
-/// `authorPubkeys` carries the (capped) author pubkey list; `authorTotal` is
-/// the exact total count. `kindsLabel` is the pre-formatted kinds string for
-/// interest reasons. `sourceEventId` carries the hint origin event id when known.
+/// All fields carry raw structured data. Display strings (`displayLabel`,
+/// `kindsDisplayLabel`) are computed here in the shell from the machine fields
+/// (aim.md §4.5).
+///
+/// `kind` is a stable machine tag; `tone` is the semantic hue key
+/// (`"ok"` / `"warn"` / `"accent"` / `"muted"`). `authorPubkeys` carries the
+/// (capped) author pubkey list; `authorTotal` is the exact total count.
+/// `kinds` carries raw kind numbers for interest reasons. `sourceEventId`
+/// carries the hint origin event id when known.
 struct RelayConnectionReason: Decodable, Equatable {
     let kind: String
-    let label: String
     let tone: String
     let authorPubkeys: [String]
     let authorTotal: UInt32
-    let kindsLabel: String
+    /// Raw kind numbers for interest reasons. Non-empty for `"interest"` only.
+    let kinds: [UInt32]
     let sourceEventId: String?
+
+    // MARK: Shell-side computed display helpers
+
+    /// Human-readable headline derived from raw `kind` + `authorTotal`.
+    var displayLabel: String {
+        switch kind {
+        case "blocked": return "Blocked"
+        case "nip65":
+            return authorTotal == 1 ? "Outbox of 1 person" : "Outbox of \(authorTotal) people"
+        case "hint": return "Relay hint"
+        case "account_read": return "Account read relay"
+        case "account_write": return "Account write relay"
+        case "indexer": return "Indexer relay"
+        case "app_relay": return "App relay"
+        case "debug": return "Debug relay"
+        case "bootstrap": return "Bootstrap relay"
+        case "interest":
+            let kLabel = kindsDisplayLabel
+            return kLabel.isEmpty ? "Interest" : "Interest: \(kLabel)"
+        default: return kind
+        }
+    }
+
+    /// Human-readable kinds label for interest reasons (e.g. `"kind:0, kind:1"`).
+    var kindsDisplayLabel: String {
+        guard !kinds.isEmpty else { return "" }
+        return kinds.sorted().map { "kind:\($0)" }.joined(separator: ", ")
+    }
 }
 
 /// One rolled-up relay row.

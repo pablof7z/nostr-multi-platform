@@ -175,33 +175,39 @@ impl Kernel {
     }
 }
 
-/// Format a single structured selection reason into the human-readable string
-/// the shell renders verbatim. This is the **only** place in the codebase
-/// where `RelaySelectionReason` becomes English — the resolver, the engine,
-/// the view, and persistence all carry the typed enum. Apps that need a
-/// different wording must change this function (and nothing else).
+/// Emit a stable machine token for one relay selection reason.
+///
+/// The returned string is a raw token the shell parses and localises —
+/// **not** English prose. This is the **only** place in the codebase where
+/// `RelaySelectionReason` becomes a wire token; the resolver, engine, view,
+/// and persistence all carry the typed enum. Shells format these tokens into
+/// the appropriate display language.
+///
+/// Token grammar:
+/// - Simple: `"nip65_write"`, `"local_config"`, `"explicit"`
+/// - Parameterised: `"discovery_indexer:{kind}"`, `"recipient_inbox:{pubkey}"`
 pub(super) fn format_relay_reason(reason: &RelaySelectionReason) -> String {
     match reason {
-        RelaySelectionReason::AuthorWriteRelay => "NIP-65 write relay".to_string(),
-        RelaySelectionReason::LocalConfigRelay => "App relay (local config)".to_string(),
+        RelaySelectionReason::AuthorWriteRelay => "nip65_write".to_string(),
+        RelaySelectionReason::LocalConfigRelay => "local_config".to_string(),
         RelaySelectionReason::DiscoveryIndexer { kind } => {
-            format!("Discovery indexer (kind {kind})")
+            format!("discovery_indexer:{kind}")
         }
         RelaySelectionReason::RecipientInbox { pubkey } => {
             // D6 — backend projections carry raw identifiers across the wire
             // boundary; the shell/display layer abbreviates (`short_npub`,
             // bech32 encoding, etc.) according to its own UX rules. The raw
             // hex pubkey is emitted verbatim here.
-            format!("Inbox relay for {pubkey}")
+            format!("recipient_inbox:{pubkey}")
         }
-        RelaySelectionReason::Explicit => "Explicit relay".to_string(),
+        RelaySelectionReason::Explicit => "explicit".to_string(),
     }
 }
 
-/// Format the per-relay reason list. Joins distinct reasons with `"; "` —
-/// the wire-shape contract `PublishOutboxRelay.relay_reason` callers parse.
-/// Empty input → empty string (the projection's `skip_serializing_if` then
-/// drops the field).
+/// Emit the per-relay reason token list. Joins distinct reason tokens with
+/// `"; "` — the wire-shape contract `PublishOutboxRelay.relay_reason` callers
+/// parse. Empty input → empty string (the projection's `skip_serializing_if`
+/// then drops the field).
 pub(super) fn format_relay_reasons(reasons: &[RelaySelectionReason]) -> String {
     reasons
         .iter()
@@ -216,18 +222,19 @@ fn publish_outbox_relay(
     relay_reason: &str,
 ) -> PublishOutboxRelay {
     let (status, attempt, message) = match state {
-        PerRelayState::Pending => ("pending", 0, "Waiting for relay connection".to_string()),
+        // Raw machine tokens — shells localise these to display strings.
+        PerRelayState::Pending => ("pending", 0, "waiting_for_connection".to_string()),
         PerRelayState::InFlight { attempt, .. } => {
-            ("sending", *attempt, "Waiting for relay OK".to_string())
+            ("sending", *attempt, "waiting_for_ok".to_string())
         }
-        PerRelayState::Ok { .. } => ("ok", 0, "Relay accepted the event".to_string()),
+        PerRelayState::Ok { .. } => ("ok", 0, "accepted".to_string()),
         PerRelayState::RelayError {
             message, attempt, ..
-        } => ("retrying", *attempt, message.clone()),
+        } => ("retrying", *attempt, message.clone()), // raw relay protocol error — pass through
         PerRelayState::TimedOut { attempt, .. } => {
-            ("retrying", *attempt, "No response from relay".to_string())
+            ("retrying", *attempt, "timed_out".to_string())
         }
-        PerRelayState::FailedAfterRetries { reason, .. } => ("failed", 0, reason.clone()),
+        PerRelayState::FailedAfterRetries { reason, .. } => ("failed", 0, reason.clone()), // raw relay protocol error — pass through
     };
     PublishOutboxRelay {
         relay_url: relay_url.to_string(),

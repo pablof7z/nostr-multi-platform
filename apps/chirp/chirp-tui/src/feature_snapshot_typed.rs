@@ -102,8 +102,8 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
                         .map(|r| OutboxRelayLine {
                             relay_url: r.relay_url,
                             status_label: outbox_relay_status_label(&r.status),
-                            reason: r.relay_reason,
-                            message: r.message,
+                            reason: format_relay_reason_token(&r.relay_reason),
+                            message: format_relay_message_token(&r.message),
                         })
                         .collect(),
                 })
@@ -268,8 +268,8 @@ fn publish_history_from_queue(
                 .map(|r| HistoryRelayLine {
                     relay_url: r.relay_url,
                     status: r.status,
-                    relay_reason: r.relay_reason,
-                    message: r.message,
+                    relay_reason: format_relay_reason_token(&r.relay_reason),
+                    message: format_relay_message_token(&r.message),
                 })
                 .collect();
             PublishHistoryLine {
@@ -289,6 +289,40 @@ fn publish_history_from_queue(
 // aim.md §2 #4: title/preview/status_label removed from the nmp-core wire.
 // The TUI shell computes them here from raw kind/content/status, mirroring the
 // iOS (`NotificationsView+OutboxRow.swift`) and Android display layers.
+
+/// Format a raw relay-reason token (e.g. `"nip65_write"`) into the display
+/// string the TUI renders. Parameterised tokens (`"discovery_indexer:{kind}"`,
+/// `"recipient_inbox:{pubkey}"`) are parsed and formatted here.
+/// Unknown tokens pass through verbatim.
+fn format_relay_reason_token(token: &str) -> String {
+    if token.is_empty() {
+        return String::new();
+    }
+    if let Some(kind) = token.strip_prefix("discovery_indexer:") {
+        return format!("Discovery indexer (kind {kind})");
+    }
+    if let Some(pubkey) = token.strip_prefix("recipient_inbox:") {
+        return format!("Inbox relay for {pubkey}");
+    }
+    match token {
+        "nip65_write" => "NIP-65 write relay".to_string(),
+        "local_config" => "App relay (local config)".to_string(),
+        "explicit" => "Explicit relay".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Format a raw relay-message token (e.g. `"waiting_for_ok"`) into the display
+/// string the TUI renders. Raw relay protocol error text passes through verbatim.
+fn format_relay_message_token(token: &str) -> String {
+    match token {
+        "waiting_for_connection" => "Waiting for relay connection".to_string(),
+        "waiting_for_ok" => "Waiting for relay OK".to_string(),
+        "accepted" => "Relay accepted the event".to_string(),
+        "timed_out" => "No response from relay".to_string(),
+        other => other.to_string(),
+    }
+}
 
 fn outbox_kind_title(kind: u32) -> String {
     match kind {

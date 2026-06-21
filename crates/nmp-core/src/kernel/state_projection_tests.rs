@@ -316,9 +316,9 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
 
 /// Per-relay rationale ("why was this relay targeted?") threads from the
 /// outbox resolver all the way through to the JSON projection that crosses
-/// the C-ABI. Apps render `relay_reason` verbatim — this test pins the field
-/// to the resolver's exact string so a regression that drops the value (or
-/// stops serializing it) is caught at the projection boundary.
+/// the C-ABI. Apps parse `relay_reason` as a machine token and format it
+/// locally. This test pins the raw token so a regression that drops the
+/// value (or stops serializing it) is caught at the projection boundary.
 ///
 /// Pairs with `relay_reasons_are_threaded_from_resolver_through_snapshot` in
 /// `tests/publish_engine_relay_reasons.rs`, which pins the engine surface.
@@ -340,8 +340,8 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
 
     // `PublishTarget::Explicit` exercises the resolver's short-circuit lane —
     // the kernel's installed resolver (`Nip65OutboxResolver` /
-    // `TestKind10002OutboxResolver`) returns
-    // `ResolvedRelay { reason: "Explicit relay", .. }` for each URL.
+    // `TestKind10002OutboxResolver`) emits `RelaySelectionReason::Explicit`
+    // which is formatted as the raw token `"explicit"`.
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
@@ -362,8 +362,8 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
     assert_eq!(relay["relay_url"].as_str(), Some("wss://reason.test"));
     assert_eq!(
         relay["relay_reason"].as_str(),
-        Some("Explicit relay"),
-        "kernel projection must surface the resolver's reason verbatim",
+        Some("explicit"),
+        "kernel projection must surface the raw reason token (shells format it)",
     );
 }
 
