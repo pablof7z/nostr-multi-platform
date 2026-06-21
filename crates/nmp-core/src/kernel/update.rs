@@ -364,20 +364,25 @@ impl Kernel {
             self.projection_rev_tracker.reset_last_emitted();
         }
         // ADR-0063 (#1671 integration glue, codex "Artifact 1") — the keyed
-        // `refs.profile` / `refs.event` row-delta producer. Hooked HERE, between
-        // the baseline-latch reset (above) and the manifest assembly (below),
-        // because it needs live `&mut self`: it advances Lane A's per-host
-        // last-emitted tracker over the kernel's own `RefRowRevSource` impl and
-        // baselines on session/epoch change OR `baseline_pending` (the SAME
-        // signal the host `RefRowCache` rebaselines on). It is NOT run inside
-        // `run_typed_projections` (that path is `&self`-only host closures). The
-        // two entries are always pushed so the manifest's unconditional-Tier-2
-        // `Changed`-must-emit invariant (rung3_omit §10.2) holds; the Rung-2/3
-        // passes below stamp + (when incremental) omit them like any built-in.
-        let mut refs_entries = self.refs_row_delta_projections(baseline_pending);
-        // ADR-0053 parity: respect a narrowing host declared-set exactly like
-        // `builtin_typed_projections` does for every other built-in — an
-        // undeclared `refs.*` key must not ship. `declared` was snapshotted above.
+        // `refs.profile` / `refs.event` row-delta producer. Hooked HERE (between
+        // the baseline-latch reset above and the manifest assembly below) because
+        // it needs live `&mut self`: it advances Lane A's per-host last-emitted
+        // tracker over the kernel's own `RefRowRevSource` impl and baselines on
+        // session/epoch change OR `baseline_pending`. Both entries are always
+        // pushed so the manifest's unconditional-Tier-2 `Changed`-must-emit
+        // invariant (rung3_omit §10.2) holds; Rung-2/3 stamp + omit them below.
+        // ADR-0053 parity: pass the per-key declared-set permit verdict into the
+        // producer so it does NOT advance the row-delta tracker for a key
+        // filtered off the wire, and re-baselines on a false→true (newly
+        // declared) edge — see `refs_row_delta_projections` for the full
+        // rationale (#1671 codex D5 bug). `permits` is `true` for the
+        // non-narrowing `Undeclared` / `All` states (those hosts are unaffected).
+        let profile_permitted = declared.permits(super::typed_projections::REFS_PROFILE_KEY);
+        let event_permitted = declared.permits(super::typed_projections::REFS_EVENT_KEY);
+        let mut refs_entries =
+            self.refs_row_delta_projections(baseline_pending, profile_permitted, event_permitted);
+        // Drop the unpermitted entries off the wire (the producer already
+        // returned empty no-op batches for them and left the tracker untouched).
         if declared.is_narrowing() {
             refs_entries.retain(|entry| declared.permits(&entry.key));
         }

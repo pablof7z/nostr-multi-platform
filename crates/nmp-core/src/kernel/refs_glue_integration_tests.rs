@@ -30,7 +30,7 @@ use super::super::typed_projections::{
     decode_claimed_events, decode_profile, REFS_EVENT_KEY, REFS_PROFILE_KEY,
 };
 use super::super::Kernel;
-use crate::refs::{decode_ref_row_delta_batch, RefRowCache, RefRowDeltaTracker, RefRowRevSource};
+use crate::refs::{decode_ref_row_delta_batch, RefRowCache, RefRowDeltaTracker};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 
@@ -160,6 +160,142 @@ fn kernel_with_incremental() -> (Kernel, super::super::snapshot_registry::Snapsh
         registry.declare_incremental_apply();
     }
     (kernel, slot)
+}
+
+/// ADR-0053 / #1671 codex bug — a host that starts NARROWED to exclude
+/// `refs.profile` / `refs.event` must NOT have the row-delta tracker advanced
+/// while those keys are filtered off the wire. When the host LATER additively
+/// declares them, the FIRST emission must be a full BASELINE carrying every live
+/// row — not an empty incremental.
+///
+/// Pre-fix, `refs_row_delta_projections` advanced the tracker before the
+/// declared-set filter, so the live rows were recorded as already-emitted while
+/// being dropped off the wire; the additive declaration then shipped an empty
+/// incremental and the host `RefRowCache` never got the baseline. This test
+/// FAILS on that code (empty incremental / missing baseline rows) and passes
+/// with the per-key permit gate + false→true re-baseline.
+#[test]
+fn refs_newly_declared_emits_full_baseline() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    let slot = new_snapshot_projection_slot();
+    kernel.set_snapshot_projection_handle(Arc::clone(&slot));
+    // Start NARROWED to a key that is NOT a refs.* key, so the host is in the
+    // Narrow state with refs.profile/refs.event filtered off the wire.
+    {
+        let mut registry = slot.lock().expect("registry lock");
+        registry.declare_incremental_apply();
+        registry.declare_consumed_projections(["profile"]);
+    }
+
+    let alice = hex64("a11ce");
+    let bob = hex64("b0b");
+    let note_keys = ::nostr::Keys::generate();
+    let note = signed_note(&note_keys, "hello newly-declared", 1_700_000_077);
+    let note_id = note.id.clone();
+
+    // Resolve + ingest so several profile/event rows are LIVE.
+    kernel.resolve_ref(
+        RefNamespace::Profile,
+        alice.clone(),
+        "view-a".into(),
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::Live,
+        false,
+        Vec::new(),
+    );
+    kernel.resolve_ref(
+        RefNamespace::Profile,
+        bob.clone(),
+        "view-b".into(),
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    kernel.resolve_ref(
+        RefNamespace::Event,
+        note_id.clone(),
+        "embed-1".into(),
+        RefShape::Event(EventShape::Raw),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    inject_kind0(&mut kernel, &alice, "Alice");
+    inject_kind0(&mut kernel, &bob, "Bob");
+    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "sub", note.clone());
+
+    // ── Phase 1: NARROWED — no refs.* rows must cross the wire ────────────────
+    let frame = kernel.make_update(true);
+    let typed = decode_snapshot_typed_projections(&frame).unwrap_or_default();
+    assert!(
+        typed
+            .iter()
+            .all(|e| e.key != REFS_PROFILE_KEY && e.key != REFS_EVENT_KEY),
+        "while narrowed-out, NO refs.* entry may ship on the wire"
+    );
+
+    // Ground truth: the live row sets the host SHOULD eventually receive.
+    let full_profile = full_snapshot(&kernel, "profile");
+    let full_event = full_snapshot(&kernel, "event");
+    assert!(
+        !full_profile.is_empty() && !full_event.is_empty(),
+        "fixture must have live profile AND event rows"
+    );
+
+    // ── Phase 2: host ADDITIVELY declares refs.profile + refs.event ──────────
+    {
+        let mut registry = slot.lock().expect("registry lock");
+        registry.declare_consumed_projections([REFS_PROFILE_KEY, REFS_EVENT_KEY]);
+    }
+    let frame = kernel.make_update(true);
+    let envelope = decode_snapshot_envelope(&frame).expect("decode envelope");
+    let typed = decode_snapshot_typed_projections(&frame).unwrap_or_default();
+
+    // Apply the FIRST emission to a FRESH host cache and assert it equals the
+    // full live snapshot — i.e. the first frame was a full baseline, not an
+    // empty incremental that left the cache empty (the pre-fix failure).
+    let mut profile_cache = RefRowCache::new();
+    let mut event_cache = RefRowCache::new();
+    for entry in &typed {
+        let (cache, namespace) = match entry.key.as_str() {
+            REFS_PROFILE_KEY => (&mut profile_cache, "profile"),
+            REFS_EVENT_KEY => (&mut event_cache, "event"),
+            _ => continue,
+        };
+        assert!(
+            !entry.payload.is_empty(),
+            "newly-declared {} must carry a non-empty NRRD baseline batch, not an \
+             empty incremental",
+            entry.key
+        );
+        let batch = decode_ref_row_delta_batch(&entry.payload).expect("decode NRRD batch");
+        assert!(
+            batch.baseline,
+            "the newly-declared {} first emission must be a BASELINE batch",
+            entry.key
+        );
+        let outcome = cache.apply(
+            &batch,
+            envelope.session_id,
+            envelope.snapshot_epoch,
+            &decode_ok_for(namespace),
+        );
+        assert!(!outcome.decode_failed);
+    }
+
+    assert_eq!(
+        profile_cache.snapshot("profile"),
+        full_profile,
+        "newly-declared refs.profile baseline must carry ALL live rows (the \
+         tracker must NOT have silently consumed them while narrowed-out)"
+    );
+    assert_eq!(
+        event_cache.snapshot("event"),
+        full_event,
+        "newly-declared refs.event baseline must carry ALL live rows"
+    );
 }
 
 #[test]

@@ -97,8 +97,12 @@ pub fn projection_tier(json_key: &str) -> ProjectionTier {
 ///   the codegen registry; Swift reads the merged `resolved_profiles` map
 ///   instead. The kernel still emits it as a building block, so it is a
 ///   built-in the `consume_all` set must include.
+/// - `refs.profile` / `refs.event` (ADR-0063 #1671) — the two keyed row-delta
+///   carriers. Each ships an opaque NRRD per-key row-delta batch consumed by the
+///   host `RefRowCache`, not a `SnapshotProjections` JSON field, so neither has a
+///   generated shell decoder.
 ///
-/// These are the ONLY two members of [`kernel_builtin_projection_keys`] that are
+/// These are the ONLY four members of [`kernel_builtin_projection_keys`] that are
 /// not also `SNAPSHOT_PROJECTIONS` entries. They are pinned by the
 /// `kernel_builtins_without_shell_decoder_are_not_in_registry` test so the list
 /// cannot silently overlap the decoder registry.

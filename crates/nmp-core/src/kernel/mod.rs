@@ -698,15 +698,15 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
-    /// ADR-0055 Rung 1 — per-projection revision tracker (typed `SourceVersions`
-    /// counters + dependency-derived per-key monotonic revs). Internal-only in
-    /// Rung 1: `make_update` does NOT consult it (wire bytes unchanged). Reset to
-    /// 0 on `Kernel` rebuild (fresh `Default`).
+    /// ADR-0055 — per-projection revision tracker (typed `SourceVersions` +
+    /// dependency-derived per-key revs; Rung 2/3 stamp/omit from it). 0 on rebuild.
     pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
-    /// ADR-0063 (#1671 glue) — Lane A row-delta producer + the `(session_id,
-    /// epoch)` it last baselined at (see `typed_projections::builtins_refs`).
+    /// ADR-0063/0053 (#1671 glue) — Lane A row-delta producer state (tracker,
+    /// last-baselined `(session_id, epoch)`, last-tick refs.* permit verdict for
+    /// the false→true re-baseline edge). See `typed_projections::builtins_refs`.
     ref_row_delta_tracker: crate::refs::RefRowDeltaTracker,
     ref_row_last_identity: Option<(u64, u64)>,
+    ref_row_last_permits: (bool, bool),
     /// ADR-0055 Rung 1 (F3) — biconditional completeness oracle state, carried
     /// across ticks. `cfg(any(test, test-support))` ONLY: a production build
     /// neither holds this field nor runs the oracle (ZERO emit-path cost).
@@ -1974,11 +1974,11 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
-            // ADR-0055 Rung 1: initialized to default (all counters 0, epoch 0).
-            // Resets are free on the Kernel rebuild (Reset) path.
+            // ADR-0055 Rung 1: default (all counters 0, epoch 0); free on Reset.
             projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
-            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0063 glue
+            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0063/0053 glue
             ref_row_last_identity: None,
+            ref_row_last_permits: (false, false),
             #[cfg(any(test, feature = "test-support"))]
             projection_oracle: projection_rev::oracle::OracleState::default(),
             timing: TimingMilestones::default(),

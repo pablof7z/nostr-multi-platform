@@ -83,6 +83,15 @@ impl RefRowDeltaTracker {
         self.last_emitted.clear();
     }
 
+    /// Clear the last-emitted state for ONE namespace so the next
+    /// [`Self::build_baseline`] for it re-seeds the host from scratch, leaving
+    /// other namespaces' state intact. Used when a single `refs.*` key is newly
+    /// permitted (ADR-0053 additive declaration) and must re-baseline alone
+    /// without disturbing a sibling namespace that stayed permitted.
+    pub fn reset_namespace(&mut self, namespace: &str) {
+        self.last_emitted.remove(namespace);
+    }
+
     /// Build a FULL baseline batch for `namespace`: every live row as `Changed`,
     /// `baseline = true`. Records the emitted revs (so a subsequent
     /// [`Self::build_incremental`] is correct).
