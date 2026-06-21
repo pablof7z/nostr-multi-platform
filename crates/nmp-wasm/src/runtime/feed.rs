@@ -3,8 +3,49 @@
 //! The public surface accepts primary content kinds. Protocol wrapper
 //! acquisition is derived here, below app composition and above the pure
 //! reducer, so apps do not compile repost shapes themselves.
+//!
+//! #1740 step 1 also re-exports the typed feed-session param model from
+//! `nmp-feed` (single source, D4) plus a wasm-boundary decode/validation entry.
+//! Step 1 is types + decode + validation only; the `open_feed` dispatch lands in
+//! step 2.
 
 use super::WasmRuntime;
+
+/// Re-export the canonical typed feed-session declaration model (#1740).
+///
+/// The model lives in `nmp-feed`; the wasm runtime adds no parallel copy.
+pub use nmp_feed::{
+    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedParamsError, FeedRanking,
+    FeedScope, FeedSessionId, FeedWindow, ProjectionKey, PubkeySetExpr,
+};
+
+/// Typed error for the wasm-boundary `FeedParams` decode + validation
+/// (D6 — no panic; the wasm worker reports the variant, never throws).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FeedParamsDecodeError {
+    /// The JSON payload did not parse into a `FeedParams`.
+    MalformedJson,
+    /// The decoded params failed validation (e.g. wrapper/delete primary kind).
+    InvalidParams(FeedParamsError),
+}
+
+/// Decode a `FeedParams` JSON payload from the browser worker and validate its
+/// primary kinds.
+///
+/// The wasm twin of the FFI boundary entry: parses untrusted JSON into the
+/// typed [`FeedParams`] and runs fail-closed primary-kind validation (rejecting
+/// wrapper kinds 6/16 and delete kind 5). It performs **no** dispatch — step 2
+/// wires `open_feed` on top of this.
+pub fn decode_and_validate_feed_params(
+    json: &str,
+) -> Result<(FeedParams, std::collections::BTreeSet<u32>), FeedParamsDecodeError> {
+    let params: FeedParams =
+        serde_json::from_str(json).map_err(|_| FeedParamsDecodeError::MalformedJson)?;
+    let acquisition_kinds = params
+        .validate_primary_kinds()
+        .map_err(FeedParamsDecodeError::InvalidParams)?;
+    Ok((params, acquisition_kinds))
+}
 
 impl WasmRuntime {
     /// Declare an active-follows feed from app-owned primary content kinds.
@@ -38,5 +79,56 @@ impl WasmRuntime {
     pub fn clear_active_follows_feed(&self) {
         let outbound = self.reducer.borrow_mut().clear_active_follows_feed();
         self.fan_outbound(outbound);
+    }
+}
+
+#[cfg(test)]
+mod feed_params_decode_tests {
+    use super::*;
+
+    fn params_json(primary_kinds: &str) -> String {
+        format!(
+            r#"{{
+              "primary_kinds": {primary_kinds},
+              "acquisition": "ActiveUserFollows",
+              "admission": "All",
+              "ranking": "ChronologicalDesc",
+              "window": {{ "initial_limit": 80 }},
+              "projection": "nmp.feed.home"
+            }}"#
+        )
+    }
+
+    #[test]
+    fn valid_primary_kinds_decode_and_validate() {
+        let (params, kinds) =
+            decode_and_validate_feed_params(&params_json("[20]")).expect("[20] is valid");
+        assert_eq!(params.primary_kinds, vec![20]);
+        assert!(kinds.contains(&20) && kinds.contains(&16));
+        assert_eq!(params.acquisition, PubkeySetExpr::ActiveUserFollows);
+    }
+
+    #[test]
+    fn wrapper_and_delete_primary_kinds_are_rejected_at_the_boundary() {
+        assert_eq!(
+            decode_and_validate_feed_params(&params_json("[20, 16]")),
+            Err(FeedParamsDecodeError::InvalidParams(
+                FeedParamsError::RepostWrapperKind { kind: 16 }
+            ))
+        );
+        assert_eq!(
+            decode_and_validate_feed_params(&params_json("[1, 5]")),
+            Err(FeedParamsDecodeError::InvalidParams(
+                FeedParamsError::DeleteKind
+            ))
+        );
+    }
+
+    #[test]
+    fn malformed_json_fails_closed() {
+        assert_eq!(
+            decode_and_validate_feed_params("{ not json"),
+            Err(FeedParamsDecodeError::MalformedJson)
+        );
     }
 }

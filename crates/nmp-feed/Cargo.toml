@@ -9,6 +9,9 @@ description = "Reusable bounded Nostr feed windowing, cursor paging, and feed co
 [dependencies]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-nip18 so the typed feed-session model derives wrapper
+# acquisition through the single NIP-18 transform (D4) instead of re-deriving it.
+nmp-nip18 = { path = "../nmp-nip18" }
 # Direct dep on nmp-planner for InterestShape / RelayHint — the
 # nmp_core::planner compat facade is deleted (#1608).
 nmp-planner = { path = "../nmp-planner", default-features = false }

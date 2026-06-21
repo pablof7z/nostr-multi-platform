@@ -4590,6 +4590,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-nip18",
  "nmp-planner",
  "nmp-store",
  "nmp-threading",
@@ -5104,6 +5105,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "nmp-core",
+ "nmp-feed",
  "nmp-network",
  "nmp-nip18",
  "nmp-signer-iface",

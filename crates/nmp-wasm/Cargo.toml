@@ -18,6 +18,10 @@ crate-type = ["cdylib", "rlib"]
 # wire NmpApp into WasmRuntime using a WASM-compatible transport
 # (web_sys::WebSocket + IndexedDB store).
 nmp-core = { path = "../nmp-core", default-features = false }
+# #1740 step 1 — the typed feed-session param model lives in nmp-feed (single
+# source, D4). The wasm runtime re-exports its param types and the boundary
+# decode/validation surface; it adds no parallel model.
+nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }
 # Step 8 phase A: the `relay_protocol` constants moved from
 # `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the

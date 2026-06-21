@@ -144,6 +144,14 @@ pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callbac
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
+// #1740 step 1 — typed feed-session param types + boundary decode/validation
+// (no `open_feed` dispatch yet; that is step 2).
+#[cfg(feature = "native")]
+pub use feed::{
+    decode_and_validate_feed_params, FeedAdmission, FeedHandle, FeedParams, FeedParamsDecodeError,
+    FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow, ProjectionKey,
+    PubkeySetExpr,
+};
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
