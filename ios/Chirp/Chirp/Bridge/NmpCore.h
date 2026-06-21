@@ -95,6 +95,14 @@ void nmp_app_open_contact_feed(void *app, const char *kinds_json);
 // tick. D6: a null `app` is a silent no-op.
 void nmp_app_close_contact_feed(void *app);
 
+// Live "following count" read for the host profile header — the number of
+// distinct hex-valid `p` tags in the active account's latest kind:3, read
+// synchronously from the kernel's published store (read-your-writes, ADR-0057).
+// Returns >= 0 when a kind:3 exists (0 for an explicit empty list), or -1 when
+// there is no active account / no kind:3 yet / a lock is poisoned. Hosts render
+// -1 as 0; the value is kept distinct so callers can tell "no list yet" apart.
+int64_t nmp_app_active_following_count(void *app);
+
 // T66a — identity / publish / multi-account / relay-edit. None return a
 // value; outcomes (incl. validation failures) arrive via the snapshot's
 // last_error_toast / accounts / publish_queue fields (D6).
