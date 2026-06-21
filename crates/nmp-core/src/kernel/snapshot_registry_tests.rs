@@ -132,12 +132,19 @@ fn builtin_projection_keys_const_matches_runtime() {
     }
 
     // Reverse: every const key is either emitted on an idle tick or one of the
-    // four documented drain-on-emit conditionals.
+    // four documented drain-on-emit conditionals, OR one of the two ADR-0063
+    // (#1671) keyed row-delta carriers (`refs.profile` / `refs.event`). The
+    // latter are typed-sidecar-ONLY built-ins (an opaque NRRD per-key batch
+    // consumed by the host `RefRowCache`) — they have no generic JSON
+    // `projections` map entry, so they will never appear in the JSON snapshot
+    // this test parses, yet they ARE produced every tick on the typed sidecar.
     let conditional = [
         "action_results",
         "signed_events",
         "action_stages",
         "action_lifecycle",
+        "refs.profile",
+        "refs.event",
     ];
     for key in KERNEL_BUILTIN_PROJECTION_KEYS {
         assert!(

@@ -15,7 +15,7 @@ impl Kernel {
     /// d-tags may legally contain `:` (rare but spec-allowed); the
     /// split is bounded to the first two colons so a d-tag like
     /// `"foo:bar"` round-trips correctly.
-    pub(super) fn lookup_for_primary_id(&self, key: &str) -> Option<StoredEvent> {
+    pub(in crate::kernel) fn lookup_for_primary_id(&self, key: &str) -> Option<StoredEvent> {
         // Try the in-memory timeline cache first (kind:1 / kind:6 are inserted
         // here by `ingest_timeline_event`). The addressable / unknown-kind
         // path below needs to query the EventStore which returns owned

@@ -71,6 +71,10 @@ mod relay_role_options_fb;
 mod settings_hub_fb;
 // Wave C profile/event cluster (appended; see `builtins_profiles.rs`).
 mod builtins_profiles;
+// ADR-0063 (#1671 integration glue) — the keyed `refs.profile` / `refs.event`
+// row-delta producer. Unlike the snapshot clusters it runs in `make_update`
+// (needs `&mut self`); see `builtins_refs.rs`.
+mod builtins_refs;
 mod claimed_events_fb;
 mod claimed_profiles_fb;
 mod mention_profiles_fb;
@@ -193,6 +197,13 @@ pub use signed_events_fb::{
     decode_signed_events, SignedEventRow, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER,
     SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
 };
+
+// ADR-0063 (#1671 integration glue) — the two keyed row-delta sidecar keys.
+// Re-exported for the in-crate integration test (the producer in `builtins_refs`
+// uses the originals directly); test-only so a production build sees no unused
+// re-export.
+#[cfg(test)]
+pub(crate) use builtins_refs::{REFS_EVENT_KEY, REFS_PROFILE_KEY};
 
 pub use relay_role_options_fb::decode_relay_role_options;
 // Wave C profile/event cluster — `decode_claimed_events` promoted to unconditional
