@@ -22,6 +22,13 @@ use std::path::Path;
 
 use crate::swift_projections_registry::{KeyedProjectionEntry, KEYED_PROJECTIONS};
 
+// ADR-0063 Lane C (#1671): the TYPED row-payload rendering (accessors +
+// decode-before-commit seam + init) lives in a sibling file so neither source
+// exceeds the 500-LOC cap.
+#[path = "swift_keyed_cache_typed.rs"]
+mod typed;
+use typed::{render_accessors, render_typed_decoders, STATIC_INIT};
+
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
@@ -62,8 +69,12 @@ pub fn render_keyed_ref_cache(entries: &[KeyedProjectionEntry]) -> String {
     out.push('\n');
 
     out.push_str(STATIC_TYPES);
+    // ADR-0063 Lane C: install the real typed decode-before-commit seam at
+    // construction so the typed contract holds with no caller wiring.
+    out.push_str(STATIC_INIT);
     out.push_str(&render_routing(entries));
     out.push_str(STATIC_MERGE);
+    out.push_str(&render_typed_decoders(entries));
     out.push_str(&render_accessors(entries));
     out.push_str("}\n");
     out
@@ -92,24 +103,6 @@ fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
     s
 }
 
-fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
-    let mut s = String::from(
-        "    // MARK: - Per-key accessors\n\
-         \x20\x20\x20\x20//\n\
-         \x20\x20\x20\x20// One typed accessor per keyed namespace. A view binds\n\
-         \x20\x20\x20\x20// `profile(pubkey)` (raw `RefRowDeltaBatch` row payload bytes — the\n\
-         \x20\x20\x20\x20// caller decodes with the namespace's typed reader) and subscribes to\n\
-         \x20\x20\x20\x20// `rowChanged` filtered on its key, so exactly one view re-renders\n\
-         \x20\x20\x20\x20// when that key updates.\n",
-    );
-    for e in entries {
-        s.push_str(&format!(
-            "    func {}(_ key: String) -> Data? {{ payload(projectionKey: {:?}, rowKey: key) }}\n",
-            e.accessor, e.projection_key
-        ));
-    }
-    s
-}
 
 const STATIC_TYPES: &str = r#"// MARK: - RefRowState (mirror of nmp.refs.RefRowState)
 private let kRefRowStateCleared: UInt8 = 1

@@ -1,4 +1,4 @@
-// ADR-0063 Lane A (#1671) — the invariant property tests for the generated
+// ADR-0063 (#1671) — the invariant property tests for the generated
 // `KeyedRefCache`, at the generated-cache layer. Mirrors the Rust gate
 // `crates/nmp-core/src/refs/tests.rs` and the Kotlin twin
 // `android/app/src/test/java/org/nmp/android/KeyedRefCacheTest.kt`.
@@ -6,6 +6,20 @@
 // Each test builds REAL `nmp.refs.RefRowDeltaBatch` FlatBuffers bytes (the same
 // wire form the kernel emits) and feeds them to `KeyedRefCache.merge`, so the
 // five ADR-0063 invariants are verified against serialized bytes, not literals.
+//
+// Lane A (the five invariants) drives the cache with SYNTHETIC row payloads and
+// asserts BYTE storage via the internal `payload(projectionKey:rowKey:)` reader
+// — the merge/clear/rebaseline mechanics are payload-agnostic, so the invariants
+// must be provable WITHOUT a typed decode. Because Lane C installs a real typed
+// decode-before-commit seam, those tests override `rowDecoder` back to the
+// permissive Lane-A default so the synthetic bytes commit.
+//
+// Lane C (#1671 part-(b)) adds `testTypedAccessorDecodesProfileRow` /
+// `testTypedAccessorRejectsGarbageRow`, which feed a REAL `KPRF`
+// `ProfileSnapshot` row payload (the exact buffer `Kernel::ref_profile_row_payload`
+// emits) and assert the TYPED accessor `cache.profile(pubkey) -> ProfileCard?`
+// decodes the expected fields — proving the host surface is the typed domain
+// type, not Lane A's raw `Data` passthrough.
 
 import FlatBuffers
 import XCTest
@@ -51,10 +65,30 @@ final class KeyedRefCacheTests: XCTestCase {
         Row(key: key, rev: rev, state: .cleared, payload: [])
     }
 
+    /// A cache whose decode-before-commit seam is the permissive Lane-A default
+    /// (`!payload.isEmpty`), so the SYNTHETIC two-byte row payloads the invariant
+    /// tests use commit. Lane C's real typed decoder is exercised separately by
+    /// the typed-accessor tests below (with real KPRF buffers).
+    private func rawCache() -> KeyedRefCache {
+        let cache = KeyedRefCache()
+        cache.rowDecoder = { _, payload in !payload.isEmpty }
+        return cache
+    }
+
+    /// The raw cached row bytes for a `(projectionKey, rowKey)` — the invariant
+    /// tests assert byte storage at this layer (payload-agnostic merge mechanics).
+    private func rawProfile(_ cache: KeyedRefCache, _ key: String) -> Data? {
+        cache.payload(projectionKey: profile, rowKey: key)
+    }
+
+    private func rawEvent(_ cache: KeyedRefCache, _ key: String) -> Data? {
+        cache.payload(projectionKey: event, rowKey: key)
+    }
+
     // MARK: - Invariant #1: absence is Unchanged, never Cleared
 
     func testAbsentRowIsRetained() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(
@@ -70,14 +104,14 @@ final class KeyedRefCacheTests: XCTestCase {
                 namespace: "profile", baseline: false, rows: [changed("alice", 2, 0xCC)]),
             sessionId: 1, snapshotEpoch: 0)
         XCTAssertEqual(changed, ["alice"])
-        XCTAssertEqual(cache.profile("bob"), Data([0x01, 0xBB]))
-        XCTAssertEqual(cache.profile("alice"), Data([0x01, 0xCC]))
+        XCTAssertEqual(rawProfile(cache, "bob"), Data([0x01, 0xBB]))
+        XCTAssertEqual(rawProfile(cache, "alice"), Data([0x01, 0xCC]))
     }
 
     // MARK: - Invariant #2: decode-before-commit keeps prior on malformed
 
     func testMalformedRowKeepsPriorAndLatchesResync() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(
@@ -95,14 +129,14 @@ final class KeyedRefCacheTests: XCTestCase {
         let changed = cache.merge(projectionKey: profile, payload: batch, sessionId: 1, snapshotEpoch: 0)
         XCTAssertTrue(cache.needsResync)
         XCTAssertFalse(changed.contains("alice"))
-        XCTAssertEqual(cache.profile("alice"), Data([0x01, 0xAA]), "prior row retained")
-        XCTAssertEqual(cache.profile("bob"), Data([0x01, 0xEE]), "sibling valid row commits")
+        XCTAssertEqual(rawProfile(cache, "alice"), Data([0x01, 0xAA]), "prior row retained")
+        XCTAssertEqual(rawProfile(cache, "bob"), Data([0x01, 0xEE]), "sibling valid row commits")
     }
 
     // MARK: - Invariant #3: epoch change → baseline reconstructs full set
 
     func testEpochBaselineRebuildsFullSet() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(
@@ -115,15 +149,15 @@ final class KeyedRefCacheTests: XCTestCase {
             projectionKey: profile,
             payload: makeBatch(namespace: "profile", baseline: true, rows: [changed("alice", 2, 0xCC)]),
             sessionId: 1, snapshotEpoch: 1)
-        XCTAssertNil(cache.profile("ghost"))
-        XCTAssertEqual(cache.profile("alice"), Data([0x01, 0xCC]))
+        XCTAssertNil(rawProfile(cache, "ghost"))
+        XCTAssertEqual(rawProfile(cache, "alice"), Data([0x01, 0xCC]))
         XCTAssertFalse(cache.needsResync)
     }
 
     // MARK: - Cleared is explicit
 
     func testClearedRemovesRow() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(namespace: "profile", baseline: true, rows: [changed("alice", 1, 0xAA)]),
@@ -133,13 +167,13 @@ final class KeyedRefCacheTests: XCTestCase {
             payload: makeBatch(namespace: "profile", baseline: false, rows: [cleared("alice", 2)]),
             sessionId: 1, snapshotEpoch: 0)
         XCTAssertEqual(changed, ["alice"])
-        XCTAssertNil(cache.profile("alice"))
+        XCTAssertNil(rawProfile(cache, "alice"))
     }
 
     // MARK: - Reorder guard
 
     func testStaleRevIsSkipped() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(namespace: "profile", baseline: true, rows: [changed("alice", 5, 0x55)]),
@@ -149,13 +183,13 @@ final class KeyedRefCacheTests: XCTestCase {
             payload: makeBatch(namespace: "profile", baseline: false, rows: [changed("alice", 3, 0x33)]),
             sessionId: 1, snapshotEpoch: 0)
         XCTAssertTrue(changed.isEmpty)
-        XCTAssertEqual(cache.profile("alice"), Data([0x01, 0x55]))
+        XCTAssertEqual(rawProfile(cache, "alice"), Data([0x01, 0x55]))
     }
 
     // MARK: - Invariant #4: typed per namespace
 
     func testNamespaceIsolation() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(namespace: "profile", baseline: true, rows: [changed("shared", 1, 0x11)]),
@@ -164,21 +198,21 @@ final class KeyedRefCacheTests: XCTestCase {
             projectionKey: event,
             payload: makeBatch(namespace: "event", baseline: true, rows: [changed("shared", 1, 0x22)]),
             sessionId: 1, snapshotEpoch: 0)
-        XCTAssertEqual(cache.profile("shared"), Data([0x01, 0x11]))
-        XCTAssertEqual(cache.event("shared"), Data([0x01, 0x22]))
+        XCTAssertEqual(rawProfile(cache, "shared"), Data([0x01, 0x11]))
+        XCTAssertEqual(rawEvent(cache, "shared"), Data([0x01, 0x22]))
 
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(namespace: "profile", baseline: false, rows: [cleared("shared", 2)]),
             sessionId: 1, snapshotEpoch: 0)
-        XCTAssertNil(cache.profile("shared"))
-        XCTAssertEqual(cache.event("shared"), Data([0x01, 0x22]), "other namespace untouched")
+        XCTAssertNil(rawProfile(cache, "shared"))
+        XCTAssertEqual(rawEvent(cache, "shared"), Data([0x01, 0x22]), "other namespace untouched")
     }
 
     // MARK: - Per-row observable: exactly one key notified
 
     func testRowChangePublisherFiresPerChangedKey() {
-        let cache = KeyedRefCache()
+        let cache = rawCache()
         cache.merge(
             projectionKey: profile,
             payload: makeBatch(
@@ -195,5 +229,74 @@ final class KeyedRefCacheTests: XCTestCase {
             payload: makeBatch(namespace: "profile", baseline: false, rows: [changed("alice", 2, 0xCC)]),
             sessionId: 1, snapshotEpoch: 0)
         XCTAssertEqual(observed, ["alice"], "only the one changed key re-renders")
+    }
+
+    // MARK: - Lane C (#1671 part-(b)): TYPED per-key accessor
+
+    /// Build a REAL `KPRF` `ProfileSnapshot` row payload — the exact buffer the
+    /// kernel's `ref_profile_row_payload` (→ `encode_profile`) emits per row.
+    private func makeProfileRowPayload(
+        pubkey: String, displayName: String?, pictureUrl: String?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let pubkeyOff = fbb.create(string: pubkey)
+        let dnOff = displayName.map { fbb.create(string: $0) } ?? Offset()
+        let purlOff = pictureUrl.map { fbb.create(string: $0) } ?? Offset()
+        // nip05 / about are non-optional strings on the wire (empty when absent).
+        let nip05Off = fbb.create(string: "")
+        let aboutOff = fbb.create(string: "")
+        let cardStart = nmp_kernel_ProfileCard.startProfileCard(&fbb)
+        nmp_kernel_ProfileCard.add(pubkey: pubkeyOff, &fbb)
+        if displayName != nil {
+            nmp_kernel_ProfileCard.add(hasDisplayName: true, &fbb)
+            nmp_kernel_ProfileCard.add(displayName: dnOff, &fbb)
+        }
+        if pictureUrl != nil {
+            nmp_kernel_ProfileCard.add(hasPictureUrl: true, &fbb)
+            nmp_kernel_ProfileCard.add(pictureUrl: purlOff, &fbb)
+        }
+        nmp_kernel_ProfileCard.add(nip05: nip05Off, &fbb)
+        nmp_kernel_ProfileCard.add(about: aboutOff, &fbb)
+        let cardOff = nmp_kernel_ProfileCard.endProfileCard(&fbb, start: cardStart)
+        let snapOff = nmp_kernel_ProfileSnapshot.createProfileSnapshot(&fbb, cardOffset: Offset(offset: cardOff))
+        nmp_kernel_ProfileSnapshot.finish(&fbb, end: snapOff)
+        return Array(fbb.data)
+    }
+
+    /// The typed accessor `cache.profile(pubkey) -> ProfileCard?` decodes the
+    /// cached KPRF row payload into the concrete domain type (NOT raw `Data`).
+    func testTypedAccessorDecodesProfileRow() {
+        let cache = KeyedRefCache()  // real typed decode-before-commit seam
+        let payload = makeProfileRowPayload(
+            pubkey: "abc123", displayName: "Alice", pictureUrl: "https://example/a.png")
+        let changed = cache.merge(
+            projectionKey: profile,
+            payload: makeBatch(
+                namespace: "profile", baseline: true,
+                rows: [Row(key: "abc123", rev: 1, state: .changed, payload: payload)]),
+            sessionId: 1, snapshotEpoch: 0)
+        XCTAssertEqual(changed, ["abc123"])
+        XCTAssertFalse(cache.needsResync, "a valid KPRF row commits without latching resync")
+
+        let card: ProfileCard? = cache.profile("abc123")
+        XCTAssertEqual(card?.pubkey, "abc123")
+        XCTAssertEqual(card?.displayName, "Alice")
+        XCTAssertEqual(card?.pictureUrl, "https://example/a.png")
+        XCTAssertNil(cache.profile("missing"), "an absent key decodes to nil")
+    }
+
+    /// A garbage (non-KPRF) `Changed` row fails the real typed decode-before-
+    /// commit seam: the row is NOT committed and `needsResync` latches.
+    func testTypedAccessorRejectsGarbageRow() {
+        let cache = KeyedRefCache()  // real typed decode-before-commit seam
+        let changed = cache.merge(
+            projectionKey: profile,
+            payload: makeBatch(
+                namespace: "profile", baseline: true,
+                rows: [Row(key: "abc123", rev: 1, state: .changed, payload: [0xDE, 0xAD, 0xBE, 0xEF])]),
+            sessionId: 1, snapshotEpoch: 0)
+        XCTAssertTrue(changed.isEmpty, "garbage row is not committed")
+        XCTAssertTrue(cache.needsResync, "typed decode failure latches resync")
+        XCTAssertNil(cache.profile("abc123"))
     }
 }

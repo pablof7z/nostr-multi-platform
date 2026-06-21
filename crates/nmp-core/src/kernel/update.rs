@@ -49,13 +49,13 @@ mod rung3_buffer_reuse_tests;
 #[cfg(test)]
 #[path = "rung3_cleared_signal_tests.rs"]
 mod rung3_cleared_signal_tests;
-// ADR-0063 (#1671 integration glue) — the campaign's headline `incremental ==
-// full` gate. Drives the real `make_update` path with the snapshot registry
-// installed, so — like the rung3 test modules above — it lives in `kernel/` and
-// is pulled in via `#[path]` to keep `kernel/mod.rs` at its size baseline.
+// ADR-0063 (#1671) refs.* tests via `#[path]`: integration gate + Lane C decode proof.
 #[cfg(test)]
 #[path = "refs_glue_integration_tests.rs"]
 mod refs_glue_integration_tests;
+#[cfg(test)]
+#[path = "refs_glue_typed_decode_tests.rs"]
+mod refs_glue_typed_decode_tests;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on
