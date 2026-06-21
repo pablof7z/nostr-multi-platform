@@ -26,6 +26,16 @@ class KeyedRefCacheTest {
     private val profile = "refs.profile"
     private val event = "refs.event"
 
+    // ADR-0063 Lane C (#1671): the cache exposes NO public per-namespace refs
+    // accessor (the dishonest raw `ByteArray?` `profile()`/`event()` surface was
+    // removed; the TYPED kotlin accessors land in Lane G once the `flatc --kotlin`
+    // row readers ship). These same-module helpers read the cached row bytes via
+    // the `internal payload(projectionKey, rowKey)` merge primitive so the
+    // invariant assertions stay byte-faithful without re-introducing a public raw
+    // surface.
+    private fun KeyedRefCache.profileBytes(key: String): ByteArray? = payload(profile, key)
+    private fun KeyedRefCache.eventBytes(key: String): ByteArray? = payload(event, key)
+
     private data class Row(val key: String, val rev: ULong, val state: UByte, val payload: ByteArray)
 
     private fun changed(key: String, rev: ULong, tag: Byte) =
@@ -64,8 +74,8 @@ class KeyedRefCacheTest {
             profile, makeBatch("profile", false, listOf(changed("alice", 2u, 0xCC.toByte()))), 1u, 0u,
         )
         assertEquals(setOf("alice"), changedKeys)
-        assertArrayEquals(byteArrayOf(0x01, 0xBB.toByte()), cache.profile("bob"))
-        assertArrayEquals(byteArrayOf(0x01, 0xCC.toByte()), cache.profile("alice"))
+        assertArrayEquals(byteArrayOf(0x01, 0xBB.toByte()), cache.profileBytes("bob"))
+        assertArrayEquals(byteArrayOf(0x01, 0xCC.toByte()), cache.profileBytes("alice"))
     }
 
     // Invariant #2: decode-before-commit keeps prior on malformed, latches resync.
@@ -84,8 +94,8 @@ class KeyedRefCacheTest {
         val changedKeys = cache.merge(profile, batch, 1u, 0u)
         assertTrue(cache.needsResync)
         assertFalse(changedKeys.contains("alice"))
-        assertArrayEquals(byteArrayOf(0x01, 0xAA.toByte()), cache.profile("alice"))
-        assertArrayEquals(byteArrayOf(0x01, 0xEE.toByte()), cache.profile("bob"))
+        assertArrayEquals(byteArrayOf(0x01, 0xAA.toByte()), cache.profileBytes("alice"))
+        assertArrayEquals(byteArrayOf(0x01, 0xEE.toByte()), cache.profileBytes("bob"))
     }
 
     // Invariant #3: epoch change → baseline reconstructs full set.
@@ -100,8 +110,8 @@ class KeyedRefCacheTest {
         cache.merge(
             profile, makeBatch("profile", true, listOf(changed("alice", 2u, 0xCC.toByte()))), 1u, 1u,
         )
-        assertNull(cache.profile("ghost"))
-        assertArrayEquals(byteArrayOf(0x01, 0xCC.toByte()), cache.profile("alice"))
+        assertNull(cache.profileBytes("ghost"))
+        assertArrayEquals(byteArrayOf(0x01, 0xCC.toByte()), cache.profileBytes("alice"))
         assertFalse(cache.needsResync)
     }
 
@@ -111,7 +121,7 @@ class KeyedRefCacheTest {
         cache.merge(profile, makeBatch("profile", true, listOf(changed("alice", 1u, 0xAA.toByte()))), 1u, 0u)
         val changedKeys = cache.merge(profile, makeBatch("profile", false, listOf(cleared("alice", 2u))), 1u, 0u)
         assertEquals(setOf("alice"), changedKeys)
-        assertNull(cache.profile("alice"))
+        assertNull(cache.profileBytes("alice"))
     }
 
     @Test
@@ -120,7 +130,7 @@ class KeyedRefCacheTest {
         cache.merge(profile, makeBatch("profile", true, listOf(changed("alice", 5u, 0x55))), 1u, 0u)
         val changedKeys = cache.merge(profile, makeBatch("profile", false, listOf(changed("alice", 3u, 0x33))), 1u, 0u)
         assertTrue(changedKeys.isEmpty())
-        assertArrayEquals(byteArrayOf(0x01, 0x55), cache.profile("alice"))
+        assertArrayEquals(byteArrayOf(0x01, 0x55), cache.profileBytes("alice"))
     }
 
     // Invariant #4: typed per namespace.
@@ -129,12 +139,12 @@ class KeyedRefCacheTest {
         val cache = KeyedRefCache()
         cache.merge(profile, makeBatch("profile", true, listOf(changed("shared", 1u, 0x11))), 1u, 0u)
         cache.merge(event, makeBatch("event", true, listOf(changed("shared", 1u, 0x22))), 1u, 0u)
-        assertArrayEquals(byteArrayOf(0x01, 0x11), cache.profile("shared"))
-        assertArrayEquals(byteArrayOf(0x01, 0x22), cache.event("shared"))
+        assertArrayEquals(byteArrayOf(0x01, 0x11), cache.profileBytes("shared"))
+        assertArrayEquals(byteArrayOf(0x01, 0x22), cache.eventBytes("shared"))
 
         cache.merge(profile, makeBatch("profile", false, listOf(cleared("shared", 2u))), 1u, 0u)
-        assertNull(cache.profile("shared"))
-        assertArrayEquals(byteArrayOf(0x01, 0x22), cache.event("shared"))
+        assertNull(cache.profileBytes("shared"))
+        assertArrayEquals(byteArrayOf(0x01, 0x22), cache.eventBytes("shared"))
     }
 
     // Per-row observable: exactly one key notified.

@@ -11,15 +11,49 @@ fn rendered() -> String {
 }
 
 #[test]
-fn emits_namespace_routing_and_accessors() {
+fn emits_namespace_routing() {
     let out = rendered();
     for e in KEYED_PROJECTIONS {
         assert!(out.contains(&format!("{:?} -> {:?}", e.projection_key, e.namespace)));
-        assert!(out.contains(&format!(
-            "fun {}(key: String): ByteArray? = payload({:?}, key)",
-            e.accessor, e.projection_key
-        )));
     }
+}
+
+/// ADR-0063 Lane C (#1671) BLOCKING/HIGH codex fix: Android must NOT expose a
+/// public RAW per-namespace refs accessor. Until the `flatc --kotlin` row
+/// readers (`nmp.kernel.ProfileSnapshot` / `ClaimedEventsSnapshot`) ship and the
+/// TYPED accessor can be emitted (Lane G), the generator emits NO public
+/// per-namespace surface: the cached bytes are reachable only via the `internal
+/// payload(...)` merge primitive. This guards against re-introducing the
+/// dishonest raw `ByteArray?` accessor invariant #4 forbids.
+#[test]
+fn emits_no_public_raw_per_namespace_accessor() {
+    let out = rendered();
+    for e in KEYED_PROJECTIONS {
+        // The old dishonest raw accessor must be GONE for every namespace.
+        assert!(
+            !out.contains(&format!(
+                "fun {}(key: String): ByteArray? = payload({:?}, key)",
+                e.accessor, e.projection_key
+            )),
+            "public raw ByteArray? accessor for {} must be removed (invariant #4)",
+            e.accessor
+        );
+        // No public per-namespace refs accessor of ANY return shape yet — the
+        // typed kotlin accessor lands in Lane G. (A TYPED accessor, once present,
+        // would be `fun <accessor>(key: String): <DomainType>?` WITHOUT the
+        // `internal` prefix; this asserts neither a public typed NOR a public raw
+        // per-namespace accessor exists today.)
+        assert!(
+            !out.contains(&format!("\n    fun {}(key: String)", e.accessor)),
+            "no public per-namespace accessor for {} until Lane G typed readers land",
+            e.accessor
+        );
+    }
+    // The row bytes stay reachable through the INTERNAL merge primitive.
+    assert!(
+        out.contains("internal fun payload(projectionKey: String, rowKey: String): ByteArray?"),
+        "internal payload(...) merge primitive must remain (non-public)"
+    );
 }
 
 #[test]
