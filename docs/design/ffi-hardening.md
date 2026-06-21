@@ -173,8 +173,8 @@ Output bundle layout:
 ```
 docs/perf/m10.5/
 ├── <scenario>/
-│   ├── report.md            # human-readable summary, per-metric pass/fail
-│   ├── metrics.json         # machine-readable, schema-versioned
+│   ├── perf-report.md       # human-readable summary, per-metric pass/fail
+│   ├── perf-report.json     # machine-readable, schema-versioned
 │   ├── instruments.trace/   # Instruments capture (Leaks, Allocations)
 │   └── screenshots/         # PNG trail from XCUITest + Sonnet-agent
 ├── debt-inventory.md        # the companion audit (already lives here)

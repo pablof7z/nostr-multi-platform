@@ -1,38 +1,34 @@
 //! JSON metrics serializer and Markdown report writer.
 //!
-//! Output paths: `docs/perf/m10.5/<SCENARIO>/metrics.json`
-//!               `docs/perf/m10.5/<SCENARIO>/report.md`
+//! Output paths: `docs/perf/m10.5/<SCENARIO>/perf-report.{json,md}`
 //!
-//! Per `docs/design/ffi-hardening/ci.md` R.2 and R.3.
+//! Per `docs/design/ffi-hardening/ci.md` R.2 and R.3. The on-disk schema uses
+//! the unified [`nmp_testing::perf_report::PerfReport`] type, which is shared
+//! across ffi-stress, firehose-bench, and sanity-gate.
 
 use crate::gate::Gate;
-use serde::Serialize;
-use std::fs;
+use nmp_testing::perf_report::{self, GateVerdict, PerfGate, PerfReport, PerfScenario};
 use std::io;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Top-level metrics document for one scenario run.
-#[derive(Serialize)]
+/// Internal tracking accumulator for one scenario run.
+///
+/// Gathers [`Gate`]s and notes during the scenario, then converts to
+/// [`PerfScenario`] for output via [`write_scenario_report`].
 pub(crate) struct ScenarioMetrics {
-    pub(crate) schema_version: u32,
-    pub(crate) tool: &'static str,
     pub(crate) scenario: String,
     pub(crate) started_at_unix: u64,
     pub(crate) wall_seconds: f64,
     pub(crate) passed: bool,
     pub(crate) gates: Vec<Gate>,
     pub(crate) notes: Vec<String>,
-    /// Free-form scenario-specific measurements (serialized separately
-    /// below the gates table in the markdown report).
     pub(crate) measurements: serde_json::Value,
 }
 
 impl ScenarioMetrics {
     pub(crate) fn new(scenario: impl Into<String>) -> Self {
         ScenarioMetrics {
-            schema_version: 1,
-            tool: "ffi-stress",
             scenario: scenario.into(),
             started_at_unix: now_unix_seconds(),
             wall_seconds: 0.0,
@@ -49,14 +45,34 @@ impl ScenarioMetrics {
     }
 }
 
-/// Write `metrics.json` and `report.md` to `docs/perf/m10.5/<scenario>/`.
+/// Convert a ffi-stress [`Gate`] to the unified [`PerfGate`] output type.
+fn gate_to_perf(g: &Gate) -> PerfGate {
+    use crate::gate::GateOp;
+    let threshold = match g.op {
+        GateOp::Lte => format!("<= {}", g.threshold),
+        GateOp::Gte => format!(">= {}", g.threshold),
+        GateOp::Eq => format!("== {}", g.threshold),
+    };
+    let mut pg = PerfGate {
+        name: g.name.clone(),
+        threshold,
+        measured: Some(format!("{:.4}", g.measured)),
+        verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
+        note: g.note.clone(),
+    };
+    if let Some(note) = &g.note {
+        pg = pg.with_note(note.clone());
+    }
+    pg
+}
+
+/// Write unified `perf-report.json` and `perf-report.md` to
+/// `docs/perf/m10.5/<scenario-prefix>/`.
 ///
 /// The directory name is the scenario prefix (e.g. `S1`, `S2`) extracted from
-/// the full scenario name like `S1-mount-unmount`.  Per `ci.md` the bundle path
-/// is `docs/perf/m10.5/S1/{metrics.json,report.md}`, not `S1_MOUNT_UNMOUNT`.
+/// the full scenario name like `S1-mount-unmount`. Per `ci.md` the bundle path
+/// is `docs/perf/m10.5/S1/{perf-report.json,perf-report.md}`.
 pub(crate) fn write_scenario_report(metrics: &ScenarioMetrics) -> io::Result<()> {
-    // Extract the leading token before the first '-' and uppercase it.
-    // "S1-mount-unmount" -> "S1", "S2-dispatch-flood" -> "S2", etc.
     let scenario_prefix = metrics
         .scenario
         .split('-')
@@ -64,59 +80,17 @@ pub(crate) fn write_scenario_report(metrics: &ScenarioMetrics) -> io::Result<()>
         .unwrap_or(&metrics.scenario)
         .to_uppercase();
     let dir = PathBuf::from(format!("docs/perf/m10.5/{scenario_prefix}"));
-    fs::create_dir_all(&dir)?;
 
-    fs::write(
-        dir.join("metrics.json"),
-        serde_json::to_string_pretty(metrics).expect("serialize metrics"),
-    )?;
+    let perf_gates: Vec<PerfGate> = metrics.gates.iter().map(gate_to_perf).collect();
+    let scenario = PerfScenario::new(&metrics.scenario, metrics.wall_seconds, perf_gates)
+        .with_notes(metrics.notes.clone())
+        .with_measurements(metrics.measurements.clone());
 
-    fs::write(dir.join("report.md"), markdown_report(metrics))?;
-    Ok(())
-}
+    let run_id = format!("m10.5/{}", scenario_prefix.to_lowercase());
+    let mut report = PerfReport::new("ffi-stress", run_id);
+    report.push(scenario);
 
-fn markdown_report(m: &ScenarioMetrics) -> String {
-    let overall = if m.passed { "PASS" } else { "FAIL" };
-    let pass_count = m.gates.iter().filter(|g| g.passed).count();
-    let total = m.gates.len();
-    let mut out = String::new();
-
-    out.push_str(&format!(
-        "# {} — ffi-stress — {}\n\n",
-        m.scenario.to_uppercase(),
-        iso_date(m.started_at_unix)
-    ));
-    out.push_str(&format!(
-        "- **Tool:** `{}`\n- **Wall time:** {:.1} s\n- **Overall:** **{overall}** ({pass_count}/{total} gates green)\n\n",
-        m.tool, m.wall_seconds
-    ));
-
-    out.push_str("## Gates\n\n");
-    out.push_str("| Gate | Threshold | Measured | Result |\n");
-    out.push_str("|---|---|---|---|\n");
-    for gate in &m.gates {
-        out.push_str(&gate.markdown_row());
-    }
-    out.push('\n');
-
-    if !m.notes.is_empty() {
-        out.push_str("## Notes\n\n");
-        for note in &m.notes {
-            out.push_str(&format!("- {note}\n"));
-        }
-        out.push('\n');
-    }
-
-    if !m.measurements.is_null() {
-        out.push_str("## Raw measurements\n\n");
-        out.push_str("```json\n");
-        out.push_str(&serde_json::to_string_pretty(&m.measurements).unwrap_or_default());
-        out.push_str("\n```\n");
-    }
-
-    out.push_str("\n---\n");
-    out.push_str("*Generated by ffi-stress harness (M10.5 phase 1). Sim only; iPhone 12 device rerun pending.*\n");
-    out
+    perf_report::write(&report, &dir)
 }
 
 pub(crate) fn now_unix_seconds() -> u64 {
@@ -124,12 +98,4 @@ pub(crate) fn now_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-fn iso_date(unix: u64) -> String {
-    // Minimal yyyy-mm-dd from Unix timestamp without external deps.
-    let days = unix / 86400;
-    // Jan 1 1970 = day 0; rough approximation good enough for a report header.
-    let year = 1970 + days / 365;
-    format!("{year}-xx-xx (unix {unix})")
 }

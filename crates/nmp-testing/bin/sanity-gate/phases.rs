@@ -208,7 +208,7 @@ pub fn run_idle_soak(report: &mut SanityReport, args: &Args) {
     // Let the initial backlog drain, then hold idle. The sidecar samples CPU
     // across this window (the orchestrator aligns its sampling to this phase).
     let before = app.with_state(|s| s.records.len());
-    std::thread::sleep(Duration::from_secs(args.soak_secs.max(60)));
+    std::thread::sleep(Duration::from_secs(args.soak_secs.max(60))); // doctrine-allow: D8 — idle soak window (measurement interval, not a convergence wait)
     let after = app.with_state(|s| s.records.len());
 
     // In-process liveness proxy: frames emitted while idle. A healthy actor at
@@ -287,7 +287,7 @@ pub fn run_memory_soak(report: &mut SanityReport, args: &Args) {
 
     let rss_start = process_rss_mb();
     let alloc_start = alloc_snapshot();
-    std::thread::sleep(Duration::from_secs(args.soak_secs.max(60)));
+    std::thread::sleep(Duration::from_secs(args.soak_secs.max(60))); // doctrine-allow: D8 — memory soak window (measurement interval, not a convergence wait)
     let rss_end = process_rss_mb();
     let alloc_end = alloc_snapshot();
     let _ = &app;

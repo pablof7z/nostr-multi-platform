@@ -34,6 +34,7 @@ mod s7_feed_gates;
 mod s7_feed_idle;
 mod s7_feed_oracle;
 
+use nmp_testing::perf_report::{GateVerdict, PerfGate, PerfReport, PerfScenario};
 use report::{now_unix_seconds, write_scenario_report, ScenarioMetrics};
 use std::process;
 use std::time::Duration;
@@ -125,10 +126,31 @@ fn main() {
             }
         }
 
-        // Print JSON to stdout for pipeline consumption.
+        // Print unified PerfReport JSON to stdout for pipeline consumption.
+        use crate::gate::GateOp;
+        let perf_gates: Vec<PerfGate> = metrics.gates.iter().map(|g| {
+            let threshold = match g.op {
+                GateOp::Lte => format!("<= {:.4}", g.threshold),
+                GateOp::Gte => format!(">= {:.4}", g.threshold),
+                GateOp::Eq => format!("== {:.4}", g.threshold),
+            };
+            PerfGate {
+                name: g.name.clone(),
+                threshold,
+                measured: Some(format!("{:.4}", g.measured)),
+                verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
+                note: g.note.clone(),
+            }
+        }).collect();
+        let ps = PerfScenario::new(&metrics.scenario, metrics.wall_seconds, perf_gates)
+            .with_notes(metrics.notes.clone())
+            .with_measurements(metrics.measurements.clone());
+        let mut stdout_report = PerfReport::new("ffi-stress", &metrics.scenario);
+        stdout_report.started_at_unix = metrics.started_at_unix;
+        stdout_report.push(ps);
         println!(
             "{}",
-            serde_json::to_string_pretty(&metrics).expect("serialize")
+            serde_json::to_string_pretty(&stdout_report).expect("serialize")
         );
     }
 
@@ -154,7 +176,7 @@ Options:
   --duration <D>           Wall-clock duration (e.g. 60s, 10m). Default: scenario-specific.
   --threads <N>            Caller thread count (S2 default: 4).
   --fail-on-gate           Exit 2 if any gate fails.
-  --write-report           Write docs/perf/m10.5/<scenario>/{metrics.json,report.md}.
+  --write-report           Write docs/perf/m10.5/<scenario>/perf-report.{json,md}.
 "#;
 
 #[derive(Debug, Clone, Copy)]

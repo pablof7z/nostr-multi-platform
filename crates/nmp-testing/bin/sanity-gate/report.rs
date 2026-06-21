@@ -1,6 +1,6 @@
 //! Sanity-report schema + writers.
 //!
-//! Emits `docs/perf/<run>/sanity-report.{json,md}` with the exact row schema:
+//! Emits `docs/perf/<run>/perf-report.{json,md}` with the exact row schema:
 //! `gate | phase | tool | hook | threshold | measured | verdict`.
 //! Verdicts: PASS | FAIL | SKIP-relay-miss | BLOCKED.
 //!
@@ -9,7 +9,6 @@
 //! work (or a missing read hook) and could not be measured.
 
 use serde::Serialize;
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -179,54 +178,50 @@ impl SanityReport {
     }
 
     pub fn write(&self) -> io::Result<PathBuf> {
-        let dir = PathBuf::from(format!("docs/perf/{}", self.run_id));
-        fs::create_dir_all(&dir)?;
-        let json = dir.join("sanity-report.json");
-        fs::write(&json, serde_json::to_string_pretty(self).expect("serialize"))?;
-        fs::write(dir.join("sanity-report.md"), self.markdown())?;
-        Ok(json)
-    }
+        use nmp_testing::perf_report::{self, GateVerdict, PerfGate, PerfReport, PerfScenario};
 
-    fn markdown(&self) -> String {
-        let mut out = String::new();
-        out.push_str("# New-Architecture Sanity Report\n\n");
-        out.push_str(&format!("- tool: `{}`\n", self.tool));
-        out.push_str(&format!("- mode: `{}`\n", self.mode));
-        out.push_str(&format!("- run_id: `{}`\n", self.run_id));
-        out.push_str(&format!("- relay: `{}`\n", self.relay));
-        out.push_str(&format!("- started_at_unix: `{}`\n", self.started_at_unix));
-        out.push_str(&format!("- overall_passed: `{}`\n\n", self.overall_passed));
-        out.push_str("## Absolute gate results\n\n");
-        out.push_str("| gate | phase | tool | hook | threshold | measured | verdict |\n");
-        out.push_str("|---|---|---|---|---|---|---|\n");
-        for r in &self.rows {
-            out.push_str(&format!(
-                "| {} | {} | `{}` | `{}` | {} | {} | **{}** |\n",
-                r.gate,
-                r.phase,
-                r.tool,
-                r.hook,
-                r.threshold,
-                r.measured.as_deref().unwrap_or("—"),
-                r.verdict.as_str(),
-            ));
-        }
-        if self.rows.iter().any(|r| r.note.is_some()) {
-            out.push_str("\n### Notes\n\n");
-            for r in self.rows.iter().filter(|r| r.note.is_some()) {
-                out.push_str(&format!(
-                    "- **{}** ({}): {}\n",
-                    r.gate,
-                    r.verdict.as_str(),
-                    r.note.as_deref().unwrap_or(""),
-                ));
+        let dir = PathBuf::from(format!("docs/perf/{}", self.run_id));
+
+        // Build unified PerfReport from the sanity rows.
+        // The 4-arm mapping preserves the legacy semantics: only Fail flips
+        // overall_passed; SkipRelayMiss→Skip and Blocked→Blocked are non-failing.
+        let perf_gates: Vec<PerfGate> = self.rows.iter().map(|r| {
+            let verdict = match r.verdict {
+                Verdict::Pass => GateVerdict::Pass,
+                Verdict::Fail => GateVerdict::Fail,
+                Verdict::SkipRelayMiss => GateVerdict::Skip,
+                Verdict::Blocked => GateVerdict::Blocked,
+            };
+            let mut pg = PerfGate {
+                name: format!("{} [{}]", r.gate, r.phase),
+                threshold: r.threshold.clone(),
+                measured: r.measured.clone(),
+                verdict,
+                note: r.note.clone(),
+            };
+            if let Some(note) = &r.note {
+                pg = pg.with_note(note.clone());
             }
-        }
-        out.push_str("\n## Findings — hook gaps, stubs, blocked work\n\n");
+            pg
+        }).collect();
+
+        let scenario = PerfScenario::new(
+            format!("{}-{}", self.mode, self.run_id),
+            0.0,
+            perf_gates,
+        )
+        .with_notes(self.findings.clone());
+
+        let mut report = PerfReport::new(self.tool, self.run_id.clone());
+        report.started_at_unix = self.started_at_unix;
         for f in &self.findings {
-            out.push_str(&format!("- {f}\n"));
+            report.finding(f.clone());
         }
-        out
+        report.push(scenario);
+
+        perf_report::write(&report, &dir)?;
+
+        Ok(dir.join("perf-report.json"))
     }
 }
 

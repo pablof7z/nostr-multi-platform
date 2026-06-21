@@ -268,7 +268,7 @@ pub(crate) fn default_workspace_root() -> PathBuf {
         .unwrap_or(manifest)
 }
 
-const WORKSPACE_D8_SKIP_CRATES: &[&str] = &["nmp-android-ffi", "nmp-testing"];
+const WORKSPACE_D8_SKIP_CRATES: &[&str] = &["nmp-android-ffi"];
 
 fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut roots = Vec::new();
@@ -288,6 +288,28 @@ fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, Stri
         let src = entry.path().join("src");
         if src.is_dir() {
             roots.push(src);
+        }
+        // For nmp-testing, also scan the perf/harness binaries in bin/ —
+        // but exclude doctrine-lint itself (its fixtures contain intentional
+        // D8 positive examples that must not be flagged as real violations).
+        if name.as_ref() == "nmp-testing" {
+            let bin_dir = entry.path().join("bin");
+            if bin_dir.is_dir() {
+                let bin_entries = std::fs::read_dir(&bin_dir)
+                    .map_err(|e| format!("failed to read {}: {}", bin_dir.display(), e))?;
+                for bin_entry in bin_entries {
+                    let bin_entry =
+                        bin_entry.map_err(|e| format!("failed to read bin/ entry: {}", e))?;
+                    if !bin_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        continue;
+                    }
+                    let bin_name = bin_entry.file_name();
+                    if bin_name.to_string_lossy().as_ref() == "doctrine-lint" {
+                        continue; // skip: contains intentional positive fixtures
+                    }
+                    roots.push(bin_entry.path());
+                }
+            }
         }
     }
 

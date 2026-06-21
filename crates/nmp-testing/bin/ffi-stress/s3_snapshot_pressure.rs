@@ -131,7 +131,7 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     for _ in 0..cfg.configure_bursts {
         last_burst_start_count = Some(callback_frame_count(ctx));
         nmp_app_configure(app, 500, 12);
-        std::thread::sleep(cfg.burst_interval);
+        std::thread::sleep(cfg.burst_interval); // doctrine-allow: D8 — burst-interval cadence under test (snapshot pressure measurement)
     }
     let burst_elapsed = burst_start.elapsed();
     let burst_snap_after = alloc_snapshot();

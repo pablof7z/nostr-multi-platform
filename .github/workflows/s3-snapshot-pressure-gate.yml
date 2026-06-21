@@ -96,9 +96,9 @@ jobs:
         with:
           name: s3-feed-idle-metrics-${{ github.run_id }}
           path: |
-            docs/perf/m10.5/S3/metrics.json
-            docs/perf/m10.5/S3/report.md
-            docs/perf/m10.5/S7/metrics.json
-            docs/perf/m10.5/S7/report.md
+            docs/perf/m10.5/S3/perf-report.json
+            docs/perf/m10.5/S3/perf-report.md
+            docs/perf/m10.5/S7/perf-report.json
+            docs/perf/m10.5/S7/perf-report.md
           if-no-files-found: ignore
           retention-days: 14
