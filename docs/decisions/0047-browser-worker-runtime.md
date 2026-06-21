@@ -34,20 +34,25 @@ the NIP-07 sign bridge,
 `window.nostr.signEvent` Promise on the event loop.) The actor pattern is
 preserved; the execution substrate is not.
 
-### 2. Synchronous read/dispatch path + Promise-based async write path
+### 2. Synchronous read/dispatch path; writes go through the unified byte doorway
 
 `NmpWasmRuntime::handle_json` is synchronous. It accepts a JSON-serialised
-`WorkerRequest` and returns a JSON array of control `WorkerEvent`s. Read
-operations (Start, Stop, Dispatch of kernel-namespaced actions, SetSigner,
+`WorkerRequest` and returns a JSON array of control `WorkerEvent`s. Read and
+lifecycle operations (Start, Stop, Dispatch of kernel-namespaced actions,
 CapabilityResult) complete on the calling frame.
 
-Write operations that require a signer (PublishNote, React, Follow, Unfollow)
-cannot block the wasm thread on a JS Promise (`window.nostr.signEvent(...)` is
-async). These go through
-`NmpWasmRuntime::dispatch_app_action_async(request_json)`, which returns a
-`js_sys::Promise` resolving to the outcome event. The synchronous
-`handle_json` shape is unchanged; only the one path that needs an `await` uses
-a Promise.
+Write operations (publish, react, follow, unfollow) cross the worker boundary
+through the **single typed byte transport** defined in
+[ADR-0064](0064-unified-write-command-boundary.md): one `DispatchBytes` doorway
+carrying an open `DispatchEnvelope` (generated namespace + typed FlatBuffers
+payload), reached only through generated typed builders — never a hand-written
+wire tag, and never a wasm-specific action vocabulary. Signing is **not**
+awaited inside the publish flow: it is the ADR-0050 signer-session capability
+port (`sign` verb, mailbox-delivered completion), with NIP-07 as one fulfiller.
+The reducer never blocks on a JS Promise; the async `window.nostr.signEvent(...)`
+round-trip happens in the host capability bridge and re-enters Rust as an
+explicit signed-or-rejected event (D7/D8). `correlation_id` identifies the write
+from dispatch to terminal and never re-binds to the event id.
 
 ### 3. JSON control envelopes; binary FlatBuffers snapshot frames
 
@@ -94,19 +99,18 @@ callback-per-dispatch.
 - **`crates/nmp-wasm` is the framework-level WASM delivery surface.** Its
   protocol is documented at `docs/wasm-surface.md`. Example apps (including
   Chirp) consume this surface; they do not define it.
-- **The publish path requires the async entrypoint.** Any host that routes
-  app-level writes through `handle_json` will receive a `CapabilityFailure`
-  with reason `publish_path_not_wired` even after a signer is installed. This
-  is intentional: it points the integration at the correct entrypoint.
 - **IndexedDB persistence is not yet wired.** The kernel still runs in memory
   and resets on page reload. This is not a design decision — it is follow-on
   work (see `docs/wasm-surface.md` §7).
-- **`WorkerRequest::AppAction` uses the framework-neutral `"app_action"` wire
-  tag, and the async publish entrypoint is `start_publish_app_action`.** No
-  residual Chirp-ism remains: a generic delivery surface preserves no
-  example-app wire name (`nmp-wasm/tests/protocol.rs` asserts the
-  `"type": "app_action"` wire shape; `nmp-wasm/src/runtime.rs` exposes
-  `start_publish_app_action`).
+- **The worker write/signing contract is owned by
+  [ADR-0064](0064-unified-write-command-boundary.md).** Writes ride the one
+  `DispatchBytes` byte doorway (open `DispatchEnvelope` + typed per-crate
+  FlatBuffers payloads, generated typed builders), and signing rides the ADR-0050
+  capability port. The hand-rolled `WorkerRequest::AppAction` / `"app_action"`
+  wire tag and the `dispatch_app_action_async` / `start_publish_app_action` /
+  `SetSigner`-as-install signing path are removed by that migration — they were a
+  second, wasm-only write-and-sign vocabulary, which is exactly what ADR-0064
+  collapses onto the shared native seam.
 
 ## Alternatives considered
 

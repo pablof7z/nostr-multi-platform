@@ -75,7 +75,7 @@ status; if they disagree, fix the index.
 | 0044 | Typing the Tier-3 top-level snapshot envelope fields | Accepted/implemented | — |
 | 0045 | Store→projection replay (offline / second-launch render) | Accepted pending implementation (Rev 2/3: single always-on cache-serve) | Self (Rev 2/3 single-mechanism) |
 | 0046 | Composition is a library, not a generator | Accepted | — |
-| 0047 | NMP browser worker runtime contract | Accepted | — |
+| 0047 | NMP browser worker runtime contract | Accepted | Write/signing contract → 0064 |
 | 0048 | NIP-55 Android signer (Amber) via `ExternalSignerCapability` | Accepted (shipped) | — |
 | 0049 | Defaults yield; composition is observable | Accepted | — |
 | 0050 | Signer-session capability port | Accepted pending implementation | §D5 supersedes 0026 seal-exec model |
@@ -89,3 +89,7 @@ status; if they disagree, fix the index.
 | 0058 | Cursor-based event-log consumption (the "pull" model) | Accepted pending implementation | Reconciles 0039 (does not reverse it) |
 | 0059 | Account lifecycle is separate from bootstrap publish | Accepted pending implementation | — |
 | 0060 | NIP-29 admin actions and joined-groups projection | Accepted pending implementation | — |
+| 0061 | NIP-22 comments | Accepted pending implementation | — |
+| 0062 | Observer-scoped read-model catch-up | Proposed | — |
+| 0063 | Reference resolution: unified keyed `RefResolver` primitive | Accepted | Supersedes/amends 0042; extends 0053, 0055 |
+| 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted pending implementation | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047 |
