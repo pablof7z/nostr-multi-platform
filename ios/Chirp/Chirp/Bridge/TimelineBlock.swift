@@ -433,9 +433,6 @@ typealias ContentWireNode = NostrWireNode
 typealias MediaKind = NostrMediaKind
 typealias WireNostrUri = NostrWireUri
 
-struct MentionProfile: Equatable, Sendable {
-    let display: String
-    let pictureUrl: String?
-    let initials: String
-    let colorHex: String
-}
+// ADR-0063 Lane E (#1671): `MentionProfile` (the component-facing whole-map
+// profile struct) is removed. Inline mention / author labels read the per-key
+// `keyedRefCache` (`refs.profile`) directly — no whole-map dictionary.

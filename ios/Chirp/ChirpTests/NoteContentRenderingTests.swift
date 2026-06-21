@@ -51,15 +51,14 @@ final class NoteContentRenderingTests: XCTestCase {
             XCTFail("inline nevent reference was not promoted to an embedded event group")
         }
 
+        // ADR-0063 Lane E (#1671): mention labels are no longer carried in the
+        // render context (the whole-map `mentionProfiles` dictionary is gone).
+        // `NoteContentView` reads the mention display name from the per-key
+        // `keyedRefCache` at render time, falling back to the shortened pubkey
+        // when unresolved. With no `nostrProfileHost` bound in this render host,
+        // the mention renders its short-pubkey fallback — the tree still
+        // produces a non-trivial image, which is what this test guards.
         let context = NoteRenderContext(
-            mentionProfiles: [
-                pubkey: MentionProfile(
-                    display: "pablof7z",
-                    pictureUrl: nil,
-                    initials: "PF",
-                    colorHex: "#4B7BEC"
-                ),
-            ],
             eventCards: [
                 eventID: ChirpEventCard(
                     id: eventID,
@@ -82,7 +81,6 @@ final class NoteContentRenderingTests: XCTestCase {
             ],
             timelineItems: [:]
         )
-        XCTAssertEqual(context.mentionLabel(for: pubkey), "pablof7z")
 
         let image = try renderImage(
             NoteContentView(content: "", contentTree: tree, renderContext: context)

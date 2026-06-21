@@ -6,7 +6,6 @@ import SwiftUI
 struct ThreadNoteRow: View {
     let card: ChirpEventCard
     let isFocused: Bool
-    let mentionProfiles: [String: MentionProfile]
     let eventCards: [String: ChirpEventCard]
     let timelineItems: [String: TimelineItem]
     let onAvatarTap: () -> Void
@@ -20,7 +19,6 @@ struct ThreadNoteRow: View {
     private var authorDisplayLabel: String {
         model.profile(forPubkey: card.authorPubkey)?.display
             ?? card.authorDisplayName
-            ?? mentionProfiles[card.authorPubkey]?.display
             ?? card.authorPubkey.shortHex
     }
 
@@ -71,7 +69,6 @@ struct ThreadNoteRow: View {
     private var noteBodyContent: some View {
         let isRepost = card.isRepost
         let context = NoteRenderContext(
-            mentionProfiles: mentionProfiles,
             eventCards: eventCards,
             timelineItems: timelineItems
         )

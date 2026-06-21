@@ -4,17 +4,12 @@ import os.log
 
 let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 
-/// Desired subscription shape for a kind:0 profile claim — the 5th
-/// `liveness` argument to `nmp_app_claim_profile`. Mirrors the kernel's
-/// CacheOk / Live intents (the kernel resolves mixed claims Tailing-wins).
-enum ProfileLiveness: Int32 {
-    /// Serve from cache; a OneShot kind:0 fetch fills a miss; no live
-    /// subscription. Use for feed avatars and inline list contexts.
-    case cacheOk = 0
-    /// Register a Tailing kind:0 interest so reactive profile-edit updates
-    /// flow in. Use for the profile screen.
-    case live = 1
-}
+// ADR-0063 Lane E (#1671): the legacy `ProfileLiveness` enum and the
+// `KernelHandle.claimProfile` / `KernelHandle.releaseProfile` wrappers it fed
+// are removed. The shell resolves/releases profiles through the unified
+// `resolveRef` / `releaseRef` (namespace `.profile`) seam; `RefLiveness` below
+// is its liveness intent. The underlying `nmp_app_claim_profile` C symbol stays
+// (Rust scaffold) until Lane H deletes it.
 
 /// ADR-0063 Lane D (#1671) — the origin-blind reference namespace for the
 /// unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI. Raw values
@@ -279,37 +274,6 @@ final class KernelHandle {
         filterJSON.withCString { filterPtr in
             consumerID.withCString { consumerPtr in
                 nmp_app_close_interest(raw, filterPtr, consumerPtr, scope.rawValue)
-            }
-        }
-    }
-
-    /// F-TTL — `force` controls the lazy re-verification gate for the cached
-    /// kind:0 profile. Pass `true` only when the user explicitly opened this
-    /// author's profile screen or pulled to refresh; default `false` is the
-    /// lazy, TTL-gated path for background / `.onAppear` component self-claims.
-    ///
-    /// `liveness` declares the desired subscription shape (see `ProfileLiveness`):
-    /// `.cacheOk` (cache + OneShot fill, no live sub) for feed avatars and inline
-    /// list contexts; `.live` (Tailing kind:0 interest, reactive profile-edit
-    /// updates) for the profile screen. Defaults to `.cacheOk` so the common
-    /// list path never opens an unnecessary live subscription.
-    func claimProfile(
-        pubkey: String,
-        consumerID: String,
-        force: Bool = false,
-        liveness: ProfileLiveness = .cacheOk
-    ) {
-        pubkey.withCString { pkPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0, liveness.rawValue)
-            }
-        }
-    }
-
-    func releaseProfile(pubkey: String, consumerID: String) {
-        pubkey.withCString { pkPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_release_profile(raw, pkPtr, cidPtr)
             }
         }
     }

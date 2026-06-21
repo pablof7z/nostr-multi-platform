@@ -31,10 +31,12 @@ final class ProfileNameFallbackTests: XCTestCase {
 
     // MARK: - Synthetic snapshot construction
 
-    /// A bundle of the two profile-cluster typed projections under test, fed to
-    /// `KernelModel.setTypedSnapshotForTesting` so the read accessors
-    /// (`claimedProfiles`, `mentionProfiles`, `profile(forPubkey:)`) exercise
-    /// the SAME typed slots production assigns from the `KCPR` / `KRPR` sidecars.
+    /// A bundle of the two profile-cluster inputs under test, fed to
+    /// `KernelModel.setTypedSnapshotForTesting`, which seeds the per-key profile
+    /// override that `profileCard(forPubkey:)` reads — the SAME read path the
+    /// live shell uses (`keyedRefCache` → `profileCard(forPubkey:)`), ADR-0063
+    /// Lane E (#1671). `claimed` wins over `resolved` for the same pubkey,
+    /// mirroring the kernel's projection precedence.
     private struct ProfileFixture {
         let claimed: [String: ProfileCard]
         let resolved: [String: ProfileCard]
@@ -46,9 +48,8 @@ final class ProfileNameFallbackTests: XCTestCase {
     /// are authoritative, so the fixture exercises the authoritative path.
     ///
     /// - Parameters:
-    ///   - claimed: pubkey → `claimed_profiles` card.
-    ///   - resolved: pubkey → `resolved_profiles` card (drives
-    ///     `KernelModel.mentionProfiles`).
+    ///   - claimed: pubkey → claimed-profile card (wins on conflict).
+    ///   - resolved: pubkey → resolved/mention-profile card.
     private func makeProfileFixture(
         claimed: [String: ProfileCard] = [:],
         resolved: [String: ProfileCard] = [:]
@@ -178,7 +179,6 @@ final class ProfileNameFallbackTests: XCTestCase {
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: nil,
                 eventCardName: "Carol",
-                mentionDisplay: nil,
                 shortHex: short),
             "Carol",
             "eventCards author name must fill the gap when the profile claim churns.")
@@ -188,7 +188,6 @@ final class ProfileNameFallbackTests: XCTestCase {
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: "Alice",
                 eventCardName: "Carol",
-                mentionDisplay: nil,
                 shortHex: short),
             "Alice",
             "A resolved profile display must outrank the event-card gap-filler.")
@@ -201,7 +200,6 @@ final class ProfileNameFallbackTests: XCTestCase {
                 profileDisplay: nil,
                 itemAuthorName: "Bob",
                 eventCardName: "Carol",
-                mentionDisplay: nil,
                 shortHex: short),
             "Bob",
             "The TimelineItem-baked author name must outrank the event card and prevent the flicker.")
@@ -211,7 +209,6 @@ final class ProfileNameFallbackTests: XCTestCase {
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: nil,
                 eventCardName: nil,
-                mentionDisplay: nil,
                 shortHex: short),
             short,
             "With no name source the label collapses to shortHex.")
