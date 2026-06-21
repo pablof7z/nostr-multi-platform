@@ -113,8 +113,11 @@ impl FakeFeed {
         let me = Arc::clone(self);
         Arc::new(move |ev: &KernelEvent| {
             let mut g = me.ingested.lock().unwrap();
-            if !g.iter().any(|e| e.id == ev.id) {
+            if g.iter().any(|e| e.id == ev.id) {
+                false
+            } else {
                 g.push(ev.clone());
+                true
             }
         })
     }

@@ -125,7 +125,9 @@ fn pull_feed_controller_seq_cursor_picks_up_late_old_event() {
     // Apply: deliver drained events through the engine's ingest path.
     let engine_for_apply = engine.clone();
     let apply = Arc::new(move |ev: &nmp_core::substrate::KernelEvent| {
+        let before = visible_payload(&engine_for_apply);
         KernelEventObserver::on_kernel_event(&*engine_for_apply, ev);
+        visible_payload(&engine_for_apply) != before
     });
 
     // Advance: grow the engine's visible window after a page is ingested.
@@ -193,4 +195,9 @@ fn pull_feed_controller_seq_cursor_picks_up_late_old_event() {
         ids2.contains(&"c".repeat(64)),
         "late_old MUST be in the snapshot — seq cursor covers it"
     );
+}
+
+fn visible_payload(engine: &nmp_nip01::OpFeedEngine) -> Vec<u8> {
+    let snapshot = engine.snapshot_current_window();
+    nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
