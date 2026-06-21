@@ -129,6 +129,20 @@ pub struct AccountLine {
     pub active: bool,
 }
 
+/// Shell-side signer label derived from the raw `signer_kind` wire token.
+///
+/// The kernel used to ship a pre-rendered `signer_label` String, but that was a
+/// presentation artifact removed from the wire (#1712, D7/D27). The TUI is a
+/// presentation shell, so it owns this formatting. Unknown kinds fall back to
+/// the raw token.
+pub fn signer_label_for_kind(kind: &str) -> String {
+    match kind {
+        "local" => "Local key".to_string(),
+        "nip46" => "NIP-46".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OutboxLine {
     pub handle: String,

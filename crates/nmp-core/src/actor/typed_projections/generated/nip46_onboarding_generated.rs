@@ -27,7 +27,6 @@ impl<'a> ::flatbuffers::Follow<'a> for SignerApp<'a> {
 
 impl<'a> SignerApp<'a> {
   pub const VT_SCHEME: ::flatbuffers::VOffsetT = 4;
-  pub const VT_DISPLAY_LABEL: ::flatbuffers::VOffsetT = 6;
   pub const VT_SIGNER_KIND: ::flatbuffers::VOffsetT = 8;
 
   #[inline]
@@ -41,7 +40,6 @@ impl<'a> SignerApp<'a> {
   ) -> ::flatbuffers::WIPOffset<SignerApp<'bldr>> {
     let mut builder = SignerAppBuilder::new(_fbb);
     if let Some(x) = args.signer_kind { builder.add_signer_kind(x); }
-    if let Some(x) = args.display_label { builder.add_display_label(x); }
     if let Some(x) = args.scheme { builder.add_scheme(x); }
     builder.finish()
   }
@@ -53,13 +51,6 @@ impl<'a> SignerApp<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerApp::VT_SCHEME, None)}
-  }
-  #[inline]
-  pub fn display_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerApp::VT_DISPLAY_LABEL, None)}
   }
   #[inline]
   pub fn signer_kind(&self) -> Option<&'a str> {
@@ -77,7 +68,6 @@ impl ::flatbuffers::Verifiable for SignerApp<'_> {
   ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
     v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("scheme", Self::VT_SCHEME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("display_label", Self::VT_DISPLAY_LABEL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("signer_kind", Self::VT_SIGNER_KIND, false)?
      .finish();
     Ok(())
@@ -85,7 +75,6 @@ impl ::flatbuffers::Verifiable for SignerApp<'_> {
 }
 pub struct SignerAppArgs<'a> {
     pub scheme: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub display_label: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub signer_kind: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for SignerAppArgs<'a> {
@@ -93,7 +82,6 @@ impl<'a> Default for SignerAppArgs<'a> {
   fn default() -> Self {
     SignerAppArgs {
       scheme: None,
-      display_label: None,
       signer_kind: None,
     }
   }
@@ -107,10 +95,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SignerAppBuilder<'a, 'b, A> {
   #[inline]
   pub fn add_scheme(&mut self, scheme: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerApp::VT_SCHEME, scheme);
-  }
-  #[inline]
-  pub fn add_display_label(&mut self, display_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerApp::VT_DISPLAY_LABEL, display_label);
   }
   #[inline]
   pub fn add_signer_kind(&mut self, signer_kind: ::flatbuffers::WIPOffset<&'b  str>) {
@@ -135,7 +119,6 @@ impl ::core::fmt::Debug for SignerApp<'_> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
     let mut ds = f.debug_struct("SignerApp");
       ds.field("scheme", &self.scheme());
-      ds.field("display_label", &self.display_label());
       ds.field("signer_kind", &self.signer_kind());
       ds.finish()
   }

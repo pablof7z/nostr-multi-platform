@@ -49,8 +49,9 @@
 //!
 //! ## Per-line opt-out
 //!
-//! `// doctrine-allow: D27 — reason` suppresses the finding on that line.
-//! Every escape must carry a prose justification a reviewer can audit.
+//! `// doctrine-allow: D27 — reason` suppresses the finding on that line. An
+//! allow that suppresses nothing is itself a finding ([`findings_for_line`] /
+//! [`stale_allow`], #1712) so dead markers can't silently rot.
 
 use std::path::Path;
 
@@ -84,6 +85,18 @@ const CALL_SUGGESTED: &str =
 const FIELD_SUGGESTED: &str =
     "remove the precomputed `_label`/`_display` field; send the raw underlying \
      value and let the shell derive the display string on the host side";
+
+/// Message for a stale `// doctrine-allow: D27` marker (a marker on a line that
+/// carries no D27 violation to suppress — see #1712).
+const STALE_ALLOW_MSG: &str =
+    "stale `// doctrine-allow: D27` marker — this line has no D27 finding to \
+     suppress, so the escape silences nothing. A relocation PR likely removed \
+     the projection-label / display-helper it once covered, leaving the marker \
+     to rot";
+
+const STALE_ALLOW_SUGGESTED: &str =
+    "delete the now-unused `// doctrine-allow: D27` comment; an allow must \
+     always sit on a line that genuinely fires D27";
 
 /// Returns `true` if D27 should scan `path`.
 pub fn file_in_scope(path: &Path) -> bool {
@@ -215,6 +228,43 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
     hits
 }
 
+/// All D27 findings for one source line, given whether it carries a
+/// `doctrine-allow: D27` marker (`allowed`): `!allowed` → every real violation
+/// [`check`] finds; `allowed` + none on a real (non-comment, non-test) line →
+/// the stale-marker finding (#1712); otherwise (legit suppression) → nothing.
+pub fn findings_for_line(
+    line: &str,
+    is_comment: bool,
+    in_test_cfg: bool,
+    allowed: bool,
+) -> Vec<(usize, String, String)> {
+    let hits = check(line, is_comment, in_test_cfg);
+    if !allowed {
+        return hits;
+    }
+    if hits.is_empty() && !is_comment && !in_test_cfg {
+        return stale_allow(line).into_iter().collect();
+    }
+    Vec::new()
+}
+
+/// Build the stale-`doctrine-allow: D27` finding for `line`.
+///
+/// The driver calls this only when it has already determined that the line
+/// carries a `// doctrine-allow: D27` marker **and** [`check`] produced no
+/// finding on that line — i.e. the marker suppresses nothing and has rotted
+/// (#1712). Returns `(col, message, suggested)` pointing at the marker, or
+/// `None` if the marker text cannot be located (defensive — the caller
+/// guarantees it is present).
+pub fn stale_allow(line: &str) -> Option<(usize, String, String)> {
+    let pos = line.find("// doctrine-allow:")?;
+    Some((
+        pos + 1, // 1-indexed column of the marker
+        STALE_ALLOW_MSG.to_string(),
+        STALE_ALLOW_SUGGESTED.to_string(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,6 +388,41 @@ mod tests {
     fn does_not_flag_field_in_test_cfg() {
         let hits = check("    pub status_label: String,", false, true);
         assert!(hits.is_empty(), "#[cfg(test)] must not be flagged");
+    }
+
+    // ── stale-allow hardening (#1712) ─────────────────────────────────────
+
+    #[test]
+    fn stale_allow_points_at_the_marker() {
+        // A raw field carrying a leftover D27 allow fires NO real finding...
+        let line = "    pub pubkey: String, // doctrine-allow: D27 — leftover";
+        assert!(
+            check(line, false, false).is_empty(),
+            "a raw `String` field must not fire a real D27 finding"
+        );
+        // ...so the driver asks for the stale-allow finding.
+        let (col, msg, _suggested) = stale_allow(line).expect("marker present");
+        // Column is 1-indexed and points at the `//` of the marker.
+        assert_eq!(&line[col - 1..col + 1], "//");
+        assert!(msg.contains("stale"), "message must call out the stale marker");
+        assert!(msg.contains("D27"), "message must name the rule");
+    }
+
+    #[test]
+    fn stale_allow_is_none_without_a_marker() {
+        assert!(stale_allow("    pub pubkey: String,").is_none());
+    }
+
+    #[test]
+    fn legit_allow_still_fires_a_real_finding() {
+        // A line with a genuine banned call still produces a real D27 finding;
+        // the driver suppresses it via the allow and never reaches `stale_allow`.
+        let line = "        npub: to_npub(&pk), // doctrine-allow: D27 — fixture";
+        assert_eq!(
+            check(line, false, false).len(),
+            1,
+            "the banned call must still fire so the allow has something to silence"
+        );
     }
 
     // ── file_in_scope ─────────────────────────────────────────────────────

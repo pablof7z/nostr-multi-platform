@@ -166,8 +166,22 @@ data class AccountSummary(
     val npub: String = "",
     val displayName: String = "",
     val status: String = "",
-    val signerLabel: String = "",
-)
+    // Stable signer wire token (`local` | `nip46` | …). `signer_label` was
+    // removed from the wire (#1712, D7/D27 — presentation artifact); the shell
+    // derives the human-readable label from this token below. Class-body
+    // properties are excluded from kotlinx.serialization (not in the primary
+    // constructor), so `signerLabel` needs no `@Transient`.
+    val signerKind: String = "",
+) {
+    /** Human-readable signer label derived from the raw `signerKind` token
+     * (#1712 / D7). The kernel no longer pre-renders it. */
+    val signerLabel: String
+        get() = when (signerKind) {
+            "local" -> "Local key"
+            "nip46" -> "NIP-46"
+            else -> signerKind
+        }
+}
 
 @Serializable
 data class TimelineItem(

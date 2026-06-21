@@ -430,3 +430,22 @@ extension RelayRoleOption {
         }
     }
 }
+
+// ─── AccountSummary shell-side signer label ───────────────────────────────
+//
+// `signer_label` was removed from the `accounts` wire (#1712, D7/D27 —
+// presentation artifact; raw-data doctrine aim.md §2 / ADR-0032). The kernel
+// now ships only the raw `signerKind` token; the shell maps it to a
+// human-readable label here.
+
+extension AccountSummary {
+    /// Human-readable signer label derived from the raw `signerKind` token.
+    /// Shells own this mapping (#1712); the kernel no longer pre-renders it.
+    var signerLabel: String {
+        switch signerKind {
+        case "local": return "Local key"
+        case "nip46": return "NIP-46"
+        default:      return signerKind
+        }
+    }
+}

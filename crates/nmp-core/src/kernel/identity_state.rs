@@ -42,13 +42,12 @@ pub fn new_active_account_slot() -> ActiveAccountSlot {
 
 /// One account row in the snapshot.
 ///
-/// `signer_kind` is the stable wire token (`"local"` | `"nip46"` | …) other
-/// platforms switch on; it is kept for backward compatibility with Android +
-/// diagnostic surfaces, but Swift no longer derives display labels from it
-/// (aim.md §2 #4 / §4.5). Native should bind the pre-classified fields below.
+/// `signer_kind` is the stable wire token (`"local"` | `"nip46"` | …) every
+/// platform switches on. The pre-rendered `signer_label` English string was
+/// removed from the wire (#1712, D7/D27 — presentation artifact); shells now
+/// derive the label from `signer_kind` themselves (aim.md §2 #4 / §4.5).
 ///
 /// Pre-classified fields (D4: actor populates, Swift binds):
-/// - `signer_label` — human-readable label for the row's signer.
 /// - `signer_is_remote` — `true` for any signer whose key material lives
 ///   outside the kernel (NIP-46 today, NIP-07 / hardware later). Lets the UI
 ///   scope a "remote signers" section without lowercased string filtering.
@@ -71,10 +70,6 @@ pub(crate) struct AccountSummary {
     pub(crate) signer_kind: String,
     /// `"active"` for the active account, `"idle"` otherwise.
     pub(crate) status: String,
-    /// Pre-classified, human-readable signer label (e.g. `"nsec"`,
-    /// `"NIP-46"`). Free-form signer classification; the host renders this
-    /// verbatim instead of switching on `signer_kind`.
-    pub(crate) signer_label: String,
     /// `true` when the signer's key material lives outside the kernel
     /// (NIP-46 bunker today, NIP-07 / hardware later). Lets native scope
     /// remote-signer-only sections without string-matching `signer_kind`.

@@ -20,12 +20,10 @@ fn idle_slot_yields_table_only_dto() {
     assert!(schemes.contains(&"nostrsigner://"));
     assert!(schemes.contains(&"primal://"));
     assert_eq!(schemes.last(), Some(&"nostrconnect://"));
-    // #1493 P9: nostrconnect's label is now derived from the Rust signer
-    // catalog and corrected from the old "Signer App" to "Nostr Connect".
+    // The nostrconnect probe entry carries only raw tokens now — the brand name
+    // is resolved shell-side from the generated signer catalog (#1712, D7/D27).
     assert!(dto.signer_apps.iter().any(|a| {
-        a.scheme == "nostrconnect://"
-            && a.display_label == "Nostr Connect"
-            && a.signer_kind == "nip46"
+        a.scheme == "nostrconnect://" && a.signer_kind == "nip46"
     }));
     assert_eq!(dto.stage_kind, None);
     assert_eq!(dto.progress_message, None);

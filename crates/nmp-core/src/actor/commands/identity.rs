@@ -253,10 +253,15 @@ impl BunkerStageKind {
     }
 }
 
-/// One row of the static NIP-46 signer-app table — `(URL scheme, label)`
-/// the host shows the user. The table is owned by Rust so the protocol layer
-/// (not the platform shell) decides which signer apps qualify as "NIP-46
-/// compatible" and how each is labelled.
+/// One row of the static NIP-46 signer-app table — the `(URL scheme,
+/// signer_kind)` pair the host probes for. The table is owned by Rust so the
+/// protocol layer (not the platform shell) decides which signer apps qualify as
+/// "NIP-46 compatible".
+///
+/// The pre-rendered `display_label` vendor name ("Amber"/"Primal"/"Nostr
+/// Connect") was removed from the wire (#1712, D7/D27 — presentation artifact);
+/// shells resolve the brand name from their own generated signer catalog
+/// (`KnownSigners.generated.{swift,kt}`) keyed by `scheme`.
 ///
 /// `signer_kind` is the stable label that matches `AccountSummary.signer_kind`
 /// once the user signs in through this app — exposed so hosts that want to
@@ -266,8 +271,6 @@ pub(crate) struct SignerAppDescriptor {
     /// Platform URL scheme to probe (`"nostrsigner://"`, `"primal://"`,
     /// `"nostrconnect://"`, …).
     pub(crate) scheme: String,
-    /// Human-readable name hosts use in detected-signer CTAs.
-    pub(crate) display_label: String,
     /// Stable signer-kind token. All entries here are NIP-46 brokered
     /// signers, so this is always `"nip46"` today; carried as a field so a
     /// future NIP-55 / hardware-signer entry can populate a different kind.
@@ -278,7 +281,7 @@ pub(crate) struct SignerAppDescriptor {
 /// single Rust-owned [`crate::signer_catalog`]** (#1493 P9), no longer a
 /// hand-authored list. The platform shell iterates it and uses its platform
 /// capability (`UIApplication.canOpenURL`) to detect which entry is installed,
-/// then renders the matching `display_label`.
+/// then resolves the matching brand name from its own generated signer catalog.
 ///
 /// This surface is the iOS onboarding catalog, so it is exactly the catalog
 /// entries that (a) are offered on iOS (`ios.is_some()`) and (b) speak NIP-46.
@@ -299,7 +302,6 @@ fn signer_apps_table() -> Vec<SignerAppDescriptor> {
             }
             Some(SignerAppDescriptor {
                 scheme: format!("{}://", ios.url_scheme),
-                display_label: app.display_label.to_string(),
                 signer_kind: SignerCapability::Nip46.as_token().to_string(),
             })
         })
@@ -324,8 +326,8 @@ fn signer_apps_table() -> Vec<SignerAppDescriptor> {
 /// as a typed `KernelSnapshot` field.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Nip46OnboardingDto {
-    /// Static table of `(scheme, display_label, signer_kind)` the host probes
-    /// for installed signer apps. Always present — never empty.
+    /// Static table of `(scheme, signer_kind)` the host probes for installed
+    /// signer apps. Always present — never empty.
     pub(crate) signer_apps: Vec<SignerAppDescriptor>,
     /// Typed handshake stage; `None` when no handshake is in flight (mirrors
     /// the bunker slot's `None` semantic).
@@ -770,15 +772,6 @@ fn npub_from_hex(hex: &str) -> String {
         .unwrap_or_else(|| hex.to_string())
 }
 
-/// Pre-classified human-readable label for the row's signer.
-fn signer_label_for_kind(kind: &str) -> String {
-    match kind {
-        "local" => "Local key".to_string(),
-        "nip46" => "NIP-46".to_string(),
-        other => other.to_string(),
-    }
-}
-
 /// Push the account projection + rebind the kernel's NIP-42 signer to the
 /// active key (D4 single-writer: this is the only path that mutates either).
 ///
@@ -810,7 +803,6 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
                 // fallback. `Kernel::accounts_enriched` populates this
                 // once kind:0 arrives.
                 display_name: None,
-                signer_label: signer_label_for_kind(&signer_kind),
                 signer_kind,
                 signer_is_remote,
                 status: if is_active { "active" } else { "idle" }.to_string(),

@@ -36,11 +36,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| row.npub.clone()),
                     npub: row.npub,
-                    signer: if !row.signer_label.is_empty() {
-                        row.signer_label
-                    } else {
-                        row.signer_kind
-                    },
+                    signer: crate::feature_snapshot::signer_label_for_kind(&row.signer_kind),
                     active: row.is_active,
                 })
                 .collect()

@@ -32,7 +32,6 @@ impl<'a> AccountSummaryRow<'a> {
   pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
   pub const VT_SIGNER_KIND: ::flatbuffers::VOffsetT = 12;
   pub const VT_STATUS: ::flatbuffers::VOffsetT = 14;
-  pub const VT_SIGNER_LABEL: ::flatbuffers::VOffsetT = 16;
   pub const VT_SIGNER_IS_REMOTE: ::flatbuffers::VOffsetT = 18;
   pub const VT_IS_ACTIVE: ::flatbuffers::VOffsetT = 20;
   pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 22;
@@ -49,7 +48,6 @@ impl<'a> AccountSummaryRow<'a> {
   ) -> ::flatbuffers::WIPOffset<AccountSummaryRow<'bldr>> {
     let mut builder = AccountSummaryRowBuilder::new(_fbb);
     if let Some(x) = args.picture_url { builder.add_picture_url(x); }
-    if let Some(x) = args.signer_label { builder.add_signer_label(x); }
     if let Some(x) = args.status { builder.add_status(x); }
     if let Some(x) = args.signer_kind { builder.add_signer_kind(x); }
     if let Some(x) = args.display_name { builder.add_display_name(x); }
@@ -106,13 +104,6 @@ impl<'a> AccountSummaryRow<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(AccountSummaryRow::VT_STATUS, None)}
   }
   #[inline]
-  pub fn signer_label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(AccountSummaryRow::VT_SIGNER_LABEL, None)}
-  }
-  #[inline]
   pub fn signer_is_remote(&self) -> bool {
     // Safety:
     // Created from valid Table for this object
@@ -154,7 +145,6 @@ impl ::flatbuffers::Verifiable for AccountSummaryRow<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("display_name", Self::VT_DISPLAY_NAME, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("signer_kind", Self::VT_SIGNER_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("signer_label", Self::VT_SIGNER_LABEL, false)?
      .visit_field::<bool>("signer_is_remote", Self::VT_SIGNER_IS_REMOTE, false)?
      .visit_field::<bool>("is_active", Self::VT_IS_ACTIVE, false)?
      .visit_field::<bool>("has_picture_url", Self::VT_HAS_PICTURE_URL, false)?
@@ -170,7 +160,6 @@ pub struct AccountSummaryRowArgs<'a> {
     pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub signer_kind: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub signer_label: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub signer_is_remote: bool,
     pub is_active: bool,
     pub has_picture_url: bool,
@@ -186,7 +175,6 @@ impl<'a> Default for AccountSummaryRowArgs<'a> {
       display_name: None,
       signer_kind: None,
       status: None,
-      signer_label: None,
       signer_is_remote: false,
       is_active: false,
       has_picture_url: false,
@@ -223,10 +211,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AccountSummaryRowBuilder<'a, 
   #[inline]
   pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(AccountSummaryRow::VT_STATUS, status);
-  }
-  #[inline]
-  pub fn add_signer_label(&mut self, signer_label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(AccountSummaryRow::VT_SIGNER_LABEL, signer_label);
   }
   #[inline]
   pub fn add_signer_is_remote(&mut self, signer_is_remote: bool) {
@@ -268,7 +252,6 @@ impl ::core::fmt::Debug for AccountSummaryRow<'_> {
       ds.field("display_name", &self.display_name());
       ds.field("signer_kind", &self.signer_kind());
       ds.field("status", &self.status());
-      ds.field("signer_label", &self.signer_label());
       ds.field("signer_is_remote", &self.signer_is_remote());
       ds.field("is_active", &self.is_active());
       ds.field("has_picture_url", &self.has_picture_url());

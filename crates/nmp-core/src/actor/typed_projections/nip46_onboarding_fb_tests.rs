@@ -6,12 +6,10 @@ fn sample_apps() -> Vec<SignerAppRow> {
     vec![
         SignerAppRow {
             scheme: "nostrsigner://".to_string(),
-            display_label: "Nostr Signer".to_string(),
             signer_kind: "nip46".to_string(),
         },
         SignerAppRow {
             scheme: "primal://".to_string(),
-            display_label: "Primal".to_string(),
             signer_kind: "nip46".to_string(),
         },
     ]

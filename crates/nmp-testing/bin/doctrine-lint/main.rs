@@ -679,16 +679,18 @@ fn scan_one_file(
         // (`sl.in_test_cfg`) are exempt. Skipped in --workspace-d8 (no-polling
         // sweep only — this is a protocol-layer structural correctness rule).
         if !workspace_d8 && d27_in_scope && !d6_test_file && !is_doctrine_lint_source(path) {
-            for (col, msg, suggested) in d27::check(sl.text, sl.is_comment, sl.in_test_cfg) {
-                if allow::line_allows(sl.text, d27::ID) {
-                    continue;
-                }
+            // `findings_for_line` owns the allow/stale/real decision (incl. the
+            // #1712 stale-marker hardening); the driver just records the result.
+            let allowed = allow::line_allows(sl.text, d27::ID);
+            for (col, message, suggested) in
+                d27::findings_for_line(sl.text, sl.is_comment, sl.in_test_cfg, allowed)
+            {
                 findings.push(report::Finding {
                     rule: d27::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,
-                    message: msg,
+                    message,
                     suggested,
                 });
             }

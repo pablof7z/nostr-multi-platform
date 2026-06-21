@@ -130,7 +130,6 @@ public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
     public let pictureUrl: String?
     public let signerIsRemote: Bool
     public let signerKind: String
-    public let signerLabel: String
     public let status: String
 }
 
