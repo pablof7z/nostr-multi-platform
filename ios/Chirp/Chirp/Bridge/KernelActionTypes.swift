@@ -231,7 +231,7 @@ struct ActionLifecycleSnapshot: Decodable, Equatable {
     let recentTerminal: [ActionLifecycleEntry]
 }
 
-/// One publish-outbox item. ADR-0032 / doctrine §4.4: presentation strings
+/// One publish-outbox item. ADR-0032 / aim.md §2 #4: presentation strings
 /// (`title`, `preview`, `statusLabel`, `systemImage`) have been removed from
 /// the wire. The shell computes display strings from the raw `kind`, `content`,
 /// and `status` fields. See `NotificationsView+OutboxRow.swift` for helpers.
@@ -258,7 +258,7 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     var id: String { handle }
 }
 
-/// One relay row within a publish-outbox item. ADR-0032 / doctrine §4.4:
+/// One relay row within a publish-outbox item. ADR-0032 / aim.md §2 #4:
 /// `statusLabel` and `attemptLabel` removed from the wire — the shell computes
 /// them from the raw `status` token and `attempt` counter.
 struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
@@ -306,7 +306,7 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     }
 }
 
-/// Per-status counters for the publish outbox. ADR-0032 / doctrine §4.4:
+/// Per-status counters for the publish outbox. ADR-0032 / aim.md §2 #4:
 /// `title` / `subtitle` pre-formatted strings removed from the wire — the
 /// shell computes display strings from the raw counters. See computed helpers
 /// in `NotificationsView.swift`.

@@ -226,7 +226,7 @@ fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
     );
     let decoded_summary =
         decode_outbox_summary(&os.payload).expect("outbox_summary sidecar must decode");
-    // ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings
+    // ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
     // removed from the wire; only raw counters are asserted here.
     assert_eq!(
         os_json.get("total").and_then(serde_json::Value::as_u64),

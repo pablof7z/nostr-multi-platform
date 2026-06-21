@@ -43,7 +43,7 @@ pub(crate) fn outbox_from(projections: &Value) -> Vec<OutboxLine> {
                 .unwrap_or_default();
             let content = string_field(row, "content");
             let status = first_nonempty(row, &["status"]);
-            // doctrine §4.4: title/preview/status_label removed from wire.
+            // aim.md §2 #4: title/preview/status_label removed from wire.
             // JSON path computes from raw kind/content/status (mirrors typed path).
             OutboxLine {
                 handle: string_field(row, "handle"),
@@ -116,7 +116,7 @@ pub(crate) fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
             let status = first_nonempty(r, &["status"]);
             OutboxRelayLine {
                 relay_url: string_field(r, "relay_url"),
-                // doctrine §4.4: status_label removed from wire. Compute from status.
+                // aim.md §2 #4: status_label removed from wire. Compute from status.
                 status_label: json_outbox_relay_status_label(&status),
                 reason: string_field(r, "relay_reason"),
                 message: string_field(r, "message"),
@@ -234,7 +234,7 @@ pub(crate) fn summary_from(value: Option<&Value>) -> SummaryLine {
     })
 }
 
-/// Parse `projections.outbox_summary` into a `SummaryLine`. doctrine §4.4:
+/// Parse `projections.outbox_summary` into a `SummaryLine`. aim.md §2 #4:
 /// `title`/`subtitle` removed from wire — compute from raw per-status counters.
 pub(crate) fn outbox_summary_from(value: Option<&Value>) -> SummaryLine {
     let Some(v) = value else {
@@ -323,7 +323,7 @@ pub(crate) fn number_field(value: &Value, key: &str) -> u64 {
 
 // ── Publish-outbox JSON-path presentation helpers ───────────────────────────
 //
-// doctrine §4.4: title/preview/status_label removed from the nmp-core wire.
+// aim.md §2 #4: title/preview/status_label removed from the nmp-core wire.
 // The JSON path computes them from raw kind/content/status, mirroring the
 // typed path (`feature_snapshot_typed`) and the iOS/Android shells.
 

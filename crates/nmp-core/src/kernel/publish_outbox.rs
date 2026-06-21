@@ -54,7 +54,7 @@ impl Kernel {
                 // `publish_outbox_target_summary` ("N relays · <time>") are
                 // removed; shells compose the relay-count + time label
                 // themselves from `target_relays` + `created_at`.
-                // ADR-0032 / doctrine §4.4: `title`, `preview`, `system_image`,
+                // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`,
                 // `status_label` pre-formatted strings removed — shells own all
                 // presentation formatting. Raw `content` is emitted so shells
                 // can render a preview appropriate to their UX.
@@ -74,7 +74,7 @@ impl Kernel {
     }
 
     /// Raw per-status counters for the publish-outbox summary header.
-    /// ADR-0032 / doctrine §4.4: the previously-emitted pre-formatted English
+    /// ADR-0032 / aim.md §2 #4: the previously-emitted pre-formatted English
     /// `title` / `subtitle` strings are removed; shells derive display strings
     /// from these raw counts using their own locale/formatting rules.
     pub(super) fn outbox_summary_snapshot(&self) -> OutboxSummarySnapshot {

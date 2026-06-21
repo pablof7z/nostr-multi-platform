@@ -83,7 +83,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         });
 
     // publish_outbox (key == schema_id == "publish_outbox")
-    // doctrine §4.4: title/preview/status_label removed from wire. TUI shell
+    // aim.md §2 #4: title/preview/status_label removed from wire. TUI shell
     // computes them from raw kind/content/status (same as iOS/Android shells).
     let outbox = find(nmp_core::typed_projections::PUBLISH_OUTBOX_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_publish_outbox(b).ok())
@@ -112,7 +112,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .unwrap_or_default();
 
     // outbox_summary (key == schema_id == "outbox_summary")
-    // doctrine §4.4: title/subtitle removed from wire. TUI shell computes
+    // aim.md §2 #4: title/subtitle removed from wire. TUI shell computes
     // them from raw per-status counters.
     let outbox_summary = find(nmp_core::typed_projections::OUTBOX_SUMMARY_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_outbox_summary(b).ok())
@@ -286,7 +286,7 @@ fn publish_history_from_queue(
 
 // ── Publish-outbox shell-side presentation helpers ─────────────────────────
 //
-// doctrine §4.4: title/preview/status_label removed from the nmp-core wire.
+// aim.md §2 #4: title/preview/status_label removed from the nmp-core wire.
 // The TUI shell computes them here from raw kind/content/status, mirroring the
 // iOS (`NotificationsView+OutboxRow.swift`) and Android display layers.
 
