@@ -260,11 +260,12 @@ mod replay;
 mod replay_tests;
 mod requests;
 pub use requests::ProfileLiveness;
-// ADR-0063 (#1671 Lane B) — the kernel-owned `RefResolver` primitive that
-// generalizes `claim_profile` + `claim_event` behind one origin-blind seam.
+// ADR-0063 (#1671 Lane B) — kernel-owned `RefResolver` (generalises claim_profile/claim_event).
 pub(crate) mod refs;
 #[cfg(test)]
-mod refs_tests;
+mod refs_tests_profile;
+#[cfg(test)]
+mod refs_tests_event;
 #[cfg(test)]
 mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
@@ -944,14 +945,11 @@ pub struct Kernel {
     /// (a `Live` claim keeps the kind:0 slot `Tailing` even if a later `CacheOk`
     /// claim arrives); cleared when the last consumer of a pubkey releases.
     live_profile_claims: BTreeSet<String>,
-    /// ADR-0063 (#1671 Lane B) — `primary_id` → the set of consumers that hold a
-    /// [`refs::RefLiveness::Live`] tailing owner on that coordinate's deduped
-    /// `event-claim:<primary_id>` slot. The event twin of
-    /// [`Self::live_profile_claims`], but keyed per-consumer so the tailing slot's
-    /// owner is detached on EACH live release (not only on total teardown) —
-    /// without this, releasing one of two `Live` consumers, or a `Live` consumer
-    /// ahead of a `CacheOk` consumer, leaked the registry owner and the tailing
-    /// sub (BLOCKING 1). The slot tears down exactly when this set empties.
+    /// ADR-0063 (#1671 Lane B) — `primary_id` → per-consumer set of Live tailing
+    /// owners. Event twin of [`Self::live_profile_claims`], but per-consumer so
+    /// each Live release detaches only its own owner (BLOCKING 1 fix): releasing
+    /// one of two Live consumers, or a Live consumer ahead of a CacheOk consumer,
+    /// no longer leaks the registry owner/sub. Slot tears down when set empties.
     /// Immutable nevent/note ids never enter this map (they cannot change).
     live_event_claims: HashMap<String, BTreeSet<String>>,
     /// ADR-0063 (#1671 Lane B) — per-consumer demanded [`refs::ProfileShape`]:

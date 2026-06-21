@@ -516,28 +516,4 @@ impl Kernel {
         self.lifecycle.probed_mailboxes()
     }
 
-    /// ADR-0063 (#1671 Lane B) — count active registry interests addressing the
-    /// addressable coordinate `(kind, author, d_tag)`. Both the `CacheOk`
-    /// one-shot and the `Live` tailing slot carry this same addressable filter,
-    /// so this counts how many distinct interests / wire REQs exist for one event
-    /// key. Used to assert exactly ONE per key across the CacheOk/Live dedup
-    /// (BLOCKING 3) and ZERO after a `Live` teardown (BLOCKING 1, no owner leak).
-    #[cfg(test)]
-    pub(crate) fn event_claim_interest_count_for_test(
-        &self,
-        kind: u32,
-        author: &str,
-        d_tag: &str,
-    ) -> usize {
-        self.lifecycle
-            .registry()
-            .iter_active()
-            .into_iter()
-            .filter(|i| {
-                i.shape.kinds.contains(&kind)
-                    && i.shape.authors.contains(author)
-                    && i.shape.tags.get("d").is_some_and(|v| v.contains(d_tag))
-            })
-            .count()
-    }
 }
