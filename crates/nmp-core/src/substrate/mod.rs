@@ -52,6 +52,7 @@ mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
+mod payment;
 mod profile_lookup;
 pub mod content_parser;
 pub mod placeholder;
@@ -86,6 +87,7 @@ pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use dm_inbox_relays::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
 };
+pub use payment::{PaymentIntent, PaymentPort};
 pub use profile_lookup::{
     empty_profile_lookup, EmptyProfileLookup, ProfileLookup, ProfileView,
 };

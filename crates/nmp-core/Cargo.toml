@@ -106,12 +106,13 @@ indexmap = "2.14"
 # creating the nmp-nip59 → nmp-core compile cycle.
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
-# NIP-59 gift-wrap free functions (`gift_wrap` / `unwrap_gift_wrap`). Consumed
-# by the `ActorCommand::SendGiftWrappedDm` arm to seal+wrap NIP-17 DM rumors on
-# the actor thread. Kernel → protocol-module direction (ADR-0009 precedent:
-# `nmp-nwc`); `nmp-nip59` is substrate-grade (carries no app/protocol nouns per
-# its own crate docs) and stays kernel-agnostic — the dependency is one-way.
-nmp-nip59 = { path = "../nmp-nip59" }
+# NIP-59 gift-wrap primitives are NOT a production dependency of the kernel:
+# the former `ActorCommand::SendGiftWrappedDm` arm was deleted (V-39) and the
+# seal+wrap path now lives entirely in `nmp-nip17`'s `SendGiftWrappedDmCommand`.
+# `nmp-nip59` is a Layer-0 substrate-grade crate (pure gift-wrap crypto over the
+# `nostr` crate; only a `nmp-kinds` workspace dep — see
+# `docs/architecture/crate-boundaries.md` §3) consumed here ONLY by the
+# `cache_serve_universal_tests` acceptance harness, so it is a dev-dependency.
 nostr = { workspace = true, features = ["nip44", "nip59"] }
 # V-38: the `nmp-nwc` dep was deleted from `nmp-core`. NIP-47 is consumed
 # exclusively by `crates/nmp-nip47` post-V-38.
@@ -173,6 +174,11 @@ web-time = "1.1"
 
 [dev-dependencies]
 proptest = "1"
+# Layer-0 gift-wrap primitives — used ONLY by the `cache_serve_universal_tests`
+# acceptance harness to build a DM gift-wrap envelope (`gift_wrap_local`). The
+# kernel has no production dependency on NIP-59 (the seal+wrap path lives in
+# `nmp-nip17`); this is a dev-only edge.
+nmp-nip59 = { path = "../nmp-nip59" }
 # Step 8 phase A — the `outbox_perf` example installs the ring crypto
 # provider directly (it dials real relays so it needs to bootstrap rustls
 # the same way the production worker does). The runtime dep moved with

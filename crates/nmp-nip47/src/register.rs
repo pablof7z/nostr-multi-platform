@@ -142,8 +142,9 @@ impl RelayTextInterceptor for WalletInterceptor {
 ///    decoding + the V-79 heartbeat/TTL sweeps;
 /// 4. registers the generic + typed `"wallet"` snapshot projections.
 ///
-/// Returns the per-app [`WalletRuntimeHandle`] so the caller can thread it into
-/// the NIP-57 zap auto-chain (`nmp_nip57::register_zap_with_wallet`) — the zap
+/// Returns the per-app [`WalletRuntimeHandle`] so the caller can wrap it in a
+/// `PaymentPort` ([`crate::wallet_payment_port`]) and inject it into the NIP-57
+/// zap auto-chain (`nmp_nip57::register_zap_with_payment_port`) — the zap
 /// override lives at the caller because `nmp-nip47` must not depend on
 /// `nmp-nip57` (layer/D0). Two `NmpApp` instances therefore drive fully
 /// independent wallet runtimes (no `ACTIVE_WALLET_RUNTIME` global — deleted).

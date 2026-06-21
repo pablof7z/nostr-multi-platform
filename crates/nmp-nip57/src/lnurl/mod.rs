@@ -71,9 +71,11 @@ mod validation;
 pub(crate) use validation::{validate_bolt11_amount, validate_description_hash};
 
 use std::str::FromStr;
+use std::sync::Arc;
 
 use nmp_core::substrate::{
-    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, SignedEvent, UnsignedEvent,
+    PaymentIntent, PaymentPort, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
+    SignedEvent, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
 use nmp_kinds::KIND_ZAP_RECEIPT;
@@ -116,13 +118,13 @@ pub struct FetchLnurlInvoiceCommand {
     /// spinner clears. `None` means a direct caller with no spinner —
     /// only the `ShowToast` follow-up is sent.
     pub correlation_id: Option<String>,
-    /// ADR-0052 rung 5.2: the per-app NWC wallet runtime handle the zap
-    /// auto-chain pays through — captured by `ZapAction` at composition time,
-    /// not read from a process-global (so two `NmpApp`s zap independently).
-    /// `None` when no wallet was wired; the worker then records a "no wallet
-    /// connected" failure (the pre-rung `active_wallet_runtime() == None`
-    /// behaviour).
-    pub runtime: Option<nmp_nip47::WalletRuntimeHandle>,
+    /// ADR-0052 rung 5.2: the per-app [`PaymentPort`] the zap auto-chain pays
+    /// through — captured by `ZapAction` at composition time, not read from a
+    /// process-global (so two `NmpApp`s zap independently). `None` when no
+    /// wallet was wired; the worker then records a "no wallet connected"
+    /// failure. The port is the substrate seam: NIP-57 emits a typed
+    /// [`PaymentIntent`] through it and never names a NIP-47 wallet runtime.
+    pub payment_port: Option<Arc<dyn PaymentPort>>,
 }
 
 impl ProtocolCommand for FetchLnurlInvoiceCommand {
@@ -136,7 +138,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
             lnurl_or_address,
             amount_msats,
             correlation_id,
-            runtime,
+            payment_port,
         } = *self;
 
         // Resolve the LN destination. Shells may omit `lnurl_or_address`
@@ -262,7 +264,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                 signed_json,
                 zap_request_id,
                 correlation_id,
-                runtime,
+                payment_port,
             );
         });
 
@@ -288,17 +290,17 @@ fn spawn_lnurl_worker(
     signed_json: String,
     zap_request_id: String,
     correlation_id: Option<String>,
-    runtime: Option<nmp_nip47::WalletRuntimeHandle>,
+    payment_port: Option<Arc<dyn PaymentPort>>,
 ) {
     std::thread::spawn(move || {
         match fetch_lnurl_invoice_blocking(&lnurl_or_address, amount_msats, &signed_json) {
-            // ADR-0052 rung 5.2: pay through the per-app `runtime` handle
-            // `ZapAction` captured (no process-global). `Some` → mint a
-            // `WalletPayInvoiceCommand` (its own no-connection branch reports a
+            // ADR-0052 rung 5.2: pay through the per-app `PaymentPort`
+            // `ZapAction` captured (no process-global). `Some` → emit the
+            // port's pay-invoice command (its own no-connection branch reports a
             // disconnected wallet); `None` → no wallet wired, record the
             // "no wallet connected" failure so the host spinner resolves.
-            Ok(invoice) => match runtime {
-                Some(runtime) => {
+            Ok(invoice) => match payment_port {
+                Some(port) => {
                     if let Err(reason) = crate::pending::active_pending_zap_registry()
                         .remember_expected_provider(&zap_request_id, &invoice.provider_pubkey)
                     {
@@ -313,14 +315,11 @@ fn spawn_lnurl_worker(
                         }
                         return;
                     }
-                    let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
-                        nmp_nip47::WalletPayInvoiceCommand {
-                            bolt11: invoice.bolt11,
-                            amount_msats: None, // bolt11 carries the amount
-                            correlation_id,
-                            runtime,
-                        },
-                    )));
+                    let _ = worker_tx.send(port.pay_invoice(PaymentIntent {
+                        bolt11: invoice.bolt11,
+                        amount_msats: None, // bolt11 carries the amount
+                        correlation_id,
+                    }));
                 }
                 None => {
                     let reason =

@@ -6,15 +6,31 @@
 //! `action` module, so the tests reach `ZapAction` / `ZapInput` unchanged.
 
 use super::*;
-use nmp_core::substrate::ActionContext;
+use nmp_core::substrate::{ActionContext, PaymentIntent, PaymentPort};
 use std::cell::RefCell;
+use std::sync::Arc;
 
-/// A `ZapAction` bound to a fresh, empty per-instance wallet handle for
-/// unit tests (ADR-0052 rung 5.2 — no process-global). These tests only
-/// assert the emitted `FetchLnurlInvoiceCommand` shape, so a real handle
-/// is used to exercise the `Some(_)` path end-to-end.
+/// A no-op [`PaymentPort`] test double. These tests only assert the emitted
+/// `FetchLnurlInvoiceCommand` shape (the port is captured, never invoked here),
+/// so a stub is enough to exercise the `Some(_)` path. The real adapter
+/// (`nmp_nip47::WalletPaymentPort`) lives in `nmp-nip47`, which NIP-57 no
+/// longer depends on (#1728).
+#[derive(Debug)]
+struct StubPaymentPort;
+
+impl PaymentPort for StubPaymentPort {
+    fn pay_invoice(&self, intent: PaymentIntent) -> ActorCommand {
+        ActorCommand::ShowToast {
+            message: format!("pay {}", intent.bolt11),
+        }
+    }
+}
+
+/// A `ZapAction` bound to a stub payment port for unit tests (ADR-0052 rung 5.2
+/// — no process-global). These tests only assert the emitted
+/// `FetchLnurlInvoiceCommand` shape, so the stub exercises the `Some(_)` path.
 fn zap_action() -> ZapAction {
-    ZapAction::with_wallet(nmp_nip47::new_wallet_runtime_handle())
+    ZapAction::with_payment_port(Arc::new(StubPaymentPort) as Arc<dyn PaymentPort>)
 }
 
 /// Run the typed executor and capture every `ActorCommand` it sends, in order.

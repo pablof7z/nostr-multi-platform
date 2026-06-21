@@ -28,7 +28,7 @@
 //! Keeping them in one module makes that structurally guaranteed — a separate
 //! "withdraw" module that re-derives the identity from user-supplied strings
 //! risks a mismatch (wrong owner dropped → subscription leaks forever).
-//! See `nmp-nip01::visible_relations` for the live production analogue that
+//! See `nmp-relations::visible_relations` for the live production analogue that
 //! established this pattern.
 //!
 //! # Multi-owner refcounting

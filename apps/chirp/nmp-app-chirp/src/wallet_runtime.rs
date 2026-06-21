@@ -19,12 +19,17 @@ use nmp_ffi::NmpApp;
 /// registration against it.
 ///
 /// ADR-0052 rung 5.2: `register_wallet` returns the per-app
-/// `WalletRuntimeHandle`; we thread it into the NIP-57 zap auto-chain via
-/// `register_zap_with_wallet` (the ADR-0049 app-path override of the
-/// handle-less zap default `nmp_defaults::register_defaults` installed) so a
-/// zap pays through THIS app's wallet runtime.
+/// `WalletRuntimeHandle`; we wrap it in a NIP-47-backed `PaymentPort` and inject
+/// it into the NIP-57 zap auto-chain via `register_zap_with_payment_port` (the
+/// ADR-0049 app-path override of the port-less zap default
+/// `nmp_defaults::register_defaults` installed) so a zap pays through THIS app's
+/// wallet. NIP-57 depends only on the substrate `PaymentPort`, not NIP-47
+/// (#1728).
 pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
     let storage_path = app.storage_path_for_start();
     let wallet_runtime = nmp_nip47::register_wallet(app, storage_path);
-    nmp_nip57::register_zap_with_wallet(app, wallet_runtime);
+    nmp_nip57::register_zap_with_payment_port(
+        app,
+        nmp_nip47::wallet_payment_port(wallet_runtime),
+    );
 }

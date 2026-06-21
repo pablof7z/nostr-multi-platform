@@ -19,7 +19,7 @@ What did not exist was a documented, idiomatic path for the pattern
 in a projection the shell reads."
 
 The canonical live reference is
-`crates/nmp-nip01/src/visible_relations.rs` (reaction/reply relations on a
+`crates/nmp-relations/src/visible_relations.rs` (reaction/reply relations on a
 note card). The illustrative non-kind-1 example is
 `crates/nmp-defaults/src/topic_articles.rs` (NIP-23 long-form articles
 by topic). Both are fully operational; this chapter explains the pattern they
@@ -131,7 +131,7 @@ pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
 
 The pattern: `SubOwnerKey` folds in `consumer_id` (owner-unique);
 `SubKey` folds in only the content discriminant (owner-shared).
-`visible_note_relations_identity` in `nmp-nip01/src/visible_relations.rs:113`
+`visible_note_relations_identity` in `nmp-relations/src/visible_relations.rs`
 is the production reference.
 
 ## Feed declarations use primary kinds
@@ -492,4 +492,4 @@ The subscription should close when…
 - [ ] Tailing subscriptions have a Release path the shell calls on view close.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
 
-See also: [05a — Substrate traits](05a-substrate-traits.md) · [06 — Reactivity contract](06-reactivity-contract.md) · [07 — Subscription planner](07-subscription-planner.md) · [16 — Capabilities](16-capabilities.md) · [20 — Adding a protocol module](20-new-protocol-module.md) · `crates/nmp-nip01/src/visible_relations.rs` · `crates/nmp-defaults/src/topic_articles.rs`
+See also: [05a — Substrate traits](05a-substrate-traits.md) · [06 — Reactivity contract](06-reactivity-contract.md) · [07 — Subscription planner](07-subscription-planner.md) · [16 — Capabilities](16-capabilities.md) · [20 — Adding a protocol module](20-new-protocol-module.md) · `crates/nmp-relations/src/visible_relations.rs` · `crates/nmp-defaults/src/topic_articles.rs`

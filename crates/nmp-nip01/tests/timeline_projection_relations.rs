@@ -129,49 +129,8 @@ fn reply_counts_handle_out_of_order_and_duplicate_delivery() {
     assert_eq!(root.relation_counts.replies, RelationCount::known(1));
 }
 
-#[test]
-fn relation_counts_include_reactions_reposts_and_zaps() {
-    let target = "R";
-    let proj = ModularTimelineProjection::new(&spec());
-    proj.on_kernel_event(&note(target, 1, vec![]));
-    proj.on_kernel_event(&KernelEvent {
-        id: "react".into(),
-        author: "alice".into(),
-        kind: 7,
-        created_at: 2,
-        tags: vec![vec!["e".into(), target.into()]],
-        content: "+".into(),
-        relay_provenance: Vec::new(),
-    });
-    proj.on_kernel_event(&KernelEvent {
-        id: "repost".into(),
-        author: "bob".into(),
-        kind: nmp_nip18::KIND_REPOST,
-        created_at: 3,
-        tags: vec![vec!["e".into(), target.into()]],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    });
-    proj.on_kernel_event(&KernelEvent {
-        id: "zap".into(),
-        author: "ln".into(),
-        kind: nmp_nip57::KIND_ZAP_RECEIPT,
-        created_at: 4,
-        tags: vec![
-            vec!["p".into(), "recipient".into()],
-            vec!["e".into(), target.into()],
-        ],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    });
-
-    let snap = proj.snapshot();
-    let root = snap
-        .cards
-        .iter()
-        .find(|c| c.id == target)
-        .expect("root card");
-    assert_eq!(root.relation_counts.reactions, RelationCount::known(1));
-    assert_eq!(root.relation_counts.reposts, RelationCount::known(1));
-    assert_eq!(root.relation_counts.zaps, RelationCount::known(1));
-}
+// NOTE: cross-protocol relation counting (reactions/reposts/zaps via the
+// injected `NoteRelationClassifier`) is exercised in `nmp-relations`
+// (`tests/timeline_projection_relations.rs`) — that crate owns the
+// cross-protocol classifier and depends on NIP-18 / NIP-57 (#1728). This base
+// crate only counts its own native kind:1 replies.

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use serde::{Deserialize, Serialize};
@@ -111,21 +112,74 @@ pub struct TargetRelationCounts {
     pub comments: u64,
 }
 
+/// The kind of social relation an event expresses toward a target note.
+///
+/// `Reply` is native to NIP-01 (a kind:1 NIP-10 threaded reply). The other
+/// variants are cross-protocol and are produced by an injected
+/// [`NoteRelationClassifier`] (see `nmp-relations`), so this base crate carries
+/// no dependency on NIP-18 / NIP-22 / NIP-25 / NIP-57.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelationKind {
+    Reply,
+    Reaction,
+    Repost,
+    Zap,
+    Comment,
+}
+
+/// A single classified relation: the target note it counts against and the
+/// kind of relation it expresses. Produced by [`NoteRelationClassifier`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClassifiedRelation {
+    /// The id (or UPPERCASE root scope value, for comments) of the note this
+    /// relation is counted against.
+    pub target: String,
+    /// Which relation bucket this event increments.
+    pub kind: RelationKind,
+}
+
+/// Cross-protocol seam: classify a kernel event into the [`ClassifiedRelation`]
+/// it expresses toward a target note, or `None` if it is not a relation event.
+///
+/// NIP-01 handles its own kind:1 replies natively; this trait is the injection
+/// point for the cross-protocol relation sources (reactions, reposts, zaps,
+/// comments) so that aggregation lives in `nmp-relations`, not in the base note
+/// crate (#1728). Inject a concrete classifier via [`NoteRelationIndex::new`]
+/// or [`crate::ModularTimelineProjection::with_relation_classifier`]; absent
+/// one, only kind:1 replies are tallied.
+pub trait NoteRelationClassifier: Send + Sync {
+    /// Classify `event`, returning the relation it expresses or `None`.
+    fn classify(&self, event: &KernelEvent) -> Option<ClassifiedRelation>;
+}
+
 pub struct NoteRelationIndex {
     counts: HashMap<String, TargetRelationCounts>,
     relation_by_event: BoundedMessageMap<String, IndexedRelation>,
+    /// Cross-protocol relation classifier (reactions/reposts/zaps/comments).
+    /// `None` → only NIP-01 kind:1 replies are counted.
+    classifier: Option<Arc<dyn NoteRelationClassifier>>,
 }
 
 impl Default for NoteRelationIndex {
     fn default() -> Self {
-        Self {
-            counts: HashMap::new(),
-            relation_by_event: BoundedMessageMap::new(REPLY_INDEX_CAP),
-        }
+        Self::new(None)
     }
 }
 
 impl NoteRelationIndex {
+    /// Construct an index with an optional cross-protocol
+    /// [`NoteRelationClassifier`]. Pass
+    /// `Some(nmp_relations::default_note_relation_classifier())` to count
+    /// reactions/reposts/zaps/comments alongside the native kind:1 replies.
+    #[must_use]
+    pub fn new(classifier: Option<Arc<dyn NoteRelationClassifier>>) -> Self {
+        Self {
+            counts: HashMap::new(),
+            relation_by_event: BoundedMessageMap::new(REPLY_INDEX_CAP),
+            classifier,
+        }
+    }
+
     #[must_use]
     pub fn counts_for(&self, event_id: &str) -> NoteRelationCounts {
         NoteRelationCounts::for_note(
@@ -136,7 +190,7 @@ impl NoteRelationIndex {
 
     #[must_use]
     pub fn ingest(&mut self, event: &KernelEvent) -> Vec<String> {
-        let Some(relation) = IndexedRelation::from_event(event) else {
+        let Some(relation) = self.classify(event) else {
             return Vec::new();
         };
         if self.relation_by_event.contains_key(&event.id) {
@@ -155,6 +209,22 @@ impl NoteRelationIndex {
         changed.sort();
         changed.dedup();
         changed
+    }
+
+    /// Classify an event into the relation it expresses. NIP-01 kind:1 replies
+    /// are resolved natively (via this crate's own decoder); every other
+    /// relation kind is delegated to the injected cross-protocol classifier.
+    fn classify(&self, event: &KernelEvent) -> Option<IndexedRelation> {
+        if let Some(note) = try_from_kernel_event(event) {
+            return note.refs.reply.or(note.refs.root).map(|reply| IndexedRelation {
+                target: reply.id,
+                kind: RelationKind::Reply,
+            });
+        }
+        self.classifier
+            .as_ref()
+            .and_then(|classifier| classifier.classify(event))
+            .map(IndexedRelation::from)
     }
 
     fn apply_delta(&mut self, relation: &IndexedRelation, direction: Direction) {
@@ -182,72 +252,19 @@ struct IndexedRelation {
     kind: RelationKind,
 }
 
-impl IndexedRelation {
-    fn from_event(event: &KernelEvent) -> Option<Self> {
-        if let Some(note) = try_from_kernel_event(event) {
-            return note.refs.reply.or(note.refs.root).map(|reply| Self {
-                target: reply.id,
-                kind: RelationKind::Reply,
-            });
+impl From<ClassifiedRelation> for IndexedRelation {
+    fn from(relation: ClassifiedRelation) -> Self {
+        Self {
+            target: relation.target,
+            kind: relation.kind,
         }
-        // NIP-22 kind:1111 comment — counted against its UPPERCASE root scope
-        // target (the artifact the thread hangs off), so an event/article/
-        // external root surfaces a comment count.
-        if let Some(comment) = nmp_nip22::try_from_kernel_event(event) {
-            if comment.root_tag_value.is_empty() {
-                return None;
-            }
-            return Some(Self {
-                target: comment.root_tag_value,
-                kind: RelationKind::Comment,
-            });
-        }
-        if event.kind == nmp_nip18::KIND_REPOST {
-            return nmp_nip18::try_from_kernel_event(event)
-                .and_then(|repost| repost.target_event_id)
-                .map(|target| Self {
-                    target,
-                    kind: RelationKind::Repost,
-                });
-        }
-        if event.kind == 7 {
-            return first_event_tag(&event.tags).map(|target| Self {
-                target,
-                kind: RelationKind::Reaction,
-            });
-        }
-        nmp_nip57::try_from_kernel_event(event)
-            .and_then(|zap| zap.zapped_event_id)
-            .map(|target| Self {
-                target,
-                kind: RelationKind::Zap,
-            })
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RelationKind {
-    Reply,
-    Reaction,
-    Repost,
-    Zap,
-    Comment,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Direction {
     Up,
     Down,
-}
-
-fn first_event_tag(tags: &[Vec<String>]) -> Option<String> {
-    tags.iter().find_map(|tag| {
-        if tag.first().is_some_and(|name| name == "e") {
-            tag.get(1).filter(|id| !id.is_empty()).cloned()
-        } else {
-            None
-        }
-    })
 }
 
 #[cfg(test)]
@@ -295,6 +312,7 @@ mod tests {
         let mut index = NoteRelationIndex {
             counts: std::collections::HashMap::new(),
             relation_by_event: nmp_core::substrate::BoundedMessageMap::new(CAP),
+            classifier: None,
         };
 
         // "reply1" and "reply2" both reply to "root".
@@ -358,29 +376,32 @@ mod tests {
         assert_eq!(counts.comments, RelationCount::Known { count: 0 });
     }
 
+    /// Cross-protocol classification (reactions/reposts/zaps/comments) is owned
+    /// by `nmp-relations`; this test verifies the seam — an injected classifier
+    /// drives the non-reply buckets. The concrete cross-protocol classifier and
+    /// its NIP-22/18/57 coverage are tested in `nmp-relations`.
     #[test]
-    fn counts_nip22_comments_against_their_root_target() {
-        let mut index = NoteRelationIndex::default();
-        let root = "r".repeat(64);
-        let comment = KernelEvent {
-            id: "c".repeat(64),
-            author: "a".repeat(64),
-            kind: nmp_nip22::KIND_COMMENT,
-            created_at: 1,
-            tags: vec![
-                vec!["E".to_string(), root.clone()],
-                vec!["K".to_string(), "11".to_string()],
-                vec!["e".to_string(), root.clone()],
-                vec!["k".to_string(), "11".to_string()],
-            ],
-            content: "great".to_string(),
-            relay_provenance: Vec::new(),
-        };
-
-        assert_eq!(index.ingest(&comment), vec![root.clone()]);
-        let counts = index.counts_for(&root);
-        assert_eq!(counts.comments, RelationCount::Known { count: 1 });
-        // A comment is not also tallied as a kind:1 reply.
-        assert_eq!(counts.replies, RelationCount::Known { count: 0 });
+    fn injected_classifier_drives_cross_protocol_counts() {
+        struct AlwaysRepost;
+        impl NoteRelationClassifier for AlwaysRepost {
+            fn classify(&self, evt: &KernelEvent) -> Option<ClassifiedRelation> {
+                // kind:1 replies are native; classify everything else as a repost.
+                if evt.kind == 1 {
+                    return None;
+                }
+                Some(ClassifiedRelation {
+                    target: "root".to_string(),
+                    kind: RelationKind::Repost,
+                })
+            }
+        }
+        let mut index = NoteRelationIndex::new(Some(Arc::new(AlwaysRepost)));
+        let mut repost = event("repost", Vec::new());
+        repost.kind = 6;
+        assert_eq!(index.ingest(&repost), vec!["root".to_string()]);
+        assert_eq!(
+            index.counts_for("root").reposts,
+            RelationCount::Known { count: 1 }
+        );
     }
 }

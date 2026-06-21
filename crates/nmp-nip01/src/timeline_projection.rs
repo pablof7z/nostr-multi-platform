@@ -25,7 +25,7 @@ use crate::kinds::KIND_SHORT_TEXT_NOTE;
 use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
-use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
+use crate::note_relations::{NoteRelationClassifier, NoteRelationCounts, NoteRelationIndex};
 use crate::profile_display::{profile_from_event, AuthorDisplay};
 
 pub use nmp_feed::{
@@ -386,6 +386,26 @@ impl ModularTimelineProjection {
     /// by the app crate (Layer 5+) that depends on both.
     pub fn set_suppression(&mut self, lookup: Arc<dyn SuppressionLookup>) {
         self.suppression = lookup;
+    }
+
+    /// Wire the cross-protocol relation classifier (e.g.
+    /// `nmp_relations::default_note_relation_classifier()`), so the timeline
+    /// cards tally reactions / reposts / zaps / comments alongside the native
+    /// kind:1 reply counts. Called once at composition time, immediately after
+    /// [`Self::new`], before the projection ingests events.
+    ///
+    /// # Design
+    ///
+    /// The [`NoteRelationClassifier`] trait lives in this crate; the concrete
+    /// cross-protocol implementation lives in `nmp-relations` (Layer 4) and is
+    /// injected by composition (#1728), so the base note crate carries no
+    /// dependency on NIP-18 / NIP-22 / NIP-25 / NIP-57.
+    #[must_use]
+    pub fn with_relation_classifier(self, classifier: Arc<dyn NoteRelationClassifier>) -> Self {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.relations = NoteRelationIndex::new(Some(classifier));
+        }
+        self
     }
 
     #[must_use]

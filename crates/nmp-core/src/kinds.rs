@@ -7,13 +7,12 @@
 //!
 //! # Why `nmp-kinds` (Layer 0), not here (Layer 3)
 //!
-//! `nmp-core` depends on `nmp-nip59` (the kernel uses the gift-wrap
-//! primitive on the actor thread — ADR-0009 precedent). That edge means
-//! `nmp-nip59 → nmp-core` would be a **compile-time cycle**, so `nmp-nip59`
-//! cannot import `KIND_GIFT_WRAP` from this module directly. Moving the
-//! integer registry to `nmp-kinds` (zero deps, Layer 0 — same pattern as
-//! `nmp-nip42-types`) lets both `nmp-core` and `nmp-nip59` depend on the
-//! same source without any cycle.
+//! `KIND_GIFT_WRAP` is shared by both `nmp-core` (acceptance tests) and the
+//! Layer-0 gift-wrap crate `nmp-nip59`. If the constant lived here (Layer 3),
+//! `nmp-nip59` could not import it without a `nmp-nip59 → nmp-core` edge that
+//! would invert the layer order. Keeping the integer registry in `nmp-kinds`
+//! (zero deps, Layer 0 — same pattern as `nmp-nip42-types`) lets both crates
+//! depend on the same source without any cycle or upward edge.
 //!
 //! # Scope
 //!

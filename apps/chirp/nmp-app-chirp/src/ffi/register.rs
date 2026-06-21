@@ -113,11 +113,13 @@ pub extern "C" fn nmp_app_chirp_register(
     register_nip29_actions(unsafe { &mut *app });
 
     // Visible timeline rows claim their relation streams through the same
-    // dispatch_action door as all other app verbs. The action module lives
-    // in nmp-nip01 because the subscription shape is reusable by any note app.
+    // dispatch_action door as all other app verbs. The action module lives in
+    // nmp-relations (the cross-protocol social-relation crate) because its
+    // subscription shape spans reactions/reposts/zaps and is reusable by any
+    // note app.
     //
     // SAFETY: same exclusive-borrow rationale as `register_nip29_actions`.
-    nmp_nip01::register_visible_note_relation_actions(unsafe { &mut *app });
+    nmp_relations::register_visible_note_relation_actions(unsafe { &mut *app });
 
     // V-38: register the NIP-47 wallet stack (action modules + runtime
     // installation + status projection) when the `wallet` feature is on.
