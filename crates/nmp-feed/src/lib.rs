@@ -19,6 +19,7 @@ mod params;
 mod pull_controller;
 mod registry;
 mod root_indexed;
+mod session;
 pub mod typed_wire;
 mod types;
 mod window;
@@ -38,6 +39,7 @@ pub use pull_controller::{
     PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
+pub use session::{FeedSessionBuild, FeedSessionRegistry, TeardownAction};
 pub use root_indexed::{
     AttributionPayload, CardBuilder, EventGate, EventLookup, FollowPredicate, RootCard,
     RootFeedSnapshot, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
