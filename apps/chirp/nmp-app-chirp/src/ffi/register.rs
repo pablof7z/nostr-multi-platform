@@ -325,30 +325,3 @@ pub(crate) fn zaps_typed_projection(
         ..Default::default()
     })
 }
-
-/// Build the typed `"nmp.follow_list"` sidecar entry from the live follow-list
-/// projection. Always emits (parity with the generic projection, which always
-/// contributes `{"follows":[]}`): no active account yields an empty typed
-/// buffer.
-///
-/// The registration KEY is `"nmp.follow_list"` (matching the generic
-/// projection's namespace); the typed payload's `schema_id` is the distinct
-/// `"nmp.nip02.follow_list"`.
-///
-/// Extracted from the `register_typed_snapshot_projection` closure so the
-/// registration's schema identity and the encode are unit-testable without
-/// spinning the actor (Wave A proof test).
-pub(crate) fn follow_list_typed_projection(
-    proj: &FollowListProjection,
-) -> Option<nmp_core::TypedProjectionData> {
-    let snapshot = proj.snapshot();
-    Some(nmp_core::TypedProjectionData {
-        key: "nmp.follow_list".to_string(),
-        schema_id: nmp_nip02::FOLLOW_LIST_SCHEMA_ID.to_string(),
-        schema_version: nmp_nip02::FOLLOW_LIST_SCHEMA_VERSION,
-        file_identifier: String::from_utf8_lossy(nmp_nip02::FOLLOW_LIST_FILE_IDENTIFIER)
-            .into_owned(),
-        payload: nmp_nip02::encode_follow_list(&snapshot),
-        ..Default::default()
-    })
-}

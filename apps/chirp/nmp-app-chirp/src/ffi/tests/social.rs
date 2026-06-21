@@ -10,7 +10,7 @@
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::nmp_app_chirp_unregister;
-use super::super::register::follow_list_typed_projection; // still pub(crate) for this test
+use nmp_nip02::typed_projection_entry as follow_list_typed_projection;
 use super::helpers::{dispatch, register_app};
 
 /// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the public social

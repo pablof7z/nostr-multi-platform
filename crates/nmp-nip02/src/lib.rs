@@ -356,6 +356,32 @@ pub fn register_follow_state_runtime(
     });
 }
 
+/// Build the typed `"nmp.follow_list"` sidecar entry from a live
+/// [`FollowListProjection`].
+///
+/// Always emits (parity with the generic projection, which always contributes
+/// `{"follows":[]}`): no active account yields an empty typed buffer.
+///
+/// The registration KEY is `"nmp.follow_list"` (matching the generic
+/// projection's namespace); the typed payload's `schema_id` is the distinct
+/// `"nmp.nip02.follow_list"`. Exposed here so platform-specific tests can
+/// verify the sidecar shape without duplicating the encoding.
+#[must_use]
+pub fn typed_projection_entry(
+    proj: &projection::FollowListProjection,
+) -> Option<nmp_core::TypedProjectionData> {
+    use crate::wire::typed_fb;
+    let snapshot = proj.snapshot();
+    Some(nmp_core::TypedProjectionData {
+        key: "nmp.follow_list".to_string(),
+        schema_id: FOLLOW_LIST_SCHEMA_ID.to_string(),
+        schema_version: FOLLOW_LIST_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(FOLLOW_LIST_FILE_IDENTIFIER).into_owned(),
+        payload: typed_fb::encode_follow_list(&snapshot),
+        ..Default::default()
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
