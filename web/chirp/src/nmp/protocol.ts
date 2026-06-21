@@ -32,6 +32,16 @@ export type WorkerRequest =
       payload: unknown;
     }
   | { type: "stop"; correlation_id: string }
+  /** ADR-0058 seq-ordered PULL scrolling — the home timeline reached its tail
+   *  (scrolled to the bottom). Asks the wasm runtime to drain one older page of
+   *  `feed_key` (e.g. "nmp.feed.home") through its `PullFeedController`. The
+   *  grown projection arrives back on the normal `update_bytes` channel — the
+   *  shell does no cursor logic. The wasm twin of `nmp_app_load_older_feed`. */
+  | {
+      type: "load_older_feed";
+      feed_key: string;
+      correlation_id: string;
+    }
   /** V-01 Stage 3b — install a NIP-07 signer.
    *  The browser host calls window.nostr.getPublicKey() first, then sends
    *  this request so the wasm runtime's install path stays synchronous.

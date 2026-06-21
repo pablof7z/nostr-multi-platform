@@ -92,6 +92,12 @@ pub struct WasmRuntime {
     /// PR-4 post-tick drain — fired AFTER `tick_once`'s `borrow_mut` drops.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+    /// ADR-0058 seq-ordered PULL scrolling — the host-owned feed registry, the
+    /// wasm twin of `NmpApp::feed_registry`. The composition root registers a
+    /// `PullFeedController` per feed key (e.g. `nmp.feed.home`) via
+    /// [`Self::register_feed`]; a `LoadOlderFeed` request drains one older page
+    /// through it (see [`Self::load_older_feed`]).
+    feed_registry: nmp_feed::FeedRegistrySlot,
     /// Live `web_sys::WebSocket` drivers — one per relay URL. Seeded from the
     /// bootstrap at `Start`, then grown on demand: a kernel frame targeting a
     /// not-yet-open URL spawns a driver via `fan_out_outbound`. `wasm32`-only:
@@ -119,6 +125,7 @@ impl Default for WasmRuntime {
             signer: None,
             snapshot_callback: Rc::new(RefCell::new(None)),
             post_tick_drain: Rc::new(RefCell::new(None)),
+            feed_registry: nmp_feed::new_feed_registry_slot(),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
             #[cfg(target_arch = "wasm32")]
@@ -140,6 +147,22 @@ impl WasmRuntime {
     /// `reducer.borrow_mut()`. Subsequent calls replace the prior drain.
     pub fn install_post_tick_drain(&self, drain: Rc<dyn Fn()>) {
         *self.post_tick_drain.borrow_mut() = Some(drain);
+    }
+
+    /// Register a reusable feed surface (ADR-0058). The wasm twin of
+    /// `NmpApp::register_feed`: the controller owns ordering, viewport state,
+    /// paging, and render-payload selection; the shell only renders the emitted
+    /// projection and reports tail-reached via [`WorkerRequest::LoadOlderFeed`].
+    ///
+    /// Called by the composition root (`nmp_app_chirp_web`) to register the
+    /// home-feed `PullFeedController` under `nmp.feed.home`. (The `LoadOlderFeed`
+    /// drain handler lives in the sibling `runtime/dispatch.rs` LOC seam.)
+    pub fn register_feed(
+        &self,
+        key: impl Into<String>,
+        controller: Arc<dyn nmp_feed::FeedController>,
+    ) {
+        self.feed_registry.register(key, controller);
     }
 
     /// Return an `Rc` clone of the reducer for composition-root closures.
@@ -214,6 +237,10 @@ impl WasmRuntime {
                 })])
             }
             WorkerRequest::SetSigner(request) => Ok(self.set_signer(request)),
+            WorkerRequest::LoadOlderFeed {
+                feed_key,
+                correlation_id,
+            } => Ok(self.load_older_feed(&feed_key, correlation_id)),
             WorkerRequest::Stop { correlation_id } => self.stop(correlation_id),
         }
     }

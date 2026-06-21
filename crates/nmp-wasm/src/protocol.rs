@@ -24,6 +24,20 @@ pub enum WorkerRequest {
     /// `kind`: `"nip07"` — the only kind wired in Stage 3b. Other kinds
     /// return [`WorkerEvent::CapabilityFailure`] with `unsupported_signer_kind`.
     SetSigner(SetSigner),
+    /// ADR-0058 seq-ordered PULL scrolling — the host reached the tail of a
+    /// registered feed (e.g. scrolled to the bottom of `nmp.feed.home`) and
+    /// asks the kernel to drain one older page.
+    ///
+    /// The wasm runtime forwards `feed_key` to its `nmp_feed::FeedRegistry`
+    /// (`load_older_feed`), which runs the feed's `PullFeedController`: a
+    /// bounded seq-ordered pull drain over the kernel event store that ingests
+    /// + grows the render viewport. The grown projection flows back through the
+    /// existing push-projection channel — the shell does NO pull/cursor logic.
+    /// This is the wasm twin of the C-ABI `nmp_app_load_older_feed`.
+    LoadOlderFeed {
+        feed_key: String,
+        correlation_id: String,
+    },
     Stop {
         correlation_id: String,
     },

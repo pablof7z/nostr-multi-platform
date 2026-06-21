@@ -142,7 +142,6 @@ use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::InterestShape;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{ActorCommand, KernelEventObserver};
@@ -291,7 +290,9 @@ pub fn register_op_feed_defaults(
         let account_slot = active_account_slot.clone();
         let kinds: BTreeSet<u32> = contact_feed_kinds.iter().copied().collect();
         Arc::new(ClosureInterestShape::new(move || {
-            live_contact_feed_shape(&account_slot, &follow_set, &kinds)
+            // ONE canonical fail-closed shape, shared with the wasm/web home
+            // feed (`nmp_app_chirp_web`) — no platform fork.
+            nmp_nip02::live_contact_feed_shape(&account_slot, &follow_set, &kinds)
         }))
     };
     let pull = app.feed_pull_fn();
@@ -446,34 +447,6 @@ pub fn register_op_feed_defaults(
     });
 
     OpFeedDefaults { engine, follow_set }
-}
-
-/// Build the LIVE contact-feed pull [`InterestShape`], or `None` to fail closed.
-///
-/// B1 — race-free fail-close. The active-account slot is read **first**: on
-/// logout / account-switch the actor can null the slot BEFORE the async identity
-/// observer clears [`ActiveFollowSet`]
-/// (`crates/nmp-ffi/src/lib.rs` `update_listener`), so a synchronous
-/// `load_older` can observe `slot == None` while `follow_set.follows()` is still
-/// stale. Reading the slot first means no live active account ⇒ `None` ⇒ no
-/// shape ⇒ no pull (never a stale-viewer pull, never a broad-scan; D5). Only
-/// when there IS a live active account do we form the shape from
-/// `viewer = active account pubkey` + its follows; the viewer is always a member
-/// (self-inclusion), so the author set is never empty.
-fn live_contact_feed_shape(
-    account_slot: &ActiveAccountSlot,
-    follow_set: &ActiveFollowSet,
-    kinds: &BTreeSet<u32>,
-) -> Option<InterestShape> {
-    if kinds.is_empty() {
-        return None; // host declared no contact-feed kinds ⇒ fail closed
-    }
-    // Prove a LIVE active account BEFORE touching the (possibly stale) follow
-    // set. `None` here is the logout/switch fail-closed path.
-    let viewer = read_active(account_slot)?;
-    let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
-    authors.insert(viewer);
-    Some(InterestShape::timeline_for(authors, kinds.clone()))
 }
 
 /// Read the active account's hex pubkey from the slot, or `None` when no

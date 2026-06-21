@@ -127,6 +127,11 @@ export type NmpClient = {
    *  first and supply the resulting hex pubkey. The wasm runtime installs the
    *  signer synchronously; subsequent write actions use it. */
   setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
+  /** ADR-0058 — the timeline reached its tail. Ask the wasm runtime to drain
+   *  one older page of `feedKey` (e.g. HOME_FEED_KEY) through its
+   *  `PullFeedController`. The grown projection arrives on the next snapshot;
+   *  the shell does no cursor logic. */
+  loadOlderFeed(feedKey: string): Promise<RuntimeSnapshot>;
 };
 
 export function createNmpClient(): NmpClient {
@@ -298,6 +303,7 @@ abstract class BaseClient implements NmpClient {
   }
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   abstract setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
+  abstract loadOlderFeed(feedKey: string): Promise<RuntimeSnapshot>;
 }
 
 class WorkerNmpClient extends BaseClient {
@@ -364,6 +370,15 @@ class WorkerNmpClient extends BaseClient {
       kind: "nip07",
       pubkey_hex: pubkeyHex,
       correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
+    });
+  }
+
+  async loadOlderFeed(feedKey: string): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    return this.request({
+      type: "load_older_feed",
+      feed_key: feedKey,
+      correlation_id: makeCorrelationId("web-load-older", this.nextCorrelationId++),
     });
   }
 
@@ -450,6 +465,14 @@ class InProcessNmpClient extends BaseClient {
       kind: "nip07",
       pubkey_hex: pubkeyHex,
       correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
+    });
+  }
+
+  async loadOlderFeed(feedKey: string): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "load_older_feed",
+      feed_key: feedKey,
+      correlation_id: makeCorrelationId("web-load-older", this.nextCorrelationId++),
     });
   }
 

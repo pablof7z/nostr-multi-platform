@@ -35,6 +35,43 @@ impl WasmRuntime {
         ]
     }
 
+    /// Drain one older page for the feed registered under `feed_key` (ADR-0058).
+    ///
+    /// The wasm twin of `NmpApp::load_older_feed`: forwards to the feed's
+    /// `PullFeedController` (which re-reads the live, fail-closed interest shape,
+    /// runs a bounded seq-ordered pull drain over the kernel event store,
+    /// ingests the page through the feed's own observer path, and grows the
+    /// render viewport). The shell does NO pull/cursor logic.
+    ///
+    /// On a non-empty drain the parked claim queue is flushed (so newly-pulled
+    /// rows resolve their kind:0 profiles) and a fresh snapshot is emitted so
+    /// the grown projection re-renders. A no-op drain (fail-closed shape /
+    /// exhausted log) returns only the `ActionAccepted` — no wasted frame.
+    pub(super) fn load_older_feed(
+        &mut self,
+        feed_key: &str,
+        correlation_id: String,
+    ) -> Vec<WorkerEvent> {
+        let grew = self.feed_registry.load_older(feed_key);
+        let mut events = vec![WorkerEvent::ActionAccepted {
+            action_type: "nmp.feed.load_older".to_string(),
+            correlation_id,
+        }];
+        if grew {
+            // The controller's `apply` (engine observer) may have parked claim
+            // requests for newly-surfaced authors; flush them through the same
+            // post-tick drain the relay-ingest path uses (the registry borrow is
+            // already released, so `reducer.borrow_mut()` inside the drain is
+            // re-entrancy-safe). Then push the grown `nmp.feed.home` projection.
+            let drain = self.post_tick_drain.borrow().clone();
+            if let Some(drain) = drain {
+                drain();
+            }
+            events.push(self.snapshot_event());
+        }
+        events
+    }
+
     pub(super) fn app_action(
         &mut self,
         action: AppAction,

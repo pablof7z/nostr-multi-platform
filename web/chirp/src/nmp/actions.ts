@@ -5,6 +5,12 @@ export type RuntimeCommand = {
   payload: unknown;
 };
 
+/** ADR-0058 — the home (contact) feed projection key the wasm runtime
+ *  registers its `PullFeedController` under. Matches the Rust
+ *  `OP_FEED_SNAPSHOT_KEY` ("nmp.feed.home"). Passed to
+ *  `NmpClient.loadOlderFeed(key)` when the home timeline reaches its tail. */
+export const HOME_FEED_KEY = "nmp.feed.home";
+
 export function publishNoteAction(content: string, replyToId: string | null = null): ChirpAction {
   return {
     action: "publish_note",

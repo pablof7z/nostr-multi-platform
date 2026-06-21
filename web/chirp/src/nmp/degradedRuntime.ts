@@ -59,6 +59,15 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "load_older_feed":
+        return [
+          {
+            type: "capability_failure",
+            capability: "load_older_feed",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "stop":
         this.status = "stopped";
         return [

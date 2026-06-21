@@ -177,6 +177,62 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
   });
 }
 
+export type PagingFixtureRelay = FixtureRelay & {
+  /** Hex pubkey of the test viewer (use this for the window.nostr mock). */
+  viewerPubkey: string;
+  /** Number of kind:1 ROOT notes seeded (each surfaces as its own home row). */
+  seededNoteCount: number;
+};
+
+/**
+ * Start a fixture relay seeded with `noteCount` genuinely-signed kind:1 ROOT
+ * notes from a single follow (plus the viewer's kind:3 follow list and the
+ * follow's kind:0). Used by the ADR-0058 PULL-scrolling E2E: seeding more
+ * notes than the home feed's default render window (80) means the timeline
+ * caps below the full corpus on first paint, and "Load older" must grow it.
+ *
+ * Each note carries distinct content + `created_at` so its event id is unique;
+ * all are authored by the same follow so every one is an independent home row.
+ */
+export async function startPagingFixtureRelay(noteCount: number): Promise<PagingFixtureRelay> {
+  const viewerSk = generateSecretKey();
+  const viewerPubkey = getPublicKey(viewerSk);
+  const followSk = generateSecretKey();
+  const followPubkey = getPublicKey(followSk);
+
+  const now = Math.floor(Date.now() / 1000);
+
+  const profile = finalizeEvent(
+    { kind: 0, created_at: now - noteCount - 100, tags: [], content: JSON.stringify({ name: "Paging Fixture" }) },
+    followSk,
+  ) as NostrEvent;
+
+  const contactList = finalizeEvent(
+    { kind: 3, created_at: now, tags: [["p", followPubkey]], content: "" },
+    viewerSk,
+  ) as NostrEvent;
+
+  const notes: NostrEvent[] = [];
+  for (let i = 0; i < noteCount; i += 1) {
+    notes.push(
+      finalizeEvent(
+        {
+          kind: 1,
+          // Descending created_at so the newest sort to the top; every note is
+          // a distinct root with a unique id.
+          created_at: now - i - 1,
+          tags: [],
+          content: `paging note #${i}`,
+        },
+        followSk,
+      ) as NostrEvent,
+    );
+  }
+
+  const base = await startServer([contactList, profile, ...notes]);
+  return { ...base, viewerPubkey, seededNoteCount: noteCount };
+}
+
 // ── Public API: boot smoke relay (no seeded events) ──────────────────────────
 
 /**

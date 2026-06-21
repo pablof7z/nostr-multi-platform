@@ -42,19 +42,31 @@
 //!   decides.
 //! * **D8** — no I/O or blocking in any registered closure.
 
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_core::TypedProjectionData;
-use nmp_feed::FeedRequest;
+use nmp_feed::{
+    pull_fn_from_store_provider, ClosureInterestShape, FeedAdvance, FeedApply, FeedController,
+    PullFeedController,
+};
 use nmp_nip01::op_feed::{
     encode_op_feed_snapshot, register_op_feed, OpFeedEngine, OP_FEED_FILE_IDENTIFIER,
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION, OP_FEED_SNAPSHOT_KEY,
 };
-use nmp_nip02::ActiveFollowSet;
+use nmp_nip02::{live_contact_feed_shape, ActiveFollowSet};
 use nmp_wasm::WasmRuntime;
+
+/// Chirp's home (contact) feed kind policy: kind:1 (text note) + kind:6
+/// (NIP-18 repost). Mirrors the native `HOME_FEED_KINDS_JSON = "[1,6]"`
+/// (`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs`) and the web shell's
+/// `openContactFeedCommand([1, 6])` default — the one place the web composition
+/// declares the host's contact-feed kinds for the pull pager's interest shape.
+const HOME_FEED_KINDS: [u32; 2] = [1, 6];
 
 use crate::claim_queue::{build_queuing_claim_sink, drain_pending_claims, new_pending_claim_queue};
 
@@ -218,12 +230,66 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
         }
     }));
 
+    // 8b. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B).
+    //
+    // The wasm/web twin of `nmp_defaults::register_op_feed_defaults` §5a: register
+    // a `PullFeedController` under `nmp.feed.home` so a `LoadOlderFeed` request
+    // drains one older page on demand. Reuses the SHARED, fail-closed interest
+    // shape (`nmp_nip02::live_contact_feed_shape`) and the SHARED pull seam
+    // (`nmp_feed::pull_fn_from_store_provider`) the native path uses — no
+    // platform-specific fork. Registered UNCONDITIONALLY (before sign-in): the
+    // provider re-reads the live shape on every `load_older`, and `None` from it
+    // (no active account / empty kinds) fails closed (no pull, no broad-scan;
+    // D5) while the feed keeps rendering its push projection.
+    {
+        let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
+            // Capture the live active-account SLOT (not the registration-time
+            // viewer) so the shape reads the CURRENT signed-in account on every
+            // load_older call; after logout/switch the slot drives fail-close.
+            let follow_set = Arc::clone(&follow_set);
+            let account_slot = Arc::clone(&active_account_slot);
+            let kinds: BTreeSet<u32> = HOME_FEED_KINDS.into_iter().collect();
+            Arc::new(ClosureInterestShape::new(move || {
+                live_contact_feed_shape(&account_slot, &follow_set, &kinds)
+            }))
+        };
+        // In-process pull over the kernel event store. The wasm reducer holds one
+        // kernel for its lifetime, so a stable `Arc` clone is correct (no Reset
+        // republish on this target); the shared helper bakes the page-size/scan
+        // budget + fail-closed terminator.
+        let store = reducer.borrow().event_store_handle();
+        let pull = pull_fn_from_store_provider(Arc::new(move || Some(Arc::clone(&store))));
+        // Apply each drained row through the engine's OWN observer path (dedup +
+        // projection identical to live push ingest).
+        let apply: FeedApply = {
+            let engine = Arc::clone(&engine);
+            Arc::new(move |event: &KernelEvent| engine.on_kernel_event(event))
+        };
+        // Grow the render viewport one page AFTER the page is ingested so the
+        // newly-pulled older roots become visible in the sorted snapshot.
+        let advance: FeedAdvance = {
+            let engine = Arc::clone(&engine);
+            Arc::new(move || {
+                engine.grow_visible_window();
+            })
+        };
+        let controller: Arc<dyn FeedController> =
+            PullFeedController::new(provider, pull, apply, advance);
+        runtime.register_feed(OP_FEED_SNAPSHOT_KEY, controller);
+    }
+
     // 9. Register the typed snapshot projection under "nmp.feed.home".
     let engine_for_projection = Arc::clone(&engine);
     reducer
         .borrow()
         .register_typed_snapshot_projection(OP_FEED_SNAPSHOT_KEY, move || {
-            let snapshot = engine_for_projection.snapshot(&FeedRequest::default());
+            // ADR-0058 — emit the CURRENT window, INCLUDING pages revealed by
+            // prior `load_older` `grow_visible_window` calls. A fixed
+            // `FeedRequest::default()` caps the snapshot at the first page, so
+            // pulled-older rows would ingest but never become user-visible.
+            // `snapshot_current_window()` reads the live window limit (matches
+            // native `op_feed_defaults` §5b).
+            let snapshot = engine_for_projection.snapshot_current_window();
             Some(TypedProjectionData {
                 key: OP_FEED_SNAPSHOT_KEY.to_string(),
                 schema_id: OP_FEED_SCHEMA_ID.to_string(),

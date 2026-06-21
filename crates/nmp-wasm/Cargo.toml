@@ -30,6 +30,11 @@ nmp-network = { path = "../nmp-network", default-features = false }
 # `signers/nip07.rs` evaluates `false`).
 nmp-signers = { path = "../nmp-signers", features = ["wasm"] }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# ADR-0058 seq-ordered PULL scrolling — the `FeedRegistry` + `FeedController`
+# the host owns so a `load_older_feed(key)` command drives the same
+# `PullFeedController` the native `NmpApp` feed registry drives. Wasm-safe
+# (nmp-feed → nmp-core default-features=false + nmp-threading).
+nmp-feed = { path = "../nmp-feed" }
 nostr = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

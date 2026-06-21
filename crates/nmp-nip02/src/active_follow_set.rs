@@ -291,6 +291,48 @@ fn active_pubkey(slot: &ActiveAccountSlot) -> Option<String> {
     }
 }
 
+/// Build the LIVE contact-feed pull [`InterestShape`](nmp_core::planner::InterestShape),
+/// or `None` to fail closed.
+///
+/// This is the ONE canonical, fail-closed shape both the native home feed
+/// (`nmp_defaults::register_op_feed_defaults`) and the wasm/web home feed
+/// (`nmp_app_chirp_web::composition::setup_chirp_web_feeds`) hand to their
+/// `nmp_feed::PullFeedController` provider, so a `load_older` re-reads the
+/// active account's follow set + host-declared kinds on every call — never a
+/// frozen registration-time snapshot, and never a platform-specific fork (the
+/// fail-closed rule lives here, once).
+///
+/// B1 — race-free fail-close. The active-account slot is read **first**: on
+/// logout / account-switch the actor can null the slot BEFORE the async
+/// identity observer clears this [`ActiveFollowSet`], so a synchronous
+/// `load_older` can observe `slot == None` while [`ActiveFollowSet::follows`]
+/// is still stale. Reading the slot first means no live active account ⇒
+/// `None` ⇒ no shape ⇒ no pull (never a stale-viewer pull, never a broad-scan;
+/// D5). An empty `kinds` (host declared no contact-feed kinds) likewise fails
+/// closed. Only when there IS a live active account AND a non-empty kind set
+/// do we form the shape from `viewer = active account pubkey` + its follows;
+/// the viewer is always a member (self-inclusion), so the author set is never
+/// empty.
+#[must_use]
+pub fn live_contact_feed_shape(
+    account_slot: &ActiveAccountSlot,
+    follow_set: &ActiveFollowSet,
+    kinds: &BTreeSet<u32>,
+) -> Option<nmp_core::planner::InterestShape> {
+    if kinds.is_empty() {
+        return None; // host declared no contact-feed kinds ⇒ fail closed
+    }
+    // Prove a LIVE active account BEFORE touching the (possibly stale) follow
+    // set. `None` here is the logout/switch fail-closed path.
+    let viewer = active_pubkey(account_slot)?;
+    let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
+    authors.insert(viewer);
+    Some(nmp_core::planner::InterestShape::timeline_for(
+        authors,
+        kinds.clone(),
+    ))
+}
+
 impl KernelEventObserver for ActiveFollowSet {
     /// Called by the kernel once per accepted kind:3 event.
     ///

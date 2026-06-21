@@ -28,15 +28,72 @@
 //! old `created_at` lands at a *higher* seq, so the next drain sees it even
 //! though a `created_at` cursor would have skipped it (ADR-0058 §1).
 
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::InterestShape;
-use nmp_core::store::ScanLogResult;
-use nmp_core::substrate::KernelEvent;
-use nmp_core::PullScope;
+use nmp_core::store::{EventStore, PullPage, ScanLogResult};
+use nmp_core::{pull_page_over, PullLimits, PullScope};
 
-use crate::pager::{FeedInterestShape, FeedPullPager};
+use nmp_core::substrate::KernelEvent;
+
+use crate::pager::{FeedInterestShape, FeedPullPager, DEFAULT_PULL_PAGE_SIZE};
 use crate::FeedController;
+
+/// The current `Arc<dyn EventStore>`, or `None` when no store is available yet.
+///
+/// Native reads this through the kernel's republished event-store slot (so a
+/// `Reset` that mints a fresh store is observed without re-wiring); the wasm/web
+/// path returns a stable `Arc` clone. `None` ⇒ the built [`PullFn`] yields an
+/// empty, exhausted page (fail closed — no broad-scan).
+pub type EventStoreProvider = Arc<dyn Fn() -> Option<Arc<dyn EventStore>> + Send + Sync>;
+
+/// Build a [`PullFn`] over an [`EventStoreProvider`].
+///
+/// This is the ONE in-process pull seam both the native composition root
+/// (`NmpApp::feed_pull_fn`) and the wasm/web composition root
+/// (`nmp_app_chirp_web`) hand to their [`PullFeedController`], so the
+/// page-size / scan-budget policy and the fail-closed terminator live in
+/// exactly one place — never a platform-specific fork (ADR-0039 §6.1: a plain
+/// Rust closure, never a new host pull accessor).
+///
+/// Limits: one match entry per visible row (`DEFAULT_PULL_PAGE_SIZE`) and a
+/// generous per-call scan window (`8 ×`); the pager's own cross-call scan
+/// budget bounds total work (D5). On an unavailable store (provider yields
+/// `None`) or an unsupported / erroring scope, the closure returns an **empty,
+/// exhausted page** so the pager drain terminates and the feed fails closed
+/// (no broad-scan, no poll).
+#[must_use]
+pub fn pull_fn_from_store_provider(store_provider: EventStoreProvider) -> PullFn {
+    let max_entries = NonZeroUsize::new(DEFAULT_PULL_PAGE_SIZE).unwrap_or(NonZeroUsize::MIN);
+    let max_scan =
+        NonZeroUsize::new(DEFAULT_PULL_PAGE_SIZE.saturating_mul(8)).unwrap_or(NonZeroUsize::MIN);
+    let limits = PullLimits {
+        max_entries,
+        max_scan_entries: max_scan,
+    };
+    Arc::new(move |scope: PullScope, after_seq: u64| {
+        // Fail-closed terminator: an empty page at the requested cursor with
+        // `has_more == false` ⇒ the drain stops as `Exhausted`, applies and
+        // grows nothing, and `load_older` returns false (projection-only).
+        let exhausted = || {
+            ScanLogResult::Page(PullPage {
+                entries: Vec::new(),
+                next_after_seq: after_seq,
+                latest_seq: after_seq,
+                has_more: false,
+            })
+        };
+        let Some(store) = store_provider() else {
+            return exhausted();
+        };
+        match pull_page_over(store.as_ref(), scope, after_seq, limits) {
+            Ok(result) => result,
+            // Unsupported shape / store error ⇒ fail closed, never broad-scan.
+            Err(_) => exhausted(),
+        }
+    })
+}
 
 /// The in-process pull seam: `(scope, after_seq) -> page`. The composition root
 /// builds this over the kernel event store (`nmp_core::pull_page_over`); it is a

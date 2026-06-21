@@ -1,5 +1,5 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, openContactFeedCommand, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
+import { publishNoteAction, openContactFeedCommand, claimProfileCommand, releaseProfileCommand, HOME_FEED_KEY, type RuntimeCommand } from "./nmp/actions";
 import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
 import type { ProfileWire } from "./components/user-avatar/ProfileWire";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
@@ -112,6 +112,13 @@ export default function App() {
   const dispatchQuiet = (command: RuntimeCommand): void => {
     void client.dispatchCommand(command);
   };
+  // ADR-0058 — the home timeline reached its tail. Signal tail-reached to the
+  // wasm runtime; its `PullFeedController` drains one older page and pushes the
+  // grown `nmp.feed.home` projection back through the snapshot channel (which
+  // updates `rows()`). The shell does no cursor/relay/cache logic.
+  const loadOlderHome = (): void => {
+    void client.loadOlderFeed(HOME_FEED_KEY).then(setSnapshot);
+  };
 
   // Profile host for the registry user-* components (NostrAvatar / ProfileName).
   // `profile(pubkey)` reads the kernel's resolved_profiles (KRPR) full
@@ -141,6 +148,7 @@ export default function App() {
               onClaimCommand={dispatchQuiet}
               onConnect={connect}
               signerConnected={signerConnected()}
+              onLoadOlder={loadOlderHome}
             />
           </Match>
           <Match when={tab() === "chats"}>

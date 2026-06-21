@@ -50,7 +50,7 @@ pub mod active_follow_set;
 pub mod projection;
 pub mod wire;
 
-pub use active_follow_set::ActiveFollowSet;
+pub use active_follow_set::{live_contact_feed_shape, ActiveFollowSet};
 pub use nmp_nip25::{ReactAction, ReactModule};
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{

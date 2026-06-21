@@ -31,6 +31,11 @@ export function HomePanel(props: {
   onClaimCommand?: (command: RuntimeCommand) => void;
   onConnect?: () => void;
   signerConnected?: boolean;
+  /** ADR-0058 seq-ordered PULL scrolling — fired when the timeline reaches its
+   *  tail (the sentinel scrolls into view) or the "Load older" affordance is
+   *  clicked. The shell only signals tail-reached; the Rust `PullFeedController`
+   *  owns the pager and pushes the grown `nmp.feed.home` projection back. */
+  onLoadOlder?: () => void;
 }) {
   const [draft, setDraft] = createSignal("");
   const [replyToId, setReplyToId] = createSignal<string | null>(null);
@@ -86,9 +91,51 @@ export function HomePanel(props: {
             />
           )}
         </For>
+        <Show when={props.onLoadOlder}>
+          <LoadOlderTrigger onLoadOlder={props.onLoadOlder!} />
+        </Show>
       </Show>
     </section>
     </NostrProfileHostProvider>
+  );
+}
+
+/// ADR-0058 tail trigger — an IntersectionObserver sentinel at the bottom of
+/// the timeline plus an explicit "Load older" affordance. When the sentinel
+/// scrolls into view (or the button is clicked) it signals tail-reached; the
+/// Rust `PullFeedController` owns the actual pager. The shell does NO cursor
+/// logic — it only calls `onLoadOlder` and renders the pushed projection.
+function LoadOlderTrigger(props: { onLoadOlder: () => void }) {
+  let sentinel: HTMLDivElement | undefined;
+  onMount(() => {
+    if (!sentinel || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            props.onLoadOlder();
+          }
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    onCleanup(() => observer.disconnect());
+  });
+  return (
+    <div class="load-older" data-testid="load-older-region">
+      <div ref={sentinel} data-testid="load-older-sentinel" aria-hidden="true" />
+      <button
+        type="button"
+        class="load-older-btn"
+        data-testid="load-older"
+        onClick={() => props.onLoadOlder()}
+      >
+        Load older
+      </button>
+    </div>
   );
 }
 
