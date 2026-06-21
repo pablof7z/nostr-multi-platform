@@ -165,6 +165,51 @@ class KernelBridge {
         if (handle != 0L) nativeReleaseEvent(handle, uri, consumerId)
     }
 
+    // ── ADR-0063 Lane G (#1671) — unified resolve_ref / release_ref ──────────
+
+    /**
+     * ADR-0063 Lane D/G (#1671) — unified, origin-blind reference resolution. The
+     * Android twin of iOS `KernelHandle.resolveRef`. Supersedes the legacy
+     * [claimProfile] / [claimEvent] surface (kept until Lane H deletes them).
+     *
+     * [namespace] — [RefNamespace] (profile / event).
+     * [key] — lowercase 64-hex pubkey (profile) or event-id hex / `kind:pubkey:d`
+     *   (event).
+     * [consumerId] — opaque refcount owner key (e.g. a Compose item key).
+     * [shape] — the requested [RefShape] projection subset.
+     * [liveness] — [RefLiveness]: CacheOk (background) vs Live (open screen).
+     *
+     * Idempotent per `(namespace, key, consumerId)`; the matching [releaseRef]
+     * must be called on teardown so the kernel reclaims the resolver slot.
+     */
+    fun resolveRef(
+        namespace: RefNamespace,
+        key: String,
+        consumerId: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+    ) {
+        if (handle != 0L) {
+            nativeResolveRef(
+                handle,
+                namespace.code,
+                key,
+                consumerId,
+                shape.code,
+                liveness.code,
+            )
+        }
+    }
+
+    /**
+     * ADR-0063 Lane D/G (#1671) — release a reference previously registered via
+     * [resolveRef]. Decrements the per-consumer refcount; the resolver slot is
+     * torn down when the last consumer releases. Safe to call with no live claim.
+     */
+    fun releaseRef(namespace: RefNamespace, key: String, consumerId: String) {
+        if (handle != 0L) nativeReleaseRef(handle, namespace.code, key, consumerId)
+    }
+
     /**
      * Dispatch a named action through the action registry.
      *
@@ -463,6 +508,15 @@ class KernelBridge {
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
+    private external fun nativeResolveRef(
+        handle: Long,
+        namespace: Int,
+        key: String,
+        consumerId: String,
+        shape: Int,
+        liveness: Int,
+    )
+    private external fun nativeReleaseRef(handle: Long, namespace: Int, key: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
     private external fun nativeAckActionStage(handle: Long, correlationId: String)
     // Outbox control-plane (parity GAP 4). `internal` so the cohesive

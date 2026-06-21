@@ -54,16 +54,16 @@ fun ThreadScreen(
     val projections = snapshot.projections
     val cards = projections?.flatFeeds?.get("nmp.feed.thread.$eventId")?.cards ?: emptyList()
     val cardLookup = cards.associate { it.card.id to it.card }
-    val resolvedProfiles = projections?.resolvedProfiles ?: emptyMap()
-    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    val profileHost = rememberKernelProfileHost(model)
     var replyContent by remember(eventId) { mutableStateOf("") }
 
     // Provide the on-demand claimer at the thread root so `RememberProfileClaim`
     // calls in thread author rows are live (not no-ops) — mirrors TimelineScreen
     // and DmConversationListScreen. Without it, thread author display names never
-    // trigger an on-demand kind:0 fetch (issue #1303).
+    // trigger an on-demand kind:0 fetch (issue #1303). ADR-0063 Lane G: feed/list
+    // fetches resolve the ProfileRef shape with CacheOk liveness.
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
-        if (claim) model.claimProfile(pubkey, consumerId)
+        if (claim) model.resolveProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
     val eventClaimer: EventClaimer = { uri, consumerId, claim ->
@@ -75,7 +75,6 @@ fun ThreadScreen(
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
         LocalEventClaimer provides eventClaimer,
-        LocalResolvedProfiles provides resolvedProfiles,
         LocalClaimedEventEmbeds provides claimedEventEmbeds,
         LocalNostrProfileHost provides profileHost,
     ) {

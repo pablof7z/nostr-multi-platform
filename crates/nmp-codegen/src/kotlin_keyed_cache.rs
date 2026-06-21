@@ -11,6 +11,13 @@ use std::path::Path;
 
 use crate::swift_projections_registry::{KeyedProjectionEntry, KEYED_PROJECTIONS};
 
+// ADR-0063 Lane G (#1671): the TYPED row-payload rendering (accessors +
+// decode-before-commit seam) lives in a sibling file so neither source exceeds
+// the 500-LOC cap (the Swift `swift_keyed_cache_typed.rs` twin).
+#[path = "kotlin_keyed_cache_typed.rs"]
+mod typed;
+use typed::{render_accessors, render_typed_decoders};
+
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
@@ -35,8 +42,11 @@ package org.nmp.android
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import nmp.kernel.ClaimedEventsSnapshot
+import nmp.kernel.ProfileSnapshot
 import nmp.refs.RefRowDeltaBatch
 import nmp.refs.RefRowState
+import org.nmp.android.model.ProfileCard
 
 private const val KRC_TAG = \"KeyedRefCache\"
 
@@ -56,6 +66,7 @@ pub fn render_kotlin_keyed_ref_cache(entries: &[KeyedProjectionEntry]) -> String
     out.push_str(STATIC_TYPES);
     out.push_str(&render_routing(entries));
     out.push_str(STATIC_MERGE);
+    out.push_str(&render_typed_decoders(entries));
     out.push_str(&render_accessors(entries));
     out.push_str("}\n");
     out
@@ -79,45 +90,6 @@ fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
     s
 }
 
-fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
-    // ADR-0063 Lane C (#1671), BLOCKING/HIGH codex fix: Android must NOT expose a
-    // public RAW per-namespace refs accessor. The Swift twin returns the TYPED
-    // domain value (`profile(pubkey) -> ProfileCard?` / `event(primaryId) ->
-    // ClaimedEventDto?`) by decoding the cached row buffer through the namespace's
-    // `flatc --swift` reader. The equivalent Kotlin readers
-    // (`nmp.kernel.ProfileSnapshot` / `nmp.kernel.ClaimedEventsSnapshot`) are NOT
-    // checked into the Android target — only the inner `nmp.kernel.ProfileCard`
-    // ships, and there is no `ClaimedEventsSnapshot.kt` at all (verified). The
-    // kotlin-flatc-drift `--write` gate only refreshes ALREADY checked-in
-    // `nmp/kernel/*.kt`; it never ADDS a new reader, so CI cannot supply these
-    // bindings — they require a one-time `flatc --kotlin` run + commit (Lane G).
-    //
-    // Emitting a typed accessor that names a class the Android target cannot see
-    // would not compile; emitting a public raw `ByteArray?` accessor is the
-    // dishonest raw surface invariant #4 forbids. So this generator emits NEITHER:
-    // the cached row bytes stay reachable ONLY via the `internal payload(...)`
-    // merge primitive (used by the cache itself + same-module tests), with NO
-    // public per-namespace refs surface. Lane G wires the TYPED kotlin accessor
-    // (mirroring the Swift typed path) once the `flatc --kotlin` row readers land
-    // — flipping `KotlinRefRowPayload` to `Some` regenerates the typed accessor
-    // here with zero generator change.
-    // `entries` is intentionally unused while NO typed kotlin accessor is
-    // emitted (Lane G wires it once the row readers land); keep the parameter so
-    // the generator signature stays identical to the swift twin.
-    let _ = entries;
-    let s = String::from(
-        "    // ADR-0063 Lane C (#1671): NO public per-namespace refs accessor.\n\
-         \x20\x20\x20\x20// The TYPED kotlin accessors (`profile(pubkey) -> ProfileCard?` /\n\
-         \x20\x20\x20\x20// `event(primaryId) -> ClaimedEventDto?`, the Swift typed twin) are\n\
-         \x20\x20\x20\x20// gated on the `nmp.kernel.ProfileSnapshot` / `ClaimedEventsSnapshot`\n\
-         \x20\x20\x20\x20// `flatc --kotlin` row readers, which are not yet checked into the\n\
-         \x20\x20\x20\x20// Android target (Lane G). Until then the cache exposes NO raw\n\
-         \x20\x20\x20\x20// `ByteArray?` per-namespace surface (invariant #4: typed per\n\
-         \x20\x20\x20\x20// namespace, never dishonest raw bytes); the row bytes are reachable\n\
-         \x20\x20\x20\x20// only through the `internal payload(...)` merge primitive below.\n",
-    );
-    s
-}
 
 const STATIC_TYPES: &str = r#"/** One cached row: last committed per-key rev + raw typed payload bytes. */
 private data class RefRowCacheEntry(val rev: ULong, val payload: ByteArray) {
@@ -164,6 +136,15 @@ class KeyedRefCache {
      * row that fails is NOT committed (prior row retained, needsResync latched).
      */
     var rowDecoder: (String, ByteArray) -> Boolean = { _, payload -> payload.isNotEmpty() }
+
+    /**
+     * ADR-0063 Lane G (#1671): wire the real typed decode-before-commit seam at
+     * construction so every `Changed` row is validated against the namespace's
+     * concrete type (no caller setup required) — the Swift `init` twin.
+     */
+    init {
+        installTypedRowDecoder()
+    }
 
     /** Register a per-row change listener (one call per committed/cleared key). */
     fun addRowChangeListener(listener: (KeyedRowChange) -> Unit) {
@@ -377,9 +358,11 @@ const STATIC_MERGE: &str = r#"    /**
      * The cached raw payload bytes for one (projectionKey, rowKey), or null.
      *
      * `internal` (NOT public): this is the cache's row-bytes merge primitive, not
-     * a public refs API. The public per-namespace TYPED accessors land in Lane G
-     * once the `flatc --kotlin` row readers ship (ADR-0063 Lane C, #1671). Visible
-     * to same-module tests, never to external callers — no dishonest raw surface.
+     * a public refs API. The PUBLIC per-namespace surface is the TYPED accessor
+     * (`profile(key) -> ProfileCard?` / `event(key) -> ClaimedEventDto?`, ADR-0063
+     * Lane G), which decodes these bytes through the namespace's typed reader.
+     * Visible to same-module tests, never to external callers — no dishonest raw
+     * surface.
      */
     internal fun payload(projectionKey: String, rowKey: String): ByteArray? =
         rows[projectionKey]?.get(rowKey)?.payload

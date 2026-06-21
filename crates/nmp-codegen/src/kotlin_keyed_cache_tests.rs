@@ -18,41 +18,57 @@ fn emits_namespace_routing() {
     }
 }
 
-/// ADR-0063 Lane C (#1671) BLOCKING/HIGH codex fix: Android must NOT expose a
-/// public RAW per-namespace refs accessor. Until the `flatc --kotlin` row
-/// readers (`nmp.kernel.ProfileSnapshot` / `ClaimedEventsSnapshot`) ship and the
-/// TYPED accessor can be emitted (Lane G), the generator emits NO public
-/// per-namespace surface: the cached bytes are reachable only via the `internal
-/// payload(...)` merge primitive. This guards against re-introducing the
-/// dishonest raw `ByteArray?` accessor invariant #4 forbids.
+/// ADR-0063 Lane G (#1671): the public per-namespace surface is the TYPED
+/// accessor (`profile(key) -> ProfileCard?` / `event(key) -> ClaimedEventDto?`),
+/// NEVER a dishonest raw `ByteArray?` accessor (invariant #4). The accessor
+/// decodes the cached row bytes through the namespace's typed Kotlin reader; the
+/// raw bytes stay reachable only via the `internal payload(...)` merge primitive.
+/// This mirrors the Swift typed twin exactly.
 #[test]
-fn emits_no_public_raw_per_namespace_accessor() {
+fn emits_typed_per_namespace_accessor_and_no_raw_surface() {
     let out = rendered();
     for e in KEYED_PROJECTIONS {
+        let kotlin = e
+            .row_payload
+            .kotlin
+            .as_ref()
+            .expect("Lane G: every keyed projection carries a Kotlin typed descriptor");
         // The old dishonest raw accessor must be GONE for every namespace.
         assert!(
             !out.contains(&format!(
-                "fun {}(key: String): ByteArray? = payload({:?}, key)",
-                e.accessor, e.projection_key
+                "fun {}(key: String): ByteArray?",
+                e.accessor
             )),
-            "public raw ByteArray? accessor for {} must be removed (invariant #4)",
+            "raw ByteArray? accessor for {} must NOT exist (invariant #4)",
             e.accessor
         );
-        // No public per-namespace refs accessor of ANY return shape yet — the
-        // typed kotlin accessor lands in Lane G. (A TYPED accessor, once present,
-        // would be `fun <accessor>(key: String): <DomainType>?` WITHOUT the
-        // `internal` prefix; this asserts neither a public typed NOR a public raw
-        // per-namespace accessor exists today.)
+        // The TYPED accessor MUST exist: `fun <accessor>(key: String): <Domain>?`.
         assert!(
-            !out.contains(&format!("\n    fun {}(key: String)", e.accessor)),
-            "no public per-namespace accessor for {} until Lane G typed readers land",
-            e.accessor
+            out.contains(&format!(
+                "    fun {}(key: String): {}? {{",
+                e.accessor, kotlin.domain_type
+            )),
+            "typed accessor `{}(key): {}?` must be emitted (Lane G)",
+            e.accessor,
+            kotlin.domain_type
+        );
+        // It routes through the per-namespace typed decode helper + the glue.
+        assert!(
+            out.contains(&format!("KeyedRefDecoders.{}(reader)", kotlin.glue)),
+            "typed decoder for {} must call KeyedRefDecoders.{}",
+            e.accessor,
+            kotlin.glue
         );
     }
     // The row bytes stay reachable through the INTERNAL merge primitive.
     assert!(
         out.contains("internal fun payload(projectionKey: String, rowKey: String): ByteArray?"),
         "internal payload(...) merge primitive must remain (non-public)"
+    );
+    // Decode-before-commit seam installed at construction (Swift `init` twin).
+    assert!(
+        out.contains("installTypedRowDecoder()"),
+        "init must install the typed decode-before-commit seam"
     );
 }
 
