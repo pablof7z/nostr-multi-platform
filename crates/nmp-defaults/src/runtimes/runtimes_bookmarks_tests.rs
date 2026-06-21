@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::ActorCommand;
-use nmp_nip51::{active_bookmark_list_interest, active_bookmark_list_interest_id};
+use nmp_nip51::active_bookmark_list_interest_id;
+use nmp_planner::{InterestLifecycle, InterestScope};
 use nostr::Keys;
 
 use super::BookmarksRuntimeController;
@@ -147,10 +148,35 @@ fn bunker_only_account_activates_bookmark_list_interest() {
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
         ActorCommand::PushInterest(interest) => {
+            // The id is pubkey-invariant, so checking it alone doesn't prove
+            // the correct pubkey was embedded. Assert the full interest shape:
+            // authors, kind, lifecycle, and scope — so a stale or hardcoded
+            // author filter is caught here, not silently routed to the wrong
+            // relay set.
             assert_eq!(
                 interest.id,
-                active_bookmark_list_interest(pubkey).id,
-                "pushed interest must be the active-pubkey bookmark-list interest"
+                active_bookmark_list_interest_id(),
+                "pushed interest must carry the pubkey-invariant slot id"
+            );
+            assert!(
+                interest.shape.authors.contains(&pubkey.to_string()),
+                "shape.authors must contain the active pubkey {pubkey:?}; got {:?}",
+                interest.shape.authors
+            );
+            assert!(
+                interest.shape.kinds.contains(&10003),
+                "shape.kinds must include kind:10003; got {:?}",
+                interest.shape.kinds
+            );
+            assert!(
+                matches!(interest.lifecycle, InterestLifecycle::Tailing),
+                "lifecycle must be Tailing; got {:?}",
+                interest.lifecycle
+            );
+            assert!(
+                matches!(interest.scope, InterestScope::Global),
+                "scope must be Global; got {:?}",
+                interest.scope
             );
         }
         other => panic!("expected PushInterest, got {other:?}"),

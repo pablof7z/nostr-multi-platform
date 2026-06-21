@@ -26,10 +26,8 @@
 //! account switch, so the kernel never accumulates one standing subscription
 //! per ever-active pubkey. Mirrors the NIP-57 zap-receipts slot pattern.
 
-use nmp_planner::{
-    InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
-};
 use nmp_core::substrate::ViewDependencies;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 
 use nmp_kinds::KIND_BOOKMARK_LIST;
 

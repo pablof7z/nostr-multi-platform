@@ -18,7 +18,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{ActionRegistrar, EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
+use nmp_core::substrate::{
+    ActionRegistrar, EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar,
+};
 use nmp_core::{ActorCommand, KernelEventObserver};
 use nmp_nip51::{
     active_bookmark_list_interest, active_bookmark_list_interest_id, BookmarkListProjection,
@@ -104,7 +106,9 @@ impl BookmarksRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(active_bookmark_list_interest(now)));
+                    .send(ActorCommand::PushInterest(active_bookmark_list_interest(
+                        now,
+                    )));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
@@ -114,7 +118,9 @@ impl BookmarksRuntimeController {
                 ));
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(active_bookmark_list_interest(now)));
+                    .send(ActorCommand::PushInterest(active_bookmark_list_interest(
+                        now,
+                    )));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.
@@ -132,10 +138,7 @@ impl BookmarksRuntimeController {
     fn active_pubkey(&self) -> Option<String> {
         // Identity straight from the pubkey slot — already hex, no keypair
         // derivation. `None` on a poisoned lock or no signed-in account.
-        self.active_pubkey
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone())
+        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
     }
 }
 
