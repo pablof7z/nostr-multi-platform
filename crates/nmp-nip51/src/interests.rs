@@ -7,13 +7,23 @@
 //! learns nothing about NIP-51 mutes — it just routes a generic
 //! [`LogicalInterest`] exactly the way it routes any other interest.
 //!
-//! # Why `Global + Nip65ReadRelays`
+//! # Why `Global + is_indexer_discovery: true`
 //!
 //! Kind:10000 mute lists are public replaceable events authored by the
 //! active account, so the interest carries `authors=[pubkey]` and routes
 //! through the planner's **Case A** (explicit authors → outbox / write relays).
 //! `InterestScope::Global` ensures the full relay-lane set is evaluated;
 //! `PTagRouting::Nip65ReadRelays` prevents fail-closed DM-relay routing.
+//!
+//! `is_indexer_discovery: true` opts the interest into the
+//! `case_a_authors` bootstrap fallback: when the active account's NIP-65
+//! mailbox is unknown AND no `app_relays` are configured (the cold-start
+//! chicken-and-egg — NIP-65 itself hasn't landed yet), the planner routes
+//! the interest to `bootstrap_indexer_relays` rather than marking the
+//! author `unroutable`. This matches the behaviour of `SELF_KINDS_TAILING`
+//! in `nmp-core/src/kernel/requests/startup.rs` which this interest replaces
+//! (kind:10000 was removed from that constant — this flag preserves the same
+//! cold-start guarantee).
 //!
 //! # Single-slot semantics
 //!
@@ -35,6 +45,17 @@ pub fn active_mute_list_interest_id() -> InterestId {
 }
 
 /// Tailing [`LogicalInterest`] for kind:10000 `authors=[pubkey]` mute lists.
+///
+/// Shape read by the planner's Case A routing (explicit authors → outbox):
+/// - `lifecycle = Tailing`
+/// - `scope = Global`
+/// - `authors = [pubkey]`
+/// - `kinds = [10000]`
+/// - `p_tag_routing = Nip65ReadRelays`
+/// - `is_indexer_discovery = true` — enables the cold-start bootstrap
+///   fallback to `bootstrap_indexer_relays` when the active account's NIP-65
+///   mailbox is not yet cached (mirrors the `SELF_KINDS_TAILING` flag in
+///   `startup.rs` that this interest replaces).
 #[must_use]
 pub fn active_mute_list_interest(pubkey: &str) -> LogicalInterest {
     let deps = ViewDependencies {
@@ -48,6 +69,11 @@ pub fn active_mute_list_interest(pubkey: &str) -> LogicalInterest {
         InterestLifecycle::Tailing,
     );
     interest.shape.p_tag_routing = PTagRouting::Nip65ReadRelays;
+    // Bootstrap fallback: when the active account has no NIP-65 mailbox cached
+    // yet AND no app_relays are configured, the planner's Case A routes the
+    // interest to `bootstrap_indexer_relays` instead of marking the author
+    // `unroutable`. Same flag that `SELF_KINDS_TAILING` set in startup.rs.
+    interest.is_indexer_discovery = true;
     interest
 }
 
@@ -110,5 +136,14 @@ mod tests {
         );
         // The id matches the pubkey-invariant slot id — withdraws by id work.
         assert_eq!(interest.id, active_mute_list_interest_id());
+        // `is_indexer_discovery` must be true — Case A cold-start fallback.
+        // Without this, a fresh install with no NIP-65 mailbox and no app_relays
+        // would mark the author `unroutable` and kind:10000 would never arrive.
+        assert!(
+            interest.is_indexer_discovery,
+            "is_indexer_discovery must be true to enable the Case A \
+             bootstrap_indexer_relays fallback on cold start (mirrors \
+             SELF_KINDS_TAILING's is_indexer_discovery flag); got false"
+        );
     }
 }
