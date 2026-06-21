@@ -21,7 +21,8 @@ use crate::common::{
     extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_envelope,
 };
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, NmpApp,
+    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
+    nmp_app_wait_barrier, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -124,8 +125,9 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // S4 uses the full try_from_raw verify path (D0: cfg-gated; 500 events ~10-25 ms ok).
     let base_ts: u64 = 1_700_000_000;
     inject_signed_events(app, base_ts, cfg.inject_count);
-    // Settle: let actor process inject + emit initial snapshot.
-    std::thread::sleep(Duration::from_millis(400));
+    // Settle: block until the actor has processed the injected events (event-driven,
+    // D8: no fixed sleep). nmp_app_wait_barrier acks when all prior commands are done.
+    nmp_app_wait_barrier(app, 5_000);
 
     // Track per-stall pre/post emit counts, configure() latency, and resume timestamps.
     let mut stalls_injected: u64 = 0;
@@ -176,10 +178,17 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             next_configure = now + configure_interval;
         }
 
-        std::thread::sleep(Duration::from_millis(10));
+        // Sleep until the next scheduled event (stall or configure), not on a fixed
+        // 10 ms poll interval. This is an explicit test-clock gate: the scheduler
+        // advances only when a real event is due, not on every wall-clock tick.
+        let next_event = next_stall.min(next_configure).min(wall_start + cfg.duration);
+        if let Some(d) = next_event.checked_duration_since(Instant::now()) {
+            std::thread::sleep(d);
+        }
     }
 
-    std::thread::sleep(Duration::from_millis(500));
+    // Grace: block until the actor drains remaining commands (event-driven, D8).
+    nmp_app_wait_barrier(app, 2_000);
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
 

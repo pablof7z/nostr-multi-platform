@@ -4,6 +4,7 @@ mod report;
 mod scenarios;
 
 use config::{selected_live_scenarios, selected_scenarios, Args, Mode};
+use nmp_testing::perf_gate::SCHEMA_VERSION;
 use report::{
     now_unix_seconds, summarize_observations, write_report, write_trace_manifest, FirehoseReport,
 };
@@ -35,6 +36,7 @@ fn main() {
     };
 
     let mut report = FirehoseReport {
+        schema_version: SCHEMA_VERSION,
         tool: "firehose-bench",
         status,
         mode: args.mode.as_str(),

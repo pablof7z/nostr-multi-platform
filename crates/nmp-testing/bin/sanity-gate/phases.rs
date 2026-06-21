@@ -208,6 +208,9 @@ pub fn run_idle_soak(report: &mut SanityReport, args: &Args) {
     // Let the initial backlog drain, then hold idle. The sidecar samples CPU
     // across this window (the orchestrator aligns its sampling to this phase).
     let before = app.with_state(|s| s.records.len());
+    // doctrine-allow: D8 — soak window: measuring CPU over elapsed wall-clock time;
+    // the domain is time itself, not a polled condition. No event source exists for
+    // "soak complete"; the sidecar samples across this fixed window.
     std::thread::sleep(Duration::from_secs(args.soak_secs.max(60)));
     let after = app.with_state(|s| s.records.len());
 
@@ -287,6 +290,9 @@ pub fn run_memory_soak(report: &mut SanityReport, args: &Args) {
 
     let rss_start = process_rss_mb();
     let alloc_start = alloc_snapshot();
+    // doctrine-allow: D8 — soak window: measuring RSS slope and allocator delta
+    // over elapsed wall-clock time; the domain is time itself. No event fires
+    // "30-minute mark reached"; this is the measurement interval, not a poll.
     std::thread::sleep(Duration::from_secs(args.soak_secs.max(60)));
     let rss_end = process_rss_mb();
     let alloc_end = alloc_snapshot();

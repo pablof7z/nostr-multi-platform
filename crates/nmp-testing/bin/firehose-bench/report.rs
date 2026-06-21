@@ -1,3 +1,4 @@
+pub(crate) use nmp_testing::perf_gate::Gate;
 use serde::Serialize;
 use std::fs;
 use std::io;
@@ -6,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize)]
 pub(crate) struct FirehoseReport {
+    pub(crate) schema_version: u32,
     pub(crate) tool: &'static str,
     pub(crate) status: &'static str,
     pub(crate) mode: &'static str,
@@ -23,7 +25,7 @@ pub(crate) struct ScenarioResult {
     pub(crate) description: &'static str,
     pub(crate) virtual_duration_seconds: u64,
     pub(crate) events_processed: u64,
-    pub(crate) gates: Vec<GateResult>,
+    pub(crate) gates: Vec<Gate>,
     pub(crate) metrics: ScenarioMetrics,
     pub(crate) passed: bool,
     pub(crate) observations: Vec<String>,
@@ -57,15 +59,6 @@ pub(crate) struct ScenarioMetrics {
     pub(crate) panics: Option<u64>,
     pub(crate) trace_records: Option<u64>,
     pub(crate) synthetic_runtime_ms: Option<u128>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct GateResult {
-    pub(crate) name: &'static str,
-    pub(crate) measured: Option<f64>,
-    pub(crate) budget: Option<f64>,
-    pub(crate) passed: bool,
-    pub(crate) note: Option<String>,
 }
 
 pub(crate) fn summarize_observations(report: &FirehoseReport) -> Vec<String> {

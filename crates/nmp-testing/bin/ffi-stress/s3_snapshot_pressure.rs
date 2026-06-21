@@ -126,11 +126,15 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let burst_snap_before = alloc_snapshot();
     let burst_start = Instant::now();
 
-    // Trigger configure() bursts to force serialization pressure.
+    // Trigger configure() bursts to force serialization pressure.  The interval
+    // between bursts is an explicit test-clock gate: we need real wall-clock
+    // spacing between configure() calls to measure serialization Hz honestly.
     let mut last_burst_start_count = None;
     for _ in 0..cfg.configure_bursts {
         last_burst_start_count = Some(callback_frame_count(ctx));
         nmp_app_configure(app, 500, 12);
+        // doctrine-allow: D8 — explicit test-clock gate: burst interval between
+        // configure() calls; spacing is the measurement input, not a polled condition.
         std::thread::sleep(cfg.burst_interval);
     }
     let burst_elapsed = burst_start.elapsed();

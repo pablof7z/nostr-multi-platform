@@ -5,7 +5,7 @@
 //!
 //! Per `docs/design/ffi-hardening/ci.md` R.2 and R.3.
 
-use crate::gate::Gate;
+use crate::gate::{Gate, SCHEMA_VERSION};
 use serde::Serialize;
 use std::fs;
 use std::io;
@@ -31,7 +31,7 @@ pub(crate) struct ScenarioMetrics {
 impl ScenarioMetrics {
     pub(crate) fn new(scenario: impl Into<String>) -> Self {
         ScenarioMetrics {
-            schema_version: 1,
+            schema_version: SCHEMA_VERSION,
             tool: "ffi-stress",
             scenario: scenario.into(),
             started_at_unix: now_unix_seconds(),

@@ -15,7 +15,7 @@
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
     nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
-    nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
+    nmp_app_set_update_callback, nmp_app_wait_barrier, process_rss_bytes, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -152,6 +152,8 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                     seq += threads as u64;
 
                     next_tick += Duration::from_nanos(interval_ns);
+                    // doctrine-allow: D8 — rate governor: single-shot sleep until the next
+                    // scheduled dispatch tick; domain is time itself (target 10k/s rate).
                     if let Some(sleep) = next_tick.checked_duration_since(Instant::now()) {
                         std::thread::sleep(sleep);
                     }
@@ -175,34 +177,18 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let rss_growth_bytes = peak_rss.saturating_sub(baseline_rss);
     let total_dispatches = dispatch_counter.load(Ordering::Relaxed);
 
-    // DRAIN: the actor thread is still alive (teardown is below). Poll the
-    // counting allocator until NET live heap stabilises — i.e. the backlog of
-    // queued ActorCommands has been processed and their heap reclaimed — or a
-    // hard 30 s drain budget elapses. Stabilised = 3 consecutive 500 ms samples
-    // within a 256 KiB band. The drain curve is recorded for the analysis doc.
+    // DRAIN: block event-driven (D8: no sleep+check polling) until the actor
+    // dispatches every command enqueued during the flood, then sample the
+    // allocator once. nmp_app_wait_barrier sends a barrier command and blocks
+    // until the actor acknowledges it — i.e. all prior commands have been
+    // processed — or the 30 s budget elapses.
     let drain_budget = Duration::from_secs(30);
-    let sample_gap = Duration::from_millis(500);
-    let stable_band: i64 = 256 * 1024;
     let drain_start = Instant::now();
-    let mut drain_curve: Vec<i64> = Vec::new();
-    let mut last_net = peak_snap.net_heap_delta(&baseline_snap);
-    drain_curve.push(last_net);
-    let mut stable_runs = 0u32;
-    loop {
-        std::thread::sleep(sample_gap);
-        let net = alloc_snapshot().net_heap_delta(&baseline_snap);
-        drain_curve.push(net);
-        if (net - last_net).abs() <= stable_band {
-            stable_runs += 1;
-        } else {
-            stable_runs = 0;
-        }
-        last_net = net;
-        if stable_runs >= 3 || drain_start.elapsed() >= drain_budget {
-            break;
-        }
-    }
+    nmp_app_wait_barrier(app, drain_budget.as_millis() as u64);
     let drain_seconds = drain_start.elapsed().as_secs_f64();
+    // A single allocator sample after the barrier replaces the old 500 ms
+    // poll loop; the backlog is known-drained so the measurement is stable.
+    let drain_curve: Vec<i64> = vec![peak_snap.net_heap_delta(&baseline_snap)];
     let drained_snap = alloc_snapshot();
     let drained_rss = process_rss_bytes();
     let peak_net_heap = peak_snap.net_heap_delta(&baseline_snap);

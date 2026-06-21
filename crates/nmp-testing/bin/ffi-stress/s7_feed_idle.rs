@@ -46,18 +46,20 @@
 //! Changed). Row-deltas (Option B) are deferred post-v1.
 //!
 //! D0: uses `actor_sender()` + `IngestPreVerifiedEvents` (test-support path).
-//! D8: no polling; idle ticks are explicit configure() calls + wall-clock sleeps.
+//! D8: no polling; idle ticks use `configure_and_await_frame()` which blocks on a
+//! `FrameProbe` channel until the actor fires the update callback. No sleep+check loops.
 
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 use nmp_ffi::{
-    nmp_app_configure, nmp_app_declare_incremental_apply, nmp_app_free, nmp_app_new,
-    nmp_app_set_update_callback, NmpApp,
+    nmp_app_declare_incremental_apply, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
+    NmpApp,
 };
+use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 
-use crate::common::percentile_u64;
+use crate::common::{configure_and_await_frame, percentile_u64};
 use crate::report::ScenarioMetrics;
 use crate::s7_feed_events::{
     inject_events_from, inject_followed_reply_to_unknown_root, inject_stranger_replies,
@@ -89,6 +91,9 @@ const OUT_OF_WINDOW_EVENTS: u32 = 20;
 /// AND the two sequential false-resend probes (out-of-window-followed, stranger)
 /// without bespoke per-window index fields.
 struct CaptureState {
+    /// Probe signal: fired after each frame is recorded so waiting callers wake
+    /// without a sleep+check loop (D8 compliance).
+    signal: ProbeSignal,
     /// ALL raw frames (for oracle replay of Phase B).
     oracle_raw_frames: Vec<Vec<u8>>,
     /// ALL decoded records.
@@ -96,8 +101,9 @@ struct CaptureState {
 }
 
 impl CaptureState {
-    fn new() -> Self {
+    fn new(signal: ProbeSignal) -> Self {
         CaptureState {
+            signal,
             oracle_raw_frames: Vec::new(),
             all_records: Vec::new(),
         }
@@ -138,6 +144,7 @@ extern "C" fn capture_cb(ctx: *mut std::ffi::c_void, payload: *const u8, payload
         let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
         state.oracle_raw_frames.push(bytes.to_vec());
         state.all_records.push(decode_frame_record(bytes));
+        state.signal.notify();
     }
 }
 
@@ -222,15 +229,25 @@ fn phase_metrics(records: &[FeedFrameRecord]) -> FeedPhaseMetrics {
     }
 }
 
-fn settle(app: *mut NmpApp) {
-    nmp_app_configure(app, 500, 12);
-    std::thread::sleep(Duration::from_millis(2_500));
+/// Trigger a configure tick and block until the callback fires a frame (D8:
+/// no sleep+check). `deadline_ms` is the upper-bound timeout.
+fn settle(
+    app: *mut NmpApp,
+    probe: &FrameProbe,
+    frame_count: impl FnMut() -> usize,
+) {
+    configure_and_await_frame(app, probe, 2_500, frame_count);
 }
 
-fn run_idle_ticks(app: *mut NmpApp) {
+/// Drive IDLE_TICKS configure ticks, blocking on the FrameProbe after each
+/// one (D8: no sleep+check polling).
+fn run_idle_ticks(
+    app: *mut NmpApp,
+    probe: &FrameProbe,
+    frame_count: impl Fn() -> usize,
+) {
     for _ in 0..IDLE_TICKS {
-        nmp_app_configure(app, 500, 12);
-        std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
+        configure_and_await_frame(app, probe, TICK_SETTLE_MS, || frame_count());
     }
 }
 
@@ -269,7 +286,8 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             vec![1],
         );
 
-        let state = Box::new(Mutex::new(CaptureState::new()));
+        let (signal_a, probe_a) = FrameProbe::new();
+        let state = Box::new(Mutex::new(CaptureState::new(signal_a)));
         let ctx = Box::into_raw(state) as *mut std::ffi::c_void;
         nmp_app_set_update_callback(app, ctx, Some(capture_cb));
 
@@ -277,11 +295,11 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // [base_ts, base_ts + FEED_EVENT_COUNT). The top-80 visible window is the
         // newest 80 (timestamps base_ts+40 .. base_ts+119).
         inject_events_from(app, VIEWER_PUBKEY, base_ts, 0, FEED_EVENT_COUNT);
-        settle(app);
+        settle(app, &probe_a, || ctx_record_count(ctx));
 
         // Idle window starts after settle.
         let idle_start = ctx_record_count(ctx);
-        run_idle_ticks(app);
+        run_idle_ticks(app, &probe_a, || ctx_record_count(ctx));
         let idle_end = ctx_record_count(ctx);
 
         nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
@@ -316,18 +334,19 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             vec![1],
         );
 
-        let state = Box::new(Mutex::new(CaptureState::new()));
+        let (signal_b, probe_b) = FrameProbe::new();
+        let state = Box::new(Mutex::new(CaptureState::new(signal_b)));
         let ctx = Box::into_raw(state) as *mut std::ffi::c_void;
         nmp_app_set_update_callback(app, ctx, Some(capture_cb));
 
         inject_events_from(app, VIEWER_PUBKEY, base_ts, 0, FEED_EVENT_COUNT);
 
         // Settle: oracle_raw_frames captures the first full-frame baseline.
-        settle(app);
+        settle(app, &probe_b, || ctx_record_count(ctx));
 
         // Idle window.
         let idle_start = ctx_record_count(ctx);
-        run_idle_ticks(app);
+        run_idle_ticks(app, &probe_b, || ctx_record_count(ctx));
         let idle_end = ctx_record_count(ctx);
 
         // ── Probe 1 (BLOCKER FIX): FOLLOWED reply to an unknown root ──────────
@@ -343,8 +362,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // id namespace 10_000 to avoid any seed collision.
         let oow_start = ctx_record_count(ctx);
         inject_followed_reply_to_unknown_root(app, base_ts - 1, 10_000);
-        nmp_app_configure(app, 500, 12);
-        std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
+        configure_and_await_frame(app, &probe_b, TICK_SETTLE_MS, || ctx_record_count(ctx));
         let oow_resends = ctx_record_count_resends(ctx, oow_start);
 
         // ── Probe 2 (secondary sanity): stranger REPLIES ─────────────────────
@@ -357,8 +375,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // byte-equality gate suppresses (would pass even with a broken gate).
         let stranger_start = ctx_record_count(ctx);
         inject_stranger_replies(app, base_ts + 200_000, 20_000, OUT_OF_WINDOW_EVENTS);
-        nmp_app_configure(app, 500, 12);
-        std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS));
+        configure_and_await_frame(app, &probe_b, TICK_SETTLE_MS, || ctx_record_count(ctx));
         let stranger_resends = ctx_record_count_resends(ctx, stranger_start);
 
         nmp_app_set_update_callback(app, std::ptr::null_mut(), None);

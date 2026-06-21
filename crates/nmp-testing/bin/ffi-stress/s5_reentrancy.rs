@@ -22,7 +22,7 @@
 use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
 use crate::ffi::{
     nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new,
-    nmp_app_set_update_callback, test_pubkeys, NmpApp,
+    nmp_app_set_update_callback, nmp_app_wait_barrier, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -160,6 +160,9 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
             if SCENARIO_DONE.load(Ordering::Acquire) {
                 break;
             }
+            // doctrine-allow: D8 — watchdog: periodic deadlock check; the callback
+            // in-flight timestamp has no event source — the watchdog must poll on a
+            // wall-clock interval to detect a stuck callback.
             std::thread::sleep(Duration::from_millis(500));
             let in_flight_ms = CB_IN_FLIGHT_TS_MS.load(Ordering::Acquire);
             if in_flight_ms == 0 {
@@ -187,13 +190,15 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     while wall_start.elapsed() < cfg.duration {
         nmp_app_configure(app, 80, 4);
         next_tick += interval;
+        // doctrine-allow: D8 — rate governor: single-shot sleep until the next
+        // configure tick; domain is time itself (target events_per_sec rate).
         if let Some(sleep) = next_tick.checked_duration_since(Instant::now()) {
             std::thread::sleep(sleep);
         }
     }
 
-    // Grace period for reentrant dispatches to drain.
-    std::thread::sleep(Duration::from_millis(500));
+    // Grace: block until the actor drains reentrant dispatches (event-driven, D8).
+    nmp_app_wait_barrier(app, 2_000);
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
 

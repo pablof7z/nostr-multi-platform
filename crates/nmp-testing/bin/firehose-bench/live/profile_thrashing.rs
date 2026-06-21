@@ -72,7 +72,8 @@ pub(crate) fn profile_thrashing() -> Scenario {
         let mut slot: usize = 0;
 
         while Instant::now() < end {
-            if Instant::now() >= tick {
+            let now = Instant::now();
+            if now >= tick {
                 let pubkey = SEED_PUBKEYS[slot % pool_size];
                 let consumer = format!("bench-{}", slot % 20);
 
@@ -93,7 +94,16 @@ pub(crate) fn profile_thrashing() -> Scenario {
                 tick += interval;
             }
             drain(&rx);
-            std::thread::sleep(Duration::from_millis(1));
+            // Sleep until the next scheduled tick (or end of run). This replaces
+            // the 1 ms polling spin: we wake exactly when work is due rather than
+            // re-checking every millisecond.
+            // doctrine-allow: D8 — rate governor: sleeping until the next scheduled
+            // mount/unmount cycle tick; 50/sec is the measurement variable, not a
+            // polled condition. No actor event fires "50 Hz interval elapsed".
+            let next_wake = tick.min(end);
+            if let Some(d) = next_wake.checked_duration_since(Instant::now()) {
+                std::thread::sleep(d);
+            }
         }
     }
 

@@ -253,7 +253,8 @@ fn fire_cycle(app: *mut NmpApp, pubkeys: &[std::ffi::CString], consumers: &[CStr
     let pk = &pubkeys[cycle as usize % pubkeys.len()];
     let consumer = &consumers[cycle as usize % consumers.len()];
     nmp_app_claim_profile(app, pk.as_ptr(), consumer.as_ptr(), 0, 0);
-    // 1 ms between claim and release per spec.
+    // doctrine-allow: D8 — explicit test-clock gate: S1 spec requires 1 ms between
+    // claim and release to pace ingest; domain is time itself, not a polled condition.
     std::thread::sleep(Duration::from_millis(1));
     nmp_app_release_profile(app, pk.as_ptr(), consumer.as_ptr());
 }

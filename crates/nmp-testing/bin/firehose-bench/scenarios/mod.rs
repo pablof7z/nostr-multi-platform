@@ -14,7 +14,7 @@ pub(crate) use other::{
 pub(crate) use timeline::{cold_start, soak, sustained_firehose};
 
 use crate::config::Scale;
-use crate::report::{GateResult, ScenarioMetrics, ScenarioResult};
+use crate::report::{Gate, ScenarioMetrics, ScenarioResult};
 
 pub(crate) fn run_scenario(name: &'static str, scale: Scale) -> ScenarioResult {
     match name {
@@ -35,7 +35,7 @@ pub(crate) fn finish_scenario(
     virtual_duration_seconds: u64,
     events_processed: u64,
     metrics: ScenarioMetrics,
-    gates: Vec<GateResult>,
+    gates: Vec<Gate>,
     observations: Vec<String>,
 ) -> ScenarioResult {
     let passed = gates.iter().all(|gate| gate.passed);
@@ -51,64 +51,60 @@ pub(crate) fn finish_scenario(
     }
 }
 
+/// Gate asserting `measured <= budget` (shared schema: op = `<=`).
 pub(crate) fn gate_max(
     name: &'static str,
     measured: f64,
     budget: f64,
     note: Option<String>,
-) -> GateResult {
-    GateResult {
-        name,
-        measured: Some(round4(measured)),
-        budget: Some(budget),
-        passed: measured <= budget,
-        note,
+) -> Gate {
+    let mut g = Gate::lte(name, round4(measured), budget);
+    if let Some(n) = note {
+        g = g.with_note(n);
     }
+    g
 }
 
+/// Gate asserting `measured >= budget` (shared schema: op = `>=`).
 pub(crate) fn gate_min(
     name: &'static str,
     measured: f64,
     budget: f64,
     note: Option<String>,
-) -> GateResult {
-    GateResult {
-        name,
-        measured: Some(round4(measured)),
-        budget: Some(budget),
-        passed: measured >= budget,
-        note,
+) -> Gate {
+    let mut g = Gate::gte(name, round4(measured), budget);
+    if let Some(n) = note {
+        g = g.with_note(n);
     }
+    g
 }
 
+/// Gate asserting `measured == budget` for `u64` values (shared schema: op = `==`).
 pub(crate) fn gate_eq(
     name: &'static str,
     measured: u64,
     budget: u64,
     note: Option<String>,
-) -> GateResult {
-    GateResult {
-        name,
-        measured: Some(measured as f64),
-        budget: Some(budget as f64),
-        passed: measured == budget,
-        note,
+) -> Gate {
+    let mut g = Gate::eq(name, measured as f64, budget as f64);
+    if let Some(n) = note {
+        g = g.with_note(n);
     }
+    g
 }
 
+/// Gate asserting `measured == budget` for `i64` values (shared schema: op = `==`).
 pub(crate) fn gate_eq_i64(
     name: &'static str,
     measured: i64,
     budget: i64,
     note: Option<String>,
-) -> GateResult {
-    GateResult {
-        name,
-        measured: Some(measured as f64),
-        budget: Some(budget as f64),
-        passed: measured == budget,
-        note,
+) -> Gate {
+    let mut g = Gate::eq(name, measured as f64, budget as f64);
+    if let Some(n) = note {
+        g = g.with_note(n);
     }
+    g
 }
 
 pub(crate) fn round2(value: f64) -> f64 {

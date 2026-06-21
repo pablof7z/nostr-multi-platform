@@ -43,8 +43,9 @@
 //!
 //! D0: uses `nmp_app_inject_signed_events` and `nmp_app_claim_profile` /
 //! `nmp_app_release_profile` — both are cfg-gated test paths.
-//! D8: no polling; cycles are driven by explicit configure() calls + wall-clock
-//! sleeps (no busy-wait loops).
+//! D8: no polling; churn cycles are driven by `configure_and_await_frame()`, which
+//! calls `nmp_app_configure` then blocks on a `FrameProbe` channel until the actor
+//! fires the update callback. No sleep+check loops anywhere in this scenario.
 
 use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
@@ -59,7 +60,7 @@ use nmp_ffi::{nmp_app_declare_incremental_apply, nmp_app_read_projection_churn_s
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use std::ffi::c_void;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // ── Per-tick callback capture ─────────────────────────────────────────────────
 
@@ -155,42 +156,43 @@ impl Default for S6Config {
 // ── Churn-window driver ─────────────────────────────────────────────────────────
 //
 // The identical claim/release churn cycle for both phases. Each cycle claims the
-// profile, drives a configure tick, releases it, and drives another configure
-// tick — exercising the claimed_profiles projection on and off. No polling (D8):
-// the wall-clock sleeps gate the actor's snapshot cadence.
+// profile, waits for the actor to emit an updated frame, releases the profile,
+// then waits for another frame — exercising the claimed_profiles projection on
+// and off. D8-compliant: `configure_and_await_frame` triggers a configure tick
+// and blocks on the FrameProbe channel until the callback fires; no sleep+check.
 
-fn drive_churn_cycles(
+fn drive_churn_cycles<F: Fn() -> usize>(
     app: *mut NmpApp,
     churn_pubkey: &std::ffi::CStr,
     consumer_id: &std::ffi::CStr,
     cycles: usize,
+    probe: &nmp_testing::harness_probe::FrameProbe,
+    frame_count: F,
 ) {
     for _ in 0..cycles {
         nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
-        std::thread::sleep(Duration::from_millis(200));
-        nmp_app_configure(app, 500, 12);
-        std::thread::sleep(Duration::from_millis(50));
+        configure_and_await_frame(app, probe, 2_000, || frame_count());
 
         nmp_app_release_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr());
-        std::thread::sleep(Duration::from_millis(200));
-        nmp_app_configure(app, 500, 12);
-        std::thread::sleep(Duration::from_millis(50));
+        configure_and_await_frame(app, probe, 2_000, || frame_count());
     }
 }
 
 /// Snapshot the process-global churn counters, run the window, return the deltas
 /// `(window_serialized, window_changed)` accumulated over the cycles.
-fn run_churn_window(
+fn run_churn_window<F: Fn() -> usize>(
     app: *mut NmpApp,
     churn_pubkey: &std::ffi::CStr,
     consumer_id: &std::ffi::CStr,
     cycles: usize,
+    probe: &nmp_testing::harness_probe::FrameProbe,
+    frame_count: F,
 ) -> (u64, u64) {
     let mut base_s = 0u64;
     let mut base_c = 0u64;
     nmp_app_read_projection_churn_stats(&mut base_s, &mut base_c);
 
-    drive_churn_cycles(app, churn_pubkey, consumer_id, cycles);
+    drive_churn_cycles(app, churn_pubkey, consumer_id, cycles, probe, frame_count);
 
     let mut end_s = 0u64;
     let mut end_c = 0u64;
@@ -260,7 +262,7 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
             callback_record_count(ctx_a)
         });
 
-        let (ws, wc) = run_churn_window(app_a, churn_pubkey, &consumer_id_a, cfg.churn_cycles);
+        let (ws, wc) = run_churn_window(app_a, churn_pubkey, &consumer_id_a, cfg.churn_cycles, &probe_a, || callback_record_count(ctx_a));
 
         nmp_app_set_update_callback(app_a, std::ptr::null_mut(), None);
         nmp_app_free(app_a);
@@ -295,7 +297,7 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
             byte_capture_record_count(ctx_b)
         });
 
-        let (ws, wc) = run_churn_window(app_b, churn_pubkey, &consumer_id_b, cfg.churn_cycles);
+        let (ws, wc) = run_churn_window(app_b, churn_pubkey, &consumer_id_b, cfg.churn_cycles, &probe_b, || byte_capture_record_count(ctx_b));
 
         nmp_app_set_update_callback(app_b, std::ptr::null_mut(), None);
         nmp_app_free(app_b);
