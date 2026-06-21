@@ -66,25 +66,6 @@ pub enum PublishEngineError {
     UnsupportedAction(&'static str),
 }
 
-impl std::fmt::Display for PublishEngineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DuplicateHandle(h) => write!(f, "duplicate publish handle: {:?}", h),
-            Self::NoTargets => write!(f, "no relay targets for publish"),
-            Self::Store(e) => write!(f, "publish store error: {e}"),
-            Self::UnsupportedAction(name) => write!(f, "unsupported action: {name}"),
-        }
-    }
-}
-
-impl std::error::Error for PublishEngineError {}
-
-impl From<PublishStoreError> for PublishEngineError {
-    fn from(err: PublishStoreError) -> Self {
-        Self::Store(err)
-    }
-}
-
 pub struct PublishEngine {
     in_flight: HashMap<PublishHandle, InFlight>,
     unavailable_relays: BTreeSet<RelayUrl>,
@@ -307,16 +288,16 @@ impl PublishEngine {
             }
             self.store.delete(&handle)?;
         }
-        // Direction review #24: cancellation is a terminal action result, but
-        // it never flows through `recently_completed` (the kernel surfaces
-        // "cancelled" separately via `set_publish_entry_terminal`). Record it
-        // here directly so `action_results` clears the host spinner — even a
-        // cancel for an unknown / already-settled handle is a terminal verdict
-        // the host asked for.
+        // Direction review #24: cancellation is a terminal action result that
+        // never flows through `recently_completed`, so record it directly here
+        // so `action_results` clears the host spinner (even for an unknown /
+        // already-settled handle — it is a terminal verdict the host asked for).
         self.record_terminal(LastTerminal {
-            correlation_id: handle,
+            correlation_id: handle.clone(),
             status: "cancelled",
             error: None,
+            // Cancel concerns a signed event; surface its id (#1702).
+            event_id: Some(handle),
             result_json: None,
         });
         self.flush_view();

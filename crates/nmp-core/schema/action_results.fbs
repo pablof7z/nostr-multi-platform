@@ -61,6 +61,15 @@ table ActionResult {
   // `result` field.
   has_result:bool;
   result:string;
+  // The nostr `event_id` of the signed event this terminal concerns, when one
+  // exists; `has_event_id == false` mirrors an absent `event_id` (#1702). For
+  // the `PublishRaw` path the `correlation_id` is a registry-minted dispatch id
+  // that is NOT the event id, so consumers that need to reference the
+  // just-published event (e.g. a kind:16 group repost building an `e` tag to it)
+  // read this field instead. Appended at the table end — additive, no vtable
+  // break for clients built against the prior schema.
+  has_event_id:bool;
+  event_id:string;
 }
 
 // The `action_results` projection — the drained array of rows, in producer

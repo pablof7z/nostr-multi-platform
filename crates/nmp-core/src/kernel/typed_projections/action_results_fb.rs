@@ -65,6 +65,12 @@ pub struct ActionResultRow {
     /// The opaque structured result body (ADR-0043 Decision 4), carried as its
     /// SERIALISED JSON string. `None` mirrors an absent `result` field.
     pub result: Option<String>,
+    /// The nostr `event_id` of the signed event this terminal concerns, when one
+    /// exists; `None` mirrors an absent `event_id`. Lets a consumer reference the
+    /// just-published event even on the `PublishRaw` path, where
+    /// `correlation_id` is a registry dispatch id rather than the event id
+    /// (#1702).
+    pub event_id: Option<String>,
 }
 
 /// The `"action_results"` read model — the drained array of rows in producer
@@ -117,6 +123,12 @@ fn row_from_json(row: &serde_json::Value) -> ActionResultRow {
             .get("result")
             .filter(|v| !v.is_null())
             .map(|v| v.to_string()),
+        // `event_id` is omitted when absent / `null`; carry the hex id verbatim.
+        event_id: row
+            .get("event_id")
+            .filter(|v| !v.is_null())
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
     }
 }
 
@@ -132,6 +144,7 @@ fn create_action_result<'a>(
     let status = fbb.create_string(&row.status);
     let error = row.error.as_ref().map(|v| fbb.create_string(v));
     let result = row.result.as_ref().map(|v| fbb.create_string(v));
+    let event_id = row.event_id.as_ref().map(|v| fbb.create_string(v));
     fb::ActionResult::create(
         fbb,
         &fb::ActionResultArgs {
@@ -141,6 +154,8 @@ fn create_action_result<'a>(
             error,
             has_result: row.result.is_some(),
             result,
+            has_event_id: row.event_id.is_some(),
+            event_id,
         },
     )
 }
@@ -203,6 +218,9 @@ fn action_result_from_fb(row: fb::ActionResult<'_>) -> ActionResultRow {
         result: row
             .has_result()
             .then(|| row.result().unwrap_or_default().to_string()),
+        event_id: row
+            .has_event_id()
+            .then(|| row.event_id().unwrap_or_default().to_string()),
     }
 }
 

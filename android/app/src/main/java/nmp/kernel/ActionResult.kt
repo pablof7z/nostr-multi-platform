@@ -82,6 +82,22 @@ class ActionResult : Table() {
         }
     val resultAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
     fun resultInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
+    val hasEventId : Boolean
+        get() {
+            val o = __offset(16)
+            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+        }
+    val eventId : String?
+        get() {
+            val o = __offset(18)
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
+        }
+    val eventIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
+    fun eventIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsActionResult(_bb: ByteBuffer): ActionResult = getRootAsActionResult(_bb, ActionResult())
@@ -89,23 +105,27 @@ class ActionResult : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createActionResult(builder: FlatBufferBuilder, correlationIdOffset: Int, statusOffset: Int, hasError: Boolean, errorOffset: Int, hasResult: Boolean, resultOffset: Int) : Int {
-            builder.startTable(6)
+        fun createActionResult(builder: FlatBufferBuilder, correlationIdOffset: Int, statusOffset: Int, hasError: Boolean, errorOffset: Int, hasResult: Boolean, resultOffset: Int, hasEventId: Boolean, eventIdOffset: Int) : Int {
+            builder.startTable(8)
+            addEventId(builder, eventIdOffset)
             addResult(builder, resultOffset)
             addError(builder, errorOffset)
             addStatus(builder, statusOffset)
             addCorrelationId(builder, correlationIdOffset)
+            addHasEventId(builder, hasEventId)
             addHasResult(builder, hasResult)
             addHasError(builder, hasError)
             return endActionResult(builder)
         }
-        fun startActionResult(builder: FlatBufferBuilder) = builder.startTable(6)
+        fun startActionResult(builder: FlatBufferBuilder) = builder.startTable(8)
         fun addCorrelationId(builder: FlatBufferBuilder, correlationId: Int) = builder.addOffset(0, correlationId, 0)
         fun addStatus(builder: FlatBufferBuilder, status: Int) = builder.addOffset(1, status, 0)
         fun addHasError(builder: FlatBufferBuilder, hasError: Boolean) = builder.addBoolean(2, hasError, false)
         fun addError(builder: FlatBufferBuilder, error: Int) = builder.addOffset(3, error, 0)
         fun addHasResult(builder: FlatBufferBuilder, hasResult: Boolean) = builder.addBoolean(4, hasResult, false)
         fun addResult(builder: FlatBufferBuilder, result: Int) = builder.addOffset(5, result, 0)
+        fun addHasEventId(builder: FlatBufferBuilder, hasEventId: Boolean) = builder.addBoolean(6, hasEventId, false)
+        fun addEventId(builder: FlatBufferBuilder, eventId: Int) = builder.addOffset(7, eventId, 0)
         fun endActionResult(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

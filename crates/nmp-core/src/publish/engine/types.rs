@@ -81,6 +81,15 @@ pub struct LastTerminal {
     pub correlation_id: PublishHandle,
     pub status: &'static str,
     pub error: Option<String>,
+    /// The nostr `event_id` of the signed event this terminal concerns, when one
+    /// exists. For the `PublishRaw` path `correlation_id` is a registry-minted
+    /// dispatch id that is NOT the event id, so consumers that need to reference
+    /// the just-published event (e.g. a kind:16 group repost building an `e` tag
+    /// to it) read this field instead (#1702). Read it together with `status`:
+    /// `Some` whenever a signed event backs the terminal (published, failed, or
+    /// cancelled); `None` for off-band terminals where no event was ever signed
+    /// (sign-step failure, NWC pay-invoice success).
+    pub event_id: Option<String>,
     /// Opaque structured result body the action carried to a success terminal
     /// (ADR-0043 Decision 4). `nmp-core` NEVER parses this — it is forwarded
     /// verbatim into the `action_results[correlation_id]` row's `result` field
@@ -126,6 +135,7 @@ impl LastTerminal {
                 correlation_id,
                 status: "failed",
                 error,
+                event_id: Some(outcome.event_id.clone()),
                 result_json: None,
             }
         } else {
@@ -133,6 +143,7 @@ impl LastTerminal {
                 correlation_id,
                 status: "ok",
                 error: None,
+                event_id: Some(outcome.event_id.clone()),
                 result_json: None,
             }
         }
