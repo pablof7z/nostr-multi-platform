@@ -13,7 +13,9 @@ use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// Stable `SubKey` for an event-claim tailing slot — one slot per claimed
 /// `primary_id`, so every `Live` consumer of the same coordinate dedups onto a
-/// single wire REQ (the event twin of `profile_claim_sub_key`).
+/// single wire REQ (the event twin of `profile_claim_sub_key`). Used by both the
+/// per-consumer `release_event_claim_interest` and the unified
+/// `teardown_event_claim_key` (drop-by-key on terminal-miss, BLOCKING 1).
 fn event_claim_sub_key(primary_id: &str) -> SubKey {
     SubKey::new(("event-claim", primary_id))
 }
@@ -199,6 +201,69 @@ impl Kernel {
             out.extend(self.claim_event(uri, consumer_id, true, false));
         }
         out
+    }
+
+    /// ADR-0063 (#1671 Lane B, BLOCKING 1 + 2) — the SINGLE internal teardown for a
+    /// fully-released `event` ref key. Called from BOTH `release_event_ref` (last
+    /// consumer gone) and the controller's terminal-miss path
+    /// (`terminate_claim`, `Exhausted` / `Budget`: no relay holds the event). It
+    /// drops every piece of per-key state in one place so the two paths can never
+    /// diverge and leave a deleted claim's shape map or rev row live (D4: one
+    /// writer; a stale `ref_event_shapes` / `event_row_revs` entry would resurrect
+    /// a ghost ref row).
+    ///
+    /// Teardown order (BLOCKING 2 ordering, all in this one call):
+    /// 1. drop the refcount row (`event_claims`) + the cold-fetch dedup marker
+    ///    (`event_claim_requested`),
+    /// 2. drop the per-consumer demanded-shape map for the key (D5),
+    /// 3. drop the `Live` tailing registry slot + the per-coordinate live-owner
+    ///    record (idempotent — the per-consumer release may already have done this),
+    /// 4. release the W5 claim-expansion retarget tracker,
+    /// 5. stamp the projection (`changed_since_emit`, `claimed_event_content_ver`),
+    /// 6. `clear_event_row`: bump the per-key rev to its final post-clear value
+    ///    (the value an ADR-0055 `Cleared` row would carry) and IMMEDIATELY remove
+    ///    the entry in the same call — no retained-rev / pending state, so the map
+    ///    stays bounded to live keys (D8). The downstream row-delta emitter
+    ///    (Lane A) is out of this branch's scope, so the returned final rev is
+    ///    discarded here.
+    pub(in crate::kernel) fn teardown_event_claim_key(&mut self, primary_id: &str) {
+        let had_claim = self.event_claims.remove(primary_id).is_some();
+        // Allow a re-claim to re-register interest with the OneshotApi (a stale
+        // `event_claim_requested` entry would otherwise short-circuit the next
+        // cold-claim).
+        self.event_claim_requested.remove(primary_id);
+        // D5 — the key is gone; drop its whole per-consumer demanded-shape map.
+        self.ref_event_shapes.remove(primary_id);
+        // BLOCKING 1 — drop the `Live` tailing slot for ANY remaining live owners
+        // (the terminal-miss path never ran per-consumer releases, so there may be
+        // several). Idempotent when the per-consumer release already cleared it.
+        if self.live_event_claims.remove(primary_id).is_some() {
+            self.lifecycle
+                .registry_mut()
+                .drop_slot_by_key(event_claim_sub_key(primary_id));
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::ViewOpened {
+                    interest_ids: Vec::new(),
+                });
+        }
+        // The last consumer / terminal-miss released, so cancel the W5
+        // claim-expansion retargeting tracker for this id (keeps Phase 1/2 hint
+        // retargeting from outliving an event nobody wants).
+        self.release_claim_expansion(primary_id);
+
+        self.changed_since_emit = true;
+        // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
+        self.projection_rev_tracker
+            .source_versions
+            .bump_claimed_event_content();
+        // BLOCKING 2 — bump-to-final then drop the per-key rev in the SAME call.
+        // No-op (returns 0) when the key had no rev entry (terminal-miss of a key
+        // whose resolve was a no-op), so a teardown never creates a ghost row.
+        let _final_rev = self
+            .projection_rev_tracker
+            .source_versions
+            .clear_event_row(primary_id);
+        let _ = had_claim;
     }
 }
 

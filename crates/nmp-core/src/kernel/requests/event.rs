@@ -234,23 +234,35 @@ impl Kernel {
                 refcount
             ));
         }
-        // Must run BEFORE the already-resolved short-circuit so the
-        // projection re-emits on the next tick even when no REQ goes
-        // out (the host needs the `claimed_events[primary_id]` entry
-        // to render the embed card).
-        self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
-        self.projection_rev_tracker.source_versions.bump_claimed_event_content();
+        // BLOCKING 3 — bump the per-key rev ONLY on a real row mutation: a new
+        // consumer, a shape widen, or a liveness upgrade (CacheOk → Live). A
+        // duplicate identical re-resolve re-asserts nothing and must not bump.
+        // Capture the before-state (the live-owner set mutates in the `Live` branch).
+        let widest_before = self.ref_demanded_event_shape(&primary_id);
+        let live_before = self.live_event_claims.contains_key(&primary_id);
         // ADR-0063 D5 (HIGH 4) — record THIS consumer's demanded event shape
-        // (per-consumer so a release recomputes the widest among currently-live
-        // consumers; only reached for a real claim, so bounded to claimed keys).
-        // Orthogonal to liveness; the wire filter `filter` is shape-independent.
+        // (per-consumer so a release recomputes the widest; bounded to claimed
+        // keys). Orthogonal to liveness; the wire filter is shape-independent.
         self.ref_event_shapes
             .entry(primary_id.clone())
             .or_default()
             .insert(consumer_id.clone(), shape);
-        // ADR-0063 Lane B (D6a) — per-key rev (resolve site 1 of 3).
-        self.projection_rev_tracker.source_versions.bump_event_row(&primary_id);
+        let shape_widened = widest_before != self.ref_demanded_event_shape(&primary_id);
+        // A `Live` claim on an addressable coord with no prior live owner is an
+        // upgrade; immutable nevent/note ids (no coord) never become Live.
+        let liveness_upgraded =
+            liveness == RefLiveness::Live && replaceable_coord.is_some() && !live_before;
+        let mutated = inserted || shape_widened || liveness_upgraded;
+        // Must run BEFORE the already-resolved short-circuit so the projection
+        // re-emits on the next tick even when no REQ goes out (the host needs the
+        // `claimed_events[primary_id]` entry to render the embed card).
+        if mutated {
+            self.changed_since_emit = true;
+            // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
+            self.projection_rev_tracker.source_versions.bump_claimed_event_content();
+            // ADR-0063 Lane B (D6a) — per-key rev (resolve site 1 of 3).
+            self.projection_rev_tracker.source_versions.bump_event_row(&primary_id);
+        }
 
         // ADR-0063 — `Live` on an ADDRESSABLE coordinate registers a tailing
         // interest (the event twin of a `Live` profile claim) so kind:3xxxx
@@ -437,56 +449,40 @@ impl Kernel {
         let mut actually_removed = false;
         let mut remove_claim = false;
         let mut remaining = 0;
+        // Widest demanded shape BEFORE this consumer's shape is dropped, so a
+        // release that drops the widest consumer (narrowing a surviving row) counts
+        // as a mutation (HIGH 4 + BLOCKING 3).
+        let widest_before = self.ref_demanded_event_shape(&primary_id);
         if let Some(consumers) = self.event_claims.get_mut(&primary_id) {
             actually_removed = consumers.remove(consumer_id);
             remaining = consumers.len();
             remove_claim = consumers.is_empty();
         }
         // ADR-0063 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
-        // widest demanded shape recomputes over the currently-live consumers (a
-        // Raw consumer leaving while an Embed consumer remains narrows the row).
+        // widest demanded shape recomputes over the currently-live consumers.
         if let Some(consumers) = self.ref_event_shapes.get_mut(&primary_id) {
             consumers.remove(consumer_id);
             if consumers.is_empty() {
                 self.ref_event_shapes.remove(&primary_id);
             }
         }
-        // ADR-0063 (BLOCKING 1) — detach THIS consumer's `Live` tailing owner on
-        // EVERY release (no-op for a CacheOk-only consumer); the deduped slot
-        // tears down when the last live owner leaves. Mirrors the per-consumer
-        // `drop_owner` of `release_profile_ref`.
+        let shape_narrowed = widest_before != self.ref_demanded_event_shape(&primary_id);
+        // BLOCKING 1 — detach THIS consumer's `Live` tailing owner on EVERY release
+        // (no-op for CacheOk-only); the slot tears down on the last live owner.
         self.release_event_claim_interest(&primary_id, consumer_id);
         if remove_claim {
-            self.event_claims.remove(&primary_id);
-            // Allow a re-claim to re-register interest with the
-            // OneshotApi (a stale `event_claim_requested` entry would
-            // otherwise short-circuit the next cold-claim).
-            self.event_claim_requested.remove(&primary_id);
-            // codex M3 — the last consumer released, so cancel the W5
-            // claim-expansion retargeting tracker for this id. Without
-            // this, the `PendingClaim` would survive until its own
-            // wall-clock budget elapses (`poll_claim_expansion`), keeping
-            // Phase 1/2 hint-retargeting work alive for an event nobody
-            // wants anymore.
-            self.release_claim_expansion(&primary_id);
-        }
-        self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
-        self.projection_rev_tracker.source_versions.bump_claimed_event_content();
-        // ADR-0063 Lane B (D6a) — per-key rev (release site 2 of 3) ONLY on a real
-        // refcount change (BLOCKING 2 (a): a spurious release of a never-claimed
-        // key must not create a permanent row). On full teardown also mark the row
-        // Cleared so its rev is reaped once Lane A emits the Cleared frame
-        // (BLOCKING 2 (b)).
-        if actually_removed {
+            // BLOCKING 1 — route last-consumer teardown through the SINGLE unified
+            // key-teardown fn shared with the terminal-miss path (D4: one writer).
+            self.teardown_event_claim_key(&primary_id);
+        } else if actually_removed || shape_narrowed {
+            // Surviving-row update on a real change only (BLOCKING 3).
+            self.changed_since_emit = true;
+            self.projection_rev_tracker
+                .source_versions
+                .bump_claimed_event_content();
             self.projection_rev_tracker
                 .source_versions
                 .bump_event_row(&primary_id);
-            if remove_claim {
-                self.projection_rev_tracker
-                    .source_versions
-                    .mark_row_cleared(RefNamespace::Event, &primary_id);
-            }
         }
         self.log(format!(
             "release event {} consumer {} ref {}",
