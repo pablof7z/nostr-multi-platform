@@ -112,8 +112,14 @@ impl RefRowCache {
     /// the prior row is retained and `decode_failed` is latched (D6).
     ///
     /// D4: a changed `session_id` or `epoch` clears ALL namespaces and resets
-    /// identity BEFORE any row is merged. A `baseline` batch clears its own
-    /// namespace first so it reconstructs the complete set.
+    /// identity BEFORE any row is merged.
+    ///
+    /// A `baseline` batch is applied ATOMICALLY via scratch-then-commit: every
+    /// required row is decoded into a scratch namespace map first and the prior
+    /// namespace is replaced ONLY after the whole baseline decodes. If ANY
+    /// required row fails decode-before-commit the prior cache is preserved
+    /// untouched and `needs_resync` latches (D6, fail-closed) — a malformed
+    /// baseline row can never drop or corrupt a prior cached slot.
     pub fn apply(
         &mut self,
         batch: &RefRowDeltaBatch,
@@ -130,12 +136,98 @@ impl RefRowCache {
             self.needs_resync = false;
         }
 
-        // A baseline batch reconstructs its namespace wholesale (invariant #3):
-        // drop any stale rows the prior history left behind.
         if batch.baseline {
-            self.rows.remove(&batch.namespace);
+            return self.apply_baseline(batch, decode_ok);
+        }
+        self.apply_incremental(batch, decode_ok)
+    }
+
+    /// Scratch-then-commit baseline (invariant #3 + decode-before-commit on the
+    /// whole batch). Decodes every `Changed` row into a fresh scratch map; only
+    /// when ALL required rows decode does it atomically replace the namespace.
+    /// On any decode failure the prior cache is preserved and resync latches.
+    fn apply_baseline(
+        &mut self,
+        batch: &RefRowDeltaBatch,
+        decode_ok: &dyn Fn(&str, &[u8]) -> bool,
+    ) -> RefRowApplyOutcome {
+        let mut scratch: HashMap<String, CachedRow> = HashMap::new();
+        for row in &batch.rows {
+            match row.state {
+                // A baseline carries only live rows as `Changed`. A defensive
+                // `Cleared` in a baseline means the key is simply absent from
+                // the rebuilt set — drop it from scratch, never commit it.
+                RefRowState::Cleared => {
+                    scratch.remove(&row.key);
+                }
+                RefRowState::Changed => {
+                    // Decode-before-commit: a single malformed row fails the
+                    // WHOLE baseline closed — prior cache untouched, resync
+                    // latched. We have not mutated `self.rows` yet.
+                    if !decode_ok(&row.key, &row.payload) {
+                        self.needs_resync = true;
+                        return RefRowApplyOutcome {
+                            changed_keys: Vec::new(),
+                            decode_failed: true,
+                        };
+                    }
+                    // Duplicate-key guard within one baseline: last-rev wins.
+                    let insert = match scratch.get(&row.key) {
+                        Some(existing) => row.rev > existing.rev,
+                        None => true,
+                    };
+                    if insert {
+                        scratch.insert(
+                            row.key.clone(),
+                            CachedRow {
+                                rev: row.rev,
+                                payload: row.payload.clone(),
+                            },
+                        );
+                    }
+                }
+            }
         }
 
+        // Atomic commit: diff prior vs scratch so the host re-renders exactly
+        // the slots that changed (added / updated / dropped ghosts), then swap.
+        let prior = self.rows.get(&batch.namespace);
+        let mut changed: HashSet<String> = HashSet::new();
+        for (key, row) in &scratch {
+            match prior.and_then(|p| p.get(key)) {
+                Some(prev) if prev.payload == row.payload => {}
+                _ => {
+                    changed.insert(key.clone());
+                }
+            }
+        }
+        if let Some(prior) = prior {
+            for key in prior.keys() {
+                if !scratch.contains_key(key) {
+                    changed.insert(key.clone());
+                }
+            }
+        }
+        self.rows.insert(batch.namespace.clone(), scratch);
+        self.baselined = true;
+        let mut changed_keys: Vec<String> = changed.into_iter().collect();
+        changed_keys.sort();
+        RefRowApplyOutcome {
+            changed_keys,
+            decode_failed: false,
+        }
+    }
+
+    /// Steady-state incremental merge. Per-row: an explicit `Cleared` removes
+    /// the cached row only if its rev is NEWER than the cached row (rev-safe
+    /// clear — a stale reordered clear can never delete a newer live row); a
+    /// `Changed` row commits only if its rev advanced AND it decodes (otherwise
+    /// the prior row is retained and resync latches).
+    fn apply_incremental(
+        &mut self,
+        batch: &RefRowDeltaBatch,
+        decode_ok: &dyn Fn(&str, &[u8]) -> bool,
+    ) -> RefRowApplyOutcome {
         let ns = self.rows.entry(batch.namespace.clone()).or_default();
         let mut changed: HashSet<String> = HashSet::new();
         let mut decode_failed = false;
@@ -143,10 +235,17 @@ impl RefRowCache {
         for row in &batch.rows {
             match row.state {
                 RefRowState::Cleared => {
-                    // Explicit clear: remove unconditionally (terminal for this
-                    // batch under synchronous in-process delivery).
-                    if ns.remove(&row.key).is_some() {
-                        changed.insert(row.key.clone());
+                    // Rev-safe clear (reorder guard, BLOCKING-4): a clear carries
+                    // Lane B's monotonic per-key release rev; it removes the row
+                    // only when that rev is strictly newer than the cached rev.
+                    // A stale reordered clear (older rev) is ignored, so it can
+                    // never delete a newer cached row. A clear for an absent key
+                    // is a no-op (the final baseline repairs any lost-clear gap).
+                    if let Some(existing) = ns.get(&row.key) {
+                        if row.rev > existing.rev {
+                            ns.remove(&row.key);
+                            changed.insert(row.key.clone());
+                        }
                     }
                 }
                 RefRowState::Changed => {

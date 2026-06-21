@@ -26,12 +26,29 @@ fn emits_namespace_routing_and_accessors() {
 fn enforces_the_five_invariants() {
     let out = rendered();
     assert!(out.contains("if (sessionId != appliedSession || snapshotEpoch != appliedEpoch)"));
-    assert!(out.contains("if (batch.baseline)"));
+    assert!(out.contains("val isBaseline = batch.baseline"));
     assert!(out.contains("RefRowState.Cleared"));
-    assert!(out.contains("ns.remove(key)"));
+    assert!(out.contains("ns.remove(row.key)"));
     assert!(out.contains("needsResync = true"));
-    assert!(out.contains("incomingRev <= cached.rev"));
+    assert!(out.contains("row.rev <= cached.rev"));
     assert!(out.contains("notifyRowChange"));
+}
+
+/// BLOCKING-1/2/3/4 hardening: the generator must emit the fail-closed CHECKED
+/// decode, the scratch-then-commit baseline, the decode seam, and rev-safe clears.
+#[test]
+fn emits_failclosed_and_revsafe_hardening() {
+    let out = rendered();
+    // BLOCKING-2: NRRD file-id verification + try/catch fail-closed.
+    assert!(out.contains("RefRowDeltaBatch.RefRowDeltaBatchBufferHasIdentifier(bb)"));
+    assert!(out.contains("} catch (e: Exception) {"));
+    // BLOCKING-1: scratch-then-commit baseline.
+    assert!(out.contains("private fun applyBaseline("));
+    assert!(out.contains("val scratch = HashMap<String, RefRowCacheEntry>()"));
+    // BLOCKING-3: per-namespace decode-before-commit seam.
+    assert!(out.contains("var rowDecoder: (String, ByteArray) -> Boolean"));
+    // BLOCKING-4: rev-safe clear (a clear removes only when strictly newer).
+    assert!(out.contains("if (cached != null && row.rev > cached.rev)"));
 }
 
 #[test]

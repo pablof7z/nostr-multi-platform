@@ -147,6 +147,17 @@ final class KeyedRefCache {
     /// Per-row change publisher (one event per changed key).
     let rowChanged = PassthroughSubject<KeyedRowChange, Never>()
 
+    /// Decode-before-commit seam (ADR-0063 invariant #2). The per-namespace
+    /// typed-row validator the cache runs on a `Changed` row's payload BEFORE it
+    /// replaces a slot: it returns true iff `payload` decodes to the namespace's
+    /// concrete ref type (`refs.profile` → ProfileRef/ProfileCard, `refs.event`
+    /// → EventEmbed). The default accepts any non-empty payload; Lane C injects
+    /// the real decoder here. A row that fails is NOT committed — the prior row
+    /// is retained and `needsResync` latches.
+    var rowDecoder: (_ namespace: String, _ payload: Data) -> Bool = { _, payload in
+        !payload.isEmpty
+    }
+
     /// Hard-reset (kernel session end) so the next frame is a full baseline.
     func reset() {
         rows.removeAll()
@@ -163,15 +174,16 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
     /// under the frame's `sessionId` / `snapshotEpoch`. Returns the set of row
     /// keys whose cached row changed (committed or cleared) this frame.
     ///
-    /// Invariants: absent row == Unchanged (retained); explicit Cleared removes;
-    /// decode-before-commit per row (malformed row keeps prior + latches
-    /// needsResync); session/epoch change or `baseline` rebuilds the full set.
+    /// Invariants: absent row == Unchanged (retained); explicit Cleared removes
+    /// (rev-safe); decode-before-commit per row (malformed row keeps prior +
+    /// latches needsResync); session/epoch change or `baseline` rebuilds the
+    /// full set. A baseline commits atomically (scratch-then-commit). A garbage
+    /// batch fails closed (CHECKED decode) — prior cache retained, resync latched.
     @discardableResult
     func merge(projectionKey: String, payload: Data, sessionId: UInt64, snapshotEpoch: UInt64) -> Set<String> {
         guard let namespace = Self.namespace(forProjectionKey: projectionKey) else {
             return []
         }
-        _ = namespace // routing validated; the cache is keyed by projectionKey
 
         // D4: mandatory full reset on session/epoch change, before any merge.
         if sessionId != appliedSession || snapshotEpoch != appliedEpoch {
@@ -182,27 +194,89 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
             needsResync = false
         }
 
-        // Decode-before-commit at BATCH grain: a malformed batch fails closed
-        // (retain everything, latch resync) rather than corrupting the cache.
+        // Fail-closed CHECKED decode at BATCH grain: verify the `NRRD`
+        // file_identifier AND run the FlatBuffers verifier BEFORE any cache
+        // mutation. Empty, wrong-file-id, or structurally-invalid bytes retain
+        // the prior cache + latch needsResync rather than trapping.
         guard !payload.isEmpty else {
             needsResync = true
             return []
         }
         var buffer = ByteBuffer(data: payload)
-        let batch: nmp_refs_RefRowDeltaBatch = getRoot(byteBuffer: &buffer)
-
-        // A baseline batch reconstructs its projection wholesale (invariant #3).
-        if batch.baseline {
-            rows[projectionKey] = [:]
+        let batch: nmp_refs_RefRowDeltaBatch
+        do {
+            batch = try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_refs_RefRowDeltaBatch.id)
+        } catch {
+            needsResync = true
+            krcLog.error("malformed RefRowDeltaBatch for projection=\(projectionKey, privacy: .public) — retaining prior cache, needsResync latched: \(String(describing: error), privacy: .public)")
+            return []
         }
+
+        if batch.baseline {
+            return applyBaseline(projectionKey: projectionKey, namespace: namespace, batch: batch)
+        }
+        return applyIncremental(projectionKey: projectionKey, namespace: namespace, batch: batch)
+    }
+
+    /// Scratch-then-commit baseline (invariant #3 + decode-before-commit on the
+    /// WHOLE batch): decode every required row into a scratch map first and
+    /// replace the projection only after all rows decode. One bad row fails the
+    /// entire baseline closed — the prior cache is preserved, needsResync latches.
+    private func applyBaseline(projectionKey: String, namespace: String, batch: nmp_refs_RefRowDeltaBatch) -> Set<String> {
+        var scratch: [String: RefRowCacheEntry] = [:]
+        for row in batch.rows {
+            guard let key = row.key else { continue }
+            if row.state.rawValue == kRefRowStateCleared {
+                // A defensive Cleared inside a baseline just means the key is
+                // absent from the rebuilt set.
+                scratch.removeValue(forKey: key)
+                continue
+            }
+            let bytes = Data(row.payload)
+            // Decode-before-commit per row via the typed seam; ANY failure fails
+            // the whole baseline closed — prior cache intact, resync latched.
+            if bytes.isEmpty || !rowDecoder(namespace, bytes) {
+                needsResync = true
+                krcLog.error("decode-before-commit failed in baseline for projection=\(projectionKey, privacy: .public) key=\(key, privacy: .public) — preserving prior cache, needsResync latched")
+                return []
+            }
+            // Duplicate-key guard within one baseline: last-rev wins.
+            if let existing = scratch[key], row.rev <= existing.rev { continue }
+            scratch[key] = RefRowCacheEntry(rev: row.rev, payload: bytes)
+        }
+
+        // Atomic commit: diff prior vs scratch so exactly the changed slots
+        // re-render (added / updated / dropped ghost), then swap the projection.
+        let prior = rows[projectionKey] ?? [:]
+        var changed = Set<String>()
+        for (key, entry) in scratch where prior[key]?.payload != entry.payload {
+            changed.insert(key)
+        }
+        for key in prior.keys where scratch[key] == nil {
+            changed.insert(key)
+        }
+        rows[projectionKey] = scratch
+        baselined = true
+        for key in changed {
+            rowChanged.send(KeyedRowChange(projectionKey: projectionKey, rowKey: key, cleared: scratch[key] == nil))
+        }
+        return changed
+    }
+
+    /// Steady-state incremental merge with rev-safe clears and the per-row
+    /// decode-before-commit seam.
+    private func applyIncremental(projectionKey: String, namespace: String, batch: nmp_refs_RefRowDeltaBatch) -> Set<String> {
         var ns = rows[projectionKey] ?? [:]
         var changed = Set<String>()
 
         for row in batch.rows {
             guard let key = row.key else { continue }
             if row.state.rawValue == kRefRowStateCleared {
-                // Explicit clear: remove unconditionally.
-                if ns.removeValue(forKey: key) != nil {
+                // Rev-safe clear: remove only if the clear's rev is NEWER than
+                // the cached row, so a stale reordered clear can never delete a
+                // newer live row. A clear for an absent key is a no-op.
+                if let cached = ns[key], row.rev > cached.rev {
+                    ns.removeValue(forKey: key)
                     changed.insert(key)
                     rowChanged.send(KeyedRowChange(projectionKey: projectionKey, rowKey: key, cleared: true))
                 }
@@ -211,10 +285,10 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
             // Changed. Reorder/duplicate guard: skip a row not newer than cached.
             let incomingRev = row.rev
             if let cached = ns[key], incomingRev <= cached.rev { continue }
-            // Decode-before-commit per row (invariant #2): a Changed row by
-            // contract carries non-empty bytes; empty == malformed → keep prior.
+            // Decode-before-commit per row (invariant #2) via the typed seam:
+            // empty OR invalid bytes → keep the prior row, latch needsResync.
             let bytes = Data(row.payload)
-            if bytes.isEmpty {
+            if bytes.isEmpty || !rowDecoder(namespace, bytes) {
                 needsResync = true
                 krcLog.error("decode-before-commit failed for projection=\(projectionKey, privacy: .public) key=\(key, privacy: .public) rev=\(incomingRev, privacy: .public) — keeping prior row, needsResync latched")
                 continue
