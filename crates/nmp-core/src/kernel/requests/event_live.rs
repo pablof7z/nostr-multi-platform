@@ -6,7 +6,6 @@
 //! ceiling (AGENTS.md). All bodies are `impl Kernel`; no new state lives here.
 
 use super::super::{Kernel, OutboundMessage};
-use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
@@ -185,40 +184,54 @@ impl Kernel {
 
     /// Drain the cold-start parking queue. Called from `pending_view_requests`
     /// once at least one relay is connected (`can_send = true`). Mirrors
-    /// `pending_profile_claim_requests` semantics: processes each parked
-    /// `(uri, consumer_id)` pair as a warm claim, skipping any that are
-    /// already resolved or already in-flight.
+    /// `pending_profile_claim_requests` semantics: replays each parked CANONICAL
+    /// [`PendingEventClaim`] target through the raw resolver body
+    /// (`resolve_event_ref_inner`, NOT the legacy URI front door), so a raw key
+    /// parked while cold actually resolves (the Lane D coverage-hole fix); the
+    /// body skips any that are already resolved or already in-flight.
     ///
-    /// Defensive (D4 / lifecycle): a parked pair whose consumer has since
-    /// RELEASED its claim (`event_claims[primary_id]` no longer holds it) must
-    /// NOT be replayed — replaying would resurrect a released claim with a fresh
-    /// rev. The primary fix removes the parked stake on release
-    /// (`release_event_ref` → `remove_parked_event_claim`); this filter is a
-    /// belt-and-suspenders guard so the drain can never resurrect a key whose
-    /// refcount row is gone.
+    /// Defensive (D4 / lifecycle): a parked claim whose consumer has since
+    /// RELEASED its ref (`event_claims[primary_id]` no longer holds it) must NOT
+    /// be replayed — replaying would resurrect a released claim with a fresh rev.
+    /// The primary fix removes the parked stake on release (`release_event_ref` →
+    /// `remove_parked_event_claim`); this filter is a belt-and-suspenders guard so
+    /// the drain can never resurrect a key whose refcount row is gone.
     pub(crate) fn pending_event_claim_requests(&mut self) -> Vec<OutboundMessage> {
         if self.pending_event_claims.is_empty() {
             return Vec::new();
         }
-        let parked: Vec<(String, String)> = std::mem::take(&mut self.pending_event_claims);
+        let parked = std::mem::take(&mut self.pending_event_claims);
         let mut out = Vec::new();
-        for (uri, consumer_id) in parked {
-            // Skip a pair whose consumer no longer holds a live refcount on the
-            // resolved key — it was released before the drain ran.
-            if let Some(primary_id) = parked_event_primary_id(&uri) {
+        for claim in parked {
+            // Defensive (B): skip a parked claim whose consumer no longer holds a
+            // live refcount on the resolved key — it was released before the drain
+            // ran. `release_event_ref` already removes the parked stake on release
+            // (`remove_parked_event_claim`); this is the belt-and-suspenders guard
+            // so the drain can never resurrect a key whose refcount row is gone.
+            if let Some(primary_id) = parked_event_primary_id(&claim.key) {
                 let still_claimed = self
                     .event_claims
                     .get(&primary_id)
-                    .is_some_and(|consumers| consumers.contains(&consumer_id));
+                    .is_some_and(|consumers| consumers.contains(&claim.consumer_id));
                 if !still_claimed {
                     continue;
                 }
             }
-            // Cold-start replay is the gated path (`force = false`): a parked
-            // claim is for an as-yet-unknown event, so it cold-fetches fresh
-            // on replay regardless — force only matters for an already-cached
-            // replaceable identity (the user-navigation refresh case).
-            out.extend(self.claim_event(uri, consumer_id, true, false));
+            // Replay the parked target's OWN shape / liveness / force / author /
+            // relay-hints through the canonical raw body (D) — `can_send = true`
+            // now that a relay is connected. (The parked `force` is preserved
+            // verbatim so the original caller's freshness intent survives the
+            // cold-start delay.)
+            out.extend(self.resolve_event_ref_inner(
+                claim.key,
+                claim.consumer_id,
+                claim.shape,
+                claim.liveness,
+                claim.force,
+                true,
+                claim.author,
+                claim.relay_hints,
+            ));
         }
         out
     }
@@ -242,13 +255,14 @@ impl Kernel {
         primary_id: &str,
         consumer_id: &str,
     ) {
-        self.pending_event_claims.retain(|(uri, parked_consumer)| {
-            if parked_consumer != consumer_id {
+        self.pending_event_claims.retain(|claim| {
+            if claim.consumer_id != consumer_id {
                 return true;
             }
-            // Keep entries whose URI resolves to a DIFFERENT key. An unparseable
-            // parked URI can never have produced this `primary_id`, so keep it.
-            parked_event_primary_id(uri).as_deref() != Some(primary_id)
+            // Keep entries whose raw key resolves to a DIFFERENT primary_id. A
+            // malformed parked key can never have produced this `primary_id`, so
+            // keep it.
+            parked_event_primary_id(&claim.key).as_deref() != Some(primary_id)
         });
     }
 
@@ -316,27 +330,20 @@ impl Kernel {
     }
 }
 
-/// Map a parked `nostr:` URI back to the `primary_id` the resolver computed for
-/// it (hex64 id for nevent/note, `kind:pubkey:d_tag` for naddr). Returns `None`
-/// for a Profile URI or an unparseable string — neither can ever be an event
-/// claim's parked key, so callers leave such entries untouched. The
-/// id/coordinate derivation MUST match `resolve_event_ref` / `release_event_ref`
-/// exactly so a release reliably finds the stake its claim parked.
-fn parked_event_primary_id(uri: &str) -> Option<String> {
-    match parse_nostr_uri(uri).ok()? {
-        NostrUri::Event { event_id, .. } => Some(event_id),
-        NostrUri::Address {
-            identifier,
-            pubkey,
-            kind,
-            ..
-        } => Some(format!("{kind}:{pubkey}:{identifier}")),
-        NostrUri::Profile { .. } => None,
-    }
+/// Map a parked claim's CANONICAL raw `key` (hex64 event-id or `kind:pubkey:d`
+/// coordinate) back to the `primary_id` the resolver computed for it. Returns
+/// `None` for a malformed key — it can never have produced a live claim row, so
+/// callers leave such entries untouched. Delegates to the canonical
+/// `parse_event_key` parser (single path) so the derivation MUST match
+/// `resolve_event_ref` / `release_event_ref` exactly and a release reliably
+/// finds the stake its claim parked.
+fn parked_event_primary_id(key: &str) -> Option<String> {
+    super::event_key::parse_event_key(key).map(|t| t.primary_id)
 }
 
-/// `true` when `s` is exactly 64 lowercase hex chars (a canonical
-/// event-id). Coordinate-form `primary_id` strings never match.
+/// `true` when `s` is exactly 64 lowercase hex chars (a canonical event-id).
+/// Coordinate-form `primary_id` strings never match. Delegates to the canonical
+/// strict check in `event_key` (single path — no duplicate hex predicate).
 fn is_hex64(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    super::event_key::is_lower_hex64(s)
 }

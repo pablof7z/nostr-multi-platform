@@ -1,46 +1,27 @@
-//! ADR-0063 (#1671 Lane B) — event-resolver unit tests for the kernel-owned
+//! ADR-0063 (#1671 Lane B/D) — event-resolver unit tests for the kernel-owned
 //! `RefResolver` primitive: the event Live tailing path, per-consumer owner
-//! lifecycle, CacheOk/Live dedup to one slot per key, and the event-ingest
-//! per-key rev bump.
+//! lifecycle, CacheOk/Live dedup to one slot per key, the event-ingest per-key
+//! rev bump, and event shape-narrowing.
 //!
-//! **Lane D merge target** — the following tests will receive edits at
-//! integration merge: `per_key_rev_advances_on_event_ingest_for_claimed_coord`,
-//! `event_live_addressable_registers_and_releases_tailing_slot`,
-//! `event_live_immutable_id_degrades_to_oneshot`.
-//!
-//! Profile-resolver + shared lifecycle/dedup/rev tests live in
-//! `refs_tests_profile.rs`.
+//! These tests drive the `resolve_ref` Event seam with RAW event keys
+//! (ADR-0063 / FFI contract: a lowercase-64-hex id or a `kind:pubkey:d`
+//! coordinate) — NOT `nostr:` URIs. Raw-key PARSE coverage (well-formed +
+//! malformed fail-closed) lives in `tests_refs_key.rs`; profile-resolver +
+//! shared lifecycle/dedup/rev tests live in `tests_refs_profile.rs`.
 
 use super::nostr::NostrEvent;
-use super::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};
 use super::*;
-use crate::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-fn naddr_uri(kind: u32, author: &str, d_tag: &str) -> String {
-    let bech = encode_naddr(&NaddrData {
-        identifier: d_tag.to_string(),
-        pubkey: author.to_string(),
-        kind,
-        relays: vec![],
-    })
-    .expect("encode_naddr");
-    format!("nostr:{bech}")
-}
-
-fn nevent_uri(event_id: &str) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: None,
-        kind: Some(1),
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
+/// The canonical raw `kind:pubkey:d` coordinate key (ADR-0063 / FFI contract).
+/// The `resolve_ref` Event seam takes this, NOT a `nostr:` URI.
+fn coord_key(kind: u32, author: &str, d_tag: &str) -> String {
+    format!("{kind}:{author}:{d_tag}")
 }
 
 /// A real signed addressable (kind:30023) event carrying `d_tag`. Built with a
@@ -99,7 +80,7 @@ fn per_key_rev_advances_on_event_ingest_for_claimed_coord() {
 
     kernel.resolve_ref(
         RefNamespace::Event,
-        naddr_uri(kind, &author, d_tag),
+        coord_key(kind, &author, d_tag),
         "embed".into(),
         RefShape::Event(EventShape::Embed),
         RefLiveness::CacheOk,
@@ -125,11 +106,14 @@ fn per_key_rev_advances_on_event_ingest_for_claimed_coord() {
 #[test]
 fn event_live_addressable_registers_and_releases_tailing_slot() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let author = hex64("11e");
+    kernel.relay_connected(RelayRole::Content);
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
     let d_tag = "live-doc";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    let uri = naddr_uri(kind, &author, d_tag);
+    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    let uri = coord_key(kind, &author, d_tag);
 
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -145,6 +129,21 @@ fn event_live_addressable_registers_and_releases_tailing_slot() {
         "a Live claim on an addressable coord registers a tailing slot"
     );
 
+    // A replacement (newer kind:30023 at the same coord) ingested while Live must
+    // update the coord row (per-key rev advances at the ingest chokepoint).
+    let rev_before = kernel.ref_row_rev(RefNamespace::Event, &primary_id);
+    let replacement = signed_addressable(&keys, kind, d_tag, 1_700_000_500);
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "refs-test",
+        replacement,
+    );
+    assert!(
+        kernel.ref_row_rev(RefNamespace::Event, &primary_id) > rev_before,
+        "a replacement ingest while Live updates the coord row (per-key rev)"
+    );
+
     kernel.release_ref(RefNamespace::Event, &uri, "screen");
     assert!(
         !kernel.live_event_claims.contains_key(&primary_id),
@@ -155,10 +154,11 @@ fn event_live_addressable_registers_and_releases_tailing_slot() {
 #[test]
 fn event_live_immutable_id_degrades_to_oneshot() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    // Raw 64-hex event-id key — immutable, so Live degrades to one-shot.
     let id = hex64("1dd");
     kernel.resolve_ref(
         RefNamespace::Event,
-        nevent_uri(&id),
+        id.clone(),
         "screen".into(),
         RefShape::Event(EventShape::Raw),
         RefLiveness::Live,
@@ -167,7 +167,11 @@ fn event_live_immutable_id_degrades_to_oneshot() {
     );
     assert!(
         !kernel.live_event_claims.contains_key(&id),
-        "an immutable nevent id can never change, so Live degrades to one-shot"
+        "an immutable event-id can never change, so Live degrades to one-shot"
+    );
+    assert!(
+        kernel.live_event_claims.is_empty(),
+        "an immutable id registers no live tailing slot at all"
     );
 }
 
@@ -183,7 +187,8 @@ fn event_live_plus_live_tears_down_exactly_on_last_release() {
     let d_tag = "doc";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    let uri = naddr_uri(kind, &author, d_tag);
+    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    let uri = coord_key(kind, &author, d_tag);
 
     for c in ["c1", "c2"] {
         kernel.resolve_ref(
@@ -245,7 +250,8 @@ fn event_live_released_before_cacheok_consumer_no_leak() {
     let d_tag = "doc";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    let uri = naddr_uri(kind, &author, d_tag);
+    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    let uri = coord_key(kind, &author, d_tag);
 
     // Live first (tailing slot), then CacheOk dedups onto the same key.
     kernel.resolve_ref(
@@ -306,7 +312,8 @@ fn event_cacheok_then_live_dedups_to_one_slot() {
     let author = hex64("a47c");
     let d_tag = "doc";
     let kind = 30023u32;
-    let uri = naddr_uri(kind, &author, d_tag);
+    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    let uri = coord_key(kind, &author, d_tag);
 
     // Cold CacheOk naddr claim registers ONE OneshotApi interest.
     kernel.resolve_ref(
@@ -349,7 +356,8 @@ fn event_live_then_cacheok_dedups_to_one_slot() {
     let author = hex64("a47d");
     let d_tag = "doc";
     let kind = 30023u32;
-    let uri = naddr_uri(kind, &author, d_tag);
+    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    let uri = coord_key(kind, &author, d_tag);
 
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -390,7 +398,8 @@ fn event_live_then_cacheok_dedups_to_one_slot() {
 fn event_shape_narrows_when_widest_consumer_releases() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let id = hex64("e57a");
-    let uri = nevent_uri(&id);
+    // Raw 64-hex event-id key (ADR-0063 Event key, not a URI).
+    let uri = id.clone();
 
     kernel.resolve_ref(
         RefNamespace::Event,

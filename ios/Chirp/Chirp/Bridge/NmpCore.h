@@ -78,6 +78,22 @@ void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer
 // pass `0` for background claims.
 void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
+// ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
+// Generalize nmp_app_claim_profile + nmp_app_claim_event behind one seam.
+// The old claim_*/release_* symbols are kept until Lane H deletes them.
+//
+// `namespace` — 0 = profile (kind:0), 1 = event.
+// `key` — 64-hex pubkey for profile; event-id hex or "kind:pubkey:d" for event.
+// `consumer_id` — opaque refcount owner key (e.g. SwiftUI view identity).
+// `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
+//   Globally unique across namespaces; kernel fails closed on namespace/shape mismatch.
+// `liveness` — 0=CacheOk (background / feed row), non-zero=Live (open screen).
+// D6: null/invalid args and unknown int codes are silent no-ops, never panics.
+// D8: fire-and-forget; the actor processes commands asynchronously.
+void nmp_app_resolve_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id, int shape, int liveness);
+void nmp_app_release_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id);
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 //
@@ -160,6 +176,15 @@ void nmp_app_chirp_close_home_feed(void *app);
 // the caller MUST free via nmp_free_string.  D6: a null/invalid input or
 // any encode failure degrades to a copy of the raw input, never NULL.
 char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
+
+// Synchronous read: number of accounts the active user currently follows.
+// Reads the active account's latest kind:3 from the kernel's published event
+// store and counts distinct, hex-valid `p` tags. Returns >= 0 for a loaded
+// contact list, -1 when there is no active account, the store is not yet
+// published (pre-nmp_app_start), or no kind:3 has arrived yet. Hosts render
+// -1 as 0 for display; the distinction lets callers tell "no list yet" from
+// "explicitly empty list". D8: synchronous local read, never blocks on network.
+int32_t nmp_app_active_following_count(void *app);
 
 // Stateless NIP-21 / bare NIP-19 decode helper. Accepts `nostr:` URIs and bare
 // bech32 profile/event/address entities, returning bounded JSON:

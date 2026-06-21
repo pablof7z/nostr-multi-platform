@@ -52,16 +52,22 @@ use crate::kernel::ProfileLiveness;
 
 /// Closed, typed set of reference resolvers (ADR-0063 D2). Adding a namespace is
 /// a deliberate, reviewed change — never a runtime string.
+///
+/// Promoted to `pub` in Lane D so `nmp-ffi` can carry it in
+/// `ActorCommand::ResolveRef` / `ActorCommand::ReleaseRef` without an opaque
+/// int round-trip through the actor dispatch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefNamespace {
+pub enum RefNamespace {
     Profile,
     Event,
 }
 
 /// Closed shape enum for the `profile` namespace (ADR-0063 D3). `Card` is the
 /// widest (the full `ProfileCard`); `Ref` is the feed-avatar subset.
+///
+/// Promoted to `pub` in Lane D (see [`RefNamespace`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ProfileShape {
+pub enum ProfileShape {
     /// `{pubkey, display_name, picture_url}` — the feed-avatar shape.
     Ref,
     /// The full ~16-field `ProfileCard` — the profile-screen shape.
@@ -71,7 +77,7 @@ pub(crate) enum ProfileShape {
 impl ProfileShape {
     /// Monotonic widen toward `Card` — the projection row carries the widest
     /// shape any currently-live consumer of the key demanded (ADR-0063 D5).
-    pub(crate) fn widen(self, other: Self) -> Self {
+    pub fn widen(self, other: Self) -> Self {
         if matches!(self, Self::Card) || matches!(other, Self::Card) {
             Self::Card
         } else {
@@ -82,8 +88,10 @@ impl ProfileShape {
 
 /// Closed shape enum for the `event` namespace (ADR-0063 D3). `Raw` is the
 /// widest (the full raw event); `Embed` is the render-an-embed-card subset.
+///
+/// Promoted to `pub` in Lane D (see [`RefNamespace`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EventShape {
+pub enum EventShape {
     /// The render-an-embed-card shape.
     Embed,
     /// The full raw event.
@@ -92,7 +100,7 @@ pub(crate) enum EventShape {
 
 impl EventShape {
     /// Monotonic widen toward `Raw` (ADR-0063 D5).
-    pub(crate) fn widen(self, other: Self) -> Self {
+    pub fn widen(self, other: Self) -> Self {
         if matches!(self, Self::Raw) || matches!(other, Self::Raw) {
             Self::Raw
         } else {
@@ -103,15 +111,17 @@ impl EventShape {
 
 /// The seam-level shape discriminant. Carries its namespace so a
 /// `(namespace, shape)` mismatch at the front door fails closed (D6).
+///
+/// Promoted to `pub` in Lane D (see [`RefNamespace`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefShape {
+pub enum RefShape {
     Profile(ProfileShape),
     Event(EventShape),
 }
 
 impl RefShape {
     /// The namespace this shape belongs to.
-    pub(crate) fn namespace(self) -> RefNamespace {
+    pub fn namespace(self) -> RefNamespace {
         match self {
             Self::Profile(_) => RefNamespace::Profile,
             Self::Event(_) => RefNamespace::Event,
@@ -124,8 +134,10 @@ impl RefShape {
 /// entity*. `CacheOk` serves from the store + one-shot on a miss; `Live` keeps a
 /// tailing sub so replacements arrive reactively. Same key dedups to one slot;
 /// `Live` wins.
+///
+/// Promoted to `pub` in Lane D (see [`RefNamespace`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefLiveness {
+pub enum RefLiveness {
     CacheOk,
     Live,
 }
@@ -133,7 +145,7 @@ pub(crate) enum RefLiveness {
 impl RefLiveness {
     /// Decode the FFI `liveness` int (`0 = CacheOk`, anything else = `Live`).
     #[must_use]
-    pub(crate) fn from_ffi(liveness: i32) -> Self {
+    pub fn from_ffi(liveness: i32) -> Self {
         if liveness == 0 {
             Self::CacheOk
         } else {
