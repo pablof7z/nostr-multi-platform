@@ -384,8 +384,8 @@ pub mod __ffi_internal {
     };
     pub use crate::kernel::{
         default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,
-        new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
-        SnapshotProjectionSlot,
+        new_snapshot_projection_slot, routing_trace, ActionExecuteFailure, ActionFailureKind,
+        ActionRegistry, LifecyclePhase, SnapshotProjectionSlot,
     };
     // ADR-0037: the typed-projection closure type; `nmp-ffi` reaches it
     // through this internal surface to type the

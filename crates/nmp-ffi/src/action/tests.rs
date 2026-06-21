@@ -231,8 +231,8 @@ fn execute_action_unknown_namespace_returns_err() {
         let err = execute_action(app, "nmp.future", "{}", "corr-id")
             .expect_err("unwired namespace must surface an error");
         assert!(
-            err.contains("no executor registered") && err.contains("nmp.future"),
-            "error should name the unwired namespace, got: {err}"
+            err.message.contains("no executor registered") && err.message.contains("nmp.future"),
+            "error should name the unwired namespace, got: {err:?}"
         );
     });
 }

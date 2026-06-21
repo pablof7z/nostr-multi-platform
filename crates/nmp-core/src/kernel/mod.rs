@@ -28,6 +28,8 @@ mod composition_seams;
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
 #[cfg(test)]
 mod action_failure_tests;
+#[cfg(test)]
+mod action_terminal_correctness_tests;
 pub(crate) mod action_lifecycle;
 #[cfg(test)]
 mod action_lifecycle_tests;
@@ -457,7 +459,9 @@ pub use clock::MonotonicSecondClock;
 // `nmp_core::__ffi_internal::*` (the FFI surface owns the
 // `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
-pub use action_registry::{default_registry, ActionRegistry};
+pub use action_registry::{
+    default_registry, ActionExecuteFailure, ActionFailureKind, ActionRegistry,
+};
 pub use composition_ledger::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };

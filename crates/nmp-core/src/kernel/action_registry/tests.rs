@@ -507,7 +507,7 @@ fn panicking_executor_returns_err_not_unwound() {
     let err = registry
         .execute("host.boom", "null", "corr-id", &|_cmd| {})
         .expect_err("a panicking executor must return Err, not unwind");
-    assert_eq!(err, "action executor panicked", "got: {err}");
+    assert_eq!(err.message, "action executor panicked", "got: {err:?}");
 }
 
 /// D6 — a host result-observer closure that panics is contained:
