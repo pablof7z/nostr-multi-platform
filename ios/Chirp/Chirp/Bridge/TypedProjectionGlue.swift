@@ -459,27 +459,9 @@ enum TypedProjectionGlue {
     }
 
     // MARK: refs.event row → ClaimedEventDto (ADR-0063 Lane C, #1671)
-
-    /// Map ONE `refs.event` row payload buffer — a `KCEV`
-    /// `nmp_kernel_ClaimedEventsSnapshot` carrying EXACTLY ONE entry (the kernel
-    /// `ref_event_row_payload` encodes a single-entry model per row) — to that
-    /// one `ClaimedEventDto`. This is the per-ROW twin of `claimedEvents` (which
-    /// yields the whole map): the `KeyedRefCache.event(primaryId)` typed accessor
-    /// calls this so a view binds one decoded event, not a dict. Returns `nil` if
-    /// the buffer carries no entry (a malformed row → decode-before-commit reject).
-    static func refRowEvent(
-        _ reader: nmp_kernel_ClaimedEventsSnapshot
-    ) -> ClaimedEventDto? {
-        guard let entry = reader.entries.first, let event = entry.value else { return nil }
-        return ClaimedEventDto(
-            id: event.id ?? "",
-            authorPubkey: event.authorPubkey ?? "",
-            kind: Int(event.kind),
-            createdAt: Int(event.createdAt),
-            content: event.content ?? "",
-            tags: event.tags.map { row in row.values.map { $0 ?? "" } }
-        )
-    }
+    //
+    // Moved to `TypedProjectionGlue+Refs.swift` (codex NIT: keep this
+    // hand-authored file under its file-size cap). See `refRowEvent(_:)` there.
 
     // MARK: bunker_handshake → BunkerHandshake
 

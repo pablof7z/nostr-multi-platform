@@ -299,4 +299,92 @@ final class KeyedRefCacheTests: XCTestCase {
         XCTAssertTrue(cache.needsResync, "typed decode failure latches resync")
         XCTAssertNil(cache.profile("abc123"))
     }
+
+    // MARK: - Lane C (#1671) BLOCKING: refs.event single-entry fail-closed
+
+    /// Build a `KCEV` `ClaimedEventsSnapshot` row payload carrying `count` entries.
+    /// The kernel's `ref_event_row_payload` ALWAYS encodes EXACTLY ONE entry per
+    /// `refs.event` row; this helper can forge 0, 1, or 2+ entries to prove the
+    /// glue's single-entry contract.
+    private func makeEventRowPayload(entryKeys: [String]) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        var entryOffsets: [Offset] = []
+        for key in entryKeys {
+            let idOff = fbb.create(string: key)
+            let authorOff = fbb.create(string: "author-\(key)")
+            let contentOff = fbb.create(string: "content-\(key)")
+            let primaryOff = fbb.create(string: key)
+            let eventOff = nmp_kernel_ClaimedEvent.createClaimedEvent(
+                &fbb,
+                primaryIdOffset: primaryOff,
+                idOffset: idOff,
+                authorPubkeyOffset: authorOff,
+                kind: 1,
+                createdAt: 100,
+                contentOffset: contentOff)
+            let keyOff = fbb.create(string: key)
+            entryOffsets.append(
+                nmp_kernel_ClaimedEventEntry.createClaimedEventEntry(
+                    &fbb, keyOffset: keyOff, valueOffset: eventOff))
+        }
+        let entriesVec = fbb.createVector(ofOffsets: entryOffsets)
+        let snapOff = nmp_kernel_ClaimedEventsSnapshot.createClaimedEventsSnapshot(
+            &fbb, entriesVectorOffset: entriesVec)
+        nmp_kernel_ClaimedEventsSnapshot.finish(&fbb, end: snapOff)
+        return Array(fbb.data)
+    }
+
+    /// SANITY: a well-formed single-entry KCEV row decodes through the typed
+    /// `event(primaryId) -> ClaimedEventDto?` accessor (the per-row twin of
+    /// `claimedEvents`).
+    func testTypedEventAccessorDecodesSingleEntryRow() {
+        let cache = KeyedRefCache()  // real typed decode-before-commit seam
+        let changed = cache.merge(
+            projectionKey: event,
+            payload: makeBatch(
+                namespace: "event", baseline: true,
+                rows: [Row(key: "evt1", rev: 1, state: .changed, payload: makeEventRowPayload(entryKeys: ["evt1"]))]),
+            sessionId: 1, snapshotEpoch: 0)
+        XCTAssertEqual(changed, ["evt1"])
+        XCTAssertFalse(cache.needsResync, "a valid single-entry KCEV row commits cleanly")
+        let dto: ClaimedEventDto? = cache.event("evt1")
+        XCTAssertEqual(dto?.id, "evt1")
+        XCTAssertEqual(dto?.authorPubkey, "author-evt1")
+        XCTAssertEqual(dto?.content, "content-evt1")
+    }
+
+    /// BLOCKING (codex): a MULTI-entry KCEV row violates the kernel's exactly-one
+    /// `refs.event` row contract (`ref_event_row_payload` always emits one entry).
+    /// `refRowEvent` must reject it — `reader.entries.count == 1` fails, so the
+    /// typed decode-before-commit seam treats the row as malformed: it is NOT
+    /// committed, `needsResync` latches, and the accessor returns nil. This proves
+    /// a forged 2-entry buffer can never silently commit its first entry.
+    func testTypedEventAccessorRejectsMultiEntryRow() {
+        let cache = KeyedRefCache()  // real typed decode-before-commit seam
+        let twoEntry = makeEventRowPayload(entryKeys: ["evtA", "evtB"])
+        let changed = cache.merge(
+            projectionKey: event,
+            payload: makeBatch(
+                namespace: "event", baseline: true,
+                rows: [Row(key: "evtA", rev: 1, state: .changed, payload: twoEntry)]),
+            sessionId: 1, snapshotEpoch: 0)
+        XCTAssertTrue(changed.isEmpty, "a multi-entry KCEV row must NOT commit")
+        XCTAssertTrue(cache.needsResync, "the single-entry-contract violation latches resync")
+        XCTAssertNil(cache.event("evtA"), "no entry from a malformed multi-entry row is committed")
+    }
+
+    /// A ZERO-entry KCEV row is likewise malformed (no event to bind): rejected,
+    /// not committed.
+    func testTypedEventAccessorRejectsEmptyRow() {
+        let cache = KeyedRefCache()  // real typed decode-before-commit seam
+        let changed = cache.merge(
+            projectionKey: event,
+            payload: makeBatch(
+                namespace: "event", baseline: true,
+                rows: [Row(key: "evtA", rev: 1, state: .changed, payload: makeEventRowPayload(entryKeys: []))]),
+            sessionId: 1, snapshotEpoch: 0)
+        XCTAssertTrue(changed.isEmpty, "a zero-entry KCEV row must NOT commit")
+        XCTAssertTrue(cache.needsResync, "the single-entry-contract violation latches resync")
+        XCTAssertNil(cache.event("evtA"))
+    }
 }

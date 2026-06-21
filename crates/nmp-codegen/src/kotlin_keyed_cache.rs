@@ -80,18 +80,42 @@ fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
 }
 
 fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
-    let mut s = String::from(
-        "    // Per-key accessors — one per keyed namespace. A composable reads\n\
-         \x20\x20\x20\x20// `profile(pubkey)` (raw row payload bytes; the caller decodes with the\n\
-         \x20\x20\x20\x20// namespace's typed reader) and observes `rowChanges` filtered on its\n\
-         \x20\x20\x20\x20// key so exactly one composable recomposes when that key updates.\n",
+    // ADR-0063 Lane C (#1671), BLOCKING/HIGH codex fix: Android must NOT expose a
+    // public RAW per-namespace refs accessor. The Swift twin returns the TYPED
+    // domain value (`profile(pubkey) -> ProfileCard?` / `event(primaryId) ->
+    // ClaimedEventDto?`) by decoding the cached row buffer through the namespace's
+    // `flatc --swift` reader. The equivalent Kotlin readers
+    // (`nmp.kernel.ProfileSnapshot` / `nmp.kernel.ClaimedEventsSnapshot`) are NOT
+    // checked into the Android target — only the inner `nmp.kernel.ProfileCard`
+    // ships, and there is no `ClaimedEventsSnapshot.kt` at all (verified). The
+    // kotlin-flatc-drift `--write` gate only refreshes ALREADY checked-in
+    // `nmp/kernel/*.kt`; it never ADDS a new reader, so CI cannot supply these
+    // bindings — they require a one-time `flatc --kotlin` run + commit (Lane G).
+    //
+    // Emitting a typed accessor that names a class the Android target cannot see
+    // would not compile; emitting a public raw `ByteArray?` accessor is the
+    // dishonest raw surface invariant #4 forbids. So this generator emits NEITHER:
+    // the cached row bytes stay reachable ONLY via the `internal payload(...)`
+    // merge primitive (used by the cache itself + same-module tests), with NO
+    // public per-namespace refs surface. Lane G wires the TYPED kotlin accessor
+    // (mirroring the Swift typed path) once the `flatc --kotlin` row readers land
+    // — flipping `KotlinRefRowPayload` to `Some` regenerates the typed accessor
+    // here with zero generator change.
+    // `entries` is intentionally unused while NO typed kotlin accessor is
+    // emitted (Lane G wires it once the row readers land); keep the parameter so
+    // the generator signature stays identical to the swift twin.
+    let _ = entries;
+    let s = String::from(
+        "    // ADR-0063 Lane C (#1671): NO public per-namespace refs accessor.\n\
+         \x20\x20\x20\x20// The TYPED kotlin accessors (`profile(pubkey) -> ProfileCard?` /\n\
+         \x20\x20\x20\x20// `event(primaryId) -> ClaimedEventDto?`, the Swift typed twin) are\n\
+         \x20\x20\x20\x20// gated on the `nmp.kernel.ProfileSnapshot` / `ClaimedEventsSnapshot`\n\
+         \x20\x20\x20\x20// `flatc --kotlin` row readers, which are not yet checked into the\n\
+         \x20\x20\x20\x20// Android target (Lane G). Until then the cache exposes NO raw\n\
+         \x20\x20\x20\x20// `ByteArray?` per-namespace surface (invariant #4: typed per\n\
+         \x20\x20\x20\x20// namespace, never dishonest raw bytes); the row bytes are reachable\n\
+         \x20\x20\x20\x20// only through the `internal payload(...)` merge primitive below.\n",
     );
-    for e in entries {
-        s.push_str(&format!(
-            "    fun {}(key: String): ByteArray? = payload({:?}, key)\n",
-            e.accessor, e.projection_key
-        ));
-    }
     s
 }
 
@@ -349,8 +373,15 @@ const STATIC_MERGE: &str = r#"    /**
         for (listener in rowChangeListeners) listener(change)
     }
 
-    /** The cached raw payload bytes for one (projectionKey, rowKey), or null. */
-    fun payload(projectionKey: String, rowKey: String): ByteArray? =
+    /**
+     * The cached raw payload bytes for one (projectionKey, rowKey), or null.
+     *
+     * `internal` (NOT public): this is the cache's row-bytes merge primitive, not
+     * a public refs API. The public per-namespace TYPED accessors land in Lane G
+     * once the `flatc --kotlin` row readers ship (ADR-0063 Lane C, #1671). Visible
+     * to same-module tests, never to external callers — no dishonest raw surface.
+     */
+    internal fun payload(projectionKey: String, rowKey: String): ByteArray? =
         rows[projectionKey]?.get(rowKey)?.payload
 
     /** The number of cached rows for a projection (test/diagnostic aid). */

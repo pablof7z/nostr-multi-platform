@@ -285,17 +285,27 @@ class KeyedRefCache {
         for (listener in rowChangeListeners) listener(change)
     }
 
-    /** The cached raw payload bytes for one (projectionKey, rowKey), or null. */
-    fun payload(projectionKey: String, rowKey: String): ByteArray? =
+    /**
+     * The cached raw payload bytes for one (projectionKey, rowKey), or null.
+     *
+     * `internal` (NOT public): this is the cache's row-bytes merge primitive, not
+     * a public refs API. The public per-namespace TYPED accessors land in Lane G
+     * once the `flatc --kotlin` row readers ship (ADR-0063 Lane C, #1671). Visible
+     * to same-module tests, never to external callers — no dishonest raw surface.
+     */
+    internal fun payload(projectionKey: String, rowKey: String): ByteArray? =
         rows[projectionKey]?.get(rowKey)?.payload
 
     /** The number of cached rows for a projection (test/diagnostic aid). */
     fun count(projectionKey: String): Int = rows[projectionKey]?.size ?: 0
 
-    // Per-key accessors — one per keyed namespace. A composable reads
-    // `profile(pubkey)` (raw row payload bytes; the caller decodes with the
-    // namespace's typed reader) and observes `rowChanges` filtered on its
-    // key so exactly one composable recomposes when that key updates.
-    fun profile(key: String): ByteArray? = payload("refs.profile", key)
-    fun event(key: String): ByteArray? = payload("refs.event", key)
+    // ADR-0063 Lane C (#1671): NO public per-namespace refs accessor.
+    // The TYPED kotlin accessors (`profile(pubkey) -> ProfileCard?` /
+    // `event(primaryId) -> ClaimedEventDto?`, the Swift typed twin) are
+    // gated on the `nmp.kernel.ProfileSnapshot` / `ClaimedEventsSnapshot`
+    // `flatc --kotlin` row readers, which are not yet checked into the
+    // Android target (Lane G). Until then the cache exposes NO raw
+    // `ByteArray?` per-namespace surface (invariant #4: typed per
+    // namespace, never dishonest raw bytes); the row bytes are reachable
+    // only through the `internal payload(...)` merge primitive below.
 }
