@@ -257,12 +257,14 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("accounts"));
     assert!(keys.contains("active_account"));
     assert!(keys.contains("profile"));
-    // Wave C profile/event cluster: all four are unconditional (`{}` when empty),
-    // so they appear even on a fresh kernel.
-    assert!(keys.contains("mention_profiles"));
-    assert!(keys.contains("claimed_profiles"));
+    // Wave C event-cluster: claimed_events is unconditional (`{}` when empty),
+    // so it appears even on a fresh kernel.
+    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
+    // deleted from typed sidecars (replaced by refs.profile KPRF row-delta sidecar).
     assert!(keys.contains("claimed_events"));
-    assert!(keys.contains("resolved_profiles"));
+    assert!(!keys.contains("mention_profiles"), "mention_profiles deleted (ADR-0063 Lane H)");
+    assert!(!keys.contains("claimed_profiles"), "claimed_profiles deleted (ADR-0063 Lane H)");
+    assert!(!keys.contains("resolved_profiles"), "resolved_profiles deleted (ADR-0063 Lane H)");
     // Wave C action-lifecycle + diagnostics cluster: `relay_diagnostics` is
     // unconditional (captured every emit), so it appears on a fresh kernel; the
     // four drain-on-emit built-ins are absent in steady state (nothing settled /
@@ -284,16 +286,18 @@ fn builtins_emit_without_any_host_typed_registration() {
         !keys.contains("action_lifecycle"),
         "action_lifecycle is absent in steady state (nothing tracked)"
     );
+    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
+    // removed from typed sidecars (were 3 entries); count is now 11.
+    // Breakdown: 6 relay/settings/publish + 3 identity/views + 1 event
+    // (claimed_events) + 1 diagnostics (relay_diagnostics) = 11.
     assert_eq!(
         typed.len(),
-        14,
+        11,
         "the six relay/settings/publish built-ins + the three unconditional \
-         identity/views built-ins (accounts / active_account / profile) + the four \
-         unconditional profile/event built-ins (mention_profiles / claimed_profiles \
-         / claimed_events / resolved_profiles) + `relay_diagnostics` (unconditional); \
-         the two view built-ins AND the four drain-on-emit built-ins (action_results \
-         / signed_events / action_stages / action_lifecycle) are absent on a fresh \
-         kernel: {typed:?}"
+         identity/views built-ins (accounts / active_account / profile) + \
+         claimed_events + relay_diagnostics = 11; \
+         ADR-0063 Lane H removed mention_profiles / claimed_profiles / resolved_profiles; \
+         the four drain-on-emit built-ins absent on a fresh kernel: {typed:?}"
     );
 }
 

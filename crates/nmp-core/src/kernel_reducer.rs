@@ -279,36 +279,9 @@ impl KernelReducer {
     // D8 — no polling. Claims are reactive dispatch; the kernel registers
     // interest and the wasm `dispatch()` arm fans the outbound immediately.
 
-    /// Refcount a consumer's interest in `pubkey`'s kind:0 profile. On the
-    /// cold-claim transition emits the batched-REQ `OutboundMessage`(s) the
-    /// caller should fan to connected relays.
-    ///
-    /// `can_send` is retained for call-site compatibility but is no longer a
-    /// gate: the claim registers a `LogicalInterest` immediately and the
-    /// planner lands the REQ when a relay connects (reconnect-replay). The
-    /// `liveness` hint maps to the registered interest's lifecycle
-    /// (`CacheOk` → OneShot, `Live` → Tailing).
-    pub fn claim_profile(
-        &mut self,
-        pubkey: String,
-        consumer_id: String,
-        can_send: bool,
-        force: bool,
-        liveness: crate::kernel::ProfileLiveness,
-    ) -> Vec<OutboundMessage> {
-        let outbound = self
-            .kernel
-            .claim_profile(pubkey, consumer_id, can_send, force, liveness);
-        self.kernel.partition_auth_paused(outbound)
-    }
-
-    /// Drop a consumer's refcounted interest in `pubkey`'s kind:0 profile.
-    /// When the last consumer releases, the pending-request entry is removed.
-    /// Returns an empty vec (release never emits wire frames).
-    pub fn release_profile(&mut self, pubkey: &str, consumer_id: &str) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.release_profile(pubkey, consumer_id);
-        self.kernel.partition_auth_paused(outbound)
-    }
+    // ADR-0063 Lane H: claim_profile / release_profile deleted.
+    // Use resolve_profile_ref / release_profile_ref directly (or the
+    // KernelReducer::resolve_ref / release_ref if a public surface is needed).
 
     /// Refcount a consumer's interest in the event identified by `uri`
     /// (a `nostr:nevent1…` / `nostr:note1…` / `nostr:naddr1…` URI). On the

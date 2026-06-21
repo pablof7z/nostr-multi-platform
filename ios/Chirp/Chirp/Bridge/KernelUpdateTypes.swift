@@ -118,12 +118,8 @@ struct KernelUpdateResult {
     /// Typed `profile` projection decode (`KPRF`). `nil` ⇒ generic
     /// `projections["profile"]` JSON fallback.
     let typedProfile: ProfileCard?
-    /// Typed `claimed_profiles` projection decode (`KCPR`). `nil` ⇒ generic
-    /// `projections["claimed_profiles"]` JSON fallback.
-    let typedClaimedProfiles: [String: ProfileCard]?
-    /// Typed `resolved_profiles` projection decode (`KRPR`). `nil` ⇒ generic
-    /// `projections["resolved_profiles"]` JSON fallback.
-    let typedResolvedProfiles: [String: ProfileCard]?
+    // ADR-0063 Lane H: typedClaimedProfiles (KCPR) and typedResolvedProfiles (KRPR)
+    // deleted. Profile data is now served via the refs.profile KPRF NRRD row-delta sidecar.
     /// Typed `nmp.nip17.dm_inbox` projection decode (`NDMI`). `nil` ⇒ generic
     /// `projections["nmp.nip17.dm_inbox"]` JSON fallback. Routed to the
     /// `dmInbox` store (typed-first effective value) in `KernelModel.apply`.

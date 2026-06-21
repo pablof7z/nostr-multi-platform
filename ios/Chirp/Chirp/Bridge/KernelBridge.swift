@@ -898,15 +898,11 @@ final class KernelHandle {
             // on every tick. Nil only on an older kernel build → the generic
             // `projections["nmp.nip29.group_defaults"]` JSON path applies.
             let typedGroupDefaults = TypedGroupDefaultsDecoder.decode(from: envelopes)
-            // Profile-cluster typed sidecars (`profile` / `claimed_profiles` /
-            // `resolved_profiles`). All three share the `nmp_kernel_ProfileCard`
-            // reader (defined once in `ProfileCard.generated.swift`). Each returns
-            // nil when its sidecar is absent/malformed → the generic
-            // `projections.<field>` JSON path stays active (ADR-0037 Commitment 4),
-            // mirroring `typedAccounts` above.
+            // Profile-cluster typed sidecar (`profile` / KPRF). Returns nil when
+            // its sidecar is absent/malformed. `claimed_profiles` (KCPR) and
+            // `resolved_profiles` (KRPR) deleted — ADR-0063 Lane H. Profile data
+            // is now served via the refs.profile KPRF NRRD row-delta sidecar.
             let typedProfile = TypedProfileDecoder.decode(from: envelopes)
-            let typedClaimedProfiles = TypedClaimedProfilesDecoder.decode(from: envelopes)
-            let typedResolvedProfiles = TypedResolvedProfilesDecoder.decode(from: envelopes)
             // NIP-17 DM cluster + claimed-event map (`nmp.nip17.dm_inbox` /
             // `nmp.nip17.dm_relay_list` / `claimed_events`). Each returns nil when
             // its sidecar is absent/malformed → the generic `projections.<field>`
@@ -980,8 +976,6 @@ final class KernelHandle {
                     typedDiscoveredGroups: typedDiscoveredGroups,
                     typedGroupDefaults: typedGroupDefaults,
                     typedProfile: typedProfile,
-                    typedClaimedProfiles: typedClaimedProfiles,
-                    typedResolvedProfiles: typedResolvedProfiles,
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
                     typedClaimedEvents: typedClaimedEvents,

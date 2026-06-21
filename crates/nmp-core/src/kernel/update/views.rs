@@ -1,6 +1,6 @@
 use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
 #[cfg(test)]
-use super::super::{MentionProfilePayload, TimelineItem};
+use super::super::TimelineItem;
 #[cfg(test)]
 use super::helpers::parse_repost_inner;
 use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};

@@ -442,7 +442,7 @@ fn open_uri_serves_store_for_resolved_target() {
 /// where the in-memory ProfileCache is empty but the on-disk store is warm.
 #[test]
 fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
-    use crate::kernel::ProfileLiveness;
+    use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
     use crate::substrate::{ProfileLookup, TestKind0Parser, TestProfileCache};
 
     let base_ts: u64 = 1_770_000_000;
@@ -474,12 +474,14 @@ fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
     // ── Phase 3: claim the profile — routes through register_interest(Replace) ─
     // cold_cache.contains(&author) == false → want_register = true → front-door
     // fires, cache-serve enqueued. No relay connected, no wire event injected.
-    kernel.claim_profile(
+    kernel.resolve_ref(
+        RefNamespace::Profile,
         author.clone(),
         "test-consumer".to_string(),
-        false, // can_send
-        false, // force
-        ProfileLiveness::CacheOk,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
+        false,
+        Vec::new(),
     );
     drain_cache_serves(&mut kernel, 10);
 

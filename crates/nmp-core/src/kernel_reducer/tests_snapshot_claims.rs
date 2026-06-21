@@ -21,6 +21,7 @@
 // that the wasm32 runtime uses to push typed-projection snapshots to JS.
 
 use super::*;
+use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -175,12 +176,12 @@ fn claim_profile_on_fresh_reducer_parks_returns_empty() {
     let _ = r.reduce(KernelAction::Start);
     // any_relay_connected is false on a fresh reducer — assert the gate.
     assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
-    let out = r.claim_profile(
+    let out = r.resolve_ref(
+        RefNamespace::Profile,
         PK.to_string(),
         "chirp-web-author-1".to_string(),
-        false,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
     );
     assert!(out.is_empty(), "claim_profile must emit no outbound directly");
 }
@@ -193,19 +194,19 @@ fn claim_profile_refcount_dedup_does_not_double_fetch() {
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
 
-    let _ = r.claim_profile(
+    let _ = r.resolve_ref(
+        RefNamespace::Profile,
         PK.to_string(),
         "chirp-web-author-card-a".to_string(),
-        false,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
     );
-    let out2 = r.claim_profile(
+    let out2 = r.resolve_ref(
+        RefNamespace::Profile,
         PK.to_string(),
         "chirp-web-author-card-b".to_string(),
-        false,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
     );
     assert!(
         out2.is_empty(),
@@ -218,7 +219,7 @@ fn release_profile_is_total_no_panic() {
     // Releasing a pubkey that was never claimed is a no-op (D6).
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
-    let out = r.release_profile(PK, "chirp-web-author-1");
+    let out = r.release_ref(RefNamespace::Profile, PK, "chirp-web-author-1");
     assert!(out.is_empty(), "release must emit no outbound");
 }
 

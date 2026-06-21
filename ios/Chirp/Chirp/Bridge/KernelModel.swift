@@ -404,18 +404,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     #if DEBUG
-    /// Test-only seam (ADR-0063 Lane E, #1671): seed the per-key profile
+    /// Test-only seam (ADR-0063 Lane H, #1671): seed the per-key profile
     /// override `profileCard(forPubkey:)` reads when the kernel actor is not
     /// running, so tests exercise `profile(forPubkey:)` on the live read path
-    /// (`keyedRefCache` → `profileCard(forPubkey:)`). `claimedProfiles` wins
-    /// over `resolvedProfiles` per pubkey (kernel precedence).
+    /// (`keyedRefCache` → `profileCard(forPubkey:)`). ADR-0063 Lane H removed
+    /// `claimed_profiles` (KCPR) and `resolved_profiles` (KRPR); callers now
+    /// supply the merged map directly.
     func setTypedSnapshotForTesting(
-        claimedProfiles: [String: ProfileCard]? = nil,
-        resolvedProfiles: [String: ProfileCard]? = nil
+        profileCards: [String: ProfileCard] = [:]
     ) {
-        var merged = resolvedProfiles ?? [:]
-        for (pk, card) in claimedProfiles ?? [:] { merged[pk] = card }
-        debugProfileCardOverrides = merged
+        debugProfileCardOverrides = profileCards
     }
     #endif
 

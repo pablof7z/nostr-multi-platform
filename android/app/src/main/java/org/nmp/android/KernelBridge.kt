@@ -411,8 +411,7 @@ class KernelBridge {
     private external fun nativeClearUpdateListener(handle: Long)
     // Ref claim/release — `internal` so the cohesive ref-resolution wrappers live
     // in the sibling KernelBridgeRefs.kt without inflating this file past the LOC ceiling.
-    internal external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
-    internal external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
+    // ADR-0063 Lane H: nativeClaimProfile / nativeReleaseProfile deleted.
     internal external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
     internal external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     internal external fun nativeResolveRef(

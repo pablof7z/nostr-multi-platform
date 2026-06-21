@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import org.nmp.android.KernelModel
+import org.nmp.android.react
+import org.nmp.android.repost
+import org.nmp.android.zapNote
 import org.nmp.android.model.ChirpEventCard
 
 internal const val DEFAULT_ZAP_SATS = 21L

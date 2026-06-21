@@ -654,56 +654,14 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_RelayDiagnosticsSnapshot"),
         }),
     },
-    // Pre-merged profile map (PR #812) — replaces the per-shell merge of
-    // `claimed_profiles` / `mention_profiles` (V-112: author_view deleted). Keyed
-    // by pubkey, one `ProfileCard` per profile the kernel can resolve, applying
-    // the canonical precedence (claimed > mention) once in Rust
-    // (`kernel/update/projections.rs`). Same Rust type as `claimed_profiles`
-    // (`BTreeMap<String, ProfileCard>`), so it round-trips through the existing
-    // Swift `ProfileCard` exactly like `claimed_profiles` does. Chirp reads
-    // this instead of the narrower `mention_profiles` projection, which is no
-    // longer in this registry (the kernel still emits it as a building block
-    // for this merge — Swift just stops decoding it directly).
-    SnapshotProjectionEntry {
-        json_key: "resolved_profiles",
-        swift_field: "resolvedProfiles",
-        swift_type: "[String: ProfileCard]",
-        typed_sidecar: Some(TypedSidecar {
-            key: "resolved_profiles",
-            schema_id: "resolved_profiles",
-            file_identifier: "KRPR",
-            // Profile-cluster batch: the `flatc --swift` reader
-            // (`nmp_kernel_ResolvedProfilesSnapshot`, entries each carrying the
-            // SHARED `nmp_kernel_ProfileCard`) ships with this batch. Flattened
-            // `[{key,value}]` → `[String: ProfileCard]` with the same `has_*`
-            // companion mapping as `claimed_profiles`. See
-            // `TypedProjectionGlue.resolvedProfiles`.
-            swift_reader_type: Some("nmp_kernel_ResolvedProfilesSnapshot"),
-        }),
-    },
-    // Reference-first claimed-profile map — keyed by pubkey, one
-    // `ProfileCard` per currently claimed UI profile. Built in
-    // `kernel/update/projections.rs::snapshot_projections_with_publish_cluster`
-    // by iterating `profile_claims` and calling `profile_card_for`; missing
-    // kind:0 data still emits a placeholder card (D1 honest fallback).
-    // Consumed by `KernelModel.profile(forPubkey:)` for the NostrProfileHost
-    // conformance (`ios/Chirp/Chirp/Bridge/KernelModel.swift`).
-    SnapshotProjectionEntry {
-        json_key: "claimed_profiles",
-        swift_field: "claimedProfiles",
-        swift_type: "[String: ProfileCard]",
-        typed_sidecar: Some(TypedSidecar {
-            key: "claimed_profiles",
-            schema_id: "claimed_profiles",
-            file_identifier: "KCPR",
-            // Profile-cluster batch: the `flatc --swift` reader
-            // (`nmp_kernel_ClaimedProfilesSnapshot`, entries each carrying the
-            // SHARED `nmp_kernel_ProfileCard`) ships with this batch. Flattened
-            // `[{key,value}]` → `[String: ProfileCard]` with `has_*`→`String?`
-            // companion mapping. See `TypedProjectionGlue.claimedProfiles`.
-            swift_reader_type: Some("nmp_kernel_ClaimedProfilesSnapshot"),
-        }),
-    },
+    // ADR-0063 Lane H: resolved_profiles / claimed_profiles entries deleted.
+    // Profile resolution is now served by refs.profile (KPRF NRRD row-delta
+    // sidecar per claim). The typed_projections cluster for these two was
+    // removed from builtins_profiles.rs; the Swift SnapshotProjections fields
+    // (resolvedProfiles / claimedProfiles) and their FlatBuffers readers
+    // (nmp_kernel_ResolvedProfilesSnapshot / nmp_kernel_ClaimedProfilesSnapshot)
+    // are likewise deleted.
+    //
     // Reference-first claimed-event map (ADR-0034 / F-CR-06) — keyed by
     // `primary_id` (hex-64 event id for nevent/note, `kind:pubkey:d_tag`
     // coordinate for naddr), one `ClaimedEventDto` per currently claimed

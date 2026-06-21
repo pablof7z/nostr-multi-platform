@@ -449,26 +449,7 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::ClaimProfile {
-            pubkey,
-            consumer_id,
-            force,
-            liveness,
-        } => {
-            let outbound =
-                ctx.kernel
-                    .claim_profile(pubkey, consumer_id, ctx.relays_ready, force, liveness);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::ReleaseProfile {
-            pubkey,
-            consumer_id,
-        } => {
-            let outbound = ctx.kernel.release_profile(&pubkey, &consumer_id);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
+        // ADR-0063 Lane H: ClaimProfile / ReleaseProfile dispatch arms deleted.
         ActorCommand::ClaimEvent {
             uri,
             consumer_id,

@@ -17,28 +17,8 @@
 //! — no I/O, no allocations beyond the produced `RecentFailure`.
 
 use super::super::action::PublishHandle;
-use super::super::traits::PublishStoreError;
 use super::super::view::RecentFailure;
 use super::PublishEngineError;
-
-impl std::fmt::Display for PublishEngineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DuplicateHandle(h) => write!(f, "duplicate publish handle: {:?}", h),
-            Self::NoTargets => write!(f, "no relay targets for publish"),
-            Self::Store(e) => write!(f, "publish store error: {e}"),
-            Self::UnsupportedAction(name) => write!(f, "unsupported action: {name}"),
-        }
-    }
-}
-
-impl std::error::Error for PublishEngineError {}
-
-impl From<PublishStoreError> for PublishEngineError {
-    fn from(err: PublishStoreError) -> Self {
-        Self::Store(err)
-    }
-}
 
 /// Pseudo relay-url used for engine-level failures that don't belong to a
 /// real relay (no targets resolved, duplicate handle, store backend error).

@@ -12,7 +12,7 @@ use super::profile_claim_test_support::{
     drain_reqs, has_10002_probe_for, hex64, kind0_req_relays_for,
 };
 use super::*;
-use crate::kernel::ProfileLiveness;
+use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::relay::{DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL};
 
 // ─── (b) cold-start claim → indexer + D3 probe; 10002 arrival → re-route ─────
@@ -25,13 +25,15 @@ fn cold_start_claim_reaches_indexer_and_probes_then_reroutes_on_nip65() {
 
     let stranger = hex64("57a"); // not in any follow set, no cached mailbox
 
-    let _ = kernel.claim_profile(
-        stranger.clone(),
-        "view-0".to_string(),
-        true,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            stranger.clone(),
+            "view-0".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
 
     let reqs = drain_reqs(&mut kernel);
 
@@ -99,13 +101,15 @@ fn indexer_reconnect_reprobes_uncached_author() {
     kernel.relay_connected_url(RelayRole::Indexer, INDEXER_RELAY_URL);
 
     let stranger = hex64("9a9");
-    let _ = kernel.claim_profile(
-        stranger.clone(),
-        "view-0".to_string(),
-        true,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            stranger.clone(),
+            "view-0".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     let _ = kernel.drain_lifecycle_outbound();
     assert!(
         kernel.probed_mailboxes_for_test().contains(&stranger),
@@ -151,13 +155,15 @@ fn single_indexer_flap_among_live_siblings_does_not_rearm() {
     kernel.relay_connected_url(RelayRole::Indexer, INDEXER_B);
 
     let stranger = hex64("5ed");
-    let _ = kernel.claim_profile(
-        stranger.clone(),
-        "view-0".to_string(),
-        true,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            stranger.clone(),
+            "view-0".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     let _ = kernel.drain_lifecycle_outbound();
     assert!(
         kernel.probed_mailboxes_for_test().contains(&stranger),
@@ -219,13 +225,15 @@ fn redundant_indexer_connect_does_not_churn() {
     kernel.relay_connected_url(RelayRole::Indexer, INDEXER_RELAY_URL);
 
     let stranger = hex64("b0b");
-    let _ = kernel.claim_profile(
-        stranger.clone(),
-        "view-0".to_string(),
-        true,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            stranger.clone(),
+            "view-0".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     // First drain settles the plan and emits the kind:10002 probe once.
     let first = drain_reqs(&mut kernel);
     assert!(
@@ -286,12 +294,14 @@ fn many_cache_ok_claims_coalesce_into_one_batched_kind0_req() {
 
     let authors: Vec<String> = (0..12).map(|i| hex64(&format!("a{i}"))).collect();
     for (i, pk) in authors.iter().enumerate() {
-        let _ = kernel.claim_profile(
+        let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
             pk.clone(),
             format!("avatar-{i}"),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
             false,
-            false,
-            ProfileLiveness::CacheOk,
+            Vec::new(),
         );
     }
 
@@ -360,11 +370,13 @@ fn nprofile_hint_routes_kind0_to_embedded_relay() {
     // Claim originating from an nprofile carrying a relay TLV — no cached
     // mailbox, no indexer kind:10002 ever arrives, but the embedded hint relay
     // must still receive the kind:0.
-    let _ = kernel.claim_profile_with_hints(
+    let _ = kernel.resolve_ref(
+        RefNamespace::Profile,
         stranger.clone(),
         "view-0".to_string(),
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
         false,
-        ProfileLiveness::CacheOk,
         vec![hint_relay.to_string()],
     );
 

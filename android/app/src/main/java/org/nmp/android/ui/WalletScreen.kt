@@ -31,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.dispatchWalletConnect
+import org.nmp.android.dispatchWalletDisconnect
 
 /**
  * Wallet (NIP-47 / NWC) connection screen for Android Chirp.

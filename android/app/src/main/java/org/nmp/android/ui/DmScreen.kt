@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.RefLiveness
 import org.nmp.android.RefShape
+import org.nmp.android.sendDm
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.components.NostrAvatar
 import org.nmp.android.model.DmConversation

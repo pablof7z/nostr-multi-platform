@@ -131,13 +131,15 @@ fn claim_profile_after_ingest_queues_fetch() {
     );
 
     // Now a component claims the author (CacheOk → OneShot kind:0 fetch).
-    let _ = kernel.claim_profile(
-        author.clone(),
-        "test-consumer-id".to_string(),
-        true,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            author.clone(),
+            "test-consumer-id".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     assert!(
         kernel.profile_claim_interest_registered_for_test(&author),
         "claim_profile must register a kind:0 claim interest for the author"

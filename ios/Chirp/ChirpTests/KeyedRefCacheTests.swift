@@ -258,7 +258,7 @@ final class KeyedRefCacheTests: XCTestCase {
         nmp_kernel_ProfileCard.add(nip05: nip05Off, &fbb)
         nmp_kernel_ProfileCard.add(about: aboutOff, &fbb)
         let cardOff = nmp_kernel_ProfileCard.endProfileCard(&fbb, start: cardStart)
-        let snapOff = nmp_kernel_ProfileSnapshot.createProfileSnapshot(&fbb, cardOffset: Offset(offset: cardOff))
+        let snapOff = nmp_kernel_ProfileSnapshot.createProfileSnapshot(&fbb, cardOffset: cardOff)
         nmp_kernel_ProfileSnapshot.finish(&fbb, end: snapOff)
         return Array(fbb.data)
     }

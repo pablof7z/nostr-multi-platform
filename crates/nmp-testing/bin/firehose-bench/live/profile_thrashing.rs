@@ -17,6 +17,7 @@
 use super::{drain_until, open_sub_count, visible_items, wait_connected, wait_update, Scenario};
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_eq, gate_max, gate_min};
+use nmp_core::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use nmp_core::testing::{spawn_actor, ActorCommand};
 use nmp_testing::harness_probe::recv_latest_until;
 use std::time::{Duration, Instant};
@@ -77,14 +78,18 @@ pub(crate) fn profile_thrashing() -> Scenario {
                 let pubkey = SEED_PUBKEYS[slot % pool_size];
                 let consumer = format!("bench-{}", slot % 20);
 
-                let _ = tx.send(ActorCommand::ClaimProfile {
-                    pubkey: pubkey.to_string(),
+                let _ = tx.send(ActorCommand::ResolveRef {
+                    namespace: RefNamespace::Profile,
+                    key: pubkey.to_string(),
                     consumer_id: consumer.clone(),
+                    shape: RefShape::Profile(ProfileShape::Card),
+                    liveness: RefLiveness::CacheOk,
                     force: false,
-                    liveness: nmp_core::ProfileLiveness::CacheOk,
+                    hints: Vec::new(),
                 });
-                let _ = tx.send(ActorCommand::ReleaseProfile {
-                    pubkey: pubkey.to_string(),
+                let _ = tx.send(ActorCommand::ReleaseRef {
+                    namespace: RefNamespace::Profile,
+                    key: pubkey.to_string(),
                     consumer_id: consumer,
                 });
                 mount_count += 1;

@@ -58,7 +58,7 @@
 //! registry interest is driven off it.
 
 use super::super::{short_hex, truncate, Kernel, OutboundMessage};
-use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
+use crate::kernel::refs::{ProfileShape, RefLiveness};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
@@ -113,57 +113,13 @@ fn profile_claim_interest_id(pubkey: &str) -> InterestId {
 }
 
 impl Kernel {
-    // integration-scaffold(#1671 Lane H): delete before final master cut.
+    // ADR-0063 Lane H: claim_profile / claim_profile_with_hints deleted.
+    // Call resolve_ref(RefNamespace::Profile, pubkey, consumer_id,
+    //   RefShape::Profile(ProfileShape::Card), liveness.into(), force, Vec::new())
+    // directly instead.
     //
-    // Thin delegator onto the unified [`Kernel::resolve_ref`] seam so Lanes C/D/E
-    // keep compiling on the integration branch. The legacy `claim_profile`
-    // surface resolves the full `ProfileCard` (`claimed_profiles` = full card),
-    // so it maps to [`ProfileShape::Card`]. `can_send` is ignored (the registry
-    // registers immediately; the planner lands the REQ on connect — V-87 #602).
-    pub(crate) fn claim_profile(
-        &mut self,
-        pubkey: String,
-        consumer_id: String,
-        _can_send: bool,
-        force: bool,
-        liveness: ProfileLiveness,
-    ) -> Vec<OutboundMessage> {
-        self.resolve_ref(
-            RefNamespace::Profile,
-            pubkey,
-            consumer_id,
-            RefShape::Profile(ProfileShape::Card),
-            liveness.into(),
-            force,
-            Vec::new(),
-        )
-    }
-
-    // integration-scaffold(#1671 Lane H): delete before final master cut.
-    //
-    /// nprofile/nevent-originated claim: identical to [`Self::claim_profile`]
-    /// but seeds the registered interest's `hints` with the NIP-19 relay TLVs
-    /// embedded in the URI, so a stranger whose kind:10002 is on no indexer
-    /// still resolves from the embedded relay (parity with `claim_event`).
-    #[cfg(test)] // only called from profile_claim_discovery_tests
-    pub(crate) fn claim_profile_with_hints(
-        &mut self,
-        pubkey: String,
-        consumer_id: String,
-        force: bool,
-        liveness: ProfileLiveness,
-        relay_hints: Vec<String>,
-    ) -> Vec<OutboundMessage> {
-        self.resolve_ref(
-            RefNamespace::Profile,
-            pubkey,
-            consumer_id,
-            RefShape::Profile(ProfileShape::Card),
-            liveness.into(),
-            force,
-            relay_hints,
-        )
-    }
+    // release_profile deleted. Call release_ref(RefNamespace::Profile, pubkey, consumer_id)
+    // directly instead.
 
     /// The `profile` reference resolver (ADR-0063). Generalizes the former
     /// `claim_profile_inner`: refcount the consumer, register/upgrade the
@@ -347,15 +303,6 @@ impl Kernel {
             }],
             "profile-claim",
         );
-    }
-
-    // integration-scaffold(#1671 Lane H): delete before final master cut.
-    pub(crate) fn release_profile(
-        &mut self,
-        pubkey: &str,
-        consumer_id: &str,
-    ) -> Vec<OutboundMessage> {
-        self.release_ref(RefNamespace::Profile, pubkey, consumer_id)
     }
 
     /// The `profile` reference release (ADR-0063). Generalizes the former

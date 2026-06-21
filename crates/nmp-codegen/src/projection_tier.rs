@@ -57,9 +57,8 @@ pub fn projection_tier(json_key: &str) -> ProjectionTier {
         | "active_account"
         | "profile"
         | "relay_diagnostics"
-        | "claimed_profiles"
-        | "claimed_events"
-        | "resolved_profiles" => ProjectionTier::KernelBuiltin,
+        // ADR-0063 Lane H: claimed_profiles / resolved_profiles deleted; replaced by refs.profile.
+        | "claimed_events" => ProjectionTier::KernelBuiltin,
         // ── Tier-1 host/protocol registrations (self-gate by registration) ──
         "wallet"
         | "bunker_handshake"
@@ -93,22 +92,21 @@ pub fn projection_tier(json_key: &str) -> ProjectionTier {
 /// - `signed_events` — the D13 sign-and-return drain. The host resumes its
 ///   `signEventForReturn` continuation by `correlation_id` through the FFI
 ///   layer; there is no `SnapshotProjections` field for it.
-/// - `mention_profiles` — Android decodes it via a hand-written decoder outside
-///   the codegen registry; Swift reads the merged `resolved_profiles` map
-///   instead. The kernel still emits it as a building block, so it is a
-///   built-in the `consume_all` set must include.
 /// - `refs.profile` / `refs.event` (ADR-0063 #1671) — the two keyed row-delta
 ///   carriers. Each ships an opaque NRRD per-key row-delta batch consumed by the
 ///   host `RefRowCache`, not a `SnapshotProjections` JSON field, so neither has a
 ///   generated shell decoder.
 ///
-/// These are the ONLY four members of [`kernel_builtin_projection_keys`] that are
+/// ADR-0063 Lane H: `mention_profiles` removed from this list (kernel no longer
+/// emits it). `claimed_profiles` / `resolved_profiles` removed from
+/// `SNAPSHOT_PROJECTIONS` (replaced by `refs.profile` KPRF row-delta sidecar).
+///
+/// These are the ONLY three members of [`kernel_builtin_projection_keys`] that are
 /// not also `SNAPSHOT_PROJECTIONS` entries. They are pinned by the
 /// `kernel_builtins_without_shell_decoder_are_not_in_registry` test so the list
 /// cannot silently overlap the decoder registry.
 pub const KERNEL_BUILTINS_WITHOUT_SHELL_DECODER: &[&str] = &[
     "signed_events",
-    "mention_profiles",
     // ADR-0063 (#1671 integration glue) — the two keyed row-delta carriers
     // (`refs.profile` / `refs.event`). They are kernel-emitted Tier-2 built-ins
     // but carry an opaque NRRD per-key row-delta batch consumed by the host
@@ -176,9 +174,14 @@ mod tests {
         }
     }
 
-    /// Lock the derived kernel built-in set: 16 Tier-2 registry entries + the 4
-    /// out-of-registry built-ins (`signed_events`, `mention_profiles`, and the
-    /// two ADR-0063 `refs.*` row-delta carriers) = 20, sorted + deduplicated.
+    /// Lock the derived kernel built-in set: 14 Tier-2 registry entries + the 3
+    /// out-of-registry built-ins (`signed_events` and the two ADR-0063
+    /// `refs.*` row-delta carriers) = 17, sorted + deduplicated.
+    ///
+    /// ADR-0063 Lane H: `claimed_profiles` / `mention_profiles` /
+    /// `resolved_profiles` removed (replaced by `refs.profile` KPRF row-delta
+    /// sidecar). Previous count was 20; now 17.
+    ///
     /// This is the set `nmp-core`'s generated `KERNEL_BUILTIN_PROJECTION_KEYS`
     /// mirrors.
     #[test]
@@ -193,9 +196,7 @@ mod tests {
                 "action_stages",
                 "active_account",
                 "claimed_events",
-                "claimed_profiles",
                 "configured_relays",
-                "mention_profiles",
                 "outbox_summary",
                 "profile",
                 "publish_outbox",
@@ -204,7 +205,6 @@ mod tests {
                 "refs.profile",
                 "relay_diagnostics",
                 "relay_role_options",
-                "resolved_profiles",
                 "settings_hub",
                 "signed_events",
             ],

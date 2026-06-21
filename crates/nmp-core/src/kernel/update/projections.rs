@@ -1,4 +1,6 @@
-use super::super::{ClaimedEventDto, Kernel, MentionProfilePayload, ProfileCard};
+// ADR-0063 Lane H: MentionProfilePayload + ProfileCard removed (mention_profiles /
+// claimed_profiles / resolved_profiles projection builders deleted).
+use super::super::{ClaimedEventDto, Kernel};
 
 // Canonical list of the kernel-owned (Tier-2) built-in projection keys.
 // The registry-closure Tier-1 keys are NOT listed here; they are introspectable
@@ -190,20 +192,8 @@ impl Kernel {
                 serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
             );
         }
-        if declared.permits("mention_profiles") {
-            projections.insert(
-                "mention_profiles".to_string(),
-                serde_json::to_value(&self.mention_profiles())
-                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
-            );
-        }
-        if declared.permits("claimed_profiles") {
-            projections.insert(
-                "claimed_profiles".to_string(),
-                serde_json::to_value(&self.claimed_profiles())
-                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
-            );
-        }
+        // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles emission deleted.
+        // These projections are replaced by refs.profile (KPRF/NRRD row-delta sidecars).
         if declared.permits("claimed_events") {
             projections.insert(
                 "claimed_events".to_string(),
@@ -211,59 +201,12 @@ impl Kernel {
                     .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
             );
         }
-        if declared.permits("resolved_profiles") {
-            projections.insert(
-                "resolved_profiles".to_string(),
-                serde_json::to_value(&self.resolved_profiles())
-                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
-            );
-        }
         projections
     }
 
-    /// `mention_profiles` accessor (aim.md §4.2): `pubkey ->
-    /// MentionProfilePayload` for every author surfaced in ANY currently-open
-    /// view.
-    ///
-    /// V-112 (ADR-0042): the `author_view` / `thread_view` item sources were
-    /// deleted. The projection now returns an empty map. The mention_profiles
-    /// projection is still emitted (not absent) to preserve the D1 contract;
-    /// display name resolution for author/thread screens is delegated to the
-    /// resolved_profiles (claimed_profiles) projection instead.
-    ///
-    /// This is the single accessor the snapshot's generic JSON `mention_profiles`
-    /// projection AND its Tier-2 typed FlatBuffer sidecar both read, in the same
-    /// tick, so the two wire forms cannot structurally diverge (ADR-0037).
-    pub(in crate::kernel) fn mention_profiles(
-        &self,
-    ) -> std::collections::HashMap<String, MentionProfilePayload> {
-        std::collections::HashMap::new()
-    }
-
-    /// `claimed_profiles` accessor — `pubkey -> ProfileCard` for every currently
-    /// claimed UI profile (the reference-first component path). Missing kind:0
-    /// data still emits a placeholder card so components can render an honest
-    /// fallback immediately and refine in place when the profile arrives.
-    /// BTreeMap for deterministic key ordering (snapshot diff stability).
-    ///
-    /// Shared accessor for the generic JSON projection and its Tier-2 typed
-    /// sidecar — see [`Self::mention_profiles`] for the divergence-safety
-    /// rationale.
-    pub(in crate::kernel) fn claimed_profiles(
-        &self,
-    ) -> std::collections::BTreeMap<String, ProfileCard> {
-        let mut claimed_profiles: std::collections::BTreeMap<String, ProfileCard> =
-            std::collections::BTreeMap::new();
-        for pubkey in self.profile_claims.keys() {
-            // ADR-0032 / V-115: raw hex pubkey only; shells encode bech32
-            // host-side. `to_npub` call removed.
-            claimed_profiles.insert(
-                pubkey.clone(),
-                self.profile_card_for(pubkey, ""),
-            );
-        }
-        claimed_profiles
-    }
+    // ADR-0063 Lane H: mention_profiles(), claimed_profiles(), resolved_profiles()
+    // deleted. These were the old 3-tier JSON projection builders; profile data is
+    // now delivered via the refs.profile KPRF NRRD row-delta sidecar.
 
     /// `claimed_events` accessor — keyed by `primary_id` (hex64 event id for
     /// nevent/note URIs; `kind:pubkey:d_tag` coordinate for naddr URIs). Walks
@@ -303,37 +246,4 @@ impl Kernel {
         claimed_events
     }
 
-    /// `resolved_profiles` accessor — the pre-merged `pubkey -> ProfileCard` map
-    /// every consumer reads. Precedence: [`Self::claimed_profiles`] (highest) →
-    /// [`Self::mention_profiles`] (lowest, only-if-absent). Always present as `{}` when empty
-    /// (D1); BTreeMap for deterministic key ordering.
-    ///
-    /// Recomputes `claimed_profiles` / `mention_profiles` internally rather than
-    /// sharing a cached result — the snapshot helper already calls each accessor
-    /// independently, and caching across the JSON and typed call sites would
-    /// reintroduce the divergence risk this split exists to remove.
-    pub(in crate::kernel) fn resolved_profiles(
-        &self,
-    ) -> std::collections::BTreeMap<String, ProfileCard> {
-        let mut resolved: std::collections::BTreeMap<String, ProfileCard> =
-            std::collections::BTreeMap::new();
-
-        // 1. claimed_profiles — highest precedence.
-        for (pubkey, card) in self.claimed_profiles() {
-            resolved.insert(pubkey, card);
-        }
-
-        // V-112 (ADR-0042): the author-view profile source was deleted. Profile
-        // data for the author screen is now resolved via claimed_profiles
-        // (claim_profile from nmp_app_chirp_open_author_feed).
-
-        // 2. mention_profiles — only-if-absent (lowest precedence).
-        for (pubkey, m) in self.mention_profiles() {
-            resolved
-                .entry(pubkey.clone())
-                .or_insert_with(|| ProfileCard::from_mention(&pubkey, &m));
-        }
-
-        resolved
-    }
 }

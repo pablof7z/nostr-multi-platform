@@ -11,14 +11,15 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 31 entries: 36 (the #1283 Phase 1 baseline) minus the five JSON-era
-    // vestigial sidecar-less slots removed in #1610:
-    // `timeline`, `inserted`, `updated`, `removed`, `last_action_result`.
+    // 29 entries: 31 (the #1610 baseline) minus 2 old-surface entries removed
+    // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR) and
+    // `resolved_profiles` (KRPR). Profile data is now served via the
+    // refs.profile KPRF NRRD row-delta sidecar.
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        31,
+        29,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }

@@ -96,7 +96,7 @@ pub(super) fn emit_now(
 
 /// T114b — post-dispatch emit gate (per-dispatch retention audit).
 ///
-/// View-command dispatchers (`ClaimProfile`, … — everything in
+/// View-command dispatchers (`ResolveRef`, … — everything in
 /// `dispatch.rs` that mutates kernel state but is NOT a lifecycle event) MUST
 /// route through this helper. It emits the snapshot only when `running=true`,
 /// matching the idle-tick path's gating contract (see [`compute_wait`]).
@@ -150,6 +150,7 @@ mod command_wakes_blocked_actor_tests;
 mod tests {
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
     use crate::app::KernelAction;
+    use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
     use crate::kernel::Kernel;
     use crate::transport::wire as fb;
     use crate::update_envelope::{
@@ -298,19 +299,26 @@ mod tests {
             .unwrap();
         let pk = "0".repeat(64);
         // V-68 / V-112 (ADR-0042): OpenAuthor / CloseAuthor deleted.
-        // Dispatch claim/release_profile to flood the queue (same fire-and-forget path).
+        // ADR-0063 Lane H: ClaimProfile/ReleaseProfile deleted; use ResolveRef/ReleaseRef.
+        // Dispatch resolve/release_ref to flood the queue (same fire-and-forget path).
         for i in 0..50u64 {
             cmd_tx
-                .send(ActorCommand::ClaimProfile {
-                    pubkey: pk.clone(),
+                .send(ActorCommand::ResolveRef {
+                    namespace: crate::kernel::RefNamespace::Profile,
+                    key: pk.clone(),
                     consumer_id: format!("test-consumer-{i}"),
+                    shape: crate::kernel::RefShape::Profile(
+                        crate::kernel::refs::ProfileShape::Card,
+                    ),
+                    liveness: crate::kernel::RefLiveness::CacheOk,
                     force: false,
-                    liveness: crate::kernel::ProfileLiveness::CacheOk,
+                    hints: Vec::new(),
                 })
                 .unwrap();
             cmd_tx
-                .send(ActorCommand::ReleaseProfile {
-                    pubkey: pk.clone(),
+                .send(ActorCommand::ReleaseRef {
+                    namespace: crate::kernel::RefNamespace::Profile,
+                    key: pk.clone(),
                     consumer_id: format!("test-consumer-{i}"),
                 })
                 .unwrap();
@@ -362,7 +370,15 @@ mod tests {
         let mut last_emit = Instant::now();
 
         let pk = "0".repeat(64);
-        let _ = kernel.claim_profile(pk, "test-consumer".into(), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            pk,
+            "test-consumer".into(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
         super::maybe_emit_after_dispatch(&mut kernel, true, &upd_tx, &mut last_emit);
 
         let frame = upd_rx

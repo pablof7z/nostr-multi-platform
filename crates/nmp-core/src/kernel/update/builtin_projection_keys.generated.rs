@@ -15,9 +15,7 @@ pub const KERNEL_BUILTIN_PROJECTION_KEYS: &[&str] = &[
     "action_stages",
     "active_account",
     "claimed_events",
-    "claimed_profiles",
     "configured_relays",
-    "mention_profiles",
     "outbox_summary",
     "profile",
     "publish_outbox",
@@ -26,7 +24,6 @@ pub const KERNEL_BUILTIN_PROJECTION_KEYS: &[&str] = &[
     "refs.profile",
     "relay_diagnostics",
     "relay_role_options",
-    "resolved_profiles",
     "settings_hub",
     "signed_events",
 ];

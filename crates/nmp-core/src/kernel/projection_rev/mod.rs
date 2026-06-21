@@ -167,16 +167,15 @@ pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[
     ("profile",          &[SRC_PROFILES, SRC_ACTIVE_ACCOUNT]),
     ("accounts",         &[SRC_ACCOUNTS, SRC_PROFILES]),
     ("active_account",   &[SRC_ACTIVE_ACCOUNT]),
-    // profile/event claim cluster
-    ("claimed_profiles", &[SRC_PROFILE_CLAIMS, SRC_PROFILES]),
-    ("resolved_profiles",&[SRC_PROFILE_CLAIMS, SRC_PROFILES]),
+    // ADR-0063 Lane H: claimed_profiles / resolved_profiles / mention_profiles
+    // deleted. Profile resolution is now served by refs.profile (KPRF NRRD
+    // row-delta sidecar). SRC_PROFILE_CLAIMS / SRC_OPEN_VIEWS retained as
+    // source counters for refs.profile / relay_diagnostics respectively.
+    //
     // claimed_event_content_ver: bumped on (1) claim_event/release_event and
     // (2) store-ingest that matches a live claim. Profile enrichment is
     // intentionally excluded: claimed_events carries raw event authors only.
     ("claimed_events",   &[SRC_CLAIMED_EVENT_CONTENT]),
-    // mention_profiles: always-empty today (V-112/ADR-0042), but open_views_ver
-    // is declared so any future view-open populating it triggers a rev bump.
-    ("mention_profiles", &[SRC_OPEN_VIEWS]),
     // relay/settings cluster — all depend on configured_relays_ver
     ("configured_relays",&[SRC_CONFIGURED_RELAYS]),
     ("relay_role_options",&[SRC_CONFIGURED_RELAYS]),

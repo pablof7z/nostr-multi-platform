@@ -38,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.RefLiveness
 import org.nmp.android.RefShape
+import org.nmp.android.follow
+import org.nmp.android.unfollow
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.ui.embed.EventClaimer
 import org.nmp.android.ui.embed.LocalClaimedEventEmbeds

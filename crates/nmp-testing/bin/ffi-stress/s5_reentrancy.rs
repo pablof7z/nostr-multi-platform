@@ -21,8 +21,8 @@
 
 use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new,
-    nmp_app_set_update_callback, test_pubkeys, NmpApp,
+    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_resolve_ref, nmp_app_set_update_callback,
+    test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -86,8 +86,9 @@ extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const u8, payload_len: us
 
     // Reentrant dispatch: enqueues to actor mpsc channel (fire-and-forget, bible #3).
     // Must not block: the actor's Sender::send() is O(1) non-blocking.
-    // V-68 / V-112 (ADR-0042): use claim_profile instead of deleted open_author.
-    nmp_app_claim_profile(app_ptr, pk_cstr.as_ptr(), consumer_cstr.as_ptr(), 0, 0);
+    // ADR-0063 Lane H: resolve_ref replaces claim_profile (namespace=0 Profile,
+    // shape=0 ProfileRef, liveness=0 CacheOk).
+    nmp_app_resolve_ref(app_ptr, 0, pk_cstr.as_ptr(), consumer_cstr.as_ptr(), 0, 0);
     REENTRANT_DISPATCHES.fetch_add(1, Ordering::Relaxed);
 
     let total_ns = t_start.elapsed().as_nanos() as u64;
@@ -256,9 +257,9 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
             .to_string(),
     );
     report.notes.push(
-        "Reentrant dispatch is fire-and-forget (bible #3): nmp_app_claim_profile enqueues \
+        "Reentrant dispatch is fire-and-forget (bible #3): nmp_app_resolve_ref enqueues \
          to actor mpsc channel; does not block listener thread or re-lock any mutex. \
-         V-68/V-112 (ADR-0042): claim_profile replaces deleted nmp_app_open_author."
+         ADR-0063 Lane H: resolve_ref replaces deleted claim_profile/open_author."
             .to_string(),
     );
 

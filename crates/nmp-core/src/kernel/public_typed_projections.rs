@@ -5,6 +5,9 @@
 //! doc for the return-type / scope rationale.
 //!
 //! Split from `kernel/mod.rs` to keep it under the file-size gate.
+// ADR-0063 Lane H: decode_claimed_profiles / decode_resolved_profiles /
+// ClaimedProfilesModel / ResolvedProfilesModel / CLAIMED_PROFILES_* /
+// RESOLVED_PROFILES_* deleted. Profile resolution is now served by refs.profile.
 pub use super::typed_projections::{
     // --- PR-B: newly-promoted decoders (identity + views + outbox cluster) ---
     // accounts
@@ -16,10 +19,6 @@ pub use super::typed_projections::{
     decode_active_account,
     // claimed_events (nmp-gallery typed-sidecar migration — PR-B final zeroing)
     decode_claimed_events,
-    // claimed_profiles (V-112 follow-up: the direct observable of the
-    // `claim_profile` verb — the app-template `validate_claim_profile`
-    // example reads it; ProfileCardModel re-used from the profile cluster)
-    decode_claimed_profiles,
     // configured_relays
     decode_configured_relays,
     // profile (encode: ADR-0063 Lane F — build a refs.profile KPRF row payload)
@@ -38,9 +37,6 @@ pub use super::typed_projections::{
     decode_relay_diagnostics,
     // relay_role_options
     decode_relay_role_options,
-    // resolved_profiles (desktop mention/display-name resolution; ProfileCardModel
-    // re-used from the profile cluster above)
-    decode_resolved_profiles,
     // settings_hub
     decode_settings_hub,
     // signed_events (nmp-ffi sign_event_for_return typed migration — PR-B final zeroing)
@@ -54,7 +50,6 @@ pub use super::typed_projections::{
     ActiveAccountModel,
     ClaimedEventRow,
     ClaimedEventsModel,
-    ClaimedProfilesModel,
     ConfiguredRelayRow,
     ConfiguredRelaysModel,
     InterestRow,
@@ -70,7 +65,6 @@ pub use super::typed_projections::{
     RelayRoleOptionRow,
     RelayRoleOptionsModel,
     RelayRow,
-    ResolvedProfilesModel,
     SettingsHubModel,
     SignedEventRow,
     SignedEventsModel,
@@ -90,9 +84,6 @@ pub use super::typed_projections::{
     CLAIMED_EVENTS_FILE_IDENTIFIER,
     CLAIMED_EVENTS_SCHEMA_ID,
     CLAIMED_EVENTS_SCHEMA_VERSION,
-    CLAIMED_PROFILES_FILE_IDENTIFIER,
-    CLAIMED_PROFILES_SCHEMA_ID,
-    CLAIMED_PROFILES_SCHEMA_VERSION,
     CONFIGURED_RELAYS_FILE_IDENTIFIER,
     CONFIGURED_RELAYS_SCHEMA_ID,
     CONFIGURED_RELAYS_SCHEMA_VERSION,
@@ -114,9 +105,6 @@ pub use super::typed_projections::{
     RELAY_ROLE_OPTIONS_FILE_IDENTIFIER,
     RELAY_ROLE_OPTIONS_SCHEMA_ID,
     RELAY_ROLE_OPTIONS_SCHEMA_VERSION,
-    RESOLVED_PROFILES_FILE_IDENTIFIER,
-    RESOLVED_PROFILES_SCHEMA_ID,
-    RESOLVED_PROFILES_SCHEMA_VERSION,
     SETTINGS_HUB_FILE_IDENTIFIER,
     SETTINGS_HUB_SCHEMA_ID,
     SETTINGS_HUB_SCHEMA_VERSION,

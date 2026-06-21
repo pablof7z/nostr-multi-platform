@@ -20,7 +20,6 @@
 
 use super::profile_claim_test_support::{drain_reqs, hex64, kind0_req_relays_for};
 use super::*;
-use crate::kernel::ProfileLiveness;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 // ─── (a) cached kind:10002 → kind:0 routes to author's own write relays ──────
@@ -35,13 +34,15 @@ fn cached_nip65_profile_claim_routes_kind0_to_author_write_relays() {
     let alice_relay = "wss://alice-write.example";
     kernel.seed_mailbox_relay_list(&alice, vec![], vec![alice_relay.to_string()], vec![]);
 
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "view-0".to_string(),
-        true,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "view-0".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
 
     let reqs = drain_reqs(&mut kernel);
     let relays = kind0_req_relays_for(&reqs, &alice);
@@ -57,13 +58,15 @@ fn cached_nip65_profile_claim_routes_kind0_to_author_write_relays() {
 fn live_claim_registers_tailing_interest() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let alice = hex64("11e");
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "profile-view".to_string(),
-        false,
-        false,
-        ProfileLiveness::Live,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "profile-view".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::Live.into(),
+            false,
+            Vec::new(),
+        );
     assert_eq!(
         kernel.profile_claim_interest_lifecycle_for_test(&alice),
         Some(true),
@@ -75,13 +78,15 @@ fn live_claim_registers_tailing_interest() {
 fn cache_ok_claim_registers_oneshot_interest() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let alice = hex64("0a0");
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "avatar".to_string(),
-        false,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "avatar".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     assert_eq!(
         kernel.profile_claim_interest_lifecycle_for_test(&alice),
         Some(false),
@@ -95,13 +100,15 @@ fn mixed_liveness_resolves_to_tailing_live_wins() {
     let alice = hex64("a11");
 
     // A feed avatar claims CacheOk first.
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "avatar".to_string(),
-        false,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "avatar".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     assert_eq!(
         kernel.profile_claim_interest_lifecycle_for_test(&alice),
         Some(false),
@@ -109,13 +116,15 @@ fn mixed_liveness_resolves_to_tailing_live_wins() {
     );
 
     // The profile screen then claims Live for the same pubkey → upgrade.
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "profile-view".to_string(),
-        false,
-        false,
-        ProfileLiveness::Live,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "profile-view".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::Live.into(),
+            false,
+            Vec::new(),
+        );
     assert_eq!(
         kernel.profile_claim_interest_lifecycle_for_test(&alice),
         Some(true),
@@ -123,13 +132,15 @@ fn mixed_liveness_resolves_to_tailing_live_wins() {
     );
 
     // A later CacheOk claim must NOT downgrade it while a Live claim is held.
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "avatar-2".to_string(),
-        false,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "avatar-2".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
     assert_eq!(
         kernel.profile_claim_interest_lifecycle_for_test(&alice),
         Some(true),
@@ -144,20 +155,24 @@ fn multi_consumer_claim_dedups_to_one_interest_until_last_release() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let alice = hex64("c0c0");
 
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "view-A".to_string(),
-        false,
-        false,
-        ProfileLiveness::CacheOk,
-    );
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "view-B".to_string(),
-        false,
-        false,
-        ProfileLiveness::CacheOk,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "view-A".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "view-B".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        );
 
     // Two consumers → exactly one kind:0 claim interest.
     let kind0_claim_count = kernel
@@ -177,14 +192,14 @@ fn multi_consumer_claim_dedups_to_one_interest_until_last_release() {
     );
 
     // First consumer releases — interest stays (B still holds).
-    let _ = kernel.release_profile(&alice, "view-A");
+    let _ = kernel.release_ref(RefNamespace::Profile, &alice, "view-A");
     assert!(
         kernel.profile_claim_interest_registered_for_test(&alice),
         "interest must survive while a second consumer holds it"
     );
 
     // Last consumer releases — interest is dropped.
-    let _ = kernel.release_profile(&alice, "view-B");
+    let _ = kernel.release_ref(RefNamespace::Profile, &alice, "view-B");
     assert!(
         !kernel.profile_claim_interest_registered_for_test(&alice),
         "interest must be dropped once the last consumer releases"
@@ -212,13 +227,15 @@ fn force_reverify_of_cached_profile_enqueues_reverify() {
 
     let before = kernel.pending_reverify_len();
     // force = true → unconditional F-TTL re-verify enqueue.
-    let _ = kernel.claim_profile(
-        alice.clone(),
-        "profile-view".to_string(),
-        false,
-        true,
-        ProfileLiveness::Live,
-    );
+    let _ = kernel.resolve_ref(
+            RefNamespace::Profile,
+            alice.clone(),
+            "profile-view".to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::Live.into(),
+            true,
+            Vec::new(),
+        );
     let after = kernel.pending_reverify_len();
     assert!(
         after > before,

@@ -1,11 +1,10 @@
 //! Android JNI wrappers for the demand-driven claim/release seam.
 //!
-//! Two legacy claim families (kept until Lane H) + the ADR-0063 Lane D unified
-//! `resolve_ref` / `release_ref` seam:
-//!   * profile (kind:0) claims — `nmp_app_claim_profile` / `nmp_app_release_profile`
+//! ADR-0063 Lane H: profile (kind:0) legacy JNI wrappers deleted.
+//! Active claim families:
 //!   * embedded-event claims (#984 / T180 / ADR-0034) — `nmp_app_claim_event` /
 //!     `nmp_app_release_event`
-//!   * unified ref-resolver — `nmp_app_resolve_ref` / `nmp_app_release_ref`
+//!   * unified ref-resolver (ADR-0063) — `nmp_app_resolve_ref` / `nmp_app_release_ref`
 //!
 //! Doctrine: no business logic or cached state here (D5/D8) — the kernel owns
 //! the claim ledger and resolution; these entrypoints forward strings and
@@ -19,64 +18,10 @@ use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 
 use nmp_ffi::{
-    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_release_event, nmp_app_release_profile,
-    nmp_app_release_ref, nmp_app_resolve_ref,
+    nmp_app_claim_event, nmp_app_release_event, nmp_app_release_ref, nmp_app_resolve_ref,
 };
 
 use crate::{jstring_to_cstring, session_arc};
-
-/// Demand-driven profile fetch claim. D6: bad handles/strings are no-ops.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    pubkey: JString,
-    consumer_id: JString,
-) {
-    let Some(s) = session_arc(handle) else {
-        return;
-    };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
-        return;
-    };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
-        return;
-    };
-    s.with_app(|app| {
-        // force=0 (lazy F-TTL), liveness=0 (CacheOk — OneShot fetch on miss,
-        // no tailing sub). The Android bridge does not yet surface either hint
-        // to the Java layer; a future JNI param can opt list rows vs. the
-        // profile screen into `Live` the same way iOS does.
-        nmp_app_claim_profile(app, pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
-    });
-}
-
-/// Demand-driven profile fetch release: the UI no longer needs `pubkey`
-/// under `consumer_id`. When the last consumer releases, the kernel
-/// reclaims the entry from `profile_claims`. Same contract as the iOS
-/// `nmp_app_release_profile` symbol.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    pubkey: JString,
-    consumer_id: JString,
-) {
-    let Some(s) = session_arc(handle) else {
-        return;
-    };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
-        return;
-    };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
-        return;
-    };
-    s.with_app(|app| {
-        nmp_app_release_profile(app, pubkey.as_ptr(), consumer_id.as_ptr());
-    });
-}
 
 /// Demand-driven embedded-event claim (#984 / T180 / ADR-0034). The UI is
 /// rendering an out-of-feed `EventRef` (`nevent`/`note`/`naddr`) under
@@ -108,8 +53,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimEvent(
 
 /// Release a previously-claimed embedded event (#984). Decrements the
 /// per-consumer refcount in the kernel's `event_claims` table; the kernel drops
-/// the resolution interest when the set is empty. Same contract as
-/// `nmp_app_release_profile`. D6: bad handles/strings are no-ops.
+/// the resolution interest when the set is empty. D6: bad handles/strings are no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseEvent(
     mut env: JNIEnv,
@@ -142,9 +86,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseEvent(
 /// `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
 /// `liveness` — 0=CacheOk (background), non-zero=Live (open screen).
 ///
-/// Android shells call this instead of `nativeClaimProfile` / `nativeClaimEvent`
-/// once they migrate off the legacy surface. Both the legacy and new JNI entry
-/// points coexist until Lane H removes the scaffolding.
+/// Android shells call this instead of `nativeClaimEvent` for profile refs,
+/// and for event refs use this in place of `nativeClaimEvent` where typed shape/liveness
+/// control is needed. ADR-0063 Lane H: nativeClaimProfile deleted; use this.
 /// D6: bad handles/strings/unknown int codes are silent no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeResolveRef(

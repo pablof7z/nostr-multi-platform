@@ -72,8 +72,9 @@ object KeyedRefDecoders {
     /**
      * Map a shared [FbProfileCard] wire row to the domain [ProfileCard]. The
      * `has_*` companion bools reproduce the JSON `null`-when-absent semantics
-     * (ADR-0032): `has_display_name == false` -> `displayName = null`, etc.,
-     * byte-faithful to `TypedProfilesDecoder.mapProfileCard` and the Swift
+     * (ADR-0032): `has_display_name == false` -> `displayName = null`, etc.
+     * ADR-0063 Lane H: `TypedProfilesDecoder` deleted; profile data now served
+     * via the refs.profile KPRF NRRD row-delta sidecar. Swift peer:
      * `TypedProjectionGlue.profileCard`.
      */
     private fun mapProfileCard(card: FbProfileCard): ProfileCard = ProfileCard(

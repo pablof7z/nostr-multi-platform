@@ -2,16 +2,17 @@ import XCTest
 import FlatBuffers
 @testable import Chirp
 
-/// Typed-decode tests for the profile-cluster sidecars: `profile` (`KPRF`),
-/// `claimed_profiles` (`KCPR`), and `resolved_profiles` (`KRPR`). All three
-/// share ONE `nmp_kernel_ProfileCard` reader (defined once in
-/// `ProfileCard.generated.swift`, `include`d by each per-key schema) — the
-/// shared-binding refactor that this batch landed first.
+/// Typed-decode tests for the profile sidecar: `profile` (`KPRF`).
+///
+/// ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR) and `resolved_profiles`
+/// (KRPR) JSON snapshot projections are deleted. The KCPR/KRPR decoder tests
+/// and the `testSharedProfileCardDecodesIdenticallyAcrossKeys` cross-key test
+/// that depended on them are removed. The KPRF tests remain.
 ///
 /// These mirror `TypedAppProjectionsDecoderTests`: build the typed FlatBuffers
 /// buffer directly via the generated builders, wrap it in a
 /// `TypedProjectionEnvelope` carrying the producer's `(key, schemaId)`, and
-/// assert the generated `Typed<Key>Decoder` produces the Chirp domain value.
+/// assert the generated `TypedProfileDecoder` produces the Chirp domain value.
 ///
 /// PRECEDENCE CONTRACT: the typed value must be USED, not merely decodable. Each
 /// "typed present" case uses values that DIFFER from any plausible JSON value,
@@ -108,104 +109,13 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         XCTAssertEqual(card.about, "")
     }
 
-    // MARK: - claimed_profiles (KCPR)
-
-    func testClaimedProfilesSidecarIdentityIsExact() {
-        XCTAssertEqual(TypedClaimedProfilesDecoder.key, "claimed_profiles")
-        XCTAssertEqual(TypedClaimedProfilesDecoder.schemaId, "claimed_profiles")
-        XCTAssertEqual(TypedClaimedProfilesDecoder.fileIdentifier, "KCPR")
-    }
-
-    func testTypedClaimedProfilesSidecarDecodes() throws {
-        let a = CardFields.simple(pubkey: "pkA", display: "Alice")
-        let b = CardFields.simple(pubkey: "pkB", display: "Bob")
-        let envelope = TypedProjectionEnvelope(
-            key: TypedClaimedProfilesDecoder.key,
-            schemaId: TypedClaimedProfilesDecoder.schemaId,
-            schemaVersion: 2,
-            fileIdentifier: TypedClaimedProfilesDecoder.fileIdentifier,
-            payload: buildProfileMap(buildClaimedProfiles, [("pkA", a), ("pkB", b)]))
-
-        let map = try XCTUnwrap(TypedClaimedProfilesDecoder.decode(from: [envelope]))
-
-        XCTAssertEqual(Set(map.keys), ["pkA", "pkB"])
-        XCTAssertEqual(map["pkA"]?.displayName, "Alice")
-        XCTAssertEqual(map["pkB"]?.displayName, "Bob")
-    }
-
-    func testAbsentClaimedProfilesSidecarFallsBack() {
-        XCTAssertNil(TypedClaimedProfilesDecoder.decode(from: []))
-    }
-
-    func testWrongSchemaClaimedProfilesFallsBack() {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedClaimedProfilesDecoder.key,
-            schemaId: "not.claimed_profiles",
-            schemaVersion: 2,
-            fileIdentifier: TypedClaimedProfilesDecoder.fileIdentifier,
-            payload: buildProfileMap(buildClaimedProfiles, [("pk", .simple(pubkey: "pk", display: "x"))]))
-        XCTAssertNil(TypedClaimedProfilesDecoder.decode(from: [envelope]))
-    }
-
-    // NOTE: the garbled-file-identifier test was removed. The decode path now
-    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
-    // file-identifier magic is NOT verified. A structurally-valid buffer with
-    // a clobbered magic still decodes successfully (possibly to empty/default
-    // field values). The key+schemaId envelope routing in `decode(from:)` is
-    // the selection mechanism, not the file identifier.
-
-    /// An empty claimed-profile map (fresh kernel, no claims) must decode to an
-    /// EMPTY dictionary, NOT nil — nil would wrongly trigger the JSON fallback
-    /// when the typed path is in fact authoritative.
-    func testEmptyClaimedProfilesBufferDecodesToEmptyMap() throws {
-        let map = try XCTUnwrap(
-            TypedClaimedProfilesDecoder.decode(bytes: buildProfileMap(buildClaimedProfiles, [])))
-        XCTAssertTrue(map.isEmpty)
-    }
-
-    // MARK: - resolved_profiles (KRPR)
-
-    func testResolvedProfilesSidecarIdentityIsExact() {
-        XCTAssertEqual(TypedResolvedProfilesDecoder.key, "resolved_profiles")
-        XCTAssertEqual(TypedResolvedProfilesDecoder.schemaId, "resolved_profiles")
-        XCTAssertEqual(TypedResolvedProfilesDecoder.fileIdentifier, "KRPR")
-    }
-
-    func testTypedResolvedProfilesSidecarDecodes() throws {
-        let a = CardFields.simple(pubkey: "pk1", display: "Carol")
-        let envelope = TypedProjectionEnvelope(
-            key: TypedResolvedProfilesDecoder.key,
-            schemaId: TypedResolvedProfilesDecoder.schemaId,
-            schemaVersion: 2,
-            fileIdentifier: TypedResolvedProfilesDecoder.fileIdentifier,
-            payload: buildProfileMap(buildResolvedProfiles, [("pk1", a)]))
-
-        let map = try XCTUnwrap(TypedResolvedProfilesDecoder.decode(from: [envelope]))
-        XCTAssertEqual(map["pk1"]?.displayName, "Carol")
-    }
-
-    func testAbsentResolvedProfilesSidecarFallsBack() {
-        XCTAssertNil(TypedResolvedProfilesDecoder.decode(from: []))
-    }
-
-    func testEmptyResolvedProfilesBufferDecodesToEmptyMap() throws {
-        let map = try XCTUnwrap(
-            TypedResolvedProfilesDecoder.decode(bytes: buildProfileMap(buildResolvedProfiles, [])))
-        XCTAssertTrue(map.isEmpty)
-    }
-
-    // MARK: - shared ProfileCard wire round-trip
-
-    /// The SAME `nmp_kernel_ProfileCard` reader must decode identically whether
-    /// it arrives via the `profile` single-card root or a `claimed_profiles` map
-    /// entry — proving the shared-binding dedup did not change the wire.
-    func testSharedProfileCardDecodesIdenticallyAcrossKeys() throws {
-        let single = try XCTUnwrap(TypedProfileDecoder.decode(bytes: buildProfile(Self.fullCard)))
-        let mapped = try XCTUnwrap(
-            TypedClaimedProfilesDecoder.decode(
-                bytes: buildProfileMap(buildClaimedProfiles, [(Self.fullCard.pubkey, Self.fullCard)])))
-        XCTAssertEqual(single, mapped[Self.fullCard.pubkey])
-    }
+    // ADR-0063 Lane H: KCPR / KRPR test sections deleted.
+    // `testClaimedProfilesSidecarIdentityIsExact`, `testTypedClaimedProfilesSidecarDecodes`,
+    // `testAbsentClaimedProfilesSidecarFallsBack`, `testWrongSchemaClaimedProfilesFallsBack`,
+    // `testEmptyClaimedProfilesBufferDecodesToEmptyMap`, `testResolvedProfilesSidecarIdentityIsExact`,
+    // `testTypedResolvedProfilesSidecarDecodes`, `testAbsentResolvedProfilesSidecarFallsBack`,
+    // `testEmptyResolvedProfilesBufferDecodesToEmptyMap`, and
+    // `testSharedProfileCardDecodesIdenticallyAcrossKeys` all deleted.
 
     // MARK: - builders
 
@@ -328,40 +238,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    private func buildClaimedProfiles(_ entries: [(String, CardFields)]) -> Data {
-        var fbb = FlatBufferBuilder(initialSize: 512)
-        let rows: [Offset] = entries.map { (key, card) in
-            let keyOff = fbb.create(string: key)
-            let cardOff = encodeCard(&fbb, card)
-            return nmp_kernel_ClaimedProfileEntry.createClaimedProfileEntry(
-                &fbb, keyOffset: keyOff, valueOffset: cardOff)
-        }
-        let vec = fbb.createVector(ofOffsets: rows)
-        let root = nmp_kernel_ClaimedProfilesSnapshot.createClaimedProfilesSnapshot(
-            &fbb, entriesVectorOffset: vec)
-        nmp_kernel_ClaimedProfilesSnapshot.finish(&fbb, end: root)
-        return fbb.data
-    }
-
-    private func buildResolvedProfiles(_ entries: [(String, CardFields)]) -> Data {
-        var fbb = FlatBufferBuilder(initialSize: 512)
-        let rows: [Offset] = entries.map { (key, card) in
-            let keyOff = fbb.create(string: key)
-            let cardOff = encodeCard(&fbb, card)
-            return nmp_kernel_ResolvedProfileEntry.createResolvedProfileEntry(
-                &fbb, keyOffset: keyOff, valueOffset: cardOff)
-        }
-        let vec = fbb.createVector(ofOffsets: rows)
-        let root = nmp_kernel_ResolvedProfilesSnapshot.createResolvedProfilesSnapshot(
-            &fbb, entriesVectorOffset: vec)
-        nmp_kernel_ResolvedProfilesSnapshot.finish(&fbb, end: root)
-        return fbb.data
-    }
-
-    private func buildProfileMap(
-        _ builder: ([(String, CardFields)]) -> Data,
-        _ entries: [(String, CardFields)]
-    ) -> Data {
-        builder(entries)
-    }
+    // ADR-0063 Lane H: buildClaimedProfiles / buildResolvedProfiles / buildProfileMap
+    // helpers deleted (used KCPR/KRPR types that no longer exist).
 }

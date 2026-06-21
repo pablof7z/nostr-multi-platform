@@ -48,7 +48,7 @@
 
 use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
+    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
     nmp_app_set_update_callback, test_pubkeys, NmpApp,
 };
 use crate::report::ScenarioMetrics;
@@ -169,10 +169,11 @@ fn drive_churn_cycles(
     mut frame_count: impl FnMut() -> usize,
 ) {
     for _ in 0..cycles {
-        nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
+        // namespace=0 (Profile), shape=0 (ProfileRef), liveness=0 (CacheOk).
+        nmp_app_resolve_ref(app, 0, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
         configure_and_await_frame(app, probe, 250, &mut frame_count);
 
-        nmp_app_release_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr());
+        nmp_app_release_ref(app, 0, churn_pubkey.as_ptr(), consumer_id.as_ptr());
         configure_and_await_frame(app, probe, 250, &mut frame_count);
     }
 }

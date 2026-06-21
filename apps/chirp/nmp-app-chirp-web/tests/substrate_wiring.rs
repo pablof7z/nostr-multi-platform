@@ -1,8 +1,7 @@
 //! Regression tests for the Chirp web substrate wiring.
 
 use nmp_app_chirp_web::composition::setup_chirp_web_feeds;
-use nmp_core::typed_projections::decode_resolved_profiles;
-use nmp_core::{decode_snapshot_typed_projections, ProfileLiveness};
+use nmp_core::{decode_snapshot_typed_projections, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use nmp_wasm::WasmRuntime;
 
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
@@ -77,12 +76,14 @@ fn kind10002_parser_updates_profile_claim_routing_cache() {
         "",
     );
 
-    let _ = reducer.borrow_mut().claim_profile(
+    // ADR-0063 Lane H: claim_profile → resolve_ref (KernelReducer 5-arg form:
+    // namespace, key, consumer_id, shape, liveness; force=false + hints=[] hardcoded).
+    let _ = reducer.borrow_mut().resolve_ref(
+        RefNamespace::Profile,
         BOB.to_string(),
         "chirp-web-substrate-test".to_string(),
-        true,
-        false,
-        ProfileLiveness::CacheOk,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
     );
     let outbound = reducer.borrow_mut().tick();
     let profile_req_relays: Vec<_> = outbound
@@ -106,46 +107,9 @@ fn kind10002_parser_updates_profile_claim_routing_cache() {
     );
 }
 
-#[test]
-fn kind0_parser_updates_resolved_profiles_snapshot() {
-    let mut runtime = WasmRuntime::new();
-    let _setup = setup_chirp_web_feeds(&runtime);
-    let reducer = runtime.reducer_handle();
-
-    let _ = reducer.borrow_mut().claim_profile(
-        BOB.to_string(),
-        "chirp-web-profile-test".to_string(),
-        false,
-        false,
-        ProfileLiveness::CacheOk,
-    );
-    reducer.borrow_mut().project_raw_event_for_test(
-        "00000000000000000000000000000000000000000000000000000000000000b0",
-        BOB,
-        1_700_000_010,
-        0,
-        vec![],
-        &kind0_content("Bob Web"),
-    );
-
-    let frame = runtime.snapshot_bytes_for_test();
-    let projections = decode_snapshot_typed_projections(&frame)
-        .expect("snapshot frame must decode as typed projections");
-    let resolved = projections
-        .iter()
-        .find(|projection| projection.key == "resolved_profiles")
-        .expect("snapshot must include resolved_profiles");
-    let decoded =
-        decode_resolved_profiles(&resolved.payload).expect("resolved_profiles payload must decode");
-    let (_, profile) = decoded
-        .entries
-        .iter()
-        .find(|(pubkey, _)| pubkey == BOB)
-        .expect("resolved_profiles must include the claimed BOB profile");
-
-    assert_eq!(
-        profile.display_name.as_deref(),
-        Some("Bob Web"),
-        "kind:0 parser must write the cache read by resolved_profiles"
-    );
-}
+// ADR-0063 Lane H: `kind0_parser_updates_resolved_profiles_snapshot` deleted.
+//
+// That test exercised the old `resolved_profiles` JSON snapshot projection
+// (KRPR / `decode_resolved_profiles`), which is removed by ADR-0063 Lane H.
+// Profile delivery is now via the `refs.profile` KPRF NRRD row-delta sidecar;
+// the equivalent assertion lives in the refs integration suite.

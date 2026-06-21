@@ -2,39 +2,16 @@ package org.nmp.android
 
 /**
  * Sibling extension surface for [KernelBridge] covering demand-driven reference
- * resolution: legacy claim/release profile + event (kept until Lane H deletes
- * them) and the ADR-0063 Lane D/G unified resolve_ref / release_ref seam (#1671).
+ * resolution: event claim/release surface + the ADR-0063 Lane D/G unified
+ * resolve_ref / release_ref seam (#1671).
+ *
+ * ADR-0063 Lane H: claimProfile / releaseProfile deleted (use resolveRef with
+ * RefNamespace.Profile instead).
  *
  * Split out of [KernelBridge] to keep that file under the 500-LOC ceiling
  * (AGENTS.md File Size). Same package — no import required. Thin-shell rule:
  * no business logic here; Rust owns all resolution policy (D7).
  */
-
-/**
- * Demand-driven profile fetch claim: the UI is rendering [pubkey] under
- * [consumerId]; the kernel batches a kind:0 REQ against the indexer lane
- * (or the author's NIP-65 write set once known). Direct mirror of iOS
- * `KernelHandle.claimProfile(pubkey:consumerId:)`.
- *
- * Idempotent — duplicate calls with the same [consumerId] are no-ops. The
- * matching [releaseProfile] must be called when the view disappears so
- * the kernel can reclaim the claim slot.
- */
-fun KernelBridge.claimProfile(pubkey: String, consumerId: String) {
-    val handle = rawHandle()
-    if (handle != 0L) nativeClaimProfile(handle, pubkey, consumerId)
-}
-
-/**
- * Demand-driven profile fetch release: the UI no longer needs [pubkey]
- * under [consumerId]. When the last consumer releases the kernel
- * reclaims the profile-claim entry; subsequent kind:0 fetches are
- * gated by a fresh [claimProfile].
- */
-fun KernelBridge.releaseProfile(pubkey: String, consumerId: String) {
-    val handle = rawHandle()
-    if (handle != 0L) nativeReleaseProfile(handle, pubkey, consumerId)
-}
 
 /**
  * Demand-driven embedded-event fetch claim (#984 / T180 / ADR-0034): the UI
@@ -68,8 +45,8 @@ fun KernelBridge.releaseEvent(uri: String, consumerId: String) {
 
 /**
  * ADR-0063 Lane D/G (#1671) — unified, origin-blind reference resolution. The
- * Android twin of iOS `KernelHandle.resolveRef`. Supersedes the legacy
- * [claimProfile] / [claimEvent] surface (kept until Lane H deletes them).
+ * Android twin of iOS `KernelHandle.resolveRef`. Supersedes the deleted legacy
+ * [claimProfile] surface (ADR-0063 Lane H).
  *
  * [namespace] — [RefNamespace] (profile / event).
  * [key] — lowercase 64-hex pubkey (profile) or event-id hex / `kind:pubkey:d`

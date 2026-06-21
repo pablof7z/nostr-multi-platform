@@ -108,9 +108,10 @@ mod tests {
         let b = render_builtin_keys();
         assert_eq!(a, b, "render must be deterministic");
         assert!(a.contains("pub const KERNEL_BUILTIN_PROJECTION_KEYS"));
-        // Both out-of-registry built-ins are present.
+        // The out-of-registry built-in signed_events is present.
+        // ADR-0063 Lane H: mention_profiles removed (kernel no longer emits it).
         assert!(a.contains("\"signed_events\""));
-        assert!(a.contains("\"mention_profiles\""));
+        assert!(!a.contains("\"mention_profiles\""), "mention_profiles must be removed (ADR-0063 Lane H)");
         // A Tier-2 decodable built-in is present.
         assert!(a.contains("\"relay_diagnostics\""));
         // A Tier-1 host registration is NOT a built-in.

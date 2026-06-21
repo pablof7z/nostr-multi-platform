@@ -826,29 +826,12 @@ pub enum ActorCommand {
     /// live REQs. D6: no active account (or no prior declaration) is a silent
     /// no-op.
     ClearActiveFollowsFeed,
-    /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
-    /// freshness gate so a user-initiated navigation / pull-to-refresh always
-    /// re-verifies the cached profile; `force == false` is the lazy, gated
-    /// path used by background claims and `.onAppear` list rows.
-    ///
-    /// `liveness` is the client freshness hint: `CacheOk` (a feed avatar —
-    /// serve from cache, OneShot fetch on miss, no live sub) vs `Live` (an
-    /// open profile screen — a Tailing kind:0 sub so profile edits arrive
-    /// reactively). Mixed claims on one pubkey resolve to Tailing.
-    ClaimProfile {
-        pubkey: String,
-        consumer_id: String,
-        force: bool,
-        liveness: crate::kernel::ProfileLiveness,
-    },
-    ReleaseProfile {
-        pubkey: String,
-        consumer_id: String,
-    },
+    // ADR-0063 Lane H: ClaimProfile / ReleaseProfile deleted.
+    // Use ResolveRef { namespace: RefNamespace::Profile, .. } instead.
     /// Refcounted event claim — drives the generic `claim_event` kernel
     /// primitive (F-CR-06 / ADR-0034). `uri` is a `nostr:` URI
-    /// (nevent/note/naddr); profile URIs are rejected (use `ClaimProfile`).
-    /// Symmetric with `ClaimProfile` in shape and dispatch. `force` (F-TTL)
+    /// (nevent/note/naddr); profile URIs should use ResolveRef instead.
+    /// `force` (F-TTL)
     /// bypasses the TTL freshness gate for addressable (naddr) coordinates;
     /// it is a silent no-op for immutable nevent/note URIs.
     ClaimEvent {
@@ -864,17 +847,13 @@ pub enum ActorCommand {
         uri: String,
         consumer_id: String,
     },
-    /// ADR-0063 Lane D — unified, origin-blind reference-resolution seam.
+    /// ADR-0063 Lane D/H — unified, origin-blind reference-resolution seam.
     ///
-    /// Generalizes `ClaimProfile` + `ClaimEvent` into one variant. The
-    /// kernel's `Kernel::resolve_ref` dispatches the typed `(namespace, shape)`
+    /// Generalizes the deleted `ClaimProfile` + `ClaimEvent` into one variant.
+    /// The kernel's `Kernel::resolve_ref` dispatches the typed `(namespace, shape)`
     /// pair to the matching resolver body, failing closed (D6) on a mismatch.
-    /// `force` threads into the resolver's F-TTL gate (same as `ClaimProfile`).
+    /// `force` threads into the resolver's F-TTL gate.
     /// `hints` are optional NIP-19 relay TLVs seeding the registered interest.
-    ///
-    /// The old `ClaimProfile`/`ClaimEvent` scaffold delegators (tagged
-    /// `// integration-scaffold(#1671 Lane H)`) remain until Lane H deletes
-    /// them; new C-ABI callers should use `ResolveRef` exclusively.
     ResolveRef {
         namespace: crate::kernel::RefNamespace,
         key: String,

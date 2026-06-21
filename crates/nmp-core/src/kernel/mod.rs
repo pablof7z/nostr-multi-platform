@@ -263,16 +263,13 @@ mod replay;
 mod replay_tests;
 mod requests;
 pub use requests::ProfileLiveness;
-// ADR-0063 (#1671 Lane B) — kernel-owned `RefResolver` (generalises
-// claim_profile/claim_event). Lane D promotes the closed typed surface to `pub`
-// for `nmp-ffi`'s `ActorCommand::ResolveRef` (no opaque integer re-decode).
+// ADR-0063 (#1671) — kernel `RefResolver`; Lane D exports to `pub` for `nmp-ffi`.
 pub(crate) mod refs;
 pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 mod ref_row_source; // ADR-0063 (#1671 glue) — `impl RefRowRevSource for Kernel`
 mod feed_author_refs; // ADR-0063 D7 (#1671 Lane H) — feed-author auto-resolve
-// ADR-0063 (#1671) — `RefResolver` tests; sub-modules use `*_tests_*` infix.
 #[cfg(test)]
-mod refs_tests;
+mod refs_tests; // ADR-0063 (#1671) — `RefResolver` tests; sub-modules use `*_tests_*` infix.
 #[cfg(test)]
 mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
@@ -599,7 +596,7 @@ pub(crate) use types::KernelSnapshot;
 use types::TimelineItem;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
-    MentionProfilePayload, Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
+    Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
     PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimingMilestones,
     WireSub, WireSubscriptionState, WireSubscriptionStatus, MAX_NOTICE_LOG,
 };
@@ -703,9 +700,7 @@ pub struct Kernel {
     /// ADR-0055 — per-projection revision tracker (typed `SourceVersions` +
     /// dependency-derived per-key revs; Rung 2/3 stamp/omit from it). 0 on rebuild.
     pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
-    /// ADR-0063/0053 (#1671 glue) — Lane A row-delta producer state (tracker,
-    /// last-baselined `(session_id, epoch)`, last-tick refs.* permit verdict for
-    /// the false→true re-baseline edge). See `typed_projections::builtins_refs`.
+    /// ADR-0063/0053 (#1671 glue) — row-delta producer state. See `typed_projections::builtins_refs`.
     ref_row_delta_tracker: crate::refs::RefRowDeltaTracker,
     ref_row_last_identity: Option<(u64, u64)>,
     ref_row_last_permits: (bool, bool),
