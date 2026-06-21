@@ -99,34 +99,80 @@ export function walletCommand(action: string, payload: Record<string, unknown> =
   return command(`nmp.wallet.${action}`, payload);
 }
 
-// ── F-CR-00 component-owned claim seam ──────────────────────────────────────
+// ── ADR-0063 component-owned reference-resolution seam (#1671) ───────────────
 //
 // Web components call these on mount / unmount to register / release their
-// interest in a profile or event. The kernel fetches kind:0 on the first
-// claim and reference-counts subsequent claims so a second component watching
-// the same pubkey doesn't double-fetch.
+// interest in a profile or event through the UNIFIED, origin-blind
+// `resolve_ref` / `release_ref` seam (ADR-0063 D1) — the generalisation of the
+// former `claim_profile` / `claim_event` surface. The kernel refcounts
+// consumers per `(namespace, key)`, fetches the entity on the first resolve, and
+// emits ONE keyed row-delta projection per namespace (`refs.profile` /
+// `refs.event`).
 //
 // `consumerId` must be STABLE per component instance — e.g.
 // `"chirp-web-author-${item.id}"`. Mirror iOS (`chirp-avatar.<uuid>`) and
 // Android (`note-author-<eventId>`) naming conventions.
 //
-// Route via the existing `WorkerRequest::Dispatch` path (`dispatchCommand`
-// on the NmpClient).
+// The JSON payload mirrors the Lane D FFI integer codes (apps/chirp/chirp-tui
+// runtime.rs) so the wasm dispatch recognizer (`resolve_dispatch_from_action`)
+// decodes the same `(namespace, shape, liveness)` the native C-ABI carries:
+//   namespace: 0 = profile, 1 = event
+//   shape:     profile → 0 = ref (avatar subset), 1 = card (full ProfileCard)
+//              event   → 0 = embed, 1 = raw
+//   liveness:  0 = CacheOk (background fetch), 1 = Live (tailing sub)
+// Route via the existing `WorkerRequest::Dispatch` path (`dispatchCommand`).
 
-export function claimProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.claim_profile", { pubkey, consumer_id: consumerId });
+/** Lane D namespace discriminants (mirror `RefNamespace`). */
+export const REF_NS_PROFILE = 0;
+export const REF_NS_EVENT = 1;
+/** profile shapes (mirror `ProfileShape`). */
+export const REF_SHAPE_PROFILE_REF = 0;
+export const REF_SHAPE_PROFILE_CARD = 1;
+/** event shapes (mirror `EventShape`). */
+export const REF_SHAPE_EVENT_EMBED = 0;
+export const REF_SHAPE_EVENT_RAW = 1;
+/** liveness (mirror `RefLiveness`). */
+export const REF_LIVENESS_CACHE_OK = 0;
+export const REF_LIVENESS_LIVE = 1;
+
+/** Resolve a profile reference (feed-avatar `ref` shape, CacheOk). */
+export function resolveProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.resolve_ref", {
+    namespace: REF_NS_PROFILE,
+    key: pubkey,
+    consumer_id: consumerId,
+    shape: REF_SHAPE_PROFILE_REF,
+    liveness: REF_LIVENESS_CACHE_OK,
+  });
 }
 
+/** Release a profile reference. */
 export function releaseProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.release_profile", { pubkey, consumer_id: consumerId });
+  return command("nmp.kernel.release_ref", {
+    namespace: REF_NS_PROFILE,
+    key: pubkey,
+    consumer_id: consumerId,
+  });
 }
 
-export function claimEventCommand(uri: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.claim_event", { uri, consumer_id: consumerId });
+/** Resolve an event reference by raw event key (embed shape, CacheOk). */
+export function resolveEventCommand(key: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.resolve_ref", {
+    namespace: REF_NS_EVENT,
+    key,
+    consumer_id: consumerId,
+    shape: REF_SHAPE_EVENT_EMBED,
+    liveness: REF_LIVENESS_CACHE_OK,
+  });
 }
 
-export function releaseEventCommand(uri: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.release_event", { uri, consumer_id: consumerId });
+/** Release an event reference. */
+export function releaseEventCommand(key: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.release_ref", {
+    namespace: REF_NS_EVENT,
+    key,
+    consumer_id: consumerId,
+  });
 }
 
 function command(actionType: string, payload: unknown): RuntimeCommand {

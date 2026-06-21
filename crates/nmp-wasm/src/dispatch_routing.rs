@@ -8,9 +8,13 @@
 //!    `None` for app-namespaced actions, which the runtime surfaces through
 //!    the write-path-unavailable error path.
 //!
-//! 2. [`claim_dispatch_from_action`] / [`execute_claim_dispatch`] — parse and
-//!    execute `nmp.kernel.claim_*` / `nmp.kernel.release_*` operations via the
-//!    `KernelReducer` claim surface.
+//! 2. [`ref_dispatch_from_action`] / [`execute_ref_dispatch`] — parse and
+//!    execute the ADR-0063 unified reference-resolution operations
+//!    (`nmp.kernel.resolve_ref` / `nmp.kernel.release_ref`, raw-key seam) plus
+//!    the legacy URI front door (`nmp.kernel.claim_event` /
+//!    `nmp.kernel.release_event`) via the `KernelReducer`. Both converge on the
+//!    SAME `Kernel::resolve_ref` resolver body — there is no divergent web-only
+//!    resolution path.
 //!
 //! 3. [`interest_dispatch_from_action`] / [`execute_interest_dispatch`] —
 //!    parse and execute feed-verb operations:
@@ -30,61 +34,96 @@
 
 use std::sync::Arc;
 
-use nmp_core::{KernelAction, KernelReducer, OutboundMessage};
+use nmp_core::{
+    EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness,
+    RefNamespace, RefShape,
+};
 use nmp_signers::Signer;
 use serde_json::Value;
 
 use crate::protocol::ActionDispatch;
 
-/// Decoded claim/release operation extracted from an `ActionDispatch` whose
-/// `action_type` is in the `nmp.kernel.claim_*` / `nmp.kernel.release_*`
-/// namespace.
+/// Decoded reference-resolution operation extracted from an `ActionDispatch`.
 ///
-/// Claims are NOT `KernelAction`s — they are a separate concern (claim
-/// registry vs. interest registry). `kernel_action_from_dispatch` returns
-/// `None` for claim action types; this function handles them instead.
+/// The ADR-0063 unified seam (`resolve_ref` / `release_ref`) carries a RAW key
+/// (a hex pubkey for `profile`, a hex event-id / `kind:pubkey:d` coordinate for
+/// `event`) plus the namespace/shape/liveness discriminants. The legacy URI
+/// front door (`claim_event` / `release_event`) carries a `nostr:` URI that the
+/// kernel's `claim_event` adapter decodes to a raw key before delegating to the
+/// SAME `resolve_event_ref` body — it is the URI adapter of `resolve_ref`, not a
+/// separate resolver.
 ///
-/// D6 — total: a missing or non-string payload field returns `None`; the
-/// caller treats `None` as "not a claim dispatch" and falls through to the
-/// write-path-unavailable path. No panic.
+/// Refs are NOT `KernelAction`s — they operate on the resolver's refcount table,
+/// separate from the M2 interest registry. `kernel_action_from_dispatch` returns
+/// `None` for these action types; this function handles them instead.
+///
+/// D6 — total: a missing/non-string field OR an unknown namespace/shape/liveness
+/// discriminant returns `None` (never coerced to a default); the caller treats
+/// `None` as "not a ref dispatch" and falls through to the write-path-unavailable
+/// path. No panic.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ClaimDispatch {
-    ClaimProfile { pubkey: String, consumer_id: String },
-    ReleaseProfile { pubkey: String, consumer_id: String },
-    ClaimEvent { uri: String, consumer_id: String },
-    ReleaseEvent { uri: String, consumer_id: String },
+pub(crate) enum RefDispatch {
+    /// Unified raw-key resolve (`nmp.kernel.resolve_ref`).
+    Resolve {
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+    },
+    /// Unified raw-key release (`nmp.kernel.release_ref`).
+    Release {
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+    },
+    /// Legacy URI front door of the event resolver (`nmp.kernel.claim_event`).
+    ClaimEventUri { uri: String, consumer_id: String },
+    /// Legacy URI release (`nmp.kernel.release_event`).
+    ReleaseEventUri { uri: String, consumer_id: String },
 }
 
-/// Parse an `ActionDispatch` as a claim/release operation. Returns `None`
-/// if the `action_type` is not a claim namespace or a required payload field
-/// is absent / non-string (D6: malformed → `None`, never a panic).
-pub(crate) fn claim_dispatch_from_action(action: &ActionDispatch) -> Option<ClaimDispatch> {
+/// Parse an `ActionDispatch` as a reference-resolution operation. Returns `None`
+/// if the `action_type` is not a ref namespace or a required field is absent /
+/// malformed (D6: malformed → `None`, never a panic, never a coerced default).
+pub(crate) fn ref_dispatch_from_action(action: &ActionDispatch) -> Option<RefDispatch> {
     match action.action_type.as_str() {
-        "nmp.kernel.claim_profile" => {
-            let pubkey = str_field(&action.payload, "pubkey")?;
+        "nmp.kernel.resolve_ref" => {
+            let namespace = ref_namespace_from_int(int_field(&action.payload, "namespace")?)?;
+            let key = str_field(&action.payload, "key")?;
             let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(ClaimDispatch::ClaimProfile {
-                pubkey,
+            // Decode the shape against the SAME namespace so a (namespace, shape)
+            // mismatch fails closed here (rather than relying on the kernel's
+            // downstream guard). An unknown shape int returns None.
+            let shape = ref_shape_from_int(namespace, int_field(&action.payload, "shape")?)?;
+            let liveness = ref_liveness_from_int(int_field(&action.payload, "liveness")?)?;
+            Some(RefDispatch::Resolve {
+                namespace,
+                key,
                 consumer_id,
+                shape,
+                liveness,
             })
         }
-        "nmp.kernel.release_profile" => {
-            let pubkey = str_field(&action.payload, "pubkey")?;
+        "nmp.kernel.release_ref" => {
+            let namespace = ref_namespace_from_int(int_field(&action.payload, "namespace")?)?;
+            let key = str_field(&action.payload, "key")?;
             let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(ClaimDispatch::ReleaseProfile {
-                pubkey,
+            Some(RefDispatch::Release {
+                namespace,
+                key,
                 consumer_id,
             })
         }
         "nmp.kernel.claim_event" => {
             let uri = str_field(&action.payload, "uri")?;
             let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(ClaimDispatch::ClaimEvent { uri, consumer_id })
+            Some(RefDispatch::ClaimEventUri { uri, consumer_id })
         }
         "nmp.kernel.release_event" => {
             let uri = str_field(&action.payload, "uri")?;
             let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(ClaimDispatch::ReleaseEvent { uri, consumer_id })
+            Some(RefDispatch::ReleaseEventUri { uri, consumer_id })
         }
         _ => None,
     }
@@ -92,9 +131,53 @@ pub(crate) fn claim_dispatch_from_action(action: &ActionDispatch) -> Option<Clai
 
 /// Extract a string-valued field from a JSON payload. Returns `None` when
 /// the payload is not a JSON object, the key is absent, or the value is not
-/// a string — all defensively treated as "not a valid claim payload" (D6).
+/// a string — all defensively treated as "not a valid ref payload" (D6).
 fn str_field(payload: &Value, key: &str) -> Option<String> {
     payload.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// Extract an unsigned-int discriminant field. Returns `None` for a missing /
+/// non-integer / out-of-`u32`-range value (D6 — never a coerced default).
+fn int_field(payload: &Value, key: &str) -> Option<u32> {
+    payload
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+}
+
+/// Decode the namespace discriminant, FAILING CLOSED on an unknown value. The
+/// codes mirror the Lane D FFI (`apps/chirp/chirp-tui` runtime.rs): 0 = profile,
+/// 1 = event. An unknown value is NOT coerced to a default — it returns `None` so
+/// the whole dispatch falls through (D6).
+fn ref_namespace_from_int(value: u32) -> Option<RefNamespace> {
+    match value {
+        0 => Some(RefNamespace::Profile),
+        1 => Some(RefNamespace::Event),
+        _ => None,
+    }
+}
+
+/// Decode the shape discriminant against `namespace`, FAILING CLOSED on an
+/// unknown value or a namespace/shape mismatch. profile: 0 = ref, 1 = card;
+/// event: 0 = embed, 1 = raw.
+fn ref_shape_from_int(namespace: RefNamespace, value: u32) -> Option<RefShape> {
+    match (namespace, value) {
+        (RefNamespace::Profile, 0) => Some(RefShape::Profile(ProfileShape::Ref)),
+        (RefNamespace::Profile, 1) => Some(RefShape::Profile(ProfileShape::Card)),
+        (RefNamespace::Event, 0) => Some(RefShape::Event(EventShape::Embed)),
+        (RefNamespace::Event, 1) => Some(RefShape::Event(EventShape::Raw)),
+        _ => None,
+    }
+}
+
+/// Decode the liveness discriminant, FAILING CLOSED on an unknown value.
+/// 0 = CacheOk, 1 = Live.
+fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
+    match value {
+        0 => Some(RefLiveness::CacheOk),
+        1 => Some(RefLiveness::Live),
+        _ => None,
+    }
 }
 
 /// Single-source reason string for app-level writes that cannot complete on
@@ -176,52 +259,49 @@ pub(crate) fn kernel_action_from_dispatch(action: &ActionDispatch) -> Option<Ker
     }
 }
 
-// ─── F-CR-00 claim arm executor ──────────────────────────────────────────────
+// ─── ADR-0063 reference-resolution arm executor ──────────────────────────────
 //
-// Extracted from the former inline arm in `runtime.rs::dispatch()` so the
-// routing table and the execution logic stay co-located (dispatch_routing is
-// the single owner) and runtime.rs can replace the 37-line block with a
-// one-line delegation.
+// The routing table and the execution logic stay co-located (dispatch_routing is
+// the single owner) so runtime.rs delegates in one line.
 //
-// `can_send` mirrors the native `claim_send_gate` semantics: true when any
-// relay lane has reported `Connected`. Release calls always return empty vecs.
+// `can_send` mirrors the native `claim_send_gate` semantics: true when any relay
+// lane has reported `Connected`; it gates only the legacy URI front door (the
+// unified `resolve_ref` seam reads `any_relay_connected` inside the kernel —
+// origin-blind, no caller flag). Release calls always return empty vecs.
 
-/// Execute a decoded `ClaimDispatch` against the live kernel, returning any
+/// Execute a decoded `RefDispatch` against the live kernel, returning any
 /// immediately-sendable `Vec<OutboundMessage>` (already `partition_auth_paused`
 /// inside the `KernelReducer` methods).
 ///
-/// Claims are not `KernelAction`s — they operate on the claim-refcount table
-/// that is separate from the M2 interest registry. `force = false` throughout:
-/// web-component claims on mount are background/`.onAppear`-equivalent, not
+/// Refs are not `KernelAction`s — they operate on the resolver refcount table,
+/// separate from the M2 interest registry. The two front doors (raw `resolve_ref`
+/// seam + legacy `claim_event` URI adapter) converge on the SAME kernel resolver.
+/// `force = false`: web-component resolves on mount are background, not
 /// user-navigation force-refreshes (F-TTL lazy path).
-pub(crate) fn execute_claim_dispatch(
+pub(crate) fn execute_ref_dispatch(
     reducer: &mut KernelReducer,
-    claim: ClaimDispatch,
+    dispatch: RefDispatch,
     can_send: bool,
 ) -> Vec<OutboundMessage> {
-    match claim {
-        ClaimDispatch::ClaimProfile {
-            pubkey,
+    match dispatch {
+        RefDispatch::Resolve {
+            namespace,
+            key,
             consumer_id,
-        } => {
-            // Web preview: no liveness hint on the JSON action — default to
-            // CacheOk (OneShot kind:0 fetch; no tailing sub).
-            reducer.claim_profile(
-                pubkey,
-                consumer_id,
-                can_send,
-                false,
-                nmp_core::ProfileLiveness::CacheOk,
-            )
-        }
-        ClaimDispatch::ReleaseProfile {
-            pubkey,
+            shape,
+            liveness,
+        } => reducer.resolve_ref(namespace, key, consumer_id, shape, liveness),
+        RefDispatch::Release {
+            namespace,
+            key,
             consumer_id,
-        } => reducer.release_profile(&pubkey, &consumer_id),
-        ClaimDispatch::ClaimEvent { uri, consumer_id } => {
+        } => reducer.release_ref(namespace, &key, &consumer_id),
+        RefDispatch::ClaimEventUri { uri, consumer_id } => {
+            // URI front door of the event resolver: the kernel decodes the URI to
+            // a raw key, then delegates to the same `resolve_event_ref` body.
             reducer.claim_event(uri, consumer_id, can_send, false)
         }
-        ClaimDispatch::ReleaseEvent { uri, consumer_id } => {
+        RefDispatch::ReleaseEventUri { uri, consumer_id } => {
             reducer.release_event(&uri, &consumer_id)
         }
     }
