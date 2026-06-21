@@ -41,8 +41,8 @@ pub struct Snapshot {
     #[serde(default)]
     pub accounts: Vec<AccountSummary>,
 
-    /// Host-registered and built-in projections (thread_view, author_view,
-    /// nmp.feed.home, configured_relays, action_lifecycle, mention_profiles, …).
+    /// Host-registered and built-in projections (`nmp.feed.*`,
+    /// configured_relays, action_lifecycle, mention_profiles, ...).
     #[serde(default)]
     pub projections: HashMap<String, serde_json::Value>,
 

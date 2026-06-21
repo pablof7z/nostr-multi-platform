@@ -258,6 +258,10 @@ fn open_selected_thread(state: &mut AppState, runtime: &AppRuntime) {
     };
     match runtime.open_thread(&row.id) {
         Ok(()) => {
+            state.thread_event_id = row.id.clone();
+            state.thread_rows.clear();
+            state.detail_cursor = 0;
+            state.detail_scroll = 0;
             state.focus(Pane::Detail);
             state.status = format!("opened thread {}", short(&row.id));
         }
@@ -271,6 +275,7 @@ fn open_selected_author(state: &mut AppState, runtime: &AppRuntime) {
         return;
     };
     state.profile_pubkey = row.author_pubkey.clone();
+    state.profile_rows.clear();
     match runtime.open_author(&row.author_pubkey) {
         Ok(()) => {
             state.focus(Pane::Profile);
@@ -340,7 +345,12 @@ fn handle_palette_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent)
 }
 
 fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRuntime) {
-    let row = if state.focused == Pane::Detail && state.detail_cursor > 0 {
+    let row = if state.focused == Pane::Detail && !state.thread_event_id.is_empty() {
+        let Some(row) = state.thread_rows.get(state.detail_cursor).cloned() else {
+            return;
+        };
+        row
+    } else if state.focused == Pane::Detail && state.detail_cursor > 0 {
         let reply_idx = state.selected.saturating_add(state.detail_cursor);
         if let Some(row) = state.rows.get(reply_idx) {
             row.clone()
@@ -358,6 +368,7 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
     match action {
         "View profile" => {
             state.profile_pubkey = author_pubkey.clone();
+            state.profile_rows.clear();
             if runtime.open_author(&author_pubkey).is_ok() {
                 state.focus(Pane::Profile);
                 state.status = "opened profile".to_string();
@@ -404,6 +415,9 @@ fn handle_z_key(state: &mut AppState, _runtime: &AppRuntime) {
 }
 
 fn count_replies_for_selected(state: &AppState) -> usize {
+    if !state.thread_event_id.is_empty() {
+        return state.thread_rows.len().saturating_sub(1);
+    }
     let start = state.selected.saturating_add(1);
     if start >= state.rows.len() {
         return 0;

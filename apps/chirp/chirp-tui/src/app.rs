@@ -77,6 +77,9 @@ pub struct AppState {
     /// thread-roots-only, so this is also the row count).
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
+    pub profile_rows: Vec<TimelineRow>,
+    pub thread_rows: Vec<TimelineRow>,
+    pub thread_event_id: String,
     pub timeline_has_more: bool,
     pub metrics: RuntimeMetrics,
     pub relays: Vec<RelayRow>,
@@ -159,6 +162,9 @@ impl Default for AppState {
             update_count: 0,
             cards: 0,
             rows: Vec::new(),
+            profile_rows: Vec::new(),
+            thread_rows: Vec::new(),
+            thread_event_id: String::new(),
             timeline_has_more: false,
             metrics: RuntimeMetrics::default(),
             relays: Vec::new(),
@@ -242,6 +248,7 @@ impl AppState {
         if let Some(feed) = shared.home_feed {
             self.apply_feed_snapshot(feed);
         }
+        self.apply_dynamic_feeds(&shared.feeds);
         if !applied_action_result {
             self.status = format!(
                 "received NMP update #{} ({} bytes)",
@@ -374,9 +381,39 @@ impl AppState {
             self.detail_scroll = 0;
         }
     }
+
+    fn apply_dynamic_feeds(&mut self, feeds: &std::collections::HashMap<String, Value>) {
+        if !self.profile_pubkey.is_empty() {
+            let key = author_feed_key(&self.profile_pubkey);
+            if let Some(feed) = feeds.get(&key) {
+                self.profile_rows = TimelineRow::from_snapshot(feed);
+            }
+        }
+        if !self.thread_event_id.is_empty() {
+            let key = thread_feed_key(&self.thread_event_id);
+            if let Some(feed) = feeds.get(&key) {
+                self.thread_rows = TimelineRow::from_snapshot(feed);
+                if self.detail_cursor >= self.thread_rows.len() {
+                    self.detail_cursor = self.thread_rows.len().saturating_sub(1);
+                }
+            }
+        }
+    }
 }
 
 use crate::short_id;
+
+fn author_feed_key(pubkey: &str) -> String {
+    format!("nmp.feed.author.{pubkey}")
+}
+
+fn thread_feed_key(event_id: &str) -> String {
+    format!("nmp.feed.thread.{event_id}")
+}
+
+#[cfg(test)]
+#[path = "app/dynamic_feed_tests.rs"]
+mod dynamic_feed_tests;
 
 #[cfg(test)]
 mod tests {

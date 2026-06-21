@@ -188,7 +188,13 @@ fn zap(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
     }
     let pubkey = resolve_nip05_pubkey(address)?;
 
-    let cid = runtime.zap(&pubkey, sats * 1000, None, comment.as_deref(), Some(address))?;
+    let cid = runtime.zap(
+        &pubkey,
+        sats * 1000,
+        None,
+        comment.as_deref(),
+        Some(address),
+    )?;
     Ok(action(cid, &format!("zap {sats} sat → {address}")))
 }
 
@@ -311,11 +317,17 @@ fn search(rest: &str, state: &mut AppState, runtime: &AppRuntime) -> Result<Comm
     match kind {
         "profile" => {
             runtime.open_author(value)?;
+            state.profile_pubkey = value.to_string();
+            state.profile_rows.clear();
             state.focus(Pane::Profile);
             Ok(status(format!("opened profile {value}")))
         }
         "thread" => {
             runtime.open_thread(value)?;
+            state.thread_event_id = value.to_string();
+            state.thread_rows.clear();
+            state.detail_cursor = 0;
+            state.detail_scroll = 0;
             state.focus(Pane::Detail);
             Ok(status(format!("opened thread {value}")))
         }

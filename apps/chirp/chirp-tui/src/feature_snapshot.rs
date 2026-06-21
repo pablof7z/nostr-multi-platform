@@ -23,9 +23,9 @@ pub struct FeatureSnapshot {
     pub follow_count: usize,
     pub settings_hub: SummaryLine,
     // V-112 (ADR-0042): author_profile (from deleted author_view projection) and
-    // thread (from deleted thread_view projection) removed. The profile pane reads
-    // profile data from claim_profile → resolved_profiles; note lists read from the
-    // dynamic nmp.feed.author.* / nmp.feed.thread.* flat-feed projections.
+    // thread (from deleted thread_view projection) removed. Profile/thread note
+    // lists read from dynamic nmp.feed.author.* / nmp.feed.thread.* flat-feed
+    // projections decoded by SharedSnapshot.
 }
 
 impl FeatureSnapshot {

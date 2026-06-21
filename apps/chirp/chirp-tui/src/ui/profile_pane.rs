@@ -2,7 +2,7 @@
 //!
 //! Layout (vertical split):
 //!   - Top 9 rows: profile header (avatar block + name/npub + nip05 + bio + stats)
-//!   - Remaining rows: author's posts from the current timeline
+//!   - Remaining rows: author's opened feed rows
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -33,10 +33,9 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     let pubkey = &state.profile_pubkey;
 
     // V-112 (ADR-0042): author_view projection deleted; derive profile display
-    // data from the ProfileWire attached to the author's timeline rows (populated
-    // by claim_profile → resolved_profiles). Note count is the visible-row count.
+    // data from the ProfileWire attached to the opened author feed rows.
     let author_wire = state
-        .rows
+        .profile_rows
         .iter()
         .find(|r| r.author_pubkey == *pubkey)
         .map(|r| &r.author_profile);
@@ -61,7 +60,7 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
         .unwrap_or_else(|| short_pubkey(pubkey));
     let about = profile.about.as_deref().unwrap_or("").to_string();
     let note_count_n = state
-        .rows
+        .profile_rows
         .iter()
         .filter(|r| r.depth == 0 && r.author_pubkey == *pubkey)
         .count();
@@ -205,7 +204,7 @@ fn build_author_post_lines(
     }
 
     let author_rows: Vec<_> = state
-        .rows
+        .profile_rows
         .iter()
         .filter(|r| r.depth == 0 && r.author_pubkey == pubkey)
         .collect();
@@ -214,7 +213,7 @@ fn build_author_post_lines(
         return vec![
             Line::from(""),
             Line::from(Span::styled(
-                "  No posts in current timeline",
+                "  No posts in opened author feed",
                 Style::default().fg(DIM_TEXT),
             )),
         ];
@@ -305,6 +304,36 @@ fn short_pubkey(pubkey: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::timeline::TimelineRow;
+
+    fn row(id: &str, author: &str, content: &str) -> TimelineRow {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "card": {
+                    "id": id,
+                    "author_pubkey": author,
+                    "kind": 1,
+                    "created_at": 1_700_000_000_u64,
+                    "content": content,
+                    "relation_counts": {}
+                },
+                "attribution": []
+            }]
+        });
+        TimelineRow::from_snapshot(&snapshot)
+            .into_iter()
+            .next()
+            .expect("row decodes")
+    }
+
+    fn lines_text(lines: &[Line<'static>]) -> String {
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn short_pubkey_formats_correctly() {
@@ -326,5 +355,24 @@ mod tests {
         let result = truncate_to_width(s, 8);
         assert_eq!(result.chars().count(), 8);
         assert!(result.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn author_post_lines_use_opened_author_feed_not_home_rows() {
+        let author = "aa".repeat(32);
+        let mut state = AppState {
+            profile_pubkey: author.clone(),
+            rows: vec![row("home-row", &author, "home row body")],
+            profile_rows: vec![row("author-row", &author, "author feed body")],
+            ..Default::default()
+        };
+
+        let text = lines_text(&build_author_post_lines(&state, &author, 80));
+
+        assert!(text.contains("author feed body"));
+        assert!(!text.contains("home row body"));
+        state.profile_rows.clear();
+        let empty_text = lines_text(&build_author_post_lines(&state, &author, 80));
+        assert!(empty_text.contains("No posts in opened author feed"));
     }
 }

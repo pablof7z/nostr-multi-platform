@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde_json::Value;
 
 use crate::bridge::UpdatePayload;
@@ -14,6 +16,7 @@ pub struct SharedSnapshot {
     pub action_results: Vec<ActionResult>,
     pub action_stages: Vec<ActionStageRow>,
     pub home_feed: Option<Value>,
+    pub feeds: HashMap<String, Value>,
 }
 
 impl SharedSnapshot {
@@ -47,13 +50,15 @@ impl SharedSnapshot {
     fn from_value(value: &Value) -> Self {
         let snapshot = value.get("v").unwrap_or(value);
         let projections = snapshot.get("projections");
+        let feeds = feeds_from(projections);
         Self {
             metrics: runtime_metrics_from(snapshot.get("metrics")),
             relays: relays_from(projections),
             interests: interests_from(projections),
             action_results: action_results_from(projections),
             action_stages: action_stages_from(projections),
-            home_feed: projections.and_then(|p| p.get("nmp.feed.home")).cloned(),
+            home_feed: feeds.get("nmp.feed.home").cloned(),
+            feeds,
         }
     }
 }
@@ -66,7 +71,7 @@ impl SharedSnapshot {
 ///   fields (`events_rx`, `visible_items`, `actor_queue_depth`,
 ///   `update_sequence`).
 /// - The `typed_projections` sidecar supplies `relay_diagnostics`,
-///   `action_results`, `action_stages`, and `nmp.feed.home`.
+///   `action_results`, `action_stages`, and dynamic `nmp.feed.*` rows.
 ///
 /// When a typed sidecar entry is absent or fails to decode (e.g. the slot was
 /// not yet emitted, or a schema mismatch — ADR-0037 Commitment 4), the
@@ -92,7 +97,8 @@ fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
     let interests = typed_interest_rows(&typed_projections);
     let action_results = typed_action_results(&typed_projections);
     let action_stages = typed_action_stages(&typed_projections);
-    let home_feed = typed_home_feed(&typed_projections);
+    let feeds = typed_op_feeds(&typed_projections);
+    let home_feed = feeds.get("nmp.feed.home").cloned();
 
     SharedSnapshot {
         metrics,
@@ -101,6 +107,7 @@ fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
         action_results,
         action_stages,
         home_feed,
+        feeds,
     }
 }
 
@@ -198,17 +205,20 @@ fn typed_action_stages(projections: &[nmp_core::TypedProjectionData]) -> Vec<Act
         .collect()
 }
 
-/// Decode the `nmp.feed.home` typed NOFS sidecar.
+/// Decode every typed `nmp.feed.*` NOFS sidecar by projection key.
 ///
-/// When the sidecar is absent, wrong schema, or fails to decode, returns
-/// `None` — preserving ADR-0037 Commitment 4.  After PR-B the generic
-/// `payload:Value` fallback is gone; `None` means "not yet available".
-fn typed_home_feed(projections: &[nmp_core::TypedProjectionData]) -> Option<Value> {
-    let proj = projections
+/// Absent, wrong-schema, or corrupt sidecars are ignored — preserving ADR-0037
+/// Commitment 4. After PR-B the generic `payload:Value` fallback is gone.
+fn typed_op_feeds(projections: &[nmp_core::TypedProjectionData]) -> HashMap<String, Value> {
+    projections
         .iter()
-        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
-    let decoded = nmp_nip01::decode_op_feed_snapshot(&proj.payload).ok()?;
-    serde_json::to_value(&decoded).ok()
+        .filter(|p| p.key.starts_with("nmp.feed.") && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)
+        .filter_map(|proj| {
+            let decoded = nmp_nip01::decode_op_feed_snapshot(&proj.payload).ok()?;
+            let value = serde_json::to_value(&decoded).ok()?;
+            Some((proj.key.clone(), value))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -403,6 +413,16 @@ fn action_stages_from(projections: Option<&Value>) -> Vec<ActionStageRow> {
         });
     }
     rows
+}
+
+fn feeds_from(projections: Option<&Value>) -> HashMap<String, Value> {
+    projections
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|entries| entries.iter())
+        .filter(|(key, _)| key.starts_with("nmp.feed."))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
 }
 
 fn string_field(value: &Value, key: &str) -> String {
