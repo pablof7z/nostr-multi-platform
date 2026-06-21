@@ -173,6 +173,45 @@ pub fn event_by_id_from_store(
     })
 }
 
+/// Count the distinct follows in `author_hex`'s latest kind:3 in the kernel's
+/// published [`EventStoreSlot`].
+///
+/// Reads the newest kind:3 for the author from the local store and counts its
+/// distinct, hex-valid `p` tags. Because every locally-published event is
+/// ingested into this same store before its observer fan-out (read-your-writes,
+/// `kernel/ingest/timeline.rs` / ADR-0057), a kind:3 just published by a
+/// `follow` / `follow_many` write is visible here synchronously — no relay
+/// round-trip is required for the count to reflect it.
+///
+/// Returns:
+/// - `Some(n)` — the author HAS a kind:3 in the store with `n` distinct follows
+///   (including `Some(0)` for an explicit empty list).
+/// - `None` — `author_hex` is malformed, the slot has not been published yet
+///   (pre-`nmp_app_start`), a lock is poisoned, or no kind:3 exists for the
+///   author yet (brand-new account that has published none). Hosts render
+///   `None` as `0` for display; the distinction (`None` vs `Some(0)`) is kept
+///   so a caller can tell "no list yet" from "loaded, empty".
+#[must_use]
+pub fn following_count_from_store(slot: &EventStoreSlot, author_hex: &str) -> Option<usize> {
+    let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
+    let store = slot.lock().ok()?.clone()?;
+    let mut iter = store.scan_by_author_kind(&author, &[3], None, None, 1).ok()?;
+    let stored = iter.next()?.ok()?;
+    let mut seen = std::collections::HashSet::new();
+    let count = stored
+        .raw
+        .tags
+        .iter()
+        .filter(|t| t.first().map(String::as_str) == Some("p"))
+        .filter_map(|t| t.get(1))
+        // Reuse the 64-hex decoder as the validity gate (drops malformed `p`
+        // values), then dedup so a duplicated follow is not double-counted.
+        .filter(|pk| crate::kernel::hex_to_pubkey_bytes(pk).is_some())
+        .filter(|pk| seen.insert((*pk).clone()))
+        .count();
+    Some(count)
+}
+
 /// Synchronous event-by-id read over a directly-held [`Arc<dyn EventStore>`].
 ///
 /// Use this over [`event_by_id_from_store`] when the composition root has
@@ -413,4 +452,66 @@ pub type ExternalEventSinkPolicySlot =
 #[must_use]
 pub fn new_external_event_sink_policy_slot() -> ExternalEventSinkPolicySlot {
     Arc::new(Mutex::new(None))
+}
+
+#[cfg(test)]
+mod following_count_tests {
+    use super::*;
+    use crate::store::EventStore;
+    use std::sync::Arc;
+
+    fn slot_with(store: nmp_store::MemEventStore) -> EventStoreSlot {
+        let slot = new_event_store_slot();
+        *slot.lock().unwrap() = Some(Arc::new(store) as Arc<dyn crate::store::EventStore>);
+        slot
+    }
+
+    fn kind3(author: &str, follows: &[&str]) -> nmp_store::VerifiedEvent {
+        let mut tags: Vec<Vec<String>> = follows
+            .iter()
+            .map(|p| vec!["p".to_string(), (*p).to_string()])
+            .collect();
+        // A non-`p` tag and a malformed `p` must NOT be counted.
+        tags.push(vec!["t".to_string(), "noise".to_string()]);
+        tags.push(vec!["p".to_string(), "not-hex".to_string()]);
+        let raw = nmp_store::RawEvent {
+            id: "ab".repeat(32),
+            pubkey: author.to_string(),
+            created_at: 1_700_000_000,
+            kind: 3,
+            tags,
+            content: String::new(),
+            sig: "cd".repeat(64),
+        };
+        nmp_store::VerifiedEvent::from_raw_unchecked(raw)
+    }
+
+    #[test]
+    fn counts_distinct_hex_p_tags_in_latest_kind3() {
+        let author = "11".repeat(32);
+        let a = "22".repeat(32);
+        let b = "33".repeat(32);
+        let store = nmp_store::MemEventStore::default();
+        // Duplicate `a` must be counted once.
+        let _ = store.insert(kind3(&author, &[&a, &b, &a]), &"wss://r".to_string(), 1);
+        let slot = slot_with(store);
+        assert_eq!(following_count_from_store(&slot, &author), Some(2));
+    }
+
+    #[test]
+    fn none_when_no_kind3_for_author() {
+        let author = "11".repeat(32);
+        let store = nmp_store::MemEventStore::default();
+        let slot = slot_with(store);
+        assert_eq!(following_count_from_store(&slot, &author), None);
+    }
+
+    #[test]
+    fn none_when_author_hex_malformed_or_slot_empty() {
+        let slot = new_event_store_slot();
+        assert_eq!(following_count_from_store(&slot, "11".repeat(32).as_str()), None);
+        let store = nmp_store::MemEventStore::default();
+        let slot = slot_with(store);
+        assert_eq!(following_count_from_store(&slot, "not-hex"), None);
+    }
 }

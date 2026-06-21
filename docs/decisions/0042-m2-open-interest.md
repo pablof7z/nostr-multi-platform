@@ -140,52 +140,32 @@ composition**:
 
 ### 5.1 The read path: register through the existing `nmp-feed` seam (NOT a new projection)
 
-The one piece app composition cannot synthesise from existing projections is
-**"the store events matching a registered interest"** for a *non-followed*
-author or an arbitrary thread/hashtag. The gap is **exposure**, not storage:
+The read path is finalized by **ADR-0057**: admission is valid-signature-only,
+every validly-signed non-ephemeral event is persisted unconditionally, and
+`Kernel::should_store_event` is demoted to a read-time timeline-*view* predicate
+(it selects what enters the in-memory curated `self.timeline`, never what is
+durably stored). So a non-followed author's events for a generic `open_interest`
+are **already in the store**; the only gap is *exposure*, not storage.
 
-Every validly-signed non-ephemeral event is persisted unconditionally (ADR-0057),
-so `Kernel::should_store_event` (`kernel/ingest/timeline.rs`) is purely a read-time
-timeline-*view* predicate — it selects what enters the in-memory `self.timeline`
-curated list, never what is durably stored. A non-followed author's events for a
-generic `open_interest` are therefore already in the store. The only gap is that
-the home-feed `timeline` / `inserted` / `updated` / `removed` delta is computed over
-`visible_items()`, which iterates `self.timeline` (follow-feed only), so a stored
-non-followed-author event never reaches the shell through that cluster, and the
-deleted `author_view`/`thread_view` were its only other exposure path.
+The resolution reuses the existing feed seam rather than adding a bespoke
+`interest_feeds` kernel projection:
 
-**Decision (reuse, not reinvent).** Do NOT add a bespoke `interest_feeds`
-kernel projection. A generic, reusable feed-registration seam already exists
-and the home feed already runs on it:
+- `nmp-feed` (ADR-0033) owns the keyed `FeedRegistry`, cursors, windowing, and
+  the viewport FFI; `RootIndexedFeed<R, A, C>` (ADR-0035) is the
+  protocol-agnostic engine and `nmp-nip01::register_op_feed` (ADR-0038) is the
+  NIP-10 instance behind `nmp.feed.home`. The engine ingests via the generic
+  `KernelEventObserver` fan-out, which fires for every stored event.
+- Author and thread feeds are additional **feed instances registered under their
+  own keys** (`nmp.feed.author.<pubkey>` / `nmp.feed.thread.<event_id>`) through
+  the same registry, observer, and typed-sidecar composition. Chirp's app crate
+  owns them: open registers a feed + observer + `NOFS` typed projection and opens
+  the matching `open_interest`; close unregisters the dynamic key (emitting one
+  `Cleared` row so host caches drop it) and closes the interest.
 
-- `nmp-feed` (ADR-0033) owns the keyed `FeedRegistry`
-  (`register(key, Arc<dyn FeedController>)`), cursors, windowing, and the
-  viewport FFI (`load_older`).
-- `nmp-feed`'s `RootIndexedFeed<R, A, C>` (ADR-0035) is the protocol-agnostic
-  engine; `nmp-nip01::register_op_feed` (ADR-0038) is the NIP-10 instance that
-  produces the `nmp.feed.home` snapshot key. The engine ingests via the
-  generic `KernelEventObserver` fan-out (`notify_event_observers`, which fires
-  for every stored event — `kernel/ingest/timeline.rs:219`).
-
-Author and thread feeds are therefore additional **feed instances registered
-under their own keys** (`nmp.feed.author.<pubkey>` /
-`nmp.feed.thread.<event_id>`) through the same feed registry, event-observer,
-and typed-sidecar composition the home feed uses. Chirp's app crate is the
-owner: open registers `FlatFeed` + observer + `NOFS` typed projection and then
-opens the matching `open_interest`; close unregisters the dynamic key and
-closes the matching interest. Removing the typed projection emits one one-shot
-`Cleared` row so host caches drop the key immediately. Building a parallel
-`interest_feeds` snapshot projection next to this engine would be exactly the
-"parallel machinery / substrate theater" the repo forbids; the existing seam is
-the architecturally-right home.
-
-**Remaining kernel work (the part this ADR mandates beyond the −3 surface).**
-Events are persisted unconditionally (ADR-0057) — there is no store-admission gate
-to generalise and no shape-matching on the ingest hot path. A non-followed author's
-events for a generic `open_interest` are already in the store; the feed engine
-(`nmp-feed` / `RootIndexedFeed`) surfaces them at read time via the
-`KernelEventObserver` fan-out, gated by its own `EventGate` / `ParentResolver`
-filter. `should_store_event` is retained only as the timeline-*view* predicate.
+A parallel `interest_feeds` snapshot projection would be the "substrate theater"
+the repo forbids; the existing seam is the architecturally-right home. Per
+ADR-0057 there is no store-admission gate to generalise and no shape-matching on
+the ingest hot path.
 
 ### 5.2 Why the original task framing under-counted the scope
 
@@ -213,63 +193,67 @@ FlatFeeds and explicit typed-projection teardown.
 - `ffi-surface.md` and the codegen Swift projection registry are updated;
   generated Swift types are regenerated.
 
-## Active contact-feed declaration
+## Amendment — active-follows feed declarations
 
-### Why `scope`-2-on-`open_interest` was rejected
+The active-user follow feed is **not** expressible through `open_interest` (§2):
+its author set is reactive perspective state derived from the active account's
+kind:3, re-evaluated on `FollowListChanged`, and re-routed on account switch.
+It therefore uses a declared-feed path, not a static filter shape and not a
+special kernel-owned home-feed product API.
 
-`open_interest` (ADR-0042 §2) is the M2 seam for **static filter shapes** —
-a caller supplies a complete NIP-01 REQ filter and the kernel registers a
-tailing `InterestShape`-hash-keyed interest. The follow feed is fundamentally
-different: its author set is **dynamic kernel-owned state** (derived from the
-active account's kind:3, re-evaluated on every `FollowListChanged` trigger, and
-re-routed on account switch). Overloading it via a magic-integer scope would:
+Apps/defaults declare:
 
-1. Violate `InterestScope`'s semantic contract — `Scope` is a mailbox
-   **resolution** hint (Active vs. Global in `planner/interest.rs:426`), not
-   an author-expansion directive.
-2. Conflate `filter_json`/`consumer_id`/`close` contracts: a filter without an
-   `authors` field is not a valid active-user follow-feed shape; the planner
-   would register a global wildcard, not an outbox-routed follow subscription.
-3. Reproduce the §5.1 anti-pattern the first five deletions were designed to
-   cure: the host encoding app-specific magic numbers into a substrate seam.
+- the primary content kinds they intend to render;
+- the reactive perspective, here "the active account's follows";
+- the feed engine/projection that will render the resulting events.
 
-### Decision: active contact-feed verbs
+The app never supplies concrete follow pubkeys and never declares repost
+wrappers as primary feed kinds. Protocol adapters derive wrapper acquisition
+(`6` for kind `1`, `16` for non-kind-1 targets) before the kernel stores the
+concrete acquisition kinds used for subscription compilation.
 
-```c
-void nmp_app_open_contact_feed(NmpApp *app, const char *primary_kinds_json);
-void nmp_app_close_contact_feed(NmpApp *app);
+```rust
+app.declare_active_follows_feed([1]);
+app.clear_active_follows_feed();
 ```
 
-The kernel keeps the author-expansion logic, re-routing, and refcount-of-one.
-The app-facing declaration supplies primary content kinds (e.g. `"[1]"` for
-Chirp notes). The protocol adapter derives wrapper acquisition (`6` for kind
-`1`, `16` for non-kind-1 targets) before the kernel stores the concrete
-acquisition kinds. An empty array `[]` is a legitimate clear.
+The exported C symbols with the old contact-feed names are compatibility shims
+only. They delegate to this declaration path and must not be used by apps as the
+current primitive. An empty primary-kind array `[]` is a legitimate clear.
 
 ### New `ActorCommand` variants
 
-- `OpenContactFeed { kinds: BTreeSet<u32> }` — replaces `OpenContactListSubscription`.
-- `CloseContactFeed` — the missing symmetric close that forced callers to
-  open with an empty set or rely on account-switch side-effects.
+- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }` — installs
+  the adapter-derived acquisition kinds for the active-follows declared feed.
+- `ClearActiveFollowsFeed` — withdraws the declaration and closes the resulting
+  follow-feed interests.
+
+> The `open_author` / `open_thread` names survive correctly as Chirp **app-layer**
+> wrappers (`nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`,
+> e.g. `apps/chirp/chirp-tui/src/runtime.rs`). What was deleted is the *kernel*
+> `OpenAuthor` / `OpenThread` commands and their bespoke machines (§1); the app
+> verbs now compose `open_interest` + a dynamic feed key (§5.1).
 
 ### Net symbol delta
 
-−1 (`nmp_app_open_timeline`) + 2 (`nmp_app_open_contact_feed` +
-`nmp_app_close_contact_feed`) = **+1** justified by the previously-absent
-close path (D5 cluster was never symmetric before this change).
+`nmp_app_open_timeline` remains retired. Renaming the old feed-open vocabulary to
+active-follows declaration vocabulary is a same-responsibility surface
+correction; it is not permission to add a second follow-feed API.
 
 ### Consequences
 
 - D5 cluster gating is **symmetric**: the home-feed projection cluster
   (`timeline`, `inserted`, `updated`, `removed`) appears only when
-  the active contact feed has concrete acquisition kinds, and disappears when
-  the host calls close or passes an empty primary-kind set.
+  the active-follows feed declaration has concrete acquisition kinds, and
+  disappears when the declaration is cleared or receives an empty primary-kind
+  set.
 - The `timeline_requested` milestone is unaffected: it is flipped by ingest at
   `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
 - All Chirp shells (iOS, Android, TUI, desktop) call the Chirp wrapper or
   app registration path that declares primary kind `[1]`; wrapper kinds are
   derived below that app-facing API.
-- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`; the
-  JNI export name `nativeOpenTimeline` is preserved (Kotlin-facing name
-  stability); the JNI body now calls `nmp_app_chirp_open_home_feed`.
+- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`. Any
+  platform-stable wrapper name that remains for binary/UI compatibility must
+  call the active-follows declaration path; it must not preserve a separate
+  home-feed code path.
 - Completes V-68 Stage 2 (#911).

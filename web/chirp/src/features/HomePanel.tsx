@@ -96,7 +96,7 @@ function EmptyTimeline() {
   return (
     <div class="empty-state">
       <MessageSquare size={22} />
-      <p>No feed items yet — connect a signer and open the contact feed.</p>
+      <p>No feed items yet — connect a signer to load your active-follows feed.</p>
     </div>
   );
 }

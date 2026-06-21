@@ -440,11 +440,11 @@ registered `on_change` callbacks fire.
 ```rust
 pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
-    let acquisition_kinds = nmp_nip18::acquisition_kinds_for_primary(primary_kinds);
 
-    // Kernel-owned acquisition consumes the compiled kinds. The composition
-    // root does not expand follows into interests.
-    app.open_contact_feed(acquisition_kinds);
+    // App/defaults declares primary kinds from the active-follows perspective.
+    // The adapter derives wrapper acquisition; the composition root does not
+    // expand follows into interests.
+    app.declare_active_follows_feed(primary_kinds);
 
     let engine = nmp_nip01::register_op_feed(
         viewer,

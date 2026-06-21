@@ -1,22 +1,19 @@
 # ADR-0021 — Relay roles: Indexer + AppRelay
 
-> **Status:** Accepted (2026-05-18, design phase — no code yet).
-> **Companion:** `docs/design/relay-roles.md` (full spec).
+> **Status:** Implemented. `RoutingSource::Indexer` and
+> `RoutingSource::AppRelay { mode }` (with `AppRelayMode`) shipped at
+> `crates/nmp-core/src/substrate/routing.rs`; `UserConfiguredCategory::Indexer`
+> was removed as intended (the remaining `UserConfiguredCategory` variants are
+> `ActiveAccountRead`/`ActiveAccountWrite`/`Debug`).
+> **Companion:** `docs/architecture/crate-boundaries.md` §3.1 (the seven
+> routing lanes), §5 (routing contract).
 > **Prerequisite for:** ADR-0020 (intent-classed routing + NIP-50 search).
 > ADR-0020's `ClassRouted` lane references this ADR's promoted
-> `RoutingSource::Indexer` variant; both ADRs land together in the same
-> rollout sequence.
-> **Research basis:** prior research at `docs/research/relay-lifecycle-and-pools.md`,
-> `docs/research/ndk/`, `docs/research/applesauce/`; two flat-file
-> agent reports (`ndk-app-relay-model.md`, `applesauce-app-relay-model.md`)
-> produced during this design session were wiped before commit and may
-> need to be regenerated for full traceability.
+> `RoutingSource::Indexer` variant.
 > **Reconciliation note:** This ADR adds NEW variants to the planner-layer
 > `RoutingSource` enum. It does NOT modify the worker-layer `RelayRole`
-> enum (`crates/nmp-core/src/relay.rs:57`) — those are different
-> abstraction levels (worker = transport-lane diagnostic bucketing;
-> planner = "why this relay was chosen"). See `docs/design/relay-roles.md`
-> §0 for the per-lane mapping.
+> enum — those are different abstraction levels (worker = transport-lane
+> diagnostic bucketing; planner = "why this relay was chosen").
 
 ## Context
 
@@ -27,8 +24,7 @@ or for no-author interests. This shape was inherited from NDK
 used only for metadata discovery) and from applesauce
 (`lookupRelays`, opt-in fallback on the AddressLoader's miss path).
 
-The parallel research (`docs/research/ndk-app-relay-model.md`,
-`docs/research/applesauce-app-relay-model.md`) showed that **neither
+The parallel research into NDK and applesauce showed that **neither
 library implements the relay-role architecture NMP needs**:
 
 - NDK has **no real indexer** — its `outboxRelayUrls` is a
@@ -272,10 +268,8 @@ default and follows applesauce's stricter composition stance.
   to exist first).
 - ADR-0012 — `relay_pin` and the third routing lane (unchanged;
   remains the mechanism for NIP-29 GroupMessage).
-- `docs/design/relay-roles.md` — full design.
-- `docs/research/ndk-app-relay-model.md` — NDK analysis.
-- `docs/research/applesauce-app-relay-model.md` — applesauce analysis.
-- `docs/research/SYNTHESIS-app-relays.md` — cross-cutting synthesis.
+- `docs/architecture/crate-boundaries.md` §3.1, §5 — the seven routing
+  lanes and the routing contract (the as-built `RoutingSource` enum).
 - [NIP-51 PR #1985](https://github.com/nostr-protocol/nips/pull/1985)
   — kind:10086 (Indexer relays).
 - [NDK issue #175](https://github.com/nostr-dev-kit/ndk/issues/175)

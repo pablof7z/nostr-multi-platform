@@ -246,7 +246,7 @@ impl super::Kernel {
     /// runtime has no account-management actor; when the NIP-07 signer installs
     /// itself it already knows the viewer pubkey from
     /// `window.nostr.getPublicKey()` — this method feeds that pubkey into the
-    /// kernel so contact-feed resolution and bootstrap interests know whose
+    /// kernel so active-follows resolution and bootstrap interests know whose
     /// follows to load.
     ///
     /// Sets `active_account` and flushes the `active_account_handle` mutex slot

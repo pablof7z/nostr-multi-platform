@@ -1,6 +1,6 @@
 # ADR-0048 — NIP-55 Android signer (Amber) via `ExternalSignerCapability`
 
-- **Status:** Accepted pending implementation (design-first; the staged build plan lives on issue #1124, `status:staged`).
+- **Status:** Implemented — Stages 1–3 shipped (the `nip55` signer module, the capability wire, the per-op timeout, the `signer_state` projection, and the DM-send path all live in `crates/nmp-signers/src/signers/nip55/` and `nmp-core`). The only open item is Stage 4 (emulator E2E with the Amber APK — see D8).
 - **Date:** 2026-06-12
 - **Issue:** #1124 (F-13), `priority:p1`, `category:feature`, `area:android`, `area:signer`.
 - **Resolves the design half of #1124.** The spec-level decision is already settled in product authority — `docs/product-spec/subsystems.md:134` lists *"External — Android Amber (NIP-55) bridged via `ExternalSignerCapability`"* in the signer catalog. This ADR does **not** relitigate capability-vs-transport; it specifies the concrete shape of that capability bridge.
@@ -104,10 +104,12 @@ The **rule for which path** is a host-side mechanical consequence of `granted_pe
 
 ### D3 — Timeouts: a per-op deadline carried on the parked op, sourced from the signer; `EXTERNAL_SIGN_TIMEOUT` = 90s
 
+> **Implementation note:** the method named `sign_timeout()` below was renamed `op_timeout()` by ADR-0050 §D4; the live method is `RemoteSignerHandle::op_timeout(&self) -> Duration` (`crates/nmp-signers/src/signers/nip55/handle.rs:51`), covered by the `op_timeout_is_90s` test (`crates/nmp-signers/src/signers/nip55/tests.rs:189`).
+
 The 5s `PENDING_SIGN_TIMEOUT` is correct for a relay round-trip and **wrong** for an interactive Intent. The fix is *not* to bump the global constant (that would loosen the bunker timeout and is a single-fact-two-values fragmentation reject) but to make the deadline a **per-op property** sourced from the signer kind:
 
 - `pending_sign.rs` constructors (`PendingSign::new`, `PendingSignReturn::new`/`with_continuation`/`with_target`) gain a `deadline: Instant` parameter instead of computing `Instant::now() + PENDING_SIGN_TIMEOUT` internally. The `timed_out()` check (`pending_sign.rs:122,209`) is unchanged.
-- The dispatch arms that park (`dispatch.rs:749,786`) compute the deadline from the **active signer's budget**: a new `RemoteSignerHandle::sign_timeout() -> Duration` (default `PENDING_SIGN_TIMEOUT` = 5s; `Nip55Signer` overrides to `EXTERNAL_SIGN_TIMEOUT`). The actor reads it via the handle it already holds — no new protocol noun in `nmp-core` (the constant lives in `nmp-signer-iface`, the kernel only sees a `Duration`).
+- The dispatch arms that park (`dispatch.rs:749,786`) compute the deadline from the **active signer's budget**: a new `RemoteSignerHandle::op_timeout() -> Duration` (default `PENDING_SIGN_TIMEOUT` = 5s; `Nip55Signer` overrides to `EXTERNAL_SIGN_TIMEOUT`). The actor reads it via the handle it already holds — no new protocol noun in `nmp-core` (the constant lives in `nmp-signer-iface`, the kernel only sees a `Duration`).
 - `EXTERNAL_SIGN_TIMEOUT = Duration::from_secs(90)`. Rationale: long enough that a user who alt-tabs to Amber, reads the event, and approves does not time out (the NDK research note: *"async and times out — UX needs spinners, not blocking modals"*, `docs/research/ndk/signers.md`); short enough that a forgotten/never-foregrounded request is reclaimed within a session. 60s is too tight for a first-time user; 120s strands the UI spinner too long on abandonment. 90s is the adjudicated value.
 
 The host shows the pending state through the existing **`action_lifecycle`** surface (the dispatched action stays `in_flight` until the parked op resolves) — **no blocking modal**, per the NDK research note. The `external_signer_state` projection (D6) carries an `is_awaiting_approval` flag so a host can render "Waiting for Amber…" inline.
@@ -157,7 +159,7 @@ struct SignerStateDto {
 
 For NIP-55: `unavailable` is set when the host reports the package is not installed (the `signer_apps_table()` probe at `identity.rs:274` already lets the shell detect installed signers using `canOpenURL`-class platform checks — Android's `PackageManager.queryIntentActivities` is the analogue). **Sign-in is gated on the Kotlin-REPORTED resolvability**: the host probes the package and reports installed/not; Rust gates the "Sign in with Amber" affordance on that reported flag (the host renders; Rust decides whether sign-in is allowed — D7). A mid-session uninstall surfaces as the next op resolving `Unavailable`, flipping the projection to `is_unavailable` so the host prompts re-auth.
 
-Generalizing (vs. a second parallel projection) is the single-canonical-representation D-rule: bunker and external signer are both "remote signer health," and a host's "signer status row" should read one projection regardless of kind. The migration keeps `bunker_connection_state` as a deprecated-then-removed alias only long enough for one PR (no-compat-alias rule) — or, preferably, renames in place since #1098's consumers are all in-repo (iOS `AccountsView`, Android `SignInScreen`).
+Generalizing (vs. a second parallel projection) is the single-canonical-representation D-rule: bunker and external signer are both "remote signer health," and a host's "signer status row" should read one projection regardless of kind. The canonical projection is named **`signer_state`**; the old NIP-46-only `bunker_connection_state` name was removed outright in a hard-break rename (no surviving alias, per the no-compat-alias rule). This was a clean in-place rename — #1098's consumers are all in-repo (iOS `AccountsView`, Android `SignInScreen`) and were updated in the same change.
 
 ### D7 — Testability: emulator E2E with the Amber APK; CI on a mocked resolver
 
@@ -168,18 +170,18 @@ Generalizing (vs. a second parallel projection) is the single-canonical-represen
 
   The emulator+Amber E2E runs in a dedicated, non-blocking nightly/manual lane — it is the *correctness* oracle, not a merge gate; the unit layers are the merge gates.
 
-### D8 — Staging (issue #1124, `status:staged`)
+### D8 — Staging record (issue #1124)
 
-Four increments, each independently shippable with its own completion criterion:
+The work landed as four increments. Stages 1–3 are **shipped**; Stage 4 (emulator E2E) is the only open item.
 
-1. **Stage 1 — capability seam + signer variant (Rust, headless).**
-   Deliver: the `external_signer` leaf wire module (`ExternalSignerRequest`/`Response`/`ExternalSignerTransport`), `Nip55Signer` impl of `RemoteSignerHandle`, `SignerPayload::Nip55` + `SignerBackend::Nip55`, the per-op `deadline` refactor of `pending_sign.rs` + `RemoteSignerHandle::sign_timeout()` + `EXTERNAL_SIGN_TIMEOUT`, the `deliver_rpc_response`→`deliver_response` rename, and the `signer_state` generalization of `bunker_connection_state`. Done: `cargo test -p nmp-signers` + `-p nmp-core --lib signer_state` green against the stub transport; `doctrine_lint_smoke` green; no host code.
-2. **Stage 2 — Chirp Android sign-in UI.**
-   Deliver: the Kotlin `ExternalSignerCapability` bridge (registered via the JNI capability-callback path), the `signer_apps_table()`-driven "Sign in with Amber" affordance gated on reported resolvability, the Intent + ContentResolver dispatch, and the `signer_state` row in `SignInScreen` (green/amber/red, the #1098 Android pattern). Done: a real device/emulator sign-in resolves a `get_public_key` and persists a pubkey-only account; restart reconstructs it without a prompt.
-3. **Stage 3 — DM encryption (send) ops.**
-   Deliver: verify the seal-send path (ADR-0026 seam) produces an Amber-signed kind:13 for a NIP-55 account; permission batch covers `nip44_encrypt`; ContentResolver fast-path used post-grant. Done: a DM sent from a NIP-55 account is gift-wrapped with the seal signed by Amber. (Receive-side decrypt is **out of this feature** — it lands with V-08/#961.)
-4. **Stage 4 — emulator E2E.**
-   Deliver: the `adb`-driven Amber-APK acceptance test (D7) wired into the Chirp Android instrumented-test target and a manual/nightly CI lane. Done: the publish-kind:1-signed-by-Amber scenario passes end-to-end; F-13 closes.
+1. **Stage 1 — capability seam + signer variant (Rust, headless). ✅ Shipped.**
+   Delivered: the `external_signer` leaf wire module (`ExternalSignerRequest`/`Response`/`ExternalSignerTransport`), the `Nip55Signer` impl of `RemoteSignerHandle` (`crates/nmp-signers/src/signers/nip55/`), `SignerPayload::Nip55` + `SignerBackend::Nip55`, the per-op `deadline` refactor of `pending_sign.rs` + `RemoteSignerHandle::op_timeout()` + `EXTERNAL_SIGN_TIMEOUT`, the `deliver_rpc_response`→`deliver_response` rename, and the `signer_state` generalization of `bunker_connection_state`. Verified by `cargo test -p nmp-signers` + `-p nmp-core --lib signer_state` against the stub transport and `doctrine_lint_smoke`; no host code.
+2. **Stage 2 — Chirp Android sign-in UI. ✅ Shipped.**
+   Delivered: the Kotlin `ExternalSignerCapability` bridge (registered via the JNI capability-callback path), the `signer_apps_table()`-driven "Sign in with Amber" affordance gated on reported resolvability, the Intent + ContentResolver dispatch, and the `signer_state` row in `SignInScreen` (green/amber/red, the #1098 Android pattern). A real device/emulator sign-in resolved a `get_public_key` and persisted a pubkey-only account; restart reconstructed it without a prompt.
+3. **Stage 3 — DM encryption (send) ops. ✅ Shipped.**
+   Delivered: the seal-send path (ADR-0026 seam) produces an Amber-signed kind:13 for a NIP-55 account; the permission batch covers `nip44_encrypt`; the ContentResolver fast-path is used post-grant. A DM sent from a NIP-55 account is gift-wrapped with the seal signed by Amber. (Receive-side decrypt is **out of this feature** — it lands with V-08/#961.)
+4. **Stage 4 — emulator E2E. ⏳ Open (only remaining item).**
+   To deliver: the `adb`-driven Amber-APK acceptance test (D7) wired into the Chirp Android instrumented-test target and a manual/nightly CI lane. Done-gate: the publish-kind:1-signed-by-Amber scenario passes end-to-end; F-13 closes.
 
 ---
 

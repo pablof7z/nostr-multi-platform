@@ -7,23 +7,12 @@
 
 ## Context
 
-NMP ships a browser-host delivery surface (`crates/nmp-wasm`). The design
-contract for that surface lived in `docs/design/chirp-web-runtime.md` — named
-after one example app (Chirp). A framework contract must not live under an
-example-app name: the FFI surface is documented in `docs/ffi-surface.md` plus
-FFI ADRs; the WASM surface requires the same treatment.
-
-The old document also contained two structural problems:
-
-1. **Stale plan content.** An early-stage "current slice returns
-   `browser_actor_driver_missing` after `Start`" design note survived in the
-   document long after the runtime advanced past it. AGENTS.md forbids
-   preserving implemented plan detail as reference documentation.
-
-2. **Inaccurate framing.** The document described core update envelopes as
-   crossing the boundary "as JSON." In the current implementation binary
-   FlatBuffers frames are the primary snapshot transport; only control events
-   are JSON.
+NMP ships a browser-host delivery surface (`crates/nmp-wasm`). This ADR
+supersedes the prior `docs/design/chirp-web-runtime.md` design doc, which was
+named after one example app (Chirp) and carried stale plan content and
+inaccurate JSON-transport framing. A framework contract must not live under an
+example-app name: the WASM surface is now documented at `docs/wasm-surface.md`,
+mirroring the `docs/ffi-surface.md` treatment of the FFI surface.
 
 The native `NmpApp` actor (in `nmp-ffi`) runs on a dedicated OS thread, uses
 `flume` channels for dispatch, and drives a `tokio`/`mio` relay transport.
@@ -112,9 +101,12 @@ callback-per-dispatch.
 - **IndexedDB persistence is not yet wired.** The kernel still runs in memory
   and resets on page reload. This is not a design decision — it is follow-on
   work (see `docs/wasm-surface.md` §7).
-- **`WorkerRequest::AppAction` uses the framework-neutral `"app_action"` tag.**
-  A generic delivery surface must not preserve an example-app wire name for
-  compatibility.
+- **`WorkerRequest::AppAction` uses the framework-neutral `"app_action"` wire
+  tag, and the async publish entrypoint is `start_publish_app_action`.** No
+  residual Chirp-ism remains: a generic delivery surface preserves no
+  example-app wire name (`nmp-wasm/tests/protocol.rs` asserts the
+  `"type": "app_action"` wire shape; `nmp-wasm/src/runtime.rs` exposes
+  `start_publish_app_action`).
 
 ## Alternatives considered
 

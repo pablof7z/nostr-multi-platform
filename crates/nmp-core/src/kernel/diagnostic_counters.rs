@@ -3,10 +3,9 @@
 //! A cohesive `impl Kernel` cluster of read-only diagnostic accessors that
 //! surface internal counters for the snapshot/`Metrics` path and for tests:
 //!
-//! - **FFI/queue drop counters** — `dispatch_drops_total`, the
-//!   `queue_depth` handle plumbing (`set_queue_depth_handle`,
-//!   `take_queue_depth_handle_for_reset`, `actor_queue_depth`) consumed by
-//!   `Metrics::actor_queue_depth`.
+//! - **Queue-depth counters** — the `queue_depth` handle plumbing
+//!   (`set_queue_depth_handle`, `take_queue_depth_handle_for_reset`,
+//!   `actor_queue_depth`) consumed by `Metrics::actor_queue_depth`.
 //! - **Claim drop counters** — `claim_drops_total` (+ its `#[cfg(test)]`
 //!   twin) and `lnurl_for_pubkey`, a cached-profile read used by the zap path.
 //! - **`#[cfg(test)]` claim/wire-row accessors** — single-field reads over
@@ -23,16 +22,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 impl Kernel {
-    /// T114b — diagnostic counter; always 0 under the current unbounded
-    /// dual-channel design. Retained for API compatibility. Also returns 0
-    /// when the kernel was constructed outside the actor (tests, codegen)
-    /// and no handle is bound.
-    pub(crate) fn dispatch_drops_total(&self) -> u64 {
-        self.dispatch_drops
-            .as_ref()
-            .map_or(0, |c| c.load(Ordering::Relaxed))
-    }
-
     /// G-S4 — install the actor's command-channel depth counter so the
     /// diagnostic snapshot surfaces it as `actor_queue_depth`. Idempotent:
     /// re-binding replaces the prior handle. `None`-on-construction is fine —

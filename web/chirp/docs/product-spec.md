@@ -103,7 +103,7 @@ diagnostics panel (§3.1). Mirrors the Home/Thread/Author/Compose surface of
 |---|---|---|---|
 | M1 | **Boot & connect** — worker starts, dials the default Chirp relay set, reconnects with backoff; honest fallback banner when Worker/wasm is unavailable | `[backed-by-nmp-today]` | `WorkerRequest::Start` (`protocol.rs:8,40-48`); driver pool `relay_pool.rs:242-264`; degraded fallback already in `web/chirp/src/nmp/client.ts:45-63` |
 | M2 | **Sign in with NIP-07** — connect browser extension, show logged-in pubkey/avatar; signed-out mode is read-only browse | `[backed-by-nmp-today]` | `SetSigner` kind `"nip07"` (`protocol.rs:26,181-196`; `runtime.rs:336-351`). Caveat folded into M3: the kernel must also learn the viewer pubkey (today the signer slot is runtime-local) |
-| M3 | **Home timeline** — contact feed (kinds 1+6) of the signed-in user's follows, live-updating; sensible signed-out default (e.g. a curated/global interest) | `[needs-wasm-exposure]` | All logic is pure-kernel: contact feed = `Kernel::set_follow_feed_kinds` (the actor wrapper is 10 lines, `nmp-core/src/actor/commands/publish.rs:698-715`), kind:3 ingest + follow-feed registration, timeline ingest. Gaps: (a) no dispatch verb for contact feed / interests in `dispatch_routing.rs:148-176`; (b) `SetSigner` must hand the viewer pubkey to the reducer; (c) feed items must reach JS — see G2/G4; (d) the worker never pumps `KernelReducer::tick()` (`nmp-core/src/kernel_reducer.rs:186`; no call site in `nmp-wasm`), so lifecycle-drained REQs/retries have no driver — see G6 |
+| M3 | **Home timeline** — active-follows feed for primary kind `[1]` from the signed-in user's current follow list, live-updating; sensible signed-out default (e.g. a curated/global interest) | `[needs-wasm-exposure]` | Chirp web composition declares the active-follows home feed with primary kind `[1]`; the NIP-18 adapter derives wrapper kind `6` for acquisition, so apps do not declare `[1,6]`. Kernel kind:3 ingest reconciles the current account's follow list reactively and rewrites the follow-feed REQs. Remaining gaps are generic interest exposure for non-home feeds, full feed/projection read-back to JS, and the worker tick driver — see G2/G4/G6. |
 | M4 | **Note cards with resolved profiles** — author name/avatar/nip05 on every card via refcounted profile claims (components self-claim on mount, release on unmount) | `[needs-wasm-exposure]` | Claim/release REQs work today (`dispatch_routing.rs:62-86`); the **resolved profile data has no read-back** — `nmp.profile.resolved` / `nmp.profile.claimed` Tier-2 projections exist in core (`typed_projections/mod.rs`) but the wasm snapshot encodes no projections (`snapshot.rs:95-97`) |
 | M5 | **Compose & publish a note** (kind:1, top-level) with optimistic pending state | `[backed-by-nmp-today]` | `dispatch_app_action_async` (`lib.rs:188-215`, `publish_path.rs:145-252`). Per-relay verdict feedback is M7 |
 | M6 | **Threads** — open a note's thread (root + replies, NIP-10), reply from the thread view | `[needs-wasm-exposure]` | Read: `Kernel::open_interest_sub` exists (`kernel/mod.rs:2714`, `pub(crate)`) — needs a `KernelReducer` forwarding + dispatch verb, mirroring native `nmp_app_open_interest` (`docs/ffi-surface.md` §6); thread feed composition mirrors `nmp-app-chirp/src/ffi/interest_feed.rs:215-260`. Write: replies fail closed on wasm (`publish_path.rs:190-196`); NIP-10 tag building is host-side per issue #906 via `nmp-nip01::Note::reply_to` (`protocol.rs:122-131`) — the wasm publish path must accept tags |
@@ -210,13 +210,13 @@ nothing.
   kernel seam at `kernel/mod.rs:193,445-457`) through the snapshot push so
   `nmp.publish.*`, `nmp.profile.*`, `nmp.event.claimed`, feeds, reaction/zap
   aggregates reach JS. Unblocks M4, M7, V6–V8, D4, D7, D8, D11, D12.
-- **G3 — Interest + contact-feed dispatch verbs.** Forward
-  `Kernel::open_interest_sub` (`kernel/mod.rs:2714`) and
-  `set_follow_feed_kinds` (per `actor/commands/publish.rs:698-731`) through
-  `KernelReducer` and `dispatch_routing.rs`, mirroring native
-  `nmp_app_open_interest`/`open_contact_feed` (`docs/ffi-surface.md` §5–6).
-  `SetSigner` must also hand the viewer pubkey to the reducer so the follow
-  feed has an account to register against. Unblocks M3, M6, V4, V5.
+- **G3 — Generic interest exposure and account binding.** Active-follows home
+  declaration is now installed by Chirp web composition with primary kind `[1]`;
+  the adapter derives wrapper acquisition and the kernel reconciles kind:3
+  replacements. Remaining work is forwarding generic `open_interest_sub`
+  shapes for non-home feeds and ensuring the signer path keeps the reducer's
+  active account bound to the viewer pubkey. Unblocks M6, V4, V5 and the
+  remaining M3 read-back gaps.
 - **G4 — Web feed composition.** A wasm-reachable equivalent of
   `nmp-app-chirp/src/ffi/interest_feed.rs` (FlatFeed predicates +
   `nmp.feed.home` / `nmp.feed.author.*` / `nmp.feed.thread.*` registration,

@@ -21,7 +21,6 @@
 		171511AA2A0B0F7A72E4D56E /* KernelModel+Projections.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D80AA404D023B2E0F164E07 /* KernelModel+Projections.swift */; };
 		192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */; };
 		1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */; };
-		1F389E8F5C1BA2EC974ED543 /* HttpCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1DC0A1A9CFA48052B46448B /* HttpCapability.swift */; };
 		2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */; };
 		264D1D98B65C87B09A9AC85D /* NewGroupSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9225E6F8027D8931C383148 /* NewGroupSheet.swift */; };
 		266563E4094D83E8F6411464 /* ProjectionCache.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBA5F3EB2AE0217C0925F75 /* ProjectionCache.generated.swift */; };
@@ -312,7 +311,6 @@
 		BE212C39877A658DFB0C98FA /* Chirp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Chirp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF4D140423145993963B8F23 /* ThreadNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadNoteRow.swift; sourceTree = "<group>"; };
 		C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNoteRow.swift; sourceTree = "<group>"; };
-		C1DC0A1A9CFA48052B46448B /* HttpCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HttpCapability.swift; sourceTree = "<group>"; };
 		C239DE349111247765A86A53 /* ComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeView.swift; sourceTree = "<group>"; };
 		C2F8B2163D47A913D43D7566 /* RelaySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelaySettingsView.swift; sourceTree = "<group>"; };
 		C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpTheme.swift; sourceTree = "<group>"; };
@@ -497,7 +495,6 @@
 			isa = PBXGroup;
 			children = (
 				E62A6E7134CA2EED2577DA50 /* ChirpCapabilities.swift */,
-				C1DC0A1A9CFA48052B46448B /* HttpCapability.swift */,
 				50F5B25557B2147731A5F75C /* KeychainCapability.swift */,
 			);
 			path = Capabilities;
@@ -892,7 +889,6 @@
 				0248D621EC2123D7B7E13C0A /* GroupDiscoveryBridge.swift in Sources */,
 				6E7D8150435A15D63E6DB0BD /* HighlightEmbed.swift in Sources */,
 				0D422FF23569CEEFFC4AB10E /* HomeFeedView.swift in Sources */,
-				1F389E8F5C1BA2EC974ED543 /* HttpCapability.swift in Sources */,
 				D81055E50F7F365F57F3FD35 /* InvitesView.swift in Sources */,
 				1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */,
 				C39EA68411B3B84D8D56B1CC /* KernelActionTypes.swift in Sources */,

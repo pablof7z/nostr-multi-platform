@@ -3,10 +3,7 @@
 use nmp_app_chirp_web::composition::setup_chirp_web_feeds;
 use nmp_core::typed_projections::decode_resolved_profiles;
 use nmp_core::{decode_snapshot_typed_projections, ProfileLiveness};
-use nmp_wasm::{
-    protocol::{ActionDispatch, WorkerRequest},
-    WasmRuntime,
-};
+use nmp_wasm::WasmRuntime;
 
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 const BOB: &str = "bbbb000000000000000000000000000000000000000000000000000000000002";
@@ -25,7 +22,7 @@ fn kind0_content(display_name: &str) -> String {
 
 #[test]
 fn kind3_parser_updates_kernel_follow_feed_authors() {
-    let mut runtime = WasmRuntime::new();
+    let runtime = WasmRuntime::new();
     let setup = setup_chirp_web_feeds(&runtime);
 
     runtime
@@ -33,14 +30,6 @@ fn kind3_parser_updates_kernel_follow_feed_authors() {
         .borrow_mut()
         .set_active_account(ALICE.to_string());
     setup.notify_account_changed();
-
-    runtime
-        .handle(WorkerRequest::Dispatch(ActionDispatch {
-            action_type: "nmp.kernel.open_contact_feed".to_string(),
-            payload: serde_json::json!({ "kinds": [1] }),
-            correlation_id: "open-contact-feed".to_string(),
-        }))
-        .expect("open contact feed dispatch must succeed");
 
     runtime
         .reducer_handle()

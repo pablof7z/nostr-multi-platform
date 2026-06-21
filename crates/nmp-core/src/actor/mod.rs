@@ -262,7 +262,7 @@ use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;
 #[cfg(feature = "native")]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 #[cfg(feature = "native")]
 #[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
@@ -774,27 +774,30 @@ pub enum ActorCommand {
     RemoveRelay {
         url: String,
     },
-    /// (Re)open the contact-feed subscription for the active account.
+    /// Declare the active-account-follows feed for app primary content kinds.
     ///
-    /// `kinds` is the compiled acquisition kind set the follow-set REQ should
-    /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
-    /// policy belong to the host's app concept; the caller supplies the
-    /// compiled set so the substrate carries no app-specific social knowledge.
+    /// `acquisition_kinds` is the compiled acquisition kind set the follow-set
+    /// REQ should carry. D0: `nmp-core` does not know which primary kinds or
+    /// wrapper policy belong to the host's app concept; the caller supplies
+    /// the compiled set so the substrate carries no app-specific social
+    /// knowledge.
     /// The actor folds it into the kernel via
     /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
     /// follow-feed M2 interests under the new kind set. An empty set is
-    /// equivalent to `CloseContactFeed` — it withdraws all follow-feed interests.
-    OpenContactFeed {
-        kinds: std::collections::BTreeSet<u32>,
+    /// equivalent to `ClearActiveFollowsFeed` — it withdraws all follow-feed
+    /// interests.
+    DeclareActiveFollowsFeed {
+        acquisition_kinds: std::collections::BTreeSet<u32>,
     },
-    /// Tear down the contact-feed subscription opened by `OpenContactFeed`.
+    /// Tear down the active-follows feed declaration.
     ///
     /// Calls `Kernel::set_follow_feed_kinds(BTreeSet::new())`, which clears the
-    /// stored kinds and withdraws all follow-feed M2 interests from the lifecycle
-    /// registry. The unconditional `FollowListChanged` trigger propagates to
-    /// `drain_lifecycle_tick`, which emits CLOSE frames for any live REQs.
-    /// D6: no active account (or no prior open) is a silent no-op.
-    CloseContactFeed,
+    /// stored kinds and withdraws all follow-feed M2 interests from the
+    /// lifecycle registry. The unconditional `FollowListChanged` trigger
+    /// propagates to `drain_lifecycle_tick`, which emits CLOSE frames for any
+    /// live REQs. D6: no active account (or no prior declaration) is a silent
+    /// no-op.
+    ClearActiveFollowsFeed,
     /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
     /// freshness gate so a user-initiated navigation / pull-to-refresh always
     /// re-verifies the cached profile; `force == false` is the lazy, gated
@@ -1313,12 +1316,6 @@ pub fn run_actor_with_observers(
     let inbox = Inbox::new(inbox_rx);
     let pool = Pool::new(PoolConfig::default(), command_tx_self.relay_sink());
 
-    // T114b — bind a dispatch-drops counter for diagnostic visibility. Under
-    // the new dual-channel design the counter is always zero (commands cannot
-    // be dropped), but the kernel API and the Reset rebind path are kept so
-    // the FFI surface and diagnostic snapshot don't change.
-    let dispatch_drops = Arc::new(AtomicU64::new(0));
-
     // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
     // relay mail stashed while draining the command lane each iteration is
     // replayed in order.
@@ -1329,11 +1326,6 @@ pub fn run_actor_with_observers(
     // `runtime` so registrations and publish-back slots preserve identity.
     let mut kernel =
         config.kernel_with_account_slot(DEFAULT_VISIBLE_LIMIT, Arc::clone(&active_account));
-    // T114b — bind the FFI-channel drop counter so it surfaces on the
-    // diagnostic snapshot (`Metrics::dispatch_drops_total`). A `Reset`
-    // command replaces the kernel; we re-bind there so the counter stays
-    // visible (the underlying `Arc<AtomicU64>` survives Reset).
-    kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
     if let Ok(mut guard) = routing_trace.lock() {
         *guard = Some(kernel.routing_trace());
     }

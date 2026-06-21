@@ -8,7 +8,7 @@ use crate::nmp_app_chirp_close_home_feed;
 use crate::nmp_app_chirp_open_home_feed;
 
 /// The home-feed declaration must be exactly `"[1]"`; repost wrappers are
-/// derived by `nmp_app_open_contact_feed`, not enumerated by Chirp as primary
+/// derived below the app declaration, not enumerated by Chirp as primary
 /// feed policy.
 #[test]
 fn home_feed_primary_kinds_json_is_chirp_social_policy() {
@@ -18,7 +18,7 @@ fn home_feed_primary_kinds_json_is_chirp_social_policy() {
 /// `nmp_app_chirp_open_home_feed` must send a primary kind `[1]` declaration
 /// through the actor. We verify this indirectly: the call must not panic,
 /// and the app handle stays live. The exact command routing is covered by the
-/// `close_contact_feed_withdraws_follow_interests_and_emits_close` test in
+/// `clear_active_follows_feed_withdraws_follow_interests_and_emits_close` test in
 /// `nmp-core`.
 #[test]
 fn chirp_open_home_feed_threads_primary_kind_declaration() {

@@ -911,7 +911,7 @@ pub struct Kernel {
     /// on `nmp-nip01` (a downstream crate cycle the doctrine forbids).
     #[cfg(any(test, feature = "test-support"))]
     test_contacts_cache: Arc<crate::substrate::TestContactsCache>,
-    /// `pub(crate)` so in-crate tests can assert close-contact-feed clears
+    /// `pub(crate)` so in-crate tests can assert active-follows clear removes
     /// the follow author set without triggering the full follow-feed
     /// registration side-effect that `set_follow_feed_kinds` fires.
     pub(crate) timeline_authors: BTreeSet<String>,
@@ -920,12 +920,13 @@ pub struct Kernel {
     /// stale entries before re-registering on kind:3 change. Derived from the
     /// active account's kind:3 follow set; empty until first kind:3 arrives.
     /// `pub(crate)` so in-crate tests can assert the interest registry is
-    /// empty after `close_contact_feed` without triggering side-effects.
+    /// empty after clearing the active-follows declaration without triggering
+    /// side-effects.
     pub(crate) follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
-    /// Compiled acquisition kinds the contact-feed subscription should REQ for
-    /// the active account's follow set. Empty = the subscription is not active
-    /// (no follow-feed interests are registered). Callers derive this set from
-    /// app-facing primary kinds and wrapper policy before it reaches
+    /// Compiled acquisition kinds the active-follows subscription should REQ
+    /// for the active account's follow set. Empty = the subscription is not
+    /// active (no follow-feed interests are registered). Callers derive this
+    /// set from app-facing primary kinds and wrapper policy before it reaches
     /// `nmp-core`; the substrate carries no app-specific social knowledge.
     ///
     /// `pub(crate)` so in-crate tests can seed it directly as fixture setup
@@ -1228,22 +1229,14 @@ pub struct Kernel {
     /// snapshot via [`Metrics::claim_drops_total`] for D8 visibility into
     /// per-dispatch retention pressure.
     claim_drops_total: u64,
-    /// T114b — diagnostic dispatch-drop counter (the same `Arc<AtomicU64>`
-    /// owned by the FFI forwarder in `actor/mod.rs`). Under the current
-    /// unbounded dual-channel design this is always zero (commands cannot be
-    /// dropped); retained for API/diagnostic compatibility. `None` when the
-    /// kernel is constructed outside the actor (tests, codegen); the snapshot
-    /// then reports `dispatch_drops_total = 0`. Surfaced on the snapshot via
-    /// [`Metrics::dispatch_drops_total`].
-    dispatch_drops: Option<Arc<AtomicU64>>,
     /// G-S4 — actor command-channel depth straddle counter (the same
     /// `Arc<AtomicU64>` `NmpApp::send_cmd` increments and the actor loop
     /// decrements per dequeued command). The kernel only reads it, surfacing
     /// the value as [`Metrics::actor_queue_depth`] in `make_update`. `None`
     /// when the kernel is constructed outside the actor (tests, codegen); the
     /// snapshot then reports `actor_queue_depth = 0`. Bound once by
-    /// `run_actor_with_observers` and rebound by the `Reset` path the same way
-    /// `dispatch_drops` is.
+    /// `run_actor_with_observers` and rebound by the `Reset` path (the shared
+    /// `Arc<AtomicU64>` outlives the discarded kernel).
     queue_depth: Option<Arc<AtomicU64>>,
     /// T118 / G3 — current iOS scenePhase reported through the lifecycle
     /// FFI. Starts as [`LifecyclePhase::Inactive`] (the sentinel meaning
@@ -2064,7 +2057,6 @@ impl Kernel {
             publish_store,
             event_provenance: provenance::EventProvenance::new(),
             claim_drops_total: 0,
-            dispatch_drops: None,
             queue_depth: None,
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
@@ -2333,22 +2325,6 @@ impl Kernel {
             .collect();
         sort_dedup(&mut urls);
         urls
-    }
-
-    /// T114b — install the actor's FFI-channel drop counter so the diagnostic
-    /// snapshot surfaces it. Idempotent: re-binding replaces the prior handle.
-    /// `None`-on-construction is fine — the snapshot reports zero when unbound.
-    /// Called once by `run_actor` immediately after the kernel is built.
-    pub(crate) fn set_dispatch_drops_handle(&mut self, handle: Arc<AtomicU64>) {
-        self.dispatch_drops = Some(handle);
-    }
-
-    /// T114b — extract the FFI-channel drop-counter handle before a `Reset`
-    /// replaces the kernel. The dispatch drops counter is process-lifetime
-    /// (shared with the FFI forwarder thread) so the Reset path moves it
-    /// onto the fresh kernel via `set_dispatch_drops_handle`.
-    pub(crate) fn take_dispatch_drops_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
-        self.dispatch_drops.take()
     }
 
     /// Bind a per-role signer callback used by the NIP-42 handshake on `role`,

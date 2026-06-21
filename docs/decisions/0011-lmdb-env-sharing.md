@@ -25,47 +25,12 @@ Per doctrine D6: "errors never cross FFI as exceptions." The corollary is that t
 Concretely:
 
 1. `LmdbEventStore::open(path)` calls `lmdb::Environment::open(path, ...)` and receives the sole `Environment` handle.
-2. This `Environment` is passed to `NostrLMDB` via a new constructor `NostrLMDB::with_env(env: Arc<lmdb::Environment>) -> Self` (an upstream PR to `nostr-lmdb`).
-3. Both `nostr-lmdb`'s sub-databases and NMP's sub-databases are opened under this single `Environment`.
-4. `insert()` opens one `lmdb::RwTxn`, calls `nostr_lmdb.save_event_in_txn(txn, &event)` plus NMP's secondary writes, then commits once. Either all writes land or none do.
+2. This `Environment` is passed to the forked `nostr-lmdb` via `Lmdb::with_env(env: Arc<lmdb::Environment>)`.
+3. Both the fork's sub-databases and NMP's sub-databases are opened under this single `Environment`.
+4. `insert()` opens one `lmdb::RwTxn`, saves the event plus NMP's secondary writes in that txn, then commits once. Either all writes land or none do.
 5. Migration steps open one `RwTxn` per step and commit the data writes and the `_meta` version bump together (see `lmdb/watermarks.md` §4.2).
 
-## How it works
-
-### Upstream PR
-
-The upstream PR to `nostr-lmdb` adds:
-
-```rust
-impl NostrLMDB {
-    /// Construct with a caller-owned Environment. The caller is responsible for
-    /// keeping the Environment alive as long as this NostrLMDB is alive.
-    pub fn with_env(env: Arc<lmdb::Environment>, opts: NostrLMDBOptions) -> Result<Self, Error>;
-
-    /// Insert an event inside an existing write transaction. The caller commits.
-    pub fn save_event_in_txn<'txn>(
-        &self,
-        txn: &mut lmdb::RwTxn<'txn>,
-        event: &nostr::Event,
-    ) -> Result<SaveEventStatus, Error>;
-}
-```
-
-The PR is straightforward: the existing `NostrLMDB` already opens one `Environment` internally; the change is to accept an externally-owned `Arc<Environment>` instead and expose the txn-scoped write primitive.
-
-### Interim fallback
-
-If the upstream PR is not merged within the M3 implementation window, we use a pinned fork of `nostr-lmdb` at the commit we need (adding a `[patch.crates-io]` entry in the workspace `Cargo.toml`). The fork carries only the two additions above; no other changes. The fork reference is replaced with the upstream version once the PR lands.
-
-### Two-phase-write fallback (if environment sharing is impossible)
-
-If the upstream crate architecture fundamentally prevents sharing the `Environment` (e.g., because it calls `Environment::open` with exclusive flags), the fallback is:
-
-1. Two separate `Environment` handles: one for `nostr-lmdb`'s sub-dbs, one for NMP's sub-dbs.
-2. `insert()` writes to `nostr-lmdb` first (primary + upstream indexes), then to NMP's sub-dbs in a second transaction.
-3. On crash recovery at startup, a consistency check compares the two environments' primary event sets against NMP's secondary indexes and replays any NMP writes that didn't land (a WAL-style forward-recovery scan limited to events inserted in the last write window, identified by the `_wal_pending` sub-db).
-
-This fallback is significantly more complex and has a measurable write-amplification cost. It is not the preferred design and should only be used if the upstream PR path is closed. The check `StoreHealth::consistency_status` (exposed to the diagnostics bridge per ADR-0007) surfaces any out-of-sync state detected at startup so it is always visible to developers.
+The shipped surface lives in `crates/nmp-store/src/lmdb/` (`open.rs` calls `Lmdb::with_env`); the env-injection + txn-scoped write primitive ship in the `nmp-nostr-lmdb` fork rather than as an upstream change.
 
 ## Consequences
 
@@ -75,12 +40,12 @@ This fallback is significantly more complex and has a measurable write-amplifica
 - Migration steps are atomic by construction (§4.2 of `lmdb/watermarks.md`).
 
 **Negative:**
-- Requires an upstream PR to `nostr-lmdb`. If the PR is rejected and the crate owner doesn't expose an environment-injection constructor, we must fork. The fork is a maintenance surface.
-- NMP becomes the LMDB environment owner, which means it is responsible for tuning `mapsize`, `max_dbs`, and `max_readers`. These were previously handled by `nostr-lmdb` internally. The defaults used by `nostr-lmdb` are well-chosen for Nostr workloads; NMP adopts them as its starting point and adjusts only when benchmarks show a regression.
+- Requires a forked `nostr-lmdb` (`nmp-nostr-lmdb`) carrying the env-injection constructor and txn-scoped write primitive. The fork is a maintenance surface.
+- NMP becomes the LMDB environment owner, which means it is responsible for tuning `mapsize`, `max_dbs`, and `max_readers`. These were previously handled by `nostr-lmdb` internally. The upstream defaults are well-chosen for Nostr workloads; NMP adopts them as its starting point and adjusts only when benchmarks show a regression.
 
 ## Alternatives considered
 
-**A. Let `nostr-lmdb` own the environment; use a two-phase write with WAL-recovery.** Described above as the fallback. Rejected as the primary design because of the added complexity, the recovery-window ambiguity, and the write-amplification cost.
+**A. Let `nostr-lmdb` own the environment; use a two-phase write with WAL-recovery.** Rejected because of the added complexity, the recovery-window ambiguity, and the write-amplification cost — two independent `Environment` handles cannot share a single commit, so no partial-write rollback is possible.
 
 **B. Replace `nostr-lmdb` with a hand-rolled LMDB layer.** Rejected in the master doc §1 (see "Rejected alternatives"). Reinvents 2 000+ LOC of battle-tested NIP-09 / replaceable event logic at high bug risk. Not justified.
 

@@ -1,6 +1,7 @@
 # ADR-0055 — Incremental projection emission (per-projection revision transport)
 
-- **Status:** Proposed (2026-06-13); renumbered from design/0053 (2026-06-14)
+- **Status:** Accepted (implemented; Rungs 0-2 #1365/#1376/#1385, Rung 3 #1388,
+  capstone #1413)
 - **Supersedes / amends:** aim.md §10 ("State crosses FFI as a full `Clone`d
   snapshot by default; granular updates are an optimization, not a default") and
   aim.md Doctrine #12 ("Snapshots by default, granular updates as optimization").
@@ -88,107 +89,16 @@ exact inversion this ADR corrects.
 
 ---
 
-## Research synthesis (how other systems navigate the same tension)
+## Research synthesis (condensed)
 
-Five parallel research investigations were run against the SOTA. The complete
-per-investigation digests + sources are in the final report; the load-bearing
-conclusions are:
-
-### 1. Local-first / sync engines (Replicache, ElectricSQL, Linear, Figma)
-
-- **Replicache** ships a per-client-view diff via an opaque *cookie* + a Client
-  View Record (`{key → version}`); on cookie loss it emits `{op: clear}` + full
-  repopulate — a self-healing fallback. **NMP steal:** the `clear` fallback maps
-  to NMP's epoch baseline; NMP needs *no* mutation rebase (no client writes).
-- **Linear** uses one **globally monotonic sync-id**: bootstrap (full) then
-  delta packets; on reconnect the client compares its `lastSyncId` to the
-  server's and either catches up or re-bootstraps. **NMP steal:** the
-  monotonic-rev + reconnect-comparison = NMP's epoch/rev gap detection. Linear's
-  weakness ("delta carries full model state") is exactly NMP's current bug —
-  per-projection rev fixes it.
-- **Figma** does **property-level LWW** with a journal (fine-grained ops) +
-  periodic checkpoints (full state); recovery replays journal from last
-  checkpoint. **NMP steal:** the journal/checkpoint split = "deltas in steady
-  state, baseline on reset" — but Figma's LWW conflict machinery is unneeded
-  (one writer).
-- **ElectricSQL** = append-only shape log + offset cursor; `409 must-refetch` on
-  invalidation. **NMP steal:** schema-version in the frame → host detects stale
-  decoder → resync.
-- Common thread: **monotonic position token + baseline-then-delta + explicit
-  resync on gap.** Every mature system converges on this shape.
-
-### 2. CRDTs / op-logs (Automerge, Yjs, delta-state theory)
-
-- The verdict is **emphatic**: state-vectors / op-logs / bloom-filter sync are
-  **overkill for NMP**. They solve multi-writer convergence under unreliable
-  networks with no central authority — NMP has *one producer, one consumer,
-  in-process, trusted, derived views*. NMP's state vector "collapses to a single
-  `u64` revision."
-- The one transferable insight: **ship state, not ops.** A state-carrying
-  `Changed` frame is idempotent and order-independent — a missed frame is
-  *superseded*, not lost. This is why NMP needs no causal ordering, no
-  tombstones, no delta buffer + ACK. And NMP's full-snapshot fallback — expensive
-  in a real CRDT — is **free** here because the kernel always holds ground truth.
-
-### 3. UI-runtime state bridges (React, RN bridge→JSI, SwiftUI/Compose, signals)
-
-- **The core analogy:** NMP's Rust→FlatBuffers→native FFI is React Native's old
-  JSON **bridge**; the documented fix (JSI/Fabric) was *stop serializing what
-  didn't change* and share typed refs (≈100× on round-trips). NMP cannot adopt
-  JSI literally (different boundary) but the lesson is identical: **shrink what
-  crosses.**
-- **Verdict on the two levers:** (a) shrink-what-crosses (gating/deltas) has
-  **primary** leverage — FlatBuffers serialize is synchronous on the actor
-  thread, cannot be patched incrementally, and burns kernel cycles even on quiet
-  ticks; (b) shrink-host-diff (per-projection reactive slots) is **multiplicative**
-  but only pays off *after* (a). This validates the rung order: producer gating
-  first, rev-aware host apply second.
-- **Critical host caveat (feeds D7):** SwiftUI/Compose already do fine-grained
-  invalidation internally — but only if the host exposes each projection as a
-  *separate* observable. A single `ObservableObject` + `objectWillChange`
-  invalidates everything on any change, defeating the win. **The iOS host must
-  use `@Observable` (iOS 17+) per-projection slots**, not one coarse object.
-- **Tantalus** (a real Rust→Swift delta-state system over UniFFI — a near-exact
-  NMP analog) is the existence proof for D7/Rung 6: a generated per-field-change
-  enum, applied host-side via `switch` into `@Observable` properties, no
-  host-side re-diff at all.
-
-### 4. DB change feeds / CDC (Postgres logical repl, Firestore, CDC, IVM)
-
-- **Postgres logical replication:** initial snapshot, then stream changes since
-  an LSN; a subscriber that falls behind resumes from its confirmed LSN, or — if
-  the slot is invalidated — does a full resync. This is precisely NMP's
-  "baseline on (re)connect, deltas from rev, full resync on epoch gap."
-- **Firestore `docChanges()`** is the closest precedent of all: the first
-  listener callback is a full snapshot, subsequent callbacks carry per-document
-  added/modified/removed deltas; reconnection re-syncs. This is the template for
-  the deferred **Rung 6** intra-projection row deltas (added/modified/removed by
-  stable row key).
-- **Incremental view maintenance:** computing a view delta from base-table deltas
-  beats full recompute only when the view is large and the change is small —
-  which is exactly why NMP defers row-deltas to the *feed* and not to scalar
-  projections.
-
-### 5. Versioned snapshots / structural sharing / content-addressed diffing
-
-- **The crux finding (backs D2):** content-hashing a projection to detect change
-  is **O(n)** and "can cost as much as serializing it" — XXH3 at ~31 GB/s on a
-  10 KB projection ≈ 0.3 µs/tick × N projections, vs an **O(1)** rev-counter
-  compare at ~1–2 ns. The rev counter is ~600× cheaper per tick and the gap
-  widens with projection size. **Reject content-hash as the default gate.**
-- **Who owns the rev?** The research independently flags that the in-flight
-  `register_gated` design has the **host** bump the `Arc<AtomicU64>` — which is
-  *inverted*: the host only knows when it *serialized*, not when the kernel
-  *mutated*. For the kernel to skip serialization the **kernel** must own the
-  bump at the mutation site (the Bevy ECS `Mut<T>` auto-bump / Linux seqlock /
-  HTTP ETag model). This directly drives D2 and the corresponding Rejected
-  Alternative.
-- **ETag / HTTP-304** is the validated protocol analog: per-key validator +
-  "Not Modified ⇒ reuse cached copy" = omit-unchanged-key + host-reuses-buffer.
-- **Structural sharing (`im`/Arc::ptr_eq)** is the *ideal* long-term mechanism
-  (O(1) pointer compare, no manual bump discipline) but requires rewriting
-  projections as persistent structures — deferred; the rev counter is the right
-  immediate play.
+Five SOTA investigations (local-first sync engines; CRDTs/op-logs; UI-runtime
+state bridges; DB change feeds/CDC; versioned-snapshot/structural-sharing) all
+converge on the same shape: **monotonic position token + baseline-then-delta +
+explicit resync on gap**, ship state not ops, and an **O(1) mutation-site rev
+counter, never an O(n) content hash**. The closest single precedent is Firestore
+`docChanges()` (first callback = full snapshot, then per-item
+added/modified/removed, `RESET` ⇒ re-baseline); the host-side existence proof is
+Tantalus (Rust→Swift delta-state applied into `@Observable` slots).
 
 ---
 
@@ -441,6 +351,115 @@ All four forks from the design review have owner decisions recorded:
 
 ---
 
+## Host apply contract (the durable host-side rules)
+
+These are the load-bearing host-apply rules established by the omit-Unchanged
+implementation (the "Rung 3 payoff"). They are the durable contract; the
+producer omits rows and the host reconstructs the full set. They compose with D1
+through D8 above.
+
+### HA-1. Omit the whole row for Unchanged (not an empty marker row) — `D3-1`
+
+A projection whose presence is `Unchanged` is dropped from the frame entirely —
+*no row, not an empty payload*. An empty-payload marker buys no robustness (a
+non-rev-aware reader maps both "absent" and "present-but-empty" to the empty
+default) while still paying per-key vtable + offset bytes every tick. `Cleared`
+is the sole exception: it is emitted as an explicit payload-less row
+(`state = Cleared`, no `TypedPayload`) so the host *drops* its cached value. The
+encoder MUST never emit a `Cleared` row and then also omit it; exactly one
+`Cleared` row is emitted on the non-empty→empty transition. This preserves the
+D3 invariant that **absence == Unchanged and is never conflated with Cleared.**
+
+### HA-2. Omission is a capability-gated protocol mode, not graceful degradation — `D3-2`
+
+Omission rides the host-declaration seam (ADR-0053): a host calls
+`nmp_app_declare_incremental_apply()` to advertise that its runtime owns the
+cache-merge layer. **Until a host advertises it, the kernel emits full rows for
+that kernel instance.** This is a per-instance capability the host *must* set,
+checked once at declare time (single-writer, set before `start`), not a compat
+shim. The gate is also the mechanism that makes "first frame for this host is a
+full baseline" enforceable per-attach. Advertising incremental apply (or any
+epoch bump) clears the producer's `last_emitted_revs`, so the next frame is a
+full baseline.
+
+### HA-3. The NMP-owned rev-aware apply layer is a generated cache-merge interposer — `D3-3`
+
+The host-side apply is a **generated** module on each platform
+(`ProjectionCache.generated.swift` / `ProjectionCache.kt`), produced by
+`nmp-codegen` from the same projection registry that generates the typed
+decoders, so it can never drift from the decoder set. It keeps a persistent
+`key → (rev, schema metadata, raw payload bytes)` cache and merges each frame:
+
+- `session_id` or `snapshot_epoch` differs from applied → `cache.clear()`, reset
+  applied identity, `baselined = false`, `needsResync = false` (D4 mandatory
+  reset), *before any row is merged*.
+- `Changed` → decode-before-commit (HA-4); on success overwrite cache + advance
+  rev.
+- `Cleared` → `cache.remove(key)` (keyed on `key` only; never decodes a payload).
+- Omitted / `Unchanged` (absence) → retained untouched.
+
+It then re-feeds the **existing** per-key typed decoders against the *merged full
+envelope set*. App accessors and `apply(result:)` are byte-identical to today, so
+incremental-apply is impossible for an app developer to get wrong — they never
+see the delta mechanics. The layer also exposes the set of keys whose rev
+advanced this frame; `apply(result:)` re-assigns *only those slots* (the D7
+host-apply win that kills SwiftUI/Compose broad invalidation). Tantalus-style
+per-field `@Observable` slot updaters are deferred — they layer on top later with
+no wire change.
+
+### HA-4. Decode-before-commit + sticky `needsResync` floor is the host self-healing floor — `D3-4`
+
+The kernel→host channel is a **synchronous in-process callback** on the actor
+thread: there is no in-transit loss and no reordering, so the only realistic way
+a `Changed` row fails to land is a host-side typed-decode failure. Therefore the
+host advances per-key `applied_rev` **only after** a successful typed decode +
+cache commit. On decode failure it keeps the prior cache entry, does NOT advance
+rev, does NOT map to empty, and latches a sticky `needsResync` (other keys in the
+frame still commit). The producer gates with `last_emitted_revs` (emit iff
+`rev > last_emitted`), so it never re-emits a key it believes delivered; after a
+terminal decode failure the key is known-degraded until the next genuine rev bump
+re-emits it OR a full baseline. **No per-frame full manifest is required** —
+under synchronous delivery a manifest only re-discovers a gap the host already
+knows from its own decode error. The resync FFI that drains `needsResync` is a
+follow-on rung.
+
+The four invariants this rests on (all testable): (1) a `Changed` payload is a
+full replacement of that projection (state, not patches); (2) the host advances
+`applied_rev[key]` only after a successful decode + commit; (3) `session_id` /
+`snapshot_epoch` change clears cache + resets `needsResync` + sets
+`baselined = false`, atomically, before any row is merged; (4) producer rev
+discipline: semantic change ⇒ rev advances; an emitted row ⇒
+`last_emitted = rev`.
+
+### HA-5. Tier-1 host projections stay always-Changed — `D3-7`
+
+Tier-1 host projections (feed, follow_list, wallet, dm_inbox, marmot, zaps, …)
+are NOT rev-gated in this iteration. The invariant that makes this safe (rather
+than a stale-cache hazard) is strict: an unregistered Tier-1 projection is
+emitted (`Changed`) whenever it is live and explicitly `Cleared` when it goes
+absent — **never silently omitted** (the host cache-merge would otherwise retain
+a stale Tier-1 value forever). The cache-merge layer treats a Tier-1 key (no
+manifest entry, default `state = Changed`) as always-overwrite. Tier-1 rev
+registration / feed row-deltas are a later rung (D8).
+
+### HA-6. `Cleared` is a synthesized payload-less typed row, never a manifest tombstone
+
+For conditional-presence keys (the drain projections `action_results` /
+`signed_events` and the copy-with-TTL keys `action_stages` /
+`action_lifecycle`), `Cleared` is an **explicit payload-less typed row**
+(`state = Cleared`), synthesized by the producer's omit transform from the
+manifest for a conditional key that is absent from the typed set on a
+non-empty→empty edge. It is **NOT** a manifest-only tombstone — a tombstone would
+force the host to also read the manifest, re-introducing the per-frame manifest
+that HA-4 deliberately removes. This keeps the host apply path a pure cache-merge
+over the typed row set (`Cleared` ⇒ `cache.remove(key)`), with no second wire
+surface, which is the HA-3/HA-4 invariant. The `Cleared` edge is edge-triggered
+(fires exactly once on the transition) and is never synthesized for an
+unconditional Tier-2 key (a `Changed`-but-absent unconditional key is a producer
+bug, asserted, never silently cleared).
+
+---
+
 ## Consequences
 
 - aim.md §10 + Doctrine #12 are amended (incremental-by-default for projections;
@@ -454,19 +473,3 @@ All four forks from the design review have owner decisions recorded:
 - New invariant tests: drop/reorder/gap/epoch-reset all converge to the
   full-snapshot result (a property test asserting "incremental stream applied ==
   full snapshot of final state" is the core correctness gate).
-
----
-
-## Appendix — research provenance
-
-This ADR is backed by five parallel SOTA investigations (local-first sync
-engines; CRDTs/op-logs; UI-runtime state bridges; DB change feeds/CDC;
-versioned-snapshot/structural-sharing). The condensed digests are in the
-"Research synthesis" section above; the full per-investigation findings with all
-source URLs were delivered in the design report accompanying this ADR. The
-closest single precedent is **Firestore `docChanges()`** (first callback = full
-snapshot, then per-item added/modified/removed, `RESET` ⇒ re-baseline); the
-sharpest mechanism warning is that **content-hashing to detect change is O(n)
-and self-defeating** (use an O(1) mutation-site rev); and the strongest
-existence proof for the host side is **Tantalus** (Rust→Swift delta-state over
-UniFFI applied into `@Observable` slots).

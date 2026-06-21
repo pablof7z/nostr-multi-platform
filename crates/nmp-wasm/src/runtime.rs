@@ -368,7 +368,7 @@ impl WasmRuntime {
     ///
     /// PR-3 viewer-pubkey hand-off: on success the pubkey from the signer
     /// request is fed into the kernel via `set_active_account` so
-    /// contact-feed resolution and bootstrap interests know whose follows
+    /// active-follows resolution and bootstrap interests know whose follows
     /// to load without waiting for a separate `set_active_account` action.
     fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
         match signer_slot::install_from_request(&request) {

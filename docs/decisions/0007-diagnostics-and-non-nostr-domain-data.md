@@ -30,127 +30,11 @@ The platform never receives raw relay socket callbacks, raw planner callbacks, o
 
 Networking is represented at three levels. Each level has stable identities, low-cardinality summaries, and optional debug detail.
 
-### 1. Relay status
+1. **Relay status** — one record per relay URL known to the actor. Answers "Is this relay reachable, what can it do, and is it healthy?" (connection state, auth state, capability probes, reconnect/byte counters).
+2. **Wire subscription status** — one record per actual REQ on an actual relay, i.e. the planner's network-level output after logical interests have been merged. Answers "What did we actually ask the relay for?"
+3. **Logical interest status** — one record per app-kernel interest (view, domain subscription, monitor, pointer loader, sync job, or action dependency). This is the level app developers usually care about: "What is this screen/component/action waiting on, and is the answer complete, partial, degraded, or local-only?"
 
-One record per relay URL known to the actor.
-
-```rust
-pub struct RelayStatus {
-    pub relay_url: String,
-    pub connection: RelayConnectionState,
-    pub auth: RelayAuthState,
-    pub capabilities: RelayCapabilities,
-    pub active_wire_subscriptions: u32,
-    pub reconnect_count: u32,
-    pub last_connected_at_ms: Option<u64>,
-    pub last_event_at_ms: Option<u64>,
-    pub last_notice: Option<String>,
-    pub last_error: Option<String>,
-    pub rtt_ms: Option<u32>,
-    pub bytes_rx: u64,
-    pub bytes_tx: u64,
-}
-
-pub enum RelayConnectionState {
-    Offline,
-    Connecting,
-    Connected,
-    BackingOff,
-    Closed,
-}
-
-pub enum RelayAuthState {
-    NotRequired,
-    ChallengeReceived,
-    Authenticating,
-    Authenticated,
-    Failed,
-}
-
-pub struct RelayCapabilities {
-    pub nip42_auth: CapabilityState,
-    pub nip77_negentropy: CapabilityState,
-}
-
-pub enum CapabilityState {
-    Unknown,
-    Supported,
-    Unsupported,
-}
-```
-
-Relay status answers: "Is this relay reachable, what can it do, and is it healthy?"
-
-### 2. Wire subscription status
-
-One record per actual REQ on an actual relay. This is the planner's network-level output after logical interests have been merged.
-
-```rust
-pub struct WireSubscriptionStatus {
-    pub wire_id: String,
-    pub relay_url: String,
-    pub canonical_filter_hash: String,
-    pub state: WireSubscriptionState,
-    pub logical_consumer_count: u32,
-    pub opened_at_ms: u64,
-    pub last_event_at_ms: Option<u64>,
-    pub eose_at_ms: Option<u64>,
-    pub close_reason: Option<CloseReason>,
-}
-
-pub enum WireSubscriptionState {
-    Opening,
-    Live,
-    Eose,
-    Closing,
-    Closed,
-    ClosedByRelay,
-    Retrying,
-}
-```
-
-Wire subscription status answers: "What did we actually ask the relay for?"
-
-### 3. Logical interest status
-
-One record per app-kernel interest: view, domain wrapper, monitor, pointer loader, sync job, or action dependency. This is the level app developers usually care about.
-
-```rust
-pub struct LogicalInterestStatus {
-    pub key: InterestKey,
-    pub state: LogicalInterestState,
-    pub refcount: u32,
-    pub view_ids: Vec<ViewId>,
-    pub relay_urls: Vec<String>,
-    pub cache_coverage: CacheCoverage,
-    pub backfill: Option<BackfillStatus>,
-    pub warming_until_ms: Option<u64>,
-}
-
-pub enum InterestKey {
-    Profile { pubkey: String },
-    Timeline { spec_hash: String },
-    Thread { root_event_id: String },
-    Action { action_id: String },
-    Monitor { monitor_id: String },
-    Sync { sync_id: String },
-}
-
-pub enum LogicalInterestState {
-    ServingCache,
-    Opening,
-    Tailing,
-    Backfilling,
-    Complete,
-    Partial,
-    Degraded,
-    BlockedNoRelays,
-    WarmClosing,
-    Closed,
-}
-```
-
-Logical interest status answers: "What is this screen/component/action waiting on, and is the answer complete, partial, degraded, or local-only?"
+The shipped surface for these records lives in `crates/nmp-core`: `RelayStatus` and its state enums in `kernel/types.rs`, and `RelayDiagnosticsRow` / `LogicalInterestStatus` / `WireSubscriptionStatus` in `codegen_schema.rs` (the FFI-projected diagnostics rows). The concrete field set is owned by those types; this ADR fixes only the three-level shape and the bridge discipline, not the exact struct layout.
 
 ## How status crosses the bridge
 
@@ -170,7 +54,7 @@ Network diagnostics are actor state. They can appear in two forms:
 
 Diagnostics updates are coalesced separately from content views. They emit on material state transitions immediately, and otherwise at a low fixed cadence, initially 1 to 4 Hz. They do not emit once per event, once per byte counter change, or once per socket frame.
 
-`EmitDiagnosticSnapshot` remains the release-build escape hatch for high-detail state. It writes a JSON file and returns `Effect::DiagnosticReady { path }`, rather than streaming a huge diagnostic payload through normal UI state.
+A release-build escape hatch for high-detail state writes a JSON file and returns its path as an ephemeral side effect, rather than streaming a huge diagnostic payload through normal UI state.
 
 ## Vertical-slice implications
 

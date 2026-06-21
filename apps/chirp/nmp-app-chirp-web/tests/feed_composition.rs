@@ -6,7 +6,7 @@ use nmp_app_chirp_web::composition::setup_chirp_web_feeds;
 use nmp_core::{substrate::KernelEvent, KernelEventObserver};
 use nmp_feed::FeedRequest;
 use nmp_nip01::op_feed::{register_op_feed, OP_FEED_SNAPSHOT_KEY};
-use nmp_wasm::{ActionDispatch, WasmRuntime, WorkerRequest};
+use nmp_wasm::WasmRuntime;
 
 // ── Test constants ───────────────────────────────────────────────────────────
 
@@ -155,25 +155,17 @@ fn wired_path_follow_feed_populates_snapshot() {
 fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
     // Regression guard for the wasm composition substrate wiring:
     //   1. web installs the same ContactsCache as kernel reader + kind:3 parser
-    //   2. host opens the contact-feed interest for primary kind 1, with
-    //      kind 6 derived by the NIP-18 acquisition helper
+    //   2. setup_chirp_web_feeds declares the active-follows feed for primary
+    //      kind 1, with kind 6 derived by the NIP-18 acquisition helper
     //   3. the active account's kind:3 arrives through the projection chokepoint
     //   4. the kernel's follow-feed author set expands from self-only to include
     //      BOB, so the wasm relay pool can subscribe to BOB's notes.
-    let mut runtime = WasmRuntime::new();
+    let runtime = WasmRuntime::new();
     let setup = setup_chirp_web_feeds(&runtime);
     let reducer = runtime.reducer_handle();
 
     let _ = reducer.borrow_mut().set_active_account(ALICE.to_string());
     setup.notify_account_changed();
-
-    runtime
-        .handle(WorkerRequest::Dispatch(ActionDispatch {
-            action_type: "nmp.kernel.open_contact_feed".to_string(),
-            payload: serde_json::json!({ "kinds": [1] }),
-            correlation_id: "open-contact-feed".to_string(),
-        }))
-        .expect("open_contact_feed dispatch must be accepted");
 
     reducer.borrow_mut().project_raw_event_for_test(
         "00000000000000000000000000000000000000000000000000000000000000f3",

@@ -254,13 +254,13 @@ for the life of the app, with no opt-out.
 - **Correctness invariant intact.** Host state remains a pure function of the latest
   snapshot + monotonic `rev`. We change *which keys* appear in the frame, not the
   full-snapshot semantics and not the rev contract. No deltas, no fragile diffing.
-- **Composes with in-flight work** (orthogonal — this ADR governs *which* keys ship,
-  not their content or decode):
-  - `fix/relay-diagnostics-raw-timestamps` (relay_diagnostics ships raw timestamps):
-    changes the *content* of a Tier-2 built-in; this ADR only decides *whether* that
+- **Composed with adjacent work that has since landed** (orthogonal — this ADR governs
+  *which* keys ship, not their content or decode):
+  - relay_diagnostics raw-timestamps (relay_diagnostics ships raw timestamps):
+    changed the *content* of a Tier-2 built-in; this ADR only decides *whether* that
     content is emitted. No overlap.
-  - `perf/drop-flatbuffers-verifier-on-trusted-decode` (Swift unchecked `getRoot`):
-    changes the *decode* path; this ADR changes the *producer's emit* set. No overlap.
+  - dropping the FlatBuffers verifier on trusted decode (Swift unchecked `getRoot`):
+    changed the *decode* path; this ADR changes the *producer's emit* set. No overlap.
 - **Composes with the change-gate (`ChangeGate`) and future per-key diffing.** The
   declared-set gate runs *before* the change-gate memo: an undeclared key is never
   serialized; a declared-but-unchanged key may still be served from the change-gate

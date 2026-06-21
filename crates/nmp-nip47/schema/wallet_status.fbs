@@ -10,6 +10,16 @@ namespace nmp.nip47;
 // (ADR-0037). A host with a `NWST` decoder prefers this typed payload; an
 // un-updated host falls back to the generic `Value` subtree. Purely additive.
 //
+// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032 /
+// docs/wiki/guides/shell-formatting-boundary.md): this buffer carries ONLY raw
+// semantic tokens — never pre-rendered English labels, tone strings, or
+// display-formatted numbers. Shells render the status label, semantic tone, and
+// thousands-separated balance themselves from the raw `status` token +
+// `balance_sats`. The earlier `status_label` / `status_tone` /
+// `balance_sats_display` precompute fields were a presentation regression (#623)
+// and were removed in the wallet_status sweep (analogous to the #1580
+// signer-state sweep).
+//
 // Field-for-field mirror of the Rust struct (raw protocol values only):
 //   * String fields are required (non-optional in the serde struct).
 //   * `Option<...>` fields carry a `has_*` presence flag plus the value, so
@@ -51,12 +61,10 @@ table WalletStatus {
   // balance_msats: Option<u64>
   has_balance_msats:bool;
   balance_msats:uint64;
-  // balance_sats: Option<u64>
+  // balance_sats: Option<u64>. Shells apply their own thousands-separator
+  // formatting when rendering (raw-data doctrine).
   has_balance_sats:bool;
   balance_sats:uint64;
-  // balance_sats_display: Option<String>
-  has_balance_sats_display:bool;
-  balance_sats_display:string;
   // Abbreviated npub (first 10 chars + "…" + last 6 chars).
   wallet_npub_short:string;
   // status == "ready"
@@ -70,14 +78,6 @@ table WalletStatus {
   // in the serde struct). Tail-appended (wire-compatible additive field) so an
   // older host that predates it still decodes every prior field.
   wallet_pubkey_hex:string;
-  // ADR-0032 / #623: pre-computed human-readable label for the current status.
-  // Values: "Connecting" | "Ready" | "Error" | "Disconnected" | "Unknown".
-  // Tail-appended — older hosts ignore it; new hosts bind it verbatim.
-  status_label:string;
-  // ADR-0032 / #623: semantic tone for the current status.
-  // Values: "active" | "warning" | "error" | "inactive".
-  // Tail-appended — older hosts ignore it; new hosts map tone → colour/icon.
-  status_tone:string;
 }
 
 file_identifier "NWST";

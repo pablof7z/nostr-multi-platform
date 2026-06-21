@@ -68,8 +68,8 @@ test("feed renders real signed notes from fixture relay after connect", async ({
       .poll(() => relay.connectionCount(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(1);
 
-    // ── Connect: click the Connect button so SetSigner + open_contact_feed
-    //    are dispatched.  The mock window.nostr returns the viewer pubkey.  ──
+    // ── Connect: click the Connect button so SetSigner installs the viewer
+    //    pubkey. The feed was declared by web composition at startup. ────────
     await expect(page.locator('[data-testid="connect-btn"]')).toBeVisible({
       timeout: 10_000,
     });
@@ -78,8 +78,8 @@ test("feed renders real signed notes from fixture relay after connect", async ({
     // ── Assertion 2: fixture note content appears in the rendered feed ────
     //
     // The kind:1 note "hello from fixture relay" was signed by followA and
-    // served by the fixture relay.  After Connect → SetSigner → open_contact_feed
-    // the kernel opens interests for the viewer's follows, ingests the events,
+    // served by the fixture relay. After Connect → SetSigner the kernel
+    // grows the already-declared active-follows feed, ingests the events,
     // and the nmp.feed.home projection populates.  decodeHomeFeed decodes the
     // typed projection on each snapshot frame; feedItemsToRows converts to
     // TimelineItem[]; HomePanel renders post cards.

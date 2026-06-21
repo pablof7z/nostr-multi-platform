@@ -75,6 +75,16 @@ fn close_relay_urls(frames: &[WireFrame]) -> Vec<String> {
         .collect()
 }
 
+fn req_filters(frames: &[WireFrame]) -> Vec<String> {
+    frames
+        .iter()
+        .filter_map(|f| match f {
+            WireFrame::Req { filter_json, .. } => Some(filter_json.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 // ─── Test 1 ──────────────────────────────────────────────────────────────────
 
 /// Core T140 discriminator: after `ingest_contacts` for the active account's
@@ -244,6 +254,74 @@ fn t140_follow_list_change_withdraws_removed_follow_and_emits_close() {
             .iter()
             .any(|u| u == "wss://carol-t140.relay/"),
         "removed follow must close CAROL's prior follow-feed sub; got {frames:?}"
+    );
+}
+
+/// Active-follows declared feed replacement: a fresher active-account kind:3
+/// must replace the author perspective, not union it. The visible author
+/// projection drops BOB/adds CAROL, and the wire diff closes BOB's prior relay
+/// while opening a REQ whose authors contain CAROL and not BOB.
+#[test]
+fn t140_active_follows_kind3_replacement_drops_old_author_and_adds_new_author() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    kernel.active_account = Some(ALICE.to_string());
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
+
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, BOB, &["wss://bob-t140.relay/"]);
+    install_relay_list(&kernel, CAROL, &["wss://carol-t140.relay/"]);
+
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000030",
+            ALICE,
+            2_000,
+            3,
+            follow_tags(&[ALICE, BOB]),
+            "wss://alice-t140.relay/",
+            2_000_000,
+        )
+        .expect("initial kind:3 follows BOB");
+    let _ = kernel.drain_lifecycle_tick();
+    assert!(kernel.timeline_authors_for_test().contains(BOB));
+    assert!(!kernel.timeline_authors_for_test().contains(CAROL));
+
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000031",
+            ALICE,
+            3_000,
+            3,
+            follow_tags(&[ALICE, CAROL]),
+            "wss://alice-t140.relay/",
+            3_000_000,
+        )
+        .expect("replacement kind:3 follows CAROL instead");
+    let frames = kernel.drain_lifecycle_tick();
+
+    assert!(!kernel.timeline_authors_for_test().contains(BOB));
+    assert!(kernel.timeline_authors_for_test().contains(CAROL));
+    assert!(
+        close_relay_urls(&frames)
+            .iter()
+            .any(|u| u == "wss://bob-t140.relay/"),
+        "replacement must close BOB's stale follow-feed sub; got {frames:?}"
+    );
+    assert!(
+        req_relay_urls(&frames)
+            .iter()
+            .any(|u| u == "wss://carol-t140.relay/"),
+        "replacement must open CAROL's follow-feed sub; got {frames:?}"
+    );
+    let filters = req_filters(&frames);
+    assert!(
+        filters
+            .iter()
+            .any(|filter| filter.contains(CAROL) && !filter.contains(BOB)),
+        "replacement REQ must contain CAROL and omit stale BOB; filters={filters:?}"
     );
 }
 

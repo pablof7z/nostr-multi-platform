@@ -40,16 +40,12 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     case balanceMsats = 12
     case hasBalanceSats = 14
     case balanceSats = 16
-    case hasBalanceSatsDisplay = 18
-    case balanceSatsDisplay = 20
-    case walletNpubShort = 22
-    case isReady = 24
-    case isConnected = 26
-    case hasConnectionState = 28
-    case connectionState = 30
-    case walletPubkeyHex = 32
-    case statusLabel = 34
-    case statusTone = 36
+    case walletNpubShort = 18
+    case isReady = 20
+    case isConnected = 22
+    case hasConnectionState = 24
+    case connectionState = 26
+    case walletPubkeyHex = 28
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -64,9 +60,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
   public var balanceMsats: UInt64 { let o = _accessor.offset(VTOFFSET.balanceMsats.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var hasBalanceSats: Bool { let o = _accessor.offset(VTOFFSET.hasBalanceSats.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var balanceSats: UInt64 { let o = _accessor.offset(VTOFFSET.balanceSats.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var hasBalanceSatsDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasBalanceSatsDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var balanceSatsDisplay: String? { let o = _accessor.offset(VTOFFSET.balanceSatsDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var balanceSatsDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.balanceSatsDisplay.v) }
   public var walletNpubShort: String? { let o = _accessor.offset(VTOFFSET.walletNpubShort.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var walletNpubShortSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.walletNpubShort.v) }
   public var isReady: Bool { let o = _accessor.offset(VTOFFSET.isReady.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
@@ -75,11 +68,7 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
   public var connectionState: nmp_nip47_NwcConnectionState { let o = _accessor.offset(VTOFFSET.connectionState.v); return o == 0 ? .connected : nmp_nip47_NwcConnectionState(rawValue: _accessor.readBuffer(of: UInt8.self, at: o)) ?? .connected }
   public var walletPubkeyHex: String? { let o = _accessor.offset(VTOFFSET.walletPubkeyHex.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var walletPubkeyHexSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.walletPubkeyHex.v) }
-  public var statusLabel: String? { let o = _accessor.offset(VTOFFSET.statusLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var statusLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.statusLabel.v) }
-  public var statusTone: String? { let o = _accessor.offset(VTOFFSET.statusTone.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var statusToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.statusTone.v) }
-  public static func startWalletStatus(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 17) }
+  public static func startWalletStatus(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 13) }
   public static func add(status: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: status, at: VTOFFSET.status.p) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(walletNpub: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: walletNpub, at: VTOFFSET.walletNpub.p) }
@@ -89,9 +78,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
   public static func add(hasBalanceSats: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasBalanceSats, def: false,
    at: VTOFFSET.hasBalanceSats.p) }
   public static func add(balanceSats: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: balanceSats, def: 0, at: VTOFFSET.balanceSats.p) }
-  public static func add(hasBalanceSatsDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasBalanceSatsDisplay, def: false,
-   at: VTOFFSET.hasBalanceSatsDisplay.p) }
-  public static func add(balanceSatsDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: balanceSatsDisplay, at: VTOFFSET.balanceSatsDisplay.p) }
   public static func add(walletNpubShort: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: walletNpubShort, at: VTOFFSET.walletNpubShort.p) }
   public static func add(isReady: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: isReady, def: false,
    at: VTOFFSET.isReady.p) }
@@ -101,8 +87,6 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
    at: VTOFFSET.hasConnectionState.p) }
   public static func add(connectionState: nmp_nip47_NwcConnectionState, _ fbb: inout FlatBufferBuilder) { fbb.add(element: connectionState.rawValue, def: 0, at: VTOFFSET.connectionState.p) }
   public static func add(walletPubkeyHex: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: walletPubkeyHex, at: VTOFFSET.walletPubkeyHex.p) }
-  public static func add(statusLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: statusLabel, at: VTOFFSET.statusLabel.p) }
-  public static func add(statusTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: statusTone, at: VTOFFSET.statusTone.p) }
   public static func endWalletStatus(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createWalletStatus(
     _ fbb: inout FlatBufferBuilder,
@@ -113,16 +97,12 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     balanceMsats: UInt64 = 0,
     hasBalanceSats: Bool = false,
     balanceSats: UInt64 = 0,
-    hasBalanceSatsDisplay: Bool = false,
-    balanceSatsDisplayOffset balanceSatsDisplay: Offset = Offset(),
     walletNpubShortOffset walletNpubShort: Offset = Offset(),
     isReady: Bool = false,
     isConnected: Bool = false,
     hasConnectionState: Bool = false,
     connectionState: nmp_nip47_NwcConnectionState = .connected,
-    walletPubkeyHexOffset walletPubkeyHex: Offset = Offset(),
-    statusLabelOffset statusLabel: Offset = Offset(),
-    statusToneOffset statusTone: Offset = Offset()
+    walletPubkeyHexOffset walletPubkeyHex: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip47_WalletStatus.startWalletStatus(&fbb)
     nmp_nip47_WalletStatus.add(status: status, &fbb)
@@ -132,16 +112,12 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     nmp_nip47_WalletStatus.add(balanceMsats: balanceMsats, &fbb)
     nmp_nip47_WalletStatus.add(hasBalanceSats: hasBalanceSats, &fbb)
     nmp_nip47_WalletStatus.add(balanceSats: balanceSats, &fbb)
-    nmp_nip47_WalletStatus.add(hasBalanceSatsDisplay: hasBalanceSatsDisplay, &fbb)
-    nmp_nip47_WalletStatus.add(balanceSatsDisplay: balanceSatsDisplay, &fbb)
     nmp_nip47_WalletStatus.add(walletNpubShort: walletNpubShort, &fbb)
     nmp_nip47_WalletStatus.add(isReady: isReady, &fbb)
     nmp_nip47_WalletStatus.add(isConnected: isConnected, &fbb)
     nmp_nip47_WalletStatus.add(hasConnectionState: hasConnectionState, &fbb)
     nmp_nip47_WalletStatus.add(connectionState: connectionState, &fbb)
     nmp_nip47_WalletStatus.add(walletPubkeyHex: walletPubkeyHex, &fbb)
-    nmp_nip47_WalletStatus.add(statusLabel: statusLabel, &fbb)
-    nmp_nip47_WalletStatus.add(statusTone: statusTone, &fbb)
     return nmp_nip47_WalletStatus.endWalletStatus(&fbb, start: __start)
   }
 
@@ -154,16 +130,12 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     try _v.visit(field: VTOFFSET.balanceMsats.p, fieldName: "balanceMsats", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.hasBalanceSats.p, fieldName: "hasBalanceSats", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.balanceSats.p, fieldName: "balanceSats", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.hasBalanceSatsDisplay.p, fieldName: "hasBalanceSatsDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.balanceSatsDisplay.p, fieldName: "balanceSatsDisplay", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.walletNpubShort.p, fieldName: "walletNpubShort", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.isReady.p, fieldName: "isReady", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isConnected.p, fieldName: "isConnected", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.hasConnectionState.p, fieldName: "hasConnectionState", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.connectionState.p, fieldName: "connectionState", required: false, type: nmp_nip47_NwcConnectionState.self)
     try _v.visit(field: VTOFFSET.walletPubkeyHex.p, fieldName: "walletPubkeyHex", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.statusLabel.p, fieldName: "statusLabel", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.statusTone.p, fieldName: "statusTone", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

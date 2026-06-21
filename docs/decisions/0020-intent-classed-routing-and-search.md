@@ -1,29 +1,29 @@
 # ADR-0020 — Intent-classed routing + NIP-50 search
 
-> **Status:** Accepted (2026-05-18, design phase — no code yet).
-> **Companion:** `docs/design/intent-routing.md` (full spec).
+> **Status:** Implemented. `EventClass`, `RoutingSource::ClassRouted`, and the
+> bounded `InterestShape.search` field all shipped
+> (`crates/nmp-core/src/substrate/routing.rs`,
+> `crates/nmp-core/src/substrate/view.rs:54`).
+> **Companion:** `docs/architecture/crate-boundaries.md` §3.1 (routing lanes),
+> §5 (routing contract), §8 (protocol-crate ownership).
 > **Depends on:** ADR-0021 (relay roles — Indexer + AppRelay). ADR-0021
 > promotes `Indexer` to a top-level `RoutingSource` variant and adds
-> `AppRelay`; this ADR's `ClassRouted` lane is sibling to those. P3 of
-> the rollout introduces five new lanes simultaneously (ClassRouted +
-> Indexer + AppRelay).
+> `AppRelay`; this ADR's `ClassRouted` lane is sibling to those.
 > **Extends:** ADR-0012 (`relay_pin` and the third routing lane). The
 > per-interest `relay_pin` field stays for NIP-29; this ADR adds a kernel-
 > resident classifier driven by event kind and NIP-51 lists, plus a
 > per-author dimension for publisher-keyed classes.
 
-> **2026-06-19 amendment (Issue #1561):** the accepted ownership split is
-> narrowed before implementation. `nmp-planner` / `nmp-core` own only generic
-> wire-filter and routing substrate: the bounded `InterestShape.search` field,
-> filter serialization, merge equality, class-routed planning primitives,
-> diagnostics, and local-store coverage refusal when no FTS index exists.
-> NIP-50 query semantics, app-facing search actions/views, result ranking, and
-> search-hit projection belong to an owning protocol/search module such as
-> `nmp-nip50`, not to `nmp-core::search`. NIP-51 kind:10007 relay-list parsing
-> and active-account routing facts belong to `nmp-nip51`. The earlier
-> `nmp-core::search` wording below is therefore historical design shorthand
-> for the search surface, not permission for protocol-specific search behavior
-> to live in the kernel.
+> **Ownership split (Issue #1561).** `nmp-planner` / `nmp-core` own only the
+> generic wire-filter and routing substrate: the bounded `InterestShape.search`
+> field, filter serialization, merge equality, class-routed planning
+> primitives, diagnostics, and local-store coverage refusal when no FTS index
+> exists. NIP-50 query semantics, app-facing search actions/views, result
+> ranking, and search-hit projection live in the owning search module
+> (`nmp-nip50`). NIP-51 kind:10007 relay-list parsing and active-account
+> routing facts live in `nmp-nip51`. There is no `nmp-core::search` module: any
+> "search lives in the kernel" reading of the decisions below means only the
+> generic substrate primitive, never protocol-specific search behavior.
 
 ## Context
 
@@ -255,13 +255,12 @@ and gift-wrap relay semantics without re-plumbing this design.
 - ADR-0012 — `relay_pin` and the third routing lane.
 - ADR-0015 — M6 signer design (NIP-44 self-decrypt dependency).
 - ADR-0021 — Relay roles: Indexer + AppRelay (this ADR's prerequisite).
-- `docs/design/intent-routing.md` — full design.
-- `docs/design/relay-roles.md` — ADR-0021's design doc covering the
-  worker-vs-planner abstraction split (existing `RelayRole` enum vs
-  new `RoutingSource` variants).
-- `docs/design/subscription-compilation/diagnostics.md` §5 — four-lane
-  diagnostic discipline (extends to **seven lanes** in P3 once both
-  ADR-0020 and ADR-0021 land: NIP-65, Hint, Provenance, UserConfigured,
-  ClassRouted, Indexer, AppRelay).
+- `docs/architecture/crate-boundaries.md` §3.1 — the seven routing lanes
+  (NIP-65, Hint, Provenance, UserConfigured, ClassRouted, Indexer, AppRelay)
+  and the worker-vs-planner abstraction split that the as-built routing code
+  cites directly.
+- `docs/architecture/crate-boundaries.md` §5, §8 — the routing contract and
+  the protocol-crate ownership boundary (`nmp-nip50` query, `nmp-nip51`
+  list parsing).
 - NIP-37 (drafts + checkpoints), NIP-50 (search), NIP-51 (lists),
   NIP-54 (wikis), NIP-29 (relay groups), NIP-51 PR #1985 (kind:10086).
