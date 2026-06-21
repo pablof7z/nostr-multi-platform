@@ -237,6 +237,85 @@ fn evicted_root_served_from_store_via_event_ids() {
     );
 }
 
+/// BLOCK-1 regression: store-fetched events must be re-checked against the shape.
+///
+/// The `event_ids` set gates the point-lookup (which ids to fetch from the
+/// store), but the full shape predicate (kinds, authors, since, until, tags)
+/// must also match the fetched event.  Without the BLOCK-1 fix the store path
+/// pushed the event unconditionally, bypassing the shape check.
+///
+/// Scenario: the store holds a kind:1 event whose id is in the shape's
+/// `event_ids` set, but the shape constrains `kinds:[6]`.  The event MUST NOT
+/// be delivered because kind:1 ≠ kind:6.
+#[test]
+fn store_event_with_mismatching_kind_delivers_zero() {
+    let slot = new_event_observer_slot();
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot.clone());
+
+    // Ingest a kind:1 event — it lands in both the RAM cache and the store.
+    let event_id = "ab".repeat(32);
+    let event_author = "cd".repeat(32);
+    ingest(&mut kernel, &event_id, &event_author, 10_000, vec![]);
+
+    // Evict it from RAM so the store path is exercised.
+    for i in 0..EVENTS_RAM_HWM {
+        ingest(&mut kernel, &filler_id(i), &filler_author(i), 100 + i as u64, vec![]);
+    }
+    // Give the root the oldest created_at so it is the eviction candidate.
+    // (Above, root was ingested with created_at=10_000, filler at 100+i which
+    //  is less than 10_000.  Adjust: re-ingest root with ts=1 by using a fresh
+    //  kernel seeded differently.)
+    //
+    // Simpler approach: use a fresh kernel with root at ts=1 < filler ts (100+i).
+    let slot2 = new_event_observer_slot();
+    let mut kernel2 = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel2.set_event_observers_handle(slot2.clone());
+
+    let root_id = "fa".repeat(32);
+    let root_author = "fb".repeat(32);
+    // Root has the OLDEST created_at — prime eviction candidate.
+    ingest(&mut kernel2, &root_id, &root_author, 1, vec![]);
+    for i in 0..EVENTS_RAM_HWM {
+        ingest(&mut kernel2, &filler_id(i), &filler_author(i), 100 + i as u64, vec![]);
+    }
+    let report = kernel2.evict_ram_caches();
+    assert!(report.events_evicted > 0, "eviction must fire");
+    assert!(
+        !kernel2.events.contains_key(&root_id),
+        "root must have been evicted from RAM"
+    );
+
+    // Build a shape whose event_ids contains the root id BUT whose kinds
+    // constraint is [6] (root is kind:1).  The store fetch must be rejected by
+    // the shape predicate — zero events must be delivered.
+    let capturing = CapturingObserver::new();
+    let observer_id = register_rust_observer_muted(&slot2, capturing.clone());
+
+    let filter_json = format!(r#"{{"ids":["{root_id}"]}}"#);
+    let identity = sub_identity(&filter_json, "block1-consumer", 99);
+    let interest = logical_interest(&filter_json, "block1-consumer", 99);
+
+    // Shape: ids=[root_id] but kinds=[6] — root is kind:1, so must NOT match.
+    let shape = InterestShape::from_filter_json(
+        &format!(r#"{{"kinds":[6],"ids":["{root_id}"]}}"#),
+    )
+    .expect("valid ids+kinds shape");
+
+    let replay = ObserverReplayRequest {
+        observer_id,
+        shapes: vec![shape],
+        limit: 80,
+    };
+    kernel2.open_interest_with_observer_replay(identity, interest, replay, "test-block1");
+
+    let ids = capturing.ids();
+    assert!(
+        ids.is_empty(),
+        "kind:1 event must NOT be delivered when shape constrains kinds:[6]; got: {ids:?}"
+    );
+}
+
 /// No double-delivery when root is in RAM AND listed in `{ids:[root_id]}`.
 ///
 /// An event whose id appears in `InterestShape.event_ids` AND that is matched

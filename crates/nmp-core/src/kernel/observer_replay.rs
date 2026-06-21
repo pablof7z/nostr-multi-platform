@@ -221,10 +221,27 @@ impl Kernel {
                 let Some(id_bytes) = super::hex_to_pubkey_bytes(hex_id) else {
                     continue;
                 };
-                let Ok(Some(stored)) = self.store.get_by_id(&id_bytes) else {
+                // BLOCK-2: use peek_by_id (pure read) — must not stamp the LRU
+                // access counter or open a write transaction.
+                let Ok(Some(stored)) = self.store.peek_by_id(&id_bytes) else {
                     continue;
                 };
                 let raw = &stored.raw;
+                // BLOCK-1: re-check the shape predicate against the fetched event.
+                // The `event_ids` set only gates the point-lookup; the full shape
+                // (kinds, authors, since, until, tags) must also match.
+                let shape_match = replay.shapes.iter().any(|shape| {
+                    shape.matches_event_with_id(
+                        &raw.id,
+                        &raw.pubkey,
+                        raw.kind,
+                        raw.created_at,
+                        &raw.tags,
+                    )
+                });
+                if !shape_match {
+                    continue;
+                }
                 matched.push(CachedEntry {
                     created_at: raw.created_at,
                     id: raw.id.clone(),

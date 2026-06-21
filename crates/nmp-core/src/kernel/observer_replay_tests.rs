@@ -20,8 +20,7 @@ use crate::planner::{InterestShape, LogicalInterest};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::substrate::KernelEvent;
-use crate::subs::{SubIdentity, SubKey};
-use std::sync::atomic::{AtomicU32, Ordering};
+use crate::subs::SubIdentity;
 use std::sync::{Arc, Mutex};
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -305,4 +304,3 @@ fn replay_clamps_future_dated_events_to_now() {
         now
     );
 }
-

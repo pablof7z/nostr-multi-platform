@@ -210,6 +210,9 @@ impl EventStore for LmdbEventStore {
     fn get_by_id(&self, _id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
         Err(Self::not_enabled())
     }
+    fn peek_by_id(&self, _id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn scan_by_author_kind<'a>(
         &'a self,
         _author: &PubKey,
