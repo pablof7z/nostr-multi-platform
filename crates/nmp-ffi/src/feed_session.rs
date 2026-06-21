@@ -127,11 +127,32 @@ impl FeedTeardown {
     /// `Arc`s + the cheap command sender — captures nothing borrowed).
     #[must_use]
     pub fn for_app(app: &NmpApp) -> Self {
+        Self::from_parts(
+            app.feed_registry_handle(),
+            app.snapshot_projections_handle(),
+            app.event_observers_handle(),
+            app.command_sender(),
+        )
+    }
+
+    /// Build a teardown handle from the four registry slots + command sender
+    /// directly. [`Self::for_app`] is the production caller; this lower-level
+    /// constructor lets a test inject a CAPTURING [`CommandSender`] so it can
+    /// observe the ORDER in which a recipe posts `ClearActiveFollowsFeed` /
+    /// `MarkChangedSinceEmit` relative to the registry removals (#1740 step 2
+    /// teardown-order proof).
+    #[must_use]
+    pub fn from_parts(
+        feeds: FeedRegistrySlot,
+        projections: SnapshotProjectionSlot,
+        observers: KernelEventObserverSlot,
+        sender: CommandSender,
+    ) -> Self {
         Self {
-            feeds: app.feed_registry_handle(),
-            projections: app.snapshot_projections_handle(),
-            observers: app.event_observers_handle(),
-            sender: app.command_sender(),
+            feeds,
+            projections,
+            observers,
+            sender,
         }
     }
 
@@ -178,6 +199,31 @@ impl FeedTeardown {
         let sender = self.sender.clone();
         Box::new(move || {
             let _ = sender.send(ActorCommand::MarkChangedSinceEmit);
+        })
+    }
+
+    /// A teardown step that WITHDRAWS the actor-owned active-follows feed
+    /// interests and clears the active-follows internal state.
+    ///
+    /// This is the close-side of the OPEN-side `declare_active_follows_feed`
+    /// that `register_op_feed_defaults` issues (it sends
+    /// `ActorCommand::DeclareActiveFollowsFeed`). The open path declares the
+    /// follow-feed acquisition kinds, which registers M2 follow-feed interests
+    /// against the active account; revoking observers + unregistering the feed
+    /// controller does NOT release those actor-owned interests — only
+    /// `ActorCommand::ClearActiveFollowsFeed` does (it drives
+    /// `kernel.set_follow_feed_kinds(empty)` →
+    /// `sync_follow_feed_interests(&[])`, withdrawing every follow-feed
+    /// interest, resetting `timeline_authors`, and emitting the CLOSE diff on
+    /// the next idle tick). Symmetric: open declared it → close clears it.
+    ///
+    /// A closed inbox is a silent drop (D6). Idempotent: clearing an already
+    /// empty follow-feed is a no-op in the kernel.
+    #[must_use]
+    pub fn clear_active_follows(&self) -> TeardownAction {
+        let sender = self.sender.clone();
+        Box::new(move || {
+            let _ = sender.send(ActorCommand::ClearActiveFollowsFeed);
         })
     }
 }
