@@ -194,6 +194,89 @@ fn build_bad_version_follow_payload() -> Vec<u8> {
     fbb.finished_data().to_vec()
 }
 
+// ---- S3 gap tests: bad-version trip for every migrated nip02 namespace -------
+
+/// ADR-0064 / S3 (#1751) — `nmp.unfollow` uses the same `FollowActionPayload`
+/// wire shape as `nmp.follow`. A bad `schema_version` MUST be rejected BEFORE
+/// `start()` runs, proving the fail-closed gate covers the unfollow namespace.
+#[test]
+fn start_bytes_rejects_wrong_schema_version_for_unfollow() {
+    use nmp_core::__ffi_internal::ActionRegistry;
+    use nmp_core::substrate::{ActionContext, ActionRejection};
+
+    let mut registry = ActionRegistry::new();
+    nmp_nip02::register_actions(&mut registry);
+
+    let bad_version = build_bad_version_unfollow_payload();
+    let err = registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.unfollow",
+            &bad_version,
+        )
+        .expect_err("a wrong schema_version must be rejected before start() (fail closed)");
+    match err {
+        ActionRejection::Invalid(msg) => assert!(
+            msg.contains("schema_version mismatch"),
+            "rejection must name the version trip: {msg}"
+        ),
+        other => panic!("expected Invalid rejection, got {other:?}"),
+    }
+}
+
+/// ADR-0064 / S3 (#1751) — `nmp.follow_many` uses `FollowManyActionPayload`.
+/// A bad `schema_version` MUST be rejected BEFORE `start()` runs.
+#[test]
+fn start_bytes_rejects_wrong_schema_version_for_follow_many() {
+    use nmp_core::__ffi_internal::ActionRegistry;
+    use nmp_core::substrate::{ActionContext, ActionRejection};
+
+    let mut registry = ActionRegistry::new();
+    nmp_nip02::register_actions(&mut registry);
+
+    let bad_version = build_bad_version_follow_many_payload();
+    let err = registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.follow_many",
+            &bad_version,
+        )
+        .expect_err("a wrong schema_version must be rejected before start() (fail closed)");
+    match err {
+        ActionRejection::Invalid(msg) => assert!(
+            msg.contains("schema_version mismatch"),
+            "rejection must name the version trip: {msg}"
+        ),
+        other => panic!("expected Invalid rejection, got {other:?}"),
+    }
+}
+
+/// `nmp.unfollow` shares the same `FollowActionPayload` wire type as `nmp.follow`.
+/// Build one with `schema_version = 999` to trip the fail-closed gate.
+fn build_bad_version_unfollow_payload() -> Vec<u8> {
+    // Same wire type as nmp.follow — PubkeyAction encodes as FollowActionPayload.
+    build_bad_version_follow_payload()
+}
+
+/// `nmp.follow_many` (`FollowManyActionPayload`) with `schema_version = 999`.
+fn build_bad_version_follow_many_payload() -> Vec<u8> {
+    use nmp_nip02::wire::action_payload::follow_many_action_generated::nmp::nip_02 as fb;
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let pk = fbb.create_string(&"b".repeat(64));
+    let pubkeys = fbb.create_vector(&[pk]);
+    let payload = fb::FollowManyActionPayload::create(
+        &mut fbb,
+        &fb::FollowManyActionPayloadArgs {
+            schema_version: 999,
+            pubkeys: Some(pubkeys),
+        },
+    );
+    fb::finish_follow_many_action_payload_buffer(&mut fbb, payload);
+    fbb.finished_data().to_vec()
+}
+
 /// Unknown namespace is rejected by the registry — this proves the
 /// registration is namespace-scoped (a host that calls `register_actions`
 /// only gets the three social verbs, not a wildcard).
