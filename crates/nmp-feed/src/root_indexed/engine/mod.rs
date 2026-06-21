@@ -47,6 +47,27 @@ pub type EventLookup = Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync
 /// state is touched. Caller-supplied so the engine stays kind-agnostic (D0).
 pub type EventGate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
+/// ROOT-admission predicate (#1740 step 3): `true` for events allowed to enter
+/// the feed AS ROOTS. This is the compiled perspective gate — a `ContactList` /
+/// `ListMembers` / `Wot` / `Difference` perspective must filter the rendered feed
+/// itself, not merely its reply attributions.
+///
+/// It is EVENT-AWARE (not author-only) so author-scope perspectives and
+/// `#t` tag-scope perspectives compose faithfully: `Intersection(Tag,
+/// ContactList)` checks BOTH the event's author membership AND its `#t` tags.
+/// The home feed passes [`admit_all_roots`] (acquisition filtering already gates
+/// which roots arrive); a session passes its compiled perspective predicate.
+pub type RootAdmission = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
+
+/// The home-feed root admission: admit every root the acquisition delivers. The
+/// home perspective gates roots via its acquisition filter (followed authors'
+/// timeline), not via an engine-level admission predicate, so the engine admits
+/// all roots and lets the `FollowPredicate` gate only reply attribution.
+#[must_use]
+pub fn admit_all_roots() -> RootAdmission {
+    Arc::new(|_event: &KernelEvent| true)
+}
+
 /// Build a render card from a root event, plus the supersedes-target event when
 /// present (L-5 late-target rebuilds with both).
 pub type CardBuilder<C> = Box<dyn Fn(&KernelEvent, Option<&KernelEvent>) -> C + Send + Sync>;
@@ -73,6 +94,9 @@ struct RootSlot<C> {
 struct Capabilities<R, C> {
     resolver: R,
     follow: FollowPredicate,
+    /// The compiled perspective gate for ROOT insertion (#1740 step 3). A root
+    /// whose event is not admitted here never enters the feed.
+    root_admission: RootAdmission,
     event_gate: EventGate,
     event_lookup: EventLookup,
     card_builder: CardBuilder<C>,
@@ -143,10 +167,14 @@ where
     /// Missing roots or repost targets stay as structural placeholders. A UI
     /// component that wants to render the target must claim it through that
     /// component's own dependency path.
+    /// * `root_admission` — the compiled perspective gate for ROOT insertion;
+    ///   pass [`admit_all_roots`] for the home feed (acquisition gates roots) or
+    ///   the session's compiled perspective predicate for a scoped feed.
     /// * `card_builder` — `(root_event, Option<target_event>) -> C`.
     pub fn new(
         resolver: R,
         follow: FollowPredicate,
+        root_admission: RootAdmission,
         event_gate: EventGate,
         event_lookup: EventLookup,
         card_builder: CardBuilder<C>,
@@ -155,6 +183,7 @@ where
             caps: Capabilities {
                 resolver,
                 follow,
+                root_admission,
                 event_gate,
                 event_lookup,
                 card_builder,

@@ -71,15 +71,24 @@ pub struct PeopleListProjection {
     on_change: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
 }
 
+/// One follow set's members plus the `created_at` of the kind:30000 event that
+/// produced them — so an older replaceable event never overwrites a newer one
+/// (the addressable-replaceable newest-wins contract; NIT #1740 step 3).
+#[derive(Default)]
+struct ListEntry {
+    members: BTreeSet<String>,
+    created_at: u64,
+}
+
 /// The owned list store: the owner pubkey (for the read-time gate) plus the
-/// per-`d`-tag member sets.
+/// per-`d`-tag member sets (each with its source event's `created_at`).
 #[derive(Default)]
 struct ListStore {
     /// The account whose kind:30000 events populated `lists`. On account switch
     /// the store is stale until the new account's lists arrive.
     owner_pubkey: Option<String>,
-    /// `d`-tag → member pubkeys.
-    lists: BTreeMap<String, BTreeSet<String>>,
+    /// `d`-tag → list entry (members + source `created_at`).
+    lists: BTreeMap<String, ListEntry>,
 }
 
 impl PeopleListProjection {
@@ -120,7 +129,11 @@ impl PeopleListProjection {
         if store.owner_pubkey.as_deref() != active.as_deref() {
             return BTreeSet::new();
         }
-        store.lists.get(list_id).cloned().unwrap_or_default()
+        store
+            .lists
+            .get(list_id)
+            .map(|entry| entry.members.clone())
+            .unwrap_or_default()
     }
 
     /// A diagnostic snapshot of one list.
@@ -192,9 +205,33 @@ impl KernelEventObserver for PeopleListProjection {
                 store.lists.clear();
             }
             match store.lists.get(&list_id) {
-                Some(existing) if *existing == members => false,
+                // Newest-wins (addressable-replaceable): an OLDER event for the
+                // same `(owner, d)` is ignored — it must not overwrite a newer
+                // member set. Matches the sibling NIP-51 projections (bookmarks /
+                // search-relays) created_at guard.
+                Some(existing) if event.created_at < existing.created_at => false,
+                Some(existing) if existing.members == members => {
+                    // Same members at an equal-or-newer timestamp: bump the
+                    // stored `created_at` so a later older event is still
+                    // rejected, but emit NO change notification (members are
+                    // identical, matching the prior dedup-by-members behavior).
+                    store.lists.insert(
+                        list_id,
+                        ListEntry {
+                            members,
+                            created_at: event.created_at,
+                        },
+                    );
+                    false
+                }
                 _ => {
-                    store.lists.insert(list_id, members);
+                    store.lists.insert(
+                        list_id,
+                        ListEntry {
+                            members,
+                            created_at: event.created_at,
+                        },
+                    );
                     true
                 }
             }

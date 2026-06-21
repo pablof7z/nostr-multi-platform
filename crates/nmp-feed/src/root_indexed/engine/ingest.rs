@@ -51,6 +51,14 @@ where
     /// `supersedes_target` is preserved so the renderer still shows the
     /// "reposted by" banner. A plain (non-reposted) root just inserts.
     fn ingest_root(&self, event: &KernelEvent) {
+        // #1740 step 3: the compiled perspective gates ROOTS, not just replies.
+        // A root the perspective does not admit must NOT enter the feed (e.g. a
+        // non-member author under a ContactList/ListMembers/Wot scope, or a
+        // right-side member under a Difference scope). The home feed passes
+        // `admit_all_roots`, so this is a no-op there.
+        if !(self.caps.root_admission)(event) {
+            return;
+        }
         let Ok(mut st) = self.state.lock() else {
             return;
         };
@@ -101,10 +109,22 @@ where
     /// structural placeholder. Target fetching belongs to the mounted component
     /// that wants to render that target.
     fn ingest_repost(&self, wrapper: &KernelEvent, target: EventId) {
+        let target_event = (self.caps.event_lookup)(&target);
+        // #1740 step 3: the surfaced root of a repost is the TARGET, so the
+        // perspective gates on the target when it is resolvable. When the target
+        // is absent (the L-1 structural-placeholder path) the perspective is
+        // evaluated against the WRAPPER instead — so the home feed
+        // (`admit_all_roots`) still keeps the placeholder, while a scoped feed
+        // admits the placeholder only when the REPOSTER is in scope (a member's
+        // repost surfaces even before its target resolves; a non-member's
+        // repost does not).
+        let gate_event = target_event.as_ref().unwrap_or(wrapper);
+        if !(self.caps.root_admission)(gate_event) {
+            return;
+        }
         let Ok(mut st) = self.state.lock() else {
             return;
         };
-        let target_event = (self.caps.event_lookup)(&target);
         let card = (self.caps.card_builder)(wrapper, target_event.as_ref());
         // Fix 1: never regress a slot's created_at — an older repost wrapper
         // must not pull an existing root downward in feed order. (The root

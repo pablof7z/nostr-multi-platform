@@ -7,9 +7,10 @@
 //! [`nmp_nip01::op_feed::register_op_feed`] the home feed uses — parameterized
 //! on:
 //!
-//! * a COMPILED admission predicate (the engine's [`nmp_feed::FollowPredicate`],
-//!   built INSIDE the framework from resolved pubkey-set DATA — no app closure
-//!   crosses the seam); and
+//! * a COMPILED, EVENT-AWARE admission predicate (the engine's
+//!   [`nmp_feed::RootAdmission`], built INSIDE the framework from resolved
+//!   pubkey-set DATA / `#t` tag terms — no app closure crosses the seam) that
+//!   gates which roots ENTER the feed (#1740 step 3); and
 //! * a set of INTERNAL acquisition interests (NIP-01 filter JSON), registered
 //!   via [`nmp_core::ActorCommand::OpenInterest`] under the session's projection
 //!   key as `consumer_id` and withdrawn symmetrically on close.
@@ -32,7 +33,7 @@ use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
 use nmp_core::{ActorCommand, KernelEventObserver};
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
-    FollowPredicate, PullFeedController,
+    PullFeedController, RootAdmission,
 };
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
@@ -66,18 +67,49 @@ pub(super) fn build_scope_session(
         resolver_observer_ids,
     } = resolved;
 
-    // ── 1. Engine over the COMPILED admission predicate ──────────────────
+    // ── 1. Engine over the COMPILED, EVENT-AWARE admission predicate ──────
     //
-    // The predicate IS the engine's root-admission gate. It is built inside the
-    // framework (from resolved DATA or a live framework projection) — nothing
-    // app-supplied crosses the seam.
-    let predicate: FollowPredicate = admission;
+    // The compiled predicate IS the engine's ROOT-admission gate (#1740 step 3):
+    // a root whose author/tags the perspective does not admit never enters the
+    // feed — the perspective filters the rendered feed itself, not merely reply
+    // attribution. It is built inside the framework (from resolved DATA or a
+    // live framework projection) — nothing app-supplied crosses the seam. A
+    // permissive follow-attribution predicate is NOT needed here (a session's
+    // attribution still flows through the engine's `follow` gate, which the home
+    // path sets; sessions reuse the same observer wiring). We pass the compiled
+    // perspective as BOTH so a session admits roots AND attributes replies from
+    // in-scope authors only.
+    let root_admission: RootAdmission = admission;
+    let follow_predicate: nmp_feed::FollowPredicate = {
+        let root_admission = root_admission.clone();
+        Arc::new(move |pk: &str| {
+            // Reply attribution: gate on the author alone (build a minimal
+            // author-only event view). For author-scope perspectives this is the
+            // exact membership test; tag-scope perspectives never qualify a reply
+            // as attribution (a reply carrying no scope tag is correctly dropped).
+            let probe = nmp_core::substrate::KernelEvent {
+                id: String::new(),
+                author: pk.to_string(),
+                kind: 0,
+                created_at: 0,
+                tags: Vec::new(),
+                content: String::new(),
+                relay_provenance: Vec::new(),
+            };
+            root_admission(&probe)
+        })
+    };
     let event_store = app.event_store_handle();
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
         nmp_core::slots::event_by_id_from_store(&event_store, id)
     });
     let event_lookup_for_observer = event_lookup.clone();
-    let engine = nmp_nip01::op_feed::register_op_feed(viewer, predicate, event_lookup);
+    let engine = nmp_nip01::op_feed::register_op_feed_with_admission(
+        viewer,
+        follow_predicate,
+        root_admission,
+        event_lookup,
+    );
 
     // ── 2. Ingest observer ───────────────────────────────────────────────
     let observer = nmp_nip01::op_feed::op_feed_observer(

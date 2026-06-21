@@ -22,5 +22,6 @@ mod tests;
 pub use attribution::AttributionPayload;
 pub use card::{RootCard, RootFeedSnapshot};
 pub use engine::{
-    CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
+    admit_all_roots, CardBuilder, EventGate, EventLookup, FollowPredicate, RootAdmission,
+    RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };

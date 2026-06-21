@@ -159,6 +159,75 @@ fn unsupported_scope_fails_closed_and_registers_nothing() {
 }
 
 #[test]
+fn custom_admission_or_ranking_fails_closed_and_registers_nothing() {
+    // #1740 step 3: `FeedAdmission::Custom` / `FeedRanking::Custom` (and the
+    // unsupported `ChronologicalAsc`) name an app-registered perspective whose
+    // registration mechanism lands in step 4. The compiler must FAIL CLOSED with
+    // the typed error and register NOTHING — never silently open with default
+    // behavior, which would render the feed wider/mis-ordered vs the declaration.
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    set_app_active(app, Some(ALICE));
+    let app_ref: &NmpApp = unsafe { &*app };
+
+    let custom_id = nmp_feed::CustomPerspectiveId("engagement".into());
+
+    // Custom ADMISSION on an otherwise-supported (Tag) acquisition → fail closed.
+    let mut admission = home_params();
+    admission.acquisition = FeedScope::Tag {
+        term: TagTerm("nostr".into()),
+    };
+    admission.admission = FeedAdmission::Custom(custom_id.clone());
+    admission.projection = ProjectionKey("test.feed.custom-admission".into());
+    let err = app_ref
+        .open_feed(&admission, &compiler)
+        .expect_err("custom admission is not wired — must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "custom-admission"),
+        "typed fail-closed error for custom admission, got {err:?}"
+    );
+
+    // Custom RANKING → fail closed.
+    let mut ranking = home_params();
+    ranking.acquisition = FeedScope::Tag {
+        term: TagTerm("nostr".into()),
+    };
+    ranking.ranking = FeedRanking::Custom(custom_id);
+    ranking.projection = ProjectionKey("test.feed.custom-ranking".into());
+    let err = app_ref
+        .open_feed(&ranking, &compiler)
+        .expect_err("custom ranking is not wired — must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "custom-ranking"),
+        "typed fail-closed error for custom ranking, got {err:?}"
+    );
+
+    // The unsupported chronological-ascending order also fails closed (the
+    // engine sorts newest-first only).
+    let mut asc = home_params();
+    asc.acquisition = FeedScope::Tag {
+        term: TagTerm("nostr".into()),
+    };
+    asc.ranking = FeedRanking::ChronologicalAsc;
+    asc.projection = ProjectionKey("test.feed.asc".into());
+    let err = app_ref
+        .open_feed(&asc, &compiler)
+        .expect_err("ChronologicalAsc is not wired — must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "custom-ranking"),
+        "typed fail-closed error for ascending order, got {err:?}"
+    );
+
+    assert_eq!(
+        app_ref.live_feed_session_count(),
+        0,
+        "no session leaked for a fail-closed custom admission/ranking open"
+    );
+
+    nmp_app_free(app);
+}
+
+#[test]
 fn tag_scope_opens_and_closes_over_session_engine() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
@@ -166,7 +235,8 @@ fn tag_scope_opens_and_closes_over_session_engine() {
     let app_ref: &NmpApp = unsafe { &*app };
 
     // #1740 step 3: `Tag` IS supported now — it compiles to a `#t` acquisition
-    // with `Any` admission and registers a session engine under its own key.
+    // with an EVENT-AWARE `#t` admission predicate and registers a session
+    // engine under its own key.
     let mut params = home_params();
     params.acquisition = FeedScope::Tag {
         term: TagTerm("nostr".into()),
