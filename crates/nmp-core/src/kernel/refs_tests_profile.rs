@@ -1,7 +1,7 @@
 //! ADR-0063 (#1671 Lane B) — profile-resolver + shared lifecycle/dedup/rev unit
 //! tests for the kernel-owned `RefResolver` primitive.
 //!
-//! Event-resolver tests live in `tests_refs_event.rs` (Lane D merge target).
+//! Event-resolver tests live in `refs_tests_event.rs` (Lane D merge target).
 
 use super::nostr::NostrEvent;
 use super::refs::{
