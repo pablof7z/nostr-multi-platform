@@ -36,6 +36,20 @@ impl DynamicFeedRuntime for RecordingRuntime {
             .push(format!("close_thread:{event_id}"));
         Ok(())
     }
+
+    fn resolve_open_profile(&self, pubkey: &str) -> crate::Result<()> {
+        self.calls
+            .borrow_mut()
+            .push(format!("resolve_open_profile:{pubkey}"));
+        Ok(())
+    }
+
+    fn release_open_profile(&self, pubkey: &str) -> crate::Result<()> {
+        self.calls
+            .borrow_mut()
+            .push(format!("release_open_profile:{pubkey}"));
+        Ok(())
+    }
 }
 
 fn row(id: &str, author: &str) -> TimelineRow {
@@ -74,7 +88,12 @@ fn esc_closes_visible_author_feed_and_removes_rows() {
 
     assert_eq!(
         runtime.calls.borrow().as_slice(),
-        &[format!("close_author:{author}")],
+        &[
+            format!("close_author:{author}"),
+            // ADR-0063 (#1671 Lane F): closing the pane releases its
+            // profile.card/Live ref (D5 — bounded by the open view).
+            format!("release_open_profile:{author}"),
+        ],
         "Esc on a visible profile pane must dispatch the kernel author-feed close"
     );
     assert!(state.profile_pubkey.is_empty());

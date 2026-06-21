@@ -39,7 +39,7 @@ pub struct RefRowApplyOutcome {
 }
 
 /// The host-side per-namespace row cache.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RefRowCache {
     /// `namespace -> (key -> CachedRow)`.
     rows: HashMap<String, HashMap<String, CachedRow>>,

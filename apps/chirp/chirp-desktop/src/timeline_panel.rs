@@ -18,8 +18,9 @@ use crate::zap_amount::PendingZap;
 impl DesktopApp {
     pub(crate) fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot) {
         let feed: ModularTimelineSnapshot = snap.projection("nmp.feed.home").unwrap_or_default();
-        let profiles: HashMap<String, ProfileCard> =
-            snap.projection("resolved_profiles").unwrap_or_default();
+        // ADR-0063 (#1671 Lane F): read author/mention profiles from the
+        // refs.profile mirror (resolve_ref output) instead of resolved_profiles.
+        let profiles: HashMap<String, ProfileCard> = snap.refs_profiles.clone();
 
         if feed.cards.is_empty() {
             ui.vertical_centered(|ui| {

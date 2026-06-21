@@ -55,6 +55,15 @@ pub struct Snapshot {
     /// `primary_id` to render the embedded note instead of a `↗ note` placeholder.
     #[serde(default)]
     pub embeds: HashMap<String, nmp_content::EmbeddedEventEnvelope>,
+
+    /// ADR-0063 (#1671 Lane F) — `pubkey -> ProfileCard` materialised from the
+    /// kernel's `refs.profile` row-delta projection (the resolve_ref output),
+    /// merged into a persistent [`nmp_core::refs::RefProfileStore`] held by the
+    /// reader thread. Replaces the old `resolved_profiles` projection read for
+    /// avatar/name display. `#[serde(default)]`: never in the JSON envelope; the
+    /// reader thread sets it after merging the row-delta into the store.
+    #[serde(default)]
+    pub refs_profiles: HashMap<String, ProfileCard>,
 }
 
 impl Snapshot {
@@ -100,6 +109,31 @@ pub struct ProfileCard {
     pub lud06: Option<String>,
     #[serde(default)]
     pub lnurl: Option<String>,
+}
+
+impl ProfileCard {
+    /// ADR-0063 (#1671 Lane F) — build a desktop `ProfileCard` from the typed
+    /// `refs.profile` row (`nmp_core`'s `ProfileCardModel`). Field-identical
+    /// mapping; the desktop owns no second profile representation (D4).
+    #[must_use]
+    pub fn from_model(model: nmp_core::typed_projections::ProfileCardModel) -> Self {
+        Self {
+            pubkey: model.pubkey,
+            npub: model.npub,
+            display_name: model.display_name,
+            name: model.name,
+            raw_display_name: model.raw_display_name,
+            display_name_camel: model.display_name_camel,
+            picture_url: model.picture_url,
+            banner: model.banner,
+            website: model.website,
+            nip05: model.nip05,
+            about: model.about,
+            lud16: model.lud16,
+            lud06: model.lud06,
+            lnurl: model.lnurl,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -461,10 +495,11 @@ mod tests {
         assert!(feed.page.as_ref().is_some_and(|page| page.has_more));
     }
 
-    /// `resolved_profiles` decodes into the desktop's `ProfileCard` mirror,
-    /// keyed by hex pubkey, so the Home tab can resolve display names.
+    /// The desktop `ProfileCard` mirror (now populated from `refs.profile` via
+    /// `RefProfileStore`, ADR-0063) deserialises a `pubkey -> ProfileCard` map so
+    /// the Home tab can resolve display names.
     #[test]
-    fn resolved_profiles_decodes_profile_cards() {
+    fn profile_card_map_decodes_profile_cards() {
         let json = serde_json::json!({
             "deadbeef": {
                 "pubkey": "deadbeef",

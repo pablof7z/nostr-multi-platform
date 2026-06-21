@@ -141,7 +141,7 @@ fn create_profile_card<'a>(
 /// Encode a [`ProfileCardModel`] to typed FlatBuffers bytes (with the `KPRF`
 /// file identifier) under a `ProfileSnapshot` root.
 #[must_use]
-pub(crate) fn encode_profile(model: &ProfileCardModel) -> Vec<u8> {
+pub fn encode_profile(model: &ProfileCardModel) -> Vec<u8> {
     let mut fbb = FlatBufferBuilder::new();
     let card = create_profile_card(&mut fbb, model);
     let root = fb::ProfileSnapshot::create(&mut fbb, &fb::ProfileSnapshotArgs { card: Some(card) });
