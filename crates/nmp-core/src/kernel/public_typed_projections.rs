@@ -22,6 +22,8 @@ pub use super::typed_projections::{
     decode_claimed_profiles,
     // configured_relays
     decode_configured_relays,
+    // profile (encode: ADR-0063 Lane F — build a refs.profile KPRF row payload)
+    encode_profile,
     // outbox_summary
     decode_outbox_summary,
     // profile

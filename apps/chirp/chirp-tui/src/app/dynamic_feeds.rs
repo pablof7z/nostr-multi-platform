@@ -11,6 +11,11 @@ pub(crate) trait DynamicFeedRuntime {
     fn close_author(&self, pubkey: &str) -> crate::Result<()>;
     fn open_thread(&self, event_id: &str) -> crate::Result<()>;
     fn close_thread(&self, event_id: &str) -> crate::Result<()>;
+    /// ADR-0063 (#1671 Lane F): resolve the open profile pane's author at
+    /// `profile.card` / `Live`. Best-effort — a failure must not abort the open.
+    fn resolve_open_profile(&self, pubkey: &str) -> crate::Result<()>;
+    /// Release the open profile pane's `profile.card` / `Live` ref on close.
+    fn release_open_profile(&self, pubkey: &str) -> crate::Result<()>;
 }
 
 impl DynamicFeedRuntime for AppRuntime {
@@ -20,6 +25,14 @@ impl DynamicFeedRuntime for AppRuntime {
 
     fn close_author(&self, pubkey: &str) -> crate::Result<()> {
         AppRuntime::close_author(self, pubkey)
+    }
+
+    fn resolve_open_profile(&self, pubkey: &str) -> crate::Result<()> {
+        AppRuntime::resolve_open_profile(self, pubkey)
+    }
+
+    fn release_open_profile(&self, pubkey: &str) -> crate::Result<()> {
+        AppRuntime::release_open_profile(self, pubkey)
     }
 
     fn open_thread(&self, event_id: &str) -> crate::Result<()> {
@@ -67,6 +80,11 @@ impl AppState {
     ) -> crate::Result<()> {
         self.close_dynamic_feeds(runtime)?;
         runtime.open_author(pubkey)?;
+        // ADR-0063 (#1671 Lane F): the open profile pane wants the full card,
+        // kept Live for reactive kind:0 replacement. Best-effort (the pane still
+        // opens if the resolve errors; an invalid pubkey would have failed
+        // open_author first).
+        let _ = runtime.resolve_open_profile(pubkey);
         self.profile_pubkey = pubkey.to_string();
         self.profile_rows.clear();
         self.focus(Pane::Profile);
@@ -97,6 +115,9 @@ impl AppState {
         }
         let pubkey = self.profile_pubkey.clone();
         runtime.close_author(&pubkey)?;
+        // ADR-0063 (#1671 Lane F): release the open-pane profile.card/Live ref so
+        // the slot drops back to whatever feed rows still demand (D5 bounded).
+        let _ = runtime.release_open_profile(&pubkey);
         self.profile_pubkey.clear();
         self.profile_rows.clear();
         Ok(Some(pubkey))

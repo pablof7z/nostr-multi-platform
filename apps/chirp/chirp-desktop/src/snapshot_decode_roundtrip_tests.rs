@@ -42,7 +42,9 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
     while Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(frame) => {
-                let Some(decoded) = decode_snapshot_typed(&frame) else {
+                let Some(decoded) =
+                    decode_snapshot_typed(&frame, &mut nmp_core::refs::RefProfileStore::new())
+                else {
                     panic!("every live kernel frame must decode through the typed path");
                 };
                 if !decoded.accounts.is_empty() {

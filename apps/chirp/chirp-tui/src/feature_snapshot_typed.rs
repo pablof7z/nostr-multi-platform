@@ -287,7 +287,7 @@ fn publish_history_from_queue(
         .collect()
 }
 
-fn profile_wire_from_card(
+pub(crate) fn profile_wire_from_card(
     key: &str,
     card: nmp_core::typed_projections::ProfileCardModel,
 ) -> ProfileWire {

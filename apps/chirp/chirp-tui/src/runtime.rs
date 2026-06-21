@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::ffi::{CStr, CString};
+use std::os::raw::c_int;
 use std::ptr;
 use std::sync::mpsc::Receiver;
 
@@ -18,8 +19,8 @@ use nmp_nip01::NoteRecord;
 
 use crate::app::ReplyTarget;
 use nmp_ffi::{
-    nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed,
-    nmp_app_release_profile, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref,
+    nmp_app_resolve_ref, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
 };
 use serde_json::{json, Value};
 
@@ -28,6 +29,23 @@ use crate::Result;
 
 const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
 const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
+/// Consumer prefix for the open profile pane's `profile.card` / `Live` ref
+/// (ADR-0063 #1671 Lane F). Distinct from the feed-row visible-author consumer so
+/// the slot is upgraded to Live/card while the pane is open and downgraded back
+/// to whatever feed rows still demand when the pane closes.
+const OPEN_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.open-profile";
+
+// ADR-0063 Lane D FFI integer codes for `nmp_app_resolve_ref` / `release_ref`.
+/// `namespace` — the profile resolver.
+const REF_NS_PROFILE: c_int = 0;
+/// `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; feed-avatar).
+const REF_SHAPE_PROFILE_REF: c_int = 0;
+/// `shape` — `profile.card` (full `ProfileCard`; profile-screen).
+const REF_SHAPE_PROFILE_CARD: c_int = 1;
+/// `liveness` — `CacheOk` (background, no tailing sub).
+const REF_LIVENESS_CACHE_OK: c_int = 0;
+/// `liveness` — `Live` (open screen; keeps a tailing sub for replacements).
+const REF_LIVENESS_LIVE: c_int = 1;
 
 pub struct AppRuntime {
     app: *mut NmpApp,
@@ -148,16 +166,50 @@ impl AppRuntime {
     }
 
     pub fn claim_visible_author_profile(&self, pubkey: &str) -> Result<()> {
+        // ADR-0063 (#1671 Lane F): a visible feed/list row author resolves at the
+        // feed-avatar shape `profile.ref` and `CacheOk` liveness (no per-row
+        // tailing sub). Origin-blind: the same path serves home/profile/thread/
+        // mention authors. The slot dedupes per (namespace, key); Live/card from
+        // the open profile pane upgrades it in place.
         self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
-            // F-TTL — claiming a visible author profile is a background /
-            // on-render claim, so force = 0 (the lazy, TTL-gated path).
-            nmp_app_claim_profile(self.app, pubkey.as_ptr(), consumer.as_ptr(), 0, 0);
+            nmp_app_resolve_ref(
+                self.app,
+                REF_NS_PROFILE,
+                pubkey.as_ptr(),
+                consumer.as_ptr(),
+                REF_SHAPE_PROFILE_REF,
+                REF_LIVENESS_CACHE_OK,
+            );
         })
     }
 
     pub fn release_visible_author_profile(&self, pubkey: &str) -> Result<()> {
         self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
-            nmp_app_release_profile(self.app, pubkey.as_ptr(), consumer.as_ptr());
+            nmp_app_release_ref(self.app, REF_NS_PROFILE, pubkey.as_ptr(), consumer.as_ptr());
+        })
+    }
+
+    /// ADR-0063 (#1671 Lane F): resolve the OPEN profile pane's author at the
+    /// full `profile.card` shape and `Live` liveness — the profile-screen demands
+    /// every card field and wants reactive replacement on a fresh kind:0. Paired
+    /// with [`Self::release_open_profile`] on pane close (D5: bounded by the open
+    /// view). Uses a consumer id distinct from the feed-row visible-author claim.
+    pub fn resolve_open_profile(&self, pubkey: &str) -> Result<()> {
+        self.with_open_profile_args(pubkey, |pubkey, consumer| {
+            nmp_app_resolve_ref(
+                self.app,
+                REF_NS_PROFILE,
+                pubkey.as_ptr(),
+                consumer.as_ptr(),
+                REF_SHAPE_PROFILE_CARD,
+                REF_LIVENESS_LIVE,
+            );
+        })
+    }
+
+    pub fn release_open_profile(&self, pubkey: &str) -> Result<()> {
+        self.with_open_profile_args(pubkey, |pubkey, consumer| {
+            nmp_app_release_ref(self.app, REF_NS_PROFILE, pubkey.as_ptr(), consumer.as_ptr());
         })
     }
 
@@ -260,6 +312,22 @@ impl AppRuntime {
         Ok(())
     }
 
+    fn with_open_profile_args(
+        &self,
+        pubkey: &str,
+        f: impl FnOnce(&CString, &CString),
+    ) -> Result<()> {
+        if self.app.is_null() {
+            return Err("runtime app is not available".to_string());
+        }
+        let consumer_id = open_profile_consumer_id(pubkey)?;
+        let pubkey = CString::new(pubkey).map_err(|_| "pubkey contains NUL byte".to_string())?;
+        let consumer_id = CString::new(consumer_id)
+            .map_err(|_| "profile consumer id contains NUL byte".to_string())?;
+        f(&pubkey, &consumer_id);
+        Ok(())
+    }
+
     fn dispatch_visible_note_relations(&self, op: &str, event_id: &str) -> Result<()> {
         if self.app.is_null() {
             return Err("runtime app is not available".to_string());
@@ -315,6 +383,11 @@ impl Drop for AppRuntime {
 fn visible_author_profile_consumer_id(pubkey: &str) -> Result<String> {
     validate_hex64("pubkey", pubkey)?;
     Ok(format!("{VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX}:{pubkey}"))
+}
+
+fn open_profile_consumer_id(pubkey: &str) -> Result<String> {
+    validate_hex64("pubkey", pubkey)?;
+    Ok(format!("{OPEN_PROFILE_CONSUMER_PREFIX}:{pubkey}"))
 }
 
 fn visible_note_relations_consumer_id(event_id: &str) -> Result<String> {

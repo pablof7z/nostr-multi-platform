@@ -31,11 +31,30 @@ use nmp_app_chirp::{
 use nmp_nip01::NoteRecord;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_dispatch_action, nmp_app_free,
-    nmp_app_load_older_feed, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
+    nmp_app_load_older_feed, nmp_app_release_ref, nmp_app_remove_relay, nmp_app_resolve_ref,
+    nmp_app_retry_publish, nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp,
+    NmpConfigStatus,
 };
 use serde_json::Value;
 use std::ffi::c_void;
+use std::os::raw::c_int;
+
+// ADR-0063 (#1671 Lane F) — resolve_ref / release_ref FFI codes + consumer ids.
+/// `namespace` — profile resolver.
+const REF_NS_PROFILE: c_int = 0;
+/// `shape` — `profile.ref` (feed-avatar subset).
+const REF_SHAPE_PROFILE_REF: c_int = 0;
+/// `shape` — `profile.card` (full ProfileCard; profile screen).
+const REF_SHAPE_PROFILE_CARD: c_int = 1;
+/// `liveness` — `CacheOk` (background; no tailing sub).
+const REF_LIVENESS_CACHE_OK: c_int = 0;
+/// `liveness` — `Live` (open screen; tailing sub for replacements).
+const REF_LIVENESS_LIVE: c_int = 1;
+/// Consumer id for feed/list-row author refs (profile.ref / CacheOk). Shared
+/// across rows — the kernel dedupes per (namespace, key); release on view change.
+const FEED_AUTHOR_CONSUMER: &str = "chirp-desktop.feed-author";
+/// Consumer id for the open profile screen's ref (profile.card / Live).
+const OPEN_PROFILE_CONSUMER: &str = "chirp-desktop.open-profile";
 
 // #1607: nmp_app_wallet_{connect,disconnect} deleted from the C ABI.
 // Wallet operations now route through nmp_app_dispatch_action (D11).
@@ -212,6 +231,9 @@ impl AppRuntime {
         if let Ok(c) = CString::new(pubkey) {
             nmp_app_chirp_open_author_feed(self.app, c.as_ptr());
         }
+        // ADR-0063 (#1671 Lane F): the open profile screen demands the full card,
+        // kept Live for reactive kind:0 replacement.
+        self.resolve_profile_card_live(pubkey);
     }
 
     pub fn close_author(&self, pubkey: &str) {
@@ -221,6 +243,62 @@ impl AppRuntime {
         if let Ok(c) = CString::new(pubkey) {
             nmp_app_chirp_close_author_feed(self.app, c.as_ptr());
         }
+        // ADR-0063 (#1671 Lane F): release the open-screen profile.card/Live ref.
+        self.release_profile(OPEN_PROFILE_CONSUMER, pubkey);
+    }
+
+    /// ADR-0063 (#1671 Lane F): resolve a feed/list-row author at `profile.ref` /
+    /// `CacheOk` so its avatar/name renders. Origin-blind and deduped per pubkey;
+    /// idempotent. Best-effort (D6: invalid args are a silent no-op in the FFI).
+    pub fn resolve_feed_author_ref(&self, pubkey: &str) {
+        self.resolve_ref(
+            pubkey,
+            FEED_AUTHOR_CONSUMER,
+            REF_SHAPE_PROFILE_REF,
+            REF_LIVENESS_CACHE_OK,
+        );
+    }
+
+    /// Release a feed/list-row author's `profile.ref` claim when it scrolls off /
+    /// the view closes (D5 — bounded by what is open).
+    pub fn release_feed_author_ref(&self, pubkey: &str) {
+        self.release_profile(FEED_AUTHOR_CONSUMER, pubkey);
+    }
+
+    fn resolve_profile_card_live(&self, pubkey: &str) {
+        self.resolve_ref(
+            pubkey,
+            OPEN_PROFILE_CONSUMER,
+            REF_SHAPE_PROFILE_CARD,
+            REF_LIVENESS_LIVE,
+        );
+    }
+
+    fn resolve_ref(&self, pubkey: &str, consumer: &str, shape: c_int, liveness: c_int) {
+        if self.app.is_null() {
+            return;
+        }
+        let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(consumer)) else {
+            return;
+        };
+        nmp_app_resolve_ref(
+            self.app,
+            REF_NS_PROFILE,
+            key.as_ptr(),
+            consumer.as_ptr(),
+            shape,
+            liveness,
+        );
+    }
+
+    fn release_profile(&self, consumer: &str, pubkey: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(consumer)) else {
+            return;
+        };
+        nmp_app_release_ref(self.app, REF_NS_PROFILE, key.as_ptr(), consumer.as_ptr());
     }
 
     pub fn load_older_timeline(&self) {

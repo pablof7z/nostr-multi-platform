@@ -6,6 +6,7 @@ use crate::features::FeatureTab;
 pub use crate::runtime::AppRuntime;
 use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) mod dynamic_feeds;
 mod forms;
@@ -89,6 +90,11 @@ pub struct AppState {
     pub action_stages: Vec<ActionStageRow>,
     pub last_action_result: Option<ActionResult>,
     pub features: FeatureSnapshot,
+    /// ADR-0063 (#1671 Lane F) — host-side mirror of the kernel's `refs.profile`
+    /// row-delta projection. Stateful across frames (row-deltas merge into it);
+    /// the ONLY app-side store of hydrated profile facts (D4). Read via
+    /// [`AppState::profile`]; never a second native profile dict.
+    pub ref_profiles: nmp_core::refs::RefProfileStore,
     pub selected: usize,
     pub chat_selected: usize,
     pub group_selected: usize,
@@ -174,6 +180,7 @@ impl Default for AppState {
             action_stages: Vec::new(),
             last_action_result: None,
             features: FeatureSnapshot::default(),
+            ref_profiles: nmp_core::refs::RefProfileStore::new(),
             selected: 0,
             chat_selected: 0,
             group_selected: 0,
@@ -218,6 +225,11 @@ impl AppState {
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
         self.features = FeatureSnapshot::from_transport_payload(&event.payload);
+        // ADR-0063 (#1671 Lane F) — merge this frame's `refs.profile` row-delta
+        // batch into the persistent RefRowCache mirror. The sidecar carries only
+        // changed/cleared rows (or a baseline on identity change), so it MUST be
+        // applied incrementally against the held store, not decoded per-frame.
+        self.apply_refs_profile(&event.payload);
         let relay_len = self.relays.len();
         if relay_len == 0 {
             self.settings_relay_selected = 0;
@@ -257,6 +269,45 @@ impl AppState {
                 event.payload.len()
             );
         }
+    }
+
+    /// ADR-0063 (#1671 Lane F) — decode the frame's `refs.profile` sidecar (an
+    /// NRRD row-delta batch) and merge it into the persistent [`RefProfileStore`]
+    /// under the frame's `(session_id, snapshot_epoch)` identity. A FlatBuffers
+    /// frame that lacks the sidecar (or whose envelope fails to decode) is a
+    /// no-op — the prior cache is retained (fail-closed, D6). The JSON-fixture
+    /// path carries no typed sidecar, so it is skipped.
+    fn apply_refs_profile(&mut self, payload: &crate::bridge::UpdatePayload) {
+        let crate::bridge::UpdatePayload::FlatBuffers(bytes) = payload else {
+            return;
+        };
+        let Ok(envelope) = nmp_core::decode_snapshot_envelope(bytes) else {
+            return;
+        };
+        let Ok(typed) = nmp_core::decode_snapshot_typed_projections(bytes) else {
+            return;
+        };
+        if let Some(entry) = typed
+            .iter()
+            .find(|p| p.key == nmp_core::refs::REFS_PROFILE_KEY)
+        {
+            self.ref_profiles.apply_sidecar(
+                &entry.payload,
+                envelope.session_id,
+                envelope.snapshot_epoch,
+            );
+        }
+    }
+
+    /// ADR-0063 (#1671 Lane F) — the rendered profile for `pubkey`, sourced from
+    /// the kernel-pushed `refs.profile` row (the resolve_ref output), or `None`
+    /// when no live ref is cached for that key. Shells render avatars/names from
+    /// this; there is no second app-side profile cache (D4).
+    #[must_use]
+    pub fn profile(&self, pubkey: &str) -> Option<ProfileWire> {
+        self.ref_profiles
+            .profile(pubkey)
+            .map(|card| crate::feature_snapshot_typed::profile_wire_from_card(pubkey, card))
     }
 
     pub fn focus(&mut self, pane: Pane) {

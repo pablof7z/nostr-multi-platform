@@ -34,6 +34,7 @@
 //! the stub is deleted.
 
 mod cache;
+mod host_store;
 mod rowdelta;
 mod tracker;
 
@@ -41,6 +42,10 @@ mod tracker;
 mod tests;
 
 pub use cache::{RefRowApplyOutcome, RefRowCache};
+// ADR-0063 (#1671 Lane F) — host-side `refs.profile` consumption helper for the
+// Rust shells (chirp-tui / chirp-desktop). The single app-side mirror of
+// hydrated profile facts (D4); shells hold one of these, not a native dict.
+pub use host_store::{RefProfileStore, REFS_PROFILE_KEY};
 pub use rowdelta::{
     decode_ref_row_delta_batch, encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch,
     RefRowDeltaDecodeError, RefRowState,

@@ -58,6 +58,11 @@ pub struct DesktopApp {
     pub(crate) nwc_input: String,
     pub(crate) pending_account_removal: Option<String>,
     pub(crate) zap_amount: ZapAmountState,
+    /// ADR-0063 (#1671 Lane F) — feed/list-row authors currently resolved at
+    /// `profile.ref` / `CacheOk`. Diffed each frame against the visible authors so
+    /// a pubkey is resolved when it appears and released when the view changes
+    /// (D5/D7: every rendered reference resolves; bounded by what is open).
+    pub(crate) resolved_feed_authors: std::collections::HashSet<String>,
 }
 
 impl DesktopApp {
@@ -69,6 +74,13 @@ impl DesktopApp {
         let reader_latest = Arc::clone(&latest);
         let egui_ctx = cc.egui_ctx.clone();
         std::thread::spawn(move || {
+            // ADR-0063 (#1671 Lane F): the persistent host-side mirror of the
+            // `refs.profile` row-delta projection. Lives for the reader thread's
+            // lifetime — row-deltas merge into it across frames (it is NOT
+            // rebuilt per frame). The ONLY app-side store of hydrated profile
+            // facts (D4); the snapshot's `refs_profiles` is a per-frame
+            // materialisation of this cache, not a second cache.
+            let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
             for event in rx {
                 // PR-B (#991/#979): typed-first decode. The `payload:Value`
                 // blob is no longer emitted; every field is read from the
@@ -79,8 +91,10 @@ impl DesktopApp {
                 // (built via `serde_json::json!`, since the `snapshot::*`
                 // payload structs are `Deserialize`-only) so the existing
                 // `snap.projection::<T>(key)` read sites keep working unchanged.
-                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(&event.payload)
-                else {
+                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(
+                    &event.payload,
+                    &mut ref_profiles,
+                ) else {
                     continue;
                 };
                 if let Ok(mut slot) = reader_latest.lock() {
@@ -110,11 +124,69 @@ impl DesktopApp {
             nwc_input: String::new(),
             pending_account_removal: None,
             zap_amount: ZapAmountState::default(),
+            resolved_feed_authors: std::collections::HashSet::new(),
         }
+    }
+
+    /// ADR-0063 (#1671 Lane F) — auto-resolve every author rendered in the
+    /// current view at `profile.ref` / `CacheOk` and release any author that is
+    /// no longer on screen. Runs once per frame; the kernel dedupes per pubkey so
+    /// the per-frame resolve is idempotent. This closes the D7 coverage hole: a
+    /// feed/profile/thread author cannot render without a live ref resolving it.
+    fn sync_feed_author_refs(&mut self, snap: &Snapshot) {
+        let mut visible: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Home is always live; the open author/thread feed (if any) adds its rows.
+        if let Some(feed) = snap.projection::<ModularTimelineSnapshot>("nmp.feed.home") {
+            collect_feed_authors(&feed, &mut visible);
+        }
+        match &self.tab {
+            AppTab::Author(pubkey) => {
+                visible.insert(pubkey.clone());
+                if let Some(feed) =
+                    snap.projection::<ModularTimelineSnapshot>(&format!("nmp.feed.author.{pubkey}"))
+                {
+                    collect_feed_authors(&feed, &mut visible);
+                }
+            }
+            AppTab::Thread(event_id) => {
+                if let Some(feed) = snap
+                    .projection::<ModularTimelineSnapshot>(&format!("nmp.feed.thread.{event_id}"))
+                {
+                    collect_feed_authors(&feed, &mut visible);
+                }
+            }
+            _ => {}
+        }
+
+        for pubkey in visible.difference(&self.resolved_feed_authors) {
+            self.bridge.resolve_feed_author_ref(pubkey);
+        }
+        for pubkey in self.resolved_feed_authors.difference(&visible) {
+            self.bridge.release_feed_author_ref(pubkey);
+        }
+        self.resolved_feed_authors = visible;
     }
 
     fn snapshot(&self) -> Option<Snapshot> {
         self.latest.lock().ok().and_then(|s| s.clone())
+    }
+}
+
+/// ADR-0063 (#1671 Lane F) — collect every author pubkey rendered by `feed`
+/// (root + repost attribution) into `out`. Raw hex only (ADR-0032).
+fn collect_feed_authors(
+    feed: &ModularTimelineSnapshot,
+    out: &mut std::collections::HashSet<String>,
+) {
+    for entry in &feed.cards {
+        if !entry.card.author_pubkey.is_empty() {
+            out.insert(entry.card.author_pubkey.clone());
+        }
+        if let Some(repost) = &entry.card.reposted_by {
+            if !repost.author_pubkey.is_empty() {
+                out.insert(repost.author_pubkey.clone());
+            }
+        }
     }
 }
 
@@ -128,6 +200,11 @@ impl App for DesktopApp {
         if matches!(self.tab, AppTab::Diagnostics) && !diagnostics_flag::enabled() {
             self.tab = AppTab::Home;
         }
+
+        // ADR-0063 (#1671 Lane F): resolve every visible feed/profile/thread
+        // author at profile.ref/CacheOk (release those no longer on screen) so
+        // names/avatars render through the unified resolve_ref path (D7).
+        self.sync_feed_author_refs(&snap);
 
         self.status_bar(ctx, &snap);
         self.sidebar(ctx, &snap);
@@ -276,8 +353,8 @@ impl DesktopApp {
                 // V-112 (ADR-0042): read from flat-feed projection instead of deleted author_view.
                 let key = format!("nmp.feed.author.{pubkey}");
                 let feed: Option<ModularTimelineSnapshot> = snap.projection(&key);
-                let profiles: HashMap<String, ProfileCard> =
-                    snap.projection("resolved_profiles").unwrap_or_default();
+                // ADR-0063 (#1671 Lane F): read from the refs.profile mirror.
+                let profiles: HashMap<String, ProfileCard> = snap.refs_profiles.clone();
                 self.author_view(ui, snap, pubkey, feed, profiles);
             }
             AppTab::Dms => crate::dm_panel::show(self, ui, snap),
@@ -390,8 +467,8 @@ impl DesktopApp {
         feed: Option<ModularTimelineSnapshot>,
     ) {
         let eid = event_id.to_string();
-        let profiles: HashMap<String, ProfileCard> =
-            snap.projection("resolved_profiles").unwrap_or_default();
+        // ADR-0063 (#1671 Lane F): read from the refs.profile mirror.
+        let profiles: HashMap<String, ProfileCard> = snap.refs_profiles.clone();
         ui.horizontal(|ui| {
             if ui.button("← Back").clicked() {
                 self.tab = AppTab::Home;

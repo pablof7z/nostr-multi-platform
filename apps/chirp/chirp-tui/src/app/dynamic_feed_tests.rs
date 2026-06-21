@@ -81,6 +81,20 @@ impl dynamic_feeds::DynamicFeedRuntime for RecordingRuntime {
             .push(format!("close_thread:{event_id}"));
         Ok(())
     }
+
+    fn resolve_open_profile(&self, pubkey: &str) -> crate::Result<()> {
+        self.calls
+            .borrow_mut()
+            .push(format!("resolve_open_profile:{pubkey}"));
+        Ok(())
+    }
+
+    fn release_open_profile(&self, pubkey: &str) -> crate::Result<()> {
+        self.calls
+            .borrow_mut()
+            .push(format!("release_open_profile:{pubkey}"));
+        Ok(())
+    }
 }
 
 fn feed_map(key: &str, projection: FeedProjection) -> HashMap<String, FeedProjection> {
@@ -172,9 +186,14 @@ fn opening_author_b_closes_a_and_drops_a_rows() {
     assert_eq!(
         runtime.calls.borrow().as_slice(),
         &[
+            // ADR-0063 (#1671 Lane F): each open resolves the open-pane profile at
+            // profile.card/Live; each close releases it (before opening the next).
             format!("open_author:{author_a}"),
+            format!("resolve_open_profile:{author_a}"),
             format!("close_author:{author_a}"),
+            format!("release_open_profile:{author_a}"),
             format!("open_author:{author_b}"),
+            format!("resolve_open_profile:{author_b}"),
         ],
         "opening a new author feed must close the prior kernel sidecar before opening the next"
     );

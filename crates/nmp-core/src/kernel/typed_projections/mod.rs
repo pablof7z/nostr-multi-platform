@@ -140,7 +140,10 @@ pub use active_account_fb::{
     ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_VERSION,
 };
-pub(crate) use profile_fb::encode_profile;
+// ADR-0063 (#1671 Lane F): the symmetric encoder of the public `decode_profile`.
+// Promoted to `pub` so Rust shells can build a `refs.profile` row payload (a KPRF
+// `ProfileCard` buffer) in fixtures/tests of their host-side consumption.
+pub use profile_fb::encode_profile;
 pub use profile_fb::{
     ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
