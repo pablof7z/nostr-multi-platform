@@ -148,7 +148,7 @@ pub fn run_firehose(report: &mut SanityReport, args: &Args) {
             let _ = nmp_app_inject_signed_event_json(app.raw(), c.as_ptr());
         }
     }
-    std::thread::sleep(Duration::from_secs(2)); // let the dedup-merged frames settle
+    let _ = app.wait_until(Duration::from_secs(2), |s| s.peak_visible() > final_visible);
     let visible_after_dupe = app.with_state(|s| s.peak_visible());
     report.push(
         GateRow::max(
