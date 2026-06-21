@@ -26,8 +26,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nmp_core::substrate::UnsignedEvent;
-use nmp_core::RemoteSignerHandle;
+use nmp_signer_iface::UnsignedEvent;
+use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::{
     ExternalSignerOutcome, ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport,
     Nip55Permission, SignerError, SignerOp, EXTERNAL_SIGN_TIMEOUT,
@@ -869,7 +869,7 @@ fn debug_impl_does_not_panic() {
 /// implemented, this test can be upgraded to an end-to-end receive test.
 #[test]
 fn nip55_nip44_decrypt_capability_exists_but_receive_path_is_deferred() {
-    use nmp_core::RemoteSignerHandle;
+    use nmp_signer_iface::RemoteSignerHandle;
     use nmp_signer_iface::{ExternalSignerOutcome, SignerOp};
     use std::time::Duration;
 

@@ -5004,6 +5004,7 @@ name = "nmp-signer-iface"
 version = "0.8.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5011,7 +5012,6 @@ name = "nmp-signers"
 version = "0.8.0"
 dependencies = [
  "js-sys",
- "nmp-core",
  "nmp-signer-iface",
  "nostr",
  "serde",

@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nmp_core::substrate::UnsignedEvent;
-use nmp_core::RemoteSignerHandle;
+use nmp_signer_iface::UnsignedEvent;
+use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError};
 
 use crate::signers::payload::SignerPayload;

@@ -17,15 +17,12 @@ default = []
 wasm = []
 
 [dependencies]
-# `default-features = false` to keep `nmp-signers` usable from `nmp-wasm` —
-# nmp-core's `native` feature (default-on) pulls tungstenite / ureq / heed /
-# nostr-database, none of which build on wasm32. The only nmp-core items
-# nmp-signers names are `substrate::{SignedEvent, UnsignedEvent}` and
-# `RemoteSignerHandle`, all of which are always-on (not gated behind `native`).
-# Native-side consumers (nmp-testing, nmp-content-fixtures, nmp-signer-broker,
-# nmp-core itself) still see `native` via Cargo feature unification because
-# they pull nmp-core directly with default features.
-nmp-core = { path = "../nmp-core", default-features = false }
+# `nmp-signers` no longer depends on `nmp-core` (issue #1720). The signing
+# substrate vocabulary it names — `SignedEvent`, `UnsignedEvent`, and the
+# `RemoteSignerHandle` trait — now lives in the tier-0 `nmp-signer-iface` crate,
+# so this Layer-1 crate sits cleanly below the kernel without naming it just to
+# name substrate types. This also keeps `nmp-signers` trivially wasm-buildable
+# (it never pulls nmp-core's native-only transport deps).
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # `nip04`/`nip44`: NIP-46 RPC payload crypto. `nip49`: encrypted nsec storage.
 # `nip46` is deliberately NOT enabled — `nostr`'s `NostrConnectURI::Bunker` lacks

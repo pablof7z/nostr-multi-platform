@@ -48,7 +48,7 @@
 use std::sync::mpsc;
 
 use js_sys::{Array, Function, Object, Promise, Reflect};
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::PublicKey;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::{spawn_local, JsFuture};
