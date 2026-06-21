@@ -106,7 +106,56 @@ fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
             nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr()).then_some(id)
         })
         .collect();
-    std::thread::sleep(Duration::from_secs(2));
+
+    if seed_ids.is_empty() {
+        // No seed accepted — without a populated store the render assertion
+        // would be vacuous. SKIP LOUD rather than pass on an empty store.
+        let alive = app.is_alive();
+        report.push(GateRow::unmeasured(
+            "resilience-store-serves-while-relay-dead",
+            phase,
+            "nmp_app_inject_signed_event_json + nmp_app_read_author_event_ids (dead relay)",
+            "seeded ids readable from the store while the relay is dead",
+            "all seeded ids store-readable",
+            Verdict::SkipRelayMiss,
+            "no seed event was accepted into the store — cannot assert store-serve-while-dead this \
+             run (SKIP LOUD, never a vacuous pass)",
+        ));
+        report.push(GateRow::min(
+            "resilience-actor-survives-dead-relay",
+            phase,
+            "nmp_app_is_alive",
+            "actor thread liveness",
+            if alive { 1.0 } else { 0.0 },
+            1.0,
+            "alive",
+        ));
+        return;
+    }
+
+    if !app.wait_barrier(Duration::from_secs(5)) {
+        let alive = app.is_alive();
+        report.push(GateRow::unmeasured(
+            "resilience-store-serves-while-relay-dead",
+            phase,
+            "nmp_app_inject_signed_event_json + actor barrier",
+            "barrier ack before store read",
+            "seed injections settled before store assertion",
+            Verdict::Blocked,
+            "actor barrier did not settle after seeding the dead-relay store corpus — cannot read \
+             the store without risking a stale assertion",
+        ));
+        report.push(GateRow::min(
+            "resilience-actor-survives-dead-relay",
+            phase,
+            "nmp_app_is_alive",
+            "actor thread liveness",
+            if alive { 1.0 } else { 0.0 },
+            1.0,
+            "alive",
+        ));
+        return;
+    }
 
     // Read the seeded items back from the STORE while the relay is still dead.
     let stored_ids: HashSet<String> = {
@@ -133,44 +182,33 @@ fn render_from_store_on_dead_relay(report: &mut SanityReport, phase: &str) {
         }
     };
     let alive = app.is_alive();
-    let missing = seed_ids.iter().filter(|id| !stored_ids.contains(*id)).count();
+    let missing = seed_ids
+        .iter()
+        .filter(|id| !stored_ids.contains(*id))
+        .count();
 
-    if seed_ids.is_empty() {
-        // No seed accepted — without a populated store the render assertion
-        // would be vacuous. SKIP LOUD rather than pass on an empty store.
-        report.push(GateRow::unmeasured(
+    // Every seeded id must be store-readable WHILE the relay is dead: the
+    // app serves it from the populated store, not the wire. (This is a
+    // store-serve assertion, NOT a render/projection claim — see the fn doc.)
+    report.push(
+        GateRow::max(
             "resilience-store-serves-while-relay-dead",
             phase,
-            "nmp_app_inject_signed_event_json + nmp_app_read_author_event_ids (dead relay)",
-            "seeded ids readable from the store while the relay is dead",
-            "all seeded ids store-readable",
-            Verdict::SkipRelayMiss,
-            "no seed event was accepted into the store — cannot assert store-serve-while-dead this \
-             run (SKIP LOUD, never a vacuous pass)",
-        ));
-    } else {
-        // Every seeded id must be store-readable WHILE the relay is dead: the
-        // app serves it from the populated store, not the wire. (This is a
-        // store-serve assertion, NOT a render/projection claim — see the fn doc.)
-        report.push(
-            GateRow::max(
-                "resilience-store-serves-while-relay-dead",
-                phase,
-                "nmp_app_read_author_event_ids (dead relay)",
-                "seeded ids missing from the store while the relay is dead",
-                missing as f64,
-                0.0,
-                "missing-seeded-ids",
-            )
-            .with_note(&format!(
-                "dead relay {DEAD_RELAY}: seeded {} self-authored notes off-wire; {} store-readable, \
-                 {missing} missing — the populated store SERVES the seeded items with NO live \
-                 relay (store-readable, not a render/projection claim); actor_alive={alive}",
-                seed_ids.len(),
-                stored_ids.len(),
-            )),
-        );
-    }
+            "nmp_app_read_author_event_ids (dead relay)",
+            "seeded ids missing from the store while the relay is dead",
+            missing as f64,
+            0.0,
+            "missing-seeded-ids",
+        )
+        .with_note(&format!(
+            "dead relay {DEAD_RELAY}: seeded {} self-authored notes off-wire; {} store-readable, \
+             {missing} missing after actor barrier settled=true — the populated store SERVES the \
+             seeded items with NO live relay (store-readable, not a render/projection claim); \
+             actor_alive={alive}",
+            seed_ids.len(),
+            stored_ids.len(),
+        )),
+    );
 
     // The actor thread must survive a dead-relay connect (no panic/wedge).
     report.push(GateRow::min(
@@ -249,31 +287,12 @@ fn outbox_routing(report: &mut SanityReport, phase: &str, args: &Args) {
     let Some(app) = super::connect_or_skip(report, phase, args) else {
         return;
     };
-    // Open the home feed already happened in launch; give the planner a moment.
-    std::thread::sleep(Duration::from_secs(3));
-    let decisions = app.routing_decisions();
-    let subs = decisions
-        .as_ref()
-        .and_then(|d| d.get("subscriptions"))
-        .and_then(|s| s.as_array())
-        .cloned()
-        .unwrap_or_default();
-    // Also inspect publishes[] — the publish (write) path attributes
-    // `Nip65 { direction: Write }`, while the subscription (read) path
-    // attributes `Nip65 { direction: Read }` (author mailbox read-set). The
-    // prior gate only checked `urls` non-empty, which passes via an AppRelay
-    // FALLBACK or a user-configured relay — NOT actual NIP-65 outbox routing.
-    // Fix: require at least one `urls[].lanes[]` whose `kind == "Nip65"` (the
-    // outbox lane resolved the target). Without a NIP-65 fixture (fresh key, no
-    // follows, no kind:10002) no Nip65 lane exists → SKIP-LOUD, never a
-    // bare-non-empty-url pass.
-    let publishes = decisions
-        .as_ref()
-        .and_then(|d| d.get("publishes"))
-        .and_then(|p| p.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let nip65_routed = |rows: &[serde_json::Value]| -> usize {
+    // Also inspect publishes[] for context, but the gate passes only on
+    // subscription rows with `Nip65/Read`: that is the route shape that proves
+    // follow-feed reads used authors' mailbox relays instead of an AppRelay or
+    // user-configured fallback. Publish rows require `Nip65/Write` and are
+    // reported separately in the note; they do not satisfy the read oracle.
+    let nip65_routed = |rows: &[serde_json::Value], direction: &str| -> usize {
         rows.iter()
             .filter(|row| {
                 row.get("urls")
@@ -286,6 +305,8 @@ fn outbox_routing(report: &mut SanityReport, phase: &str, args: &Args) {
                                 .map(|lanes| {
                                     lanes.iter().any(|lane| {
                                         lane.get("kind").and_then(|k| k.as_str()) == Some("Nip65")
+                                            && lane.get("direction").and_then(|d| d.as_str())
+                                                == Some(direction)
                                     })
                                 })
                                 .unwrap_or(false)
@@ -295,21 +316,39 @@ fn outbox_routing(report: &mut SanityReport, phase: &str, args: &Args) {
             })
             .count()
     };
-    let routed = nip65_routed(&subs) + nip65_routed(&publishes);
-    if routed == 0 {
+    if !app.wait_barrier(Duration::from_secs(3)) {
+        report.push(GateRow::unmeasured(
+            "resilience-outbox-routing",
+            phase,
+            "actor barrier + nmp_app_recent_routing_decisions",
+            "barrier ack before routing-ledger read",
+            "actor settled before route assertion",
+            Verdict::Blocked,
+            "actor barrier did not settle before the routing-ledger read — cannot assert NIP-65 \
+             routing without risking a stale read",
+        ));
+        return;
+    }
+    let decisions = app.routing_decisions();
+    let subs = decision_rows(decisions.as_ref(), "subscriptions");
+    let publishes = decision_rows(decisions.as_ref(), "publishes");
+    let read_routed = nip65_routed(&subs, "Read");
+    let write_routed = nip65_routed(&publishes, "Write");
+    if read_routed == 0 {
         report.push(GateRow::unmeasured(
             "resilience-outbox-routing",
             phase,
             "nmp_app_recent_routing_decisions",
-            "routing-trace urls[].lanes[] kind==Nip65 (NIP-65 outbox attribution)",
-            "at least one target resolved via the NIP-65 outbox lane",
+            "routing-trace subscriptions[].urls[].lanes[] kind==Nip65 direction==Read",
+            "at least one subscription target resolved via the NIP-65 read lane",
             Verdict::SkipRelayMiss,
             &format!(
                 "{} subscription + {} publish rows in the routing ledger, NONE with a \
-                 urls[].lanes[] entry of kind==Nip65 — every resolved target came from an \
-                 AppRelay fallback / user-configured lane, NOT NIP-65 outbox routing. No NIP-65 \
+                 subscription urls[].lanes[] entry of Nip65/Read (publish Nip65/Write rows={write_routed}; \
+                 actor barrier settled=true) — every read target came from an \
+                 AppRelay fallback / user-configured lane, NOT NIP-65 read routing. No NIP-65 \
                  fixture this run. Provide a high-follow account whose authors publish kind:10002 \
-                 to drive a positive outbox-route assertion. SKIP LOUD.",
+                 to drive a positive read-route assertion. SKIP LOUD.",
                 subs.len(),
                 publishes.len(),
             ),
@@ -321,17 +360,26 @@ fn outbox_routing(report: &mut SanityReport, phase: &str, args: &Args) {
             "resilience-outbox-routing",
             phase,
             "nmp_app_recent_routing_decisions",
-            "routing-trace urls[].lanes[] kind==Nip65",
-            routed as f64,
+            "routing-trace subscriptions[].urls[].lanes[] kind==Nip65 direction==Read",
+            read_routed as f64,
             1.0,
-            "nip65-routed-rows",
+            "nip65-read-subscription-rows",
         )
         .with_note(&format!(
-            "{routed} routing-ledger row(s) carry a NIP-65 outbox lane (kind==Nip65) on a \
+            "{read_routed} subscription routing-ledger row(s) carry a NIP-65 read lane on a \
              resolved target — reads route to authors' write relays via NIP-65, not the \
-             AppRelay fallback (subs={}, publishes={})",
+             AppRelay fallback (subs={}, publishes={}, publish Nip65/Write rows={write_routed}, \
+             actor barrier settled=true)",
             subs.len(),
             publishes.len()
         )),
     );
+}
+
+fn decision_rows(decisions: Option<&serde_json::Value>, key: &str) -> Vec<serde_json::Value> {
+    decisions
+        .and_then(|d| d.get(key))
+        .and_then(|rows| rows.as_array())
+        .cloned()
+        .unwrap_or_default()
 }

@@ -55,11 +55,14 @@ fn unverified_rejected(report: &mut SanityReport, phase: &str, args: &Args) {
     let accepted = std::ffi::CString::new(json.as_str())
         .map(|c| nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr()))
         .unwrap_or(false);
-    std::thread::sleep(Duration::from_secs(1));
+    let _ = app.wait_until(Duration::from_secs(1), |s| {
+        s.latest().map(|r| r.note_events).unwrap_or(0) > notes_before
+    });
     let notes_after = app.with_state(|s| s.latest().map(|r| r.note_events).unwrap_or(0));
 
     // PASS iff the seam returned false AND the counter did not move.
-    let leaked_in = if accepted { 1.0 } else { 0.0 } + (notes_after.saturating_sub(notes_before)) as f64;
+    let leaked_in =
+        if accepted { 1.0 } else { 0.0 } + (notes_after.saturating_sub(notes_before)) as f64;
     report.push(
         GateRow::max(
             "privacy-unverified-rejected",
@@ -89,8 +92,7 @@ fn pre_verified_bypass_gated(report: &mut SanityReport, phase: &str) {
     const TESTING_SRC: &str = include_str!("../../../../nmp-ffi/src/testing.rs");
     const LIB_SRC: &str = include_str!("../../../../nmp-ffi/src/lib.rs");
 
-    let module_inner_gate =
-        TESTING_SRC.contains("#![cfg(any(test, feature = \"test-support\"))]");
+    let module_inner_gate = TESTING_SRC.contains("#![cfg(any(test, feature = \"test-support\"))]");
     let bypass_symbol =
         TESTING_SRC.contains("pub extern \"C\" fn nmp_app_inject_pre_verified_events");
     let unchecked_path = TESTING_SRC.contains("from_raw_unchecked");
@@ -104,7 +106,11 @@ fn pre_verified_bypass_gated(report: &mut SanityReport, phase: &str) {
         ("from_raw_unchecked bypass path present", unchecked_path),
         ("`mod testing;` cfg-gated in lib.rs", mod_decl_gated),
     ];
-    let failed: Vec<&str> = checks.iter().filter(|(_, ok)| !ok).map(|(n, _)| *n).collect();
+    let failed: Vec<&str> = checks
+        .iter()
+        .filter(|(_, ok)| !ok)
+        .map(|(n, _)| *n)
+        .collect();
 
     report.push(
         GateRow::max(
@@ -151,21 +157,56 @@ fn giftwrap_no_public_republish(report: &mut SanityReport, phase: &str, args: &A
     let ns = std::ffi::CString::new("nmp.nip17.send").unwrap();
     let body_c = std::ffi::CString::new(body).unwrap();
     let ret = nmp_ffi::nmp_app_dispatch_action(app.raw(), ns.as_ptr(), body_c.as_ptr());
-    if !ret.is_null() {
+    let dispatch_result = if ret.is_null() {
+        None
+    } else {
+        let parsed = unsafe { std::ffi::CStr::from_ptr(ret) }
+            .to_str()
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
         nmp_ffi::nmp_free_string(ret);
-    }
+        parsed
+    };
+    let Some(correlation_id) = dispatch_result
+        .as_ref()
+        .and_then(|v| v.get("correlation_id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+    else {
+        report.push(GateRow::unmeasured(
+            "privacy-giftwrap-no-public-republish",
+            phase,
+            "nmp.nip17.send action dispatch",
+            "dispatch return correlation_id",
+            "accepted action with a correlation id",
+            Verdict::Blocked,
+            &format!(
+                "nmp.nip17.send did not return a correlation_id; dispatch_result={dispatch_result:?} \
+                 — cannot wait for action_results before reading the routing ledger"
+            ),
+        ));
+        return;
+    };
 
-    // Poll the routing ledger for a 1059 publish for up to ~8s.
-    let mut wrap_publishes: Vec<(String, Vec<String>)> = Vec::new();
-    for _ in 0..16 {
-        std::thread::sleep(Duration::from_millis(500));
-        if let Some(d) = app.routing_decisions() {
-            wrap_publishes = scan_giftwrap_publishes(&d);
-            if !wrap_publishes.is_empty() {
-                break;
-            }
-        }
+    if !app.wait_for_action_terminal(&correlation_id, Duration::from_secs(8)) {
+        report.push(GateRow::unmeasured(
+            "privacy-giftwrap-no-public-republish",
+            phase,
+            "nmp.nip17.send action + action_results typed projection",
+            "action_results terminal before routing-ledger read",
+            "DM send action terminal observed",
+            Verdict::Blocked,
+            &format!(
+                "no action_results terminal appeared for correlation_id={correlation_id} after \
+                 the DM send action — cannot assert the routing ledger without risking a stale read"
+            ),
+        ));
+        return;
     }
+    let wrap_publishes = app
+        .routing_decisions()
+        .map(|d| scan_giftwrap_publishes(&d))
+        .unwrap_or_default();
 
     if wrap_publishes.is_empty() {
         report.push(GateRow::unmeasured(
@@ -175,10 +216,14 @@ fn giftwrap_no_public_republish(report: &mut SanityReport, phase: &str, args: &A
             "routing-trace publishes[kind=1059].urls",
             "no kind:1059 publish targets a public relay",
             Verdict::SkipRelayMiss,
-            "no kind:1059 gift-wrap publish appeared in the routing ledger this run (the recipient \
-             has no kind:10050 inbox relay, so the send was held rather than routed) — the \
-             catastrophic leak path did not fire, but a positive route was not produced. Provide a \
-             recipient with a published kind:10050 inbox to drive a positive assertion. SKIP LOUD.",
+            &format!(
+                "no kind:1059 gift-wrap publish appeared in the routing ledger after actor \
+                 action terminal correlation_id={correlation_id} settled; the recipient has no \
+                 kind:10050 inbox relay, \
+                 so the send was held rather than routed — the catastrophic leak path did not \
+                 fire, but a positive route was not produced. Provide a recipient with a \
+                 published kind:10050 inbox to drive a positive assertion. SKIP LOUD."
+            ),
         ));
         return;
     }
