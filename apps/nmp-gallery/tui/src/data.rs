@@ -121,7 +121,7 @@ impl LiveProfileMap {
         Self::default()
     }
 
-    /// Ingest a typed kernel snapshot, updating the resolved-profile map.
+    /// Ingest a typed kernel snapshot, REPLACING the resolved-profile map.
     ///
     /// Reads the materialised `refs.profile` set (ADR-0063 #1671 — the
     /// resolve_ref output, merged once in the snapshot thread's
@@ -129,9 +129,14 @@ impl LiveProfileMap {
     /// re-implements any three-source merge — it copies the finished
     /// `ProfileCardModel` fields directly.
     ///
-    /// An empty profiles set is a no-op (the map retains any profiles it
-    /// already holds from previous ticks).
+    /// The snapshot already carries the FULL current `RefProfileStore` set
+    /// every frame (`live.rs` materialises the whole store), so this REPLACES
+    /// the map exactly — there is no app-side cache beyond `RefProfileStore`.
+    /// A `refs.profile` clear/release (e.g. release-on-scroll-off) drops the
+    /// row from the snapshot set, so the row is dropped here too — accumulating
+    /// would leak released profiles as stale rows.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) {
+        self.profiles.clear();
         for (pubkey, card) in &snapshot.profiles {
             let display_name = non_empty(card.display_name.as_deref());
             let picture_url = non_empty(card.picture_url.as_deref());
@@ -312,6 +317,43 @@ mod live_profile_map_tests {
         );
         assert_eq!(wire.nip05.as_deref(), Some("name@example.com"));
         assert_eq!(wire.about.as_deref(), Some("merged once in the kernel"));
+    }
+
+    /// ADR-0063 (#1671) — a `refs.profile` CLEAR/release drops the row.
+    /// `update_from_typed` REPLACES the map from the snapshot's full
+    /// `RefProfileStore` set each frame; once the kernel releases a profile (so
+    /// it no longer materialises in the set), the next snapshot omits it and the
+    /// map must DROP the row — not retain it as stale. Proves the
+    /// replace-not-accumulate fix: release-on-scroll-off actually drops rows.
+    #[test]
+    fn refs_profile_clear_drops_row_from_live_map() {
+        let pubkey = showcase_pubkey();
+        let card = ProfileCardModel {
+            pubkey: pubkey.to_string(),
+            display_name: Some("Soon Gone".to_string()),
+            ..Default::default()
+        };
+
+        let mut map = LiveProfileMap::new();
+
+        // Frame 1: the materialised set carries the resolved profile.
+        map.update_from_typed(&typed_snapshot_with_profile(pubkey, card));
+        assert_eq!(
+            map.resolve(pubkey).display_name.as_deref(),
+            Some("Soon Gone"),
+            "profile must be present after it resolves"
+        );
+
+        // Frame 2: the kernel released the ref, so the materialised set no
+        // longer contains it (empty profiles). The row must be GONE — accumulating
+        // would leave a stale "Soon Gone" wire.
+        map.update_from_typed(&GalleryTypedSnapshot::default());
+        let wire = map.resolve(pubkey);
+        assert_eq!(
+            wire.display_name, None,
+            "a cleared/released profile must drop from the map, not persist stale"
+        );
+        assert_eq!(wire.pubkey, pubkey);
     }
 
     /// Graceful degradation: a typed snapshot with an empty `resolved_profiles`

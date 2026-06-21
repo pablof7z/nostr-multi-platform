@@ -34,12 +34,16 @@ final class GalleryKernelHandle {
     /// row-delta projection. One per kernel session; threaded into every
     /// snapshot decode so per-key deltas accumulate. Sole app-side profile
     /// store (D4). Freed in `deinit`.
-    let refProfileStore: OpaquePointer
+    ///
+    /// The C header imports `struct GalleryRefProfileStore *` as
+    /// `OpaquePointer?`, so the handle is stored and passed through DIRECTLY —
+    /// no `OpaquePointer(...)` wrapping or `UnsafeMutablePointer(...)` casting.
+    let refProfileStore: OpaquePointer?
 
     init() {
         raw = nmp_app_new()
         Self.configureStoragePath(for: raw)
-        refProfileStore = OpaquePointer(nmp_app_gallery_ref_profile_store_new())
+        refProfileStore = nmp_app_gallery_ref_profile_store_new()
         // Phase 1: register the gallery composition on the kernel. The parallel
         // `nmp-app-gallery` crate forwards to `nmp_app_template::register_defaults`;
         // the call is fire-and-forget (D6) — there is no opaque handle to capture
@@ -59,8 +63,7 @@ final class GalleryKernelHandle {
         nmp_app_free(raw)
         // ADR-0063 (#1671): release the refs.profile mirror after the kernel is
         // freed (so no in-flight decode can still touch it).
-        nmp_app_gallery_ref_profile_store_free(
-            UnsafeMutablePointer(refProfileStore))
+        nmp_app_gallery_ref_profile_store_free(refProfileStore)
     }
 
     private static func configureStoragePath(for raw: UnsafeMutableRawPointer) {
@@ -247,13 +250,13 @@ enum GalleryFlatBufferSnapshotDecoder {
     /// frame's `refs.profile` row-delta batch into `store` first (ADR-0063
     /// #1671). `store` MUST be the per-session mirror so per-key deltas
     /// accumulate across frames.
-    static func snapshotJSONData(from data: Data, store: OpaquePointer) -> Data? {
+    static func snapshotJSONData(from data: Data, store: OpaquePointer?) -> Data? {
         let ptr: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { raw -> UnsafeMutablePointer<CChar>? in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
                 return nil
             }
             return nmp_app_gallery_snapshot_json_from_update_frame(
-                UnsafeMutablePointer(store), base, UInt(data.count))
+                store, base, UInt(data.count))
         }
         guard let ptr else {
             kbLog.error("gallery typed snapshot decode failed")
