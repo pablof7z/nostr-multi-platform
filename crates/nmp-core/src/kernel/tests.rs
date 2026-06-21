@@ -513,7 +513,8 @@ fn timeline_item_kind6_well_formed_inner_event_extracts_id_and_content() {
 #[test]
 fn timeline_item_kind6_empty_content_falls_back_to_event_id_and_empty_text() {
     // NIP-18 reposts MAY ship empty `content`; the row still needs to be
-    // renderable — the "Repost" badge alone communicates state (D1 best-effort).
+    // renderable — the shell renders a "Repost" placeholder from the `is_repost`
+    // flag (D1 best-effort). The kernel ships no display prose (#1683).
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     ingest_kind6(&mut kernel, "");
 
@@ -526,8 +527,9 @@ fn timeline_item_kind6_empty_content_falls_back_to_event_id_and_empty_text() {
     );
     assert_eq!(item.repost_inner_content, "");
     assert_eq!(
-        item.content_preview, "Repost",
-        "empty kind:6 still uses the 'Repost' preview (pre-existing contract)"
+        item.content_preview, "",
+        "empty kind:6 ships an empty preview — the shell renders the 'Repost' \
+         placeholder from is_repost (#1683, no display prose on the wire)"
     );
 }
 
@@ -545,11 +547,12 @@ fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
         "malformed JSON: empty content"
     );
     // NIP-18 bug guard: malformed/non-JSON content must NOT ship raw text as
-    // the preview. "Repost" is the correct fallback when no inner content is
-    // recoverable.
+    // the preview. An empty preview is the correct raw value when no inner
+    // content is recoverable; the shell renders its own "Repost" placeholder.
     assert_eq!(
-        item.content_preview, "Repost",
-        "malformed kind:6 content must fall back to 'Repost', not raw non-JSON text"
+        item.content_preview, "",
+        "malformed kind:6 content must yield an empty preview, not raw non-JSON \
+         text (the shell formats the 'Repost' placeholder — #1683)"
     );
 }
 
@@ -603,11 +606,12 @@ fn timeline_item_kind6_content_preview_flattens_newlines() {
     );
 }
 
-/// kind:6 whose inner event has an empty `content` field: the preview
-/// must still be "Repost", not an empty string, so the consumer always
-/// has a meaningful placeholder.
+/// kind:6 whose inner event has an empty `content` field: the preview is the
+/// empty string (the raw truth — no content to preview). The shell renders its
+/// own "Repost" placeholder from the `is_repost` flag; the kernel ships no
+/// display prose (#1683, D7/D27 / aim.md §2).
 #[test]
-fn timeline_item_kind6_empty_inner_content_falls_back_to_repost_label() {
+fn timeline_item_kind6_empty_inner_content_yields_empty_preview() {
     let inner_json = format!(
         r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"","tags":[]}}"#,
         REPOST_INNER_ID, REPOST_PK
@@ -618,8 +622,9 @@ fn timeline_item_kind6_empty_inner_content_falls_back_to_repost_label() {
     let event = kernel.events.get(REPOST_ID).expect("event cached");
     let item = kernel.timeline_item(event);
     assert_eq!(
-        item.content_preview, "Repost",
-        "kind:6 with empty inner content must show 'Repost' not empty string"
+        item.content_preview, "",
+        "kind:6 with empty inner content ships an empty preview — the shell \
+         renders the 'Repost' placeholder from is_repost (#1683)"
     );
 }
 
