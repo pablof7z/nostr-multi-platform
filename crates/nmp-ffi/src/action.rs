@@ -105,7 +105,7 @@ pub extern "C" fn nmp_app_dispatch_action(
 /// host's UI has reacted to the terminal stage (`Accepted` / `Failed`) it
 /// passes the `correlation_id` here to drop the entry from the projection.
 ///
-/// `correlation_id` is the 32-hex (or event-id) value the host received from
+/// `correlation_id` is the 32-hex operation-id the host received from
 /// `nmp_app_dispatch_action`. A null `app`, a null/empty `correlation_id`, or
 /// an unknown `correlation_id` is a silent no-op (D6 — never a crash).
 ///
