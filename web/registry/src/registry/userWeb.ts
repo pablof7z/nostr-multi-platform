@@ -1,12 +1,12 @@
 import type { PlatformImpl } from "./types";
 
-import nostrAvatarWeb from "../vendor/web/user-avatar/NostrAvatar.tsx?raw";
-import nostrProfileHostWeb from "../vendor/web/user-avatar/NostrProfileHost.tsx?raw";
-import profileWireWeb from "../vendor/web/user-avatar/ProfileWire.ts?raw";
-import nostrUserCardWeb from "../vendor/web/user-card/NostrUserCard.tsx?raw";
-import nostrProfileNameWeb from "../vendor/web/user-name/NostrProfileName.tsx?raw";
-import nostrNip05BadgeWeb from "../vendor/web/user-nip05/NostrNip05Badge.tsx?raw";
-import nostrNpubChipWeb from "../vendor/web/user-npub/NostrNpubChip.tsx?raw";
+import nostrAvatarWeb from "@nmp/components/src/user-avatar/NostrAvatar.tsx?raw";
+import nostrProfileHostWeb from "@nmp/components/src/user-avatar/NostrProfileHost.tsx?raw";
+import profileWireWeb from "@nmp/components/src/user-avatar/ProfileWire.ts?raw";
+import nostrUserCardWeb from "@nmp/components/src/user-card/NostrUserCard.tsx?raw";
+import nostrProfileNameWeb from "@nmp/components/src/user-name/NostrProfileName.tsx?raw";
+import nostrNip05BadgeWeb from "@nmp/components/src/user-nip05/NostrNip05Badge.tsx?raw";
+import nostrNpubChipWeb from "@nmp/components/src/user-npub/NostrNpubChip.tsx?raw";
 
 export const webUserCore: PlatformImpl = {
   status: "stable",
@@ -85,13 +85,13 @@ export const webUserNpub: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["user-core"],
   longDescription:
-    "`<NostrNpubChip npub={...} npubShort={...} />` is the copyable short-npub chip. Both forms come from the canonical Rust NIP-19 encoder exposed through the WASM module (`nmp_encode_npub`) — never bech32-encoded or truncated in the browser (aim.md §6.9). Renders the short form as a monospace chip; clicking copies the full npub to the clipboard. Verified live in the NMP web gallery: the showcase identity's npub is encoded by the real kernel and matches the curated reference exactly.",
+    "`<NostrNpubChip npub={...} npubShort={...} />` is the copyable short-npub chip. Both forms come from the `encodeNpub()` utility in `@nmp/runtime-web` — a pure-TS BIP-0173 bech32 encoder, byte-identical to the Rust NIP-19 encoder, never derived in JS from scratch (aim.md §6.9). Renders the short form as a monospace chip; clicking copies the full npub to the clipboard. Verified live in the NMP web gallery.",
   files: [
     { source: "web/user-npub/NostrNpubChip.tsx", target: "src/components/nostr-user/NostrNpubChip.tsx", role: "source", content: nostrNpubChipWeb },
   ],
   screenshots: ["user-npub-web-preview.png"],
   customization: [
-    "Obtain `npub`/`npubShort` from your kernel boundary (the gallery adds a worker `encode_npub` round-trip to the Rust encoder) — do not bech32-encode in JS.",
+    "Obtain `npub`/`npubShort` from `encodeNpub(pubkeyHex)` in `@nmp/runtime-web` — a pure-TS utility, no actor round-trip needed (aim.md §6.9).",
     "Clipboard writes use `navigator.clipboard`; swap in your own copy affordance if you need a fallback for non-secure contexts.",
   ],
 };

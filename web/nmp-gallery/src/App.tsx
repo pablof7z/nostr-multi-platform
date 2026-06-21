@@ -1,20 +1,20 @@
 import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
-import { NostrProfileHostProvider } from "./components/user-avatar/NostrProfileHost";
-import { NostrAvatar } from "./components/user-avatar/NostrAvatar";
-import { NostrProfileName } from "./components/user-name/NostrProfileName";
-import { NostrNip05Badge } from "./components/user-nip05/NostrNip05Badge";
-import { NostrUserCard } from "./components/user-card/NostrUserCard";
-import { NostrRelayList } from "./components/relay-list/NostrRelayList";
-import { NostrLoginBlock } from "./components/login-block/NostrLoginBlock";
-import { NostrContentView } from "./components/content-view/NostrContentView";
-import { NostrMinimalContentView } from "./components/content-minimal/NostrMinimalContentView";
-import { NostrMentionChip } from "./components/content-mention-chip/NostrMentionChip";
-import { NostrMediaGrid } from "./components/content-media-grid/NostrMediaGrid";
-import { NostrArticleCard } from "./components/content-kind-30023/NostrArticleCard";
-import { NostrHighlightCard } from "./components/content-kind-9802/NostrHighlightCard";
-import { NostrQuoteCard } from "./components/content-quote-card/NostrQuoteCard";
-import { NostrEmbeddedEvent } from "./components/content-kind-registry/NostrKindRegistry";
-import { NostrNpubChip } from "./components/user-npub/NostrNpubChip";
+import { NostrProfileHostProvider } from "@nmp/components";
+import { NostrAvatar } from "@nmp/components";
+import { NostrProfileName } from "@nmp/components";
+import { NostrNip05Badge } from "@nmp/components";
+import { NostrUserCard } from "@nmp/components";
+import { NostrRelayList } from "@nmp/components";
+import { NostrLoginBlock } from "@nmp/components";
+import { NostrContentView } from "@nmp/components";
+import { NostrMinimalContentView } from "@nmp/components";
+import { NostrMentionChip } from "@nmp/components";
+import { NostrMediaGrid } from "@nmp/components";
+import { NostrArticleCard } from "@nmp/components";
+import { NostrHighlightCard } from "@nmp/components";
+import { NostrQuoteCard } from "@nmp/components";
+import { NostrEmbeddedEvent } from "@nmp/components";
+import { NostrNpubChip } from "@nmp/components";
 import {
   Resolving,
   Section,
@@ -118,10 +118,6 @@ export default function App(): JSX.Element {
     onCleanup(() => clearInterval(timer));
   });
 
-  // Ask the kernel (Rust NIP-19 encoder) for the showcase identity's npub once
-  // the worker is up — never bech32-encode in the browser (aim.md §6.9).
-  runtime.requestNpub(SHOWCASE_PUBKEY);
-
   // A claimed event is "render-ready" only once the kernel has parsed it into a
   // non-empty, placeholder-free NFCT content tree. This is the honesty gate: it
   // guarantees the screenshot shows tree-derived rendering, never the raw-string
@@ -135,7 +131,8 @@ export default function App(): JSX.Element {
   const articleRaw = createMemo(() => runtime.claimedEvent(SHOWCASE_ARTICLE.primaryId));
   const highlightRaw = createMemo(() => runtime.claimedEvent(SHOWCASE_HIGHLIGHT.primaryId));
   const noteRaw = createMemo(() => runtime.claimedEvent(SHOWCASE_NOTE.primaryId));
-  const showcaseNpub = createMemo(() => runtime.npub(SHOWCASE_PUBKEY));
+  // Pure-TS NIP-19 encoder — synchronous, no actor round-trip (aim.md §6.9).
+  const showcaseNpub = runtime.encodeNpub(SHOWCASE_PUBKEY);
   // Captured once at mount for the relative-time labels on quoted events.
   const nowSeconds = Math.floor(Date.now() / 1000);
 
@@ -419,12 +416,12 @@ export default function App(): JSX.Element {
         <Section
           id="user-npub"
           title="user-npub"
-          desc="Copyable short-npub chip. The npub is encoded by the canonical Rust NIP-19 encoder in the WASM kernel (never bech32-encoded in the browser) — click to copy the full npub."
+          desc="Copyable short-npub chip. The npub is encoded by encodeNpub() from @nmp/runtime-web — a pure-TS BIP-0173 bech32 encoder, byte-identical to the Rust NIP-19 encoder, no actor round-trip — click to copy the full npub."
         >
-          <Show when={showcaseNpub()?.npubShort} fallback={<Resolving />} keyed>
+          <Show when={showcaseNpub?.npubShort} fallback={<Resolving />} keyed>
             {(short) => (
               <div data-testid="user-npub">
-                <NostrNpubChip npub={showcaseNpub()?.npub ?? short} npubShort={short} />
+                <NostrNpubChip npub={showcaseNpub?.npub ?? short} npubShort={short} />
               </div>
             )}
           </Show>

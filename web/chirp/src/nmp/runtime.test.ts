@@ -13,7 +13,7 @@ import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 import { eventCorrelationId, protocolVersion } from "./protocol";
 import { chirpTimelineFromEnvelope, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
-import { FrameKind, PanicFrame, RelayStatus, SnapshotFrame, UpdateFrame } from "./generated/nmp/transport";
+import { FrameKind, PanicFrame, RelayStatus, SnapshotFrame, UpdateFrame } from "@nmp/wire-ts/nmp/transport";
 import { decodeUpdateFrameBytes, UpdateFrameDecodeError } from "./updateFrame";
 
 afterEach(() => {

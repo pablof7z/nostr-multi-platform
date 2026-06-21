@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nmp/components": "*",
     "@solidjs/router": "^0.15.0",
     "solid-js": "^1.9.13"
   },

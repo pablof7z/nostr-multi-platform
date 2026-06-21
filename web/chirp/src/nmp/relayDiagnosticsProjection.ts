@@ -1,7 +1,7 @@
 import * as flatbuffers from "flatbuffers";
 
-import { RelayDiagnosticsSnapshot } from "./generated/nmp/kernel/relay-diagnostics-snapshot.js";
-import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame.js";
+import { RelayDiagnosticsSnapshot } from "@nmp/wire-ts/nmp/kernel/relay-diagnostics-snapshot.js";
+import type { SnapshotFrame } from "@nmp/wire-ts/nmp/transport/snapshot-frame.js";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 

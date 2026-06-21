@@ -1,7 +1,7 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { publishNoteAction, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
-import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
-import type { ProfileWire } from "./components/user-avatar/ProfileWire";
+import type { NostrProfileHost } from "@nmp/components";
+import type { ProfileWire } from "@nmp/components";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import {
   featureSnapshotFromEnvelope,

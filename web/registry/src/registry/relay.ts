@@ -6,7 +6,7 @@ const nostrRelayListSwift = nativeSource("registry/swiftui/relay-list/NostrRelay
 const nostrRelayListPreviewSwift = nativeSource("registry/swiftui/relay-list/Examples/NostrRelayListPreview.swift");
 
 // Relay — Web (SolidJS)
-import nostrRelayListWeb from "../vendor/web/relay-list/NostrRelayList.tsx?raw";
+import nostrRelayListWeb from "@nmp/components/src/relay-list/NostrRelayList.tsx?raw";
 
 // Render Identity — SwiftUI
 const renderIdentifiableSwift = nativeSource("registry/swiftui/render-identity/RenderIdentifiable.swift");

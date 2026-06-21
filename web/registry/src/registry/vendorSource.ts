@@ -7,8 +7,9 @@
 // `crates/nmp-cli/tests/export.rs`. There is no hand-copied vendor fork to
 // drift: this is the one canonical path.
 //
-// The web component templates (`vendor/web/*.tsx`) are deliberately NOT sourced
-// here — they are canonical in `src/vendor/web` and gated by the gallery.
+// Web component templates are sourced from `@nmp/components` (the shared
+// package under web/packages/components/) via `?raw` Vite imports in the
+// individual registry files (embeds.ts, relay.ts, auth.ts, userWeb.ts, etc.).
 import registryJson from "../../public/registry.json";
 
 interface RegistryFile {

@@ -7,7 +7,7 @@ import {
   RelayStatus,
   UpdateFrame,
   WireSubscriptionStatus,
-} from "./generated/nmp/transport";
+} from "@nmp/wire-ts/nmp/transport";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 

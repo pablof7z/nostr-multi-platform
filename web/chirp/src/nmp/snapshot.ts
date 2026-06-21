@@ -1,6 +1,6 @@
 /** ADR-0035 reply-attribution badge attached to a feed item. */
 import type { FeedItem, FeedCountState } from "./feedProjection";
-import type { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
+import type { ContentTreeWire } from "@nmp/wire-ts/nmp/content/content-tree-wire";
 
 export type AttributionBadge = {
   authorPubkey: string;

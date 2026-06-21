@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nmp/wire-ts": "*",
+    "@nmp/runtime-web": "*",
+    "@nmp/components": "*",
     "flatbuffers": "^25.9.23",
     "solid-js": "^1.9.13"
   },

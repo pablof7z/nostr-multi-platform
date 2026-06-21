@@ -13,7 +13,7 @@ const composeKnownSignersKotlin = nativeSource("registry/compose/login-block/Kno
 const composeAmberIntentCodecKotlin = nativeSource("registry/compose/login-block/AmberIntentCodec.kt");
 
 // Auth - Web (SolidJS, NIP-07)
-import loginBlockWeb from "../vendor/web/login-block/NostrLoginBlock.tsx?raw";
+import loginBlockWeb from "@nmp/components/src/login-block/NostrLoginBlock.tsx?raw";
 
 export const authComponents: Component[] = [
   {

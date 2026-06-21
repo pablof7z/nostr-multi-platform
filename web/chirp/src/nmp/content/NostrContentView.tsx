@@ -18,12 +18,12 @@
  */
 import type { JSX } from "solid-js";
 import { For, Show, createUniqueId, onCleanup, onMount } from "solid-js";
-import type { ContentTreeWire } from "../generated/nmp/content/content-tree-wire";
-import type { WireNode } from "../generated/nmp/content/wire-node";
-import type { ListItem } from "../generated/nmp/content/list-item";
-import { WireNodeKind } from "../generated/nmp/content/wire-node-kind";
-import { useNostrProfileHost } from "../../components/user-avatar/NostrProfileHost";
-import { NostrMentionChip } from "../../components/content-mention-chip/NostrMentionChip";
+import type { ContentTreeWire } from "@nmp/wire-ts/nmp/content/content-tree-wire";
+import type { WireNode } from "@nmp/wire-ts/nmp/content/wire-node";
+import type { ListItem } from "@nmp/wire-ts/nmp/content/list-item";
+import { WireNodeKind } from "@nmp/wire-ts/nmp/content/wire-node-kind";
+import { useNostrProfileHost } from "@nmp/components";
+import { NostrMentionChip } from "@nmp/components";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 

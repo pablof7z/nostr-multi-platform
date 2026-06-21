@@ -1,0 +1,18 @@
+{
+  "name": "@nmp/components",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared NMP SolidJS components: user-avatar, user-card, content-view, and friends. Single canonical source; apps import, never copy.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*"
+  },
+  "peerDependencies": {
+    "@nmp/wire-ts": "*",
+    "flatbuffers": "^25.9.23",
+    "solid-js": "^1.9.13"
+  }
+}

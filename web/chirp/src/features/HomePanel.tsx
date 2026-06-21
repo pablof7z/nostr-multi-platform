@@ -14,9 +14,9 @@ import {
   NostrProfileHostProvider,
   useNostrProfileHost,
   type NostrProfileHost,
-} from "../components/user-avatar/NostrProfileHost";
-import { NostrAvatar } from "../components/user-avatar/NostrAvatar";
-import { NostrProfileName } from "../components/user-name/NostrProfileName";
+} from "@nmp/components";
+import { NostrAvatar } from "@nmp/components";
+import { NostrProfileName } from "@nmp/components";
 import { NostrContentView } from "../nmp/content/NostrContentView";
 
 export function HomePanel(props: {

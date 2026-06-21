@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "name": "nmp-web-workspace",
+  "workspaces": [
+    "packages/*",
+    "chirp",
+    "nmp-gallery",
+    "registry"
+  ]
+}

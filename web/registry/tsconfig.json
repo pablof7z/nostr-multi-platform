@@ -18,12 +18,5 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
   },
-  "include": ["src"],
-  // src/vendor holds platform component templates consumed ONLY as ?raw strings
-  // by the registry pages — never imported as modules here. They target each
-  // consumer app's module layout (the web templates import that app's generated
-  // FlatBuffers bindings), so type-checking them against the registry's own
-  // paths is incorrect. Each is type-checked for real in its consumer app (e.g.
-  // the byte-identical copy compiled by web/nmp-gallery).
-  "exclude": ["src/vendor"]
+  "include": ["src"]
 }

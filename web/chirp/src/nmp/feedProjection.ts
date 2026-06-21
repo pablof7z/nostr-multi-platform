@@ -1,11 +1,11 @@
 import * as flatbuffers from "flatbuffers";
 
-import { OpFeedSnapshot, RelationCount, ReplyAttribution, RootCard } from "./generated/nmp/nip01";
-import { RelationCountState } from "./generated/nmp/nip01/relation-count-state";
-import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
-import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
-import type { ProfileWire } from "../components/user-avatar/ProfileWire";
-import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
+import { OpFeedSnapshot, RelationCount, ReplyAttribution, RootCard } from "@nmp/wire-ts/nmp/nip01";
+import { RelationCountState } from "@nmp/wire-ts/nmp/nip01/relation-count-state";
+import { ResolvedProfilesSnapshot } from "@nmp/wire-ts/nmp/kernel/resolved-profiles-snapshot";
+import type { SnapshotFrame } from "@nmp/wire-ts/nmp/transport/snapshot-frame";
+import type { ProfileWire } from "@nmp/components";
+import { ContentTreeWire } from "@nmp/wire-ts/nmp/content/content-tree-wire";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 

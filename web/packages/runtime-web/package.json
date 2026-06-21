@@ -1,0 +1,13 @@
+{
+  "name": "@nmp/runtime-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared NMP web runtime: worker protocol, WASM bridge, degraded runtime, and pure utilities. Single source of truth for all NMP web apps.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker-init": "./src/worker-init.ts"
+  }
+}

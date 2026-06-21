@@ -2,20 +2,21 @@ import * as flatbuffers from "flatbuffers";
 import { createSignal, type Accessor } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 
-import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
-import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
-import { ClaimedEventsSnapshot } from "./generated/nmp/kernel/claimed-events-snapshot";
-import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
-import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
+import { FrameKind, UpdateFrame } from "@nmp/wire-ts/nmp/transport";
+import { ResolvedProfilesSnapshot } from "@nmp/wire-ts/nmp/kernel/resolved-profiles-snapshot";
+import { ClaimedEventsSnapshot } from "@nmp/wire-ts/nmp/kernel/claimed-events-snapshot";
+import { ContentTreeWire } from "@nmp/wire-ts/nmp/content/content-tree-wire";
+import type { SnapshotFrame } from "@nmp/wire-ts/nmp/transport/snapshot-frame";
 import {
   eventCorrelationId,
   protocolVersion,
   type RuntimeStatus,
   type WorkerEvent,
   type WorkerRequest,
-} from "./protocol";
-import type { ProfileWire } from "../components/user-avatar/ProfileWire";
-import type { NostrProfileHost } from "../components/user-avatar/NostrProfileHost";
+  encodeNpub,
+} from "@nmp/runtime-web";
+import type { ProfileWire } from "@nmp/components";
+import type { NostrProfileHost } from "@nmp/components";
 
 const KRPR_FILE_IDENTIFIER = "KRPR";
 const KRPR_PROJECTION_KEY = "resolved_profiles";
@@ -87,12 +88,9 @@ export type GalleryRuntime = {
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */
   claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
-  /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
-   *  pubkey). The result lands reactively in `npub(pubkey)`. */
-  requestNpub: (pubkey: string) => void;
-  /** Reactive — the Rust-encoded `{ npub, npubShort }` for a pubkey, or
-   *  undefined until `requestNpub` resolves. */
-  npub: (pubkey: string) => { npub?: string; npubShort?: string } | undefined;
+  /** Encode a hex pubkey to its NIP-19 bech32 npub (pure-TS, no actor round-trip).
+   *  Returns undefined for invalid pubkeys. aim.md §6.9 — canonical format. */
+  encodeNpub: (pubkey: string) => { npub: string; npubShort: string } | null;
 };
 
 // ── Profile decode ───────────────────────────────────────────────────────────
@@ -246,10 +244,6 @@ export function createGalleryRuntime(): GalleryRuntime {
     );
   }
 
-  // Rust-encoded npub/npubShort per pubkey (aim.md §6.9 — never browser-encoded).
-  const [npubs, setNpubs] = createStore<Record<string, { npub?: string; npubShort?: string }>>({});
-  const requestedNpubs = new Set<string>();
-
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   const pending = new Map<string, () => void>();
   let resolveHello: (() => void) | undefined;
@@ -292,8 +286,6 @@ export function createGalleryRuntime(): GalleryRuntime {
     } else if (event.type === "update_bytes") {
       const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
       ingestBytes(bytes);
-    } else if (event.type === "npub_encoded") {
-      setNpubs(event.pubkey, { npub: event.npub, npubShort: event.npubShort });
     }
     const cid = eventCorrelationId(event);
     if (cid) {
@@ -391,15 +383,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
-    requestNpub(pubkey: string) {
-      if (requestedNpubs.has(pubkey)) return;
-      requestedNpubs.add(pubkey);
-      void request({
-        type: "encode_npub",
-        pubkey,
-        correlation_id: `npub-${claimSeq++}`,
-      });
-    },
-    npub: (pubkey: string) => npubs[pubkey],
+    // Pure-TS NIP-19 encoder — no actor round-trip needed (aim.md §6.9).
+    encodeNpub,
   };
 }

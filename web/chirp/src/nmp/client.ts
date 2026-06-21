@@ -2,9 +2,9 @@ import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "./degradedRuntime";
 import { decodeHomeFeed, decodeResolvedProfiles, decodeResolvedProfileCards, type FeedItem } from "./feedProjection";
-import type { ProfileWire } from "../components/user-avatar/ProfileWire";
+import type { ProfileWire } from "@nmp/components";
 import { decodeKrdgTones } from "./relayDiagnosticsProjection";
-import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
+import { FrameKind, UpdateFrame } from "@nmp/wire-ts/nmp/transport";
 import {
   eventCorrelationId,
   protocolVersion,

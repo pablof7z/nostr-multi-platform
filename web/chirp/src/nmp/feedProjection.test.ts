@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import goldenHex from "../../../../crates/nmp-nip01/tests/fixtures/op_feed_populated_v1.fb.hex?raw";
 import * as flatbuffers from "flatbuffers";
-import { FrameKind, SnapshotFrame, UpdateFrame } from "./generated/nmp/transport";
-import { TypedPayload } from "./generated/nmp/transport/typed-payload";
-import { TypedProjection } from "./generated/nmp/transport/typed-projection";
+import { FrameKind, SnapshotFrame, UpdateFrame } from "@nmp/wire-ts/nmp/transport";
+import { TypedPayload } from "@nmp/wire-ts/nmp/transport/typed-payload";
+import { TypedProjection } from "@nmp/wire-ts/nmp/transport/typed-projection";
 import { decodeHomeFeed, decodeOpFeedSnapshot } from "./feedProjection";
 
 // ── helpers ─────────────────────────────────────────────────────────────────

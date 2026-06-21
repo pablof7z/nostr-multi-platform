@@ -1,7 +1,7 @@
 import * as flatbuffers from "flatbuffers";
 
 import { decodeKrdgTones } from "./relayDiagnosticsProjection";
-import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
+import { FrameKind, UpdateFrame } from "@nmp/wire-ts/nmp/transport";
 import {
   decodeUpdateFrameBytes,
   SNAPSHOT_SCHEMA_VERSION,

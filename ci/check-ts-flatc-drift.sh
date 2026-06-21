@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# TypeScript flatc codegen-drift gate (issue #1209, extended by PR-F2, PR-F3).
+# TypeScript flatc codegen-drift gate (issue #1209, extended by PR-F2, PR-F3,
+# refactored by #1729 to use web/packages/wire-ts as single source of truth).
 #
-# The checked-in TypeScript bindings at
-#   web/chirp/src/nmp/generated/nmp/
-# and, when present on a branch,
-#   web/nmp-gallery/src/nmp/generated/nmp/
-# cover eight schemas in four groups:
+# The checked-in TypeScript bindings live at ONE canonical location:
+#   web/packages/wire-ts/src/generated/nmp/
+#
+# They cover nine schemas in five groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
 #   feed        — crates/nmp-nip01/schema/op_feed.fbs
 #              + crates/nmp-nip01/schema/timeline_snapshot.fbs
@@ -15,8 +15,9 @@
 #   KRPR        — crates/nmp-core/schema/profile_card.fbs
 #              + crates/nmp-core/schema/resolved_profiles.fbs
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
+#   KCEV        — crates/nmp-core/schema/claimed_events.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
-# ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
+# ci/check-flatbuffers-version-pins.sh and web/packages/wire-ts/package.json).
 #
 # This script regenerates ALL schemas with the PINNED flatc version into one
 # temp dir and fails on any file difference so checked-in bindings can never
@@ -61,11 +62,10 @@ KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
 )
 KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
-CHECKED_IN_ROOTS=("${REPO_ROOT}/web/chirp/src/nmp/generated")
-GALLERY_TS_ROOT="${REPO_ROOT}/web/nmp-gallery/src/nmp/generated"
-if [[ -d "${GALLERY_TS_ROOT}" ]]; then
-    CHECKED_IN_ROOTS+=("${GALLERY_TS_ROOT}")
-fi
+KCEV_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/claimed_events.fbs"
+
+# Single source of truth: @nmp/wire-ts package
+WIRE_TS_ROOT="${REPO_ROOT}/web/packages/wire-ts/src/generated"
 
 # ── flatc availability + version guard ──────────────────────────────────────
 
@@ -83,7 +83,7 @@ if [[ "${ACTUAL_FLATC_VERSION}" != "${EXPECTED_FLATC_VERSION}" ]]; then
     echo "ts-flatc-drift: flatc ${ACTUAL_FLATC_VERSION} found, but the TypeScript" >&2
     echo "transport bindings are pinned to flatc ${EXPECTED_FLATC_VERSION}" >&2
     echo "(matching the 'flatbuffers: ^${EXPECTED_FLATC_VERSION}' runtime pin in" >&2
-    echo " web/chirp/package.json)." >&2
+    echo " web/packages/wire-ts/package.json)." >&2
     echo "" >&2
     echo "Install flatc ${EXPECTED_FLATC_VERSION} from:" >&2
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2
@@ -124,38 +124,35 @@ flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KRDG_SCHEMA}"
 
+# ── KCEV schema (claimed_events → nmp/kernel/) ────────────────────────────────
+# Self-contained: no includes. Output lands in nmp/kernel/ alongside KRPR/KRDG.
+flatc --ts -o "${TMP_DIR}" \
+    -I "${KERNEL_SCHEMA_DIR}" \
+    "${KCEV_SCHEMA}"
+
 GENERATED_DIR="${TMP_DIR}/nmp"
 
 if [[ "${MODE}" == "--write" ]]; then
-    for checked_in_root in "${CHECKED_IN_ROOTS[@]}"; do
-        mkdir -p "${checked_in_root}"
-        rm -rf "${checked_in_root}/nmp"
-        cp -R "${GENERATED_DIR}" "${checked_in_root}/nmp"
-        echo "ts-flatc-drift: wrote ${checked_in_root#${REPO_ROOT}/}/nmp (flatc ${EXPECTED_FLATC_VERSION})"
-    done
+    mkdir -p "${WIRE_TS_ROOT}"
+    rm -rf "${WIRE_TS_ROOT}/nmp"
+    cp -R "${GENERATED_DIR}" "${WIRE_TS_ROOT}/nmp"
+    echo "ts-flatc-drift: wrote ${WIRE_TS_ROOT#${REPO_ROOT}/}/nmp (flatc ${EXPECTED_FLATC_VERSION})"
     exit 0
 fi
 
-drift=0
-for checked_in_root in "${CHECKED_IN_ROOTS[@]}"; do
-    checked_in_dir="${checked_in_root}/nmp"
-    if [[ ! -d "${checked_in_dir}" ]]; then
-        echo "ts-flatc-drift: checked-in TypeScript binding dir missing: ${checked_in_dir#${REPO_ROOT}/}" >&2
-        drift=$((drift + 1))
-        continue
-    fi
-    if ! diff -r "${checked_in_dir}" "${GENERATED_DIR}"; then
-        echo "ts-flatc-drift: ${checked_in_dir#${REPO_ROOT}/} drifted from a fresh flatc run." >&2
-        drift=$((drift + 1))
-    fi
-done
+checked_in_dir="${WIRE_TS_ROOT}/nmp"
+if [[ ! -d "${checked_in_dir}" ]]; then
+    echo "ts-flatc-drift: checked-in TypeScript binding dir missing: ${checked_in_dir#${REPO_ROOT}/}" >&2
+    echo "  Run: ci/check-ts-flatc-drift.sh --write" >&2
+    exit 1
+fi
 
-if [[ "${drift}" -ne 0 ]]; then
+if ! diff -r "${checked_in_dir}" "${GENERATED_DIR}"; then
     echo "" >&2
-    echo "ts-flatc-drift: checked-in TypeScript bindings differ from a fresh" >&2
-    echo "'flatc --ts' run. Regenerate with:" >&2
+    echo "ts-flatc-drift: ${checked_in_dir#${REPO_ROOT}/} drifted from a fresh flatc run." >&2
+    echo "Regenerate with:" >&2
     echo "  bash ci/regenerate-flatbuffers.sh" >&2
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG + KCEV bindings in @nmp/wire-ts)"
