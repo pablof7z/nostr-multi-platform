@@ -13,14 +13,22 @@
 //! `session_engine::build_scope_session` registers a session engine under the
 //! caller's unique projection key. Set algebra (`Union`/`Intersection`/
 //! `Difference`) composes child compilations in `set_algebra`.
+//!
+//! Step 4 adds `CustomPerspectiveId` RESOLUTION over the same compiler: an app
+//! registers a CLOSED [`nmp_feed::CustomPerspectiveDef`] (a `FeedScope` +
+//! ranking) under an id (`NmpApp::register_custom_perspective`); a `Custom`
+//! reference in [`FeedParams`] looks the id up and compiles the registered scope
+//! through `resolve_scope`/`build_scope_session` — NO second resolver. An
+//! UNREGISTERED id still fails CLOSED (no leak). See `custom.rs`.
 
 use std::collections::BTreeSet;
 
-use nmp_feed::{FeedAdmission, FeedParams, FeedRanking, FeedScope, FeedSessionBuild};
+use nmp_feed::{FeedAdmission, FeedParams, FeedScope, FeedSessionBuild};
 use nmp_ffi::{FeedOpenError, NmpApp};
 
 use super::{read_active, register_op_feed_defaults};
 
+mod custom;
 mod resolve;
 mod session_engine;
 mod set_algebra;
@@ -65,36 +73,40 @@ pub fn compile_feed_params(
     params: &FeedParams,
     acquisition_kinds: &BTreeSet<u32>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
-    // FAIL CLOSED on app-defined admission / ranking (#1740 step 3). The
-    // compiler today wires only the ACQUISITION scope's compiled perspective +
-    // the built-in chronological ranking. A `FeedAdmission::Custom` /
-    // `FeedRanking::Custom` names an app-registered perspective whose
-    // registration mechanism lands in step 4 — until then there is no compiled
-    // predicate for it, so opening with default behavior would SILENTLY open the
-    // feed wider than the app declared. Reject before registering anything (D6).
-    if !matches!(params.admission, FeedAdmission::All) {
-        return not_supported_yet("custom-admission");
-    }
-    // The session engine sorts roots newest-first (`ChronologicalDesc`) only;
-    // `ChronologicalAsc` and `Custom` are not wired, so anything but the default
-    // descending order would silently mis-order — fail closed.
-    if !matches!(params.ranking, FeedRanking::ChronologicalDesc) {
-        return not_supported_yet("custom-ranking");
+    // RANKING (#1740 step 4). The session engine sorts roots newest-first
+    // (`ChronologicalDesc`) only. `ChronologicalAsc` is not wired. A
+    // `FeedRanking::Custom(id)` resolves to a REGISTERED perspective's ranking —
+    // which must itself be engine-honorable (`ChronologicalDesc`) or the open
+    // fails closed. Anything the engine cannot honor would silently mis-order, so
+    // reject before registering anything (D6). An UNREGISTERED id also fails
+    // closed (no leak). `custom::resolve_ranking` returns the engine-honored
+    // order or a typed error.
+    custom::resolve_ranking(app, &params.ranking)?;
+
+    // The framework-default home perspective keeps its dedicated wiring. It does
+    // not support a custom admission gate (the home path is its own engine), so a
+    // custom admission over `ActiveUserFollows` fails closed.
+    if matches!(params.acquisition, FeedScope::ActiveUserFollows) {
+        if !matches!(params.admission, FeedAdmission::All) {
+            return not_supported_yet("custom-admission");
+        }
+        return compile_active_user_follows(app, params);
     }
 
-    match &params.acquisition {
-        // The framework-default home perspective keeps its dedicated wiring.
-        FeedScope::ActiveUserFollows => compile_active_user_follows(app, params),
-        // Step 4 lands the app-defined-perspective registration mechanism.
-        FeedScope::CustomPerspectiveId(_) => not_supported_yet("CustomPerspectiveId"),
-        // Every other scope: resolve the typed scope into a compiled admission
-        // predicate + internal interests, then register a session engine under
-        // the unique projection key.
-        scope => {
-            let resolved = resolve::resolve_scope(app, scope, acquisition_kinds)?;
-            session_engine::build_scope_session(app, &params.projection.0, resolved)
-        }
+    // ── Resolve the ACQUISITION scope (step 3 compiler; custom id → registered
+    //    definition's scope). An unregistered `CustomPerspectiveId` fails closed.
+    let mut resolved = custom::resolve_acquisition(app, &params.acquisition, acquisition_kinds)?;
+
+    // ── ADMISSION. `All` keeps the acquisition's own admission gate; `Custom(id)`
+    //    intersects the registered perspective's compiled admission ON TOP (a
+    //    pure filter — it adds no row source, like `Difference`'s right side). An
+    //    unregistered id fails closed; the acquisition's already-registered
+    //    resolver observers are revoked so nothing leaks.
+    if let FeedAdmission::Custom(id) = &params.admission {
+        resolved = custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;
     }
+
+    session_engine::build_scope_session(app, &params.projection.0, resolved)
 }
 
 fn not_supported_yet(scope: &'static str) -> Result<FeedSessionBuild, FeedOpenError> {

@@ -702,6 +702,9 @@ pub struct NmpApp {
     /// teardown closures the compiler supplied — D0/D4); not a second feed
     /// engine, a session WRAPPER over the existing `register_feed*` mechanics.
     feed_sessions: Arc<nmp_feed::FeedSessionRegistry>,
+    /// #1740 step 4 — app-registered custom-perspective definitions (closed
+    /// data, keyed by opaque id). See [`Self::register_custom_perspective`].
+    custom_perspectives: Arc<nmp_feed::PerspectiveRegistry>,
     /// Per-open feed → ingest-observer bookkeeping for *transient* feeds (a
     /// visited profile / open thread registered through
     /// [`Self::register_feed_with_observer`]). The home feed is NOT here — it
@@ -1357,6 +1360,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         feed_registry,
         // #1740 step 2 — empty until the first `open_feed`.
         feed_sessions,
+        // #1740 step 4 — empty until the first `register_custom_perspective`.
+        custom_perspectives: Arc::new(nmp_feed::PerspectiveRegistry::default()),
         // Per-open transient-feed observer bookkeeping; empty until the first
         // `register_feed_with_observer` (a visited profile / open thread).
         interest_feed_observers: Mutex::new(std::collections::HashMap::new()),

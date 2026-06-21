@@ -17,6 +17,7 @@ mod admit;
 mod flat;
 mod pager;
 mod params;
+mod perspective;
 mod pull_controller;
 mod registry;
 mod root_indexed;
@@ -36,6 +37,7 @@ pub use params::{
     FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow, ListId, ProjectionKey,
     PubkeySetExpr, RelaySetId, TagTerm, WotRulesId, WotSeed, KIND_DELETE,
 };
+pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedReplace, FeedReset, PullFeedController,
     PullFn,
