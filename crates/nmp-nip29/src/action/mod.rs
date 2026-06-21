@@ -35,7 +35,7 @@ pub use admin::{
 };
 pub use composed::{ReactInGroupAction, ReactInGroupInput};
 pub use content::{PostChatMessageAction, PostChatMessageInput};
-pub use create::{CreatePublicGroupAction, CreatePublicGroupInput};
+pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
 pub use group_event::{
     GroupEventTarget, RepostInGroupAction, RepostInGroupInput, ShareEventInGroupAction,
