@@ -31,7 +31,10 @@ use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
 /// acquisition** — the kernel acquires deletions to suppress superseded rows —
 /// never a primary content kind an app declares. Declaring it as primary is a
 /// fail-closed validation error.
-pub const KIND_DELETE: u32 = 5;
+///
+/// Re-exported from `nmp_nip18`, the single canonical owner of the kind:5
+/// constant and its [`nmp_nip18::DeleteRecord`] decoder (issue #1740 step 5).
+pub use nmp_nip18::KIND_DELETE;
 
 // ---------------------------------------------------------------------------
 // Acquisition source — the closed `PubkeySetExpr` algebra.
@@ -252,21 +255,23 @@ impl From<nmp_nip18::PrimaryKindError> for FeedParamsError {
             nmp_nip18::PrimaryKindError::RepostWrapper { kind } => {
                 Self::RepostWrapperKind { kind }
             }
+            nmp_nip18::PrimaryKindError::DeleteKind => Self::DeleteKind,
         }
     }
 }
 
 /// Validate app-declared primary kinds and compile them into the concrete
-/// acquisition kind set (primary + derived wrappers).
+/// acquisition kind set (primary + derived wrappers + derived deletes).
 ///
 /// Fail-closed rejections (D6 — typed error, never panic):
 /// - kind 6 / 16 (NIP-18 repost wrappers) — derived acquisition, not primary;
 /// - kind 5 (NIP-09 deletion) — derived suppression acquisition, not primary;
 /// - an empty primary set.
 ///
-/// On success the returned set is `primary ∪ derived-wrappers`, with the
-/// wrapper derivation owned by `nmp_nip18` (D4 — single source for that
-/// transform).
+/// On success the returned set is `primary ∪ derived-wrappers ∪ {kind 5}`. The
+/// wrapper/delete derivation and all primary-kind rejections (including kind 5)
+/// are owned by `nmp_nip18::try_acquisition_kinds_for_primary` (D4 — single
+/// source for that transform); this function only adds the empty-set guard.
 pub fn validate_primary_kinds<I>(primary_kinds: I) -> Result<BTreeSet<u32>, FeedParamsError>
 where
     I: IntoIterator<Item = u32>,
@@ -274,11 +279,6 @@ where
     let kinds: Vec<u32> = primary_kinds.into_iter().collect();
     if kinds.is_empty() {
         return Err(FeedParamsError::EmptyPrimaryKinds);
-    }
-    // Reject the delete kind before handing off to the NIP-18 wrapper
-    // derivation (which only knows about repost wrappers).
-    if kinds.iter().any(|&k| k == KIND_DELETE) {
-        return Err(FeedParamsError::DeleteKind);
     }
     Ok(nmp_nip18::try_acquisition_kinds_for_primary(kinds)?)
 }

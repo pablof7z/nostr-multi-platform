@@ -70,7 +70,6 @@ pub type OpFeedEngine = RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, Ti
 /// Chirp's `ModularTimelineProjection` registers today; the swap to this engine
 /// is rung 7, so this rung leaves the key registered ONLY inside tests.
 pub const OP_FEED_SNAPSHOT_KEY: &str = "nmp.feed.home";
-const KIND_EVENT_DELETION: u32 = 5;
 
 /// Construct (but do not register) the NIP-10 OP-feed engine.
 ///
@@ -175,10 +174,24 @@ pub fn op_feed_observer(
 }
 
 impl OpFeedObserver {
-    fn apply_delete(&self, event: &KernelEvent) {
-        for target_id in event.tags.iter().filter_map(|tag| event_tag_id(tag)) {
+    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+        // NIP-01 short-text notes are not addressable, so only `e`-tag
+        // (event-id) targets resolve to a row; an `a`-tag coordinate has no
+        // op-feed root and is a no-op. A delete only removes a row the same
+        // author published (NIP-09). An `e` id can name two distinct shapes:
+        for target_id in &record.event_targets {
+            // (a) the note/root itself — keyed by its own id, author = note author;
             self.engine
-                .remove_root_if(target_id, |card| card.author_pubkey == event.author);
+                .remove_root_if(target_id, |card| card.author_pubkey == record.author);
+            // (b) a kind:6 repost *wrapper* that surfaced a target — keyed by the
+            //     target id, so a delete naming the wrapper id must match on the
+            //     wrapper id and validate against the reposter (wrapper author).
+            //     Without this, deleting your repost leaves the reposted row.
+            self.engine.remove_root_by_wrapper_if(target_id, |card| {
+                card.reposted_by
+                    .as_ref()
+                    .is_some_and(|repost| repost.author_pubkey == record.author)
+            });
         }
     }
 
@@ -225,8 +238,8 @@ impl OpFeedObserver {
 
 impl KernelEventObserver for OpFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == KIND_EVENT_DELETION {
-            self.apply_delete(event);
+        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+            self.apply_delete(&record);
             return;
         }
         if event.kind == crate::kinds::KIND_SHORT_TEXT_NOTE {
@@ -244,13 +257,5 @@ impl KernelEventObserver for OpFeedObserver {
             }
             self.engine.on_kernel_event(event);
         }
-    }
-}
-
-fn event_tag_id(tag: &[String]) -> Option<&str> {
-    if tag.first().is_some_and(|name| name == "e") {
-        tag.get(1).map(String::as_str).filter(|id| !id.is_empty())
-    } else {
-        None
     }
 }
