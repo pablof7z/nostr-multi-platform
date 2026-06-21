@@ -7,6 +7,9 @@
 
 mod action;
 mod projection;
+// ADR-0064 / S3 (#1751) — typed FlatBuffers payload codecs (`ActionPayload`
+// impls for `ReactAction` / `UnreactAction`).
+mod wire;
 
 pub use action::{
     register_actions, PublishReactionCommand, ReactAction, ReactModule, UnreactAction,

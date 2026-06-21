@@ -69,7 +69,8 @@ mod routing_trace;
 mod view;
 
 pub use action::{
-    ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
+    ActionContext, ActionId, ActionModule, ActionPayload, ActionPayloadDecodeError,
+    ActionRegistrar, ActionRejection, ActionResult,
 };
 pub use app_host::{
     AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,

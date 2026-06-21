@@ -1,0 +1,85 @@
+namespace nmp.publish;
+
+// ADR-0064 / S3 (#1751) — the typed FlatBuffers payload for the `nmp.publish`
+// `ActionModule` (the engine-generic publish noun; lives in `nmp-core/schema`
+// because publish is a core engine capability, not a per-NIP crate noun).
+//
+// This is the OPAQUE `DispatchEnvelope.payload` for `action_namespace =
+// "nmp.publish"`. The transport (S2 / #1750) carries it verbatim; the registry
+// adapter (S3) decodes it against THIS schema, gating `schema_version` BEFORE
+// `PublishModule::start()` runs (fail-closed on mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh + the
+// rust-flatc-drift gate. The schema has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-core/src/publish/wire/generated \
+//         crates/nmp-core/schema/publish.fbs
+
+// --- Pre-signed publish (sig byte-exactness is MANDATORY) --------------------
+//
+// CRITICAL (ADR-0064 / #1751): a pre-signed event's `id` and `sig` commit to the
+// EXACT canonical NIP-01 serialization. Re-modelling the signed event as a typed
+// FlatBuffers table and re-serializing it would risk a byte-different
+// re-encoding (field order, number formatting, escaping) that invalidates the
+// signature. So the canonical event is carried as OPAQUE BYTES — the verbatim
+// NIP-01 wire JSON object `{ id, pubkey, created_at, kind, tags, content, sig }`
+// (`SignedEvent::to_nip01_json`) — and round-tripped byte-for-byte. The registry
+// decode reconstructs the `SignedEvent` from these exact bytes; it does NOT
+// re-serialize.
+table PublishSigned {
+  // Caller-supplied publish handle (snapshot/ledger keying).
+  handle:string (required);
+  // The canonical NIP-01 event, VERBATIM (opaque). NEVER a typed table —
+  // signature byte-exactness depends on these exact bytes.
+  canonical_event:[ubyte] (required);
+  // Where the publish should go (Auto = NIP-65 outbox; Explicit = named relays).
+  target:PublishTarget (required);
+}
+
+// --- Sign-and-publish a kind:0 profile metadata event ------------------------
+table PublishProfile {
+  // Flat NIP-01 kind:0 metadata: a list of string-valued (key, value) fields.
+  fields:[ProfileField];
+}
+
+table ProfileField {
+  key:string (required);
+  value:string (required);
+}
+
+// --- Sign-and-publish an arbitrary event kind --------------------------------
+table PublishRaw {
+  kind:uint;
+  tags:[TagRow];
+  content:string (required);
+  target:PublishTarget (required);
+  // `None` (empty) = active account; otherwise the registered signer pubkey.
+  signer_pubkey:string;
+}
+
+// A NIP-01 tag row (`["e", "<id>", ...]`).
+table TagRow {
+  values:[string];
+}
+
+// --- Publish target ----------------------------------------------------------
+table PublishTarget {
+  // When false the publish is Auto-routed via NIP-65; when true `relays` is the
+  // explicit, non-empty opt-out set.
+  explicit:bool;
+  // Explicit relay URLs; ignored unless `explicit` is true.
+  relays:[string];
+}
+
+// The three DISPATCHABLE publish variants (Cancel is engine-internal and not
+// part of the typed dispatch payload — it rides the dedicated FFI symbol).
+union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw }
+
+table PublishPayload {
+  // Fail-closed schema_version tripwire (ADR-0064 §1, read RAW before decode).
+  schema_version:uint;
+  body:PublishPayloadBody (required);
+}
+
+file_identifier "NPUB";
+root_type PublishPayload;

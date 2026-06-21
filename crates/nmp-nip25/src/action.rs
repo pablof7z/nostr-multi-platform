@@ -1,6 +1,6 @@
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, ProtocolCommand,
-    ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
@@ -43,6 +43,14 @@ impl ActionModule for ReactModule {
     const NAMESPACE: &'static str = "nmp.nip25.react";
     type Action = ReactAction;
 
+    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<ReactAction as ActionPayload>::decode(bytes))
+    }
+
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_react(&action)
     }
@@ -64,6 +72,14 @@ impl ActionModule for ReactModule {
 impl ActionModule for UnreactModule {
     const NAMESPACE: &'static str = "nmp.nip25.unreact";
     type Action = UnreactAction;
+
+    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<UnreactAction as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if !is_hex64(&action.reaction_event_id) {
