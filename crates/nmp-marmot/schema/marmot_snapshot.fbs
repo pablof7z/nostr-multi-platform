@@ -14,10 +14,8 @@ namespace nmp.marmot;
 // call is unchanged and remains the source of truth.
 //
 // Raw data only (aim.md §2): hex group ids / pubkeys, Unix-second timestamps,
-// raw counts. The few free-form metadata fallbacks already computed by the
-// projection (`display_name`, `initials`, `invites_chip_label`) are carried
-// verbatim as the projection produced them — this codec runs NO additional
-// formatting on the encode path.
+// raw counts. Presentation layers (Swift, Kotlin, TUI, web) own all fallback
+// copy, initials computation, pluralisation, and formatted labels.
 //
 // Optional fields use the `has_x` presence-flag + value convention (the same
 // one used by content_tree.fbs / wallet_status.fbs / wot_bootstrap.fbs) so
@@ -26,8 +24,6 @@ namespace nmp.marmot;
 //   * MarmotGroupRow.last_msg_at:  Option<u64>      -> has_last_msg_at  + value
 //   * KeyPackageStatus.d_tag:      Option<String>   -> has_d_tag        + value
 //   * KeyPackageStatus.age_secs:   Option<u64>      -> has_age_secs     + value
-//   * MarmotSnapshot.invites_chip_label: Option<String>
-//                                                   -> has_invites_chip_label + value
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
@@ -40,8 +36,6 @@ namespace nmp.marmot;
 table MarmotGroupRow {
   id_hex:string;            // MLS group id, hex
   name:string;              // group name, verbatim MLS metadata (may be empty)
-  display_name:string;      // empty-name fallback ("Untitled group")
-  initials:string;          // 2-char avatar initials derived from name
   members:[string];         // member Nostr pubkeys (hex, 64 chars), sorted
   member_count:uint32;      // members.len()
   has_unread_count:bool;    // Option<u32> presence
@@ -55,7 +49,6 @@ table MarmotGroupRow {
 table PendingWelcomeRow {
   id_hex:string;            // kind:444 Welcome event id, hex
   group_name:string;        // group name verbatim from the Welcome (may be empty)
-  display_name:string;      // empty-name fallback ("Group invite")
   inviter_npub:string;      // inviter Nostr pubkey (hex, 64 chars — name is historical)
 }
 
@@ -74,11 +67,11 @@ table KeyPackageStatus {
 
 /// One parked (deferred) op waiting for a peer's KP to arrive.
 /// Mirrors `crate::projection::payload::PendingOpRow`.
+/// Shells format display copy from op_tag + missing_count (aim.md §2).
 table PendingOpRow {
   correlation_id:string;    // original action correlation_id
   op_tag:string;            // "create_group" | "invite"
   missing_count:uint32;     // remaining missing KP count
-  display_label:string;     // Rust-owned display string (e.g. "Waiting for key packages (1)…")
   age_secs:uint64;          // wall-clock seconds since the op was parked (now - created_at)
 }
 
@@ -94,13 +87,11 @@ table LastOpError {
 
 // The complete snapshot. Mirrors `crate::projection::payload::MarmotSnapshot`.
 table MarmotSnapshot {
-  schema_version:uint32 = 2;       // mirrors SCHEMA_VERSION; bumped for pending_ops addition
+  schema_version:uint32 = 2;       // mirrors SCHEMA_VERSION; bumped on every ABI change
   groups:[MarmotGroupRow];
   pending_welcomes:[PendingWelcomeRow];
   key_package:KeyPackageStatus;
   cached_kp_pubkeys:[string];      // peer pubkeys (hex) with a cached KeyPackage
-  has_invites_chip_label:bool;     // Option<String> presence
-  invites_chip_label:string;       // pluralised pending-invites chip label
   is_registered:bool;              // built against a registered signing identity
   orphaned_commit_count:uint32;    // V-61 dropped-handle diagnostic
   keyring_unavailable:bool;        // V-62 in-memory-credential-store diagnostic

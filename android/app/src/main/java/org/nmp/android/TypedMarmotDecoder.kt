@@ -53,8 +53,9 @@ object TypedMarmotDecoder {
     const val MESSAGES_FILE_IDENTIFIER = "NMMG"
 
     // Snapshot (NMMS): v1 = original shape; v2 adds pending_ops + last_op_error;
-    // v3 removes age_display/subtitle/action_label, adds is_registered on KeyPackageStatus.
-    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u, 3u)
+    // v3 removes age_display/subtitle/action_label, adds is_registered on KeyPackageStatus;
+    // v4 removes display_name/initials/invites_chip_label/display_label (shells now own presentation).
+    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u, 3u, 4u)
 
     // Messages (NMMG): unchanged at v1.
     private const val SUPPORTED_MESSAGES_SCHEMA_VERSION: UInt = 1u
@@ -106,7 +107,6 @@ object TypedMarmotDecoder {
                 pendingWelcomes = welcomes,
                 keyPackage = snap.keyPackage?.let { mapKeyPackage(it) } ?: MarmotKeyPackage(),
                 cachedKpPubkeys = cachedKp,
-                invitesChipLabel = if (snap.hasInvitesChipLabel) snap.invitesChipLabel else null,
                 isRegistered = snap.isRegistered,
                 orphanedCommitCount = snap.orphanedCommitCount.toInt(),
                 keyringUnavailable = snap.keyringUnavailable,
@@ -128,8 +128,6 @@ object TypedMarmotDecoder {
         return MarmotGroup(
             idHex = g.idHex ?: "",
             name = g.name ?: "",
-            displayName = g.displayName ?: "",
-            initials = g.initials ?: "",
             members = members,
             memberCount = g.memberCount.toInt(),
             unreadCount = if (g.hasUnreadCount) g.unreadCount.toInt() else null,
@@ -140,7 +138,6 @@ object TypedMarmotDecoder {
     private fun mapWelcome(w: FbPendingWelcomeRow): MarmotPendingWelcome = MarmotPendingWelcome(
         idHex = w.idHex ?: "",
         groupName = w.groupName ?: "",
-        displayName = w.displayName ?: "",
         inviterNpub = w.inviterNpub ?: "",
     )
 
@@ -156,7 +153,6 @@ object TypedMarmotDecoder {
         correlationId = op.correlationId ?: "",
         opTag = op.opTag ?: "",
         missingCount = op.missingCount.toInt(),
-        displayLabel = op.displayLabel ?: "",
         ageSecs = op.ageSecs.toLong(),
     )
 

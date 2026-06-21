@@ -23,16 +23,15 @@ use crate::projection::payload::{
 
 /// A fully-populated snapshot exercising every nested vector and `Option`
 /// branch: two groups (one with both counts present, one with both absent),
-/// a pending welcome, a non-default key package with all options present, and
-/// a present-`Some` invites-chip label.
+/// a pending welcome, a non-default key package with all options present.
+/// Presentation fields (`display_name`, `initials`, `invites_chip_label`,
+/// `display_label`) are absent — shells compute those from raw data.
 fn populated() -> MarmotSnapshot {
     MarmotSnapshot {
         groups: vec![
             MarmotGroupRow {
                 id_hex: "a".repeat(64),
                 name: "Marmot Test".to_string(),
-                display_name: "Marmot Test".to_string(),
-                initials: "MT".to_string(),
                 members: vec!["b".repeat(64), "c".repeat(64)],
                 member_count: 2,
                 unread_count: Some(7),
@@ -41,8 +40,6 @@ fn populated() -> MarmotSnapshot {
             MarmotGroupRow {
                 id_hex: "d".repeat(64),
                 name: String::new(),
-                display_name: "Untitled group".to_string(),
-                initials: "UG".to_string(),
                 members: vec!["e".repeat(64)],
                 member_count: 1,
                 unread_count: None,
@@ -52,7 +49,6 @@ fn populated() -> MarmotSnapshot {
         pending_welcomes: vec![PendingWelcomeRow {
             id_hex: "f".repeat(64),
             group_name: "Invite Group".to_string(),
-            display_name: "Invite Group".to_string(),
             inviter_npub: "1".repeat(64),
         }],
         key_package: KeyPackageStatus {
@@ -63,7 +59,6 @@ fn populated() -> MarmotSnapshot {
             is_registered: true,
         },
         cached_kp_pubkeys: vec!["2".repeat(64), "3".repeat(64)],
-        invites_chip_label: Some("1 invite".to_string()),
         is_registered: true,
         orphaned_commit_count: 3,
         keyring_unavailable: false,
@@ -71,7 +66,6 @@ fn populated() -> MarmotSnapshot {
             correlation_id: "corr-test-1".to_string(),
             op_tag: "create_group".to_string(),
             missing_count: 2,
-            display_label: "Waiting for key packages (2)\u{2026}".to_string(),
             age_secs: 12,
         }],
         last_op_error: Some(LastOpError {
@@ -127,7 +121,6 @@ fn absent_options_round_trip_as_none_not_zero_or_empty() {
     snapshot.groups[0].last_msg_at = None;
     snapshot.key_package.d_tag = None;
     snapshot.key_package.age_secs = None;
-    snapshot.invites_chip_label = None;
 
     let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
         .expect("absent-option snapshot must decode");
@@ -135,7 +128,6 @@ fn absent_options_round_trip_as_none_not_zero_or_empty() {
     assert_eq!(decoded.groups[0].last_msg_at, None);
     assert_eq!(decoded.key_package.d_tag, None);
     assert_eq!(decoded.key_package.age_secs, None);
-    assert_eq!(decoded.invites_chip_label, None);
     assert_eq!(decoded, snapshot);
 }
 
@@ -144,12 +136,10 @@ fn present_empty_string_options_round_trip_distinct_from_absent() {
     let mut snapshot = populated();
     // `Some("")` must NOT collapse to `None` on the wire.
     snapshot.key_package.d_tag = Some(String::new());
-    snapshot.invites_chip_label = Some(String::new());
 
     let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
         .expect("present-empty options must decode");
     assert_eq!(decoded.key_package.d_tag, Some(String::new()));
-    assert_eq!(decoded.invites_chip_label, Some(String::new()));
 }
 
 #[test]
@@ -185,14 +175,12 @@ fn pending_ops_round_trip_and_absent_last_op_error_is_none() {
             correlation_id: "cid-a".to_string(),
             op_tag: "create_group".to_string(),
             missing_count: 1,
-            display_label: "Waiting for key packages (1)\u{2026}".to_string(),
             age_secs: 5,
         },
         PendingOpRow {
             correlation_id: "cid-b".to_string(),
             op_tag: "invite".to_string(),
             missing_count: 3,
-            display_label: "Waiting for key packages (3)\u{2026}".to_string(),
             age_secs: 45,
         },
     ];
@@ -205,10 +193,6 @@ fn pending_ops_round_trip_and_absent_last_op_error_is_none() {
     assert_eq!(decoded.pending_ops[0].op_tag, "create_group");
     assert_eq!(decoded.pending_ops[0].missing_count, 1);
     assert_eq!(decoded.pending_ops[0].age_secs, 5, "age_secs must round-trip");
-    assert_eq!(
-        decoded.pending_ops[0].display_label,
-        "Waiting for key packages (1)\u{2026}"
-    );
     assert_eq!(decoded.pending_ops[1].correlation_id, "cid-b");
     assert_eq!(decoded.pending_ops[1].missing_count, 3);
     assert_eq!(decoded.pending_ops[1].age_secs, 45);

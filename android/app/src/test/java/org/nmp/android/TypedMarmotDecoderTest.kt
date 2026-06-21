@@ -27,6 +27,8 @@ import org.junit.Test
  *   v1 — original shape (no pending_ops / last_op_error)
  *   v2 — adds pending_ops:[PendingOpRow] (incl. age_secs) + structured
  *        last_op_error:LastOpError {op, reason, at_secs, correlation_id}
+ *   v4 — removes display_name/initials/invites_chip_label/display_label
+ *        (presentation fields moved to shells; aim.md §2)
  *   v99 — unknown version → decoder fails closed (returns null)
  * Messages wire is unchanged at v1; v2+ on that wire still fails closed.
  */
@@ -35,31 +37,31 @@ class TypedMarmotDecoderTest {
     private fun hex(b: Int): String = "%02x".format(b and 0xff).repeat(32)
 
     /**
-     * Build a minimal but complete NMMS buffer.
+     * Build a minimal but complete NMMS buffer using the v4 schema (no
+     * presentation fields). Raw data only: name, group_name, op_tag,
+     * missing_count, age_secs are the wire shape (aim.md §2).
      *
-     * [pendingOpCid] / [pendingOpLabel] — when both non-null, one structured
-     * [FbPendingOpRow] (incl. [pendingOpAgeSecs]) is embedded.
-     * [lastOpErrorReason] — when non-null, a [FbLastOpError] table is embedded
-     * (with [lastOpErrorOp]); otherwise the table is absent (offset 0).
+     * [pendingOpCid] — when non-null, one structured [FbPendingOpRow]
+     * (incl. [pendingOpAgeSecs]) is embedded.
+     * [lastOpErrorReason] — when non-null, a [FbLastOpError] table is
+     * embedded (with [lastOpErrorOp]); otherwise the table is absent (offset 0).
      */
     private fun snapshotBuffer(
-        schemaVersion: UInt = 1u,
+        schemaVersion: UInt = 4u,
         pendingOpCid: String? = null,
-        pendingOpLabel: String? = null,
         pendingOpAgeSecs: ULong = 0u,
         lastOpErrorOp: String = "create_group",
         lastOpErrorReason: String? = null,
     ): ByteArray {
         val builder = FlatBufferBuilder(1024)
         // group: one member, unread present, last_msg present.
+        // v4: no display_name / initials — shells compute those from `name`.
         val gId = builder.createString(hex(0x01))
         val gName = builder.createString("Team")
-        val gDisplay = builder.createString("Team")
-        val gInitials = builder.createString("TE")
         val member = builder.createString(hex(0x02))
         val members = MarmotGroupRow.createMembersVector(builder, intArrayOf(member))
         val group = MarmotGroupRow.createMarmotGroupRow(
-            builder, gId, gName, gDisplay, gInitials, members,
+            builder, gId, gName, members,
             1u, // member_count
             true, 4u, // has_unread_count / unread_count
             true, 1_700_000_500UL, // has_last_msg_at / last_msg_at
@@ -67,11 +69,11 @@ class TypedMarmotDecoderTest {
         val groups = FbMarmotSnapshot.createGroupsVector(builder, intArrayOf(group))
 
         // pending welcome.
+        // v4: no display_name — shells apply "Group invite" fallback from group_name.
         val wId = builder.createString(hex(0x03))
         val wGroup = builder.createString("Invite")
-        val wDisplay = builder.createString("Invite")
         val wInviter = builder.createString(hex(0x04))
-        val welcome = PendingWelcomeRow.createPendingWelcomeRow(builder, wId, wGroup, wDisplay, wInviter)
+        val welcome = PendingWelcomeRow.createPendingWelcomeRow(builder, wId, wGroup, wInviter)
         val welcomes = FbMarmotSnapshot.createPendingWelcomesVector(builder, intArrayOf(welcome))
 
         // key package: published, no d_tag, age present. Raw fields only
@@ -87,15 +89,14 @@ class TypedMarmotDecoderTest {
 
         val cached = builder.createString(hex(0x05))
         val cachedVec = FbMarmotSnapshot.createCachedKpPubkeysVector(builder, intArrayOf(cached))
-        val chip = builder.createString("1 invite")
 
         // v2 pending_ops:[PendingOpRow] (incl. age_secs). Empty when no op given.
-        val pendingOpsVec: Int = if (pendingOpCid != null && pendingOpLabel != null) {
+        // v4: no display_label — shells compute from op_tag + missing_count.
+        val pendingOpsVec: Int = if (pendingOpCid != null) {
             val cidOff = builder.createString(pendingOpCid)
             val tagOff = builder.createString("create_group")
-            val labelOff = builder.createString(pendingOpLabel)
             val opOff = FbPendingOpRow.createPendingOpRow(
-                builder, cidOff, tagOff, 1u, labelOff, pendingOpAgeSecs,
+                builder, cidOff, tagOff, 1u, pendingOpAgeSecs,
             )
             FbMarmotSnapshot.createPendingOpsVector(builder, intArrayOf(opOff))
         } else {
@@ -112,9 +113,10 @@ class TypedMarmotDecoderTest {
             0
         }
 
+        // v4: no has_invites_chip_label / invites_chip_label — shells compute
+        // plural label from pendingWelcomes.size (aim.md §2).
         val snap = FbMarmotSnapshot.createMarmotSnapshot(
             builder, schemaVersion, groups, welcomes, kp, cachedVec,
-            true, chip, // has_invites_chip_label / invites_chip_label
             true, // is_registered
             0u, // orphaned_commit_count
             false, // keyring_unavailable
@@ -150,17 +152,27 @@ class TypedMarmotDecoderTest {
         val snap = requireNotNull(TypedMarmotDecoder.decodeSnapshot(snapshotBuffer()))
         val group = snap.groups.single()
         assertEquals(hex(0x01), group.idHex)
+        // v4: raw name on the wire; shell computes displayName / initials.
+        assertEquals("Team", group.name)
+        assertEquals("Team", group.displayName) // shell-computed fallback
+        assertEquals("TE", group.initials)      // shell-computed 2-char initials
         assertEquals(1, group.memberCount)
         assertEquals(listOf(hex(0x02)), group.members)
         assertEquals(4, group.unreadCount) // has_unread_count == true
         assertEquals(1_700_000_500L, group.lastMsgAt)
 
-        assertEquals(hex(0x03), snap.pendingWelcomes.single().idHex)
+        val welcome = snap.pendingWelcomes.single()
+        assertEquals(hex(0x03), welcome.idHex)
+        // v4: raw group_name; shell computes displayName.
+        assertEquals("Invite", welcome.groupName)
+        assertEquals("Invite", welcome.displayName) // shell-computed fallback
+
         assertTrue(snap.keyPackage.published)
         assertNull(snap.keyPackage.dTag) // has_d_tag == false → null
         assertEquals(432_000L, snap.keyPackage.ageSecs)
         assertTrue(snap.keyPackage.isRegistered)
         assertEquals(listOf(hex(0x05)), snap.cachedKpPubkeys)
+        // v4: no invites_chip_label on wire; computed by shell from pendingWelcomes.size.
         assertEquals("1 invite", snap.invitesChipLabel)
         assertTrue(snap.isRegistered)
 
@@ -169,18 +181,16 @@ class TypedMarmotDecoderTest {
         assertNull(snap.lastOpError)
     }
 
-    // ── schema v2 structured fields ──────────────────────────────────────────
+    // ── schema v2/v4 structured fields ──────────────────────────────────────
 
     @Test
     fun schemaV2PendingOpsDecodeWithAgeSecs() {
         val cid = "corr-id-abc123"
-        val label = "Waiting for key packages (1)…"
         val snap = requireNotNull(
             TypedMarmotDecoder.decodeSnapshot(
                 snapshotBuffer(
                     schemaVersion = 2u,
                     pendingOpCid = cid,
-                    pendingOpLabel = label,
                     pendingOpAgeSecs = 42u,
                 )
             )
@@ -189,7 +199,8 @@ class TypedMarmotDecoderTest {
         assertEquals(cid, op.correlationId)
         assertEquals("create_group", op.opTag)
         assertEquals(1, op.missingCount)
-        assertEquals(label, op.displayLabel)
+        // v4: no display_label on wire; computed by shell from missingCount.
+        assertEquals("Waiting for key packages (1)…", op.displayLabel)
         assertEquals(42L, op.ageSecs)
         assertNull(snap.lastOpError)
     }
@@ -221,7 +232,6 @@ class TypedMarmotDecoderTest {
                 snapshotBuffer(
                     schemaVersion = 2u,
                     pendingOpCid = cid,
-                    pendingOpLabel = "Waiting for key packages (1)…",
                     lastOpErrorReason = "key_package_unavailable",
                 )
             )
@@ -229,6 +239,16 @@ class TypedMarmotDecoderTest {
         assertNotNull(snap.pendingOps.single())
         assertEquals(cid, snap.pendingOps.single().correlationId)
         assertEquals("key_package_unavailable", requireNotNull(snap.lastOpError).reason)
+    }
+
+    @Test
+    fun schemaV4DecodesCorrectly() {
+        // Verify the decoder accepts v4 buffers (presentation fields removed from wire).
+        val snap = requireNotNull(TypedMarmotDecoder.decodeSnapshot(snapshotBuffer(schemaVersion = 4u)))
+        assertEquals("Team", snap.groups.single().name)
+        // Shell-computed properties work even when decoder uses v4 path.
+        assertEquals("Team", snap.groups.single().displayName)
+        assertEquals("1 invite", snap.invitesChipLabel)
     }
 
     // ── messages happy path ──────────────────────────────────────────────────
@@ -250,7 +270,7 @@ class TypedMarmotDecoderTest {
         val snapEnv = TypedProjectionEnvelope(
             key = TypedMarmotDecoder.SNAPSHOT_KEY,
             schemaId = TypedMarmotDecoder.SNAPSHOT_SCHEMA_ID,
-            schemaVersion = 1u,
+            schemaVersion = 4u,
             fileIdentifier = TypedMarmotDecoder.SNAPSHOT_FILE_IDENTIFIER,
             payload = snapshotBuffer(),
         )
@@ -263,7 +283,7 @@ class TypedMarmotDecoderTest {
 
     @Test
     fun unsupportedSchemaVersionReturnsNull() {
-        // Snapshot v1 + v2 are both supported; v99 is unknown → fail closed.
+        // Snapshot v1–v4 are all supported; v99 is unknown → fail closed.
         assertNull(TypedMarmotDecoder.decodeSnapshot(snapshotBuffer(schemaVersion = 99u)))
         // Messages wire is still v1-only; v2+ fails closed.
         assertNull(TypedMarmotDecoder.decodeMessages(messagesBuffer(schemaVersion = 2u)))

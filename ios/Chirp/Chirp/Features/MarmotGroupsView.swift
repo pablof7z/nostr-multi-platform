@@ -65,7 +65,7 @@ struct GroupsView: View {
             }
 
             // Pending ops — ops parked in Rust's deferred-completion store.
-            // Each row shows the Rust-owned display_label verbatim.
+            // Each row shows the shell-computed displayLabel (aim.md §2).
             if !store.snapshot.pendingOps.isEmpty {
                 Section {
                     ForEach(store.snapshot.pendingOps) { op in
@@ -82,7 +82,7 @@ struct GroupsView: View {
                 }
             }
 
-            // Pending invites chip — Rust supplies the label or nil.
+            // Pending invites chip — shell computes the plural label or nil (aim.md §2).
             if let invitesLabel = store.invitesChipLabel {
                 NavigationLink {
                     InvitesView()
@@ -209,8 +209,9 @@ private struct PublicGroupRow: View {
 
 // ── Encrypted group row (MLS / Marmot) ───────────────────────────────────
 //
-// Lock emoji signals encrypted without using protocol vocabulary. EVERY
-// string here comes from the Rust snapshot — no derivation in Swift.
+// Lock emoji signals encrypted without using protocol vocabulary.
+// Raw data (name, memberCount) comes from Rust; display strings
+// (initials, displayName) are shell-computed (aim.md §2).
 
 private struct EncryptedGroupRow: View {
     let group: MarmotGroup
