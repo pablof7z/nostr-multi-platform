@@ -1,11 +1,14 @@
+use std::collections::HashMap;
+
 use serde_json::Value;
 
 use crate::bridge::UpdatePayload;
 use crate::feature_snapshot_json::{
     accounts_from, configured_relays_from, dm_from, follow_count_from, groups_from, messages_from,
-    outbox_from, outbox_summary_from, projection, publish_history_from, settings_hub_from,
-    string_field, summary_from, wallet_from,
+    outbox_from, outbox_summary_from, projection, publish_history_from, resolved_profiles_from,
+    settings_hub_from, string_field, wallet_from,
 };
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeatureSnapshot {
@@ -22,10 +25,11 @@ pub struct FeatureSnapshot {
     pub discovered_groups: Vec<GroupLine>,
     pub follow_count: usize,
     pub settings_hub: SummaryLine,
+    pub resolved_profiles: HashMap<String, ProfileWire>,
     // V-112 (ADR-0042): author_profile (from deleted author_view projection) and
-    // thread (from deleted thread_view projection) removed. The profile pane reads
-    // profile data from claim_profile → resolved_profiles; note lists read from the
-    // dynamic nmp.feed.author.* / nmp.feed.thread.* flat-feed projections.
+    // thread (from deleted thread_view projection) removed. Profile/thread note
+    // lists read from dynamic nmp.feed.author.* / nmp.feed.thread.* flat-feed
+    // projections decoded by SharedSnapshot.
 }
 
 impl FeatureSnapshot {
@@ -94,6 +98,7 @@ impl FeatureSnapshot {
             discovered_groups: groups_from(projections),
             follow_count: follow_count_from(projections),
             settings_hub: settings_hub_from(projections.get("settings_hub")),
+            resolved_profiles: resolved_profiles_from(projections),
         }
     }
 
@@ -107,6 +112,7 @@ impl FeatureSnapshot {
             && self.dm_conversations.is_empty()
             && self.group_messages.is_empty()
             && self.discovered_groups.is_empty()
+            && self.resolved_profiles.is_empty()
     }
 }
 

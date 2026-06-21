@@ -1,8 +1,7 @@
 //! Approach-b Home: right-pane thread detail view.
 //!
-//! Shows the selected row as the root post followed by every consecutive
-//! reply (`depth > 0`). When the Detail pane is focused, `state.detail_cursor`
-//! selects either the root (0) or one of the reply indices (1..=reply_count).
+//! Shows the opened thread feed when one is active. Without an opened thread it
+//! falls back to the selected home row plus its consecutive reply rows.
 
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -32,7 +31,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState, context: &RenderConte
     let inner = block.inner(area);
     let pane_width = inner.width as usize;
 
-    if !context.media_images.is_empty() {
+    if state.thread_event_id.is_empty() && !context.media_images.is_empty() {
         f.render_widget(block, area);
         f.render_widget(
             Paragraph::new("").style(Style::default().bg(DETAIL_BG)),
@@ -53,6 +52,10 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState, context: &RenderConte
 }
 
 fn build_lines(state: &AppState, pane_width: usize) -> Vec<Line<'static>> {
+    if !state.thread_event_id.is_empty() {
+        return build_open_thread_lines(state, pane_width);
+    }
+
     let Some(root) = root_for_selection(state) else {
         return vec![
             Line::from(""),
@@ -86,6 +89,33 @@ fn build_lines(state: &AppState, pane_width: usize) -> Vec<Line<'static>> {
         append_reply(&mut lines, reply, selected, pane_width);
     }
 
+    lines
+}
+
+fn build_open_thread_lines(state: &AppState, pane_width: usize) -> Vec<Line<'static>> {
+    if state.thread_rows.is_empty() {
+        return vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Loading opened thread feed.",
+                Style::default().fg(DIM_TEXT),
+            )),
+        ];
+    }
+
+    let focused = state.focused == Pane::Detail;
+    let mut lines = Vec::new();
+    for (index, row) in state.thread_rows.iter().enumerate() {
+        append_main_post(
+            &mut lines,
+            row,
+            focused && state.detail_cursor == index,
+            pane_width,
+        );
+        if index + 1 < state.thread_rows.len() {
+            lines.push(Line::from(""));
+        }
+    }
     lines
 }
 
@@ -358,5 +388,58 @@ pub(super) fn pad_for(width: usize, used: usize) -> String {
         " ".repeat(width - used)
     } else {
         String::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(id: &str, author: &str, content: &str) -> TimelineRow {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "card": {
+                    "id": id,
+                    "author_pubkey": author,
+                    "kind": 1,
+                    "created_at": 1_700_000_000_u64,
+                    "content": content,
+                    "relation_counts": {}
+                },
+                "attribution": []
+            }]
+        });
+        TimelineRow::from_snapshot(&snapshot)
+            .into_iter()
+            .next()
+            .expect("row decodes")
+    }
+
+    fn lines_text(lines: &[Line<'static>]) -> String {
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn detail_lines_use_opened_thread_feed_not_home_selection() {
+        let mut state = AppState {
+            focused: Pane::Detail,
+            rows: vec![row("home-row", &"aa".repeat(32), "home selected body")],
+            thread_event_id: "cc".repeat(32),
+            thread_rows: vec![row("thread-row", &"bb".repeat(32), "thread feed body")],
+            ..Default::default()
+        };
+
+        let text = lines_text(&build_lines(&state, 80));
+
+        assert!(text.contains("thread feed body"));
+        assert!(!text.contains("home selected body"));
+        state.thread_rows.clear();
+        let empty_text = lines_text(&build_lines(&state, 80));
+        assert!(empty_text.contains("Loading opened thread feed"));
     }
 }

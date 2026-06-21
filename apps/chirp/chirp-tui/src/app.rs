@@ -7,6 +7,7 @@ pub use crate::runtime::AppRuntime;
 use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
 
+pub(crate) mod dynamic_feeds;
 mod forms;
 mod navigation;
 
@@ -77,6 +78,9 @@ pub struct AppState {
     /// thread-roots-only, so this is also the row count).
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
+    pub profile_rows: Vec<TimelineRow>,
+    pub thread_rows: Vec<TimelineRow>,
+    pub thread_event_id: String,
     pub timeline_has_more: bool,
     pub metrics: RuntimeMetrics,
     pub relays: Vec<RelayRow>,
@@ -159,6 +163,9 @@ impl Default for AppState {
             update_count: 0,
             cards: 0,
             rows: Vec::new(),
+            profile_rows: Vec::new(),
+            thread_rows: Vec::new(),
+            thread_event_id: String::new(),
             timeline_has_more: false,
             metrics: RuntimeMetrics::default(),
             relays: Vec::new(),
@@ -242,6 +249,7 @@ impl AppState {
         if let Some(feed) = shared.home_feed {
             self.apply_feed_snapshot(feed);
         }
+        self.apply_dynamic_feeds(&shared.feeds);
         if !applied_action_result {
             self.status = format!(
                 "received NMP update #{} ({} bytes)",
@@ -377,6 +385,10 @@ impl AppState {
 }
 
 use crate::short_id;
+
+#[cfg(test)]
+#[path = "app/dynamic_feed_tests.rs"]
+mod dynamic_feed_tests;
 
 #[cfg(test)]
 mod tests {

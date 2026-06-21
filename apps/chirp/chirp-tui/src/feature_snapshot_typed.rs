@@ -10,10 +10,10 @@ use crate::feature_snapshot::{
     AccountLine, DmConversationLine, FeatureSnapshot, GroupLine, HistoryRelayLine, MessageLine,
     OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
 };
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot {
-    let typed = nmp_core::decode_snapshot_typed_projections(bytes)
-        .unwrap_or_default();
+    let typed = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
 
     // Helper closure: find a sidecar entry by its projection KEY.
     let find = |key: &str| -> Option<&[u8]> {
@@ -54,28 +54,25 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .unwrap_or_default();
 
     // configured_relays (key == schema_id == "configured_relays")
-    let configured_relays =
-        find(nmp_core::typed_projections::CONFIGURED_RELAYS_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_configured_relays(b).ok())
-            .map(|m| {
-                m.relays
-                    .into_iter()
-                    .map(|row| RelayEditLine {
-                        url: row.url,
-                        role: row.role,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    let configured_relays = find(nmp_core::typed_projections::CONFIGURED_RELAYS_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_configured_relays(b).ok())
+        .map(|m| {
+            m.relays
+                .into_iter()
+                .map(|row| RelayEditLine {
+                    url: row.url,
+                    role: row.role,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     // settings_hub (key == schema_id == "settings_hub")
     let settings_hub = find(nmp_core::typed_projections::SETTINGS_HUB_SCHEMA_ID)
         .and_then(|b| nmp_core::typed_projections::decode_settings_hub(b).ok())
-        .map(|m| {
-            SummaryLine {
-                title: "Settings".to_string(),
-                subtitle: crate::feature_snapshot::relay_count_subtitle(m.relay_count as u64),
-            }
+        .map(|m| SummaryLine {
+            title: "Settings".to_string(),
+            subtitle: crate::feature_snapshot::relay_count_subtitle(m.relay_count as u64),
         })
         .unwrap_or_else(|| SummaryLine {
             title: "Settings".to_string(),
@@ -128,10 +125,9 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .map(publish_history_from_queue)
         .unwrap_or_default();
 
-    // V-112 (ADR-0042): author_view / thread_view projections deleted; the
-    // profile pane now reads from claim_profile → claimed_profiles, and the
-    // feed pane reads from the dynamic nmp.feed.author.* / nmp.feed.thread.*
-    // FlatFeed registrations (nmp_app_chirp_open_author_feed / _open_thread_feed).
+    // V-112 (ADR-0042): author_view / thread_view projections deleted.
+    // SharedSnapshot decodes dynamic nmp.feed.author.* / nmp.feed.thread.*
+    // FlatFeed registrations for the profile and detail panes.
 
     // Host-registered: nmp.nip17.dm_inbox (key == "nmp.nip17.dm_inbox")
     let dm_conversations = find("nmp.nip17.dm_inbox")
@@ -232,6 +228,16 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         })
         .unwrap_or_default();
 
+    let resolved_profiles = find(nmp_core::typed_projections::RESOLVED_PROFILES_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_resolved_profiles(b).ok())
+        .map(|m| {
+            m.entries
+                .into_iter()
+                .map(|(key, card)| (key.clone(), profile_wire_from_card(&key, card)))
+                .collect()
+        })
+        .unwrap_or_default();
+
     FeatureSnapshot {
         accounts,
         active_account,
@@ -245,6 +251,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         discovered_groups,
         follow_count,
         settings_hub,
+        resolved_profiles,
     }
 }
 
@@ -282,6 +289,33 @@ fn publish_history_from_queue(
             }
         })
         .collect()
+}
+
+fn profile_wire_from_card(
+    key: &str,
+    card: nmp_core::typed_projections::ProfileCardModel,
+) -> ProfileWire {
+    let pubkey = if card.pubkey.is_empty() {
+        key.to_string()
+    } else {
+        card.pubkey
+    };
+    ProfileWire {
+        npub: nmp_core::display::to_npub(&pubkey),
+        npub_short: nmp_core::display::short_npub(&pubkey),
+        pubkey,
+        display_name: card
+            .display_name
+            .or(card.name)
+            .filter(|value| !value.trim().is_empty()),
+        about: nonempty(card.about),
+        picture_url: card.picture_url.filter(|value| !value.trim().is_empty()),
+        nip05: nonempty(card.nip05),
+    }
+}
+
+fn nonempty(value: String) -> Option<String> {
+    (!value.trim().is_empty()).then_some(value)
 }
 
 // ── Publish-outbox shell-side presentation helpers ─────────────────────────
@@ -389,7 +423,13 @@ fn outbox_summary_title(total: u32) -> String {
     format!("{total} pending publish{suffix}")
 }
 
-fn outbox_summary_subtitle(total: u32, sending: u32, retrying: u32, queued: u32, failed: u32) -> String {
+fn outbox_summary_subtitle(
+    total: u32,
+    sending: u32,
+    retrying: u32,
+    queued: u32,
+    failed: u32,
+) -> String {
     if total == 0 {
         return "Your local outbox is clear.".to_string();
     }

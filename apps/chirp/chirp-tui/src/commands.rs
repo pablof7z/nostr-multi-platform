@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::app::{AppRuntime, AppState, Pane};
+use crate::app::{AppRuntime, AppState};
 
 pub fn execute(input: &str, state: &mut AppState, runtime: &AppRuntime) {
     let command = input.trim();
@@ -188,7 +188,13 @@ fn zap(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
     }
     let pubkey = resolve_nip05_pubkey(address)?;
 
-    let cid = runtime.zap(&pubkey, sats * 1000, None, comment.as_deref(), Some(address))?;
+    let cid = runtime.zap(
+        &pubkey,
+        sats * 1000,
+        None,
+        comment.as_deref(),
+        Some(address),
+    )?;
     Ok(action(cid, &format!("zap {sats} sat → {address}")))
 }
 
@@ -310,13 +316,11 @@ fn search(rest: &str, state: &mut AppState, runtime: &AppRuntime) -> Result<Comm
     require(value, "search profile|thread|tag <value>")?;
     match kind {
         "profile" => {
-            runtime.open_author(value)?;
-            state.focus(Pane::Profile);
+            state.open_author_feed(runtime, value)?;
             Ok(status(format!("opened profile {value}")))
         }
         "thread" => {
-            runtime.open_thread(value)?;
-            state.focus(Pane::Detail);
+            state.open_thread_feed(runtime, value)?;
             Ok(status(format!("opened thread {value}")))
         }
         "tag" => {

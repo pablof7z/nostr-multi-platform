@@ -21,7 +21,7 @@ dispatches the same shared FFI or `nmp_app_dispatch_action` namespaces.
 | Navigation | Open thread | `Enter`, or `:search thread <event-id>` |
 | Navigation | Open profile | `p`, or `:search profile <pubkey>` |
 | Navigation | Open firehose tag search | `:search tag <tag>` |
-| Profile | Render kind:0 profile metadata | Profile pane from shared author projection |
+| Profile | Render kind:0 profile metadata | Profile pane from kernel-resolved profile metadata |
 | Profile | Publish kind:0 profile metadata | `:profile set name=<n> about=<text> picture=<url> nip05=<id>` |
 | Chats | NIP-17 inbox projection | `Chats` tab |
 | Chats | Send direct message | `:dm <pubkey> <message>` |
@@ -64,6 +64,12 @@ participate in discovery-kind routing (`0`, `3`, `10002`, and other
 - The TUI uses modal forms for forms-heavy flows entered from task surfaces,
   while command mode remains available as the power-user path into shared Rust
   capability actions.
+- Author/thread detail panes render dynamic feed sidecars
+  (`nmp.feed.author.<pubkey>` / `nmp.feed.thread.<event-id>`). Single-pane
+  shells keep at most the home feed plus one currently viewed dynamic feed open;
+  opening a new dynamic pane unregisters the previous dynamic feed, and leaving
+  the pane unregisters it.
 - Author kind:0 rendering and note relation counts follow the render-intent
-  model: visible note authors are claimed automatically, and names update when
-  the shared projection emits newer metadata.
+  model: visible note authors are claimed automatically, profile headers prefer
+  the kernel-owned `resolved_profiles` metadata, and names update when the
+  shared profile projections emit newer metadata.
