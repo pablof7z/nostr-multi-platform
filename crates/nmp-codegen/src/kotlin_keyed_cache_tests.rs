@@ -25,8 +25,8 @@ fn emits_namespace_routing_and_accessors() {
 #[test]
 fn enforces_the_five_invariants() {
     let out = rendered();
-    assert!(out.contains("if (sessionId != appliedSession || snapshotEpoch != appliedEpoch)"));
-    assert!(out.contains("val isBaseline = batch.baseline"));
+    assert!(out.contains("val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"));
+    assert!(out.contains("isBaseline = batch.baseline"));
     assert!(out.contains("RefRowState.Cleared"));
     assert!(out.contains("ns.remove(row.key)"));
     assert!(out.contains("needsResync = true"));
@@ -49,6 +49,39 @@ fn emits_failclosed_and_revsafe_hardening() {
     assert!(out.contains("var rowDecoder: (String, ByteArray) -> Boolean"));
     // BLOCKING-4: rev-safe clear (a clear removes only when strictly newer).
     assert!(out.contains("if (cached != null && row.rev > cached.rev)"));
+}
+
+/// BLOCKING-1/2/3 fail-closed: the generator must emit (1) a DEFERRED identity
+/// reset (no eager `rows.clear()` before decode), (2) whole-batch rejection on a
+/// missing key, (3) whole-batch rejection on an out-of-range state discriminant.
+#[test]
+fn emits_failclosed_missing_key_and_bad_state_and_deferred_reset() {
+    let out = rendered();
+    // BLOCKING-2: a row with no key rejects the WHOLE batch (no silent skip).
+    assert!(out.contains("if (key == null) {"));
+    assert!(out.contains("rejecting whole batch"));
+    // The old fail-open `row.key ?: continue` row-skip must be GONE.
+    assert!(
+        !out.contains("val key = row.key ?: continue"),
+        "row-skipping on missing key must be removed (fail-closed)"
+    );
+    // BLOCKING-3: an out-of-range state discriminant rejects the whole batch.
+    assert!(
+        out.contains("if (state > RefRowState.Cleared) {"),
+        "unknown state discriminant must reject the whole batch (not coerce to Changed)"
+    );
+    // BLOCKING-1: identity reset is DEFERRED — no eager full clear at the top of
+    // merge; the drop happens only after a valid baseline decode.
+    assert!(
+        !out.contains("rows.clear()\n            appliedSession = sessionId"),
+        "identity reset must be deferred until after a valid baseline decode"
+    );
+    assert!(
+        out.contains("val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"),
+        "merge must compute identityChanged without clearing the cache"
+    );
+    // The deferred reset drops other projections only on a successful baseline.
+    assert!(out.contains("rows.keys.retainAll { it == projectionKey }"));
 }
 
 #[test]

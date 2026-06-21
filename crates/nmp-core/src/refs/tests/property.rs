@@ -296,4 +296,58 @@ proptest! {
             prop_assert_eq!(cache.snapshot(ns), ground_truth(&source, ns));
         }
     }
+
+    /// BLOCKING-1 (fail-closed epoch repair): after an arbitrary converged
+    /// stream, the FIRST baseline at a new epoch is POISONED (a 0xFF-prefixed
+    /// row). The cache must be UNCHANGED (prior-epoch snapshot retained, resync
+    /// latched) — a malformed baseline can NEVER empty a live cache, even on an
+    /// identity bump. Repair happens only on a SUBSEQUENT VALID baseline.
+    #[test]
+    fn prop_malformed_epoch_baseline_never_empties_cache(
+        ops in proptest::collection::vec(op_strategy(5), 0..80),
+        poison_ns in 0..REF_NS.len(),
+    ) {
+        let keys = 5;
+        let mut h = Harness::new();
+        for op in &ops {
+            h.apply_op(op, keys);
+        }
+        // Settle to a known good converged state.
+        h.emit_all(false);
+        h.emit_all(false);
+        h.assert_converged();
+
+        // Snapshot the converged prior-epoch cache for every namespace.
+        let prior: Vec<BTreeMap<String, Vec<u8>>> =
+            REF_NS.iter().map(|ns| h.cache.snapshot(ns)).collect();
+
+        // Bump the epoch and feed a POISONED first baseline for one namespace.
+        let new_epoch = h.epoch + 1;
+        let poison_ns = REF_NS[poison_ns];
+        h.tracker.reset();
+        let mut bad = h.tracker.build_baseline(poison_ns, &h.source);
+        // Poison the first Changed row if any; else inject one.
+        if let Some(row) = bad.rows.iter_mut().find(|r| r.state == RefRowState::Changed) {
+            if row.payload.is_empty() { row.payload.push(0xFF); } else { row.payload[0] = 0xFF; }
+        } else {
+            bad.rows.push(RefRow::changed("poison", 999, vec![0xFF, 0x01]));
+        }
+        let bad = wire_round_trip(&bad);
+        let outcome = h.cache.apply(&bad, h.session, new_epoch, &decode_ok);
+
+        prop_assert!(outcome.decode_failed, "poisoned epoch baseline must fail closed");
+        prop_assert!(h.cache.needs_resync(), "needs_resync must latch");
+        // The cache is UNCHANGED across ALL namespaces — not emptied by the
+        // epoch bump despite the malformed first baseline.
+        for (i, ns) in REF_NS.iter().enumerate() {
+            prop_assert_eq!(h.cache.snapshot(ns), prior[i].clone(),
+                "namespace {}: malformed epoch baseline must leave the cache untouched", ns);
+        }
+
+        // A subsequent VALID baseline at the new epoch repairs the full set.
+        h.epoch = new_epoch;
+        h.needs_baseline = true;
+        h.emit_all(false);
+        h.assert_converged();
+    }
 }

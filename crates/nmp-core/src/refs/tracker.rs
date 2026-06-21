@@ -200,6 +200,7 @@ fn sorted_keys(source: &dyn RefRowRevSource, namespace: &str) -> Vec<String> {
 /// This is the EXACT shape Lane A needs from Lane B; it is a test/bench fixture,
 /// never a production resolver. Delete when Lane B's `RefResolver` implements
 /// `RefRowRevSource`.
+#[cfg(test)]
 #[derive(Debug, Default, Clone)]
 pub struct MapRowRevSource {
     rows: HashMap<String, BTreeMap<String, (u64, Vec<u8>)>>,
@@ -211,6 +212,7 @@ pub struct MapRowRevSource {
     tombstones: HashMap<String, BTreeMap<String, u64>>,
 }
 
+#[cfg(test)]
 impl MapRowRevSource {
     /// Empty source.
     #[must_use]
@@ -248,6 +250,7 @@ impl MapRowRevSource {
     }
 }
 
+#[cfg(test)]
 impl RefRowRevSource for MapRowRevSource {
     fn ref_row_rev(&self, namespace: &str, key: &str) -> u64 {
         if let Some(rev) = self

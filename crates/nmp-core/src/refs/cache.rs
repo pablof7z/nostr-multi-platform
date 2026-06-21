@@ -111,8 +111,12 @@ impl RefRowCache {
     /// bool`. A `Changed` row commits only when it returns `true`; on `false`
     /// the prior row is retained and `decode_failed` is latched (D6).
     ///
-    /// D4: a changed `session_id` or `epoch` clears ALL namespaces and resets
-    /// identity BEFORE any row is merged.
+    /// D4: a changed `session_id` or `epoch` resets identity and rebuilds the
+    /// full set from the new baseline. CRITICALLY this is done DECODE-BEFORE-
+    /// COMMIT: the identity flip + cache clear happen only AFTER the new
+    /// baseline fully decodes. A malformed FIRST baseline after an epoch/session
+    /// bump therefore RETAINS the prior cache and latches `needs_resync` — it
+    /// never empties a live cache on garbage (fail-closed, D6).
     ///
     /// A `baseline` batch is applied ATOMICALLY via scratch-then-commit: every
     /// required row is decoded into a scratch namespace map first and the prior
@@ -127,18 +131,30 @@ impl RefRowCache {
         epoch: u64,
         decode_ok: &dyn Fn(&str, &[u8]) -> bool,
     ) -> RefRowApplyOutcome {
-        // D4 — mandatory full reset on session/epoch change, before any merge.
-        if session_id != self.applied_session || epoch != self.applied_epoch {
-            self.rows.clear();
+        // D4 — an identity (session/epoch) change demands a full rebuild. We do
+        // NOT clear here: clearing before the new baseline decodes would empty a
+        // live cache on a malformed first frame (fail-open). The reset is
+        // deferred into the baseline commit (scratch-then-commit), so the prior
+        // cache survives a garbage baseline after an identity bump.
+        let identity_changed = session_id != self.applied_session || epoch != self.applied_epoch;
+
+        if batch.baseline {
+            return self.apply_baseline(batch, identity_changed, session_id, epoch, decode_ok);
+        }
+
+        // A non-baseline batch under a changed identity cannot rebuild the full
+        // set (it carries only deltas). Fail closed: adopt the new identity but
+        // mark un-baselined + needs-resync and retain the prior cache rather
+        // than merging deltas onto a stale-epoch base or emptying it. The
+        // producer always follows an identity bump with a baseline frame.
+        if identity_changed {
             self.applied_session = session_id;
             self.applied_epoch = epoch;
             self.baselined = false;
-            self.needs_resync = false;
+            self.needs_resync = true;
+            return RefRowApplyOutcome::default();
         }
 
-        if batch.baseline {
-            return self.apply_baseline(batch, decode_ok);
-        }
         self.apply_incremental(batch, decode_ok)
     }
 
@@ -146,9 +162,18 @@ impl RefRowCache {
     /// whole batch). Decodes every `Changed` row into a fresh scratch map; only
     /// when ALL required rows decode does it atomically replace the namespace.
     /// On any decode failure the prior cache is preserved and resync latches.
+    ///
+    /// When `identity_changed` is set this is the FIRST baseline at a new
+    /// session/epoch: on a SUCCESSFUL decode it flips identity and drops all
+    /// OTHER namespaces (so prior-epoch rows in unrelated namespaces can't
+    /// linger) as part of the atomic commit; on a decode FAILURE it touches
+    /// nothing and latches resync.
     fn apply_baseline(
         &mut self,
         batch: &RefRowDeltaBatch,
+        identity_changed: bool,
+        session_id: u64,
+        epoch: u64,
         decode_ok: &dyn Fn(&str, &[u8]) -> bool,
     ) -> RefRowApplyOutcome {
         let mut scratch: HashMap<String, CachedRow> = HashMap::new();
@@ -189,9 +214,28 @@ impl RefRowCache {
             }
         }
 
+        // Decode succeeded → now (and ONLY now) it is safe to mutate state.
+        // On an identity (session/epoch) change this is where the deferred reset
+        // lands: adopt the new identity, drop every OTHER namespace's
+        // prior-epoch rows, and clear the prior resync latch. Doing this only
+        // after a full decode guarantees a malformed first baseline left the
+        // prior cache + identity intact (fail-closed, D6 — fix BLOCKING-1).
+        if identity_changed {
+            self.rows.retain(|ns, _| ns == &batch.namespace);
+            self.applied_session = session_id;
+            self.applied_epoch = epoch;
+            self.needs_resync = false;
+        }
+
         // Atomic commit: diff prior vs scratch so the host re-renders exactly
         // the slots that changed (added / updated / dropped ghosts), then swap.
-        let prior = self.rows.get(&batch.namespace);
+        // After an identity change the prior-epoch namespace is treated as gone,
+        // so every scratch row counts as changed (a fresh account/epoch set).
+        let prior = if identity_changed {
+            None
+        } else {
+            self.rows.get(&batch.namespace)
+        };
         let mut changed: HashSet<String> = HashSet::new();
         for (key, row) in &scratch {
             match prior.and_then(|p| p.get(key)) {

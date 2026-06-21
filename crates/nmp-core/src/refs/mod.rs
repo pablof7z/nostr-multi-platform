@@ -45,7 +45,11 @@ pub use rowdelta::{
     decode_ref_row_delta_batch, encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch,
     RefRowDeltaDecodeError, RefRowState,
 };
-pub use tracker::{MapRowRevSource, RefRowDeltaTracker, RefRowRevSource};
+pub use tracker::{RefRowDeltaTracker, RefRowRevSource};
+// `MapRowRevSource` is a TEST-ONLY in-memory Lane B stub (deleted when Lane B's
+// real `RefResolver` lands); it is not part of the public crate surface.
+#[cfg(test)]
+pub(crate) use tracker::MapRowRevSource;
 
 #[allow(
     clippy::all,
