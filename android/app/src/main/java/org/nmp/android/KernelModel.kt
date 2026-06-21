@@ -34,7 +34,9 @@ private const val HOME_FEED_KEY = "nmp.feed.home"
  */
 class KernelModel : ViewModel() {
 
-    private val bridge = KernelBridge()
+    // `internal` so sibling extension files (KernelModelAccounts, KernelModelActions)
+    // in the same package can call bridge methods without re-exposing them as public.
+    internal val bridge = KernelBridge()
 
     // ADR-0055 R3-S4: NMP-owned rev-aware projection cache. One instance per
     // kernel session. Reset on session teardown (onCleared). Fed each FlatBuffers
@@ -81,7 +83,9 @@ class KernelModel : ViewModel() {
      * `repost`/`follow`/`unfollow`/`sendDm` methods below delegate to it, so the
      * call-site surface (`model.zapNote(…)` etc.) is unchanged.
      */
-    private val social = SocialActions(
+    // `internal` so KernelModelActions.kt (same package) can delegate social write
+    // ops without re-exposing the SocialActions object as public.
+    internal val social = SocialActions(
         buildActionSpec = { intentJson -> bridge.buildActionSpec(intentJson) },
         dispatchAction = { ns, json -> bridge.dispatchAction(ns, json) },
     )
@@ -337,133 +341,13 @@ class KernelModel : ViewModel() {
         bridge.closeAuthor(pubkey)
     }
 
-    /**
-     * Dispatch a named action through the action registry (generic path).
-     * Fire-and-forget — outcomes arrive in the next snapshot tick.
-     */
-    fun dispatchAction(namespace: String, actionJson: String): DispatchResult {
-        val result = bridge.dispatchAction(namespace, actionJson)
-        Log.d(TAG, "dispatchAction($namespace) response: $result")
-        return result
-    }
+    // Action dispatch, wallet, and outbox control-plane are extension functions in
+    // KernelModelActions.kt (same package). See also KernelModelAccounts.kt.
 
-    fun ackActionStage(correlationId: String) {
-        bridge.ackActionStage(correlationId)
-    }
-
-    /** Retry a failed publish from the outbox (#1291 GAP 4). */
-    fun retryPublish(correlationId: String) {
-        bridge.retryPublish(correlationId)
-    }
-
-    /** Cancel an in-flight publish from the outbox (#1291 GAP 4). */
-    fun cancelPublish(correlationId: String) {
-        bridge.cancelPublish(correlationId)
-    }
-
-    // -------------------------------------------------------------------------
-    // Account management
-    // -------------------------------------------------------------------------
-
-    /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace).
-     *
-     *  No imperative post-identity `openHomeFeed()`: the home-feed interest is
-     *  registered by the view that renders it (`TimelineScreen` →
-     *  `LaunchedEffect { model.openHomeFeed() }`), exactly as on iOS
-     *  (`HomeFeedView.task { model.openHomeFeed() }`). The kernel now persists
-     *  the host-declared active-follows kinds even before an account exists
-     *  (#1493 P4 / active-follows declaration), so the sign-in reconcile re-registers
-     *  the feed without the shell re-declaring it. Driving it from the identity
-     *  op was a per-platform policy band-aid the shell must not carry (D7). */
-    fun signInNsec(secret: String) {
-        bridge.signInNsec(secret)
-    }
-
-    /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
-    fun signInBunker(uri: String) {
-        bridge.signInBunker(uri)
-    }
-
-    /** ADR-0048 Stage 2 — begin NIP-55 sign-in; Rust builds the get_public_key request. */
-    fun signInWithAmber(signer: NostrSignerInfo) {
-        bridge.signInNip55(signer.packageName ?: signer.contentAuthority)
-    }
-
-    /** ADR-0048 Stage 2 — route ExternalSignerResponse JSON back to the Rust NIP-55 driver. */
-    fun deliverSignerResponse(responseJson: String) {
-        bridge.deliverSignerResponse(responseJson)
-    }
-
-    fun cancelBunkerHandshake() {
-        bridge.cancelBunkerHandshake()
-    }
-
-    fun nostrConnectUri(callbackScheme: String? = null): String? =
-        bridge.nostrConnectUri(callbackScheme)
-
-    /** Create a new local account with the given display name.
-     *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */
-    fun createAccount(displayName: String) {
-        bridge.createLocalAccount(displayName)
-    }
-
-    /** Switch the active account (direct C-ABI — no ActionModule for switch namespace).
-     *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */
-    fun switchAccount(pubkey: String) {
-        bridge.switchAccount(pubkey)
-    }
-
-    /** Remove the account identified by the given pubkey (direct C-ABI). */
-    fun removeAccount(pubkey: String) = bridge.removeAccount(pubkey)
-
-    // -------------------------------------------------------------------------
-    // Relay management
-    // -------------------------------------------------------------------------
-
-    /** Add a relay with the given URL and role ("read", "write", or "both"). */
-    fun addRelay(url: String, role: String = "both") = bridge.addRelay(url, role)
-
-    /** Remove a relay by URL. */
-    fun removeRelay(url: String) = bridge.removeRelay(url)
-
-    /** Publish the current relay set as NIP-65 (kind:10002). #1291 GAP 5. */
-    fun publishRelayList(relays: List<RelayStatus>): DispatchResult =
-        bridge.publishRelayList(relays)
-
-    /** Publish a NIP-17 DM relay-list (kind:10050) from `wss://` URLs. #1291 GAP 5. */
-    fun publishDmRelayList(relays: List<String>): DispatchResult =
-        bridge.publishDmRelayList(relays)
-
-    // -------------------------------------------------------------------------
-    // Social + DM — write ops live in [social: SocialActions]; these delegate so
-    // the public surface (model.zapNote(…) etc.) is unchanged.
-    // -------------------------------------------------------------------------
-
-    /** Zap a note (NIP-57). */
-    fun zapNote(
-        eventId: String,
-        recipientPubkey: String,
-        amountMsats: Long = 21000L,
-        comment: String = "",
-    ): DispatchResult? = social.zapNote(eventId, recipientPubkey, amountMsats, comment)
-
-    /** React to a note (NIP-25). */
-    fun react(eventId: String, reaction: String = "+"): DispatchResult? =
-        social.react(eventId, reaction)
-
-    /** Repost a note (NIP-18 kind:6). Mirrors iOS `model.repost(eventID:authorPubkey:)`. */
-    fun repost(eventId: String, authorPubkey: String): DispatchResult? =
-        social.repost(eventId, authorPubkey)
-
-    /** Follow a pubkey. */
-    fun follow(pubkey: String): DispatchResult? = social.follow(pubkey)
-
-    /** Unfollow a pubkey. */
-    fun unfollow(pubkey: String): DispatchResult? = social.unfollow(pubkey)
-
-    /** Send a NIP-17 direct message to the given recipient pubkey. */
-    fun sendDm(recipientPubkey: String, content: String): DispatchResult? =
-        social.sendDm(recipientPubkey, content)
+    // Account management, relay management, and social/wallet write ops are
+    // extension functions in KernelModelAccounts.kt and KernelModelActions.kt
+    // (same package, no import required). Extracted to keep this file under the
+    // 500-LOC ceiling (AGENTS.md File Size). Public API surface is unchanged.
 
     // -------------------------------------------------------------------------
     // Marmot registration trampoline — write ops live in [marmot: MarmotActions]
@@ -472,22 +356,6 @@ class KernelModel : ViewModel() {
     /** Idempotent per-account Marmot MLS registration. [dbDir] = context.filesDir.path. */
     fun registerMarmotIfNeeded(dbDir: String) {
         marmot.registerIfNeeded(state.value.activeAccount, dbDir, bridge)
-    }
-
-    // -------------------------------------------------------------------------
-    // Wallet (NIP-47 / NWC)
-    // -------------------------------------------------------------------------
-
-    /** Connect a NIP-47 wallet via NWC URI. [actionJson] = {"Connect":{"uri":"nostr+walletconnect://..."}} */
-    fun dispatchWalletConnect(actionJson: String) {
-        val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
-        Log.d(TAG, "wallet connect response: $response")
-    }
-
-    /** Disconnect the current NIP-47 wallet. */
-    fun dispatchWalletDisconnect() {
-        val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
-        Log.d(TAG, "wallet disconnect response: $response")
     }
 
     /**
