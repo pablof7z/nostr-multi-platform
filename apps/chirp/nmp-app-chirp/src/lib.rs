@@ -117,16 +117,20 @@ pub use ffi::{
     nmp_app_chirp_identity_remove_account, nmp_app_chirp_identity_restore,
     nmp_app_chirp_identity_sign_in_nsec,
 };
-#[cfg(feature = "marmot")]
-pub use nmp_marmot::fetch::nmp_marmot_fetch_key_packages;
+// #1727: the vestigial `nmp_marmot_fetch_key_packages` C-ABI symbol was
+// deleted — it had no native caller and the same key-package lookup interest
+// is already pushed internally by the invite/group flow.
 // V-107 / ADR-0039: `nmp_marmot_snapshot`, `nmp_marmot_group_messages`, and
 // `nmp_marmot_string_free` were deleted. Swift now reads Marmot state from
 // the push projections (`nmp.marmot.snapshot` / `nmp.marmot.messages`) on
 // the SnapshotFrame instead. Only the lifecycle symbols remain exported here.
+// #1727: `nmp_marmot_register` (secret-bearing) is no longer a C-ABI symbol —
+// it became a plain Rust fn (`nmp_marmot::ffi::register_with_secret_hex`) used
+// only Rust-side by the nsec sign-in wrapper. No native-facing `nmp_marmot_*`
+// symbol carries secret key material; native registers via `register_active`,
+// which reads the actor-owned `mls_local_nsec` slot.
 #[cfg(feature = "marmot")]
-pub use nmp_marmot::ffi::{
-    nmp_marmot_register, nmp_marmot_register_active, nmp_marmot_unregister, MarmotHandle,
-};
+pub use nmp_marmot::ffi::{nmp_marmot_register_active, nmp_marmot_unregister, MarmotHandle};
 #[cfg(feature = "marmot")]
 pub use nmp_marmot::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotMessageRow, MarmotSnapshot, PendingWelcomeRow,

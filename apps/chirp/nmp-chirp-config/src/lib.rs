@@ -71,7 +71,8 @@ pub fn chirp_nostrconnect_perms() -> &'static str {
 
 /// App-scoped keyring service id for the Marmot MLS DB encryption key.
 ///
-/// Passed to `nmp_marmot_register` / `nmp_marmot_register_active` as the
+/// Passed to `nmp_marmot_register_active` (and the Rust-internal
+/// `register_with_secret_hex` sign-in path) as the
 /// `keyring_service_id` parameter. Chirp-specific so other Marmot host apps
 /// use their own namespace and never collide with Chirp's stored key (D0).
 pub const CHIRP_MARMOT_KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";

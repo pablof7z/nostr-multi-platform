@@ -14,7 +14,6 @@
 #      the NIP-46 broker adapter
 #   2. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
 #      crates/nmp-marmot/src/ffi.rs +
-#      crates/nmp-marmot/src/fetch.rs -> libnmp_app_chirp.a
 #      (originally relocated from nmp-app-chirp into nmp-marmot in PR #348;
 #       returned from apps/marmot/ to crates/nmp-marmot/ in step 12, 2026-05-25)
 #
@@ -130,7 +129,6 @@ FFI_FILE_ROOTS=(
     # to crates/nmp-marmot/ in step 12, 2026-05-25). Symbols still land in
     # the Chirp link via nmp-marmot's rlib inclusion.
     "${REPO_ROOT}/crates/nmp-marmot/src/ffi.rs"
-    "${REPO_ROOT}/crates/nmp-marmot/src/fetch.rs"
 )
 
 if [[ ! -f "${HEADER}" ]]; then
