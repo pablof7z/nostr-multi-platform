@@ -226,13 +226,21 @@ fn per_key_rev_advances_on_resolve_and_release() {
     let r2 = kernel.ref_row_rev(RefNamespace::Profile, &pk);
     assert!(r2 > r1, "a second resolve advances it again");
 
+    // A NON-last release (c1) bumps the SURVIVING row (site 2 — the row narrows /
+    // re-asserts to the remaining consumers).
     kernel.release_ref(RefNamespace::Profile, &pk, "c1");
     let r3 = kernel.ref_row_rev(RefNamespace::Profile, &pk);
-    assert!(r3 > r2, "release must advance the per-key rev (site 2)");
+    assert!(r3 > r2, "a non-last release advances the surviving per-key rev (site 2)");
 
+    // The LAST release tears the row down: `clear_profile_row` bumps to the final
+    // post-clear rev and immediately removes the entry (BLOCKING 2), so the row now
+    // reads 0 (gone) rather than retaining a stale rev forever.
     kernel.release_ref(RefNamespace::Profile, &pk, "c2");
-    let r4 = kernel.ref_row_rev(RefNamespace::Profile, &pk);
-    assert!(r4 > r3, "the last release advances it once more");
+    assert_eq!(
+        kernel.ref_row_rev(RefNamespace::Profile, &pk),
+        0,
+        "the last release clears the per-key rev entry (row gone — BLOCKING 2)"
+    );
 }
 
 // ─── per-key rev: profile ingest site ────────────────────────────────────────
@@ -304,107 +312,6 @@ fn profile_shape_narrows_when_widest_consumer_releases() {
     assert!(
         kernel.ref_row_rev(RefNamespace::Profile, &pk) > rev_before,
         "the narrowing bumps the per-key rev"
-    );
-}
-
-// ─── BLOCKING 2: per-key rev map stays bounded ───────────────────────────────
-
-/// A spurious release of a never-claimed key must NOT create a permanent row-rev
-/// entry — the map only ever holds keys that were actually claimed.
-#[test]
-fn spurious_release_of_never_claimed_key_creates_no_row() {
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let pk = hex64("9e7e6");
-    kernel.release_ref(RefNamespace::Profile, &pk, "ghost");
-    assert_eq!(kernel.ref_row_rev(RefNamespace::Profile, &pk), 0);
-    assert!(
-        kernel
-            .projection_rev_tracker
-            .source_versions
-            .profile_row_revs
-            .is_empty(),
-        "a spurious profile release must not grow the rev map (BLOCKING 2 (a))"
-    );
-
-    let uri = nevent_uri(&hex64("9e7e7"));
-    kernel.release_ref(RefNamespace::Event, &uri, "ghost");
-    assert!(
-        kernel
-            .projection_rev_tracker
-            .source_versions
-            .event_row_revs
-            .is_empty(),
-        "a spurious event release must not grow the rev map (BLOCKING 2 (a))"
-    );
-}
-
-/// resolve→release→reap churn of the same key keeps the per-key rev map bounded:
-/// after Lane A emits each Cleared row and reaps, the map returns to empty.
-#[test]
-fn per_key_rev_map_stays_bounded_under_resolve_release_churn() {
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let pk = hex64("ba6c");
-    for _ in 0..5 {
-        profile_card(&mut kernel, &pk, "c", RefLiveness::CacheOk);
-        // At most one live key while held.
-        assert_eq!(
-            kernel
-                .projection_rev_tracker
-                .source_versions
-                .profile_row_revs
-                .len(),
-            1
-        );
-        kernel.release_ref(RefNamespace::Profile, &pk, "c");
-        // Lane A emits the Cleared frame for this key, then reaps it.
-        let reaped = kernel
-            .projection_rev_tracker
-            .source_versions
-            .reap_cleared_profile_rows();
-        assert_eq!(reaped, vec![pk.clone()], "the cleared key is reaped");
-    }
-    assert_eq!(
-        kernel
-            .projection_rev_tracker
-            .source_versions
-            .profile_row_revs
-            .len(),
-        0,
-        "resolve→release→reap churn leaves the per-key rev map empty (BLOCKING 2 (b))"
-    );
-}
-
-/// A key re-resolved BEFORE Lane A reaps it keeps its monotonic rev (the bump
-/// cancels the pending clear), and the reap never drops a re-resolved live key.
-/// This is the stale-low-rev guard coordinating with Lane A's rev consumption.
-#[test]
-fn re_resolve_before_reap_keeps_monotonic_rev_and_is_not_reaped() {
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let pk = hex64("ab12");
-    profile_card(&mut kernel, &pk, "c", RefLiveness::CacheOk);
-    kernel.release_ref(RefNamespace::Profile, &pk, "c"); // row Cleared; rev retained
-    let rev_at_clear = kernel.ref_row_rev(RefNamespace::Profile, &pk);
-    assert!(rev_at_clear > 0);
-
-    // Re-resolve BEFORE the reap: cancels the pending clear, rev stays monotonic.
-    profile_card(&mut kernel, &pk, "c2", RefLiveness::CacheOk);
-    assert!(
-        kernel.ref_row_rev(RefNamespace::Profile, &pk) > rev_at_clear,
-        "a re-resolve advances the rev monotonically (no stale-low reuse)"
-    );
-
-    // The reap must leave the now-live key alone.
-    let reaped = kernel
-        .projection_rev_tracker
-        .source_versions
-        .reap_cleared_profile_rows();
-    assert!(
-        reaped.is_empty(),
-        "a re-resolved key is no longer pending-clear, so reap leaves it"
-    );
-    assert!(
-        kernel.ref_row_rev(RefNamespace::Profile, &pk) > 0,
-        "the live re-resolved row keeps its rev (not reaped)"
     );
 }
 

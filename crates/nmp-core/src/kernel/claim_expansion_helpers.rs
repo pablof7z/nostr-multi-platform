@@ -235,8 +235,16 @@ impl Kernel {
         // `complete_unknown_oneshot` and fired on the FIRST relay's
         // EOSE-no-match, racing a sibling relay's still-in-flight EVENT.)
         if is_terminal_miss {
-            self.event_claims.remove(&primary_id);
-            self.event_claim_requested.remove(&primary_id);
+            // BLOCKING 1 — route terminal-miss teardown through the SINGLE unified
+            // `teardown_event_claim_key` shared with `release_event_ref`. Removing
+            // `event_claims` / `event_claim_requested` directly here (the old code)
+            // bypassed the shape-map + per-key-rev cleanup that lives only in the
+            // release path, leaving `ref_event_shapes` + `event_row_revs` live for a
+            // deleted claim (D4 second-writer; resurrects a stale ref row). The
+            // unified fn drops every per-key field (refcount, dedup marker, shape
+            // map, Live slot, claim-expansion tracker) AND clears the per-key rev to
+            // its final value in one place, so neither path can diverge.
+            self.teardown_event_claim_key(&primary_id);
             self.record_event_claim_released(&primary_id);
         }
 

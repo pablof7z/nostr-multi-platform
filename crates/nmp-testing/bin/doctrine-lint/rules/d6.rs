@@ -69,6 +69,16 @@ pub fn file_is_test_only(path: &Path) -> bool {
         if name.starts_with("tests_") && name.ends_with(".rs") {
             return true;
         }
+        // `*_tests_*.rs` INFIX convention: files like `refs_tests_event.rs` /
+        // `refs_tests_profile.rs` group several test modules under one feature
+        // prefix (`refs_`) with a per-aspect suffix (`event` / `profile`). They
+        // are declared `#[cfg(test)] mod refs_tests_event;` in the parent, so the
+        // cfg gate is invisible to the line walker — exactly like the `*_tests.rs`
+        // suffix and `tests_*` prefix above. Require the `_tests_` infix (both `_`
+        // separators) so a production file like `contests_helper.rs` does not slip.
+        if name.contains("_tests_") && name.ends_with(".rs") {
+            return true;
+        }
     }
     let s = path.to_string_lossy().replace('\\', "/");
     if s.contains("/tests/") || s.contains("/examples/") {
@@ -337,6 +347,20 @@ mod tests {
             "crates/nmp-core/src/store/lmdb/tests_kind5.rs"
         )));
         assert!(file_is_test_only(Path::new("foo/bar/tests_scenario.rs")));
+        // `*_tests_*.rs` infix — files like `refs_tests_event.rs` whose
+        // `#[cfg(test)] mod refs_tests_event;` declaration lives in the parent
+        // (ADR-0063 #1671 Lane B). The cfg gate is invisible to the line walker.
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/refs_tests_event.rs"
+        )));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/refs_tests_profile.rs"
+        )));
+        // A production file merely containing "tests" (no `_tests_` infix) is NOT
+        // exempt — `contests_helper.rs` has no `_tests_` substring.
+        assert!(!file_is_test_only(Path::new(
+            "crates/x/src/contests_helper.rs"
+        )));
         // `/tests/` directory.
         assert!(file_is_test_only(Path::new(
             "crates/x/tests/integration.rs"
