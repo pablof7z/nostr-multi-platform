@@ -253,12 +253,15 @@ fn run_smoke(
     let mut claims_issued = false;
     let mut snapshot_tick = 0u32;
     let mut resolved_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror — merged
+    // across frames so per-key deltas accumulate (D4: the sole profile store).
+    let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
 
     while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
         let remaining = timeout - started.elapsed();
         match snapshot_rx.recv_timeout(remaining) {
             Ok(frame_bytes) => {
-                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
+                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
                 snapshot_tick += 1;
                 host.update_from_typed(&snap);
 
@@ -689,8 +692,13 @@ fn spawn_input_thread(tx: Sender<GalleryEvent>) {
 
 fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<Vec<u8>>) {
     thread::spawn(move || {
+        // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror lives in
+        // the snapshot thread (the reader of the kernel frames), merged across
+        // ticks so per-key deltas accumulate. It is the sole app-side profile
+        // store (D4); each frame materialises its current set into the snapshot.
+        let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
         for frame_bytes in rx {
-            let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
+            let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
             if tx.send(GalleryEvent::Snapshot(Box::new(snap))).is_err() {
                 break;
             }

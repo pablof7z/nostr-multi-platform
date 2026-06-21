@@ -202,15 +202,12 @@ mod tests {
         showcase_pubkey,
     };
     use nmp_content::embed_projection::EmbedKindProjection;
-    use nmp_core::typed_projections::{
-        ClaimedEventRow, ClaimedEventsModel,
-        ResolvedProfilesModel,
-    };
+    use nmp_core::typed_projections::{ClaimedEventRow, ClaimedEventsModel};
 
     fn snapshot_with(entries: Vec<(String, ClaimedEventRow)>) -> GalleryTypedSnapshot {
         GalleryTypedSnapshot {
             claimed_events: ClaimedEventsModel { entries },
-            resolved_profiles: ResolvedProfilesModel::default(),
+            profiles: std::collections::BTreeMap::new(),
             relay_statuses: Vec::new(),
         }
     }

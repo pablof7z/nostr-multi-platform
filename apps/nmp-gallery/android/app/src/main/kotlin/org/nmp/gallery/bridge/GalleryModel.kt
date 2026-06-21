@@ -152,14 +152,15 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Decode one FlatBuffers snapshot frame. Profiles are read directly from
-     * `projections.resolved_profiles` — the kernel's single, pre-merged profile
-     * projection. The precedence merge (claimed_profiles + mention_profiles)
-     * lives in the kernel, so this host no longer reimplements it.
+     * Decode one FlatBuffers snapshot frame. Profiles are read from
+     * `projections.resolved_profiles` — ADR-0063 (#1671) now SOURCED from the
+     * kernel's `refs.profile` row-delta projection (the resolve_ref output),
+     * merged host-side across frames in the native session store. This host no
+     * longer reimplements any precedence merge.
      */
     private fun applyFrame(raw: ByteArray) {
         val v = try {
-            NmpUpdateFrameDecoder.decodeSnapshot(raw)
+            NmpUpdateFrameDecoder.decodeSnapshot(raw) { bridge.decodeSnapshotJson(it) }
         } catch (e: UpdateFrameDecodeException) {
             android.util.Log.w("GalleryModel", "drop frame: ${e.message}")
             return
@@ -168,9 +169,10 @@ class GalleryModel : ViewModel() {
 
         val assembled = mutableMapOf<String, ProfileWire>()
 
-        // Kernel-merged path: projections.resolved_profiles[pubkey] is already
-        // a ProfileWire-shaped entry. `npub_short` is derived from `npub` by the
-        // ProfileWire constructor default when absent (same algorithm as before).
+        // ADR-0063 (#1671): projections.resolved_profiles[pubkey] is a
+        // ProfileWire-shaped entry materialised from the merged refs.profile
+        // store. `npub_short` is derived from `npub` by the ProfileWire
+        // constructor default when absent (same algorithm as before).
         (projections["resolved_profiles"] as? JsonObject)?.let { resolved ->
             for ((pubkey, el) in resolved) {
                 val profile = runCatching {

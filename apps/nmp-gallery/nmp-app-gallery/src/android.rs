@@ -15,13 +15,17 @@ use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
+use std::sync::Mutex;
+
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile,
-    nmp_app_deliver_external_signer_response, nmp_app_dispatch_action, nmp_app_free, nmp_app_new,
-    nmp_app_release_event, nmp_app_release_profile, nmp_app_set_capability_callback,
+    nmp_app_add_relay, nmp_app_claim_event, nmp_app_deliver_external_signer_response,
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_release_event,
+    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_capability_callback,
     nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
     nmp_external_signer_init, nmp_free_string, NmpApp,
 };
+
+use nmp_core::refs::RefProfileStore;
 
 use nmp_core::__ffi_internal::capability_error_envelope;
 
@@ -40,6 +44,12 @@ pub(crate) struct GallerySession {
     /// `ExternalSignerRequest` JSON payloads (D8 no-polling; replaces the
     /// deleted `nativeNextSignerRequest` blocking/timeout drain).
     signer_listener: SignerRequestListenerSlot,
+    /// ADR-0063 (#1671) — host-side mirror of the kernel's `refs.profile`
+    /// row-delta projection. Merged across frames in `nativeDecodeSnapshotJson`
+    /// (the sidecar carries only changed/cleared rows). The sole app-side profile
+    /// store (D4). Wrapped in a `Mutex` because the decode runs on whichever
+    /// thread Kotlin drains the push frame on.
+    ref_profiles: Mutex<RefProfileStore>,
 }
 
 // SAFETY: GallerySession is transferred to Kotlin as a jlong handle; access
@@ -167,7 +177,12 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
         Arc::as_ptr(&signer_listener) as *mut std::sync::Mutex<Option<Arc<SignerRequestPushListener>>>;
     nmp_app_set_capability_callback(app, trampoline_ctx as *mut c_void, Some(on_capability_request));
     nmp_external_signer_init(app);
-    let session = Box::new(GallerySession { app, update_ctx, signer_listener });
+    let session = Box::new(GallerySession {
+        app,
+        update_ctx,
+        signer_listener,
+        ref_profiles: Mutex::new(RefProfileStore::new()),
+    });
     Box::into_raw(session) as jlong
 }
 
@@ -231,15 +246,25 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeRegistryJs
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnapshotJson<'l>(
     env: JNIEnv<'l>,
     _class: JClass<'l>,
+    handle: jlong,
     frame: JByteArray<'l>,
 ) -> jstring {
     let null = std::ptr::null_mut();
     let Ok(bytes) = env.convert_byte_array(frame) else {
         return null;
     };
-    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(&bytes) else {
+    // ADR-0063 (#1671): merge the frame's `refs.profile` row-delta batch into the
+    // session's persistent store before building the snapshot JSON. The handle is
+    // optional only for the (pre-session) error path; without it the row-deltas
+    // cannot accumulate, so a missing handle yields null (D6).
+    let Some(s) = session_ref(handle) else { return null };
+    let Ok(mut store) = s.ref_profiles.lock() else {
         return null;
     };
+    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(&bytes, &mut store) else {
+        return null;
+    };
+    drop(store);
     match env.new_string(json) {
         Ok(js) => js.into_raw(),
         Err(_) => null,
@@ -273,33 +298,53 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStop(
     if let Some(s) = session_ref(handle) { nmp_app_stop(s.app); }
 }
 
+/// ADR-0063 (#1671) — unified, origin-blind reference resolution. Supersedes
+/// the deleted `nativeClaimProfile`.
+///
+/// `namespace` — 0 = profile. `key` — lowercase 64-hex pubkey.
+/// `consumer_id` — opaque refcount owner key. `shape` — 0 = profile.ref (avatar),
+/// 1 = profile.card. `liveness` — 0 = CacheOk (background), non-zero = Live.
+/// D6: bad handles/strings/unknown int codes are silent no-ops.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimProfile(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveRef(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
-    pubkey: JString,
+    namespace: jint,
+    key: JString,
     consumer_id: JString,
+    shape: jint,
+    liveness: jint,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else { return };
+    let Some(key) = jstring_to_cstring(&mut env, &key) else { return };
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else { return };
-    // F-TTL — Android JNI claim is a background/auto-claim → force = 0.
-    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
+    nmp_app_resolve_ref(
+        s.app,
+        namespace,
+        key.as_ptr(),
+        consumer_id.as_ptr(),
+        shape,
+        liveness,
+    );
 }
 
+/// ADR-0063 (#1671) — release a reference previously registered via
+/// `nativeResolveRef`. Pass the SAME `(namespace, key, consumer_id)`.
+/// D6: bad handles/strings/unknown int codes are silent no-ops.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseProfile(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseRef(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
-    pubkey: JString,
+    namespace: jint,
+    key: JString,
     consumer_id: JString,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else { return };
+    let Some(key) = jstring_to_cstring(&mut env, &key) else { return };
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else { return };
-    nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+    nmp_app_release_ref(s.app, namespace, key.as_ptr(), consumer_id.as_ptr());
 }
 
 #[no_mangle]

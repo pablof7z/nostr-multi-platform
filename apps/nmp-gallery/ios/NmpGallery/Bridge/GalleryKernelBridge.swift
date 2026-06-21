@@ -30,10 +30,16 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 final class GalleryKernelHandle {
     let raw: UnsafeMutableRawPointer
     private var updateSink: GalleryUpdateSink?
+    /// ADR-0063 (#1671) — host-side mirror of the kernel's `refs.profile`
+    /// row-delta projection. One per kernel session; threaded into every
+    /// snapshot decode so per-key deltas accumulate. Sole app-side profile
+    /// store (D4). Freed in `deinit`.
+    let refProfileStore: OpaquePointer
 
     init() {
         raw = nmp_app_new()
         Self.configureStoragePath(for: raw)
+        refProfileStore = OpaquePointer(nmp_app_gallery_ref_profile_store_new())
         // Phase 1: register the gallery composition on the kernel. The parallel
         // `nmp-app-gallery` crate forwards to `nmp_app_template::register_defaults`;
         // the call is fire-and-forget (D6) — there is no opaque handle to capture
@@ -51,6 +57,10 @@ final class GalleryKernelHandle {
         // `nmp_app_free` joins the actor thread so any in-flight observer
         // callback is fenced.
         nmp_app_free(raw)
+        // ADR-0063 (#1671): release the refs.profile mirror after the kernel is
+        // freed (so no in-flight decode can still touch it).
+        nmp_app_gallery_ref_profile_store_free(
+            UnsafeMutablePointer(refProfileStore))
     }
 
     private static func configureStoragePath(for raw: UnsafeMutableRawPointer) {
@@ -97,23 +107,41 @@ final class GalleryKernelHandle {
         nmp_app_stop(raw)
     }
 
-    // ── Profile claim / release ──────────────────────────────────────────
+    // ── Profile resolution (ADR-0063 #1671) ──────────────────────────────
 
-    /// F-TTL — `force` controls the lazy re-verification gate for the cached
-    /// kind:0 profile. Pass `true` only on explicit user navigation /
-    /// pull-to-refresh; default `false` for background / `.onAppear` claims.
-    func claimProfile(pubkey: String, consumerID: String, force: Bool = false) {
+    // ADR-0063 (#1671) FFI integer codes for resolve_ref / release_ref.
+    /// `namespace` — the profile resolver.
+    private static let refNamespaceProfile: Int32 = 0
+    /// `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; avatar/name).
+    private static let refShapeProfileRef: Int32 = 0
+    /// `liveness` — `CacheOk` (background; no per-row tailing sub).
+    private static let refLivenessCacheOk: Int32 = 0
+
+    /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671 —
+    /// supersedes `claimProfile`). The registry widgets call this on mount; the
+    /// resolved kind:0 flows back through `refs.profile`. Origin-blind: every
+    /// visible author resolves at `profile.ref` / `CacheOk` (the gallery renders
+    /// only inline avatars/names, never an open-profile pane).
+    func claimProfile(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0)
+                nmp_app_resolve_ref(
+                    raw,
+                    Self.refNamespaceProfile,
+                    pkPtr,
+                    cidPtr,
+                    Self.refShapeProfileRef,
+                    Self.refLivenessCacheOk)
             }
         }
     }
 
+    /// Release a profile reference previously claimed via `claimProfile`. Pass
+    /// the SAME `(pubkey, consumerID)` so the kernel reclaims the slot.
     func releaseProfile(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_profile(raw, pkPtr, cidPtr)
+                nmp_app_release_ref(raw, Self.refNamespaceProfile, pkPtr, cidPtr)
             }
         }
     }
@@ -215,12 +243,17 @@ private let galleryUpdateCallback: NmpUpdateCallback = { context, pointer, len i
 }
 
 enum GalleryFlatBufferSnapshotDecoder {
-    static func snapshotJSONData(from data: Data) -> Data? {
+    /// Decode one update frame into the gallery snapshot JSON, merging the
+    /// frame's `refs.profile` row-delta batch into `store` first (ADR-0063
+    /// #1671). `store` MUST be the per-session mirror so per-key deltas
+    /// accumulate across frames.
+    static func snapshotJSONData(from data: Data, store: OpaquePointer) -> Data? {
         let ptr: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { raw -> UnsafeMutablePointer<CChar>? in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
                 return nil
             }
-            return nmp_app_gallery_snapshot_json_from_update_frame(base, UInt(data.count))
+            return nmp_app_gallery_snapshot_json_from_update_frame(
+                UnsafeMutablePointer(store), base, UInt(data.count))
         }
         guard let ptr else {
             kbLog.error("gallery typed snapshot decode failed")
