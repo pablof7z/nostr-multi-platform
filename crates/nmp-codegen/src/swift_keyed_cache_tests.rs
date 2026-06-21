@@ -100,10 +100,46 @@ fn emits_failclosed_missing_key_and_bad_state_and_deferred_reset() {
         !out.contains("guard let key = row.key else { continue }"),
         "row-skipping on missing key must be removed (fail-closed)"
     );
-    // BLOCKING-3: an out-of-range state discriminant rejects the whole batch.
+    // BLOCKING-3 (codex round-2): an out-of-range state discriminant rejects the
+    // WHOLE batch — and it MUST do so from the RAW on-wire byte, not the flatc
+    // typed accessor `row.state`. The flatc `nmp_refs_RefRow.state` accessor
+    // coerces any unknown raw value to `.changed` (`nmp_refs_RefRowState(rawValue:)
+    // ?? .changed`), so a `> Cleared` guard against `row.state.rawValue` is DEAD
+    // (an on-wire 255 already became 0 before the check). The generator must read
+    // the raw discriminant byte directly off the FlatBuffer instead.
+    //
+    // 1. The dead, fail-OPEN form (guarding the COERCED typed enum) must be GONE.
     assert!(
-        out.contains("row.state.rawValue > kRefRowStateCleared"),
-        "unknown state discriminant must reject the whole batch (not coerce to Changed)"
+        !out.contains("if row.state.rawValue > kRefRowStateCleared {"),
+        "the fail-open `row.state.rawValue > Cleared` guard (coerced enum) must be removed"
+    );
+    // 2. A raw-byte reader that bypasses the typed accessor must exist: it walks
+    //    the buffer with the public `Table` API and reads `state` as a raw UInt8.
+    assert!(
+        out.contains("private static func rawRowStateDiscriminants(_ buffer: inout ByteBuffer) -> [UInt8]?"),
+        "must emit a raw-state-discriminant reader that bypasses the coercing typed accessor"
+    );
+    assert!(
+        out.contains("let root = Table(bb: buffer, position: rootPosition)"),
+        "raw-state reader must build a Table over the verified buffer"
+    );
+    assert!(
+        out.contains("row.readBuffer(of: UInt8.self, at: stateField)"),
+        "raw-state reader must read the state field as a RAW UInt8 (no enum coercion)"
+    );
+    // 3. The whole-batch reject must test the RAW byte against Cleared.
+    assert!(
+        out.contains("guard let rawStates = Self.rawRowStateDiscriminants(&buffer) else {"),
+        "merge must scan the raw discriminants before committing"
+    );
+    assert!(
+        out.contains("if rawState > kRefRowStateCleared {"),
+        "unknown RAW state discriminant must reject the whole batch (not coerce to Changed)"
+    );
+    // 4. A count mismatch between the raw scan and the typed vector also fails closed.
+    assert!(
+        out.contains("if rawStates.count != batch.rows.count {"),
+        "a raw-scan / typed-vector count mismatch must fail the batch closed"
     );
     // BLOCKING-1: identity reset is DEFERRED — there is NO eager full clear at
     // the top of merge; the only `removeAll`/drop happens after a valid decode.

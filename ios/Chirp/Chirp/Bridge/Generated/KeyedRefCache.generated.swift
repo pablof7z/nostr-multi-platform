@@ -133,17 +133,44 @@ final class KeyedRefCache {
         // OR an out-of-range `state` discriminant (anything other than
         // Changed=0 / Cleared=1), rejects the ENTIRE batch — prior cache
         // retained, needsResync latched, NOTHING committed. No row is skipped.
+        //
+        // The state discriminant MUST be read as the RAW on-wire byte, NOT via
+        // the flatc typed accessor `row.state` — that accessor coerces any
+        // unknown raw byte to `.changed` (`nmp_refs_RefRowState(rawValue:) ??
+        // .changed`), so an on-wire `state=255` would silently become Changed=0
+        // and slip past a `> Cleared` guard (fail-open). We therefore re-read
+        // the raw `state` discriminant byte for every row straight from the
+        // FlatBuffer using the public `Table` accessor, mirroring the Kotlin
+        // twin which reads `row.state` as a raw `UByte`. A buffer whose shape we
+        // cannot re-walk also fails closed.
+        guard let rawStates = Self.rawRowStateDiscriminants(&buffer) else {
+            needsResync = true
+            krcLog.error("RefRowDeltaBatch raw-state scan failed for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
+            return []
+        }
+        var rowIndex = 0
         for row in batch.rows {
             if row.key == nil {
                 needsResync = true
                 krcLog.error("RefRowDeltaBatch row missing key for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
                 return []
             }
-            if row.state.rawValue > kRefRowStateCleared {
+            // RAW discriminant byte (NOT the coerced typed `row.state`): reject
+            // anything outside {Changed=0, Cleared=1} for the WHOLE batch.
+            let rawState = rowIndex < rawStates.count ? rawStates[rowIndex] : UInt8.max
+            if rawState > kRefRowStateCleared {
                 needsResync = true
-                krcLog.error("RefRowDeltaBatch row has unknown state=\(row.state.rawValue, privacy: .public) for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
+                krcLog.error("RefRowDeltaBatch row has unknown raw state=\(rawState, privacy: .public) for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
                 return []
             }
+            rowIndex += 1
+        }
+        // The raw scan must observe exactly as many rows as the typed vector; a
+        // mismatch means the buffer shape is inconsistent — fail closed.
+        if rawStates.count != batch.rows.count {
+            needsResync = true
+            krcLog.error("RefRowDeltaBatch raw-state count mismatch for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
+            return []
         }
 
         if batch.baseline {
@@ -161,6 +188,49 @@ final class KeyedRefCache {
             return []
         }
         return applyIncremental(projectionKey: projectionKey, namespace: namespace, batch: batch)
+    }
+
+    /// Read the RAW `state` discriminant byte for EVERY row directly from the
+    /// FlatBuffer, BYPASSING the flatc typed accessor (`nmp_refs_RefRow.state`),
+    /// which coerces any unknown raw value to `.changed` via
+    /// `nmp_refs_RefRowState(rawValue:) ?? .changed` and would therefore mask an
+    /// on-wire `state=255` as Changed=0. This is the host-side mirror of the
+    /// Kotlin twin, whose flatc accessor exposes `row.state` as a raw `UByte`.
+    ///
+    /// It re-walks the verified buffer with the public `FlatBuffers.Table` API:
+    /// resolve the root table, find the `rows` vector (vtable offset 8 on
+    /// `RefRowDeltaBatch`), then for each row table read the `state` field
+    /// (vtable offset 8 on `RefRow`) as a raw `UInt8` (default 0 when the field
+    /// is absent — a legitimately omitted scalar is Changed). Returns the raw
+    /// discriminants in row order, or nil if the buffer cannot be re-walked
+    /// (caller fails the batch closed). Must be called only AFTER the CHECKED
+    /// root decode has verified the buffer.
+    private static func rawRowStateDiscriminants(_ buffer: inout ByteBuffer) -> [UInt8]? {
+        // Resolve the root table position exactly as `getRoot`/`getCheckedRoot`
+        // do: the UOffset at the reader points to the root table.
+        let rootPosition = Int32(buffer.read(def: UOffset.self, position: buffer.reader)) &+ Int32(buffer.reader)
+        let root = Table(bb: buffer, position: rootPosition)
+        // `RefRowDeltaBatch.rows` is vtable offset 8. An absent vector is an
+        // empty batch (zero rows) — valid, no discriminants to check.
+        let rowsField = root.offset(8)
+        if rowsField == 0 { return [] }
+        let count = Int(root.vector(count: rowsField))
+        if count < 0 { return nil }
+        let start = root.vector(at: rowsField)
+        var states = [UInt8]()
+        states.reserveCapacity(count)
+        for i in 0..<count {
+            // Each rows[] element is a 4-byte indirect (UOffset) to a RefRow
+            // table; dereference it to the row's absolute position.
+            let elementOffset = start &+ Int32(i &* 4)
+            let rowPosition = elementOffset &+ Int32(buffer.read(def: Int32.self, position: Int(elementOffset)))
+            let row = Table(bb: buffer, position: rowPosition)
+            // `RefRow.state` is vtable offset 8; read the RAW byte (no enum
+            // coercion). An absent scalar field defaults to 0 (Changed).
+            let stateField = row.offset(8)
+            states.append(stateField == 0 ? 0 : row.readBuffer(of: UInt8.self, at: stateField))
+        }
+        return states
     }
 
     /// Scratch-then-commit baseline (invariant #3 + decode-before-commit on the
