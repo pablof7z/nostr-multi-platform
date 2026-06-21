@@ -6,4 +6,9 @@ export default defineConfig({
   build: {
     target: "es2020",
   },
+  // @nmp/components-web is source-only (no build step); exclude from esbuild
+  // pre-bundling so ?raw imports resolve correctly against the package sources.
+  optimizeDeps: {
+    exclude: ["@nmp/components-web"],
+  },
 });

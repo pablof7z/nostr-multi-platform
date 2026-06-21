@@ -15,7 +15,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "preserve",
-    "jsxImportSource": "solid-js"
+    "jsxImportSource": "solid-js",
+    "paths": {
+      "@nmp/runtime-web": ["../packages/runtime-web/src/index.ts"],
+      "@nmp/runtime-web/worker": ["../packages/runtime-web/src/worker.ts"]
+    }
   },
   "include": ["src"]
 }

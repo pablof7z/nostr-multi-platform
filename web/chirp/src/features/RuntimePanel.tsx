@@ -1,7 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import { CheckCircle2, Database, HardDrive, Radio, RefreshCw, Settings, Signal } from "lucide-solid";
 import { runtimeConnection, type RuntimeSnapshot } from "../nmp/client";
-import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "../nmp/protocol";
+import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "@nmp/runtime-web";
 import type { FeatureSnapshot } from "../nmp/snapshot";
 
 export function RuntimePanel(props: {

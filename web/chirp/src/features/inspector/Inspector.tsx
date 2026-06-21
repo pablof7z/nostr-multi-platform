@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
-import { labelRuntimeStatus, protocolVersion } from "../../nmp/protocol";
+import { labelRuntimeStatus, protocolVersion } from "@nmp/runtime-web";
 import "./inspector.css";
 import { type RuntimeSnapshot } from "../../nmp/client";
 import { decodeInspectorSnapshot, type DecodedSnapshot } from "../../nmp/inspectorSnapshot";

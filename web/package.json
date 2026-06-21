@@ -1,0 +1,10 @@
+{
+  "name": "@nmp/web-root",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "chirp",
+    "nmp-gallery",
+    "registry"
+  ]
+}

@@ -9,13 +9,14 @@ import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import {
   eventCorrelationId,
+  encodeNpub,
   protocolVersion,
   type RuntimeStatus,
   type WorkerEvent,
   type WorkerRequest,
-} from "./protocol";
-import type { ProfileWire } from "../components/user-avatar/ProfileWire";
-import type { NostrProfileHost } from "../components/user-avatar/NostrProfileHost";
+} from "@nmp/runtime-web";
+import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
+import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 
 const KRPR_FILE_IDENTIFIER = "KRPR";
 const KRPR_PROJECTION_KEY = "resolved_profiles";
@@ -250,7 +251,7 @@ export function createGalleryRuntime(): GalleryRuntime {
   const [npubs, setNpubs] = createStore<Record<string, { npub?: string; npubShort?: string }>>({});
   const requestedNpubs = new Set<string>();
 
-  const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+  const worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), { type: "module" });
   const pending = new Map<string, () => void>();
   let resolveHello: (() => void) | undefined;
   const helloReady = new Promise<void>((resolve) => {
@@ -292,8 +293,6 @@ export function createGalleryRuntime(): GalleryRuntime {
     } else if (event.type === "update_bytes") {
       const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
       ingestBytes(bytes);
-    } else if (event.type === "npub_encoded") {
-      setNpubs(event.pubkey, { npub: event.npub, npubShort: event.npubShort });
     }
     const cid = eventCorrelationId(event);
     if (cid) {
@@ -394,10 +393,11 @@ export function createGalleryRuntime(): GalleryRuntime {
     requestNpub(pubkey: string) {
       if (requestedNpubs.has(pubkey)) return;
       requestedNpubs.add(pubkey);
-      void request({
-        type: "encode_npub",
-        pubkey,
-        correlation_id: `npub-${claimSeq++}`,
+      // Calls the Rust NIP-19 encoder directly via the wasm free function
+      // (no worker round-trip — encodeNpub loads the wasm module lazily on the
+      // main thread; the binary is already cached from the worker's load).
+      void encodeNpub(pubkey).then((result) => {
+        if (result) setNpubs(pubkey, result);
       });
     },
     npub: (pubkey: string) => npubs[pubkey],

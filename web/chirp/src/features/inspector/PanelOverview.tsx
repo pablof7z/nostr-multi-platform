@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "../../nmp/protocol";
+import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "@nmp/runtime-web";
 import { runtimeConnection, type RuntimeSnapshot } from "../../nmp/client";
 import { type DecodedSnapshot } from "../../nmp/inspectorSnapshot";
 

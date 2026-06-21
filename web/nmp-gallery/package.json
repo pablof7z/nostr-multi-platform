@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nmp/components-web": "*",
+    "@nmp/runtime-web": "*",
     "flatbuffers": "^25.9.23",
     "solid-js": "^1.9.13"
   },

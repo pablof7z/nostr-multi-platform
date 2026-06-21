@@ -15,6 +15,7 @@
 #   KRPR        — crates/nmp-core/schema/profile_card.fbs
 #              + crates/nmp-core/schema/resolved_profiles.fbs
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
+#   KCEV        — crates/nmp-core/schema/claimed_events.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
@@ -61,6 +62,7 @@ KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
 )
 KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
+KCEV_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/claimed_events.fbs"
 CHECKED_IN_ROOTS=("${REPO_ROOT}/web/chirp/src/nmp/generated")
 GALLERY_TS_ROOT="${REPO_ROOT}/web/nmp-gallery/src/nmp/generated"
 if [[ -d "${GALLERY_TS_ROOT}" ]]; then
@@ -124,6 +126,12 @@ flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KRDG_SCHEMA}"
 
+# ── KCEV schema (claimed_events → nmp/kernel/) ───────────────────────────────
+# Self-contained: no includes. Output lands in nmp/kernel/ alongside KRPR/KRDG.
+flatc --ts -o "${TMP_DIR}" \
+    -I "${KERNEL_SCHEMA_DIR}" \
+    "${KCEV_SCHEMA}"
+
 GENERATED_DIR="${TMP_DIR}/nmp"
 
 if [[ "${MODE}" == "--write" ]]; then
@@ -158,4 +166,4 @@ if [[ "${drift}" -ne 0 ]]; then
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG + KCEV bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
