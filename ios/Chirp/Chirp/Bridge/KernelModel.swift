@@ -427,18 +427,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         kernel.loadOlderHomeFeed()
     }
 
-    // ── View/Author/Thread open + close ──────────────────────────────────
+    // Per-open author / thread / hashtag feed accessors + the go-to-box query
+    // classifier live in `KernelModel+Feeds.swift` (file-size split).
 
-    func openAuthor(pubkey: String) { kernel.openAuthor(pubkey: pubkey) }
-    func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
-    func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
-    func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
-    func authorFeed(pubkey: String) -> OpFeedSnapshot? {
-        flatFeeds["nmp.feed.author.\(pubkey)"]
-    }
-    func threadFeed(eventID: String) -> OpFeedSnapshot? {
-        flatFeeds["nmp.feed.thread.\(eventID)"]
-    }
     /// `NostrProfileHost` conformance. `liveness` declares the subscription
     /// shape (`.cacheOk` for list/inline contexts, `.live` for the profile
     /// screen). This is the lazy, TTL-gated path (`force == false`); use

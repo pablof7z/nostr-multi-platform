@@ -69,7 +69,7 @@ use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_
 /// (kernel admission) and the `FlatFeed` predicate (render gate) always agree.
 pub(crate) const FEED_PRIMARY_KINDS: [u32; 1] = [1];
 
-fn feed_acquisition_kinds() -> Option<Vec<u32>> {
+pub(crate) fn feed_acquisition_kinds() -> Option<Vec<u32>> {
     nmp_nip18::try_acquisition_kinds_for_primary(FEED_PRIMARY_KINDS)
         .ok()
         .map(|kinds| kinds.into_iter().collect())
@@ -96,7 +96,7 @@ fn thread_feed_key(event_id_hex: &str) -> String {
 /// projection that `register_feed_with_observer` already installed. Uses the
 /// same `encode_op_feed_snapshot` wire shape as the home feed (no new schema).
 /// Teardown via `unregister_feed` covers both lanes — no extra step needed.
-fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
+pub(crate) fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
     app.register_typed_snapshot_projection(key.clone(), move || {
         // Emit the CURRENT viewport, including rows revealed by prior
         // `load_older` drains (the `advance` closure grows it). A fixed
@@ -405,7 +405,7 @@ fn thread_consumer(root_id_hex: &str) -> String {
 
 /// Push a kernel `close_interest` for an interest opened via
 /// `open_observed_interest`.
-fn close_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
+pub(crate) fn close_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
     let (Ok(filter), Ok(consumer)) = (
         std::ffi::CString::new(filter_json),
         std::ffi::CString::new(consumer_id),

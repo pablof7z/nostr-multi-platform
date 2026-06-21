@@ -97,5 +97,5 @@ pub use register::{
 };
 pub use relay_seeding::{nmp_app_chirp_seed_default_relays, nmp_app_chirp_seed_relays_from_json};
 pub use snapshot::nmp_app_chirp_unregister;
-pub use tag_feed::nmp_app_chirp_open_tag_feed;
+pub use tag_feed::{nmp_app_chirp_close_tag_feed, nmp_app_chirp_open_tag_feed};
 pub use typed_actions::nmp_app_chirp_action_spec;

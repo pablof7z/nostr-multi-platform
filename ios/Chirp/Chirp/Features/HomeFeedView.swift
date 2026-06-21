@@ -40,6 +40,11 @@ struct HomeFeedView: View {
     @State private var showCompose = false
     /// Controls the publish outbox sheet.
     @State private var showOutbox = false
+    /// Controls the go-to / search sheet (toolbar button next to the avatar).
+    @State private var showSearch = false
+    /// Route resolved by `SearchSheet`, pushed in the sheet's `onDismiss` so we
+    /// never push onto the NavigationStack while the sheet is still dismissing.
+    @State private var pendingSearchRoute: ChirpRoute?
     /// V-106 — the zap target awaiting an amount selection. Non-nil drives the
     /// `ZapAmountSheet` presentation; the row's `onZap` closure populates it
     /// (the kernel still owns relay selection + LNURL — the sheet only picks
@@ -67,6 +72,14 @@ struct HomeFeedView: View {
         .task { model.openTimeline() }
         .sheet(isPresented: $showCompose) {
             ComposeView()
+        }
+        .sheet(isPresented: $showSearch, onDismiss: {
+            if let route = pendingSearchRoute {
+                pendingSearchRoute = nil
+                router.push(route)
+            }
+        }) {
+            SearchSheet(onNavigate: { pendingSearchRoute = $0 })
         }
         .sheet(isPresented: $showOutbox) {
             NavigationStack {
@@ -187,6 +200,17 @@ struct HomeFeedView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open your profile")
             }
+        }
+
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                showSearch = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .accessibilityLabel("Search")
+            .accessibilityIdentifier("home-search-button")
         }
 
         ToolbarItem(placement: .navigationBarTrailing) {

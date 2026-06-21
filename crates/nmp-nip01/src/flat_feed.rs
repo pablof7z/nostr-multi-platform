@@ -325,6 +325,39 @@ pub fn thread_feed_predicate(root_id: String, kinds: Vec<u32>) -> FlatFeedPredic
     })
 }
 
+/// Build a **tag-feed** predicate: every event of a host-chosen kind carrying a
+/// NIP-12 `#t` hashtag equal to `tag`. The `#t` match is any `t` tag whose value
+/// equals the normalized `tag`. Pair with [`tag_feed_shape`] and a
+/// `nmp_feed::PullFeedController` so `load_older` drains older notes on the tag.
+///
+/// `kinds` is the compiled acquisition kind set (e.g. the adapter-derived
+/// `{1,6}` for a primary `[1]` feed); the substrate never chooses that policy.
+/// `tag` is the already-normalized hashtag value (lowercased, no leading `#`).
+#[must_use]
+pub fn tag_feed_predicate(tag: String, kinds: Vec<u32>) -> FlatFeedPredicate {
+    Arc::new(move |event: &KernelEvent| {
+        kinds.contains(&event.kind)
+            && event
+                .tags
+                .iter()
+                .any(|t| t.first().map(String::as_str) == Some("t") && t.get(1) == Some(&tag))
+    })
+}
+
+/// Build the **tag-feed** pull [`InterestShape`]: `{kinds, #t:[tag]}` — the
+/// covered `Ttag` shape paging notes that carry the hashtag. Pair with
+/// [`tag_feed_predicate`] and a `nmp_feed::PullFeedController`. `kinds` is the
+/// compiled acquisition set; `tag` is the normalized hashtag value.
+#[must_use]
+pub fn tag_feed_shape(tag: String, kinds: Vec<u32>) -> InterestShape {
+    let mut shape = InterestShape {
+        kinds: kinds.into_iter().collect::<BTreeSet<u32>>(),
+        ..Default::default()
+    };
+    shape.tags.insert("t".to_string(), BTreeSet::from([tag]));
+    shape
+}
+
 #[cfg(test)]
 #[path = "flat_feed/tests.rs"]
 mod tests;

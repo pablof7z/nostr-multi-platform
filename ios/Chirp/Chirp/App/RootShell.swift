@@ -22,6 +22,7 @@ import SwiftUI
 enum ChirpRoute: Hashable {
     case profile(pubkey: String)
     case thread(eventID: String)
+    case hashtag(tag: String)
 }
 
 /// Per-tab navigation path holder injected into the environment.
@@ -180,6 +181,7 @@ private struct TabStack<Root: View>: View {
                     switch route {
                     case .profile(let pk): ProfileView(pubkey: pk)
                     case .thread(let id): ThreadScreen(eventID: id)
+                    case .hashtag(let tag): HashtagFeedView(tag: tag)
                     }
                 }
         }

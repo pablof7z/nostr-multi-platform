@@ -318,6 +318,35 @@ final class KernelHandle {
         eventID.withCString { nmp_app_chirp_close_thread_feed(raw, $0) }
     }
 
+    /// Open a global hashtag feed for `tag` (Rust normalizes: lowercased, no
+    /// leading `#`). Results land in the `nmp.feed.tag.<tag>` flat-feed
+    /// projection. Call from `.task` on the HashtagFeedView.
+    func openTag(tag: String) {
+        tag.withCString { nmp_app_chirp_open_tag_feed(raw, $0) }
+    }
+
+    /// Release the hashtag feed for `tag`. Symmetric counterpart to `openTag`;
+    /// call from `.onDisappear` on the HashtagFeedView.
+    func closeTag(tag: String) {
+        tag.withCString { nmp_app_chirp_close_tag_feed(raw, $0) }
+    }
+
+    /// Classify a raw go-to-box query (pasted/typed) into a typed navigation
+    /// target. ALL parsing lives in Rust (thin shell); this only decodes the
+    /// returned JSON. Returns `.unsupported` on any failure (never throws).
+    func classify(query: String) -> SearchClassification {
+        let json: String? = query.withCString { qPtr in
+            guard let ptr = nmp_app_search_classify(qPtr) else { return nil }
+            defer { nmp_free_string(ptr) }
+            return String(cString: ptr)
+        }
+        guard let json, let data = json.data(using: .utf8) else {
+            return .unsupported(reason: "classify returned no data")
+        }
+        return (try? JSONDecoder().decode(SearchClassification.self, from: data))
+            ?? .unsupported(reason: "classify output was not decodable")
+    }
+
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
 
     // NOTE: the local-nsec sign-in path does NOT go through `nmp_app_signin_nsec`

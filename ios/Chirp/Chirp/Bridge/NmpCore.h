@@ -176,6 +176,24 @@ char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 // The returned string is never NULL and MUST be freed via nmp_free_string.
 char *nmp_nip21_decode_uri(const char *input);
 
+// Stateless go-to-box query classifier. Accepts one pasted/typed string and
+// classifies it into a navigation target, returning bounded JSON tagged by
+// "kind":
+//   {"kind":"profile","pubkey":"…","relays":[…]}
+//   {"kind":"event","event_id":"…","relays":[…],"author":"…","event_kind":N}
+//   {"kind":"hashtag","tag":"…"}            (normalized: lowercased, no '#')
+//   {"kind":"nip05","identifier":"…"}       (name@domain — resolution is host's job)
+//   {"kind":"search","query":"…"}           (free-text NIP-50)
+//   {"kind":"unsupported","reason":"…"}     (naddr/nsec/empty)
+// The returned string is never NULL and MUST be freed via nmp_free_string.
+char *nmp_app_search_classify(const char *input);
+
+// Chirp hashtag feed: open/close a global flat feed of kind:1 notes carrying the
+// normalized NIP-12 `#t` tag. Results land in the `nmp.feed.tag.<tag>` snapshot
+// projection (same wire shape as author/thread feeds). Idempotent; fire-and-forget.
+void nmp_app_chirp_open_tag_feed(void *app, const char *tag);
+void nmp_app_chirp_close_tag_feed(void *app, const char *tag);
+
 // ── Publish lifecycle (control plane only) ───────────────────────────────
 //
 // PR-F (one door per capability) DELETED the bespoke event-producing

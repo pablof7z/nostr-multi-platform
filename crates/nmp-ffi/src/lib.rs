@@ -66,6 +66,9 @@ mod nip19_ffi;
 // Issue #1554 — stateless NIP-21 / bare NIP-19 decode-to-wire helper.
 // Decode-only: no actor command, no view mutation, no app-specific policy.
 mod nip21_ffi;
+// Stateless go-to-box query classifier (entity / hashtag / NIP-05 / free text).
+// Stateless: no actor command, no view mutation, no app-specific policy.
+mod query_classify_ffi;
 mod publish;
 // ADR-0058 §3 (step 3b) — synchronous read-only pull-page C-ABI surface.
 pub mod pull;
@@ -165,6 +168,11 @@ pub use lifecycle::{
 pub use nip19_ffi::nmp_app_encode_profile;
 #[cfg(feature = "native")]
 pub use nip21_ffi::nmp_nip21_decode_uri;
+// Pure classifier reusable by any host FFI (e.g. the Android JNI shim); the
+// C-ABI entrypoint is native-gated like its nip21 sibling.
+pub use query_classify_ffi::{classify_query, QueryClass};
+#[cfg(feature = "native")]
+pub use query_classify_ffi::nmp_app_search_classify;
 // Publish-lifecycle control-plane FFI (retry/cancel). The one-door-per-
 // capability rule deleted the bespoke event-producing siblings
 // (`nmp_app_publish_signed_event` / `nmp_app_publish_signed_event_to` /
