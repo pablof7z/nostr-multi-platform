@@ -73,7 +73,10 @@ pub trait ActionModule: Send + Sync + 'static {
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String>;
 
-    fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> { None }
+    // NOTE (superseded by #1748): the `preferred_action_id` hook shown in the
+    // original ADR was removed. The registry ALWAYS mints the correlation_id —
+    // the operation's identity — and an action must never substitute output
+    // data (such as a signed event's id) for it.
 }
 ```
 

@@ -5,7 +5,7 @@
 //! `nmp-marmot::identity::restore_identity_with_keyring_account`,
 //! `nmp_app_create_new_account`) sets `NmpApp::pending_mls_autopublish` via
 //! `NmpApp::add_signer`. Consuming it HERE — in the tail shared by both
-//! `nmp_marmot_register` and `nmp_marmot_register_active` — makes every
+//! `register_with_secret_hex` and `nmp_marmot_register_active` — makes every
 //! account MLS-capable on register without extra host plumbing.
 //!
 //! Idempotence: `take_pending_mls_autopublish` is a one-shot atomic swap, so a

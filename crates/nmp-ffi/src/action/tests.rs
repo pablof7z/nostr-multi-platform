@@ -164,18 +164,17 @@ fn fixture_signed_event() -> SignedEvent {
     }
 }
 
-/// A `Publish` action through `dispatch_action` returns a correlation id
-/// equal to the event's `id`, not a freshly minted registry id.
-///
-/// This is the round-trip contract: a host that keys a spinner on the
-/// returned `correlation_id` must see the same value in the snapshot's
-/// `action_results` entry `correlation_id` (which equals the publish
-/// engine's `PublishHandle` == event `id`).
+/// Regression for #1748 Fix 1: a pre-signed `Publish` through `dispatch_action`
+/// returns a freshly MINTED correlation_id (the operation's identity), NOT the
+/// event's `id`. The deleted `preferred_action_id` substituted the event id,
+/// handing the host a value it never keyed its spinner on — so the terminal in
+/// `action_results` (under the threaded minted id) could not be matched to the
+/// dispatch return.
 #[test]
-fn dispatch_publish_action_returns_event_id_as_correlation_id() {
+fn dispatch_publish_action_returns_minted_correlation_id_not_event_id() {
     with_app(|app| {
         let event = fixture_signed_event();
-        let expected_id = event.id.clone();
+        let event_id = event.id.clone();
         let action = PublishAction::Publish {
             handle: "h1".to_string(),
             event,
@@ -188,11 +187,12 @@ fn dispatch_publish_action_returns_event_id_as_correlation_id() {
             .get("correlation_id")
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("expected correlation_id, got: {out}"));
-        assert_eq!(
-            id, expected_id,
-            "Publish action must return the event.id as correlation_id so \
-             dispatch_action return and action_results share the same identifier"
+        assert_ne!(
+            id, event_id,
+            "the returned correlation_id must NOT be the event id — identity is \
+             not output data (#1748)"
         );
+        assert_eq!(id.len(), 32, "minted correlation_id is 32-hex, not the 64-hex event id");
     });
 }
 

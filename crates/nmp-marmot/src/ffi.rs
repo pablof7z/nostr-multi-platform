@@ -1,19 +1,19 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
-//! Three `extern "C"` symbols Swift links against:
-//! - [`nmp_marmot_register`] — build a [`MarmotService`]
-//!   (signer seam: secret key hex/nsec passed directly; DB at
-//!   `<app_support>/marmot-mls-state.sqlite`), register the lossy
-//!   `KernelEvent` metadata observer AND the substrate `IngestParser`
-//!   inbound seam (kinds `[444, 445, 1059, 30443]` via
-//!   `EventIngestDispatcher::replace_kind_parser` under the `"marmot"` slot),
-//!   AND register the two push projections (`nmp.marmot.snapshot` /
-//!   `nmp.marmot.messages`) onto the snapshot seam. Returns an opaque
-//!   `*mut MarmotHandle`.
-//! - [`nmp_marmot_register_active`] — same as above but reads the key from
-//!   the kernel actor's active local-key slot (no nsec exposed to Swift).
-//! - [`nmp_marmot_unregister`] — drop the lossy observer + unregister all
-//!   per-kind `IngestParser` slots + free the handle. Idempotent.
+//! Two `extern "C"` symbols native links against — NEITHER carries secret key
+//! material across the ABI (#1727 / ADR-0025):
+//! - [`nmp_marmot_register_active`] — build a [`MarmotService`] reading the
+//!   secret from the actor's active local-key slot (`mls_local_nsec`; no nsec
+//!   exposed to native), register the lossy `KernelEvent` observer + the
+//!   `IngestParser` inbound seam (kinds `[444, 445, 1059, 30443]`) + the
+//!   `nmp.marmot.snapshot` / `nmp.marmot.messages` push projections. Returns an
+//!   opaque `*mut MarmotHandle`.
+//! - [`nmp_marmot_unregister`] — drop the observer + unregister all per-kind
+//!   `IngestParser` slots + free the handle. Idempotent.
+//!
+//! Plus the Rust-internal (NOT `extern "C"`) [`register_with_secret_hex`] —
+//! same registration with an in-hand secret for the app-shell nsec sign-in
+//! path; the secret never re-crosses the ABI (#1727).
 //!
 //! The former pull symbols `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
 //! and `nmp_marmot_string_free` were deleted in V-107 (ADR-0039). Swift now
@@ -62,7 +62,8 @@
 //!
 //! ## Inbound ingest seam — CLOSED
 //!
-//! `nmp_marmot_register` registers per-kind `IngestParser` registrations for
+//! Registration (`register_with_keys`, via either entry point) installs
+//! per-kind `IngestParser` registrations for
 //! the four active Marmot kinds (`[444, 445, 1059, 30443]`) through the
 //! substrate `EventIngestDispatcher` (slot key `"marmot"`,
 //! `replace_kind_parser` semantics — account-switch re-registration atomically
@@ -113,7 +114,7 @@ pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 /// captures it by `Arc::clone`, runs on the actor thread, and reads under a lock.
 pub type MarmotProjectionSlot = Arc<Mutex<Option<Arc<MarmotProjection>>>>;
 
-/// Opaque handle returned by [`nmp_marmot_register`]. Boxed so the
+/// Opaque handle returned by the registration entry points. Boxed so the
 /// address is stable; Swift holds the raw pointer until
 /// [`nmp_marmot_unregister`].
 pub struct MarmotHandle {
@@ -255,7 +256,7 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Inner registration logic shared by `nmp_marmot_register` and
+/// Inner registration logic shared by `register_with_secret_hex` and
 /// `nmp_marmot_register_active`. `app` must be non-null and valid.
 ///
 /// ## Keyring policy (V-62)
@@ -477,25 +478,23 @@ pub(crate) fn register_with_keys(
     handle
 }
 
-/// Register a Marmot projection against `app`.
+/// Register a Marmot projection against `app` using an **in-hand** secret key.
 ///
-/// * `app` — the live `NmpApp` (from `nmp_app_new`). MUST outlive the
-///   handle. NULL → null handle.
-/// * `secret_key_hex` — **signer seam**: the local identity secret as hex
-///   or `nsec…`. `MarmotService` signs key-package events and gift-wraps
-///   with this key directly until a kernel `Keys` provider exists. NULL or
-///   unparseable → null handle.
-/// * `db_dir` — the app-support directory; the DB is created at
-///   `<db_dir>/marmot-mls-state.sqlite` (owned by this crate). NULL →
-///   null handle.
-/// * `keyring_service_id` — app-owned namespace for the MLS DB encryption
-///   key (non-empty; NULL or empty → null handle).
+/// A plain `pub` Rust function — **NOT** an `extern "C"` symbol (#1727). No
+/// native code registers Marmot with a raw secret; native uses
+/// [`nmp_marmot_register_active`] (reads the actor-owned `mls_local_nsec` slot,
+/// ADR-0025). This exists only for the app-shell nsec sign-in path, where
+/// `nmp_app_signin_nsec` enqueues `AddSigner` asynchronously so the slot is not
+/// yet populated when registration must run synchronously — the in-hand secret
+/// sidesteps that race and never re-crosses the C/JNI ABI.
 ///
-/// Returns a non-null `*mut MarmotHandle` on success; `null` on any
-/// failure (D6).
-#[no_mangle]
+/// `app` MUST outlive the handle; `secret_key_hex` is the local identity secret
+/// (hex or `nsec…`) `MarmotService` signs/gift-wraps with; `db_dir` is the
+/// app-support dir (DB at `<db_dir>/marmot-mls-state.sqlite`);
+/// `keyring_service_id` is the app-owned MLS DB-key namespace (non-empty). Any
+/// NULL / unparseable / empty argument degrades to a null handle (D6).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_marmot_register(
+pub fn register_with_secret_hex(
     app: *mut NmpApp,
     secret_key_hex: *const c_char,
     db_dir: *const c_char,
@@ -528,7 +527,7 @@ pub extern "C" fn nmp_marmot_register(
 /// `keyring_service_id` is NULL/empty (D6).
 ///
 /// * `keyring_service_id` — app-owned namespace for the MLS DB encryption key;
-///   non-empty (see [`nmp_marmot_register`]).
+///   non-empty (see [`register_with_secret_hex`]).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_marmot_register_active(
@@ -571,8 +570,9 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
     if handle.is_null() {
         return;
     }
-    // SAFETY: caller guarantees `handle` came from
-    // `nmp_marmot_register` and has not already been freed.
+    // SAFETY: caller guarantees `handle` came from a registration entry point
+    // (`nmp_marmot_register_active` / `register_with_secret_hex`) and has not
+    // already been freed.
     let boxed = unsafe { Box::from_raw(handle) };
 
     // V-107 / ADR-0039: clear the projection slot so the push-projection

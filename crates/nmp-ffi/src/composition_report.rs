@@ -142,9 +142,6 @@ mod tests {
             ) -> Result<(), ActionRejection> {
                 Ok(())
             }
-            fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> {
-                None
-            }
             fn execute(
         &self,
                 _action: Self::Action,

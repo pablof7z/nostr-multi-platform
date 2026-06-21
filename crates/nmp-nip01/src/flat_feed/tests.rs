@@ -131,6 +131,102 @@ fn repost_wrapper_and_target_share_canonical_feed_item() {
     );
 }
 
+/// Regression for issue #1496 — the real ThreadScreen crash path, end to end.
+///
+/// ## The crash
+///
+/// `ThreadScreen.swift:18` builds `Dictionary(uniqueKeysWithValues:)` over the
+/// decoded `OpFeedSnapshot.cards`, keyed by `card.id`. It fatal-asserts when two
+/// cards share a `card.id`. A real device crash report (issue #1496,
+/// 2026-06-17) proves two cards with the same `card.id` reached this screen.
+///
+/// ## The true root cause (file:line)
+///
+/// `TimelineEventCard::from_event_for_op_feed`
+/// (`timeline_projection.rs:173`) FORCES a kind:6 repost's `card.id` to the
+/// **target** event id, so a repost-of-X and the original X both render
+/// `card.id == X`. At crash time the per-app thread `FlatFeed::ingest` keyed its
+/// row map by **`event.id`** (the kind:6 wrapper id vs the original id are
+/// distinct), so the two contributions landed in *separate* rows whose cards
+/// both carried `card.id == X` → the snapshot emitted two cards with one
+/// `card.id` → the Swift dict asserted. PR #1636 re-keyed the (now shared,
+/// generic) `nmp_feed::FlatFeed` by the **canonical item id** (`incoming.id`,
+/// which the `timeline_item_builder` sets to `card.id`) with `source_id`
+/// tracking, so the original row and the repost wrapper now collapse into one
+/// canonical row.
+///
+/// This test pins that invariant against re-introduction of event-id keying by
+/// driving the **exact production path** ThreadScreen reads: ingest the original
+/// kind:1 root as its own row FIRST, then a kind:6 repost wrapper of it, then
+/// `snapshot_current_window()` → `encode_op_feed_snapshot` →
+/// `decode_op_feed_snapshot` (the wire round-trip the iOS shell decodes), and
+/// asserts (a) exactly one card per `card.id` so the Swift dict cannot crash,
+/// and (b) the **survivor's identity**: the canonical row carries the original
+/// note's body and author (the hydrated target, not the placeholder wrapper),
+/// with the repost provenance preserved. Under the crash-time `event.id` keying
+/// this would emit two `card.id == "rootid"` cards and the unique-id assert
+/// would fail.
+#[test]
+fn issue_1496_thread_root_then_repost_wire_path_has_unique_card_ids() {
+    use crate::op_feed::{decode_op_feed_snapshot, encode_op_feed_snapshot};
+
+    let root_id = "rootid";
+    let feed = FlatFeed::new(thread_feed_predicate(
+        root_id.to_string(),
+        social_acquisition_kinds(),
+    ));
+
+    // Production order for the crash: the original note is already a thread row
+    // (admitted by `event.id == root_id`) BEFORE the repost wrapper arrives.
+    // This is the ordering the prior `repost_wrapper_and_target_share_canonical`
+    // test did NOT cover (it ingested the repost first), and it is the ordering
+    // under which event-id keying produced two rows.
+    feed.ingest(&ev(root_id, "alice", 1, 1_000, vec![]));
+    // A kind:6 repost of the root: its own (distinct) wrapper event id, an `#e`
+    // tag pointing at the root, no embedded body. `from_event_for_op_feed`
+    // forces this card's `id` to the target (`root_id`).
+    feed.ingest(&ev("wrapper", "bob", 6, 2_000, vec![etag(root_id)]));
+
+    // Drive the FULL wire path ThreadScreen decodes (not a hand-built snapshot).
+    let snapshot = feed.snapshot_current_window();
+    let bytes = encode_op_feed_snapshot(&snapshot);
+    let decoded = decode_op_feed_snapshot(&bytes).expect("decode OpFeedSnapshot");
+
+    // (a) Unique `card.id`: the Swift `Dictionary(uniqueKeysWithValues:)` cannot
+    // crash. Under crash-time event.id keying this vector held two "rootid".
+    let ids: Vec<&str> = decoded.cards.iter().map(|c| c.card.id.as_str()).collect();
+    let unique: std::collections::HashSet<&str> = ids.iter().copied().collect();
+    assert_eq!(
+        ids.len(),
+        unique.len(),
+        "issue #1496: decoded thread cards must have unique card.id; got {ids:?}"
+    );
+    assert_eq!(decoded.cards.len(), 1, "root + repost collapse to one row");
+
+    // (b) Survivor identity — assert WHICH contribution won, not just the count.
+    // The canonical row keeps the original (hydrated) note's id, author, and
+    // body; the repost is surfaced via `reposted_by`, and the row sorts at the
+    // repost timestamp.
+    let card = &decoded.cards[0].card;
+    assert_eq!(card.id, root_id, "survivor keeps the original note id");
+    assert_eq!(
+        card.author_pubkey, "alice",
+        "survivor renders the ORIGINAL author, not the reposter"
+    );
+    assert_eq!(
+        card.content, "note rootid",
+        "survivor renders the ORIGINAL note body, not the empty repost placeholder"
+    );
+    let reposted_by = card
+        .reposted_by
+        .as_ref()
+        .expect("repost provenance preserved on the merged row");
+    assert_eq!(
+        reposted_by.author_pubkey, "bob",
+        "repost provenance names the wrapper author"
+    );
+}
+
 #[test]
 fn reingest_same_id_refreshes_not_duplicates() {
     let feed = FlatFeed::new(author_feed_predicate(

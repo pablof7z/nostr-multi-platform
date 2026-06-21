@@ -2,34 +2,45 @@
 //!
 //! # Overview
 //!
-//! A [`KernelEventObserver`] for kind:3 (contact list) events. It accumulates
-//! follow lists keyed by the event author and exposes the active account's
-//! follows through [`FollowListProjection::snapshot_json`] — the shape a host
-//! `register_snapshot_projection` closure returns.
+//! Exposes the active account's follows through
+//! [`FollowListProjection::snapshot_json`] and [`FollowListProjection::snapshot`]
+//! — the shapes a host `register_snapshot_projection` closure returns.
 //!
-//! # Why kind:3 via `KernelEventObserver`
+//! # Root of truth
 //!
-//! Unlike `DmInboxProjection` (which needs the raw signed event for NIP-44),
-//! kind:3 contacts are sig-stripped by the kernel's ingest pipeline before
-//! the observer fires. `KernelEventObserver` is the correct seam here — no
-//! raw signed bytes are needed; the `p`-tagged pubkeys in `KernelEvent.tags`
-//! are sufficient.
+//! The canonical kind:3 follow state lives in the shared
+//! [`nmp_core::substrate::ContactsLookup`] (written by `nmp_nip01::Kind3Parser`
+//! on every ingest, including local publishes and cache-serves). This projection
+//! is a **thin read-model** over that single source of truth: `snapshot()` calls
+//! `contacts_lookup.follows(active_pubkey)` and maps the raw hex pubkeys to
+//! [`FollowEntry`] values. No secondary `HashMap` is maintained.
 //!
-//! # Standing subscription
+//! # Why the old `KernelEventObserver` approach was broken
 //!
-//! The kernel already fetches kind:3 for the active account as part of the
-//! `account_profile_interest` (kind:0 + kind:3 + kind:10002). No separate
-//! interest push is needed — the observer will receive kind:3 events as they
-//! arrive in the kernel's event store.
+//! The prior design kept an observer-local `HashMap` populated only by
+//! `KernelEventObserver::on_kernel_event`. This missed the startup cache-serve
+//! that runs before the lazily-registered observer exists (continuation.rs:95-100
+//! — no-double-dispatch rule is locked by test), and also missed the local
+//! publish fan-out for Follow actions in some orderings. The button therefore
+//! showed "Follow" even for already-followed accounts on cold start.
+//!
+//! # Interest registration
+//!
+//! `register_follow_state_runtime` (in the crate root) enqueues
+//! `ActorCommand::OpenInterest` for `{"kinds":[3],"authors":[<active>]}` on
+//! initial registration and on each account change, driving the kernel's
+//! cache-serve → `Kind3Parser` → `ContactsLookup` pipeline. The projection
+//! closure then reads `contacts_lookup.follows` and the snapshot reflects the
+//! cached state immediately — no observer lag.
 //!
 //! # D-doctrine
 //!
+//! * **D5** — single source of truth: `ContactsLookup` is the ONLY store of
+//!   the parsed follow set. This projection never duplicates it.
 //! * **D6** — poisoned mutexes, missing active pubkeys, and empty follow lists
 //!   all degrade to `{"follows":[]}` rather than panicking.
-//! * **D8** — `on_kernel_event` runs synchronously on the actor thread between
-//!   relay frames. Work is bounded: one kind filter check, two short mutex
-//!   locks (active-pubkey gate + follows map), one `p`-tag scan, one
-//!   `HashMap` insert. No I/O, no blocking.
+//! * **D8** — `snapshot()` holds a read lock for one map lookup, bounded O(n)
+//!   in follows. No I/O, no blocking.
 //! * **Raw data** — entries carry only the hex pubkey. Presentation layers
 //!   format for display (bech32, abbreviation, avatar initials/tint) per
 //!   aim.md §2 (NMP is a data framework; backend sends raw protocol data).
@@ -41,13 +52,10 @@
 //! depending on the Chirp app crate (thin-shell rule — Chirp must be a
 //! zero-logic delegate to NMP crates).
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
-use nmp_core::kinds::KIND_CONTACT_LIST;
-use nmp_core::tags::contact_follows;
-use nmp_core::KernelEventObserver;
+use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::substrate::ContactsLookup;
 use serde::Serialize;
 
 /// One entry in the active account's follow list — raw hex pubkey only.
@@ -85,51 +93,49 @@ pub struct FollowListSnapshot {
     pub follows: Vec<FollowEntry>,
 }
 
-/// Accumulates NIP-02 kind:3 contact lists and exposes the active account's
-/// follow list as a formatted snapshot.
+/// Thin read-model over the canonical [`ContactsLookup`] for the active
+/// account's NIP-02 follow list.
 ///
-/// Construct with a shared `active_pubkey` slot; the host FFI writes the
-/// slot on account creation / switch. Register the same `Arc` as a
-/// [`KernelEventObserver`] against the kernel so kind:3 events are ingested.
+/// Construct with [`FollowListProjection::new`] passing the shared
+/// `active_pubkey` slot and the `contacts_lookup` the composition root
+/// installed (the same `Arc<nmp_nip01::ContactsCache>` the `Kind3Parser` writes
+/// to). Register the snapshot closure via [`crate::register_follow_state_runtime`]
+/// (which also registers the kind:3 interest so cache-serve populates the
+/// lookup before the first snapshot tick).
 pub struct FollowListProjection {
-    /// The active account's hex pubkey. Written by the FFI on account switch
-    /// (same pattern as `nmp17_local_keys` in `DmInboxProjection`). `None`
-    /// means no signed-in account → snapshot always `{"follows":[]}`.
-    active_pubkey: Arc<Mutex<Option<String>>>,
-    /// Accumulated follow lists keyed by event author pubkey (hex). The value
-    /// is the list of followed pubkeys extracted from `["p", pubkey, …]` tags.
-    /// A single author may publish multiple kind:3 events; only the newest is
-    /// kept because the kernel routes replaceable events through `Replaced`
-    /// (the old entry was superseded before the observer fires).
-    follows: Mutex<HashMap<String, Vec<String>>>,
+    /// The active account's hex pubkey. Written by the kernel actor on account
+    /// switch (same pattern as `ActiveFollowSet`). `None` means no signed-in
+    /// account → snapshot always `{"follows":[]}`.
+    active_pubkey: ActiveAccountSlot,
+    /// The canonical follow-set source. Written by `nmp_nip01::Kind3Parser` on
+    /// every kind:3 ingest (cache-serve and relay delivery). This projection
+    /// is a pure read over it — no secondary storage.
+    contacts_lookup: Arc<dyn ContactsLookup>,
 }
 
 impl FollowListProjection {
-    /// Construct with a shared `active_pubkey` slot.
+    /// Construct with the kernel's active-account slot and the shared contacts
+    /// lookup.
+    ///
+    /// Both `active_pubkey` and `contacts_lookup` must be the SAME `Arc`s the
+    /// kernel and the `Kind3Parser` already hold — the composition root
+    /// (e.g. `register_follow_state_runtime`) sources them from the app.
     #[must_use]
-    pub fn new(active_pubkey: Arc<Mutex<Option<String>>>) -> Self {
+    pub fn new(active_pubkey: ActiveAccountSlot, contacts_lookup: Arc<dyn ContactsLookup>) -> Self {
         Self {
             active_pubkey,
-            follows: Mutex::new(HashMap::new()),
+            contacts_lookup,
         }
-    }
-
-    /// Number of entries currently held in the follows map. Test-only
-    /// inspector for the shadow-storage gate invariant: after the author
-    /// guard in `on_kernel_event`, this must be `<= 1` regardless of how
-    /// many distinct authors publish kind:3.
-    #[cfg(test)]
-    fn follows_map_len(&self) -> usize {
-        self.follows.lock().map(|g| g.len()).unwrap_or(0)
     }
 
     /// The active account's follow list as an owned typed snapshot — the
     /// single source of truth behind both [`Self::snapshot_json`] (serde shape)
     /// and the typed-FB sidecar (ADR-0037).
     ///
-    /// An empty `follows` vector when:
+    /// Reads `contacts_lookup.follows(active_pubkey)` — the canonical parsed
+    /// state written by `Kind3Parser`. An empty `follows` vector when:
     ///   * No active account (`active_pubkey` slot is `None`).
-    ///   * No kind:3 event for the active account has arrived yet.
+    ///   * No kind:3 event for the active account has been ingested yet.
     ///   * The active account's kind:3 has zero `p` tags (follows nobody).
     ///   * Any mutex is poisoned (D6).
     #[must_use]
@@ -141,18 +147,10 @@ impl FollowListProjection {
 
         let follows = match active {
             None => Vec::new(),
-            Some(pubkey) => {
-                let Ok(follows_guard) = self.follows.lock() else {
-                    return FollowListSnapshot::default();
-                };
-                match follows_guard.get(&pubkey) {
-                    None => Vec::new(),
-                    Some(pubkeys) => pubkeys
-                        .iter()
-                        .map(|pk| FollowEntry::from_hex(pk.clone()))
-                        .collect(),
-                }
-            }
+            Some(pubkey) => match self.contacts_lookup.follows(&pubkey) {
+                None => Vec::new(),
+                Some(pubkeys) => pubkeys.into_iter().map(FollowEntry::from_hex).collect(),
+            },
         };
 
         FollowListSnapshot { follows }
@@ -174,260 +172,168 @@ impl FollowListProjection {
     }
 }
 
-impl KernelEventObserver for FollowListProjection {
-    /// Called by the kernel once per accepted kind:3 event.
-    ///
-    /// Gate by `kind == 3` **and** by author == active pubkey, then extract
-    /// all `["p", <pubkey>, …]` tags and store them under the event's author.
-    /// Replaceable: a newer kind:3 from the same author overwrites the
-    /// previous entry (the kernel already deduplicates via `Replaced` — this
-    /// upsert is idempotent). Poisoned mutex → silent no-op (D6).
-    ///
-    /// # Why the author gate
-    ///
-    /// `snapshot_json` only ever reads the active account's entry, so kind:3
-    /// events authored by anyone else (e.g. profiles surfaced in a follow
-    /// feed) would accumulate as dead weight — a shadow-storage leak that
-    /// scales with the social graph. The kernel already stores the active
-    /// account's follow list authoritatively in `seed_contacts`, so any
-    /// non-active-author insert would also be a duplicate index.
-    ///
-    /// On account switch, the kernel re-fetches kind:3 via
-    /// `account_profile_interest`, so the new active account's follow list
-    /// repopulates on its own.
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind != KIND_CONTACT_LIST {
-            return;
-        }
-
-        // Author gate: skip unless this kind:3 was authored by the active
-        // account. Poisoned mutex or no active account → silent no-op (D6).
-        let active = match self.active_pubkey.lock() {
-            Ok(guard) => guard.as_ref().cloned(),
-            Err(_) => return,
-        };
-        if active.as_deref() != Some(event.author.as_str()) {
-            return;
-        }
-
-        // Derive the follow list through the one shared pure function
-        // (`contact_follows`): every valid-hex `p`-tag in document order — the
-        // IDENTICAL set the router subscribes to in `Kernel::ingest_contacts`
-        // and the sibling `ActiveFollowSet` predicate qualifies. The follow set
-        // is uncapped (#1497 amendment 6): the follow-feed is one multi-author
-        // interest covering every follow, so the projection advertises exactly
-        // what the feed serves.
-        let followed: Vec<String> = contact_follows(&event.tags);
-
-        let Ok(mut follows) = self.follows.lock() else {
-            return;
-        };
-        // The author gate above guarantees this insert is for the active
-        // account. Clear first so stale entries from a previous active
-        // account (e.g. after account switch) don't linger — the map's
-        // invariant is `len() <= 1`, always the current active account.
-        //
-        // Lifecycle divergence (intentional, see `ActiveFollowSet` module
-        // docs): this clear is LAZY — it only fires when the next
-        // active-account kind:3 arrives. The sibling `ActiveFollowSet` clears
-        // EAGERLY via `notify_account_changed`. The two therefore briefly
-        // report different sets across an account switch. Unifying the
-        // lifecycles is out of scope for the cap fix.
-        follows.clear();
-        follows.insert(event.author.clone(), followed);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::substrate::KernelEvent;
+    use nmp_core::substrate::TestContactsCache;
+    use std::sync::{Arc, Mutex};
 
-    fn make_event(author: &str, p_tags: &[&str]) -> KernelEvent {
-        let tags: Vec<Vec<String>> = p_tags
+    fn make_slot(active: Option<&str>) -> ActiveAccountSlot {
+        Arc::new(Mutex::new(active.map(|s| s.to_string())))
+    }
+
+    fn make_cache_with(pubkey: &str, follows: &[&str]) -> Arc<TestContactsCache> {
+        let cache = Arc::new(TestContactsCache::new());
+        let tags: Vec<Vec<String>> = follows
             .iter()
             .map(|pk| vec!["p".to_string(), pk.to_string()])
             .collect();
-        KernelEvent {
-            id: nmp_core::substrate::EventId::from("0000000000000000000000000000000000000000000000000000000000000001".to_string()),
-            author: author.to_string(),
-            kind: 3,
-            created_at: 100,
-            tags,
-            content: String::new(),
-            relay_provenance: Vec::new(),
-        }
-    }
-
-    fn projection_for(active: Option<&str>) -> FollowListProjection {
-        let slot = Arc::new(Mutex::new(active.map(|s| s.to_string())));
-        FollowListProjection::new(slot)
+        cache.ingest_kind3(pubkey, "eventid01", 100, &tags);
+        cache
     }
 
     #[test]
     fn empty_when_no_active_account() {
-        let proj = projection_for(None);
+        let slot = make_slot(None);
+        let cache = Arc::new(TestContactsCache::new());
+        let proj = FollowListProjection::new(slot, cache as Arc<dyn ContactsLookup>);
         let snap = proj.snapshot_json();
         assert_eq!(snap, serde_json::json!({ "follows": [] }));
     }
 
     #[test]
-    fn empty_when_no_kind3_received() {
-        let proj = projection_for(Some("aabbcc"));
+    fn empty_when_no_kind3_in_cache() {
+        let slot = make_slot(Some("aabbcc"));
+        let cache = Arc::new(TestContactsCache::new()); // nothing cached
+        let proj = FollowListProjection::new(slot, cache as Arc<dyn ContactsLookup>);
         let snap = proj.snapshot_json();
         assert_eq!(snap, serde_json::json!({ "follows": [] }));
     }
 
     #[test]
-    fn non_kind3_event_is_ignored() {
-        let proj = projection_for(Some("aabbcc"));
-        let mut ev = make_event("aabbcc", &["ddeeff"]);
-        ev.kind = 1; // kind:1 note — must not update follows
-        proj.on_kernel_event(&ev);
-        let snap = proj.snapshot_json();
-        assert_eq!(snap, serde_json::json!({ "follows": [] }));
-    }
-
-    #[test]
-    fn kind3_for_active_account_surfaces_in_snapshot() {
+    fn follows_surface_from_cache() {
         let author = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let followed = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
-        let proj = projection_for(Some(author));
-
-        proj.on_kernel_event(&make_event(author, &[followed]));
-
+        let slot = make_slot(Some(author));
+        let cache = make_cache_with(author, &[followed]);
+        let proj = FollowListProjection::new(slot, cache as Arc<dyn ContactsLookup>);
         let snap = proj.snapshot_json();
         let follows = snap["follows"].as_array().expect("follows array");
         assert_eq!(follows.len(), 1);
         assert_eq!(follows[0]["pubkey"].as_str().unwrap(), followed);
-        // FollowEntry now carries only the raw hex pubkey — aim.md §2.
+        // FollowEntry carries only the raw hex pubkey — aim.md §2.
         assert!(follows[0].get("npub").is_none());
-        assert!(follows[0].get("short_npub").is_none());
     }
 
     #[test]
-    fn kind3_for_other_account_is_not_surfaced() {
+    fn other_account_cache_entry_not_surfaced() {
+        // Cache has Carol's follows, but the active account is Alice.
         let alice = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let carol = "cc11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let followed = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
-
-        // Active account is Alice; Carol's kind:3 arrives.
-        let proj = projection_for(Some(alice));
-        proj.on_kernel_event(&make_event(carol, &[followed]));
-
+        let cache = make_cache_with(carol, &[followed]);
+        let slot = make_slot(Some(alice));
+        let proj = FollowListProjection::new(slot, cache as Arc<dyn ContactsLookup>);
         let snap = proj.snapshot_json();
         assert_eq!(snap["follows"].as_array().unwrap().len(), 0);
-        // Shadow-storage gate: Carol's kind:3 must not have been stored at
-        // all — the projection only keeps the active account's list.
-        assert_eq!(proj.follows_map_len(), 0);
     }
 
     #[test]
-    fn many_non_active_authors_do_not_grow_map() {
-        // Regression: prior to the author gate, every kind:3 from every
-        // author in the follow feed was inserted, growing the map without
-        // bound. With the gate, the map must hold at most one entry — the
-        // active account's list.
-        let alice = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
-        let proj = projection_for(Some(alice));
-
-        // 50 distinct non-active authors publish kind:3.
-        for i in 0..50u8 {
-            let mut author = String::with_capacity(64);
-            // Two-hex byte prefix that varies per iteration, plus a fixed
-            // 62-hex-char tail — produces 50 distinct, valid-looking hex pubkeys
-            // that are all different from `alice`.
-            author.push_str(&format!("{:02x}", i));
-            author.push_str("99887766554433221100ffeeddccbbaa99887766554433221100ffeeddccbb");
-            assert_ne!(author, alice);
-            proj.on_kernel_event(&make_event(&author, &["deadbeef"]));
-        }
-
-        // Active account never published — map must remain empty.
-        assert_eq!(
-            proj.follows_map_len(),
-            0,
-            "non-active authors must not be stored"
-        );
-
-        // Now the active account publishes its kind:3 → exactly one entry.
-        let followed = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
-        proj.on_kernel_event(&make_event(alice, &[followed]));
-        assert!(
-            proj.follows_map_len() <= 1,
-            "map must hold at most the active account's entry, got {}",
-            proj.follows_map_len()
-        );
-        assert_eq!(proj.follows_map_len(), 1);
-
-        // And the snapshot reflects Alice's list.
-        let snap = proj.snapshot_json();
-        let follows = snap["follows"].as_array().unwrap();
-        assert_eq!(follows.len(), 1);
-        assert_eq!(follows[0]["pubkey"].as_str().unwrap(), followed);
-    }
-
-    #[test]
-    fn account_switch_does_not_strand_stale_entry() {
-        // Alice signs in, her kind:3 lands → map = {Alice}. User switches
-        // to Bob (FFI writes the active slot). Bob's kind:3 lands → the
-        // map must hold ONLY Bob; Alice's entry must be cleared. This is
-        // the `<= 1` invariant across account switches.
+    fn account_switch_reads_new_account_from_cache() {
+        // Both Alice and Bob have entries in the cache. Switching the active slot
+        // makes the projection reflect the new account immediately.
         let alice = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let bob = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let alice_follow = "cc11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let bob_follow = "dd11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
 
-        let slot = Arc::new(Mutex::new(Some(alice.to_string())));
-        let proj = FollowListProjection::new(Arc::clone(&slot));
-
-        // Alice's kind:3 arrives.
-        proj.on_kernel_event(&make_event(alice, &[alice_follow]));
-        assert_eq!(proj.follows_map_len(), 1);
-
-        // Account switch: FFI rewrites the active slot to Bob.
-        *slot.lock().unwrap() = Some(bob.to_string());
-
-        // Bob's kind:3 arrives — Alice's stale entry must be cleared.
-        proj.on_kernel_event(&make_event(bob, &[bob_follow]));
-        assert_eq!(
-            proj.follows_map_len(),
-            1,
-            "after switch, map must hold only the new active account"
+        let cache = Arc::new(TestContactsCache::new());
+        {
+            let tags: Vec<Vec<String>> = vec![vec!["p".to_string(), alice_follow.to_string()]];
+            cache.ingest_kind3(alice, "ev-alice", 100, &tags);
+        }
+        // Bob has NO entry yet (simulates new account before kind:3 arrives).
+        let slot = make_slot(Some(alice));
+        let proj = FollowListProjection::new(
+            Arc::clone(&slot),
+            Arc::clone(&cache) as Arc<dyn ContactsLookup>,
         );
 
+        // Alice is active — her follows appear.
         let snap = proj.snapshot_json();
         let follows = snap["follows"].as_array().unwrap();
         assert_eq!(follows.len(), 1);
-        assert_eq!(follows[0]["pubkey"].as_str().unwrap(), bob_follow);
+        assert_eq!(follows[0]["pubkey"].as_str().unwrap(), alice_follow);
+
+        // Switch to Bob: snapshot must be empty immediately (Bob has no cached kind:3).
+        *slot.lock().unwrap() = Some(bob.to_string());
+        let snap = proj.snapshot_json();
+        assert_eq!(
+            snap["follows"].as_array().unwrap().len(),
+            0,
+            "account switch to new account → empty follows immediately"
+        );
+
+        // Bob's kind:3 arrives (written into the shared cache by Kind3Parser).
+        {
+            let tags: Vec<Vec<String>> = vec![vec!["p".to_string(), bob_follow.to_string()]];
+            cache.ingest_kind3(bob, "ev-bob", 200, &tags);
+        }
+        let snap = proj.snapshot_json();
+        let follows = snap["follows"].as_array().unwrap();
+        assert_eq!(follows.len(), 1);
+        assert_eq!(
+            follows[0]["pubkey"].as_str().unwrap(),
+            bob_follow,
+            "after Bob's kind:3 is cached, snapshot reflects his follows"
+        );
     }
 
     #[test]
-    fn no_active_account_drops_all_inserts() {
-        // With no active pubkey set, even an event that "could" have been
-        // ours (if we later signed in as that author) is dropped. This is
-        // the correct semantics: the kernel re-fetches kind:3 on sign-in.
-        let proj = projection_for(None);
+    fn cleared_follow_set_some_empty_yields_empty_snapshot() {
+        // An explicit kind:3 with no p-tags means "follows nobody" — Some([]).
+        // The projection must surface an empty list, not None.
         let author = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
-        proj.on_kernel_event(&make_event(author, &["deadbeef"]));
-        assert_eq!(proj.follows_map_len(), 0);
+        let cache = Arc::new(TestContactsCache::new());
+        cache.ingest_kind3(author, "ev1", 100, &[]); // no follows
+        let slot = make_slot(Some(author));
+        let proj = FollowListProjection::new(slot, cache as Arc<dyn ContactsLookup>);
+        let snap = proj.snapshot_json();
+        assert_eq!(snap, serde_json::json!({ "follows": [] }));
     }
 
     #[test]
-    fn newer_kind3_replaces_older_follow_list() {
+    fn newer_cache_entry_reflected_live() {
+        // The cache is mutable via the shared Arc; updating it (simulating
+        // Kind3Parser ingesting a newer kind:3) is immediately visible in
+        // snapshot() without any observer step.
         let author = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let first = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
         let second = "cc11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
-        let proj = projection_for(Some(author));
+        let cache = Arc::new(TestContactsCache::new());
+        {
+            let tags = vec![vec!["p".to_string(), first.to_string()]];
+            cache.ingest_kind3(author, "ev1", 100, &tags);
+        }
+        let slot = make_slot(Some(author));
+        let proj = FollowListProjection::new(slot, Arc::clone(&cache) as Arc<dyn ContactsLookup>);
+        // First snapshot: only `first`.
+        let snap = proj.snapshot();
+        assert_eq!(snap.follows.len(), 1);
+        assert_eq!(snap.follows[0].pubkey, first);
 
-        proj.on_kernel_event(&make_event(author, &[first]));
-        // A replacement kind:3 with a different follow list.
-        proj.on_kernel_event(&make_event(author, &[second]));
-
-        let snap = proj.snapshot_json();
-        let follows = snap["follows"].as_array().unwrap();
-        assert_eq!(follows.len(), 1);
-        assert_eq!(follows[0]["pubkey"].as_str().unwrap(), second);
+        // Kind3Parser ingests a replacement kind:3 (higher created_at).
+        {
+            let tags = vec![vec!["p".to_string(), second.to_string()]];
+            cache.ingest_kind3(author, "ev2", 200, &tags);
+        }
+        // Without any observer step the snapshot already reflects the update.
+        let snap = proj.snapshot();
+        assert_eq!(snap.follows.len(), 1);
+        assert_eq!(
+            snap.follows[0].pubkey, second,
+            "live update from cache write is visible without observer fan-out"
+        );
     }
 
     #[test]
@@ -435,12 +341,58 @@ mod tests {
         let author = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
         let f1 = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
         let f2 = "cc11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
-        let proj = projection_for(Some(author));
-
-        proj.on_kernel_event(&make_event(author, &[f1, f2]));
-
+        let cache = Arc::new(TestContactsCache::new());
+        {
+            let tags = vec![
+                vec!["p".to_string(), f1.to_string()],
+                vec!["p".to_string(), f2.to_string()],
+            ];
+            cache.ingest_kind3(author, "ev1", 100, &tags);
+        }
+        let proj =
+            FollowListProjection::new(make_slot(Some(author)), cache as Arc<dyn ContactsLookup>);
         let snap = proj.snapshot_json();
         let follows = snap["follows"].as_array().unwrap();
         assert_eq!(follows.len(), 2);
+    }
+
+    #[test]
+    fn snapshot_struct_equivalence_for_local_and_external_kind3() {
+        // Proves the equivalence lock: a locally-published follow (written by
+        // the actor's Follow handler via Kind3Parser) and an externally-injected
+        // kind:3 (e.g. from another device) produce IDENTICAL FollowListSnapshot
+        // values when they carry the same follow set. Both paths write the same
+        // ContactsLookup, so the snapshot is identical.
+        let author = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+        let bob = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        let cache = Arc::new(TestContactsCache::new());
+        let slot = make_slot(Some(author));
+        let proj = FollowListProjection::new(
+            Arc::clone(&slot),
+            Arc::clone(&cache) as Arc<dyn ContactsLookup>,
+        );
+
+        // Simulate: local publish writes ev1 (t=100).
+        {
+            let tags = vec![vec!["p".to_string(), bob.to_string()]];
+            cache.ingest_kind3(author, "ev-local", 100, &tags);
+        }
+        let local_snap = proj.snapshot();
+
+        // Simulate: external replacement kind:3 arrives carrying the same follows
+        // (same created_at-tie resolved by lex event-id — ev-external > ev-local
+        // so it supersedes, but with the same p-tags the snapshot is identical).
+        {
+            let tags = vec![vec!["p".to_string(), bob.to_string()]];
+            cache.ingest_kind3(author, "ev-external", 100, &tags);
+        }
+        let external_snap = proj.snapshot();
+
+        assert_eq!(
+            local_snap, external_snap,
+            "local follow and external kind:3 replacement with same follows must yield IDENTICAL snapshots"
+        );
+        assert_eq!(local_snap.follows.len(), 1);
+        assert_eq!(local_snap.follows[0].pubkey, bob);
     }
 }

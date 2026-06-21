@@ -96,21 +96,25 @@
 //!   so the predicate producer and the snapshot can never disagree on which
 //!   follows count.
 //!
-//! # Sibling lifecycle divergence (NOT unified here)
+//! # Sibling design divergence
 //!
 //! `ActiveFollowSet` and `FollowListProjection` derive the *same* (uncapped,
-//! #1497) membership but clear stale state on *different* triggers:
+//! #1497) follow membership but have different internal designs:
 //!
-//! * `ActiveFollowSet` clears eagerly via [`Self::notify_account_changed`]
-//!   (the explicit account-change seam the composition root drives).
-//! * `FollowListProjection` clears **lazily** — its `on_kernel_event` clears
-//!   the map only when the *next* active-account kind:3 arrives.
-//!
-//! So between an account switch and the new account's kind:3 landing, the two
-//! can momentarily report different sets (predicate already empty; snapshot
-//! still showing the prior account until its kind:3 clears it). Unifying these
-//! lifecycles is deliberately out of scope for the cap fix — it is a separate
-//! account-switch-consistency change and is tracked as such.
+//! * `ActiveFollowSet` owns a live `Arc<RwLock<BTreeSet<String>>>` that it
+//!   rebuilds on each `on_kernel_event` (kind:3) and on each
+//!   [`Self::notify_account_changed`] call. It clears eagerly on account
+//!   change and hands out a closure predicate that reads the shared set live.
+//! * `FollowListProjection` is a **thin read-model** over the shared
+//!   `Arc<dyn ContactsLookup>` — it holds NO secondary `HashMap` or observer
+//!   state. Its `snapshot()` simply calls
+//!   `contacts_lookup.follows(active_pubkey)` directly, so account-switch
+//!   consistency is automatic: the slot is re-read on every snapshot call, and
+//!   the `ContactsLookup` is the single source of truth written by
+//!   `nmp_nip01::Kind3Parser`. Demand interest (kind:3 acquisition) is driven
+//!   by `register_follow_state_runtime` via `ActorCommand::OpenInterest` /
+//!   `CloseInterest` — no `KernelEventObserver` registration is needed for the
+//!   projection itself.
 //! * **D6** — poisoned locks and a `None` active account degrade to an empty
 //!   set / a `false` predicate, never a panic.
 //! * **D8** — `on_kernel_event` does bounded work (one kind check, one lock,

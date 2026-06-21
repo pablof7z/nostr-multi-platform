@@ -78,6 +78,7 @@ pub use interests::{
     active_mute_list_interest_id,
 };
 
+
 pub use bookmarks::{
     build_bookmark_list_event, register_bookmark_actions, AddBookmarkAction, BookmarkItem,
     BookmarkListMetadata, BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput,

@@ -117,7 +117,20 @@ fn write_path_unavailable_reason_distinguishes_signer_states() {
         )
         .unwrap(),
     ));
-    assert!(write_path_unavailable_reason(Some(&signer)).starts_with("publish_path_not_wired"));
+    // Fix #1748: the signer-installed "publishing is disabled" branch now
+    // surfaces the SINGLE canonical disable token shared with the async path,
+    // not the divergent legacy `publish_path_not_wired` string. A host
+    // pattern-matches exactly ONE "publishing disabled" prefix across both
+    // the sync and async entrypoints.
+    let reason = write_path_unavailable_reason(Some(&signer));
+    assert!(
+        reason.starts_with("publish_not_supported_in_web_preview"),
+        "signer-installed disable branch must emit the canonical token; got: {reason}"
+    );
+    assert!(
+        !reason.starts_with("publish_path_not_wired"),
+        "the legacy `publish_path_not_wired` token must be gone; got: {reason}"
+    );
 }
 
 #[test]

@@ -302,29 +302,22 @@ pub(crate) fn publish_unsigned_event_to_relays(
 ///   bypassing the outbox resolver. Empty or malformed explicit relay sets
 ///   fail closed rather than degrading to Auto.
 ///
-/// D6 — a signature/id verification failure is surfaced as a toast (error
-/// becomes kernel state, never a silent no-op) and produces no outbound
-/// frames and no publish-queue entry. The forged event is dropped.
+/// D6 — well-formedness verification (id-hash + Schnorr sig) runs through the
+/// shared `Kernel::verify_externally_signed_event` chokepoint; a failure
+/// surfaces a categorized toast, drops the forged event, and emits no frames.
 ///
-/// `correlation_id` is the registry-minted action id when this publish
-/// originates from `nmp_app_dispatch_action`'s pre-signed `PublishAction::Publish`
-/// path. Threading it makes the publish engine report THAT id in
-/// `action_results` via `correlation_id_override` — explicit symmetry with
-/// `publish_profile`. `None` for non-dispatch callers (the kernel-internal
-/// `NmpApp::publish_signed_explicit` workspace-internal seam + conformance
-/// harnesses land on this `None` path; the deleted
-/// `nmp_app_publish_signed_event*` C-ABI symbols used to land here too,
-/// always with `None`); the engine then falls back to the publish handle
-/// (== event id), preserving the prior behaviour.
+/// `correlation_id` is the registry-minted action id (the operation's identity,
+/// never the event id — #1748) when this publish originates from
+/// `dispatch_action`'s pre-signed `PublishAction::Publish` path; threading it
+/// makes the engine report THAT id in `action_results`. `None` for non-dispatch
+/// callers (`NmpApp::publish_signed_explicit` + conformance harnesses); the
+/// engine then falls back to the publish handle (== event id).
 ///
-/// **D10 defensive guard.** A kind:1059 gift-wrap envelope with
-/// `PublishTarget::Auto` is REFUSED — the Auto branch below would
-/// otherwise resolve through the author's public-relay outbox and leak
-/// the encrypted envelope. The refusal sets a D6 toast and emits a
-/// `tracing::warn!`. This is the kernel-level twin of the per-protocol
-/// call-site guards — defense in depth at every entry into the
-/// verified-publish path. Callers of kind:1059 MUST supply an explicit
-/// relay pin (`PublishTarget::Explicit { relays }`).
+/// **D10 defensive guard.** A kind:1059 gift-wrap with `PublishTarget::Auto` is
+/// REFUSED — Auto would resolve through the author's public-relay outbox and
+/// leak the encrypted envelope. Defense in depth at every entry into the
+/// verified-publish path; callers of kind:1059 MUST supply an explicit relay
+/// pin (`PublishTarget::Explicit { relays }`).
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,
@@ -334,37 +327,30 @@ pub(crate) fn publish_signed_event(
     if let Err(reason) = validate_publish_target(&target) {
         return fail_invalid_target(kernel, reason, correlation_id);
     }
-    // Reuse the store's verification gate: serializes to NIP-01 canonical
-    // JSON, parses with the `nostr` crate, and checks BOTH the event-id hash
-    // and the Schnorr signature. This is the exact primitive `kernel::ingest`
-    // uses on inbound events, so a published signed event is held to the same
-    // cryptographic bar as a received one.
-    let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
-        Ok(v) => v,
-        Err(reason) => {
-            // Typed FFI error contract: a verification failure (bad id hash
-            // or Schnorr sig) means the caller handed us a structurally
-            // malformed event — iOS branches on `malformed_event` rather
-            // than substring-matching the English reason. The categorized
-            // toast surface is deliberately preserved here (NOT
-            // `fail_publish`'s uncategorized path), because the FFI error
-            // contract pins the `ERR_MALFORMED_EVENT` discriminant.
-            let toast = format!("signed event rejected: {reason}");
-            kernel.set_error_toast_with_category(
-                toast.clone(),
-                crate::kernel::closed_reason::ERR_MALFORMED_EVENT,
-            );
-            // Broken-promise fix: dispatched callers (the generic
-            // `dispatch_action("nmp.publish")` → `PublishAction::Publish`
-            // path) carry a correlation_id; record the terminal failure
-            // under it so the host's spinner clears. No-op for `None`.
-            if let Some(id) = correlation_id {
-                kernel.record_action_failure(id, toast);
-            }
-            return Vec::new();
-        }
+    // RawEvent (flat NIP-01) → SignedEvent. No re-signing: `id` and `sig` are
+    // carried through verbatim onto the wire frame the engine builds.
+    let signed = crate::substrate::SignedEvent {
+        id: raw.id,
+        sig: raw.sig,
+        unsigned: UnsignedEvent {
+            pubkey: raw.pubkey,
+            kind: raw.kind,
+            tags: raw.tags,
+            content: raw.content,
+            created_at: raw.created_at,
+        },
     };
-    let raw = verified.into_raw();
+    // Single well-formedness chokepoint shared with the wasm/verbatim write
+    // path (`kernel_reducer/reply.rs::publish_signed_event`): verifies the OUTER
+    // envelope's id-hash + Schnorr sig, fail-closed on a forged event (D6). It
+    // validates well-formedness ONLY — a gift-wrap / Marmot envelope's inner
+    // semantics stay opaque (ADR-0025).
+    if kernel
+        .verify_externally_signed_event(&signed, correlation_id.as_deref())
+        .is_err()
+    {
+        return Vec::new();
+    }
     // ── D10 publish-policy gate (Workstream C one-door) ──────────────────────
     //
     // Refuse to publish a private/encrypted envelope (gift-wrap kind:1059,
@@ -384,11 +370,11 @@ pub(crate) fn publish_signed_event(
     // is not in the closed `error_category` key set defined by
     // `kernel::closed_reason`).
     if let Err(reason) = crate::publish::validate_publish_routing(
-        raw.kind,
+        signed.unsigned.kind,
         crate::publish::target_is_explicit_nonempty(&target),
     ) {
         tracing::warn!(
-            kind = raw.kind,
+            kind = signed.unsigned.kind,
             "publish_signed_event refused: private/encrypted envelope without an \
              explicit relay pin would route through the author's public-relay \
              outbox, leaking the encrypted envelope (D10 violation). Caller must \
@@ -409,21 +395,6 @@ pub(crate) fn publish_signed_event(
         }
         return Vec::new();
     }
-    // RawEvent (flat NIP-01) → SignedEvent (the kernel's publish-engine input).
-    // No re-signing: `id` and `sig` are carried through verbatim — the wire
-    // frame the engine builds (`build_event_frame`) reproduces these bytes
-    // exactly.
-    let signed = crate::substrate::SignedEvent {
-        id: raw.id,
-        sig: raw.sig,
-        unsigned: UnsignedEvent {
-            pubkey: raw.pubkey,
-            kind: raw.kind,
-            tags: raw.tags,
-            content: raw.content,
-            created_at: raw.created_at,
-        },
-    };
     // `correlation_id` threads through to the publish engine's
     // `correlation_id_override` — `None` preserves the prior fallback to the
     // publish handle (== event id) for every non-dispatch caller.

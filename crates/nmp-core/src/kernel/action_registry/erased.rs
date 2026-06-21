@@ -8,7 +8,7 @@
 //! Extracted from `action_registry.rs` to keep that orchestrator file under the
 //! 500-LOC hand-authored ceiling (AGENTS.md / V-12).
 
-use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection};
+use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -19,19 +19,20 @@ use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection};
 /// pre-existing `ClosureModule` half); it round-trips each module's typed
 /// action shape through serde.
 pub(super) trait ErasedActionModule: Send + Sync {
-    /// Validate `action_json` against the module's `Action` type and return
-    /// an optional preferred correlation id. Mirrors [`ActionModule::start`] +
-    /// [`ActionModule::preferred_action_id`].
+    /// Validate `action_json` against the module's `Action` type. Mirrors
+    /// [`ActionModule::start`].
     ///
-    /// `None` preferred id → caller uses [`super::new_action_id`]. `Some(id)` →
-    /// caller uses that id directly (e.g. the signed event's `id` field for
-    /// `PublishAction::Publish`, so that `dispatch_action`'s return and the
-    /// matching `action_results` entry share the same identifier).
+    /// On `Ok`, the caller mints the operation's `correlation_id` via
+    /// [`super::new_action_id`]. The `correlation_id` is the operation's sole
+    /// identity end-to-end — it is NEVER substituted with output data such as a
+    /// pre-signed event's `id` (the event id is the operation's *result*, not
+    /// its identity; conflating them broke host spinner matching on the
+    /// pre-signed publish path).
     fn start(
         &self,
         ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<Option<ActionId>, ActionRejection>;
+    ) -> Result<(), ActionRejection>;
 
     /// Execute the validated action. Called by [`super::ActionRegistry::execute`]
     /// after `start` returns `Ok`.
@@ -59,13 +60,10 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         &self,
         ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<Option<ActionId>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let action: M::Action = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        // Query preferred id before moving `action` into `start`.
-        let preferred_id = M::preferred_action_id(&action);
-        self.0.start(ctx, action)?;
-        Ok(preferred_id)
+        self.0.start(ctx, action)
     }
 
     fn execute(

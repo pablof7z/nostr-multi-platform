@@ -19,8 +19,10 @@
 //!
 //! 4. Stable, host-pattern-matchable reason strings for the two
 //!    write-unavailability states the wasm runtime can honestly report
-//!    (`signer_not_installed`, `publish_path_not_wired`) plus the
-//!    capability-completion failure reason (`browser_actor_driver_missing`).
+//!    (`signer_not_installed`, and the single canonical
+//!    `publish_not_supported_in_web_preview` disable token shared with the
+//!    async path) plus the capability-completion failure reason
+//!    (`browser_actor_driver_missing`).
 //!
 //! Split out of `runtime.rs` so the file stays under the 500-LOC ceiling and
 //! the routing table has a single owner that codegen / kernel-namespace
@@ -96,22 +98,23 @@ fn str_field(payload: &Value, key: &str) -> Option<String> {
 }
 
 /// Single-source reason string for app-level writes that cannot complete on
-/// the **synchronous** wasm runtime path. Distinguishes the two honest
-/// failure modes the synchronous `handle()` arm can surface:
+/// the wasm runtime. Distinguishes the two honest failure modes:
 ///
 /// - **No signer installed.** The host hasn't called `SetSigner` yet — the
 ///   user has not signed in. Banner: "sign in to publish".
-/// - **Signer installed but synchronous-path-only.** A signer IS installed
-///   and the wasm runtime CAN publish — through the asynchronous
-///   `NmpWasmRuntime::dispatch_app_action_async(...)` entrypoint Stage 3c
-///   added. The synchronous `handle_json` cannot route the same action
-///   because `Nip07Signer::sign()` needs to `await` a JS Promise (`window.
-///   nostr.signEvent(...)`) the wasm thread cannot block on. The reason
-///   string points the host at the async entrypoint so the integration is
-///   self-documenting.
+/// - **Signer installed but publishing disabled in the web preview.** A signer
+///   IS installed, but the web preview build has no real `OutboxResolver`
+///   wired (#1202), so app-level writes are disabled everywhere — the
+///   asynchronous `dispatch_app_action_async` path returns the SAME honest
+///   token (see `publish_path::publish_not_supported_in_web_preview_reason`).
+///   This branch therefore surfaces the one canonical disable token rather than
+///   a second, divergent "wrong entrypoint" string that would have implied the
+///   async path could publish (it cannot, until #1007).
 ///
 /// Both strings start with a stable underscore-snake-case prefix the JS host
-/// can pattern-match without parsing the full reason text.
+/// can pattern-match without parsing the full reason text. The publish-disabled
+/// branch returns the SINGLE canonical token shared with the async path so a
+/// host pattern-matches exactly one "publishing is disabled" prefix.
 pub(crate) fn write_path_unavailable_reason(signer: Option<&Arc<dyn Signer>>) -> String {
     if signer.is_none() {
         return "signer_not_installed: no signer installed; send WorkerRequest::SetSigner \
@@ -119,14 +122,7 @@ pub(crate) fn write_path_unavailable_reason(signer: Option<&Arc<dyn Signer>>) ->
                 before dispatching app-level writes."
             .to_string();
     }
-    "publish_path_not_wired: a signer is installed but app-level writes \
-     cannot be routed through the synchronous `handle_json` path — the \
-     NIP-07 sign step requires awaiting `window.nostr.signEvent(...)`, \
-     which the wasm thread cannot block on. Use \
-     `NmpWasmRuntime.dispatch_app_action_async(requestJson)` (returns a \
-     Promise) instead. V-01 Stage 3c wired PublishNote (kind:1) and React \
-     (kind:7); Follow / Unfollow follow up."
-        .to_string()
+    crate::publish_path::publish_not_supported_in_web_preview_reason("nmp.publish")
 }
 
 /// Reason string for non-app-action capability completions that cannot be

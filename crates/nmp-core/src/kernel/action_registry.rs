@@ -258,11 +258,13 @@ impl ActionRegistry {
     /// correlation id is generated *after* validation succeeds so a rejected
     /// action never consumes one.
     ///
-    /// The returned id is either the module's [`ActionModule::preferred_action_id`]
-    /// (when the module returns `Some`) or a freshly minted [`new_action_id`].
-    /// Using the preferred id makes `dispatch_action`'s JSON return and the
-    /// matching `action_results` entry use the same identifier — a requirement
-    /// for hosts that key UI spinners on the returned `correlation_id`.
+    /// The returned id is a freshly minted [`new_action_id`] — the operation's
+    /// sole identity. It is threaded onto the executor's `ActorCommand` and is
+    /// the identifier the publish engine reports in `action_results`, so a host
+    /// keying a UI spinner on this returned `correlation_id` matches the
+    /// terminal verdict to its dispatch. The `correlation_id` is NEVER replaced
+    /// with output data such as a pre-signed event's `id` (the event id is the
+    /// operation's *result*, not its identity).
     ///
     /// `now_ms` is the caller-supplied wall-clock millisecond stamp. The FFI
     /// dispatch path reads it at the system boundary (not inside the reducer)
@@ -282,7 +284,7 @@ impl ActionRegistry {
         // unwind across the FFI boundary (undefined behaviour); a caught
         // panic surfaces as `ActionRejection::Invalid("action validator
         // panicked")` instead.
-        let preferred_id = match catch_unwind(AssertUnwindSafe(|| module.start(ctx, action_json))) {
+        match catch_unwind(AssertUnwindSafe(|| module.start(ctx, action_json))) {
             Ok(result) => result?,
             Err(_) => {
                 return Err(ActionRejection::Invalid(
@@ -290,7 +292,11 @@ impl ActionRegistry {
                 ));
             }
         };
-        Ok(preferred_id.unwrap_or_else(|| new_action_id(now_ms)))
+        // The correlation_id is minted here — AFTER validation succeeds — and is
+        // the operation's sole identity. It is never substituted with output
+        // data (e.g. a pre-signed event's id); the event id is the operation's
+        // result, surfaced through `action_results`, not its identity.
+        Ok(new_action_id(now_ms))
     }
 
     /// Execute the validated action via [`ActionModule::execute`] on the

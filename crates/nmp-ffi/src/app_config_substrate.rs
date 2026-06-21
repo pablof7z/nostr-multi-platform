@@ -165,6 +165,29 @@ impl NmpApp {
         }
     }
 
+    /// ADR-0057 PR 3 — read-only accessor for the current
+    /// [`nmp_core::substrate::ContactsLookup`] handle installed via
+    /// [`Self::set_contacts_lookup`].
+    ///
+    /// Clones the `Arc` from the internal slot — both the returned handle and
+    /// the kernel's copy point at the SAME underlying cache (the
+    /// `nmp_nip01::ContactsCache` the composition root installs). Protocol
+    /// crates that need the canonical kind:3 follow list (e.g.
+    /// [`nmp_nip02::FollowListProjection`]) call this to obtain a cache reader
+    /// that is always in sync with the ingest parser's writes.
+    ///
+    /// Returns the default [`nmp_core::substrate::EmptyContactsLookup`]-backed
+    /// `Arc` before [`Self::set_contacts_lookup`] is called (i.e. before
+    /// composition runs). D6: a poisoned slot lock clones the stale inner value.
+    #[must_use]
+    pub fn contacts_lookup(&self) -> std::sync::Arc<dyn nmp_core::substrate::ContactsLookup> {
+        if let Ok(slot) = self.contacts_lookup_slot.lock() {
+            std::sync::Arc::clone(&*slot)
+        } else {
+            nmp_core::substrate::empty_contacts_lookup()
+        }
+    }
+
     /// ADR-0057 PR 3 — install the kernel's
     /// [`nmp_core::substrate::ContactsLookup`] handle. The per-app crate
     /// (today `nmp_defaults` register_substrate) hands in a concrete
