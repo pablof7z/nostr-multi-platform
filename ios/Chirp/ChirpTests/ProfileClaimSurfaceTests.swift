@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import XCTest
 @testable import Chirp
@@ -82,21 +83,31 @@ final class ProfileClaimSurfaceTests: XCTestCase {
 
     // MARK: - claim/release refcount discipline
 
-    /// Records every claim/release the surface issues so the test can assert a
-    /// net-zero balance (no leaked inflight profile requests).
+    /// Records every resolve/release the surface issues so the test can assert a
+    /// net-zero balance (no leaked inflight profile requests). ADR-0063 Lane E
+    /// (#1671): conforms to the unified `NostrProfileHost` (resolve_ref +
+    /// `refs.profile` keyed accessor) — the old `claimProfile`/`ProfileLiveness`
+    /// surface is gone.
     private final class RecordingProfileHost: NostrProfileHost {
         private(set) var claims: [(String, String)] = []
         private(set) var releases: [(String, String)] = []
-        /// Liveness intent recorded per claim (parallel to `claims`).
-        private(set) var claimLiveness: [ProfileLiveness] = []
+        /// Shape + liveness intent recorded per resolve (parallel to `claims`).
+        private(set) var claimShape: [RefShape] = []
+        private(set) var claimLiveness: [RefLiveness] = []
 
-        func profile(forPubkey pubkey: String) -> ProfileWire? { nil }
-        func claimProfile(pubkey: String, consumerID: String, liveness: ProfileLiveness) {
+        func profileCard(forPubkey pubkey: String) -> ProfileCard? { nil }
+        func resolveProfile(
+            pubkey: String, consumerID: String, shape: RefShape, liveness: RefLiveness
+        ) {
             claims.append((pubkey, consumerID))
+            claimShape.append(shape)
             claimLiveness.append(liveness)
         }
         func releaseProfile(pubkey: String, consumerID: String) {
             releases.append((pubkey, consumerID))
+        }
+        var profileRowChanged: AnyPublisher<KeyedRowChange, Never> {
+            Empty().eraseToAnyPublisher()
         }
 
         /// Per-(pubkey, consumer) net refcount across all calls.
@@ -108,9 +119,9 @@ final class ProfileClaimSurfaceTests: XCTestCase {
         }
     }
 
-    /// Drives the same reconcile logic `NoteContentView` uses (claim added,
+    /// Drives the same reconcile logic `NoteContentView` uses (resolve added,
     /// release removed, release-all on disappear) against a recording host and
-    /// asserts every claim is matched by a release.
+    /// asserts every resolve is matched by a release.
     func test_mention_claim_reconcile_is_refcount_balanced() {
         let host = RecordingProfileHost()
         let consumerID = "note-content.mentions.test"
@@ -124,8 +135,11 @@ final class ProfileClaimSurfaceTests: XCTestCase {
                 host.releaseProfile(pubkey: pk, consumerID: consumerID)
             }
             for pk in targetSet.subtracting(currentSet) {
-                // Inline mentions claim `.cacheOk`, matching NoteContentView.
-                host.claimProfile(pubkey: pk, consumerID: consumerID, liveness: .cacheOk)
+                // Inline mentions resolve `.profileRef` + `.cacheOk`, matching
+                // NoteContentView.syncMentionClaims.
+                host.resolveProfile(
+                    pubkey: pk, consumerID: consumerID,
+                    shape: .profileRef, liveness: .cacheOk)
             }
             claimed = target
         }
@@ -140,23 +154,28 @@ final class ProfileClaimSurfaceTests: XCTestCase {
         sync(to: [pkB])
         releaseAll()
 
-        XCTAssertEqual(host.claims.count, 2, "A and B each claimed once.")
+        XCTAssertEqual(host.claims.count, 2, "A and B each resolved once.")
         XCTAssertEqual(host.releases.count, 2, "A released on tree change, B on disappear.")
         for (_, net) in host.netCounts() {
-            XCTAssertEqual(net, 0, "Every (pubkey, consumer) claim must be matched by a release.")
+            XCTAssertEqual(net, 0, "Every (pubkey, consumer) resolve must be matched by a release.")
         }
         XCTAssertTrue(
             host.claimLiveness.allSatisfy { $0 == .cacheOk },
-            "Inline/list claims must use .cacheOk (no live subscription).")
+            "Inline/list resolves must use .cacheOk (no live subscription).")
+        XCTAssertTrue(
+            host.claimShape.allSatisfy { $0 == .profileRef },
+            "Inline/list resolves must request the lightweight .profileRef shape.")
     }
 
-    /// The `NostrProfileHost` convenience overload (no `liveness:`) must default
-    /// to `.cacheOk`, so registry leaves that don't pass an intent never open a
-    /// live subscription.
-    func test_convenience_claim_defaults_to_cacheOk() {
+    /// The `NostrProfileHost` convenience overload (no `shape:`/`liveness:`) must
+    /// default to `.profileRef` + `.cacheOk`, so registry leaves that don't pass
+    /// an intent never open a live subscription.
+    func test_convenience_resolve_defaults_to_profileRef_cacheOk() {
         let host = RecordingProfileHost()
-        host.claimProfile(pubkey: pkA, consumerID: "leaf")
+        host.resolveProfile(pubkey: pkA, consumerID: "leaf")
+        XCTAssertEqual(host.claimShape, [.profileRef],
+            "The defaulted resolve overload must request .profileRef.")
         XCTAssertEqual(host.claimLiveness, [.cacheOk],
-            "The defaulted claim overload must map to .cacheOk.")
+            "The defaulted resolve overload must map to .cacheOk.")
     }
 }

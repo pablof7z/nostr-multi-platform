@@ -23,11 +23,19 @@ struct NoteContentView: View {
     /// Pubkeys currently claimed under `mentionConsumerID`, so a tree change or
     /// disappear releases exactly what was claimed.
     @State private var claimedMentions: [String] = []
+    /// ADR-0063 Lane E (#1671): per-key observer for THIS note's mention
+    /// pubkeys. Inline mentions render as a single concatenated `Text`, so no
+    /// per-mention SwiftUI view can host its own observer (like
+    /// `NostrProfileName` does). Instead this one note's content view observes
+    /// exactly its mention rows in `refs.profile`; when any of them commits, it
+    /// re-evaluates its body and re-reads the label from the keyed-ref cache.
+    /// A profile update therefore re-renders ONLY the notes that mention that
+    /// pubkey — never the whole view tree (no whole-map `@Published` broadcast).
+    @StateObject private var mentionObserver = KeyedRefMultiRowObserver()
 
     init(
         content: String,
         contentTree: ContentTreeWire? = nil,
-        mentionProfiles: [String: MentionProfile] = [:],
         eventCards: [String: ChirpEventCard] = [:],
         timelineItems: [String: TimelineItem] = [:],
         renderContext: NoteRenderContext? = nil,
@@ -36,7 +44,6 @@ struct NoteContentView: View {
         self.content = content
         self.contentTree = contentTree
         self.renderContext = renderContext ?? NoteRenderContext(
-            mentionProfiles: mentionProfiles,
             eventCards: eventCards,
             timelineItems: timelineItems
         )
@@ -68,6 +75,15 @@ struct NoteContentView: View {
         }
     }
 
+    /// Render the inline label for one profile mention from the keyed-ref cache
+    /// (`profileHost.profile(forPubkey:)`), NOT a whole-map projection. Per-key
+    /// reactivity comes from `mentionObserver`, which re-renders this note when
+    /// the mentioned pubkey's `refs.profile` row commits. Falls back to the
+    /// shortened pubkey while the kind:0 is unresolved — never blank.
+    private func mentionLabel(for pubkey: String) -> String {
+        profileHost?.profile(forPubkey: pubkey)?.display ?? shortEntity(pubkey)
+    }
+
     /// Profile mentions in the currently-rendered tree (empty for plain text).
     private var mentionPubkeys: [String] {
         contentTree?.mentionPubkeys ?? []
@@ -92,6 +108,10 @@ struct NoteContentView: View {
                 shape: .profileRef, liveness: .cacheOk)
         }
         claimedMentions = target
+        // ADR-0063 Lane E (#1671): bind the per-key observer to exactly this
+        // note's mention pubkeys so a kind:0 arrival for one of them re-renders
+        // only this note (re-reading the keyed cache), not the whole tree.
+        mentionObserver.observe(profileHost.profileRowChanged, pubkeys: targetSet)
     }
 
     private func releaseAllMentions() {
@@ -111,7 +131,7 @@ struct NoteContentView: View {
         NostrContentView(
             tree: tree,
             font: font,
-            mentionLabel: { uri in renderContext.mentionLabel(for: uri.primaryId) }
+            mentionLabel: { uri in mentionLabel(for: uri.primaryId) }
         )
         .nostrContentRenderer(chirpContentRenderer)
     }

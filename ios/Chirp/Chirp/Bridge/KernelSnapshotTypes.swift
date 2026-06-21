@@ -6,31 +6,10 @@ import Foundation
 // file holds only `KernelHandle` (file-size hard-cap separation). Pure DTOs;
 // same-module Swift files see each other without import.
 
-// ─── resolved_profiles projection adapter ─────────────────────────────────
-//
-// `MentionProfile` is the rich, component-facing struct `NoteRenderContext`
-// consumes. It is now built from a `ProfileCard` carried by the pre-merged
-// `projections["resolved_profiles"]` map (PR #812) rather than from the older
-// `mention_profiles` wire DTO. The component API (`[String: MentionProfile]`)
-// is unchanged — only the source projection is broader and merged once in Rust.
-// No Swift derives a `MentionProfile` from a `TimelineItem` anymore.
-
-extension MentionProfile {
-    /// Bridge from a resolved `ProfileCard`. `display` falls back to the
-    /// abbreviated hex pubkey when no kind:0 has arrived (`ProfileCard
-    /// .displayLabel`); avatar initials and tint colour are derived locally
-    /// from the same inputs (`PubkeyFormatting.swift`). ADR-0032 — backend
-    /// ships raw data, presentation layer formats.
-    init(card: ProfileCard) {
-        let display = card.displayLabel
-        self.init(
-            display: display,
-            pictureUrl: card.pictureUrl,
-            initials: display.displayInitials,
-            colorHex: card.pubkey.pubkeyColorHex
-        )
-    }
-}
+// ADR-0063 Lane E (#1671): the `MentionProfile` adapter (built from the
+// pre-merged `resolved_profiles` whole-map) is removed. Inline mention labels
+// and author labels now read the per-key `keyedRefCache` (`refs.profile`)
+// directly, so no whole-map `[String: MentionProfile]` is threaded or broadcast.
 
 /// Settings-hub view projection — `projections["settings_hub"]`. The kernel
 /// now emits `relay_count` as an integer; the iOS shell computes the

@@ -20,14 +20,12 @@ struct ProfileNoteRow: View {
     private var authorDisplayLabel: String {
         model.profile(forPubkey: card.authorPubkey)?.display
             ?? card.authorDisplayName
-            ?? renderContext.mentionProfiles[card.authorPubkey]?.display
             ?? card.authorPubkey.shortHex
     }
 
     private var authorAvatarInitials: String {
         let name = model.profile(forPubkey: card.authorPubkey)?.display
             ?? card.authorDisplayName
-            ?? renderContext.mentionProfiles[card.authorPubkey]?.display
         return (name ?? card.authorPubkey).displayInitials
     }
 

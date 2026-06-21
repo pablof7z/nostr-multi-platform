@@ -80,12 +80,11 @@ struct ProfileView: View {
         )
     }
 
-    /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
-    /// Rust-derived projection (aim.md §4.2); the two remaining lookups are
-    /// folded into one context built once per body pass.
+    /// Render context fed to each `ProfileNoteRow`. ADR-0063 Lane E (#1671):
+    /// the whole-map `mentionProfiles` dictionary is gone — inline mention
+    /// labels read the per-key keyed-ref cache inside `NoteContentView`.
     private var noteRenderContext: NoteRenderContext {
         NoteRenderContext(
-            mentionProfiles: model.mentionProfiles,
             eventCards: Dictionary(uniqueKeysWithValues: items.map { ($0.card.id, $0.card) }),
             timelineItems: [:]
         )

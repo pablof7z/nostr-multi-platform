@@ -20,10 +20,9 @@ struct ThreadScreen: View {
     private var itemLookup: [String: TimelineItem] {
         [:]
     }
-    // V-31 — `mention_profiles` snapshot projection now covers thread-view
-    // items (see `update.rs` `mention_profiles` block), so the Swift
-    // `Dictionary(items.map …)` derivation this view used to build is gone.
-    // Bind `model.mentionProfiles` directly at the call site.
+    // ADR-0063 Lane E (#1671): the whole-map `mentionProfiles` dictionary is
+    // gone. Inline mention labels read the per-key keyed-ref cache inside
+    // `NoteContentView`; thread rows no longer thread a profile map.
 
     var body: some View {
         Group {
@@ -80,7 +79,6 @@ struct ThreadScreen: View {
                     ThreadNoteRow(
                         card: card,
                         isFocused: isFocused,
-                        mentionProfiles: model.mentionProfiles,
                         eventCards: cardLookup,
                         timelineItems: itemLookup,
                         onAvatarTap: {
