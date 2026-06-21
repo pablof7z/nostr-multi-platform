@@ -116,20 +116,17 @@ impl Kernel {
             content: truncate(&event.content, 1_200),
             // NIP-18 kind:6: outer `content` is the stringified inner-event
             // JSON, so we must NOT use it directly as the preview — that
-            // ships raw `{"id":"...` to the consumer. Instead derive the
-            // preview from the already-extracted `repost_inner_content`
-            // (flat-map newlines, truncate at 180 chars). Fall back to
-            // "Repost" when the inner content is unavailable or empty —
-            // this covers both the empty-outer-content case (NIP-18 allows
-            // omitting it) and the malformed-JSON case (D1 best-effort).
-            // Non-repost path is byte-identical to the old behaviour.
+            // ships raw `{"id":"...` to the consumer. Derive the preview from
+            // the already-extracted `repost_inner_content` (flat-map newlines,
+            // truncate at 180 chars). It is the empty string when the inner
+            // content is unavailable or empty (NIP-18 allows omitting it, or the
+            // inner JSON was malformed — D1 best-effort). The kernel ships NO
+            // display prose for the empty case (#1683, D7/D27 / aim.md §2): the
+            // `is_repost` flag is on the wire, so presentation owns any "Repost"
+            // label — it never lived in this raw preview. Non-repost path is
+            // byte-identical to the old behaviour.
             content_preview: if is_repost {
-                let inner = repost_inner_content.trim();
-                if inner.is_empty() {
-                    "Repost".to_string()
-                } else {
-                    truncate(&inner.replace('\n', " "), 180)
-                }
+                truncate(&repost_inner_content.trim().replace('\n', " "), 180)
             } else {
                 truncate(&event.content.replace('\n', " "), 180)
             },
