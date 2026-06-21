@@ -360,6 +360,8 @@ mod auth_tests;
 #[cfg(test)]
 mod auth_url_threading_tests;
 #[cfg(test)]
+mod bookmark_cold_start_tests;
+#[cfg(test)]
 mod contacts_chokepoint_pr3_tests;
 #[cfg(test)]
 mod contacts_fanout_tests;

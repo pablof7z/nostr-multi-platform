@@ -14,6 +14,10 @@ crate-type = ["rlib"]
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
 nmp-core = { path = "../nmp-core", default-features = false }
+# Direct dep on nmp-planner for InterestId / InterestScope / InterestLifecycle /
+# LogicalInterest / PTagRouting / stable_hash64 — required by the bookmark-list
+# interest builder (mirrors nmp-nip57/Cargo.toml).
+nmp-planner = { path = "../nmp-planner", default-features = false }
 # Layer-0 kind-constant registry — re-exports NIP-51 kind integers
 # so this crate no longer duplicates those values.
 nmp-kinds = { path = "../nmp-kinds" }
