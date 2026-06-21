@@ -23,7 +23,7 @@
 //! Split into its own module (not appended to `ffi/tests.rs`) to keep that file
 //! at its file-size baseline (AGENTS.md 500-LOC ceiling).
 
-use super::{nmp_marmot_register, nmp_marmot_unregister};
+use super::{nmp_marmot_unregister, register_with_secret_hex};
 use nmp_core::substrate::{
     CapabilityEnvelope, CapabilityModule, CapabilityRequest, KeyringCapability, KeyringRequest,
     KeyringResult,
@@ -100,12 +100,12 @@ fn temp_db_dir(tag: &str) -> std::path::PathBuf {
 }
 
 /// PR-4 regression: `register_with_keys` (the shared tail of BOTH
-/// `nmp_marmot_register` and `nmp_marmot_register_active`) must consume the
+/// `register_with_secret_hex` and `nmp_marmot_register_active`) must consume the
 /// `pending_mls_autopublish` flag that an active local-key `nmp_app_signin_nsec`
 /// arms — proving the autopublish is ATTEMPTED on every nsec sign-in path.
 ///
-/// Before PR-4, `nmp_marmot_register` (the path used by the test-nsec seam and
-/// `nmp_app_chirp_identity_sign_in_nsec`) never consumed the flag: only
+/// Before PR-4, `register_with_secret_hex` (the path used by the test-nsec seam
+/// and `nmp_app_chirp_identity_sign_in_nsec`) never consumed the flag: only
 /// `nmp_marmot_register_active` did. Accounts signed in via nsec could
 /// therefore NEVER be invited to MLS groups without the user manually visiting
 /// Settings > "Publish key package".
@@ -123,13 +123,14 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     let tmp = temp_db_dir("pr4");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
 
-    // `nmp_marmot_register` must consume the flag inside `register_with_keys`.
+    // `register_with_secret_hex` must consume the flag inside `register_with_keys`.
     // We do NOT read the flag before register (a `take_*` would itself consume
     // it) — the post-register assertion proves it was set AND consumed.
-    let handle = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
+    let handle =
+        register_with_secret_hex(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
     assert!(
         !handle.is_null(),
-        "nmp_marmot_register must succeed with mock keyring + temp dir"
+        "register_with_secret_hex must succeed with mock keyring + temp dir"
     );
 
     // Flag false now ⇒ register_with_keys consumed it (atomic swap). Because the
@@ -139,7 +140,7 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     assert!(
         !app_ref.take_pending_mls_autopublish(),
         "pending_mls_autopublish must be set by active nsec sign-in and consumed \
-         by nmp_marmot_register (PR-4 regression: nmp_marmot_register previously \
+         by register_with_secret_hex (PR-4 regression: this path previously \
          skipped the autopublish tail, leaving nsec-signed-in accounts unable to \
          receive MLS group invitations)"
     );
@@ -163,7 +164,8 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
     nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
     let tmp = temp_db_dir("pr4_idempotence");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
-    let h1 = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
+    let h1 =
+        register_with_secret_hex(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
     assert!(!h1.is_null(), "first register must succeed");
     nmp_marmot_unregister(h1);
 

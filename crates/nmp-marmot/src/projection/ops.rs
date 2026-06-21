@@ -611,7 +611,7 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 /// `Ok(Some(Value))` carries the per-kind informational payload the
 /// dispatch op echoes. The projection mutation (pending-welcome row,
 /// relay cache, MDK state) is the load-bearing effect — the next
-/// `nmp_marmot_snapshot` reflects it for BOTH callers.
+/// `nmp.marmot.snapshot` push projection reflects it for BOTH callers.
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,

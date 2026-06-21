@@ -7,7 +7,7 @@
 //! hatch with a second in-memory service's KeyPackage) → snapshot reflects
 //! the group → send → group_messages returns it.
 //!
-//! The on-disk `nmp_marmot_register` path needs a keyring +
+//! The on-disk `register_with_secret_hex` path needs a keyring +
 //! SQLite file, so the round-trip drives the SAME code the FFI symbols
 //! invoke (`MarmotProjection::snapshot`, `with_inner(ops::dispatch)`,
 //! `ops::group_messages`) against an in-memory `MarmotService`. The
@@ -51,7 +51,7 @@ fn null_pointer_paths_are_silent() {
     // V-107 / ADR-0039: `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
     // and `nmp_marmot_string_free` were deleted. Their null-pointer D6 cases
     // were verified against the still-exported lifecycle symbols below.
-    assert!(nmp_marmot_register(
+    assert!(register_with_secret_hex(
         std::ptr::null_mut(),
         std::ptr::null(),
         std::ptr::null(),
@@ -63,7 +63,7 @@ fn null_pointer_paths_are_silent() {
 
 #[test]
 fn register_with_null_app_returns_null() {
-    let h = nmp_marmot_register(
+    let h = register_with_secret_hex(
         std::ptr::null_mut(),
         std::ptr::null(),
         std::ptr::null(),

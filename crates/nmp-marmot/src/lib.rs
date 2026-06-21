@@ -49,8 +49,9 @@
 //!    [`projection::handler::MarmotMlsOpHandler`] installed via
 //!    `NmpApp::set_host_op_handler` runs the op against the live
 //!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C symbol
-//!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 exception
-//!    is fully retired. In-process Rust callers that need the synchronous
+//!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 *write-path*
+//!    exception is retired (the read/lifecycle cluster + `mls_local_nsec` slot
+//!    exception remains in force). In-process Rust callers that need the synchronous
 //!    rich envelope use the Rust-native [`ffi::MarmotHandle::dispatch`]
 //!    accessor (REPL / TUI / integration tests).
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
@@ -84,14 +85,25 @@ pub mod wire;
 
 // ── C-ABI shell ──────────────────────────────────────────────────────────
 //
-// The `ffi` / `fetch` / `identity` / `credential_store` modules expose the
-// `nmp_marmot_*` C-ABI symbols. The surviving cluster
-// (`nmp_marmot_register{,_active}`, `_snapshot`, `_group_messages`,
-// `_string_free`, `_unregister`, `_fetch_key_packages`) is kernel-shaped
+// The `ffi` / `identity` / `credential_store` modules expose the
+// `nmp_marmot_*` C-ABI symbols. The surviving native-facing cluster
+// (`nmp_marmot_register_active`, `_unregister`) is kernel-shaped
 // per-app FFI (observer / projection / opaque-handle lifecycle) — NOT a
-// `dispatch_action` violation; the ADR-0025 bespoke write-side dispatch
-// (`nmp_marmot_dispatch`) was deleted in PR 3 (2026-05-23) and the ADR is
-// retired. The C-ABI shell follows the same pattern Chirp's
+// `dispatch_action` violation. No native-facing `nmp_marmot_*` symbol carries
+// secret key material: `register_active` reads the actor-owned
+// `mls_local_nsec` slot (ADR-0025), and the secret-bearing synchronous
+// registration (`ffi::register_with_secret_hex`, used only by the in-process
+// Rust app-shell on the nsec sign-in path to avoid the async slot-population
+// race) is a plain
+// Rust fn, not an `extern "C"` symbol (#1727). The `_snapshot`,
+// `_group_messages`, `_string_free` pull symbols were deleted in V-107
+// (ADR-0039) — Swift reads state from push projections. The vestigial
+// `_fetch_key_packages` symbol was deleted in #1727 (the same key-package
+// fetch interest is pushed internally by the invite/group flow). The
+// ADR-0025 bespoke write-side dispatch
+// (`nmp_marmot_dispatch`) was deleted in PR 3 (2026-05-23) — its *write-path*
+// exception is retired, while the read/lifecycle cluster + `mls_local_nsec`
+// slot exception remains in force. The C-ABI shell follows the same pattern Chirp's
 // `nmp_app_chirp_*` cluster uses; Marmot lives at `crates/nmp-marmot/`
 // (step 12 — returned from `apps/marmot/` 2026-05-25) as a Layer-4 NIP
 // crate, with the per-app FFI cluster as its host-bridge surface. App-owned
@@ -106,8 +118,6 @@ pub mod wire;
 // `keyring-core` / `base64`.
 #[cfg(feature = "ffi")]
 pub mod credential_store;
-#[cfg(feature = "ffi")]
-pub mod fetch;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 #[cfg(feature = "ffi")]
@@ -134,7 +144,8 @@ pub mod mls_types {
 // dispatched through `projection::action::MarmotActionModule` registered
 // under the `"nmp.marmot"` namespace; the legacy bespoke
 // `nmp_marmot_dispatch` C cluster (ADR-0025) was DELETED in PR 3
-// (2026-05-23) — the ADR-0025 exception is fully retired.
+// (2026-05-23) — the ADR-0025 *write-path* exception is retired (the
+// read/lifecycle cluster + `mls_local_nsec` slot exception remains in force).
 
 #[cfg(test)]
 mod tests;

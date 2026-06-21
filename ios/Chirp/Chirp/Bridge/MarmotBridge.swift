@@ -7,7 +7,7 @@ import os.log
 //
 // Mirrors `Bridge/ModularTimelineBridge.swift`: a thin extension on
 // `KernelHandle` that owns the lifetime of the opaque
-// `nmp_marmot_register` handle, plus an `@Observable`-style
+// `nmp_marmot_register_active` handle, plus an `@Observable`-style
 // `ObservableObject` (`MarmotStore`) that receives snapshots from
 // `KernelModel.apply` and wraps each `…_marmot_dispatch` user intent.
 //

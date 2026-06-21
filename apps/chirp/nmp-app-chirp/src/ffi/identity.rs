@@ -6,7 +6,7 @@
 use std::ffi::c_char;
 
 use nmp_ffi::{nmp_app_remove_account, nmp_app_signin_nsec, NmpApp};
-use nmp_marmot::ffi::{nmp_marmot_register, nmp_marmot_register_active, MarmotHandle};
+use nmp_marmot::ffi::{nmp_marmot_register_active, register_with_secret_hex, MarmotHandle};
 
 use super::helpers::c_string_opt;
 
@@ -33,7 +33,7 @@ pub extern "C" fn nmp_app_chirp_identity_restore(
     }
     if !test_nsec.is_null() {
         nmp_app_signin_nsec(app, test_nsec, 1);
-        return nmp_marmot_register(app, test_nsec, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr());
+        return register_with_secret_hex(app, test_nsec, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr());
     }
     nmp_marmot_register_active(app, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
 }
@@ -51,7 +51,11 @@ pub extern "C" fn nmp_app_chirp_identity_sign_in_nsec(
         return std::ptr::null_mut();
     }
     nmp_app_signin_nsec(app, secret, 1);
-    nmp_marmot_register(app, secret, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
+    // #1727: the secret stays Rust-side — `register_with_secret_hex` is a plain
+    // Rust fn, not a C-ABI symbol. The nsec the app-shell already holds (from
+    // the sign-in import above) is reused synchronously to dodge the async
+    // `mls_local_nsec` slot-population race that `register_active` would hit.
+    register_with_secret_hex(app, secret, db_dir, CHIRP_MARMOT_SVC_CSTR.as_ptr())
 }
 
 /// Rust-owned removal policy: remove the identity through the kernel actor.

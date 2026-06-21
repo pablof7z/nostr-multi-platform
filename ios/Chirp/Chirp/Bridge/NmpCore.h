@@ -647,19 +647,23 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 // `projections["nmp.marmot.snapshot"]` and `projections["nmp.marmot.messages"]`
 // on every SnapshotFrame — no per-tick pull needed (D8: no polling).
 //
-// Remaining lifecycle symbols:
-// 1. `nmp_marmot_register(app, secret_key_hex, db_dir, keyring_service_id)` once
-//    the local identity secret is known. Registers the Marmot observer AND the
-//    two push projections. `keyring_service_id` is the app-scoped keyring
-//    namespace for the Marmot MLS DB encryption key (e.g. "com.example.marmot").
-//    Returns an opaque handle, or NULL on any failure (D6).
-// 2. `nmp_marmot_register_active(app, db_dir, keyring_service_id)` — same, but
-//    reads the nsec from the actor's active local-key slot (no nsec exposed to
-//    Swift).
-// 3. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`.
+// Remaining native-facing lifecycle symbols:
+// 1. `nmp_marmot_register_active(app, db_dir, keyring_service_id)` — reads the
+//    nsec from the actor's active local-key slot (no nsec exposed to Swift).
+//    Registers the Marmot observer AND the two push projections.
+//    `keyring_service_id` is the app-scoped keyring namespace for the Marmot
+//    MLS DB encryption key (e.g. "com.example.marmot"). Returns an opaque
+//    handle, or NULL on any failure (D6).
+// 2. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`.
 //    Results arrive through the next push snapshot frame.
-// 4. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
-void *nmp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir, const char *keyring_service_id);
+// 3. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
+//
+// #1727: the secret-bearing `nmp_marmot_register(app, secret_key_hex, …)` C
+// symbol was removed from the native ABI — no native code ever called it, and
+// no `nmp_marmot_*` symbol may carry secret key material. The nsec sign-in path
+// keeps its synchronous registration entirely Rust-side (see
+// `nmp_app_chirp_identity_sign_in_nsec` below, which never re-exposes the
+// secret to native).
 /// Register using the actor-owned key — Swift never sees the nsec. Reads
 /// the active local key from the slot the actor writes after identity
 /// mutations. `keyring_service_id` is the app-scoped keyring namespace for
@@ -679,11 +683,10 @@ void *nmp_app_chirp_identity_sign_in_nsec(void *app, const char *secret, const c
 void nmp_app_chirp_identity_remove_account(void *app, const char *identity_id);
 void nmp_marmot_unregister(void *handle);
 
-/// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the named
-/// pubkeys from relays. `pubkeys_json` is a JSON array of pubkey strings (hex
-/// or npub). Fire-and-forget; results arrive asynchronously through the Marmot
-/// raw-event tap and appear in `cached_kp_pubkeys`.
-void nmp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
+// #1727: `nmp_marmot_fetch_key_packages(handle, pubkeys_json)` was removed —
+// it had no native caller. The kernel already fetches KeyPackage events
+// (kind:30443/443) internally whenever an invite/group action needs a peer's
+// key package (the same lookup interest is pushed by the invite/group flow).
 
 // ADR-0058 §3 (step 3b) — synchronous read-only pull-page surface.
 //
