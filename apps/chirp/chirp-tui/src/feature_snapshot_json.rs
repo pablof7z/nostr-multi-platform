@@ -5,8 +5,6 @@
 //! are used ONLY by `FeatureSnapshot::from_projections` (the test/dev fixture
 //! path — ADR-0037). The live FlatBuffers path lives in `feature_snapshot_typed`.
 
-use std::collections::HashMap;
-
 use serde_json::Value;
 
 use crate::feature_snapshot::{
@@ -14,7 +12,6 @@ use crate::feature_snapshot::{
     MessageLine, OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine,
     WalletLine,
 };
-use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) fn accounts_from(projections: &Value) -> Vec<AccountLine> {
     projections
@@ -229,28 +226,6 @@ pub(crate) fn follow_count_from(projections: &Value) -> usize {
         .and_then(|f| f.get("follows"))
         .and_then(Value::as_array)
         .map_or(0, Vec::len)
-}
-
-pub(crate) fn resolved_profiles_from(projections: &Value) -> HashMap<String, ProfileWire> {
-    projection(projections, "resolved_profiles")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flat_map(|profiles| profiles.iter())
-        .map(|(key, value)| (key.clone(), profile_wire_from_value(key, value)))
-        .collect()
-}
-
-fn profile_wire_from_value(key: &str, value: &Value) -> ProfileWire {
-    let pubkey = optional_string(value, "pubkey").unwrap_or_else(|| key.to_string());
-    ProfileWire {
-        npub: nmp_core::display::to_npub(&pubkey),
-        npub_short: nmp_core::display::short_npub(&pubkey),
-        pubkey,
-        display_name: first_nonempty_option(value, &["display_name", "displayName", "name"]),
-        about: optional_string(value, "about"),
-        picture_url: first_nonempty_option(value, &["picture_url", "pictureUrl"]),
-        nip05: optional_string(value, "nip05"),
-    }
 }
 
 // V-112 (ADR-0042): profile_from / thread_from deleted — the author_view /

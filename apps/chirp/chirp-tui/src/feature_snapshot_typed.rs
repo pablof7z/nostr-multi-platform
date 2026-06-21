@@ -224,15 +224,11 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         })
         .unwrap_or_default();
 
-    let resolved_profiles = find(nmp_core::typed_projections::RESOLVED_PROFILES_SCHEMA_ID)
-        .and_then(|b| nmp_core::typed_projections::decode_resolved_profiles(b).ok())
-        .map(|m| {
-            m.entries
-                .into_iter()
-                .map(|(key, card)| (key.clone(), profile_wire_from_card(&key, card)))
-                .collect()
-        })
-        .unwrap_or_default();
+    // ADR-0063 (#1671 Lane G): `resolved_profiles` vestigial decode deleted.
+    // The `refs.profile` row-delta projection (merged into `AppState::ref_profiles`,
+    // the shell's `RefProfileStore`) is the sole source of hydrated profile facts.
+    // `AppState::profile(pubkey)` is the read path; `FeatureSnapshot` no longer
+    // carries a profile map.
 
     FeatureSnapshot {
         accounts,
@@ -247,7 +243,6 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         discovered_groups,
         follow_count,
         settings_hub,
-        resolved_profiles,
     }
 }
 

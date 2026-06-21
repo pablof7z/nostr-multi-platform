@@ -12,10 +12,18 @@ use super::{content_render_data::ContentProfileRenderData, content_tree_wire::Wi
 ///
 /// Immediate-mode mention widgets call this while rendering visible profile
 /// references. The host supplies the platform adapter; the widget owns the
-/// claim intent and reads the current projection each frame.
+/// resolve intent and reads the current projection each frame.
+///
+/// ADR-0063 (#1671): `resolve_ref` replaces the old `claim_profile` — the
+/// host calls `nmp_app_resolve_ref(NS_PROFILE, pubkey, consumer_id,
+/// profile.ref, CacheOk)` and reads the resolved row from the shell's
+/// `RefProfileStore` mirror, not from the old `claimed_profiles` map.
 pub trait NostrMentionProfileHost {
     fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData>;
-    fn claim_profile(&self, pubkey: &str, consumer_id: &str);
+    /// Issue a `resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref,
+    /// CacheOk)` to the kernel. Called by the widget on every render frame for
+    /// each visible pubkey; the kernel deduplicates and refcounts.
+    fn resolve_ref(&self, pubkey: &str, consumer_id: &str);
 }
 
 /// Inline terminal chip for a profile mention.
@@ -85,7 +93,7 @@ impl<'a> NostrMentionChip<'a> {
         }
         let host = self.profile_host?;
         if let Some(consumer_id) = self.consumer_id {
-            host.claim_profile(&self.uri.primary_id, consumer_id);
+            host.resolve_ref(&self.uri.primary_id, consumer_id);
         }
         host.profile_for_pubkey(&self.uri.primary_id)
     }
@@ -171,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn mention_label_claims_and_reads_host_projection() {
+    fn mention_label_resolves_ref_and_reads_host_projection() {
         struct Host {
             claimed: RefCell<Vec<(String, String)>>,
         }
@@ -186,7 +194,7 @@ mod tests {
                 })
             }
 
-            fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+            fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
                 self.claimed
                     .borrow_mut()
                     .push((pubkey.to_string(), consumer_id.to_string()));

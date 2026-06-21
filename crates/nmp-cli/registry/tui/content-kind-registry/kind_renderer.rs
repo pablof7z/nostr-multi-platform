@@ -14,11 +14,10 @@ use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 /// Resolve the author byline for an embed, component-owned (mirrors iOS #833).
 ///
-/// Component-owned claiming: the renderer that *displays* an author's name is
-/// the component that claims that author's kind:0. NO event triggers a kernel
-/// kind:0 fetch of the author — fetching kind:0 is always the presentation
-/// layer's concern. The displaying component issues the claim itself (no
-/// separate hidden trigger) and reads the live-resolved name.
+/// ADR-0063 (#1671): the renderer that *displays* an author's name issues the
+/// `resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref, CacheOk)` itself
+/// — no separate hidden trigger. The resolved row arrives via the shell's
+/// `RefProfileStore` mirror and is read back through `profile_for_pubkey`.
 ///
 /// Reuses [`NostrMentionProfileHost`] — the same presentation-owned profile
 /// host the mention chip and `NostrContentView` already thread through render,
@@ -31,8 +30,8 @@ pub(crate) fn author_byline(
     author_pubkey: &str,
 ) -> String {
     if let (Some(host), Some(consumer_id)) = (host, consumer_id) {
-        // The displaying component owns the claim — no separate hidden trigger.
-        host.claim_profile(author_pubkey, consumer_id);
+        // The displaying component owns the resolve — no separate hidden trigger.
+        host.resolve_ref(author_pubkey, consumer_id);
         if let Some(name) = host
             .profile_for_pubkey(author_pubkey)
             .and_then(|profile| profile.display_name)
