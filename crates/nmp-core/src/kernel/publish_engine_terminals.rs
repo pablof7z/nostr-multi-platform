@@ -106,6 +106,19 @@ impl Kernel {
                         obj.insert("result".to_string(), value);
                     }
                 }
+                // #1702 — surface the published event's id (when this terminal
+                // concerns a signed event) under `event_id`, omitted entirely
+                // when absent (mirrors `result`). Lets a consumer reference the
+                // just-published event even on the `PublishRaw` path where
+                // `correlation_id` is a registry dispatch id, not the event id.
+                if let Some(event_id) = &terminal.event_id {
+                    if let Some(obj) = row.as_object_mut() {
+                        obj.insert(
+                            "event_id".to_string(),
+                            serde_json::Value::String(event_id.clone()),
+                        );
+                    }
+                }
                 row
             })
             .collect();

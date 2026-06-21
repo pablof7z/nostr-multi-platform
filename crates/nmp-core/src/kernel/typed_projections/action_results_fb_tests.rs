@@ -10,12 +10,16 @@ fn sample() -> ActionResultsModel {
                 status: "published".to_string(),
                 error: None,
                 result: Some(r#"{"event_id":"abcd"}"#.to_string()),
+                // A published terminal surfaces the signed event's id (#1702).
+                event_id: Some("ev-hex-1".to_string()),
             },
             ActionResultRow {
                 correlation_id: "corr-2".to_string(),
                 status: "failed".to_string(),
                 error: Some("no relays".to_string()),
                 result: None,
+                // Off-band / never-signed failure carries no event id.
+                event_id: None,
             },
         ],
     }
@@ -48,7 +52,7 @@ fn empty_array_round_trips() {
 fn model_from_json_mirrors_the_producer_shape() {
     let value = serde_json::json!([
         { "correlation_id": "corr-1", "status": "published", "error": null,
-          "result": { "event_id": "abcd" } },
+          "result": { "blob": "abcd" }, "event_id": "ev-hex-1" },
         { "correlation_id": "corr-2", "status": "failed", "error": "no relays" },
     ]);
     let model = model_from_json(&value);
@@ -60,10 +64,16 @@ fn model_from_json_mirrors_the_producer_shape() {
     // The opaque result body is carried as its serialised JSON string.
     let parsed: serde_json::Value =
         serde_json::from_str(model.results[0].result.as_ref().unwrap()).unwrap();
-    assert_eq!(parsed, serde_json::json!({ "event_id": "abcd" }));
+    assert_eq!(parsed, serde_json::json!({ "blob": "abcd" }));
+    // #1702 — the published event id is parsed verbatim from the row.
+    assert_eq!(model.results[0].event_id.as_deref(), Some("ev-hex-1"));
 
     assert_eq!(model.results[1].error.as_deref(), Some("no relays"));
     assert_eq!(model.results[1].result, None, "absent result key -> None");
+    assert_eq!(
+        model.results[1].event_id, None,
+        "absent event_id key -> None"
+    );
 }
 
 #[test]

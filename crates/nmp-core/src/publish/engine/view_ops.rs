@@ -78,6 +78,10 @@ impl PublishEngine {
             correlation_id: correlation_id_override.map_or_else(|| handle.clone(), str::to_string),
             status: "failed",
             error: Some("no relays resolved for publish target".to_string()),
+            // The event was signed (a handle exists); surface its id so a
+            // consumer can still reference the event that failed to reach a
+            // relay (#1702). The handle IS the event id for publish actions.
+            event_id: Some(handle.clone()),
             result_json: None,
         });
         self.view.bump_rev();
@@ -114,6 +118,9 @@ impl PublishEngine {
             correlation_id,
             status: "failed",
             error: Some(error),
+            // No event was ever signed on this path (sign-step failure), so
+            // there is no event id to surface (#1702).
+            event_id: None,
             result_json: None,
         });
     }
@@ -159,6 +166,9 @@ impl PublishEngine {
             correlation_id,
             status: "ok",
             error: None,
+            // Off-band success (e.g. NWC pay-invoice): the terminal is not a
+            // published nostr event, so there is no event id to surface (#1702).
+            event_id: None,
             result_json,
         });
     }

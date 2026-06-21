@@ -26,6 +26,8 @@ public struct nmp_kernel_ActionResult: FlatBufferTable, FlatbuffersVectorInitial
     case error = 10
     case hasResult = 12
     case result = 14
+    case hasEventId = 16
+    case eventId = 18
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -40,7 +42,10 @@ public struct nmp_kernel_ActionResult: FlatBufferTable, FlatbuffersVectorInitial
   public var hasResult: Bool { let o = _accessor.offset(VTOFFSET.hasResult.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var result: String? { let o = _accessor.offset(VTOFFSET.result.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var resultSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.result.v) }
-  public static func startActionResult(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 6) }
+  public var hasEventId: Bool { let o = _accessor.offset(VTOFFSET.hasEventId.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var eventId: String? { let o = _accessor.offset(VTOFFSET.eventId.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var eventIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.eventId.v) }
+  public static func startActionResult(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
   public static func add(correlationId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: correlationId, at: VTOFFSET.correlationId.p) }
   public static func add(status: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: status, at: VTOFFSET.status.p) }
   public static func add(hasError: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasError, def: false,
@@ -49,6 +54,9 @@ public struct nmp_kernel_ActionResult: FlatBufferTable, FlatbuffersVectorInitial
   public static func add(hasResult: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasResult, def: false,
    at: VTOFFSET.hasResult.p) }
   public static func add(result: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: result, at: VTOFFSET.result.p) }
+  public static func add(hasEventId: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasEventId, def: false,
+   at: VTOFFSET.hasEventId.p) }
+  public static func add(eventId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: eventId, at: VTOFFSET.eventId.p) }
   public static func endActionResult(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createActionResult(
     _ fbb: inout FlatBufferBuilder,
@@ -57,7 +65,9 @@ public struct nmp_kernel_ActionResult: FlatBufferTable, FlatbuffersVectorInitial
     hasError: Bool = false,
     errorOffset error: Offset = Offset(),
     hasResult: Bool = false,
-    resultOffset result: Offset = Offset()
+    resultOffset result: Offset = Offset(),
+    hasEventId: Bool = false,
+    eventIdOffset eventId: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_ActionResult.startActionResult(&fbb)
     nmp_kernel_ActionResult.add(correlationId: correlationId, &fbb)
@@ -66,6 +76,8 @@ public struct nmp_kernel_ActionResult: FlatBufferTable, FlatbuffersVectorInitial
     nmp_kernel_ActionResult.add(error: error, &fbb)
     nmp_kernel_ActionResult.add(hasResult: hasResult, &fbb)
     nmp_kernel_ActionResult.add(result: result, &fbb)
+    nmp_kernel_ActionResult.add(hasEventId: hasEventId, &fbb)
+    nmp_kernel_ActionResult.add(eventId: eventId, &fbb)
     return nmp_kernel_ActionResult.endActionResult(&fbb, start: __start)
   }
 
@@ -77,6 +89,8 @@ public struct nmp_kernel_ActionResult: FlatBufferTable, FlatbuffersVectorInitial
     try _v.visit(field: VTOFFSET.error.p, fieldName: "error", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.hasResult.p, fieldName: "hasResult", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.result.p, fieldName: "result", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasEventId.p, fieldName: "hasEventId", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.eventId.p, fieldName: "eventId", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

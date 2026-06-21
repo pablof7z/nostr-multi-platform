@@ -32,6 +32,8 @@ impl<'a> ActionResult<'a> {
   pub const VT_ERROR: ::flatbuffers::VOffsetT = 10;
   pub const VT_HAS_RESULT: ::flatbuffers::VOffsetT = 12;
   pub const VT_RESULT: ::flatbuffers::VOffsetT = 14;
+  pub const VT_HAS_EVENT_ID: ::flatbuffers::VOffsetT = 16;
+  pub const VT_EVENT_ID: ::flatbuffers::VOffsetT = 18;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -43,10 +45,12 @@ impl<'a> ActionResult<'a> {
     args: &'args ActionResultArgs<'args>
   ) -> ::flatbuffers::WIPOffset<ActionResult<'bldr>> {
     let mut builder = ActionResultBuilder::new(_fbb);
+    if let Some(x) = args.event_id { builder.add_event_id(x); }
     if let Some(x) = args.result { builder.add_result(x); }
     if let Some(x) = args.error { builder.add_error(x); }
     if let Some(x) = args.status { builder.add_status(x); }
     if let Some(x) = args.correlation_id { builder.add_correlation_id(x); }
+    builder.add_has_event_id(args.has_event_id);
     builder.add_has_result(args.has_result);
     builder.add_has_error(args.has_error);
     builder.finish()
@@ -95,6 +99,20 @@ impl<'a> ActionResult<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ActionResult::VT_RESULT, None)}
   }
+  #[inline]
+  pub fn has_event_id(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(ActionResult::VT_HAS_EVENT_ID, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn event_id(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ActionResult::VT_EVENT_ID, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for ActionResult<'_> {
@@ -109,6 +127,8 @@ impl ::flatbuffers::Verifiable for ActionResult<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("error", Self::VT_ERROR, false)?
      .visit_field::<bool>("has_result", Self::VT_HAS_RESULT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("result", Self::VT_RESULT, false)?
+     .visit_field::<bool>("has_event_id", Self::VT_HAS_EVENT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("event_id", Self::VT_EVENT_ID, false)?
      .finish();
     Ok(())
   }
@@ -120,6 +140,8 @@ pub struct ActionResultArgs<'a> {
     pub error: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub has_result: bool,
     pub result: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub has_event_id: bool,
+    pub event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for ActionResultArgs<'a> {
   #[inline]
@@ -131,6 +153,8 @@ impl<'a> Default for ActionResultArgs<'a> {
       error: None,
       has_result: false,
       result: None,
+      has_event_id: false,
+      event_id: None,
     }
   }
 }
@@ -165,6 +189,14 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ActionResultBuilder<'a, 'b, A
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ActionResult::VT_RESULT, result);
   }
   #[inline]
+  pub fn add_has_event_id(&mut self, has_event_id: bool) {
+    self.fbb_.push_slot::<bool>(ActionResult::VT_HAS_EVENT_ID, has_event_id, false);
+  }
+  #[inline]
+  pub fn add_event_id(&mut self, event_id: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ActionResult::VT_EVENT_ID, event_id);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ActionResultBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ActionResultBuilder {
@@ -188,6 +220,8 @@ impl ::core::fmt::Debug for ActionResult<'_> {
       ds.field("error", &self.error());
       ds.field("has_result", &self.has_result());
       ds.field("result", &self.result());
+      ds.field("has_event_id", &self.has_event_id());
+      ds.field("event_id", &self.event_id());
       ds.finish()
   }
 }
