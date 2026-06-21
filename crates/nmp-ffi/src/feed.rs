@@ -14,10 +14,13 @@ use crate::{app_ref, c_string_argument};
 /// decode a `FeedParams` JSON payload and run fail-closed primary-kind
 /// validation **before** `open_feed` exists. Step 1 is types + decode +
 /// validation only; the `open_feed` C-ABI dispatch lands in step 2.
+///
+/// `CustomPerspectiveId` and `validate_primary_kinds` are intentionally not
+/// re-exported here: they have no external consumer yet and will be hoisted
+/// through the facade when `open_feed` dispatch lands in step 2.
 pub use nmp_feed::{
-    validate_primary_kinds, CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams,
-    FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow, ProjectionKey,
-    PubkeySetExpr,
+    FeedAdmission, FeedHandle, FeedParams, FeedParamsError, FeedRanking, FeedScope, FeedSessionId,
+    FeedWindow, ProjectionKey, PubkeySetExpr,
 };
 
 /// Decode a `FeedParams` JSON payload and validate its primary kinds.

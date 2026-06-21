@@ -193,31 +193,45 @@ FlatFeeds and explicit typed-projection teardown.
 - `ffi-surface.md` and the codegen Swift projection registry are updated;
   generated Swift types are regenerated.
 
-## Amendment — active-follows feed declarations
+## Amendment — typed feed sessions (current rule, #1740)
+
+The current app-facing primitive for all feed declarations is the **typed
+`FeedParams` feed-session model** defined in `nmp-feed`
+(`crates/nmp-feed/src/params.rs`). It provides explicit acquisition /
+admission / ranking / window / projection phases plus primary content kinds.
+Apps build a `FeedParams` value, validate it with
+`nmp_feed::validate_primary_kinds` (fail-closed: wrapper kinds 6/16 and delete
+kind 5 are rejected), and open a session via `open_feed` to receive a
+`FeedHandle`. **Step 1 (#1740) landed the typed model and validation;
+`open_feed` dispatch lands in step 2.**
 
 The active-user follow feed is **not** expressible through `open_interest` (§2):
 its author set is reactive perspective state derived from the active account's
 kind:3, re-evaluated on `FollowListChanged`, and re-routed on account switch.
-It therefore uses a declared-feed path, not a static filter shape and not a
-special kernel-owned home-feed product API.
+In `FeedParams`, "active-user follows" is expressed as
+`FeedScope::ActiveUserFollows` inside `FeedParams.acquisition` — not as a
+named verb or a static author list.
 
-Apps/defaults declare:
+Apps/defaults declare via `FeedParams`:
 
-- the primary content kinds they intend to render;
-- the reactive perspective, here "the active account's follows";
-- the feed engine/projection that will render the resulting events.
+- the primary content kinds they intend to render (`primary_kinds`);
+- the reactive source / perspective (`acquisition: FeedScope::ActiveUserFollows`
+  or a relay-set expression);
+- admission, ranking, window, and projection policy.
 
 The app never supplies concrete follow pubkeys and never declares repost
 wrappers as primary feed kinds. Protocol adapters derive wrapper acquisition
-(`6` for kind `1`, `16` for non-kind-1 targets) before the kernel stores the
-concrete acquisition kinds used for subscription compilation.
+(`6` for kind `1`, `16` for non-kind-1 targets) from the declared primary kinds
+before the kernel stores the concrete acquisition set for subscription
+compilation.
 
-Relay-set feed declarations are the same primitive with a different
-perspective: the app names primary kinds plus the relay set, and acquisition is
-scoped/routed to those relays without synthesizing `authors`, `#p`, `#a`, or
-`#e` filters. WoT, mute/block, and app-defined quality rules are caller-owned
-admission/ranking/sorting policy layered over the feed mechanics; they are not
-new kernel feed kinds and do not change the primary-kind declaration.
+Relay-set feed declarations follow the same `FeedParams` pattern with a
+different `acquisition` expression: the app names primary kinds plus the relay
+set, and acquisition is scoped/routed to those relays without synthesizing
+`authors`, `#p`, `#a`, or `#e` filters. WoT, mute/block, and app-defined
+quality rules are caller-owned admission/ranking/sorting policy within
+`FeedParams`; they are not new kernel feed kinds and do not change the
+primary-kind declaration.
 
 Pagination is admission-aware. `load_older` must make rendered progress, not
 merely consume one acquisition page: if a page contains deleted, muted,
@@ -225,28 +239,22 @@ blocked, superseded, or otherwise non-admitted rows, the pull controller keeps
 advancing through the event log until it either grows the visible window or
 reaches exhaustion under the current perspective.
 
+### Historical context — pre-typed declaration verbs (internal/test-only)
+
+Before `FeedParams`, the active-follows feed used a lower-level declaration
+pair that is now **internal and test-only**:
+
 ```rust
+// INTERNAL/TEST-ONLY — not the app-facing surface
 app.declare_active_follows_feed([1]);
 app.clear_active_follows_feed();
 ```
 
-The exported C symbols with the old contact-feed names are compatibility shims
-only. They delegate to this declaration path and must not be used by apps as the
-current primitive. An empty primary-kind array `[]` is a legitimate clear.
-
-> **Superseded by typed feed sessions (#1740).** The raw
-> `declare_active_follows_feed` / `clear_active_follows_feed` declaration verbs
-> above — and the bare `open_interest` / active-follows declaration vocabulary —
-> become **internal/test-only** primitives. The app-facing surface is the typed
-> `FeedParams` feed-session model defined in `nmp-feed`
-> (`crates/nmp-feed/src/params.rs`): explicit acquisition / admission / ranking /
-> window / projection phases plus primary content kinds, opened via `open_feed`
-> to return a `FeedHandle`. "Active-user follows" is now expressed as
-> `FeedScope::ActiveUserFollows` inside `FeedParams.acquisition`, not as a named
-> verb. The same fail-closed primary-kind validation (reject wrapper kinds 6/16
-> and delete kind 5) is owned by `nmp_feed::validate_primary_kinds`. Step 1
-> landed the typed model + validation; the full session (`open_feed` dispatch
-> consuming `FeedParams`) lands in step 2.
+The exported C symbols with the old contact-feed names were compatibility shims
+that delegated to this declaration path. They must not be used by apps; the
+current primitive is `open_feed(FeedParams)` (step 2). Likewise,
+`open_interest` / `close_interest` (§2) are substrate-level primitives used
+internally by the feed session machinery, not an app-facing feed API.
 
 ### New `ActorCommand` variants
 
