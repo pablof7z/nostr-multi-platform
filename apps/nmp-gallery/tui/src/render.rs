@@ -298,10 +298,6 @@ impl NostrProfileHost for GalleryProfileHost<'_> {
         self.resolve_profile(pubkey)
     }
 
-    /// ADR-0063 (#1671): forwards to `LiveKernelSink::claim_profile`, which
-    /// calls `nmp_app_resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref,
-    /// CacheOk)`. The resolved row arrives via `refs.profile` row-delta
-    /// projection, merged into the shell's `RefProfileStore`.
     fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
         self.claim(pubkey, consumer_id);
     }
@@ -324,10 +320,6 @@ impl NostrMentionProfileHost for GalleryProfileHost<'_> {
         })
     }
 
-    /// ADR-0063 (#1671): forwards to `LiveKernelSink::claim_profile`, which
-    /// calls `nmp_app_resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref,
-    /// CacheOk)`. The resolved row arrives via `refs.profile` row-delta
-    /// projection, merged into the shell's `RefProfileStore`.
     fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
         self.claim(pubkey, consumer_id);
     }
