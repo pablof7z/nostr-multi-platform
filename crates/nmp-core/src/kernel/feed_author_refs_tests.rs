@@ -197,8 +197,12 @@ fn unregistering_transient_feed_provider_releases_all_on_next_tick() {
     assert!(kernel.auto_profile_refs_by_consumer.get(&consumer).is_none());
 }
 
-/// Direct release-by-feed-key seam (`unregister_feed` calls this for immediate
-/// teardown, not deferred a tick).
+/// Direct release-by-feed-key seam. NOTE: `unregister_feed` does NOT call this
+/// today — it removes the provider and relies on the NEXT reconcile sweep to
+/// release-all (see `unregister_feed` in `nmp-ffi/src/lib.rs` and
+/// `unregistering_transient_feed_provider_releases_all_on_next_tick` above). This
+/// seam is the IMMEDIATE-teardown alternative a future `ActorCommand` teardown
+/// can call for same-call release; this test exercises it directly.
 #[test]
 fn release_by_feed_key_drops_the_consumers_refs() {
     let (mut kernel, slot) = kernel_with_slot();
@@ -315,6 +319,127 @@ fn guardrail_fires_for_emitted_but_unresolved_author() {
     let hits = kernel.unresolved_feed_authors(&live);
     assert_eq!(hits.len(), 1, "guardrail must flag the emitted-but-unresolved author");
     assert_eq!(hits[0], (consumer, a));
+}
+
+// ─── the EMITTED-SET guardrail bites (BLOCKING 2) ────────────────────────────
+
+/// The structural emitted-set guardrail FIRES when a feed's typed producer
+/// EMITTED an author onto the wire that has NO live resolver demand — even
+/// though that author is INVISIBLE to the provider-tracking check (it was never
+/// in `auto_profile_refs_by_consumer`). This is the "missed provider / missed
+/// FeedAuthorRefs field" hole BLOCKING 2 closes: the prior guardrail iterated
+/// only the kernel's own provider tracking, so a feed with no provider (or a
+/// provider whose set missed a rendered field) was invisible to it.
+#[test]
+fn emitted_set_guardrail_fires_for_unresolved_emitted_author() {
+    let (kernel, slot) = kernel_with_slot();
+    let tick_rev = slot.lock().unwrap().frame_tick_rev_handle();
+    let rev = tick_rev.load(std::sync::atomic::Ordering::Acquire);
+
+    // A feed's typed producer EMITTED `a` onto the wire this tick (recorded into
+    // the sink) but NOTHING ever resolved it — no provider, no resolve_ref.
+    let a = hex64("dead1");
+    let consumer = feed_author_consumer_id("nmp.feed.author.deadbeef");
+    slot.lock().unwrap().record_emitted_feed_authors(rev, consumer.clone(), [a.clone()]);
+
+    // The emitted-set guardrail flags it (provider-tracking guardrail would NOT —
+    // there is no `auto_profile_refs_by_consumer` entry for this consumer).
+    assert!(
+        kernel
+            .unresolved_feed_authors(&[consumer.clone()].into_iter().collect())
+            .is_empty(),
+        "provider-tracking guardrail is blind to a feed with no provider"
+    );
+    let hits = kernel.emitted_unresolved_feed_authors(rev);
+    assert_eq!(hits.len(), 1, "emitted-set guardrail must flag the emitted-but-unresolved author");
+    assert_eq!(hits[0], (consumer, a));
+}
+
+/// The emitted-set guardrail is SILENT for an author that WAS resolved (demand
+/// is `Some`) even though its `kind:0` content has not arrived — the normal
+/// async gap is not a guardrail hit.
+#[test]
+fn emitted_set_guardrail_silent_for_resolved_emitted_author() {
+    let (mut kernel, slot) = kernel_with_slot();
+    let tick_rev = slot.lock().unwrap().frame_tick_rev_handle();
+    let rev = tick_rev.load(std::sync::atomic::Ordering::Acquire);
+
+    let a = hex64("beef2");
+    let consumer = feed_author_consumer_id(HOME_KEY);
+    // Resolve `a` (as the structural pairing would), then record it as emitted.
+    kernel.resolve_ref(
+        RefNamespace::Profile,
+        a.clone(),
+        consumer.clone(),
+        RefShape::Profile(ProfileShape::Ref),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    slot.lock().unwrap().record_emitted_feed_authors(rev, consumer, [a.clone()]);
+
+    assert!(
+        kernel.emitted_unresolved_feed_authors(rev).is_empty(),
+        "an emitted author with live demand (content-empty) is NOT a guardrail hit"
+    );
+}
+
+// ─── load_older widening WITHIN a tick does not blank newly-visible authors ───
+
+/// The HIGH fix, at the kernel seam: a feed's author provider and its typed
+/// producer share ONE per-tick materialized window (the `FeedRenderSource`
+/// memoization is unit-tested in `nmp-feed`; this asserts the kernel CONTRACT
+/// that consumes it). When the provider resolves window W and the typed producer
+/// emits the SAME window W at the same tick rev, the reconciled author set ==
+/// the emitted author set and the emitted-set guardrail is SILENT — i.e. no
+/// newly-visible row's author is left unresolved for a frame. The pre-fix bug
+/// (two independent `snapshot_current_window` reads, one widened by `load_older`
+/// between them) would make the emitted set a SUPERSET of the resolved set,
+/// which the emitted-set guardrail would then flag.
+#[test]
+fn load_older_widening_within_tick_does_not_blank_authors() {
+    use std::sync::atomic::Ordering as O;
+    let (mut kernel, slot) = kernel_with_slot();
+    let tick_rev = slot.lock().unwrap().frame_tick_rev_handle();
+
+    let a = hex64("aaaa1");
+    let b = hex64("bbbb2");
+
+    // Model the SHARED per-tick window: ONE author vector that the provider and
+    // the emit-record both read for the tick. (With `FeedRenderSource` this is the
+    // memoized `Arc<S>`; here we model the kernel-visible consequence directly.)
+    let window = register_swappable_provider(&slot, HOME_KEY);
+    // Pre-widen window: only `a` is visible when the tick materializes.
+    set_authors(&window, &[a.clone()]);
+
+    // Tick: bump rev (as make_update), reconcile from the provider...
+    slot.lock().unwrap().bump_frame_tick_rev();
+    let rev = tick_rev.load(O::Acquire);
+    kernel.reconcile_feed_author_refs();
+    // ...and record the SAME window as emitted at the SAME rev (what the typed
+    // producer does off the shared materialization). A pre-fix gap would instead
+    // record the WIDENED set [a, b] here while the provider resolved only [a].
+    let consumer = feed_author_consumer_id(HOME_KEY);
+    let shared_window = window.lock().unwrap().clone();
+    slot.lock()
+        .unwrap()
+        .record_emitted_feed_authors(rev, consumer.clone(), shared_window.clone());
+
+    // The resolved set == the emitted set: `b` is neither emitted-yet-unresolved
+    // nor resolved-yet-unemitted. No 1-frame blank.
+    let resolved: BTreeSet<String> = kernel
+        .auto_profile_refs_by_consumer
+        .get(&consumer)
+        .expect("consumer tracked")
+        .clone();
+    let emitted: BTreeSet<String> = shared_window.into_iter().collect();
+    assert_eq!(resolved, emitted, "resolved set == emitted window (no load_older gap)");
+    assert!(resolved.contains(&a) && !resolved.contains(&b) && resolved.len() == 1);
+    // The emitted-set guardrail is silent (every emitted author has demand).
+    assert!(
+        kernel.emitted_unresolved_feed_authors(rev).is_empty(),
+        "no emitted author lacks demand when provider + emit share one window"
+    );
 }
 
 // ─── the in-tick reconcile fires from make_update (no 1-frame gap) ───────────

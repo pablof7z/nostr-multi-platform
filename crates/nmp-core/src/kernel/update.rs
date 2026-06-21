@@ -252,13 +252,9 @@ impl Kernel {
         self.update_sequence = self.update_sequence.saturating_add(1);
 
         // ADR-0055 R6-S1 — publish this tick's frame identity
-        // `(session_id, snapshot_epoch)` into the shared registry handles BEFORE
-        // any host projection closure runs (generic projections run inside
-        // `build_snapshot_struct`; typed projections run in
-        // `run_typed_projections`). A Tier-1 producer that omits unchanged
-        // frames (the feed change-signal) reads this and forces a rebaseline
-        // when EITHER value changes — the SAME signal the host cache resets on,
-        // keeping producer and host in lockstep across account-switch AND Reset.
+        // `(session_id, snapshot_epoch)` + the ADR-0063 per-tick rev into the
+        // shared registry handles BEFORE any host projection closure runs, so a
+        // Tier-1 omit-unchanged producer rebaselines on the host cache's signal.
         self.publish_frame_identity();
         let _ = self.reconcile_feed_author_refs(); // ADR-0063 D7 (Lane H): in-tick, no gap
 
@@ -291,6 +287,10 @@ impl Kernel {
         // each is wrapped in `catch_unwind` so a panicking observer can never
         // unwind the actor thread into a terminal `Panic` frame.
         self.run_tick_observers();
+        // ADR-0063 D7 (#1671 Lane H, BLOCKING 2) — STRUCTURAL emitted-set guardrail
+        // (debug-only): warn for any author a feed emitted with no resolver demand.
+        #[cfg(debug_assertions)]
+        self.warn_emitted_unresolved_feed_authors(self.current_frame_tick_rev());
         // Drain the per-tick drain-on-emit projections and capture their values
         // for the typed FlatBuffers sidecar. Must run BEFORE
         // `merge_builtin_typed_projections` so `captured_*` fields are fresh.
