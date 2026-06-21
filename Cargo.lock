@@ -4484,6 +4484,8 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-feed",
+ "nmp-nip18",
  "proptest",
  "pulldown-cmark",
  "regex",

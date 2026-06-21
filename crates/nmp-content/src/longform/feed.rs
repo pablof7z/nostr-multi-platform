@@ -1,0 +1,332 @@
+//! Long-form article feed adapter over generic `nmp-feed` mechanics.
+//!
+//! Apps declare primary kind `30023`; this adapter derives kind:16 acquisition
+//! at the protocol/content layer and admits direct articles plus NIP-18 generic
+//! repost wrappers. It never fetches profiles, reply counts, thread roots, or
+//! missing target events. Tag-only wrappers can hydrate only from the injected
+//! local [`EventLookup`].
+
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
+use nmp_core::substrate::KernelEvent;
+use nmp_core::KernelEventObserver;
+use nmp_feed::{
+    EventLookup, FeedRequest, FlatFeed as GenericFlatFeed, FlatFeedItem, FlatFeedItemBuilder,
+    FlatFeedMerge, RootFeedSnapshot,
+};
+use serde::{Deserialize, Serialize};
+
+use super::{article_address, ArticleFeedItem, KIND_LONG_FORM_ARTICLE};
+use crate::context::RenderContext;
+use crate::embed_projection::{resolve_embed_projection, EmbedKindProjection};
+
+/// Admission predicate supplied by the app/protocol composition layer.
+pub type LongformFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
+
+/// Repost attribution for a long-form feed row.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LongformRepostAttribution {
+    /// Pubkey of the account that authored the kind:16 wrapper.
+    pub author_pubkey: String,
+    /// Event id of the kind:16 wrapper.
+    pub repost_event_id: String,
+    /// Wrapper timestamp used for feed ordering.
+    pub repost_created_at: u64,
+}
+
+/// Renderable long-form feed row.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LongformFeedEntry {
+    /// Canonical row id: target article event id, not wrapper event id.
+    pub id: String,
+    /// Article summary when the target is direct, embedded, or locally known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub article: Option<ArticleFeedItem>,
+    /// Wrapper attribution when this row is currently positioned by a repost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reposted_by: Option<LongformRepostAttribution>,
+    /// Relay provenance from the source event that positioned the row.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relay_provenance: Vec<String>,
+}
+
+/// A flat feed for NIP-23 long-form articles and kind:16 repost wrappers.
+pub struct LongformFeed {
+    inner: Arc<GenericFlatFeed<LongformFeedEntry>>,
+}
+
+impl LongformFeed {
+    /// Construct a feed without local target lookup.
+    #[must_use]
+    pub fn new(predicate: LongformFeedPredicate) -> Arc<Self> {
+        Self::with_event_lookup(predicate, Arc::new(|_| None))
+    }
+
+    /// Construct a feed with an injected local target lookup.
+    #[must_use]
+    pub fn with_event_lookup(
+        predicate: LongformFeedPredicate,
+        event_lookup: EventLookup,
+    ) -> Arc<Self> {
+        Self::with_options(predicate, event_lookup, None)
+    }
+
+    /// Construct a topic-scoped feed.
+    ///
+    /// Subscription composition must use separate direct/repost acquisition
+    /// lanes because one Nostr filter cannot express
+    /// `(kind:30023 AND #t=topic) OR (kind:16 AND #k=30023)`.
+    ///
+    /// Direct articles must carry `#t=<topic>`. Reposts must embed or locally
+    /// resolve a target article with that tag; tag-only unresolved reposts are
+    /// ignored because the feed cannot prove they belong to the topic without
+    /// fetching the target.
+    #[must_use]
+    pub fn for_topic(
+        topic: impl Into<String>,
+        predicate: LongformFeedPredicate,
+        event_lookup: EventLookup,
+    ) -> Arc<Self> {
+        Self::with_options(predicate, event_lookup, Some(topic.into()))
+    }
+
+    fn with_options(
+        predicate: LongformFeedPredicate,
+        event_lookup: EventLookup,
+        topic: Option<String>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            inner: GenericFlatFeed::with_merge(
+                predicate,
+                longform_item_builder(event_lookup, topic),
+                None,
+                longform_merge(),
+            ),
+        })
+    }
+
+    /// Build a newest-first snapshot over the visible rows.
+    #[must_use]
+    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<LongformFeedEntry, ()> {
+        self.inner.snapshot(request)
+    }
+
+    /// Return whether the feed currently has no rows.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Return the number of canonical rows.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl KernelEventObserver for LongformFeed {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        self.inner.on_kernel_event(event);
+    }
+}
+
+/// Compile kind:30023 primary feed acquisition kinds.
+#[must_use]
+pub fn longform_acquisition_kinds() -> BTreeSet<u32> {
+    nmp_nip18::try_acquisition_kinds_for_primary([KIND_LONG_FORM_ARTICLE])
+        .expect("kind:30023 is a primary feed kind")
+}
+
+/// Build a source-event predicate for a long-form feed.
+///
+/// For a direct article the source is the article author. For a repost wrapper
+/// the source is the reposter; target authors are not used for admission.
+#[must_use]
+pub fn longform_feed_predicate(
+    source_allows: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+) -> LongformFeedPredicate {
+    Arc::new(move |event: &KernelEvent| {
+        (event.kind == KIND_LONG_FORM_ARTICLE || event.kind == nmp_nip18::KIND_GENERIC_REPOST)
+            && source_allows(&event.author)
+    })
+}
+
+fn longform_item_builder(
+    event_lookup: EventLookup,
+    topic: Option<String>,
+) -> FlatFeedItemBuilder<LongformFeedEntry> {
+    Arc::new(move |event| match event.kind {
+        KIND_LONG_FORM_ARTICLE => article_item_from_target(event, topic.as_deref()),
+        nmp_nip18::KIND_GENERIC_REPOST => {
+            article_item_from_repost(event, &event_lookup, topic.as_deref())
+        }
+        _ => None,
+    })
+}
+
+fn article_item_from_target(
+    event: &KernelEvent,
+    topic: Option<&str>,
+) -> Option<FlatFeedItem<LongformFeedEntry>> {
+    let article = article_summary_from_event(event)?;
+    if topic.is_some_and(|topic| !event_has_topic(event, topic)) {
+        return None;
+    }
+    Some(FlatFeedItem {
+        id: article.id.clone(),
+        source_id: event.id.clone(),
+        sort_created_at: article.created_at,
+        card: LongformFeedEntry {
+            id: article.id.clone(),
+            article: Some(article),
+            reposted_by: None,
+            relay_provenance: event.relay_provenance.clone(),
+        },
+    })
+}
+
+fn article_item_from_repost(
+    event: &KernelEvent,
+    event_lookup: &EventLookup,
+    topic: Option<&str>,
+) -> Option<FlatFeedItem<LongformFeedEntry>> {
+    let record = nmp_nip18::try_from_kernel_event(event)?;
+    let target_id = record.target_event_id.clone()?;
+    let target = article_from_repost_target(&record, event, event_lookup, topic);
+    if target.is_none() && (record.target_kind != Some(KIND_LONG_FORM_ARTICLE) || topic.is_some()) {
+        return None;
+    }
+    let Some(article) = target else {
+        return Some(placeholder_repost_item(event, target_id));
+    };
+    let id = article.id.clone();
+
+    Some(FlatFeedItem {
+        id: id.clone(),
+        source_id: event.id.clone(),
+        sort_created_at: event.created_at,
+        card: LongformFeedEntry {
+            id,
+            article: Some(article),
+            reposted_by: Some(repost_attribution(event)),
+            relay_provenance: event.relay_provenance.clone(),
+        },
+    })
+}
+
+fn placeholder_repost_item(
+    event: &KernelEvent,
+    target_id: String,
+) -> FlatFeedItem<LongformFeedEntry> {
+    FlatFeedItem {
+        id: target_id.clone(),
+        source_id: event.id.clone(),
+        sort_created_at: event.created_at,
+        card: LongformFeedEntry {
+            id: target_id,
+            article: None,
+            reposted_by: Some(repost_attribution(event)),
+            relay_provenance: event.relay_provenance.clone(),
+        },
+    }
+}
+
+fn article_from_repost_target(
+    record: &nmp_nip18::RepostRecord,
+    event: &KernelEvent,
+    event_lookup: &EventLookup,
+    topic: Option<&str>,
+) -> Option<ArticleFeedItem> {
+    if let Some(embedded) = record.embedded_event.clone() {
+        let target_event = KernelEvent {
+            id: embedded.id,
+            author: embedded.author,
+            kind: embedded.kind,
+            created_at: embedded.created_at,
+            tags: embedded.tags,
+            content: embedded.content,
+            relay_provenance: event.relay_provenance.clone(),
+        };
+        if topic.is_some_and(|topic| !event_has_topic(&target_event, topic)) {
+            return None;
+        }
+        return article_summary_from_event(&target_event);
+    }
+    record
+        .target_event_id
+        .as_ref()
+        .and_then(|target_id| (event_lookup)(target_id))
+        .and_then(|target| {
+            if topic.is_some_and(|topic| !event_has_topic(&target, topic)) {
+                None
+            } else {
+                article_summary_from_event(&target)
+            }
+        })
+}
+
+fn article_summary_from_event(event: &KernelEvent) -> Option<ArticleFeedItem> {
+    if event.kind != KIND_LONG_FORM_ARTICLE {
+        return None;
+    }
+    let ctx = RenderContext::default();
+    let EmbedKindProjection::Article(article) = resolve_embed_projection(event, &ctx) else {
+        return None;
+    };
+    Some(ArticleFeedItem::from_article(
+        article_address(event, &article.d_tag),
+        &article,
+    ))
+}
+
+fn event_has_topic(event: &KernelEvent, topic: &str) -> bool {
+    event.tags.iter().any(|tag| {
+        tag.first().is_some_and(|name| name == "t")
+            && tag.get(1).is_some_and(|value| value == topic)
+    })
+}
+
+fn repost_attribution(event: &KernelEvent) -> LongformRepostAttribution {
+    LongformRepostAttribution {
+        author_pubkey: event.author.clone(),
+        repost_event_id: event.id.clone(),
+        repost_created_at: event.created_at,
+    }
+}
+
+fn longform_merge() -> FlatFeedMerge<LongformFeedEntry> {
+    Arc::new(|existing, incoming| match existing {
+        Some(existing) => merge_longform_sources(existing, incoming),
+        None => incoming,
+    })
+}
+
+fn merge_longform_sources(
+    existing: &FlatFeedItem<LongformFeedEntry>,
+    incoming: FlatFeedItem<LongformFeedEntry>,
+) -> FlatFeedItem<LongformFeedEntry> {
+    let incoming_wins = incoming.sort_created_at > existing.sort_created_at
+        || (incoming.sort_created_at == existing.sort_created_at
+            && incoming.card.article.is_some()
+            && existing.card.article.is_none());
+    let (mut best, other) = if incoming_wins {
+        (incoming, existing.clone())
+    } else {
+        (existing.clone(), incoming)
+    };
+
+    if best.card.article.is_none() {
+        best.card.article = other.card.article.clone();
+        if best.card.relay_provenance.is_empty() {
+            best.card.relay_provenance = other.card.relay_provenance;
+        }
+    }
+    best
+}
+
+#[cfg(test)]
+#[path = "feed_tests.rs"]
+mod tests;
