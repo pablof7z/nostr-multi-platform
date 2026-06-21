@@ -322,6 +322,9 @@ private struct ReplyAttributionLine: View {
 
     @State private var consumerID = "home-feed.reply-attribution.\(UUID().uuidString)"
     @State private var claimedPubkey: String?
+    /// ADR-0063 Lane E (#1671): per-key observer so only this attribution line
+    /// re-renders when its author's `refs.profile` row commits.
+    @StateObject private var rowObserver = KeyedRefRowObserver()
 
     private var name: String {
         if let live = profileHost?.profile(forPubkey: attribution.authorPubkey)?.displayName,
@@ -353,10 +356,15 @@ private struct ReplyAttributionLine: View {
                     profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: consumerID)
                 }
                 claimedPubkey = attribution.authorPubkey
-                // Attribution line is a feed/list context → `.cacheOk`.
-                profileHost?.claimProfile(
+                // ADR-0063 Lane E (#1671): attribution line is a feed/list
+                // context → `resolve_ref(Profile, …, .profileRef, .cacheOk)`.
+                if let host = profileHost {
+                    rowObserver.observe(host.profileRowChanged, pubkey: attribution.authorPubkey)
+                }
+                profileHost?.resolveProfile(
                     pubkey: attribution.authorPubkey,
                     consumerID: consumerID,
+                    shape: .profileRef,
                     liveness: .cacheOk)
             }
         }

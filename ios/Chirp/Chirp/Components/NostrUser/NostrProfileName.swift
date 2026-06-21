@@ -49,6 +49,10 @@ struct NostrProfileName: View {
 
     @State private var generatedConsumerID: String
     @State private var claimedPubkey: String?
+    /// ADR-0063 Lane E (#1671): per-key observer so EXACTLY this name re-renders
+    /// when its one pubkey's `refs.profile` row commits. Inert in the
+    /// render-only `displayName:` mode (no claim pubkey).
+    @StateObject private var rowObserver = KeyedRefRowObserver()
 
     /// Static variant: render an already-resolved `ProfileWire`. Claims the
     /// profile's pubkey on mount so the name stays fresh (mirrors `NostrAvatar`).
@@ -147,10 +151,18 @@ struct NostrProfileName: View {
                                     consumerID: generatedConsumerID)
                             }
                             claimedPubkey = claimPubkey
-                            // Inline/standalone name → `.cacheOk` (no live sub).
-                            profileHost?.claimProfile(
+                            // ADR-0063 Lane E (#1671): bind the per-key observer
+                            // (only this name re-renders on this pubkey's row),
+                            // then resolve via `resolve_ref(Profile, …,
+                            // .profileRef, .cacheOk)` — inline/standalone name is
+                            // a list/reading context (no live sub).
+                            if let host = profileHost {
+                                rowObserver.observe(host.profileRowChanged, pubkey: claimPubkey)
+                            }
+                            profileHost?.resolveProfile(
                                 pubkey: claimPubkey,
                                 consumerID: generatedConsumerID,
+                                shape: .profileRef,
                                 liveness: .cacheOk)
                         }
                     }

@@ -84,10 +84,12 @@ struct NoteContentView: View {
             profileHost.releaseProfile(pubkey: pk, consumerID: mentionConsumerID)
         }
         for pk in targetSet.subtracting(currentSet) {
-            // Inline mentions are a list/reading context → `.cacheOk` (no live
-            // sub; cache + OneShot fill is sufficient).
-            profileHost.claimProfile(
-                pubkey: pk, consumerID: mentionConsumerID, liveness: .cacheOk)
+            // ADR-0063 Lane E (#1671): inline mentions are a list/reading
+            // context → `resolve_ref(Profile, …, .profileRef, .cacheOk)` (no
+            // live sub; cache + OneShot fill is sufficient).
+            profileHost.resolveProfile(
+                pubkey: pk, consumerID: mentionConsumerID,
+                shape: .profileRef, liveness: .cacheOk)
         }
         claimedMentions = target
     }
