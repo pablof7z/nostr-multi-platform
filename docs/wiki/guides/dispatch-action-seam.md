@@ -2,7 +2,7 @@
 title: Dispatch Action Seam
 slug: dispatch-action-seam
 topic: ffi-runtime
-summary: Native had ≈70 event-producing C symbols with only one doorway (dispatch_action); ADR-0064 collapses the write path to a single byte-transport doorway. Migration in progress.
+summary: ADR-0064 collapses the write path to a single byte-transport doorway (one doorway per boundary). Multiple bespoke event-producing C symbols previously bypassed the dispatch_action doorway; migration to eliminate those bypasses is in progress.
 tags:
   - capture
 volatility: warm
@@ -25,7 +25,7 @@ sources:
 
 ## Coverage and Bypasses
 
-The dispatch_action seam was structurally vestigial — native had ≈70 C-ABI symbols with only one correct doorway (dispatch_action), and the remaining event-producing paths bypassed it via direct send_cmd calls. ADR-0064 (2026-06-21) collapses this to one byte-transport doorway; migration is in progress. PublishSignedEvent FFI bypassed PublishModule::start validation, allowing malformed signed events to reach the actor without validation. nmp_app_publish_unsigned_event was also an event-producing FFI bypass. Marmot depended on nmp_app_publish_signed_event_to via extern C call across crate boundaries, which was replaced by the internal kernel API NmpApp::publish_signed_explicit. WalletConnect, WalletDisconnect, and WalletPayInvoice ActorCommand variants have no ActionModule implementations and are called via direct send_cmd from ffi/wallet.rs. Do not migrate WalletConnect/Disconnect/PayInvoice to dispatch_action; they are wallet session lifecycle, not event production. The Theme A discriminator is specifically 'generic user/app-authored publish-engine events' — NWC pay-invoice signs kind:23194 but is wallet lifecycle, so it stays bespoke.
+The dispatch_action seam was structurally vestigial — multiple bespoke event-producing C symbols bypassed the one correct doorway (dispatch_action) via direct send_cmd calls. ADR-0064 (2026-06-21) collapses this to one byte-transport doorway; migration is in progress. PublishSignedEvent FFI bypassed PublishModule::start validation, allowing malformed signed events to reach the actor without validation. nmp_app_publish_unsigned_event was also an event-producing FFI bypass. Marmot depended on nmp_app_publish_signed_event_to via extern C call across crate boundaries, which was replaced by the internal kernel API NmpApp::publish_signed_explicit. WalletConnect, WalletDisconnect, and WalletPayInvoice ActorCommand variants have no ActionModule implementations and are called via direct send_cmd from ffi/wallet.rs. Do not migrate WalletConnect/Disconnect/PayInvoice to dispatch_action; they are wallet session lifecycle, not event production. The Theme A discriminator is specifically 'generic user/app-authored publish-engine events' — NWC pay-invoice signs kind:23194 but is wallet lifecycle, so it stays bespoke.
 
 V-38 (NWC wallet), V-39 (DM send), V-40 (DM ingest), V-41 (zap LNURL), and V-50 (outbox routing) are all post-v1 violations requiring the open-ActorCommand seam as a shared prerequisite. V-77 (nmp-nwc MakeInvoice) has a fully typed enum variant, params struct, result struct, and builder function but zero runtime dispatch end-to-end. The ActorCommand open seam for write-path protocol commands is ActorCommand::Protocol(Box<dyn ProtocolCommand>); NIP crates dispatch commands without the kernel knowing NIP nouns.
 

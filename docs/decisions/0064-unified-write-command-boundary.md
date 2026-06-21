@@ -17,8 +17,8 @@
   - **ADR-0027** (unify the `ActionModule` trait) — keeps the single `ActionModule`
     registry as the one dispatch authority; this ADR changes only the *wire shape*
     the registry is reached through (JSON → typed FlatBuffers bytes) and finishes
-    the seam ADR-0027 left "structurally vestigial" (≈70 event-producing C symbols,
-    only 3 routed through `dispatch_action`).
+    the seam ADR-0027 left structurally vestigial (multiple bespoke event-producing C
+    symbols bypassing the one `dispatch_action` doorway).
   - **ADR-0050** (signer-session capability port: `sign | nip44_encrypt |
     nip44_decrypt`, mailbox-delivered completions) — this ADR carries that port
     **across the wasm boundary unchanged in shape**: NIP-07 becomes one more
@@ -80,9 +80,8 @@
 
 The owner's discomfort — *"why is the action's identity a string literal? why not
 a typed `nmp_publish()`?"* — is correct only insofar as **a human should never
-write that string**. The string is the extension key of an *open* registry over a
-*frozen* C-ABI; that openness is load-bearing (D0: the kernel never learns the noun
-"react"). The defect is that app and host code today *do* hand-assemble
+write that string**. The string is the extension key of an *open* registry over one *generic* doorway;
+that openness is load-bearing (D0: the kernel never learns the noun "react"). The defect is that app and host code today *do* hand-assemble
 `{action_type, payload}` JSON. The fix is not to close the command set into a
 central enum (that would break the open seam and force a `nmp-core` edit per NIP) —
 it is to push **typing to a generated layer above one open transport**.
