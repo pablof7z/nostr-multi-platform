@@ -149,7 +149,7 @@ impl AppState {
     }
 
     #[must_use]
-    pub(crate) fn render_intent_rows(&self) -> &[TimelineRow] {
+    pub fn render_intent_rows(&self) -> &[TimelineRow] {
         if self.tab != FeatureTab::Home {
             return &[];
         }
