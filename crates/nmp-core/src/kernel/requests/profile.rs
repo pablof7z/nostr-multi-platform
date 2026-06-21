@@ -180,14 +180,6 @@ impl Kernel {
         // Liveness is the namespace-agnostic axis; the kind:0 routing below is
         // expressed in the profile-specific `ProfileLiveness` it has always used.
         let liveness: ProfileLiveness = liveness.into();
-        // ADR-0063 D5 — record the widest shape any live consumer of this pubkey
-        // demanded (widen-only while held; dropped on full teardown in
-        // `release_profile_ref`). Independent of liveness.
-        let widened = self
-            .ref_profile_shapes
-            .get(&pubkey)
-            .map_or(shape, |w| w.widen(shape));
-        self.ref_profile_shapes.insert(pubkey.clone(), widened);
 
         // T114b — per-pubkey claim consumer-id retention bound. Drop-newest on
         // overflow mirrors the bounded actor channel; the dropped claim is a
@@ -204,6 +196,14 @@ impl Kernel {
             let inserted = consumers.insert(consumer_id.clone());
             (inserted, consumers.len())
         };
+        // ADR-0063 D5 — record THIS consumer's demanded shape (per-consumer so a
+        // later release recomputes the widest among currently-live consumers —
+        // HIGH 4). Only reached for a real claim (overflow returned above), so the
+        // map stays bounded to claimed pubkeys. Independent of liveness.
+        self.ref_profile_shapes
+            .entry(pubkey.clone())
+            .or_default()
+            .insert(consumer_id.clone(), shape);
         if inserted {
             self.log(format!(
                 "claim profile {} consumer {} ref {} liveness {:?} hints {}",
@@ -343,20 +343,30 @@ impl Kernel {
         pubkey: &str,
         consumer_id: &str,
     ) -> Vec<OutboundMessage> {
+        let mut actually_removed = false;
         let mut remove_claim = false;
         let mut remaining = 0;
         if let Some(consumers) = self.profile_claims.get_mut(pubkey) {
-            consumers.remove(consumer_id);
+            actually_removed = consumers.remove(consumer_id);
             remaining = consumers.len();
             remove_claim = consumers.is_empty();
+        }
+        // ADR-0063 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
+        // widest demanded shape recomputes over the CURRENTLY-LIVE consumers. A
+        // Card consumer leaving while a Ref consumer remains narrows the row to
+        // Ref (instead of staying Card until full teardown); the per-key rev bump
+        // below carries the narrowing to the wire.
+        if let Some(consumers) = self.ref_profile_shapes.get_mut(pubkey) {
+            consumers.remove(consumer_id);
+            if consumers.is_empty() {
+                self.ref_profile_shapes.remove(pubkey);
+            }
         }
         if remove_claim {
             self.profile_claims.remove(pubkey);
             // Last consumer gone: drop the Live marker so a future claim starts
             // fresh (downgrade only on full teardown).
             self.live_profile_claims.remove(pubkey);
-            // ADR-0063 D5 — the row is gone; drop its widest-shape record.
-            self.ref_profile_shapes.remove(pubkey);
         }
 
         // Detach this consumer's owner from the registry slot. When the last
@@ -376,8 +386,18 @@ impl Kernel {
         self.changed_since_emit = true;
         self.projection_rev_tracker.source_versions.bump_profile_claims();
         // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (release site 2
-        // of 3). Signals the row appeared/disappeared without a whole-map resend.
-        self.projection_rev_tracker.source_versions.bump_profile_row(pubkey);
+        // of 3) ONLY when the refcount actually changed. A spurious release of a
+        // never-claimed pubkey must NOT create a permanent row-rev entry
+        // (BLOCKING 2 fix (a)). On a full teardown also mark the row Cleared so
+        // its rev is reaped once Lane A emits the Cleared frame (BLOCKING 2 (b)).
+        if actually_removed {
+            self.projection_rev_tracker.source_versions.bump_profile_row(pubkey);
+            if remove_claim {
+                self.projection_rev_tracker
+                    .source_versions
+                    .mark_row_cleared(RefNamespace::Profile, pubkey);
+            }
+        }
         self.log(format!(
             "release profile {} consumer {} ref {}",
             short_hex(pubkey),

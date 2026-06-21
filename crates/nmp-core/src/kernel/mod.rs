@@ -383,7 +383,7 @@ use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_H
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::Arc;
 // W1 — use the wasm-safe time shim (`crate::time`) rather than `std::time`
@@ -953,21 +953,28 @@ pub struct Kernel {
     /// (a `Live` claim keeps the kind:0 slot `Tailing` even if a later `CacheOk`
     /// claim arrives); cleared when the last consumer of a pubkey releases.
     live_profile_claims: BTreeSet<String>,
-    /// ADR-0063 (#1671 Lane B) — `primary_id`s with at least one
-    /// [`refs::RefLiveness::Live`] event claim outstanding. The event twin of
-    /// [`Self::live_profile_claims`]: drives the "Tailing wins" upgrade for
-    /// addressable-event claims (a `Live` naddr claim keeps a tailing sub open
-    /// so kind:3xxxx replacements arrive reactively); cleared on full teardown.
-    /// Immutable nevent/note ids never enter this set (they cannot change).
-    live_event_claims: BTreeSet<String>,
-    /// ADR-0063 (#1671 Lane B) — widest [`refs::ProfileShape`] any currently-live
-    /// consumer of a pubkey demanded (D5: the projection row carries the widest
-    /// shape). Widen-only while held; the entry is dropped on full teardown. Read
-    /// by Lane C via [`Self::ref_demanded_profile_shape`].
-    ref_profile_shapes: HashMap<String, refs::ProfileShape>,
-    /// ADR-0063 (#1671 Lane B) — widest [`refs::EventShape`] per claimed
-    /// `primary_id`. Event twin of [`Self::ref_profile_shapes`].
-    ref_event_shapes: HashMap<String, refs::EventShape>,
+    /// ADR-0063 (#1671 Lane B) — `primary_id` → the set of consumers that hold a
+    /// [`refs::RefLiveness::Live`] tailing owner on that coordinate's deduped
+    /// `event-claim:<primary_id>` slot. The event twin of
+    /// [`Self::live_profile_claims`], but keyed per-consumer so the tailing slot's
+    /// owner is detached on EACH live release (not only on total teardown) —
+    /// without this, releasing one of two `Live` consumers, or a `Live` consumer
+    /// ahead of a `CacheOk` consumer, leaked the registry owner and the tailing
+    /// sub (BLOCKING 1). The slot tears down exactly when this set empties.
+    /// Immutable nevent/note ids never enter this map (they cannot change).
+    live_event_claims: HashMap<String, BTreeSet<String>>,
+    /// ADR-0063 (#1671 Lane B) — per-consumer demanded [`refs::ProfileShape`]:
+    /// `pubkey → (consumer_id → shape)`. The projection row carries the WIDEST
+    /// shape over the inner map (D5, via [`Self::ref_demanded_profile_shape`]).
+    /// Tracking per-consumer (not a single widened scalar) lets a release
+    /// recompute the widest among CURRENTLY-LIVE consumers, so the row narrows
+    /// when the widest consumer leaves instead of staying over-broad until full
+    /// teardown (HIGH 4). The pubkey entry is dropped when its last consumer
+    /// releases.
+    ref_profile_shapes: HashMap<String, BTreeMap<String, refs::ProfileShape>>,
+    /// ADR-0063 (#1671 Lane B) — per-consumer demanded [`refs::EventShape`] per
+    /// claimed `primary_id`. Event twin of [`Self::ref_profile_shapes`].
+    ref_event_shapes: HashMap<String, BTreeMap<String, refs::EventShape>>,
     /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
     /// keyed by the same `primary_id` the snapshot's `claimed_events`
     /// projection uses (hex64 event id for nevent/note URIs;
@@ -2034,7 +2041,7 @@ impl Kernel {
             follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
             live_profile_claims: BTreeSet::new(),
-            live_event_claims: BTreeSet::new(),
+            live_event_claims: HashMap::new(),
             ref_profile_shapes: HashMap::new(),
             ref_event_shapes: HashMap::new(),
             event_claims: HashMap::new(),

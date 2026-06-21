@@ -39,10 +39,14 @@ impl Kernel {
         let owner = SubOwnerKey::new(("event-claim-owner", consumer_id));
         let identity = SubIdentity::new(owner, key, SubScope::Global);
 
-        // Tailing wins: once any `Live` claim is seen for this coordinate, the
-        // slot stays `Tailing` until the last owner releases (cleared in
+        // Tailing wins: track THIS consumer's live owner per-coordinate so the
+        // slot's owner is detached on each live release (BLOCKING 1). The slot
+        // stays `Tailing` until the last live owner releases (in
         // `release_event_claim_interest`).
-        self.live_event_claims.insert(primary_id.to_string());
+        self.live_event_claims
+            .entry(primary_id.to_string())
+            .or_default()
+            .insert(consumer_id.to_string());
 
         let interest = LogicalInterest {
             id: InterestId(key.0),
@@ -65,28 +69,83 @@ impl Kernel {
         );
     }
 
-    /// ADR-0063 — tear down the `Live` tailing slot for `primary_id` when its
-    /// last consumer releases. No-op when the coordinate never had a `Live`
-    /// claim (immutable nevent/note ids, or CacheOk-only addressable claims).
-    /// Mirrors the `drop_owner` + recompile tail of `release_profile_ref`.
+    /// ADR-0063 (BLOCKING 1) — detach THIS consumer's `Live` tailing owner for
+    /// `primary_id`, tearing the deduped slot down when the LAST live owner
+    /// leaves. Called on EVERY event release (per-consumer lifecycle), not only
+    /// on total teardown: that is what stops the first of two `Live` consumers —
+    /// or a `Live` consumer released ahead of a surviving `CacheOk` consumer —
+    /// from leaking its registry owner and the tailing sub. No-op when this
+    /// consumer never held a live owner (CacheOk-only), or the coordinate never
+    /// had a `Live` claim (immutable nevent/note ids). Mirrors the `drop_owner` +
+    /// recompile tail of `release_profile_ref`.
     pub(in crate::kernel) fn release_event_claim_interest(
         &mut self,
         primary_id: &str,
         consumer_id: &str,
     ) {
-        if !self.live_event_claims.remove(primary_id) {
-            return;
-        }
+        // Only this consumer's owner is detached, and only if it registered one.
+        let last_live_owner = match self.live_event_claims.get_mut(primary_id) {
+            Some(owners) => {
+                if !owners.remove(consumer_id) {
+                    // CacheOk-only consumer (no live owner) — nothing to detach,
+                    // and other live owners (if any) keep the slot alive.
+                    return;
+                }
+                owners.is_empty()
+            }
+            None => return, // coordinate never had a Live claim
+        };
         let key = event_claim_sub_key(primary_id);
         let owner = SubOwnerKey::new(("event-claim-owner", consumer_id));
         let identity = SubIdentity::new(owner, key, SubScope::Global);
         let slot_removed = self.lifecycle.registry_mut().drop_owner(&identity);
+        if last_live_owner {
+            // Last live owner gone: drop the per-coordinate live-owner record so a
+            // future `Live` claim starts fresh.
+            self.live_event_claims.remove(primary_id);
+        }
         if slot_removed {
             // The CLOSE diff only materialises when the planner recompiles.
             self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
                 interest_ids: Vec::new(),
             });
         }
+    }
+
+    /// ADR-0063 (BLOCKING 3) — retire a `CacheOk` one-shot interest for
+    /// `primary_id` when a `Live` claim upgrades the key to a tailing slot, so
+    /// exactly ONE interest / wire REQ exists per key (Live wins). The profile
+    /// path shares ONE slot across liveness levels via in-place `set_sub`; events
+    /// keep their bespoke `OneshotApi` cold-fetch (the Phase 1/2/3 NIP-19 retarget
+    /// machinery), so the upgrade explicitly retires the one-shot rather than
+    /// mutating it in place. No-op when no one-shot is pending for the key
+    /// (`Live`-first, an already-cached coordinate, or already retired).
+    pub(in crate::kernel) fn cancel_event_oneshot(&mut self, primary_id: &str) {
+        // The claim-expansion tracker records the one-shot's `InterestId` keyed by
+        // `primary_id`; that id IS the registry `SubKey` (`InterestId(key.0)`).
+        let Some(interest_id) = self
+            .pending_claims
+            .values()
+            .find(|c| c.primary_id == primary_id)
+            .map(|c| c.interest_id.clone())
+        else {
+            return;
+        };
+        // Drop the registry slot (any scope) so the planner emits the CLOSE and no
+        // second REQ is compiled for this key.
+        self.lifecycle
+            .registry_mut()
+            .drop_slot_by_key(SubKey(interest_id.0));
+        // Release the OneshotApi token bookkeeping (else it lingers until EOSE).
+        if let Some(token) = self.pending_discovery_oneshots.remove(&interest_id) {
+            let registry = self.lifecycle.registry_mut();
+            self.oneshot.release(registry, token);
+        }
+        // Drop the Phase 1/2/3 retarget tracker for the retired one-shot.
+        self.release_claim_expansion(primary_id);
+        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
+            interest_ids: Vec::new(),
+        });
     }
 
     /// Is the event identified by `primary_id` already in the kernel's

@@ -297,13 +297,24 @@ impl Kernel {
     }
 
     /// The widest `profile` shape any currently-live consumer of `key` demanded
-    /// (ADR-0063 D5). `None` once no consumer holds the key.
+    /// (ADR-0063 D5). Folds the widen lattice over the per-consumer shapes so a
+    /// release that drops the widest consumer narrows the result (HIGH 4). `None`
+    /// once no consumer holds the key.
     pub(crate) fn ref_demanded_profile_shape(&self, key: &str) -> Option<ProfileShape> {
-        self.ref_profile_shapes.get(key).copied()
+        let consumers = self.ref_profile_shapes.get(key)?;
+        consumers
+            .values()
+            .copied()
+            .reduce(|acc, s| acc.widen(s))
     }
 
     /// The widest `event` shape any currently-live consumer of `key` demanded.
+    /// Folds the widen lattice over the per-consumer shapes (HIGH 4).
     pub(crate) fn ref_demanded_event_shape(&self, key: &str) -> Option<EventShape> {
-        self.ref_event_shapes.get(key).copied()
+        let consumers = self.ref_event_shapes.get(key)?;
+        consumers
+            .values()
+            .copied()
+            .reduce(|acc, s| acc.widen(s))
     }
 }
