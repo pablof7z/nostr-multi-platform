@@ -115,7 +115,8 @@ pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{
-    register_op_feed_defaults, register_op_feed_defaults_with_mute, OpFeedDefaults,
+    compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
+    OpFeedDefaults,
 };
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{register_bookmark_runtime, register_comment_runtime, register_mute_runtime};
