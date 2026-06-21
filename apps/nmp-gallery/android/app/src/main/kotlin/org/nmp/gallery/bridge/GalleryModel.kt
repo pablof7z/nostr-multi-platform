@@ -170,9 +170,15 @@ class GalleryModel : ViewModel() {
         val assembled = mutableMapOf<String, ProfileWire>()
 
         // ADR-0063 (#1671): projections.resolved_profiles[pubkey] is a
-        // ProfileWire-shaped entry materialised from the merged refs.profile
-        // store. `npub_short` is derived from `npub` by the ProfileWire
+        // ProfileWire-shaped entry materialised from the FULL current
+        // refs.profile store set (snapshot_json re-materialises the whole store
+        // every frame). `npub_short` is derived from `npub` by the ProfileWire
         // constructor default when absent (same algorithm as before).
+        //
+        // REPLACE the map exactly each frame — no accumulation, no second
+        // source of truth (D4). The decoded set IS the live store, so a
+        // refs.profile clear/release drops the row here too; unioning would
+        // leak released keys.
         (projections["resolved_profiles"] as? JsonObject)?.let { resolved ->
             for ((pubkey, el) in resolved) {
                 val profile = runCatching {
@@ -182,9 +188,7 @@ class GalleryModel : ViewModel() {
             }
         }
 
-        if (assembled.isNotEmpty()) {
-            _profileMap.value = _profileMap.value + assembled
-        }
+        _profileMap.value = assembled
 
         val events = mutableMapOf<String, ClaimedEventWire>()
         (projections["claimed_events"] as? JsonObject)?.let { claimed ->

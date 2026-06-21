@@ -343,6 +343,87 @@ mod tests {
     }
 
     #[test]
+    fn refs_profile_clear_drops_row_from_resolved_profiles_json() {
+        // ADR-0063 (#1671): snapshot_json materialises the FULL current
+        // RefProfileStore set each frame. A subsequent `refs.profile` CLEAR
+        // (release-on-scroll-off) must DROP the row from `resolved_profiles` —
+        // the materialised set is the sole source of truth (D4), no stale row.
+        let pubkey = "2222222222222222222222222222222222222222222222222222222222222222";
+        let card_payload = encode_profile(&ProfileCardModel {
+            pubkey: pubkey.to_string(),
+            display_name: Some("Soon Gone".to_string()),
+            ..Default::default()
+        });
+
+        let mut store = RefProfileStore::new();
+
+        // Frame 1: baseline carrying the resolved card — present.
+        let add_frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_PROFILE_KEY.to_string(),
+                schema_id: REFS_PROFILE_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "profile".to_string(),
+                    baseline: true,
+                    rows: vec![RefRow::changed(pubkey, 1, card_payload)],
+                }),
+                ..Default::default()
+            }],
+        );
+        let added: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&add_frame, &mut store).expect("decode add"),
+        )
+        .expect("json");
+        assert_eq!(
+            added["projections"]["resolved_profiles"][pubkey]["display_name"],
+            "Soon Gone",
+            "row must be present after the baseline add"
+        );
+
+        // Frame 2: a CLEAR row-delta (release) for the same key — the row must
+        // be GONE from the materialised set, not retained as stale.
+        let clear_frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_PROFILE_KEY.to_string(),
+                schema_id: REFS_PROFILE_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "profile".to_string(),
+                    baseline: false,
+                    rows: vec![RefRow::cleared(pubkey, 2)],
+                }),
+                ..Default::default()
+            }],
+        );
+        let cleared: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&clear_frame, &mut store).expect("decode clear"),
+        )
+        .expect("json");
+        assert!(
+            cleared["projections"]["resolved_profiles"]
+                .get(pubkey)
+                .is_none(),
+            "a refs.profile CLEAR must drop the row from resolved_profiles; got {:?}",
+            cleared["projections"]["resolved_profiles"]
+        );
+    }
+
+    #[test]
     fn profile_card_json_adds_gallery_display_fields() {
         let card = ProfileCardModel {
             pubkey: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
