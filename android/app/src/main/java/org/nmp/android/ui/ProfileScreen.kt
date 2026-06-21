@@ -25,13 +25,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.RefLiveness
+import org.nmp.android.RefShape
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.ui.embed.EventClaimer
 import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
@@ -58,9 +64,12 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
 ) {
     val profileConsumerId = "profile_screen-$pubkey"
+    // ADR-0063 Lane G (#1671): the open profile screen resolves the FULL
+    // ProfileCard shape with Live liveness (keeps a tailing kind:0 sub while the
+    // screen holds the key), via the unified resolve_ref seam.
     DisposableEffect(pubkey) {
         model.openAuthor(pubkey)
-        model.claimProfile(pubkey, profileConsumerId)
+        model.resolveProfile(pubkey, profileConsumerId, RefShape.ProfileCard, RefLiveness.Live)
         onDispose {
             model.closeAuthor(pubkey)
             model.releaseProfile(pubkey, profileConsumerId)
@@ -73,14 +82,18 @@ fun ProfileScreen(
     val cards = projections?.flatFeeds?.get("nmp.feed.author.$pubkey")?.cards ?: emptyList()
     val cardLookup = cards.associate { it.card.id to it.card }
 
-    val profileCard: ProfileCard? = projections
-        ?.claimedProfiles
-        ?.get(pubkey)
-        ?: projections?.resolvedProfiles?.get(pubkey)
-    val resolvedProfiles = if (profileCard != null) {
-        (projections?.resolvedProfiles ?: emptyMap()) + (pubkey to profileCard)
-    } else {
-        projections?.resolvedProfiles ?: emptyMap()
+    // ADR-0063 Lane G: read the open-profile card per-key from the `refs.profile`
+    // keyed-ref cache (the source of truth, D4 — no app-side profile cache).
+    // Re-read whenever THIS pubkey's row commits (per-key reactivity), never via
+    // a whole-map snapshot scan.
+    var profileRowVersion by remember(pubkey) { mutableStateOf(0) }
+    LaunchedEffect(pubkey) {
+        model.profileRowChanged.collect { change ->
+            if (change.rowKey == pubkey) profileRowVersion++
+        }
+    }
+    val profileCard: ProfileCard? = remember(pubkey, profileRowVersion) {
+        model.profileCard(pubkey)
     }
 
     val shortPubkey = abbreviateMiddle(pubkey.ifEmpty { "unknown" }, prefix = 8, suffix = 8)
@@ -98,7 +111,7 @@ fun ProfileScreen(
     val nip05 = profileCard?.nip05?.takeIf { it.isNotEmpty() }
     val noteCount = cards.size
     val following = projections?.followList?.follows?.contains(pubkey) == true
-    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    val profileHost = rememberKernelProfileHost(model)
     val eventClaimer: EventClaimer = { uri, consumerId, claim ->
         if (claim) model.claimEvent(uri, consumerId)
         else model.releaseEvent(uri, consumerId)
@@ -106,7 +119,6 @@ fun ProfileScreen(
     val claimedEventEmbeds = projections?.claimedEventEmbeds ?: emptyMap()
 
     CompositionLocalProvider(
-        LocalResolvedProfiles provides resolvedProfiles,
         LocalEventClaimer provides eventClaimer,
         LocalClaimedEventEmbeds provides claimedEventEmbeds,
         LocalNostrProfileHost provides profileHost,
@@ -217,7 +229,8 @@ fun ProfileScreen(
                                 cardLookup,
                                 model = model,
                             )
-                            // Author display names resolve via LocalResolvedProfiles,
+                            // Author display names resolve per-key via the
+                            // refs.profile keyed-ref cache through LocalNostrProfileHost,
                             // provided by the enclosing CompositionLocalProvider.
                             if (index < cards.lastIndex) {
                                 HorizontalDivider(Modifier.padding(start = 56.dp))

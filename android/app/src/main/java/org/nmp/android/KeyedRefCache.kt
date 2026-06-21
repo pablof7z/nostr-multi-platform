@@ -21,8 +21,11 @@ package org.nmp.android
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import nmp.kernel.ClaimedEventsSnapshot
+import nmp.kernel.ProfileSnapshot
 import nmp.refs.RefRowDeltaBatch
 import nmp.refs.RefRowState
+import org.nmp.android.model.ProfileCard
 
 private const val KRC_TAG = "KeyedRefCache"
 
@@ -71,6 +74,15 @@ class KeyedRefCache {
      * row that fails is NOT committed (prior row retained, needsResync latched).
      */
     var rowDecoder: (String, ByteArray) -> Boolean = { _, payload -> payload.isNotEmpty() }
+
+    /**
+     * ADR-0063 Lane G (#1671): wire the real typed decode-before-commit seam at
+     * construction so every `Changed` row is validated against the namespace's
+     * concrete type (no caller setup required) — the Swift `init` twin.
+     */
+    init {
+        installTypedRowDecoder()
+    }
 
     /** Register a per-row change listener (one call per committed/cleared key). */
     fun addRowChangeListener(listener: (KeyedRowChange) -> Unit) {
@@ -289,9 +301,11 @@ class KeyedRefCache {
      * The cached raw payload bytes for one (projectionKey, rowKey), or null.
      *
      * `internal` (NOT public): this is the cache's row-bytes merge primitive, not
-     * a public refs API. The public per-namespace TYPED accessors land in Lane G
-     * once the `flatc --kotlin` row readers ship (ADR-0063 Lane C, #1671). Visible
-     * to same-module tests, never to external callers — no dishonest raw surface.
+     * a public refs API. The PUBLIC per-namespace surface is the TYPED accessor
+     * (`profile(key) -> ProfileCard?` / `event(key) -> ClaimedEventDto?`, ADR-0063
+     * Lane G), which decodes these bytes through the namespace's typed reader.
+     * Visible to same-module tests, never to external callers — no dishonest raw
+     * surface.
      */
     internal fun payload(projectionKey: String, rowKey: String): ByteArray? =
         rows[projectionKey]?.get(rowKey)?.payload
@@ -299,13 +313,82 @@ class KeyedRefCache {
     /** The number of cached rows for a projection (test/diagnostic aid). */
     fun count(projectionKey: String): Int = rows[projectionKey]?.size ?: 0
 
-    // ADR-0063 Lane C (#1671): NO public per-namespace refs accessor.
-    // The TYPED kotlin accessors (`profile(pubkey) -> ProfileCard?` /
-    // `event(primaryId) -> ClaimedEventDto?`, the Swift typed twin) are
-    // gated on the `nmp.kernel.ProfileSnapshot` / `ClaimedEventsSnapshot`
-    // `flatc --kotlin` row readers, which are not yet checked into the
-    // Android target (Lane G). Until then the cache exposes NO raw
-    // `ByteArray?` per-namespace surface (invariant #4: typed per
-    // namespace, never dishonest raw bytes); the row bytes are reachable
-    // only through the `internal payload(...)` merge primitive below.
+    // ── Typed row decode (ADR-0063 Lane G, #1671) ───────────────────────
+    //
+    // The real per-namespace typed decoders. Each does a CHECKED root
+    // decode of the row payload buffer (verifying its OWN file_identifier
+    // — KPRF / KCEV, NOT the NRRD batch id) then maps the reader to the
+    // Chirp domain type via the hand-written `KeyedRefDecoders` glue.
+    // Invariant #2: `installTypedRowDecoder()` (called from `init`) wires
+    // these into the decode-before-commit seam so a row only commits if it
+    // decodes to the concrete type.
+    /** Decode one `nmp.kernel.ProfileSnapshot` row payload buffer into `ProfileCard` (ADR-0063 Lane G). */
+    private fun decodeProfileRow(bytes: ByteArray): ProfileCard? {
+        if (bytes.isEmpty()) return null
+        return try {
+          val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+          // CHECKED decode: verify the row-payload file_identifier (KPRF),
+          // NOT the NRRD batch id, before reading any field (fail closed).
+          if (bytes.size < 8 || !ProfileSnapshot.ProfileSnapshotBufferHasIdentifier(bb)) {
+            return null
+          }
+          val reader = ProfileSnapshot.getRootAsProfileSnapshot(bb)
+          // Hand-written glue (NOT generated): reader -> domain type.
+          // See `KeyedRefDecoders.refRowProfile`.
+          KeyedRefDecoders.refRowProfile(reader)
+        } catch (e: Exception) {
+          null
+        }
+    }
+    /** Decode one `nmp.kernel.ClaimedEventsSnapshot` row payload buffer into `ClaimedEventDto` (ADR-0063 Lane G). */
+    private fun decodeEventRow(bytes: ByteArray): ClaimedEventDto? {
+        if (bytes.isEmpty()) return null
+        return try {
+          val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+          // CHECKED decode: verify the row-payload file_identifier (KCEV),
+          // NOT the NRRD batch id, before reading any field (fail closed).
+          if (bytes.size < 8 || !ClaimedEventsSnapshot.ClaimedEventsSnapshotBufferHasIdentifier(bb)) {
+            return null
+          }
+          val reader = ClaimedEventsSnapshot.getRootAsClaimedEventsSnapshot(bb)
+          // Hand-written glue (NOT generated): reader -> domain type.
+          // See `KeyedRefDecoders.refRowEvent`.
+          KeyedRefDecoders.refRowEvent(reader)
+        } catch (e: Exception) {
+          null
+        }
+    }
+    /**
+     * Wire the real typed decode-before-commit seam (ADR-0063 #2): a
+     * `Changed` row commits ONLY if its payload decodes to the namespace's
+     * concrete type. Called from `init` so the typed contract holds with no
+     * caller wiring (the Swift `installTypedRowDecoder` twin).
+     */
+    private fun installTypedRowDecoder() {
+        rowDecoder = { namespace, payload ->
+          when (namespace) {
+                "profile" -> decodeProfileRow(payload) != null
+                "event" -> decodeEventRow(payload) != null
+                else -> false
+          }
+        }
+    }
+
+    // ADR-0063 Lane G (#1671): per-key TYPED accessors — the #1671 host
+    // per-key reactive read API (the Swift typed twin). A view reads
+    // `model.profile(pubkey)` and observes `addRowChangeListener` filtered
+    // on its key, so exactly one avatar re-renders when that pubkey's row
+    // updates. Each accessor DECODES the cached row-payload buffer through
+    // the namespace's typed reader (the SAME buffer the kernel's
+    // `ref_*_row_payload` encoder emits) into the concrete domain type —
+    // never a dishonest raw `ByteArray` surface (invariant #4). A decode
+    // miss returns null.
+    fun profile(key: String): ProfileCard? {
+        val bytes = payload(projectionKey = "refs.profile", rowKey = key) ?: return null
+        return decodeProfileRow(bytes)
+    }
+    fun event(key: String): ClaimedEventDto? {
+        val bytes = payload(projectionKey = "refs.event", rowKey = key) ?: return null
+        return decodeEventRow(bytes)
+    }
 }

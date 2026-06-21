@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -38,6 +40,33 @@ class KernelModel : ViewModel() {
     // kernel session. Reset on session teardown (onCleared). Fed each FlatBuffers
     // frame in decodeUpdate before the TypedXDecoder family runs.
     private val projectionCache = ProjectionMergeCache()
+
+    // ADR-0063 Lane G (#1671): NMP-owned per-key (row-keyed) reference cache for
+    // the keyed reference projections (`refs.profile` / `refs.event`). The Android
+    // twin of iOS `KernelHandle.keyedRefCache`. One instance per kernel session;
+    // fed the RAW `nmp.refs.RefRowDeltaBatch` (NRRD) sidecar envelopes each frame
+    // in decodeUpdate (NOT through ProjectionMergeCache, which is keyed per WHOLE
+    // projection, not per row). Profiles are read per-key via [profileCard].
+    private val keyedRefCache = KeyedRefCache()
+
+    // ADR-0063 Lane G: per-key row-change broadcast. The cache notifies one
+    // [KeyedRowChange] per committed/cleared key; we re-emit it on this flow so a
+    // single avatar/name leaf observes ONLY its own pubkey (per-key reactivity,
+    // not a whole-map StateFlow broadcast — the iOS `rowChanged` publisher twin).
+    private val _profileRowChanged =
+        kotlinx.coroutines.flow.MutableSharedFlow<KeyedRowChange>(
+            extraBufferCapacity = 256,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
+    /** Per-key profile row-change events — one per committed/cleared `refs.profile` key. */
+    val profileRowChanged: SharedFlow<KeyedRowChange> =
+        _profileRowChanged.asSharedFlow()
+
+    init {
+        // Bridge the cache's synchronous row-change listener (invoked on the
+        // native update-listener thread) onto the shared flow consumers observe.
+        keyedRefCache.addRowChangeListener { change -> _profileRowChanged.tryEmit(change) }
+    }
 
     /**
      * Marmot (MLS-over-Nostr encrypted groups) write operations. Mirrors the iOS
@@ -205,15 +234,49 @@ class KernelModel : ViewModel() {
         bridge.createLocalAccount()
     }
 
-    /** Demand-driven profile fetch claim (Compose LaunchedEffect → DisposableEffect). */
-    fun claimProfile(pubkey: String, consumerId: String) {
-        bridge.claimProfile(pubkey, consumerId)
+    /**
+     * ADR-0063 Lane G (#1671) — resolve a profile reference via the unified
+     * `resolve_ref` seam (Profile namespace), the Android twin of iOS
+     * `resolveProfile`. Replaces the legacy `claim_profile` path: the kernel
+     * resolves the kind:0 and ships it in the next `refs.profile` (NRRD) sidecar,
+     * read per-key via [profileCard].
+     *
+     * [shape] — [RefShape.ProfileRef] for feed/list/avatar (the small subset),
+     *   [RefShape.ProfileCard] for the open profile screen (the full card).
+     * [liveness] — [RefLiveness.CacheOk] for background/feed rows,
+     *   [RefLiveness.Live] for the open screen (keeps a tailing sub).
+     */
+    fun resolveProfile(
+        pubkey: String,
+        consumerId: String,
+        shape: RefShape = RefShape.ProfileRef,
+        liveness: RefLiveness = RefLiveness.CacheOk,
+    ) {
+        bridge.resolveRef(RefNamespace.Profile, pubkey, consumerId, shape, liveness)
     }
 
-    /** Inverse of [claimProfile]; safe to call even if no matching claim is live. */
+    /** Inverse of [resolveProfile]; safe to call even if no matching ref is live. */
     fun releaseProfile(pubkey: String, consumerId: String) {
-        bridge.releaseProfile(pubkey, consumerId)
+        bridge.releaseRef(RefNamespace.Profile, pubkey, consumerId)
     }
+
+    /**
+     * ADR-0063 Lane G (#1671) — the per-key TYPED profile read backed by the
+     * `refs.profile` keyed-ref cache (the source of truth, D4 — no app-side
+     * profile cache). The iOS `profileCard(forPubkey:)` twin. Returns null until
+     * the kernel resolves the kind:0 for [pubkey]; a leaf re-reads this when
+     * [profileRowChanged] fires for its key so exactly one avatar re-renders.
+     */
+    fun profileCard(pubkey: String): org.nmp.android.model.ProfileCard? =
+        keyedRefCache.profile(pubkey)
+
+    /**
+     * ADR-0063 Lane G (#1671) — the per-key TYPED event read backed by the
+     * `refs.event` keyed-ref cache. Exposed for parity with iOS `refEvent`;
+     * events still render via the `claimed_events` projection (Lane H converges
+     * them). Returns null until the kernel resolves [primaryId].
+     */
+    fun refEvent(primaryId: String): ClaimedEventDto? = keyedRefCache.event(primaryId)
 
     /**
      * Demand-driven embedded-event fetch claim (#984): the UI is rendering an
@@ -462,6 +525,23 @@ class KernelModel : ViewModel() {
                 if (mergeResult.changedKeys.isNotEmpty()) {
                     Log.d(TAG, "projection cache merge: changedKeys=${mergeResult.changedKeys}")
                 }
+                // ADR-0063 Lane G (#1671): feed the keyed reference projections
+                // (`refs.profile` / `refs.event`) into the per-key KeyedRefCache.
+                // They are NOT routed through ProjectionMergeCache (which is keyed
+                // per WHOLE projection, not per row); they carry an
+                // `nmp.refs.RefRowDeltaBatch` (NRRD) payload the per-key cache
+                // merges row-by-row. Use the RAW pre-merge envelopes (the verbatim
+                // wire payload, untouched by the projection-cache pass) so each
+                // committed row fires `profileRowChanged` for exactly its key.
+                for (envelope in frame.typedProjections) {
+                    if (!envelope.key.startsWith("refs.")) continue
+                    keyedRefCache.merge(
+                        projectionKey = envelope.key,
+                        payload = envelope.payload,
+                        sessionId = frame.sessionId,
+                        snapshotEpoch = frame.snapshotEpoch,
+                    )
+                }
                 // Re-decode using the MERGED envelope set (cached values for omitted keys
                 // are reinstated; Cleared keys are absent; Changed keys carry fresh bytes).
                 // Replace the projections slot on the already-decoded KernelUpdate with the
@@ -491,6 +571,9 @@ class KernelModel : ViewModel() {
         // ADR-0055 R3-S4: reset the projection cache so the next session
         // starts from a clean baseline (D4 mandatory reset on session end).
         projectionCache.reset()
+        // ADR-0063 Lane G: reset the keyed-ref cache too (D4 — the next
+        // refs.profile / refs.event frame is a full baseline after teardown).
+        keyedRefCache.reset()
         super.onCleared()
     }
 }

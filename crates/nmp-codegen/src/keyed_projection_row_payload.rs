@@ -32,21 +32,19 @@ pub struct RefRowPayload {
     /// single `ClaimedEventEntry`.
     pub swift_glue: &'static str,
     /// The Kotlin row-payload typed-decode descriptor, or `None` when the
-    /// `flatc --kotlin` reader for the row payload buffer
-    /// (`nmp.kernel.ProfileSnapshot` / `nmp.kernel.ClaimedEventsSnapshot`) is NOT
-    /// yet checked into the Android target.
+    /// `flatc --kotlin` reader for the row payload buffer is NOT checked into the
+    /// Android target.
     ///
     /// This mirrors the [`crate::swift_typed_decoders`] precedent: a generated
     /// typed accessor references the reader class BY NAME, so it can only be
-    /// emitted once that class ships. The KPRF `ProfileSnapshot` and KCEV
-    /// `ClaimedEventsSnapshot` Kotlin readers are NOT checked in today (only the
-    /// inner `ProfileCard.kt` is), so both entries carry `None` and the Kotlin
-    /// generator falls back to the Lane-A raw `ByteArray?` accessor for them. The
-    /// named follow-up is the `flatc --kotlin` binding (the schemas already
-    /// declare `namespace nmp.kernel`, so a fresh `ci/regenerate-flatbuffers.sh`
-    /// run emits them) + a drift-gate root-list addition — at which point this
-    /// flips to `Some` and the Kotlin accessor becomes typed too, with zero
-    /// generator change.
+    /// emitted once that class ships. ADR-0063 Lane G (#1671) generated and
+    /// checked in the KPRF `nmp.kernel.ProfileSnapshot` + KCEV
+    /// `nmp.kernel.ClaimedEventsSnapshot` Kotlin readers (the schemas already
+    /// declare `namespace nmp.kernel`, so `ci/regenerate-flatbuffers.sh` emits
+    /// them and the derived drift-gate root list covers them automatically), so
+    /// BOTH entries now carry `Some(..)` and the Kotlin generator emits TYPED
+    /// per-key accessors — byte-for-byte semantically identical to the Swift
+    /// typed path, with NO public raw `ByteArray?` surface.
     pub kotlin: Option<KotlinRefRowPayload>,
 }
 
@@ -116,7 +114,15 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
             swift_reader_type: "nmp_kernel_ProfileSnapshot",
             swift_domain_type: "ProfileCard",
             swift_glue: "profile",
-            kotlin: None,
+            // ADR-0063 Lane G (#1671): the `nmp.kernel.ProfileSnapshot` (KPRF)
+            // Kotlin reader is now checked into the Android target, so the Kotlin
+            // accessor is TYPED — mirroring the Swift typed path exactly. The glue
+            // (`KeyedRefDecoders.refRowProfile`) maps the reader → domain card.
+            kotlin: Some(KotlinRefRowPayload {
+                reader_type: "nmp.kernel.ProfileSnapshot",
+                domain_type: "ProfileCard",
+                glue: "refRowProfile",
+            }),
         },
     },
     KeyedProjectionEntry {
@@ -135,7 +141,16 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
             swift_reader_type: "nmp_kernel_ClaimedEventsSnapshot",
             swift_domain_type: "ClaimedEventDto",
             swift_glue: "refRowEvent",
-            kotlin: None,
+            // ADR-0063 Lane G (#1671): the `nmp.kernel.ClaimedEventsSnapshot`
+            // (KCEV) Kotlin reader is now checked into the Android target. The
+            // typed accessor unwraps the single-entry KCEV buffer to one
+            // `ClaimedEventDto` via the `KeyedRefDecoders.refRowEvent` glue, which
+            // fails closed on a 0/2+ entry buffer (the Swift single-entry fix).
+            kotlin: Some(KotlinRefRowPayload {
+                reader_type: "nmp.kernel.ClaimedEventsSnapshot",
+                domain_type: "ClaimedEventDto",
+                glue: "refRowEvent",
+            }),
         },
     },
 ];
