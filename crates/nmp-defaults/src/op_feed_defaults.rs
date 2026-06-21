@@ -137,6 +137,11 @@ pub struct OpFeedDefaults {
     /// The registered OP-feed engine — already wired as a `KernelEventObserver`
     /// (ingest) and a `FeedController` under `"nmp.feed.home"` (output).
     pub engine: Arc<OpFeedEngine>,
+    /// The registered feed controller under `"nmp.feed.home"`.
+    ///
+    /// Perspective-change producers call this controller's `reset` path so the
+    /// visible OP-feed state and the seq pull cursor move together.
+    pub controller: Arc<dyn FeedController>,
     /// The follow-set producer — already wired as a `KernelEventObserver` for
     /// kind:3 updates and as an `NmpApp` identity observer for sign-in, switch,
     /// logout, and reset.
@@ -195,9 +200,9 @@ pub fn register_op_feed_defaults_with_mute(
 ) -> OpFeedDefaults {
     let suppression: Arc<dyn SuppressionLookup> = mute.clone();
     let defaults = register_op_feed_defaults_inner(app, viewer, primary_feed_kinds, suppression);
-    let engine_for_mute = defaults.engine.clone();
+    let controller_for_mute = defaults.controller.clone();
     mute.on_change(Box::new(move || {
-        engine_for_mute.reset_for_perspective_change();
+        let _ = controller_for_mute.reset();
     }));
     defaults
 }
@@ -254,40 +259,19 @@ fn register_op_feed_defaults_inner(
     let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup);
 
     // ── 5. Register the engine (ingest + output) ─────────────────────────
-    let observer: Arc<dyn KernelEventObserver> =
-        op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
-    let _engine_observer_id = app.register_event_observer(observer);
+    let observer = op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
+    let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
+    let _engine_observer_id = app.register_event_observer(observer_for_registry);
 
     // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //
-    // `load_older` is no longer a `created_at` window-grow on the engine (that
-    // parallel path was deleted in 6B — the engine is no longer a
-    // `FeedController`). It is now a synchronous, on-demand pull drain over the
-    // kernel's ingest log, via `nmp_feed::PullFeedController`:
-    //
-    //   * **interest** — a LIVE, fail-closed `InterestShape` recomputed on every
-    //     `load_older`: the active account's follow set + the active user as
-    //     `authors`, under acquisition kinds derived from app-declared primary
-    //     kinds. This is the same active-follows shape the declared feed
-    //     installs for live acquisition. The controller is registered
-    //     UNCONDITIONALLY (below); the provider proves a LIVE active account
-    //     FIRST and yields `None` on empty kinds or no signed-in account, so a
-    //     `load_older` after logout/switch fails closed (no pull, never a
-    //     broad-scan; D5) even while a stale follow set lingers.
-    //   * **pull** — `app.feed_pull_fn()`, an in-process read over the kernel
-    //     event store (NOT a new host pull accessor; ADR-0039 §6.1 preserved).
-    //   * **apply** — the engine's own `KernelEventObserver` ingest path, so a
-    //     drained page deduplicates and projects exactly like live push ingest.
-    //   * **advance** — `grow_visible_window`, the render-viewport step that
-    //     reveals the just-ingested `(created_at, id)`-sorted roots one page at a
-    //     time. Completeness rides ingest seq; display order is unchanged.
+    // Pull uses the same live active-follows shape as acquisition, the in-process
+    // event-store scan, and the suppression/delete-aware observer used by relay
+    // fan-out. `advance` only grows the render viewport after visible progress.
     let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
         let follow_set = follow_set.clone();
-        // B2: capture the live active-account SLOT (not the registration-time
-        // viewer pubkey) so the closure reads the CURRENT signed-in account on
-        // every load_older call. After logout the slot holds None ⇒ authors is
-        // empty ⇒ provider returns None ⇒ load_older fails closed. After an
-        // account switch the slot holds the new pubkey without re-registering.
+        // Capture the live active-account slot so logout/switch fail closed and
+        // account changes work without re-registering the controller.
         let account_slot = active_account_slot.clone();
         // Invalid app-declared primary kinds (for example `6` or `16`) fail
         // closed: no acquisition shape, no broad scan.
@@ -300,8 +284,13 @@ fn register_op_feed_defaults_inner(
     };
     let pull = app.feed_pull_fn();
     let apply: FeedApply = {
+        let observer = Arc::clone(&observer);
         let engine = Arc::clone(&engine);
-        Arc::new(move |event: &KernelEvent| engine.on_kernel_event(event))
+        Arc::new(move |event: &KernelEvent| {
+            let before = visible_op_feed_payload(&engine);
+            observer.on_kernel_event(event);
+            visible_op_feed_payload(&engine) != before
+        })
     };
     let advance: FeedAdvance = {
         let engine = Arc::clone(&engine);
@@ -309,15 +298,18 @@ fn register_op_feed_defaults_inner(
             engine.grow_visible_window();
         })
     };
-    // B2: register UNCONDITIONALLY — PullFeedController no longer requires an
-    // initial shape. The provider re-reads the live shape on every load_older;
-    // None from the provider fails closed (no pull, no broad-scan). A controller
-    // registered before sign-in becomes active as soon as the user signs in.
-    {
-        let controller: Arc<dyn FeedController> =
-            PullFeedController::new(provider, pull, apply, advance);
-        app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller);
-    }
+    let reset: nmp_feed::FeedReset = {
+        let engine = Arc::clone(&engine);
+        Arc::new(move || {
+            let had_rows = !engine.snapshot_current_window().cards.is_empty();
+            engine.reset_for_perspective_change();
+            had_rows
+        })
+    };
+    // Register unconditionally; the provider re-reads live shape on load_older.
+    let controller: Arc<dyn FeedController> =
+        PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
+    app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller.clone());
 
     // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //
@@ -428,9 +420,9 @@ fn register_op_feed_defaults_inner(
     // `bump_epoch`), which the kernel publishes into the frame-identity handles
     // the typed closure reads. Follow-list changes emit new feed bytes because
     // the engine state changes.
-    let engine_for_cb = engine.clone();
+    let controller_for_cb = controller.clone();
     follow_set.on_change(Box::new(move || {
-        engine_for_cb.reset_for_perspective_change();
+        let _ = controller_for_cb.reset();
     }));
 
     let follow_set_for_identity = follow_set.clone();
@@ -441,7 +433,11 @@ fn register_op_feed_defaults_inner(
         follow_set_for_identity.notify_account_changed();
     });
 
-    OpFeedDefaults { engine, follow_set }
+    OpFeedDefaults {
+        engine,
+        controller,
+        follow_set,
+    }
 }
 
 /// Build the LIVE active-follows pull [`InterestShape`], or `None` to fail closed.
@@ -479,6 +475,11 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
         Ok(guard) => guard.clone(),
         Err(_) => None,
     }
+}
+
+fn visible_op_feed_payload(engine: &OpFeedEngine) -> Vec<u8> {
+    let snapshot = engine.snapshot_current_window();
+    nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
 #[cfg(test)]

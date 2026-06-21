@@ -179,7 +179,11 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     let pull = make_pull_fn(app_ref.event_store_handle());
     let apply: nmp_feed::FeedApply = {
         let f = feed.clone();
-        Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev))
+        Arc::new(move |ev| {
+            let before = f.len();
+            KernelEventObserver::on_kernel_event(&*f, ev);
+            f.len() > before
+        })
     };
     // After a drained page is ingested, grow the render viewport so the newly-
     // pulled older rows become user-visible in the emitted sidecar (they sort
@@ -286,7 +290,11 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     let pull = make_pull_fn(app_ref.event_store_handle());
     let apply: nmp_feed::FeedApply = {
         let f = feed.clone();
-        Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev))
+        Arc::new(move |ev| {
+            let before = f.len();
+            KernelEventObserver::on_kernel_event(&*f, ev);
+            f.len() > before
+        })
     };
     // Viewport grow after each drained page — reveals the newly-pulled reply
     // tail in the emitted sidecar (viewport-only, no second pull).

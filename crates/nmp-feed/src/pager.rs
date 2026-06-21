@@ -147,6 +147,8 @@ pub struct DrainOutcome {
     pub replaced_ids: Vec<String>,
     /// Why the loop stopped.
     pub stop: DrainStop,
+    /// Number of log rows visited while producing this outcome.
+    pub visited: usize,
 }
 
 // ─── The pager ──────────────────────────────────────────────────────────────────
@@ -230,6 +232,16 @@ impl FeedPullPager {
         self.after_seq
     }
 
+    #[must_use]
+    pub fn page_size(&self) -> usize {
+        self.page_size
+    }
+
+    #[must_use]
+    pub fn scan_budget(&self) -> usize {
+        self.scan_budget
+    }
+
     /// Rewind the seq cursor to the start so the next [`drain`](Self::drain)
     /// replays from seq 0. Page size, scan budget, and any stored shape are
     /// preserved — only the cursor moves. Used by
@@ -269,6 +281,7 @@ impl FeedPullPager {
                         stop: DrainStop::Gap {
                             rebased_to: gap.first_available_seq,
                         },
+                        visited: scanned,
                     };
                 }
                 ScanLogResult::Page(page) => page,
@@ -315,6 +328,7 @@ impl FeedPullPager {
                     events,
                     replaced_ids,
                     stop: DrainStop::Exhausted,
+                    visited: scanned,
                 };
             }
             // Visible target grew by a page.
@@ -323,6 +337,7 @@ impl FeedPullPager {
                     events,
                     replaced_ids,
                     stop: DrainStop::PageFilled,
+                    visited: scanned,
                 };
             }
             // Defensive: a page that claims `has_more` yet neither advanced the
@@ -332,6 +347,7 @@ impl FeedPullPager {
                     events,
                     replaced_ids,
                     stop: DrainStop::ScanBudget,
+                    visited: scanned,
                 };
             }
             // Bounded work per drain (D5): a long unmatched run yields.
@@ -340,6 +356,7 @@ impl FeedPullPager {
                     events,
                     replaced_ids,
                     stop: DrainStop::ScanBudget,
+                    visited: scanned,
                 };
             }
         }
