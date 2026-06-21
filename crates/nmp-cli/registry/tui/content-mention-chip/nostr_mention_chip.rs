@@ -69,8 +69,8 @@ impl<'a> NostrMentionChip<'a> {
     }
 
     pub fn label(&self) -> String {
-        let claimed = self.claimed_profile();
-        let profile = self.profile.or(claimed.as_ref());
+        let resolved = self.resolved_profile();
+        let profile = self.profile.or(resolved.as_ref());
         let raw = profile
             .map(ContentProfileRenderData::label)
             .unwrap_or(&self.uri.primary_id);
@@ -87,7 +87,7 @@ impl<'a> NostrMentionChip<'a> {
         Span::styled(self.label(), self.style)
     }
 
-    fn claimed_profile(&self) -> Option<ContentProfileRenderData> {
+    fn resolved_profile(&self) -> Option<ContentProfileRenderData> {
         if !is_hex_id_64(&self.uri.primary_id) {
             return None;
         }
