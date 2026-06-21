@@ -1,4 +1,4 @@
-//! Shared helpers used across S3/S4/S5 stress scenarios.
+//! Shared helpers used across ffi-stress scenarios.
 //!
 //! All event injection uses the real ingest path (VerifiedEvent + EventStore::insert)
 //! via `nmp_app_inject_signed_events` (full Schnorr verify via try_from_raw).
@@ -6,6 +6,7 @@
 //! in T44 round-4 so the signature-verification cost is included in the S3 measurement.
 
 use crate::ffi::{nmp_app_configure, nmp_app_inject_signed_events, NmpApp};
+use nmp_testing::harness_probe::FrameProbe;
 use std::time::Duration;
 
 /// Inject `count` real Schnorr-signed kind-1 events via the full
@@ -20,11 +21,30 @@ pub(crate) fn inject_signed_events(app: *mut NmpApp, base_ts: u64, count: u32) {
     nmp_app_inject_signed_events(app, base_ts, count);
 }
 
-/// Trigger `configure` to force an emit tick and wait `settle_ms` for the
-/// actor to process the event batch and fire the update callback.
-pub(crate) fn configure_and_settle(app: *mut NmpApp, settle_ms: u64) {
+/// Trigger `configure` to force an emit tick and block — event-driven
+/// (Doctrine D8: no sleep/check polling) — until the callback records a new
+/// frame, i.e. the actor has processed the pending batch and fired the update
+/// callback at least once.
+///
+/// `frame_count` reads the callback-owned frame tally (under its own lock); the
+/// callback fires its [`ProbeSignal`] after recording each frame, waking the
+/// `probe`. The wait returns the instant the emit lands instead of always
+/// consuming the full settle budget. `deadline_ms` preserves the old fixed
+/// settle duration as the upper bound. Returns `true` if a frame advanced
+/// before the deadline, `false` on timeout.
+///
+/// [`ProbeSignal`]: nmp_testing::harness_probe::ProbeSignal
+pub(crate) fn configure_and_await_frame(
+    app: *mut NmpApp,
+    probe: &FrameProbe,
+    deadline_ms: u64,
+    mut frame_count: impl FnMut() -> usize,
+) -> bool {
+    let before = frame_count();
     nmp_app_configure(app, 500, 12);
-    std::thread::sleep(Duration::from_millis(settle_ms));
+    probe.recv_until(Duration::from_millis(deadline_ms), || {
+        frame_count() > before
+    })
 }
 
 /// Extract the `rev` field from a FlatBuffers update frame (typed Tier-3

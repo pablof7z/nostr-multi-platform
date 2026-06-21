@@ -46,7 +46,7 @@
 //! D8: no polling; cycles are driven by explicit configure() calls + wall-clock
 //! sleeps (no busy-wait loops).
 
-use crate::common::{configure_and_settle, inject_signed_events, percentile_u64};
+use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
     nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
     nmp_app_set_update_callback, test_pubkeys, NmpApp,
@@ -56,6 +56,7 @@ use crate::s6_gates::{apply as apply_gates, PhaseMetrics, S6Outcome};
 use crate::s6_oracle::{run_byte_identity_oracle, FrameRecord};
 use nmp_core::decode_snapshot_typed_projections;
 use nmp_ffi::{nmp_app_declare_incremental_apply, nmp_app_read_projection_churn_stats};
+use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -65,12 +66,14 @@ use std::time::{Duration, Instant};
 /// Phase A capture: frame records only (no raw bytes needed — Phase A is the
 /// full-frame reference; the oracle reconstructs from Phase B's bytes).
 struct CallbackState {
+    signal: ProbeSignal,
     records: Vec<FrameRecord>,
 }
 
 /// Phase B capture: frame records **plus** the raw FlatBuffers bytes per tick,
 /// which the byte-identity oracle replays through the ProjectionCache stand-in.
 struct ByteCapture {
+    signal: ProbeSignal,
     records: Vec<FrameRecord>,
     raw_frames: Vec<Vec<u8>>,
 }
@@ -100,6 +103,7 @@ extern "C" fn measure_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
         }
         let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
         state.records.push(decode_frame_record(bytes));
+        state.signal.notify();
     }
 }
 
@@ -112,7 +116,22 @@ extern "C" fn measure_cb_with_bytes(ctx: *mut c_void, payload: *const u8, payloa
         let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
         state.records.push(decode_frame_record(bytes));
         state.raw_frames.push(bytes.to_vec());
+        state.signal.notify();
     }
+}
+
+fn callback_record_count(ctx: *mut c_void) -> usize {
+    let state_ptr = ctx as *mut Mutex<CallbackState>;
+    unsafe { (*state_ptr).lock() }
+        .map(|state| state.records.len())
+        .unwrap_or(0)
+}
+
+fn byte_capture_record_count(ctx: *mut c_void) -> usize {
+    let state_ptr = ctx as *mut Mutex<ByteCapture>;
+    unsafe { (*state_ptr).lock() }
+        .map(|state| state.records.len())
+        .unwrap_or(0)
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -140,7 +159,12 @@ impl Default for S6Config {
 // tick — exercising the claimed_profiles projection on and off. No polling (D8):
 // the wall-clock sleeps gate the actor's snapshot cadence.
 
-fn drive_churn_cycles(app: *mut NmpApp, churn_pubkey: &std::ffi::CStr, consumer_id: &std::ffi::CStr, cycles: usize) {
+fn drive_churn_cycles(
+    app: *mut NmpApp,
+    churn_pubkey: &std::ffi::CStr,
+    consumer_id: &std::ffi::CStr,
+    cycles: usize,
+) {
     for _ in 0..cycles {
         nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
         std::thread::sleep(Duration::from_millis(200));
@@ -193,7 +217,11 @@ fn serialize_us_p50(records: &[FrameRecord]) -> u64 {
     percentile_u64(&sus, 50)
 }
 
-fn phase_metrics(window_serialized: u64, window_changed: u64, records: &[FrameRecord]) -> PhaseMetrics {
+fn phase_metrics(
+    window_serialized: u64,
+    window_changed: u64,
+    records: &[FrameRecord],
+) -> PhaseMetrics {
     let (p50_frame_bytes, p99_frame_bytes) = frame_bytes_percentiles(records);
     PhaseMetrics {
         window_serialized,
@@ -219,12 +247,18 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
     // ── Phase A: baseline (incremental OFF) ──────────────────────────────────
     let (window_serialized_a, window_changed_a, records_a) = {
         let app_a: *mut NmpApp = nmp_app_new();
-        let state_a = Box::new(Mutex::new(CallbackState { records: Vec::new() }));
+        let (signal_a, probe_a) = FrameProbe::new();
+        let state_a = Box::new(Mutex::new(CallbackState {
+            signal: signal_a,
+            records: Vec::new(),
+        }));
         let ctx_a = Box::into_raw(state_a) as *mut c_void;
         nmp_app_set_update_callback(app_a, ctx_a, Some(measure_cb));
         nmp_app_configure(app_a, 500, 12);
         inject_signed_events(app_a, base_ts, cfg.seed_events);
-        configure_and_settle(app_a, cfg.settle_ms);
+        let _ = configure_and_await_frame(app_a, &probe_a, cfg.settle_ms, || {
+            callback_record_count(ctx_a)
+        });
 
         let (ws, wc) = run_churn_window(app_a, churn_pubkey, &consumer_id_a, cfg.churn_cycles);
 
@@ -247,7 +281,9 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
             "nmp_app_declare_incremental_apply must return 0 (ok) before start; got rc={rc}"
         );
 
+        let (signal_b, probe_b) = FrameProbe::new();
         let state_b = Box::new(Mutex::new(ByteCapture {
+            signal: signal_b,
             records: Vec::new(),
             raw_frames: Vec::new(),
         }));
@@ -255,7 +291,9 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
         nmp_app_set_update_callback(app_b, ctx_b, Some(measure_cb_with_bytes));
         nmp_app_configure(app_b, 500, 12);
         inject_signed_events(app_b, base_ts, cfg.seed_events);
-        configure_and_settle(app_b, cfg.settle_ms);
+        let _ = configure_and_await_frame(app_b, &probe_b, cfg.settle_ms, || {
+            byte_capture_record_count(ctx_b)
+        });
 
         let (ws, wc) = run_churn_window(app_b, churn_pubkey, &consumer_id_b, cfg.churn_cycles);
 
