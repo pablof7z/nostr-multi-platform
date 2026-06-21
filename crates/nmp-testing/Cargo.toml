@@ -81,6 +81,13 @@ nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip59 = { path = "../nmp-nip59" }
+# cold_start_demand_interest.rs — drives the REAL `register_substrate` +
+# `register_bookmark_runtime` composition (the same calls `register_defaults`
+# makes) to capture the `BookmarkListProjection` handle and assert the typed
+# NIP-51 kind:10003 snapshot surfaces a stored bookmark via cold-start
+# cache-serve on sign-in, with no relay delivery.
+nmp-nip51 = { path = "../nmp-nip51" }
+nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 # F-04 zap E2E harness (zap_e2e_nwc_roundtrip.rs) — the fake NIP-47 wallet
 # service reuses the canonical NWC NIP-04 crypto (`nmp_nwc::crypto`) to
 # decrypt kind:23194 requests and encrypt kind:23195 responses, so the wire

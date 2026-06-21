@@ -134,6 +134,10 @@ pub mod browse;
 pub mod publish;
 mod relay;
 mod transport;
+// ADR-0064 / S2 (#1750) — the open write-command byte transport: decode +
+// fail-closed gates + the opaque-payload carry. Public so the wasm runtime and
+// the native FFI byte doorway both reach the one inbound decode path.
+pub use transport::dispatch_envelope;
 // Step 8 phase A — `relay_protocol` and `relay_worker` moved to
 // `nmp-network`. They are re-imported here only through the (gated) actor
 // runtime path; the public re-exports below preserve the prior

@@ -5058,6 +5058,7 @@ dependencies = [
  "nmp-app-chirp",
  "nmp-content",
  "nmp-core",
+ "nmp-coverage-gate",
  "nmp-defaults",
  "nmp-example-login-timeline",
  "nmp-feed",
