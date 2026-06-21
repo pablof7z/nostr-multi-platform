@@ -4837,6 +4837,7 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-nip01",
+ "nmp-planner",
  "nmp-threading",
  "serde",
  "serde_json",
