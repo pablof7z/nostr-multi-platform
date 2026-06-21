@@ -137,7 +137,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseEvent(
 /// ADR-0063 Lane D — unified, origin-blind reference-resolution entry point.
 ///
 /// `namespace` — 0 = profile, 1 = event.
-/// `key` — 64-hex pubkey (profile) or event-id hex / `"kind:pubkey:d"` (event).
+/// `key` — lowercase 64-hex pubkey (profile) or lowercase event-id hex / `"kind:pubkey:d"` (event).
 /// `consumer_id` — opaque refcount owner key (e.g. Compose LazyList item key).
 /// `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
 /// `liveness` — 0=CacheOk (background), non-zero=Live (open screen).
