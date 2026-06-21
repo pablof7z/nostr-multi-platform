@@ -340,6 +340,59 @@ impl NmpApp {
     pub fn live_feed_session_count(&self) -> usize {
         self.feed_sessions.live_count()
     }
+
+    /// #1740 step 4 — register a CLOSED-DATA custom-perspective definition under
+    /// an opaque id, for a Rust app crate to declare app-defined
+    /// admission/ranking WITHOUT a `Perspective` trait or a native closure
+    /// crossing FFI.
+    ///
+    /// `def` is pure data — a [`nmp_feed::FeedScope`] acquisition + a
+    /// [`nmp_feed::FeedRanking`]. After registration a [`FeedParams`] may
+    /// reference `id` via `FeedScope::CustomPerspectiveId(id)` (acquisition),
+    /// `FeedAdmission::Custom(id)` (admission gate), or `FeedRanking::Custom(id)`
+    /// (ranking); the perspective compiler resolves the id back to this
+    /// definition and compiles it through the SAME step-3 resolver. An
+    /// UNREGISTERED id still fails closed at open.
+    ///
+    /// Register-ONCE: returns `true` if `id` was newly registered, `false` if it
+    /// was already registered (the EXISTING definition stands — see below) or the
+    /// registry lock is poisoned. Definitions are IMMUTABLE and not individually
+    /// retractable; the registry lives for the life of the app (process-lifetime
+    /// in practice).
+    ///
+    /// Immutability is a fail-CLOSED safety property: a live feed session
+    /// captured the COMPILED admission of the definition that existed when it
+    /// opened. Allowing an overwrite to a narrower gate would leave already-open
+    /// feeds admitting under the stale WIDER policy — a fail-OPEN leak. So a
+    /// definition never changes underneath a running session.
+    ///
+    /// FFI note: this is the Rust-side registration only. A C-ABI / wasm
+    /// surface for app-defined perspectives is deferred to a later #1740 step;
+    /// the closed-data definition is exactly what such a surface would carry, so
+    /// no closure ever needs to cross the boundary.
+    pub fn register_custom_perspective(
+        &self,
+        id: nmp_feed::CustomPerspectiveId,
+        def: nmp_feed::CustomPerspectiveDef,
+    ) -> bool {
+        self.custom_perspectives.register(id, def)
+    }
+
+    /// #1740 step 4 — the definition registered under `id`, or `None` if
+    /// unregistered. The perspective compiler keys on `None` to fail closed.
+    #[must_use]
+    pub fn custom_perspective(
+        &self,
+        id: &nmp_feed::CustomPerspectiveId,
+    ) -> Option<nmp_feed::CustomPerspectiveDef> {
+        self.custom_perspectives.get(id)
+    }
+
+    /// Test/diagnostic — count of registered custom perspectives.
+    #[must_use]
+    pub fn custom_perspective_count(&self) -> usize {
+        self.custom_perspectives.len()
+    }
 }
 
 /// Convenience: the projection key a session emits under, for callers that hold

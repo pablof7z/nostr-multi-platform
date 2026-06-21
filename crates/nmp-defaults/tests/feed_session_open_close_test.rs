@@ -15,7 +15,8 @@ use std::sync::Mutex;
 use nmp_ffi::{nmp_app_free, nmp_app_new, FeedOpenError, NmpApp};
 
 use nmp_feed::{
-    FeedAdmission, FeedParams, FeedRanking, FeedScope, FeedWindow, ProjectionKey, TagTerm,
+    CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedParams, FeedRanking, FeedScope,
+    FeedWindow, ListId, ProjectionKey, TagTerm,
 };
 
 // One live `NmpApp` at a time — same harness-contention guard the sibling
@@ -123,8 +124,9 @@ fn unsupported_scope_fails_closed_and_registers_nothing() {
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
-    // #1740 step 3: `RelaySet` (no framework resolver) and `CustomPerspectiveId`
-    // (step 4) stay fail-closed. They must register NOTHING.
+    // `RelaySet` (no framework resolver) stays fail-closed; an UNREGISTERED
+    // `CustomPerspectiveId` (no #1740-step-4 definition) also fails closed. Both
+    // must register NOTHING.
     let mut params = home_params();
     params.acquisition = FeedScope::RelaySet {
         relays: nmp_feed::RelaySetId("my-relays".into()),
@@ -143,7 +145,7 @@ fn unsupported_scope_fails_closed_and_registers_nothing() {
     custom.acquisition = FeedScope::CustomPerspectiveId(nmp_feed::CustomPerspectiveId("x".into()));
     let err = app_ref
         .open_feed(&custom, &compiler)
-        .expect_err("CustomPerspectiveId is deferred to step 4 — must fail closed");
+        .expect_err("an UNREGISTERED CustomPerspectiveId must fail closed");
     assert!(
         matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "CustomPerspectiveId"),
         "typed fail-closed error naming the scope, got {err:?}"
@@ -262,6 +264,198 @@ fn tag_scope_opens_and_closes_over_session_engine() {
     assert!(app_ref.close_feed(&handle), "close tears the session down");
     assert!(!app_ref.feed_session_is_open(&handle));
     assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
+
+    nmp_app_free(app);
+}
+
+// ── #1740 step 4 — CustomPerspectiveId registration over the SAME compiler ──
+
+#[test]
+fn registered_custom_perspective_opens_unregistered_fails_closed() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    set_app_active(app, Some(ALICE));
+    let app_ref: &NmpApp = unsafe { &*app };
+
+    let custom = CustomPerspectiveId("topical-team".into());
+
+    // ── UNREGISTERED first: a `CustomPerspectiveId` acquisition with no
+    //    registered definition must FAIL CLOSED and register nothing (no leak).
+    let mut params = home_params();
+    params.acquisition = FeedScope::CustomPerspectiveId(custom.clone());
+    params.projection = ProjectionKey("test.feed.custom-acq".into());
+    let err = app_ref
+        .open_feed(&params, &compiler)
+        .expect_err("unregistered custom perspective must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "CustomPerspectiveId"),
+        "typed fail-closed error for an unregistered id, got {err:?}"
+    );
+    assert_eq!(
+        app_ref.live_feed_session_count(),
+        0,
+        "no session leaked for an unregistered custom-perspective open"
+    );
+    assert!(
+        !app_ref
+            .run_typed_snapshot_projections()
+            .iter()
+            .any(|p| p.key == "test.feed.custom-acq"),
+        "no sidecar registered for a fail-closed custom-perspective open"
+    );
+
+    // ── REGISTER a CLOSED definition (Intersection(Tag, ListMembers)) and the
+    //    SAME open now succeeds, compiling through the step-3 resolver.
+    let def = CustomPerspectiveDef::new(FeedScope::Intersection(
+        Box::new(FeedScope::Tag {
+            term: TagTerm("rust".into()),
+        }),
+        Box::new(FeedScope::ListMembers {
+            list: ListId("team".into()),
+        }),
+    ));
+    assert!(
+        app_ref.register_custom_perspective(custom.clone(), def),
+        "first registration succeeds"
+    );
+    assert_eq!(app_ref.custom_perspective_count(), 1);
+
+    let handle = app_ref
+        .open_feed(&params, &compiler)
+        .expect("registered custom perspective resolves + opens");
+    assert_eq!(
+        handle.projection_key,
+        ProjectionKey("test.feed.custom-acq".into())
+    );
+    assert!(app_ref.feed_session_is_open(&handle), "session live");
+    assert_eq!(app_ref.live_feed_session_count(), 1);
+    assert!(
+        app_ref
+            .run_typed_snapshot_projections()
+            .iter()
+            .any(|p| p.key == "test.feed.custom-acq"),
+        "registered custom perspective emits its session sidecar"
+    );
+
+    // Close tears it down via the handle (symmetric teardown over the whole
+    // compiled tree — both Intersection children's interests/observers).
+    assert!(app_ref.close_feed(&handle), "close tears the session down");
+    assert!(!app_ref.feed_session_is_open(&handle));
+    assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
+
+    nmp_app_free(app);
+}
+
+#[test]
+fn custom_admission_resolves_when_registered_fails_closed_when_not() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    set_app_active(app, Some(ALICE));
+    let app_ref: &NmpApp = unsafe { &*app };
+
+    let custom = CustomPerspectiveId("members-only".into());
+
+    // A Tag acquisition with a CUSTOM admission gate. UNREGISTERED → fail closed.
+    let mut params = home_params();
+    params.acquisition = FeedScope::Tag {
+        term: TagTerm("nostr".into()),
+    };
+    params.admission = FeedAdmission::Custom(custom.clone());
+    params.projection = ProjectionKey("test.feed.custom-admit".into());
+
+    let err = app_ref
+        .open_feed(&params, &compiler)
+        .expect_err("unregistered custom admission must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "custom-admission"),
+        "typed fail-closed error for unregistered admission, got {err:?}"
+    );
+    assert_eq!(
+        app_ref.live_feed_session_count(),
+        0,
+        "no session leaked for an unregistered custom-admission open (acquisition observers revoked)"
+    );
+
+    // Register the admission perspective (a list-membership gate) and re-open.
+    let def = CustomPerspectiveDef::new(FeedScope::ListMembers {
+        list: ListId("vip".into()),
+    });
+    app_ref.register_custom_perspective(custom.clone(), def);
+
+    let handle = app_ref
+        .open_feed(&params, &compiler)
+        .expect("registered custom admission resolves + opens");
+    assert!(app_ref.feed_session_is_open(&handle), "session live");
+    assert_eq!(app_ref.live_feed_session_count(), 1);
+    assert!(app_ref.close_feed(&handle), "close tears the session down");
+    assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
+
+    nmp_app_free(app);
+}
+
+#[test]
+fn custom_ranking_resolves_when_registered_fails_closed_when_not() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    set_app_active(app, Some(ALICE));
+    let app_ref: &NmpApp = unsafe { &*app };
+
+    let registered = CustomPerspectiveId("ranked-desc".into());
+    let asc_only = CustomPerspectiveId("ranked-asc".into());
+
+    let mut params = home_params();
+    params.acquisition = FeedScope::Tag {
+        term: TagTerm("nostr".into()),
+    };
+    params.ranking = FeedRanking::Custom(registered.clone());
+    params.projection = ProjectionKey("test.feed.custom-rank".into());
+
+    // UNREGISTERED ranking id → fail closed.
+    let err = app_ref
+        .open_feed(&params, &compiler)
+        .expect_err("unregistered custom ranking must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "custom-ranking"),
+        "typed fail-closed error for unregistered ranking, got {err:?}"
+    );
+
+    // Register a definition whose ranking the engine CAN honor (Desc) → opens.
+    app_ref.register_custom_perspective(
+        registered.clone(),
+        CustomPerspectiveDef::new(FeedScope::Tag {
+            term: TagTerm("nostr".into()),
+        }),
+    );
+    let handle = app_ref
+        .open_feed(&params, &compiler)
+        .expect("registered engine-honorable custom ranking resolves + opens");
+    assert!(app_ref.feed_session_is_open(&handle), "session live");
+    assert!(app_ref.close_feed(&handle), "close tears the session down");
+
+    // A registered ranking the engine CANNOT honor (Asc) → still fail closed
+    // (never silently mis-orders), and registers nothing.
+    app_ref.register_custom_perspective(
+        asc_only.clone(),
+        CustomPerspectiveDef::new(FeedScope::Tag {
+            term: TagTerm("nostr".into()),
+        })
+        .with_ranking(FeedRanking::ChronologicalAsc),
+    );
+    let mut asc = params.clone();
+    asc.ranking = FeedRanking::Custom(asc_only);
+    asc.projection = ProjectionKey("test.feed.custom-rank-asc".into());
+    let err = app_ref
+        .open_feed(&asc, &compiler)
+        .expect_err("a registered Asc ranking is not engine-honorable — fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "custom-ranking"),
+        "typed fail-closed error for an unhonorable registered ranking, got {err:?}"
+    );
+    assert_eq!(
+        app_ref.live_feed_session_count(),
+        0,
+        "no session leaked across the custom-ranking opens"
+    );
 
     nmp_app_free(app);
 }
