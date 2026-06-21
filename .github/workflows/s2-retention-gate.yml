@@ -73,7 +73,7 @@ jobs:
         with:
           name: s2-metrics-${{ github.run_id }}
           path: |
-            docs/perf/m10.5/S2/metrics.json
-            docs/perf/m10.5/S2/report.md
+            docs/perf/m10.5/S2/perf-report.json
+            docs/perf/m10.5/S2/perf-report.md
           if-no-files-found: ignore
           retention-days: 14

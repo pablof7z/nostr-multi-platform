@@ -34,7 +34,7 @@ mod s7_feed_gates;
 mod s7_feed_idle;
 mod s7_feed_oracle;
 
-use nmp_testing::perf_report::{PerfGate, PerfReport, PerfScenario};
+use nmp_testing::perf_report::{GateVerdict, PerfGate, PerfReport, PerfScenario};
 use report::{now_unix_seconds, write_scenario_report, ScenarioMetrics};
 use std::process;
 use std::time::Duration;
@@ -138,7 +138,7 @@ fn main() {
                 name: g.name.clone(),
                 threshold,
                 measured: Some(format!("{:.4}", g.measured)),
-                passed: g.passed,
+                verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
                 note: g.note.clone(),
             }
         }).collect();
@@ -176,7 +176,7 @@ Options:
   --duration <D>           Wall-clock duration (e.g. 60s, 10m). Default: scenario-specific.
   --threads <N>            Caller thread count (S2 default: 4).
   --fail-on-gate           Exit 2 if any gate fails.
-  --write-report           Write docs/perf/m10.5/<scenario>/{metrics.json,report.md}.
+  --write-report           Write docs/perf/m10.5/<scenario>/perf-report.{json,md}.
 "#;
 
 #[derive(Debug, Clone, Copy)]

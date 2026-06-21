@@ -7,7 +7,7 @@
 //! across ffi-stress, firehose-bench, and sanity-gate.
 
 use crate::gate::Gate;
-use nmp_testing::perf_report::{self, PerfGate, PerfReport, PerfScenario};
+use nmp_testing::perf_report::{self, GateVerdict, PerfGate, PerfReport, PerfScenario};
 use std::io;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -57,7 +57,7 @@ fn gate_to_perf(g: &Gate) -> PerfGate {
         name: g.name.clone(),
         threshold,
         measured: Some(format!("{:.4}", g.measured)),
-        passed: g.passed,
+        verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
         note: g.note.clone(),
     };
     if let Some(note) = &g.note {

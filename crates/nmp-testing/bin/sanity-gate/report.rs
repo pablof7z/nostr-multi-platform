@@ -1,6 +1,6 @@
 //! Sanity-report schema + writers.
 //!
-//! Emits `docs/perf/<run>/sanity-report.{json,md}` with the exact row schema:
+//! Emits `docs/perf/<run>/perf-report.{json,md}` with the exact row schema:
 //! `gate | phase | tool | hook | threshold | measured | verdict`.
 //! Verdicts: PASS | FAIL | SKIP-relay-miss | BLOCKED.
 //!
@@ -9,7 +9,6 @@
 //! work (or a missing read hook) and could not be measured.
 
 use serde::Serialize;
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -179,26 +178,26 @@ impl SanityReport {
     }
 
     pub fn write(&self) -> io::Result<PathBuf> {
-        use nmp_testing::perf_report::{self, PerfGate, PerfReport, PerfScenario};
+        use nmp_testing::perf_report::{self, GateVerdict, PerfGate, PerfReport, PerfScenario};
 
         let dir = PathBuf::from(format!("docs/perf/{}", self.run_id));
 
         // Build unified PerfReport from the sanity rows.
+        // The 4-arm mapping preserves the legacy semantics: only Fail flips
+        // overall_passed; SkipRelayMiss→Skip and Blocked→Blocked are non-failing.
         let perf_gates: Vec<PerfGate> = self.rows.iter().map(|r| {
-            let mut pg = if r.measured.is_some() {
-                PerfGate {
-                    name: format!("{} [{}]", r.gate, r.phase),
-                    threshold: r.threshold.clone(),
-                    measured: r.measured.clone(),
-                    passed: matches!(r.verdict, Verdict::Pass),
-                    note: r.note.clone(),
-                }
-            } else {
-                PerfGate::blocked(
-                    format!("{} [{}]", r.gate, r.phase),
-                    r.threshold.clone(),
-                    r.note.as_deref().unwrap_or("no measurement"),
-                )
+            let verdict = match r.verdict {
+                Verdict::Pass => GateVerdict::Pass,
+                Verdict::Fail => GateVerdict::Fail,
+                Verdict::SkipRelayMiss => GateVerdict::Skip,
+                Verdict::Blocked => GateVerdict::Blocked,
+            };
+            let mut pg = PerfGate {
+                name: format!("{} [{}]", r.gate, r.phase),
+                threshold: r.threshold.clone(),
+                measured: r.measured.clone(),
+                verdict,
+                note: r.note.clone(),
             };
             if let Some(note) = &r.note {
                 pg = pg.with_note(note.clone());
@@ -222,11 +221,7 @@ impl SanityReport {
 
         perf_report::write(&report, &dir)?;
 
-        // Also write the legacy sanity-report.json for backward compat with
-        // CI scripts that parse the old schema (removed once scripts migrate).
-        let json = dir.join("sanity-report.json");
-        fs::write(&json, serde_json::to_string_pretty(self).expect("serialize"))?;
-        Ok(json)
+        Ok(dir.join("perf-report.json"))
     }
 }
 

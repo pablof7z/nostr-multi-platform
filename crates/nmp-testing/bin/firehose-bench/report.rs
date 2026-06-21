@@ -80,23 +80,13 @@ pub(crate) fn summarize_observations(report: &FirehoseReport) -> Vec<String> {
 }
 
 pub(crate) fn write_report(report: &FirehoseReport) -> io::Result<()> {
-    use nmp_testing::perf_report::{self, PerfGate, PerfReport, PerfScenario};
+    use nmp_testing::perf_report::{self, GateVerdict, PerfGate, PerfReport, PerfScenario};
 
     let output_dir = PathBuf::from("docs/perf/firehose-bench");
     fs::create_dir_all(&output_dir)?;
-    let stamp = report.started_at_unix.to_string();
-
-    // Legacy JSON + MD for backward compat.
-    fs::write(
-        output_dir.join(format!("{stamp}-{}.json", report.mode)),
-        serde_json::to_string_pretty(report).expect("serializes report"),
-    )?;
-    fs::write(
-        output_dir.join(format!("{stamp}-{}.md", report.mode)),
-        markdown_report(report),
-    )?;
 
     // Unified perf-report.{json,md} via shared schema.
+    let stamp = report.started_at_unix.to_string();
     let mut perf = PerfReport::new("firehose-bench", format!("{stamp}-{}", report.mode));
     perf.started_at_unix = report.started_at_unix;
     for obs in &report.observations {
@@ -120,7 +110,7 @@ pub(crate) fn write_report(report: &FirehoseReport) -> io::Result<()> {
                 name: g.name.to_string(),
                 threshold,
                 measured: g.measured.map(|v| format!("{v:.4}")),
-                passed: g.passed,
+                verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
                 note: g.note.clone(),
             }
         }).collect();
@@ -160,71 +150,6 @@ pub(crate) struct SyntheticTraceManifest {
     pub(crate) scenario_count: usize,
     pub(crate) total_records: u64,
     pub(crate) note: &'static str,
-}
-
-pub(crate) fn markdown_report(report: &FirehoseReport) -> String {
-    let mut out = String::new();
-    out.push_str("# Firehose Bench Report\n\n");
-    out.push_str(&format!("- Status: `{}`\n", report.status));
-    out.push_str(&format!("- Mode: `{}`\n", report.mode));
-    out.push_str(&format!("- Scale: `{}`\n", report.scale));
-    out.push_str(&format!(
-        "- Started at unix: `{}`\n",
-        report.started_at_unix
-    ));
-    out.push_str(&format!(
-        "- Overall passed: `{}`\n\n",
-        report.overall_passed
-    ));
-    out.push_str("## Scenario Summary\n\n");
-    out.push_str("| Scenario | Events | Duration | Passed | Key metrics |\n");
-    out.push_str("|---|---:|---:|---|---|\n");
-    for scenario in &report.scenarios {
-        out.push_str(&format!(
-            "| {} | {} | {}s | {} | {} |\n",
-            scenario.name,
-            scenario.events_processed,
-            scenario.virtual_duration_seconds,
-            scenario.passed,
-            compact_metrics(&scenario.metrics)
-        ));
-    }
-    out.push_str("\n## Limitations\n\n");
-    for limitation in &report.limitations {
-        out.push_str(&format!("- {limitation}\n"));
-    }
-    out.push_str("\n## Observations\n\n");
-    for observation in &report.observations {
-        out.push_str(&format!("- {observation}\n"));
-    }
-    out
-}
-
-pub(crate) fn compact_metrics(metrics: &ScenarioMetrics) -> String {
-    let mut parts = Vec::new();
-    if let Some(value) = metrics.first_item_ms {
-        parts.push(format!("first_item={value:.2}ms"));
-    }
-    if let Some(value) = metrics.ingest_to_emit_p99_ms {
-        parts.push(format!("ingest_p99={value:.2}ms"));
-    }
-    if let Some(value) = metrics.view_batch_hz {
-        parts.push(format!("batch={value:.2}Hz"));
-    }
-    if let Some(value) = metrics.max_deltas_per_view_sec {
-        parts.push(format!("deltas/view={value:.2}/s"));
-    }
-    if let Some(value) = metrics.memory_drift_mb {
-        parts.push(format!("mem_drift={value:.2}MB"));
-    }
-    if let Some(value) = metrics.decrypt_p99_ms {
-        parts.push(format!("decrypt_p99={value:.2}ms"));
-    }
-    if parts.is_empty() {
-        "n/a".to_string()
-    } else {
-        parts.join(", ")
-    }
 }
 
 pub(crate) fn now_unix_seconds() -> u64 {

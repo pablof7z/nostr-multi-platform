@@ -20,7 +20,31 @@ use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// A single pass/fail gate row.
+/// Per-gate outcome, replacing the old boolean `passed` field.
+///
+/// `Pass`, `Fail`, `Skip`, and `Blocked` are first-class outcomes.
+/// `overall_passed` is computed as "no gate is `Fail`" — `Skip` and `Blocked`
+/// are non-failing outcomes, matching the legacy sanity-gate semantics exactly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum GateVerdict {
+    #[serde(rename = "PASS")]
+    Pass,
+    #[serde(rename = "FAIL")]
+    Fail,
+    #[serde(rename = "SKIP")]
+    Skip,
+    #[serde(rename = "BLOCKED")]
+    Blocked,
+}
+
+impl GateVerdict {
+    /// Returns `true` iff this is NOT a failing verdict.
+    pub fn is_non_failing(self) -> bool {
+        !matches!(self, GateVerdict::Fail)
+    }
+}
+
+/// A single gate row.
 #[derive(Clone, Debug, Serialize)]
 pub struct PerfGate {
     /// Short machine-readable gate name (e.g. `"idle-cpu"`, `"rev_monotonic"`).
@@ -30,8 +54,8 @@ pub struct PerfGate {
     /// Measured value as a string, or `None` when the measurement could not be taken.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub measured: Option<String>,
-    /// Whether the gate passed.
-    pub passed: bool,
+    /// Gate outcome.
+    pub verdict: GateVerdict,
     /// Optional note: why SKIP/BLOCKED, justification, extra context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
@@ -44,7 +68,11 @@ impl PerfGate {
             name: name.into(),
             threshold: format!("<= {threshold} {unit}"),
             measured: Some(format!("{measured:.4} {unit}")),
-            passed: measured <= threshold,
+            verdict: if measured <= threshold {
+                GateVerdict::Pass
+            } else {
+                GateVerdict::Fail
+            },
             note: None,
         }
     }
@@ -55,7 +83,11 @@ impl PerfGate {
             name: name.into(),
             threshold: format!(">= {floor} {unit}"),
             measured: Some(format!("{measured:.4} {unit}")),
-            passed: measured >= floor,
+            verdict: if measured >= floor {
+                GateVerdict::Pass
+            } else {
+                GateVerdict::Fail
+            },
             note: None,
         }
     }
@@ -66,7 +98,11 @@ impl PerfGate {
             name: name.into(),
             threshold: format!("== {expected}"),
             measured: Some(format!("{measured}")),
-            passed: (measured - expected).abs() < f64::EPSILON,
+            verdict: if (measured - expected).abs() < f64::EPSILON {
+                GateVerdict::Pass
+            } else {
+                GateVerdict::Fail
+            },
             note: None,
         }
     }
@@ -77,7 +113,18 @@ impl PerfGate {
             name: name.into(),
             threshold: threshold.into(),
             measured: None,
-            passed: false,
+            verdict: GateVerdict::Blocked,
+            note: Some(note.into()),
+        }
+    }
+
+    /// A gate that was skipped (e.g. relay not available).
+    pub fn skip(name: impl Into<String>, threshold: impl Into<String>, note: impl Into<String>) -> Self {
+        PerfGate {
+            name: name.into(),
+            threshold: threshold.into(),
+            measured: None,
+            verdict: GateVerdict::Skip,
             note: Some(note.into()),
         }
     }
@@ -99,7 +146,7 @@ pub struct PerfScenario {
     pub description: Option<String>,
     /// Wall time the scenario took.
     pub wall_seconds: f64,
-    /// Whether all gates passed.
+    /// True iff no gate is `Fail` (Skip and Blocked are non-failing).
     pub passed: bool,
     /// Ordered gate results.
     pub gates: Vec<PerfGate>,
@@ -114,8 +161,10 @@ pub struct PerfScenario {
 
 impl PerfScenario {
     /// Construct a new scenario result.
+    ///
+    /// `passed` is `true` iff no gate has verdict `Fail` (Skip and Blocked are non-failing).
     pub fn new(name: impl Into<String>, wall_seconds: f64, gates: Vec<PerfGate>) -> Self {
-        let passed = gates.iter().all(|g| g.passed);
+        let passed = gates.iter().all(|g| g.verdict.is_non_failing());
         PerfScenario {
             name: name.into(),
             description: None,
@@ -157,7 +206,7 @@ pub struct PerfReport {
     pub started_at_unix: u64,
     /// All scenarios run in this invocation.
     pub scenarios: Vec<PerfScenario>,
-    /// True iff every scenario passed.
+    /// True iff no gate in any scenario has verdict `Fail`.
     pub overall_passed: bool,
     /// Documented limitations, hook gaps, blocked rows.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -179,6 +228,8 @@ impl PerfReport {
     }
 
     /// Push a scenario and update `overall_passed`.
+    ///
+    /// `overall_passed` stays `true` as long as no gate in any scenario is `Fail`.
     pub fn push(&mut self, scenario: PerfScenario) {
         if !scenario.passed {
             self.overall_passed = false;
@@ -219,7 +270,11 @@ fn markdown(r: &PerfReport) -> String {
 
     for scenario in &r.scenarios {
         let s_result = if scenario.passed { "PASS" } else { "FAIL" };
-        let pass_count = scenario.gates.iter().filter(|g| g.passed).count();
+        let pass_count = scenario
+            .gates
+            .iter()
+            .filter(|g| matches!(g.verdict, GateVerdict::Pass))
+            .count();
         let total = scenario.gates.len();
         out.push_str(&format!(
             "## {} — {} ({}/{} gates)\n\n",
@@ -232,12 +287,18 @@ fn markdown(r: &PerfReport) -> String {
         out.push_str("| Gate | Threshold | Measured | Result |\n");
         out.push_str("|---|---|---|---|\n");
         for gate in &scenario.gates {
+            let verdict_str = match gate.verdict {
+                GateVerdict::Pass => "PASS",
+                GateVerdict::Fail => "FAIL",
+                GateVerdict::Skip => "SKIP",
+                GateVerdict::Blocked => "BLOCKED",
+            };
             out.push_str(&format!(
                 "| {} | {} | {} | **{}** |\n",
                 gate.name,
                 gate.threshold,
                 gate.measured.as_deref().unwrap_or("—"),
-                if gate.passed { "PASS" } else { "FAIL" },
+                verdict_str,
             ));
         }
         out.push('\n');
