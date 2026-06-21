@@ -1,17 +1,23 @@
-//! D11 — one door per publish capability.
+//! D11 — no bypass of the one event-producing doorway.
 //!
 //! PR-F deleted the bespoke event-producing `extern "C"` publish surface —
 //! `nmp_app_publish_signed_event`, `nmp_app_publish_signed_event_to`, and
 //! `nmp_app_publish_unsigned_event` are gone. Every user / app-authored
 //! publish-engine event now goes through the single
 //! `nmp_app_dispatch_action(app, "nmp.publish", ...)` door (Theme A — see
-//! `crates/nmp-core/src/substrate/action.rs` module docs).
+//! `crates/nmp-core/src/substrate/action.rs` module docs). ADR-0064 extends
+//! this to a typed byte-transport doorway; D11 guards both.
 //!
-//! D11 prevents that door from being silently re-opened. A new
+//! D11 prevents that doorway from being bypassed. Adding a new bespoke
+//! event-producing C symbol is a bypass: a new
 //! `#[no_mangle] extern "C" fn nmp_app_publish_*(...)` is a regression even
 //! before its body is inspected. A new `#[no_mangle] extern "C" fn
 //! nmp_app_<verb>(...)` whose body sends `ActorCommand::PublishSignedEvent {
-//! ... }` or `ActorCommand::PublishUnsignedEvent(...)` is also a regression.
+//! ... }` or `ActorCommand::PublishUnsignedEvent(...)` is also a bypass.
+//!
+//! Note: D11 is a *doorway-bypass* check, not a symbol-count freeze. New
+//! non-event-producing C symbols (lifecycle, capability sockets, observers)
+//! are governed by review + ADR convention, not this lint.
 //!
 //! ## What this catches
 //!

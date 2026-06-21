@@ -64,4 +64,4 @@ in `nmp-feed`.
 - The C ABI grows by one generic feed viewport intent, not a Chirp-specific
   timeline/window protocol.
 - Chirp consumes a standard feed projection and stays a showcase app.
-- The ABI freeze override applies only to `nmp_app_load_older_feed`.
+- `nmp_app_load_older_feed` is the one new C symbol added by this ADR (the old freeze gate, since deleted in PR #933, was explicitly overridden for this symbol).

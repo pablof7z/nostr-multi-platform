@@ -57,7 +57,7 @@
    `action_json` is the serde-JSON of that action's Rust enum. This is the
    doctrinally-correct *open registry*: a NIP crate self-registers an
    `ActionModule` (`const NAMESPACE`, typed `Action`, `start()` validator,
-   `execute()`), and adding an action needs zero new C symbols (the C-ABI freeze).
+   `execute()`), and adding an action needs zero new C symbols (no doorway bypass).
 
 2. **The wasm worker** carries that same generic envelope
    (`WorkerRequest::Dispatch { action_type, payload, correlation_id }`) **plus** a
@@ -100,7 +100,7 @@ it is to push **typing to a generated layer above one open transport**.
   seam.
 - **N real typed C symbols** (`nmp_publish`, `nmp_react`, …). **Rejected** — every
   symbol must be hand-bound per host (Swift/Kotlin/wasm) and breaks the C-ABI
-  freeze; adding a NIP becomes an FFI-surface change.
+  doorway; adding a NIP becomes an FFI-surface change.
 
 ---
 
@@ -248,8 +248,10 @@ CI gates (extending `rust-flatc-drift` and the doctrine lint) enforce:
 2. Teach the `ActionModule` registry to decode typed FlatBuffers payloads; give the
    already-registered modules (`nmp.publish`, `nmp.nip25.*`, `nmp.follow/unfollow`)
    a FlatBuffers payload schema.
-3. Generate typed host builders for those modules; move wasm callers onto them and
-   **delete `AppAction` / `"app_action"` / `into_dispatch_parts`**.
+3. **Cut A** (issue #1743, in-repo only): Generate typed host builders for those
+   modules; move wasm callers onto them and **delete `AppAction` / `"app_action"` /
+   `into_dispatch_parts`**. No external consumers depend on this tag; it can land
+   without lockstep coordination.
 4. Route signing through the ADR-0050 capability port on wasm: introduce the
    typed Sign request/response across the worker boundary, route **local-key**
    signing through it first (the inline fulfiller), then retire
@@ -258,9 +260,11 @@ CI gates (extending `rust-flatc-drift` and the doctrine lint) enforce:
 6. Migrate the remaining action payloads JSON → FlatBuffers per crate; fix the
    `correlation_id`/event-id binding and the `PublishSignedEvent` validation bypass
    in the same step.
-7. Collapse the event-producing C-symbol bypasses (`nmp_app_publish_signed_event`,
+7. **Cut B** (issue #1756, lockstep with external consumers): Collapse the
+   event-producing C-symbol bypasses (`nmp_app_publish_signed_event`,
    `nmp_app_publish_unsigned_event`, the direct `send_cmd` writers) into the one
-   doorway and remove them.
+   doorway and remove them. Requires coordinated update of all external native
+   callers before deletion.
 8. Land the §6 drift gates.
 
 Wallet **session lifecycle** (`WalletConnect` / `WalletDisconnect` /
