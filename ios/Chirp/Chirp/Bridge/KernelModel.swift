@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 import os.log
@@ -364,6 +365,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // clearTypedProjections so the cache is clean when the next
         // `listen` callback fires.
         kernel.projectionCache.reset()
+        // ADR-0063 Lane E (#1671): reset the keyed-ref row cache too so the
+        // next refs.profile / refs.event frame after restart is a full
+        // baseline. Same baseline contract as `projectionCache`.
+        kernel.keyedRefCache.reset()
         // Clear every typed projection slot so the computed accessors collapse
         // to their empty defaults. The next post-reset tick reassigns them all
         // unconditionally. Local-only slots clear explicitly below.
@@ -441,26 +446,42 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
     /// `NostrProfileHost` conformance. `liveness` declares the subscription
     /// shape (`.cacheOk` for list/inline contexts, `.live` for the profile
-    /// screen). This is the lazy, TTL-gated path (`force == false`); use
-    /// `claimProfile(pubkey:consumerID:force:liveness:)` for pull-to-refresh.
-    func claimProfile(pubkey: String, consumerID: String, liveness: ProfileLiveness) {
-        kernel.claimProfile(
-            pubkey: pubkey, consumerID: consumerID, force: false, liveness: liveness)
+    // ── ADR-0063 Lane E (#1671): unified resolve_ref consumption ─────────────
+    //
+    // `NostrProfileHost` conformance. The shell resolves/reads profiles ONLY
+    // through the unified `resolve_ref` + `refs.profile` keyed accessor; the
+    // old `claimProfile` / `nmp_app_claim_profile` call path is gone from the
+    // shell (the kernel symbol stays until Lane H). `resolveProfile` chooses
+    // namespace `.profile`; the shape/liveness are caller-supplied per surface.
+
+    func resolveProfile(
+        pubkey: String, consumerID: String, shape: RefShape, liveness: RefLiveness
+    ) {
+        kernel.resolveRef(
+            namespace: .profile, key: pubkey, consumerID: consumerID,
+            shape: shape, liveness: liveness)
     }
 
-    /// F-TTL force-refresh variant — pass `force: true` when the user pulled to
-    /// refresh or explicitly opened this author. `liveness` is independent.
-    func claimProfile(
-        pubkey: String,
-        consumerID: String,
-        force: Bool,
-        liveness: ProfileLiveness = .cacheOk
-    ) {
-        kernel.claimProfile(
-            pubkey: pubkey, consumerID: consumerID, force: force, liveness: liveness)
-    }
     func releaseProfile(pubkey: String, consumerID: String) {
-        kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
+        kernel.releaseRef(namespace: .profile, key: pubkey, consumerID: consumerID)
+    }
+
+    func profileCard(forPubkey pubkey: String) -> ProfileCard? {
+        kernel.keyedRefCache.profile(pubkey)
+    }
+
+    var profileRowChanged: AnyPublisher<KeyedRowChange, Never> {
+        kernel.keyedRefCache.rowChanged.eraseToAnyPublisher()
+    }
+
+
+    /// ADR-0063 Lane E (#1671) — the per-key typed EVENT accessor backed by
+    /// `refs.event` (Lane C `KeyedRefCache.event(_:)`). Returns the decoded
+    /// `ClaimedEventDto` for `primaryId`, or `nil` if no row is cached yet.
+    /// Exposed for parity; events the shell renders today still flow through the
+    /// `claimed_events` projection (Lane H converges them).
+    func refEvent(_ primaryId: String) -> ClaimedEventDto? {
+        kernel.keyedRefCache.event(primaryId)
     }
 
     /// ADR-0032 / V-115: bech32-encode a hex pubkey as `npub1…`.
@@ -470,13 +491,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     /// NostrProfileHost conformance: look up a profile by pubkey.
-    /// First checks claimed profiles, then falls back to mention profiles.
+    ///
+    /// ADR-0063 Lane E (#1671): reads the unified `refs.profile` keyed-ref cache
+    /// (via `profileCard(forPubkey:)`) — NOT the legacy `claimedProfiles` /
+    /// `mentionProfiles` maps. The keyed-ref cache is the source (D4). Overrides
+    /// the protocol default only to keep the DEBUG name-regression
+    /// instrumentation; the wire-mapping logic is identical.
     ///
     /// `ProfileWire.npub` is `nil` — the projection no longer sends bech32
     /// (ADR-0032 / V-115). Callers that need an npub for copy/share must
     /// encode it themselves via `nmp_app_encode_profile(app, pubkey)`.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
-        if let card = claimedProfiles[pubkey] {
+        if let card = profileCard(forPubkey: pubkey) {
             #if DEBUG
             if card.displayName?.isEmpty == false {
                 markProfileNameResolved(pubkey)
@@ -490,23 +516,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 about: card.about.isEmpty ? nil : card.about,
                 pictureUrl: card.pictureUrl,
                 nip05: card.nip05.isEmpty ? nil : card.nip05,
-                npub: nil,
-                npubShort: pubkey.shortHex
-            )
-        }
-        if let mention = mentionProfiles[pubkey] {
-            let isRawKey = mention.display == pubkey.shortHex
-            #if DEBUG
-            if !isRawKey && !mention.display.isEmpty {
-                markProfileNameResolved(pubkey)
-            }
-            #endif
-            return ProfileWire(
-                pubkey: pubkey,
-                displayName: isRawKey ? nil : mention.display,
-                about: nil,
-                pictureUrl: mention.pictureUrl,
-                nip05: nil,
                 npub: nil,
                 npubShort: pubkey.shortHex
             )
@@ -802,6 +811,21 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
         let applyStart = ContinuousClock.now
         let callbackToApplyMicros = result.callbackReceivedAt.duration(to: applyStart).microseconds
+
+        // ADR-0063 Lane E (#1671): merge the keyed reference row-delta batches
+        // (`refs.profile` / `refs.event`) into the per-key `KeyedRefCache`.
+        // Done HERE — on `@MainActor` — so the cache's per-key `rowChanged`
+        // Combine publisher fires on the main thread and drives the per-key
+        // avatar/name observers (exactly one row's subscribers re-render when
+        // that one pubkey's kind:0 arrives). The cache is the SOURCE the
+        // `profile(_:)` accessor reads; there is NO app-side profile cache (D4).
+        for envelope in result.refsRowEnvelopes {
+            kernel.keyedRefCache.merge(
+                projectionKey: envelope.key,
+                payload: envelope.payload,
+                sessionId: result.refsSessionId,
+                snapshotEpoch: result.refsSnapshotEpoch)
+        }
 
         // Capture pre-assignment values for delta-driven side-effects below.
         // `priorActiveAccount` reads the OLD effective value through the

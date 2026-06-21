@@ -16,6 +16,42 @@ enum ProfileLiveness: Int32 {
     case live = 1
 }
 
+/// ADR-0063 Lane D (#1671) — the origin-blind reference namespace for the
+/// unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI. Raw values
+/// mirror the kernel's integer encoding (`crates/nmp-ffi/src/resolve_ref.rs`):
+/// `0` = profile (kind:0), `1` = event.
+enum RefNamespace: Int32 {
+    case profile = 0
+    case event = 1
+}
+
+/// ADR-0063 Lane D (#1671) — the requested projection shape for a `resolve_ref`
+/// claim. Codes are GLOBALLY UNIQUE across namespaces (the kernel fails closed
+/// on a namespace/shape mismatch). Each shape is valid with exactly one
+/// namespace:
+///   * `.profileRef`  (0) — `{pubkey, display_name, picture_url}` feed-avatar
+///     subset; namespace `.profile`. Use for feed cards / search / notifications.
+///   * `.profileCard` (1) — full `ProfileCard`; namespace `.profile`. Use for
+///     the open profile screen.
+///   * `.eventEmbed`  (2) — render-an-embed-card subset; namespace `.event`.
+///   * `.eventRaw`    (3) — full raw event; namespace `.event`.
+enum RefShape: Int32 {
+    case profileRef = 0
+    case profileCard = 1
+    case eventEmbed = 2
+    case eventRaw = 3
+}
+
+/// ADR-0063 Lane D (#1671) — liveness intent for a `resolve_ref` claim. `0`
+/// (CacheOk) serves from the store with a OneShot fill and no live sub (feed
+/// rows / background); non-zero (Live) keeps a tailing sub open while the
+/// consumer holds the key (open screen). Reuses the same semantics as the old
+/// `ProfileLiveness`, which `resolve_ref` supersedes.
+enum RefLiveness: Int32 {
+    case cacheOk = 0
+    case live = 1
+}
+
 /// Mirror of `KERNEL_SCHEMA_VERSION` (Rust: `crates/nmp-core/src/update_envelope.rs`).
 /// Must be bumped in lock-step when the Rust constant changes. A mismatch causes
 /// `KernelBridge.decode()` to reject the snapshot rather than silently misparse
@@ -51,6 +87,14 @@ final class KernelHandle {
     /// instance per kernel) so the cache lifetime exactly matches the kernel
     /// lifetime, and `resetAndRestart()` can call `projectionCache.reset()`.
     let projectionCache = ProjectionMergeCache()
+    /// ADR-0063 Lane E (#1671): NMP-owned per-key row cache for the keyed
+    /// reference projections (`refs.profile` / `refs.event`). One instance per
+    /// kernel (lifetime == kernel lifetime, reset on `reset()`), fed the
+    /// row-delta batches in `KernelModel.apply` (on `@MainActor`, so its
+    /// per-key `rowChanged` Combine publisher drives SwiftUI). This is the
+    /// SOURCE of truth for resolved profiles/events the shell renders via the
+    /// `resolve_ref` claim path — there is NO app-side profile cache (D4).
+    let keyedRefCache = KeyedRefCache()
 
     init() {
         raw = nmp_app_new()
@@ -266,6 +310,38 @@ final class KernelHandle {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_release_profile(raw, pkPtr, cidPtr)
+            }
+        }
+    }
+
+    /// ADR-0063 Lane E (#1671) — unified, origin-blind reference resolution.
+    /// Supersedes `claimProfile` / `claimEvent`: registers (or upgrades) this
+    /// `consumerID`'s interest in `(namespace, key)` at the requested `shape`
+    /// and `liveness`. The kernel surfaces the resolved entity in the matching
+    /// keyed projection (`refs.profile` / `refs.event`) keyed by `key`, which
+    /// the `keyedRefCache` consumes on the next frame. Fire-and-forget.
+    func resolveRef(
+        namespace: RefNamespace,
+        key: String,
+        consumerID: String,
+        shape: RefShape,
+        liveness: RefLiveness
+    ) {
+        key.withCString { keyPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_resolve_ref(
+                    raw, namespace.rawValue, keyPtr, cidPtr,
+                    shape.rawValue, liveness.rawValue)
+            }
+        }
+    }
+
+    /// ADR-0063 Lane E (#1671) — release a reference registered via
+    /// `resolveRef`. Pass the SAME `namespace` / `key` / `consumerID`.
+    func releaseRef(namespace: RefNamespace, key: String, consumerID: String) {
+        key.withCString { keyPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_release_ref(raw, namespace.rawValue, keyPtr, cidPtr)
             }
         }
     }
@@ -794,6 +870,18 @@ final class KernelHandle {
             let envelopes = mergeResult.mergedEnvelopes
             let changedKeys = mergeResult.changedKeys
             let needsResync = mergeResult.needsResync
+            // ADR-0063 Lane E (#1671): the keyed reference projections
+            // (`refs.profile` / `refs.event`) are NOT routed through the
+            // ProjectionMergeCache (which is keyed per WHOLE projection, not
+            // per row). They carry an `nmp.refs.RefRowDeltaBatch` (NRRD) payload
+            // that the per-key `KeyedRefCache` merges row-by-row. We carry the
+            // RAW pre-merge envelopes through to `KernelModel.apply` so the
+            // merge runs on `@MainActor` (its per-key `rowChanged` publisher
+            // drives SwiftUI). Filter off `rawEnvelopes` — they hold the
+            // verbatim wire payload, untouched by the projection-cache pass.
+            let refsRowEnvelopes = rawEnvelopes.filter {
+                KeyedRefCache.namespace(forProjectionKey: $0.key) != nil
+            }
             if needsResync {
                 kbLog.error("ProjectionMergeCache needsResync=true — one or more projection decode-before-commit failures; will be repaired on next genuine rev bump")
             }
@@ -950,7 +1038,10 @@ final class KernelHandle {
                     callbackReceivedAt: start,
                     decodeMicros: duration.microseconds,
                     changedKeys: changedKeys,
-                    needsResync: needsResync
+                    needsResync: needsResync,
+                    refsRowEnvelopes: refsRowEnvelopes,
+                    refsSessionId: sessionId,
+                    refsSnapshotEpoch: snapshotEpoch
                 )
             )
         } catch let error as DecodingError {

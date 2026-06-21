@@ -38,6 +38,11 @@ struct NostrAvatar: View, Equatable {
 
     @State private var generatedConsumerID: String
     @State private var claimedPubkey: String?
+    /// ADR-0063 Lane E (#1671): per-key observer so EXACTLY this avatar
+    /// re-renders when its one pubkey's `refs.profile` row commits — no
+    /// whole-map invalidation, no app-side cache. Bound to the host's
+    /// `profileRowChanged` in `.task(id: pubkey)`.
+    @StateObject private var rowObserver = KeyedRefRowObserver()
 
     /// Equatable conformance comparing only the rendered-value inputs.
     ///
@@ -92,6 +97,11 @@ struct NostrAvatar: View, Equatable {
     }
 
     var body: some View {
+        // ADR-0063 Lane E (#1671): when the caller did not bake a URL, read the
+        // live picture from the unified `refs.profile` keyed-ref cache. The
+        // `rowObserver` (bound below) forces a re-read of exactly this leaf when
+        // this pubkey's row commits, so the avatar fills in reactively with no
+        // app-side cache and no whole-map invalidation.
         let resolvedUrl = url ?? profileHost?.profile(forPubkey: pubkey)?.pictureUrl
 
         ZStack {
@@ -124,10 +134,17 @@ struct NostrAvatar: View, Equatable {
                         consumerID: generatedConsumerID)
                 }
                 claimedPubkey = pubkey
-                // Feed/list avatar → `.cacheOk` (cache + OneShot fill, no live
-                // sub). The profile screen is the only `.live` claimer.
-                profileHost?.claimProfile(
-                    pubkey: pubkey, consumerID: generatedConsumerID, liveness: .cacheOk)
+                // ADR-0063 Lane E (#1671): bind the per-key observer so only
+                // this avatar re-renders when this pubkey's row arrives, then
+                // resolve via `resolve_ref(Profile, …, .profileRef, .cacheOk)` —
+                // the lightweight feed/list shape with cache + OneShot fill and
+                // no live sub. The profile screen is the only `.live` resolver.
+                if let host = profileHost {
+                    rowObserver.observe(host.profileRowChanged, pubkey: pubkey)
+                }
+                profileHost?.resolveProfile(
+                    pubkey: pubkey, consumerID: generatedConsumerID,
+                    shape: .profileRef, liveness: .cacheOk)
             }
         }
         .onDisappear {
