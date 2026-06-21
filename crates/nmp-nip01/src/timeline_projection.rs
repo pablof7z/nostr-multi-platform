@@ -5,7 +5,6 @@
 //! so this projection owns the generic card cache beside the view state.
 
 use std::{
-    collections::BTreeMap,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -26,7 +25,10 @@ use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
 use crate::note_relations::{NoteRelationClassifier, NoteRelationCounts, NoteRelationIndex};
-use crate::profile_display::{profile_from_event, AuthorDisplay};
+use crate::profile_display::profile_from_event;
+
+mod render_data;
+pub use render_data::{ContentEventRenderData, ContentProfileRenderData, ContentRenderData};
 
 pub use nmp_feed::{
     FeedCursor as TimelineWindowCursor, FeedPage as TimelineWindowPage,
@@ -206,29 +208,6 @@ impl TimelineEventCard {
             reposted_by,
         }
     }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct ContentRenderData {
-    pub profiles: BTreeMap<String, ContentProfileRenderData>,
-    pub events: BTreeMap<String, ContentEventRenderData>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct ContentProfileRenderData {
-    pub pubkey: String,
-    pub display: AuthorDisplay,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct ContentEventRenderData {
-    pub id: String,
-    pub author_pubkey: String,
-    pub author_display: AuthorDisplay,
-    pub kind: u32,
-    pub created_at: u64,
-    pub content_preview: String,
-    pub content_tree: ContentTreeWire,
 }
 
 struct RenderPayload {
