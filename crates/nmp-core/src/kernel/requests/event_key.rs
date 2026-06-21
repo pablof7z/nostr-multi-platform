@@ -14,7 +14,7 @@
 //! front doors — no duplicate resolver logic (single-path doctrine).
 //!
 //! D6 — a malformed key parses to `None`; the resolver body then no-ops (no
-//! claim, no discovery REQ, no panic). Tests in `refs_tests_key.rs` assert each
+//! claim, no discovery REQ, no panic). Tests in `tests_refs_key.rs` assert each
 //! malformed shape fails closed.
 
 use crate::kernel::refs::{EventShape, RefLiveness};
