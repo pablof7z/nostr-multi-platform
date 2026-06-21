@@ -126,7 +126,7 @@ impl Kernel {
     /// Scan `self.events` (the in-memory read-cache) for entries matching any
     /// of `replay.shapes`, then — for shapes carrying a non-empty `event_ids`
     /// set — additionally look up each id absent from the RAM cache via the
-    /// store's `get_by_id` point-read (NIT-1 fix: serves evicted thread roots).
+    /// store's `peek_by_id` point-read (NIT-1 fix: serves evicted thread roots).
     /// Selects the newest `replay.limit` events across both sources and delivers
     /// them oldest-first to `replay.observer_id` via `notify_event_observer_by_id`.
     ///
@@ -136,7 +136,8 @@ impl Kernel {
     ///   `note_store_mutation` / `cache_event_for_matching_open_interest`.
     /// - MUST NOT mutate `self.events`, metrics, served-interest state,
     ///   pending serves, wakeups, or `changed_since_emit`.
-    /// - Store lookup is READ-ONLY: `get_by_id` only, no scan.
+    /// - Store lookup is READ-ONLY: `peek_by_id` (non-stamping point-read,
+    ///   no LRU touch, no write txn) only, no scan.
     /// - `created_at` is D9-clamped to `now_secs()` (future-dated defence,
     ///   same as `ingest/projection.rs:87`).
     /// - Dedup: a RAM-matched id is never fetched from the store; an id

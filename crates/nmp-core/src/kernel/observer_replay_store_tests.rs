@@ -314,6 +314,37 @@ fn store_event_with_mismatching_kind_delivers_zero() {
         ids.is_empty(),
         "kind:1 event must NOT be delivered when shape constrains kinds:[6]; got: {ids:?}"
     );
+
+    // Second axis: id-match but AUTHOR-mismatch must also deliver zero. Guards
+    // that the store path runs the FULL shape predicate, not just the kind
+    // dimension (the production fix uses `matches_event_with_id`, which checks
+    // authors/kinds/tags/time together — root author is `fb`*32 here).
+    let capturing_author = CapturingObserver::new();
+    let observer_id_author = register_rust_observer_muted(&slot2, capturing_author.clone());
+    let other_author = "ab".repeat(32);
+    let filter_author = format!(r#"{{"ids":["{root_id}"]}}"#);
+    let identity_author = sub_identity(&filter_author, "block1-author", 100);
+    let interest_author = logical_interest(&filter_author, "block1-author", 100);
+    let shape_author = InterestShape::from_filter_json(&format!(
+        r#"{{"authors":["{other_author}"],"ids":["{root_id}"]}}"#
+    ))
+    .expect("valid ids+authors shape");
+    let replay_author = ObserverReplayRequest {
+        observer_id: observer_id_author,
+        shapes: vec![shape_author],
+        limit: 80,
+    };
+    kernel2.open_interest_with_observer_replay(
+        identity_author,
+        interest_author,
+        replay_author,
+        "test-block1-author",
+    );
+    let ids_author = capturing_author.ids();
+    assert!(
+        ids_author.is_empty(),
+        "root must NOT be delivered when shape constrains a different author; got: {ids_author:?}"
+    );
 }
 
 /// No double-delivery when root is in RAM AND listed in `{ids:[root_id]}`.
