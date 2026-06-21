@@ -430,5 +430,5 @@ fn close_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
 
 
 #[cfg(test)]
-#[path = "interest_feed/tests.rs"]
+#[path = "interest_feed/tests/mod.rs"]
 mod tests;
