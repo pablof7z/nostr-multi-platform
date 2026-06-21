@@ -187,14 +187,19 @@ mod tests {
             "p_tag_routing must be Nip65ReadRelays; got {:?}",
             interest.shape.p_tag_routing
         );
-        assert!(
-            interest.shape.kinds.contains(&KIND_MUTE_LIST),
-            "shape.kinds must include kind:10000; got {:?}",
+        // Exact-shape: a future over-broad kinds set (e.g. adding kind:3) must
+        // fail here — mirrors the bookmark interest test's assert_eq pattern.
+        assert_eq!(
+            interest.shape.kinds,
+            std::collections::BTreeSet::from([KIND_MUTE_LIST]),
+            "shape.kinds must be EXACTLY {{kind:10000}}; got {:?}",
             interest.shape.kinds
         );
-        assert!(
-            interest.shape.authors.contains(pk),
-            "shape.authors must contain the active account pubkey; got {:?}",
+        // Exact-shape: authors must be exactly the one active pubkey passed in.
+        assert_eq!(
+            interest.shape.authors,
+            std::collections::BTreeSet::from([pk.to_string()]),
+            "shape.authors must be EXACTLY {{active_pubkey}}; got {:?}",
             interest.shape.authors
         );
         assert_eq!(interest.id, active_mute_list_interest_id());

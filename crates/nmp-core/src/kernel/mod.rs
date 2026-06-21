@@ -876,11 +876,14 @@ pub struct Kernel {
     blocked_relays: Arc<dyn BlockedRelayLookup>,
     /// Per-app override for the active-account bootstrap Tailing self-kinds
     /// list (`startup::SELF_KINDS_TAILING`). `None` (the default) uses the
-    /// built-in `[0, 3, 10002, 10000, 10006]` list. Apps can override
+    /// built-in `[0, 3, 10002, 10006]` list. Apps can override
     /// before `nmp_app_start` via the FFI slot to extend or narrow the
     /// reactive self-fetch — useful for apps that only care about a subset
     /// (e.g. a publish-only app needing kind:0 + kind:10002 alone) or that
-    /// add app-specific replaceable kinds.
+    /// add app-specific replaceable kinds. kind:10000 is intentionally absent
+    /// — it is owned by `MuteRuntimeController`, which pushes a dedicated
+    /// `authors=[active_pubkey]` demand interest on sign-in (mirrors how
+    /// kind:10003 is owned by `BookmarksRuntimeController`).
     bootstrap_self_kinds_override: Option<Vec<u32>>,
     /// Substrate `IngestParser` registry — V-40 of
     /// `docs/architecture/crate-boundaries.md`. Per-NIP crates register a
