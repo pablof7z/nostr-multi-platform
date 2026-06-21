@@ -8,9 +8,11 @@
 //! it never re-derives a follow graph or a list parser (D4).
 //!
 //! Each non-default scope resolves to a [`ResolvedScope`]:
-//! * `admission` — the engine's [`nmp_feed::FollowPredicate`], built INSIDE the
-//!   framework from a [`nmp_feed::AdmitExpr`] (static sets / set algebra) OR from
-//!   a LIVE framework projection (reactive scopes). No app closure crosses FFI.
+//! * `admission` — the engine's EVENT-AWARE [`nmp_feed::RootAdmission`], built
+//!   INSIDE the framework from a [`nmp_feed::AdmitExpr`] (static sets / `#t` tag
+//!   / set algebra) OR from a LIVE framework projection (reactive scopes). No
+//!   app closure crosses FFI. It gates which roots ENTER the feed (#1740 step 3),
+//!   not just reply attribution.
 //! * `interests` — the internal acquisition filters (NIP-01 JSON + scope u32).
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
 //! * `reset_hooks` — closures that install a window-reset on each underlying
@@ -29,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
-use nmp_feed::{AdmitExpr, FollowPredicate};
+use nmp_feed::{AdmitExpr, RootAdmission};
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 use nmp_wot::score::WotGraph;
@@ -42,8 +44,11 @@ pub(super) type ResetHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
 
 /// The compiled product of one [`nmp_feed::FeedScope`].
 pub(super) struct ResolvedScope {
-    /// The engine's admission predicate (compiled from DATA or live projection).
-    pub admission: FollowPredicate,
+    /// The engine's ROOT-admission predicate (compiled from DATA or a live
+    /// projection). EVENT-AWARE (#1740 step 3) so author scopes and `#t` tag
+    /// scopes compose faithfully under set algebra and the perspective gates
+    /// which roots enter the feed, not just reply attribution.
+    pub admission: RootAdmission,
     /// Internal acquisition interests: `(filter_json, scope_u32)`.
     pub interests: Vec<(String, u32)>,
     /// Live pull acquisition shape (re-read on `load_older`).
@@ -129,7 +134,12 @@ fn resolve_contact_list(
     let observer_id = app
         .register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
 
-    let admission: FollowPredicate = follow_set.predicate();
+    // Event-aware over the author-only follow predicate: a root is admitted iff
+    // its author is in the live follow set.
+    let admission: RootAdmission = {
+        let pred = follow_set.predicate();
+        Arc::new(move |event: &KernelEvent| pred(&event.author))
+    };
     let live_shape = follow_set_live_shape(&app.active_account_handle(), &follow_set, kinds);
     // No fixed member interest: the follow set grows as kind:3 arrives, so the
     // members' timeline acquisition is re-synced live (extra_acquisition).
@@ -183,10 +193,10 @@ fn resolve_list_members(
 
     // LIVE predicate over the projection's current members (reactive: a new
     // kind:30000 updates the set and fires on_change → window reset).
-    let admission: FollowPredicate = {
+    let admission: RootAdmission = {
         let projection = Arc::clone(&projection);
         let list_id = list_id.to_string();
-        Arc::new(move |pk: &str| projection.members(&list_id).contains(pk))
+        Arc::new(move |event: &KernelEvent| projection.members(&list_id).contains(&event.author))
     };
 
     // Acquire the viewer's kind:30000 list event. The members' timeline is
@@ -238,9 +248,9 @@ fn resolve_wot(
     let observer_id =
         app.register_event_observer(Arc::clone(&graph) as Arc<dyn KernelEventObserver>);
 
-    let admission: FollowPredicate = {
+    let admission: RootAdmission = {
         let graph = Arc::clone(&graph);
-        Arc::new(move |pk: &str| graph.admits(pk))
+        Arc::new(move |event: &KernelEvent| graph.admits(&event.author))
     };
 
     // Acquire the seed's contact list (kind:3). The seed's DIRECT follows' kind:3
@@ -307,8 +317,12 @@ fn resolve_wot(
 // ── Tag { term } — #t scope, admit any acquired row ───────────────────────
 
 fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ResolvedScope {
-    // The #t filter does the gating at acquisition, so admission is `Any`.
-    let admission: FollowPredicate = AdmitExpr::Any.to_follow_predicate();
+    // The #t filter gates at acquisition, but admission must be EVENT-AWARE
+    // (`AdmitExpr::Tag`), not `Any` (#1740 step 3): so a `Tag` scope composes
+    // faithfully inside set algebra (e.g. `Intersection(Tag, ContactList)`
+    // checks BOTH the tag AND author membership instead of silently admitting
+    // any member's untagged note).
+    let admission: RootAdmission = AdmitExpr::Tag(term.to_string()).to_root_admission();
     let interests = vec![(tag_filter(term, kinds), 1u32)]; // Global scope
     let shape = tag_shape(term, kinds);
     let live_shape: LiveShape = Arc::new(move || shape.clone());

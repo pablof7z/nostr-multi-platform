@@ -17,7 +17,8 @@
 
 use std::collections::BTreeSet;
 
-use nmp_feed::FollowPredicate;
+use nmp_core::substrate::KernelEvent;
+use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 
@@ -46,14 +47,20 @@ pub(super) fn resolve_set_op(
         }
     };
 
-    // ── Admission combine over the children's LIVE predicates ─────────────
-    let admission: FollowPredicate = {
+    // ── Admission combine over the children's LIVE, EVENT-AWARE predicates ──
+    //
+    // Event-aware (#1740 step 3): combining whole-event predicates (not just
+    // authors) is what lets a MIXED tag+author composite — e.g.
+    // `Intersection(Tag, ContactList)` or `Difference(ContactList, Tag)` —
+    // evaluate BOTH the `#t` tag and author membership. An author-only combine
+    // could only treat the tag side as `Any`, silently mis-admitting.
+    let admission: RootAdmission = {
         let lp = l.admission.clone();
         let rp = r.admission.clone();
         match op {
-            SetOp::Union => std::sync::Arc::new(move |pk: &str| lp(pk) || rp(pk)),
-            SetOp::Intersection => std::sync::Arc::new(move |pk: &str| lp(pk) && rp(pk)),
-            SetOp::Difference => std::sync::Arc::new(move |pk: &str| lp(pk) && !rp(pk)),
+            SetOp::Union => std::sync::Arc::new(move |ev: &KernelEvent| lp(ev) || rp(ev)),
+            SetOp::Intersection => std::sync::Arc::new(move |ev: &KernelEvent| lp(ev) && rp(ev)),
+            SetOp::Difference => std::sync::Arc::new(move |ev: &KernelEvent| lp(ev) && !rp(ev)),
         }
     };
 

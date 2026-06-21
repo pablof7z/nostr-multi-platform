@@ -54,7 +54,9 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
-use nmp_feed::{CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed};
+use nmp_feed::{
+    admit_all_roots, CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed,
+};
 
 use super::attribution::Nip10ReplyAttribution;
 use crate::meta_timeline::{Nip10Resolver, Pubkey};
@@ -91,6 +93,27 @@ pub fn register_op_feed(
     follow_predicate: FollowPredicate,
     event_lookup: EventLookup,
 ) -> Arc<OpFeedEngine> {
+    // The home feed admits EVERY root the acquisition delivers (the followed
+    // authors' timeline is gated by the acquisition filter, not an engine-level
+    // admission predicate). The `follow_predicate` still gates reply
+    // attribution.
+    register_op_feed_with_admission(viewer, follow_predicate, admit_all_roots(), event_lookup)
+}
+
+/// Construct the OP-feed engine with an explicit ROOT-admission predicate.
+///
+/// Like [`register_op_feed`] but gates which roots ENTER the feed by the
+/// compiled perspective `root_admission` (#1740 step 3) instead of admitting all
+/// roots. Scoped feed sessions (`ContactList` / `ListMembers` / `Wot` /
+/// `Difference` / set algebra) build through here so a non-member author never
+/// renders as a root. The `follow_predicate` still gates only reply attribution.
+#[must_use]
+pub fn register_op_feed_with_admission(
+    viewer: Pubkey,
+    follow_predicate: FollowPredicate,
+    root_admission: nmp_feed::RootAdmission,
+    event_lookup: EventLookup,
+) -> Arc<OpFeedEngine> {
     // `viewer` is carried for parity with `ModularTimelineSpec.viewer` and
     // future per-viewer personalization; the engine has no viewer field today.
     let _ = viewer;
@@ -118,6 +141,7 @@ pub fn register_op_feed(
     Arc::new(RootIndexedFeed::new(
         Nip10Resolver,
         follow_predicate,
+        root_admission,
         event_gate,
         event_lookup,
         card_builder,

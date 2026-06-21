@@ -1,11 +1,13 @@
 //! #1740 step 3 — the CLOSED perspective-compiler admission matrix.
 //!
-//! Proves, per [`nmp_feed::FeedScope`] arm, that the COMPILED admission predicate
-//! admits the right authors and REJECTS non-members (fail-closed admission), and
-//! that set algebra combines the compiled sets correctly. The compiler maps each
+//! Proves, per [`nmp_feed::FeedScope`] arm, that the COMPILED, EVENT-AWARE
+//! admission predicate admits the right authors and REJECTS non-members
+//! (fail-closed admission), and that set algebra combines the compiled sets
+//! correctly — including MIXED tag+author composites. The compiler maps each
 //! typed scope to:
 //!   * a compiled admission predicate ([`nmp_feed::AdmitExpr`] for static sets /
-//!     a live framework projection for reactive scopes) — never an app closure;
+//!     `#t` tag terms / a live framework projection for reactive scopes) — never
+//!     an app closure;
 //!   * internal acquisition interests (proven in the `nmp-defaults` open/close
 //!     integration suite).
 //!
@@ -51,15 +53,34 @@ fn event(author: &str, kind: u32, p_tags: &[&str], d_tag: Option<&str>) -> Kerne
     }
 }
 
-// ── Tag scope → Any admission (the #t acquisition does the gating) ────────
+/// A minimal kind:1 root by `author`, carrying the given `#t` tag terms — the
+/// shape the EVENT-AWARE admission predicate evaluates.
+fn note(author: &str, t_tags: &[&str]) -> KernelEvent {
+    KernelEvent {
+        id: EventId::from("2".repeat(64)),
+        author: author.to_string(),
+        kind: 1,
+        created_at: 100,
+        tags: t_tags
+            .iter()
+            .map(|t| vec!["t".to_string(), (*t).to_string()])
+            .collect(),
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+// ── Tag scope → event-aware `#t` admission (NOT `Any`) ────────────────────
 
 #[test]
-fn tag_scope_admits_any_acquired_row() {
-    // `Tag { term }` compiles to `AdmitExpr::Any`: every acquired (#t-filtered)
-    // row is in scope. Admission gates nothing; the acquisition filter does.
-    let admit = AdmitExpr::Any;
-    assert!(admit.matches(MEMBER));
-    assert!(admit.matches(STRANGER));
+fn tag_scope_admits_only_tagged_rows() {
+    // `Tag { term }` compiles to `AdmitExpr::Tag(term)` — event-aware, so it
+    // composes faithfully inside set algebra. A row with the #t tag is admitted;
+    // a row without it is NOT (the predicate is no longer a blanket `Any`).
+    let admit = AdmitExpr::Tag("rust".to_string());
+    assert!(admit.matches(&note(MEMBER, &["rust"])));
+    assert!(admit.matches(&note(STRANGER, &["rust"])));
+    assert!(!admit.matches(&note(MEMBER, &["nostr"])));
 }
 
 // ── ContactList { active owner } → live ActiveFollowSet predicate ──────────
@@ -119,9 +140,18 @@ fn wot_admits_ranked_candidates_rejects_non_candidates() {
         .collect();
     let admit = AdmitExpr::Authors(ranked);
 
-    assert!(admit.matches(MEMBER2), "ranked 2nd-degree candidate admitted");
-    assert!(!admit.matches(MEMBER), "already-followed is not a candidate");
-    assert!(!admit.matches(STRANGER), "unrelated pubkey rejected (fail-closed)");
+    assert!(
+        admit.matches(&note(MEMBER2, &[])),
+        "ranked 2nd-degree candidate admitted"
+    );
+    assert!(
+        !admit.matches(&note(MEMBER, &[])),
+        "already-followed is not a candidate"
+    );
+    assert!(
+        !admit.matches(&note(STRANGER, &[])),
+        "unrelated pubkey rejected (fail-closed)"
+    );
 }
 
 // ── Set algebra over compiled pubkey sets ─────────────────────────────────
@@ -129,9 +159,9 @@ fn wot_admits_ranked_candidates_rejects_non_candidates() {
 #[test]
 fn union_admits_either_side() {
     let admit = AdmitExpr::Or(Box::new(authors(&[MEMBER])), Box::new(authors(&[MEMBER2])));
-    assert!(admit.matches(MEMBER));
-    assert!(admit.matches(MEMBER2));
-    assert!(!admit.matches(STRANGER));
+    assert!(admit.matches(&note(MEMBER, &[])));
+    assert!(admit.matches(&note(MEMBER2, &[])));
+    assert!(!admit.matches(&note(STRANGER, &[])));
 }
 
 #[test]
@@ -141,9 +171,9 @@ fn intersection_admits_only_both_sides() {
         Box::new(authors(&[MEMBER2, STRANGER])),
     );
     // Only MEMBER2 is in BOTH sets.
-    assert!(!admit.matches(MEMBER));
-    assert!(admit.matches(MEMBER2));
-    assert!(!admit.matches(STRANGER));
+    assert!(!admit.matches(&note(MEMBER, &[])));
+    assert!(admit.matches(&note(MEMBER2, &[])));
+    assert!(!admit.matches(&note(STRANGER, &[])));
 }
 
 #[test]
@@ -152,9 +182,15 @@ fn difference_excludes_right_side() {
         Box::new(authors(&[MEMBER, MEMBER2])),
         Box::new(authors(&[MEMBER2])),
     );
-    assert!(admit.matches(MEMBER), "left-only member admitted");
-    assert!(!admit.matches(MEMBER2), "right-side member excluded");
-    assert!(!admit.matches(STRANGER), "outside both sets, rejected");
+    assert!(admit.matches(&note(MEMBER, &[])), "left-only member admitted");
+    assert!(
+        !admit.matches(&note(MEMBER2, &[])),
+        "right-side member excluded"
+    );
+    assert!(
+        !admit.matches(&note(STRANGER, &[])),
+        "outside both sets, rejected"
+    );
 }
 
 #[test]
@@ -162,7 +198,51 @@ fn nested_set_algebra_composes() {
     // (ContactList ∪ ListMembers) ∖ Wot — a 3-way compose.
     let union = AdmitExpr::Or(Box::new(authors(&[MEMBER])), Box::new(authors(&[MEMBER2])));
     let admit = AdmitExpr::AndNot(Box::new(union), Box::new(authors(&[MEMBER2])));
-    assert!(admit.matches(MEMBER));
-    assert!(!admit.matches(MEMBER2));
-    assert!(!admit.matches(STRANGER));
+    assert!(admit.matches(&note(MEMBER, &[])));
+    assert!(!admit.matches(&note(MEMBER2, &[])));
+    assert!(!admit.matches(&note(STRANGER, &[])));
+}
+
+// ── MIXED tag+author composites — the faithful event-aware model ──────────
+
+#[test]
+fn mixed_intersection_tag_and_author_checks_both() {
+    // `Intersection(Tag, ContactList)` must check BOTH the #t tag AND author
+    // membership — NOT treat the tag side as `Any` (which would silently admit a
+    // member's untagged note). This is the #1740 step-3 mixed-algebra fix.
+    let admit = AdmitExpr::And(
+        Box::new(AdmitExpr::Tag("rust".to_string())),
+        Box::new(authors(&[MEMBER, MEMBER2])),
+    );
+    assert!(
+        admit.matches(&note(MEMBER, &["rust"])),
+        "member + tagged → admitted"
+    );
+    assert!(
+        !admit.matches(&note(MEMBER, &["nostr"])),
+        "member but untagged → NOT admitted (faithful AND, not Any)"
+    );
+    assert!(
+        !admit.matches(&note(STRANGER, &["rust"])),
+        "tagged but non-member → NOT admitted"
+    );
+}
+
+#[test]
+fn mixed_difference_contact_list_minus_tag() {
+    // `Difference(ContactList, Tag)`: a member's note is admitted UNLESS it
+    // carries the excluded #t tag.
+    let admit = AdmitExpr::AndNot(
+        Box::new(authors(&[MEMBER, MEMBER2])),
+        Box::new(AdmitExpr::Tag("spoiler".to_string())),
+    );
+    assert!(admit.matches(&note(MEMBER, &["nostr"])), "member, untagged → admitted");
+    assert!(
+        !admit.matches(&note(MEMBER, &["spoiler"])),
+        "member but #spoiler → excluded by the right side"
+    );
+    assert!(
+        !admit.matches(&note(STRANGER, &[])),
+        "non-member never admitted"
+    );
 }

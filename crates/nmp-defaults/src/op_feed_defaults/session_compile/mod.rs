@@ -16,7 +16,7 @@
 
 use std::collections::BTreeSet;
 
-use nmp_feed::{FeedParams, FeedScope, FeedSessionBuild};
+use nmp_feed::{FeedAdmission, FeedParams, FeedRanking, FeedScope, FeedSessionBuild};
 use nmp_ffi::{FeedOpenError, NmpApp};
 
 use super::{read_active, register_op_feed_defaults};
@@ -65,6 +65,23 @@ pub fn compile_feed_params(
     params: &FeedParams,
     acquisition_kinds: &BTreeSet<u32>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
+    // FAIL CLOSED on app-defined admission / ranking (#1740 step 3). The
+    // compiler today wires only the ACQUISITION scope's compiled perspective +
+    // the built-in chronological ranking. A `FeedAdmission::Custom` /
+    // `FeedRanking::Custom` names an app-registered perspective whose
+    // registration mechanism lands in step 4 — until then there is no compiled
+    // predicate for it, so opening with default behavior would SILENTLY open the
+    // feed wider than the app declared. Reject before registering anything (D6).
+    if !matches!(params.admission, FeedAdmission::All) {
+        return not_supported_yet("custom-admission");
+    }
+    // The session engine sorts roots newest-first (`ChronologicalDesc`) only;
+    // `ChronologicalAsc` and `Custom` are not wired, so anything but the default
+    // descending order would silently mis-order — fail closed.
+    if !matches!(params.ranking, FeedRanking::ChronologicalDesc) {
+        return not_supported_yet("custom-ranking");
+    }
+
     match &params.acquisition {
         // The framework-default home perspective keeps its dedicated wiring.
         FeedScope::ActiveUserFollows => compile_active_user_follows(app, params),

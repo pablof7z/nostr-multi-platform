@@ -4,6 +4,7 @@
 //! release-signal-is-not-terminal contract.
 
 mod pagination_ordering;
+mod root_admission;
 mod support;
 
 use crate::root_indexed::card::RootFeedSnapshot;
