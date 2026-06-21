@@ -203,12 +203,11 @@ pub(crate) use event_observer::new_event_observer_slot_headless;
 // KernelEventObservers. `new_event_observer_slot` and `unregister_observer`
 // remain native-only (used by the FFI / actor-thread shutdown path).
 pub use event_observer::register_rust_observer;
-// ADR-0062: muted observer registration — available on all targets (same
-// gate as `register_rust_observer`). `activate_observer` is native-only
-// (consumed by `nmp-ffi` and the actor dispatch arm).
-pub use event_observer::register_rust_observer_muted;
-#[cfg(feature = "native")]
+// ADR-0062: muted observer registration and activation are available on all
+// targets. The kernel replay path activates muted observers after targeted
+// catch-up, so wasm/no-native reducer builds need the same pure helper.
 pub use event_observer::activate_observer;
+pub use event_observer::register_rust_observer_muted;
 // Slot constructor + unregister helper reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`.
 #[cfg(feature = "native")]

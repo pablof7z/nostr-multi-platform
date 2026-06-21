@@ -48,6 +48,12 @@ When the rendered tail becomes visible, shells call
 requests, do not know page-size or cap constants, and do not call a
 Chirp-specific feed read API.
 
+`load_older` is measured by rendered progress, not by raw acquisition-page
+consumption. A feed controller may scan over deleted, muted, blocked,
+superseded, replaced, or app-filtered rows while advancing its internal cursor.
+Those invisible rows do not satisfy the user action; the controller keeps
+pulling until the visible window grows or the current perspective is exhausted.
+
 `nmp-nip01` remains the protocol projection that knows how to build
 `TimelineEventCard` values and extract quoted-event references from their
 content trees. The reusable traversal, dedupe, cursor, and viewport policy live
