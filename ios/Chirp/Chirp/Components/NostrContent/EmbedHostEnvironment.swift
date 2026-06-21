@@ -11,7 +11,7 @@ import SwiftUI
 /// envelopes — no kind dispatch, no protocol parsing (the Rust resolver did
 /// that before the envelope crossed the wire).
 @MainActor
-public protocol EmbedEnvelopeSource {
+protocol EmbedEnvelopeSource {
     func envelopeForPrimaryID(_ id: String) -> EmbeddedEventEnvelope?
     func envelopeForURI(_ uri: String) -> EmbeddedEventEnvelope?
 }
@@ -19,6 +19,7 @@ public protocol EmbedEnvelopeSource {
 // MARK: - Environment keys
 
 private struct EmbedEnvelopeSourceKey: EnvironmentKey {
+    nonisolated(unsafe)
     static let defaultValue: EmbedEnvelopeSource? = nil
 }
 
@@ -27,10 +28,11 @@ private struct EmbedClaimSinkKey: EnvironmentKey {
 }
 
 private struct NostrKindRegistryKey: EnvironmentKey {
-    @MainActor static let defaultValue: NostrKindRegistry? = nil
+    nonisolated(unsafe)
+    static let defaultValue: NostrKindRegistry? = nil
 }
 
-public extension EnvironmentValues {
+extension EnvironmentValues {
     /// The host that resolves embed envelopes for `nostr:` event refs.
     var embedEnvelopeSource: EmbedEnvelopeSource? {
         get { self[EmbedEnvelopeSourceKey.self] }
@@ -51,7 +53,7 @@ public extension EnvironmentValues {
     }
 }
 
-public extension View {
+extension View {
     /// Bind the embed host, claim sink, and kind registry so any nested
     /// `NostrContentView` renders `nostr:` event refs through the kind-dispatch
     /// registry (ADR-0034).
