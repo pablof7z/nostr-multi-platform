@@ -185,14 +185,12 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
             return []
         }
 
-        // D4: mandatory full reset on session/epoch change, before any merge.
-        if sessionId != appliedSession || snapshotEpoch != appliedEpoch {
-            rows.removeAll()
-            appliedSession = sessionId
-            appliedEpoch = snapshotEpoch
-            baselined = false
-            needsResync = false
-        }
+        // D4: an identity (session/epoch) change demands a full rebuild. We do
+        // NOT clear here — clearing before the new baseline decodes would empty a
+        // live cache on a malformed first frame (fail-open). The reset is
+        // DEFERRED into the baseline commit (scratch-then-commit), so the prior
+        // cache survives a garbage baseline after an identity bump (BLOCKING-1).
+        let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch
 
         // Fail-closed CHECKED decode at BATCH grain: verify the `NRRD`
         // file_identifier AND run the FlatBuffers verifier BEFORE any cache
@@ -212,8 +210,36 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
             return []
         }
 
+        // Whole-batch fail-closed validation (BLOCKING-2/3): a row with NO key,
+        // OR an out-of-range `state` discriminant (anything other than
+        // Changed=0 / Cleared=1), rejects the ENTIRE batch — prior cache
+        // retained, needsResync latched, NOTHING committed. No row is skipped.
+        for row in batch.rows {
+            if row.key == nil {
+                needsResync = true
+                krcLog.error("RefRowDeltaBatch row missing key for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
+                return []
+            }
+            if row.state.rawValue > kRefRowStateCleared {
+                needsResync = true
+                krcLog.error("RefRowDeltaBatch row has unknown state=\(row.state.rawValue, privacy: .public) for projection=\(projectionKey, privacy: .public) — rejecting whole batch, needsResync latched")
+                return []
+            }
+        }
+
         if batch.baseline {
-            return applyBaseline(projectionKey: projectionKey, namespace: namespace, batch: batch)
+            return applyBaseline(projectionKey: projectionKey, namespace: namespace, batch: batch, identityChanged: identityChanged, sessionId: sessionId, snapshotEpoch: snapshotEpoch)
+        }
+        // A non-baseline batch under a changed identity cannot rebuild the full
+        // set; fail closed (adopt identity, latch resync, retain prior cache)
+        // rather than merge deltas onto a stale-epoch base. The producer always
+        // follows an identity bump with a baseline frame.
+        if identityChanged {
+            appliedSession = sessionId
+            appliedEpoch = snapshotEpoch
+            baselined = false
+            needsResync = true
+            return []
         }
         return applyIncremental(projectionKey: projectionKey, namespace: namespace, batch: batch)
     }
@@ -222,10 +248,16 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
     /// WHOLE batch): decode every required row into a scratch map first and
     /// replace the projection only after all rows decode. One bad row fails the
     /// entire baseline closed — the prior cache is preserved, needsResync latches.
-    private func applyBaseline(projectionKey: String, namespace: String, batch: nmp_refs_RefRowDeltaBatch) -> Set<String> {
+    ///
+    /// When `identityChanged` is set this is the FIRST baseline at a new
+    /// session/epoch: on a SUCCESSFUL decode it flips identity and drops every
+    /// OTHER projection's prior-epoch rows as part of the atomic commit; on a
+    /// decode FAILURE it touches nothing (BLOCKING-1, fail-closed).
+    private func applyBaseline(projectionKey: String, namespace: String, batch: nmp_refs_RefRowDeltaBatch, identityChanged: Bool, sessionId: UInt64, snapshotEpoch: UInt64) -> Set<String> {
         var scratch: [String: RefRowCacheEntry] = [:]
         for row in batch.rows {
-            guard let key = row.key else { continue }
+            // Key + state already validated whole-batch in `merge`.
+            let key = row.key!
             if row.state.rawValue == kRefRowStateCleared {
                 // A defensive Cleared inside a baseline just means the key is
                 // absent from the rebuilt set.
@@ -245,9 +277,20 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
             scratch[key] = RefRowCacheEntry(rev: row.rev, payload: bytes)
         }
 
+        // Decode succeeded → now (and ONLY now) it is safe to mutate state. On an
+        // identity change this is where the DEFERRED reset lands: adopt the new
+        // identity and drop every OTHER projection's prior-epoch rows, then
+        // treat the prior-epoch slot as gone so every scratch row counts as new.
+        if identityChanged {
+            for k in rows.keys where k != projectionKey { rows.removeValue(forKey: k) }
+            appliedSession = sessionId
+            appliedEpoch = snapshotEpoch
+            needsResync = false
+        }
+
         // Atomic commit: diff prior vs scratch so exactly the changed slots
         // re-render (added / updated / dropped ghost), then swap the projection.
-        let prior = rows[projectionKey] ?? [:]
+        let prior = identityChanged ? [:] : (rows[projectionKey] ?? [:])
         var changed = Set<String>()
         for (key, entry) in scratch where prior[key]?.payload != entry.payload {
             changed.insert(key)
@@ -270,7 +313,8 @@ const STATIC_MERGE: &str = r#"    // MARK: - merge
         var changed = Set<String>()
 
         for row in batch.rows {
-            guard let key = row.key else { continue }
+            // Key + state already validated whole-batch in `merge`.
+            let key = row.key!
             if row.state.rawValue == kRefRowStateCleared {
                 // Rev-safe clear: remove only if the clear's rev is NEWER than
                 // the cached row, so a stale reordered clear can never delete a

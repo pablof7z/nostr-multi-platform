@@ -169,14 +169,12 @@ const STATIC_MERGE: &str = r#"    /**
     fun merge(projectionKey: String, payload: ByteArray, sessionId: ULong, snapshotEpoch: ULong): Set<String> {
         val namespace = namespace(forProjectionKey = projectionKey) ?: return emptySet()
 
-        // D4: mandatory full reset on session/epoch change, before any merge.
-        if (sessionId != appliedSession || snapshotEpoch != appliedEpoch) {
-            rows.clear()
-            appliedSession = sessionId
-            appliedEpoch = snapshotEpoch
-            baselined = false
-            needsResync = false
-        }
+        // D4: an identity (session/epoch) change demands a full rebuild. We do
+        // NOT clear here — clearing before the new baseline decodes would empty a
+        // live cache on a malformed first frame (fail-open). The reset is
+        // DEFERRED into the baseline commit (scratch-then-commit), so the prior
+        // cache survives a garbage baseline after an identity bump (BLOCKING-1).
+        val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch
 
         // Fail-closed CHECKED decode at BATCH grain: verify the `NRRD`
         // file_identifier BEFORE any cache mutation and decode the whole buffer
@@ -186,6 +184,8 @@ const STATIC_MERGE: &str = r#"    /**
             needsResync = true
             return emptySet()
         }
+        val decoded: List<DecodedRefRow>
+        val isBaseline: Boolean
         try {
             val bb = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
             if (payload.size < 8 || !RefRowDeltaBatch.RefRowDeltaBatchBufferHasIdentifier(bb)) {
@@ -194,25 +194,58 @@ const STATIC_MERGE: &str = r#"    /**
                 return emptySet()
             }
             val batch = RefRowDeltaBatch.getRootAsRefRowDeltaBatch(bb)
-            val isBaseline = batch.baseline
+            isBaseline = batch.baseline
             // Decode ALL rows out of the buffer FIRST (decode-before-commit): a
             // garbage offset throws here, before any cache slot is touched.
-            val decoded = ArrayList<DecodedRefRow>(batch.rowsLength)
+            // Whole-batch fail-closed (BLOCKING-2/3): a row with NO key, OR an
+            // out-of-range `state` discriminant (anything other than Changed=0 /
+            // Cleared=1), rejects the ENTIRE batch — prior cache retained,
+            // needsResync latched, NOTHING committed. No row is skipped.
+            val acc = ArrayList<DecodedRefRow>(batch.rowsLength)
             for (i in 0 until batch.rowsLength) {
-                val row = batch.rows(i) ?: continue
-                val key = row.key ?: continue
+                val row = batch.rows(i)
+                if (row == null) {
+                    needsResync = true
+                    Log.e(KRC_TAG, "RefRowDeltaBatch row $i null for projection=$projectionKey — rejecting whole batch, needsResync latched")
+                    return emptySet()
+                }
+                val key = row.key
+                if (key == null) {
+                    needsResync = true
+                    Log.e(KRC_TAG, "RefRowDeltaBatch row $i missing key for projection=$projectionKey — rejecting whole batch, needsResync latched")
+                    return emptySet()
+                }
+                val state = row.state
+                if (state > RefRowState.Cleared) {
+                    needsResync = true
+                    Log.e(KRC_TAG, "RefRowDeltaBatch row $i unknown state=$state for projection=$projectionKey — rejecting whole batch, needsResync latched")
+                    return emptySet()
+                }
                 val bytes = ByteArray(row.payloadLength) { j -> row.payload(j).toByte() }
-                decoded.add(DecodedRefRow(key, row.rev, row.state, bytes))
+                acc.add(DecodedRefRow(key, row.rev, state, bytes))
             }
-            return if (isBaseline) {
-                applyBaseline(projectionKey, namespace, decoded)
-            } else {
-                applyIncremental(projectionKey, namespace, decoded)
-            }
+            decoded = acc
         } catch (e: Exception) {
             needsResync = true
             Log.e(KRC_TAG, "malformed RefRowDeltaBatch for projection=$projectionKey — retaining prior cache, needsResync latched: ${e.message}")
             return emptySet()
+        }
+
+        return if (isBaseline) {
+            applyBaseline(projectionKey, namespace, decoded, identityChanged, sessionId, snapshotEpoch)
+        } else {
+            // A non-baseline batch under a changed identity cannot rebuild the
+            // full set; fail closed (adopt identity, latch resync, retain prior
+            // cache) rather than merge deltas onto a stale-epoch base. The
+            // producer always follows an identity bump with a baseline frame.
+            if (identityChanged) {
+                appliedSession = sessionId
+                appliedEpoch = snapshotEpoch
+                baselined = false
+                needsResync = true
+                return emptySet()
+            }
+            applyIncremental(projectionKey, namespace, decoded)
         }
     }
 
@@ -221,8 +254,13 @@ const STATIC_MERGE: &str = r#"    /**
      * WHOLE batch): decode every required row into a scratch map first and
      * replace the projection only after all rows decode. One bad row fails the
      * entire baseline closed — prior cache preserved, needsResync latched.
+     *
+     * When `identityChanged` is set this is the FIRST baseline at a new
+     * session/epoch: on a SUCCESSFUL decode it flips identity and drops every
+     * OTHER projection's prior-epoch rows as part of the atomic commit; on a
+     * decode FAILURE it touches nothing (BLOCKING-1, fail-closed).
      */
-    private fun applyBaseline(projectionKey: String, namespace: String, decoded: List<DecodedRefRow>): Set<String> {
+    private fun applyBaseline(projectionKey: String, namespace: String, decoded: List<DecodedRefRow>, identityChanged: Boolean, sessionId: ULong, snapshotEpoch: ULong): Set<String> {
         val scratch = HashMap<String, RefRowCacheEntry>()
         for (row in decoded) {
             if (row.state == RefRowState.Cleared) {
@@ -239,9 +277,20 @@ const STATIC_MERGE: &str = r#"    /**
             scratch[row.key] = RefRowCacheEntry(row.rev, row.payload)
         }
 
+        // Decode succeeded → now (and ONLY now) it is safe to mutate state. On an
+        // identity change this is where the DEFERRED reset lands: adopt the new
+        // identity and drop every OTHER projection's prior-epoch rows, then treat
+        // the prior-epoch slot as gone so every scratch row counts as new.
+        if (identityChanged) {
+            rows.keys.retainAll { it == projectionKey }
+            appliedSession = sessionId
+            appliedEpoch = snapshotEpoch
+            needsResync = false
+        }
+
         // Atomic commit: diff prior vs scratch so exactly the changed slots
         // re-render (added / updated / dropped ghost), then swap the projection.
-        val prior: Map<String, RefRowCacheEntry> = rows[projectionKey] ?: emptyMap()
+        val prior: Map<String, RefRowCacheEntry> = if (identityChanged) emptyMap() else (rows[projectionKey] ?: emptyMap())
         val changed = mutableSetOf<String>()
         for ((key, entry) in scratch) {
             val priorPayload = prior[key]?.payload

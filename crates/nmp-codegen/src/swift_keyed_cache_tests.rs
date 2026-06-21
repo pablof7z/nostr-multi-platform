@@ -43,8 +43,8 @@ fn emits_one_accessor_per_namespace() {
 #[test]
 fn enforces_the_five_invariants() {
     let out = rendered();
-    // Invariant #3: D4 session/epoch reset + baseline rebuild.
-    assert!(out.contains("if sessionId != appliedSession || snapshotEpoch != appliedEpoch"));
+    // Invariant #3: D4 session/epoch detection (deferred reset) + baseline rebuild.
+    assert!(out.contains("let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"));
     assert!(out.contains("if batch.baseline {"));
     // Invariant #1: absent row is never cleared — only an explicit Cleared row
     // removes (and it removes; absence is a no-op because omitted rows are not
@@ -78,6 +78,45 @@ fn emits_failclosed_and_revsafe_hardening() {
     assert!(out.contains("var rowDecoder: (_ namespace: String, _ payload: Data) -> Bool"));
     // BLOCKING-4: rev-safe clear (a clear removes only when strictly newer).
     assert!(out.contains("if let cached = ns[key], row.rev > cached.rev {"));
+}
+
+/// BLOCKING-1/2/3 fail-closed: the generator must emit (1) a DEFERRED identity
+/// reset (no eager `rows.removeAll()` before decode), (2) whole-batch rejection
+/// on a missing key, (3) whole-batch rejection on an out-of-range state
+/// discriminant. These prove the generated cache fails the batch CLOSED rather
+/// than emptying the cache / skipping rows / committing a bogus state.
+#[test]
+fn emits_failclosed_missing_key_and_bad_state_and_deferred_reset() {
+    let out = rendered();
+    // BLOCKING-2: a row with no key rejects the WHOLE batch (no silent skip).
+    assert!(
+        out.contains("if row.key == nil {"),
+        "missing-key row must reject the whole batch"
+    );
+    assert!(out.contains("rejecting whole batch"));
+    // The old fail-open `guard let key = row.key else { continue }` row-skip must
+    // be GONE — no `else { continue }` key-skip anywhere.
+    assert!(
+        !out.contains("guard let key = row.key else { continue }"),
+        "row-skipping on missing key must be removed (fail-closed)"
+    );
+    // BLOCKING-3: an out-of-range state discriminant rejects the whole batch.
+    assert!(
+        out.contains("row.state.rawValue > kRefRowStateCleared"),
+        "unknown state discriminant must reject the whole batch (not coerce to Changed)"
+    );
+    // BLOCKING-1: identity reset is DEFERRED — there is NO eager full clear at
+    // the top of merge; the only `removeAll`/drop happens after a valid decode.
+    assert!(
+        !out.contains("rows.removeAll()\n            appliedSession = sessionId"),
+        "identity reset must be deferred until after a valid baseline decode"
+    );
+    assert!(
+        out.contains("let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"),
+        "merge must compute identityChanged without clearing the cache"
+    );
+    // The deferred reset drops other projections only on a successful baseline.
+    assert!(out.contains("for k in rows.keys where k != projectionKey { rows.removeValue(forKey: k) }"));
 }
 
 #[test]

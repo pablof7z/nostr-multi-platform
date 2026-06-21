@@ -23,12 +23,23 @@ pub enum RefRowState {
     Cleared,
 }
 
-impl From<fb::RefRowState> for RefRowState {
-    fn from(v: fb::RefRowState) -> Self {
-        if v == fb::RefRowState::Cleared {
-            Self::Cleared
-        } else {
-            Self::Changed
+impl RefRowState {
+    /// Map a wire `RefRowState` to the owned enum, FAILING CLOSED on an unknown
+    /// discriminant. The flatc-generated enum is a `repr(transparent)` newtype
+    /// over `u8`, so an out-of-range value (e.g. `state = 255` from a corrupt or
+    /// future-versioned producer) reads back as `RefRowState(255)`. A naive
+    /// `if == Cleared { Cleared } else { Changed }` would treat EVERY unknown
+    /// value as `Changed` and commit a bogus row (fail-open). Instead we accept
+    /// ONLY the two defined discriminants and reject anything else as a decode
+    /// failure (D6) — the host then retains its prior cache and latches resync.
+    fn try_from_wire(v: fb::RefRowState) -> Result<Self, RefRowDeltaDecodeError> {
+        match v {
+            fb::RefRowState::Changed => Ok(Self::Changed),
+            fb::RefRowState::Cleared => Ok(Self::Cleared),
+            other => Err(RefRowDeltaDecodeError::InvalidValue(format!(
+                "unknown RefRowState discriminant {}",
+                other.0
+            ))),
         }
     }
 }
@@ -163,10 +174,14 @@ pub fn decode_ref_row_delta_batch(
                     ))
                 })?
                 .to_string();
+            // Fail closed (D6): an unknown `state` discriminant is a decode
+            // failure, NOT a silent fall-through to `Changed`. The whole batch
+            // is rejected; the host retains its prior cache.
+            let state = RefRowState::try_from_wire(row.state())?;
             rows.push(RefRow {
                 key,
                 rev: row.rev(),
-                state: row.state().into(),
+                state,
                 payload: row.payload().map(|p| p.bytes().to_vec()).unwrap_or_default(),
             });
         }
