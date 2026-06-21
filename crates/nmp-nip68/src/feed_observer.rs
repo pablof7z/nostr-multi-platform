@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
-use nmp_feed::EventLookup;
+use nmp_feed::{EventLookup, FlatFeedItem};
 
 use super::{PictureFeed, PictureFeedEntry};
 use crate::KIND_PICTURE_EVENT;
@@ -29,11 +29,16 @@ pub fn picture_feed_observer(
 
 impl KernelEventObserver for PictureFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == 5 {
-            for target_id in event.tags.iter().filter_map(|tag| event_tag_id(tag)) {
-                self.feed.remove_item_if(target_id, |entry| {
-                    target_author(entry) == Some(&event.author)
-                });
+        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+            // kind:20 picture events are not addressable, so only the `e`-tag
+            // (event-id) targets resolve to a picture row; an `a`-tag target
+            // names a coordinate that has no picture row and is a no-op. The
+            // delete only removes a source the same author published — at the
+            // SOURCE level so removing a deleted repost does not leave (or
+            // reanimate) the row from another contribution.
+            for target_id in &record.event_targets {
+                self.feed
+                    .remove_sources_if(|item| e_tag_delete_matches(item, target_id, &record.author));
             }
             return;
         }
@@ -102,14 +107,33 @@ fn repost_target_id(event: &KernelEvent) -> Option<String> {
     nmp_nip18::try_from_kernel_event(event)?.target_event_id
 }
 
-fn target_author(entry: &PictureFeedEntry) -> Option<&String> {
-    entry.record.as_ref().map(|record| &record.author)
-}
-
-fn event_tag_id(tag: &[String]) -> Option<&str> {
-    if tag.first().is_some_and(|name| name == "e") {
-        tag.get(1).map(String::as_str).filter(|id| !id.is_empty())
-    } else {
-        None
+/// Whether an `e`-tag kind:5 delete by `author` targeting `event_id` removes
+/// this source contribution (NIP-09 — only the delete author's own events).
+///
+/// Matches either:
+/// * the source event itself (`source_id == event_id`) owned by `author` — the
+///   picture event, or a repost wrapper authored by the deleter; or
+/// * the **picture event** the source renders (`record.event_id == event_id`)
+///   owned by `author` — so a retracted picture is dropped even when it is
+///   surfaced through another account's repost (the wrapper id differs).
+fn e_tag_delete_matches(
+    item: &FlatFeedItem<PictureFeedEntry>,
+    event_id: &str,
+    author: &str,
+) -> bool {
+    let source_owned_by_author = match item.card.reposted_by.as_ref() {
+        Some(repost) => repost.author_pubkey == author,
+        None => item
+            .card
+            .record
+            .as_ref()
+            .is_some_and(|record| record.author == author),
+    };
+    if item.source_id == event_id && source_owned_by_author {
+        return true;
     }
+    item.card
+        .record
+        .as_ref()
+        .is_some_and(|record| record.event_id == event_id && record.author == author)
 }

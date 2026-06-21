@@ -207,7 +207,7 @@ fn interest_dispatch_parses_declared_active_follows_feed() {
     assert_eq!(
         interest_dispatch_from_action(&action),
         Some(InterestDispatch::DeclareActiveFollowsFeed {
-            acquisition_kinds: [1u32, 6u32].into_iter().collect(),
+            acquisition_kinds: [1u32, 6u32, nmp_nip18::KIND_DELETE].into_iter().collect(),
         })
     );
 }

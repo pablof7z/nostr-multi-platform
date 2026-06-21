@@ -62,12 +62,16 @@ fn tag_only_picture_repost(
 }
 
 #[test]
-fn primary_kind20_acquires_kind16_not_kind6() {
+fn primary_kind20_acquires_kind16_and_deletes_not_kind6() {
     assert_eq!(
         picture_acquisition_kinds(),
-        [KIND_PICTURE_EVENT, nmp_nip18::KIND_GENERIC_REPOST]
-            .into_iter()
-            .collect()
+        [
+            KIND_PICTURE_EVENT,
+            nmp_nip18::KIND_GENERIC_REPOST,
+            nmp_nip18::KIND_DELETE,
+        ]
+        .into_iter()
+        .collect()
     );
 }
 
@@ -194,6 +198,74 @@ fn delete_removes_only_author_owned_picture_rows() {
         relay_provenance: Vec::new(),
     });
     assert!(feed.is_empty());
+}
+
+#[test]
+fn delete_removes_picture_repost_row_by_wrapper_id() {
+    // A repost-sourced row is keyed by the picture TARGET id; deleting the
+    // kind:16 wrapper names the WRAPPER id. The delete must still drop the
+    // row (validated against the reposter), not leave the reposted picture.
+    let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
+    let observer = picture_feed_observer(
+        feed.clone(),
+        Arc::new(|_| None),
+        nmp_core::substrate::empty_suppression_lookup(),
+    );
+    let target = event("target", "bob", KIND_PICTURE_EVENT, 20);
+    // "carol" reposts bob's picture; the row is keyed by the target id.
+    feed.on_kernel_event(&repost("wrapper", "carol", &target, 40));
+    assert_eq!(feed.len(), 1);
+
+    // Foreign delete of the wrapper id is a no-op.
+    observer.on_kernel_event(&KernelEvent {
+        id: "del-foreign".to_string(),
+        author: "mallory".to_string(),
+        kind: 5,
+        created_at: 50,
+        tags: vec![vec!["e".to_string(), "wrapper".to_string()]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+    assert_eq!(feed.len(), 1, "foreign wrapper delete must not remove the row");
+
+    // The reposter's own delete of the wrapper id removes the repost row.
+    observer.on_kernel_event(&KernelEvent {
+        id: "del-own".to_string(),
+        author: "carol".to_string(),
+        kind: 5,
+        created_at: 51,
+        tags: vec![vec!["e".to_string(), "wrapper".to_string()]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+    assert!(
+        feed.is_empty(),
+        "reposter's delete of the wrapper id removes the repost-sourced row"
+    );
+}
+
+#[test]
+fn kind5_a_tag_delete_is_noop_for_non_addressable_picture_rows() {
+    // H06 negative: kind:20 is not addressable, so an `a`-tag delete resolves
+    // to no picture row and must change nothing (never guess a coordinate).
+    let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
+    let observer = picture_feed_observer(
+        feed.clone(),
+        Arc::new(|_| None),
+        nmp_core::substrate::empty_suppression_lookup(),
+    );
+    feed.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
+
+    observer.on_kernel_event(&KernelEvent {
+        id: "delete".to_string(),
+        author: "bob".to_string(),
+        kind: 5,
+        created_at: 30,
+        tags: vec![vec!["a".to_string(), "30023:bob:x".to_string()]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+    assert_eq!(feed.len(), 1, "a-tag delete cannot remove a kind:20 row");
 }
 
 #[test]

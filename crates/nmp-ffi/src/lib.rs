@@ -1489,7 +1489,7 @@ impl NmpApp {
             Err(_) => {
                 self.send_cmd(ActorCommand::ShowToast {
                     message:
-                        "declare_active_follows_feed: primary kinds must not include repost wrappers"
+                        "declare_active_follows_feed: primary kinds must not include repost wrappers or the delete kind"
                             .to_string(),
                 });
                 return false;

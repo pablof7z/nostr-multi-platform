@@ -245,6 +245,40 @@ where
         true
     }
 
+    /// Remove the root that a repost **wrapper** seeded, keyed by the wrapper's
+    /// own event id (not the wrapped target id).
+    ///
+    /// A row surfaced by a kind:6 repost is keyed by its *target* id, but the
+    /// wrapper that surfaced it is tracked in [`RootSlot::wrapper_event_id`]. A
+    /// NIP-09 kind:5 deletion that names the *wrapper* id must therefore find the
+    /// root by wrapper id and remove it; otherwise a deleted repost keeps
+    /// surfacing an out-of-perspective target. `predicate` validates the card
+    /// (e.g. delete-author ownership) before removal. Returns the number of
+    /// roots removed (0 or more; one wrapper seeds at most one root).
+    pub fn remove_root_by_wrapper_if(
+        &self,
+        wrapper_event_id: &str,
+        predicate: impl Fn(&C) -> bool,
+    ) -> usize {
+        let Ok(mut st) = self.state.lock() else {
+            return 0;
+        };
+        let targets: Vec<String> = st
+            .roots
+            .iter()
+            .filter(|(_, slot)| {
+                slot.wrapper_event_id.as_deref() == Some(wrapper_event_id) && predicate(&slot.card)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &targets {
+            st.roots.remove(id);
+            st.attributions.remove(id);
+            st.pending_attributions.remove(id);
+        }
+        targets.len()
+    }
+
     /// Grow the **render viewport** by one page, revealing more of the
     /// `(created_at, id)`-sorted roots already ingested.
     ///

@@ -321,7 +321,7 @@ fn kind3_change_forces_subscription_replan() {
          ## Planner API exercised\n\n\
          - primary feed declaration: kind:[1].\n\
          - `nmp_nip18::acquisition_kinds_for_primary([1])` → compiled \
-           acquisition kind:[1,6].\n\
+           acquisition kind:[1,5,6] (kind:6 reposts + kind:5 deletes derived).\n\
          - `InterestShape::timeline_for(followees, acquisition_kinds)` → \
            tailing acquisition interest over the real follow-set.\n\
          - `SubscriptionCompiler::new(&InMemoryMailboxCache, &indexer)` then \
