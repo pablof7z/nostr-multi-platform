@@ -108,6 +108,9 @@ private data class RefRowCacheEntry(val rev: ULong, val payload: ByteArray) {
 /** A per-row change: one is delivered to listeners per committed/cleared key. */
 data class KeyedRowChange(val projectionKey: String, val rowKey: String, val cleared: Boolean)
 
+/** A row decoded out of the FlatBuffer BEFORE any cache mutation (fail-closed). */
+private data class DecodedRefRow(val key: String, val rev: ULong, val state: UByte, val payload: ByteArray)
+
 /**
  * NMP-owned per-key row cache for keyed reference projections (ADR-0063).
  *
@@ -127,6 +130,16 @@ class KeyedRefCache {
     var needsResync: Boolean = false
         private set
     private val rowChangeListeners = mutableListOf<(KeyedRowChange) -> Unit>()
+
+    /**
+     * Decode-before-commit seam (ADR-0063 invariant #2). The per-namespace
+     * typed-row validator the cache runs on a `Changed` row's payload BEFORE it
+     * replaces a slot: true iff `payload` decodes to the namespace's concrete
+     * ref type (`refs.profile` -> ProfileRef, `refs.event` -> EventEmbed). The
+     * default accepts any non-empty payload; Lane C injects the real decoder. A
+     * row that fails is NOT committed (prior row retained, needsResync latched).
+     */
+    var rowDecoder: (String, ByteArray) -> Boolean = { _, payload -> payload.isNotEmpty() }
 
     /** Register a per-row change listener (one call per committed/cleared key). */
     fun addRowChangeListener(listener: (KeyedRowChange) -> Unit) {
@@ -154,7 +167,7 @@ const STATIC_MERGE: &str = r#"    /**
      * needsResync); session/epoch change or `baseline` rebuilds the full set.
      */
     fun merge(projectionKey: String, payload: ByteArray, sessionId: ULong, snapshotEpoch: ULong): Set<String> {
-        if (namespace(forProjectionKey = projectionKey) == null) return emptySet()
+        val namespace = namespace(forProjectionKey = projectionKey) ?: return emptySet()
 
         // D4: mandatory full reset on session/epoch change, before any merge.
         if (sessionId != appliedSession || snapshotEpoch != appliedEpoch) {
@@ -165,49 +178,120 @@ const STATIC_MERGE: &str = r#"    /**
             needsResync = false
         }
 
-        // Decode-before-commit at BATCH grain: a malformed/empty batch fails
-        // closed (retain everything, latch resync) rather than corrupting cache.
+        // Fail-closed CHECKED decode at BATCH grain: verify the `NRRD`
+        // file_identifier BEFORE any cache mutation and decode the whole buffer
+        // under a guard, so empty / wrong-file-id / structurally-invalid bytes
+        // retain the prior cache + latch needsResync rather than throwing.
         if (payload.isEmpty()) {
             needsResync = true
             return emptySet()
         }
-        val bb = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-        val batch = RefRowDeltaBatch.getRootAsRefRowDeltaBatch(bb)
-
-        // A baseline batch reconstructs its projection wholesale (invariant #3).
-        if (batch.baseline) {
-            rows[projectionKey] = HashMap()
+        try {
+            val bb = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            if (payload.size < 8 || !RefRowDeltaBatch.RefRowDeltaBatchBufferHasIdentifier(bb)) {
+                needsResync = true
+                Log.e(KRC_TAG, "RefRowDeltaBatch missing NRRD identifier for projection=$projectionKey — retaining prior cache, needsResync latched")
+                return emptySet()
+            }
+            val batch = RefRowDeltaBatch.getRootAsRefRowDeltaBatch(bb)
+            val isBaseline = batch.baseline
+            // Decode ALL rows out of the buffer FIRST (decode-before-commit): a
+            // garbage offset throws here, before any cache slot is touched.
+            val decoded = ArrayList<DecodedRefRow>(batch.rowsLength)
+            for (i in 0 until batch.rowsLength) {
+                val row = batch.rows(i) ?: continue
+                val key = row.key ?: continue
+                val bytes = ByteArray(row.payloadLength) { j -> row.payload(j).toByte() }
+                decoded.add(DecodedRefRow(key, row.rev, row.state, bytes))
+            }
+            return if (isBaseline) {
+                applyBaseline(projectionKey, namespace, decoded)
+            } else {
+                applyIncremental(projectionKey, namespace, decoded)
+            }
+        } catch (e: Exception) {
+            needsResync = true
+            Log.e(KRC_TAG, "malformed RefRowDeltaBatch for projection=$projectionKey — retaining prior cache, needsResync latched: ${e.message}")
+            return emptySet()
         }
+    }
+
+    /**
+     * Scratch-then-commit baseline (invariant #3 + decode-before-commit on the
+     * WHOLE batch): decode every required row into a scratch map first and
+     * replace the projection only after all rows decode. One bad row fails the
+     * entire baseline closed — prior cache preserved, needsResync latched.
+     */
+    private fun applyBaseline(projectionKey: String, namespace: String, decoded: List<DecodedRefRow>): Set<String> {
+        val scratch = HashMap<String, RefRowCacheEntry>()
+        for (row in decoded) {
+            if (row.state == RefRowState.Cleared) {
+                scratch.remove(row.key)
+                continue
+            }
+            if (row.payload.isEmpty() || !rowDecoder(namespace, row.payload)) {
+                needsResync = true
+                Log.e(KRC_TAG, "decode-before-commit failed in baseline for projection=$projectionKey key=${row.key} — preserving prior cache, needsResync latched")
+                return emptySet()
+            }
+            val existing = scratch[row.key]
+            if (existing != null && row.rev <= existing.rev) continue
+            scratch[row.key] = RefRowCacheEntry(row.rev, row.payload)
+        }
+
+        // Atomic commit: diff prior vs scratch so exactly the changed slots
+        // re-render (added / updated / dropped ghost), then swap the projection.
+        val prior: Map<String, RefRowCacheEntry> = rows[projectionKey] ?: emptyMap()
+        val changed = mutableSetOf<String>()
+        for ((key, entry) in scratch) {
+            val priorPayload = prior[key]?.payload
+            if (priorPayload == null || !entry.payload.contentEquals(priorPayload)) changed.add(key)
+        }
+        for (key in prior.keys) {
+            if (!scratch.containsKey(key)) changed.add(key)
+        }
+        rows[projectionKey] = scratch
+        baselined = true
+        for (key in changed) {
+            notifyRowChange(KeyedRowChange(projectionKey, key, cleared = !scratch.containsKey(key)))
+        }
+        return changed
+    }
+
+    /**
+     * Steady-state incremental merge with rev-safe clears and the per-row
+     * decode-before-commit seam.
+     */
+    private fun applyIncremental(projectionKey: String, namespace: String, decoded: List<DecodedRefRow>): Set<String> {
         val ns = rows.getOrPut(projectionKey) { HashMap() }
         val changed = mutableSetOf<String>()
-
-        for (i in 0 until batch.rowsLength) {
-            val row = batch.rows(i) ?: continue
-            val key = row.key ?: continue
+        for (row in decoded) {
             if (row.state == RefRowState.Cleared) {
-                // Explicit clear: remove unconditionally.
-                if (ns.remove(key) != null) {
-                    changed.add(key)
-                    notifyRowChange(KeyedRowChange(projectionKey, key, cleared = true))
+                // Rev-safe clear: remove only if the clear's rev is NEWER than
+                // the cached row, so a stale reordered clear can never delete a
+                // newer live row. A clear for an absent key is a no-op.
+                val cached = ns[row.key]
+                if (cached != null && row.rev > cached.rev) {
+                    ns.remove(row.key)
+                    changed.add(row.key)
+                    notifyRowChange(KeyedRowChange(projectionKey, row.key, cleared = true))
                 }
                 continue
             }
             // Changed. Reorder/duplicate guard: skip a row not newer than cached.
-            val incomingRev = row.rev
-            val cached = ns[key]
-            if (cached != null && incomingRev <= cached.rev) continue
-            // Decode-before-commit per row (invariant #2): empty == malformed.
-            val bytes = ByteArray(row.payloadLength) { j -> row.payload(j).toByte() }
-            if (bytes.isEmpty()) {
+            val cached = ns[row.key]
+            if (cached != null && row.rev <= cached.rev) continue
+            // Decode-before-commit per row (invariant #2) via the typed seam:
+            // empty OR invalid bytes → keep the prior row, latch needsResync.
+            if (row.payload.isEmpty() || !rowDecoder(namespace, row.payload)) {
                 needsResync = true
-                Log.e(KRC_TAG, "decode-before-commit failed for projection=$projectionKey key=$key rev=$incomingRev — keeping prior row, needsResync latched")
+                Log.e(KRC_TAG, "decode-before-commit failed for projection=$projectionKey key=${row.key} rev=${row.rev} — keeping prior row, needsResync latched")
                 continue
             }
-            ns[key] = RefRowCacheEntry(incomingRev, bytes)
-            changed.add(key)
-            notifyRowChange(KeyedRowChange(projectionKey, key, cleared = false))
+            ns[row.key] = RefRowCacheEntry(row.rev, row.payload)
+            changed.add(row.key)
+            notifyRowChange(KeyedRowChange(projectionKey, row.key, cleared = false))
         }
-
         baselined = true
         return changed
     }

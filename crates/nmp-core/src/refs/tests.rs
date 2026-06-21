@@ -139,7 +139,10 @@ impl Harness {
             Op::Remove { ns, key } => {
                 let ns = REF_NS[ns % REF_NS.len()];
                 let key = format!("k{}", key % keys);
-                self.source.remove(ns, &key);
+                // A release bumps the key's monotonic rev (the tombstone rev the
+                // tracker stamps on the Cleared row); see RefRowRevSource.
+                self.rev += 1;
+                self.source.remove(ns, &key, self.rev);
             }
             Op::Emit => self.emit_all(false),
             Op::EpochReset => {
@@ -216,6 +219,81 @@ proptest! {
         h.needs_baseline = true;
         h.emit_all(false);
         h.assert_converged();
+    }
+
+    /// BLOCKING-4 (arbitrary reorder INCLUDING clears): capture each producer
+    /// transition as its own per-namespace incremental batch, deliver the whole
+    /// stream in a RANDOM permutation with random drops/gaps, then apply a final
+    /// reliable baseline. The rev-safe clears + per-key reorder guard keep every
+    /// out-of-order apply panic-free and non-corrupting, and the ADR-0055 D5
+    /// repair baseline reconstructs the EXACT final ground truth — proving
+    /// incremental-applied == full-snapshot-of-final-state under reorder + drop +
+    /// gap + epoch.
+    #[test]
+    fn prop_arbitrary_reorder_repairs_after_baseline(
+        muts in proptest::collection::vec((0..REF_NS.len(), 0..5usize, any::<bool>()), 0..80),
+        order_keys in proptest::collection::vec(any::<u64>(), 1..48),
+        drops in proptest::collection::vec(any::<bool>(), 1..48),
+    ) {
+        let keys = 5usize;
+        let mut source = MapRowRevSource::new();
+        let mut tracker = RefRowDeltaTracker::new();
+        let mut rev = 0u64;
+
+        // Session-start baselines (ordered) seed both namespaces.
+        let mut baselines: Vec<RefRowDeltaBatch> = Vec::new();
+        for ns in REF_NS {
+            baselines.push(wire_round_trip(&tracker.build_baseline(ns, &source)));
+        }
+
+        // Each mutation captures its transition as a per-namespace incremental.
+        let mut stream: Vec<RefRowDeltaBatch> = Vec::new();
+        for (ns_i, key_i, is_remove) in &muts {
+            let ns = REF_NS[ns_i % REF_NS.len()];
+            let key = format!("k{}", key_i % keys);
+            rev += 1;
+            if *is_remove {
+                source.remove(ns, &key, rev);
+            } else {
+                source.upsert(ns, &key, rev, payload_for(&key, rev));
+            }
+            for ns in REF_NS {
+                stream.push(wire_round_trip(&tracker.build_incremental(ns, &source)));
+            }
+        }
+
+        // Arbitrary reorder: stable-sort the stream by a cyclically-assigned
+        // random key (equal keys keep relative order → a genuine permutation).
+        let mut ordered: Vec<(u64, RefRowDeltaBatch)> = stream
+            .into_iter()
+            .enumerate()
+            .map(|(i, b)| (order_keys[i % order_keys.len()], b))
+            .collect();
+        ordered.sort_by_key(|(k, _)| *k);
+
+        // Deliver: ordered session-start baselines, then the reordered (and
+        // partly dropped) incremental stream — out of order, with gaps.
+        let mut cache = RefRowCache::new();
+        for b in &baselines {
+            cache.apply(b, 1, 0, &decode_ok);
+        }
+        for (i, (_, b)) in ordered.iter().enumerate() {
+            if drops[i % drops.len()] {
+                continue; // dropped frame (gap)
+            }
+            cache.apply(b, 1, 0, &decode_ok);
+        }
+
+        // D5 repair: a final reliable baseline at a NEW epoch clears + rebuilds
+        // the complete live set, so the host converges to ground truth exactly.
+        tracker.reset();
+        for ns in REF_NS {
+            let baseline = wire_round_trip(&tracker.build_baseline(ns, &source));
+            cache.apply(&baseline, 1, 1, &decode_ok);
+        }
+        for ns in REF_NS {
+            prop_assert_eq!(cache.snapshot(ns), ground_truth(&source, ns));
+        }
     }
 }
 
@@ -338,10 +416,11 @@ fn cleared_is_explicit_and_removes() {
     cache.apply(&wire_round_trip(&tracker.build_baseline("profile", &source)), 1, 0, &decode_ok);
     assert!(cache.get("profile", "alice").is_some());
 
-    source.remove("profile", "alice");
+    source.remove("profile", "alice", 2);
     let incr = wire_round_trip(&tracker.build_incremental("profile", &source));
     assert_eq!(incr.rows.len(), 1);
     assert_eq!(incr.rows[0].state, RefRowState::Cleared);
+    assert!(incr.rows[0].rev > 1, "clear carries the release rev, not the prior live rev");
     cache.apply(&incr, 1, 0, &decode_ok);
     assert_eq!(cache.get("profile", "alice"), None, "Cleared row removes the cached row");
 }
@@ -369,6 +448,134 @@ fn reorder_guard_skips_stale_rev() {
     assert_eq!(cache.get("profile", "alice"), Some(payload_for("alice", 5)));
 }
 
+/// BLOCKING-4 (rev-safe clears): a STALE reordered `Cleared` row — one whose rev
+/// is NOT newer than the cached live row — must NOT delete that newer row. This
+/// is the reorder hazard the per-key rev guard closes for clears (symmetric to
+/// the `Changed` reorder guard).
+#[test]
+fn reorder_guard_skips_stale_clear() {
+    let mut cache = RefRowCache::new();
+    // Cache alice live at rev 6.
+    let live = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: true,
+        rows: vec![RefRow::changed("alice", 6, payload_for("alice", 6))],
+    };
+    cache.apply(&wire_round_trip(&live), 1, 0, &decode_ok);
+
+    // A reordered STALE clear (rev 5 < cached rev 6) must be ignored — alice is
+    // live at a newer rev, so the clear is not the latest word on her.
+    let stale_clear = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: false,
+        rows: vec![RefRow::cleared("alice", 5)],
+    };
+    let outcome = cache.apply(&wire_round_trip(&stale_clear), 1, 0, &decode_ok);
+    assert!(outcome.changed_keys.is_empty(), "stale clear must be a no-op");
+    assert_eq!(
+        cache.get("profile", "alice"),
+        Some(payload_for("alice", 6)),
+        "a stale reordered clear must NOT delete a newer live row"
+    );
+
+    // A clear with a NEWER rev (7 > 6) is the latest word → it removes the row.
+    let fresh_clear = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: false,
+        rows: vec![RefRow::cleared("alice", 7)],
+    };
+    let outcome = cache.apply(&wire_round_trip(&fresh_clear), 1, 0, &decode_ok);
+    assert_eq!(outcome.changed_keys, vec!["alice".to_string()]);
+    assert_eq!(cache.get("profile", "alice"), None, "a newer clear removes the row");
+}
+
+/// BLOCKING-1 (scratch-then-commit baseline): a malformed row INSIDE a baseline
+/// batch must NOT drop or corrupt the prior cache. The baseline decodes into a
+/// scratch map first and commits only if EVERY required row decodes; one bad row
+/// fails the whole baseline closed — prior cache intact, `needs_resync` latched.
+#[test]
+fn baseline_decode_failure_preserves_prior_cache() {
+    let mut cache = RefRowCache::new();
+    // Seed a good prior cache (alice + bob) via a clean baseline.
+    let seed = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: true,
+        rows: vec![
+            RefRow::changed("alice", 1, payload_for("alice", 1)),
+            RefRow::changed("bob", 1, payload_for("bob", 1)),
+        ],
+    };
+    cache.apply(&wire_round_trip(&seed), 1, 0, &decode_ok);
+    assert_eq!(cache.snapshot("profile").len(), 2);
+
+    // A NEW baseline whose carol row is POISONED (0xFF prefix → decode fails).
+    // Under scratch-then-commit the prior namespace must stay fully intact.
+    let mut poisoned = payload_for("carol", 1);
+    poisoned[0] = 0xFF;
+    let bad_baseline = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: true,
+        rows: vec![
+            RefRow::changed("alice", 9, payload_for("alice", 9)),
+            RefRow::changed("carol", 1, poisoned),
+        ],
+    };
+    let outcome = cache.apply(&wire_round_trip(&bad_baseline), 1, 0, &decode_ok);
+
+    assert!(outcome.decode_failed, "a malformed baseline row fails the batch");
+    assert!(cache.needs_resync(), "needs_resync latches (fail-closed, D6)");
+    assert!(outcome.changed_keys.is_empty(), "no slot is committed on a failed baseline");
+    // Prior cache is byte-for-byte intact: alice was NOT advanced to rev 9, bob
+    // (absent from the bad baseline) was NOT dropped, carol was NOT inserted.
+    assert_eq!(
+        cache.get("profile", "alice"),
+        Some(payload_for("alice", 1)),
+        "prior row must not be clobbered by a malformed baseline"
+    );
+    assert_eq!(cache.get("profile", "bob"), Some(payload_for("bob", 1)));
+    assert_eq!(cache.get("profile", "carol"), None);
+}
+
+/// BLOCKING-3 (decode-before-commit seam, non-empty invalid): the `decode_ok`
+/// seam — the per-namespace typed-row validator the host invokes before commit —
+/// must reject a NON-EMPTY but invalid payload, keeping the prior row. (Lane C
+/// wires the real ProfileRef / EventEmbed decoder into this seam; here a test
+/// decoder proves the contract beyond the empty-payload case.)
+#[test]
+fn decode_seam_rejects_non_empty_invalid_row() {
+    let mut cache = RefRowCache::new();
+    // A decoder that requires a 4-byte magic prefix — non-empty garbage fails.
+    let strict_decode = |_key: &str, payload: &[u8]| payload.starts_with(b"OK::");
+    let good = |k: &str| {
+        let mut p = b"OK::".to_vec();
+        p.extend_from_slice(k.as_bytes());
+        p
+    };
+
+    let seed = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: true,
+        rows: vec![RefRow::changed("alice", 1, good("alice-v1"))],
+    };
+    cache.apply(&wire_round_trip(&seed), 1, 0, &strict_decode);
+    assert_eq!(cache.get("profile", "alice"), Some(good("alice-v1")));
+
+    // A NON-EMPTY but invalid (no magic) update must be rejected by the seam.
+    let bad = RefRowDeltaBatch {
+        namespace: "profile".into(),
+        baseline: false,
+        rows: vec![RefRow::changed("alice", 2, b"non-empty-but-invalid".to_vec())],
+    };
+    let outcome = cache.apply(&wire_round_trip(&bad), 1, 0, &strict_decode);
+    assert!(outcome.decode_failed, "non-empty invalid payload fails the seam");
+    assert!(cache.needs_resync());
+    assert_eq!(
+        cache.get("profile", "alice"),
+        Some(good("alice-v1")),
+        "prior row retained when a non-empty payload fails typed decode"
+    );
+}
+
 /// Invariant #4 (typed per namespace): the two namespaces never cross-pollute —
 /// the same key in `profile` and `event` are independent cached rows.
 #[test]
@@ -386,7 +593,7 @@ fn typed_per_namespace_isolation() {
     assert_eq!(cache.get("event", "shared"), Some(b"event-bytes".to_vec()));
 
     // Clearing the profile row must not touch the event row.
-    source.remove("profile", "shared");
+    source.remove("profile", "shared", 2);
     cache.apply(&wire_round_trip(&tracker.build_incremental("profile", &source)), 1, 0, &decode_ok);
     assert_eq!(cache.get("profile", "shared"), None);
     assert_eq!(cache.get("event", "shared"), Some(b"event-bytes".to_vec()));

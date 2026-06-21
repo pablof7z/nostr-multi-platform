@@ -89,6 +89,39 @@ fn all_dotted_keys_are_present() {
     assert_eq!(dotted.len(), expected.len(), "dotted keys drifted: {dotted:?}");
 }
 
+/// Drift/overlap guard (ADR-0063 codegen-time partition): a projection key must
+/// live in EXACTLY ONE of the two registries — the whole-value
+/// `SNAPSHOT_PROJECTIONS` or the keyed `KEYED_PROJECTIONS`. A key in BOTH would
+/// drive contradictory generators (a JSON `SnapshotProjections` field AND a
+/// per-key row cache for the same key); a keyed projection appearing in NEITHER
+/// would silently generate no host cache at all. The keyed projection keys are
+/// `refs.*` and must never collide with a `SNAPSHOT_PROJECTIONS` json_key or its
+/// typed-sidecar key.
+#[test]
+fn keyed_and_snapshot_registries_are_disjoint() {
+    let snapshot_keys: std::collections::BTreeSet<&str> = SNAPSHOT_PROJECTIONS
+        .iter()
+        .flat_map(|e| {
+            let sidecar = e.typed_sidecar.as_ref().map(|s| s.key);
+            std::iter::once(e.json_key).chain(sidecar)
+        })
+        .collect();
+    let mut seen_keyed = std::collections::BTreeSet::new();
+    for entry in KEYED_PROJECTIONS {
+        assert!(
+            seen_keyed.insert(entry.projection_key),
+            "duplicate projection_key {:?} in KEYED_PROJECTIONS",
+            entry.projection_key
+        );
+        assert!(
+            !snapshot_keys.contains(entry.projection_key),
+            "keyed projection {:?} also appears in SNAPSHOT_PROJECTIONS — a key must \
+             live in exactly one registry (whole-value OR keyed), never both",
+            entry.projection_key
+        );
+    }
+}
+
 /// Coverage gate: every entry in the registry MUST carry a typed FlatBuffer
 /// sidecar (`typed_sidecar: Some(...)`). A `None` means the projection is a
 /// JSON-era vestigial with no typed wire form — such entries must be removed

@@ -30,10 +30,25 @@ use super::rowdelta::{RefRow, RefRowDeltaBatch};
 use std::collections::{BTreeMap, HashMap};
 
 /// Lane B's per-key rev source. See the module doc-comment for the contract.
+///
+/// ## Per-key rev is monotonic THROUGH release (rev-safe clears, ADR-0063
+/// invariant #4 / BLOCKING-4 coordination contract with Lane B)
+///
+/// `ref_row_rev` is monotonic per key and bumps on EVERY transition — including
+/// the release that drops the key from the live set. So immediately after a
+/// release `ref_row_keys` no longer lists the key, but `ref_row_rev` still
+/// returns a rev STRICTLY GREATER than the rev at which the key was last live.
+/// The tracker stamps that release rev onto the explicit `Cleared` row, and the
+/// host applies a clear only when its rev is newer than the cached row — so a
+/// stale reordered clear can never delete a newer live row. A never-seen key is
+/// rev 0. Lane B's `RefResolver` MUST honour this (its per-key rev counter
+/// advances on release); the in-memory [`MapRowRevSource`] models it exactly.
 pub trait RefRowRevSource {
-    /// Per-key monotonic revision for `(namespace, key)`. 0 for an unknown key.
+    /// Per-key monotonic revision for `(namespace, key)`, advancing on every
+    /// transition INCLUDING release. 0 for a never-seen key; for a released key
+    /// it returns the (strictly greater than last-live) release rev.
     fn ref_row_rev(&self, namespace: &str, key: &str) -> u64;
-    /// The currently-live key set for `namespace`.
+    /// The currently-live key set for `namespace` (excludes released keys).
     fn ref_row_keys(&self, namespace: &str) -> Vec<String>;
     /// The typed resolved payload bytes for a live `(namespace, key)`, or `None`
     /// when the key is not live.
@@ -149,10 +164,14 @@ impl RefRowDeltaTracker {
             }
         }
 
-        // Cleared for keys that were emitted but are no longer live.
+        // Cleared for keys that were emitted but are no longer live. The clear
+        // carries Lane B's monotonic RELEASE rev (strictly > the last-live rev),
+        // not the prior emitted rev, so the host's rev-safe clear removes the
+        // row on ordered delivery yet ignores a stale reordered clear.
         for (key, last) in &prev {
             if !live.contains_key(key) {
-                rows.push(RefRow::cleared(key.clone(), *last));
+                let release_rev = source.ref_row_rev(namespace, key).max(*last + 1);
+                rows.push(RefRow::cleared(key.clone(), release_rev));
                 // dropped from `emitted` → host removes it
             }
         }
@@ -184,6 +203,12 @@ fn sorted_keys(source: &dyn RefRowRevSource, namespace: &str) -> Vec<String> {
 #[derive(Debug, Default, Clone)]
 pub struct MapRowRevSource {
     rows: HashMap<String, BTreeMap<String, (u64, Vec<u8>)>>,
+    /// `namespace -> (key -> release rev)` for keys that were removed. Models
+    /// Lane B's monotonic-through-release per-key rev: after a release the key
+    /// leaves the live set but its rev keeps advancing, so `ref_row_rev` returns
+    /// the release rev (strictly greater than the last-live rev). Cleared on a
+    /// re-`upsert`.
+    tombstones: HashMap<String, BTreeMap<String, u64>>,
 }
 
 impl MapRowRevSource {
@@ -200,23 +225,44 @@ impl MapRowRevSource {
             .entry(namespace.to_string())
             .or_default()
             .insert(key.to_string(), (rev, payload));
+        // Re-claim: clear any tombstone so the key is live again at `rev`.
+        if let Some(ns) = self.tombstones.get_mut(namespace) {
+            ns.remove(key);
+        }
     }
 
-    /// Remove a row (models a `release_ref`). The next incremental build emits
-    /// an explicit `Cleared` row for it.
-    pub fn remove(&mut self, namespace: &str, key: &str) {
+    /// Remove a row at release rev `rev` (models a `release_ref`). The key
+    /// leaves the live set but its rev advances to `rev` (the tombstone), so the
+    /// next incremental build emits an explicit `Cleared` row stamped with that
+    /// release rev. Callers MUST pass a rev strictly greater than the key's
+    /// last-live rev (monotonic per-key rev, matching Lane B's contract).
+    pub fn remove(&mut self, namespace: &str, key: &str, rev: u64) {
         if let Some(ns) = self.rows.get_mut(namespace) {
-            ns.remove(key);
+            if ns.remove(key).is_some() {
+                self.tombstones
+                    .entry(namespace.to_string())
+                    .or_default()
+                    .insert(key.to_string(), rev);
+            }
         }
     }
 }
 
 impl RefRowRevSource for MapRowRevSource {
     fn ref_row_rev(&self, namespace: &str, key: &str) -> u64 {
-        self.rows
+        if let Some(rev) = self
+            .rows
             .get(namespace)
             .and_then(|ns| ns.get(key))
             .map(|(rev, _)| *rev)
+        {
+            return rev;
+        }
+        // Released key: return its monotonic release (tombstone) rev.
+        self.tombstones
+            .get(namespace)
+            .and_then(|ns| ns.get(key))
+            .copied()
             .unwrap_or(0)
     }
 
