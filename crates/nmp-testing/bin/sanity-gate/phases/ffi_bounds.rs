@@ -39,6 +39,14 @@ fn latest_frame_bytes(app: &crate::driver::DrivenApp) -> u64 {
     app.with_state(|s| s.latest().map(|r| r.frame_bytes).unwrap_or(0))
 }
 
+fn frame_count(app: &crate::driver::DrivenApp) -> usize {
+    app.with_state(|s| s.records.len())
+}
+
+fn wait_for_next_frame(app: &crate::driver::DrivenApp, before: usize) {
+    let _ = app.wait_until(Duration::from_secs(5), |s| s.records.len() > before);
+}
+
 pub fn run_ffi_bounds(report: &mut SanityReport, args: &Args) {
     let phase = Phase::FfiBounds.as_str();
     let Some(app) = super::connect_or_skip_optional(report, phase, args) else {
@@ -50,16 +58,18 @@ pub fn run_ffi_bounds(report: &mut SanityReport, args: &Args) {
     //    absolute ceiling — a full-store-crosses-FFI regression could stay under
     //    that. Measuring the frame at two store sizes makes the gate FAIL if the
     //    frame tracks the store instead of the 500-item projection cap.
+    let before_small = frame_count(&app);
     nmp_ffi::nmp_app_inject_signed_events(app.raw(), crate::report::now_unix(), STORE_SIZE_SMALL);
-    std::thread::sleep(Duration::from_secs(5));
+    wait_for_next_frame(&app, before_small);
     let frame_small = latest_frame_bytes(&app);
 
+    let before_large = frame_count(&app);
     nmp_ffi::nmp_app_inject_signed_events(
         app.raw(),
         crate::report::now_unix() + 1,
         STORE_SIZE_LARGE_ADD,
     );
-    std::thread::sleep(Duration::from_secs(5));
+    wait_for_next_frame(&app, before_large);
     let frame_large = latest_frame_bytes(&app);
     let frame_peak = app.with_state(|s| s.peak_frame_bytes());
 
@@ -132,7 +142,7 @@ pub fn run_ffi_bounds(report: &mut SanityReport, args: &Args) {
             }
         }
     }
-    std::thread::sleep(Duration::from_secs(1));
+    let _ = app.wait_until(Duration::from_secs(1), |_| !app.is_alive());
     let alive_after = app.is_alive();
 
     report.push(
