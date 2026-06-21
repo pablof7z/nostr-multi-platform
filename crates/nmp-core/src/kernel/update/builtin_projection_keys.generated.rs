@@ -22,6 +22,8 @@ pub const KERNEL_BUILTIN_PROJECTION_KEYS: &[&str] = &[
     "profile",
     "publish_outbox",
     "publish_queue",
+    "refs.event",
+    "refs.profile",
     "relay_diagnostics",
     "relay_role_options",
     "resolved_profiles",

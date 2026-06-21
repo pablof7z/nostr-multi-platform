@@ -268,6 +268,7 @@ pub use requests::ProfileLiveness;
 // for `nmp-ffi`'s `ActorCommand::ResolveRef` (no opaque integer re-decode).
 pub(crate) mod refs;
 pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+mod ref_row_source; // ADR-0063 (#1671 glue) — `impl RefRowRevSource for Kernel`
 // ADR-0063 (#1671) — `RefResolver` tests; sub-modules use `*_tests_*` infix.
 #[cfg(test)]
 mod refs_tests;
@@ -702,6 +703,10 @@ pub struct Kernel {
     /// Rung 1: `make_update` does NOT consult it (wire bytes unchanged). Reset to
     /// 0 on `Kernel` rebuild (fresh `Default`).
     pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
+    /// ADR-0063 (#1671 glue) — Lane A row-delta producer + the `(session_id,
+    /// epoch)` it last baselined at (see `typed_projections::builtins_refs`).
+    ref_row_delta_tracker: crate::refs::RefRowDeltaTracker,
+    ref_row_last_identity: Option<(u64, u64)>,
     /// ADR-0055 Rung 1 (F3) — biconditional completeness oracle state, carried
     /// across ticks. `cfg(any(test, test-support))` ONLY: a production build
     /// neither holds this field nor runs the oracle (ZERO emit-path cost).
@@ -1972,6 +1977,8 @@ impl Kernel {
             // ADR-0055 Rung 1: initialized to default (all counters 0, epoch 0).
             // Resets are free on the Kernel rebuild (Reset) path.
             projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
+            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0063 glue
+            ref_row_last_identity: None,
             #[cfg(any(test, feature = "test-support"))]
             projection_oracle: projection_rev::oracle::OracleState::default(),
             timing: TimingMilestones::default(),

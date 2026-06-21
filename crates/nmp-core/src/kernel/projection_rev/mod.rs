@@ -147,6 +147,15 @@ pub(crate) const SRC_DIAGNOSTICS_INPUTS: &str = "diagnostics_inputs_ver";
 pub(crate) const SRC_SETTLEMENT_ENQUEUE: &str = "settlement_enqueue_ver";
 pub(crate) const SRC_SETTLEMENT_DRAIN: &str = "settlement_drain_ver";
 pub(crate) const SRC_TTL_EXPIRY: &str = "ttl_expiry_ver";
+// ADR-0063 (#1671 integration glue) — whole-projection monotonic stamps for the
+// keyed `refs.profile` / `refs.event` row-delta projections. Co-bumped inside
+// the per-KEY `bump_*_row` / `clear_*_row` chokepoints so they advance whenever
+// ANY row of the namespace mutates (resolve / release / live-claimed ingest /
+// final clear). Monotonic — a per-key removal on clear does NOT decrease them
+// (unlike summing the per-key map), so the derived projection rev never stalls
+// or regresses. These are the manifest source of truth for the two new keys.
+pub(crate) const SRC_REF_PROFILE_ROWS: &str = "ref_profile_rows_ver";
+pub(crate) const SRC_REF_EVENT_ROWS: &str = "ref_event_rows_ver";
 
 /// Per-key source-counter dependency list (Rung 1 dependency map).
 ///
@@ -189,6 +198,12 @@ pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[
     // logical interests, profile_claims, active account, profile cache,
     // mailbox/cache coverage, configured_relays, lifecycle status.
     ("relay_diagnostics",&[SRC_DIAGNOSTICS_INPUTS]),
+    // ADR-0063 (#1671 integration glue) — keyed row-delta projections. Each
+    // depends on its namespace's whole-projection monotonic stamp; the per-key
+    // NRRD row-deltas the carrier emits are gated by the per-key revs, but the
+    // PROJECTION rev advances iff any row in the namespace mutated this tick.
+    ("refs.profile",     &[SRC_REF_PROFILE_ROWS]),
+    ("refs.event",       &[SRC_REF_EVENT_ROWS]),
 ];
 
 // ── Revision tracker ──────────────────────────────────────────────────────────

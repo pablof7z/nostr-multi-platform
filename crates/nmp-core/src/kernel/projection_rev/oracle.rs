@@ -46,6 +46,22 @@ fn fingerprint(key: &str, payload: &[u8]) -> u64 {
     h.finish()
 }
 
+/// ADR-0063 (#1671 integration glue) — the two keyed row-delta carriers
+/// (`refs.profile` / `refs.event`) are exempt from the biconditional oracle.
+///
+/// The oracle's model is a FULL-SNAPSHOT projection: its "cache unit" is the
+/// whole encoded payload, and the biconditional is `payload_bytes_changed ⟺
+/// rev_advanced`. A row-delta carrier deliberately violates that: its payload
+/// is a per-tick DELTA (an empty NRRD batch on a no-change tick, a full baseline
+/// after an epoch flip, a single changed row otherwise), so the bytes legitimately
+/// differ tick-to-tick even when the source counter (and thus the rev) did not
+/// advance — which the oracle would mis-read as a StaleStamp. Correctness for the
+/// carrier is enforced instead by the real Lane A `incremental == full` cache
+/// property test (the campaign's headline gate), not by this snapshot oracle.
+fn is_ref_row_delta_key(key: &str) -> bool {
+    key == "refs.profile" || key == "refs.event"
+}
+
 /// One oracle assertion result.
 #[derive(Debug)]
 pub struct OracleViolation {
@@ -80,6 +96,12 @@ pub fn check_oracle(
     let mut violations = Vec::new();
     for state in &manifest.states {
         let key = state.key;
+        // ADR-0063: row-delta carriers carry per-tick deltas, not a full
+        // snapshot — the oracle's payload-bytes-vs-rev biconditional does not
+        // model them. Skip (see `is_ref_row_delta_key`).
+        if is_ref_row_delta_key(key) {
+            continue;
+        }
         // Find the typed payload for this key. A key with no typed sidecar entry
         // this tick (e.g. a drain key on a no-settlement tick) fingerprints over
         // an empty payload — the host's cache unit for it is "absent".
@@ -144,6 +166,17 @@ impl OracleState {
     ) {
         for state in &manifest.states {
             let key = state.key;
+            // ADR-0063: skip the row-delta carriers — they are exempt from the
+            // oracle (see `is_ref_row_delta_key`), so we neither fingerprint nor
+            // advance a last-emit baseline for them here. Their last-emitted rev
+            // is advanced by `record_emitted_for_manifest` on the production path;
+            // under the oracle the manifest presence is recomputed each tick from
+            // the source counter, which is sufficient (the carrier owns its own
+            // per-row last-emitted state in `RefRowDeltaTracker`).
+            if is_ref_row_delta_key(key) {
+                tracker.record_emitted(key);
+                continue;
+            }
             let payload: &[u8] = typed
                 .iter()
                 .find(|t| t.key == key)

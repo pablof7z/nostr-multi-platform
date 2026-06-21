@@ -27,6 +27,11 @@ fn bump_named(tracker: &mut ProjectionRevTracker, source: &str, key: &str) {
         "settlement_enqueue_ver" => tracker.source_versions.bump_settlement_enqueue(),
         "settlement_drain_ver" => tracker.source_versions.bump_settlement_drain(),
         "ttl_expiry_ver" => tracker.source_versions.bump_ttl_expiry(),
+        // ADR-0063 (#1671 integration glue) — the two whole-projection ref-row
+        // stamps are co-bumped from the per-KEY `bump_*_row` chokepoints in
+        // production; bumping one such row advances the scalar this test reads.
+        "ref_profile_rows_ver" => tracker.source_versions.bump_profile_row("k"),
+        "ref_event_rows_ver" => tracker.source_versions.bump_event_row("k"),
         other => panic!("unknown source counter '{other}' in deps for key '{key}'"),
     }
 }

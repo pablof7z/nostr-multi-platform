@@ -102,7 +102,19 @@ pub fn projection_tier(json_key: &str) -> ProjectionTier {
 /// not also `SNAPSHOT_PROJECTIONS` entries. They are pinned by the
 /// `kernel_builtins_without_shell_decoder_are_not_in_registry` test so the list
 /// cannot silently overlap the decoder registry.
-pub const KERNEL_BUILTINS_WITHOUT_SHELL_DECODER: &[&str] = &["signed_events", "mention_profiles"];
+pub const KERNEL_BUILTINS_WITHOUT_SHELL_DECODER: &[&str] = &[
+    "signed_events",
+    "mention_profiles",
+    // ADR-0063 (#1671 integration glue) — the two keyed row-delta carriers
+    // (`refs.profile` / `refs.event`). They are kernel-emitted Tier-2 built-ins
+    // but carry an opaque NRRD per-key row-delta batch consumed by the host
+    // `RefRowCache`, NOT a `SnapshotProjections` JSON field — so, like
+    // `signed_events`, they have no shell decoder in the registry. Registered
+    // here so they enter `KERNEL_BUILTIN_PROJECTION_KEYS` (and thus the manifest
+    // / oracle / consume-all set) without a phantom Swift field.
+    "refs.profile",
+    "refs.event",
+];
 
 /// The single source of truth for the **Tier-2 kernel-owned built-in projection
 /// key set** — the codegen-derived list that `nmp-core`'s
@@ -160,9 +172,11 @@ mod tests {
         }
     }
 
-    /// Lock the derived kernel built-in set: 16 Tier-2 registry entries + the 2
-    /// out-of-registry built-ins = 18, sorted + deduplicated. This is the set
-    /// `nmp-core`'s generated `KERNEL_BUILTIN_PROJECTION_KEYS` mirrors.
+    /// Lock the derived kernel built-in set: 16 Tier-2 registry entries + the 4
+    /// out-of-registry built-ins (`signed_events`, `mention_profiles`, and the
+    /// two ADR-0063 `refs.*` row-delta carriers) = 20, sorted + deduplicated.
+    /// This is the set `nmp-core`'s generated `KERNEL_BUILTIN_PROJECTION_KEYS`
+    /// mirrors.
     #[test]
     fn kernel_builtin_projection_keys_is_locked() {
         let keys = kernel_builtin_projection_keys();
@@ -182,6 +196,8 @@ mod tests {
                 "profile",
                 "publish_outbox",
                 "publish_queue",
+                "refs.event",
+                "refs.profile",
                 "relay_diagnostics",
                 "relay_role_options",
                 "resolved_profiles",

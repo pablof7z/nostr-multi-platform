@@ -49,6 +49,13 @@ mod rung3_buffer_reuse_tests;
 #[cfg(test)]
 #[path = "rung3_cleared_signal_tests.rs"]
 mod rung3_cleared_signal_tests;
+// ADR-0063 (#1671 integration glue) — the campaign's headline `incremental ==
+// full` gate. Drives the real `make_update` path with the snapshot registry
+// installed, so — like the rung3 test modules above — it lives in `kernel/` and
+// is pulled in via `#[path]` to keep `kernel/mod.rs` at its size baseline.
+#[cfg(test)]
+#[path = "refs_glue_integration_tests.rs"]
+mod refs_glue_integration_tests;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on
@@ -317,7 +324,7 @@ impl Kernel {
         // host-side consumer matches by first key (`projections.first(where:)`),
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
-        let typed = self.merge_builtin_typed_projections(typed);
+        let mut typed = self.merge_builtin_typed_projections(typed);
         let declared = self.declared_projections_snapshot();
         self.projection_rev_tracker
             .reconcile_declared_permits(&declared);
@@ -356,6 +363,25 @@ impl Kernel {
             // this tick's manifest sees last_emitted=∅ → all Changed.
             self.projection_rev_tracker.reset_last_emitted();
         }
+        // ADR-0063 (#1671 integration glue, codex "Artifact 1") — the keyed
+        // `refs.profile` / `refs.event` row-delta producer. Hooked HERE, between
+        // the baseline-latch reset (above) and the manifest assembly (below),
+        // because it needs live `&mut self`: it advances Lane A's per-host
+        // last-emitted tracker over the kernel's own `RefRowRevSource` impl and
+        // baselines on session/epoch change OR `baseline_pending` (the SAME
+        // signal the host `RefRowCache` rebaselines on). It is NOT run inside
+        // `run_typed_projections` (that path is `&self`-only host closures). The
+        // two entries are always pushed so the manifest's unconditional-Tier-2
+        // `Changed`-must-emit invariant (rung3_omit §10.2) holds; the Rung-2/3
+        // passes below stamp + (when incremental) omit them like any built-in.
+        let mut refs_entries = self.refs_row_delta_projections(baseline_pending);
+        // ADR-0053 parity: respect a narrowing host declared-set exactly like
+        // `builtin_typed_projections` does for every other built-in — an
+        // undeclared `refs.*` key must not ship. `declared` was snapshotted above.
+        if declared.is_narrowing() {
+            refs_entries.retain(|entry| declared.permits(&entry.key));
+        }
+        typed.extend(refs_entries);
         // ADR-0055 Rung 2 — build the per-projection revision manifest and stamp
         // each TypedProjectionData with its rev + presence from it (see
         // `rung2_stamp`). The diagnostics fingerprint MUST be reconciled before

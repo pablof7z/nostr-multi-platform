@@ -27,7 +27,8 @@ use std::collections::HashMap;
 use super::{
     SRC_ACCOUNTS, SRC_ACTIVE_ACCOUNT, SRC_CLAIMED_EVENT_CONTENT, SRC_CONFIGURED_RELAYS,
     SRC_DIAGNOSTICS_INPUTS, SRC_OPEN_VIEWS, SRC_PROFILES, SRC_PROFILE_CLAIMS, SRC_PUBLISH,
-    SRC_PUBLISH_ENGINE, SRC_SETTLEMENT_DRAIN, SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
+    SRC_PUBLISH_ENGINE, SRC_REF_EVENT_ROWS, SRC_REF_PROFILE_ROWS, SRC_SETTLEMENT_DRAIN,
+    SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
 };
 use crate::kernel::refs::RefNamespace;
 
@@ -159,6 +160,17 @@ pub(crate) struct SourceVersions {
     /// (`maybe_bump_claimed_event_content`, already gated on a live claim). Same
     /// bounded-cleanup lifecycle as `profile_row_revs`.
     pub(crate) event_row_revs: HashMap<String, u64>,
+
+    // ── ADR-0063 (#1671 integration glue): whole-projection ref-row stamps ─────
+    /// Monotonic whole-projection stamp for `refs.profile`. Co-bumped inside
+    /// every per-KEY profile-row mutation chokepoint ([`Self::bump_profile_row`]
+    /// / [`Self::clear_profile_row`]) so the derived `refs.profile` projection rev
+    /// advances whenever ANY profile row mutates. Monotonic across release: unlike
+    /// summing `profile_row_revs` (which a clear shrinks by removing the entry),
+    /// this scalar only ever increases, so the manifest rev never regresses.
+    pub(crate) ref_profile_rows_ver: u64,
+    /// Event twin of [`Self::ref_profile_rows_ver`] for `refs.event`.
+    pub(crate) ref_event_rows_ver: u64,
 }
 
 impl SourceVersions {
@@ -179,6 +191,8 @@ impl SourceVersions {
             SRC_SETTLEMENT_ENQUEUE => self.settlement_enqueue_ver,
             SRC_SETTLEMENT_DRAIN => self.settlement_drain_ver,
             SRC_TTL_EXPIRY => self.ttl_expiry_ver,
+            SRC_REF_PROFILE_ROWS => self.ref_profile_rows_ver,
+            SRC_REF_EVENT_ROWS => self.ref_event_rows_ver,
             _ => 0,
         }
     }
@@ -263,6 +277,10 @@ impl SourceVersions {
     pub(crate) fn bump_profile_row(&mut self, key: &str) {
         let rev = self.profile_row_revs.entry(key.to_string()).or_insert(0);
         *rev = rev.saturating_add(1);
+        // ADR-0063 integration glue: co-bump the whole-projection stamp so the
+        // derived `refs.profile` manifest rev advances on any row mutation
+        // (intrinsic — no separate call site to forget).
+        self.ref_profile_rows_ver = self.ref_profile_rows_ver.saturating_add(1);
     }
 
     /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
@@ -270,6 +288,8 @@ impl SourceVersions {
     pub(crate) fn bump_event_row(&mut self, key: &str) {
         let rev = self.event_row_revs.entry(key.to_string()).or_insert(0);
         *rev = rev.saturating_add(1);
+        // ADR-0063 integration glue: co-bump the whole-projection stamp.
+        self.ref_event_rows_ver = self.ref_event_rows_ver.saturating_add(1);
     }
 
     /// ADR-0063 (#1671 Lane B) — final-`Cleared` teardown of one ref row's per-key
