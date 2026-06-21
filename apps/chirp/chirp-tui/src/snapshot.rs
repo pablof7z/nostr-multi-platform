@@ -16,7 +16,23 @@ pub struct SharedSnapshot {
     pub action_results: Vec<ActionResult>,
     pub action_stages: Vec<ActionStageRow>,
     pub home_feed: Option<Value>,
-    pub feeds: HashMap<String, Value>,
+    pub feeds: HashMap<String, FeedProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FeedProjection {
+    Changed(Value),
+    Cleared,
+}
+
+impl FeedProjection {
+    #[must_use]
+    pub fn as_value(&self) -> Option<&Value> {
+        match self {
+            Self::Changed(value) => Some(value),
+            Self::Cleared => None,
+        }
+    }
 }
 
 impl SharedSnapshot {
@@ -57,7 +73,10 @@ impl SharedSnapshot {
             interests: interests_from(projections),
             action_results: action_results_from(projections),
             action_stages: action_stages_from(projections),
-            home_feed: feeds.get("nmp.feed.home").cloned(),
+            home_feed: feeds
+                .get("nmp.feed.home")
+                .and_then(FeedProjection::as_value)
+                .cloned(),
             feeds,
         }
     }
@@ -98,7 +117,10 @@ fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
     let action_results = typed_action_results(&typed_projections);
     let action_stages = typed_action_stages(&typed_projections);
     let feeds = typed_op_feeds(&typed_projections);
-    let home_feed = feeds.get("nmp.feed.home").cloned();
+    let home_feed = feeds
+        .get("nmp.feed.home")
+        .and_then(FeedProjection::as_value)
+        .cloned();
 
     SharedSnapshot {
         metrics,
@@ -209,14 +231,22 @@ fn typed_action_stages(projections: &[nmp_core::TypedProjectionData]) -> Vec<Act
 ///
 /// Absent, wrong-schema, or corrupt sidecars are ignored — preserving ADR-0037
 /// Commitment 4. After PR-B the generic `payload:Value` fallback is gone.
-fn typed_op_feeds(projections: &[nmp_core::TypedProjectionData]) -> HashMap<String, Value> {
+fn typed_op_feeds(
+    projections: &[nmp_core::TypedProjectionData],
+) -> HashMap<String, FeedProjection> {
     projections
         .iter()
-        .filter(|p| p.key.starts_with("nmp.feed.") && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)
+        .filter(|p| p.key.starts_with("nmp.feed."))
         .filter_map(|proj| {
+            if proj.state == nmp_core::WireProjectionState::Cleared {
+                return Some((proj.key.clone(), FeedProjection::Cleared));
+            }
+            if proj.schema_id != nmp_nip01::OP_FEED_SCHEMA_ID {
+                return None;
+            }
             let decoded = nmp_nip01::decode_op_feed_snapshot(&proj.payload).ok()?;
             let value = serde_json::to_value(&decoded).ok()?;
-            Some((proj.key.clone(), value))
+            Some((proj.key.clone(), FeedProjection::Changed(value)))
         })
         .collect()
 }
@@ -415,13 +445,13 @@ fn action_stages_from(projections: Option<&Value>) -> Vec<ActionStageRow> {
     rows
 }
 
-fn feeds_from(projections: Option<&Value>) -> HashMap<String, Value> {
+fn feeds_from(projections: Option<&Value>) -> HashMap<String, FeedProjection> {
     projections
         .and_then(Value::as_object)
         .into_iter()
         .flat_map(|entries| entries.iter())
         .filter(|(key, _)| key.starts_with("nmp.feed."))
-        .map(|(key, value)| (key.clone(), value.clone()))
+        .map(|(key, value)| (key.clone(), FeedProjection::Changed(value.clone())))
         .collect()
 }
 

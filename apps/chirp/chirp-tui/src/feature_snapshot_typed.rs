@@ -10,6 +10,7 @@ use crate::feature_snapshot::{
     AccountLine, DmConversationLine, FeatureSnapshot, GroupLine, HistoryRelayLine, MessageLine,
     OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
 };
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot {
     let typed = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
@@ -227,6 +228,16 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         })
         .unwrap_or_default();
 
+    let resolved_profiles = find(nmp_core::typed_projections::RESOLVED_PROFILES_SCHEMA_ID)
+        .and_then(|b| nmp_core::typed_projections::decode_resolved_profiles(b).ok())
+        .map(|m| {
+            m.entries
+                .into_iter()
+                .map(|(key, card)| (key.clone(), profile_wire_from_card(&key, card)))
+                .collect()
+        })
+        .unwrap_or_default();
+
     FeatureSnapshot {
         accounts,
         active_account,
@@ -240,6 +251,7 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         discovered_groups,
         follow_count,
         settings_hub,
+        resolved_profiles,
     }
 }
 
@@ -277,6 +289,33 @@ fn publish_history_from_queue(
             }
         })
         .collect()
+}
+
+fn profile_wire_from_card(
+    key: &str,
+    card: nmp_core::typed_projections::ProfileCardModel,
+) -> ProfileWire {
+    let pubkey = if card.pubkey.is_empty() {
+        key.to_string()
+    } else {
+        card.pubkey
+    };
+    ProfileWire {
+        npub: nmp_core::display::to_npub(&pubkey),
+        npub_short: nmp_core::display::short_npub(&pubkey),
+        pubkey,
+        display_name: card
+            .display_name
+            .or(card.name)
+            .filter(|value| !value.trim().is_empty()),
+        about: nonempty(card.about),
+        picture_url: card.picture_url.filter(|value| !value.trim().is_empty()),
+        nip05: nonempty(card.nip05),
+    }
+}
+
+fn nonempty(value: String) -> Option<String> {
+    (!value.trim().is_empty()).then_some(value)
 }
 
 // ── Publish-outbox shell-side presentation helpers ─────────────────────────

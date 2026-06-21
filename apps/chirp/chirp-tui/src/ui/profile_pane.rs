@@ -32,32 +32,13 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
 fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     let pubkey = &state.profile_pubkey;
 
-    // V-112 (ADR-0042): author_view projection deleted; derive profile display
-    // data from the ProfileWire attached to the opened author feed rows.
-    let author_wire = state
-        .profile_rows
-        .iter()
-        .find(|r| r.author_pubkey == *pubkey)
-        .map(|r| &r.author_profile);
-
-    // Build a minimal ProfileWire for the avatar when no rows are available yet.
-    let fallback_wire = ProfileWire {
-        pubkey: pubkey.clone(),
-        display_name: None,
-        about: None,
-        picture_url: None,
-        nip05: None,
-        npub: pubkey.clone(),
-        npub_short: short_pubkey(pubkey),
-    };
-    let profile = author_wire.unwrap_or(&fallback_wire);
-
+    let profile = profile_for_header(state);
     let display_name = profile
         .display_name
         .as_deref()
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| short_pubkey(pubkey));
+        .unwrap_or_else(|| profile.npub_short.clone());
     let about = profile.about.as_deref().unwrap_or("").to_string();
     let note_count_n = state
         .profile_rows
@@ -81,10 +62,10 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
 
     // Avatar — registry NostrAvatar widget: initials in a pubkey-keyed colored
     // bordered tile. Pass image=None (TUI has no profile-image cache yet).
-    f.render_widget(NostrAvatar::new(profile).image(None), sections[0]);
+    f.render_widget(NostrAvatar::new(&profile).image(None), sections[0]);
 
     // Name + short pubkey line.
-    let npub_short = short_pubkey(pubkey);
+    let npub_short = profile.npub_short.clone();
     let name_line = Line::from(vec![
         Span::styled(
             truncate_to_width(
@@ -105,7 +86,7 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     );
 
     // NIP-05 badge — registry NostrNip05Badge; empty row when absent.
-    let nip05_line = NostrNip05Badge::from_profile(profile)
+    let nip05_line = NostrNip05Badge::from_profile(&profile)
         .map(|badge| badge.line())
         .unwrap_or_else(|| Line::from(""));
     f.render_widget(
@@ -171,6 +152,36 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
         Paragraph::new(vec![stats_line1]).block(stats_block),
         sections[4],
     );
+}
+
+fn profile_for_header(state: &AppState) -> ProfileWire {
+    let pubkey = &state.profile_pubkey;
+
+    // V-112 (ADR-0042): author_view projection deleted; profile display data
+    // comes from the kernel-owned resolved_profiles sidecar. Opened author-feed
+    // rows remain a fallback while a fresh profile resolution is still absent.
+    if let Some(profile) = state.features.resolved_profiles.get(pubkey) {
+        return profile.clone();
+    }
+    let row_wire = state
+        .profile_rows
+        .iter()
+        .find(|r| r.author_pubkey == *pubkey)
+        .map(|r| r.author_profile.clone());
+    if let Some(profile) = row_wire {
+        return profile;
+    }
+
+    // Build a minimal ProfileWire for the avatar when no rows are available yet.
+    ProfileWire {
+        pubkey: pubkey.clone(),
+        display_name: None,
+        about: None,
+        picture_url: None,
+        nip05: None,
+        npub: pubkey.clone(),
+        npub_short: short_pubkey(pubkey),
+    }
 }
 
 fn render_post_list(f: &mut Frame, area: Rect, state: &AppState) {
@@ -304,7 +315,9 @@ fn short_pubkey(pubkey: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feature_snapshot::FeatureSnapshot;
     use crate::timeline::TimelineRow;
+    use std::collections::HashMap;
 
     fn row(id: &str, author: &str, content: &str) -> TimelineRow {
         let snapshot = serde_json::json!({
@@ -374,5 +387,37 @@ mod tests {
         state.profile_rows.clear();
         let empty_text = lines_text(&build_author_post_lines(&state, &author, 80));
         assert!(empty_text.contains("No posts in opened author feed"));
+    }
+
+    #[test]
+    fn header_prefers_kernel_resolved_profile_over_feed_row_metadata() {
+        let author = "aa".repeat(32);
+        let row_with_stale_profile = row("author-row", &author, "author feed body");
+        let resolved = ProfileWire {
+            pubkey: author.clone(),
+            display_name: Some("Kernel Name".to_string()),
+            about: Some("kernel bio".to_string()),
+            picture_url: Some("https://example.test/avatar.png".to_string()),
+            nip05: Some("kernel@example.test".to_string()),
+            npub: "npub1kernel".to_string(),
+            npub_short: "npub1kernel".to_string(),
+        };
+        let mut state = AppState {
+            profile_pubkey: author.clone(),
+            profile_rows: vec![row_with_stale_profile],
+            features: FeatureSnapshot {
+                resolved_profiles: HashMap::from([(author.clone(), resolved.clone())]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        state.profile_rows[0].author_profile.display_name = Some("Stale Row Name".to_string());
+
+        let profile = profile_for_header(&state);
+
+        assert_eq!(profile.display_name.as_deref(), Some("Kernel Name"));
+        assert_eq!(profile.about.as_deref(), Some("kernel bio"));
+        assert_eq!(profile.nip05.as_deref(), Some("kernel@example.test"));
+        assert_ne!(profile.display_name.as_deref(), Some("Stale Row Name"));
     }
 }

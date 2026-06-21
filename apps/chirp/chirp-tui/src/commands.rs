@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::app::{AppRuntime, AppState, Pane};
+use crate::app::{AppRuntime, AppState};
 
 pub fn execute(input: &str, state: &mut AppState, runtime: &AppRuntime) {
     let command = input.trim();
@@ -316,19 +316,11 @@ fn search(rest: &str, state: &mut AppState, runtime: &AppRuntime) -> Result<Comm
     require(value, "search profile|thread|tag <value>")?;
     match kind {
         "profile" => {
-            runtime.open_author(value)?;
-            state.profile_pubkey = value.to_string();
-            state.profile_rows.clear();
-            state.focus(Pane::Profile);
+            state.open_author_feed(runtime, value)?;
             Ok(status(format!("opened profile {value}")))
         }
         "thread" => {
-            runtime.open_thread(value)?;
-            state.thread_event_id = value.to_string();
-            state.thread_rows.clear();
-            state.detail_cursor = 0;
-            state.detail_scroll = 0;
-            state.focus(Pane::Detail);
+            state.open_thread_feed(runtime, value)?;
             Ok(status(format!("opened thread {value}")))
         }
         "tag" => {

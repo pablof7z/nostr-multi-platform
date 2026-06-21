@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::{AppRuntime, AppState, Mode, Pane};
 use crate::features::FeatureTab;
 
+mod feed_navigation;
 mod forms;
 mod group_forms;
 mod outbox;
@@ -69,8 +70,10 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('c') if state.features.accounts.is_empty() => {
             state.start_modal("Create account", vec!["Display name"], "create-account");
         }
-        KeyCode::Tab => state.next_tab(),
-        KeyCode::BackTab => state.previous_tab(),
+        KeyCode::Tab => feed_navigation::set_tab_closing_dynamic(state, runtime, state.tab.next()),
+        KeyCode::BackTab => {
+            feed_navigation::set_tab_closing_dynamic(state, runtime, state.tab.previous());
+        }
         KeyCode::Char('l') | KeyCode::Right
             if state.mode == Mode::Normal && state.tab == FeatureTab::Settings =>
         {
@@ -84,6 +87,11 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('l') | KeyCode::Right
             if state.mode == Mode::Normal && state.focused != Pane::Detail =>
         {
+            if state.focused == Pane::Profile
+                && !feed_navigation::close_author_before_detail_focus(state, runtime)
+            {
+                return InputFlow::Continue;
+            }
             state.focused = Pane::Detail;
             state.detail_cursor = 0;
             state.detail_scroll = 0;
@@ -92,8 +100,12 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('h') | KeyCode::Left
             if state.mode == Mode::Normal && state.focused == Pane::Detail =>
         {
-            state.focused = Pane::Feed;
-            state.status = "focus:feed".to_string();
+            feed_navigation::close_current_dynamic_view(state, runtime);
+        }
+        KeyCode::Char('h') | KeyCode::Left
+            if state.mode == Mode::Normal && state.focused == Pane::Profile =>
+        {
+            feed_navigation::close_current_dynamic_view(state, runtime);
         }
         KeyCode::Char('j') | KeyCode::Down
             if state.mode == Mode::Normal && state.focused == Pane::Detail =>
@@ -114,12 +126,16 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         }
         KeyCode::Char(ch) if FeatureTab::from_key(ch).is_some() => {
             if let Some(tab) = FeatureTab::from_key(ch) {
-                state.set_tab(tab);
+                feed_navigation::set_tab_closing_dynamic(state, runtime, tab);
             }
         }
-        KeyCode::Char('1') => state.focus(Pane::Feed),
-        KeyCode::Char('2') => state.focus(Pane::Detail),
-        KeyCode::Char('3') => state.focus(Pane::Profile),
+        KeyCode::Char('1') => feed_navigation::close_current_dynamic_view(state, runtime),
+        KeyCode::Char('2') => {
+            if feed_navigation::close_author_before_detail_focus(state, runtime) {
+                state.focus(Pane::Detail);
+            }
+        }
+        KeyCode::Char('3') => feed_navigation::close_thread_before_profile_focus(state, runtime),
         KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => match state.tab {
             crate::features::FeatureTab::Chats => state.chat_select_next(),
             crate::features::FeatureTab::Groups => state.group_select_next(),
@@ -200,10 +216,7 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('f') => follow_selected(state, runtime, true),
         KeyCode::Char('F') => follow_selected(state, runtime, false),
         KeyCode::Esc => {
-            if state.tab == FeatureTab::Settings && outbox::close(state) {
-            } else if !state.close_help() {
-                state.status = "detail closed".to_string();
-            }
+            feed_navigation::handle_escape(state, runtime);
         }
         _ => {}
     }
@@ -256,13 +269,8 @@ fn open_selected_thread(state: &mut AppState, runtime: &AppRuntime) {
         state.status = "select a note before opening a thread".to_string();
         return;
     };
-    match runtime.open_thread(&row.id) {
+    match state.open_thread_feed(runtime, &row.id) {
         Ok(()) => {
-            state.thread_event_id = row.id.clone();
-            state.thread_rows.clear();
-            state.detail_cursor = 0;
-            state.detail_scroll = 0;
-            state.focus(Pane::Detail);
             state.status = format!("opened thread {}", short(&row.id));
         }
         Err(error) => state.status = format!("open thread failed: {error}"),
@@ -274,11 +282,8 @@ fn open_selected_author(state: &mut AppState, runtime: &AppRuntime) {
         state.status = "select a note before opening a profile".to_string();
         return;
     };
-    state.profile_pubkey = row.author_pubkey.clone();
-    state.profile_rows.clear();
-    match runtime.open_author(&row.author_pubkey) {
+    match state.open_author_feed(runtime, &row.author_pubkey) {
         Ok(()) => {
-            state.focus(Pane::Profile);
             state.status = format!("opened profile {}", row.author_label());
         }
         Err(error) => state.status = format!("open profile failed: {error}"),
@@ -366,14 +371,10 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
     let author_pubkey = row.author_pubkey.clone();
 
     match action {
-        "View profile" => {
-            state.profile_pubkey = author_pubkey.clone();
-            state.profile_rows.clear();
-            if runtime.open_author(&author_pubkey).is_ok() {
-                state.focus(Pane::Profile);
-                state.status = "opened profile".to_string();
-            }
-        }
+        "View profile" => match state.open_author_feed(runtime, &author_pubkey) {
+            Ok(()) => state.status = "opened profile".to_string(),
+            Err(error) => state.status = format!("open profile failed: {error}"),
+        },
         "React \u{2665}" => match runtime.react(&note_id, "+") {
             Ok(cid) => state.track_action(cid, "reaction"),
             Err(e) => state.status = format!("react failed: {e}"),
@@ -441,3 +442,6 @@ fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
         FeatureTab::Settings => state.push_toast("\u{2717} add relay/account not yet wired"),
     }
 }
+
+#[cfg(test)]
+mod tests;

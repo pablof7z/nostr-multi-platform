@@ -62,6 +62,8 @@ fn intents_for_rows(rows: &[TimelineRow]) -> BTreeSet<RenderIntent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::{AppState, Pane};
+    use crate::features::FeatureTab;
     use crate::ui::nostr_user::profile_wire::ProfileWire;
 
     fn row(id: &str, pubkey: &str) -> TimelineRow {
@@ -199,5 +201,66 @@ mod tests {
             .removed
             .contains(&RenderIntent::AuthorProfile { pubkey: m1 }));
         assert!(diff.added.is_empty());
+    }
+
+    #[test]
+    fn active_dynamic_profile_rows_drive_render_intents() {
+        let mut tracker = RenderIntentTracker::default();
+        let home_author = "a".repeat(64);
+        let profile_author = "b".repeat(64);
+        let state = AppState {
+            tab: FeatureTab::Home,
+            focused: Pane::Profile,
+            profile_pubkey: profile_author.clone(),
+            rows: vec![row("home-note", &home_author)],
+            profile_rows: vec![row("profile-note", &profile_author)],
+            ..Default::default()
+        };
+
+        let diff = tracker.sync_rows(state.render_intent_rows());
+
+        assert!(diff.added.contains(&RenderIntent::AuthorProfile {
+            pubkey: profile_author.clone()
+        }));
+        assert!(diff.added.contains(&RenderIntent::NoteRelations {
+            event_id: "profile-note".to_string()
+        }));
+        assert!(!diff.added.contains(&RenderIntent::AuthorProfile {
+            pubkey: home_author
+        }));
+        assert!(!diff.added.contains(&RenderIntent::NoteRelations {
+            event_id: "home-note".to_string()
+        }));
+    }
+
+    #[test]
+    fn switching_to_dynamic_thread_releases_home_intents_and_claims_thread_rows() {
+        let mut tracker = RenderIntentTracker::default();
+        let home_author = "c".repeat(64);
+        let thread_author = "d".repeat(64);
+        tracker.sync_rows(&[row("home-note", &home_author)]);
+        let state = AppState {
+            tab: FeatureTab::Home,
+            focused: Pane::Detail,
+            thread_event_id: "thread-root".to_string(),
+            rows: vec![row("home-note", &home_author)],
+            thread_rows: vec![row("thread-note", &thread_author)],
+            ..Default::default()
+        };
+
+        let diff = tracker.sync_rows(state.render_intent_rows());
+
+        assert!(diff.removed.contains(&RenderIntent::AuthorProfile {
+            pubkey: home_author
+        }));
+        assert!(diff.removed.contains(&RenderIntent::NoteRelations {
+            event_id: "home-note".to_string()
+        }));
+        assert!(diff.added.contains(&RenderIntent::AuthorProfile {
+            pubkey: thread_author
+        }));
+        assert!(diff.added.contains(&RenderIntent::NoteRelations {
+            event_id: "thread-note".to_string()
+        }));
     }
 }

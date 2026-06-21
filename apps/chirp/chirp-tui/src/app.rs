@@ -7,6 +7,7 @@ pub use crate::runtime::AppRuntime;
 use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
 
+pub(crate) mod dynamic_feeds;
 mod forms;
 mod navigation;
 
@@ -381,35 +382,9 @@ impl AppState {
             self.detail_scroll = 0;
         }
     }
-
-    fn apply_dynamic_feeds(&mut self, feeds: &std::collections::HashMap<String, Value>) {
-        if !self.profile_pubkey.is_empty() {
-            let key = author_feed_key(&self.profile_pubkey);
-            if let Some(feed) = feeds.get(&key) {
-                self.profile_rows = TimelineRow::from_snapshot(feed);
-            }
-        }
-        if !self.thread_event_id.is_empty() {
-            let key = thread_feed_key(&self.thread_event_id);
-            if let Some(feed) = feeds.get(&key) {
-                self.thread_rows = TimelineRow::from_snapshot(feed);
-                if self.detail_cursor >= self.thread_rows.len() {
-                    self.detail_cursor = self.thread_rows.len().saturating_sub(1);
-                }
-            }
-        }
-    }
 }
 
 use crate::short_id;
-
-fn author_feed_key(pubkey: &str) -> String {
-    format!("nmp.feed.author.{pubkey}")
-}
-
-fn thread_feed_key(event_id: &str) -> String {
-    format!("nmp.feed.thread.{event_id}")
-}
 
 #[cfg(test)]
 #[path = "app/dynamic_feed_tests.rs"]

@@ -309,6 +309,7 @@ fn decodes_dynamic_author_and_thread_op_feed_sidecars() {
         snapshot
             .feeds
             .get(&author_key)
+            .and_then(FeedProjection::as_value)
             .and_then(|feed| feed.get("cards"))
             .and_then(Value::as_array)
             .and_then(|cards| cards.first())
@@ -321,6 +322,7 @@ fn decodes_dynamic_author_and_thread_op_feed_sidecars() {
         snapshot
             .feeds
             .get(&thread_key)
+            .and_then(FeedProjection::as_value)
             .and_then(|feed| feed.get("cards"))
             .and_then(Value::as_array)
             .and_then(|cards| cards.first())
@@ -328,6 +330,24 @@ fn decodes_dynamic_author_and_thread_op_feed_sidecars() {
             .and_then(|card| card.get("id"))
             .and_then(Value::as_str),
         Some("thread-row")
+    );
+}
+
+#[test]
+fn typed_cleared_dynamic_feed_sidecar_is_preserved() {
+    let author_key = format!("nmp.feed.author.{}", "aa".repeat(32));
+    let typed = vec![nmp_core::TypedProjectionData {
+        key: author_key.clone(),
+        state: nmp_core::WireProjectionState::Cleared,
+        ..Default::default()
+    }];
+
+    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));
+
+    assert_eq!(
+        snapshot.feeds.get(&author_key),
+        Some(&FeedProjection::Cleared),
+        "a Cleared dynamic feed row must survive decode so AppState can tear down stale rows"
     );
 }
 

@@ -5,12 +5,16 @@
 //! are used ONLY by `FeatureSnapshot::from_projections` (the test/dev fixture
 //! path — ADR-0037). The live FlatBuffers path lives in `feature_snapshot_typed`.
 
+use std::collections::HashMap;
+
 use serde_json::Value;
 
 use crate::feature_snapshot::{
-    relay_count_subtitle, AccountLine, DmConversationLine, GroupLine, HistoryRelayLine, MessageLine,
-    OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
+    relay_count_subtitle, AccountLine, DmConversationLine, GroupLine, HistoryRelayLine,
+    MessageLine, OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine,
+    WalletLine,
 };
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub(crate) fn accounts_from(projections: &Value) -> Vec<AccountLine> {
     projections
@@ -224,15 +228,30 @@ pub(crate) fn follow_count_from(projections: &Value) -> usize {
         .map_or(0, Vec::len)
 }
 
+pub(crate) fn resolved_profiles_from(projections: &Value) -> HashMap<String, ProfileWire> {
+    projection(projections, "resolved_profiles")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|profiles| profiles.iter())
+        .map(|(key, value)| (key.clone(), profile_wire_from_value(key, value)))
+        .collect()
+}
+
+fn profile_wire_from_value(key: &str, value: &Value) -> ProfileWire {
+    let pubkey = optional_string(value, "pubkey").unwrap_or_else(|| key.to_string());
+    ProfileWire {
+        npub: nmp_core::display::to_npub(&pubkey),
+        npub_short: nmp_core::display::short_npub(&pubkey),
+        pubkey,
+        display_name: first_nonempty_option(value, &["display_name", "displayName", "name"]),
+        about: optional_string(value, "about"),
+        picture_url: first_nonempty_option(value, &["picture_url", "pictureUrl"]),
+        nip05: optional_string(value, "nip05"),
+    }
+}
+
 // V-112 (ADR-0042): profile_from / thread_from deleted — the author_view /
 // thread_view projections they decoded are removed from the kernel.
-
-pub(crate) fn summary_from(value: Option<&Value>) -> SummaryLine {
-    value.map_or_else(SummaryLine::default, |v| SummaryLine {
-        title: string_field(v, "title"),
-        subtitle: string_field(v, "subtitle"),
-    })
-}
 
 /// Parse `projections.outbox_summary` into a `SummaryLine`. aim.md §2 #4:
 /// `title`/`subtitle` removed from wire — compute from raw per-status counters.
@@ -296,9 +315,11 @@ pub(crate) fn projection<'a>(projections: &'a Value, key: &str) -> Option<&'a Va
 }
 
 pub(crate) fn first_nonempty(value: &Value, keys: &[&str]) -> String {
-    keys.iter()
-        .find_map(|key| optional_string(value, key))
-        .unwrap_or_default()
+    first_nonempty_option(value, keys).unwrap_or_default()
+}
+
+fn first_nonempty_option(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| optional_string(value, key))
 }
 
 pub(crate) fn string_field(value: &Value, key: &str) -> String {
