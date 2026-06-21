@@ -3,10 +3,11 @@
 //! `WasmRuntime` carries `Option<Arc<dyn Signer>>` populated via
 //! [`WorkerRequest::SetSigner`]. Until the slot is filled, every app-level
 //! write (PublishNote / React / Follow / Unfollow) honestly returns
-//! `signer_not_installed`. With the slot filled, the writes still return a
-//! `publish_path_not_wired` capability failure — Stage 3b lands the *signer*
-//! plumbing; Stage 3c will expose the `KernelReducer` publish-from-signed-
-//! event surface and route through `PublishEngine` from wasm.
+//! `signer_not_installed`. With the slot filled, the writes still return the
+//! single canonical `publish_not_supported_in_web_preview` capability failure
+//! (publishing is disabled in the web preview until #1007 wires a real
+//! `OutboxResolver`) — Stage 3b lands the *signer* plumbing; the publish path
+//! routes through `PublishEngine` once the composition root ships.
 //!
 //! # Why a separate file
 //!

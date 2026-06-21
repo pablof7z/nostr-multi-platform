@@ -54,6 +54,24 @@ impl super::KernelReducer {
         p_tags: &[String],
         correlation_id: Option<String>,
     ) -> Vec<OutboundMessage> {
+        // Single well-formedness chokepoint shared with the native pre-signed
+        // publish path (`actor/commands/publish.rs::publish_signed_event`): the
+        // event entering here is externally signed (the wasm host's
+        // `Nip07Signer::sign()` Promise, or any in-process Rust caller that
+        // signed out-of-band), so it is untrusted bytes. Verify the event-id
+        // hash + Schnorr signature of the OUTER envelope before it can reach the
+        // engine's outbound frames; a forged/garbled event fails closed (D6) —
+        // the categorized `ERR_MALFORMED_EVENT` toast is set and the matching
+        // `Failed` terminal is recorded under `correlation_id`, and no frame
+        // goes out. Validates well-formedness ONLY — a gift-wrap / Marmot
+        // envelope's inner semantics stay opaque (ADR-0025).
+        if self
+            .kernel
+            .verify_externally_signed_event(signed, correlation_id.as_deref())
+            .is_err()
+        {
+            return Vec::new();
+        }
         let outbound = self
             .kernel
             .publish_signed_with_correlation(signed, p_tags, correlation_id);

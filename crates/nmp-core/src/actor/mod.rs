@@ -731,10 +731,10 @@ pub enum ActorCommand {
     /// which replaced the deleted `nmp_app_publish_signed_event*` symbols
     /// with this typed Rust API — and conformance harnesses); the engine
     /// then falls back to the publish handle (== event id), preserving
-    /// prior behaviour. The pre-signed `Publish` round-trip already happened
-    /// to work by coincidence (`preferred_action_id` returns `event.id`, the
-    /// `None`-fallback also reports `event.id`); this field upgrades that
-    /// coincidence into an explicit guarantee a host can rely on.
+    /// prior behaviour. For the dispatched pre-signed `Publish` path this
+    /// `correlation_id` is the registry-minted operation identity — never the
+    /// event id (#1748): the event id is output data carried in `raw`, and a
+    /// host keys its spinner on the dispatch-returned correlation_id.
     PublishSignedEvent {
         raw: crate::store::RawEvent,
         target: crate::publish::PublishTarget,

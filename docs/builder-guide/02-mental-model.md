@@ -126,8 +126,8 @@ pub trait ActionModule: Send + Sync + 'static {
     fn start(ctx: &mut ActionContext, action: Self::Action)
         -> Result<(), ActionRejection> { Ok(()) }
 
-    // Optional: suggest a stable correlation_id (e.g. the event id).
-    fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> { None }
+    // (The registry always mints the correlation_id — the operation's identity,
+    // never a substituted event id. See #1748.)
 
     // True when the terminal outcome arrives async through
     // projections["action_stages"] rather than the dispatch return value.

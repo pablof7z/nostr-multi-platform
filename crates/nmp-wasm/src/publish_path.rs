@@ -48,7 +48,7 @@ use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 /// Stable error-code prefix returned when an `AppAction` variant has not yet
 /// been wired through the wasm publish path. The JS host pattern-matches the
 /// underscore-snake-case prefix the same way it does for
-/// `signer_not_installed` / `publish_path_not_wired`.
+/// `signer_not_installed` / `publish_not_supported_in_web_preview`.
 ///
 /// Always-compiled (the native test target compiles the runtime + protocol-
 /// conformance tests through the same crate, and the tests below pin the

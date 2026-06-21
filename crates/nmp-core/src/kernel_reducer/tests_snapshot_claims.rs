@@ -26,15 +26,44 @@ use crate::substrate::{SignedEvent, UnsignedEvent};
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 const RELAY: &str = "wss://relay.example";
 
-fn synthetic_signed_note() -> SignedEvent {
-    // Synthetic SignedEvent — the id and sig are placeholder hex strings
-    // (the publish engine never re-verifies the signature; it just routes
-    // the wire form). The kind:1 payload reaches the engine and goes
-    // through NIP-65 outbox resolution, which on a fresh kernel with no
-    // kind:10002 events in the store returns no targets and produces a
-    // `NoTargets` `RecentFailure` row (empty outbound). That's exactly
-    // the contract we want to assert: total, no panic, returns
-    // `Vec::new()` rather than throwing.
+/// A genuinely Schnorr-signed event over `keys`. The id is the SHA-256 of the
+/// canonical NIP-01 serialization and the signature verifies — so it passes the
+/// single well-formedness chokepoint
+/// (`Kernel::verify_externally_signed_event`) that #1748 added to the wasm
+/// verbatim write path. `kind`/`content`/`tags` are caller-supplied so the same
+/// helper builds a kind:1 note AND a kind:1059 gift-wrap envelope.
+fn real_signed_event(
+    keys: &::nostr::Keys,
+    kind: u16,
+    content: &str,
+    tags: Vec<::nostr::Tag>,
+) -> SignedEvent {
+    let event = ::nostr::EventBuilder::new(::nostr::Kind::from(kind), content)
+        .tags(tags)
+        .custom_created_at(::nostr::Timestamp::from_secs(1_700_000_000))
+        .sign_with_keys(keys)
+        .expect("generated keys sign");
+    SignedEvent {
+        id: event.id.to_hex(),
+        sig: event.sig.to_string(),
+        unsigned: UnsignedEvent {
+            pubkey: event.pubkey.to_hex(),
+            kind: u32::from(event.kind.as_u16()),
+            tags: event
+                .tags
+                .iter()
+                .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+                .collect(),
+            content: event.content.clone(),
+            created_at: event.created_at.as_secs(),
+        },
+    }
+}
+
+/// A forged signed event: well-shaped fields but a placeholder id+sig that do
+/// NOT verify. This is exactly the kind of bytes a malicious / buggy JS host
+/// could hand the wasm verbatim path.
+fn forged_signed_note() -> SignedEvent {
     SignedEvent {
         id: "a".repeat(64),
         sig: "b".repeat(128),
@@ -49,52 +78,91 @@ fn synthetic_signed_note() -> SignedEvent {
 }
 
 #[test]
-fn publish_signed_event_on_fresh_kernel_does_not_panic() {
+fn publish_signed_event_rejects_forged_event_fail_closed() {
+    // Regression for #1748 Fix 2: the wasm/verbatim write path
+    // (`KernelReducer::publish_signed_event`) must validate signed-event
+    // well-formedness through the SAME chokepoint as the native pre-signed
+    // path. Before the fix this path fed the engine directly with NO
+    // signature/id-hash verification, so a forged event from JS would have
+    // reached the outbound EVENT frames and gone out on the wire.
+    //
+    // The forged event has a placeholder id+sig that fail the SHA-256
+    // id-hash + Schnorr check, so it is rejected fail-closed (empty
+    // outbound) and the categorized `malformed_event` toast is set — never
+    // routed to a relay.
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
-    let signed = synthetic_signed_note();
-    // No kind:10002 known → engine records NoTargets → returns empty.
-    // The important assertion is the absence of a panic; the empty-
-    // outbound semantic is the documented D6 path.
+    let signed = forged_signed_note();
     let out = r.publish_signed_event(&signed, &[], None);
     assert!(
         out.is_empty(),
-        "fresh kernel has no NIP-65 outbox; publish must surface NoTargets, not outbound"
+        "a forged signed event must be rejected fail-closed, never routed"
+    );
+    let toast = r.kernel.last_error_toast_snapshot();
+    assert!(
+        toast
+            .as_deref()
+            .map_or(false, |t| t.contains("signed event rejected")),
+        "the malformed-event chokepoint must set its categorized toast; got: {toast:?}"
     );
 }
 
 #[test]
-fn publish_signed_event_accepts_empty_p_tags() {
-    // The engine recomputes `#p` from `signed.unsigned.tags`; the slice
-    // is informational. Pinning that empty is accepted is the smoke
-    // test for the doc contract.
+fn publish_signed_event_does_not_reject_valid_event_for_nip_shape() {
+    // The well-formedness chokepoint validates the OUTER envelope ONLY (id
+    // hash + Schnorr sig). A genuinely-signed kind:1 note is NOT rejected
+    // for any NIP-specific reason — on a fresh kernel with no kind:10002
+    // outbox it surfaces `NoTargets` (the documented D6 path), but it is NOT
+    // dropped at the malformed-event chokepoint. We prove that by asserting
+    // the categorized malformed toast is absent.
+    let keys = ::nostr::Keys::generate();
+    let signed = real_signed_event(&keys, 1, "a real note", vec![]);
+
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
-    let signed = synthetic_signed_note();
-    let _ = r.publish_signed_event(&signed, &[], None);
-    // Pass: no panic.
+    let _ = r.publish_signed_event(&signed, &[], Some("dispatch-1".to_string()));
+    let toast = r.kernel.last_error_toast_snapshot();
+    assert!(
+        !toast
+            .as_deref()
+            .map_or(false, |t| t.contains("signed event rejected")),
+        "a well-formed event must NOT trip the malformed-event chokepoint; got: {toast:?}"
+    );
 }
 
 #[test]
-fn publish_signed_event_threads_correlation_id_into_engine() {
-    // The correlation_id parameter must reach the publish engine so
-    // terminals land in `action_results` keyed on the dispatch id.
-    // Without this, the wasm host receives terminals keyed on the
-    // event id it never saw (partial-success UX would have no key to
-    // correlate on). The contract is byte-identical with the native
-    // generic publish dispatched path which uses
-    // `Kernel::publish_signed_to_with_correlation`.
-    //
-    // We can't directly observe the engine's correlation_id table from
-    // here (it's `pub(crate)`); the assertion below pins the surface
-    // shape (no panic when correlation_id is `Some(_)`) — the deep
-    // wire-up is exercised by the native publish tests in
-    // `actor::commands::tests` and `publish::engine::tests`.
+fn publish_signed_event_does_not_reject_valid_gift_wrap_for_nip_shape() {
+    // Opacity (ADR-0025): a kind:1059 gift-wrap is opaque ciphertext under a
+    // well-formed signed envelope. The chokepoint validates the OUTER
+    // envelope's sig/id-hash ONLY and must NOT inspect or reject the inner
+    // semantics. A genuinely-signed kind:1059 with an EXPLICIT relay pin (so
+    // the D10 private-envelope routing gate is satisfied) must therefore pass
+    // the malformed-event chokepoint — it is not rejected for "NIP shape".
+    let keys = ::nostr::Keys::generate();
+    // Opaque gift-wrap: random-looking ciphertext content + a recipient `p`
+    // tag, signed by a (here, ephemeral) key — exactly the NIP-59 outer form.
+    let signed = real_signed_event(
+        &keys,
+        1059,
+        "AESGCM-ciphertext-opaque-payload",
+        vec![::nostr::Tag::parse(["p", PK]).expect("valid p tag")],
+    );
+
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
-    let signed = synthetic_signed_note();
-    let _ = r.publish_signed_event(&signed, &[], Some("dispatch-1".to_string()));
-    // Pass: no panic with Some correlation_id.
+    // The verbatim path uses PublishTarget::Auto internally; the D10 gate
+    // would refuse a kind:1059 with Auto, but that is a routing-policy
+    // refusal, NOT the malformed-event chokepoint. We assert the
+    // malformed-event chokepoint did not fire (the envelope is well-formed).
+    let _ = r.publish_signed_event(&signed, &[], None);
+    let toast = r.kernel.last_error_toast_snapshot();
+    assert!(
+        !toast
+            .as_deref()
+            .map_or(false, |t| t.contains("signed event rejected")),
+        "a well-formed gift-wrap must NOT be rejected for NIP shape (ADR-0025 opacity); \
+         got: {toast:?}"
+    );
 }
 
 #[test]

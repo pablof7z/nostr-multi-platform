@@ -197,23 +197,6 @@ impl ActionModule for PublishModule {
 
     type Action = PublishAction;
 
-    /// For pre-signed `Publish` actions, use the event's `id` as the
-    /// `correlation_id`. The publish engine's `LastTerminal.correlation_id` is
-    /// already the `PublishHandle` (== `event.id`), so using the same value
-    /// here means `dispatch_action`'s return and `action_results` in the
-    /// snapshot share the same identifier.
-    ///
-    /// `PublishRaw` and `PublishProfile` return `None` — the event id isn't
-    /// known until the actor signs. `Cancel` is not reachable through
-    /// `dispatch_action` (`start` rejects it), so it never reaches this
-    /// function; it falls into the `_` arm and returns `None`.
-    fn preferred_action_id(action: &Self::Action) -> Option<crate::substrate::ActionId> {
-        match action {
-            PublishAction::Publish { event, .. } if !event.id.is_empty() => Some(event.id.clone()),
-            _ => None,
-        }
-    }
-
     /// Publish actions settle asynchronously — the actor signs, hands the
     /// event to the publish engine, and the terminal verdict arrives through
     /// `projections["action_results"]` on a later tick.  Recording sites:

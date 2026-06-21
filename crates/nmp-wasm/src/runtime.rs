@@ -71,8 +71,9 @@ pub struct WasmRuntime {
     /// V-01 Stage 3b — signer slot. `None` until the host calls
     /// `SetSigner`. App-level writes that hit `app_action()` distinguish
     /// the two states (no slot → `signer_not_installed`; slot filled →
-    /// `publish_path_not_wired`) so the JS host can present an honest UX
-    /// banner instead of guessing.
+    /// `publish_not_supported_in_web_preview`, the single canonical disable
+    /// token) so the JS host can present an honest UX banner instead of
+    /// guessing.
     ///
     /// `Arc<dyn Signer>` (not `Rc`) matches the existing `nmp-signers`
     /// shape — `Signer` is `Send + Sync` because the native actor loop

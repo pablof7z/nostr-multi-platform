@@ -198,16 +198,14 @@ fn correlation_id_override_is_reported_in_pending_terminal_not_the_handle() {
 
 /// Symmetric round-trip guarantee for pre-signed `PublishAction::Publish`.
 ///
-/// Today the dispatch return value happens to equal the event id (via
-/// `PublishModule::preferred_action_id`), and the engine's `None`-fallback also
-/// reports the handle (== event id) — so the round-trip closes by coincidence.
-/// The correlation_id is threaded through the executor →
+/// The correlation_id is the operation's identity (a registry-minted id), NOT
+/// the event id (#1748). It is threaded through the executor →
 /// `ActorCommand::PublishSignedEvent` → `kernel.publish_signed_with_correlation`
 /// → `engine.start_publish(_, _, Some(id))`, so the engine reports the dispatch
-/// id explicitly even when it differs from the event id. This test simulates
-/// that path at the engine layer: a `Publish` action whose dispatch correlation_id
-/// is NOT the event id must still surface that correlation_id in the terminal —
-/// not the handle / event id.
+/// id in the terminal even though it differs from the event id. This test
+/// simulates that path at the engine layer: a `Publish` action whose dispatch
+/// correlation_id is NOT the event id must still surface that correlation_id in
+/// the terminal — not the handle / event id.
 #[test]
 fn publish_action_threads_dispatch_correlation_id_through_to_terminal() {
     let mut outbox = StaticOutbox::default();

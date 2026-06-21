@@ -27,10 +27,9 @@ pub trait ActionModule: Send + Sync + 'static {
     fn start(ctx: &mut ActionContext, action: Self::Action)
         -> Result<(), ActionRejection> { Ok(()) }
 
-    // Optional: suggest the correlation_id the registry should assign.
-    // Useful when the action's natural identity is already stable (e.g. an
-    // event id for a publish action). Default: auto-generated 32-hex string.
-    fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> { None }
+    // (The registry always mints the correlation_id — the operation's identity.
+    // There is no `preferred_action_id` hook: an action must NEVER substitute
+    // output data such as a signed event's id for its identity. See #1748.)
 
     // True when the action's terminal outcome arrives asynchronously through
     // projections["action_stages"] (signing, relay ack, etc.) rather than as
@@ -52,8 +51,9 @@ pub trait ActionModule: Send + Sync + 'static {
 - **Associated types:** `Action` is the input — whatever the host serializes
   and passes to `nmp_app_dispatch_action`.
 - **Lifecycle:** `start` validates synchronously → if `Ok`, the registry
-  mints a `correlation_id` (or uses the one from `preferred_action_id`) and
-  calls `execute` → `execute` calls `send(cmd)` to enqueue `ActorCommand`(s)
+  mints the `correlation_id` (the operation's sole identity — never an event
+  id) and calls `execute` → `execute` calls `send(cmd)` to enqueue
+  `ActorCommand`(s)
   → actor processes them → outcome surfaces in the snapshot (D6: never as an
   exception across FFI).
 - **State:** none on the trait. App state lives in an `Arc<Mutex<T>>` owned
