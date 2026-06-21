@@ -12,6 +12,7 @@ pub(crate) use profile_thrashing::profile_thrashing;
 
 use crate::report::ScenarioResult;
 use nmp_core::decode_snapshot_envelope;
+use nmp_testing::harness_probe::{drain_latest, recv_latest_until};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -24,11 +25,7 @@ pub(super) const WARMUP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Drain the update channel and return the newest FlatBuffers frame received.
 pub(super) fn drain(rx: &Receiver<Vec<u8>>) -> Option<Vec<u8>> {
-    let mut latest = None;
-    while let Ok(update) = rx.try_recv() {
-        latest = Some(update);
-    }
-    latest
+    drain_latest(rx)
 }
 
 /// Wait up to `ceiling` for the first update to arrive, then drain any
@@ -43,36 +40,24 @@ pub(super) fn drain(rx: &Receiver<Vec<u8>>) -> Option<Vec<u8>> {
 /// with no update — callers must treat `None` as `snapshot_valid = false`.
 pub(super) fn drain_until(rx: &Receiver<Vec<u8>>, ceiling: Duration) -> Option<Vec<u8>> {
     let deadline = Instant::now() + ceiling;
-    let first = wait_update(rx, deadline);
-    if first.is_none() {
-        eprintln!("drain timeout — snapshot may be stale; gate will fail closed");
-        return None;
+    match wait_update(rx, deadline) {
+        Some(latest) => Some(latest),
+        None => {
+            eprintln!("drain timeout — snapshot may be stale; gate will fail closed");
+            None
+        }
     }
-    // Drain any additional updates that arrived while we waited.
-    Some(drain(rx).unwrap_or_else(|| first.unwrap()))
 }
 
-/// Block until a new update arrives or the deadline passes.
-/// Returns `None` only when the deadline has been reached.
+/// Block until a new update arrives or the deadline passes, returning the newest
+/// queued frame. Returns `None` only when the deadline is reached with no frame
+/// or the actor disconnected before one arrived.
+///
+/// Backed by `recv_latest_until`, which blocks on the actual deadline rather
+/// than waking on a fixed interval; after the first frame it collapses any
+/// immediately-queued updates into the newest (older snapshots are superseded).
 pub(super) fn wait_update(rx: &Receiver<Vec<u8>>, deadline: Instant) -> Option<Vec<u8>> {
-    loop {
-        let remaining = deadline
-            .checked_duration_since(Instant::now())
-            .unwrap_or(Duration::ZERO);
-        if remaining.is_zero() {
-            return drain(rx);
-        }
-        match rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
-            Ok(update) => return Some(update),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                if let Some(latest) = drain(rx) {
-                    return Some(latest);
-                }
-                continue;
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return None,
-        }
-    }
+    recv_latest_until(rx, deadline)
 }
 
 /// Extract the typed `visible_items` metric off the Tier-3 envelope
