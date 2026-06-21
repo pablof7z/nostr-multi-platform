@@ -242,7 +242,7 @@ fn full_registry_workflow() {
 // =============================================================================
 //
 // `nmp add component swiftui/content-view` must pull in all three declared
-// transitive deps (content-core, content-media-grid, content-quote-card) in a
+// transitive deps (content-core, content-media-grid, content-kind-registry) in a
 // single command. This e2e angle goes beyond component.rs's path-exists checks:
 // it verifies that each installed file's lock `source_sha256` matches its
 // actual on-disk content — the invariant that makes future `nmp update` conflict
@@ -269,7 +269,8 @@ fn dependency_resolution() {
         (nc.join("NostrContentRenderer.swift"),        "Components/NostrContent/NostrContentRenderer.swift"),
         (nc.join("ContentTreeWire.swift"),             "Components/NostrContent/ContentTreeWire.swift"),
         (nc.join("NostrMediaGrid.swift"),              "Components/NostrContent/NostrMediaGrid.swift"),
-        (nc.join("NostrQuoteCard.swift"),              "Components/NostrContent/NostrQuoteCard.swift"),
+        (nc.join("NostrKindRegistry.swift"),           "Components/NostrContent/NostrKindRegistry.swift"),
+        (nc.join("EmbeddedEvent.swift"),               "Components/NostrContent/EmbeddedEvent.swift"),
         (nc.join("NostrContentView.swift"),            "Components/NostrContent/NostrContentView.swift"),
         (nc.join("NostrContentGrouping.swift"),        "Components/NostrContent/NostrContentGrouping.swift"),
         (nc.join("Examples/NostrContentViewPreview.swift"), "Components/NostrContent/Examples/NostrContentViewPreview.swift"),
@@ -278,13 +279,13 @@ fn dependency_resolution() {
         assert!(path.exists(), "expected installed file: {}", path.display());
     }
 
-    // Lock must record all four component ids.
+    // Lock must record the content-view + its transitive component ids.
     let lock_path = root.join("nmp.components.lock");
     let lock = fs::read_to_string(&lock_path).unwrap();
     for id in &[
         "swiftui/content-core",
         "swiftui/content-media-grid",
-        "swiftui/content-quote-card",
+        "swiftui/content-kind-registry",
         "swiftui/content-view",
     ] {
         assert!(
@@ -380,7 +381,8 @@ fn cross_platform_compose() {
         (nc.join("NostrContentRenderer.kt"),  "Components/NostrContent/NostrContentRenderer.kt"),
         (nc.join("ContentTreeWire.kt"),        "Components/NostrContent/ContentTreeWire.kt"),
         (nc.join("NostrMediaGrid.kt"),         "Components/NostrContent/NostrMediaGrid.kt"),
-        (nc.join("NostrQuoteCard.kt"),         "Components/NostrContent/NostrQuoteCard.kt"),
+        (nc.join("NostrKindRegistry.kt"),      "Components/NostrContent/NostrKindRegistry.kt"),
+        (nc.join("EmbeddedEvent.kt"),          "Components/NostrContent/EmbeddedEvent.kt"),
         (nc.join("NostrContentView.kt"),       "Components/NostrContent/NostrContentView.kt"),
         (nc.join("NostrContentGrouping.kt"),   "Components/NostrContent/NostrContentGrouping.kt"),
     ];
@@ -394,13 +396,13 @@ fn cross_platform_compose() {
         "compose install must not install .swift files"
     );
 
-    // Lock must cover all four compose component ids.
+    // Lock must cover the content-view + its transitive compose component ids.
     let lock_path = tmp.path().join("nmp.components.lock");
     let lock = fs::read_to_string(&lock_path).unwrap();
     for id in &[
         "compose/content-core",
         "compose/content-media-grid",
-        "compose/content-quote-card",
+        "compose/content-kind-registry",
         "compose/content-view",
     ] {
         assert!(

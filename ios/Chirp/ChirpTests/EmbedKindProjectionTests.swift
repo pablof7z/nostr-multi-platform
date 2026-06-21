@@ -191,8 +191,7 @@ final class EmbedKindProjectionTests: XCTestCase {
         let registry = NostrKindRegistry.makeDefault()
         let view = NoteContentView(content: "", contentTree: tree)
             .environmentObject(ChirpRouter())
-            .environment(\.nostrKindRegistry, registry)
-            .environment(\.embedHost, host)
+            .embedEnvelopeSource(host, registry: registry)
             .frame(width: 320, alignment: .leading)
 
         let renderer = ImageRenderer(content: view)

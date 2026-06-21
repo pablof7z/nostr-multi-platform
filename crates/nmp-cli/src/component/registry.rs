@@ -45,10 +45,6 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/swiftui/content-media-grid/NostrMediaGrid.swift"),
     ),
     (
-        "swiftui/content-quote-card/NostrQuoteCard.swift",
-        include_str!("../../registry/swiftui/content-quote-card/NostrQuoteCard.swift"),
-    ),
-    (
         "swiftui/content-view/NostrContentView.swift",
         include_str!("../../registry/swiftui/content-view/NostrContentView.swift"),
     ),
@@ -94,8 +90,20 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/compose/content-media-grid/NostrMediaGrid.kt"),
     ),
     (
-        "compose/content-quote-card/NostrQuoteCard.kt",
-        include_str!("../../registry/compose/content-quote-card/NostrQuoteCard.kt"),
+        "compose/content-kind-registry/EmbedKindProjection.kt",
+        include_str!("../../registry/compose/content-kind-registry/EmbedKindProjection.kt"),
+    ),
+    (
+        "compose/content-kind-registry/EmbedChromeContainer.kt",
+        include_str!("../../registry/compose/content-kind-registry/EmbedChromeContainer.kt"),
+    ),
+    (
+        "compose/content-kind-registry/NostrKindRegistry.kt",
+        include_str!("../../registry/compose/content-kind-registry/NostrKindRegistry.kt"),
+    ),
+    (
+        "compose/content-kind-registry/EmbeddedEvent.kt",
+        include_str!("../../registry/compose/content-kind-registry/EmbeddedEvent.kt"),
     ),
     (
         "compose/content-view/NostrContentView.kt",
@@ -129,10 +137,6 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "tui/content-media-grid/nostr_media_grid.rs",
         include_str!("../../registry/tui/content-media-grid/nostr_media_grid.rs"),
-    ),
-    (
-        "tui/content-quote-card/nostr_quote_card.rs",
-        include_str!("../../registry/tui/content-quote-card/nostr_quote_card.rs"),
     ),
     (
         "tui/content-kind-registry/mod.rs",
@@ -282,6 +286,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "swiftui/content-kind-registry/EmbeddedEvent.swift",
         include_str!("../../registry/swiftui/content-kind-registry/EmbeddedEvent.swift"),
+    ),
+    (
+        "swiftui/content-kind-registry/EmbedHostEnvironment.swift",
+        include_str!("../../registry/swiftui/content-kind-registry/EmbedHostEnvironment.swift"),
     ),
     (
         "swiftui/content-kind-30023/ArticleEmbed.swift",

@@ -65,25 +65,14 @@ target = "Components/NostrContent/NostrMediaGrid.swift"
 role = "source"
 
 [[components]]
-id = "swiftui/content-quote-card"
-version = "0.1.1"
-target = "swiftui"
-description = "Reusable quote/embed card with collapsed, compact, rich, and missing variants."
-dependencies = ["swiftui/content-core"]
-[[components.files]]
-source = "swiftui/content-quote-card/NostrQuoteCard.swift"
-target = "Components/NostrContent/NostrQuoteCard.swift"
-role = "source"
-
-[[components]]
 id = "swiftui/content-view"
-version = "0.1.1"
+version = "0.2.0"
 target = "swiftui"
-description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
+description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, kind-dispatched event-ref embeds, and typed placeholders."
 dependencies = [
     "swiftui/content-core",
     "swiftui/content-media-grid",
-    "swiftui/content-quote-card",
+    "swiftui/content-kind-registry",
 ]
 [[components.files]]
 source = "swiftui/content-view/NostrContentView.swift"
@@ -102,7 +91,7 @@ role = "example"
 id = "swiftui/content-kind-registry"
 version = "0.1.0"
 target = "swiftui"
-description = "SwiftUI kind-dispatch registry for embedded Nostr events, including the embed chrome container and embedded-event view."
+description = "SwiftUI kind-dispatch registry for embedded Nostr events, including the embed chrome container, embedded-event view, default kind renderers, and the embed-host environment seam consumed by content-view."
 dependencies = [
     "swiftui/content-core",
     "swiftui/user-avatar",
@@ -110,6 +99,10 @@ dependencies = [
 [[components.files]]
 source = "swiftui/content-kind-registry/EmbedKindProjection.swift"
 target = "Components/NostrContent/EmbedKindProjection.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbedHostEnvironment.swift"
+target = "Components/NostrContent/EmbedHostEnvironment.swift"
 role = "source"
 [[components.files]]
 source = "swiftui/content-kind-registry/EmbedChromeContainer.swift"

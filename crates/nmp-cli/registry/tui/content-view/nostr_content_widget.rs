@@ -9,7 +9,6 @@ use super::super::{
     content_kind_registry::EmbeddedEvent,
     content_tree_wire::{WireNode, WireUri},
     nostr_media_grid::NostrMediaGrid,
-    nostr_quote_card::NostrQuoteCard,
     ratatui_text_wrap::wrap_spans,
 };
 use super::{is_inline_root, NostrContentView};
@@ -61,11 +60,11 @@ impl NostrContentView<'_> {
             }
             WireNode::EventRef(uri) => {
                 if !self.render_embedded_event(uri, area, buf, cursor) {
-                    self.render_quote(node, area, buf, cursor);
+                    self.render_unresolved_embed(uri, area, buf, cursor);
                 }
             }
-            WireNode::BlockQuote { .. } => {
-                self.render_quote(node, area, buf, cursor);
+            WireNode::BlockQuote { children } => {
+                self.render_blockquote(children, area, buf, cursor);
             }
             _ => {
                 let lines = {
@@ -161,17 +160,26 @@ impl NostrContentView<'_> {
         events.get(&uri.primary_id).or_else(|| events.get(&uri.uri))
     }
 
-    fn render_quote(&self, node: &WireNode, area: Rect, buf: &mut Buffer, cursor: &mut u16) {
-        let card = NostrQuoteCard::new(self.tree, node)
-            .render_data(self.render_data)
-            .media_images(self.media_images);
-        let height = card.preferred_height(area.width as usize);
-        let rect = take_area(area, cursor, height);
-        if rect.is_empty() {
-            return;
-        }
-        card.render(rect, buf);
-        *cursor = rect.bottom().saturating_add(1).min(area.bottom());
+    /// Render an unresolved `nostr:` event reference — the kernel has not
+    /// shipped its envelope yet (no host wired, or the fetch is in flight). The
+    /// resolved render dispatches through the kind-registry `EmbeddedEvent`; this
+    /// is the inline placeholder line shown until then.
+    fn render_unresolved_embed(
+        &self,
+        uri: &WireUri,
+        area: Rect,
+        buf: &mut Buffer,
+        cursor: &mut u16,
+    ) {
+        let lines = self.event_ref_lines(uri, area.width as usize);
+        self.render_lines(lines, area, buf, cursor);
+    }
+
+    /// Render a markdown blockquote (`> …`). Mirrors the `lines()` path's
+    /// `blockquote_lines`; not an embedded-event quote card.
+    fn render_blockquote(&self, children: &[usize], area: Rect, buf: &mut Buffer, cursor: &mut u16) {
+        let lines = self.blockquote_lines(children, area.width as usize);
+        self.render_lines(lines, area, buf, cursor);
     }
 
     fn render_media(

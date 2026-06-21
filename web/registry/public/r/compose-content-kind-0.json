@@ -5,7 +5,7 @@
   "description": "Profile metadata (NIP-01, kind:0) embed renderer — avatar, display name, pubkey chip, NIP-05, and about preview.",
   "dependencies": [],
   "registryDependencies": [
-    "compose-content-core"
+    "compose-content-kind-registry"
   ],
   "files": [
     {
