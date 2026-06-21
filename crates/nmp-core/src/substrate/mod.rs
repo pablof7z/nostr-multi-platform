@@ -100,12 +100,15 @@ pub use contacts_lookup::{
 pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
 
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
-// Step 9: the `DomainMigration` / `MigrationTx` value types passed to
-// `EventStore::run_migrations` moved with the store (they are consumed only by
-// that seam, and keeping them in `nmp-store` lets the store crate compile
-// without a back-edge into substrate). Re-exported here so the legacy
-// `nmp_core::substrate::{DomainMigration, MigrationTx}` import path is
-// unchanged.
+// Issue #1720: the NIP-01 event value types `SignedEvent` / `UnsignedEvent` /
+// `SigningError` are dependency-light vocabulary and now live in the tier-0
+// `nmp-signer-iface` crate (see `substrate/identity.rs`), so `nmp-signers` and
+// other signer-facing crates can name them without depending on `nmp-core`.
+// This re-export is a STAGED migration aid, NOT a durable seam: it keeps the
+// ~94 existing `nmp_core::substrate::{...}` importers compiling while #1720
+// lands the `nmp-signers` decoupling slice. Deletion gate: issue #1772 migrates
+// every remaining importer onto direct `nmp_signer_iface::{...}` imports and
+// removes this re-export. The type owner is `nmp-signer-iface`.
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 /// V-78 — NIP crates need to name `SignerOp` to `op.wait()` a parked
 /// remote (NIP-46 bunker) sign on an off-actor worker thread (the

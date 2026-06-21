@@ -13,7 +13,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 use nmp_signers::signers::{Nip46Rpc, Nip46Transport, Nip07Payload};
 use nmp_signers::{
     AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner, Nip07Signer,

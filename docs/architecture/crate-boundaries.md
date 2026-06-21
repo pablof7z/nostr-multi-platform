@@ -52,6 +52,21 @@ Sibling crates do not depend on each other unless the dependency is part of
 their declared responsibility. Binding crates are siblings: one binding crate
 must not depend on another binding crate for business behavior.
 
+`nmp-signer-iface` (Layer 0) owns the dependency-light signing substrate
+vocabulary so lower-layer signer and protocol crates can name it without
+depending on the kernel: the NIP-01 event value types `SignedEvent` /
+`UnsignedEvent` / `SigningError`, the `SignerOp` / `SignerError` op vocabulary,
+the NIP-46 `Nip46Rpc` / `Nip46Transport` and NIP-55 external-signer transport
+contracts, and the actor-facing `RemoteSignerHandle` trait. `nmp-signers`
+(Layer 1) depends only on `nmp-signer-iface` for this vocabulary, not on
+`nmp-core` (issue #1720). `nmp-core` temporarily re-exports `SignedEvent` /
+`UnsignedEvent` / `SigningError` through `nmp_core::substrate` and
+`RemoteSignerHandle` at the crate root so the ~94 existing kernel-side and
+protocol-crate import paths keep resolving; that re-export is a staged
+migration aid, not a durable seam — issue #1772 tracks migrating every
+remaining importer onto direct `nmp_signer_iface` imports and deleting the
+re-exports. The type owner is `nmp-signer-iface`.
+
 ---
 
 ## 3. Kernel Substrate
