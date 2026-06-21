@@ -11,7 +11,10 @@ const AUTHOR_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const AUTHOR_C: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn address(author: &str, d_tag: &str) -> String {
-    format!("{KIND_LONG_FORM_ARTICLE}:{author}:{d_tag}")
+    // Use the canonical identity primitive (not a hand-rolled format!) so these
+    // tests cannot pass by mirroring a buggy wire string — they exercise the
+    // same `AddressCoordinate` the production row id is built from.
+    nmp_nip18::AddressCoordinate::new(KIND_LONG_FORM_ARTICLE, author, d_tag).to_wire()
 }
 
 fn article(id: &str, author: &str, d_tag: &str, created_at: u64, topic: &str) -> KernelEvent {
@@ -73,13 +76,50 @@ fn tag_only_repost(id: &str, author: &str, target_id: &str, created_at: u64) -> 
     }
 }
 
+/// A generic repost whose target is named by an `a` tag (proven coordinate),
+/// with no embedded body and no local lookup.
+fn address_repost(id: &str, author: &str, coord: &str, created_at: u64) -> KernelEvent {
+    KernelEvent {
+        id: id.to_string(),
+        author: author.to_string(),
+        kind: nmp_nip18::KIND_GENERIC_REPOST,
+        created_at,
+        tags: vec![
+            vec!["a".to_string(), coord.to_string()],
+            vec!["k".to_string(), KIND_LONG_FORM_ARTICLE.to_string()],
+        ],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+fn delete_event(id: &str, author: &str, tags: Vec<Vec<&str>>) -> KernelEvent {
+    KernelEvent {
+        id: id.to_string(),
+        author: author.to_string(),
+        kind: nmp_nip18::KIND_DELETE,
+        created_at: 99,
+        tags: tags
+            .into_iter()
+            .map(|t| t.into_iter().map(str::to_string).collect())
+            .collect(),
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
 #[test]
-fn primary_kind30023_acquires_kind16_not_kind6() {
+fn primary_kind30023_acquires_kind16_and_deletes_not_kind6() {
     assert_eq!(
         longform_acquisition_kinds(),
-        [KIND_LONG_FORM_ARTICLE, nmp_nip18::KIND_GENERIC_REPOST]
-            .into_iter()
-            .collect()
+        [
+            KIND_LONG_FORM_ARTICLE,
+            nmp_nip18::KIND_GENERIC_REPOST,
+            nmp_nip18::KIND_DELETE,
+        ]
+        .into_iter()
+        .collect(),
+        "an addressable feed must acquire kind:16 reposts and kind:5 deletes, not kind:6"
     );
 }
 
@@ -242,4 +282,141 @@ fn replaceable_article_repost_dedupes_by_address_and_keeps_freshest_article() {
         row.reposted_by.is_none(),
         "newer direct article now positions the row"
     );
+}
+
+#[test]
+fn address_tag_repost_positions_coordinate_row_without_fetching_body() {
+    // E02/E03: an `a`-tag repost proves the coordinate even with no embedded
+    // body and no local lookup. The row exists keyed at the coordinate; the
+    // article body is unresolved (None) but the identity is NOT guessed.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|author| {
+        author == AUTHOR_C
+    })));
+    let coord = address(AUTHOR_A, "article-a");
+
+    feed.on_kernel_event(&address_repost("wrapper", AUTHOR_C, &coord, 40));
+
+    let snapshot = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snapshot.cards.len(), 1);
+    let row = &snapshot.cards[0].card;
+    assert_eq!(row.id, coord);
+    assert!(
+        row.article.is_none(),
+        "body is unresolved; only the coordinate identity is proven"
+    );
+    assert_eq!(row.reposted_by.as_ref().unwrap().repost_event_id, "wrapper");
+}
+
+#[test]
+fn address_repost_and_direct_article_collapse_to_one_coordinate_row() {
+    // E02/E03 collapse: an `a`-tag repost and the real article at the same
+    // coordinate are ONE row, not two; the body hydrates the existing row.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    let coord = address(AUTHOR_A, "article-a");
+    let real = article("real-id", AUTHOR_A, "article-a", 10, "nostr");
+
+    feed.on_kernel_event(&address_repost("wrapper", AUTHOR_C, &coord, 40));
+    feed.on_kernel_event(&real);
+
+    let snapshot = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snapshot.cards.len(), 1, "versions collapse to one row");
+    let row = &snapshot.cards[0].card;
+    assert_eq!(row.id, coord);
+    assert_eq!(row.article.as_ref().unwrap().id, "real-id");
+}
+
+#[test]
+fn newer_article_at_coordinate_collapses_older_version() {
+    // E02/E03 latest-at-coordinate: a newer event at the same (pubkey,kind,d)
+    // replaces the older; versions do not stack.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    let v1 = article("v1", AUTHOR_A, "same", 10, "nostr");
+    let v2 = article("v2", AUTHOR_A, "same", 50, "nostr");
+
+    feed.on_kernel_event(&v1);
+    feed.on_kernel_event(&v2);
+
+    let snapshot = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snapshot.cards.len(), 1);
+    assert_eq!(snapshot.cards[0].card.id, address(AUTHOR_A, "same"));
+    assert_eq!(snapshot.cards[0].card.article.as_ref().unwrap().id, "v2");
+}
+
+#[test]
+fn kind5_coordinate_delete_by_owner_removes_row() {
+    // H06: a kind:5 with an `a` tag deletes the coordinate row — when the
+    // delete author owns the coordinate.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    let real = article("real-id", AUTHOR_A, "article-a", 10, "nostr");
+    feed.on_kernel_event(&real);
+    assert_eq!(feed.len(), 1);
+
+    let coord = address(AUTHOR_A, "article-a");
+    feed.on_kernel_event(&delete_event("del", AUTHOR_A, vec![vec!["a", &coord]]));
+
+    assert!(feed.is_empty(), "owner's a-tag delete removes the row");
+}
+
+#[test]
+fn kind5_coordinate_delete_by_foreign_author_is_noop() {
+    // H06 negative: a foreign delete cannot remove someone else's coordinate.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    let real = article("real-id", AUTHOR_A, "article-a", 10, "nostr");
+    feed.on_kernel_event(&real);
+
+    let coord = address(AUTHOR_A, "article-a");
+    feed.on_kernel_event(&delete_event("del", AUTHOR_B, vec![vec!["a", &coord]]));
+
+    assert_eq!(feed.len(), 1, "foreign a-tag delete must not remove the row");
+}
+
+#[test]
+fn kind5_event_id_delete_removes_repost_source() {
+    // A kind:5 with an `e` tag removes the row positioned by that event id —
+    // here a repost wrapper, validated against its author.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|author| {
+        author == AUTHOR_C
+    })));
+    let target = article("target", AUTHOR_A, "article-a", 10, "nostr");
+    feed.on_kernel_event(&embedded_repost("wrapper", AUTHOR_C, &target, 40));
+    assert_eq!(feed.len(), 1);
+
+    feed.on_kernel_event(&delete_event("del", AUTHOR_C, vec![vec!["e", "wrapper"]]));
+
+    assert!(feed.is_empty(), "author's e-tag delete removes the source row");
+}
+
+#[test]
+fn kind5_coordinate_delete_does_not_remove_a_newer_version() {
+    // A newer version published AFTER the deletion request survives: the store
+    // (and feed) only retract versions created at or before the delete.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    feed.on_kernel_event(&article("v1", AUTHOR_A, "article-a", 10, "nostr"));
+
+    let coord = address(AUTHOR_A, "article-a");
+    // delete_event timestamps at 99; a v2 at 200 is newer than the deletion.
+    feed.on_kernel_event(&article("v2", AUTHOR_A, "article-a", 200, "nostr"));
+    feed.on_kernel_event(&delete_event("del", AUTHOR_A, vec![vec!["a", &coord]]));
+
+    assert_eq!(feed.len(), 1, "a version newer than the delete survives");
+    let snapshot = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snapshot.cards[0].card.article.as_ref().unwrap().id, "v2");
+}
+
+#[test]
+fn kind5_with_unresolvable_target_is_noop() {
+    // H06 negative: a kind:5 whose only target cannot resolve to a row (an
+    // `a` tag for a non-addressable kind, an `e` tag for nothing present)
+    // changes nothing — never guess.
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    let real = article("real-id", AUTHOR_A, "article-a", 10, "nostr");
+    feed.on_kernel_event(&real);
+
+    feed.on_kernel_event(&delete_event(
+        "del",
+        AUTHOR_A,
+        vec![vec!["a", "1:aaaa:x"], vec!["e", "no-such-event"]],
+    ));
+
+    assert_eq!(feed.len(), 1, "unresolvable delete is a no-op");
 }

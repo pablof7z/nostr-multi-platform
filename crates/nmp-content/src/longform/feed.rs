@@ -129,8 +129,82 @@ impl LongformFeed {
 
 impl KernelEventObserver for LongformFeed {
     fn on_kernel_event(&self, event: &KernelEvent) {
+        // NIP-09: a kind:5 deletion suppresses rows it can prove (issue #1740
+        // step 5). Apply it before normal ingest; a non-delete event flows to
+        // the inner feed unchanged.
+        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+            self.apply_delete(&record);
+            return;
+        }
         self.inner.on_kernel_event(event);
     }
+}
+
+impl LongformFeed {
+    /// Apply a NIP-09 deletion to the feed rows.
+    ///
+    /// * An `a`-tag target removes the coordinate-keyed row — but only when the
+    ///   delete author owns that coordinate (the coordinate pubkey), so a
+    ///   foreign delete can never remove someone else's article, and only when
+    ///   the row's known version was created at or before the deletion
+    ///   (`created_at <= delete.created_at`), so a newer version published after
+    ///   the retraction survives. A body-less coordinate row (no known version)
+    ///   cannot be proven newer, so the deletion removes it.
+    /// * An `e`-tag target removes any source contribution the delete author
+    ///   owns that names that event id — either the wrapper/article event the
+    ///   source was built from, OR the **deleted article body** itself when it
+    ///   is surfaced through someone else's repost. The latter stops a retracted
+    ///   article from living on through a repost: A's `e:art` delete clears A's
+    ///   article from C's repost row even though C's wrapper id differs.
+    /// * An unresolvable target removes nothing — never guess a coordinate.
+    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+        for coord in &record.address_targets {
+            if coord.pubkey != record.author {
+                continue;
+            }
+            self.inner.remove_item_if(&coord.to_wire(), |card| {
+                card.article
+                    .as_ref()
+                    .is_none_or(|article| article.created_at <= record.created_at)
+            });
+        }
+        for event_id in &record.event_targets {
+            self.inner
+                .remove_sources_if(|item| e_tag_delete_matches(item, event_id, &record.author));
+        }
+    }
+}
+
+/// Whether an `e`-tag delete by `author` targeting `event_id` removes this
+/// source contribution (NIP-09 — only the delete author's own events).
+///
+/// Matches two ownership-validated shapes:
+/// * the source event itself (`source_id == event_id`) is the delete author's —
+///   a direct article row, or a repost wrapper authored by the deleter; or
+/// * the source's rendered **article body** is the deleted event
+///   (`article.id == event_id`) and that article is the delete author's — so a
+///   retracted article is dropped even when it is surfaced through another
+///   account's repost (whose wrapper id differs from the deleted article id).
+fn e_tag_delete_matches(
+    item: &FlatFeedItem<LongformFeedEntry>,
+    event_id: &str,
+    author: &str,
+) -> bool {
+    let source_owned_by_author = match item.card.reposted_by.as_ref() {
+        Some(repost) => repost.author_pubkey == author,
+        None => item
+            .card
+            .article
+            .as_ref()
+            .is_some_and(|article| article.author_pubkey == author),
+    };
+    if item.source_id == event_id && source_owned_by_author {
+        return true;
+    }
+    item.card
+        .article
+        .as_ref()
+        .is_some_and(|article| article.id == event_id && article.author_pubkey == author)
 }
 
 /// Compile kind:30023 primary feed acquisition kinds.
@@ -195,21 +269,51 @@ fn article_item_from_repost(
     topic: Option<&str>,
 ) -> Option<FlatFeedItem<LongformFeedEntry>> {
     let record = nmp_nip18::try_from_kernel_event(event)?;
-    let target = article_from_repost_target(&record, event, event_lookup, topic);
-    let article = target?;
-    let id = article.address.clone();
+    let article = article_from_repost_target(&record, event, event_lookup, topic);
+
+    // Row identity is the address coordinate. Prefer the resolved article's
+    // coordinate; otherwise use the wrapper's proven `a`-tag/embedded coordinate
+    // (issue #1740 step 5: the coordinate is the canonical identity). A wrapper
+    // that carries only an event id proves no coordinate, so it stays
+    // UNRESOLVED and never positions a row — never guess one from an event id.
+    let coordinate = article
+        .as_ref()
+        .map(|article| article.address.clone())
+        .or_else(|| {
+            longform_target_coordinate(&record).map(|coord| coord.to_wire())
+        })?;
+
+    // A topic feed cannot prove topic membership for a body-less coordinate row;
+    // only admit it once a target article (embedded/local) confirms the topic.
+    if topic.is_some() && article.is_none() {
+        return None;
+    }
 
     Some(FlatFeedItem {
-        id: id.clone(),
+        id: coordinate.clone(),
         source_id: event.id.clone(),
         sort_created_at: event.created_at,
         card: LongformFeedEntry {
-            id,
-            article: Some(article),
+            id: coordinate,
+            article,
             reposted_by: Some(repost_attribution(event)),
             relay_provenance: event.relay_provenance.clone(),
         },
     })
+}
+
+/// The repost's proven target coordinate, restricted to long-form (kind:30023).
+///
+/// A generic repost can wrap any addressable kind; this feed only positions a
+/// row for a kind:30023 target. Returns `None` for a non-30023 coordinate or an
+/// event-id-only wrapper (no proven coordinate).
+fn longform_target_coordinate(
+    record: &nmp_nip18::RepostRecord,
+) -> Option<nmp_nip18::AddressCoordinate> {
+    record
+        .target_address
+        .clone()
+        .filter(|coord| coord.kind == KIND_LONG_FORM_ARTICLE)
 }
 
 fn article_from_repost_target(

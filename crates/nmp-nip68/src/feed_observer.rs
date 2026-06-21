@@ -29,10 +29,14 @@ pub fn picture_feed_observer(
 
 impl KernelEventObserver for PictureFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == 5 {
-            for target_id in event.tags.iter().filter_map(|tag| event_tag_id(tag)) {
+        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+            // kind:20 picture events are not addressable, so only the `e`-tag
+            // (event-id) targets resolve to a picture row; an `a`-tag target
+            // names a coordinate that has no picture row and is a no-op. The
+            // delete only removes a row the same author published.
+            for target_id in &record.event_targets {
                 self.feed.remove_item_if(target_id, |entry| {
-                    target_author(entry) == Some(&event.author)
+                    target_author(entry) == Some(&record.author)
                 });
             }
             return;
@@ -104,12 +108,4 @@ fn repost_target_id(event: &KernelEvent) -> Option<String> {
 
 fn target_author(entry: &PictureFeedEntry) -> Option<&String> {
     entry.record.as_ref().map(|record| &record.author)
-}
-
-fn event_tag_id(tag: &[String]) -> Option<&str> {
-    if tag.first().is_some_and(|name| name == "e") {
-        tag.get(1).map(String::as_str).filter(|id| !id.is_empty())
-    } else {
-        None
-    }
 }

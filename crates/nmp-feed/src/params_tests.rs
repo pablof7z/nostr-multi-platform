@@ -8,21 +8,21 @@ use std::collections::BTreeSet;
 // ---------------------------------------------------------------------------
 
 #[test]
-fn primary_kind_1_is_accepted_and_derives_kind_6() {
+fn primary_kind_1_is_accepted_and_derives_kind_6_and_delete() {
     let kinds = validate_primary_kinds([1]).expect("[1] is a valid primary set");
-    assert_eq!(kinds, BTreeSet::from([1, 6]));
+    assert_eq!(kinds, BTreeSet::from([1, 6, KIND_DELETE]));
 }
 
 #[test]
-fn primary_kind_20_is_accepted_and_derives_kind_16() {
+fn primary_kind_20_is_accepted_and_derives_kind_16_and_delete() {
     let kinds = validate_primary_kinds([20]).expect("[20] is a valid primary set");
-    assert_eq!(kinds, BTreeSet::from([20, 16]));
+    assert_eq!(kinds, BTreeSet::from([20, 16, KIND_DELETE]));
 }
 
 #[test]
-fn primary_kind_30023_is_accepted_and_derives_kind_16() {
+fn primary_kind_30023_is_accepted_and_derives_kind_16_and_delete() {
     let kinds = validate_primary_kinds([30023]).expect("[30023] is a valid primary set");
-    assert_eq!(kinds, BTreeSet::from([30023, 16]));
+    assert_eq!(kinds, BTreeSet::from([30023, 16, KIND_DELETE]));
 }
 
 #[test]
@@ -81,7 +81,10 @@ fn empty_primary_set_is_rejected() {
 #[test]
 fn feed_params_validate_delegates_to_primary_kind_validation() {
     let ok = sample_params(vec![1]);
-    assert_eq!(ok.validate_primary_kinds(), Ok(BTreeSet::from([1, 6])));
+    assert_eq!(
+        ok.validate_primary_kinds(),
+        Ok(BTreeSet::from([1, 6, KIND_DELETE]))
+    );
 
     let bad = sample_params(vec![1, 6]);
     assert_eq!(

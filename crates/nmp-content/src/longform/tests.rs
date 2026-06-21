@@ -210,3 +210,70 @@ fn missing_tags_become_placeholders_in_feed_and_none_in_document() {
     assert_eq!(doc.summary, None);
     assert_eq!(doc.hero_image_url, None);
 }
+
+fn delete_event(author: &str, created_at: u64, tags: Vec<Vec<&str>>) -> KernelEvent {
+    KernelEvent {
+        id: "d".repeat(64),
+        author: author.to_string(),
+        kind: nmp_nip18::KIND_DELETE,
+        created_at,
+        tags: tags
+            .into_iter()
+            .map(|t| t.into_iter().map(str::to_string).collect())
+            .collect(),
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+#[test]
+fn kind5_coordinate_delete_by_owner_removes_stored_article() {
+    // The typed projection must not keep serving a coordinate the author
+    // retracted (issue #1740 step 5) — otherwise the sidecar contradicts the
+    // feed, which already dropped the row.
+    let projection = LongformProjection::new();
+    projection.on_kernel_event(&article_event(
+        &"1".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        1_000,
+        "Title",
+        "Summary",
+        "https://img.example/x.png",
+        "body",
+    ));
+    assert_eq!(decode_snapshot(&projection).articles.len(), 1);
+
+    let addr = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_A}:rust-guide");
+    projection.on_kernel_event(&delete_event(AUTHOR_A, 2_000, vec![vec!["a", &addr]]));
+
+    assert!(
+        decode_snapshot(&projection).articles.is_empty(),
+        "owner a-tag delete retracts the stored coordinate"
+    );
+}
+
+#[test]
+fn kind5_coordinate_delete_by_foreign_author_is_noop() {
+    let projection = LongformProjection::new();
+    projection.on_kernel_event(&article_event(
+        &"1".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        1_000,
+        "Title",
+        "Summary",
+        "https://img.example/x.png",
+        "body",
+    ));
+
+    let addr = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_A}:rust-guide");
+    // AUTHOR_B does not own AUTHOR_A's coordinate.
+    projection.on_kernel_event(&delete_event(AUTHOR_B, 2_000, vec![vec!["a", &addr]]));
+
+    assert_eq!(
+        decode_snapshot(&projection).articles.len(),
+        1,
+        "a foreign delete must not retract someone else's coordinate"
+    );
+}
