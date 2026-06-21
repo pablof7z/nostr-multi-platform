@@ -260,6 +260,11 @@ mod replay;
 mod replay_tests;
 mod requests;
 pub use requests::ProfileLiveness;
+// ADR-0063 (#1671 Lane B) — the kernel-owned `RefResolver` primitive that
+// generalizes `claim_profile` + `claim_event` behind one origin-blind seam.
+pub(crate) mod refs;
+#[cfg(test)]
+mod refs_tests;
 #[cfg(test)]
 mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
@@ -939,6 +944,21 @@ pub struct Kernel {
     /// (a `Live` claim keeps the kind:0 slot `Tailing` even if a later `CacheOk`
     /// claim arrives); cleared when the last consumer of a pubkey releases.
     live_profile_claims: BTreeSet<String>,
+    /// ADR-0063 (#1671 Lane B) — `primary_id`s with at least one
+    /// [`refs::RefLiveness::Live`] event claim outstanding. The event twin of
+    /// [`Self::live_profile_claims`]: drives the "Tailing wins" upgrade for
+    /// addressable-event claims (a `Live` naddr claim keeps a tailing sub open
+    /// so kind:3xxxx replacements arrive reactively); cleared on full teardown.
+    /// Immutable nevent/note ids never enter this set (they cannot change).
+    live_event_claims: BTreeSet<String>,
+    /// ADR-0063 (#1671 Lane B) — widest [`refs::ProfileShape`] any currently-live
+    /// consumer of a pubkey demanded (D5: the projection row carries the widest
+    /// shape). Widen-only while held; the entry is dropped on full teardown. Read
+    /// by Lane C via [`Self::ref_demanded_profile_shape`].
+    ref_profile_shapes: HashMap<String, refs::ProfileShape>,
+    /// ADR-0063 (#1671 Lane B) — widest [`refs::EventShape`] per claimed
+    /// `primary_id`. Event twin of [`Self::ref_profile_shapes`].
+    ref_event_shapes: HashMap<String, refs::EventShape>,
     /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
     /// keyed by the same `primary_id` the snapshot's `claimed_events`
     /// projection uses (hex64 event id for nevent/note URIs;
@@ -2005,6 +2025,9 @@ impl Kernel {
             follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
             live_profile_claims: BTreeSet::new(),
+            live_event_claims: BTreeSet::new(),
+            ref_profile_shapes: HashMap::new(),
+            ref_event_shapes: HashMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
             event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),

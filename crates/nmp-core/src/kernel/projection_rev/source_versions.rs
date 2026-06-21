@@ -22,11 +22,14 @@
 //! direct consequence of a state mutation — never in a timer, never in a
 //! polling loop. Bumps are O(1) `u64::saturating_add(1)`.
 
+use std::collections::HashMap;
+
 use super::{
     SRC_ACCOUNTS, SRC_ACTIVE_ACCOUNT, SRC_CLAIMED_EVENT_CONTENT, SRC_CONFIGURED_RELAYS,
     SRC_DIAGNOSTICS_INPUTS, SRC_OPEN_VIEWS, SRC_PROFILES, SRC_PROFILE_CLAIMS, SRC_PUBLISH,
     SRC_PUBLISH_ENGINE, SRC_SETTLEMENT_DRAIN, SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
 };
+use crate::kernel::refs::RefNamespace;
 
 /// Typed source-version counters for the Tier-2 built-in projections.
 ///
@@ -124,6 +127,23 @@ pub(crate) struct SourceVersions {
     /// the existing emit/snapshot edge. Stable on idle ticks where no row
     /// crosses its deadline.
     pub(crate) ttl_expiry_ver: u64,
+
+    // ── ADR-0063 (#1671 Lane B): per-KEY ref-row revisions ────────────────────
+    /// Per-KEY revision for `refs.profile` rows (keyed by raw hex pubkey). The
+    /// whole-projection `profile_claims_ver` scalar above stays the ADR-0055
+    /// manifest source until Lane A migrates it; THIS map is the row-grain source
+    /// of truth ADR-0063 D6a needs (only the changed pubkey's row crosses FFI).
+    /// Bumped at three sites: resolve (`resolve_profile_ref`), release
+    /// (`release_profile_ref`), and the kind:0 ingest chokepoint
+    /// (`project_accepted_event`, gated on a live claim). Monotonic; reset only
+    /// on `Kernel` rebuild. Bounded to claimed pubkeys (ingest only bumps a
+    /// claimed author; unclaimed authors never enter the map).
+    pub(crate) profile_row_revs: HashMap<String, u64>,
+    /// Per-KEY revision for `refs.event` rows (keyed by `primary_id`: hex64 id or
+    /// `kind:pubkey:d` coord). Event twin of [`Self::profile_row_revs`]; bumped at
+    /// resolve/release (`requests/event.rs`) and the store-ingest chokepoint
+    /// (`maybe_bump_claimed_event_content`, already gated on a live claim).
+    pub(crate) event_row_revs: HashMap<String, u64>,
 }
 
 impl SourceVersions {
@@ -216,5 +236,26 @@ impl SourceVersions {
     /// Bump `ttl_expiry_ver`.
     pub(crate) fn bump_ttl_expiry(&mut self) {
         self.ttl_expiry_ver = self.ttl_expiry_ver.saturating_add(1);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.profile` row.
+    pub(crate) fn bump_profile_row(&mut self, key: &str) {
+        let rev = self.profile_row_revs.entry(key.to_string()).or_insert(0);
+        *rev = rev.saturating_add(1);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
+    pub(crate) fn bump_event_row(&mut self, key: &str) {
+        let rev = self.event_row_revs.entry(key.to_string()).or_insert(0);
+        *rev = rev.saturating_add(1);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — read the per-KEY rev for `(namespace, key)`.
+    /// Returns 0 for an unseen key (a row that has never resolved).
+    pub(crate) fn ref_row_rev(&self, namespace: RefNamespace, key: &str) -> u64 {
+        match namespace {
+            RefNamespace::Profile => self.profile_row_revs.get(key).copied().unwrap_or(0),
+            RefNamespace::Event => self.event_row_revs.get(key).copied().unwrap_or(0),
+        }
     }
 }

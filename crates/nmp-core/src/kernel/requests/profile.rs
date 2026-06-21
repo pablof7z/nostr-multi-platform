@@ -56,6 +56,7 @@
 //! registry interest is driven off it.
 
 use super::super::{short_hex, truncate, Kernel, OutboundMessage};
+use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
@@ -110,23 +111,34 @@ fn profile_claim_interest_id(pubkey: &str) -> InterestId {
 }
 
 impl Kernel {
+    // integration-scaffold(#1671 Lane H): delete before final master cut.
+    //
+    // Thin delegator onto the unified [`Kernel::resolve_ref`] seam so Lanes C/D/E
+    // keep compiling on the integration branch. The legacy `claim_profile`
+    // surface resolves the full `ProfileCard` (`claimed_profiles` = full card),
+    // so it maps to [`ProfileShape::Card`]. `can_send` is ignored (the registry
+    // registers immediately; the planner lands the REQ on connect — V-87 #602).
     pub(crate) fn claim_profile(
         &mut self,
         pubkey: String,
         consumer_id: String,
-        // `can_send` is retained for call-site compatibility but is no longer a
-        // gate: the registry registers immediately and the planner lands the
-        // REQ when a relay connects (reconnect-replay, V-87 #602). The old
-        // park-until-connect `pending` queue is gone.
         _can_send: bool,
         force: bool,
         liveness: ProfileLiveness,
     ) -> Vec<OutboundMessage> {
-        // No relay hints on the bare hex path; the nprofile/nevent entry point
-        // uses `claim_profile_with_hints`.
-        self.claim_profile_inner(pubkey, consumer_id, force, liveness, Vec::new())
+        self.resolve_ref(
+            RefNamespace::Profile,
+            pubkey,
+            consumer_id,
+            RefShape::Profile(ProfileShape::Card),
+            liveness.into(),
+            force,
+            Vec::new(),
+        )
     }
 
+    // integration-scaffold(#1671 Lane H): delete before final master cut.
+    //
     /// nprofile/nevent-originated claim: identical to [`Self::claim_profile`]
     /// but seeds the registered interest's `hints` with the NIP-19 relay TLVs
     /// embedded in the URI, so a stranger whose kind:10002 is on no indexer
@@ -140,17 +152,43 @@ impl Kernel {
         liveness: ProfileLiveness,
         relay_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
-        self.claim_profile_inner(pubkey, consumer_id, force, liveness, relay_hints)
+        self.resolve_ref(
+            RefNamespace::Profile,
+            pubkey,
+            consumer_id,
+            RefShape::Profile(ProfileShape::Card),
+            liveness.into(),
+            force,
+            relay_hints,
+        )
     }
 
-    fn claim_profile_inner(
+    /// The `profile` reference resolver (ADR-0063). Generalizes the former
+    /// `claim_profile_inner`: refcount the consumer, register/upgrade the
+    /// kernel-owned kind:0 interest, record the widest demanded shape, and bump
+    /// the per-key rev. `shape` selects the projected bytes (Lane C) and is
+    /// orthogonal to `liveness` (the kind:0 fetch is identical either way).
+    pub(in crate::kernel) fn resolve_profile_ref(
         &mut self,
         pubkey: String,
         consumer_id: String,
+        shape: ProfileShape,
+        liveness: RefLiveness,
         force: bool,
-        liveness: ProfileLiveness,
         relay_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
+        // Liveness is the namespace-agnostic axis; the kind:0 routing below is
+        // expressed in the profile-specific `ProfileLiveness` it has always used.
+        let liveness: ProfileLiveness = liveness.into();
+        // ADR-0063 D5 — record the widest shape any live consumer of this pubkey
+        // demanded (widen-only while held; dropped on full teardown in
+        // `release_profile_ref`). Independent of liveness.
+        let widened = self
+            .ref_profile_shapes
+            .get(&pubkey)
+            .map_or(shape, |w| w.widen(shape));
+        self.ref_profile_shapes.insert(pubkey.clone(), widened);
+
         // T114b — per-pubkey claim consumer-id retention bound. Drop-newest on
         // overflow mirrors the bounded actor channel; the dropped claim is a
         // silent no-op (D6) and bumps `claim_drops_total`.
@@ -180,6 +218,9 @@ impl Kernel {
         // ADR-0055 Rung 1: bump profile_claims_ver. (claimed_profiles projection
         // derives from `profile_claims`, untouched by the registry migration.)
         self.projection_rev_tracker.source_versions.bump_profile_claims();
+        // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (resolve site 1
+        // of 3). The row appears / re-asserts; only this key's row need cross FFI.
+        self.projection_rev_tracker.source_versions.bump_profile_row(&pubkey);
 
         // F-TTL — a profile is a kind:0 replaceable identity. When it is already
         // cached the TTL gate decides whether a lazy re-verification REQ is due
@@ -285,7 +326,19 @@ impl Kernel {
         );
     }
 
+    // integration-scaffold(#1671 Lane H): delete before final master cut.
     pub(crate) fn release_profile(
+        &mut self,
+        pubkey: &str,
+        consumer_id: &str,
+    ) -> Vec<OutboundMessage> {
+        self.release_ref(RefNamespace::Profile, pubkey, consumer_id)
+    }
+
+    /// The `profile` reference release (ADR-0063). Generalizes the former
+    /// `release_profile`: drop the consumer's refcount + registry owner, tear the
+    /// slot down on the last owner, and bump the per-key rev.
+    pub(in crate::kernel) fn release_profile_ref(
         &mut self,
         pubkey: &str,
         consumer_id: &str,
@@ -302,6 +355,8 @@ impl Kernel {
             // Last consumer gone: drop the Live marker so a future claim starts
             // fresh (downgrade only on full teardown).
             self.live_profile_claims.remove(pubkey);
+            // ADR-0063 D5 — the row is gone; drop its widest-shape record.
+            self.ref_profile_shapes.remove(pubkey);
         }
 
         // Detach this consumer's owner from the registry slot. When the last
@@ -320,6 +375,9 @@ impl Kernel {
 
         self.changed_since_emit = true;
         self.projection_rev_tracker.source_versions.bump_profile_claims();
+        // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (release site 2
+        // of 3). Signals the row appeared/disappeared without a whole-map resend.
+        self.projection_rev_tracker.source_versions.bump_profile_row(pubkey);
         self.log(format!(
             "release profile {} consumer {} ref {}",
             short_hex(pubkey),

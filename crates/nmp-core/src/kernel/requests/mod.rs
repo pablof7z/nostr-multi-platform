@@ -9,6 +9,9 @@
 
 mod auth_gate;
 mod event;
+// ADR-0063 (#1671 Lane B): the Live/Tailing addressable-event slot + event-claim
+// lookup/parking helpers, split out to keep `event.rs` under the 500-LOC ceiling.
+mod event_live;
 mod profile;
 mod relay_lifecycle;
 mod startup;
