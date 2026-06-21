@@ -119,7 +119,7 @@ use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
-    ClosureInterestShape, FeedAdvance, FeedApply, FeedAuthorRefs, FeedController, PullFeedController,
+    ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController,
 };
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
@@ -347,88 +347,75 @@ fn register_op_feed_defaults_inner(
     let (frame_session_id, frame_snapshot_epoch) = app.frame_identity_handles();
     // `FeedEmissionState` is NOT `Send` (it holds `Vec<u8>` and is owned by the
     // closure), but the closure itself must be `Send + Sync` as required by
-    // `register_typed_snapshot_projection`. We wrap the state in a `Mutex` to
+    // `register_feed_render_source`. We wrap the state in a `Mutex` to
     // satisfy the `Sync` bound; the lock is uncontested in production (only the
     // actor thread calls the closure under the registry's own mutex).
     let emission_state = Arc::new(Mutex::new(FeedEmissionState::new(incremental_apply)));
-    app.register_typed_snapshot_projection(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, move || {
-        // ADR-0038 — the typed sidecar MUST reflect the CURRENT window,
-        // including any pages revealed by prior `load_older` calls. Using
-        // `FeedRequest::default()` is lossless only on the first page; after
-        // `load_older` grows `window_limit` the default request would silently
-        // truncate the snapshot to the first page. `snapshot_current_window()`
-        // reads the live `window_limit` counter and issues the right-sized
-        // request, matching what the old JSON producer (deleted escape hatch #2)
-        // did via `FeedController::snapshot_json`.
-        let snapshot = engine_for_typed.snapshot_current_window();
-        let payload = nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot);
-        // Read this tick's frame identity lock-free (the kernel published it at
-        // the top of `make_update`, before this closure runs).
-        let identity = FrameIdentity {
-            session_id: frame_session_id.load(Ordering::Acquire),
-            snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
-        };
 
-        // R6-S1: consult emission state to decide whether to emit or omit.
-        let Ok(mut state) = emission_state.lock() else {
-            // Poisoned mutex — degrade to always-emit (D6: safe fallback).
-            return Some(nmp_core::TypedProjectionData {
-                key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
-                schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-                schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-                file_identifier: String::from_utf8_lossy(
-                    nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
-                )
-                .into_owned(),
-                payload,
-                ..Default::default()
-            });
-        };
-
-        let emit_decision = state.should_emit(payload, identity);
-        drop(state); // release the lock before constructing the return value
-
-        match emit_decision {
-            None => {
-                // Byte-identical to last emission and capability is ON → omit.
-                // The host cache retains the prior value (omit==retain invariant).
-                None
-            }
-            Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
-                key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
-                schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-                schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-                file_identifier: String::from_utf8_lossy(
-                    nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
-                )
-                .into_owned(),
-                payload,
-                projection_rev,
-                ..Default::default()
-            }),
-        }
-    });
-
-    // ── 5b. Feed-author auto-resolve provider (ADR-0063 D7, #1671 Lane H) ──
+    // ── 5b. Structural typed-sidecar + feed-author provider (ADR-0063 D7,
+    //         #1671 Lane H, BLOCKING 1) ─────────────────────────────────────────
     //
-    // The coverage-hole closure: the kernel auto-resolves every author this
-    // feed RENDERS through the SAME `resolve_ref` path, so a shell cannot
-    // silently forget and blank-avatar. The provider returns the CURRENT
-    // visible window's author keys (each card's `author_pubkey` + any
-    // `reposted_by` reposter + every NIP-10 reply attribution's author); the
-    // kernel diffs them per snapshot tick and resolves/releases under
-    // `feed-author:nmp.feed.home`. The home feed is PERMANENT, so this provider
-    // is never removed — its refs are released only by the kernel's reconcile
-    // when the visible window narrows (scroll/perspective change). D8: reads the
-    // engine's current window and returns keys; no I/O, non-blocking.
-    let engine_for_authors = Arc::clone(&engine);
-    app.register_feed_author_provider(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, move || {
-        engine_for_authors
-            .snapshot_current_window()
-            .visible_author_keys()
-            .into_iter()
-            .collect()
-    });
+    // ONE `FeedRenderSource` materializes the home feed's window ONCE per tick and
+    // feeds BOTH the typed sidecar AND the feed-author auto-resolve provider via
+    // `register_feed_render_source` — structural pairing (the sidecar cannot exist
+    // without the provider that resolves the authors it renders) shared with the
+    // dynamic author/thread feeds. Because both lanes read the SAME per-tick
+    // materialization, authors-resolved == window-emitted even if a concurrent
+    // `load_older` widens the window mid-tick (no 1-frame blank gap). ADR-0038: the
+    // materialized window reflects the CURRENT viewport (load_older grows it). The
+    // home feed is PERMANENT so the provider is never removed; refs release only as
+    // the window narrows. R6-S1 emission-state omit + frame-identity rebaseline (the
+    // freeze fix) live in the encoder closure below.
+    let source = nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
+    app.register_feed_render_source(
+        nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY,
+        source,
+        move |snapshot| {
+            let payload = nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot);
+            // Read this tick's frame identity lock-free (the kernel published it
+            // at the top of `make_update`, before this closure runs).
+            let identity = FrameIdentity {
+                session_id: frame_session_id.load(Ordering::Acquire),
+                snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
+            };
+            // R6-S1: consult emission state to decide whether to emit or omit.
+            let Ok(mut state) = emission_state.lock() else {
+                // Poisoned mutex — degrade to always-emit (D6: safe fallback).
+                return Some(nmp_core::TypedProjectionData {
+                    key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
+                    schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+                    schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+                    file_identifier: String::from_utf8_lossy(
+                        nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
+                    )
+                    .into_owned(),
+                    payload,
+                    ..Default::default()
+                });
+            };
+            let emit_decision = state.should_emit(payload, identity);
+            drop(state); // release the lock before constructing the return value
+            match emit_decision {
+                None => {
+                    // Byte-identical to last emission and capability is ON → omit.
+                    // The host cache retains the prior value (omit==retain).
+                    None
+                }
+                Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
+                    key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
+                    schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+                    schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+                    file_identifier: String::from_utf8_lossy(
+                        nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
+                    )
+                    .into_owned(),
+                    payload,
+                    projection_rev,
+                    ..Default::default()
+                }),
+            }
+        },
+    );
 
     // ── 5. Perspective reset ─────────────────────────────────────────────
     //

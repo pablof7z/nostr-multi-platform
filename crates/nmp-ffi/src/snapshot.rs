@@ -17,6 +17,14 @@ use super::{app_ref, NmpApp};
 #[path = "embed_sidecar.rs"]
 pub(crate) mod embed_sidecar;
 
+// ADR-0063 D7 (#1671 Lane H) — the structural feed-author auto-resolve pairing
+// seam (`register_feed_render_source`) + its test introspection accessors. A
+// submodule of `snapshot` (both own snapshot-projection wiring); kept off the
+// over-cap `lib.rs` AND out of this file so `snapshot.rs` stays under the 500-LOC
+// hard ceiling (AGENTS.md file-size anti-cheat).
+#[path = "feed_render_source.rs"]
+mod feed_render_source;
+
 impl NmpApp {
     /// Register a typed FlatBuffers projection closure for a named projection key.
     ///
@@ -86,7 +94,15 @@ impl NmpApp {
     pub fn run_typed_snapshot_projections(&self) -> Vec<nmp_core::TypedProjectionData> {
         self.snapshot_projections
             .lock()
-            .map(|mut registry| registry.run_typed())
+            .map(|mut registry| {
+                // ADR-0063 D7 (#1671 Lane H) — OUT-OF-BAND introspection path
+                // (tests/hosts reading the sidecar without a full `make_update`).
+                // Bump the per-tick rev so a `FeedRenderSource` memo re-materializes
+                // per ad-hoc call (reflecting a `load_older` grow between calls).
+                // The production tick path is a different method, so no double-bump.
+                registry.bump_frame_tick_rev();
+                registry.run_typed()
+            })
             .unwrap_or_default()
     }
 
@@ -119,30 +135,6 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for a
-    /// feed snapshot key (e.g. `"nmp.feed.home"`).
-    ///
-    /// `f` returns the raw author keys the feed will RENDER for its CURRENT
-    /// visible window; the kernel calls it INSIDE every snapshot tick and
-    /// auto-`resolve_ref`s the additions / `release_ref`s the removals under the
-    /// consumer id `feed-author:<feed_key>` — so any author surfaced in the feed
-    /// resolves through the SAME unified path, and a shell can never silently
-    /// render an unresolved (blank-avatar) author.
-    ///
-    /// `f` runs on the actor thread inside the tick — it MUST be non-blocking
-    /// (D8): read the engine's current window and return the keys, nothing more.
-    /// Last-writer-wins on the key. A poisoned registry mutex is a silent no-op
-    /// (D6). Removed by [`Self::unregister_feed`] (which now also drops the
-    /// provider so the kernel releases-all on the next tick).
-    pub fn register_feed_author_provider(
-        &self,
-        feed_key: impl Into<String>,
-        f: impl Fn() -> Vec<String> + Send + Sync + 'static,
-    ) {
-        if let Ok(mut registry) = self.snapshot_projections.lock() {
-            registry.register_feed_author_provider(feed_key, f);
-        }
-    }
 }
 
 /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP cache-merge

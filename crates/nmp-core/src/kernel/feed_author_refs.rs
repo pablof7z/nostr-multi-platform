@@ -172,6 +172,63 @@ impl Kernel {
         self.release_all_feed_author_refs(&consumer_id)
     }
 
+    /// DEBUG GUARDRAIL (ADR-0063 D7, BLOCKING 2) — warn when an author a feed's
+    /// typed producer ACTUALLY EMITTED onto the wire this tick has NO live
+    /// resolver demand.
+    ///
+    /// This is the STRUCTURAL guardrail: it does NOT iterate the kernel's own
+    /// provider-tracking ([`Self::warn_unresolved_feed_authors`] does that — a
+    /// reconciled-key-lost-demand check). It instead reads the author keys the
+    /// feed's typed producer recorded as crossing the wire (the EMITTED window)
+    /// and compares them against live demand. A feed that emits a pubkey it never
+    /// resolved — because it skipped the structural-pairing helper, OR because its
+    /// provider's `FeedAuthorRefs` set missed a field the row actually renders —
+    /// is therefore caught even though it is INVISIBLE to the provider-tracking
+    /// check (it has no `auto_profile_refs_by_consumer` entry for that key).
+    ///
+    /// Debug-only and demand-checked (never content-checked): a freshly-resolved
+    /// author whose `kind:0` has not arrived has empty content but `Some` demand,
+    /// so it is NOT flagged — only a genuinely unresolved emitted author is.
+    ///
+    /// Called from `make_update` AFTER the typed projections are emitted (so the
+    /// sink is populated), with the current tick rev.
+    #[cfg(debug_assertions)]
+    pub(in crate::kernel) fn warn_emitted_unresolved_feed_authors(&self, tick_rev: u64) {
+        for (consumer_id, key) in self.emitted_unresolved_feed_authors(tick_rev) {
+            tracing::warn!(
+                target: "nmp.refs.guardrail",
+                consumer = %consumer_id,
+                pubkey = %super::short_hex(&key),
+                "ADR-0063 D7 guardrail: feed EMITTED author onto the wire with NO \
+                 live resolver demand — a sidecar crossed a pubkey that was never \
+                 resolve_ref-d (missed provider, or a FeedAuthorRefs field the \
+                 provider's author set didn't cover; NOT the normal empty-profile \
+                 async gap)"
+            );
+        }
+    }
+
+    /// The emitted-set guardrail CONDITION, factored out so it is testable: every
+    /// `(consumer_id, author_key)` the feeds' typed producers recorded as EMITTED
+    /// on the tick matching `tick_rev` for which the unified resolver records NO
+    /// live demand ([`Kernel::ref_demanded_profile_shape`] is `None`).
+    ///
+    /// With the structural-pairing helper wired this is ALWAYS empty: every
+    /// emitted author shares its feed's per-tick materialization with the provider
+    /// that just resolved it, so demand is `Some`. It becomes non-empty only when
+    /// a surface emits a pubkey WITHOUT routing it through `resolve_ref` — the
+    /// regression this guardrail structurally catches.
+    #[cfg(any(test, debug_assertions))]
+    pub(in crate::kernel) fn emitted_unresolved_feed_authors(
+        &self,
+        tick_rev: u64,
+    ) -> Vec<(String, String)> {
+        self.emitted_feed_authors(tick_rev)
+            .into_iter()
+            .filter(|(_, key)| self.ref_demanded_profile_shape(key).is_none())
+            .collect()
+    }
+
     /// DEBUG GUARDRAIL (ADR-0063 D7) — warn when a feed-author this kernel just
     /// reconciled has NO live resolver demand.
     ///

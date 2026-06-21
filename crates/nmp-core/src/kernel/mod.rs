@@ -529,6 +529,7 @@ pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen
 // field type).
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
+pub use snapshot_registry::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7
 
 // Typed slot wrappers + constructors. `AppRelaySlot` /
 // `AppRelayList` are re-exported below at `pub use` because per-app

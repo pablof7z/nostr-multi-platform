@@ -92,23 +92,36 @@ fn thread_feed_key(event_id_hex: &str) -> String {
     format!("nmp.feed.thread.{event_id_hex}")
 }
 
-/// Register the typed NOFS op-feed sidecar alongside the generic `Value`
-/// projection that `register_feed_with_observer` already installed. Uses the
-/// same `encode_op_feed_snapshot` wire shape as the home feed (no new schema).
-/// Teardown via `unregister_feed` covers both lanes — no extra step needed.
+/// Register the typed NOFS op-feed sidecar AND its feed-author auto-resolve
+/// provider, STRUCTURALLY PAIRED through `register_feed_render_source` (ADR-0063
+/// D7, #1671 Lane H, BLOCKING 1).
+///
+/// Before this, a dynamic author/thread feed registered ONLY the typed sidecar
+/// (via `register_typed_snapshot_projection`) and NO author provider, so the
+/// authors it rendered never auto-resolved → blank avatars. Routing both lanes
+/// through one `FeedRenderSource` makes the pairing structural: there is no path
+/// that installs the sidecar without the provider. The same `FeedRenderSource`
+/// materializes the visible window ONCE per tick and feeds BOTH lanes, so the
+/// authors resolved == the window emitted even when a concurrent `load_older`
+/// widens the window mid-tick (no 1-frame gap). Teardown via `unregister_feed`
+/// covers both lanes (same key) — no extra step needed.
+///
+/// Uses the same `encode_op_feed_snapshot` wire shape as the home feed (no new
+/// schema). The dynamic feeds do not gate on incremental-apply emission state
+/// (the home feed does); their encoder always emits the current window.
 fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
-    app.register_typed_snapshot_projection(key.clone(), move || {
-        // Emit the CURRENT viewport, including rows revealed by prior
-        // `load_older` drains (the `advance` closure grows it). A fixed
-        // `FeedRequest::default()` would cap the sidecar at the first page, so
-        // pulled older rows would ingest but never become user-visible.
-        let snapshot = feed.snapshot_current_window();
+    // The per-tick-materialized window source: reads the feed's CURRENT viewport
+    // (including rows revealed by prior `load_older` drains; a fixed
+    // `FeedRequest::default()` would cap the sidecar at the first page).
+    let source = nmp_feed::FeedRenderSource::new(move || feed.snapshot_current_window());
+    let key_for_encode = key.clone();
+    app.register_feed_render_source(key, source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
-            key: key.clone(),
+            key: key_for_encode.clone(),
             schema_id: OP_FEED_SCHEMA_ID.to_string(),
             schema_version: OP_FEED_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(OP_FEED_FILE_IDENTIFIER).into_owned(),
-            payload: encode_op_feed_snapshot(&snapshot),
+            payload: encode_op_feed_snapshot(snapshot),
             ..Default::default()
         })
     });
