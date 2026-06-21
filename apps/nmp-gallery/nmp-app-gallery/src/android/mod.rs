@@ -7,148 +7,36 @@
 //! Doctrine: no business logic or cached state (D5/D8) — pure transport.
 //! Errors never cross FFI (D6); outcomes arrive in the next FlatBuffers
 //! snapshot frame.
+//!
+//! Session state, callback trampolines, and small JNI helpers live in the
+//! [`session`] submodule (split for file-size compliance).
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::c_void;
 use std::sync::Arc;
 
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
-use std::sync::Mutex;
-
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_event, nmp_app_deliver_external_signer_response,
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_release_event,
+    nmp_app_dispatch_action, nmp_app_new, nmp_app_release_event,
     nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_capability_callback,
     nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
-    nmp_external_signer_init, nmp_free_string, NmpApp,
+    nmp_external_signer_init, nmp_free_string,
 };
+
+use crate::android_push::{SignerRequestListenerSlot, SignerRequestPushListener};
 
 use nmp_core::refs::RefProfileStore;
 
-use nmp_core::__ffi_internal::capability_error_envelope;
+use std::sync::Mutex;
 
-use crate::android_push::{
-    GalleryUpdateCtx, GalleryUpdateListener, SignerRequestListenerSlot, SignerRequestPushListener,
+pub(crate) mod session;
+use session::{
+    jstring_to_cstring, on_capability_request, on_update, session_ref, set_update_listener,
+    teardown_session, GallerySession,
 };
-
-/// Owns the kernel handle and the boxed update-callback context (which holds
-/// the JNI push listener). Freed exactly once in `nativeFree`.
-pub(crate) struct GallerySession {
-    pub(crate) app: *mut NmpApp,
-    /// Boxed [`GalleryUpdateCtx`] passed as the `nmp_app_set_update_callback`
-    /// context. Owns the JNI push listener slot (issue #614 — D8 no-polling).
-    update_ctx: *mut GalleryUpdateCtx,
-    /// Issue #1612 / ADR-0048 Stage 2 — push listener slot for outbound NIP-55
-    /// `ExternalSignerRequest` JSON payloads (D8 no-polling; replaces the
-    /// deleted `nativeNextSignerRequest` blocking/timeout drain).
-    signer_listener: SignerRequestListenerSlot,
-    /// ADR-0063 (#1671) — host-side mirror of the kernel's `refs.profile`
-    /// row-delta projection. Merged across frames in `nativeDecodeSnapshotJson`
-    /// (the sidecar carries only changed/cleared rows). The sole app-side profile
-    /// store (D4). Wrapped in a `Mutex` because the decode runs on whichever
-    /// thread Kotlin drains the push frame on.
-    ref_profiles: Mutex<RefProfileStore>,
-}
-
-// SAFETY: GallerySession is transferred to Kotlin as a jlong handle; access
-// is serialised by the Kotlin caller (nativeNew → nativeFree lifecycle).
-unsafe impl Send for GallerySession {}
-
-/// Update callback — runs on the kernel's listener thread. Forwards the
-/// borrowed FlatBuffers frame straight to the registered JNI push listener
-/// (issue #614 — D8 no-polling).
-extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
-    if context.is_null() || bytes.is_null() {
-        return;
-    }
-    let ctx = unsafe { &*(context as *const GalleryUpdateCtx) };
-    let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
-    ctx.push(frame);
-}
-
-/// Capability trampoline (ADR-0048 Stage 2 / issue #1612 — D8 no-polling).
-///
-/// For `external_signer` requests: snapshots the registered push listener
-/// under the slot lock, drops the lock, then pushes the payload JSON directly
-/// to Kotlin via `onSignerRequest`. Returns `{"status":"dispatched"}` on
-/// success; `{"status":"session-closed"}` when no listener is registered (D6).
-///
-/// For all other namespaces: returns the same error envelope a missing handler
-/// would (no Android keyring capability exists in the gallery).
-///
-/// Context is a raw pointer to the `Mutex` inside the `Arc<Mutex<...>>` slot
-/// stored in `GallerySession`. The `Arc` keeps the allocation alive for the
-/// full session lifetime. `nativeFree` calls
-/// `nmp_app_set_capability_callback(…, None)` (which blocks until any
-/// in-flight call returns) BEFORE the session is dropped, so dereferencing
-/// this pointer here is safe.
-extern "C" fn on_capability_request(
-    context: *mut c_void,
-    request_json: *const std::os::raw::c_char,
-) -> *mut std::os::raw::c_char {
-    if context.is_null() || request_json.is_null() {
-        return std::ptr::null_mut();
-    }
-    let request = unsafe { CStr::from_ptr(request_json) }
-        .to_string_lossy()
-        .into_owned();
-    let parsed: serde_json::Value = serde_json::from_str(&request).unwrap_or_default();
-    let namespace = parsed.get("namespace").and_then(|v| v.as_str()).unwrap_or("");
-    if namespace != "external_signer" {
-        return to_c_string(capability_error_envelope(&request, "unsupported-on-android"));
-    }
-    let Some(payload) = parsed.get("payload_json").and_then(|v| v.as_str()) else {
-        return to_c_string(capability_error_envelope(&request, "missing-payload"));
-    };
-    let correlation_id = parsed
-        .get("correlation_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    // SAFETY: context points into the Arc<Mutex<...>> stored in GallerySession;
-    // lifetime guaranteed by the `nativeFree` quiescence ordering (see module
-    // doc and on_capability_request's own doc comment above).
-    let slot = unsafe {
-        &*(context as *const std::sync::Mutex<Option<Arc<SignerRequestPushListener>>>)
-    };
-    let listener_snapshot: Option<Arc<SignerRequestPushListener>> =
-        slot.lock().ok().and_then(|g| g.clone());
-
-    if let Some(listener) = listener_snapshot {
-        listener.push(payload);
-    } else {
-        return to_c_string(capability_error_envelope(&request, "session-closed"));
-    }
-
-    let envelope = serde_json::json!({
-        "namespace": "external_signer",
-        "correlation_id": correlation_id,
-        "result_json": r#"{"status":"dispatched"}"#,
-    });
-    to_c_string(envelope.to_string())
-}
-
-fn to_c_string(value: String) -> *mut std::os::raw::c_char {
-    CString::new(value)
-        .unwrap_or_else(|_| c"{}".to_owned())
-        .into_raw()
-}
-
-fn session_ref<'a>(handle: jlong) -> Option<&'a GallerySession> {
-    if handle == 0 {
-        None
-    } else {
-        Some(unsafe { &*(handle as *const GallerySession) })
-    }
-}
-
-fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CString> {
-    let s = env.get_string(value).ok()?;
-    CString::new(s.to_string_lossy().into_owned()).ok()
-}
 
 // ── JNI entry points ──────────────────────────────────────────────────────
 
@@ -162,19 +50,19 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
         return 0;
     }
     // Issue #614 — the update-callback context owns the JNI push listener slot.
-    let update_ctx = Box::into_raw(Box::new(GalleryUpdateCtx::new()));
+    let update_ctx = Box::into_raw(Box::new(crate::android_push::GalleryUpdateCtx::new()));
     nmp_app_set_update_callback(app, update_ctx as *mut c_void, Some(on_update));
     // Issue #1612 / ADR-0048 Stage 2 — push-based signer-request delivery
     // (D8 no-polling; replaces the deleted mpsc-channel + nativeNextSignerRequest drain).
     // The trampoline context is a raw pointer to the Mutex inside the Arc.
-    let signer_listener: SignerRequestListenerSlot = Arc::new(std::sync::Mutex::new(None));
+    let signer_listener: SignerRequestListenerSlot = Arc::new(Mutex::new(None));
     // SAFETY: the raw pointer into the Arc-owned Mutex outlives any trampoline
     // call because nativeFree calls `nmp_app_set_capability_callback(…, None)`
     // (which blocks until any in-flight call returns) before the session Arc
     // (and thus the Mutex) is dropped. Dereferencing this pointer in
     // `on_capability_request` is safe for the full session lifetime.
     let trampoline_ctx =
-        Arc::as_ptr(&signer_listener) as *mut std::sync::Mutex<Option<Arc<SignerRequestPushListener>>>;
+        Arc::as_ptr(&signer_listener) as *mut Mutex<Option<Arc<SignerRequestPushListener>>>;
     nmp_app_set_capability_callback(app, trampoline_ctx as *mut c_void, Some(on_capability_request));
     nmp_external_signer_init(app);
     let session = Box::new(GallerySession {
@@ -196,17 +84,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeFree(
         return;
     }
     let s = unsafe { Box::from_raw(handle as *mut GallerySession) };
-    unsafe {
-        // Quiescence gate: both `set_*_callback(None)` calls block until any
-        // in-flight trampoline returns, so the context pointers and the
-        // `GlobalRef` inside the signer listener can be dropped safely without
-        // a UAF.
-        nmp_app_set_update_callback(s.app, std::ptr::null_mut(), None);
-        nmp_app_set_capability_callback(s.app, std::ptr::null_mut(), None);
-        nmp_app_free(s.app);
-        drop(Box::from_raw(s.update_ctx));
-        // signer_listener Arc drops here, taking the listener GlobalRef with it.
-    }
+    unsafe { teardown_session(s) };
 }
 
 #[no_mangle]
@@ -282,8 +160,8 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
 ) {
     let Some(s) = session_ref(handle) else { return };
     for relay in &crate::showcase::references().relays {
-        let Ok(url_c) = CString::new(relay.url.as_str()) else { continue };
-        let Ok(role_c) = CString::new(relay.role.as_str()) else { continue };
+        let Ok(url_c) = std::ffi::CString::new(relay.url.as_str()) else { continue };
+        let Ok(role_c) = std::ffi::CString::new(relay.role.as_str()) else { continue };
         nmp_app_add_relay(s.app, url_c.as_ptr(), role_c.as_ptr());
     }
     nmp_app_start(s.app, visible_limit as u32, emit_hz as u32);
@@ -391,14 +269,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSetUpdateL
     listener: JObject,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let ctx = unsafe { &*s.update_ctx };
-    if listener.is_null() {
-        ctx.clear_listener();
-        return;
-    }
-    let Ok(vm) = env.get_java_vm() else { return };
-    let Ok(global) = env.new_global_ref(&listener) else { return };
-    ctx.set_listener(GalleryUpdateListener::new(vm, global));
+    set_update_listener(env, s, listener);
 }
 
 /// Clear the JNI push listener without freeing the session (issue #614).
@@ -430,7 +301,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAc
     if ptr.is_null() {
         return null;
     }
-    let result = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    let result = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
     nmp_free_string(ptr);
     match env.new_string(result) {
         Ok(js) => js.into_raw(),
