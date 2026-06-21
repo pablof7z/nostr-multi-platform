@@ -64,12 +64,21 @@ re-registration.
 
 ## Feed Declaration
 
-The app/defaults layer declares a feed as:
+The app/defaults layer declares a feed as a typed `FeedParams`
+(`crates/nmp-feed/src/params.rs`, #1740) with explicit phases:
 
-- primary content kinds;
-- a reactive perspective, for this ADR the active account's follows;
-- the feed engine, admission/ranking policy, and projection key that will render
-  the resulting events.
+- primary content kinds (`FeedParams.primary_kinds`);
+- an acquisition source (`FeedParams.acquisition: FeedScope`); for this ADR the
+  active account's follows is `FeedScope::ActiveUserFollows` — a closed-algebra
+  variant, **not** a `declare_active_follows_feed` helper verb and **not** a
+  static copy of the follow set;
+- an admission policy, a ranking/order, a window, and a projection key
+  (`FeedParams.admission` / `.ranking` / `.window` / `.projection`) that select
+  which acquired rows render, how they are ordered and bounded, and how they are
+  rendered.
+
+App-defined admission/ranking enters as an opaque `CustomPerspectiveId`, never a
+`Perspective` trait the app implements and never a native closure crossing FFI.
 
 The acquisition kinds are app-declared primary content kinds transformed by the
 relevant protocol adapter before they reach the kernel. A Chirp notes feed
@@ -96,7 +105,8 @@ declared feed without UI code re-declaring it.
 wire:
 
 - the `ActiveFollowSet` observer;
-- the active-follows declared feed and its primary content kinds;
+- the typed `FeedParams` with `acquisition: FeedScope::ActiveUserFollows` and its
+  primary content kinds (replacing the old active-follows declaration helper);
 - the feed engine's membership predicate, admission/ranking policy, and reset
   hook;
 - event lookup and claim/release closures;

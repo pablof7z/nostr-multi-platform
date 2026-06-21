@@ -15,6 +15,7 @@
 
 mod flat;
 mod pager;
+mod params;
 mod pull_controller;
 mod registry;
 mod root_indexed;
@@ -26,6 +27,11 @@ pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatF
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
+};
+pub use params::{
+    validate_primary_kinds, CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams,
+    FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow, ListId, ProjectionKey,
+    PubkeySetExpr, RelaySetId, TagTerm, WotRulesId, WotSeed, KIND_DELETE,
 };
 pub use pull_controller::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedReplace, FeedReset, PullFeedController,

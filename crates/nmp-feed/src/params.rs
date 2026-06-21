@@ -1,0 +1,298 @@
+//! Typed feed-session declaration model (#1740 step 1).
+//!
+//! This module defines the **declaration** an app submits to open a feed:
+//! [`FeedParams`] with explicit, separately-typed phases — acquisition source,
+//! admission policy, ranking/order, window, and item projection — plus the
+//! app's primary content kinds. It also defines the closed [`PubkeySetExpr`]
+//! algebra ([`FeedScope`]) used to name acquisition sources, and the
+//! [`FeedHandle`] returned when a session is opened.
+//!
+//! Doctrine map:
+//! - D0: the model names no app noun — variants are framework-neutral set
+//!   operations and opaque registered ids, never a `Perspective` trait.
+//! - D4: the primary-kind → acquisition derivation has one home
+//!   ([`validate_primary_kinds`], reusing `nmp_nip18`).
+//! - D6: every validation failure is a typed [`FeedParamsError`]; no panic.
+//! - D8: window limits ride on the typed [`FeedWindow`].
+//!
+//! Step 1 is **definition + validation only**: `open_feed` does not yet consume
+//! these (step 2). No native closure crosses FFI — app-defined admission/ranking
+//! is referenced by an opaque [`CustomPerspectiveId`].
+
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+
+use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
+
+/// NIP-09 deletion event kind.
+///
+/// Like the NIP-18 repost wrappers, a kind-5 deletion is **compiler-derived
+/// acquisition** — the kernel acquires deletions to suppress superseded rows —
+/// never a primary content kind an app declares. Declaring it as primary is a
+/// fail-closed validation error.
+pub const KIND_DELETE: u32 = 5;
+
+// ---------------------------------------------------------------------------
+// Acquisition source — the closed `PubkeySetExpr` algebra.
+// ---------------------------------------------------------------------------
+
+/// Opaque identifier for an app-registered list (a NIP-51 set, a curated id).
+///
+/// The framework treats it as an opaque key; resolution to concrete members is
+/// app/protocol-owned and happens below this declaration. (D0: the framework
+/// does not interpret what the list *means*.)
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct ListId(pub String);
+
+/// Opaque identifier for an app-defined admission/ranking perspective.
+///
+/// This is how app-defined policy enters the model **without** a `Perspective`
+/// trait and **without** a native closure crossing FFI. The app registers its
+/// admission/ranking logic out-of-band and names it here by id; the kernel sees
+/// only the opaque id and dispatches the compiled, pre-registered predicate.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct CustomPerspectiveId(pub String);
+
+/// A web-of-trust seed pubkey (lowercase hex).
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct WotSeed(pub String);
+
+/// Opaque, app-registered WoT scoring/expansion rule id.
+///
+/// The concrete hop count / scoring function is registered out-of-band and
+/// referenced by id, so no native closure crosses FFI.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct WotRulesId(pub String);
+
+/// Opaque, app-registered relay-set id.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct RelaySetId(pub String);
+
+/// A `#t` tag value or a free-text search term, scoping acquisition.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct TagTerm(pub String);
+
+/// A closed, exhaustive typed algebra for naming the set of pubkeys (or the
+/// acquisition scope) a feed draws from.
+///
+/// This is the framework-neutral source phase: it never names an app product.
+/// It is a closed enum — adding a new acquisition shape is a deliberate,
+/// reviewed model change, and every consumer that matches on it must stay
+/// exhaustive. App-defined admission/ranking does **not** live here; it rides
+/// on [`FeedAdmission::Custom`] / [`FeedRanking::Custom`] as an opaque id.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum PubkeySetExpr {
+    /// The active account's own follow set (reactive perspective state derived
+    /// from the active account's kind:3; re-routed on account switch). The app
+    /// supplies no concrete pubkeys.
+    ActiveUserFollows,
+    /// The contact list (kind:3 follows) of a specific owner pubkey.
+    ContactList { owner: String },
+    /// The members of an app-registered list (NIP-51 set / curated id).
+    ListMembers { list: ListId },
+    /// A web-of-trust expansion from `seed` under an opaque, registered ruleset.
+    Wot { seed: WotSeed, rules: WotRulesId },
+    /// An app-registered relay set — acquisition is routed to those relays
+    /// without synthesizing `authors`/`#p`/`#a`/`#e` filters.
+    RelaySet { relays: RelaySetId },
+    /// A `#t` tag or free-text search scope.
+    Tag { term: TagTerm },
+    /// Set union of two sub-expressions.
+    Union(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
+    /// Set intersection of two sub-expressions.
+    Intersection(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
+    /// Set difference: members of `0` that are not in `1`.
+    Difference(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
+    /// An app-defined acquisition perspective referenced by opaque registered
+    /// id (no trait, no native closure).
+    CustomPerspectiveId(CustomPerspectiveId),
+}
+
+/// Alias: the acquisition phase of a [`FeedParams`] is a [`PubkeySetExpr`].
+///
+/// The spec names this `FeedScope`; it is the same closed algebra. Kept as an
+/// alias (not a duplicate type) so there is exactly one model (D4).
+pub type FeedScope = PubkeySetExpr;
+
+// ---------------------------------------------------------------------------
+// Admission, ranking, window, projection phases.
+// ---------------------------------------------------------------------------
+
+/// (b) ADMISSION policy — which acquired rows are allowed to render.
+///
+/// App-defined admission enters as an opaque [`CustomPerspectiveId`], never a
+/// native closure or trait object.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum FeedAdmission {
+    /// Admit every acquired primary-kind row (mute/block/delete suppression is
+    /// applied by the kernel regardless).
+    All,
+    /// Admit per an app-registered admission perspective (opaque id).
+    Custom(CustomPerspectiveId),
+}
+
+/// (c) RANKING / ORDER — how admitted rows are ordered in the window.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum FeedRanking {
+    /// Newest-first by `(created_at, id)` — the default chronological order.
+    ChronologicalDesc,
+    /// Oldest-first by `(created_at, id)`.
+    ChronologicalAsc,
+    /// Ranked per an app-registered ranking perspective (opaque id).
+    Custom(CustomPerspectiveId),
+}
+
+/// (d) WINDOW — the bounded viewport over admitted, ranked rows (D8).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FeedWindow {
+    /// Initial visible page size. Clamped into
+    /// `1..=MAX_FEED_WINDOW_LIMIT` by [`FeedWindow::bounded_limit`].
+    pub initial_limit: usize,
+}
+
+impl Default for FeedWindow {
+    fn default() -> Self {
+        Self {
+            initial_limit: DEFAULT_FEED_WINDOW_LIMIT,
+        }
+    }
+}
+
+impl FeedWindow {
+    /// The window limit clamped into the bounded range. A zero limit falls back
+    /// to the default; oversized limits are capped at [`MAX_FEED_WINDOW_LIMIT`].
+    #[must_use]
+    pub fn bounded_limit(&self) -> usize {
+        if self.initial_limit == 0 {
+            DEFAULT_FEED_WINDOW_LIMIT
+        } else {
+            self.initial_limit.min(MAX_FEED_WINDOW_LIMIT)
+        }
+    }
+}
+
+/// (e) ITEM PROJECTION — the registered projection key that renders admitted
+/// rows into cards.
+///
+/// The framework treats the key as opaque; the projection itself is registered
+/// out-of-band (no card-builder closure crosses FFI in this declaration).
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct ProjectionKey(pub String);
+
+// ---------------------------------------------------------------------------
+// FeedParams — the full typed declaration.
+// ---------------------------------------------------------------------------
+
+/// The typed declaration an app submits to open a feed session.
+///
+/// Each phase is a distinct typed field — not one opaque closure, and not three
+/// separate lifecycles. The kernel consumes the **validated** form (step 2);
+/// step 1 only defines and validates it.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FeedParams {
+    /// The app's PRIMARY content kinds (e.g. `[1]`, `[20]`, `[30023]`).
+    ///
+    /// Wrapper kinds (6/16) and the delete kind (5) are compiler-derived
+    /// acquisition and are rejected here as primary input. See
+    /// [`validate_primary_kinds`].
+    pub primary_kinds: Vec<u32>,
+    /// (a) ACQUISITION source.
+    pub acquisition: FeedScope,
+    /// (b) ADMISSION policy.
+    pub admission: FeedAdmission,
+    /// (c) RANKING / ORDER.
+    pub ranking: FeedRanking,
+    /// (d) WINDOW.
+    pub window: FeedWindow,
+    /// (e) ITEM PROJECTION.
+    pub projection: ProjectionKey,
+}
+
+/// Opaque feed-session identifier minted by the kernel when a session opens.
+///
+/// Apps treat it as an opaque token; only the kernel interprets it. Defined
+/// here so step 2 can return it without reshaping the model.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct FeedSessionId(pub u64);
+
+/// The handle returned when a feed session is opened.
+///
+/// Pairs the (opaque, registered) projection key the snapshot will surface under
+/// with the opaque session id the kernel uses to address the live session.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct FeedHandle {
+    /// The projection key whose snapshots this session emits.
+    pub projection_key: ProjectionKey,
+    /// Opaque session id (kernel-minted).
+    pub session_id: FeedSessionId,
+}
+
+// ---------------------------------------------------------------------------
+// Fail-closed primary-kind validation.
+// ---------------------------------------------------------------------------
+
+/// Typed error for an invalid [`FeedParams`] declaration (D6 — no panic).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FeedParamsError {
+    /// A NIP-18 repost wrapper kind (6/16) was declared as a primary content
+    /// kind. Wrappers are compiler-derived acquisition, never primary input.
+    RepostWrapperKind { kind: u32 },
+    /// The NIP-09 delete kind (5) was declared as a primary content kind.
+    /// Deletions are compiler-derived suppression acquisition, never primary
+    /// input.
+    DeleteKind,
+    /// No primary kinds were declared.
+    EmptyPrimaryKinds,
+}
+
+impl From<nmp_nip18::PrimaryKindError> for FeedParamsError {
+    fn from(err: nmp_nip18::PrimaryKindError) -> Self {
+        match err {
+            nmp_nip18::PrimaryKindError::RepostWrapper { kind } => {
+                Self::RepostWrapperKind { kind }
+            }
+        }
+    }
+}
+
+/// Validate app-declared primary kinds and compile them into the concrete
+/// acquisition kind set (primary + derived wrappers).
+///
+/// Fail-closed rejections (D6 — typed error, never panic):
+/// - kind 6 / 16 (NIP-18 repost wrappers) — derived acquisition, not primary;
+/// - kind 5 (NIP-09 deletion) — derived suppression acquisition, not primary;
+/// - an empty primary set.
+///
+/// On success the returned set is `primary ∪ derived-wrappers`, with the
+/// wrapper derivation owned by `nmp_nip18` (D4 — single source for that
+/// transform).
+pub fn validate_primary_kinds<I>(primary_kinds: I) -> Result<BTreeSet<u32>, FeedParamsError>
+where
+    I: IntoIterator<Item = u32>,
+{
+    let kinds: Vec<u32> = primary_kinds.into_iter().collect();
+    if kinds.is_empty() {
+        return Err(FeedParamsError::EmptyPrimaryKinds);
+    }
+    // Reject the delete kind before handing off to the NIP-18 wrapper
+    // derivation (which only knows about repost wrappers).
+    if kinds.iter().any(|&k| k == KIND_DELETE) {
+        return Err(FeedParamsError::DeleteKind);
+    }
+    Ok(nmp_nip18::try_acquisition_kinds_for_primary(kinds)?)
+}
+
+impl FeedParams {
+    /// Validate this declaration and return the compiled acquisition kind set.
+    ///
+    /// Step 1 surfaces only primary-kind validation; later steps extend this
+    /// with acquisition/admission/projection registration checks.
+    pub fn validate_primary_kinds(&self) -> Result<BTreeSet<u32>, FeedParamsError> {
+        validate_primary_kinds(self.primary_kinds.iter().copied())
+    }
+}
+
+#[cfg(test)]
+#[path = "params_tests.rs"]
+mod tests;

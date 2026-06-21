@@ -234,6 +234,20 @@ The exported C symbols with the old contact-feed names are compatibility shims
 only. They delegate to this declaration path and must not be used by apps as the
 current primitive. An empty primary-kind array `[]` is a legitimate clear.
 
+> **Superseded by typed feed sessions (#1740).** The raw
+> `declare_active_follows_feed` / `clear_active_follows_feed` declaration verbs
+> above — and the bare `open_interest` / active-follows declaration vocabulary —
+> become **internal/test-only** primitives. The app-facing surface is the typed
+> `FeedParams` feed-session model defined in `nmp-feed`
+> (`crates/nmp-feed/src/params.rs`): explicit acquisition / admission / ranking /
+> window / projection phases plus primary content kinds, opened via `open_feed`
+> to return a `FeedHandle`. "Active-user follows" is now expressed as
+> `FeedScope::ActiveUserFollows` inside `FeedParams.acquisition`, not as a named
+> verb. The same fail-closed primary-kind validation (reject wrapper kinds 6/16
+> and delete kind 5) is owned by `nmp_feed::validate_primary_kinds`. Step 1
+> landed the typed model + validation; the full session (`open_feed` dispatch
+> consuming `FeedParams`) lands in step 2.
+
 ### New `ActorCommand` variants
 
 - `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }` — installs
