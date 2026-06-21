@@ -1,10 +1,18 @@
-//! #1740 step 2 — the `FeedParams` → existing-registration compiler.
+//! The `FeedParams` → registered-session compiler (#1740 steps 2 + 3).
 //!
 //! THE composition-layer compiler [`nmp_ffi::NmpApp::open_feed`] drives. It
 //! names both `NmpApp` and the op-feed instance in one breath (the same edge
 //! [`super::register_op_feed_defaults`] owns) — exactly why it lives here and not
 //! in `nmp-ffi` (D0: `nmp-ffi` matches on no `FeedScope`). It is a SESSION
 //! WRAPPER over the existing home-feed mechanics, not a second feed engine (D4).
+//!
+//! Step 3 added the CLOSED perspective compiler: every non-default scope routes
+//! through ONE path — `resolve::resolve_scope` compiles the typed scope into a
+//! COMPILED admission predicate ([`nmp_feed::AdmitExpr`] / a live framework
+//! projection — never an app closure) plus internal acquisition interests, and
+//! `session_engine::build_scope_session` registers a session engine under the
+//! caller's unique projection key. Set algebra (`Union`/`Intersection`/
+//! `Difference`) composes child compilations in `set_algebra`.
 
 use std::collections::BTreeSet;
 
@@ -12,6 +20,14 @@ use nmp_feed::{FeedParams, FeedScope, FeedSessionBuild};
 use nmp_ffi::{FeedOpenError, NmpApp};
 
 use super::{read_active, register_op_feed_defaults};
+
+mod resolve;
+mod session_engine;
+mod set_algebra;
+
+#[cfg(test)]
+#[path = "resolve_tests.rs"]
+mod tests;
 
 /// Compile a [`FeedParams`] into a registered feed session over the EXISTING
 /// op-feed mechanics, returning the teardown recipe `open_feed` records.
@@ -32,29 +48,35 @@ use super::{read_active, register_op_feed_defaults};
 ///   [`FeedOpenError::ScopeNotSupportedYet`] WITHOUT registering anything, so
 ///   there is nothing to leak.
 ///
-/// `ContactList`/`author` and `thread` are listed in the issue as
-/// existing-mechanic scopes, but their concrete registration is the per-app
-/// author/thread `FlatFeed` seam (`nmp_app_chirp_open_author_feed`), which is
-/// not part of the framework-default composition this crate owns. They are
-/// therefore wired by the full perspective compiler in step 3 alongside the
-/// other variants; step 2 ships the framework-default `ActiveUserFollows` home
-/// session, fail-closed for the rest. (Fail closed, documented — per the issue.)
+/// # Step 3 — every non-default scope goes through ONE compiler
+///
+/// * `ContactList` (active owner) → live [`nmp_nip02::ActiveFollowSet`] predicate
+///   (foreign owner fails closed — no single-source resolver yet).
+/// * `ListMembers` → live [`nmp_nip51::PeopleListProjection`] (kind:30000)
+///   member predicate.
+/// * `Wot` → the #1698 [`nmp_wot::score::WotGraph`] ranked second-degree query.
+/// * `Tag` → `#t` acquisition with `Any` admission (the filter gates).
+/// * `Union`/`Intersection`/`Difference` → set algebra over the compiled
+///   children.
+/// * `RelaySet` and `CustomPerspectiveId` stay fail-closed (no resolver / step
+///   4 respectively).
 pub fn compile_feed_params(
     app: &NmpApp,
     params: &FeedParams,
-    _acquisition_kinds: &BTreeSet<u32>,
+    acquisition_kinds: &BTreeSet<u32>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     match &params.acquisition {
+        // The framework-default home perspective keeps its dedicated wiring.
         FeedScope::ActiveUserFollows => compile_active_user_follows(app, params),
-        FeedScope::ContactList { .. } => not_supported_yet("ContactList"),
-        FeedScope::ListMembers { .. } => not_supported_yet("ListMembers"),
-        FeedScope::Wot { .. } => not_supported_yet("Wot"),
-        FeedScope::RelaySet { .. } => not_supported_yet("RelaySet"),
-        FeedScope::Tag { .. } => not_supported_yet("Tag"),
-        FeedScope::Union(..) => not_supported_yet("Union"),
-        FeedScope::Intersection(..) => not_supported_yet("Intersection"),
-        FeedScope::Difference(..) => not_supported_yet("Difference"),
+        // Step 4 lands the app-defined-perspective registration mechanism.
         FeedScope::CustomPerspectiveId(_) => not_supported_yet("CustomPerspectiveId"),
+        // Every other scope: resolve the typed scope into a compiled admission
+        // predicate + internal interests, then register a session engine under
+        // the unique projection key.
+        scope => {
+            let resolved = resolve::resolve_scope(app, scope, acquisition_kinds)?;
+            session_engine::build_scope_session(app, &params.projection.0, resolved)
+        }
     }
 }
 

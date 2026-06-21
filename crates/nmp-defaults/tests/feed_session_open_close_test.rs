@@ -123,27 +123,75 @@ fn unsupported_scope_fails_closed_and_registers_nothing() {
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
+    // #1740 step 3: `RelaySet` (no framework resolver) and `CustomPerspectiveId`
+    // (step 4) stay fail-closed. They must register NOTHING.
+    let mut params = home_params();
+    params.acquisition = FeedScope::RelaySet {
+        relays: nmp_feed::RelaySetId("my-relays".into()),
+    };
+    params.projection = ProjectionKey("test.feed.relayset".into());
+
+    let err = app_ref
+        .open_feed(&params, &compiler)
+        .expect_err("RelaySet has no framework resolver — must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "RelaySet"),
+        "typed fail-closed error naming the scope, got {err:?}"
+    );
+
+    let mut custom = home_params();
+    custom.acquisition = FeedScope::CustomPerspectiveId(nmp_feed::CustomPerspectiveId("x".into()));
+    let err = app_ref
+        .open_feed(&custom, &compiler)
+        .expect_err("CustomPerspectiveId is deferred to step 4 — must fail closed");
+    assert!(
+        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "CustomPerspectiveId"),
+        "typed fail-closed error naming the scope, got {err:?}"
+    );
+
+    assert_eq!(app_ref.live_feed_session_count(), 0, "no session leaked");
+    let any_sidecar = app_ref.run_typed_snapshot_projections().iter().any(|p| {
+        p.key == "test.feed.relayset" || p.key == "nmp.feed.home"
+    });
+    assert!(!any_sidecar, "no sidecar registered for a fail-closed open");
+
+    nmp_app_free(app);
+}
+
+#[test]
+fn tag_scope_opens_and_closes_over_session_engine() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    set_app_active(app, Some(ALICE));
+    let app_ref: &NmpApp = unsafe { &*app };
+
+    // #1740 step 3: `Tag` IS supported now — it compiles to a `#t` acquisition
+    // with `Any` admission and registers a session engine under its own key.
     let mut params = home_params();
     params.acquisition = FeedScope::Tag {
         term: TagTerm("nostr".into()),
     };
+    params.projection = ProjectionKey("test.feed.tag".into());
 
-    let err = app_ref
+    let handle = app_ref
         .open_feed(&params, &compiler)
-        .expect_err("a step-3 scope must fail closed in step 2");
-    assert!(
-        matches!(err, FeedOpenError::ScopeNotSupportedYet { scope } if scope == "Tag"),
-        "typed fail-closed error naming the scope, got {err:?}"
-    );
-    assert_eq!(app_ref.live_feed_session_count(), 0, "no session leaked");
-    let any_home_sidecar = app_ref
+        .expect("Tag scope opens over the session engine");
+    assert_eq!(handle.projection_key, ProjectionKey("test.feed.tag".into()));
+    assert!(app_ref.feed_session_is_open(&handle), "session live");
+    assert_eq!(app_ref.live_feed_session_count(), 1);
+
+    // The session registered its own typed sidecar under the unique key.
+    let present = app_ref
         .run_typed_snapshot_projections()
         .iter()
-        .any(|p| p.key == "nmp.feed.home");
-    assert!(
-        !any_home_sidecar,
-        "no op-feed sidecar registered for a fail-closed open"
-    );
+        .any(|p| p.key == "test.feed.tag");
+    assert!(present, "session sidecar emitted under the unique key");
+
+    // Close tears it down via the handle (symmetric: withdraws the #t interest,
+    // removes the controller + projection, revokes the engine observer).
+    assert!(app_ref.close_feed(&handle), "close tears the session down");
+    assert!(!app_ref.feed_session_is_open(&handle));
+    assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
 
     nmp_app_free(app);
 }

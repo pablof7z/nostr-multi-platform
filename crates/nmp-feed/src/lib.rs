@@ -13,6 +13,7 @@
 //!   targets, relation counts, or previews; components and sibling modules own
 //!   those dependencies.
 
+mod admit;
 mod flat;
 mod pager;
 mod params;
@@ -24,6 +25,7 @@ pub mod typed_wire;
 mod types;
 mod window;
 
+pub use admit::AdmitExpr;
 pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,

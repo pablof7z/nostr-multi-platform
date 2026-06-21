@@ -68,6 +68,7 @@
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 
 pub mod bookmarks;
+pub mod people_list;
 pub mod projection;
 pub mod search_relays;
 pub mod wire;
@@ -77,6 +78,7 @@ pub use bookmarks::{
     BookmarkListMetadata, BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput,
     RemoveBookmarkAction,
 };
+pub use people_list::{PeopleListProjection, PeopleListSnapshot};
 pub use projection::{MuteListProjection, MuteListSnapshot};
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use wire::mute_list_fb::{

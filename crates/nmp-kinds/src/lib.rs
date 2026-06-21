@@ -156,6 +156,13 @@ pub const KIND_BLOCKED_RELAYS: u32 = 10_006;
 /// NIP-50 search requests. Tag shape: `["relay", <wss-url>]`.
 pub const KIND_SEARCH_RELAYS: u32 = 10_007;
 
+/// NIP-51 follow set / people list (kind:30000). An addressable
+/// (parameterized-replaceable) list of people identified by a `d`-tag, whose
+/// `["p", <pubkey>]` tags are the list's MEMBERS (subjects, not recipients —
+/// see `ptags_are_recipients`). One author may own many follow sets, one per
+/// `d`-tag value.
+pub const KIND_FOLLOW_SET: u32 = 30_000;
+
 // ─── Blossom (BUD-02) — blob-server upload authorization ───────────────────
 
 /// Blossom BUD-01/BUD-02 authorization event (kind:24242). A short-lived,
