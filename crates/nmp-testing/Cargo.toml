@@ -72,7 +72,6 @@ nmp-nip01 = { path = "../nmp-nip01" }
 # #1740 step 3 perspective-compiler fixture: prove per-scope admission with the
 # real resolution projections (no duplicated graph/list parsing — D4).
 nmp-nip02 = { path = "../nmp-nip02" }
-nmp-nip51 = { path = "../nmp-nip51" }
 nmp-wot = { path = "../nmp-wot" }
 nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip18 = { path = "../nmp-nip18" }
