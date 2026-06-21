@@ -20,9 +20,12 @@ use super::{read_active, register_op_feed_defaults};
 ///
 /// * [`FeedScope::ActiveUserFollows`] — WIRED. Reuses
 ///   [`super::register_op_feed_defaults`] verbatim (engine + pull controller +
-///   typed NOFS sidecar + follow-set/engine observers), then builds a
-///   handle-based teardown that revokes both captured observer ids and
-///   unregisters the `nmp.feed.home` controller + projection. No new feed engine.
+///   typed NOFS sidecar + follow-set/engine observers + the actor-owned
+///   active-follows acquisition declaration), then builds a handle-based
+///   teardown that unregisters the `nmp.feed.home` controller + projection,
+///   revokes both captured observer ids, AND clears the active-follows feed
+///   interests (the close-side of the open path's `declare_active_follows_feed`)
+///   before a final change-notification. No new feed engine.
 /// * Every other [`FeedScope`] variant (`ContactList`, `ListMembers`, `Wot`,
 ///   `RelaySet`, `Tag`, set algebra, `CustomPerspectiveId`) — DEFERRED to step 3
 ///   (the full perspective compiler). They fail closed here with
@@ -79,18 +82,39 @@ fn compile_active_user_follows(
     let defaults = register_op_feed_defaults(app, viewer, params.primary_kinds.clone());
 
     // Handle-based teardown over the SAME registry primitives the wiring used.
-    // Reverse-run on close: projection, observers, controller, then mark-changed.
+    //
+    // EXECUTION ORDER (the contract this recipe encodes):
+    //   1. unregister the feed controller          ── registry removals
+    //   2. revoke the engine ingest observer        ──        ↓
+    //   3. revoke the follow-set observer           ──        ↓
+    //   4. remove the typed sidecar projection      ── registry removals end
+    //   5. clear the active-follows interests       ── WITHDRAW actor-owned state
+    //   6. mark-changed (the change notification)   ── RUN LAST, after all the above
+    //
+    // The `FeedSessionRegistry` runs the teardown Vec in REVERSE registration
+    // order (`session.rs::run_teardown`). So to make the change-notification run
+    // LAST in execution order it is placed FIRST in the Vec below, and the
+    // controller-unregister (which must run FIRST in execution order) is placed
+    // LAST. `clear_active_follows` (fix #1740 — the close-side of the open path's
+    // `declare_active_follows_feed`) sits next to mark-changed: after the
+    // registry removals, before the notify, so the interest withdrawal + state
+    // clear are in flight before the snapshot tick that mark-changed forces.
+    // Symmetric with the open path: `register_op_feed_defaults` issued
+    // `DeclareActiveFollowsFeed`; this issues `ClearActiveFollowsFeed`.
     let key = nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY;
     let teardown = app.feed_teardown();
     let [follow_set_observer_id, engine_observer_id] = defaults.observer_ids;
     Ok(FeedSessionBuild {
         projection_key: params.projection.clone(),
+        // Registration order = REVERSE of the execution order documented above
+        // (the registry reverses the Vec on close).
         teardown: vec![
-            teardown.unregister_feed(key),
-            teardown.revoke_observer(follow_set_observer_id),
-            teardown.revoke_observer(engine_observer_id),
-            teardown.remove_projection(key),
-            teardown.mark_changed(),
+            teardown.mark_changed(),                       // exec #6 (runs last)
+            teardown.clear_active_follows(),               // exec #5
+            teardown.remove_projection(key),               // exec #4
+            teardown.revoke_observer(follow_set_observer_id), // exec #3
+            teardown.revoke_observer(engine_observer_id),  // exec #2
+            teardown.unregister_feed(key),                 // exec #1 (runs first)
         ],
     })
 }

@@ -13,17 +13,17 @@
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
-    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedScope, FeedSessionBuild, FeedWindow,
-    ProjectionKey,
+    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedScope, FeedSessionBuild,
+    FeedSessionRegistry, FeedWindow, ProjectionKey, TeardownAction,
 };
 
-use crate::feed_session::{FeedCompileOutput, FeedOpenError};
+use crate::feed_session::{FeedCompileOutput, FeedOpenError, FeedTeardown};
 use crate::{nmp_app_free, nmp_app_new, NmpApp};
 
 /// A feed double registered as BOTH a controller (reachable `load_older`
@@ -260,6 +260,107 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
         );
         assert_eq!(ran.load(Ordering::SeqCst), 0, "compiler never ran");
         assert_eq!(app.live_feed_session_count(), 0);
+    }
+    nmp_app_free(app);
+}
+
+/// #1740 step 2 (HIGH — teardown EXECUTION ORDER): the change-notification must
+/// run LAST in execution order, AFTER the registry removals AND the
+/// active-follows interest clear. The `FeedSessionRegistry` runs the recorded
+/// teardown Vec in REVERSE registration order (`nmp-feed/src/session.rs`), so
+/// the production recipe in `nmp-defaults/.../session_compile.rs` puts
+/// `mark_changed` FIRST in the Vec (→ runs last) and the controller-unregister
+/// LAST in the Vec (→ runs first).
+///
+/// This test builds a teardown over a CAPTURING `CommandSender` (via
+/// `FeedTeardown::from_parts`) in the EXACT registration order the production
+/// recipe uses, wraps every action in a recorder, runs it through the real
+/// `FeedSessionRegistry`, and asserts the observed EXECUTION order is:
+///   unregister_feed, revoke(engine), revoke(follow_set), remove_projection,
+///   clear_active_follows, mark_changed
+/// i.e. removals + interest-clear FIRST, the notify LAST. A regression that put
+/// `mark_changed` last in the Vec (the pre-fix bug) would run it FIRST here and
+/// trip the final assertion.
+#[test]
+fn teardown_runs_notify_last_after_removals_and_interest_clear() {
+    use nmp_core::{ActorCommand, ActorMail, CommandSender};
+
+    let app = nmp_app_new();
+    {
+        let app = crate::app_ref(app).expect("app");
+
+        // A capturing command sender: a fresh channel whose receiver we drain to
+        // observe the ORDER of `ClearActiveFollowsFeed` vs `MarkChangedSinceEmit`.
+        let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
+        let sender = CommandSender::new(tx);
+        let teardown = FeedTeardown::from_parts(
+            app.feed_registry_handle(),
+            app.snapshot_projections_handle(),
+            app.event_observers_handle(),
+            sender,
+        );
+
+        // Cross-channel execution-order recorder: every teardown step pushes its
+        // label BEFORE delegating to the real action, so the recorded Vec is the
+        // true execution order across BOTH the registry-slot mutations and the
+        // command sends.
+        let order = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let rec = |label: &'static str, action: TeardownAction| -> TeardownAction {
+            let order = Arc::clone(&order);
+            Box::new(move || {
+                order.lock().unwrap().push(label);
+                action();
+            })
+        };
+
+        let key = "nmp.feed.home";
+        // Registration order = the REVERSE of intended execution order, EXACTLY
+        // as `compile_active_user_follows` builds it (the single source of truth
+        // for the production order; the started-actor interest-release test in
+        // nmp-defaults proves the real recipe wires `clear_active_follows`).
+        let build = FeedSessionBuild {
+            projection_key: ProjectionKey(key.into()),
+            teardown: vec![
+                rec("mark_changed", teardown.mark_changed()),
+                rec("clear_active_follows", teardown.clear_active_follows()),
+                rec("remove_projection", teardown.remove_projection(key)),
+                rec("revoke_follow_set", teardown.revoke_observer(nmp_core::KernelEventObserverId(7))),
+                rec("revoke_engine", teardown.revoke_observer(nmp_core::KernelEventObserverId(8))),
+                rec("unregister_feed", teardown.unregister_feed(key)),
+            ],
+        };
+
+        let reg = FeedSessionRegistry::default();
+        let id = reg.open(build);
+        assert!(reg.close(&id), "close runs the recipe");
+
+        let observed = order.lock().unwrap().clone();
+        assert_eq!(
+            observed,
+            vec![
+                "unregister_feed",
+                "revoke_engine",
+                "revoke_follow_set",
+                "remove_projection",
+                "clear_active_follows",
+                "mark_changed",
+            ],
+            "execution order: removals + interest-clear FIRST, the change-notify LAST"
+        );
+
+        // The two command sends, in execution order, prove the interest clear is
+        // issued and that the notify is the FINAL command (after the clear).
+        let cmds: Vec<ActorCommand> = std::iter::from_fn(|| rx.try_recv().ok())
+            .map(|mail| match mail {
+                ActorMail::Command(c) => c,
+                #[allow(unreachable_patterns)]
+                _ => unreachable!("teardown only sends commands"),
+            })
+            .collect();
+        assert!(
+            matches!(cmds.as_slice(), [ActorCommand::ClearActiveFollowsFeed, ActorCommand::MarkChangedSinceEmit]),
+            "ClearActiveFollowsFeed must be sent BEFORE the final MarkChangedSinceEmit, got {cmds:?}"
+        );
     }
     nmp_app_free(app);
 }
