@@ -95,4 +95,4 @@ kernel owner with evidence.
 
 *Harness change: `s2_dispatch_flood.rs` +drain phase (327 LOC, > 300 soft cap,
 < 500 hard — cohesive measurement block, repo precedent per PD-003). Raw run:
-`docs/perf/m10.5/S2/metrics.json`.*
+`docs/perf/m10.5/S2/perf-report.json`.*

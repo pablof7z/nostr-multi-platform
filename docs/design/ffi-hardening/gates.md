@@ -289,12 +289,12 @@ M10.5, not as part of this design. The structure is:
 
 | Doctrine | Status | Evidence | Reviewer | Date |
 |---|---|---|---|---|
-| D0 | PASS | debt-inventory §3 D0 + S6 metrics.json | <name> | <date> |
-| D1 | PASS | S3 + S4 metrics.json + S3/screenshots (placeholder-then-refine path) | <name> | <date> |
-| D2 | PASS | S2/S3/S8 metrics.json | <name> | <date> |
-| D3 | PASS | S7 metrics.json + toast-bridge merge SHA | <name> | <date> |
-| D4 | PASS | debt-inventory §3 D4 + S5/S1 metrics.json | <name> | <date> |
-| D5 | PASS | debt-inventory §3 D5 + S6 metrics.json + capability.rs code review | <name> | <date> |
+| D0 | PASS | debt-inventory §3 D0 + S6 perf-report.json | <name> | <date> |
+| D1 | PASS | S3 + S4 perf-report.json + S3/screenshots (placeholder-then-refine path) | <name> | <date> |
+| D2 | PASS | S2/S3/S8 perf-report.json | <name> | <date> |
+| D3 | PASS | S7 perf-report.json + toast-bridge merge SHA | <name> | <date> |
+| D4 | PASS | debt-inventory §3 D4 + S5/S1 perf-report.json | <name> | <date> |
+| D5 | PASS | debt-inventory §3 D5 + S6 perf-report.json + capability.rs code review | <name> | <date> |
 
 ## Notes
 <any caveats, deferrals, follow-ups>

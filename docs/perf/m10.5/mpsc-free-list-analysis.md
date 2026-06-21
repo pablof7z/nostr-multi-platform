@@ -45,7 +45,7 @@ that water mark during the channel's lifetime.
 
 The §G-S2 harness (`ffi-stress s2`) uses a process-wide counting allocator
 (alloc minus free, immune to OS page-return lag). The relevant runs from
-`docs/perf/m10.5/S2/metrics.json` (post-T114b, current head `83430ca`):
+`docs/perf/m10.5/S2/perf-report.json` (post-T114b, current head `83430ca`):
 
 | Duration | Total dispatches | `peak_net_heap_bytes` | `retained_after_drain_bytes` | Verdict |
 |---|---:|---:|---:|---|
@@ -116,7 +116,7 @@ channel behaviour should target `ffi-stress s2`.
 
 The free-list retention is **provably bounded** (flat across 6× dispatch range,
 well under the §G-S2 1 MiB ceiling). The per-run measurement in
-`docs/perf/m10.5/S2/metrics.json` shows `retained_after_drain_bytes` of
+`docs/perf/m10.5/S2/perf-report.json` shows `retained_after_drain_bytes` of
 ~157 KiB–520 KiB; removing the free-list contribution would save less than
 50 KiB of that envelope — far below the 100 KiB threshold in the task's
 decision rule.

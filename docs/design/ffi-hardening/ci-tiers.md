@@ -129,7 +129,7 @@ This is the same pattern firehose-bench uses (see
   results are noted in the report and the gate script
   treats "device-absent" as a deferred-not-failed state.
 - **S10 if M3+M4 are not complete:** scenario reports as `skipped:
-  prereq` with a note in `metrics.json`; gate script omits S10
+  prereq` with a note in `perf-report.json`; gate script omits S10
   from nightly gate check until M3+M4 land. S10 is not used as
   doctrine sign-off evidence for M10.5 (see gates.md §D1 note).
 

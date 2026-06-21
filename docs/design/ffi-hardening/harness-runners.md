@@ -110,7 +110,7 @@ runner where multiple simulators can boot in parallel.
 
 ## 4. Shared report schema
 
-All three runners produce `metrics.json` with the same schema so the
+All three runners produce `perf-report.json` with the same schema so the
 aggregation in `docs/perf/m10.5/` is uniform:
 
 ```json
