@@ -3,13 +3,15 @@
 //! list) and action namespaces into an [`NmpApp`].
 
 use std::ffi::c_char;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use nmp_core::__ffi_internal::is_hex_pubkey;
 use nmp_core::substrate::RoutingFactoryRegistrar;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
+
+use nmp_nip02::register_follow_state_runtime;
 use nmp_nip02::FollowListProjection;
 
 use super::actions::register_nip29_actions;
@@ -246,33 +248,37 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
     nmp_defaults::runtimes::register_dm_runtime(app_ref);
 }
 
-/// Wire a [`FollowListProjection`] for the active account into `app`.
+/// Wire the NIP-02 follow-list runtime into `app` (Chirp FFI entry point).
 ///
-/// This is **pure consumption** of the NIP-02 kind:3 contact list. It
-/// constructs a [`FollowListProjection`] bound to `active_pubkey`, plugs it
-/// into the kernel as a [`KernelEventObserver`] (ingest), and registers its
-/// `snapshot_json` read under the snapshot key `"nmp.follow_list"` (output).
-/// The active account's formatted follow list then surfaces on every kernel
-/// snapshot tick under that key.
+/// Delegates to [`nmp_nip02::register_follow_state_runtime`], which registers
+/// the `"nmp.follow_list"` typed FlatBuffers snapshot projection backed by the
+/// canonical [`nmp_core::substrate::ContactsLookup`] and wires a kind:3 demand
+/// interest so the kernel's cache-serve pipeline populates the lookup before the
+/// first snapshot tick.
 ///
-/// `active_pubkey` is the active account's hex pubkey. It is stored in the
-/// projection's shared slot so `snapshot_json` returns the correct account's
-/// follows even if kind:3 events from multiple accounts have arrived.
+/// ## Root-cause fix (#1630)
 ///
-/// The kernel already subscribes to kind:3 for the active account as part of
-/// the `account_profile_interest` (kind:0 + kind:3 + kind:10002), so no
-/// separate interest push is needed — events arrive through the standing
-/// subscription.
+/// The prior implementation registered a `KernelEventObserver` that kept a
+/// local `HashMap` of follows. This local copy missed the startup cache-serve
+/// that runs before the lazily-registered observer exists — so already-followed
+/// accounts showed "Follow" on cold start. The new path reads directly from the
+/// shared `ContactsLookup` (same source `Kind3Parser` writes into), so the
+/// snapshot always reflects the canonical stored state. See `projection.rs` and
+/// ADR-0057 for the single-source-of-truth contract.
 ///
-/// CALLER CONTRACT — re-invoke after account switch with the new pubkey.
-/// The projection accumulates follow lists for all observed authors; only the
-/// active pubkey's list surfaces in the snapshot. A re-invoke for the same
-/// account overwrites the `"nmp.follow_list"` snapshot key with an
-/// equivalent projection (small bounded leak on the observer slot).
+/// ## `active_pubkey` parameter
 ///
-/// D6 — fire-and-forget. A null `app` or a poisoned observer slot degrades
-/// to a silent return.
+/// Retained for ABI compatibility but **no longer used**. The projection reads
+/// the kernel's authoritative `active_pubkey()` slot (populated for every
+/// backend including bunker accounts) rather than a caller-supplied copy.
+/// Swift callers may continue to pass the pubkey or NULL; both are ignored.
 ///
+/// ## Wire shape preserved
+///
+/// The `"nmp.follow_list"` snapshot key and the `"nmp.nip02.follow_list"`
+/// schema id are unchanged — no Swift decoder changes required.
+///
+/// D6 — a null `app` degrades to a silent return.
 /// `app` MUST outlive the registration; it is only borrowed for this call.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -287,37 +293,16 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
     // live for the duration of this call. The borrow is not held past return.
     let app_ref = unsafe { &*app };
 
-    // Extract the active pubkey string; `None` is permitted (before sign-in).
-    let pubkey_opt = c_string_opt(active_pubkey).filter(|s| !s.is_empty());
+    // `active_pubkey` is retained in the signature for ABI stability but is no
+    // longer used. The canonical slot comes from the kernel.
+    let _ = active_pubkey;
 
-    // The shared slot the projection and the FFI both hold: the projection
-    // reads it at snapshot time, the caller updates it on account switch.
-    let active_pubkey_slot = Arc::new(Mutex::new(pubkey_opt));
+    // Obtain the shared ContactsLookup — the same Arc that Kind3Parser writes
+    // into via the ingest pipeline. Passed explicitly so register_follow_state_runtime
+    // stays generic (it only depends on nmp-core traits, not nmp-ffi).
+    let contacts_lookup = app_ref.contacts_lookup();
 
-    let projection = Arc::new(FollowListProjection::new(Arc::clone(&active_pubkey_slot)));
-
-    let observer_id =
-        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
-    if observer_id.0 == 0 {
-        // Observer registration failed (poisoned slot). Don't register the
-        // snapshot closure for a projection that will never receive events.
-        return;
-    }
-
-    // Typed `"nmp.follow_list"` sidecar (ADR-0037), emitted ALONGSIDE the
-    // generic `Value` projection below — never replacing it. The registration
-    // KEY stays `"nmp.follow_list"`; the typed payload's SCHEMA_ID is
-    // `"nmp.nip02.follow_list"` (the key/schema_id split mirrors wallet). A host
-    // with an `NF02` decoder prefers the typed payload; an un-updated host falls
-    // back to the generic subtree. The extra `Arc` clone goes to the typed
-    // closure; the last clone is consumed by the generic `move` closure.
-    let typed_projection = Arc::clone(&projection);
-    app_ref.register_typed_snapshot_projection("nmp.follow_list", move || {
-        follow_list_typed_projection(&typed_projection)
-    });
-
-    // Output side: the no-argument snapshot read runs on the actor thread
-    // inside each snapshot tick. The `move` consumes this last `Arc`.
+    register_follow_state_runtime(app_ref, contacts_lookup);
 }
 
 /// Build the typed `"nmp.nip57.zaps"` sidecar entry from the live zaps
@@ -337,33 +322,6 @@ pub(crate) fn zaps_typed_projection(
         schema_version: nmp_nip57::ZAPS_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(nmp_nip57::ZAPS_FILE_IDENTIFIER).into_owned(),
         payload: nmp_nip57::encode_zaps_snapshot(&snapshot),
-        ..Default::default()
-    })
-}
-
-/// Build the typed `"nmp.follow_list"` sidecar entry from the live follow-list
-/// projection. Always emits (parity with the generic projection, which always
-/// contributes `{"follows":[]}`): no active account yields an empty typed
-/// buffer.
-///
-/// The registration KEY is `"nmp.follow_list"` (matching the generic
-/// projection's namespace); the typed payload's `schema_id` is the distinct
-/// `"nmp.nip02.follow_list"`.
-///
-/// Extracted from the `register_typed_snapshot_projection` closure so the
-/// registration's schema identity and the encode are unit-testable without
-/// spinning the actor (Wave A proof test).
-pub(crate) fn follow_list_typed_projection(
-    proj: &FollowListProjection,
-) -> Option<nmp_core::TypedProjectionData> {
-    let snapshot = proj.snapshot();
-    Some(nmp_core::TypedProjectionData {
-        key: "nmp.follow_list".to_string(),
-        schema_id: nmp_nip02::FOLLOW_LIST_SCHEMA_ID.to_string(),
-        schema_version: nmp_nip02::FOLLOW_LIST_SCHEMA_VERSION,
-        file_identifier: String::from_utf8_lossy(nmp_nip02::FOLLOW_LIST_FILE_IDENTIFIER)
-            .into_owned(),
-        payload: nmp_nip02::encode_follow_list(&snapshot),
         ..Default::default()
     })
 }

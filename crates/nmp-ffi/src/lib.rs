@@ -230,8 +230,7 @@ pub use testing::{
     nmp_app_configure_gc_budget, nmp_app_inject_pre_verified_events,
     nmp_app_inject_signed_event_json, nmp_app_inject_signed_events,
     nmp_app_inject_unpinned_events_for_gc, nmp_app_read_author_event_ids,
-    nmp_app_read_projection_churn_stats, nmp_app_read_ram_eviction_stats,
-    nmp_app_trigger_gc_step,
+    nmp_app_read_projection_churn_stats, nmp_app_read_ram_eviction_stats, nmp_app_trigger_gc_step,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use testing_sync::nmp_app_wait_barrier;
@@ -258,11 +257,10 @@ pub use signer_ports_test_support::{
 use nmp_core::__ffi_internal::{
     default_registry, dispatch_capability, new_app_relay_slot, new_bunker_handshake_slot,
     new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
-    new_signer_state_slot, new_snapshot_projection_slot,
-    register_rust_observer, register_rust_observer_muted, run_actor_with_observers,
-    unregister_observer, ActionRegistry, ActorChannels,
-    ActorConfigSources, ActorRuntimeSlots, CapabilityCallbackSlot, KernelEventObserverSlot,
-    LifecycleObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
+    new_signer_state_slot, new_snapshot_projection_slot, register_rust_observer,
+    register_rust_observer_muted, run_actor_with_observers, unregister_observer, ActionRegistry,
+    ActorChannels, ActorConfigSources, ActorRuntimeSlots, CapabilityCallbackSlot,
+    KernelEventObserverSlot, LifecycleObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
     DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
@@ -270,22 +268,18 @@ use nmp_core::__ffi_internal::{
 // `"wallet"` sidecar via `register_typed_snapshot_projection` (ADR-0037).
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
-    new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
-    new_nostrconnect_perms_slot,
-    new_external_event_sink_policy_slot, new_publish_resolver_slot,
-    new_pull_cursor_registry_handle_slot, new_routing_substrate_slot,
-    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
-    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicySlot,
-    MlsLocalNsecSlot,
+    new_event_store_slot, new_external_event_sink_policy_slot, new_mls_local_nsec_slot,
+    new_nostrconnect_bootstrap_relay_slot, new_nostrconnect_perms_slot, new_publish_resolver_slot,
+    new_pull_cursor_registry_handle_slot, new_routing_substrate_slot, new_routing_trace_slot,
+    new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveAccountSlot,
+    ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicySlot, MlsLocalNsecSlot,
     NostrConnectBootstrapRelaySlot, NostrConnectPermsSlot, PublishResolverSlot,
     PullCursorRegistryHandleSlot, RoutingSubstrateSlot, RoutingTraceSlot,
     SingletonEventObserverIdSlot, StoragePathSlot,
 };
-use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
 use nmp_core::subs::PlanCoverageHook;
-use nmp_core::{
-    ActorCommand, KernelEventObserver, KernelEventObserverId,
-};
+use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
+use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId};
 use passive_start::{prestart_snapshot_frame, ActorStarter};
 use std::ffi::{c_char, c_uint, c_void, CStr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -446,7 +440,7 @@ pub struct NmpApp {
     /// through `ffi::event_observer::nmp_app_register_event_observer`. Both
     /// paths mutate the same `Mutex<…>` the actor reads.
     event_observers: KernelEventObserverSlot,
-/// Singleton kernel-event observer-id slot used by per-app crates that
+    /// Singleton kernel-event observer-id slot used by per-app crates that
     /// register exactly one auxiliary `KernelEventObserver` per app and want
     /// the registration to be idempotent across re-invokes — see
     /// [`Self::swap_singleton_event_observer`]. The per-app crate swaps the
@@ -869,7 +863,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // mutate the inner `Mutex` visible to both sides.
     let event_observers = new_event_observer_slot();
     let actor_event_observers = Arc::clone(&event_observers);
-// Per-app idempotency slot — tracks the previously-installed singleton
+    // Per-app idempotency slot — tracks the previously-installed singleton
     // kernel-event observer id for a per-app crate that wants exactly one
     // auxiliary `KernelEventObserver` per app. NOT shared with the actor
     // thread — the actor never reads this; only the FFI side calls the swap
@@ -975,8 +969,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // keeps one `Arc` clone (read by `nmp_app_pull_page`); the actor carries the
     // matching clone and publishes `kernel.pull_cursor_registry_handle()` into
     // it after kernel construction (and re-publishes on `Reset`).
-    let pull_cursor_registry: PullCursorRegistryHandleSlot =
-        new_pull_cursor_registry_handle_slot();
+    let pull_cursor_registry: PullCursorRegistryHandleSlot = new_pull_cursor_registry_handle_slot();
     let actor_pull_cursor_registry = Arc::clone(&pull_cursor_registry);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
@@ -1020,7 +1013,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `Kernel::set_clock`.
     let kernel_clock: nmp_core::slots::KernelClockSlot = nmp_core::slots::new_kernel_clock_slot();
     let actor_kernel_clock = Arc::clone(&kernel_clock);
-    let external_event_sink_policy: ExternalEventSinkPolicySlot = new_external_event_sink_policy_slot();
+    let external_event_sink_policy: ExternalEventSinkPolicySlot =
+        new_external_event_sink_policy_slot();
     let actor_external_event_sink_policy = Arc::clone(&external_event_sink_policy);
     let external_event_sink_dispatcher_slot = new_external_event_sink_dispatcher_slot();
     // Publish a constructed (but not-yet-bound) dispatcher into the slot NOW,
@@ -1030,7 +1024,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     if let Ok(mut guard) = external_event_sink_dispatcher_slot.lock() {
         *guard = Some(nmp_core::substrate::ExternalEventSinkDispatcher::new());
     }
-    let actor_external_event_sink_dispatcher_slot = Arc::clone(&external_event_sink_dispatcher_slot);
+    let actor_external_event_sink_dispatcher_slot =
+        Arc::clone(&external_event_sink_dispatcher_slot);
     let feed_registry = nmp_feed::new_feed_registry_slot();
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
@@ -1720,8 +1715,6 @@ impl NmpApp {
         self.action_registry.set_result_observer(f);
     }
 
-
-
     /// Test-only: run every registered **typed** snapshot projection directly
     /// against the app's shared registry, bypassing the actor/kernel tick. The
     /// typed counterpart to [`Self::run_snapshot_projections_for_test`] — lets
@@ -2097,9 +2090,9 @@ impl NmpApp {
     /// pager drain terminates and the feed fails closed (no broad-scan, no poll).
     #[must_use]
     pub fn feed_pull_fn(&self) -> nmp_feed::PullFn {
-        use std::num::NonZeroUsize;
-        use nmp_store::{PullPage, ScanLogResult};
         use nmp_core::{pull_page_over, PullLimits};
+        use nmp_store::{PullPage, ScanLogResult};
+        use std::num::NonZeroUsize;
 
         let slot = Arc::clone(&self.event_store_handle);
         // One match entry per visible row; a generous per-call scan window. The

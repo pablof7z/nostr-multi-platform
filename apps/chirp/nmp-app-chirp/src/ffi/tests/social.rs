@@ -10,7 +10,7 @@
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::nmp_app_chirp_unregister;
-use super::super::register::follow_list_typed_projection;
+use nmp_nip02::typed_projection_entry as follow_list_typed_projection;
 use super::helpers::{dispatch, register_app};
 
 /// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the public social
@@ -71,41 +71,36 @@ fn social_verbs_dispatch_through_action_registry() {
 /// typed-sidecar entry (`TypedProjectionData`) whose `payload` decodes back to
 /// the same follow-list snapshot via the generated `NF02` bindings.
 ///
-/// `follow_list_typed_projection` returns exactly the `TypedProjectionData` the
-/// kernel's `SnapshotRegistry::run_typed` collects into a frame's
-/// `typed_projections` sidecar (proven end-to-end in
-/// `nmp-core/src/kernel/snapshot_registry_tests.rs`); driving it directly is the
-/// in-crate proof that the closure wires the right schema identity (note the
-/// key/schema_id split) and payload — without spinning the actor.
+/// Constructs a `FollowListProjection` backed by a `TestContactsCache` (the
+/// test-support stand-in for `nmp_nip01::ContactsCache`), seeds the active
+/// account's kind:3 follows directly into the cache (mirroring what
+/// `Kind3Parser` does on ingest), and calls `follow_list_typed_projection`
+/// to verify the schema identity and payload round-trip — without spinning the
+/// actor.
 #[test]
 fn follow_list_typed_projection_lands_in_the_sidecar_and_round_trips() {
     use std::sync::{Arc, Mutex};
 
-    use nmp_core::kinds::KIND_CONTACT_LIST;
-    use nmp_core::substrate::KernelEvent;
-    use nmp_core::KernelEventObserver;
+    use nmp_core::substrate::{ContactsLookup, TestContactsCache};
     use nmp_nip02::{decode_follow_list, FollowListProjection};
 
     let me = "aa".repeat(32);
     let followed_a = "11".repeat(32);
     let followed_b = "22".repeat(32);
 
-    let active = Arc::new(Mutex::new(Some(me.clone())));
-    let proj = FollowListProjection::new(Arc::clone(&active));
+    let cache = Arc::new(TestContactsCache::new());
+    // Seed the active account's follow list exactly as Kind3Parser would on ingest.
+    let tags = vec![
+        vec!["p".to_string(), followed_a.clone()],
+        vec!["p".to_string(), followed_b.clone()],
+    ];
+    cache.ingest_kind3(&me, "contacts-1", 100, &tags);
 
-    // Drive the active account's kind:3 contact list through the observer.
-    proj.on_kernel_event(&KernelEvent {
-        id: "contacts-1".to_string(),
-        author: me.clone(),
-        kind: KIND_CONTACT_LIST,
-        created_at: 0,
-        tags: vec![
-            vec!["p".to_string(), followed_a.clone()],
-            vec!["p".to_string(), followed_b.clone()],
-        ],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    });
+    let active = Arc::new(Mutex::new(Some(me.clone())));
+    let proj = FollowListProjection::new(
+        Arc::clone(&active),
+        Arc::clone(&cache) as Arc<dyn ContactsLookup>,
+    );
 
     let entry = follow_list_typed_projection(&proj).expect("follow-list projection always emits");
 

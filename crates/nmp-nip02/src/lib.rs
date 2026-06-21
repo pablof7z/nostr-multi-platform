@@ -42,7 +42,12 @@
 //! deleted in a prior cycle; the only way to reach these verbs from a host is
 //! via `nmp_app_dispatch_action(namespace, action_json)`.
 
-use nmp_core::substrate::{ActionModule, ActionRegistrar};
+use std::sync::Arc;
+
+use nmp_core::substrate::{
+    ActionModule, ActionRegistrar, ContactsLookup, HostCapabilities, IdentityChangeRegistrar,
+    SnapshotProjectionRegistrar,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -203,6 +208,178 @@ pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
 pub fn register_actions(app: &mut impl ActionRegistrar) {
     register_follow_actions(app);
     nmp_nip25::register_actions(app);
+}
+
+/// Wire the NIP-02 follow-list read runtime into `app`.
+///
+/// Registers the `"nmp.follow_list"` typed FlatBuffers snapshot projection
+/// (ADR-0037) backed by the canonical [`ContactsLookup`] — the single source
+/// of truth for the active account's kind:3 follow set — and enqueues a
+/// `{"kinds":[3]}` kind:3 interest so the kernel's cache-serve + `Kind3Parser`
+/// pipeline populates the lookup before the first snapshot tick.
+///
+/// # Why this fixes the Follow button
+///
+/// The prior `nmp_app_chirp_register_follow_list` registered a
+/// `KernelEventObserver` that kept a LOCAL `HashMap` of follows. This missed
+/// the startup cache-serve (runs before the lazy observer exists) so
+/// already-followed accounts appeared as "Follow" on cold start. This function
+/// replaces that approach: the projection is a PURE READ over the shared
+/// `ContactsLookup`; the kernel's demand interest drives acquisition through
+/// the standard cache-serve path.
+///
+/// # Interest lifecycle
+///
+/// On initial call (with an active account) and on each subsequent account
+/// change, `register_follow_state_runtime` enqueues
+/// `ActorCommand::OpenInterest { filter_json: {"kinds":[3],"authors":[<pubkey>]},
+/// consumer_id: "nmp.nip02.follow_list", scope: 0 }`. The actor routes this
+/// through `Kernel::register_interest`, which mutates the registry, enqueues a
+/// cache-serve for the active account's kind:3, and triggers a compile
+/// invalidation — the same front-door every other interest uses.
+///
+/// On account switch the old interest is closed (the account-change observer
+/// enqueues `ActorCommand::CloseInterest` for the previous pubkey) and a new
+/// one is opened for the incoming pubkey.
+///
+/// # Wire shape
+///
+/// The `"nmp.follow_list"` snapshot key and the `"nmp.nip02.follow_list"`
+/// schema id are preserved — no Swift decoder changes are needed.
+///
+/// `contacts_lookup` MUST be the SAME `Arc` the `Kind3Parser` writes into
+/// (i.e. sourced from `app.contacts_lookup()` or the composition root's
+/// `DefaultSubstrateWiring`). Passing a different instance creates a
+/// split-brain scenario — the projection would always read the empty default.
+///
+/// # Called from Chirp FFI
+///
+/// `nmp_app_chirp_register_follow_list` calls this function instead of
+/// constructing a `FollowListProjection` directly. The `active_pubkey` C
+/// string parameter is no longer used to seed a local slot; the projection
+/// reads the kernel's canonical active-account slot via `app.active_pubkey()`.
+pub fn register_follow_state_runtime(
+    app: &(impl HostCapabilities + IdentityChangeRegistrar + SnapshotProjectionRegistrar),
+    contacts_lookup: Arc<dyn ContactsLookup>,
+) {
+    use crate::wire::typed_fb;
+
+    let active_pubkey = app.active_pubkey();
+    let tx = app.actor_sender();
+
+    let projection = Arc::new(crate::projection::FollowListProjection::new(
+        Arc::clone(&active_pubkey),
+        Arc::clone(&contacts_lookup),
+    ));
+
+    // --- Interest registration helper ---
+    // Enqueues `OpenInterest` (kind:3, authors:[pubkey]) on the actor channel
+    // so the kernel's cache-serve pipeline populates the ContactsLookup before
+    // the first snapshot tick. Uses the `scope: 0` (ActiveAccount) convention.
+    // D8: channel send is non-blocking, bounded to one command.
+    const CONSUMER_ID: &str = "nmp.nip02.follow_list";
+
+    let push_interest = {
+        let tx = tx.clone();
+        move |pubkey: &str| {
+            let _ = tx.send(ActorCommand::OpenInterest {
+                filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
+                consumer_id: CONSUMER_ID.to_string(),
+                scope: 0, // ActiveAccount
+            });
+        }
+    };
+
+    let close_interest = {
+        let tx = tx.clone();
+        move |pubkey: &str| {
+            let _ = tx.send(ActorCommand::CloseInterest {
+                filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
+                consumer_id: CONSUMER_ID.to_string(),
+                scope: 0,
+            });
+        }
+    };
+
+    // If there is already an active account, push the interest immediately so
+    // the kernel serves the cached kind:3 before the first snapshot tick.
+    {
+        let maybe_pubkey = active_pubkey.lock().ok().and_then(|g| g.clone());
+        if let Some(pubkey) = maybe_pubkey {
+            push_interest(&pubkey);
+        }
+    }
+
+    // On each account change: close the old interest, open a new one.
+    // The identity-change observer fires on the update-listener thread after
+    // the kernel writes `active_pubkey` — no race with the slot read above.
+    //
+    // `last_pubkey` tracks the previously-active account so we can close its
+    // specific interest (the filter_json includes the author, so we must close
+    // with the OLD pubkey, not the new one). Seeded from the slot's current
+    // value so the first fire is not a false positive.
+    let last_pubkey = {
+        let slot = Arc::clone(&active_pubkey);
+        Arc::new(std::sync::Mutex::new(
+            slot.lock().ok().and_then(|g| g.clone()),
+        ))
+    };
+
+    app.register_identity_change_observer(move |new_pubkey: Option<String>| {
+        // Close the old interest, if any.
+        if let Ok(mut prev) = last_pubkey.lock() {
+            if let Some(old) = prev.take() {
+                close_interest(&old);
+            }
+            // Open a new interest for the incoming account.
+            if let Some(ref pubkey) = new_pubkey {
+                push_interest(pubkey);
+            }
+            *prev = new_pubkey;
+        }
+    });
+
+    // Typed FlatBuffers sidecar (ADR-0037): PURE READ — reads the ContactsLookup
+    // and encodes. Wire shape is preserved: key = "nmp.follow_list",
+    // schema_id = "nmp.nip02.follow_list". D8: non-blocking lookup.
+    let projection_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.follow_list", move || {
+        let snapshot = projection_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.follow_list".to_string(),
+            schema_id: FOLLOW_LIST_SCHEMA_ID.to_string(),
+            schema_version: FOLLOW_LIST_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(FOLLOW_LIST_FILE_IDENTIFIER).into_owned(),
+            payload: typed_fb::encode_follow_list(&snapshot),
+            ..Default::default()
+        })
+    });
+}
+
+/// Build the typed `"nmp.follow_list"` sidecar entry from a live
+/// [`FollowListProjection`].
+///
+/// Always emits (parity with the generic projection, which always contributes
+/// `{"follows":[]}`): no active account yields an empty typed buffer.
+///
+/// The registration KEY is `"nmp.follow_list"` (matching the generic
+/// projection's namespace); the typed payload's `schema_id` is the distinct
+/// `"nmp.nip02.follow_list"`. Exposed here so platform-specific tests can
+/// verify the sidecar shape without duplicating the encoding.
+#[must_use]
+pub fn typed_projection_entry(
+    proj: &projection::FollowListProjection,
+) -> Option<nmp_core::TypedProjectionData> {
+    use crate::wire::typed_fb;
+    let snapshot = proj.snapshot();
+    Some(nmp_core::TypedProjectionData {
+        key: "nmp.follow_list".to_string(),
+        schema_id: FOLLOW_LIST_SCHEMA_ID.to_string(),
+        schema_version: FOLLOW_LIST_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(FOLLOW_LIST_FILE_IDENTIFIER).into_owned(),
+        payload: typed_fb::encode_follow_list(&snapshot),
+        ..Default::default()
+    })
 }
 
 // ---------------------------------------------------------------------------
