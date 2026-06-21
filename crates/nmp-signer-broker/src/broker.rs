@@ -371,6 +371,18 @@ impl BunkerBroker {
     fn emit_progress(&self, stage: &str, message: Option<&str>) {
         self.emit(BrokerEvent::Progress {
             stage: stage.to_string(),
+            code: None,
+            message: message.map(str::to_string),
+        });
+    }
+
+    /// Like [`Self::emit_progress`] but carrying a stable machine `code` for a
+    /// user-facing progress label (#1711). The shell localizes the code and
+    /// falls back to `message` when it doesn't recognize the key.
+    fn emit_progress_coded(&self, stage: &str, code: &str, message: Option<&str>) {
+        self.emit(BrokerEvent::Progress {
+            stage: stage.to_string(),
+            code: Some(code.to_string()),
             message: message.map(str::to_string),
         });
     }

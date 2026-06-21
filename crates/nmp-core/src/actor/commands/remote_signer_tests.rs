@@ -204,6 +204,7 @@ fn bunker_handshake_progress_writes_then_clears() {
         &id,
         &mut kernel,
         "awaiting_pubkey".to_string(),
+        None,
         Some("connected, waiting for get_public_key".to_string()),
     );
     // D0: handshake state is an app noun — it is written to the identity
@@ -214,7 +215,7 @@ fn bunker_handshake_progress_writes_then_clears() {
     assert!(progress.message.is_some());
 
     // `"idle"` collapses to `None`.
-    bunker_handshake_progress(&id, &mut kernel, "idle".to_string(), None);
+    bunker_handshake_progress(&id, &mut kernel, "idle".to_string(), None, None);
     assert!(id.bunker_handshake_for_test().is_none());
 }
 
@@ -233,6 +234,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_stage() {
         &id,
         &mut kernel,
         "connecting".to_string(),
+        None,
         Some("dialing wss://r.example".to_string()),
     );
     let dto = id.bunker_handshake_for_test().expect("connecting set");
@@ -244,7 +246,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_stage() {
     assert_eq!(dto.stage, "connecting");
 
     // ── `"awaiting_pubkey"` — also in flight ──────────────────────────────
-    bunker_handshake_progress(&id, &mut kernel, "awaiting_pubkey".to_string(), None);
+    bunker_handshake_progress(&id, &mut kernel, "awaiting_pubkey".to_string(), None, None);
     let dto = id.bunker_handshake_for_test().expect("awaiting set");
     assert!(!dto.is_idle);
     assert!(dto.is_in_flight, "awaiting_pubkey is in flight");
@@ -254,7 +256,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_stage() {
     assert_eq!(dto.stage, "awaiting_pubkey");
 
     // ── `"ready"` — terminal success ──────────────────────────────────────
-    bunker_handshake_progress(&id, &mut kernel, "ready".to_string(), None);
+    bunker_handshake_progress(&id, &mut kernel, "ready".to_string(), None, None);
     let dto = id.bunker_handshake_for_test().expect("ready set");
     assert!(!dto.is_idle);
     assert!(!dto.is_in_flight, "ready is not in flight");
@@ -271,6 +273,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_stage() {
         &id,
         &mut kernel,
         "failed".to_string(),
+        None,
         Some("relay handshake failed".to_string()),
     );
     let dto = id.bunker_handshake_for_test().expect("failed set");
@@ -486,6 +489,7 @@ fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
         &id,
         &mut kernel,
         "connecting".to_string(),
+        None,
         Some("dialing wss://r.example".to_string()),
     );
     let (_value, typed) = kernel.make_update_typed_for_test(true);
@@ -861,6 +865,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
     cmd_tx
         .send(ActorCommand::BunkerHandshakeProgress {
             stage: "connecting".to_string(),
+            code: None,
             message: Some("dialing relay".to_string()),
         })
         .unwrap();
@@ -931,6 +936,7 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     cmd_tx
         .send(ActorCommand::BunkerHandshakeProgress {
             stage: "ready".to_string(),
+            code: None,
             message: None,
         })
         .unwrap();

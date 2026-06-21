@@ -524,6 +524,7 @@ enum TypedProjectionGlue {
             stageKind: reader.hasStageKind
                 ? (Nip46Onboarding.StageKind(rawValue: reader.stageKind ?? "") ?? .unknown)
                 : nil,
+            progressCode: reader.hasProgressCode ? (reader.progressCode ?? "") : nil,
             progressMessage: reader.hasProgressMessage ? (reader.progressMessage ?? "") : nil,
             isInFlight: reader.isInFlight,
             isFailed: reader.isFailed,

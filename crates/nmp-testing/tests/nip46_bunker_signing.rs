@@ -316,7 +316,9 @@ fn wait_for_add_remote_signer(
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 ..
             })) => return Some(handle),
-            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress { stage, message })) => {
+            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress {
+                stage, message, ..
+            })) => {
                 if stage == "failed" {
                     panic!("bunker handshake failed: {stage}: {message:?}");
                 }

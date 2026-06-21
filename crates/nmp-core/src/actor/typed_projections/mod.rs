@@ -122,6 +122,7 @@ pub(crate) fn bunker_handshake_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
         .clone()?;
     let model = BunkerHandshakeModel {
         stage: dto.stage,
+        progress_code: dto.progress_code,
         message: dto.message,
         is_idle: dto.is_idle,
         is_in_flight: dto.is_in_flight,
@@ -168,6 +169,7 @@ pub(crate) fn nip46_onboarding_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
             })
             .collect(),
         stage_kind,
+        progress_code: dto.progress_code,
         progress_message: dto.progress_message,
         is_in_flight: dto.is_in_flight,
         is_failed: dto.is_failed,

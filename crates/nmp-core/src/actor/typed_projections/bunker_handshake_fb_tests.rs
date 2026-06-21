@@ -4,6 +4,7 @@ use super::{decode_bunker_handshake, encode_bunker_handshake, BunkerHandshakeMod
 fn round_trips_full_model() {
     let model = BunkerHandshakeModel {
         stage: "connecting".to_string(),
+        progress_code: Some("signer_progress_waiting_for_broker".to_string()),
         message: Some("wss://relay.example".to_string()),
         is_idle: false,
         is_in_flight: true,
@@ -20,6 +21,7 @@ fn round_trips_full_model() {
 fn message_none_round_trips_as_none() {
     let model = BunkerHandshakeModel {
         stage: "failed".to_string(),
+        progress_code: None,
         message: None,
         is_idle: false,
         is_in_flight: false,

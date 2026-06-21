@@ -48,7 +48,10 @@ pub struct BunkerHandshakeDto {
     /// maps it to `None` — but a broker that emits `"idle"` directly through
     /// the slot would still be classified correctly through `is_idle`).
     pub(crate) stage: String,
-    /// Optional human-readable status (e.g. relay URL, error reason).
+    /// Stable machine code for a user-facing progress label (#1711); `None` for
+    /// diagnostic / `"failed"`. Shells localize it (fallback `message`).
+    pub(crate) progress_code: Option<String>,
+    /// Human-readable status (the English fallback prose / error reason).
     pub(crate) message: Option<String>,
     /// `stage == "idle"`. Defensive: the actor's `bunker_handshake_progress`
     /// collapses an `"idle"` stage to `None` (clearing the slot), so this flag
@@ -76,7 +79,7 @@ impl BunkerHandshakeDto {
     /// message, pre-computing every derived field. Centralizing the derivation
     /// here is doctrine §6 anti-pattern #1: a shell must never reconstruct
     /// these flags / labels from `stage`.
-    pub(crate) fn new(stage: String, message: Option<String>) -> Self {
+    pub(crate) fn new(stage: String, code: Option<String>, message: Option<String>) -> Self {
         let kind = BunkerStageKind::from_wire(&stage);
         let is_idle = matches!(kind, BunkerStageKind::Idle);
         let is_in_flight = matches!(
@@ -88,6 +91,7 @@ impl BunkerHandshakeDto {
         let can_cancel = is_in_flight;
         Self {
             stage,
+            progress_code: code,
             message,
             is_idle,
             is_in_flight,
@@ -95,6 +99,16 @@ impl BunkerHandshakeDto {
             is_terminal_success,
             can_cancel,
         }
+    }
+
+    /// Build a handshake DTO for a `stage` from a [`UiToken`] progress label
+    /// (#1711): `code` → `progress_code`, prose → `message`. For kernel-set labels.
+    pub(crate) fn progress(stage: &str, token: &crate::ui_token::UiToken) -> Self {
+        Self::new(
+            stage.to_string(),
+            Some(token.code().to_string()),
+            Some(token.fallback_prose().to_string()),
+        )
     }
 }
 
@@ -332,9 +346,10 @@ pub(crate) struct Nip46OnboardingDto {
     /// Typed handshake stage; `None` when no handshake is in flight (mirrors
     /// the bunker slot's `None` semantic).
     pub(crate) stage_kind: Option<BunkerStageKind>,
-    /// Human-readable progress / error message; verbatim copy of the bunker
-    /// slot's `message`. Hosts display this verbatim — they never format
-    /// progress strings themselves.
+    /// Stable machine code for the progress label (#1711). Hosts localize it (fallback `progress_message`).
+    pub(crate) progress_code: Option<String>,
+    /// Human-readable progress / error message (English fallback prose); copy of
+    /// the bunker slot's `message`, rendered when `progress_code` is unrecognized.
     pub(crate) progress_message: Option<String>,
     /// True when a handshake is mid-flight (`connecting` / `awaiting_pubkey`).
     /// Hosts use this to disable inputs and show a spinner without inspecting
@@ -360,9 +375,12 @@ pub(crate) fn build_nip46_onboarding_dto(slot: &BunkerHandshakeSlot) -> Nip46Onb
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
-    let (stage_kind, progress_message) = match raw {
-        Some(dto) => (Some(BunkerStageKind::from_wire(&dto.stage)), dto.message),
-        None => (None, None),
+    let (stage_kind, progress_code, progress_message) = match raw {
+        Some(dto) => {
+            let kind = BunkerStageKind::from_wire(&dto.stage);
+            (Some(kind), dto.progress_code, dto.message)
+        }
+        None => (None, None, None),
     };
     let is_in_flight = matches!(
         stage_kind,
@@ -373,6 +391,7 @@ pub(crate) fn build_nip46_onboarding_dto(slot: &BunkerHandshakeSlot) -> Nip46Onb
     Nip46OnboardingDto {
         signer_apps: signer_apps_table(),
         stage_kind,
+        progress_code,
         progress_message,
         is_in_flight,
         is_failed,
@@ -1407,12 +1426,13 @@ pub(crate) fn bunker_handshake_progress(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     stage: String,
+    code: Option<String>,
     message: Option<String>,
 ) {
     let value = if stage == "idle" {
         None
     } else {
-        Some(BunkerHandshakeDto::new(stage, message))
+        Some(BunkerHandshakeDto::new(stage, code, message))
     };
     identity.set_bunker_handshake(value);
     kernel.mark_changed_since_emit();
@@ -1442,9 +1462,12 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
         ));
         return;
     }
-    identity.set_bunker_handshake(Some(BunkerHandshakeDto::new(
-        "connecting".to_string(),
-        Some("Waiting for broker...".to_string()),
+    identity.set_bunker_handshake(Some(BunkerHandshakeDto::progress(
+        "connecting",
+        &crate::ui_token::UiToken::progress(
+            crate::ui_token::codes::PROGRESS_WAITING_FOR_BROKER,
+            "Waiting for broker...",
+        ),
     )));
     kernel.mark_changed_since_emit();
     if !identity.invoke_bunker_connect_hook(uri) {
@@ -1465,9 +1488,12 @@ pub(crate) fn restore_bunker_session(
     kernel: &mut Kernel,
     payload_json: &str,
 ) {
-    identity.set_bunker_handshake(Some(BunkerHandshakeDto::new(
-        "connecting".to_string(),
-        Some("Restoring broker session...".to_string()),
+    identity.set_bunker_handshake(Some(BunkerHandshakeDto::progress(
+        "connecting",
+        &crate::ui_token::UiToken::progress(
+            crate::ui_token::codes::PROGRESS_RESTORING_BROKER_SESSION,
+            "Restoring broker session...",
+        ),
     )));
     kernel.mark_changed_since_emit();
     if !identity.invoke_bunker_restore_hook(payload_json) {

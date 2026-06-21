@@ -28,6 +28,8 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     case isFailed = 14
     case isTerminalSuccess = 16
     case canCancel = 18
+    case hasProgressCode = 20
+    case progressCode = 22
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -42,7 +44,10 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
   public var isFailed: Bool { let o = _accessor.offset(VTOFFSET.isFailed.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isTerminalSuccess: Bool { let o = _accessor.offset(VTOFFSET.isTerminalSuccess.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var canCancel: Bool { let o = _accessor.offset(VTOFFSET.canCancel.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public static func startBunkerHandshake(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
+  public var hasProgressCode: Bool { let o = _accessor.offset(VTOFFSET.hasProgressCode.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var progressCode: String? { let o = _accessor.offset(VTOFFSET.progressCode.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var progressCodeSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.progressCode.v) }
+  public static func startBunkerHandshake(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
   public static func add(stage: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stage, at: VTOFFSET.stage.p) }
   public static func add(hasMessage: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasMessage, def: false,
    at: VTOFFSET.hasMessage.p) }
@@ -57,6 +62,9 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
    at: VTOFFSET.isTerminalSuccess.p) }
   public static func add(canCancel: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: canCancel, def: false,
    at: VTOFFSET.canCancel.p) }
+  public static func add(hasProgressCode: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasProgressCode, def: false,
+   at: VTOFFSET.hasProgressCode.p) }
+  public static func add(progressCode: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: progressCode, at: VTOFFSET.progressCode.p) }
   public static func endBunkerHandshake(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createBunkerHandshake(
     _ fbb: inout FlatBufferBuilder,
@@ -67,7 +75,9 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     isInFlight: Bool = false,
     isFailed: Bool = false,
     isTerminalSuccess: Bool = false,
-    canCancel: Bool = false
+    canCancel: Bool = false,
+    hasProgressCode: Bool = false,
+    progressCodeOffset progressCode: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_BunkerHandshake.startBunkerHandshake(&fbb)
     nmp_kernel_BunkerHandshake.add(stage: stage, &fbb)
@@ -78,6 +88,8 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     nmp_kernel_BunkerHandshake.add(isFailed: isFailed, &fbb)
     nmp_kernel_BunkerHandshake.add(isTerminalSuccess: isTerminalSuccess, &fbb)
     nmp_kernel_BunkerHandshake.add(canCancel: canCancel, &fbb)
+    nmp_kernel_BunkerHandshake.add(hasProgressCode: hasProgressCode, &fbb)
+    nmp_kernel_BunkerHandshake.add(progressCode: progressCode, &fbb)
     return nmp_kernel_BunkerHandshake.endBunkerHandshake(&fbb, start: __start)
   }
 
@@ -91,6 +103,8 @@ public struct nmp_kernel_BunkerHandshake: FlatBufferTable, FlatbuffersVectorInit
     try _v.visit(field: VTOFFSET.isFailed.p, fieldName: "isFailed", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isTerminalSuccess.p, fieldName: "isTerminalSuccess", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.canCancel.p, fieldName: "canCancel", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.hasProgressCode.p, fieldName: "hasProgressCode", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.progressCode.p, fieldName: "progressCode", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

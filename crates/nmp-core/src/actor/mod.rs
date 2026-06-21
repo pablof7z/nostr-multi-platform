@@ -562,7 +562,13 @@ pub enum ActorCommand {
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
-        /// Optional human-readable status (e.g. relay URL, error reason).
+        /// Stable machine code for a user-facing progress label
+        /// (`nmp_signer_broker::progress_codes::*`); `None` for diagnostic /
+        /// `"failed"` transitions. The shell localizes the code, falling back to
+        /// `message` (#1711).
+        code: Option<String>,
+        /// Optional human-readable status (the English fallback prose / error
+        /// reason).
         message: Option<String>,
     },
     /// V-14 step b — relay-layer connection state update for the NIP-46 bunker

@@ -52,10 +52,14 @@ pub fn run_nostrconnect_handshake(
     cancel_rx: &Receiver<()>,
     local_keys: &Keys,
     expected_secret: &str,
-    progress: &mut dyn FnMut(&str, Option<&str>),
+    progress: &mut dyn FnMut(&str, &str, Option<&str>),
 ) -> Result<NostrConnectOutcome, HandshakeError> {
     // Step 1 — wait for the signer's connect event.
-    progress("connecting", Some("Waiting for signer to scan QR code"));
+    progress(
+        "connecting",
+        crate::progress_codes::NOSTRCONNECT_SCAN_QR,
+        Some("Waiting for signer to scan QR code"),
+    );
     let (signer_pubkey, connect_id) = await_nostrconnect_connect(
         inbound_rx,
         cancel_rx,
@@ -100,6 +104,7 @@ pub fn run_nostrconnect_handshake(
     // Step 3 — send get_public_key to the signer.
     progress(
         "awaiting_pubkey",
+        crate::progress_codes::NOSTRCONNECT_AWAITING_CONFIRMATION,
         Some("Awaiting user confirmation in signer app"),
     );
     let gpk_id = new_request_id();

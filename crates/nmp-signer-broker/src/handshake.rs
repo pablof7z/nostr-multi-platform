@@ -119,7 +119,8 @@ pub fn build_req_frame(sub_id: &str, local_pubkey_hex: &str) -> String {
 /// subscribed) and the inbound event receiver. Returns the user pubkey on
 /// success.
 ///
-/// `progress` is an `&mut dyn FnMut(&str, Option<&str>)` so the broker can
+/// `progress` is an `&mut dyn FnMut(&str, &str, Option<&str>)` — `(stage, code,
+/// message)` — so the broker can
 /// publish progress events to the host adapter. The handshake itself emits two
 /// transitions: `"connecting"` (before `connect`) and `"awaiting_pubkey"`
 /// (before `get_public_key`). The final `"ready"` is emitted by the broker
@@ -133,10 +134,14 @@ pub fn run_handshake(
     remote_pubkey: PublicKey,
     secret: Option<&str>,
     perms: Option<&str>,
-    progress: &mut dyn FnMut(&str, Option<&str>),
+    progress: &mut dyn FnMut(&str, &str, Option<&str>),
 ) -> Result<HandshakeOutcome, HandshakeError> {
     // Step 1 — connect.
-    progress("connecting", Some("Sending connect to bunker"));
+    progress(
+        "connecting",
+        crate::progress_codes::SENDING_CONNECT_TO_BUNKER,
+        Some("Sending connect to bunker"),
+    );
     let connect_params = build_connect_params(remote_pubkey, secret, perms);
     let connect_id = new_request_id();
     publish_rpc(
@@ -161,7 +166,11 @@ pub fn run_handshake(
     )?;
 
     // Step 2 — get_public_key.
-    progress("awaiting_pubkey", Some("Awaiting bunker approval"));
+    progress(
+        "awaiting_pubkey",
+        crate::progress_codes::AWAITING_BUNKER_APPROVAL,
+        Some("Awaiting bunker approval"),
+    );
     let gpk_id = new_request_id();
     publish_rpc(
         relay,

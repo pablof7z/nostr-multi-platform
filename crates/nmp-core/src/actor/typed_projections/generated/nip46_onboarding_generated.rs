@@ -148,6 +148,8 @@ impl<'a> Nip46Onboarding<'a> {
   pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 16;
   pub const VT_IS_TERMINAL_SUCCESS: ::flatbuffers::VOffsetT = 18;
   pub const VT_CAN_CANCEL: ::flatbuffers::VOffsetT = 20;
+  pub const VT_HAS_PROGRESS_CODE: ::flatbuffers::VOffsetT = 22;
+  pub const VT_PROGRESS_CODE: ::flatbuffers::VOffsetT = 24;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -159,9 +161,11 @@ impl<'a> Nip46Onboarding<'a> {
     args: &'args Nip46OnboardingArgs<'args>
   ) -> ::flatbuffers::WIPOffset<Nip46Onboarding<'bldr>> {
     let mut builder = Nip46OnboardingBuilder::new(_fbb);
+    if let Some(x) = args.progress_code { builder.add_progress_code(x); }
     if let Some(x) = args.progress_message { builder.add_progress_message(x); }
     if let Some(x) = args.stage_kind { builder.add_stage_kind(x); }
     if let Some(x) = args.signer_apps { builder.add_signer_apps(x); }
+    builder.add_has_progress_code(args.has_progress_code);
     builder.add_can_cancel(args.can_cancel);
     builder.add_is_terminal_success(args.is_terminal_success);
     builder.add_is_failed(args.is_failed);
@@ -235,6 +239,20 @@ impl<'a> Nip46Onboarding<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(Nip46Onboarding::VT_CAN_CANCEL, Some(false)).unwrap()}
   }
+  #[inline]
+  pub fn has_progress_code(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(Nip46Onboarding::VT_HAS_PROGRESS_CODE, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn progress_code(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Nip46Onboarding::VT_PROGRESS_CODE, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for Nip46Onboarding<'_> {
@@ -252,6 +270,8 @@ impl ::flatbuffers::Verifiable for Nip46Onboarding<'_> {
      .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
      .visit_field::<bool>("is_terminal_success", Self::VT_IS_TERMINAL_SUCCESS, false)?
      .visit_field::<bool>("can_cancel", Self::VT_CAN_CANCEL, false)?
+     .visit_field::<bool>("has_progress_code", Self::VT_HAS_PROGRESS_CODE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("progress_code", Self::VT_PROGRESS_CODE, false)?
      .finish();
     Ok(())
   }
@@ -266,6 +286,8 @@ pub struct Nip46OnboardingArgs<'a> {
     pub is_failed: bool,
     pub is_terminal_success: bool,
     pub can_cancel: bool,
+    pub has_progress_code: bool,
+    pub progress_code: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for Nip46OnboardingArgs<'a> {
   #[inline]
@@ -280,6 +302,8 @@ impl<'a> Default for Nip46OnboardingArgs<'a> {
       is_failed: false,
       is_terminal_success: false,
       can_cancel: false,
+      has_progress_code: false,
+      progress_code: None,
     }
   }
 }
@@ -326,6 +350,14 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> Nip46OnboardingBuilder<'a, 'b
     self.fbb_.push_slot::<bool>(Nip46Onboarding::VT_CAN_CANCEL, can_cancel, false);
   }
   #[inline]
+  pub fn add_has_progress_code(&mut self, has_progress_code: bool) {
+    self.fbb_.push_slot::<bool>(Nip46Onboarding::VT_HAS_PROGRESS_CODE, has_progress_code, false);
+  }
+  #[inline]
+  pub fn add_progress_code(&mut self, progress_code: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Nip46Onboarding::VT_PROGRESS_CODE, progress_code);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> Nip46OnboardingBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     Nip46OnboardingBuilder {
@@ -352,6 +384,8 @@ impl ::core::fmt::Debug for Nip46Onboarding<'_> {
       ds.field("is_failed", &self.is_failed());
       ds.field("is_terminal_success", &self.is_terminal_success());
       ds.field("can_cancel", &self.can_cancel());
+      ds.field("has_progress_code", &self.has_progress_code());
+      ds.field("progress_code", &self.progress_code());
       ds.finish()
   }
 }

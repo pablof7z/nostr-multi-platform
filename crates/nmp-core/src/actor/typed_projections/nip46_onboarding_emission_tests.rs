@@ -34,6 +34,7 @@ fn capability_off() -> Arc<AtomicBool> {
 fn set_stage(slot: &BunkerHandshakeSlot, stage: &str, message: Option<&str>) {
     *slot.lock().unwrap() = Some(BunkerHandshakeDto::new(
         stage.to_string(),
+        None,
         message.map(str::to_string),
     ));
 }

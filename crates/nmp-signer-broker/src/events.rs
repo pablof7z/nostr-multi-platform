@@ -16,7 +16,12 @@ pub enum BrokerEvent {
         /// Stage label such as `"connecting"`, `"awaiting_pubkey"`,
         /// `"ready"`, or `"failed"`.
         stage: String,
-        /// Optional host-displayable detail.
+        /// Stable machine code for a user-facing progress label
+        /// (`progress_codes::*`); `None` for diagnostic / `"failed"` transitions
+        /// that carry raw upstream detail rather than curated copy (#1711). The
+        /// shell localizes the code, falling back to `message` when absent.
+        code: Option<String>,
+        /// Optional host-displayable detail (the English fallback prose).
         message: Option<String>,
     },
     /// A fully handshaken NIP-46 signer ready for host registration.

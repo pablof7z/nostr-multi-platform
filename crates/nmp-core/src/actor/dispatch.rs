@@ -708,8 +708,12 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::BunkerHandshakeProgress { stage, message } => {
-            commands::bunker_handshake_progress(ctx.identity, ctx.kernel, stage, message);
+        ActorCommand::BunkerHandshakeProgress {
+            stage,
+            code,
+            message,
+        } => {
+            commands::bunker_handshake_progress(ctx.identity, ctx.kernel, stage, code, message);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }

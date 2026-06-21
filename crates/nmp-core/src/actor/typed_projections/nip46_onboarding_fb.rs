@@ -56,6 +56,9 @@ pub struct Nip46OnboardingModel {
     /// Typed handshake stage as a snake_case wire token; `None` when no
     /// handshake is in flight (mirrors the JSON `null`).
     pub stage_kind: Option<String>,
+    /// Stable machine code for the progress label (#1711); `None` for diagnostic
+    /// transitions. Shells localize the code, falling back to `progress_message`.
+    pub progress_code: Option<String>,
     pub progress_message: Option<String>,
     pub is_in_flight: bool,
     pub is_failed: bool,
@@ -93,6 +96,7 @@ pub(crate) fn encode_nip46_onboarding(model: &Nip46OnboardingModel) -> Vec<u8> {
         .collect();
     let signer_apps = fbb.create_vector(&app_offsets);
     let stage_kind = model.stage_kind.as_ref().map(|v| fbb.create_string(v));
+    let progress_code = model.progress_code.as_ref().map(|v| fbb.create_string(v));
     let progress_message = model.progress_message.as_ref().map(|v| fbb.create_string(v));
     let root = fb::Nip46Onboarding::create(
         &mut fbb,
@@ -100,6 +104,8 @@ pub(crate) fn encode_nip46_onboarding(model: &Nip46OnboardingModel) -> Vec<u8> {
             signer_apps: Some(signer_apps),
             has_stage_kind: model.stage_kind.is_some(),
             stage_kind,
+            has_progress_code: model.progress_code.is_some(),
+            progress_code,
             has_progress_message: model.progress_message.is_some(),
             progress_message,
             is_in_flight: model.is_in_flight,
@@ -140,6 +146,9 @@ pub fn decode_nip46_onboarding(bytes: &[u8]) -> Result<Nip46OnboardingModel, Str
         stage_kind: root
             .has_stage_kind()
             .then(|| root.stage_kind().unwrap_or_default().to_string()),
+        progress_code: root
+            .has_progress_code()
+            .then(|| root.progress_code().unwrap_or_default().to_string()),
         progress_message: root
             .has_progress_message()
             .then(|| root.progress_message().unwrap_or_default().to_string()),

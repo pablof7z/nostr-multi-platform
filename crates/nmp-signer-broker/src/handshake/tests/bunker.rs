@@ -53,7 +53,7 @@ fn happy_path_connect_then_get_public_key_returns_user_pubkey() {
         bunker_pubkey,
         None,
         None,
-        &mut |stage, msg| progress_events.push((stage.to_string(), msg.map(String::from))),
+        &mut |stage, _code, msg| progress_events.push((stage.to_string(), msg.map(String::from))),
     )
     .expect("handshake completes");
 
@@ -94,7 +94,7 @@ fn cancellation_aborts_with_cancelled_error() {
         bunker_pk,
         None,
         None,
-        &mut |_, _| {},
+        &mut |_, _, _| {},
     )
     .expect_err("cancelled");
     assert!(matches!(err, HandshakeError::Cancelled));
@@ -155,7 +155,7 @@ fn run_handshake_surfaces_bunker_error_response() {
         bunker_pubkey,
         None,
         None,
-        &mut |_, _| {},
+        &mut |_, _, _| {},
     )
     .expect_err("bunker error must abort the handshake");
     match err {
@@ -219,7 +219,7 @@ fn run_handshake_rejects_non_string_result() {
         bunker_pubkey,
         None,
         None,
-        &mut |_, _| {},
+        &mut |_, _, _| {},
     )
     .expect_err("non-string result must abort the handshake");
     assert!(
@@ -310,7 +310,7 @@ fn run_handshake_skips_stray_events_then_completes() {
         bunker_pubkey,
         None,
         None,
-        &mut |_, _| {},
+        &mut |_, _, _| {},
     )
     .expect("handshake completes despite stray events");
     assert_eq!(outcome.user_pubkey_hex, user_pk_hex);
