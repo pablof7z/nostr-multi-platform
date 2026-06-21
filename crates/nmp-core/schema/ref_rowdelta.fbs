@@ -1,0 +1,83 @@
+// ADR-0063 Lane A — row-grain delta carrier for KEYED reference-resolution
+// projections (`refs.profile` / `refs.event`, issue #1671).
+//
+// ## Why a dedicated payload schema, NOT a change to nmp_update.fbs
+//
+// ADR-0055 already ships a per-PROJECTION rev/state carrier on the transport
+// (`TypedProjection.projection_rev` + `TypedProjection.state`, nmp_update.fbs).
+// D8 of that ADR explicitly designates intra-projection ROW deltas as "an
+// optional per-projection encoding INSIDE a Changed frame, negotiated per
+// schema" — strictly additive, never a transport-universal concept. Row deltas
+// are scoped to `refs.*` only; baking them into nmp_update.fbs would (a)
+// duplicate the rev/state concept the transport already owns, (b) force every
+// platform's transport binding (Rust/Swift/Kotlin/TS, three skewed flatc pins)
+// to regenerate for a refs-only feature, and (c) make a refs-only optimization a
+// wire-universal obligation. So the row-delta batch is the OPAQUE
+// `TypedPayload.payload` bytes of the keyed `refs.profile` / `refs.event`
+// projection. The projection-level `state`/`projection_rev` stays the coarse
+// gate (Changed when any row changed; Cleared when the whole namespace empties);
+// this batch refines it to row grain.
+//
+// ## Invariants carried by this encoding (ADR-0063 §"Invariants that MUST hold")
+//
+// 1. ABSENCE of a `RefRow` for a key == Unchanged, NEVER Cleared. A clear is
+//    ALWAYS an explicit `RefRow{state: Cleared}` row. A producer that drops a
+//    row it means to delete is a bug — absence can never silently lose a row.
+// 2. Decode-before-commit: a host commits a `Changed` row's `payload` to its
+//    cache only AFTER the typed payload decodes; a malformed row fails closed
+//    and leaves the prior cached row untouched (D6).
+// 3. `baseline = true` marks a FULL baseline batch: every live row for the
+//    namespace is present as `Changed`, so a host that resets on session/epoch
+//    change reconstructs the complete set regardless of prior per-key history.
+// 4. Typed per namespace: `payload` is the namespace's resolved-ref typed bytes
+//    (a profile card for `profile`, an event embed for `event`) — never a
+//    type-erased `Value`.
+
+namespace nmp.refs;
+
+// Per-row presence. Mirrors nmp.transport.ProjectionPresenceState semantics at
+// ROW grain. Unchanged is represented by ABSENCE of the row from `rows`
+// (invariant #1) — there is no `Unchanged` enumerator, exactly as the
+// transport-level carrier omits unchanged projections.
+enum RefRowState:ubyte {
+  // Row's per-key `rev` advanced; `payload` PRESENT and authoritative.
+  Changed = 0,
+  // Row went absent (ref released / namespace entry dropped). `payload` empty.
+  // The host MUST drop its cached row for `key`. Never conflated with absence.
+  Cleared = 1
+}
+
+// One row of a keyed reference projection.
+table RefRow {
+  // Entity key: raw hex pubkey (`profile`) or event id / `kind:pubkey:d`
+  // coordinate (`event`). Raw forms only (ADR-0032: no npub/bech32 on the wire).
+  key:string;
+  // Per-key monotonic revision, sourced from Lane B's `ref_row_rev(ns, key)`.
+  // The host keys its row cache on (key, rev) and skips a row whose rev is not
+  // greater than the cached rev (reorder/duplicate guard).
+  rev:ulong;
+  // Presence classification for this row this batch. Default Changed so a reader
+  // that ignores the field treats a present row as a payload update.
+  state:RefRowState = Changed;
+  // The namespace's resolved-ref typed payload bytes (decoded by the
+  // namespace's typed decoder). Empty for a Cleared row.
+  payload:[ubyte];
+}
+
+// The opaque `TypedPayload.payload` of a keyed `refs.*` projection.
+table RefRowDeltaBatch {
+  // The resolver namespace this batch is for: "profile" or "event".
+  namespace:string;
+  // True iff this batch is a FULL baseline: every live row is present as
+  // Changed. Emitted on the first batch after a session/epoch re-baseline so a
+  // host that cleared its cache reconstructs the complete set (invariant #3).
+  // A steady-state incremental batch is `baseline = false` and carries only
+  // the rows that changed/cleared since the host's last applied batch.
+  baseline:bool = false;
+  // The changed/cleared rows. A key absent from this vector is Unchanged
+  // (invariant #1). On a baseline batch this is the complete live row set.
+  rows:[RefRow];
+}
+
+root_type RefRowDeltaBatch;
+file_identifier "NRRD";

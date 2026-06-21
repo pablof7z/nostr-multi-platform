@@ -81,6 +81,7 @@ MAPPINGS=(
     "crates/nmp-core/schema/publish_queue.fbs|publish_queue_generated.swift|PublishQueue.generated.swift"
     "crates/nmp-core/schema/relay_diagnostics.fbs|relay_diagnostics_generated.swift|RelayDiagnostics.generated.swift"
     "crates/nmp-core/schema/relay_role_options.fbs|relay_role_options_generated.swift|RelayRoleOptions.generated.swift"
+    "crates/nmp-core/schema/ref_rowdelta.fbs|ref_rowdelta_generated.swift|RefRowDelta.generated.swift"
     "crates/nmp-core/schema/resolved_profiles.fbs|resolved_profiles_generated.swift|ResolvedProfiles.generated.swift"
     "crates/nmp-core/schema/settings_hub.fbs|settings_hub_generated.swift|SettingsHub.generated.swift"
     "crates/nmp-core/schema/signer_state.fbs|signer_state_generated.swift|SignerState.generated.swift"

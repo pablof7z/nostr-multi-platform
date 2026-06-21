@@ -159,6 +159,11 @@ pub(crate) mod store {
     pub use nmp_store::*;
 }
 pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
+// ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference
+// projections (refs.profile / refs.event): owned types + FlatBuffers codec,
+// producer-side row-rev tracker (consuming Lane B's RefRowRevSource), and the
+// reference host-cache model the invariant property harness checks against.
+pub mod refs;
 // Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
 // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
 // (private); promoted here so the crate-private actor module can still name them after
