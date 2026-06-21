@@ -12,8 +12,8 @@
 //! seam, not an API boundary.
 
 use crate::dispatch_routing::{
-    claim_dispatch_from_action, execute_claim_dispatch, execute_interest_dispatch,
-    interest_dispatch_from_action, kernel_action_from_dispatch, write_path_unavailable_reason,
+    execute_interest_dispatch, execute_ref_dispatch, interest_dispatch_from_action,
+    kernel_action_from_dispatch, ref_dispatch_from_action, write_path_unavailable_reason,
 };
 use crate::protocol::{ActionDispatch, AppAction, CapabilityFailure, WorkerEvent};
 use nmp_core::KernelUpdate;
@@ -52,13 +52,15 @@ impl WasmRuntime {
         &mut self,
         action: ActionDispatch,
     ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        // F-CR-00 claim arm: claim/release refcounts (see execute_claim_dispatch
-        // in dispatch_routing.rs for the full rationale / `can_send` contract).
-        if let Some(claim) = claim_dispatch_from_action(&action) {
+        // ADR-0063 reference-resolution arm: resolve/release refcounts via the
+        // unified seam (see execute_ref_dispatch in dispatch_routing.rs for the
+        // full rationale / `can_send` contract).
+        if let Some(ref_dispatch) = ref_dispatch_from_action(&action) {
             let can_send = self.reducer.borrow().any_relay_connected();
-            let outbound = execute_claim_dispatch(&mut self.reducer.borrow_mut(), claim, can_send);
+            let outbound =
+                execute_ref_dispatch(&mut self.reducer.borrow_mut(), ref_dispatch, can_send);
             self.fan_outbound(outbound);
-            // Claim/release are refcount bookkeeping — they carry no new
+            // Resolve/release are refcount bookkeeping — they carry no new
             // user-visible data of their own (the resolved kind:0 arrives later
             // via the relay-pool ingest sink, which pushes its OWN snapshot).
             // Pushing a snapshot here hands the reactive web host a fresh frame

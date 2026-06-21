@@ -3,7 +3,6 @@ import { createSignal, type Accessor } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
-import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
 import { ClaimedEventsSnapshot } from "./generated/nmp/kernel/claimed-events-snapshot";
 import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
@@ -14,11 +13,23 @@ import {
   type WorkerEvent,
   type WorkerRequest,
 } from "./protocol";
+import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "../components/user-avatar/NostrProfileHost";
 
-const KRPR_FILE_IDENTIFIER = "KRPR";
-const KRPR_PROJECTION_KEY = "resolved_profiles";
+// ADR-0063 Lane D wire codes (mirror apps/chirp/chirp-tui runtime.rs FFI codes
+// and the wasm `resolve_dispatch_from_action` recognizer):
+//   namespace: 0 = profile, 1 = event
+//   shape:     profile → 0 = ref, 1 = card;  event → 0 = embed, 1 = raw
+//   liveness:  0 = CacheOk, 1 = Live
+const REF_NS_PROFILE = 0;
+const REF_NS_EVENT = 1;
+const REF_SHAPE_PROFILE_REF = 0;
+const REF_SHAPE_EVENT_EMBED = 0;
+const REF_LIVENESS_CACHE_OK = 0;
+
+const NRRD_FILE_IDENTIFIER = "NRRD";
+const REFS_PROFILE_PROJECTION_KEY = "refs.profile";
 const KCEV_FILE_IDENTIFIER = "KCEV";
 const KCEV_PROJECTION_KEY = "claimed_events";
 
@@ -97,51 +108,21 @@ export type GalleryRuntime = {
 
 // ── Profile decode ───────────────────────────────────────────────────────────
 
-/** Decode the resolved_profiles (KRPR) typed projection from a snapshot frame
- *  into a full pubkey→ProfileWire map. Returns `undefined` on missing/corrupt
- *  projection so the caller can keep the last good map. */
-function decodeProfileCards(snapshot: SnapshotFrame): Map<string, ProfileWire> | undefined {
+/** Extract the raw `refs.profile` (NRRD) sidecar payload bytes from a snapshot
+ *  frame, or `undefined` when the projection is absent / empty / wrong file id.
+ *  The bytes are an NRRD `RefRowDeltaBatch` the stateful `RefProfileStore`
+ *  (`RefRowCache`) merges per-key — never decoded in isolation. A frame with no
+ *  `refs.profile` entry returns `undefined` and the caller leaves the persistent
+ *  cache untouched (keep-last-good). */
+function findRefsProfileSidecar(snapshot: SnapshotFrame): Uint8Array | undefined {
   for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
     const proj = snapshot.typedProjections(i);
-    if (!proj || proj.key() !== KRPR_PROJECTION_KEY) continue;
+    if (!proj || proj.key() !== REFS_PROFILE_PROJECTION_KEY) continue;
     const payload = proj.payload();
-    if (!payload || payload.fileIdentifier() !== KRPR_FILE_IDENTIFIER) return undefined;
+    if (!payload || payload.fileIdentifier() !== NRRD_FILE_IDENTIFIER) return undefined;
     const payloadBytes = payload.payloadArray();
     if (!payloadBytes || payloadBytes.length === 0) return undefined;
-    try {
-      const bb = new flatbuffers.ByteBuffer(payloadBytes);
-      if (!ResolvedProfilesSnapshot.bufferHasIdentifier(bb)) return undefined;
-      const root = ResolvedProfilesSnapshot.getRootAsResolvedProfilesSnapshot(bb);
-      const out = new Map<string, ProfileWire>();
-      for (let j = 0; j < root.entriesLength(); j += 1) {
-        const entry = root.entries(j);
-        if (!entry) continue;
-        const key = entry.key();
-        const card = entry.value();
-        if (!key || !card) continue;
-        const wire: ProfileWire = { pubkey: key };
-        if (card.hasDisplayName()) {
-          const v = card.displayName();
-          if (v) wire.displayName = v;
-        }
-        if (card.hasPictureUrl()) {
-          const v = card.pictureUrl();
-          if (v) wire.pictureUrl = v;
-        }
-        const nip05 = card.nip05();
-        if (nip05) wire.nip05 = nip05;
-        const about = card.about();
-        if (about) wire.about = about;
-        if (card.hasLnurl()) {
-          const v = card.lnurl();
-          if (v) wire.lnurl = v;
-        }
-        out.set(key, wire);
-      }
-      return out;
-    } catch {
-      return undefined;
-    }
+    return payloadBytes;
   }
   return undefined;
 }
@@ -250,6 +231,11 @@ export function createGalleryRuntime(): GalleryRuntime {
   const [npubs, setNpubs] = createStore<Record<string, { npub?: string; npubShort?: string }>>({});
   const requestedNpubs = new Set<string>();
 
+  // Stateful per-key `refs.profile` row-delta cache (ADR-0063). Lives for the
+  // runtime's lifetime — row deltas merge into it across frames. Replaces the
+  // whole-map `resolved_profiles` decode.
+  const refProfiles = new RefProfileStore();
+
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   const pending = new Map<string, () => void>();
   let resolveHello: (() => void) | undefined;
@@ -267,12 +253,21 @@ export function createGalleryRuntime(): GalleryRuntime {
       if (!snap) return;
       if (snap.running()) setStatus("running");
       setRelays(decodeRelays(snap));
-      const cards = decodeProfileCards(snap);
-      if (cards !== undefined) {
+      // Merge the `refs.profile` row-delta sidecar into the stateful store under
+      // THIS frame's identity (session_id, snapshot_epoch). The store handles
+      // baseline/incremental/identity-rebuild + decode-before-commit + fail-closed
+      // internally (ADR-0063). After every applied sidecar we re-derive the FULL
+      // set (like native desktop/tui) and feed it through `reconcile`, which keeps
+      // per-key referential identity so only profiles that actually changed
+      // trigger downstream re-renders — AND drops rows the kernel cleared (an
+      // identity/epoch baseline that shrinks the set to empty is reflected, where
+      // gating on `changedKeys` alone would leave stale cards visible).
+      const refsPayload = findRefsProfileSidecar(snap);
+      if (refsPayload !== undefined) {
+        refProfiles.applySidecar(refsPayload, snap.sessionId(), snap.snapshotEpoch());
+        const cards = refProfiles.profiles();
         const next: Record<string, ProfileWire> = {};
         for (const [k, v] of cards) next[k] = v;
-        // reconcile keeps referential identity per-key so only changed
-        // profiles trigger downstream re-renders.
         setProfiles(reconcile(next, { merge: true }));
         setResolvedCount(cards.size);
       }
@@ -335,16 +330,22 @@ export function createGalleryRuntime(): GalleryRuntime {
     claimProfile(pubkey: string, consumerId: string): void {
       void request({
         type: "dispatch",
-        action_type: "nmp.kernel.claim_profile",
-        payload: { pubkey, consumer_id: consumerId },
-        correlation_id: `claim-${claimSeq++}`,
+        action_type: "nmp.kernel.resolve_ref",
+        payload: {
+          namespace: REF_NS_PROFILE,
+          key: pubkey,
+          consumer_id: consumerId,
+          shape: REF_SHAPE_PROFILE_REF,
+          liveness: REF_LIVENESS_CACHE_OK,
+        },
+        correlation_id: `resolve-${claimSeq++}`,
       });
     },
     releaseProfile(pubkey: string, consumerId: string): void {
       void request({
         type: "dispatch",
-        action_type: "nmp.kernel.release_profile",
-        payload: { pubkey, consumer_id: consumerId },
+        action_type: "nmp.kernel.release_ref",
+        payload: { namespace: REF_NS_PROFILE, key: pubkey, consumer_id: consumerId },
         correlation_id: `release-${claimSeq++}`,
       });
     },

@@ -1,7 +1,8 @@
 import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "./degradedRuntime";
-import { decodeHomeFeed, decodeResolvedProfiles, decodeResolvedProfileCards, type FeedItem } from "./feedProjection";
+import { decodeHomeFeed, findRefsProfileSidecar, type FeedItem } from "./feedProjection";
+import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { decodeKrdgTones } from "./relayDiagnosticsProjection";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
@@ -42,6 +43,33 @@ export function makeCorrelationId(prefix: string, seq: number): string {
   return `${prefix}-${Date.now()}-${seq}`;
 }
 
+/** Structural equality of two materialised `refs.profile` maps. Decides whether
+ *  to swap the `latestProfileCards` reference: a no-op frame keeps the same
+ *  reference (no feed churn, #1436); ANY content change — including an
+ *  identity/epoch rebaseline that shrinks the set to empty — swaps it so the UI
+ *  never shows stale cards. */
+function profileCardsEqual(
+  a: Map<string, ProfileWire> | undefined,
+  b: Map<string, ProfileWire>,
+): boolean {
+  if (a === undefined || a.size !== b.size) return false;
+  for (const [key, wa] of a) {
+    const wb = b.get(key);
+    if (
+      !wb ||
+      wa.displayName !== wb.displayName ||
+      wa.pictureUrl !== wb.pictureUrl ||
+      wa.nip05 !== wb.nip05 ||
+      wa.about !== wb.about ||
+      wa.lnurl !== wb.lnurl ||
+      wa.npubShort !== wb.npubShort
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
   /** Identifies which runtime path is active.
@@ -67,14 +95,14 @@ export type RuntimeSnapshot = {
    *  before any projection arrives. Keep-last-good: only overwritten when a
    *  new successful decode arrives (never cleared on a corrupt frame). */
   feedItems?: FeedItem[];
-  /** Decoded resolved_profiles (KRPR) map: hex pubkey -> kind:0 display name.
-   *  Populated after the first successfully decoded KRPR projection. Empty map
-   *  means the kernel currently has no resolved profile facts to expose. */
-  resolvedProfiles?: Map<string, string>;
-  /** Decoded resolved_profiles (KRPR) full ProfileCard map: hex pubkey ->
-   *  ProfileWire (display name + picture + nip05 + …). Powers the registry
-   *  user-* components (NostrAvatar needs the picture URL). */
-  resolvedProfileCards?: Map<string, ProfileWire>;
+  /** Materialised `refs.profile` map: hex pubkey -> ProfileWire (display name +
+   *  picture + nip05 + …). The per-key `refs.profile` row-delta projection is
+   *  merged into a stateful `RefProfileStore` (`RefRowCache`); this is its
+   *  current full set. Powers BOTH the feed-row display-name join and the
+   *  registry user-* components (NostrAvatar needs the picture URL). Replaced by
+   *  a fresh `Map` reference only when the cache actually changed this frame
+   *  (stable reference across no-op frames so SolidJS memos do not churn). */
+  profileCards?: Map<string, ProfileWire>;
 };
 
 export type RuntimeConnection = {
@@ -155,8 +183,11 @@ abstract class BaseClient implements NmpClient {
   private latestRev: bigint | undefined;
   private latestRelayStatuses: DecodedRelayStatus[] | undefined;
   private latestFeedItems: FeedItem[] | undefined;
-  private latestResolvedProfiles: Map<string, string> | undefined;
-  private latestResolvedProfileCards: Map<string, ProfileWire> | undefined;
+  // Stateful per-key `refs.profile` row-delta cache. Lives for the client's
+  // lifetime (NOT rebuilt per frame — row deltas merge into it). Materialised
+  // into `latestProfileCards` only when the cache changed this frame.
+  private readonly refProfiles = new RefProfileStore();
+  private latestProfileCards: Map<string, ProfileWire> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -171,8 +202,7 @@ abstract class BaseClient implements NmpClient {
       latestRev: this.latestRev,
       latestRelayStatuses: this.latestRelayStatuses,
       feedItems: this.latestFeedItems,
-      resolvedProfiles: this.latestResolvedProfiles,
-      resolvedProfileCards: this.latestResolvedProfileCards,
+      profileCards: this.latestProfileCards,
     };
   }
 
@@ -230,20 +260,26 @@ abstract class BaseClient implements NmpClient {
                     if (feedResult !== undefined) {
                       this.latestFeedItems = feedResult.items;
                     }
-                    // Decode resolved_profiles (KRPR) from the same frame.
-                    // Keep-last-good only applies to corrupt/missing projection
-                    // data (`undefined`). A successfully decoded empty map is a
-                    // real kernel snapshot and must replace the previous map so
-                    // the shell never owns stale profile facts.
-                    const profilesResult = decodeResolvedProfiles(snap);
-                    if (profilesResult !== undefined) {
-                      this.latestResolvedProfiles = profilesResult;
-                    }
-                    // Full ProfileCard map (incl. picture URL) for the user-*
-                    // components. Same keep-last-good semantics.
-                    const profileCardsResult = decodeResolvedProfileCards(snap);
-                    if (profileCardsResult !== undefined) {
-                      this.latestResolvedProfileCards = profileCardsResult;
+                    // Merge the `refs.profile` row-delta sidecar into the stateful
+                    // RefProfileStore under THIS frame's identity (session_id,
+                    // snapshot_epoch). The store handles baseline/incremental/
+                    // identity-rebuild + decode-before-commit + fail-closed
+                    // internally (ADR-0063); an absent entry leaves it untouched.
+                    // After applying we re-derive the FULL set (like native
+                    // desktop/tui) and swap `latestProfileCards` ONLY when the
+                    // content differs — so an empty rebaseline drops stale cards
+                    // (changedKeys alone would not) without churning the feed (#1436).
+                    const refsPayload = findRefsProfileSidecar(snap);
+                    if (refsPayload !== undefined) {
+                      this.refProfiles.applySidecar(
+                        refsPayload,
+                        snap.sessionId(),
+                        snap.snapshotEpoch(),
+                      );
+                      const next = this.refProfiles.profiles();
+                      if (!profileCardsEqual(this.latestProfileCards, next)) {
+                        this.latestProfileCards = next;
+                      }
                     }
                     // Decode relay_diagnostics (KRDG) typed projection.
                     // skipDetails=true: only relay-level tones are decoded

@@ -1,5 +1,5 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, claimProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
+import { publishNoteAction, resolveProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
 import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
 import type { ProfileWire } from "./components/user-avatar/ProfileWire";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
@@ -49,18 +49,30 @@ export default function App() {
   // Real home feed: decoded nmp.feed.home typed projection from each snapshot.
   // Keep-last-good: feedItems is undefined until the first projection arrives;
   // feedItemsToRows returns [] for undefined/empty — honest empty state.
-  // resolvedProfiles (KRPR) provides the presentation-layer join for author
+  // The `refs.profile` map provides the presentation-layer join for author
   // display names (root cards carry no denormalized display copy — GH #920).
   //
-  // Two stable sub-memos gate the rows recomputation. SolidJS only propagates
-  // a memo when its return value changes by reference. client.ts holds
-  // latestFeedItems / latestResolvedProfiles as stable references and replaces
-  // them only when new NOFS/KRPR data arrives. Claim/release
-  // snapshot frames leave those references unchanged → feedItems() /
-  // resolvedProfiles() return the same object → rows does not recompute →
-  // Post components are not remounted → the claim/release/churn loop breaks.
+  // Two stable sub-memos gate the rows recomputation. SolidJS only propagates a
+  // memo when its return value changes by reference. client.ts holds
+  // latestFeedItems / latestProfileCards as stable references and replaces them
+  // only when new NOFS / refs.profile data arrives. Resolve/release snapshot
+  // frames leave those references unchanged → feedItems() / profileCards()
+  // return the same object → rows does not recompute → Post components are not
+  // remounted → the resolve/release churn loop breaks.
   const feedItems = createMemo(() => snapshot().feedItems);
-  const resolvedProfiles = createMemo(() => snapshot().resolvedProfiles);
+  // refs.profile materialised map (pubkey → ProfileWire). client.ts keeps the
+  // reference stable across no-op frames so these memos do not churn the feed.
+  const profileCards = createMemo(() => snapshot().profileCards);
+  // Name-only join map for the feed rows, derived from the same ProfileWire set.
+  const resolvedProfiles = createMemo(() => {
+    const cards = profileCards();
+    if (!cards) return undefined;
+    const names = new Map<string, string>();
+    for (const [pubkey, wire] of cards) {
+      if (wire.displayName) names.set(pubkey, wire.displayName);
+    }
+    return names;
+  });
   const rows = createMemo(() => feedItemsToRows(feedItems() ?? [], resolvedProfiles()));
 
   onCleanup(unsubscribe);
@@ -112,16 +124,15 @@ export default function App() {
   };
 
   // Profile host for the registry user-* components (NostrAvatar / ProfileName).
-  // `profile(pubkey)` reads the kernel's resolved_profiles (KRPR) full
-  // ProfileCard map — display name + picture URL + nip05, resolved by the
-  // kernel now that the production outbox router is installed. claim/release
-  // ride the quiet dispatcher so refcount bookkeeping doesn't churn the feed.
-  const profileCards = createMemo(
-    () => snapshot().resolvedProfileCards ?? new Map<string, ProfileWire>(),
-  );
+  // `profile(pubkey)` reads the kernel's `refs.profile` row cache — display name
+  // + picture URL + nip05, merged per-key by the client's RefProfileStore.
+  // claimProfile/releaseProfile route through the unified resolve_ref/release_ref
+  // seam (ADR-0063) and ride the quiet dispatcher so refcount bookkeeping doesn't
+  // churn the feed.
+  const profileCardMap = createMemo(() => profileCards() ?? new Map<string, ProfileWire>());
   const profileHost: NostrProfileHost = {
-    profile: (pubkey) => profileCards().get(pubkey),
-    claimProfile: (pubkey, consumerId) => dispatchQuiet(claimProfileCommand(pubkey, consumerId)),
+    profile: (pubkey) => profileCardMap().get(pubkey),
+    claimProfile: (pubkey, consumerId) => dispatchQuiet(resolveProfileCommand(pubkey, consumerId)),
     releaseProfile: (pubkey, consumerId) => dispatchQuiet(releaseProfileCommand(pubkey, consumerId)),
   };
 

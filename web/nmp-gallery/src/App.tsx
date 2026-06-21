@@ -160,7 +160,7 @@ export default function App(): JSX.Element {
 
   // Card "ready" gates: the embed cards must show a resolved author byline, so
   // they wait for the author's profile to resolve. We read it from the SAME
-  // resolved_profiles projection the avatar/name/mention-chip use (host.profile)
+  // `refs.profile` row cache the avatar/name/mention-chip use (host.profile)
   // rather than the kernel's claimed_events author enrichment — the former is the
   // reliable path; the latter can lag for some authors. Same no-unresolved-data
   // discipline as the user-* sections.

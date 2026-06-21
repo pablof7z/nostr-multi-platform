@@ -466,8 +466,8 @@ mod composition_seams;
 mod feed_verbs;
 mod follow;
 mod react;
+mod refs;
 mod reply;
-
 impl Default for KernelReducer {
     fn default() -> Self {
         Self::new()
