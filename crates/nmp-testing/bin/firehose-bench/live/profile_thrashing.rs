@@ -14,10 +14,11 @@
 //! to the platform debounce layer, deferred to M14 per T22.  This scenario
 //! verifies the kernel-side dedup invariant only.
 
-use super::{drain, drain_until, open_sub_count, visible_items, wait_connected, wait_update, Scenario};
+use super::{drain_until, open_sub_count, visible_items, wait_connected, wait_update, Scenario};
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_eq, gate_max, gate_min};
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_testing::harness_probe::recv_latest_until;
 use std::time::{Duration, Instant};
 
 const DEDUP_RATIO_GATE: f64 = 0.01;
@@ -92,8 +93,10 @@ pub(crate) fn profile_thrashing() -> Scenario {
                 slot = slot.wrapping_add(1);
                 tick += interval;
             }
-            drain(&rx);
-            std::thread::sleep(Duration::from_millis(1));
+            // Block until the next tick deadline or until a frame arrives —
+            // event-driven (D8): wakes exactly when the actor pushes a snapshot,
+            // never on a fixed wall-clock tick.
+            recv_latest_until(&rx, tick);
         }
     }
 

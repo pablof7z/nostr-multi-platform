@@ -80,9 +80,13 @@ pub(crate) fn summarize_observations(report: &FirehoseReport) -> Vec<String> {
 }
 
 pub(crate) fn write_report(report: &FirehoseReport) -> io::Result<()> {
+    use nmp_testing::perf_report::{self, PerfGate, PerfReport, PerfScenario};
+
     let output_dir = PathBuf::from("docs/perf/firehose-bench");
     fs::create_dir_all(&output_dir)?;
     let stamp = report.started_at_unix.to_string();
+
+    // Legacy JSON + MD for backward compat.
     fs::write(
         output_dir.join(format!("{stamp}-{}.json", report.mode)),
         serde_json::to_string_pretty(report).expect("serializes report"),
@@ -91,6 +95,41 @@ pub(crate) fn write_report(report: &FirehoseReport) -> io::Result<()> {
         output_dir.join(format!("{stamp}-{}.md", report.mode)),
         markdown_report(report),
     )?;
+
+    // Unified perf-report.{json,md} via shared schema.
+    let mut perf = PerfReport::new("firehose-bench", format!("{stamp}-{}", report.mode));
+    perf.started_at_unix = report.started_at_unix;
+    for obs in &report.observations {
+        perf.finding(obs.clone());
+    }
+    for limitation in &report.limitations {
+        perf.finding(format!("[limitation] {limitation}"));
+    }
+    for scenario in &report.scenarios {
+        let gates: Vec<PerfGate> = scenario.gates.iter().map(|g| {
+            let threshold = if let (Some(m), Some(b)) = (g.measured, g.budget) {
+                if m <= b {
+                    format!("<= {b:.4}")
+                } else {
+                    format!(">= {b:.4}")
+                }
+            } else {
+                "—".to_string()
+            };
+            PerfGate {
+                name: g.name.to_string(),
+                threshold,
+                measured: g.measured.map(|v| format!("{v:.4}")),
+                passed: g.passed,
+                note: g.note.clone(),
+            }
+        }).collect();
+        let ps = PerfScenario::new(scenario.name, 0.0, gates)
+            .with_notes(scenario.observations.clone());
+        perf.push(ps);
+    }
+    perf_report::write(&perf, &output_dir)?;
+
     Ok(())
 }
 

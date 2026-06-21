@@ -18,11 +18,12 @@
 //! Bible #1 (monotonic rev): enforced via rev extraction in callback.
 
 use crate::common::{
-    extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_envelope,
+    await_frame, extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_envelope,
 };
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, NmpApp,
 };
+use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
@@ -39,6 +40,8 @@ static STALLING: AtomicBool = AtomicBool::new(false);
 static EMIT_COUNT: AtomicU64 = AtomicU64::new(0);
 
 struct StallState {
+    /// Notifies the waiting [`FrameProbe`] on each captured frame.
+    signal: ProbeSignal,
     revs: Vec<u64>,
     /// Epoch-relative emit timestamps (ms) used for apply-burst measurement.
     emit_ts_ms: Vec<u64>,
@@ -59,7 +62,7 @@ extern "C" fn stall_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize)
 
     // Simulate blocked main thread during stall window.
     if STALLING.load(Ordering::Acquire) {
-        std::thread::sleep(Duration::from_millis(STALL_MS));
+        std::thread::sleep(Duration::from_millis(STALL_MS)); // doctrine-allow: D8 — simulated main-thread stall (scenario under test)
     }
 
     let state_ptr = ctx as *mut Mutex<StallState>;
@@ -78,6 +81,7 @@ extern "C" fn stall_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize)
         if let Some(epoch) = state.epoch {
             state.emit_ts_ms.push(epoch.elapsed().as_millis() as u64);
         }
+        state.signal.notify();
     }
 }
 
@@ -109,7 +113,9 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
 
     let app: *mut NmpApp = nmp_app_new();
 
+    let (signal, probe) = FrameProbe::new();
     let state = Box::new(Mutex::new(StallState {
+        signal,
         revs: Vec::new(),
         emit_ts_ms: Vec::new(),
         epoch: Some(wall_start),
@@ -124,8 +130,10 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // S4 uses the full try_from_raw verify path (D0: cfg-gated; 500 events ~10-25 ms ok).
     let base_ts: u64 = 1_700_000_000;
     inject_signed_events(app, base_ts, cfg.inject_count);
-    // Settle: let actor process inject + emit initial snapshot.
-    std::thread::sleep(Duration::from_millis(400));
+    // Settle: event-driven wait until actor processes inject + emits initial snapshot.
+    let emit_count_fn = || EMIT_COUNT.load(Ordering::Relaxed) as usize;
+    nmp_app_configure(app, 80, cfg.emit_hz);
+    await_frame(&probe, 400, emit_count_fn);
 
     // Track per-stall pre/post emit counts, configure() latency, and resume timestamps.
     let mut stalls_injected: u64 = 0;
@@ -156,7 +164,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             nmp_app_configure(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             configure_during_stall_us.push(t_cfg.elapsed().as_micros() as u64);
-            std::thread::sleep(cfg.stall_duration + Duration::from_millis(50));
+            std::thread::sleep(cfg.stall_duration + Duration::from_millis(50)); // doctrine-allow: D8 — simulated main-thread stall duration (scenario under test)
             STALLING.store(false, Ordering::Release);
             // Record resume timestamp for apply-burst gate.
             stall_resume_ts_ms.push(wall_start.elapsed().as_millis() as u64);
@@ -176,10 +184,10 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             next_configure = now + configure_interval;
         }
 
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(10)); // doctrine-allow: D8 — configure-cadence pacer (main loop scheduling)
     }
 
-    std::thread::sleep(Duration::from_millis(500));
+    std::thread::sleep(Duration::from_millis(500)); // doctrine-allow: D8 — post-run drain grace (let queued emits settle)
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
 

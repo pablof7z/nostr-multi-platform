@@ -29,6 +29,7 @@ use crate::report::ScenarioMetrics;
 use serde_json::json;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -46,8 +47,6 @@ static EMIT_COUNT: AtomicU64 = AtomicU64::new(0);
 static REENTRANT_DISPATCHES: AtomicU64 = AtomicU64::new(0);
 /// Set by watchdog if a deadlock is detected; scenario treats as fatal.
 static WATCHDOG_FIRED: AtomicBool = AtomicBool::new(false);
-/// Set by run() when the scenario loop finishes; watchdog exits on this.
-static SCENARIO_DONE: AtomicBool = AtomicBool::new(false);
 
 struct ReentryState {
     app_usize: usize,
@@ -124,7 +123,6 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     EMIT_COUNT.store(0, Ordering::Relaxed);
     REENTRANT_DISPATCHES.store(0, Ordering::Relaxed);
     WATCHDOG_FIRED.store(false, Ordering::Release);
-    SCENARIO_DONE.store(false, Ordering::Release);
     // Initialise epoch; CB_IN_FLIGHT_TS_MS = 0 means no callback in flight.
     let _ = EPOCH.set(Instant::now());
     CB_IN_FLIGHT_TS_MS.store(0, Ordering::Release);
@@ -153,14 +151,18 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     //   - CB_IN_FLIGHT_TS_MS > 0   → callback entered at that epoch-ms; watchdog fires
     //                                 if (epoch.elapsed_ms - stored_ms) > WATCHDOG_TIMEOUT_MS.
     //
-    // This is correct because EPOCH is monotonic and shared between callback and watchdog;
-    // the gap is the true wall-time the callback has been running.
+    // The watchdog blocks on an mpsc channel instead of polling with sleep:
+    // `done_rx.recv_timeout(500ms)` returns Ok/Disconnected when the scenario
+    // finishes (main thread drops `done_tx`), or Timeout every 500 ms to let the
+    // watchdog check `CB_IN_FLIGHT_TS_MS`. This eliminates the D8 polling pattern
+    // while keeping the 500 ms deadlock-detection granularity.
+    let (done_tx, done_rx) = mpsc::channel::<()>();
     let watchdog = std::thread::spawn(move || {
         loop {
-            if SCENARIO_DONE.load(Ordering::Acquire) {
-                break;
+            match done_rx.recv_timeout(Duration::from_millis(500)) {
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
-            std::thread::sleep(Duration::from_millis(500));
             let in_flight_ms = CB_IN_FLIGHT_TS_MS.load(Ordering::Acquire);
             if in_flight_ms == 0 {
                 continue; // no callback in flight
@@ -188,17 +190,17 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
         nmp_app_configure(app, 80, 4);
         next_tick += interval;
         if let Some(sleep) = next_tick.checked_duration_since(Instant::now()) {
-            std::thread::sleep(sleep);
+            std::thread::sleep(sleep); // doctrine-allow: D8 — event-rate pacer (dispatch cadence under test)
         }
     }
 
     // Grace period for reentrant dispatches to drain.
-    std::thread::sleep(Duration::from_millis(500));
+    std::thread::sleep(Duration::from_millis(500)); // doctrine-allow: D8 — post-run drain grace for reentrant dispatches
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
 
-    // Signal watchdog to exit before teardown.
-    SCENARIO_DONE.store(true, Ordering::Release);
+    // Signal watchdog to exit: drop `done_tx` so `done_rx.recv_timeout` returns Disconnected.
+    drop(done_tx);
     let _ = watchdog.join();
 
     nmp_app_set_update_callback(app, std::ptr::null_mut(), None);

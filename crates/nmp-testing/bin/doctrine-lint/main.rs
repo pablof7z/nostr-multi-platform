@@ -31,10 +31,11 @@
 //! half of D8 — `thread::sleep`, `tokio::time::sleep`, and
 //! `tokio::time::sleep_until` are all busy-waits — is a universally
 //! applicable correctness rule, so `--workspace-d8` runs **only** that check across
-//! every `crates/*/src/` tree in the workspace. It skips `nmp-android-ffi`
-//! (its own separate workspace) and `nmp-testing` (test-infrastructure
-//! crate). `#[cfg(test)]` blocks and test-only files stay exempt, exactly as
-//! in the `nmp-core` scan.
+//! every `crates/*/src/` tree in the workspace, plus `crates/nmp-testing/bin/`
+//! (the perf/harness binaries, excluding doctrine-lint itself whose fixtures
+//! contain intentional positive examples). It skips only `nmp-android-ffi`
+//! (its own separate workspace). `#[cfg(test)]` blocks and test-only files stay
+//! exempt, exactly as in the `nmp-core` scan.
 //!
 //! ## Exit codes
 //!
@@ -74,7 +75,7 @@ use scope::{
     d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
     d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
-    d27_file_in_scope, d9_file_in_scope, is_doctrine_lint_source,
+    d27_file_in_scope, d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
 };
 
 fn main() -> ExitCode {
@@ -206,6 +207,9 @@ fn scan_one_file(
 ) -> std::io::Result<()> {
     let d0_exempt = d0::file_is_exempt(path);
     let d6_test_file = d6::file_is_test_only(path);
+    // D8 uses a narrower test exemption: nmp-testing harness bins are still
+    // scanned when `--workspace-d8` is active (see `is_nmp_testing_harness_bin`).
+    let d8_test_file = d6_test_file && !(workspace_d8 && is_nmp_testing_harness_bin(path));
     let no_raw_tap_in_scope = no_raw_tap_reintroduction::file_in_scope(path);
     let d7_in_scope = d7::file_in_scope(path);
     let d8_in_scope = d8::file_in_scope(path, d8_extra_scopes);
@@ -731,13 +735,11 @@ fn scan_one_file(
                 });
             }
         }
-        // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
-        // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
-        // doctrine applies to all non-test code under `nmp-core`. Reuses
-        // the D6 two-layer test exemption — `d6_test_file` covers files
-        // whose `#[cfg(test)]` gate lives in the parent module, and
-        // `sl.in_test_cfg` covers inline `#[cfg(test)] mod tests` blocks.
-        if !d6_test_file {
+        // D8 — no polling. Uses `d8_test_file` rather than `d6_test_file` so
+        // that nmp-testing harness bins are scanned in `--workspace-d8` mode
+        // while ordinary test-only files (e.g. `*_tests.rs`) stay exempt.
+        // `sl.in_test_cfg` still covers `#[cfg(test)]` blocks in harness files.
+        if !d8_test_file {
             for (col, msg, suggested) in
                 d8::check_no_polling(sl.text, sl.is_comment, sl.in_test_cfg)
             {

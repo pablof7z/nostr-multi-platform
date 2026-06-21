@@ -259,3 +259,18 @@ pub(crate) fn is_doctrine_lint_source(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/")) && !s.contains("/fixtures/")
 }
+
+/// True when `path` is inside the nmp-testing harness binaries (i.e. under
+/// `crates/nmp-testing/bin/` or `nmp-testing/bin/` in a fake workspace) but
+/// NOT inside the doctrine-lint tool itself (whose source contains intentional
+/// positive-fixture strings that must never be reported as real findings).
+///
+/// Used by the D8 test-exemption logic: `d6::file_is_test_only` marks all
+/// nmp-testing paths as test-infra (so D6 `.expect()` rules don't fire), but
+/// D8 explicitly wants to scan the harness binaries when `--workspace-d8` is
+/// active. This helper identifies exactly those paths.
+pub(crate) fn is_nmp_testing_harness_bin(path: &Path) -> bool {
+    let s = path.to_string_lossy().replace('\\', "/");
+    (s.contains("/nmp-testing/bin/") || s.contains("nmp-testing/bin/"))
+        && !s.contains("/doctrine-lint/")
+}

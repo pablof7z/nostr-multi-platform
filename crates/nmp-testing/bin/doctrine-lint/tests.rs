@@ -1311,24 +1311,52 @@ fn workspace_d8_exempts_cfg_test_sleeps() {
 }
 
 #[test]
-fn workspace_d8_skips_nmp_testing_crate() {
-    // nmp-testing is test infrastructure — its harnesses/benches legitimately
-    // sleep. A production-shaped sleep there must NOT be flagged.
+fn workspace_d8_scans_nmp_testing_harness() {
+    // nmp-testing bin/ (harnesses) are now under the D8 no-polling lint. An
+    // un-annotated sleep in a fake `crates/nmp-testing/bin/ffi-stress/` file
+    // must be flagged; the same sleep with a doctrine-allow annotation must not.
     let root = build_fake_workspace(
-        "doctrine_lint_ws_d8_skip_testing",
-        &[(
-            "nmp-testing",
-            "harness.rs",
-            "use std::thread;\nuse std::time::Duration;\n\
-             pub fn settle() {\n    thread::sleep(Duration::from_millis(5));\n}\n",
-        )],
+        "doctrine_lint_ws_d8_scan_testing",
+        &[
+            // Unannotated sleep in the harness bin — must be flagged.
+            (
+                "nmp-testing/bin/ffi-stress",
+                "scenario.rs",
+                "use std::thread;\nuse std::time::Duration;\n\
+                 pub fn settle() {\n    thread::sleep(Duration::from_millis(5));\n}\n",
+            ),
+        ],
     );
     let root_str = root.to_string_lossy().into_owned();
     let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
-        code, 0,
-        "workspace-d8 must skip the nmp-testing crate; stdout:\n{}\nstderr:\n{}",
+        code, 1,
+        "workspace-d8 must flag unannotated sleeps in nmp-testing harness bin/; stdout:\n{}\nstderr:\n{}",
         stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D8]"),
+        "must emit a D8 finding; stdout:\n{}",
+        stdout
+    );
+
+    // Same sleep with a doctrine-allow annotation must be clean.
+    let root_ok = build_fake_workspace(
+        "doctrine_lint_ws_d8_scan_testing_annotated",
+        &[(
+            "nmp-testing/bin/ffi-stress",
+            "scenario.rs",
+            "use std::thread;\nuse std::time::Duration;\n\
+             pub fn settle() {\n    thread::sleep(Duration::from_millis(5)); // doctrine-allow: D8 — soak window\n}\n",
+        )],
+    );
+    let root_ok_str = root_ok.to_string_lossy().into_owned();
+    let (code_ok, stdout_ok, stderr_ok) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_ok_str]);
+    assert_eq!(
+        code_ok, 0,
+        "workspace-d8 must not flag annotated sleeps in nmp-testing harness; stdout:\n{}\nstderr:\n{}",
+        stdout_ok, stderr_ok
     );
 }
 

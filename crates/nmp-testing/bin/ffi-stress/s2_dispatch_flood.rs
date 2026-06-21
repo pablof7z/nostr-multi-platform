@@ -153,7 +153,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
 
                     next_tick += Duration::from_nanos(interval_ns);
                     if let Some(sleep) = next_tick.checked_duration_since(Instant::now()) {
-                        std::thread::sleep(sleep);
+                        std::thread::sleep(sleep); // doctrine-allow: D8 — dispatch-rate pacer (flood cadence under test)
                     }
                 }
 
@@ -189,7 +189,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     drain_curve.push(last_net);
     let mut stable_runs = 0u32;
     loop {
-        std::thread::sleep(sample_gap);
+        std::thread::sleep(sample_gap); // doctrine-allow: D8 — drain-stable sample gap (heap-stabilisation measurement)
         let net = alloc_snapshot().net_heap_delta(&baseline_snap);
         drain_curve.push(net);
         if (net - last_net).abs() <= stable_band {

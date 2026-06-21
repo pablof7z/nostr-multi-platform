@@ -47,6 +47,23 @@ pub(crate) fn configure_and_await_frame(
     })
 }
 
+/// Block — event-driven (Doctrine D8) — until the callback records a new frame,
+/// without calling `configure` first. Used by S4 which manages its own configure
+/// schedule: the scenario issues its own `nmp_app_configure` call, then calls
+/// `await_frame` to block until the emit arrives.
+///
+/// Returns `true` if a frame advanced before the deadline, `false` on timeout.
+pub(crate) fn await_frame(
+    probe: &FrameProbe,
+    deadline_ms: u64,
+    mut frame_count: impl FnMut() -> usize,
+) -> bool {
+    let before = frame_count();
+    probe.recv_until(std::time::Duration::from_millis(deadline_ms), || {
+        frame_count() > before
+    })
+}
+
 /// Extract the `rev` field from a FlatBuffers update frame (typed Tier-3
 /// envelope field — PR-B: the generic JSON payload no longer exists).
 pub(crate) fn extract_rev(bytes: &[u8]) -> Option<u64> {
