@@ -1,0 +1,38 @@
+[
+  [
+    "user",
+    "read 1493 issue"
+  ],
+  [
+    "assistant",
+    "Summarized issue #1493: a 25-agent read-only audit identifying 9 cross-cutting architectural exception patterns (P1–P9) where bespoke code crept into uniform layers, with top actionable items including divergent is_replaceable, NIP-17 DM relay pruning, and SF Symbols in platform-neutral core."
+  ],
+  [
+    "user",
+    "send an opus agent to work on some of them and land them, have a review from `codex exec` before it's PRed and have the agent land the PR and merge into master: P1, P2, P3, P9 (hardocded relays and pubkeys belong ONLY in app level code, not NMP itself), P7, P4. For these critical items, before designing a solution get a `codex exec` solution to design the problem: point 5 (this one sounds critical!), 1, 2, 3, P5, P7, P4\n\nwhatever work can be done in parallel, fan out workflows with these guidelines, as much parallel work as possible within safety (i.e. ensuring we don't get agents stepping on each other's work) -- each agent must work on its work git worktree and not touch the main branch -- in fact, here in the main thread I want you to monitor in some way (like with a script or something that wakes you up) whenever an agent moves away from master so you get awaken the moment the base dir is not on master so you can redirect the offending agent"
+  ],
+  [
+    "assistant",
+    "Noted it was still working on an Android JUnit assertion failure with no cross-lane impact."
+  ],
+  [
+    "user",
+    "Teammate agents reported progress: P1 verified all findings and confirmed doctrine via aim.md §2 (formatting in projections is forbidden); P7 scoped only finding #2 (NIP-17 DM relay bypass) as actionable and shipped PR #1532; P2 verified findings, opened PRs #1529/#1533, and warned about shared worktree collisions and a disk crisis; P9 verified known-signers drift and DEFAULT_FOLLOWS but flagged scope problems needing expanded file access; P4 shipped PR #1530 (WalletScreen is_connected) with 4 findings blocked on cross-lane Rust seams; PT3 verified finding A (hung spinner) as stale and B (rate-limited as permanent) as live; P5 verified findings and prepared a doc-only PR."
+  ],
+  [
+    "assistant",
+    "P1 lane watching CI; no action needed until a PR merges or the monitor trips."
+  ],
+  [
+    "user",
+    "Further teammate updates: P1 merged 3 of 5 slices (#1528, #1536, #1537) with 2 held behind #1525; P9 starting relays/pubkeys vertical; P3 merged #1534 (is_replaceable single-source + kind-const consolidation); P2 shipped all 3 slices (#1529/#1533 merged, #1542 nip19 adapter in CI); P5 merged #1540 and prepared #1547 handshake crossbeam draft; P4 merged #1530, opened #1545 for follow-feed kernel persist + Android openTimeline removal; P7 merged #1532 and filed #1538 for explicit_targets follow-up."
+  ],
+  [
+    "assistant",
+    "Consolidated campaign status: 9 PRs merged to master, 4 in CI awaiting self-merge, p3/p7 lanes complete, remaining work is p9's vertical and p1's last 2 slices blocked on #1525."
+  ],
+  [
+    "assistant",
+    "P4 idle, waiting on #1545 CI merge; staying quiet until p9's vertical lands, #1525 unblocks p1, or a PR needs attention."
+  ]
+]

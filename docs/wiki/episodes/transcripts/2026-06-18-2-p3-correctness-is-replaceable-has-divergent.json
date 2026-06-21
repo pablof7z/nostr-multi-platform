@@ -1,0 +1,18 @@
+[
+  [
+    "user",
+    "read 1493 issue"
+  ],
+  [
+    "assistant",
+    "Read and summarized issue #1493: a 25-agent audit identifying 9 cross-cutting architectural patterns (P1–P9), with the highest-value actionable items being divergent `is_replaceable`, a NIP-17 DM relay pruning bug, hung spinners from missing async terminal recording, an expired dual-publish deadline, known-signers drift, and SF Symbols leaking into the kernel."
+  ],
+  [
+    "user",
+    "send an opus agent to work on some of them and land them, have a review from `codex exec` before it's PRed and have the agent land the PR and merge into master: P1, P2, P3, P9 (hardocded relays and pubkeys belong ONLY in app level code, not NMP itself), P7, P4. For these critical items, before designing a solution get a `codex exec` solution to design the problem: point 5 (this one sounds critical!), 1, 2, 3, P5, P7, P4\n\nwhatever work can be done in parallel, fan out workflows with these guidelines, as much parallel work as possible within safety (i.e. ensuring we don't get agents stepping on each other's work) -- each agent must work on its work git worktree and not touch the main branch -- in fact, here in the main thread I want you to monitor in some way (like with a script or something that wakes you up) whenever an agent moves away from master so you get awaken the moment the base dir is not on master so you can redirect the offending agent"
+  ],
+  [
+    "assistant",
+    "Dispatched 8 parallel Opus agents across file-disjoint git worktrees (p7-nip17-routing, pt3-async-terminal, p3-kind-fragmentation, p2-per-nip-branches, p1-presentation-fmt, p9-core-config, p4-native-policy, p5-polling), each to verify findings, get a codex design review for critical items, implement fixes, get codex diff review, open PRs, and squash-merge to master; also launched a master-branch monitor that exits immediately if the base directory leaves master, re-invoking the agent to redirect any offender."
+  ]
+]

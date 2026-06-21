@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "is chirp ios using nmp ui components for avatar in thread replies?"
+  ],
+  [
+    "assistant",
+    "Yes, thread replies use the NostrAvatar component, as the code now uses NostrAvatar everywhere instead of the previously mentioned ChirpAvatar."
+  ]
+]

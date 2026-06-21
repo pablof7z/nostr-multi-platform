@@ -1,0 +1,18 @@
+[
+  [
+    "user",
+    "run chirp on my iphone"
+  ],
+  [
+    "assistant",
+    "Chirp was built, installed, and launched on your iPhone. A new justfile recipe was also added for future device builds."
+  ],
+  [
+    "user",
+    "1. people I'm following - I go to their profile, the button shows \"Follow\"\n2. when I hit the follow button on someone's profile that I don't follow I get the haptic feedback but nothing happens (the follow button continues to say \"follow\" -- I don't know if it actually added the user to my follows list)"
+  ],
+  [
+    "assistant",
+    "A routing bug (kind:3 p-tagged inboxes) was confirmed with a straightforward fix identified. The agent is still investigating why the follow list isn't updating, waiting on Codex to determine if locally published events flow through the event pipeline correctly and if projections replay existing data on startup."
+  ]
+]

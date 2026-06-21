@@ -1,0 +1,30 @@
+[
+  [
+    "user",
+    "read issue 1523"
+  ],
+  [
+    "assistant",
+    "Summarized epic #1523: adopt nostrdb cache techniques into NMP's store without direct dependency, with 9 sub-issues (#1515–#1524) and constraints (no second LMDB writer, no nostrdb source copy, no polling, baseline capture is a hard precondition)."
+  ],
+  [
+    "user",
+    "work one by one and land them all in master, pr, use opus agent to plan, sonnet agent to code, codex exec to review the work done -- no technical debt allowed, no hacks, perfect engineering, do the right thing, not the easy thing"
+  ],
+  [
+    "assistant",
+    "#1517 plan is test+doc only — no production code changes, no dependency on #1522. Launching Sonnet for #1517 immediately in parallel."
+  ],
+  [
+    "assistant",
+    "4 CI checks still pending on PR #1527. Plans for #1516 and #1518 are complete and ready to launch in parallel once it merges; both touch store_impl.rs so merge conflict resolution will be needed on whichever lands second."
+  ],
+  [
+    "assistant",
+    "Will fix the file-size gate failure on PR #1531 by splitting build_filter and run_filter_visit into a new query_streaming.rs module."
+  ],
+  [
+    "assistant",
+    "Epic #1523 status: 5/9 landed (#1515, #1522, #1517, #1516, #1518), 2/9 PRs open with CI running (#1541 for #1520, #1543 for #1521), 1/9 agent implementing (#1519 sidecars), 1/9 not started (#1524 final acceptance — Opus plan running)."
+  ]
+]
