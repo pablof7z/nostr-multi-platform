@@ -238,14 +238,14 @@ fn publish_note_without_signer_returns_signer_not_installed() {
 }
 
 #[test]
-fn publish_note_after_set_signer_returns_publish_path_not_wired() {
+fn publish_note_after_set_signer_returns_publish_disabled_token() {
     let mut runtime = WasmRuntime::new();
 
     // Install a nip07 signer with a real (test-fixture) pubkey hex. On
     // native this constructs a stub that returns `Unsupported` from sign();
     // we don't reach sign() in this assertion — the runtime stops at the
-    // publish-path-not-wired error because Stage 3b ships the signer slot,
-    // not the publish path.
+    // publish-disabled error because the web preview has no outbox resolver
+    // wired (#1202), not because Stage 3b skipped the sync publish path.
     let set_events = runtime
         .handle(WorkerRequest::SetSigner(SetSigner {
             kind: "nip07".to_string(),
@@ -265,12 +265,14 @@ fn publish_note_after_set_signer_returns_publish_path_not_wired() {
         other => panic!("expected ActionAccepted, got {other:?}"),
     }
 
-    // Now the same app-level write surfaces the *second* honest error: the
-    // signer is installed but the SYNCHRONOUS publish path is not wired —
-    // V-01 Stage 3c added an asynchronous publish entrypoint
-    // (`NmpWasmRuntime::dispatch_app_action_async(...)`) which the message
-    // points hosts at. Hosts can distinguish "you need to sign in" from
-    // "use the async entrypoint" by pattern-matching the reason prefix.
+    // Now the same app-level write surfaces the *second* honest error: a
+    // signer is installed but publishing is disabled in the web preview
+    // (#1202). Fix #1748 collapses the two divergent "publish is disabled"
+    // strings (`publish_path_not_wired` + `publish_not_supported_in_web_preview`)
+    // onto the SINGLE canonical token, so the sync `handle()` path and the
+    // async `dispatch_app_action_async` path now surface the same prefix. Hosts
+    // distinguish "you need to sign in" (`signer_not_installed`) from
+    // "publishing is disabled" by pattern-matching that one canonical prefix.
     let events = runtime
         .handle(WorkerRequest::AppAction(AppActionDispatch {
             action: AppAction::PublishNote {
@@ -284,18 +286,17 @@ fn publish_note_after_set_signer_returns_publish_path_not_wired() {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.publish");
             assert!(
-                failure.reason.starts_with("publish_path_not_wired"),
-                "expected publish_path_not_wired prefix, got: {}",
+                failure
+                    .reason
+                    .starts_with("publish_not_supported_in_web_preview"),
+                "expected the canonical publish-disabled token, got: {}",
                 failure.reason
             );
-            // V-01 Stage 3c contract: the failure reason MUST point hosts at
-            // the new async entrypoint so the integration is self-documenting.
-            // A host that pattern-matches on the prefix already knows what to
-            // do, but a developer reading the reason string in DevTools should
-            // see exactly which method to call.
+            // The legacy token must be gone — a host that string-matched it
+            // must be updated to the canonical one (#1748).
             assert!(
-                failure.reason.contains("dispatch_app_action_async"),
-                "expected reason to point host at the async entrypoint, got: {}",
+                !failure.reason.starts_with("publish_path_not_wired"),
+                "legacy publish_path_not_wired token must be gone, got: {}",
                 failure.reason
             );
         }

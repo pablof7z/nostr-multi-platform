@@ -105,7 +105,7 @@ pub extern "C" fn nmp_app_dispatch_action(
 /// host's UI has reacted to the terminal stage (`Accepted` / `Failed`) it
 /// passes the `correlation_id` here to drop the entry from the projection.
 ///
-/// `correlation_id` is the 32-hex (or event-id) value the host received from
+/// `correlation_id` is the 32-hex operation-id the host received from
 /// `nmp_app_dispatch_action`. A null `app`, a null/empty `correlation_id`, or
 /// an unknown `correlation_id` is a silent no-op (D6 — never a crash).
 ///
@@ -252,9 +252,10 @@ pub(super) fn dispatch_action_json(
             // an executor whose `ActorCommand` settles asynchronously (the
             // `nmp.publish` `PublishRaw` path — the actor signs the event)
             // can thread it onto the command. The publish engine then reports
-            // this id in `action_results`, matching the host's spinner
-            // key. For pre-signed `Publish` actions the id is redundant
-            // (preferred_action_id already bound it to the event id).
+            // this id in `action_results`, matching the host's spinner key.
+            // The pre-signed `Publish` path is identical: the minted
+            // correlation_id — never the event id — is the operation's
+            // identity end-to-end (#1748).
             match execute_action(app, namespace, action_json, &correlation_id) {
                 Ok(()) => {
                     // Push the "action accepted and enqueued" signal to the

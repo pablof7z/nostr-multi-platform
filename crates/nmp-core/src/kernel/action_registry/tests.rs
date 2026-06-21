@@ -36,11 +36,8 @@ fn default_registry_has_publish_module() {
 
 #[test]
 fn start_publish_raw_action_returns_correlation_id() {
-    // `PublishAction::PublishRaw` for a kind:1 note exercises the full
-    // registry → adapter → module::start path without needing a fully-signed
-    // event fixture. The actor signs the event, so `preferred_action_id`
-    // returns `None` and the registry mints a random 32-hex-char
-    // `correlation_id`.
+    // `PublishAction::PublishRaw` exercises the registry → adapter →
+    // module::start path; the registry mints a fresh 32-hex `correlation_id`.
     let registry = default_registry();
     let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":"Auto"}}"#;
     let id = registry
@@ -76,17 +73,13 @@ fn start_cancel_action_is_rejected_via_dispatch() {
 }
 
 #[test]
-fn start_publish_action_with_signed_event_is_accepted() {
-    // A `PublishAction::Publish` with a non-empty id+sig passes
-    // `PublishModule::start`'s validation gate.
-    //
-    // `preferred_action_id` returns the event's `id` (64 hex chars) so that
-    // `dispatch_action`'s return value and `action_results` in the
-    // snapshot share the same identifier. The fixture event has `id =
-    // "a".repeat(64)` — 64 hex chars, not the 32-char minted `new_action_id`.
+fn start_publish_action_returns_minted_correlation_id_not_event_id() {
+    // Regression for #1748 Fix 1: the `correlation_id` is the operation's
+    // identity, NEVER the event id. The registry mints a fresh 32-hex
+    // correlation_id and does NOT substitute the event's 64-hex `id`.
     let registry = default_registry();
     let event = fixture_signed_event();
-    let expected_id = event.id.clone();
+    let event_id = event.id.clone();
     let action = crate::publish::PublishAction::Publish {
         handle: "h1".to_string(),
         event,
@@ -96,9 +89,14 @@ fn start_publish_action_with_signed_event_is_accepted() {
     let id = registry
         .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", &action_json)
         .expect("publish action with id+sig should be accepted");
-    assert_eq!(
-        id, expected_id,
-        "Publish action must use event.id as correlation_id"
+    assert_ne!(
+        id, event_id,
+        "the correlation_id must NOT be the event id — identity is not output data"
+    );
+    assert_eq!(id.len(), 32, "minted correlation_id is 32-hex, not the 64-hex event id");
+    assert!(
+        id.chars().all(|c| c.is_ascii_hexdigit()),
+        "minted correlation_id should be hex: {id}"
     );
 }
 
@@ -206,14 +204,11 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
     }
 }
 
-/// The pre-signed `Publish` executor threads the registry-minted
-/// `correlation_id` onto `ActorCommand::PublishSignedEvent` — explicit
-/// symmetry with the `PublishRaw` path. The round-trip used to work by
-/// coincidence (`preferred_action_id` returns `event.id`, the engine's
-/// `None`-fallback also reports `event.id`); the explicit thread upgrades
-/// that coincidence into a guarantee the publish engine surfaces the
-/// dispatch-returned id even if future changes ever decouple the dispatch
-/// return value from the publish handle.
+/// Regression for #1748 Fix 1: the pre-signed `Publish` executor threads the
+/// registry-minted `correlation_id` onto `ActorCommand::PublishSignedEvent` —
+/// NOT the event id (output data in `raw`). The deleted `preferred_action_id`
+/// substituted `event.id`, so the host could not match the terminal to its
+/// spinner.
 #[test]
 fn publish_signed_executor_sends_publish_signed_event_command() {
     use crate::actor::ActorCommand;
@@ -250,9 +245,14 @@ fn publish_signed_executor_sends_publish_signed_event_command() {
         ActorCommand::PublishSignedEvent {
             target,
             correlation_id,
-            ..
+            raw,
         } => {
             assert_eq!(target, crate::publish::PublishTarget::Auto);
+            assert_ne!(
+                correlation_id.as_deref(),
+                Some(raw.id.as_str()),
+                "the correlation_id must NOT be the event id — identity is not output data (#1748)"
+            );
             assert_eq!(
                 correlation_id,
                 Some(minted_correlation_id),

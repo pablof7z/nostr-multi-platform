@@ -210,7 +210,7 @@ Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 112–138;
 | Prefix | Source function | Condition |
 |---|---|---|
 | `signer_not_installed` | `write_path_unavailable_reason(None)` | App-level write dispatched before `SetSigner`. Host should prompt sign-in. |
-| `publish_path_not_wired` | `write_path_unavailable_reason(Some(&signer))` | Signer installed but write routed through sync `handle_json` instead of `dispatch_app_action_async`. Host integration error. |
+| `publish_not_supported_in_web_preview` | `write_path_unavailable_reason(Some(&signer))` AND `publish_app_action` (async) | Signer installed but publishing is disabled in the web preview (no `OutboxResolver` wired, #1202). #1748 collapsed the former divergent `publish_path_not_wired` (sync path) token onto this single canonical "publishing disabled" prefix, so the sync `handle_json` path and the async `dispatch_app_action_async` path now surface the SAME token. A host that string-matched `publish_path_not_wired` must update to this prefix. |
 | `publish_path_not_wired_for_kind` | `write_path_not_wired_for_kind_reason` | Async path received `React`, `Follow`, or `Unfollow` (or `PublishNote` with non-null `reply_to_id`). Only plain `PublishNote` (kind:1, no reply) is wired in the current async path. |
 | `unsupported_signer_backend_for_writes` | `unsupported_signer_backend_reason` | Installed signer backend is not NIP-07 (e.g. `LocalKey`). Only NIP-07 is wired for wasm async writes. |
 | `nip07_sign_failed` | inline in `publish_app_action` | `window.nostr.signEvent` was rejected or returned an error. The failure detail follows the prefix after `": "`. |

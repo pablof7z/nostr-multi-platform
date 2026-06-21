@@ -192,6 +192,7 @@ mod provenance;
 mod provenance_wire_tests;
 mod publish_cmd;
 mod publish_engine;
+mod publish_verify;
 #[cfg(test)]
 mod publish_engine_tests;
 mod publish_engine_wire;
