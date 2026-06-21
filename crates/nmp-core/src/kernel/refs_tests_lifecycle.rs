@@ -10,34 +10,16 @@
 
 use super::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use super::*;
-use crate::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-fn nevent_uri(event_id: &str) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: None,
-        kind: Some(1),
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
-}
-
-fn naddr_uri(kind: u32, author: &str, d_tag: &str) -> String {
-    let bech = encode_naddr(&NaddrData {
-        identifier: d_tag.to_string(),
-        pubkey: author.to_string(),
-        kind,
-        relays: vec![],
-    })
-    .expect("encode_naddr");
-    format!("nostr:{bech}")
-}
+// ADR-0063 / FFI contract: the Event `resolve_ref` / `release_ref` seam takes a
+// RAW key (Lane D) — a hex64 event-id (`hex64(...)`) or a `kind:pubkey:d`
+// coordinate (`format!("{kind}:{author}:{d_tag}")`) — NOT a `nostr:` URI. The
+// `nevent_uri` / `naddr_uri` helpers were removed when the seam went raw-key.
 
 fn profile_card(kernel: &mut Kernel, pk: &str, consumer: &str, liveness: RefLiveness) {
     kernel.resolve_ref(
@@ -70,8 +52,11 @@ fn spurious_release_of_never_claimed_key_creates_no_row() {
         "a spurious profile release must not grow the rev map (BLOCKING 2 (a))"
     );
 
-    let uri = nevent_uri(&hex64("9e7e7"));
-    kernel.release_ref(RefNamespace::Event, &uri, "ghost");
+    // Raw hex64 event-id key (ADR-0063 / FFI contract). It parses cleanly, so the
+    // release reaches the refcount logic and finds no claim (actually_removed =
+    // false) — the real BLOCKING 2 (a) path, not a malformed-key early no-op.
+    let key = hex64("9e7e7");
+    kernel.release_ref(RefNamespace::Event, &key, "ghost");
     assert!(
         kernel
             .projection_rev_tracker
@@ -247,13 +232,16 @@ fn terminal_miss_runs_unified_teardown_leaving_no_live_shape_or_rev() {
     let d_tag = "doomed";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    let uri = naddr_uri(kind, &author, d_tag);
+    // ADR-0063 / FFI contract: the Event `resolve_ref` seam takes the RAW
+    // `kind:pubkey:d` coordinate key (Lane D), NOT a `nostr:` naddr URI — the
+    // raw coordinate IS `primary_id` here.
+    let key = primary_id.clone();
 
     // A cold CacheOk naddr claim refcounts the key, records its demanded shape, and
     // (via the OneshotApi cold-fetch) registers a claim-expansion tracker.
     kernel.resolve_ref(
         RefNamespace::Event,
-        uri,
+        key,
         "embed".into(),
         RefShape::Event(EventShape::Embed),
         RefLiveness::CacheOk,
@@ -311,11 +299,13 @@ fn event_no_op_re_resolve_does_not_advance_per_key_rev() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
     let id = hex64("57ab1e");
-    let uri = nevent_uri(&id);
+    // ADR-0063 / FFI contract: the Event `resolve_ref` seam takes the RAW hex64
+    // event-id key (Lane D), NOT a `nostr:` nevent URI.
+    let key = id.clone();
 
     kernel.resolve_ref(
         RefNamespace::Event,
-        uri.clone(),
+        key.clone(),
         "c".into(),
         RefShape::Event(EventShape::Embed),
         RefLiveness::CacheOk,
@@ -328,7 +318,7 @@ fn event_no_op_re_resolve_does_not_advance_per_key_rev() {
     for _ in 0..3 {
         kernel.resolve_ref(
             RefNamespace::Event,
-            uri.clone(),
+            key.clone(),
             "c".into(),
             RefShape::Event(EventShape::Embed),
             RefLiveness::CacheOk,
@@ -368,13 +358,17 @@ fn parked_event_claim_released_before_drain_is_not_resurrected() {
         "precondition: no relay connected so the claim parks"
     );
     let id = hex64("dead10");
-    let uri = nevent_uri(&id); // immutable nevent, NO relay TLVs → must park
+    // ADR-0063 / FFI contract: the Event `resolve_ref` seam takes the RAW hex64
+    // event-id key (Lane D), NOT a `nostr:` nevent URI. A bare event-id carries
+    // no relay hints (the raw seam passes `Vec::new()`), so a cold claim with no
+    // relay connected still takes the hintless cold-park branch.
+    let key = id.clone();
 
     // 2. resolve_ref parks the claim: queued in `pending_event_claims`, no live
     //    claim and no registered interest yet (nowhere to send a REQ).
     kernel.resolve_ref(
         RefNamespace::Event,
-        uri.clone(),
+        key.clone(),
         "view".into(),
         RefShape::Event(EventShape::Embed),
         RefLiveness::CacheOk,
@@ -396,7 +390,7 @@ fn parked_event_claim_released_before_drain_is_not_resurrected() {
     );
 
     // 3. release BEFORE any relay connects.
-    kernel.release_ref(RefNamespace::Event, &uri, "view");
+    kernel.release_ref(RefNamespace::Event, &key, "view");
     assert_eq!(
         kernel.pending_event_claims_len_for_test(),
         0,

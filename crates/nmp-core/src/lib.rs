@@ -159,10 +159,7 @@ pub(crate) mod store {
     pub use nmp_store::*;
 }
 pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
-// ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference
-// projections (refs.profile / refs.event): owned types + FlatBuffers codec,
-// producer-side row-rev tracker (consuming Lane B's RefRowRevSource), and the
-// reference host-cache model the invariant property harness checks against.
+// ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference projections.
 pub mod refs;
 // Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
 // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
@@ -194,9 +191,8 @@ pub use kernel::{
     read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel, ProfileLiveness,
     KERNEL_BUILTIN_PROJECTION_KEYS,
 };
-// ADR-0063 Lane D — closed typed surface for the `resolve_ref`/`release_ref`
-// seam promoted to the crate root so `nmp-ffi` can carry these types in
-// `ActorCommand::ResolveRef` / `ActorCommand::ReleaseRef`.
+// ADR-0063 Lane D — closed typed `resolve_ref`/`release_ref` surface promoted to
+// the crate root so `nmp-ffi` can carry it in the ResolveRef/ReleaseRef commands.
 pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
 pub use kernel::pull_cursor::{PullCursorId, PullCursorMode};
