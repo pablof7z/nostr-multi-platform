@@ -13,7 +13,6 @@ extension KernelModel {
     var isRunning: Bool { typedEnvelope?.running ?? false }
     var modularTimeline: OpFeedSnapshot { typedHomeFeed ?? .empty }
     var rev: UInt64 { typedEnvelope?.rev ?? 0 }
-    var profile: ProfileCard? { typedProfile }
     var metrics: KernelMetrics? { typedEnvelope?.metrics }
     var relayStatuses: [RelayStatus] { typedEnvelope?.relayStatuses ?? [] }
     var accounts: [AccountSummary] { typedAccounts ?? [] }
@@ -51,18 +50,13 @@ extension KernelModel {
     var signerState: SignerState? { typedSignerState }
     var actionLifecycle: ActionLifecycleSnapshot? { typedActionLifecycle }
 
-    var mentionProfiles: [String: MentionProfile] {
-        // Derived from the typed resolved-profile map.
-        resolvedProfileCards.mapValues(MentionProfile.init(card:))
-    }
-
-    var claimedProfiles: [String: ProfileCard] {
-        typedClaimedProfiles ?? [:]
-    }
-
-    var resolvedProfileCards: [String: ProfileCard] {
-        typedResolvedProfiles ?? [:]
-    }
+    // ADR-0063 Lane E (#1671): the whole-map profile accessors (`profile`,
+    // `mentionProfiles`, `claimedProfiles`, `resolvedProfileCards`) are REMOVED.
+    // They read the removed `@Published` profile-cluster slots and a profile
+    // update through any of them re-rendered the whole view tree. The shell now
+    // reads profiles per-key from the `keyedRefCache` via
+    // `profile(forPubkey:)` / `profileCard(forPubkey:)`, observed per-key via
+    // `profileRowChanged` (D4) — no whole-map broadcast.
 
     var hasActiveAccount: Bool { activeAccount != nil }
 

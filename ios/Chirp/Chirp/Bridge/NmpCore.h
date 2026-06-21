@@ -185,14 +185,12 @@ void nmp_app_chirp_close_home_feed(void *app);
 // any encode failure degrades to a copy of the raw input, never NULL.
 char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 
-// Synchronous read: number of accounts the active user currently follows.
-// Reads the active account's latest kind:3 from the kernel's published event
-// store and counts distinct, hex-valid `p` tags. Returns >= 0 for a loaded
-// contact list, -1 when there is no active account, the store is not yet
-// published (pre-nmp_app_start), or no kind:3 has arrived yet. Hosts render
-// -1 as 0 for display; the distinction lets callers tell "no list yet" from
-// "explicitly empty list". D8: synchronous local read, never blocks on network.
-int32_t nmp_app_active_following_count(void *app);
+// (#1671 Lane E) — removed a stale DUPLICATE declaration of
+// `nmp_app_active_following_count` that returned `int32_t` here; the canonical
+// declaration (returning `int64_t`, matching the Rust
+// `nmp_app_active_following_count -> i64` in `following_count.rs`) is above.
+// The two conflicting prototypes broke the bridging-header precompile for every
+// iOS build on this branch; this keeps the single correct `int64_t` form.
 
 // Stateless NIP-21 / bare NIP-19 decode helper. Accepts `nostr:` URIs and bare
 // bech32 profile/event/address entities, returning bounded JSON:

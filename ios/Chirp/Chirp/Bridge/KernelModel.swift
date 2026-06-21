@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 import os.log
@@ -24,10 +25,11 @@ private let reliabilityLog = OSLog(subsystem: "org.nmp.chirp.diag", category: "r
 /// this class republishes the resulting model for SwiftUI consumption.
 ///
 /// Every kernel-driven projection lives behind a dedicated typed slot
-/// (`typedHomeFeed`, `typedProfile`, `typedEnvelope`, …) assigned in
-/// `apply(result:)`; the computed accessors in `KernelModel+Projections`
-/// expose the per-field view-facing API (`model.profile`,
-/// `model.modularTimeline`, …) by reading those slots directly. Chirp no
+/// (`typedHomeFeed`, `typedEnvelope`, …) assigned in `apply(result:)`; the
+/// computed accessors in `KernelModel+Projections` expose the per-field
+/// view-facing API by reading those slots directly. Profiles are the exception
+/// (ADR-0063 Lane E, #1671): they flow per-key through `keyedRefCache`
+/// (`profileCard(forPubkey:)`), never a whole-map `@Published` slot. Chirp no
 /// longer decodes the generic `payload:Value` whole-payload tree — the typed
 /// sidecars + the Tier-3 `SnapshotFrame` envelope are authoritative. The
 /// genuinely-local mutable slots — `lastErrorToast` (clearable by the toast
@@ -92,12 +94,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// suggested public-group relay URL. `nil` ⇒ the `groupDefaults` accessor
     /// collapses to `.empty` and `NewGroupSheet` seeds an empty relay field.
     @Published private(set) var typedGroupDefaults: GroupDefaultsSnapshot?
-    /// Typed profile-cluster sidecars (`KPRF` / `KCPR` / `KRPR`). `nil` ⇒ the
-    /// `profile` / `claimedProfiles` / `resolvedProfileCards` accessors collapse
-    /// to nil / `[:]`.
-    @Published private(set) var typedProfile: ProfileCard?
-    @Published private(set) var typedClaimedProfiles: [String: ProfileCard]?
-    @Published private(set) var typedResolvedProfiles: [String: ProfileCard]?
+    // ADR-0063 Lane E (#1671): the profile-cluster `@Published` slots
+    // (`typedProfile` / `typedClaimedProfiles` / `typedResolvedProfiles`) are
+    // REMOVED — a whole-map broadcast every tick re-rendered the whole view
+    // tree on a single kind:0. Profiles flow only through `keyedRefCache`
+    // (`refs.profile`), read per-key via `profileCard(forPubkey:)` (D4).
+    #if DEBUG
+    /// Test-only per-key profile seed `profileCard(forPubkey:)` reads when the
+    /// kernel actor is not running (live path is `keyedRefCache`).
+    private var debugProfileCardOverrides: [String: ProfileCard] = [:]
+    #endif
     /// Typed NIP-17 DM cluster + claimed-event map sidecars (`NDMI` / `NDRL` /
     /// `KCEV`). `typedDmInbox` feeds the `dmInbox` store and `typedClaimedEvents`
     /// feeds `EmbedHost` from the SAME typed value in `apply(result:)`;
@@ -364,6 +370,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // clearTypedProjections so the cache is clean when the next
         // `listen` callback fires.
         kernel.projectionCache.reset()
+        // ADR-0063 Lane E (#1671): reset the keyed-ref row cache too so the
+        // next refs.profile / refs.event frame after restart is a full
+        // baseline. Same baseline contract as `projectionCache`.
+        kernel.keyedRefCache.reset()
         // Clear every typed projection slot so the computed accessors collapse
         // to their empty defaults. The next post-reset tick reassigns them all
         // unconditionally. Local-only slots clear explicitly below.
@@ -394,24 +404,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     #if DEBUG
-    /// Test-only seam: inject synthetic typed projection values directly into
-    /// the typed slots so unit tests can exercise the projection accessors
-    /// (`claimedProfiles`, `mentionProfiles`, `profile(forPubkey:)`) on the
-    /// real read path — the SAME slots `apply(result:)` assigns from the typed
-    /// sidecars — without starting the Rust actor. Direct slot assignment, so
-    /// the `apply()` staleness guard never runs and repeated calls (a test
-    /// driving claim-churn across several "ticks") need no `rev` bookkeeping.
-    /// Never compiled into a shipped build.
-    ///
-    /// Each parameter defaults to `nil` so a test sets only the slots it
-    /// needs; passing `nil` collapses the matching accessor to its empty
-    /// default, mirroring a tick where that sidecar was absent.
+    /// Test-only seam (ADR-0063 Lane E, #1671): seed the per-key profile
+    /// override `profileCard(forPubkey:)` reads when the kernel actor is not
+    /// running, so tests exercise `profile(forPubkey:)` on the live read path
+    /// (`keyedRefCache` → `profileCard(forPubkey:)`). `claimedProfiles` wins
+    /// over `resolvedProfiles` per pubkey (kernel precedence).
     func setTypedSnapshotForTesting(
         claimedProfiles: [String: ProfileCard]? = nil,
         resolvedProfiles: [String: ProfileCard]? = nil
     ) {
-        typedClaimedProfiles = claimedProfiles
-        typedResolvedProfiles = resolvedProfiles
+        var merged = resolvedProfiles ?? [:]
+        for (pk, card) in claimedProfiles ?? [:] { merged[pk] = card }
+        debugProfileCardOverrides = merged
     }
     #endif
 
@@ -439,28 +443,36 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func threadFeed(eventID: String) -> OpFeedSnapshot? {
         flatFeeds["nmp.feed.thread.\(eventID)"]
     }
-    /// `NostrProfileHost` conformance. `liveness` declares the subscription
-    /// shape (`.cacheOk` for list/inline contexts, `.live` for the profile
-    /// screen). This is the lazy, TTL-gated path (`force == false`); use
-    /// `claimProfile(pubkey:consumerID:force:liveness:)` for pull-to-refresh.
-    func claimProfile(pubkey: String, consumerID: String, liveness: ProfileLiveness) {
-        kernel.claimProfile(
-            pubkey: pubkey, consumerID: consumerID, force: false, liveness: liveness)
+    // ADR-0063 Lane E (#1671): `NostrProfileHost` conformance — the shell
+    // resolves/reads profiles ONLY via unified `resolve_ref` + `refs.profile`.
+    func resolveProfile(
+        pubkey: String, consumerID: String, shape: RefShape, liveness: RefLiveness
+    ) {
+        kernel.resolveRef(
+            namespace: .profile, key: pubkey, consumerID: consumerID,
+            shape: shape, liveness: liveness)
     }
 
-    /// F-TTL force-refresh variant — pass `force: true` when the user pulled to
-    /// refresh or explicitly opened this author. `liveness` is independent.
-    func claimProfile(
-        pubkey: String,
-        consumerID: String,
-        force: Bool,
-        liveness: ProfileLiveness = .cacheOk
-    ) {
-        kernel.claimProfile(
-            pubkey: pubkey, consumerID: consumerID, force: force, liveness: liveness)
-    }
     func releaseProfile(pubkey: String, consumerID: String) {
-        kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
+        kernel.releaseRef(namespace: .profile, key: pubkey, consumerID: consumerID)
+    }
+
+    func profileCard(forPubkey pubkey: String) -> ProfileCard? {
+        #if DEBUG
+        if let seeded = debugProfileCardOverrides[pubkey] { return seeded }
+        #endif
+        return kernel.keyedRefCache.profile(pubkey)
+    }
+
+    var profileRowChanged: AnyPublisher<KeyedRowChange, Never> {
+        kernel.keyedRefCache.rowChanged.eraseToAnyPublisher()
+    }
+
+    /// ADR-0063 Lane E (#1671) — per-key typed EVENT accessor backed by
+    /// `refs.event`. Exposed for parity; events still render via the
+    /// `claimed_events` projection (Lane H converges them).
+    func refEvent(_ primaryId: String) -> ClaimedEventDto? {
+        kernel.keyedRefCache.event(primaryId)
     }
 
     /// ADR-0032 / V-115: bech32-encode a hex pubkey as `npub1…`.
@@ -469,14 +481,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         kernel.encodeProfile(pubkey: pubkey)
     }
 
-    /// NostrProfileHost conformance: look up a profile by pubkey.
-    /// First checks claimed profiles, then falls back to mention profiles.
-    ///
-    /// `ProfileWire.npub` is `nil` — the projection no longer sends bech32
-    /// (ADR-0032 / V-115). Callers that need an npub for copy/share must
-    /// encode it themselves via `nmp_app_encode_profile(app, pubkey)`.
+    /// NostrProfileHost conformance: look up a profile from the `refs.profile`
+    /// keyed-ref cache (the source, D4). Overrides the protocol default only to
+    /// keep the DEBUG name-regression instrumentation. `npub` is `nil` (V-115).
     func profile(forPubkey pubkey: String) -> ProfileWire? {
-        if let card = claimedProfiles[pubkey] {
+        if let card = profileCard(forPubkey: pubkey) {
             #if DEBUG
             if card.displayName?.isEmpty == false {
                 markProfileNameResolved(pubkey)
@@ -490,23 +499,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 about: card.about.isEmpty ? nil : card.about,
                 pictureUrl: card.pictureUrl,
                 nip05: card.nip05.isEmpty ? nil : card.nip05,
-                npub: nil,
-                npubShort: pubkey.shortHex
-            )
-        }
-        if let mention = mentionProfiles[pubkey] {
-            let isRawKey = mention.display == pubkey.shortHex
-            #if DEBUG
-            if !isRawKey && !mention.display.isEmpty {
-                markProfileNameResolved(pubkey)
-            }
-            #endif
-            return ProfileWire(
-                pubkey: pubkey,
-                displayName: isRawKey ? nil : mention.display,
-                about: nil,
-                pictureUrl: mention.pictureUrl,
-                nip05: nil,
                 npub: nil,
                 npubShort: pubkey.shortHex
             )
@@ -803,6 +795,21 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         let applyStart = ContinuousClock.now
         let callbackToApplyMicros = result.callbackReceivedAt.duration(to: applyStart).microseconds
 
+        // ADR-0063 Lane E (#1671): merge the keyed reference row-delta batches
+        // (`refs.profile` / `refs.event`) into the per-key `KeyedRefCache`.
+        // Done HERE — on `@MainActor` — so the cache's per-key `rowChanged`
+        // Combine publisher fires on the main thread and drives the per-key
+        // avatar/name observers (exactly one row's subscribers re-render when
+        // that one pubkey's kind:0 arrives). The cache is the SOURCE the
+        // `profile(_:)` accessor reads; there is NO app-side profile cache (D4).
+        for envelope in result.refsRowEnvelopes {
+            kernel.keyedRefCache.merge(
+                projectionKey: envelope.key,
+                payload: envelope.payload,
+                sessionId: result.refsSessionId,
+                snapshotEpoch: result.refsSnapshotEpoch)
+        }
+
         // Capture pre-assignment values for delta-driven side-effects below.
         // `priorActiveAccount` reads the OLD effective value through the
         // `activeAccount` accessor (the previous tick's typed sidecar).
@@ -863,10 +870,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         if ck.contains(TypedGroupChatDecoder.key) { typedGroupChat = result.typedGroupChat }
         if ck.contains(TypedDiscoveredGroupsDecoder.key) { typedDiscoveredGroups = result.typedDiscoveredGroups }
         if ck.contains(TypedGroupDefaultsDecoder.key) { typedGroupDefaults = result.typedGroupDefaults }
-        if ck.contains(TypedProfileDecoder.key) { typedProfile = result.typedProfile }
-        if ck.contains(TypedClaimedProfilesDecoder.key) { typedClaimedProfiles = result.typedClaimedProfiles }
-        if ck.contains(TypedResolvedProfilesDecoder.key) { typedResolvedProfiles = result.typedResolvedProfiles }
-        // NIP-17 DM cluster + claimed-event map.
+        // ADR-0063 Lane E (#1671): profile slots are NOT mirrored into
+        // `@Published` state — whole-map broadcast was the re-render bug.
         if ck.contains(TypedDmInboxDecoder.key) { typedDmInbox = result.typedDmInbox }
         if ck.contains(TypedDmRelayListDecoder.key) { typedDmRelayList = result.typedDmRelayList }
         if ck.contains(TypedClaimedEventsDecoder.key) { typedClaimedEvents = result.typedClaimedEvents }
@@ -994,9 +999,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     /// Null every typed projection slot so the computed accessors collapse to
-    /// their empty defaults. Used by `resetAndRestart()`: the next post-reset
-    /// tick reassigns each slot unconditionally, so this is a transient blank
-    /// rather than a steady state.
+    /// their empty defaults. Used by `resetAndRestart()`: the next tick
+    /// reassigns each slot, so this is a transient blank, not a steady state.
     private func clearTypedProjections() {
         typedHomeFeed = nil
         typedAccounts = nil
@@ -1013,9 +1017,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedGroupChat = nil
         typedDiscoveredGroups = nil
         typedGroupDefaults = nil
-        typedProfile = nil
-        typedClaimedProfiles = nil
-        typedResolvedProfiles = nil
+        // ADR-0063 Lane E (#1671): profile slots removed; rows cleared by
+        // `keyedRefCache.reset()`.
         typedDmInbox = nil
         typedDmRelayList = nil
         typedClaimedEvents = nil

@@ -47,7 +47,6 @@ struct ModularBlockView: View {
     /// display / avatar metadata. A missing entry falls back to the card's
     /// raw pubkey (D1 placeholders apply: identicon + truncated npub).
     let items: [String: TimelineItem]
-    let mentionProfiles: [String: MentionProfile]
     let onLike: (String) -> Void
     /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
     var onRepost: ((String, String) -> Void)? = nil
@@ -77,7 +76,6 @@ struct ModularBlockView: View {
             NoteRowView(
                     item: item,
                     contentTree: cards[id]?.contentTree,
-                    mentionProfiles: mentionProfiles,
                     eventCards: cards,
                     timelineItems: items,
                     relationCounts: cards[id]?.relationCounts,
@@ -93,7 +91,6 @@ struct ModularBlockView: View {
             NoteRowView(
                 item: syntheticItem(card: card, item: nil),
                 contentTree: card.contentTree,
-                mentionProfiles: mentionProfiles,
                 eventCards: cards,
                 timelineItems: items,
                 relationCounts: card.relationCounts,
@@ -147,7 +144,6 @@ struct ModularBlockView: View {
         let display = displayName(item: item, card: card)
         let content = displayContent(item: item, card: card)
         let context = NoteRenderContext(
-            mentionProfiles: mentionProfiles,
             eventCards: cards,
             timelineItems: items
         )

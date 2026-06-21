@@ -122,12 +122,6 @@ struct HomeFeedView: View {
         TimelineListView(
             roots: model.modularTimeline.cards,
             nextCursor: model.modularTimeline.page?.nextCursor,
-            // V-31 — kernel-owned `mention_profiles` projection covers every
-            // home-timeline author (and any open author/thread view),
-            // replacing the Swift Dictionary derivation `TimelineListView`
-            // used to build from `items.map(...)` (D4: derived view from
-            // kernel, not reconstructed by shell).
-            mentionProfiles: model.mentionProfiles,
             onRefresh: { model.openTimeline() },
             onLike: { model.react(targetEventID: $0, reaction: "❤") },
             onRepost: { eventID, pubkey in model.repost(eventID: eventID, authorPubkey: pubkey) },
@@ -226,11 +220,6 @@ private struct TimelineListView: View, Equatable {
     /// renders as a single standalone row plus an optional attribution line.
     let roots: [ChirpRootCard]
     let nextCursor: TimelineWindowCursor?
-    /// V-31 — kernel-owned profile map (replaces the Swift
-    /// `Dictionary(items.map …)` derivation this view used to build). Bound
-    /// from `model.mentionProfiles`, which reads the pre-merged
-    /// `resolved_profiles` snapshot projection (PR #812, merged once in Rust).
-    let mentionProfiles: [String: MentionProfile]
     let onRefresh: () -> Void
     let onLike: (String) -> Void
     let onRepost: (String, String) -> Void
@@ -242,9 +231,13 @@ private struct TimelineListView: View, Equatable {
     let onLoadMore: (TimelineWindowCursor) -> Void
 
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
+        // ADR-0063 Lane E (#1671): `mentionProfiles` is gone from the equality
+        // key. It was a whole-map profile dictionary, so any profile update
+        // changed it and re-rendered the entire timeline list. Profiles now
+        // re-render per-key inside each note's `NoteContentView` via the keyed
+        // cache observer — the list itself only changes on roots/cursor.
         lhs.roots == rhs.roots
             && lhs.nextCursor == rhs.nextCursor
-            && lhs.mentionProfiles == rhs.mentionProfiles
     }
 
     var body: some View {
@@ -272,7 +265,6 @@ private struct TimelineListView: View, Equatable {
                         block: .standalone(eventID: root.card.id, root: nil),
                         cards: [root.card.id: root.card],
                         items: itemLookup,
-                        mentionProfiles: mentionProfiles,
                         onLike: onLike,
                         onRepost: onRepost,
                         onZap: onZap
@@ -322,6 +314,9 @@ private struct ReplyAttributionLine: View {
 
     @State private var consumerID = "home-feed.reply-attribution.\(UUID().uuidString)"
     @State private var claimedPubkey: String?
+    /// ADR-0063 Lane E (#1671): per-key observer so only this attribution line
+    /// re-renders when its author's `refs.profile` row commits.
+    @StateObject private var rowObserver = KeyedRefRowObserver()
 
     private var name: String {
         if let live = profileHost?.profile(forPubkey: attribution.authorPubkey)?.displayName,
@@ -353,10 +348,15 @@ private struct ReplyAttributionLine: View {
                     profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: consumerID)
                 }
                 claimedPubkey = attribution.authorPubkey
-                // Attribution line is a feed/list context → `.cacheOk`.
-                profileHost?.claimProfile(
+                // ADR-0063 Lane E (#1671): attribution line is a feed/list
+                // context → `resolve_ref(Profile, …, .profileRef, .cacheOk)`.
+                if let host = profileHost {
+                    rowObserver.observe(host.profileRowChanged, pubkey: attribution.authorPubkey)
+                }
+                profileHost?.resolveProfile(
                     pubkey: attribution.authorPubkey,
                     consumerID: consumerID,
+                    shape: .profileRef,
                     liveness: .cacheOk)
             }
         }

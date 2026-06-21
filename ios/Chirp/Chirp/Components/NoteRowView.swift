@@ -18,7 +18,6 @@ import UIKit
 struct NoteRowView: View {
     let item: TimelineItem
     var contentTree: ContentTreeWire?
-    var mentionProfiles: [String: MentionProfile] = [:]
     var eventCards: [String: ChirpEventCard] = [:]
     var timelineItems: [String: TimelineItem] = [:]
     var relationCounts: NoteRelationCounts? = nil
@@ -47,7 +46,6 @@ struct NoteRowView: View {
             profileDisplay: model.profile(forPubkey: item.authorPubkey)?.display,
             itemAuthorName: item.authorDisplayName,
             eventCardName: eventCards[item.id]?.authorDisplayName,
-            mentionDisplay: mentionProfiles[item.authorPubkey]?.display,
             shortHex: item.authorPubkey.shortHex)
     }
 
@@ -56,26 +54,29 @@ struct NoteRowView: View {
     /// computed property and its `@EnvironmentObject` cannot be exercised
     /// from XCTest). The order is load-bearing:
     ///
-    ///   1. `profileDisplay`  — `model.profile(forPubkey:)` (claimed → mention).
+    ///   1. `profileDisplay`  — `model.profile(forPubkey:)` reads the per-key
+    ///      `keyedRefCache` (`refs.profile`), which now subsumes the former
+    ///      claimed/resolved/mention rungs (ADR-0063 Lane E, #1671).
     ///   2. `itemAuthorName`  — baked into the TimelineItem snapshot at Rust
     ///      build time; claim-independent fallback that eliminates the
     ///      250–500ms flicker gap (PR #823).
     ///   3. `eventCardName`   — NOFS gap-filler from the typed decoder.
-    ///   4. `mentionDisplay`  — resolved-profiles fallback.
-    ///   5. `shortHex`        — last-resort raw-key abbreviation.
+    ///   4. `shortHex`        — last-resort raw-key abbreviation.
+    ///
+    /// ADR-0063 Lane E (#1671): the `mentionDisplay` rung is removed — it read
+    /// the whole-map resolved-profiles dictionary that is now gone, and the
+    /// keyed cache (rung 1) already covers it.
     ///
     /// Each rung is exercised by `ProfileNameFallbackTests`.
     static func resolveAuthorLabel(
         profileDisplay: String?,
         itemAuthorName: String? = nil,
         eventCardName: String?,
-        mentionDisplay: String?,
         shortHex: String
     ) -> String {
         profileDisplay
             ?? itemAuthorName
             ?? eventCardName
-            ?? mentionDisplay
             ?? shortHex
     }
 
@@ -189,7 +190,6 @@ struct NoteRowView: View {
     private var noteContent: some View {
         let isRepost = item.isRepost
         let context = NoteRenderContext(
-            mentionProfiles: mentionProfiles,
             eventCards: eventCards,
             timelineItems: timelineItems
         )
