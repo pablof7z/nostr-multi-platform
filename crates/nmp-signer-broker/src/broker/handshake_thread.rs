@@ -146,8 +146,8 @@ impl BunkerBroker {
         }
 
         // Run the handshake.
-        let mut progress_emitter = |stage: &str, msg: Option<&str>| {
-            self.emit_progress(stage, msg);
+        let mut progress_emitter = |stage: &str, code: &str, msg: Option<&str>| {
+            self.emit_progress_coded(stage, code, msg);
         };
         let outcome = match run_handshake(
             relay.as_ref(),

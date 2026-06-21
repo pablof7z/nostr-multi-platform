@@ -47,6 +47,7 @@ pub(crate) const BUNKER_HANDSHAKE_SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BunkerHandshakeModel {
     pub stage: String,
+    pub progress_code: Option<String>,
     pub message: Option<String>,
     pub is_idle: bool,
     pub is_in_flight: bool,
@@ -64,12 +65,15 @@ pub(crate) fn encode_bunker_handshake(model: &BunkerHandshakeModel) -> Vec<u8> {
     let mut fbb = FlatBufferBuilder::new();
     let stage = fbb.create_string(&model.stage);
     let message = model.message.as_ref().map(|v| fbb.create_string(v));
+    let progress_code = model.progress_code.as_ref().map(|v| fbb.create_string(v));
     let root = fb::BunkerHandshake::create(
         &mut fbb,
         &fb::BunkerHandshakeArgs {
             stage: Some(stage),
             has_message: model.message.is_some(),
             message,
+            has_progress_code: model.progress_code.is_some(),
+            progress_code,
             is_idle: model.is_idle,
             is_in_flight: model.is_in_flight,
             is_failed: model.is_failed,
@@ -98,6 +102,9 @@ pub fn decode_bunker_handshake(bytes: &[u8]) -> Result<BunkerHandshakeModel, Str
         message: root
             .has_message()
             .then(|| root.message().unwrap_or_default().to_string()),
+        progress_code: root
+            .has_progress_code()
+            .then(|| root.progress_code().unwrap_or_default().to_string()),
         is_idle: root.is_idle(),
         is_in_flight: root.is_in_flight(),
         is_failed: root.is_failed(),

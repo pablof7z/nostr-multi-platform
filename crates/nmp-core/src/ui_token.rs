@@ -106,6 +106,24 @@ impl UiToken {
         }
     }
 
+    /// A [`Severity::Progress`] token with `code` and its English `fallback`.
+    ///
+    /// In-flight progress labels (e.g. the NIP-46/NIP-55 bunker handshake) ride
+    /// their own typed projections (`bunker_handshake` / `nip46_onboarding`)
+    /// rather than the global `last_error_*` channel: the producer writes
+    /// [`UiToken::code`] to the projection's `progress_code` field and
+    /// [`UiToken::fallback_prose`] to its `progress_message` fallback (#1711).
+    #[must_use]
+    pub fn progress(code: &'static str, fallback: impl Into<String>) -> Self {
+        Self {
+            code,
+            severity: Severity::Progress,
+            subject: None,
+            raw_detail: None,
+            fallback: fallback.into(),
+        }
+    }
+
     /// Attach a contextual subject for shell interpolation.
     #[must_use]
     pub fn with_subject(mut self, subject: impl Into<String>) -> Self {
@@ -167,6 +185,16 @@ pub mod codes {
     /// The external (NIP-55) signer driver was not initialised on restore.
     pub const SIGNER_NIP55_DRIVER_NOT_INITIALISED: &str =
         "signer_nip55_driver_not_initialised";
+
+    // ── Progress codes (Severity::Progress) ──────────────────────────────────
+    // In-flight NIP-46/NIP-55 onboarding progress labels the kernel sets
+    // directly on the bunker-handshake projection (#1711). The broker-emitted
+    // handshake stages own their own codes in `nmp_signer_broker::progress_codes`.
+    /// The kernel is opening a NIP-46 bunker session (initial connect).
+    pub const PROGRESS_WAITING_FOR_BROKER: &str = "signer_progress_waiting_for_broker";
+    /// The kernel is restoring a persisted NIP-46 bunker session at launch.
+    pub const PROGRESS_RESTORING_BROKER_SESSION: &str =
+        "signer_progress_restoring_broker_session";
 }
 
 #[cfg(test)]
@@ -189,5 +217,13 @@ mod tests {
     fn warning_severity() {
         let t = UiToken::warning("x_warn", "heads up");
         assert_eq!(t.severity(), Severity::Warning);
+    }
+
+    #[test]
+    fn progress_severity_carries_code_and_fallback() {
+        let t = UiToken::progress(codes::PROGRESS_WAITING_FOR_BROKER, "Waiting for broker...");
+        assert_eq!(t.severity(), Severity::Progress);
+        assert_eq!(t.code(), "signer_progress_waiting_for_broker");
+        assert_eq!(t.fallback_prose(), "Waiting for broker...");
     }
 }

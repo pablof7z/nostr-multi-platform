@@ -54,6 +54,12 @@ table BunkerHandshake {
   // pre-formatted English `stage_label` string was removed from this wire.
   // Shells derive the label from the raw `stage` token themselves — Rust emits
   // the raw token, the iOS/Android shells render the English. See aim.md:62.
+  // Stable machine code for a user-facing progress label (#1711);
+  // `has_progress_code == false` for diagnostic / "failed" transitions. Shells
+  // localize the code, falling back to `message`. Appended at the table end —
+  // additive, no vtable break for clients built against the prior schema.
+  has_progress_code:bool;
+  progress_code:string;
 }
 
 file_identifier "KBHS";

@@ -29,9 +29,15 @@ pub fn broker_for_actor(tx: CommandSender) -> Arc<BunkerBroker> {
 
 fn actor_command_from_event(event: BrokerEvent) -> ActorCommand {
     match event {
-        BrokerEvent::Progress { stage, message } => {
-            ActorCommand::BunkerHandshakeProgress { stage, message }
-        }
+        BrokerEvent::Progress {
+            stage,
+            code,
+            message,
+        } => ActorCommand::BunkerHandshakeProgress {
+            stage,
+            code,
+            message,
+        },
         BrokerEvent::SignerReady { signer } => ActorCommand::AddSigner {
             source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer))),
             make_active: true,

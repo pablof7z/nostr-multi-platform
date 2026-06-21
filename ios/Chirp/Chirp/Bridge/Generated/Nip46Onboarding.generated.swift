@@ -74,6 +74,8 @@ public struct nmp_kernel_Nip46Onboarding: FlatBufferTable, FlatbuffersVectorInit
     case isFailed = 16
     case isTerminalSuccess = 18
     case canCancel = 20
+    case hasProgressCode = 22
+    case progressCode = 24
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -89,7 +91,10 @@ public struct nmp_kernel_Nip46Onboarding: FlatBufferTable, FlatbuffersVectorInit
   public var isFailed: Bool { let o = _accessor.offset(VTOFFSET.isFailed.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var isTerminalSuccess: Bool { let o = _accessor.offset(VTOFFSET.isTerminalSuccess.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var canCancel: Bool { let o = _accessor.offset(VTOFFSET.canCancel.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public static func startNip46Onboarding(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 9) }
+  public var hasProgressCode: Bool { let o = _accessor.offset(VTOFFSET.hasProgressCode.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var progressCode: String? { let o = _accessor.offset(VTOFFSET.progressCode.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var progressCodeSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.progressCode.v) }
+  public static func startNip46Onboarding(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 11) }
   public static func addVectorOf(signerApps: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: signerApps, at: VTOFFSET.signerApps.p) }
   public static func add(hasStageKind: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasStageKind, def: false,
    at: VTOFFSET.hasStageKind.p) }
@@ -105,6 +110,9 @@ public struct nmp_kernel_Nip46Onboarding: FlatBufferTable, FlatbuffersVectorInit
    at: VTOFFSET.isTerminalSuccess.p) }
   public static func add(canCancel: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: canCancel, def: false,
    at: VTOFFSET.canCancel.p) }
+  public static func add(hasProgressCode: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasProgressCode, def: false,
+   at: VTOFFSET.hasProgressCode.p) }
+  public static func add(progressCode: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: progressCode, at: VTOFFSET.progressCode.p) }
   public static func endNip46Onboarding(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createNip46Onboarding(
     _ fbb: inout FlatBufferBuilder,
@@ -116,7 +124,9 @@ public struct nmp_kernel_Nip46Onboarding: FlatBufferTable, FlatbuffersVectorInit
     isInFlight: Bool = false,
     isFailed: Bool = false,
     isTerminalSuccess: Bool = false,
-    canCancel: Bool = false
+    canCancel: Bool = false,
+    hasProgressCode: Bool = false,
+    progressCodeOffset progressCode: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_Nip46Onboarding.startNip46Onboarding(&fbb)
     nmp_kernel_Nip46Onboarding.addVectorOf(signerApps: signerApps, &fbb)
@@ -128,6 +138,8 @@ public struct nmp_kernel_Nip46Onboarding: FlatBufferTable, FlatbuffersVectorInit
     nmp_kernel_Nip46Onboarding.add(isFailed: isFailed, &fbb)
     nmp_kernel_Nip46Onboarding.add(isTerminalSuccess: isTerminalSuccess, &fbb)
     nmp_kernel_Nip46Onboarding.add(canCancel: canCancel, &fbb)
+    nmp_kernel_Nip46Onboarding.add(hasProgressCode: hasProgressCode, &fbb)
+    nmp_kernel_Nip46Onboarding.add(progressCode: progressCode, &fbb)
     return nmp_kernel_Nip46Onboarding.endNip46Onboarding(&fbb, start: __start)
   }
 
@@ -142,6 +154,8 @@ public struct nmp_kernel_Nip46Onboarding: FlatBufferTable, FlatbuffersVectorInit
     try _v.visit(field: VTOFFSET.isFailed.p, fieldName: "isFailed", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.isTerminalSuccess.p, fieldName: "isTerminalSuccess", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.canCancel.p, fieldName: "canCancel", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.hasProgressCode.p, fieldName: "hasProgressCode", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.progressCode.p, fieldName: "progressCode", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

@@ -76,6 +76,12 @@ table Nip46Onboarding {
   is_terminal_success:bool;
   // True when a cancel action would do something (handshake in flight).
   can_cancel:bool;
+  // Stable machine code for the current progress label (#1711);
+  // `has_progress_code == false` for diagnostic / "failed" transitions. Shells
+  // localize the code, falling back to `progress_message`. Appended at the table
+  // end — additive, no vtable break for clients built against the prior schema.
+  has_progress_code:bool;
+  progress_code:string;
 }
 
 file_identifier "KN46";

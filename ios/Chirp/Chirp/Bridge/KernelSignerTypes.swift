@@ -158,9 +158,22 @@ struct Nip46Onboarding: Decodable, Equatable {
 
     let signerApps: [SignerApp]
     let stageKind: StageKind?
+    /// Stable machine code for the progress label (#1711); `nil` for diagnostic
+    /// transitions. The shell localizes it via `UiProgressProse`.
+    let progressCode: String?
     let progressMessage: String?
     let isInFlight: Bool
     let isFailed: Bool
     let isTerminalSuccess: Bool
     let canCancel: Bool
+
+    /// Localized progress label: the `progressCode` mapped to localized copy,
+    /// falling back to the English `progressMessage` the wire still carries for
+    /// any code the shell doesn't recognize (#1711, mirrors `localizedErrorToast`).
+    var localizedProgress: String? {
+        if let code = progressCode, let prose = UiProgressProse.localized(code: code) {
+            return prose
+        }
+        return progressMessage
+    }
 }

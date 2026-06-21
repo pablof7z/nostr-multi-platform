@@ -414,3 +414,47 @@ enum UiErrorProse {
         }
     }
 }
+
+/// Localized prose for NIP-46/NIP-55 handshake PROGRESS labels (#1711), the
+/// parallel of `UiErrorProse` for `Severity.Progress` tokens. The kernel +
+/// signer-broker ship a stable `progress_code`; this maps it to localized copy,
+/// returning `nil` for an unrecognized key so the caller falls back to the
+/// English `progressMessage` the wire still carries.
+enum UiProgressProse {
+    static func localized(code: String) -> String? {
+        switch code {
+        case "signer_progress_waiting_for_broker":
+            return NSLocalizedString(
+                "progress.signer.waiting_for_broker",
+                value: "Waiting for the remote signer…",
+                comment: "Progress: opening a NIP-46 bunker session")
+        case "signer_progress_restoring_broker_session":
+            return NSLocalizedString(
+                "progress.signer.restoring_broker_session",
+                value: "Restoring your remote signer…",
+                comment: "Progress: restoring a persisted NIP-46 session at launch")
+        case "signer_progress_sending_connect_to_bunker":
+            return NSLocalizedString(
+                "progress.signer.sending_connect",
+                value: "Connecting to the bunker…",
+                comment: "Progress: sending the NIP-46 connect request")
+        case "signer_progress_awaiting_bunker_approval":
+            return NSLocalizedString(
+                "progress.signer.awaiting_bunker_approval",
+                value: "Approve the request in your bunker app.",
+                comment: "Progress: waiting for the user to approve in the bunker app")
+        case "signer_progress_nostrconnect_scan_qr":
+            return NSLocalizedString(
+                "progress.signer.nostrconnect_scan_qr",
+                value: "Scan the QR code with your signer app.",
+                comment: "Progress: waiting for the signer to scan the NostrConnect QR")
+        case "signer_progress_nostrconnect_awaiting_confirmation":
+            return NSLocalizedString(
+                "progress.signer.nostrconnect_awaiting_confirmation",
+                value: "Confirm the connection in your signer app.",
+                comment: "Progress: waiting for the user to confirm in the signer app")
+        default:
+            return nil
+        }
+    }
+}

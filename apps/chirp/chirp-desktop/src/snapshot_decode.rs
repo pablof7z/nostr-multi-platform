@@ -242,6 +242,8 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
                 "is_failed": m.is_failed,
                 "can_cancel": m.can_cancel,
                 "message": m.message,
+                // #1711 — the stable progress code (shells localize it).
+                "progress_code": m.progress_code,
             }),
         );
     }
@@ -270,6 +272,8 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             serde_json::json!({
                 "signer_apps": apps,
                 "stage_kind": m.stage_kind,
+                // #1711 — the stable progress code (shells localize it).
+                "progress_code": m.progress_code,
                 "progress_message": m.progress_message,
                 "is_in_flight": m.is_in_flight,
                 "is_terminal_success": m.is_terminal_success,

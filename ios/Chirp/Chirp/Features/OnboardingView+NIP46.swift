@@ -90,7 +90,7 @@ extension OnboardingView {
                     } else if onboarding.isFailed {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(ChirpColor.danger)
                     }
-                    Text(onboarding.progressMessage ?? "")
+                    Text(onboarding.localizedProgress ?? "")
                         .font(ChirpFont.caption)
                         .foregroundStyle(.secondary)
                 }

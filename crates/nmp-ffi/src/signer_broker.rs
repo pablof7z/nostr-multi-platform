@@ -75,9 +75,15 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) -> u32 {
 
 fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {
     let cmd = match event {
-        BrokerEvent::Progress { stage, message } => {
-            ActorCommand::BunkerHandshakeProgress { stage, message }
-        }
+        BrokerEvent::Progress {
+            stage,
+            code,
+            message,
+        } => ActorCommand::BunkerHandshakeProgress {
+            stage,
+            code,
+            message,
+        },
         // The broker completed a NIP-46 handshake. Route the resolved signer
         // back through the unified `AddSigner` command. The broker adapter
         // cannot see the `make_active` flag the originating `BunkerUri` command

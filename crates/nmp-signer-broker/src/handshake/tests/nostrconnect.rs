@@ -25,7 +25,7 @@ fn run_nostrconnect_handshake_rejects_secret_mismatch() {
         &cancel_rx,
         &client_keys,
         "the-real-secret",
-        &mut |_, _| {},
+        &mut |_, _, _| {},
     )
     .expect_err("secret mismatch must abort");
     match err {
@@ -107,7 +107,7 @@ fn run_nostrconnect_handshake_happy_path_returns_pubkeys() {
         &cancel_rx,
         &client_keys,
         secret,
-        &mut |_, _| {},
+        &mut |_, _, _| {},
     )
     .expect("nostrconnect handshake completes");
     assert_eq!(outcome.signer_pubkey_hex, signer_keys.public_key().to_hex());

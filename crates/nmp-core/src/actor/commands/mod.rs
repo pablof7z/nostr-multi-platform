@@ -31,7 +31,7 @@
 //!   handshake on its own relay client. D0: NIP-46 remote signing is an app
 //!   noun, so handshake state is NOT a typed `KernelSnapshot` field — it is
 //!   surfaced through the built-in `"bunker_handshake"` snapshot projection.
-//! - `ActorCommand::BunkerHandshakeProgress { stage, message }` — the adapter
+//! - `ActorCommand::BunkerHandshakeProgress { stage, code, message }` — the adapter
 //!   pushes broker progress (`"connecting"` → `"awaiting_pubkey"` →
 //!   `"ready"` / `"failed"`); the actor reflects it into the
 //!   bunker-handshake slot the

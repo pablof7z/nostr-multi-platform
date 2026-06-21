@@ -20,6 +20,7 @@ fn round_trips_in_flight_model() {
     let model = Nip46OnboardingModel {
         signer_apps: sample_apps(),
         stage_kind: Some("awaiting_pubkey".to_string()),
+        progress_code: Some("signer_progress_awaiting_bunker_approval".to_string()),
         progress_message: Some("approve on bunker".to_string()),
         is_in_flight: true,
         is_failed: false,
@@ -36,6 +37,7 @@ fn round_trips_idle_model_options_none() {
     let model = Nip46OnboardingModel {
         signer_apps: sample_apps(),
         stage_kind: None,
+        progress_code: None,
         progress_message: None,
         is_in_flight: false,
         is_failed: false,
