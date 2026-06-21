@@ -4,20 +4,18 @@
 //! acquisition is derived here, below app composition and above the pure
 //! reducer, so apps do not compile repost shapes themselves.
 //!
-//! #1740 step 1 also re-exports the typed feed-session param model from
-//! `nmp-feed` (single source, D4) plus a wasm-boundary decode/validation entry.
-//! Step 1 is types + decode + validation only; the `open_feed` dispatch lands in
-//! step 2.
+//! #1740 step 1 adds the typed feed-session param model from `nmp-feed`
+//! (single source, D4) plus a wasm-boundary decode/validation entry.
+//! Step 1 is types + decode + validation only; the `open_feed` dispatch
+//! and the public re-export surface land in step 2.
 
 use super::WasmRuntime;
 
-/// Re-export the canonical typed feed-session declaration model (#1740).
-///
-/// The model lives in `nmp-feed`; the wasm runtime adds no parallel copy.
-pub use nmp_feed::{
-    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedParamsError, FeedRanking,
-    FeedScope, FeedSessionId, FeedWindow, ProjectionKey, PubkeySetExpr,
-};
+// Import the typed feed-session model types that are used in this module.
+// The full public re-export surface (CustomPerspectiveId, FeedAdmission, FeedHandle, etc.)
+// will be hoisted through the wasm crate facade when the `open_feed` wasm dispatch
+// lands in step 2. Only what this file actually references is imported here.
+use nmp_feed::{FeedParams, FeedParamsError};
 
 /// Typed error for the wasm-boundary `FeedParams` decode + validation
 /// (D6 — no panic; the wasm worker reports the variant, never throws).
@@ -85,6 +83,7 @@ impl WasmRuntime {
 #[cfg(test)]
 mod feed_params_decode_tests {
     use super::*;
+    use nmp_feed::PubkeySetExpr;
 
     fn params_json(primary_kinds: &str) -> String {
         format!(
