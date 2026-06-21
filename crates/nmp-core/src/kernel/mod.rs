@@ -267,18 +267,9 @@ pub use requests::ProfileLiveness;
 // for `nmp-ffi`'s `ActorCommand::ResolveRef` (no opaque integer re-decode).
 pub(crate) mod refs;
 pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
-// ADR-0063 (#1671) — `RefResolver` tests, split for the 500-LOC ceiling. Named
-// with the `*_tests_*` infix convention so the doctrine D6 test-file exemption
-// applies (the `_tests_` infix marks a file as test-only — see doctrine-lint
-// `d6` classifier).
+// ADR-0063 (#1671) — `RefResolver` tests; sub-modules use `*_tests_*` infix.
 #[cfg(test)]
-mod refs_tests_profile;
-#[cfg(test)]
-mod refs_tests_event;
-#[cfg(test)]
-mod refs_tests_key;
-#[cfg(test)]
-mod refs_tests_lifecycle;
+mod refs_tests;
 #[cfg(test)]
 mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
