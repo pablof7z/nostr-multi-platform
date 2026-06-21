@@ -20,6 +20,7 @@
 //!   row on the same snapshot before the boundary crosses to Swift / Kotlin.
 
 mod dispatch;
+mod engine_error;
 mod error_mapping;
 mod helpers;
 #[cfg(test)]
