@@ -13,10 +13,18 @@ use super::profile_wire::ProfileWire;
 ///
 /// Immediate-mode TUI widgets call this while rendering visible profile
 /// references. The host supplies the platform adapter; the widget owns the
-/// claim intent and reads the current projection each frame.
+/// resolve intent and reads the current projection each frame.
+///
+/// ADR-0063 (#1671): `resolve_ref` replaces the old `claim_profile` — the
+/// host calls `nmp_app_resolve_ref(NS_PROFILE, pubkey, consumer_id,
+/// profile.ref, CacheOk)` and reads the resolved row from the shell's
+/// `RefProfileStore` mirror, not from the old `claimed_profiles` map.
 pub trait NostrProfileHost {
     fn profile_for_pubkey(&self, pubkey: &str) -> ProfileWire;
-    fn claim_profile(&self, pubkey: &str, consumer_id: &str);
+    /// Issue a `resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref,
+    /// CacheOk)` to the kernel. Called by the widget on every render frame for
+    /// each visible pubkey; the kernel deduplicates and refcounts.
+    fn resolve_ref(&self, pubkey: &str, consumer_id: &str);
     fn release_profile(&self, pubkey: &str, consumer_id: &str);
 }
 
@@ -57,7 +65,7 @@ impl<'a> NostrAvatar<'a> {
 
     pub fn for_pubkey(pubkey: &str, host: &dyn NostrProfileHost) -> Self {
         const CONSUMER_ID: &str = "tui/user-avatar";
-        host.claim_profile(pubkey, CONSUMER_ID);
+        host.resolve_ref(pubkey, CONSUMER_ID);
         let profile = host.profile_for_pubkey(pubkey);
         let border_style = Style::default().fg(accent_for(&profile.pubkey));
         Self {

@@ -662,7 +662,7 @@ mod tests {
     }
 
     impl NostrMentionProfileHost for FakeAuthorHost {
-        fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+        fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
             self.claimed
                 .borrow_mut()
                 .push((pubkey.to_string(), consumer_id.to_string()));
