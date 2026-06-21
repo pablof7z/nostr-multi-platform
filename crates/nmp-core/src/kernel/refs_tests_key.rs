@@ -12,7 +12,7 @@ use super::requests::parse_event_key;
 use super::*;
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
-/// Mirror of the interest-inspection helper in `tests_refs_event.rs` — collect
+/// Mirror of the interest-inspection helper in `refs_tests_event.rs` — collect
 /// every active registry interest that addresses the addressable coordinate
 /// `(kind, author, d_tag)`.  Used in `assert_coord_key_accepted` to prove that
 /// the resolver registered the interest with the correct fields end-to-end.

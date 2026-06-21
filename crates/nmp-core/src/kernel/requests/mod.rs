@@ -22,7 +22,7 @@ mod startup;
 
 pub use profile::ProfileLiveness;
 // ADR-0063 (#1671 Lane D): the canonical cold-start-parked event target.
-// `parse_event_key` is only consumed by cfg(test) code (tests_refs_key.rs);
+// `parse_event_key` is only consumed by cfg(test) code (refs_tests_key.rs);
 // gate the re-export so a non-test build emits no unused-import warning.
 #[cfg(test)]
 pub(in crate::kernel) use event_key::parse_event_key;

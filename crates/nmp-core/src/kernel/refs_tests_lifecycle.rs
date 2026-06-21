@@ -408,7 +408,12 @@ fn parked_event_claim_released_before_drain_is_not_resurrected() {
     assert!(kernel.any_relay_connected(), "relay is now connected");
     let frames = kernel.pending_event_claim_requests();
 
-    // 5. the released parked claim was NOT resurrected.
+    // 5. the released parked claim was NOT resurrected. The no-resurrection
+    // PROOF is the kernel-state assertions below — no `event_claims` refcount
+    // row, a per-key rev still at 0, no in-flight discovery REQ, and no Live
+    // slot. The `frames.is_empty()` check at the end is only a weak corollary
+    // (a re-resolve could in principle bump state without emitting a frame, e.g.
+    // an already-cached coord), so it is NOT relied on as the resurrection guard.
     assert!(
         kernel.event_claims.get(&id).is_none(),
         "drain must NOT recreate an event_claims refcount row for a released key"

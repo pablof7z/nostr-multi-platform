@@ -6,8 +6,8 @@
 //! These tests drive the `resolve_ref` Event seam with RAW event keys
 //! (ADR-0063 / FFI contract: a lowercase-64-hex id or a `kind:pubkey:d`
 //! coordinate) — NOT `nostr:` URIs. Raw-key PARSE coverage (well-formed +
-//! malformed fail-closed) lives in `tests_refs_key.rs`; profile-resolver +
-//! shared lifecycle/dedup/rev tests live in `tests_refs_profile.rs`.
+//! malformed fail-closed) lives in `refs_tests_key.rs`; profile-resolver +
+//! shared lifecycle/dedup/rev tests live in `refs_tests_profile.rs`.
 
 use super::nostr::NostrEvent;
 use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};

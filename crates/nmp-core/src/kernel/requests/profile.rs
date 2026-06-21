@@ -46,10 +46,12 @@
 //!   profile screen.
 //!
 //! Mixed liveness on one pubkey resolves to **Tailing wins**: a `Live` claim
-//! upgrades an existing `CacheOk` slot in place (`set_sub`), and the slot
-//! stays `Tailing` until the last owner releases (downgrade only on full
-//! teardown). Both liveness levels share ONE `(scope, key)` slot so they
-//! dedup to a single wire REQ.
+//! upgrades an existing `CacheOk` slot in place (`set_sub`), and the slot stays
+//! `Tailing` while ANY `Live` owner remains. When the LAST `Live` owner releases
+//! but a `CacheOk` owner still holds the slot, the slot is DOWNGRADED in place
+//! from `Tailing` back to `OneShot` (HIGH 5) — it does not linger as a dangling
+//! `Live` tail until full teardown. Both liveness levels share ONE `(scope, key)`
+//! slot so they dedup to a single wire REQ.
 //!
 //! `profile_claims` (the `HashMap<pubkey, BTreeSet<consumer_id>>` refcount)
 //! is RETAINED as the `claimed_profiles` projection source-of-truth; the
