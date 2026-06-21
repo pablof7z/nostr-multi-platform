@@ -182,28 +182,40 @@ impl Kernel {
 
     /// Drain the cold-start parking queue. Called from `pending_view_requests`
     /// once at least one relay is connected (`can_send = true`). Mirrors
-    /// `pending_profile_claim_requests` semantics: processes each parked
-    /// `(uri, consumer_id)` pair as a warm claim, skipping any that are
-    /// already resolved or already in-flight.
+    /// `pending_profile_claim_requests` semantics: replays each parked CANONICAL
+    /// target through the raw resolver body (NOT the legacy URI front door), so a
+    /// raw key parked while cold actually resolves (the Lane D coverage hole fix);
+    /// the body skips any that are already resolved or already in-flight.
     pub(crate) fn pending_event_claim_requests(&mut self) -> Vec<OutboundMessage> {
         if self.pending_event_claims.is_empty() {
             return Vec::new();
         }
-        let parked: Vec<(String, String)> = std::mem::take(&mut self.pending_event_claims);
+        let parked = std::mem::take(&mut self.pending_event_claims);
         let mut out = Vec::new();
-        for (uri, consumer_id) in parked {
-            // Cold-start replay is the gated path (`force = false`): a parked
-            // claim is for an as-yet-unknown event, so it cold-fetches fresh
-            // on replay regardless — force only matters for an already-cached
-            // replaceable identity (the user-navigation refresh case).
-            out.extend(self.claim_event(uri, consumer_id, true, false));
+        for claim in parked {
+            // Replay the parked target's OWN shape / liveness / force / author /
+            // relay-hints through the canonical raw body — `can_send = true` now
+            // that a relay is connected. (The parked `force` is preserved verbatim
+            // so the original caller's freshness intent survives the cold-start
+            // delay.)
+            out.extend(self.resolve_event_ref_inner(
+                claim.key,
+                claim.consumer_id,
+                claim.shape,
+                claim.liveness,
+                claim.force,
+                true,
+                claim.author,
+                claim.relay_hints,
+            ));
         }
         out
     }
 }
 
-/// `true` when `s` is exactly 64 lowercase hex chars (a canonical
-/// event-id). Coordinate-form `primary_id` strings never match.
+/// `true` when `s` is exactly 64 lowercase hex chars (a canonical event-id).
+/// Coordinate-form `primary_id` strings never match. Delegates to the canonical
+/// strict check in `event_key` (single path — no duplicate hex predicate).
 fn is_hex64(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    super::event_key::is_lower_hex64(s)
 }

@@ -1,10 +1,11 @@
 //! Android JNI wrappers for the demand-driven claim/release seam.
 //!
-//! Two claim families share the same reference-counted, cache-first-then-relay
-//! contract on the kernel side:
+//! Two legacy claim families (kept until Lane H) + the ADR-0063 Lane D unified
+//! `resolve_ref` / `release_ref` seam:
 //!   * profile (kind:0) claims — `nmp_app_claim_profile` / `nmp_app_release_profile`
 //!   * embedded-event claims (#984 / T180 / ADR-0034) — `nmp_app_claim_event` /
 //!     `nmp_app_release_event`
+//!   * unified ref-resolver — `nmp_app_resolve_ref` / `nmp_app_release_ref`
 //!
 //! Doctrine: no business logic or cached state here (D5/D8) — the kernel owns
 //! the claim ledger and resolution; these entrypoints forward strings and
@@ -14,11 +15,12 @@
 //! the Android bridge.
 
 use jni::objects::{JClass, JString};
-use jni::sys::jlong;
+use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 
 use nmp_ffi::{
     nmp_app_claim_event, nmp_app_claim_profile, nmp_app_release_event, nmp_app_release_profile,
+    nmp_app_release_ref, nmp_app_resolve_ref,
 };
 
 use crate::{jstring_to_cstring, session_arc};
@@ -127,5 +129,78 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseEvent(
     };
     s.with_app(|app| {
         nmp_app_release_event(app, uri.as_ptr(), consumer_id.as_ptr());
+    });
+}
+
+// ── ADR-0063 Lane D — unified resolve_ref / release_ref JNI surface ──────────
+
+/// ADR-0063 Lane D — unified, origin-blind reference-resolution entry point.
+///
+/// `namespace` — 0 = profile, 1 = event.
+/// `key` — 64-hex pubkey (profile) or event-id hex / `"kind:pubkey:d"` (event).
+/// `consumer_id` — opaque refcount owner key (e.g. Compose LazyList item key).
+/// `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
+/// `liveness` — 0=CacheOk (background), non-zero=Live (open screen).
+///
+/// Android shells call this instead of `nativeClaimProfile` / `nativeClaimEvent`
+/// once they migrate off the legacy surface. Both the legacy and new JNI entry
+/// points coexist until Lane H removes the scaffolding.
+/// D6: bad handles/strings/unknown int codes are silent no-ops.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeResolveRef(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    namespace: jint,
+    key: JString,
+    consumer_id: JString,
+    shape: jint,
+    liveness: jint,
+) {
+    let Some(s) = session_arc(handle) else {
+        return;
+    };
+    let Some(key) = jstring_to_cstring(&mut env, &key) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    s.with_app(|app| {
+        nmp_app_resolve_ref(
+            app,
+            namespace,
+            key.as_ptr(),
+            consumer_id.as_ptr(),
+            shape,
+            liveness,
+        );
+    });
+}
+
+/// ADR-0063 Lane D — release a reference previously registered via
+/// `nativeResolveRef`. Decrements the per-consumer refcount; the resolver
+/// slot is torn down when the last consumer releases.
+/// D6: bad handles/strings/unknown int codes are silent no-ops.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseRef(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    namespace: jint,
+    key: JString,
+    consumer_id: JString,
+) {
+    let Some(s) = session_arc(handle) else {
+        return;
+    };
+    let Some(key) = jstring_to_cstring(&mut env, &key) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    s.with_app(|app| {
+        nmp_app_release_ref(app, namespace, key.as_ptr(), consumer_id.as_ptr());
     });
 }

@@ -485,6 +485,31 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        // ADR-0063 Lane D — unified resolve/release arms.
+        ActorCommand::ResolveRef {
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            hints,
+        } => {
+            let outbound = ctx
+                .kernel
+                .resolve_ref(namespace, key, consumer_id, shape, liveness, force, hints);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        ActorCommand::ReleaseRef {
+            namespace,
+            key,
+            consumer_id,
+        } => {
+            let outbound = ctx.kernel.release_ref(namespace, &key, &consumer_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::SignEventForReturn {
             account_pubkey,
             unsigned_json,

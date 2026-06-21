@@ -12,11 +12,17 @@ mod event;
 // ADR-0063 (#1671 Lane B): the Live/Tailing addressable-event slot + event-claim
 // lookup/parking helpers, split out to keep `event.rs` under the 500-LOC ceiling.
 mod event_live;
+// ADR-0063 (#1671 Lane D): the canonical raw event-key parser (lowercase-hex id
+// or `kind:pubkey:d` coordinate), split into its own module so `event.rs` stays
+// under the 500-LOC ceiling.
+mod event_key;
 mod profile;
 mod relay_lifecycle;
 mod startup;
 
 pub use profile::ProfileLiveness;
+// ADR-0063 (#1671 Lane D): the canonical cold-start-parked event target.
+pub(in crate::kernel) use event_key::PendingEventClaim;
 
 use super::{
     discovery, json, wire_log, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value,

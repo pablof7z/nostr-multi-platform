@@ -836,6 +836,36 @@ pub enum ActorCommand {
         uri: String,
         consumer_id: String,
     },
+    /// ADR-0063 Lane D — unified, origin-blind reference-resolution seam.
+    ///
+    /// Generalizes `ClaimProfile` + `ClaimEvent` into one variant. The
+    /// kernel's `Kernel::resolve_ref` dispatches the typed `(namespace, shape)`
+    /// pair to the matching resolver body, failing closed (D6) on a mismatch.
+    /// `force` threads into the resolver's F-TTL gate (same as `ClaimProfile`).
+    /// `hints` are optional NIP-19 relay TLVs seeding the registered interest.
+    ///
+    /// The old `ClaimProfile`/`ClaimEvent` scaffold delegators (tagged
+    /// `// integration-scaffold(#1671 Lane H)`) remain until Lane H deletes
+    /// them; new C-ABI callers should use `ResolveRef` exclusively.
+    ResolveRef {
+        namespace: crate::kernel::RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: crate::kernel::RefShape,
+        liveness: crate::kernel::RefLiveness,
+        force: bool,
+        hints: Vec<String>,
+    },
+    /// ADR-0063 Lane D — release a reference previously registered via
+    /// `ResolveRef`. Decrements the refcount; the slot is torn down when the
+    /// last consumer releases. `(namespace, key, consumer_id)` must match the
+    /// original `ResolveRef` call. A release of an unknown key is a silent
+    /// no-op (D6).
+    ReleaseRef {
+        namespace: crate::kernel::RefNamespace,
+        key: String,
+        consumer_id: String,
+    },
     // V-68 / V-112 (ADR-0042): CloseAuthor / CloseThread deleted.
     // V-38: the three `Wallet{Connect,Disconnect,PayInvoice}` variants moved
     // out. Wallet connect / disconnect / pay_invoice now route through

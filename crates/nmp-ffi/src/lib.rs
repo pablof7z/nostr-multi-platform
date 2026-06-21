@@ -90,6 +90,10 @@ mod routing_trace;
 // (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
 // the snapshot tick.
 mod composition_report;
+// ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
+// symbols. Generalizes claim_profile + claim_event behind one origin-blind seam;
+// old claim/release symbols kept AS-IS until Lane H.
+mod resolve_ref;
 mod snapshot;
 mod storage;
 mod timeline;
@@ -215,6 +219,11 @@ pub use timeline::{
     nmp_app_release_event,
     nmp_app_release_profile,
 };
+// ADR-0063 Lane D — unified ref-resolution C-ABI entry points. These sit
+// beside the claim/release scaffold (kept until Lane H) so both surfaces
+// compile and link; shells migrate to resolve_ref/release_ref independently.
+#[cfg(feature = "native")]
+pub use resolve_ref::{nmp_app_release_ref, nmp_app_resolve_ref};
 
 // ── test-support delta ───────────────────────────────────────────────────
 // Live-bench harnesses (`live-bench`) and integration test binaries
