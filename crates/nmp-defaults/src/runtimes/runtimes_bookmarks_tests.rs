@@ -158,14 +158,18 @@ fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
                 active_bookmark_list_interest_id(),
                 "pushed interest must carry the pubkey-invariant slot id"
             );
-            assert!(
-                interest.shape.authors.contains(&pubkey.to_string()),
-                "shape.authors must contain the active pubkey {pubkey:?}; got {:?}",
+            assert_eq!(
+                interest.shape.authors,
+                std::collections::BTreeSet::from([pubkey.to_string()]),
+                "shape.authors must be EXACTLY {{active_pubkey}} — exactly one \
+                 author, the active key; got {:?}",
                 interest.shape.authors
             );
-            assert!(
-                interest.shape.kinds.contains(&10003),
-                "shape.kinds must include kind:10003; got {:?}",
+            assert_eq!(
+                interest.shape.kinds,
+                std::collections::BTreeSet::from([10003u32]),
+                "shape.kinds must be EXACTLY {{10003}} — a future interest that \
+                 added an extra kind must fail this gate; got {:?}",
                 interest.shape.kinds
             );
             assert!(

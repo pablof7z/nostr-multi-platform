@@ -9,15 +9,18 @@
 //!
 //! # Why `Global + Nip65ReadRelays`
 //!
-//! Kind:10003 bookmark lists are public replaceable events that live on the
-//! author's content / read-relay set (kind:10002), so they use
-//! `PTagRouting::Nip65ReadRelays` and `InterestScope::Global`. The `Global`
-//! scope is load-bearing: it lets the planner's cold-start fallback at
-//! `crates/nmp-core/src/planner/compiler/partition/mod.rs` fire when no
-//! kind:10002 has arrived yet — the gate evaluates
-//! `lifecycle == Tailing && scope == Global && authors=[pubkey]`
-//! and routes the interest to `bootstrap_content_relays` until the real
-//! NIP-65 read inbox is cached.
+//! Kind:10003 bookmark lists are public replaceable events authored by the
+//! active account, so the interest carries `authors=[pubkey]` and routes
+//! through the planner's **Case A** (explicit authors → outbox / write relays)
+//! at `crates/nmp-planner/src/compiler/partition/case_a_authors.rs`.  When the
+//! active account's NIP-65 mailbox is known, Case A routes to the author's
+//! outbox (write) relays; when no mailbox has arrived yet (cold start), Case A
+//! falls back to `app_relays` (or `bootstrap_indexer_relays` for `OneShot +
+//! Global` shapes, per PD-033-C).  `InterestScope::Global` is required so the
+//! planner considers all relay lanes for the author; `PTagRouting::Nip65ReadRelays`
+//! controls how any co-present `#p` values would be routed (there are none in
+//! this shape, but the field must not be left as the `Nip17DmRelays` default,
+//! which would fail-close the subscription whenever DM relays are unknown).
 //!
 //! # Single-slot semantics
 //!
@@ -49,19 +52,20 @@ pub fn active_bookmark_list_interest_id() -> InterestId {
 /// [`BookmarkListProjection`](crate::BookmarkListProjection) actually receives
 /// the active account's bookmark events.
 ///
-/// Shape — read by the planner's cold-start bootstrap gate at
-/// `crates/nmp-core/src/planner/compiler/partition/mod.rs`:
+/// Shape — routed by the planner's **Case A** (explicit authors → outbox) at
+/// `crates/nmp-planner/src/compiler/partition/case_a_authors.rs`:
 /// - `lifecycle = Tailing`
 /// - `scope = Global`
 /// - `kinds = [10003]`
 /// - `authors = [pubkey]`
 /// - `p_tag_routing = Nip65ReadRelays`
 ///
-/// When the active account has no cached NIP-65 inbox yet (cold start), the
-/// planner routes this interest to `bootstrap_content_relays` so bookmark
-/// events keep flowing until the real read-relay set lands. Once kind:10002
-/// arrives, the next recompile re-routes to the real inbox + emits the
-/// matching CLOSE on the bootstrap landing.
+/// Because `authors` is non-empty the planner dispatches to Case A (lines 191-203
+/// of `partition/mod.rs`), which routes to the author's NIP-65 outbox (write)
+/// relays when known, or to `app_relays` when no kind:10002 has arrived yet.
+/// `InterestScope::Global` ensures the full relay-lane set is evaluated; the
+/// `Nip65ReadRelays` routing tag prevents the subscription from being treated as
+/// a fail-closed DM subscription if the `#p` field were ever populated.
 #[must_use]
 pub fn active_bookmark_list_interest(pubkey: &str) -> LogicalInterest {
     let deps = ViewDependencies {
@@ -99,35 +103,39 @@ mod tests {
         let _: fn() -> InterestId = active_bookmark_list_interest_id;
     }
 
-    /// The interest shape matches the planner cold-start bootstrap gate
-    /// (`partition/mod.rs`: Tailing + Global + authors=[pubkey]). Without
-    /// this exact shape, the cold-start fallback would not fire and
-    /// `BookmarkListProjection` would receive no bookmark events until
-    /// kind:10002 arrives for the active account.
+    /// The interest shape matches the Case A (explicit authors → outbox) routing
+    /// contract in `crates/nmp-planner/src/compiler/partition/case_a_authors.rs`.
+    /// Without this exact shape, the planner would not route the interest to the
+    /// author's outbox relays and `BookmarkListProjection` would receive no
+    /// bookmark events.
     #[test]
-    fn interest_shape_matches_planner_bootstrap_gate() {
+    fn interest_shape_matches_case_a_authors_routing_contract() {
         let pk = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         let interest = active_bookmark_list_interest(pk);
 
         assert!(
             matches!(interest.lifecycle, InterestLifecycle::Tailing),
-            "lifecycle must be Tailing — the planner gate keys on this; got {:?}",
+            "lifecycle must be Tailing — the planner Case A gate keys on this; got {:?}",
             interest.lifecycle
         );
         assert!(
             matches!(interest.scope, InterestScope::Global),
-            "scope must be Global — bookmark lists are public content on \
-             the author's read relays, NOT private DM relays; got {:?}",
+            "scope must be Global — all relay lanes must be evaluated for the \
+             author's outbox; NOT private DM relays; got {:?}",
             interest.scope
         );
-        assert!(
-            interest.shape.kinds.contains(&KIND_BOOKMARK_LIST),
-            "shape.kinds must include kind:10003; got {:?}",
+        assert_eq!(
+            interest.shape.kinds,
+            std::collections::BTreeSet::from([KIND_BOOKMARK_LIST]),
+            "shape.kinds must be EXACTLY {{kind:10003}} — a future interest \
+             that added an extra kind must fail this gate; got {:?}",
             interest.shape.kinds
         );
-        assert!(
-            interest.shape.authors.contains(&pk.to_string()),
-            "shape.authors must contain the active account pubkey; got {:?}",
+        assert_eq!(
+            interest.shape.authors,
+            std::collections::BTreeSet::from([pk.to_string()]),
+            "shape.authors must be EXACTLY {{active_pubkey}} — a future interest \
+             that added an extra author must fail this gate; got {:?}",
             interest.shape.authors
         );
         // The id matches the pubkey-invariant slot id — withdraws by id work.
