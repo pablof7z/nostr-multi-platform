@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::rules::{a6, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d9};
+use crate::rules::{a6, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d27, d9};
 
 /// True iff D9 should scan `path` — either the file is inside a protocol/
 /// substrate crate (`d9::file_in_scope`), or the caller opted-in via
@@ -231,6 +231,19 @@ pub(crate) fn d26_active_local_keys_in_scope(path: &Path, extra_scopes: &[String
 /// `crates/` layout). Mirrors `d17_file_in_scope`.
 pub(crate) fn a6_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if a6::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D27 should scan `path` — either the file is in a protocol/
+/// projection-builder crate (`d27::file_in_scope`), or the caller opted-in via
+/// `--d27-extra-scope <fragment>` (the fixture smoke test stages a positive
+/// fixture under `target/` outside any real `crates/nmp-*/src/` layout).
+/// Mirrors `d19_file_in_scope`.
+pub(crate) fn d27_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d27::file_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");

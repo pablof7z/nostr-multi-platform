@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21/D23/D24/D25/D26.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d23,d24,d25,d26}.rs` for
+//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -67,14 +67,14 @@ use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
 use rules::{
-    d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d6, d7, d8, d9,
+    d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d27, d6, d7, d8, d9,
     no_raw_tap_reintroduction,
 };
 use scope::{
     d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
     d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
-    d9_file_in_scope, is_doctrine_lint_source,
+    d27_file_in_scope, d9_file_in_scope, is_doctrine_lint_source,
 };
 
 fn main() -> ExitCode {
@@ -114,7 +114,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        return finish(
+        return report::finish(
             roots.len(),
             "D18 native doctrine",
             cfg.allow_findings,
@@ -149,6 +149,7 @@ fn main() -> ExitCode {
                 &cfg.d24_extra_scopes,
                 &cfg.d25_extra_scopes,
                 &cfg.d26_extra_scopes,
+                &cfg.d27_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -166,46 +167,11 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/no_raw_tap"
+        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/D27/no_raw_tap"
     };
-    finish(roots.len(), rules, cfg.allow_findings, all_findings)
+    report::finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
 
-fn finish(
-    root_count: usize,
-    rule_label: &str,
-    allow_findings: bool,
-    mut all_findings: Vec<report::Finding>,
-) -> ExitCode {
-    // Stable order: by file, then by line, then by column.
-    all_findings.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then(a.line.cmp(&b.line))
-            .then(a.col.cmp(&b.col))
-    });
-
-    for f in &all_findings {
-        println!("{}", f.render());
-    }
-
-    if all_findings.is_empty() {
-        eprintln!(
-            "doctrine-lint: 0 findings across {} root(s) ({} clean).",
-            root_count, rule_label
-        );
-        ExitCode::from(0)
-    } else if allow_findings {
-        eprintln!(
-            "doctrine-lint: {} finding(s) (passing because --allow-findings).",
-            all_findings.len()
-        );
-        ExitCode::from(0)
-    } else {
-        eprintln!("doctrine-lint: {} finding(s).", all_findings.len());
-        ExitCode::from(1)
-    }
-}
 
 /// Scan one file, appending findings.
 ///
@@ -234,6 +200,7 @@ fn scan_one_file(
     d24_extra_scopes: &[String],
     d25_extra_scopes: &[String],
     d26_extra_scopes: &[String],
+    d27_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -288,6 +255,11 @@ fn scan_one_file(
     // only; nmp-core hosts the legit capability port).
     let d26_app_host_scope = d26_app_host_in_scope(path, d26_extra_scopes);
     let d26_alk_scope = d26_active_local_keys_in_scope(path, d26_extra_scopes);
+    // D27 — banned display helpers in projection/snapshot/FFI serialization.
+    // ADR-0032-deferred lint: catches pubkey-formatters, timestamp-formatters,
+    // and precomputed *_label/*_display String fields in protocol-crate code
+    // (nmp-core projection paths, nmp-nip*, nmp-marmot).
+    let d27_in_scope = d27_file_in_scope(path, d27_extra_scopes);
     // D23/D24/D25 — event-flow spine locks (wiring + state in event_flow_gates).
     let ef_scope =
         event_flow_gates::FileScope::resolve(path, d23_extra_scopes, d24_extra_scopes, d25_extra_scopes);
@@ -691,6 +663,28 @@ fn scan_one_file(
                 }
                 findings.push(report::Finding {
                     rule: d26::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D27 — banned display helpers in projection / snapshot / FFI paths.
+        // ADR-0032-deferred lint (see issue #1679). Catches pubkey-formatters
+        // (`short_npub`, `to_npub`, etc.) and precomputed `*_label`/`*_display`
+        // String struct fields in nmp-core projection paths, nmp-nip*, and
+        // nmp-marmot. Test-only files (`d6_test_file`) and `#[cfg(test)]` bodies
+        // (`sl.in_test_cfg`) are exempt. Skipped in --workspace-d8 (no-polling
+        // sweep only — this is a protocol-layer structural correctness rule).
+        if !workspace_d8 && d27_in_scope && !d6_test_file && !is_doctrine_lint_source(path) {
+            for (col, msg, suggested) in d27::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d27::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d27::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,

@@ -57,7 +57,7 @@ pub struct AccountSummaryRow {
     pub display_name: Option<String>,
     pub signer_kind: String,
     pub status: String,
-    pub signer_label: String,
+    pub signer_label: String, // doctrine-allow: D27 — pending removal by #1677/#1678/#1680/#1681/#1682
     pub signer_is_remote: bool,
     pub is_active: bool,
     pub picture_url: Option<String>,

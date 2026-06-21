@@ -46,7 +46,7 @@ pub(crate) const NIP46_ONBOARDING_SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SignerAppRow {
     pub scheme: String,
-    pub display_label: String,
+    pub display_label: String, // doctrine-allow: D27 — pending removal by #1677/#1678/#1680/#1681/#1682
     pub signer_kind: String,
 }
 
