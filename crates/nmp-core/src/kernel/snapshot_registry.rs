@@ -51,6 +51,22 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 /// a lock.
 pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 
+/// A feed-author-set provider (ADR-0063 D7, #1671 Lane H).
+///
+/// Returns the set of raw author keys a feed projection will RENDER for its
+/// CURRENT visible window — recomputed fresh each time the kernel calls it. The
+/// kernel reconciles this set against the prior tick's set for the same consumer
+/// and auto-`resolve_ref`s the additions / `release_ref`s the removals, so a
+/// shell cannot silently render an author it never resolved.
+///
+/// `Send + Sync` because the box lives behind the shared registry slot
+/// (`Arc<Mutex<…>>`). D8: the kernel invokes it INSIDE the snapshot tick (so the
+/// auto-resolve lands in the SAME frame the row appears — no 1-frame blank gap),
+/// so it MUST be non-blocking — it only reads the engine's current window
+/// (`snapshot_current_window`) and returns the keys; it does no I/O and waits on
+/// no lock the actor thread could be holding.
+pub type FeedAuthorProviderFn = Box<dyn Fn() -> Vec<String> + Send + Sync + 'static>;
+
 // D5 — registration-count ceilings and the loud-no-op admission helpers
 // (`MAX_SNAPSHOT_PROJECTIONS` / `MAX_TICK_OBSERVERS` + `admit_keyed` /
 // `admit_additive`). Extracted to a `pub` submodule so the registry file stays
@@ -114,6 +130,14 @@ pub struct SnapshotRegistry {
     /// fire on every tick. (Production wires exactly one today, the re-homed
     /// zap-subscription reconciler.)
     tick_observers: Vec<TickObserverFn>,
+    /// ADR-0063 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
+    /// snapshot key (e.g. `"nmp.feed.home"`) so a re-registration replaces (not
+    /// duplicates) the provider and an `unregister_feed` removes it. Each closure
+    /// returns the author keys its feed will RENDER this tick; the kernel
+    /// reconciles them through `resolve_ref` inside the snapshot tick. Keyed by
+    /// the feed key (not the derived consumer id) so the lifecycle matches the
+    /// `typed_projections` registry exactly.
+    feed_author_providers: HashMap<String, FeedAuthorProviderFn>,
     /// ADR-0053 — the host-declared set of consumed Tier-2 built-in projection
     /// keys. Empty (the default) means "no opinion / no narrowing" — every
     /// Tier-2 built-in is emitted, as before this ADR. A non-empty set narrows
@@ -313,6 +337,60 @@ impl SnapshotRegistry {
             // hazard.
             let _ = catch_unwind(AssertUnwindSafe(observer));
         }
+    }
+
+    /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for
+    /// `feed_key` (e.g. `"nmp.feed.home"`).
+    ///
+    /// Last-writer-wins on the key (a re-register replaces the closure, no
+    /// duplicate). Bounded by the same [`MAX_SNAPSHOT_PROJECTIONS`](bounds::MAX_SNAPSHOT_PROJECTIONS)
+    /// ceiling as the typed registry (one provider per feed) — at the cap a NEW
+    /// key is a loud no-op (D5/D6: `tracing::warn!`, no panic); replacing an
+    /// existing key is always allowed.
+    pub fn register_feed_author_provider(
+        &mut self,
+        feed_key: impl Into<String>,
+        f: impl Fn() -> Vec<String> + Send + Sync + 'static,
+    ) {
+        let feed_key = feed_key.into();
+        let exists = self.feed_author_providers.contains_key(&feed_key);
+        if !admit_keyed(
+            self.feed_author_providers.len(),
+            exists,
+            &feed_key,
+            "feed-author provider",
+        ) {
+            return;
+        }
+        self.feed_author_providers.insert(feed_key, Box::new(f));
+    }
+
+    /// Remove the feed-author provider registered under `feed_key`.
+    ///
+    /// Returns `true` when one was present. Called from `unregister_feed` (a
+    /// transient author/thread feed closing) so its provider stops contributing
+    /// and the kernel's next reconcile releases every ref the provider claimed.
+    pub fn remove_feed_author_provider(&mut self, feed_key: &str) -> bool {
+        self.feed_author_providers.remove(feed_key).is_some()
+    }
+
+    /// Run every registered feed-author provider and return `(feed_key, keys)`
+    /// snapshots for this tick.
+    ///
+    /// Mirrors [`Self::run_typed`]'s D6/D8 contract: each closure runs on the
+    /// actor thread inside `make_update` and MUST be non-blocking; a panicking
+    /// provider is swallowed inside [`catch_unwind`] (its feed simply contributes
+    /// no authors this tick — the same shape as an unregistered provider). The
+    /// kernel then reconciles each `(feed_key, keys)` against its prior set.
+    pub fn run_feed_author_providers(&self) -> Vec<(String, Vec<String>)> {
+        let mut out = Vec::with_capacity(self.feed_author_providers.len());
+        for (feed_key, provider) in &self.feed_author_providers {
+            match catch_unwind(AssertUnwindSafe(provider)) {
+                Ok(keys) => out.push((feed_key.clone(), keys)),
+                Err(_) => continue,
+            }
+        }
+        out
     }
 }
 

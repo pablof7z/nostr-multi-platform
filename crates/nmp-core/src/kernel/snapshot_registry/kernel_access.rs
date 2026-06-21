@@ -66,6 +66,24 @@ impl Kernel {
         }
     }
 
+    /// ADR-0063 D7 (#1671 Lane H) — collect every registered feed-author
+    /// provider's CURRENT visible-author set for this tick, as
+    /// `(feed_key, keys)`.
+    ///
+    /// Reads through the shared slot; empty when no slot is bound, the mutex is
+    /// poisoned, or nothing is registered (D6). Called from `make_update`; the
+    /// kernel then reconciles each set against the prior tick via
+    /// [`Kernel::reconcile_feed_author_refs`].
+    pub(in crate::kernel) fn collect_feed_author_sets(&self) -> Vec<(String, Vec<String>)> {
+        match &self.snapshot_projections {
+            Some(slot) => slot
+                .lock()
+                .map(|registry| registry.run_feed_author_providers())
+                .unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+
     /// ADR-0053 — snapshot the host-declared consumed-projection set for this
     /// tick.
     ///

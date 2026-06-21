@@ -93,6 +93,22 @@ pub struct RepostAttribution {
     pub note_created_at: u64,
 }
 
+impl nmp_feed::CardAuthors for TimelineEventCard {
+    /// ADR-0063 D7 — the author keys this card RENDERS: the primary
+    /// `author_pubkey` (for a repost, the *original* note's author, which is
+    /// what the card body shows) plus the reposter (`reposted_by.author_pubkey`)
+    /// when the row surfaced via a NIP-18 repost. Both render an avatar, so both
+    /// must auto-resolve; the kernel dedupes the set.
+    fn rendered_author_keys(&self) -> Vec<String> {
+        let mut keys = Vec::with_capacity(2);
+        keys.push(self.author_pubkey.clone());
+        if let Some(repost) = &self.reposted_by {
+            keys.push(repost.author_pubkey.clone());
+        }
+        keys
+    }
+}
+
 impl TimelineEventCard {
     /// Build a render card for the OP-centric feed engine (V-80 rung 5).
     ///

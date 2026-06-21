@@ -1683,10 +1683,20 @@ impl NmpApp {
     /// join remains the hard fence for in-flight callbacks.
     pub fn unregister_feed(&self, key: &str) -> bool {
         let removed_feed = self.feed_registry.unregister(key);
+        // ADR-0063 D7 (#1671 Lane H) — remove this feed's typed projection AND
+        // its feed-author provider in the same lock. Dropping the provider means
+        // the kernel's next in-tick reconcile no longer sees this consumer in
+        // the live set and releases-all the refs it auto-resolved (the transient
+        // author/thread feed leak guard; the permanent home feed keeps its
+        // provider and is never swept).
         let removed_projection = self
             .snapshot_projections
             .lock()
-            .map(|mut registry| registry.remove(key))
+            .map(|mut registry| {
+                let removed_proj = registry.remove(key);
+                let removed_provider = registry.remove_feed_author_provider(key);
+                removed_proj || removed_provider
+            })
             .unwrap_or(false);
         let removed_observer = self
             .interest_feed_observers
