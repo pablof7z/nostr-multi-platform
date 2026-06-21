@@ -32,6 +32,7 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_nsec,
     nmp_app_start, NmpApp,
 };
+use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 
 /// Visible/relay state distilled from each captured frame.
 #[derive(Clone, Debug, Default)]
@@ -90,43 +91,57 @@ impl CaptureState {
     }
 }
 
+/// Callback context: the shared capture buffer plus the event-driven probe
+/// signal. Every captured frame updates `state` then fires `signal`, so a
+/// waiter blocked in [`FrameProbe::recv_until`] wakes and re-checks: no
+/// sleep/check polling (Doctrine D8).
+struct CaptureCtx {
+    state: Mutex<CaptureState>,
+    signal: ProbeSignal,
+}
+
 extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
     if ctx.is_null() || payload.is_null() || payload_len == 0 {
         return;
     }
-    let ptr = ctx as *mut Mutex<CaptureState>;
-    // SAFETY: ctx is a live Box::into_raw-ed Mutex<CaptureState>.
-    let Ok(mut state) = (unsafe { &*ptr }).lock() else {
-        return;
-    };
-    if state.start.is_none() {
-        state.start = Some(Instant::now());
+    let ptr = ctx as *mut CaptureCtx;
+    // SAFETY: ctx is a live Box::into_raw-ed CaptureCtx.
+    let cx = unsafe { &*ptr };
+    {
+        let Ok(mut state) = cx.state.lock() else {
+            return;
+        };
+        if state.start.is_none() {
+            state.start = Some(Instant::now());
+        }
+        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
+        let at_ms = state.elapsed_ms();
+        if let Ok(env) = decode_snapshot_envelope(bytes) {
+            let connected = env
+                .relay_status
+                .as_ref()
+                .map(|s| s.connection == "connected")
+                .unwrap_or(false)
+                || env.relay_statuses.iter().any(|s| s.connection == "connected");
+            let wire_subs = env
+                .wire_subscriptions
+                .iter()
+                .map(|w| (w.relay_url.clone(), w.state.clone()))
+                .collect();
+            state.records.push(FrameRecord {
+                at_ms,
+                visible_items: env.visible_items,
+                events_rx: env.events_rx,
+                note_events: env.note_events,
+                connected,
+                serialize_us: env.serialize_us,
+                frame_bytes: payload_len as u64,
+                wire_subs,
+            });
+        }
     }
-    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
-    let at_ms = state.elapsed_ms();
-    if let Ok(env) = decode_snapshot_envelope(bytes) {
-        let connected = env
-            .relay_status
-            .as_ref()
-            .map(|s| s.connection == "connected")
-            .unwrap_or(false)
-            || env.relay_statuses.iter().any(|s| s.connection == "connected");
-        let wire_subs = env
-            .wire_subscriptions
-            .iter()
-            .map(|w| (w.relay_url.clone(), w.state.clone()))
-            .collect();
-        state.records.push(FrameRecord {
-            at_ms,
-            visible_items: env.visible_items,
-            events_rx: env.events_rx,
-            note_events: env.note_events,
-            connected,
-            serialize_us: env.serialize_us,
-            frame_bytes: payload_len as u64,
-            wire_subs,
-        });
-    }
+    // Wake any waiter AFTER the lock is released so it can read immediately.
+    cx.signal.notify();
 }
 
 /// A live driven app. Holds the raw FFI handles + the capture ctx; tears them
@@ -134,7 +149,9 @@ extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
 pub struct DrivenApp {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
-    ctx: *mut Mutex<CaptureState>,
+    ctx: *mut CaptureCtx,
+    /// Waiter half of the frame probe; woken by each `capture_cb` frame.
+    probe: FrameProbe,
     // Keep CStrings alive only as long as needed (FFI copies them).
 }
 
@@ -173,40 +190,47 @@ impl DrivenApp {
             }
         }
 
-        // Wire the capture callback before start so no frame is missed.
-        let ctx = Box::into_raw(Box::new(Mutex::new(CaptureState::default())));
+        // Wire the capture callback before start so no frame is missed. The
+        // probe's signal half rides in the ctx; the waiter half stays here.
+        let (signal, probe) = FrameProbe::new();
+        let ctx = Box::into_raw(Box::new(CaptureCtx {
+            state: Mutex::new(CaptureState::default()),
+            signal,
+        }));
         nmp_app_set_update_callback(app, ctx as *mut c_void, Some(capture_cb));
 
         // Start: visible_limit 500 (TIMELINE_CACHE_LIMIT), emit 4 Hz (cold_start parity).
         nmp_app_start(app, 500, 4);
         nmp_app_chirp_open_home_feed(app);
 
-        DrivenApp { app, chirp, ctx }
+        DrivenApp {
+            app,
+            chirp,
+            ctx,
+            probe,
+        }
     }
 
     /// Borrow the capture state under its lock for reading.
     pub fn with_state<R>(&self, f: impl FnOnce(&CaptureState) -> R) -> R {
         // SAFETY: ctx is live until Drop.
-        let guard = unsafe { &*self.ctx }.lock().expect("capture lock");
+        let guard = unsafe { &*self.ctx }.state.lock().expect("capture lock");
         f(&guard)
     }
 
-    /// Block until `pred(&CaptureState)` holds or `timeout` elapses. Polls the
-    /// shared capture state (the actor pushes frames asynchronously). Returns
-    /// the elapsed ms when satisfied, or `None` on timeout.
+    /// Block until `pred(&CaptureState)` holds or `timeout` elapses. Event
+    /// driven (Doctrine D8: no polling): blocks on the frame probe and
+    /// re-checks `pred` only when `capture_cb` signals a new frame, instead of
+    /// a fixed-interval sleep/check loop. Returns the elapsed ms when
+    /// satisfied, or `None` on timeout.
     pub fn wait_until(
         &self,
         timeout: Duration,
         mut pred: impl FnMut(&CaptureState) -> bool,
     ) -> Option<u64> {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if self.with_state(|s| pred(s)) {
-                return Some(self.with_state(|s| s.elapsed_ms()));
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        None
+        self.probe
+            .recv_until(timeout, || self.with_state(|s| pred(s)))
+            .then(|| self.with_state(|s| s.elapsed_ms()))
     }
 
     pub fn raw(&self) -> *mut NmpApp {
