@@ -17,7 +17,7 @@
 
 use crate::allocator::alloc_snapshot;
 use crate::common::{
-    configure_and_settle, extract_rev, inject_signed_events, percentile_u64,
+    configure_and_await_frame, extract_rev, inject_signed_events, percentile_u64,
     revs_strictly_increasing,
 };
 use crate::ffi::{
@@ -26,6 +26,7 @@ use crate::ffi::{
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
+use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use serde_json::json;
 use std::ffi::c_void;
 use std::sync::Mutex;
@@ -39,6 +40,9 @@ struct CallbackState {
     payload_sizes: Vec<usize>,
     /// `rev` values for monotonicity check.
     revs: Vec<u64>,
+    /// Wakes the frame probe after each recorded frame so settle waits are
+    /// event-driven (Doctrine D8: no sleep/check polling).
+    signal: ProbeSignal,
 }
 
 extern "C" fn measure_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
@@ -58,6 +62,9 @@ extern "C" fn measure_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
         state.payload_sizes.push(payload_len);
         state.revs.push(rev);
         state.cb_latencies_ns.push(cb_ns);
+
+        // Wake the settle/grace waiter now that this frame is recorded.
+        state.signal.notify();
     }
 }
 
@@ -75,7 +82,7 @@ impl Default for S3Config {
         S3Config {
             // G-S3 spec: 100,000 events (gates.md §G-S3).
             // Full Schnorr verify via nmp_app_inject_signed_events (D0: cfg-gated test path).
-            // Injection is ~3-8 s; settle waits 10 s to allow actor to finish processing.
+            // Injection is ~3-8 s; the settle wait keeps a 10 s deadline.
             inject_count: 100_000,
             configure_bursts: 10,
             burst_interval: Duration::from_millis(200),
@@ -89,10 +96,12 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let app: *mut NmpApp = nmp_app_new();
     let baseline_rss = process_rss_bytes();
 
+    let (signal, probe) = FrameProbe::new();
     let state = Box::new(Mutex::new(CallbackState {
         cb_latencies_ns: Vec::new(),
         payload_sizes: Vec::new(),
         revs: Vec::new(),
+        signal,
     }));
     let ctx = Box::into_raw(state) as *mut c_void;
 
@@ -106,9 +115,11 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let base_ts: u64 = 1_700_000_000;
     inject_signed_events(app, base_ts, cfg.inject_count);
 
-    // Settle: allow actor to process 100k inject + emit the initial snapshot.
-    // Full Schnorr-signed path is slower than from_raw_unchecked; 10 s is generous.
-    configure_and_settle(app, 10_000);
+    // Settle: drive a configure tick and block until the actor processes the
+    // 100k inject and fires the initial snapshot callback (event-driven; no
+    // fixed sleep). Full Schnorr-signed path is slower than from_raw_unchecked;
+    // the 10 s deadline is a generous upper bound.
+    let _ = configure_and_await_frame(app, &probe, 10_000, || callback_frame_count(ctx));
 
     // D8 allocator snapshot: take BEFORE the burst to measure heap slope over
     // the serialization window (post-warmup).
@@ -116,15 +127,22 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let burst_start = Instant::now();
 
     // Trigger configure() bursts to force serialization pressure.
+    let mut last_burst_start_count = None;
     for _ in 0..cfg.configure_bursts {
+        last_burst_start_count = Some(callback_frame_count(ctx));
         nmp_app_configure(app, 500, 12);
         std::thread::sleep(cfg.burst_interval);
     }
     let burst_elapsed = burst_start.elapsed();
     let burst_snap_after = alloc_snapshot();
 
-    // Grace period for final emits.
-    std::thread::sleep(Duration::from_millis(300));
+    // Grace period for the final emit, event-driven: return as soon as the last
+    // burst's callback arrives, or when the old 300 ms upper bound expires.
+    if let Some(before) = last_burst_start_count {
+        let _ = probe.recv_until(Duration::from_millis(300), || {
+            callback_frame_count(ctx) > before
+        });
+    }
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
     let final_rss = process_rss_bytes();
@@ -253,4 +271,11 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     });
 
     report.finish(wall_elapsed);
+}
+
+fn callback_frame_count(ctx: *mut c_void) -> usize {
+    let state_ptr = ctx as *mut Mutex<CallbackState>;
+    unsafe { (*state_ptr).lock() }
+        .map(|state| state.cb_latencies_ns.len())
+        .unwrap_or(0)
 }
