@@ -78,6 +78,13 @@ final class KeyedRefCache {
         needsResync = false
     }
 
+    /// ADR-0063 Lane C: wire the real typed decoder at construction so the
+    /// decode-before-commit seam validates every `Changed` row against the
+    /// namespace's concrete type (no caller setup required).
+    init() {
+        installTypedRowDecoder()
+    }
+
     /// Map a frame's `TypedProjection.key` to its resolver namespace.
     /// Returns nil for a non-keyed projection (the merge is a no-op).
     static func namespace(forProjectionKey key: String) -> String? {
@@ -346,13 +353,73 @@ final class KeyedRefCache {
         rows[projectionKey]?.count ?? 0
     }
 
-    // MARK: - Per-key accessors
+    // MARK: - Typed row decode (ADR-0063 Lane C, #1671)
     //
-    // One typed accessor per keyed namespace. A view binds
-    // `profile(pubkey)` (raw `RefRowDeltaBatch` row payload bytes — the
-    // caller decodes with the namespace's typed reader) and subscribes to
-    // `rowChanged` filtered on its key, so exactly one view re-renders
-    // when that key updates.
-    func profile(_ key: String) -> Data? { payload(projectionKey: "refs.profile", rowKey: key) }
-    func event(_ key: String) -> Data? { payload(projectionKey: "refs.event", rowKey: key) }
+    // The real per-namespace typed decoders that replace Lane A's
+    // raw-bytes passthrough. Each does a CHECKED root decode of the row
+    // payload buffer (verifying its OWN file_identifier — KPRF / KCEV —
+    // NOT the NRRD batch id) then maps the reader to the Chirp domain
+    // type via the hand-written `TypedProjectionGlue`. Invariant #2:
+    // `installTypedRowDecoder()` wires these into the decode-before-commit
+    // seam so a row only commits if it decodes to the concrete type.
+    /// Decode one `KPRF` row payload buffer into `ProfileCard` (ADR-0063 Lane C).
+    private func decodeProfileRow(bytes: Data) -> ProfileCard? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        let reader: nmp_kernel_ProfileSnapshot
+        do {
+            reader = try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_kernel_ProfileSnapshot.id)
+        } catch {
+            return nil
+        }
+        // Hand-written glue (NOT generated): reader → domain type.
+        // See `TypedProjectionGlue.profile`.
+        return TypedProjectionGlue.profile(reader)
+    }
+    /// Decode one `KCEV` row payload buffer into `ClaimedEventDto` (ADR-0063 Lane C).
+    private func decodeEventRow(bytes: Data) -> ClaimedEventDto? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        let reader: nmp_kernel_ClaimedEventsSnapshot
+        do {
+            reader = try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_kernel_ClaimedEventsSnapshot.id)
+        } catch {
+            return nil
+        }
+        // Hand-written glue (NOT generated): reader → domain type.
+        // See `TypedProjectionGlue.refRowEvent`.
+        return TypedProjectionGlue.refRowEvent(reader)
+    }
+    /// Wire the real typed decode-before-commit seam (ADR-0063 #2): a
+    /// `Changed` row commits ONLY if its payload decodes to the
+    /// namespace's concrete type. Called from `init` so the typed
+    /// contract holds without any caller wiring.
+    private func installTypedRowDecoder() {
+        rowDecoder = { [weak self] namespace, payload in
+            guard let self else { return false }
+            switch namespace {
+            case "profile": return self.decodeProfileRow(bytes: payload) != nil
+            case "event": return self.decodeEventRow(bytes: payload) != nil
+            default: return false
+            }
+        }
+    }
+    // MARK: - Per-key TYPED accessors (ADR-0063 Lane C, #1671)
+    //
+    // One TYPED accessor per keyed namespace — the #1671 part-(b) host
+    // per-key reactive read API. A view binds `model.profile(pubkey)` and
+    // subscribes to `rowChanged` filtered on its key, so exactly one
+    // `AvatarView(pubkey:)` re-renders when that pubkey's row updates. The
+    // accessor DECODES the cached row-payload buffer through the
+    // namespace's typed reader (the SAME buffer the kernel's
+    // `ref_*_row_payload` encoder emits) into the concrete domain type —
+    // NOT the Lane-A raw `Data` passthrough. A decode miss returns nil.
+    func profile(_ key: String) -> ProfileCard? {
+        guard let bytes = payload(projectionKey: "refs.profile", rowKey: key) else { return nil }
+        return decodeProfileRow(bytes: bytes)
+    }
+    func event(_ key: String) -> ClaimedEventDto? {
+        guard let bytes = payload(projectionKey: "refs.event", rowKey: key) else { return nil }
+        return decodeEventRow(bytes: bytes)
+    }
 }

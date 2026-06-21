@@ -26,16 +26,69 @@ fn emits_namespace_routing_for_every_keyed_projection() {
 }
 
 #[test]
-fn emits_one_accessor_per_namespace() {
+fn emits_one_typed_accessor_per_namespace() {
     let out = rendered();
     for e in KEYED_PROJECTIONS {
+        // ADR-0063 Lane C: the accessor returns the TYPED domain type, NOT the
+        // Lane-A raw `Data?` passthrough.
         assert!(
             out.contains(&format!(
+                "func {}(_ key: String) -> {}? {{",
+                e.accessor, e.row_payload.swift_domain_type
+            )),
+            "missing typed accessor {} -> {}?",
+            e.accessor,
+            e.row_payload.swift_domain_type
+        );
+        // The old raw-bytes passthrough form must be GONE for this accessor.
+        assert!(
+            !out.contains(&format!(
                 "func {}(_ key: String) -> Data? {{ payload(projectionKey: {:?}, rowKey: key) }}",
                 e.accessor, e.projection_key
             )),
-            "missing accessor {}",
+            "the Lane-A raw `Data?` accessor for {} must be removed",
             e.accessor
+        );
+    }
+}
+
+/// ADR-0063 Lane C: the generator must emit a REAL typed decode-before-commit
+/// seam (a CHECKED root decode of the ROW payload buffer into the namespace's
+/// concrete reader + the hand-written glue), wired in at construction. This is
+/// what replaces Lane A's `!payload.isEmpty` default and makes the host surface
+/// typed rather than raw.
+#[test]
+fn emits_real_typed_decode_before_commit() {
+    let out = rendered();
+    // The init installs the typed decoder so the typed contract holds with no
+    // caller wiring.
+    assert!(out.contains("init() {\n        installTypedRowDecoder()"));
+    assert!(out.contains("private func installTypedRowDecoder() {"));
+    assert!(out.contains("rowDecoder = { [weak self] namespace, payload in"));
+    for e in KEYED_PROJECTIONS {
+        let rp = &e.row_payload;
+        // A per-namespace CHECKED decode into the row reader, verifying the ROW
+        // payload's OWN file id (KPRF / KCEV), NOT the NRRD batch id.
+        assert!(
+            out.contains(&format!(
+                "reader = try getCheckedRoot(byteBuffer: &buffer, fileId: {}.id)",
+                rp.swift_reader_type
+            )),
+            "missing CHECKED row decode for {}",
+            e.projection_key
+        );
+        // The decode routes through the hand-written glue (reader -> domain).
+        assert!(
+            out.contains(&format!("return TypedProjectionGlue.{}(reader)", rp.swift_glue)),
+            "missing glue call {} for {}",
+            rp.swift_glue,
+            e.projection_key
+        );
+        // The decode-before-commit seam routes the namespace to its typed helper.
+        assert!(
+            out.contains(&format!("case {:?}: return self.", e.namespace)),
+            "missing namespace decode route for {}",
+            e.namespace
         );
     }
 }
