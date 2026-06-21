@@ -14,7 +14,7 @@ description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptReco
 # compilation (the zap decoder, builder, view, and FlatBuffers codec remain
 # always-compiled).
 default = ["native"]
-native = ["dep:ureq", "dep:nmp-nip47"]
+native = ["dep:ureq"]
 
 [dependencies]
 # Pure-kernel traits only (no I/O layer needed for decode/view/FlatBuffers).
@@ -32,11 +32,10 @@ nmp-store = { path = "../nmp-store" }
 nmp-kinds = { path = "../nmp-kinds" }
 # Typed FlatBuffers codec for the `nmp.nip57.zaps` snapshot sidecar (ADR-0037).
 flatbuffers = { workspace = true }
-# V-43: zap-pay chain — after fetching the bolt11, `FetchLnurlInvoiceCommand`
-# auto-dispatches `WalletPayInvoiceCommand` using the process-global
-# `active_wallet_runtime()`. The correlation_id threads through so the
-# `nmp.nip57.zap` action closes on kind:23195 confirmation, not on bolt11 fetch.
-nmp-nip47 = { path = "../nmp-nip47", optional = true }
+# #1728: zap-pay chain — after fetching the bolt11, `FetchLnurlInvoiceCommand`
+# emits a payment through the injected `nmp_core::substrate::PaymentPort`
+# (NIP-47 supplies the concrete adapter at composition time). NIP-57 no longer
+# depends on `nmp-nip47`; the dependency edge inverted to `nmp-nip47 → nmp-core`.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # LNURL-pay fetcher dependencies (V-41). The fetcher runs on

@@ -41,6 +41,7 @@
 
 pub mod action;
 mod crypto;
+pub mod payment_port;
 pub mod payment_store;
 pub mod protocol;
 mod reconcile;
@@ -57,6 +58,7 @@ pub use action::{
     WalletDisconnectModule, WalletPayInvoiceModule,
     INFLIGHT_BOLT11_TTL,
 };
+pub use payment_port::{wallet_payment_port, WalletPaymentPort};
 pub use payment_store::{FsPaymentStore, PaymentRecord, PaymentState, PaymentStoreError};
 pub use protocol::{
     dispatch_nwc_relay_text, WalletConnectCommand, WalletDisconnectCommand,

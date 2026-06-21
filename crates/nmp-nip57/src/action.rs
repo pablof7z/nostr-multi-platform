@@ -41,6 +41,10 @@ use serde::{Deserialize, Serialize};
 use crate::build::ZapRequest;
 #[cfg(feature = "native")]
 use crate::lnurl::FetchLnurlInvoiceCommand;
+#[cfg(feature = "native")]
+use std::sync::Arc;
+#[cfg(feature = "native")]
+use nmp_core::substrate::PaymentPort;
 
 /// Wire shape for `nmp.nip57.zap` — the JSON body a host passes to
 /// `nmp_app_dispatch_action`.
@@ -107,20 +111,21 @@ pub struct ZapInput {
 /// HTTP round-trip (D8 — no blocking on the actor thread).
 ///
 /// ADR-0052 rung 5.2: under the `native` feature the module owns an OPTIONAL
-/// per-app `WalletRuntimeHandle` so the zap → pay_invoice auto-chain pays
-/// through THIS app's wallet runtime (captured at composition time), not a
-/// process-global. The handle is cloned into each [`FetchLnurlInvoiceCommand`]
-/// `execute` produces.
+/// per-app [`PaymentPort`] so the zap → pay_invoice auto-chain pays through
+/// THIS app's wallet (captured at composition time), not a process-global. The
+/// port is the substrate seam (`nmp_core::substrate::PaymentPort`); NIP-57 no
+/// longer names a NIP-47 wallet runtime — `nmp-nip47` supplies the concrete
+/// adapter (`WalletPaymentPort`) and composition injects it. The port is cloned
+/// into each [`FetchLnurlInvoiceCommand`] `execute` produces.
 ///
 /// `None` means no wallet was wired (a host that registered the zap default
-/// but never composed an NWC wallet). The auto-chain then records a clear
-/// "no wallet connected" action failure — exactly the pre-rung behaviour when
-/// `active_wallet_runtime()` returned `None`. A wallet-capable composition
-/// root replaces the `None` default with a `Some(handle)` value via
-/// [`crate::register_zap_with_wallet`] (the app-path override of the yielding
-/// default — ADR-0049).
+/// but never composed a payment port). The auto-chain then records a clear
+/// "no wallet connected" action failure. A wallet-capable composition root
+/// replaces the `None` default with a `Some(port)` value via
+/// [`crate::register_zap_with_payment_port`] (the app-path override of the
+/// yielding default — ADR-0049).
 ///
-/// The handle is `Option<…>` (not arity-split constructors) so
+/// The port is `Option<…>` (not arity-split constructors) so
 /// `register_actions(app)` keeps a STABLE arity across the `native` feature —
 /// cargo feature unification flips `native` on globally when any consumer
 /// enables it, and a feature-dependent arity would break the non-wallet call
@@ -128,25 +133,26 @@ pub struct ZapInput {
 #[derive(Default)]
 pub struct ZapAction {
     #[cfg(feature = "native")]
-    runtime: Option<nmp_nip47::WalletRuntimeHandle>,
+    payment_port: Option<Arc<dyn PaymentPort>>,
 }
 
 impl ZapAction {
-    /// Construct the zap module with NO wallet handle (the yielding default).
+    /// Construct the zap module with NO payment port (the yielding default).
     /// The auto-chain records a "no wallet connected" failure until a
-    /// wallet-capable root overrides it via [`crate::register_zap_with_wallet`].
+    /// wallet-capable root overrides it via
+    /// [`crate::register_zap_with_payment_port`].
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Construct the zap module bound to a per-app wallet runtime handle
-    /// (`native` builds — the only ones with the LNURL-pay → NWC chain).
+    /// Construct the zap module bound to a per-app [`PaymentPort`] (`native`
+    /// builds — the only ones with the LNURL-pay → pay-invoice chain).
     #[cfg(feature = "native")]
     #[must_use]
-    pub fn with_wallet(runtime: nmp_nip47::WalletRuntimeHandle) -> Self {
+    pub fn with_payment_port(payment_port: Arc<dyn PaymentPort>) -> Self {
         Self {
-            runtime: Some(runtime),
+            payment_port: Some(payment_port),
         }
     }
 }
@@ -265,9 +271,9 @@ impl ActionModule for ZapAction {
             lnurl_or_address: action.lnurl,
             amount_msats: action.amount_msats,
             correlation_id: Some(correlation_id.to_string()),
-            runtime: self.runtime.clone(),
+            payment_port: self.payment_port.clone(),
         })));
-        // NOTE: `self.runtime` is `Option<WalletRuntimeHandle>`; a `None`
+        // NOTE: `self.payment_port` is `Option<Arc<dyn PaymentPort>>`; a `None`
         // surfaces as a "no wallet connected" failure inside the worker.
         #[cfg(not(feature = "native"))]
         { let _ = (unsigned, action); record_action_failure(send, correlation_id, "zap not available on this platform".into()); }

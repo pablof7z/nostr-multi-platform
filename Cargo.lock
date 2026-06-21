@@ -4397,6 +4397,7 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip59",
  "nmp-planner",
+ "nmp-relations",
  "nmp-store",
  "nmp-threading",
  "nmp-wasm",
@@ -4695,8 +4696,6 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
- "nmp-nip22",
- "nmp-nip57",
  "nmp-planner",
  "nmp-store",
  "nmp-threading",
@@ -4852,7 +4851,6 @@ dependencies = [
  "nmp-core",
  "nmp-ffi",
  "nmp-kinds",
- "nmp-nip47",
  "nmp-planner",
  "nmp-store",
  "nostr",
@@ -4958,6 +4956,19 @@ version = "0.8.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-relations"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip01",
+ "nmp-nip18",
+ "nmp-nip22",
+ "nmp-nip57",
+ "nmp-planner",
+ "serde",
 ]
 
 [[package]]

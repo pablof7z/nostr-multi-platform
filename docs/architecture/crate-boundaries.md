@@ -39,11 +39,11 @@ implementation is injected at composition time.
 
 | Layer | Owns | Current crates |
 |---|---|---|
-| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types` |
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59` |
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers`, `nmp-signer-broker` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip59`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
 | 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-wasm` |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
@@ -66,7 +66,10 @@ must not depend on another binding crate for business behavior.
   (the internal in-process relay-forwarding seam; replaces the retired
   `RawEventObserver` / `RawEventForwardPolicy` pair — there is no native push
   sink),
-  `OutboxRouter`, `MailboxCache`, and publish resolver traits.
+  `OutboxRouter`, `MailboxCache`, `PaymentPort` (the BOLT-11 pay-invoice seam:
+  NIP-57 emits a typed `PaymentIntent`, NIP-47 supplies the implementation, so
+  there is no `nmp-nip57 → nmp-nip47` sibling edge), and publish resolver
+  traits.
 - Snapshot/update envelopes, projection registry, and generic transport
   machinery.
 - Shared display helpers as render-side utilities, not projection-builder
@@ -173,8 +176,31 @@ the substrate must not depend on the protocol crate's concrete module logic.
 
 Examples:
 
+- `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
+  builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
+  the note timeline/OP-feed surface (NIP-18 reposts appear in that feed as
+  boosted notes — base note-feed rendering, not cross-protocol aggregation), the
+  relation-count vocabulary (`NoteRelationCounts`), and the
+  `NoteRelationClassifier` seam. It does NOT own cross-protocol engagement
+  aggregation.
+- `nmp-relations` owns cross-protocol social-relation aggregation: the
+  `DefaultNoteRelationClassifier` that tallies reactions (NIP-25), reposts
+  (NIP-18), zaps (NIP-57), and comments (NIP-22) onto a note, and the
+  `nmp.nip01.visible_note_relations` action (byte-stable namespace; the
+  implementation moved out of `nmp-nip01`, same precedent as §4's
+  `nmp.nip65.publish_relay_list`). It depends one-way on `nmp-nip01` plus the
+  cross-protocol NIP sources; `nmp-nip01` never depends back.
 - `nmp-nip17` owns NIP-17 DM send/receive behavior and its DM relay-list cache.
-- `nmp-nip57` owns zap request/receipt and LNURL zap action behavior.
+- `nmp-nip57` owns zap request/receipt and LNURL zap action behavior. It pays
+  through the substrate `PaymentPort` (it emits a typed `PaymentIntent`); it does
+  not depend on `nmp-nip47`.
+- `nmp-nip47` owns NIP-47 NWC wallet runtime and supplies the `PaymentPort`
+  implementation (`WalletPaymentPort`) injected into the zap chain at
+  composition time.
+- `nmp-nip59` is the Layer-0 gift-wrap primitive crate (pure seal/wrap/unwrap
+  over the `nostr` crate; only a `nmp-kinds` workspace dep). NIP-17 and Marmot
+  re-use it for DM and MLS-Welcome delivery; `nmp-core` has no production
+  dependency on it (the former `SendGiftWrappedDm` kernel arm was deleted).
 - `nmp-marmot` owns Marmot/MLS group behavior.
 - `nmp-feed` and `nmp-threading` are reusable algorithms used by protocol
   modules; they carry no app-specific shell behavior.

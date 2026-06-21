@@ -37,7 +37,7 @@ impl NmpAppBuilder<Unstarted> {
     /// two INDEPENDENT wallet runtimes (no shared global), so a second
     /// `.with_wallet()` wires a distinct runtime rather than silently yielding.
     /// The returned per-app handle is threaded into the NIP-57 zap auto-chain
-    /// (`register_zap_with_wallet`) so a zap pays through THIS app's runtime.
+    /// (`register_zap_with_payment_port`) so a zap pays through THIS app's wallet.
     #[must_use]
     pub fn with_wallet(mut self) -> Self {
         // Read the host-configured storage path off the un-started app so the
@@ -50,10 +50,15 @@ impl NmpAppBuilder<Unstarted> {
         // it satisfies those bounds and wires every registration against its app.
         // It returns the per-app `WalletRuntimeHandle` (ADR-0052 rung 5.2).
         let wallet_runtime = nmp_nip47::register_wallet(&mut self, storage_path);
-        // Thread the handle into the NIP-57 zap auto-chain: the app-path
-        // override of the handle-less zap default `register_defaults` installs
-        // (ADR-0049), so a zap pays through this builder's wallet runtime.
-        nmp_nip57::register_zap_with_wallet(&mut self, wallet_runtime);
+        // Inject a NIP-47-backed `PaymentPort` into the NIP-57 zap auto-chain:
+        // the app-path override of the port-less zap default `register_defaults`
+        // installs (ADR-0049), so a zap pays through this builder's wallet. The
+        // `nmp-nip57 → nmp-nip47` edge is gone — NIP-57 sees only the substrate
+        // `PaymentPort` (#1728), and `nmp-defaults` (composition) wires the two.
+        nmp_nip57::register_zap_with_payment_port(
+            &mut self,
+            nmp_nip47::wallet_payment_port(wallet_runtime),
+        );
         self
     }
 }

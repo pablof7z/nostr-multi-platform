@@ -1,13 +1,19 @@
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
-use nmp_planner::stable_hash::stable_hash64;
+//! The visible-note-relations interest action — moved out of `nmp-nip01`
+//! (#1728). It opens a single tailing interest spanning every relation kind
+//! (kind:1 replies, NIP-18 reposts, NIP-25 reactions, NIP-57 zap receipts) for
+//! one note, so a host can claim/release the relation surface of a card. Its
+//! cross-protocol kind set is why it belongs here, not in the base note crate.
+
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
 };
 use nmp_core::ActorCommand;
+use nmp_planner::stable_hash::stable_hash64;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
 
-use crate::KIND_SHORT_TEXT_NOTE;
+use nmp_nip01::KIND_SHORT_TEXT_NOTE;
 
 pub const VISIBLE_NOTE_RELATIONS_LIMIT: u32 = 200;
 pub const VISIBLE_NOTE_RELATIONS_NAMESPACE: &str = "nmp.nip01.visible_note_relations";

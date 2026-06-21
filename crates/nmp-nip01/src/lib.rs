@@ -65,14 +65,13 @@ pub mod kinds;
 pub mod kind0_parser;
 pub mod kind3_parser;
 pub mod meta_timeline;
-mod note_relations;
+pub mod note_relations;
 pub mod op_feed;
 pub mod profile_cache;
 mod profile_display;
 pub mod timeline_projection;
 pub mod typed_wire;
 pub mod view;
-pub mod visible_relations;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
@@ -89,7 +88,10 @@ pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
 };
-pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
+pub use note_relations::{
+    ClassifiedRelation, NoteRelationClassifier, NoteRelationCounts, NoteRelationIndex,
+    RelationCount, RelationCountInterest, RelationKind,
+};
 pub use op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, register_op_feed, Nip10ReplyAttribution,
     OpFeedEngine, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID,
@@ -110,12 +112,10 @@ pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
 };
-pub use visible_relations::{
-    register_visible_note_relation_actions, visible_note_relations_identity,
-    visible_note_relations_interest, visible_note_relations_interest_id,
-    VisibleNoteRelationsAction, VisibleNoteRelationsModule, VISIBLE_NOTE_RELATIONS_LIMIT,
-    VISIBLE_NOTE_RELATIONS_NAMESPACE,
-};
+// NOTE: the visible-note-relations action and the cross-protocol relation
+// classifier moved to the `nmp-relations` crate (#1728) — this base crate owns
+// the relation-count vocabulary + the `NoteRelationClassifier` seam, not the
+// cross-protocol aggregation.
 
 // NOTE: `nmp-nip01` exposes its view types (`RepliesView`, `ThreadView`,
 // `Nip10ModularTimelineView`) as plain public types whose `open` /

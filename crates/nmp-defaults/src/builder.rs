@@ -602,7 +602,7 @@ impl<S> ActionRegistrar for NmpAppBuilder<S> {
     /// kernel's true entry-or-insert semantics), NOT the trait default — which
     /// delegates to the *app* path and would record every canonical NMP default
     /// as an app registration, so a later app-path override of the same
-    /// namespace (e.g. ADR-0052 rung 5.2's `register_zap_with_wallet`) trips the
+    /// namespace (e.g. ADR-0052 rung 5.2's `register_zap_with_payment_port`) trips the
     /// app-over-app collision `debug_assert!` instead of cleanly replacing a
     /// `Provenance::Default` entry (ADR-0049 Part 1).
     fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(

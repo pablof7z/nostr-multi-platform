@@ -88,6 +88,13 @@ path = "crates/nmp-marmot"
 name = "nmp-nip01"
 path = "crates/nmp-nip01"
 
+# nmp-relations (#1728) owns cross-protocol social-relation aggregation split
+# out of nmp-nip01: the engagement classifier + the visible-note-relations
+# action. Reusable Layer-4 crate, so it is a public crate.
+[[public_crates]]
+name = "nmp-relations"
+path = "crates/nmp-relations"
+
 [[public_crates]]
 name = "nmp-nip02"
 path = "crates/nmp-nip02"
