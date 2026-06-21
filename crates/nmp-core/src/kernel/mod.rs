@@ -269,6 +269,7 @@ pub use requests::ProfileLiveness;
 pub(crate) mod refs;
 pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 mod ref_row_source; // ADR-0063 (#1671 glue) — `impl RefRowRevSource for Kernel`
+mod feed_author_refs; // ADR-0063 D7 (#1671 Lane H) — feed-author auto-resolve
 // ADR-0063 (#1671) — `RefResolver` tests; sub-modules use `*_tests_*` infix.
 #[cfg(test)]
 mod refs_tests;
@@ -978,17 +979,14 @@ pub struct Kernel {
     /// ADR-0063 (#1671 Lane B) — per-consumer demanded [`refs::EventShape`] per
     /// claimed `primary_id`. Event twin of [`Self::ref_profile_shapes`].
     ref_event_shapes: HashMap<String, BTreeMap<String, refs::EventShape>>,
-    /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
-    /// keyed by the same `primary_id` the snapshot's `claimed_events`
-    /// projection uses (hex64 event id for nevent/note URIs;
-    /// `kind:pubkey:d_tag` coordinate for naddr URIs).
-    ///
-    /// Driven by [`Kernel::claim_event`] / [`Kernel::release_event`]
-    /// (F-CR-06 / ADR-0034). Capped per key by
-    /// [`MAX_EVENT_CLAIMS_PER_KEY`]; overflow bumps
-    /// [`Self::event_claim_drops_total`]. Symmetric with `profile_claims`
-    /// and likewise NOT preserved across `Kernel::Reset` (claim refcounts
-    /// are view-derived; views re-claim on re-open).
+    auto_profile_refs_by_consumer: BTreeMap<String, BTreeSet<String>>, // ADR-0063 D7 (Lane H)
+    /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`, keyed
+    /// by the same `primary_id` the snapshot's `claimed_events` projection uses
+    /// (hex64 event id for nevent/note URIs; `kind:pubkey:d_tag` for naddr URIs).
+    /// Driven by [`Kernel::claim_event`] / [`Kernel::release_event`] (F-CR-06 /
+    /// ADR-0034). Capped per key by [`MAX_EVENT_CLAIMS_PER_KEY`]; overflow bumps
+    /// [`Self::event_claim_drops_total`]. Symmetric with `profile_claims` and
+    /// likewise NOT preserved across `Kernel::Reset` (views re-claim on re-open).
     event_claims: HashMap<String, BTreeSet<String>>,
     /// Set of `primary_id`s for which a `OneShot + Global` interest has
     /// already been registered with [`crate::subs::OneshotApi`] by
@@ -2039,6 +2037,7 @@ impl Kernel {
             live_event_claims: HashMap::new(),
             ref_profile_shapes: HashMap::new(),
             ref_event_shapes: HashMap::new(),
+            auto_profile_refs_by_consumer: BTreeMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
             event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),

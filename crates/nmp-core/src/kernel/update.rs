@@ -242,12 +242,11 @@ impl Kernel {
     pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
         let emit_started = Instant::now();
         // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
-        // above is monotonic and cannot be compared to a shell-side clock, so
-        // a separate wall-clock reading is required. D7 / D9: the kernel owns
-        // time — route through the injected `Clock` via `now_ms()` so
-        // deterministic replay and tests observe the same `last_tick_ms` the
-        // production tick emitted. `now_ms()` already collapses a pre-epoch
-        // clock to `0` (D6: no panic at the public boundary).
+        // above is monotonic and cannot be compared to a shell-side clock, so a
+        // separate wall-clock reading is required. D7 / D9: the kernel owns time
+        // — route through the injected `Clock` via `now_ms()` so deterministic
+        // replay and tests observe the same `last_tick_ms` the production tick
+        // emitted. `now_ms()` collapses a pre-epoch clock to `0` (D6: no panic).
         let last_tick_ms = self.now_ms();
         self.rev = self.rev.saturating_add(1);
         self.update_sequence = self.update_sequence.saturating_add(1);
@@ -261,6 +260,7 @@ impl Kernel {
         // when EITHER value changes — the SAME signal the host cache resets on,
         // keeping producer and host in lockstep across account-switch AND Reset.
         self.publish_frame_identity();
+        let _ = self.reconcile_feed_author_refs(); // ADR-0063 D7 (Lane H): in-tick, no gap
 
         let batch_events = self.events_since_last_update;
         self.max_events_per_update = self.max_events_per_update.max(batch_events);

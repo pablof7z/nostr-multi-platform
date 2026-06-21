@@ -118,6 +118,31 @@ impl NmpApp {
             registry.register_tick_observer(f);
         }
     }
+
+    /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for a
+    /// feed snapshot key (e.g. `"nmp.feed.home"`).
+    ///
+    /// `f` returns the raw author keys the feed will RENDER for its CURRENT
+    /// visible window; the kernel calls it INSIDE every snapshot tick and
+    /// auto-`resolve_ref`s the additions / `release_ref`s the removals under the
+    /// consumer id `feed-author:<feed_key>` — so any author surfaced in the feed
+    /// resolves through the SAME unified path, and a shell can never silently
+    /// render an unresolved (blank-avatar) author.
+    ///
+    /// `f` runs on the actor thread inside the tick — it MUST be non-blocking
+    /// (D8): read the engine's current window and return the keys, nothing more.
+    /// Last-writer-wins on the key. A poisoned registry mutex is a silent no-op
+    /// (D6). Removed by [`Self::unregister_feed`] (which now also drops the
+    /// provider so the kernel releases-all on the next tick).
+    pub fn register_feed_author_provider(
+        &self,
+        feed_key: impl Into<String>,
+        f: impl Fn() -> Vec<String> + Send + Sync + 'static,
+    ) {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.register_feed_author_provider(feed_key, f);
+        }
+    }
 }
 
 /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP cache-merge

@@ -13,6 +13,7 @@
 //! `docs/perf/op-centric-feed-architecture.md` §3 for the full design, and
 
 mod attribution;
+mod author_refs;
 mod card;
 mod engine;
 
@@ -20,6 +21,7 @@ mod engine;
 mod tests;
 
 pub use attribution::AttributionPayload;
+pub use author_refs::{AttributionAuthors, CardAuthors, FeedAuthorRefs};
 pub use card::{RootCard, RootFeedSnapshot};
 pub use engine::{
     CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,

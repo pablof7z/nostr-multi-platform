@@ -118,7 +118,9 @@ use std::sync::{Arc, Mutex};
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
-use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
+use nmp_feed::{
+    ClosureInterestShape, FeedAdvance, FeedApply, FeedAuthorRefs, FeedController, PullFeedController,
+};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{op_feed_observer, register_op_feed, FeedEmissionState, FrameIdentity};
@@ -405,6 +407,27 @@ fn register_op_feed_defaults_inner(
                 ..Default::default()
             }),
         }
+    });
+
+    // ── 5b. Feed-author auto-resolve provider (ADR-0063 D7, #1671 Lane H) ──
+    //
+    // The coverage-hole closure: the kernel auto-resolves every author this
+    // feed RENDERS through the SAME `resolve_ref` path, so a shell cannot
+    // silently forget and blank-avatar. The provider returns the CURRENT
+    // visible window's author keys (each card's `author_pubkey` + any
+    // `reposted_by` reposter + every NIP-10 reply attribution's author); the
+    // kernel diffs them per snapshot tick and resolves/releases under
+    // `feed-author:nmp.feed.home`. The home feed is PERMANENT, so this provider
+    // is never removed — its refs are released only by the kernel's reconcile
+    // when the visible window narrows (scroll/perspective change). D8: reads the
+    // engine's current window and returns keys; no I/O, non-blocking.
+    let engine_for_authors = Arc::clone(&engine);
+    app.register_feed_author_provider(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, move || {
+        engine_for_authors
+            .snapshot_current_window()
+            .visible_author_keys()
+            .into_iter()
+            .collect()
     });
 
     // ── 5. Perspective reset ─────────────────────────────────────────────

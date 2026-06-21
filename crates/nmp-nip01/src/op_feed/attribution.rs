@@ -77,3 +77,11 @@ impl AttributionPayload for Nip10ReplyAttribution {
         &self.reply_event_id
     }
 }
+
+impl nmp_feed::AttributionAuthors for Nip10ReplyAttribution {
+    /// ADR-0063 D7 — the replying (followed) author this attribution RENDERS.
+    /// A mounted avatar shows this pubkey, so the kernel must auto-resolve it.
+    fn rendered_author_key(&self) -> String {
+        self.author_pubkey.clone()
+    }
+}
