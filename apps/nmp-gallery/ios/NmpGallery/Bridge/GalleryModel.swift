@@ -79,11 +79,12 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
 ///
-/// The kernel pre-merges `claimed_profiles` and `mention_profiles` into this
-/// single key, so every entry
-/// carries a Rust-formatted bech32 `npub` regardless of which source won —
-/// mention-sourced entries simply have empty `nip05` / `about` and `lnurl:
-/// null`. The extra `lnurl` field the card carries is ignored here.
+/// ADR-0063 (#1671): the map is now SOURCED from the kernel's `refs.profile`
+/// row-delta projection (the resolve_ref output), merged host-side into the
+/// `GalleryRefProfileStore` and materialised into this JSON key by
+/// `nmp_app_gallery_snapshot_json_from_update_frame`. Every entry carries a
+/// Rust-formatted bech32 `npub`. The extra `lnurl` field the card carries is
+/// ignored here.
 private struct ResolvedProfileWire: Decodable, Sendable {
     let pubkey: String
     let npub: String
@@ -331,7 +332,8 @@ final class GalleryModel: NostrProfileHost {
     /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
     /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
     func decode(frame: Data) {
-        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
+        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(
+            from: frame, store: kernel.refProfileStore) else {
             return
         }
         let decoder = JSONDecoder()

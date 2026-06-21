@@ -106,11 +106,11 @@ pub struct MediaProtocol {
 /// This is the "every app gets this for free" layer: instead of each app
 /// hand-extracting kind:0 fields from the kernel snapshot and stuffing them
 /// into bespoke state, the app holds one `LiveProfileMap`, calls
-/// `update_from_snapshot` on every snapshot tick, and `resolve(pubkey)` at
-/// render time. The map fills itself from the kernel's canonical
-/// `resolved_profiles` projection — a single pre-merged ProfileCard per
-/// pubkey. There is no app-side three-source merge, no field-by-field
-/// copying, and no invented profile label.
+/// `update_from_typed` on every snapshot tick, and `resolve(pubkey)` at
+/// render time. The map fills itself from the materialised `refs.profile`
+/// set (ADR-0063 #1671 — the resolve_ref output, merged in the snapshot
+/// thread's `RefProfileStore`). There is no app-side three-source merge, no
+/// field-by-field copying, and no invented profile label.
 #[derive(Default)]
 pub struct LiveProfileMap {
     profiles: HashMap<String, ProfileWire>,
@@ -123,16 +123,16 @@ impl LiveProfileMap {
 
     /// Ingest a typed kernel snapshot, updating the resolved-profile map.
     ///
-    /// Reads the kernel's canonical `resolved_profiles` typed sidecar (PR-B
-    /// typed-first migration): a pre-merged pubkey→ProfileCard map produced
-    /// once in Rust with the kernel's precedence rules. The app no longer
-    /// re-implements that three-source merge — it decodes the finished card
-    /// directly from the `ClaimedEventsModel`.
+    /// Reads the materialised `refs.profile` set (ADR-0063 #1671 — the
+    /// resolve_ref output, merged once in the snapshot thread's
+    /// `RefProfileStore` with the kernel's precedence rules). The app no longer
+    /// re-implements any three-source merge — it copies the finished
+    /// `ProfileCardModel` fields directly.
     ///
-    /// Absent or empty resolved_profiles is a no-op (the map retains any
-    /// profiles it already holds from previous ticks).
+    /// An empty profiles set is a no-op (the map retains any profiles it
+    /// already holds from previous ticks).
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) {
-        for (pubkey, card) in &snapshot.resolved_profiles.entries {
+        for (pubkey, card) in &snapshot.profiles {
             let display_name = non_empty(card.display_name.as_deref());
             let picture_url = non_empty(card.picture_url.as_deref());
             let nip05 = non_empty(Some(card.nip05.as_str()));
@@ -270,23 +270,22 @@ fn tree_for_content(content: &str) -> Result<ContentTreeWire, String> {
 mod live_profile_map_tests {
     use super::*;
     use crate::live::GalleryTypedSnapshot;
-    use nmp_core::typed_projections::{
-        ClaimedEventsModel, ProfileCardModel, ResolvedProfilesModel,
-    };
+    use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel};
+    use std::collections::BTreeMap;
 
     fn typed_snapshot_with_profile(pubkey: &str, card: ProfileCardModel) -> GalleryTypedSnapshot {
+        let mut profiles = BTreeMap::new();
+        profiles.insert(pubkey.to_string(), card);
         GalleryTypedSnapshot {
             claimed_events: ClaimedEventsModel::default(),
-            resolved_profiles: ResolvedProfilesModel {
-                entries: vec![(pubkey.to_string(), card)],
-            },
+            profiles,
             relay_statuses: Vec::new(),
         }
     }
 
-    /// A typed snapshot carrying the `resolved_profiles` sidecar populates
-    /// the map with the kernel's pre-merged card — `resolve(pubkey)` returns
-    /// those fields verbatim, no app-side merge.
+    /// A typed snapshot carrying the materialised `refs.profile` set populates
+    /// the map with the resolved card — `resolve(pubkey)` returns those fields
+    /// verbatim, no app-side merge.
     #[test]
     fn reads_resolved_profiles_typed() {
         let pubkey = showcase_pubkey();

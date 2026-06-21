@@ -36,18 +36,25 @@ uint32_t nmp_app_set_storage_path(void *app, const char *path);
 void nmp_app_start(void *app, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
 
-// ── Profile claim / release (real relay data) ────────────────────────────
+// ── Reference resolution (ADR-0063 #1671) ────────────────────────────────
 
-// Claim a profile for `pubkey`. The kernel keeps a refcounted interest open
-// across all consumers (`consumer_id` is the bookkeeping key for matched
-// release calls). Claimed profiles are projected under
-// `projections.claimed_profiles[pubkey]` in the regular update snapshot.
-// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
-// gate for the cached kind:0 profile. Pass `1` on explicit user navigation /
-// pull-to-refresh; pass `0` for background / `.onAppear` claims. Replaces the
-// removed `nmp_app_refresh_replaceable` symbol (no new C-ABI symbol).
-void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id, int force);
-void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
+// Unified, origin-blind reference-resolution entry points. The gallery resolves
+// visible profiles through these (superseding the deleted
+// nmp_app_claim_profile / nmp_app_release_profile surface). The resolved kind:0
+// flows back through the kernel's `refs.profile` row-delta projection (merged
+// host-side into the GalleryRefProfileStore; see below).
+//
+// `namespace` — 0 = profile (kind:0).
+// `key` — lowercase 64-hex pubkey.
+// `consumer_id` — opaque refcount owner key (e.g. SwiftUI view identity).
+// `shape` — 0 = profile.ref (avatar / name), 1 = profile.card (full card).
+// `liveness` — 0 = CacheOk (background / feed row), non-zero = Live (open screen).
+// D6: null/invalid args and unknown int codes are silent no-ops, never panics.
+// D8: fire-and-forget; the actor processes commands asynchronously.
+void nmp_app_resolve_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id, int shape, int liveness);
+void nmp_app_release_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id);
 
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 
@@ -113,10 +120,27 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 // poisoned mutexes, or serialization failure (D6).
 void nmp_app_gallery_register(void *app);
 const char *nmp_app_gallery_showcase_references_json(void);
+
+// ── refs.profile host mirror (ADR-0063 #1671) ────────────────────────────
+//
+// Opaque host-owned mirror of the kernel's `refs.profile` row-delta projection.
+// The shell allocates ONE per kernel session and threads it into every
+// `nmp_app_gallery_snapshot_json_from_update_frame` call so per-key profile
+// deltas accumulate across frames (the sidecar carries only changed/cleared
+// rows — a single frame cannot be decoded in isolation). Sole app-side profile
+// store (D4). Release with `nmp_app_gallery_ref_profile_store_free`.
+typedef struct GalleryRefProfileStore GalleryRefProfileStore;
+struct GalleryRefProfileStore *nmp_app_gallery_ref_profile_store_new(void);
+void nmp_app_gallery_ref_profile_store_free(struct GalleryRefProfileStore *store);
+
 // Decode borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes into the
-// Gallery snapshot JSON shape. Returns a heap string that MUST be released via
-// `nmp_free_string`; returns NULL for malformed frames or decode failures.
-char *nmp_app_gallery_snapshot_json_from_update_frame(const uint8_t *bytes, uintptr_t len);
+// Gallery snapshot JSON shape, merging the frame's `refs.profile` row-delta
+// batch into `store` first (the rendered `resolved_profiles` JSON map is sourced
+// from that store). `store` MUST persist across calls for one kernel session.
+// Returns a heap string that MUST be released via `nmp_free_string`; returns
+// NULL for a NULL store, malformed frames, or decode failures.
+char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefProfileStore *store,
+                                                      const uint8_t *bytes, uintptr_t len);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 
