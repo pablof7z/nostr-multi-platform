@@ -226,6 +226,41 @@ impl FeedTeardown {
             let _ = sender.send(ActorCommand::ClearActiveFollowsFeed);
         })
     }
+
+    /// #1740 step 3 — a teardown step that WITHDRAWS one session-scoped
+    /// acquisition interest opened via `ActorCommand::OpenInterest`.
+    ///
+    /// This is the close-side of a non-default scope's acquisition (the
+    /// perspective compiler's `ContactList` / `ListMembers` / `Wot` / `Tag` /
+    /// set-algebra arms register their internal interests with
+    /// `ActorCommand::OpenInterest { filter_json, consumer_id, scope }`, the
+    /// `consumer_id` being the session's projection key). Closing the same
+    /// triple detaches that owner; the kernel reconstructs the same registry
+    /// slot from the `InterestShape` hash, so the `(filter_json, consumer_id,
+    /// scope)` MUST match the open call. When the last owner of an interest
+    /// leaves, the kernel enqueues the CLOSE diff (D8 — bounded: the session's
+    /// interests are withdrawn on close).
+    ///
+    /// A closed inbox is a silent drop (D6); closing an interest that is not
+    /// open is a harmless no-op.
+    #[must_use]
+    pub fn close_interest(
+        &self,
+        filter_json: impl Into<String>,
+        consumer_id: impl Into<String>,
+        scope: u32,
+    ) -> TeardownAction {
+        let sender = self.sender.clone();
+        let filter_json = filter_json.into();
+        let consumer_id = consumer_id.into();
+        Box::new(move || {
+            let _ = sender.send(ActorCommand::CloseInterest {
+                filter_json,
+                consumer_id,
+                scope,
+            });
+        })
+    }
 }
 
 impl NmpApp {
