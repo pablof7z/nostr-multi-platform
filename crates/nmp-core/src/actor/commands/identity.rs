@@ -1434,8 +1434,9 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
     // `BunkerHandshakeProgress` + `AddSigner { RemoteHandle, .. }`. D0 stays
     // clean: `nmp-core` imports neither the broker crate nor `nmp-signers`.
     if parse_bunker_remote(uri).is_none() {
-        kernel.set_last_error_toast(Some(
-            "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_BUNKER_INVALID_URI,
+            "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…",
         ));
         return;
     }
@@ -1450,8 +1451,9 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
         // toast and clear the progress projection (D6 — error becomes state,
         // never panic across FFI).
         identity.set_bunker_handshake(None);
-        kernel.set_last_error_toast(Some(
-            "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_BROKER_NOT_INITIALISED,
+            "NIP-46 broker not initialised — call nmp_signer_broker_init",
         ));
     }
 }
@@ -1468,8 +1470,9 @@ pub(crate) fn restore_bunker_session(
     kernel.mark_changed_since_emit();
     if !identity.invoke_bunker_restore_hook(payload_json) {
         identity.set_bunker_handshake(None);
-        kernel.set_last_error_toast(Some(
-            "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_BROKER_NOT_INITIALISED,
+            "NIP-46 broker not initialised — call nmp_signer_broker_init",
         ));
     }
 }
@@ -1492,8 +1495,9 @@ pub(crate) fn restore_nip55_session(
             "unavailable".to_string(),
             Some("NIP-55 driver not initialised".to_string()),
         )));
-        kernel.set_last_error_toast(Some(
-            "NIP-55 driver not initialised — call nmp_external_signer_init".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::SIGNER_NIP55_DRIVER_NOT_INITIALISED,
+            "NIP-55 driver not initialised — call nmp_external_signer_init",
         ));
         kernel.mark_changed_since_emit();
     }

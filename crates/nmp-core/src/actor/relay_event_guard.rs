@@ -88,7 +88,13 @@ pub(super) fn process_relay_event(
             .or_else(|| panic_payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "unknown panic".to_string());
         kernel.log(format!("actor: relay event handler panicked: {msg}"));
-        kernel.set_last_error_toast(Some("relay processing error — continuing".to_string()));
+        kernel.set_last_error_token(
+            &crate::ui_token::UiToken::warning(
+                crate::ui_token::codes::RELAY_PROCESSING_ERROR,
+                "relay processing error — continuing",
+            )
+            .with_detail(msg),
+        );
         // Surface the toast on this tick rather than waiting for the next
         // `flush_due` — mirrors the pending-sign error path.
         emit_now(kernel, running, update_tx, last_emit);

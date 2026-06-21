@@ -67,33 +67,9 @@ use std::fmt;
 use crate::relay::OutboundMessage;
 use crate::ActorCommand;
 
-/// Error returned by a [`ProtocolCommand::run`]. Kernel surfaces it as the
-/// `last_error_toast` projection (step 4+); step 1.b just logs.
-#[derive(Debug)]
-pub struct ProtocolCommandError {
-    message: String,
-}
-
-impl ProtocolCommandError {
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-
-    #[must_use]
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
-
-impl fmt::Display for ProtocolCommandError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for ProtocolCommandError {}
+#[path = "protocol/command_error.rs"]
+mod command_error;
+pub use command_error::ProtocolCommandError;
 
 // Capability traits (Debt C) + their `Noop*` impls live in a sibling module
 // (file-size discipline) and are re-exported below so the
@@ -473,6 +449,16 @@ impl<'a> ProtocolCommandContext<'a> {
         let e = self.errors;
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             e.set_last_error_toast(message);
+        }));
+    }
+
+    /// D15-wrapped [`ErrorSurface::set_last_error_token`] (issue #1682) — emit a
+    /// structured error token (machine `code` + English fallback prose) so the
+    /// shell renders localized prose.
+    pub fn set_last_error_token(&self, token: &crate::ui_token::UiToken) {
+        let e = self.errors;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            e.set_last_error_token(token);
         }));
     }
 

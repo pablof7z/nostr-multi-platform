@@ -61,6 +61,7 @@ pub mod dm_runtime;
 pub mod dm_send;
 pub mod inbox;
 pub mod kind10050_parser;
+pub mod ui_codes;
 pub mod wire;
 
 pub use action::{SendDmAction, SendDmInput};

@@ -45,6 +45,13 @@ struct TypedSnapshotEnvelope: Equatable {
     /// envelope; `KernelModel` copies it into its user-clearable
     /// `lastErrorToast` slot in `apply(result:)`.
     let lastErrorToast: String?
+    /// Snapshot-driven machine error CODE — read off `SnapshotFrame`'s
+    /// `last_error_category` (issue #1682). `nil` ⇒ no categorized error on
+    /// this tick. The shell maps this stable code to LOCALIZED prose
+    /// (`KernelModel.localizedErrorToast`); `lastErrorToast` is the English
+    /// fallback for codes the shell does not recognize. Rust owns the code +
+    /// raw diagnostic detail; the shell owns the prose.
+    let lastErrorCategory: String?
 }
 
 // ─── Swift-side timing wrapper ────────────────────────────────────────────
@@ -311,5 +318,99 @@ extension Duration {
     var microseconds: Int {
         let parts = components
         return Int(parts.seconds) * 1_000_000 + Int(parts.attoseconds / 1_000_000_000_000)
+    }
+}
+
+/// Shell-owned localized prose for Rust-supplied structured error tokens
+/// (issue #1682). Rust emits a stable machine `code` (carried on the snapshot
+/// as `last_error_category`) plus an English fallback (`last_error_toast`); the
+/// shell maps the code to localized user-facing copy here. This is the
+/// presentation half of the codex ruling: Rust owns error semantics + raw
+/// diagnostics, the shell owns prose.
+///
+/// `localized(code:)` returns `nil` for unrecognized codes (e.g. relay-CLOSED
+/// categories, or any newer Rust code this build predates) so the caller falls
+/// back to the Rust English prose. The keys mirror the producer crates'
+/// `ui_codes` / `ui_token::codes` constants (the closed catalog).
+enum UiErrorProse {
+    static func localized(code: String) -> String? {
+        switch code {
+        // ── nmp-nip17 (DM send) ──────────────────────────────────────────
+        case "nip17_dm_send_failed":
+            return NSLocalizedString(
+                "error.nip17.dm_send_failed",
+                value: "Couldn’t send the message.",
+                comment: "Toast: a direct message failed to send")
+        case "nip17_dm_giftwrap_failed":
+            return NSLocalizedString(
+                "error.nip17.dm_giftwrap_failed",
+                value: "Couldn’t send the message — delivery failed.",
+                comment: "Toast: DM gift-wrap publish failed")
+        // ── nmp-nip47 (NWC wallet) ───────────────────────────────────────
+        case "nip47_invalid_uri":
+            return NSLocalizedString(
+                "error.nip47.invalid_uri",
+                value: "That wallet connection link isn’t valid.",
+                comment: "Toast: invalid NWC URI")
+        case "nip47_invalid_client_secret":
+            return NSLocalizedString(
+                "error.nip47.invalid_client_secret",
+                value: "That wallet connection link is malformed.",
+                comment: "Toast: invalid NWC client secret")
+        case "nip47_req_encode_failed", "nip47_encrypt_failed",
+             "nip47_sign_failed", "nip47_event_encode_failed":
+            return NSLocalizedString(
+                "error.nip47.request_failed",
+                value: "Couldn’t reach your wallet. Please try again.",
+                comment: "Toast: an NWC request could not be built/sent")
+        case "nip47_wallet_error", "nip47_wallet_auth_error":
+            return NSLocalizedString(
+                "error.nip47.wallet_error",
+                value: "Your wallet reported an error.",
+                comment: "Toast: the wallet service returned an error")
+        case "nip47_wallet_not_ready":
+            return NSLocalizedString(
+                "error.nip47.wallet_not_ready",
+                value: "Your wallet is still connecting.",
+                comment: "Toast: wallet not ready for a payment")
+        case "nip47_wallet_not_connected":
+            return NSLocalizedString(
+                "error.nip47.wallet_not_connected",
+                value: "No wallet is connected.",
+                comment: "Toast: no wallet connected for a payment")
+        case "nip47_payment_aborted_no_durable_record":
+            return NSLocalizedString(
+                "error.nip47.payment_aborted",
+                value: "Payment cancelled to keep it safe — please try again.",
+                comment: "Toast: payment aborted because its record could not be saved")
+        // ── nmp-core (kernel / actor) ────────────────────────────────────
+        case "core_keyring_write_failed":
+            return NSLocalizedString(
+                "error.core.keyring_write_failed",
+                value: "Couldn’t save your sign-in securely — it may not persist.",
+                comment: "Toast: keychain write failed")
+        case "core_relay_processing_error":
+            return NSLocalizedString(
+                "error.core.relay_processing_error",
+                value: "A relay update hit a snag — continuing.",
+                comment: "Toast: a relay event handler panicked but was contained")
+        case "signer_bunker_invalid_uri":
+            return NSLocalizedString(
+                "error.signer.bunker_invalid_uri",
+                value: "That remote signer link isn’t valid.",
+                comment: "Toast: invalid bunker:// URI")
+        case "signer_broker_not_initialised":
+            return NSLocalizedString(
+                "error.signer.broker_not_initialised",
+                value: "Remote signing isn’t available right now.",
+                comment: "Toast: NIP-46 broker not initialised")
+        case "signer_nip55_driver_not_initialised":
+            return NSLocalizedString(
+                "error.signer.nip55_not_initialised",
+                value: "External signing isn’t available right now.",
+                comment: "Toast: NIP-55 driver not initialised")
+        default:
+            return nil
+        }
     }
 }

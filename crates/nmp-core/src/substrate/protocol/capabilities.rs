@@ -55,6 +55,16 @@ pub trait ErrorSurface: Send + Sync {
     /// Write the `last_error_toast` projection. `None` clears the toast.
     fn set_last_error_toast(&self, message: Option<String>);
 
+    /// Write a structured [`UiToken`](crate::ui_token::UiToken) (issue #1682):
+    /// the stable machine `code` to `last_error_category` and the English
+    /// `fallback_prose` to `last_error_toast`, logging `raw_detail`. The shell
+    /// renders localized prose from the code. The default impl degrades to the
+    /// fallback prose only (no category) for non-kernel-backed implementations
+    /// (tests / no-op surfaces); the production adapter overrides it.
+    fn set_last_error_token(&self, token: &crate::ui_token::UiToken) {
+        self.set_last_error_toast(Some(token.fallback_prose().to_string()));
+    }
+
     /// Record a `Failed` terminal stage for `correlation_id` with
     /// `reason` as the failure message.
     fn record_action_failure(&self, correlation_id: String, reason: String);
@@ -121,6 +131,14 @@ pub trait WalletKernelAccess: Send + Sync {
 
     /// Write the `last_error_toast` projection. `None` clears the toast.
     fn set_last_error_toast(&self, message: Option<String>);
+
+    /// Write a structured [`UiToken`](crate::ui_token::UiToken) (issue #1682):
+    /// machine `code` to `last_error_category`, English `fallback_prose` to
+    /// `last_error_toast`, logging `raw_detail`. The default impl degrades to
+    /// the fallback prose only; the production adapter overrides it.
+    fn set_last_error_token(&self, token: &crate::ui_token::UiToken) {
+        self.set_last_error_toast(Some(token.fallback_prose().to_string()));
+    }
 
     /// Record a `Failed` terminal stage for `correlation_id` with `reason`.
     fn record_action_failure(&self, correlation_id: String, reason: String);

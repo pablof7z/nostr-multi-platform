@@ -331,7 +331,7 @@ impl super::Kernel {
             return;
         }
         entry.status = status.to_string();
-        entry.can_retry = publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
+        entry.can_retry = publish_queue::publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump publish_ver on terminal state transition.
@@ -366,6 +366,27 @@ impl super::Kernel {
             self.last_error_category = category;
             self.changed_since_emit = true;
         }
+    }
+
+    /// Surface a structured [`UiToken`](crate::ui_token::UiToken) (issue #1682).
+    ///
+    /// Writes the token's English `fallback_prose` to `last_error_toast` (the
+    /// fallback for non-localizing shells / diagnostics) and the stable machine
+    /// `code` to `last_error_category` (the key the shell branches on to render
+    /// localized prose). The raw upstream `raw_detail` is logged for
+    /// diagnostics — it is never the UI contract and never crosses to the host
+    /// as prose. This is the general-toast generalization of the relay-CLOSED
+    /// `error_category` contract.
+    pub fn set_last_error_token(&mut self, token: &crate::ui_token::UiToken) {
+        if let Some(detail) = token.raw_detail() {
+            tracing::warn!(
+                code = token.code(),
+                subject = ?token.subject(),
+                detail = %detail,
+                "UI error token",
+            );
+        }
+        self.set_error_toast_with_category(token.fallback_prose().to_string(), token.code());
     }
 
     /// Replace the editable relay projection (D4: actor is sole writer).
@@ -471,19 +492,8 @@ impl super::Kernel {
     }
 }
 
-pub(in crate::kernel) fn publish_entry_can_retry(
-    status: &str,
-    outcomes: &[RelayAckOutcome],
-    has_retry_payload: bool,
-) -> bool {
-    if !has_retry_payload {
-        return false;
-    }
-    status == "failed"
-        || status == "pending_relays_unknown"
-        || outcomes.iter().any(|relay| relay.status == "failed")
-}
-
+#[path = "identity_state/publish_queue.rs"]
+pub(in crate::kernel) mod publish_queue;
 #[cfg(test)]
 #[path = "identity_state/tests.rs"]
 mod tests;

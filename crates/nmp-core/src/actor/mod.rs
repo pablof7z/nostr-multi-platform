@@ -1023,6 +1023,15 @@ pub enum ActorCommand {
     ShowToast {
         message: String,
     },
+    /// D6 + issue #1682 — surface a structured error [`UiToken`] from an
+    /// off-actor worker thread (e.g. the NIP-17 gift-wrap publish continuation),
+    /// which holds only a `CommandSender`, not a kernel reference. The actor
+    /// thread routes it to `kernel.set_last_error_token`, writing both the
+    /// machine `code` (`last_error_category`) and the English fallback prose
+    /// (`last_error_toast`) so the shell can render localized prose.
+    ShowErrorToken {
+        token: crate::ui_token::UiToken,
+    },
     /// Mark the kernel dirty so host-registered snapshot projections re-emit.
     ///
     /// Used when reusable NMP extension state changes outside a typed kernel

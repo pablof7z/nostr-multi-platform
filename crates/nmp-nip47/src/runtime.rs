@@ -527,7 +527,13 @@ pub(crate) fn wallet_connect(
     let nwc_uri = match NwcUri::parse(uri) {
         Ok(u) => u,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("invalid NWC URI: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::INVALID_URI,
+                    format!("invalid NWC URI: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
             return Vec::new();
         }
     };
@@ -535,7 +541,13 @@ pub(crate) fn wallet_connect(
     let client_pubkey_hex = match nmp_nwc::crypto::client_pubkey_hex(&nwc_uri.client_secret_hex) {
         Ok(pk) => pk,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("invalid NWC client secret: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::INVALID_CLIENT_SECRET,
+                    format!("invalid NWC client secret: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
             return Vec::new();
         }
     };
@@ -543,7 +555,13 @@ pub(crate) fn wallet_connect(
     let client_secret_key = match SecretKey::from_hex(&nwc_uri.client_secret_hex) {
         Ok(sk) => sk,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("invalid NWC client secret: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::INVALID_CLIENT_SECRET,
+                    format!("invalid NWC client secret: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
             return Vec::new();
         }
     };
@@ -600,7 +618,13 @@ pub(crate) fn wallet_connect(
             ));
         }
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("NWC REQ encode failed: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::REQ_ENCODE_FAILED,
+                    format!("NWC REQ encode failed: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
         }
     }
 
@@ -727,18 +751,24 @@ pub(crate) fn wallet_pay_invoice(
     let conn = match &wallet.connection {
         Some(c) if c.status == "ready" => c,
         Some(_) => {
-            let reason = "wallet not ready — still connecting".to_string();
-            kernel.set_last_error_toast(Some(reason.clone()));
+            let token = nmp_core::ui_token::UiToken::error(
+                crate::ui_codes::WALLET_NOT_READY,
+                "wallet not ready — still connecting",
+            );
+            kernel.set_last_error_token(&token);
             if let Some(id) = correlation_id {
-                kernel.record_action_failure(id, reason);
+                kernel.record_action_failure(id, token.fallback_prose().to_string());
             }
             return Vec::new();
         }
         None => {
-            let reason = "no wallet connected".to_string();
-            kernel.set_last_error_toast(Some(reason.clone()));
+            let token = nmp_core::ui_token::UiToken::error(
+                crate::ui_codes::WALLET_NOT_CONNECTED,
+                "no wallet connected",
+            );
+            kernel.set_last_error_token(&token);
             if let Some(id) = correlation_id {
-                kernel.record_action_failure(id, reason);
+                kernel.record_action_failure(id, token.fallback_prose().to_string());
             }
             return Vec::new();
         }
@@ -926,12 +956,23 @@ pub(crate) fn handle_nwc_text(
     if let Some(err) = &response.error {
         if err.code == "UNAUTHORIZED" || err.code == "RESTRICTED" {
             conn.status = "error".to_string();
-            kernel.set_last_error_toast(Some(format!(
-                "wallet error: {} — {}",
-                err.code, err.message
-            )));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::WALLET_AUTH_ERROR,
+                    format!("wallet error: {} — {}", err.code, err.message),
+                )
+                .with_subject(err.code.clone())
+                .with_detail(err.message.clone()),
+            );
         } else {
-            kernel.set_last_error_toast(Some(format!("wallet: {} — {}", err.code, err.message)));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::WALLET_ERROR,
+                    format!("wallet: {} — {}", err.code, err.message),
+                )
+                .with_subject(err.code.clone())
+                .with_detail(err.message.clone()),
+            );
         }
     }
 
@@ -979,15 +1020,6 @@ fn reconcile_unresolved_payments(
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
-
-/// Serialize a JSON value to a string for the outbound wire queue.
-///
-/// V-63: replaces the prior `serde_json::to_string(...).unwrap_or_default()`
-/// call sites. Returns `Err` on the rare serialization failure so callers can
-/// surface an error rather than pushing an empty `""` frame.
-fn encode_frame(value: &serde_json::Value) -> Result<String, serde_json::Error> {
-    serde_json::to_string(value)
-}
 
 /// Build a signed NWC request frame and register it in the inflight maps.
 ///
@@ -1037,7 +1069,13 @@ fn build_request_with_meta(
     ) {
         Ok(c) => c,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("NWC encrypt: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::ENCRYPT_FAILED,
+                    format!("NWC encrypt: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
             return None;
         }
     };
@@ -1051,7 +1089,13 @@ fn build_request_with_meta(
     ) {
         Ok(s) => s,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("NWC sign: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::SIGN_FAILED,
+                    format!("NWC sign: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
             return None;
         }
     };
@@ -1065,7 +1109,13 @@ fn build_request_with_meta(
     let text = match encode_frame(&json!(["EVENT", &event_json])) {
         Ok(t) => t,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("NWC EVENT encode failed: {e}")));
+            kernel.set_last_error_token(
+                &nmp_core::ui_token::UiToken::error(
+                    crate::ui_codes::EVENT_ENCODE_FAILED,
+                    format!("NWC EVENT encode failed: {e}"),
+                )
+                .with_detail(e.to_string()),
+            );
             return None;
         }
     };
@@ -1109,9 +1159,13 @@ fn build_request_with_meta(
                     "nwc: PaySent persist failed — aborting payment to prevent \
                      double-pay on restart: {e}"
                 );
-                kernel.set_last_error_toast(Some(format!(
-                    "wallet: payment aborted — could not write durable record: {e}"
-                )));
+                kernel.set_last_error_token(
+                    &nmp_core::ui_token::UiToken::error(
+                        crate::ui_codes::PAYMENT_ABORTED_NO_DURABLE_RECORD,
+                        format!("wallet: payment aborted — could not write durable record: {e}"),
+                    )
+                    .with_detail(e.to_string()),
+                );
                 return None;
             }
         }
@@ -1174,12 +1228,9 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &dyn WalletKernelAccess) {
     kernel.mark_changed_since_emit();
 }
 
-fn pubkey_to_npub(hex: &str) -> Result<String, String> {
-    PublicKey::from_hex(hex)
-        .map_err(|e| format!("{e}"))?
-        .to_bech32()
-        .map_err(|e| format!("{e}"))
-}
+#[path = "runtime_utils.rs"]
+mod runtime_utils;
+use runtime_utils::{encode_frame, pubkey_to_npub};
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

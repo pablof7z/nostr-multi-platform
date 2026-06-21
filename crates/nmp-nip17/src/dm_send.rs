@@ -216,10 +216,18 @@ fn fail_pre_publish(
     correlation_id: &Option<String>,
     reason: String,
 ) {
-    let toast = format!("cannot send DM: {reason}");
-    ctx.set_last_error_toast(Some(toast.clone()));
+    // issue #1682 — emit a structured token (machine code + English fallback)
+    // so the shell renders localized prose; the upstream `reason` is the raw
+    // diagnostic detail. The action-failure verdict still carries the fallback
+    // prose (the action_lifecycle `reason` channel is English-prose today).
+    let token = nmp_core::ui_token::UiToken::error(
+        crate::ui_codes::DM_SEND_FAILED,
+        format!("cannot send DM: {reason}"),
+    )
+    .with_detail(reason);
+    ctx.set_last_error_token(&token);
     if let Some(id) = correlation_id.clone() {
-        ctx.record_action_failure(id, toast);
+        ctx.record_action_failure(id, token.fallback_prose().to_string());
     }
 }
 
