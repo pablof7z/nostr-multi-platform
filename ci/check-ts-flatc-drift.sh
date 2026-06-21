@@ -68,6 +68,9 @@ GALLERY_TS_ROOT="${REPO_ROOT}/web/nmp-gallery/src/nmp/generated"
 if [[ -d "${GALLERY_TS_ROOT}" ]]; then
     CHECKED_IN_ROOTS+=("${GALLERY_TS_ROOT}")
 fi
+# components-web ships only the content subtree (content_tree.fbs bindings).
+# It is checked separately below with a scoped diff rather than a full-tree diff.
+COMPONENTS_WEB_CONTENT_ROOT="${REPO_ROOT}/web/packages/components-web/src/generated"
 
 # ── flatc availability + version guard ──────────────────────────────────────
 
@@ -141,6 +144,11 @@ if [[ "${MODE}" == "--write" ]]; then
         cp -R "${GENERATED_DIR}" "${checked_in_root}/nmp"
         echo "ts-flatc-drift: wrote ${checked_in_root#${REPO_ROOT}/}/nmp (flatc ${EXPECTED_FLATC_VERSION})"
     done
+    # components-web: only the content subtree (content_tree.fbs bindings).
+    mkdir -p "${COMPONENTS_WEB_CONTENT_ROOT}/nmp"
+    rm -rf "${COMPONENTS_WEB_CONTENT_ROOT}/nmp/content"
+    cp -R "${GENERATED_DIR}/content" "${COMPONENTS_WEB_CONTENT_ROOT}/nmp/content"
+    echo "ts-flatc-drift: wrote ${COMPONENTS_WEB_CONTENT_ROOT#${REPO_ROOT}/}/nmp/content (flatc ${EXPECTED_FLATC_VERSION})"
     exit 0
 fi
 
@@ -158,6 +166,16 @@ for checked_in_root in "${CHECKED_IN_ROOTS[@]}"; do
     fi
 done
 
+# components-web: content subtree only (content_tree.fbs bindings).
+COMPONENTS_WEB_CHECKED_IN="${COMPONENTS_WEB_CONTENT_ROOT}/nmp/content"
+if [[ ! -d "${COMPONENTS_WEB_CHECKED_IN}" ]]; then
+    echo "ts-flatc-drift: checked-in TypeScript binding dir missing: ${COMPONENTS_WEB_CHECKED_IN#${REPO_ROOT}/}" >&2
+    drift=$((drift + 1))
+elif ! diff -r "${COMPONENTS_WEB_CHECKED_IN}" "${GENERATED_DIR}/content"; then
+    echo "ts-flatc-drift: ${COMPONENTS_WEB_CHECKED_IN#${REPO_ROOT}/} drifted from a fresh flatc run." >&2
+    drift=$((drift + 1))
+fi
+
 if [[ "${drift}" -ne 0 ]]; then
     echo "" >&2
     echo "ts-flatc-drift: checked-in TypeScript bindings differ from a fresh" >&2
@@ -166,4 +184,4 @@ if [[ "${drift}" -ne 0 ]]; then
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG + KCEV bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG + KCEV bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s) + components-web content)"
