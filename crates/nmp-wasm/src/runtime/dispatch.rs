@@ -16,11 +16,66 @@ use crate::dispatch_routing::{
     interest_dispatch_from_action, kernel_action_from_dispatch, write_path_unavailable_reason,
 };
 use crate::protocol::{ActionDispatch, AppAction, CapabilityFailure, WorkerEvent};
+use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
 use nmp_core::KernelUpdate;
 
 use super::{WasmRuntime, WasmRuntimeError};
 
 impl WasmRuntime {
+    /// ADR-0064 / S2 (#1750) — the **binary write doorway**.
+    ///
+    /// The host posts the write command as a transferable `Uint8Array` (NOT a
+    /// JSON number array): the raw bytes of a finished `DispatchEnvelope`. This
+    /// method is the wasm half of the one byte transport — the native FFI half
+    /// is `nmp_app_dispatch_action_bytes(app, ptr, len)`; both decode through the
+    /// SAME `nmp_core::dispatch_envelope::decode_dispatch_envelope` path.
+    ///
+    /// Fail-closed: a decode rejection (bad file identifier, schema_version
+    /// tripwire mismatch, oversize, missing routing fields) surfaces as a
+    /// data-shaped `WorkerEvent::Error` with the RAW reason (D6) — never a panic,
+    /// never a silent accept. On success it routes by `action_namespace` behind
+    /// the existing one doorway, carrying the OPAQUE payload verbatim. The typed
+    /// per-crate payload decode is S3's job (#1751); this method never peeks
+    /// inside `payload`.
+    pub fn dispatch_bytes(&mut self, bytes: &[u8]) -> Vec<WorkerEvent> {
+        let decoded = match decode_dispatch_envelope(bytes) {
+            Ok(decoded) => decoded,
+            Err(err) => {
+                // Fail closed: the decode rejected. Surface the RAW discriminant
+                // as a data-shaped error; correlation_id is unknown (the buffer
+                // never decoded far enough to trust it).
+                return vec![WorkerEvent::Error {
+                    code: "dispatch_envelope_rejected".to_string(),
+                    message: err.to_string(),
+                    correlation_id: None,
+                }];
+            }
+        };
+        self.route_decoded_dispatch(decoded)
+    }
+
+    /// Route a gate-passed [`DecodedDispatch`] by `action_namespace` behind the
+    /// one doorway. The OPAQUE payload is carried verbatim; namespaces whose
+    /// typed payload decode is not yet wired (S3 / #1751) acknowledge through the
+    /// same honest write-path reason as the JSON `dispatch` arm rather than
+    /// interpreting the bytes.
+    fn route_decoded_dispatch(&mut self, decoded: DecodedDispatch) -> Vec<WorkerEvent> {
+        let DecodedDispatch {
+            correlation_id,
+            action_namespace,
+            payload: _opaque,
+        } = decoded;
+        // The opaque payload is NOT interpreted here — S3 teaches the registry to
+        // decode the typed FlatBuffers root. For S2 the binary doorway routes by
+        // namespace and surfaces the same honest write-path reason the JSON arm
+        // does for app-level writes, proving the envelope crossed and decoded.
+        vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+            capability: action_namespace,
+            correlation_id,
+            reason: write_path_unavailable_reason(self.signer.as_ref()),
+        })]
+    }
+
     /// Build an `[ActionAccepted, UpdateBytes]` pair for a successful
     /// synchronous dispatch. Used by every arm that fans outbound and then
     /// returns the standard acknowledgement + snapshot.
