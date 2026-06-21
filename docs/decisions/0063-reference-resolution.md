@@ -30,7 +30,8 @@
     `refs.*` first: a per-**key** rev inside the resolver so the ADR-0055 manifest
     carries `Changed` / `Cleared` at the **row grain within** `refs.profile` /
     `refs.event`, not whole-map. Every ADR-0055 correctness invariant (D1-D8, HA-1
-    through HA-6) is preserved verbatim and re-stated below as a mandatory gate.
+    through HA-6) is preserved; the `refs.*` row-grain gates are re-stated below as
+    mandatory gates.
 - **Reaffirms:** **ADR-0032** (raw-data projection doctrine). The resolved-ref
   projections carry raw 64-char lowercase hex pubkeys / hex event-ids / `kind:pubkey:d`
   coordinates only — **no `npub` / `nevent` / bech32 forms**. Shells encode bech32 at
