@@ -31,7 +31,7 @@
 
 use super::super::{truncate, Instant, Kernel, OutboundMessage};
 use super::event_key::{parse_event_key, EventTarget, PendingEventClaim};
-use crate::kernel::refs::{EventShape, RefLiveness, RefNamespace};
+use crate::kernel::refs::{EventShape, RefLiveness};
 use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{HintSource, InterestScope, RelayHint};
 
