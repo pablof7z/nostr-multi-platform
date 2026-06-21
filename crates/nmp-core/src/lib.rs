@@ -190,6 +190,10 @@ pub use kernel::{
     read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel, ProfileLiveness,
     KERNEL_BUILTIN_PROJECTION_KEYS,
 };
+// ADR-0063 Lane D — closed typed surface for the `resolve_ref`/`release_ref`
+// seam promoted to the crate root so `nmp-ffi` can carry these types in
+// `ActorCommand::ResolveRef` / `ActorCommand::ReleaseRef`.
+pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
 pub use kernel::pull_cursor::{PullCursorId, PullCursorMode};
 pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};

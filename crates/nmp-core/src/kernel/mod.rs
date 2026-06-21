@@ -263,12 +263,21 @@ mod replay;
 mod replay_tests;
 mod requests;
 pub use requests::ProfileLiveness;
-// ADR-0063 (#1671 Lane B) — kernel-owned `RefResolver` (generalises claim_profile/claim_event).
+// ADR-0063 (#1671 Lane B) — kernel-owned `RefResolver` (generalises
+// claim_profile/claim_event). Lane D promotes the closed typed surface to `pub`
+// for `nmp-ffi`'s `ActorCommand::ResolveRef` (no opaque integer re-decode).
 pub(crate) mod refs;
+pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+// ADR-0063 (#1671) — `RefResolver` tests, split for the 500-LOC ceiling. Named
+// with the `*_tests_*` infix convention so the doctrine D6 test-file exemption
+// applies (the `_tests_` infix marks a file as test-only — see doctrine-lint
+// `d6` classifier).
 #[cfg(test)]
 mod refs_tests_profile;
 #[cfg(test)]
 mod refs_tests_event;
+#[cfg(test)]
+mod refs_tests_key;
 #[cfg(test)]
 mod refs_tests_lifecycle;
 #[cfg(test)]
@@ -1011,28 +1020,18 @@ pub struct Kernel {
     /// the C-ABI channel can be added later mirroring
     /// `actor/commands/raw_event_observer.rs` when an FFI consumer appears.
     event_claim_released_observers: Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
-    /// Cold-start parking queue for `claim_event` calls that arrived
-    /// before any relay socket reached the warm `can_send` state.
-    ///
-    /// Each entry is a `(uri, consumer_id)` pair — the exact arguments
-    /// the host originally passed to `claim_event`. The parked claim has
-    /// already been refcounted into [`Self::event_claims`] (so the
-    /// renderer sees the claim row immediately) but has NOT yet
-    /// registered a `OneShot + Global` interest with the OneshotApi —
-    /// no relay is reachable so there is nowhere to send a REQ.
-    ///
-    /// Drained by [`Kernel::pending_event_claim_requests`] which the
-    /// per-tick view-request dispatcher calls once at least one relay
-    /// is connected. Each parked pair is replayed as a warm
-    /// `claim_event(uri, consumer_id, can_send=true)` — `claim_event`
-    /// is idempotent on the refcount side (the second `insert` on the
-    /// same `(primary_id, consumer_id)` is a no-op) so the replay
-    /// simply registers the OneshotApi interest that the cold-start
-    /// path skipped.
-    ///
-    /// NOT preserved across `Kernel::Reset` (claims are view-derived;
-    /// views re-claim on re-open).
-    pub(super) pending_event_claims: Vec<(String, String)>,
+    /// Cold-start parking queue for event refs that arrived before any relay
+    /// reached the warm `can_send` state. Each entry is a CANONICAL
+    /// [`requests::PendingEventClaim`] (raw key + shape/liveness/force/author/
+    /// relay-hints) — NOT a `(uri, consumer_id)` pair. The claim is already
+    /// refcounted into [`Self::event_claims`] but has registered no OneshotApi
+    /// interest yet (no relay is reachable to send a REQ). Drained by
+    /// [`Kernel::pending_event_claim_requests`] once a relay connects: each target
+    /// is replayed through the canonical raw body (`resolve_event_ref_inner`, not
+    /// the legacy URI front door — that is what lets a raw key parked while cold
+    /// actually resolve, the Lane D coverage-hole fix), idempotent on the refcount
+    /// side. NOT preserved across `Kernel::Reset` (views re-claim on re-open).
+    pub(in crate::kernel) pending_event_claims: Vec<requests::PendingEventClaim>,
     /// Counter for `claim_event` attempts dropped because a single
     /// `primary_id`'s consumer set hit [`MAX_EVENT_CLAIMS_PER_KEY`].
     /// Read-only diagnostic; mirrors `claim_drops_total` for the
