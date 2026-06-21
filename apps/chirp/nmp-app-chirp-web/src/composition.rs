@@ -162,14 +162,9 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     let active_account_slot = reducer.borrow().active_account_handle();
 
     // 2. Declare the home feed from app primary kinds. The app says kind:1;
-    //    NIP-18 wrapper acquisition is derived below the app boundary.
-    if let Ok(acquisition_kinds) =
-        nmp_nip18::try_acquisition_kinds_for_primary(CHIRP_HOME_PRIMARY_KINDS)
-    {
-        let _ = reducer
-            .borrow_mut()
-            .declare_active_follows_feed(acquisition_kinds);
-    }
+    //    the wasm runtime facade derives NIP-18 wrapper acquisition below the
+    //    app-composition boundary before the reducer sees compiled kinds.
+    let _ = runtime.declare_active_follows_feed(CHIRP_HOME_PRIMARY_KINDS);
 
     // 3. Follow set — seeded immediately from the slot.
     let follow_set = ActiveFollowSet::new(Arc::clone(&active_account_slot));

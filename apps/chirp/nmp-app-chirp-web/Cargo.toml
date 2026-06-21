@@ -20,8 +20,6 @@ nmp-substrate-defaults = { path = "../../../crates/nmp-substrate-defaults", defa
 # NIP-10 OP-feed engine.
 # `default-features = false` → nmp-nip57 ureq omitted on wasm32.
 nmp-nip01 = { path = "../../../crates/nmp-nip01", default-features = false }
-# NIP-18 wrapper derivation for app-declared primary feed kinds.
-nmp-nip18 = { path = "../../../crates/nmp-nip18" }
 # ActiveFollowSet (rung 4) — follow predicate for the feed engine.
 # `default-features = false` because nmp-nip02 only needs nmp-core no-native.
 nmp-nip02 = { path = "../../../crates/nmp-nip02", default-features = false }

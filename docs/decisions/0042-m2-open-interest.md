@@ -212,6 +212,19 @@ wrappers as primary feed kinds. Protocol adapters derive wrapper acquisition
 (`6` for kind `1`, `16` for non-kind-1 targets) before the kernel stores the
 concrete acquisition kinds used for subscription compilation.
 
+Relay-set feed declarations are the same primitive with a different
+perspective: the app names primary kinds plus the relay set, and acquisition is
+scoped/routed to those relays without synthesizing `authors`, `#p`, `#a`, or
+`#e` filters. WoT, mute/block, and app-defined quality rules are caller-owned
+admission/ranking/sorting policy layered over the feed mechanics; they are not
+new kernel feed kinds and do not change the primary-kind declaration.
+
+Pagination is admission-aware. `load_older` must make rendered progress, not
+merely consume one acquisition page: if a page contains deleted, muted,
+blocked, superseded, or otherwise non-admitted rows, the pull controller keeps
+advancing through the event log until it either grows the visible window or
+reaches exhaustion under the current perspective.
+
 ```rust
 app.declare_active_follows_feed([1]);
 app.clear_active_follows_feed();

@@ -291,6 +291,12 @@ Feed declarations use primary content kinds and reactive perspectives: `[1]`
 from active-user follows, `[20]` from relay-set plus WoT admission, or any
 primary kind/source pair. Protocol adapters derive repost wrappers (`6` for
 `1`, `16` otherwise) and provenance; components separately claim secondary data.
+Relay-set feeds compile to relay-scoped kind acquisition without `authors`,
+`#p`, `#a`, or `#e` filters unless the app declared a source that requires
+those filters. App-defined admission, ranking, and sorting are feed policy owned
+by the app/protocol composition layer; changing them resets/regrows the window
+under the current store/pull contract instead of leaving rows admitted by stale
+policy on screen.
 
 Rationale vs. opaque `ViewHandle` reference types:
 

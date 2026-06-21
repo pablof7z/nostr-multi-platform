@@ -78,6 +78,12 @@ wrapper acquisition. A non-kind-1 feed declares its primary kind, and generic
 repost wrapper acquisition is kind `16`. The app never declares wrapper kinds as
 primary feed content.
 
+Admission, ranking, and sorting are also composition-owned. A WoT preset,
+relay-set rule, mute/block rule, or app-defined quality function can change
+which already-acquired rows render and how they are ordered without becoming a
+new kernel feed kind. Changing any of those rules is a perspective change: the
+feed window resets and regrows from the current store/pull contract.
+
 The app must not pass a static copy of "the current user's follows" to native
 or to the kernel. It selects a reactive source such as active-user follows.
 The active-follow producer and kernel subscription machinery react to kind `3`,
@@ -105,8 +111,9 @@ duplicate wire subscriptions.
 
 - `nmp-feed` remains a mechanics crate: windows, controllers, cursors,
   provenance containers, and bounded paging.
-- `nmp-core` executes active-user follow acquisition declared by apps/defaults,
-  but owns neither app feed semantics nor primary-kind policy.
+- `nmp-core` stores and executes the adapter-derived acquisition shape declared
+  by apps/defaults, but owns neither app feed semantics nor primary-kind,
+  admission, ranking, or sorting policy.
 - protocol crates derive wrapper kinds and target provenance.
 - app Rust crates choose feed keys, primary kinds, source expressions,
   admission/ranking policy, and row projections.

@@ -153,6 +153,18 @@ perspective-changing event arrives through normal ingest, the Rust owner of the
 perspective recomputes acquisition/admission and the feed window is reset or
 updated from that current fact.
 
+Relay-set feeds are no-author feeds. The declaration names primary kinds plus
+the relays that define the perspective; subscription compilation emits
+kind/relay-scoped acquisition and does not add `authors`, `#p`, `#a`, or `#e`
+filters unless the app explicitly declared that different source shape.
+
+Custom filtering, ranking, and sorting are caller-owned policy. A WoT feed, a
+relay-set feed, and an app-specific "quality" feed can share the same
+acquisition shape while carrying independent admission and ordering closures.
+Changing that policy is a perspective change: reset the window and replay from
+the current store/pull cursor contract instead of leaving rows admitted under
+the old policy on screen.
+
 The feed itself still does not claim secondary data. If a mounted row renders an
 avatar, it opens a profile claim for that pubkey. If a button renders a reply
 count, that relation-count component opens the dependency it needs. If a repost
@@ -160,6 +172,12 @@ row references a missing target, the row/component that wants the target claims
 it. The feed primitive's job is admission, canonical row identity, bounded
 storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
+
+`load_older` is rendered-progress pagination. It may scan past event-log rows
+that are deleted, muted, blocked, superseded, replaced, or rejected by the
+current app admission policy. Those rows advance the cursor but do not satisfy
+the user action; the controller keeps pulling until the visible window grows or
+the current perspective is exhausted.
 
 ## Resetting and replacing a feed on a perspective change
 

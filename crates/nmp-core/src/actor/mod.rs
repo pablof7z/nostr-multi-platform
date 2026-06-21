@@ -126,11 +126,11 @@ pub(crate) use commands::notify_observers;
 // ADR-0062: targeted observer delivery and muted-registration helpers.
 // `notify_observer_by_id` is crate-internal (kernel replay path only).
 // `register_rust_observer_muted` is pub so nmp-ffi can call it.
-// `activate_observer` is native-only (used by the FFI dispatch path).
+// `activate_observer` is also used by the kernel replay path, so it is
+// available on wasm/no-native reducer builds.
+pub use commands::activate_observer;
 pub(crate) use commands::notify_observer_by_id;
 pub use commands::register_rust_observer_muted;
-#[cfg(feature = "native")]
-pub use commands::activate_observer;
 // `KernelEventObserverSlot` and `register_rust_observer` are `pub`
 // unconditionally so `nmp-ffi` and wasm32 composition roots can register
 // observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
