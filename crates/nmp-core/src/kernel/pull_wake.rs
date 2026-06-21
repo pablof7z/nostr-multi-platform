@@ -19,10 +19,15 @@
 //! Step 3b lands the Rust emit, the `PullWake`/`PullWakeBatch` schema, and the
 //! regenerated Swift/Kotlin/TS table accessors. It deliberately does NOT add
 //! per-host typed-decoder glue (Swift `TypedProjectionDecoders`, Android frame
-//! decoder, TS update-frame path), because **no host consumes `nmp.pull.wake`
-//! yet** — the first consumers are the `hl` mirror (step 5) and `load_older`
-//! (step 6). Wiring a decoder for a consumer that does not exist would be
-//! speculative (D5); the host decoder lands with its first consumer.
+//! decoder, TS update-frame path), because **the only consumer of
+//! `nmp.pull.wake` is the EXTERNAL mirror** (the out-of-tree `hl` nostrdb
+//! mirror). In-repo feeds render live via the PUSH projection, and `load_older`
+//! is **scroll-driven, not wake-driven** (a wake-driven UI cursor would re-fire
+//! forever while the user is idle — the false-wake loop §3 avoids), so no
+//! in-repo host consumes the wake. NMP owns the wire contract + Rust decoder
+//! (`decode_pull_wake_batch`) + generated bindings; the external mirror brings
+//! its own host glue. Adding per-platform decoder registration with no
+//! consuming host path would be speculative D5 clutter.
 
 use flatbuffers::FlatBufferBuilder;
 
