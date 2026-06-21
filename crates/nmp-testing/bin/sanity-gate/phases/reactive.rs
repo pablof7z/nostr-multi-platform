@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use nostr::{EventBuilder, JsonUtil, Keys, ToBech32};
 
-use crate::config::{gates, Args, Phase};
+use crate::config::{Args, Phase, gates};
 use crate::driver::DrivenApp;
 use crate::report::{GateRow, SanityReport, Verdict};
 
@@ -43,7 +43,11 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
     let nsec = keys.secret_key().to_bech32().unwrap_or_default();
     let pubkey_hex = keys.public_key().to_hex();
 
-    let app = DrivenApp::launch(Some(&nsec), Some(&pubkey_hex), std::slice::from_ref(&args.relay));
+    let app = DrivenApp::launch(
+        Some(&nsec),
+        Some(&pubkey_hex),
+        std::slice::from_ref(&args.relay),
+    );
     if app
         .wait_until(Duration::from_secs(10), |s| !s.records.is_empty())
         .is_none()
@@ -82,9 +86,10 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
     //     a dropped update never reaches the counter.
     let notes_target = baseline_notes + injected;
     let notes_reached = app
-        .wait_until(Duration::from_millis(gates::WIRE_TO_VISIBLE_GATE_MS as u64), |s| {
-            s.latest().map(|r| r.note_events).unwrap_or(0) >= notes_target
-        })
+        .wait_until(
+            Duration::from_millis(gates::WIRE_TO_VISIBLE_GATE_MS as u64),
+            |s| s.latest().map(|r| r.note_events).unwrap_or(0) >= notes_target,
+        )
         .is_some();
     let final_notes = app.with_state(|s| s.latest().map(|r| r.note_events).unwrap_or(0));
     let notes_dropped = notes_target.saturating_sub(final_notes);
@@ -111,9 +116,10 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
     //     proved no drop.
     let visible_target = baseline_visible + injected;
     let visible_reached = app
-        .wait_until(Duration::from_millis(gates::WIRE_TO_VISIBLE_GATE_MS as u64), |s| {
-            s.peak_visible() >= visible_target
-        })
+        .wait_until(
+            Duration::from_millis(gates::WIRE_TO_VISIBLE_GATE_MS as u64),
+            |s| s.peak_visible() >= visible_target,
+        )
         .is_some();
     let wire_to_visible_ms = t0.elapsed().as_millis() as u64;
     let final_visible = app.with_state(|s| s.peak_visible());
@@ -230,7 +236,30 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
             let _ = nmp_ffi::nmp_app_inject_signed_event_json(app.raw(), c.as_ptr());
         }
     }
-    std::thread::sleep(Duration::from_secs(2));
+    let reinject_settled = app.wait_barrier(Duration::from_secs(5));
+    if !reinject_settled {
+        report.push(GateRow::unmeasured(
+            "reactive-no-duplicate-stored-row",
+            phase,
+            "nmp_app_read_author_event_ids (row COUNT before/after re-inject)",
+            "actor barrier after duplicate re-inject",
+            "barrier ack before row-count read",
+            Verdict::Blocked,
+            "duplicate re-inject commands did not settle before the timeout — cannot assert the \
+             row-count dedup invariant without risking a stale store read",
+        ));
+        report.push(GateRow::unmeasured(
+            "reactive-id-subset",
+            phase,
+            "nmp_app_read_author_event_ids + injected corpus ids",
+            "actor barrier after duplicate re-inject",
+            "seeded rows settled before id-subset read",
+            Verdict::Blocked,
+            "duplicate re-inject commands did not settle before the timeout — cannot reuse a \
+             post-timeout store read for the id-subset assertion",
+        ));
+        return;
+    }
     let rows_after = read_stored_rows();
 
     if rows_before.is_empty() && rows_after.is_empty() {
@@ -258,8 +287,9 @@ pub fn run_reactive(report: &mut SanityReport, args: &Args) {
             )
             .with_note(&format!(
                 "re-injected the identical {injected}-event corpus; stored ROW count \
-                 {}→{} (must not grow — the store dedups by id; a re-injected event adds no row; \
-                 a double-stored row would grow the count and FAIL this gate)",
+                 {}→{} (settled={reinject_settled}; must not grow — the store dedups by id; \
+                 a re-injected event adds no row; a double-stored row would grow the count and \
+                 FAIL this gate)",
                 rows_before.len(),
                 rows_after.len()
             )),

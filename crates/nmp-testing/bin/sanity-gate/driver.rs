@@ -16,21 +16,24 @@
 //! Update frames are captured into a `Mutex<CaptureState>` via the same
 //! `Box::into_raw` ctx pattern ffi-stress uses (`s7_feed_idle.rs`).
 //!
-//! D0: every symbol here is a real production FFI export (the inject_* test
-//! seam is used ONLY by the firehose phase for the local controlled corpus).
+//! D0: app lifecycle, composition, identity, relay, and action symbols here
+//! are real production FFI exports. Test-support symbols are limited to
+//! harness-only injection/read/synchronization seams.
 
-use std::ffi::{c_void, CString};
+use std::collections::HashSet;
+use std::ffi::{CString, c_void};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_app_chirp::{
-    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_open_home_feed,
-    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle,
+    ChirpHandle, nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_register, nmp_app_chirp_unregister,
 };
-use nmp_core::decode_snapshot_envelope;
+use nmp_core::typed_projections::{ACTION_RESULTS_SCHEMA_ID, decode_action_results};
+use nmp_core::{WireProjectionState, decode_snapshot_envelope, decode_snapshot_typed_projections};
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_nsec,
-    nmp_app_start, NmpApp,
+    NmpApp, nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
+    nmp_app_signin_nsec, nmp_app_start,
 };
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 
@@ -55,6 +58,7 @@ pub struct FrameRecord {
 #[derive(Default)]
 pub struct CaptureState {
     pub records: Vec<FrameRecord>,
+    action_terminal_ids: HashSet<String>,
     start: Option<Instant>,
 }
 
@@ -70,7 +74,11 @@ impl CaptureState {
     }
 
     pub fn peak_visible(&self) -> u64 {
-        self.records.iter().map(|r| r.visible_items).max().unwrap_or(0)
+        self.records
+            .iter()
+            .map(|r| r.visible_items)
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn any_connected(&self) -> bool {
@@ -79,7 +87,11 @@ impl CaptureState {
 
     /// Peak raw FFI frame size observed (bytes). Bounded-frame oracle reads this.
     pub fn peak_frame_bytes(&self) -> u64 {
-        self.records.iter().map(|r| r.frame_bytes).max().unwrap_or(0)
+        self.records
+            .iter()
+            .map(|r| r.frame_bytes)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Count of subscriptions in the `open` state on the latest frame.
@@ -88,6 +100,10 @@ impl CaptureState {
             .last()
             .map(|r| r.wire_subs.iter().filter(|(_, s)| s == "open").count())
             .unwrap_or(0)
+    }
+
+    pub fn has_action_terminal(&self, correlation_id: &str) -> bool {
+        self.action_terminal_ids.contains(correlation_id)
     }
 }
 
@@ -116,13 +132,19 @@ extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
         }
         let bytes: &[u8] = unsafe { std::slice::from_raw_parts(payload, payload_len) };
         let at_ms = state.elapsed_ms();
+        for id in action_terminal_ids(bytes) {
+            state.action_terminal_ids.insert(id);
+        }
         if let Ok(env) = decode_snapshot_envelope(bytes) {
             let connected = env
                 .relay_status
                 .as_ref()
                 .map(|s| s.connection == "connected")
                 .unwrap_or(false)
-                || env.relay_statuses.iter().any(|s| s.connection == "connected");
+                || env
+                    .relay_statuses
+                    .iter()
+                    .any(|s| s.connection == "connected");
             let wire_subs = env
                 .wire_subscriptions
                 .iter()
@@ -142,6 +164,24 @@ extern "C" fn capture_cb(ctx: *mut c_void, payload: *const u8, payload_len: usiz
     }
     // Wake any waiter AFTER the lock is released so it can read immediately.
     cx.signal.notify();
+}
+
+fn action_terminal_ids(bytes: &[u8]) -> Vec<String> {
+    let Ok(typed) = decode_snapshot_typed_projections(bytes) else {
+        return Vec::new();
+    };
+    typed
+        .into_iter()
+        .filter(|entry| {
+            entry.state == WireProjectionState::Changed
+                && (entry.key == ACTION_RESULTS_SCHEMA_ID
+                    || entry.schema_id == ACTION_RESULTS_SCHEMA_ID)
+        })
+        .filter_map(|entry| decode_action_results(&entry.payload).ok())
+        .flat_map(|model| model.results.into_iter())
+        .map(|row| row.correlation_id)
+        .filter(|id| !id.is_empty())
+        .collect()
 }
 
 /// A live driven app. Holds the raw FFI handles + the capture ctx; tears them
@@ -231,6 +271,15 @@ impl DrivenApp {
         self.probe
             .recv_until(timeout, || self.with_state(|s| pred(s)))
             .then(|| self.with_state(|s| s.elapsed_ms()))
+    }
+
+    pub fn wait_barrier(&self, timeout: Duration) -> bool {
+        nmp_ffi::nmp_app_wait_barrier(self.app, timeout.as_millis() as u64)
+    }
+
+    pub fn wait_for_action_terminal(&self, correlation_id: &str, timeout: Duration) -> bool {
+        self.wait_until(timeout, |s| s.has_action_terminal(correlation_id))
+            .is_some()
     }
 
     pub fn raw(&self) -> *mut NmpApp {
