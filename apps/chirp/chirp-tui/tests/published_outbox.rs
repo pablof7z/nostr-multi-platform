@@ -90,7 +90,7 @@ fn published_history_selection_renders_detail_without_live_relay() {
                 "id": "account-1",
                 "display_name": "Tester",
                 "npub": "npub1fixture",
-                "signer_label": "local",
+                "signer_kind": "local",
                 "is_active": true
               }
             ],

@@ -647,7 +647,6 @@ fn accounts_enriched_populates_display_name_when_kind0_lands() {
         display_name: None,
         signer_kind: "local".to_string(),
         status: "active".to_string(),
-        signer_label: "nsec".to_string(),
         signer_is_remote: false,
         is_active: true,
         picture_url: None,

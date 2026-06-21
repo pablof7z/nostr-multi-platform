@@ -41,7 +41,6 @@ enum TypedProjectionGlue {
                 pictureUrl: row.hasPictureUrl ? (row.pictureUrl ?? "") : nil,
                 signerIsRemote: row.signerIsRemote,
                 signerKind: row.signerKind ?? "",
-                signerLabel: row.signerLabel ?? "",
                 status: row.status ?? ""
             )
         }
@@ -519,7 +518,6 @@ enum TypedProjectionGlue {
             signerApps: reader.signerApps.map { app in
                 Nip46Onboarding.SignerApp(
                     scheme: app.scheme ?? "",
-                    displayLabel: app.displayLabel ?? "",
                     signerKind: app.signerKind ?? ""
                 )
             },

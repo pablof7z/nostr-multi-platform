@@ -21,7 +21,6 @@ public struct nmp_kernel_SignerApp: FlatBufferTable, FlatbuffersVectorInitializa
 
   private enum VTOFFSET: VOffset {
     case scheme = 4
-    case displayLabel = 6
     case signerKind = 8
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
@@ -29,24 +28,19 @@ public struct nmp_kernel_SignerApp: FlatBufferTable, FlatbuffersVectorInitializa
 
   public var scheme: String? { let o = _accessor.offset(VTOFFSET.scheme.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var schemeSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.scheme.v) }
-  public var displayLabel: String? { let o = _accessor.offset(VTOFFSET.displayLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var displayLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.displayLabel.v) }
   public var signerKind: String? { let o = _accessor.offset(VTOFFSET.signerKind.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var signerKindSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.signerKind.v) }
   public static func startSignerApp(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 3) }
   public static func add(scheme: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: scheme, at: VTOFFSET.scheme.p) }
-  public static func add(displayLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayLabel, at: VTOFFSET.displayLabel.p) }
   public static func add(signerKind: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: signerKind, at: VTOFFSET.signerKind.p) }
   public static func endSignerApp(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createSignerApp(
     _ fbb: inout FlatBufferBuilder,
     schemeOffset scheme: Offset = Offset(),
-    displayLabelOffset displayLabel: Offset = Offset(),
     signerKindOffset signerKind: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_SignerApp.startSignerApp(&fbb)
     nmp_kernel_SignerApp.add(scheme: scheme, &fbb)
-    nmp_kernel_SignerApp.add(displayLabel: displayLabel, &fbb)
     nmp_kernel_SignerApp.add(signerKind: signerKind, &fbb)
     return nmp_kernel_SignerApp.endSignerApp(&fbb, start: __start)
   }
@@ -54,7 +48,6 @@ public struct nmp_kernel_SignerApp: FlatBufferTable, FlatbuffersVectorInitializa
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.scheme.p, fieldName: "scheme", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.displayLabel.p, fieldName: "displayLabel", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.signerKind.p, fieldName: "signerKind", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }

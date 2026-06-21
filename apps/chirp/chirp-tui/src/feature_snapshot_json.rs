@@ -22,7 +22,10 @@ pub(crate) fn accounts_from(projections: &Value) -> Vec<AccountLine> {
             id: string_field(row, "id"),
             display: first_nonempty(row, &["display_name", "displayName", "npub"]),
             npub: string_field(row, "npub"),
-            signer: first_nonempty(row, &["signer_label", "signerLabel", "signer_kind"]),
+            signer: crate::feature_snapshot::signer_label_for_kind(&first_nonempty(
+                row,
+                &["signer_kind", "signerKind"],
+            )),
             active: bool_field(row, "is_active") || bool_field(row, "isActive"),
         })
         .collect()

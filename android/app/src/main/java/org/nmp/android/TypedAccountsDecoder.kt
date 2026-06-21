@@ -146,6 +146,8 @@ object TypedAccountsDecoder {
         npub = row.npub ?: "",
         displayName = if (row.hasDisplayName) row.displayName ?: "" else "",
         status = row.status ?: "",
-        signerLabel = row.signerLabel ?: "",
+        // `signer_label` was removed from the wire (#1712); the model derives it
+        // shell-side from the raw `signerKind` token.
+        signerKind = row.signerKind ?: "",
     )
 }

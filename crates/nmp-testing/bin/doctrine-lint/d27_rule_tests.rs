@@ -110,3 +110,51 @@ fn d27_negative_fixture_clean() {
         stdout
     );
 }
+
+// ─── D27 stale-allow hardening (#1712) ─────────────────────────────────────────
+
+/// The stale-allow fixture (`fixtures/d27/stale_allow.rs`) plants:
+///   - one `// doctrine-allow: D27` marker on a clean raw field (STALE — must
+///     fire a finding), and
+///   - one marker on a genuine banned call (LEGIT suppression — must stay
+///     silent).
+///
+/// Exactly one D27 finding must result, and it must name the stale marker — not
+/// the legitimately-suppressed `to_npub` call.
+#[test]
+fn d27_stale_allow_fixture_fires() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d27_stale");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+
+    let src = workspace.join(fixture_path("d27/stale_allow.rs"));
+    std::fs::copy(&src, tmp.join("stale_allow.rs")).expect("copy stale fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d27-extra-scope",
+        "doctrine_lint_d27_stale",
+    ]);
+
+    assert_eq!(
+        code, 1,
+        "d27 stale-allow must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D27]") && stdout.contains("stale"),
+        "stale-allow fixture must emit a D27 `stale` finding; stdout:\n{}",
+        stdout
+    );
+    // The legitimately-allowed `to_npub` call must remain suppressed: the only
+    // finding is the stale marker, so the suggestion text must not name to_npub.
+    assert_eq!(
+        stdout.matches("error[D27]").count(),
+        1,
+        "exactly one D27 finding (the stale marker) expected; stdout:\n{}",
+        stdout
+    );
+}

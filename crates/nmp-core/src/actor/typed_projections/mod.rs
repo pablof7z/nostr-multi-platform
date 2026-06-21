@@ -164,7 +164,6 @@ pub(crate) fn nip46_onboarding_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
             .into_iter()
             .map(|app| SignerAppRow {
                 scheme: app.scheme,
-                display_label: app.display_label,
                 signer_kind: app.signer_kind,
             })
             .collect(),

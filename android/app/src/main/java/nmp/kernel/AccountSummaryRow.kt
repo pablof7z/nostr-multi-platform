@@ -88,17 +88,6 @@ class AccountSummaryRow : Table() {
         }
     val statusAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
     fun statusInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
-    val signerLabel : String?
-        get() {
-            val o = __offset(16)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val signerLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
-    fun signerLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val signerIsRemote : Boolean
         get() {
             val o = __offset(18)
@@ -132,10 +121,9 @@ class AccountSummaryRow : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createAccountSummaryRow(builder: FlatBufferBuilder, idOffset: Int, npubOffset: Int, hasDisplayName: Boolean, displayNameOffset: Int, signerKindOffset: Int, statusOffset: Int, signerLabelOffset: Int, signerIsRemote: Boolean, isActive: Boolean, hasPictureUrl: Boolean, pictureUrlOffset: Int) : Int {
+        fun createAccountSummaryRow(builder: FlatBufferBuilder, idOffset: Int, npubOffset: Int, hasDisplayName: Boolean, displayNameOffset: Int, signerKindOffset: Int, statusOffset: Int, signerIsRemote: Boolean, isActive: Boolean, hasPictureUrl: Boolean, pictureUrlOffset: Int) : Int {
             builder.startTable(11)
             addPictureUrl(builder, pictureUrlOffset)
-            addSignerLabel(builder, signerLabelOffset)
             addStatus(builder, statusOffset)
             addSignerKind(builder, signerKindOffset)
             addDisplayName(builder, displayNameOffset)
@@ -154,7 +142,6 @@ class AccountSummaryRow : Table() {
         fun addDisplayName(builder: FlatBufferBuilder, displayName: Int) = builder.addOffset(3, displayName, 0)
         fun addSignerKind(builder: FlatBufferBuilder, signerKind: Int) = builder.addOffset(4, signerKind, 0)
         fun addStatus(builder: FlatBufferBuilder, status: Int) = builder.addOffset(5, status, 0)
-        fun addSignerLabel(builder: FlatBufferBuilder, signerLabel: Int) = builder.addOffset(6, signerLabel, 0)
         fun addSignerIsRemote(builder: FlatBufferBuilder, signerIsRemote: Boolean) = builder.addBoolean(7, signerIsRemote, false)
         fun addIsActive(builder: FlatBufferBuilder, isActive: Boolean) = builder.addBoolean(8, isActive, false)
         fun addHasPictureUrl(builder: FlatBufferBuilder, hasPictureUrl: Boolean) = builder.addBoolean(9, hasPictureUrl, false)

@@ -57,7 +57,6 @@ pub struct AccountSummaryRow {
     pub display_name: Option<String>,
     pub signer_kind: String,
     pub status: String,
-    pub signer_label: String, // doctrine-allow: D27 — pending removal by #1677/#1678/#1680/#1681/#1682
     pub signer_is_remote: bool,
     pub is_active: bool,
     pub picture_url: Option<String>,
@@ -90,7 +89,6 @@ pub(crate) fn encode_accounts(model: &AccountsModel) -> Vec<u8> {
                 .map(|value| fbb.create_string(value));
             let signer_kind = fbb.create_string(&row.signer_kind);
             let status = fbb.create_string(&row.status);
-            let signer_label = fbb.create_string(&row.signer_label);
             let picture_url = row
                 .picture_url
                 .as_ref()
@@ -104,7 +102,6 @@ pub(crate) fn encode_accounts(model: &AccountsModel) -> Vec<u8> {
                     display_name,
                     signer_kind: Some(signer_kind),
                     status: Some(status),
-                    signer_label: Some(signer_label),
                     signer_is_remote: row.signer_is_remote,
                     is_active: row.is_active,
                     has_picture_url: row.picture_url.is_some(),
@@ -148,7 +145,6 @@ pub fn decode_accounts(bytes: &[u8]) -> Result<AccountsModel, String> {
                     .then(|| row.display_name().unwrap_or_default().to_string()),
                 signer_kind: row.signer_kind().unwrap_or_default().to_string(),
                 status: row.status().unwrap_or_default().to_string(),
-                signer_label: row.signer_label().unwrap_or_default().to_string(),
                 signer_is_remote: row.signer_is_remote(),
                 is_active: row.is_active(),
                 picture_url: row

@@ -45,8 +45,13 @@ namespace nmp.kernel;
 table SignerApp {
   // Platform URL scheme to probe ("nostrsigner://", "primal://", …).
   scheme:string;
-  // Human-readable name hosts use in detected-signer CTAs.
-  display_label:string;
+  // `display_label` (the English vendor name "Amber"/"Primal"/"Nostr Connect")
+  // was removed from the wire (#1712, D7/D27 — presentation artifact). The raw
+  // `scheme` token is present; shells resolve the brand name from their own
+  // generated signer catalog (`KnownSigners.generated.{swift,kt}`) keyed by
+  // scheme. Slot reserved to preserve vtable order — no break for in-flight
+  // clients.
+  _reserved_was_display_label:string (deprecated);
   // Stable signer-kind token ("nip46" for every entry today).
   signer_kind:string;
 }

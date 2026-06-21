@@ -252,9 +252,11 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             .signer_apps
             .iter()
             .map(|a| {
+                // `display_label` was removed from the wire (#1712, D7/D27); the
+                // raw `scheme` token is enough for the desktop shell, which has
+                // no onboarding-label surface that consumes a brand name.
                 serde_json::json!({
                     "scheme": a.scheme,
-                    "display_label": a.display_label,
                     "signer_kind": a.signer_kind,
                 })
             })
