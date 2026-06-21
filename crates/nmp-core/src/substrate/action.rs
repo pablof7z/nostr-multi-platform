@@ -53,6 +53,79 @@ pub type ActionId = String;
 #[derive(Clone, Debug, Default)]
 pub struct ActionContext {}
 
+/// Fail-closed reasons a typed [`ActionPayload`] decode can reject. Errors are
+/// **data** (D6) — never a panic, never a `Result`/exception across the FFI or
+/// worker boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ActionPayloadDecodeError {
+    /// The buffer's `schema_version` is not the version this crate compiled
+    /// against. The RAW value is reported; the payload is NOT decoded further.
+    /// This is the **before-`start()`** fail-closed tripwire (ADR-0064 §1).
+    SchemaVersionMismatch { found: u32, expected: u32 },
+    /// The buffer is not a valid root for this payload (missing/wrong file
+    /// identifier, truncated/corrupt FlatBuffers, or a missing required field).
+    Malformed { reason: String },
+}
+
+impl core::fmt::Display for ActionPayloadDecodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::SchemaVersionMismatch { found, expected } => write!(
+                f,
+                "action payload schema_version mismatch: {found} (expected {expected})"
+            ),
+            Self::Malformed { reason } => write!(f, "action payload malformed: {reason}"),
+        }
+    }
+}
+
+/// A typed FlatBuffers action payload (ADR-0064 / S3 #1751).
+///
+/// This is the **inbound** typed decode contract for a migrated
+/// [`ActionModule`]: the open [`crate::transport::dispatch_envelope`] carries
+/// the per-crate payload as opaque bytes; the registry adapter decodes those
+/// bytes through [`ActionPayload::decode`] into the module's `Action` type,
+/// then runs `start()`.
+///
+/// # Fail-closed schema_version, BEFORE `start()`
+///
+/// Each payload buffer self-describes its `schema_version` as a field. The
+/// registry reads the RAW value and compares it to [`Self::SCHEMA_VERSION`]
+/// **before** the module's `start()` validator runs — a mismatch is rejected
+/// ([`ActionPayloadDecodeError::SchemaVersionMismatch`]) and the module never
+/// sees the action. The decoder NEVER guesses a version; a mismatch is a
+/// reject, not a multi-version decode (ADR-0064 §1).
+///
+/// # Opaque pre-signed bytes
+///
+/// A payload carrying a pre-signed event (`nmp.publish`'s `Publish` variant)
+/// keeps the canonical NIP-01 event as OPAQUE BYTES — it must round-trip
+/// byte-for-byte so the signature stays valid. The typed table NEVER re-models
+/// the signed event (ADR-0064 / #1751).
+pub trait ActionPayload: Sized {
+    /// Stable identity of this payload schema (e.g. `"nmp.publish"`), carried in
+    /// diagnostics. Distinct from the host-routing `ActionModule::NAMESPACE`,
+    /// though they commonly match.
+    const SCHEMA_ID: &'static str;
+
+    /// The payload schema version this crate compiled against. A buffer carrying
+    /// any other value is rejected before `start()` (fail-closed tripwire).
+    const SCHEMA_VERSION: u32;
+
+    /// Decode typed FlatBuffers `bytes` into the action shape, running the
+    /// fail-closed `schema_version` gate FIRST. Returns
+    /// [`ActionPayloadDecodeError::SchemaVersionMismatch`] on a version trip and
+    /// [`ActionPayloadDecodeError::Malformed`] on any structural error.
+    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError>;
+
+    /// Encode the action shape to finished, file-identified FlatBuffers bytes
+    /// (stamping [`Self::SCHEMA_VERSION`]). The production app-facing path is the
+    /// generated typed builders (ADR-0064 §3); this is the kernel-side primitive
+    /// they (and round-trip tests) build on.
+    #[must_use]
+    fn encode(&self) -> Vec<u8>;
+}
+
 pub trait ActionModule: Send + Sync + 'static {
     const NAMESPACE: &'static str;
 
@@ -77,6 +150,37 @@ pub trait ActionModule: Send + Sync + 'static {
     #[allow(unused_variables)]
     fn start(&self, ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
+    }
+
+    /// Typed FlatBuffers payload decode (ADR-0064 / S3 #1751), the OPT-IN
+    /// counterpart to the serde-JSON `Action` path.
+    ///
+    /// Returns:
+    /// * `None` — this module is **not** typed-payload-capable (the default;
+    ///   the 30+ modules ADR-0064 migrates per-crate stay on JSON until their
+    ///   own stage). The registry's typed-bytes doorway rejects the namespace.
+    /// * `Some(Ok(action))` — the bytes decoded into `Self::Action`.
+    /// * `Some(Err(_))` — fail-closed: a `schema_version` trip (gated BEFORE
+    ///   `start()`) or a malformed buffer. The module never sees the action.
+    ///
+    /// A migrated module overrides this to delegate to
+    /// [`ActionPayload::decode`] on its `Action` type, e.g.:
+    ///
+    /// ```ignore
+    /// fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    ///     Some(<Self::Action as ActionPayload>::decode(bytes))
+    /// }
+    /// ```
+    ///
+    /// This opt-in keeps a single typed-decode SITE (the registry adapter calls
+    /// exactly this method) while letting the migration stay staged: a module
+    /// whose `Action` is e.g. `serde_json::Value` cannot implement
+    /// [`ActionPayload`], and simply leaves this defaulted.
+    #[allow(unused_variables)]
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        None
     }
 
     /// Declare that this module's actions settle ASYNCHRONOUSLY — the

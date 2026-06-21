@@ -4767,6 +4767,7 @@ dependencies = [
 name = "nmp-nip25"
 version = "0.8.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "serde",
  "serde_json",

@@ -49,6 +49,12 @@ mod test_resolver;
 mod tests;
 mod traits;
 mod view;
+// ADR-0064 / S3 (#1751) — typed FlatBuffers payload codec for the `nmp.publish`
+// action (the engine-generic publish noun). The `ActionPayload` impl for
+// `PublishAction` lives here; the pre-signed event is carried as opaque
+// canonical NIP-01 bytes (signature byte-exactness). `pub(crate)` so the
+// registry's typed-dispatch trip tests can build a known-bad-version buffer.
+pub(crate) mod wire;
 
 // Validation helpers called only from native actor command handlers.
 #[cfg(feature = "native")]

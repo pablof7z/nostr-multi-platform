@@ -1,0 +1,23 @@
+namespace nmp.nip25;
+
+// ADR-0064 / S3 (#1751) — typed FlatBuffers payload for the `nmp.nip25.react`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter (S3) decodes against THIS schema, gating `schema_version`
+// BEFORE `start()` (fail-closed on mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip25/src/wire/generated \
+//         crates/nmp-nip25/schema/react.fbs
+
+table ReactPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  target_event_id:string (required);
+  reaction:string (required);
+  // Optional NIP-25 `p` tag author; empty when absent.
+  target_author_pubkey:string;
+}
+
+file_identifier "N25R";
+root_type ReactPayload;

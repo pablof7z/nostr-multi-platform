@@ -44,6 +44,7 @@ use crate::substrate::{
 
 mod erased;
 mod failure;
+mod typed_dispatch;
 
 use erased::{ActionModuleAdapter, ErasedActionModule};
 pub use failure::{ActionExecuteFailure, ActionFailureKind};
@@ -483,3 +484,7 @@ mod tests;
 #[cfg(test)]
 #[path = "action_registry/terminal_correctness_tests.rs"]
 mod terminal_correctness_tests;
+
+#[cfg(test)]
+#[path = "action_registry/typed_dispatch_tests.rs"]
+mod typed_dispatch_tests;
