@@ -314,7 +314,7 @@ pub(super) struct PublishOutboxItem {
     pub(super) kind: u32,
     /// Raw verbatim content of the event being published. The shell formats
     /// this for display (truncation, encrypted-content placeholder, etc.).
-    /// ADR-0032 / doctrine §4.4: presentation formatting lives in the shell,
+    /// ADR-0032 / aim.md §2 #4: presentation formatting lives in the shell,
     /// not in the kernel. Replaces the removed `preview` / `title` /
     /// `system_image` pre-formatted fields.
     pub(super) content: String,
@@ -357,7 +357,7 @@ pub(super) struct PublishOutboxRelay {
 /// The kernel owns the per-status counts; the shell derives any display
 /// strings (headline, subtitle) from these raw counts using its own locale.
 ///
-/// ADR-0032 / doctrine §4.4: presentation formatting lives in the shell.
+/// ADR-0032 / aim.md §2 #4: presentation formatting lives in the shell.
 /// The previously-emitted `title` / `subtitle` pre-formatted English strings
 /// have been removed; shells now compute them from the raw counters.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

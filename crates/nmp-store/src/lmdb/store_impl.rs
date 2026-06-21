@@ -25,6 +25,10 @@ impl EventStore for LmdbEventStore {
         query::get_by_id(&self.inner, id)
     }
 
+    fn peek_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
+        query::peek_by_id(&self.inner, id)
+    }
+
     fn scan_by_author_kind<'a>(
         &'a self,
         author: &PubKey,

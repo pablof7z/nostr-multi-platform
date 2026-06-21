@@ -15,9 +15,10 @@ private const val TAG = "TypedRelayRoleOptionsDecoder"
  * `TypedRelayRoleOptionsDecoder` (`TypedProjectionDecoders.generated.swift`) +
  * `TypedProjectionGlue.relayRoleOptions`.
  *
- * Field-for-field mirror of `RelayRoleOption { value, label, tint, is_default }`
- * preserving producer (picker render) order. No `has_*` companion bools — all
- * three strings are always present.
+ * Field-for-field mirror of `RelayRoleOption { value, tint, is_default }`.
+ * `label` was removed from the wire (#1678, D7); it is now a computed shell
+ * property derived from `value` in `RelayRoleOption`. No `has_*` companion
+ * bools — both strings are always present.
  *
  * Returns `null` when the `KRRO` sidecar is absent / wrong schema /
  * unverifiable, so the typed-only host uses the empty projection default. Fail
@@ -59,9 +60,10 @@ object TypedRelayRoleOptionsDecoder {
         }
     }
 
+    // `label` removed from wire (#1678, D7); `RelayRoleOption.label` is now a
+    // computed shell property derived from `value`.
     private fun mapOption(opt: FbRelayRoleOption): RelayRoleOption = RelayRoleOption(
         value = opt.value ?: "",
-        label = opt.label ?: "",
         tint = opt.tint ?: "",
         isDefault = opt.isDefault,
     )

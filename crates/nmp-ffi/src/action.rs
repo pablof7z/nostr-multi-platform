@@ -269,32 +269,50 @@ pub(super) fn dispatch_action_json(
                     });
                     format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
                 }
-                Err(msg) => {
-                    // An executor that panicked or returned `Err` *after* the
-                    // registry minted a correlation_id orphans that id under
-                    // `MAX_TRACKED_CORRELATIONS` eviction. The host received
-                    // the id (in the error envelope below) but the kernel
-                    // never produced an `action_stages` entry to ACK.
+                Err(failure) if failure.enqueued => {
+                    // #1676 BUG-A — the executor already enqueued an
+                    // `ActorCommand` and then failed (an async-completing
+                    // module that panicked / errored *after* sending). That
+                    // enqueued command OWNS this action's terminal verdict: it
+                    // will settle through the publish engine (or an off-band
+                    // worker) and produce exactly one `action_results` row.
                     //
-                    // Fan the failure into the actor so the kernel records a
-                    // terminal `Failed { reason }` stage under the same
-                    // correlation_id. The host then sees the terminal on its
-                    // very next snapshot tick and ACKs through the normal
-                    // action-stage lifecycle. This is fire-and-forget — the
-                    // send is non-blocking (D8) and a disconnected actor
-                    // channel is a benign no-op (D6).
+                    // Fanning a `RecordActionFailure` in here would record a
+                    // SECOND terminal under the same correlation_id — the
+                    // double-terminal bug. Suppress the fan-in. The action was,
+                    // in fact, accepted-and-enqueued, so report it as accepted
+                    // and deliver the "accepted" observer signal exactly as the
+                    // clean `Ok(())` path does. (A post-enqueue panic is still
+                    // a module bug; the default panic hook keeps it visible.)
+                    app.action_registry.deliver_result(ActionResult {
+                        correlation_id: correlation_id.clone(),
+                        result_json: serde_json::Value::Null,
+                    });
+                    format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
+                }
+                Err(failure) => {
+                    // Nothing was enqueued (the #1676 BUG-B invariant holds:
+                    // a no-executor / sync-`Err` / pre-enqueue panic enqueued
+                    // no command). The fan-in is therefore the SOLE terminal
+                    // for this correlation_id — recording it is required, not a
+                    // duplicate.
+                    //
+                    // The registry minted a correlation_id; without this the
+                    // host's spinner keyed on it would hang. Fan the failure
+                    // into the actor so the kernel records a terminal `Failed {
+                    // reason }` stage + `action_results` row under the same id.
+                    // Fire-and-forget: the send is non-blocking (D8) and a
+                    // disconnected actor channel is a benign no-op (D6).
                     app.send_cmd(nmp_core::ActorCommand::RecordActionFailure {
                         correlation_id: correlation_id.clone(),
-                        reason: msg.clone(),
+                        reason: failure.message.clone(),
                     });
-                    // Return BOTH the correlation_id and the error message:
-                    // the host needs the id to drive its ACK path, the
-                    // message to render a toast. Older hosts that parse
-                    // `correlation_id` first will follow the accepted path
-                    // (which is correct — the failure is communicated
-                    // asynchronously via the recorded `Failed` stage on the
-                    // next tick); newer hosts inspect both fields.
-                    error_json_with_correlation_id(&correlation_id, &msg)
+                    // Return BOTH the correlation_id and the error message: the
+                    // host needs the id to drive its ACK path, the message to
+                    // render a toast. The Swift `DispatchResult.parse` surfaces
+                    // the error (#1676 BUG-C) rather than silently treating the
+                    // presence of a correlation_id as acceptance.
+                    error_json_with_correlation_id(&correlation_id, &failure.message)
                 }
             }
         }
@@ -316,7 +334,7 @@ fn execute_action(
     namespace: &str,
     action_json: &str,
     correlation_id: &str,
-) -> Result<(), String> {
+) -> Result<(), nmp_core::__ffi_internal::ActionExecuteFailure> {
     app.action_registry
         .execute(namespace, action_json, correlation_id, &|cmd| {
             app.send_cmd(cmd);
@@ -366,3 +384,7 @@ mod tests;
 #[cfg(test)]
 #[path = "action/tests_host_op.rs"]
 mod tests_host_op;
+
+#[cfg(test)]
+#[path = "action/terminal_correctness_tests.rs"]
+mod terminal_correctness_tests;

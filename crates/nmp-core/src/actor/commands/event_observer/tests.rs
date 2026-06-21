@@ -177,6 +177,105 @@ fn panicking_rust_observer_isolated_from_siblings() {
     );
 }
 
+// ─── ADR-0062: muted observer + activation tests ─────────────────────────────
+
+/// A muted observer registered via `register_rust_observer_muted` must NOT
+/// fire on `notify_observers` (global fan-out skips inactive registrations).
+#[test]
+fn muted_observer_skipped_by_global_notify() {
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let obs = Arc::new(CountingObserver(AtomicU32::new(0)));
+    register_rust_observer_muted(&slot, obs.clone());
+    notify_observers(&slot, &event());
+    notify_observers(&slot, &event());
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        0,
+        "muted observer must not receive global fan-out events"
+    );
+}
+
+/// `notify_observer_by_id` must reach the muted observer (targeted replay)
+/// regardless of its `active` flag.
+#[test]
+fn notify_observer_by_id_reaches_muted_observer() {
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let obs = Arc::new(CountingObserver(AtomicU32::new(0)));
+    let id = register_rust_observer_muted(&slot, obs.clone());
+    // Global fan-out must NOT reach it.
+    notify_observers(&slot, &event());
+    assert_eq!(obs.0.load(Ordering::SeqCst), 0, "still muted after global notify");
+    // Targeted delivery MUST reach it.
+    let found = notify_observer_by_id(&slot, id, &event());
+    assert!(found, "notify_observer_by_id must return true for known id");
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        1,
+        "targeted delivery must fire even on a muted observer"
+    );
+}
+
+/// `activate_observer` promotes a muted registration into the global fan-out.
+#[test]
+fn activate_observer_joins_global_fanout() {
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let obs = Arc::new(CountingObserver(AtomicU32::new(0)));
+    let id = register_rust_observer_muted(&slot, obs.clone());
+    // Before activation: global fan-out skips.
+    notify_observers(&slot, &event());
+    assert_eq!(obs.0.load(Ordering::SeqCst), 0, "muted before activate");
+    // Activate.
+    let activated = activate_observer(&slot, id);
+    assert!(activated, "activate_observer must return true for a known muted id");
+    // After activation: global fan-out reaches it.
+    notify_observers(&slot, &event());
+    notify_observers(&slot, &event());
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        2,
+        "active observer must receive global fan-out events"
+    );
+}
+
+/// `unregister_observer` removes a muted registration (idempotent with active).
+#[test]
+fn unregister_removes_muted_observer() {
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let obs = Arc::new(CountingObserver(AtomicU32::new(0)));
+    let id = register_rust_observer_muted(&slot, obs.clone());
+    // Targeted delivery before unregister works.
+    notify_observer_by_id(&slot, id, &event());
+    assert_eq!(obs.0.load(Ordering::SeqCst), 1, "targeted delivery worked");
+    // Unregister.
+    unregister_observer(&slot, id);
+    // Targeted delivery after unregister returns false.
+    let found = notify_observer_by_id(&slot, id, &event());
+    assert!(!found, "notify_observer_by_id must return false for removed id");
+    assert_eq!(obs.0.load(Ordering::SeqCst), 1, "count must not change after unregister");
+}
+
+/// A panicking targeted observer must be isolated — other observers are unaffected
+/// and the return value is still `true` (registration was found; D6).
+#[test]
+fn panicking_targeted_observer_isolated() {
+    struct Boom;
+    impl KernelEventObserver for Boom {
+        fn on_kernel_event(&self, _event: &KernelEvent) {
+            panic!("targeted observer panics");
+        }
+    }
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let boom_id = register_rust_observer_muted(&slot, Arc::new(Boom));
+    // Must not propagate the panic; returns true (registration found).
+    let found = notify_observer_by_id(&slot, boom_id, &event());
+    assert!(found, "notify_observer_by_id returns true even when observer panics");
+}
+
 #[test]
 fn mixed_rust_and_c_observers_both_fire() {
     let _g = SERIAL.lock().unwrap();

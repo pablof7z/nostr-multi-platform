@@ -58,15 +58,12 @@ pub struct AndroidSpec {
     pub package_name: String,
     #[serde(default)]
     pub content_authority: Option<String>,
-    pub install_hint: String,
 }
 
 /// iOS detection mechanics for one signer app.
 #[derive(Debug, Deserialize)]
 pub struct IosSpec {
     pub url_scheme: String,
-    #[allow(dead_code)]
-    pub install_hint: String,
 }
 
 // ── Output targets (relative to the repo root, the codegen cwd) ───────────────
@@ -196,7 +193,6 @@ pub fn render_kotlin_known_signers(apps: &[SignerApp], package: &str) -> String 
         out.push_str(&format!("        intentScheme = \"{}\",\n", esc(&android.intent_scheme)));
         out.push_str(&format!("        contentAuthority = {content_authority},\n"));
         out.push_str(&format!("        packageName = \"{}\",\n", esc(&android.package_name)));
-        out.push_str(&format!("        installHint = \"{}\",\n", esc(&android.install_hint)));
         out.push_str("    ),\n");
     }
     out.push_str(")\n");

@@ -33,9 +33,14 @@ struct ClaimedEventDto: Decodable, Equatable {
 /// (D0 thin-shell; closes the EmbedHost D0 violation). This is also what fixes
 /// the #1299 inverted `display_name` precedence: the kernel's NIP-01/24-correct
 /// resolution is authoritative; Swift no longer re-parses kind:0 metadata.
+/// Conforms to `EmbedEnvelopeSource` (owned by `content-kind-registry`'s
+/// `EmbedHostEnvironment.swift`) so `NostrContentView` reads resolved envelopes
+/// through the registry seam. The `embedEnvelopeSource` / `embedClaimSink` /
+/// `nostrKindRegistry` environment keys live in that registry component — this
+/// host no longer declares its own duplicates (F-CR-04).
 @MainActor
 @Observable
-final class EmbedHost {
+final class EmbedHost: EmbedEnvelopeSource {
     private(set) var envelopesByPrimaryID: [String: EmbeddedEventEnvelope] = [:]
     var count: Int { envelopesByPrimaryID.count }
 
@@ -54,31 +59,5 @@ final class EmbedHost {
     func envelopeForURI(_ uri: String) -> EmbeddedEventEnvelope? {
         if let direct = envelopesByPrimaryID[uri] { return direct }
         return envelopesByPrimaryID.values.first { $0.uri == uri }
-    }
-}
-
-// MARK: - Environment keys
-
-private struct EmbedHostKey: EnvironmentKey {
-    static let defaultValue: EmbedHost? = nil
-}
-private struct EmbedClaimSinkKey: EnvironmentKey {
-    static let defaultValue: EventClaimSinkProtocol? = nil
-}
-private struct NostrKindRegistryKey: EnvironmentKey {
-    static let defaultValue: NostrKindRegistry? = nil
-}
-extension EnvironmentValues {
-    var embedHost: EmbedHost? {
-        get { self[EmbedHostKey.self] }
-        set { self[EmbedHostKey.self] = newValue }
-    }
-    var embedClaimSink: EventClaimSinkProtocol? {
-        get { self[EmbedClaimSinkKey.self] }
-        set { self[EmbedClaimSinkKey.self] = newValue }
-    }
-    var nostrKindRegistry: NostrKindRegistry? {
-        get { self[NostrKindRegistryKey.self] }
-        set { self[NostrKindRegistryKey.self] = newValue }
     }
 }

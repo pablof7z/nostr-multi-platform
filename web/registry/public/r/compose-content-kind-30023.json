@@ -5,7 +5,7 @@
   "description": "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author byline.",
   "dependencies": [],
   "registryDependencies": [
-    "compose-content-core"
+    "compose-content-kind-registry"
   ],
   "files": [
     {

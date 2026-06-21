@@ -39,9 +39,8 @@ fn follow_feed_interest_id(kinds: &BTreeSetInner<u32>) -> InterestId {
 /// (`InterestLifecycle::Tailing`, `InterestScope::Global`).
 ///
 /// `nmp-core` does not know which kinds belong to the host's app concept — the
-/// `kinds` argument is supplied by the host through
-/// `ActorCommand::OpenContactFeed { kinds }` (D0: the substrate
-/// carries no app-specific social knowledge).
+/// `kinds` argument is supplied by the app/defaults active-follows declaration
+/// (D0: the substrate carries no app-specific social knowledge).
 ///
 /// No `limit` (#1497 amendment 5): the feed already windows via `nmp-feed`, and
 /// relays send what they choose, so a per-request limit is not load protection —
@@ -95,8 +94,8 @@ impl Kernel {
         }
         self.follow_feed_interest_ids.clear();
 
-        // D0: callers supply compiled acquisition kinds for the
-        // contact-list-authors subscription via `ActorCommand::OpenContactFeed { kinds }`.
+        // D0: callers supply compiled acquisition kinds through the
+        // active-follows feed declaration.
         // An empty `follow_feed_kinds` means the subscription is
         // NOT active — withdraw any existing interests (done above) and return
         // without registering. `nmp-core` never hardcodes a kind set here.
@@ -225,10 +224,9 @@ impl Kernel {
     /// current follow set in the capability-owned contacts cache
     /// (`Arc<dyn ContactsLookup>`).
     ///
-    /// Called by `open_contact_feed()` (the `ActorCommand::OpenContactFeed`
-    /// handler) so that switching screens back to the home feed re-confirms
-    /// the M2 interest set is populated under the compiled acquisition
-    /// `follow_feed_kinds`.
+    /// Called by the active-follows declaration path so that app/defaults
+    /// registration and perspective changes re-confirm the M2 interest set is
+    /// populated under the compiled acquisition `follow_feed_kinds`.
     ///
     /// T140 (codex finding #4): empty / no-cached-follows must NOT no-op —
     /// that left the *previous* account's `follow_feed_interest_ids` and
@@ -238,9 +236,9 @@ impl Kernel {
     /// the trigger drives `drain_tick` to emit the CLOSE diff for the
     /// now-withdrawn subs. Calling it unconditionally is the correct CLEAR
     /// semantics.
-    /// Compiled-acquisition kinds setter for the contact-feed subscription.
+    /// Compiled-acquisition kinds setter for the active-follows subscription.
     ///
-    /// Callers use `ActorCommand::OpenContactFeed { kinds }` to supply the
+    /// Callers use `ActorCommand::DeclareActiveFollowsFeed` to supply the
     /// compiled acquisition kinds the active account's follow-set REQ should
     /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
     /// policy belong to the host's app concept; the substrate just stores and

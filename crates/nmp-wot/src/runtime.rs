@@ -214,6 +214,23 @@ impl WotBootstrapRuntime {
         self.state.lock().ok().map(|state| state.graph.stats())
     }
 
+    /// Return second-degree candidates ranked by mutual-follow count.
+    ///
+    /// Delegates to [`WotGraph::ranked_second_degree_candidates`]; see its
+    /// documentation for the exact ranking semantics. Returns `None` on a
+    /// poisoned lock (not on an empty graph or absent account).
+    #[must_use]
+    pub fn ranked_second_degree_candidates(
+        &self,
+        viewer: &str,
+        limit: usize,
+    ) -> Option<Vec<(String, usize)>> {
+        self.state
+            .lock()
+            .ok()
+            .map(|state| state.graph.ranked_second_degree_candidates(viewer, limit))
+    }
+
     fn active_pubkey(&self) -> Option<String> {
         // Identity straight from the pubkey slot — already a hex string, so no
         // keypair derivation. `None` on a poisoned lock or no signed-in account.

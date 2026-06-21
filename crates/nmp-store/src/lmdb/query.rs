@@ -76,6 +76,35 @@ pub(super) fn get_by_id(
     )))
 }
 
+/// Pure point-read — MUST NOT stamp the LRU access counter or open a write txn.
+///
+/// Uses a read-only transaction throughout. Returns `Ok(None)` if the event is
+/// absent or tombstoned. Does not call `gc::lru_stamp` — this read is invisible
+/// to GC victim selection.
+pub(super) fn peek_by_id(
+    inner: &Arc<Inner>,
+    id: &EventId,
+) -> Result<Option<StoredEvent>, StoreError> {
+    let txn = inner
+        .lmdb
+        .read_txn()
+        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
+    if tombstones::get(inner.tombstones, &txn, id)?.is_some() {
+        return Ok(None);
+    }
+    let Some(borrow) = inner
+        .lmdb
+        .get_event_by_id(&txn, id)
+        .map_err(|e| StoreError::Io(format!("get: {e}")))?
+    else {
+        return Ok(None);
+    };
+    let owned: Event = borrow.into_owned();
+    let raw = conv::nostr_to_raw(&owned)?;
+    // No lru_stamp — this read is invisible to GC victim selection.
+    Ok(Some(conv::stored_from_raw(raw, /* received_at_ms */ 0)))
+}
+
 // ─── Scans ───────────────────────────────────────────────────────────────────
 
 fn run_filter(

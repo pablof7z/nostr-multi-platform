@@ -76,13 +76,15 @@ enum TypedProjectionGlue {
     /// Map the typed `relay_role_options` sidecar (`KRRO` /
     /// `nmp_kernel_RelayRoleOptionsSnapshot`) to the `[RelayRoleOption]` the JSON
     /// `projections.relay_role_options` path yields. Field-for-field copy of the
-    /// four-field rows (`value`, `label`, `tint`, `isDefault`), in the producer's
+    /// three-field rows (`value`, `tint`, `isDefault`), in the producer's
     /// picker render order.
+    ///
+    /// `label` was removed from the wire (#1678, D7); `RelayRoleOption.label`
+    /// is now a computed property that maps `value` → English label in the shell.
     static func relayRoleOptions(_ reader: nmp_kernel_RelayRoleOptionsSnapshot) -> [RelayRoleOption] {
         reader.options.map { row in
             RelayRoleOption(
                 isDefault: row.isDefault,
-                label: row.label ?? "",
                 tint: row.tint ?? "",
                 value: row.value ?? ""
             )
@@ -94,7 +96,7 @@ enum TypedProjectionGlue {
     /// Map the typed `outbox_summary` sidecar (`KOXS` /
     /// `nmp_kernel_OutboxSummarySnapshot`) to the `OutboxSummary` the JSON
     /// `projections.outbox_summary` path yields. Single-table field-for-field
-    /// copy of the raw per-status counters. ADR-0032 / doctrine §4.4:
+    /// copy of the raw per-status counters. ADR-0032 / aim.md §2 #4:
     /// `title` / `subtitle` removed from the wire; the shell computes them.
     static func outboxSummary(_ reader: nmp_kernel_OutboxSummarySnapshot) -> OutboxSummary {
         OutboxSummary(
@@ -116,7 +118,7 @@ enum TypedProjectionGlue {
     /// `relayReason` is `skip_serializing_if = "String::is_empty"` on the wire —
     /// the JSON path drops the key (decoded as `""`); the buffer carries an empty
     /// string, so both paths yield the same `""` (parity-preserving).
-    /// ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`, `systemImage`
+    /// ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`, `systemImage`
     /// removed from the wire; the shell computes them (see helpers in
     /// `NotificationsView+OutboxRow.swift`).
     static func publishOutbox(_ reader: nmp_kernel_PublishOutboxSnapshot) -> [PublishOutboxItem] {
@@ -559,7 +561,8 @@ enum TypedProjectionGlue {
         logicalInterests: FlatbufferVector<nmp_transport_LogicalInterestStatus>,
         wireSubscriptions: FlatbufferVector<nmp_transport_WireSubscriptionStatus>,
         logs: FlatbufferVector<String?>,
-        lastErrorToast: String?
+        lastErrorToast: String?,
+        lastErrorCategory: String?
     ) -> TypedSnapshotEnvelope {
         TypedSnapshotEnvelope(
             rev: rev,
@@ -569,7 +572,8 @@ enum TypedProjectionGlue {
             logicalInterests: logicalInterests.map(snapshotLogicalInterest),
             wireSubscriptions: wireSubscriptions.map(snapshotWireSubscription),
             logs: logs.map { $0 ?? "" },
-            lastErrorToast: lastErrorToast
+            lastErrorToast: lastErrorToast,
+            lastErrorCategory: lastErrorCategory
         )
     }
 
@@ -701,12 +705,12 @@ enum TypedProjectionGlue {
     /// The Rust projection sends RAW key-package state (`published`/`ageSecs`/
     /// `stale`/`isRegistered`); the shell derives the subtitle / action-label /
     /// age string itself (aim.md §2 — presentation formatting lives in the shell).
-    /// The free-form metadata fallbacks `displayName`/`initials`/`invitesChipLabel`
-    /// are still Rust-owned (empty-name fallbacks, not banned formatters). Every
-    /// `has_*` companion bool reproduces the JSON `null`-when-`None` semantics:
-    /// `unreadCount`/`lastMsgAt` (`UInt32?`/`UInt64?`), `dTag`/`ageSecs`
-    /// (`String?`/`UInt64?`),
-    /// `invitesChipLabel` (`String?`) are `nil` when the companion is `false`,
+    /// Presentation fallbacks (`displayName`/`initials` for groups,
+    /// `displayName` for pending-welcomes, `invitesChipLabel` and
+    /// `displayLabel`) are now shell-computed from raw wire counts/names
+    /// (schema v4 — aim.md §2). Every `has_*` companion bool reproduces the
+    /// JSON `null`-when-`None` semantics: `unreadCount`/`lastMsgAt`
+    /// (`UInt32?`/`UInt64?`), `dTag`/`ageSecs` (`String?`/`UInt64?`),
     /// byte-identical to the JSON path. The wire's `orphanedCommitCount` /
     /// `keyringUnavailable` diagnostics are NOT carried by the Chirp domain type;
     /// the JSON `Decodable` drops them too (field-subset, not divergence). A
@@ -725,8 +729,6 @@ enum TypedProjectionGlue {
                 MarmotGroup(
                     idHex: g.idHex ?? "",
                     name: g.name ?? "",
-                    displayName: g.displayName ?? "",
-                    initials: g.initials ?? "",
                     members: g.members.map { $0 ?? "" },
                     memberCount: g.memberCount,
                     unreadCount: g.hasUnreadCount ? g.unreadCount : nil,
@@ -735,16 +737,14 @@ enum TypedProjectionGlue {
             },
             pendingWelcomes: reader.pendingWelcomes.map {
                 MarmotPendingWelcome(idHex: $0.idHex ?? "", groupName: $0.groupName ?? "",
-                                     displayName: $0.displayName ?? "", inviterNpub: $0.inviterNpub ?? "")
+                                     inviterNpub: $0.inviterNpub ?? "")
             },
             keyPackage: keyPackage,
             cachedKpPubkeys: reader.cachedKpPubkeys.map { $0 ?? "" },
-            invitesChipLabel: reader.hasInvitesChipLabel ? (reader.invitesChipLabel ?? "") : nil,
             isRegistered: reader.isRegistered,
             pendingOps: reader.pendingOps.map { op in
                 MarmotPendingOp(correlationId: op.correlationId ?? "", opTag: op.opTag ?? "",
-                                missingCount: op.missingCount, displayLabel: op.displayLabel ?? "",
-                                ageSecs: op.ageSecs)
+                                missingCount: op.missingCount, ageSecs: op.ageSecs)
             },
             lastOpError: reader.lastOpError.map { e in
                 MarmotLastOpError(op: e.op ?? "", reason: e.reason ?? "",

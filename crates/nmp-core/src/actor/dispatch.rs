@@ -1011,13 +1011,14 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::OpenContactFeed { kinds } => {
-            let outbound = commands::open_contact_feed(ctx.identity, ctx.kernel, kinds);
+        ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds } => {
+            let outbound =
+                commands::declare_active_follows_feed(ctx.identity, ctx.kernel, acquisition_kinds);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::CloseContactFeed => {
-            let outbound = commands::close_contact_feed(ctx.identity, ctx.kernel);
+        ActorCommand::ClearActiveFollowsFeed => {
+            let outbound = commands::clear_active_follows_feed(ctx.identity, ctx.kernel);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -1108,6 +1109,15 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::ShowErrorToken { token } => {
+            // issue #1682 — a structured error token from an off-actor worker
+            // thread (it holds only a `CommandSender`). Route to the kernel so
+            // both the machine code (`last_error_category`) and the fallback
+            // prose (`last_error_toast`) become observable snapshot state.
+            ctx.kernel.set_last_error_token(&token);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::MarkChangedSinceEmit => {
             ctx.kernel.mark_changed_since_emit();
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -1142,10 +1152,17 @@ pub(super) fn dispatch_command(
                     KeyringStatus::NotFound | KeyringStatus::Error => {
                         // D6 — surface as a toast so the user can see the
                         // Keychain write failed (session may not persist).
-                        ctx.kernel.set_last_error_toast(Some(format!(
-                            "keyring write failed for account {account_id}: {:?}",
-                            result.status
-                        )));
+                        ctx.kernel.set_last_error_token(
+                            &crate::ui_token::UiToken::error(
+                                crate::ui_token::codes::KEYRING_WRITE_FAILED,
+                                format!(
+                                    "keyring write failed for account {account_id}: {:?}",
+                                    result.status
+                                ),
+                            )
+                            .with_subject(account_id.to_string())
+                            .with_detail(format!("{:?}", result.status)),
+                        );
                         maybe_emit_after_dispatch(
                             ctx.kernel,
                             *ctx.running,
@@ -1405,6 +1422,36 @@ pub(super) fn dispatch_command(
                 // ensure_sub + trigger-on-newly-installed live in the kernel
                 // method so the open/close arms cannot drift on the invariant.
                 let _ = ctx.kernel.open_interest_sub(identity, interest);
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::OpenObservedInterest {
+            filter_json,
+            consumer_id,
+            scope,
+            observer_id,
+            replay_shapes,
+            replay_limit,
+        } => {
+            // ADR-0062 — open interest + catch-up replay to a single muted
+            // observer, then activate it. Reuses the same filter→interest
+            // parsing as OpenInterest; D6: a malformed filter is a silent
+            // no-op (the FFI shim already surfaced a toast before sending).
+            if let Some((identity, interest)) =
+                build_open_interest(&filter_json, &consumer_id, scope)
+            {
+                let replay = crate::kernel::ObserverReplayRequest {
+                    observer_id,
+                    shapes: replay_shapes,
+                    limit: replay_limit,
+                };
+                let _ = ctx.kernel.open_interest_with_observer_replay(
+                    identity,
+                    interest,
+                    replay,
+                    "open-observed-interest",
+                );
             }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())

@@ -173,6 +173,7 @@ pub mod tags;
 // from here so `performance.now()` / `Date.now()` back them on wasm32
 // (where the `std` implementations abort). See `time.rs` for rationale.
 pub mod time;
+pub mod ui_token;
 mod update_envelope;
 pub mod util;
 
@@ -360,7 +361,8 @@ pub mod __ffi_internal {
     pub use crate::actor::{
         has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
         new_signer_state_slot, nostrconnect_relay_url,
-        register_c_observer, register_rust_observer,
+        activate_observer, register_c_observer, register_rust_observer,
+        register_rust_observer_muted,
         run_actor_with_observers, unregister_observer,
         ActorChannels, ActorConfigSources, ActorRuntimeSlots,
         KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
@@ -383,8 +385,8 @@ pub mod __ffi_internal {
     };
     pub use crate::kernel::{
         default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,
-        new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
-        SnapshotProjectionSlot,
+        new_snapshot_projection_slot, routing_trace, ActionExecuteFailure, ActionFailureKind,
+        ActionRegistry, LifecyclePhase, SnapshotProjectionSlot,
     };
     // ADR-0037: the typed-projection closure type; `nmp-ffi` reaches it
     // through this internal surface to type the

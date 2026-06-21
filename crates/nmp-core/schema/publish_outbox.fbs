@@ -26,7 +26,7 @@ namespace nmp.kernel;
 
 // One target relay of an in-flight publish — a field-for-field mirror of one
 // SERIALISED `PublishOutboxRelay`.
-// ADR-0032 / doctrine §4.4: `status_label` and `attempt_label` pre-formatted
+// ADR-0032 / aim.md §2 #4: `status_label` and `attempt_label` pre-formatted
 // English strings removed; shells derive them from the raw `status` token and
 // `attempt` counter.
 table PublishOutboxRelay {
@@ -47,7 +47,7 @@ table PublishOutboxRelay {
 
 // One in-flight publish — a field-for-field mirror of one SERIALISED
 // `PublishOutboxItem`.
-// ADR-0032 / doctrine §4.4: `title`, `preview`, `status_label`, `system_image`
+// ADR-0032 / aim.md §2 #4: `title`, `preview`, `status_label`, `system_image`
 // pre-formatted English/SF-Symbol strings removed; `content` (raw event content)
 // added so shells can render their own kind-appropriate preview.
 table PublishOutboxItem {

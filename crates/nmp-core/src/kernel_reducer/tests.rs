@@ -284,7 +284,7 @@ fn idle_tick_does_not_set_dirty_flag() {
 //                       is called before returning so frames go out against
 //                       already-connected relays immediately).
 // • `close_interest`  — last-owner removal emits CLOSE inline.
-// • `set_follow_feed_kinds` — total (D6: empty or non-empty, no panic).
+// • `declare_active_follows_feed` — total (D6: empty or non-empty, no panic).
 // • `set_active_account`   — total (D6: valid or empty pubkey, no panic);
 //                            sets active_account projection and returns
 //                            outbound without panicking.
@@ -356,20 +356,20 @@ fn open_interest_malformed_filter_is_silent_no_panic() {
 }
 
 #[test]
-fn set_follow_feed_kinds_is_total() {
+fn declare_active_follows_feed_is_total() {
     // D6 — total: empty set, populated set, called before or after
     // start/relay-connect must never panic.
     let mut r = KernelReducer::new();
     // Before start / relay connect — must not panic.
-    let _ = r.set_follow_feed_kinds(BTreeSet::new());
-    let _ = r.set_follow_feed_kinds([1u32, 6u32].into_iter().collect());
+    let _ = r.declare_active_follows_feed(BTreeSet::new());
+    let _ = r.declare_active_follows_feed([1u32, 6u32].into_iter().collect());
 
     // After start + relay connected — must not panic.
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
     let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
-    let _ = r.set_follow_feed_kinds([1u32, 6u32].into_iter().collect());
-    let _ = r.set_follow_feed_kinds(BTreeSet::new());
+    let _ = r.declare_active_follows_feed([1u32, 6u32].into_iter().collect());
+    let _ = r.declare_active_follows_feed(BTreeSet::new());
     // Pass: no panic.
 }
 
@@ -441,4 +441,3 @@ fn tick_invokes_claim_expansion_drain_without_panicking_with_relay() {
     let _out = r.tick();
     // Pass: no panic is the primary assertion.
 }
-

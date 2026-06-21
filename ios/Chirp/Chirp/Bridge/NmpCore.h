@@ -81,18 +81,27 @@ void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 //
-// ADR-0042 amendment (2026-06-12) — contact-feed subscription seam.
+// Legacy compatibility shim for the active-follows feed declaration.
+// Current Rust app/defaults code uses NmpApp::declare_active_follows_feed.
 // `kinds_json` is a JSON array of primary unsigned 32-bit event kinds, e.g.
-// `"[1]"`. The host declares primary feed policy; protocol adapters derive
-// wrapper acquisition (D0).
+// `"[1]"`; protocol adapters derive wrapper acquisition (D0).
 // An empty array `"[]"` is a legitimate clear (same effect as close).
 // A malformed or non-array value surfaces a diagnostic toast (D6).
 // D8: fire-and-forget; the actor processes the command asynchronously.
 void nmp_app_open_contact_feed(void *app, const char *kinds_json);
-// ADR-0042 amendment (2026-06-12) — withdraw all follow-feed M2 interests
-// from the lifecycle registry; `drain_lifecycle_tick` emits CLOSE frames for
-// any live REQs on the next idle tick. D6: a null `app` is a silent no-op.
+// Legacy compatibility shim for clearing the active-follows feed declaration.
+// Withdraws all follow-feed M2 interests from the lifecycle registry;
+// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next idle
+// tick. D6: a null `app` is a silent no-op.
 void nmp_app_close_contact_feed(void *app);
+
+// Live "following count" read for the host profile header — the number of
+// distinct hex-valid `p` tags in the active account's latest kind:3, read
+// synchronously from the kernel's published store (read-your-writes, ADR-0057).
+// Returns >= 0 when a kind:3 exists (0 for an explicit empty list), or -1 when
+// there is no active account / no kind:3 yet / a lock is poisoned. Hosts render
+// -1 as 0; the value is kept distinct so callers can tell "no list yet" apart.
+int64_t nmp_app_active_following_count(void *app);
 
 // T66a — identity / publish / multi-account / relay-edit. None return a
 // value; outcomes (incl. validation failures) arrive via the snapshot's

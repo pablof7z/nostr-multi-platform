@@ -192,7 +192,7 @@ fn sub_leak(report: &mut SanityReport, phase: &str, args: &Args) {
     };
     let baseline_open = app.with_state(|s| s.latest_open_sub_count());
 
-    // Open the contact feed (kind:1) — this registers wire subscriptions.
+    // Open the active-follows feed through the legacy C shim.
     let kinds = std::ffi::CString::new("[1]").unwrap();
     nmp_ffi::nmp_app_open_contact_feed(app.raw(), kinds.as_ptr());
     let opened = app
@@ -204,11 +204,11 @@ fn sub_leak(report: &mut SanityReport, phase: &str, args: &Args) {
         report.push(GateRow::unmeasured(
             "resilience-sub-leak",
             phase,
-            "nmp_app_open_contact_feed + decode_snapshot_envelope",
+            "legacy active-follows open shim + decode_snapshot_envelope",
             "SnapshotEnvelope.wire_subscriptions[state=open]",
             "no dangling open sub after close",
             Verdict::SkipRelayMiss,
-            "contact feed opened no wire subscription within 15s (relay did not accept the REQ) \
+            "active-follows feed opened no wire subscription within 15s (relay did not accept the REQ) \
              — cannot assert the leak invariant this run; SKIP LOUD (never fake green)",
         ));
         return;
@@ -229,7 +229,7 @@ fn sub_leak(report: &mut SanityReport, phase: &str, args: &Args) {
         GateRow::max(
             "resilience-sub-leak",
             phase,
-            "nmp_app_close_contact_feed + decode_snapshot_envelope",
+            "legacy active-follows close shim + decode_snapshot_envelope",
             "SnapshotEnvelope.wire_subscriptions[state=open] after close",
             leaked as f64,
             0.0,

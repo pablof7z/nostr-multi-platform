@@ -20,7 +20,7 @@ pub const COMPONENTS: &[&str] = &[
     "content-mention-chip",
     "content-minimal",
     "content-media-grid",
-    "content-quote-card",
+    "content-kind-registry",
     "embed-article",
     "embed-profile",
     "embed-note",
@@ -102,9 +102,9 @@ const CONTENT_COMPONENTS: &[ComponentSpec] = &[
         description: "Inline media projected from content",
     },
     ComponentSpec {
-        id: "content-quote-card",
-        label: "NostrQuoteCard",
-        description: "Embedded event quote card",
+        id: "content-kind-registry",
+        label: "EmbeddedEvent",
+        description: "Kind-dispatched embedded event (ADR-0034)",
     },
 ];
 

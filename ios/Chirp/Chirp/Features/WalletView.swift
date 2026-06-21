@@ -149,16 +149,14 @@ struct WalletView: View {
     // an otherwise restrained wallet screen, so it was removed (iOS polish
     // pass, docs/design/ios-polish-checklist.md).
 
-    // V-23 thin-shell: `shortNpub` formerly lived here. The kernel now
-    // projects `wallet_npub_short` (see `WalletStatus` in
-    // `crates/nmp-core/src/actor/commands/wallet.rs`), and the connected
-    // section binds `status.walletNpubShort` verbatim. No Swift-side display
-    // formatting remains in this view.
+    // ADR-0032 / #623: the former P5 violations (raw-status `.capitalized`,
+    // `== "connecting"` branch, `statusColor` switch on wire strings) were
+    // eliminated; `statusLabel` / `statusTone` are derived locally from the
+    // raw `status` token (see `WalletStatusTone`).
     //
-    // ADR-0032 / #623: the three former P5 violations (raw-status `.capitalized`,
-    // `== "connecting"` branch, `statusColor` switch on wire strings) are now
-    // eliminated. The view binds `status.statusLabel` and maps
-    // `status.statusTone` → `Color` — the only shell concern remaining.
+    // #1678 / D7: `wallet_npub_short` was removed from the wire. The
+    // connected section uses `status.walletPubkeyHex.shortHex` (a Swift
+    // shell-side abbreviation of the raw 64-char hex field).
 }
 
 // ── Connect Wallet Sheet ───────────────────────────────────────────────────

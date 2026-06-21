@@ -598,7 +598,7 @@ final class KernelHandle {
     /// Generic dispatch entry-point keyed on a kernel-supplied
     /// `ProfileDispatchSpec`. The shell does NOT pick the namespace or build
     /// the body — Rust authored both inside `profile_action_for` (aim.md
-    /// §4.4: writes flow through registered ActionModules, the shell binds
+    /// §2 #4: writes flow through registered ActionModules, the shell binds
     /// blindly). `bodyJson` is the verbatim string the executor validates,
     /// passed straight to `nmp_app_dispatch_action` without re-serialisation.
     @discardableResult

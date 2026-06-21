@@ -289,20 +289,20 @@ pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTre
     Some(set)
 }
 
-/// ADR-0042 amendment (2026-06-12) — open the contact-feed declaration.
+/// Declare the active-account-follows feed from app primary content kinds.
 ///
 /// `primary_kinds_json` is a JSON array of unsigned 32-bit integers identifying
 /// the primary content kinds the app wants to render, e.g. `"[1]"` for Chirp.
 /// Repost wrappers are derived here (`6` for primary kind `1`, `16` for every
 /// non-kind-1 primary target) before the compiled acquisition set is sent to
-/// `nmp-core`. An empty array `"[]"` is a legitimate clear — same effect as
-/// `nmp_app_close_contact_feed`. A malformed or non-array value, or any element
-/// that is not a non-negative integer fitting in u32, surfaces a diagnostic
-/// toast rather than a panic or silent registration (D6).
+/// `nmp-core`. An empty array `"[]"` is a legitimate clear. A malformed or
+/// non-array value, or any element that is not a non-negative integer fitting
+/// in u32, surfaces a diagnostic toast rather than a panic or silent
+/// registration (D6).
 ///
-/// D8: fire-and-forget; the actor processes the command asynchronously.
-#[no_mangle]
-pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, primary_kinds_json: *const c_char) {
+/// This is a Rust helper for app crates. The C ABI keeps its existing legacy
+/// symbol names and delegates here; no new `nmp_app_*` symbol is introduced.
+pub fn declare_active_follows_feed(app: *mut NmpApp, primary_kinds_json: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
     };
@@ -314,38 +314,39 @@ pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, primary_kinds_json
         Some(set) => set,
         None => {
             app.send_cmd(nmp_core::ActorCommand::ShowToast {
-                message: "open_contact_feed: malformed primary kinds JSON".to_string(),
+                message: "declare_active_follows_feed: malformed primary kinds JSON".to_string(),
             });
             return;
         }
     };
-    let kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
-        Ok(kinds) => kinds,
-        Err(_) => {
-            app.send_cmd(nmp_core::ActorCommand::ShowToast {
-                message: "open_contact_feed: primary kinds must not include repost wrappers"
-                    .to_string(),
-            });
-            return;
-        }
-    };
-
-    app.send_cmd(nmp_core::ActorCommand::OpenContactFeed { kinds });
+    let _ = app.declare_active_follows_feed(primary_kinds);
 }
 
-/// ADR-0042 amendment (2026-06-12) — close the contact-feed subscription.
+/// Clear the active-account-follows feed declaration.
 ///
 /// Withdraws all follow-feed M2 interests from the lifecycle registry;
 /// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next
-/// idle tick. D6: a null `app` is a silent no-op.
-///
-/// D8: fire-and-forget; the actor processes the command asynchronously.
-#[no_mangle]
-pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
+/// idle tick. D6: a null `app` is a silent no-op. Rust helper only; the legacy
+/// C ABI close symbol delegates here.
+pub fn clear_active_follows_feed(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(nmp_core::ActorCommand::CloseContactFeed);
+    app.clear_active_follows_feed();
+}
+
+/// Legacy C ABI compatibility shim. App code should use the declared
+/// active-follows vocabulary; this symbol stays only because removing exported
+/// C ABI requires a separate governance step.
+#[no_mangle]
+pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, primary_kinds_json: *const c_char) {
+    declare_active_follows_feed(app, primary_kinds_json);
+}
+
+/// Legacy C ABI compatibility shim for [`clear_active_follows_feed`].
+#[no_mangle]
+pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
+    clear_active_follows_feed(app);
 }
 
 #[cfg(test)]

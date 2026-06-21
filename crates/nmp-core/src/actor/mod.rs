@@ -123,6 +123,14 @@ use commands::IdentityRuntime;
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
 pub(crate) use commands::notify_observers;
+// ADR-0062: targeted observer delivery and muted-registration helpers.
+// `notify_observer_by_id` is crate-internal (kernel replay path only).
+// `register_rust_observer_muted` is pub so nmp-ffi can call it.
+// `activate_observer` is also used by the kernel replay path, so it is
+// available on wasm/no-native reducer builds.
+pub use commands::activate_observer;
+pub(crate) use commands::notify_observer_by_id;
+pub use commands::register_rust_observer_muted;
 // `KernelEventObserverSlot` and `register_rust_observer` are `pub`
 // unconditionally so `nmp-ffi` and wasm32 composition roots can register
 // observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
@@ -766,27 +774,30 @@ pub enum ActorCommand {
     RemoveRelay {
         url: String,
     },
-    /// (Re)open the contact-feed subscription for the active account.
+    /// Declare the active-account-follows feed for app primary content kinds.
     ///
-    /// `kinds` is the compiled acquisition kind set the follow-set REQ should
-    /// carry. D0: `nmp-core` does not know which primary kinds or wrapper
-    /// policy belong to the host's app concept; the caller supplies the
-    /// compiled set so the substrate carries no app-specific social knowledge.
+    /// `acquisition_kinds` is the compiled acquisition kind set the follow-set
+    /// REQ should carry. D0: `nmp-core` does not know which primary kinds or
+    /// wrapper policy belong to the host's app concept; the caller supplies
+    /// the compiled set so the substrate carries no app-specific social
+    /// knowledge.
     /// The actor folds it into the kernel via
     /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
     /// follow-feed M2 interests under the new kind set. An empty set is
-    /// equivalent to `CloseContactFeed` — it withdraws all follow-feed interests.
-    OpenContactFeed {
-        kinds: std::collections::BTreeSet<u32>,
+    /// equivalent to `ClearActiveFollowsFeed` — it withdraws all follow-feed
+    /// interests.
+    DeclareActiveFollowsFeed {
+        acquisition_kinds: std::collections::BTreeSet<u32>,
     },
-    /// Tear down the contact-feed subscription opened by `OpenContactFeed`.
+    /// Tear down the active-follows feed declaration.
     ///
     /// Calls `Kernel::set_follow_feed_kinds(BTreeSet::new())`, which clears the
-    /// stored kinds and withdraws all follow-feed M2 interests from the lifecycle
-    /// registry. The unconditional `FollowListChanged` trigger propagates to
-    /// `drain_lifecycle_tick`, which emits CLOSE frames for any live REQs.
-    /// D6: no active account (or no prior open) is a silent no-op.
-    CloseContactFeed,
+    /// stored kinds and withdraws all follow-feed M2 interests from the
+    /// lifecycle registry. The unconditional `FollowListChanged` trigger
+    /// propagates to `drain_lifecycle_tick`, which emits CLOSE frames for any
+    /// live REQs. D6: no active account (or no prior declaration) is a silent
+    /// no-op.
+    ClearActiveFollowsFeed,
     /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
     /// freshness gate so a user-initiated navigation / pull-to-refresh always
     /// re-verifies the cached profile; `force == false` is the lazy, gated
@@ -1012,6 +1023,15 @@ pub enum ActorCommand {
     ShowToast {
         message: String,
     },
+    /// D6 + issue #1682 — surface a structured error [`UiToken`] from an
+    /// off-actor worker thread (e.g. the NIP-17 gift-wrap publish continuation),
+    /// which holds only a `CommandSender`, not a kernel reference. The actor
+    /// thread routes it to `kernel.set_last_error_token`, writing both the
+    /// machine `code` (`last_error_category`) and the English fallback prose
+    /// (`last_error_toast`) so the shell can render localized prose.
+    ShowErrorToken {
+        token: crate::ui_token::UiToken,
+    },
     /// Mark the kernel dirty so host-registered snapshot projections re-emit.
     ///
     /// Used when reusable NMP extension state changes outside a typed kernel
@@ -1126,6 +1146,39 @@ pub enum ActorCommand {
         /// `0` = `InterestScope::ActiveAccount` (re-route on account switch),
         /// `1` = `InterestScope::Global` (account-agnostic).
         scope: u32,
+    },
+    /// ADR-0062 — open an interest AND simultaneously replay matching
+    /// in-memory cached events to a single muted observer, then activate it.
+    ///
+    /// This solves the late-joiner problem: a per-open feed observer that
+    /// registers AFTER events have been accepted and cached by the kernel
+    /// would otherwise miss those events (the global fan-out is one-shot).
+    ///
+    /// Protocol:
+    /// 1. The caller registers the observer in **muted** state via
+    ///    `register_rust_observer_muted`, capturing the returned id.
+    /// 2. The caller sends `OpenObservedInterest` with that id and the
+    ///    shapes to replay.
+    /// 3. The actor dispatches: `open_interest_with_observer_replay` runs
+    ///    `register_interest` (relay-subscribe), then replays `self.events`,
+    ///    then calls `activate_observer`. From that point the observer
+    ///    participates in the normal global fan-out.
+    OpenObservedInterest {
+        /// Verbatim NIP-01 REQ filter JSON — same semantic as `OpenInterest`.
+        filter_json: String,
+        /// Refcount owner key — same semantic as `OpenInterest`.
+        consumer_id: String,
+        /// Scope — same semantic as `OpenInterest`.
+        scope: u32,
+        /// The muted observer id to replay events to and then activate.
+        observer_id: KernelEventObserverId,
+        /// `InterestShape`s used to match events in the read-cache during
+        /// replay. May differ from the filter (e.g. thread feed uses two
+        /// shapes: `#e` replies + root-by-id).
+        replay_shapes: Vec<crate::planner::InterestShape>,
+        /// Maximum events to replay (newest-first selection, oldest-first
+        /// delivery). Typically the feed's visible window limit.
+        replay_limit: usize,
     },
     /// M2 (ADR-0042) — detach one owner from an interest registered via
     /// [`OpenInterest`](Self::OpenInterest). Drops the live subscription when

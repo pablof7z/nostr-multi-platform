@@ -50,7 +50,7 @@ class PendingWelcomeRow : Table() {
         }
     val groupNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
     fun groupNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
-    val displayName : String?
+    val inviterNpub : String?
         get() {
             val o = __offset(8)
             return if (o != 0) {
@@ -59,19 +59,8 @@ class PendingWelcomeRow : Table() {
                 null
             }
         }
-    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
-    val inviterNpub : String?
-        get() {
-            val o = __offset(10)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val inviterNpubAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun inviterNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val inviterNpubAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun inviterNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsPendingWelcomeRow(_bb: ByteBuffer): PendingWelcomeRow = getRootAsPendingWelcomeRow(_bb, PendingWelcomeRow())
@@ -79,19 +68,17 @@ class PendingWelcomeRow : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createPendingWelcomeRow(builder: FlatBufferBuilder, idHexOffset: Int, groupNameOffset: Int, displayNameOffset: Int, inviterNpubOffset: Int) : Int {
-            builder.startTable(4)
+        fun createPendingWelcomeRow(builder: FlatBufferBuilder, idHexOffset: Int, groupNameOffset: Int, inviterNpubOffset: Int) : Int {
+            builder.startTable(3)
             addInviterNpub(builder, inviterNpubOffset)
-            addDisplayName(builder, displayNameOffset)
             addGroupName(builder, groupNameOffset)
             addIdHex(builder, idHexOffset)
             return endPendingWelcomeRow(builder)
         }
-        fun startPendingWelcomeRow(builder: FlatBufferBuilder) = builder.startTable(4)
+        fun startPendingWelcomeRow(builder: FlatBufferBuilder) = builder.startTable(3)
         fun addIdHex(builder: FlatBufferBuilder, idHex: Int) = builder.addOffset(0, idHex, 0)
         fun addGroupName(builder: FlatBufferBuilder, groupName: Int) = builder.addOffset(1, groupName, 0)
-        fun addDisplayName(builder: FlatBufferBuilder, displayName: Int) = builder.addOffset(2, displayName, 0)
-        fun addInviterNpub(builder: FlatBufferBuilder, inviterNpub: Int) = builder.addOffset(3, inviterNpub, 0)
+        fun addInviterNpub(builder: FlatBufferBuilder, inviterNpub: Int) = builder.addOffset(2, inviterNpub, 0)
         fun endPendingWelcomeRow(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

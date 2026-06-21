@@ -121,7 +121,8 @@ fn relay_settings_builtins_emit_typed_sidecars_alongside_json() {
         !decoded_options.options.is_empty(),
         "relay_role_options is a static non-empty option set"
     );
-    // Field-for-field agreement on the first option (value/label/tint/is_default).
+    // Field-for-field agreement on the first option (value/tint/is_default).
+    // `label` removed from the wire (#1678, D7) — shells map value→label.
     let first_typed = &decoded_options.options[0];
     let first_json = &json_options[0];
     assert_eq!(
@@ -226,7 +227,7 @@ fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
     );
     let decoded_summary =
         decode_outbox_summary(&os.payload).expect("outbox_summary sidecar must decode");
-    // ADR-0032 / doctrine §4.4: `title` / `subtitle` pre-formatted strings
+    // ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
     // removed from the wire; only raw counters are asserted here.
     assert_eq!(
         os_json.get("total").and_then(serde_json::Value::as_u64),

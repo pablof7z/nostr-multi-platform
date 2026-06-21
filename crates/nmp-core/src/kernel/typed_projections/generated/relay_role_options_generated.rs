@@ -27,7 +27,6 @@ impl<'a> ::flatbuffers::Follow<'a> for RelayRoleOption<'a> {
 
 impl<'a> RelayRoleOption<'a> {
   pub const VT_VALUE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_LABEL: ::flatbuffers::VOffsetT = 6;
   pub const VT_TINT: ::flatbuffers::VOffsetT = 8;
   pub const VT_IS_DEFAULT: ::flatbuffers::VOffsetT = 10;
 
@@ -42,7 +41,6 @@ impl<'a> RelayRoleOption<'a> {
   ) -> ::flatbuffers::WIPOffset<RelayRoleOption<'bldr>> {
     let mut builder = RelayRoleOptionBuilder::new(_fbb);
     if let Some(x) = args.tint { builder.add_tint(x); }
-    if let Some(x) = args.label { builder.add_label(x); }
     if let Some(x) = args.value { builder.add_value(x); }
     builder.add_is_default(args.is_default);
     builder.finish()
@@ -55,13 +53,6 @@ impl<'a> RelayRoleOption<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayRoleOption::VT_VALUE, None)}
-  }
-  #[inline]
-  pub fn label(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayRoleOption::VT_LABEL, None)}
   }
   #[inline]
   pub fn tint(&self) -> Option<&'a str> {
@@ -86,7 +77,6 @@ impl ::flatbuffers::Verifiable for RelayRoleOption<'_> {
   ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
     v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("label", Self::VT_LABEL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("tint", Self::VT_TINT, false)?
      .visit_field::<bool>("is_default", Self::VT_IS_DEFAULT, false)?
      .finish();
@@ -95,7 +85,6 @@ impl ::flatbuffers::Verifiable for RelayRoleOption<'_> {
 }
 pub struct RelayRoleOptionArgs<'a> {
     pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub label: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub tint: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub is_default: bool,
 }
@@ -104,7 +93,6 @@ impl<'a> Default for RelayRoleOptionArgs<'a> {
   fn default() -> Self {
     RelayRoleOptionArgs {
       value: None,
-      label: None,
       tint: None,
       is_default: false,
     }
@@ -119,10 +107,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayRoleOptionBuilder<'a, 'b
   #[inline]
   pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayRoleOption::VT_VALUE, value);
-  }
-  #[inline]
-  pub fn add_label(&mut self, label: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayRoleOption::VT_LABEL, label);
   }
   #[inline]
   pub fn add_tint(&mut self, tint: ::flatbuffers::WIPOffset<&'b  str>) {
@@ -151,7 +135,6 @@ impl ::core::fmt::Debug for RelayRoleOption<'_> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
     let mut ds = f.debug_struct("RelayRoleOption");
       ds.field("value", &self.value());
-      ds.field("label", &self.label());
       ds.field("tint", &self.tint());
       ds.field("is_default", &self.is_default());
       ds.finish()

@@ -34,6 +34,7 @@ mod app_config_substrate;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
 mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
+mod following_count; // `nmp_app_active_following_count` — live kind:3 follow-count read for profile headers.
 
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
@@ -150,8 +151,8 @@ pub use identity::{
     nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline DELETED.
-// Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic
-// nmp_app_open_contact_feed / nmp_app_close_contact_feed verbs below.
+// Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper). The old generic
+// old feed-open symbols remain compatibility shims only.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use lifecycle::{
@@ -195,12 +196,15 @@ pub use snapshot::{
 };
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
+pub use following_count::nmp_app_active_following_count;
 #[cfg(feature = "native")]
 pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
     // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
-    // deleted from identity.rs. Replaced by the pair below.
+    // deleted from identity.rs.
+    clear_active_follows_feed,
+    declare_active_follows_feed,
     nmp_app_claim_event,
     nmp_app_claim_profile,
     nmp_app_close_contact_feed,
@@ -251,7 +255,7 @@ use nmp_core::__ffi_internal::{
     default_registry, dispatch_capability, new_app_relay_slot, new_bunker_handshake_slot,
     new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
     new_signer_state_slot, new_snapshot_projection_slot,
-    register_rust_observer, run_actor_with_observers,
+    register_rust_observer, register_rust_observer_muted, run_actor_with_observers,
     unregister_observer, ActionRegistry, ActorChannels,
     ActorConfigSources, ActorRuntimeSlots, CapabilityCallbackSlot, KernelEventObserverSlot,
     LifecycleObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
@@ -1436,6 +1440,38 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
+    /// Declare a feed of app-owned primary kinds from the active account's
+    /// reactive follows perspective.
+    ///
+    /// The caller supplies primary content kinds only. Repost wrappers are
+    /// derived here before the actor receives the compiled acquisition set, so
+    /// `nmp-core` never owns the app's primary-kind policy. A wrapper kind
+    /// supplied as a primary kind is rejected and surfaced as state (toast),
+    /// matching the C-ABI helper's D6 behavior.
+    pub fn declare_active_follows_feed<I>(&self, primary_kinds: I) -> bool
+    where
+        I: IntoIterator<Item = u32>,
+    {
+        let acquisition_kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
+            Ok(kinds) => kinds,
+            Err(_) => {
+                self.send_cmd(ActorCommand::ShowToast {
+                    message:
+                        "declare_active_follows_feed: primary kinds must not include repost wrappers"
+                            .to_string(),
+                });
+                return false;
+            }
+        };
+        self.send_cmd(ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds });
+        true
+    }
+
+    /// Clear the active-follows feed declaration.
+    pub fn clear_active_follows_feed(&self) {
+        self.send_cmd(ActorCommand::ClearActiveFollowsFeed);
+    }
+
     /// Register a typed [`nmp_core::substrate::ActionModule`] `M` against the
     /// app's action registry — ADR-0027's single-call typed seam, and the
     /// sole host action-registration path on master.
@@ -1539,12 +1575,13 @@ impl NmpApp {
     /// [`nmp_feed::FeedController`] under `key` in the feed registry (the
     /// render payload is emitted by a separately-registered typed snapshot
     /// projection, e.g. `register_typed_feed_sidecar`, not by this call) — AND
-    /// additionally plugs `observer` into the kernel's
-    /// [`KernelEventObserver`] registry so the
-    /// feed receives ingested events, **tracking the returned observer id
-    /// under `key`** so [`Self::unregister_feed`] can revoke it. The caller
-    /// typically passes the same `Arc<FlatFeed>` as both `controller` and
-    /// `observer`.
+    /// additionally installs `observer` into the kernel's
+    /// [`KernelEventObserver`] registry in **muted** state (ADR-0062).  The
+    /// observer will NOT fire from the global fan-out until the caller passes
+    /// the returned id to [`Self::open_observed_interest`], which replays the
+    /// in-memory read-cache (and, for explicit `ids`-bearing shapes, the durable
+    /// store) to the observer and then activates it.  The caller typically
+    /// passes the same `Arc<FlatFeed>` as both `controller` and `observer`.
     ///
     /// Registering the same `key` twice replaces the controller / projection
     /// (last-writer-wins) and revokes the previously-tracked observer before
@@ -1552,17 +1589,19 @@ impl NmpApp {
     ///
     /// D6 — a poisoned bookkeeping mutex degrades to "observer registered but
     /// untracked": the feed still works, but its observer outlives the screen
-    /// (a bounded soft-leak, never a crash). D8 — `register_event_observer` is
-    /// an init-style registry push, not a hot-path call.
+    /// (a bounded soft-leak, never a crash). D8 — init-style registry push.
+    #[must_use = "pass the returned id to open_observed_interest for catch-up"]
     pub fn register_feed_with_observer(
         &self,
         key: impl Into<String>,
         controller: std::sync::Arc<dyn nmp_feed::FeedController>,
         observer: std::sync::Arc<dyn KernelEventObserver>,
-    ) {
+    ) -> KernelEventObserverId {
         let key = key.into();
         self.register_feed(key.clone(), controller);
-        let observer_id = self.register_event_observer(observer);
+        // ADR-0062: register muted so the observer doesn't receive events
+        // from the global fan-out until the replay+activate step completes.
+        let observer_id = register_rust_observer_muted(&self.event_observers, observer);
         if let Ok(mut map) = self.interest_feed_observers.lock() {
             if let Some(previous) = map.insert(key, observer_id) {
                 // A re-open under the same key: the new observer is now
@@ -1571,6 +1610,43 @@ impl NmpApp {
                 self.unregister_event_observer(previous);
             }
         }
+        observer_id
+    }
+
+    /// ADR-0062 — open an interest with read-model catch-up replay to the
+    /// muted observer identified by `observer_id`, then activate it.
+    ///
+    /// Validates the filter JSON via `InterestShape::from_filter_json` and
+    /// sends `ActorCommand::OpenObservedInterest`. A malformed filter emits a
+    /// toast (same as `nmp_app_open_interest`) and returns without sending.
+    ///
+    /// `replay_shapes` are the `InterestShape`s used to match events in the
+    /// kernel's read-cache during replay. These may differ from the filter
+    /// (e.g. a thread feed uses two shapes: `#e` replies + root-by-id).
+    pub fn open_observed_interest(
+        &self,
+        filter_json: &str,
+        consumer_id: &str,
+        scope: u32,
+        observer_id: KernelEventObserverId,
+        replay_shapes: Vec<nmp_planner::InterestShape>,
+        replay_limit: usize,
+    ) {
+        // Validate filter — same guard as nmp_app_open_interest.
+        if nmp_planner::InterestShape::from_filter_json(filter_json).is_none() {
+            // D6: invalid filter is a no-op (the caller already surfaced a
+            // toast via the validated FFI path; this internal helper does not
+            // cross C ABI so we can stay silent here).
+            return;
+        }
+        self.send_cmd(ActorCommand::OpenObservedInterest {
+            filter_json: filter_json.to_string(),
+            consumer_id: consumer_id.to_string(),
+            scope,
+            observer_id,
+            replay_shapes,
+            replay_limit,
+        });
     }
 
     /// Tear down a feed registered through [`Self::register_feed_with_observer`].
@@ -1672,10 +1748,14 @@ impl NmpApp {
         namespace: &str,
         action_json: &str,
     ) -> Result<(), String> {
+        // #1676: `ActionRegistry::execute` now returns a typed
+        // `ActionExecuteFailure`; this test seam keeps its `String` surface by
+        // flattening to the failure message.
         self.action_registry
             .execute(namespace, action_json, "test-correlation-id", &|cmd| {
                 self.send_cmd(cmd)
             })
+            .map_err(|failure| failure.message)
     }
 
     /// Set the one-shot MLS-autopublish intent (consumed by

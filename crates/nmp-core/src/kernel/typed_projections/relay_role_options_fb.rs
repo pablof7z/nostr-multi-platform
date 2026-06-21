@@ -45,10 +45,13 @@ pub const RELAY_ROLE_OPTIONS_SCHEMA_VERSION: u32 = 1;
 
 /// One relay-role picker option — a field-for-field mirror of one
 /// `RelayRoleOption`.
+///
+/// `label` removed (#1678, D7): presentation artifact; shells map
+/// `value` → label themselves (value→label mapping is static and
+/// shell-language-specific).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RelayRoleOptionRow {
     pub value: String,
-    pub label: String,
     pub tint: String,
     pub is_default: bool,
 }
@@ -76,13 +79,11 @@ pub(crate) fn encode_relay_role_options(model: &RelayRoleOptionsModel) -> Vec<u8
         .iter()
         .map(|option| {
             let value = fbb.create_string(&option.value);
-            let label = fbb.create_string(&option.label);
             let tint = fbb.create_string(&option.tint);
             fb::RelayRoleOption::create(
                 &mut fbb,
                 &fb::RelayRoleOptionArgs {
                     value: Some(value),
-                    label: Some(label),
                     tint: Some(tint),
                     is_default: option.is_default,
                 },
@@ -119,7 +120,6 @@ pub fn decode_relay_role_options(bytes: &[u8]) -> Result<RelayRoleOptionsModel, 
         for option in fb_options.iter() {
             options.push(RelayRoleOptionRow {
                 value: option.value().unwrap_or_default().to_string(),
-                label: option.label().unwrap_or_default().to_string(),
                 tint: option.tint().unwrap_or_default().to_string(),
                 is_default: option.is_default(),
             });

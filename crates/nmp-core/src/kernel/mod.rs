@@ -28,6 +28,8 @@ mod composition_seams;
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
 #[cfg(test)]
 mod action_failure_tests;
+#[cfg(test)]
+mod action_terminal_correctness_tests;
 pub(crate) mod action_lifecycle;
 #[cfg(test)]
 mod action_lifecycle_tests;
@@ -148,6 +150,16 @@ mod event_claim_released_tests;
 mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
+// ADR-0062 — observer-scoped read-model catch-up. Provides
+// `open_interest_with_observer_replay` and `replay_read_cache_to_observer`.
+// `ObserverReplayRequest` is re-exported so the actor dispatch arm can
+// construct one without naming the private `kernel` module types directly.
+mod observer_replay;
+pub(crate) use observer_replay::ObserverReplayRequest;
+#[cfg(test)]
+mod observer_replay_tests;
+#[cfg(test)]
+mod observer_replay_store_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)]
@@ -447,7 +459,9 @@ pub use clock::MonotonicSecondClock;
 // `nmp_core::__ffi_internal::*` (the FFI surface owns the
 // `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
-pub use action_registry::{default_registry, ActionRegistry};
+pub use action_registry::{
+    default_registry, ActionExecuteFailure, ActionFailureKind, ActionRegistry,
+};
 pub use composition_ledger::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };
@@ -901,7 +915,7 @@ pub struct Kernel {
     /// on `nmp-nip01` (a downstream crate cycle the doctrine forbids).
     #[cfg(any(test, feature = "test-support"))]
     test_contacts_cache: Arc<crate::substrate::TestContactsCache>,
-    /// `pub(crate)` so in-crate tests can assert close-contact-feed clears
+    /// `pub(crate)` so in-crate tests can assert active-follows clear removes
     /// the follow author set without triggering the full follow-feed
     /// registration side-effect that `set_follow_feed_kinds` fires.
     pub(crate) timeline_authors: BTreeSet<String>,
@@ -910,12 +924,13 @@ pub struct Kernel {
     /// stale entries before re-registering on kind:3 change. Derived from the
     /// active account's kind:3 follow set; empty until first kind:3 arrives.
     /// `pub(crate)` so in-crate tests can assert the interest registry is
-    /// empty after `close_contact_feed` without triggering side-effects.
+    /// empty after clearing the active-follows declaration without triggering
+    /// side-effects.
     pub(crate) follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
-    /// Compiled acquisition kinds the contact-feed subscription should REQ for
-    /// the active account's follow set. Empty = the subscription is not active
-    /// (no follow-feed interests are registered). Callers derive this set from
-    /// app-facing primary kinds and wrapper policy before it reaches
+    /// Compiled acquisition kinds the active-follows subscription should REQ
+    /// for the active account's follow set. Empty = the subscription is not
+    /// active (no follow-feed interests are registered). Callers derive this
+    /// set from app-facing primary kinds and wrapper policy before it reaches
     /// `nmp-core`; the substrate carries no app-specific social knowledge.
     ///
     /// `pub(crate)` so in-crate tests can seed it directly as fixture setup

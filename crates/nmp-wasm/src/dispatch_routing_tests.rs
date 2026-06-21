@@ -185,25 +185,25 @@ fn interest_dispatch_parses_close_interest() {
 }
 
 #[test]
-fn interest_dispatch_parses_open_contact_feed() {
+fn interest_dispatch_parses_declared_active_follows_feed() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.open_contact_feed".to_string(),
-        payload: serde_json::json!({"kinds": [1]}),
+        action_type: "nmp.feed.declare_active_follows".to_string(),
+        payload: serde_json::json!({"primary_kinds": [1]}),
         correlation_id: "x".to_string(),
     };
     assert_eq!(
         interest_dispatch_from_action(&action),
-        Some(InterestDispatch::OpenContactFeed {
-            kinds: [1u32, 6u32].into_iter().collect(),
+        Some(InterestDispatch::DeclareActiveFollowsFeed {
+            acquisition_kinds: [1u32, 6u32].into_iter().collect(),
         })
     );
 }
 
 #[test]
-fn interest_dispatch_rejects_malformed_contact_feed_kind() {
+fn interest_dispatch_rejects_malformed_declared_active_follows_kind() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.open_contact_feed".to_string(),
-        payload: serde_json::json!({"kinds": [4294967296u64]}),
+        action_type: "nmp.feed.declare_active_follows".to_string(),
+        payload: serde_json::json!({"primary_kinds": [4294967296u64]}),
         correlation_id: "x".to_string(),
     };
 
@@ -211,10 +211,32 @@ fn interest_dispatch_rejects_malformed_contact_feed_kind() {
 }
 
 #[test]
-fn interest_dispatch_rejects_repost_wrappers_as_primary_contact_feed_kinds() {
+fn interest_dispatch_rejects_missing_declared_active_follows_kinds() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.open_contact_feed".to_string(),
-        payload: serde_json::json!({"kinds": [1, 6]}),
+        action_type: "nmp.feed.declare_active_follows".to_string(),
+        payload: serde_json::json!({}),
+        correlation_id: "x".to_string(),
+    };
+
+    assert!(interest_dispatch_from_action(&action).is_none());
+}
+
+#[test]
+fn interest_dispatch_rejects_non_array_declared_active_follows_kinds() {
+    let action = ActionDispatch {
+        action_type: "nmp.feed.declare_active_follows".to_string(),
+        payload: serde_json::json!({"primary_kinds": 1}),
+        correlation_id: "x".to_string(),
+    };
+
+    assert!(interest_dispatch_from_action(&action).is_none());
+}
+
+#[test]
+fn interest_dispatch_rejects_repost_wrappers_as_primary_declared_feed_kinds() {
+    let action = ActionDispatch {
+        action_type: "nmp.feed.declare_active_follows".to_string(),
+        payload: serde_json::json!({"primary_kinds": [1, 6]}),
         correlation_id: "x".to_string(),
     };
     assert!(
@@ -223,8 +245,8 @@ fn interest_dispatch_rejects_repost_wrappers_as_primary_contact_feed_kinds() {
     );
 
     let action = ActionDispatch {
-        action_type: "nmp.kernel.open_contact_feed".to_string(),
-        payload: serde_json::json!({"kinds": [16]}),
+        action_type: "nmp.feed.declare_active_follows".to_string(),
+        payload: serde_json::json!({"primary_kinds": [16]}),
         correlation_id: "x".to_string(),
     };
     assert!(
@@ -234,15 +256,15 @@ fn interest_dispatch_rejects_repost_wrappers_as_primary_contact_feed_kinds() {
 }
 
 #[test]
-fn interest_dispatch_parses_close_contact_feed() {
+fn interest_dispatch_parses_clear_active_follows_feed() {
     let action = ActionDispatch {
-        action_type: "nmp.kernel.close_contact_feed".to_string(),
+        action_type: "nmp.feed.clear_active_follows".to_string(),
         payload: serde_json::Value::Null,
         correlation_id: "x".to_string(),
     };
     assert_eq!(
         interest_dispatch_from_action(&action),
-        Some(InterestDispatch::CloseContactFeed)
+        Some(InterestDispatch::ClearActiveFollowsFeed)
     );
 }
 

@@ -34,6 +34,13 @@ pub trait EventStore: Send + Sync {
     /// Primary lookup. Returns `Ok(None)` if absent; tombstones do not count as "present".
     fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError>;
 
+    /// Pure point-read — returns the event if present and not tombstoned.
+    ///
+    /// MUST NOT stamp the LRU access counter or open a write transaction.
+    /// Use this instead of `get_by_id` when the caller only needs to inspect the event
+    /// without influencing GC victim selection (e.g. replay paths that must not bias LRU).
+    fn peek_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError>;
+
     /// `idx_author_kind` scan, newest-first.
     ///
     /// `kinds` must be non-empty; callers wanting any-kind use `scan_by_kind_time` instead.

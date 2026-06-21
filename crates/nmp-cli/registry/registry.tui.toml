@@ -55,17 +55,6 @@ target = "src/components/nostr_content/nostr_media_grid.rs"
 role = "source"
 
 [[components]]
-id = "tui/content-quote-card"
-version = "0.1.1"
-target = "tui"
-description = "Ratatui quote/event reference card with claimed event content and optional inline media."
-dependencies = ["tui/content-core"]
-[[components.files]]
-source = "tui/content-quote-card/nostr_quote_card.rs"
-target = "src/components/nostr_content/nostr_quote_card.rs"
-role = "source"
-
-[[components]]
 id = "tui/content-kind-registry"
 version = "0.1.0"
 target = "tui"
@@ -127,15 +116,14 @@ role = "source"
 
 [[components]]
 id = "tui/content-view"
-version = "0.1.3"
+version = "0.2.0"
 target = "tui"
-description = "Full Ratatui ContentTreeWire renderer with reactive mentions, quote cards, and inline media."
+description = "Full Ratatui ContentTreeWire renderer with reactive mentions, kind-dispatched event-ref embeds, markdown blockquotes, and inline media."
 dependencies = [
     "tui/content-core",
     "tui/content-kind-registry",
     "tui/content-mention-chip",
     "tui/content-media-grid",
-    "tui/content-quote-card",
 ]
 [[components.files]]
 source = "tui/content-view/nostr_content_view.rs"

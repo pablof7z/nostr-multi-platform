@@ -6,7 +6,7 @@
 //! `interest_feed::tests::author_feed_load_older_grows_visible_window_past_first_page`
 //! (which gates the per-open author feed). The home feed differs in one
 //! load-bearing way: its `PullFeedController` reads a LIVE, fail-closed
-//! contact-feed `InterestShape` derived from the **active account** slot +
+//! active-follows `InterestShape` derived from the **active account** slot +
 //! follow set (`register_op_feed_defaults` step 5a). So the gate proves the
 //! whole chain:
 //!
@@ -150,7 +150,7 @@ fn chirp_home_load_older_engages_pull_with_active_account() {
     let app = nmp_app_new();
     assert!(!app.is_null());
     // REAL Chirp composition: `register_app` → `nmp_app_chirp_register` →
-    // `nmp_defaults::register_op_feed_defaults(app, viewer, vec![1, 6])`. The
+    // `nmp_defaults::register_op_feed_defaults(app, viewer, vec![1])`. The
     // `"nmp.feed.home"` PullFeedController is wired here, not synthesized.
     let handle = register_app(app);
     let app_ref: &NmpApp = unsafe { &*app };

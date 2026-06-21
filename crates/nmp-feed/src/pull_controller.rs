@@ -47,7 +47,11 @@ pub type PullFn = Arc<dyn Fn(PullScope, u64) -> ScanLogResult + Send + Sync>;
 
 /// Apply one drained positive row through the feed's own ingest path (the same
 /// path the push fan-out uses — dedup + snapshot projection unchanged).
-pub type FeedApply = Arc<dyn Fn(&KernelEvent) + Send + Sync>;
+///
+/// Returns `true` only when the feed's visible row set advanced. A feed can
+/// admit an event mechanically but suppress it, dedup it, or use it only as
+/// hidden attribution; those rows must not count as pull-page progress.
+pub type FeedApply = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
 /// Grow the feed's render viewport by one page, called after a drained page is
 /// ingested. Return value (if any) is ignored by the controller.
@@ -197,32 +201,54 @@ impl FeedController for PullFeedController {
         };
         let scope = PullScope::InterestShape(shape);
 
-        // Bounded seq-ordered drain. The pager owns the cursor and the budget;
-        // it terminates on PageFilled / Exhausted / Gap / ScanBudget — it never
-        // polls (an empty-but-advancing final page returns Exhausted at once).
-        let outcome = {
-            let Ok(mut pager) = self.pager.lock() else {
+        let mut accepted = 0usize;
+        let mut visited = 0usize;
+        let mut replaced = false;
+        let (page_size, scan_budget) = {
+            let Ok(pager) = self.pager.lock() else {
                 return false;
             };
-            let pull = &self.pull;
-            pager.drain(|after_seq| pull(scope.clone(), after_seq))
+            (pager.page_size(), pager.scan_budget())
         };
 
-        // Evict any superseded sources FIRST so the stale version never lingers
-        // alongside its replacement, then apply the page through the feed's OWN
-        // ingest path (dedup + projection), THEN grow the viewport so the
-        // just-ingested roots count toward what becomes visible. A `Gap` already
-        // rebased the pager cursor explicitly (no silent continuity claim); any
-        // rows drained before it are still applied here.
-        if let Some(replace) = self.replace.as_ref() {
-            for replaced_id in &outcome.replaced_ids {
-                replace(replaced_id);
+        loop {
+            // Bounded seq-ordered drain. The pager owns the cursor and the
+            // budget; it terminates on PageFilled / Exhausted / Gap /
+            // ScanBudget — it never polls.
+            let outcome = {
+                let Ok(mut pager) = self.pager.lock() else {
+                    return false;
+                };
+                let pull = &self.pull;
+                pager.drain(|after_seq| pull(scope.clone(), after_seq))
+            };
+            visited = visited.saturating_add(outcome.visited);
+
+            // Evict any superseded sources FIRST so the stale version never
+            // lingers alongside its replacement, then apply the page through
+            // the feed's OWN ingest path. A `Gap` already rebased the pager
+            // cursor explicitly; any rows drained before it are still applied.
+            if let Some(replace) = self.replace.as_ref() {
+                for replaced_id in &outcome.replaced_ids {
+                    replace(replaced_id);
+                }
+            }
+            replaced |= !outcome.replaced_ids.is_empty();
+            for event in &outcome.events {
+                if (self.apply)(event) {
+                    accepted = accepted.saturating_add(1);
+                }
+            }
+
+            let should_continue = matches!(outcome.stop, crate::DrainStop::PageFilled)
+                && accepted < page_size
+                && visited < scan_budget;
+            if !should_continue {
+                break;
             }
         }
-        for event in &outcome.events {
-            (self.apply)(event);
-        }
-        let progressed = !outcome.events.is_empty();
+
+        let progressed = accepted > 0 || replaced;
         if progressed {
             (self.advance)();
         }

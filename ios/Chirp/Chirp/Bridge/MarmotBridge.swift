@@ -186,8 +186,9 @@ final class MarmotStore: ObservableObject {
     var groups: [MarmotGroup] { snapshot.groups }
     var pendingWelcomes: [MarmotPendingWelcome] { snapshot.pendingWelcomes }
     var keyPackage: MarmotKeyPackage { snapshot.keyPackage }
-    /// Pre-formatted label for the top-of-list invites chip
-    /// (Rust-owned plural form), or `nil` when no pending invites.
+    /// Pluralised label for the top-of-list invites chip, or `nil` when
+    /// no pending invites. Shell-computed from `pendingWelcomes.count`
+    /// (aim.md §2 — pluralisation is presentation, not protocol data).
     var invitesChipLabel: String? { snapshot.invitesChipLabel }
     /// Pre-built id-to-row lookup for the live snapshot. Indexing a
     /// dictionary by key is render-grade lookup, not derivation — keeps

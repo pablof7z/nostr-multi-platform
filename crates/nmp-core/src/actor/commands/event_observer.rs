@@ -109,11 +109,26 @@ pub struct KernelEventObserverRegistration {
     pub callback: KernelEventObserverFn,
 }
 
+/// One Rust-trait observer registration entry.
+///
+/// `active: false` means the observer is registered but **muted** — it will
+/// NOT receive events from the global `notify_observers` fan-out but WILL be
+/// reachable by `notify_observer_by_id` for targeted one-shot replay. Muted
+/// registrations are promoted to active by `activate_observer` once the
+/// caller's read-model catch-up (ADR-0062) has completed.
+pub struct RustObserverRegistration {
+    pub(super) id: KernelEventObserverId,
+    pub(super) observer: Arc<dyn KernelEventObserver>,
+    /// When `false`, the global `notify_observers` fan-out skips this entry.
+    /// Targeted `notify_observer_by_id` delivery still reaches it.
+    pub(super) active: bool,
+}
+
 /// Slot contents: zero or more Rust + C-ABI registrations, plus a monotonic
 /// id allocator and the C-ABI fan-out channel sender. Private — callers go
 /// through [`KernelEventObserverSlot`]'s `register_*` / `unregister` methods.
 pub struct ObserverInner {
-    rust: Vec<(KernelEventObserverId, Arc<dyn KernelEventObserver>)>,
+    rust: Vec<RustObserverRegistration>,
     c_abi: Vec<(KernelEventObserverId, KernelEventObserverRegistration)>,
     next_id: u64,
     /// Sender half of the bounded C-ABI fan-out channel. `notify_observers`
@@ -233,10 +248,11 @@ pub trait KernelEventObserver: Send + Sync {
     fn on_kernel_event(&self, event: &KernelEvent);
 }
 
-/// Register an in-process Rust observer. Returns an opaque id the caller
-/// retains to unregister later. Idempotent across distinct observers; the
-/// same `Arc` can be registered multiple times and will fire once per
-/// registration.
+/// Register an in-process Rust observer (active immediately).
+///
+/// Returns an opaque id the caller retains to unregister later. Idempotent
+/// across distinct observers; the same `Arc` can be registered multiple
+/// times and will fire once per registration.
 pub fn register_rust_observer(
     slot: &KernelEventObserverSlot,
     observer: Arc<dyn KernelEventObserver>,
@@ -247,8 +263,92 @@ pub fn register_rust_observer(
         return KernelEventObserverId(0);
     };
     let id = guard.alloc_id();
-    guard.rust.push((id, observer));
+    guard.rust.push(RustObserverRegistration {
+        id,
+        observer,
+        active: true,
+    });
     id
+}
+
+/// Register an in-process Rust observer in **muted** state (ADR-0062).
+///
+/// Like [`register_rust_observer`] but with `active: false`. The observer
+/// will NOT receive events from the global `notify_observers` fan-out until
+/// [`activate_observer`] is called. Use this when you need to install an
+/// observer BEFORE the read-model catch-up replay so the observer is
+/// addressable by [`notify_observer_by_id`] during replay.
+///
+/// Returns an opaque id the caller retains to activate / unregister later.
+pub fn register_rust_observer_muted(
+    slot: &KernelEventObserverSlot,
+    observer: Arc<dyn KernelEventObserver>,
+) -> KernelEventObserverId {
+    let Ok(mut guard) = slot.lock() else {
+        return KernelEventObserverId(0);
+    };
+    let id = guard.alloc_id();
+    guard.rust.push(RustObserverRegistration {
+        id,
+        observer,
+        active: false,
+    });
+    id
+}
+
+/// Activate a previously muted observer (ADR-0062).
+///
+/// Sets `active: true` on the registration matching `id`, so subsequent
+/// global `notify_observers` calls include it. Returns `true` iff a muted
+/// registration was found and activated; returns `false` for unknown or
+/// already-active ids (idempotent — safe to call even if the registration
+/// was removed before activation, e.g. the screen was closed before the
+/// replay command was dispatched).
+pub fn activate_observer(slot: &KernelEventObserverSlot, id: KernelEventObserverId) -> bool {
+    let Ok(mut guard) = slot.lock() else {
+        return false;
+    };
+    for reg in &mut guard.rust {
+        if reg.id == id {
+            reg.active = true;
+            return true;
+        }
+    }
+    false
+}
+
+/// Deliver one event to the specific Rust observer identified by `id`,
+/// regardless of its `active` state (ADR-0062 targeted replay).
+///
+/// Clones the `Arc`, releases the lock, then invokes `on_kernel_event`
+/// under the same `catch_unwind(AssertUnwindSafe(…))` guard as the global
+/// fan-out. Does NOT enqueue C-ABI fan-out (that path is global only).
+///
+/// Returns `true` iff the registration was found (the observer was invoked
+/// or attempted; a panic inside is swallowed per D6). Returns `false` when
+/// `id` is unknown or the mutex is poisoned.
+pub(crate) fn notify_observer_by_id(
+    slot: &KernelEventObserverSlot,
+    id: KernelEventObserverId,
+    event: &KernelEvent,
+) -> bool {
+    let observer = {
+        let Ok(guard) = slot.lock() else {
+            return false;
+        };
+        guard
+            .rust
+            .iter()
+            .find(|r| r.id == id)
+            .map(|r| Arc::clone(&r.observer))
+    };
+    let Some(observer) = observer else {
+        return false;
+    };
+    // D6: same isolation as the global fan-out — a panicking targeted observer
+    // must not propagate into the caller (the actor thread).
+    let _ = catch_unwind(AssertUnwindSafe(|| observer.on_kernel_event(event)));
+    true
 }
 
 /// Register a C-ABI observer. Returns an opaque id the caller retains to
@@ -276,7 +376,7 @@ pub fn register_c_observer(
 /// decoupling only widens that pre-existing window by the drain latency).
 pub fn unregister_observer(slot: &KernelEventObserverSlot, id: KernelEventObserverId) {
     if let Ok(mut guard) = slot.lock() {
-        guard.rust.retain(|(rid, _)| *rid != id);
+        guard.rust.retain(|reg| reg.id != id);
         guard.c_abi.retain(|(rid, _)| *rid != id);
     }
 }
@@ -313,7 +413,11 @@ pub(crate) fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEve
             guard
                 .rust
                 .iter()
-                .map(|(_, o)| Arc::clone(o))
+                // ADR-0062: muted registrations (active:false) are excluded
+                // from the global fan-out; they receive events only via
+                // `notify_observer_by_id` during the targeted replay phase.
+                .filter(|r| r.active)
+                .map(|r| Arc::clone(&r.observer))
                 .collect::<Vec<_>>(),
             guard.c_abi.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
             guard.c_fanout_tx.clone(),

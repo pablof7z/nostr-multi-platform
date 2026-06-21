@@ -14,10 +14,9 @@ mod nostr_content_widget;
 use super::{
     content_kind_registry::NostrKindRegistry,
     content_render_data::ContentRenderData,
-    content_tree_wire::{ContentTreeWire, WireNode},
+    content_tree_wire::{ContentTreeWire, WireNode, WireUri},
     nostr_media_grid::NostrMediaGrid,
     nostr_mention_chip::{NostrMentionChip, NostrMentionProfileHost},
-    nostr_quote_card::NostrQuoteCard,
     ratatui_text_wrap::{wrap_plain, wrap_prefixed, wrap_spans},
 };
 
@@ -168,13 +167,11 @@ impl<'a> NostrContentView<'a> {
                 spans.extend(self.inline_spans(children));
                 lines.extend(wrap_spans(spans, width));
             }
-            WireNode::BlockQuote { .. } | WireNode::EventRef(_) => {
-                lines.extend(
-                    NostrQuoteCard::new(self.tree, node)
-                        .render_data(self.render_data)
-                        .media_images(self.media_images)
-                        .lines(width),
-                );
+            WireNode::BlockQuote { children } => {
+                lines.extend(self.blockquote_lines(children, width));
+            }
+            WireNode::EventRef(uri) => {
+                lines.extend(self.event_ref_lines(uri, width));
             }
             WireNode::CodeBlock { info, body } => {
                 let title = info.as_deref().unwrap_or("code");
@@ -248,16 +245,11 @@ impl<'a> NostrContentView<'a> {
             let Some(node) = self.tree.node(*child) else {
                 continue;
             };
-            if matches!(node, WireNode::EventRef(_)) {
+            if let WireNode::EventRef(uri) = node {
                 if !inline.is_empty() {
                     lines.extend(wrap_spans(std::mem::take(&mut inline), width));
                 }
-                lines.extend(
-                    NostrQuoteCard::new(self.tree, node)
-                        .render_data(self.render_data)
-                        .media_images(self.media_images)
-                        .lines(width),
-                );
+                lines.extend(self.event_ref_lines(uri, width));
             } else {
                 self.append_inline_node(*child, &mut inline);
             }
@@ -389,6 +381,29 @@ impl<'a> NostrContentView<'a> {
             .join("\n")
     }
 
+    /// Inline fallback lines for a markdown blockquote (`> …`). Used by the
+    /// preview/`lines()` path; the interactive widget path renders blockquotes
+    /// with the same `> ` prefix in `nostr_content_widget.rs`.
+    fn blockquote_lines(&self, children: &[usize], width: usize) -> Vec<Line<'static>> {
+        self.text_for_nodes(children)
+            .split('\n')
+            .flat_map(|line| wrap_prefixed(line, width, "> ", muted_style()))
+            .collect()
+    }
+
+    /// Inline fallback lines for an unresolved `nostr:` event reference. The
+    /// interactive widget path renders the resolved event via the kind-registry
+    /// `EmbeddedEvent`; this preview/`lines()` path has no host, so it surfaces
+    /// the same one-line `quote <id>` affordance the legacy quote card used.
+    fn event_ref_lines(&self, uri: &WireUri, width: usize) -> Vec<Line<'static>> {
+        let label = self
+            .render_data
+            .and_then(|data| data.event_for(uri))
+            .map(|event| format!("quote {} · kind:{}", event.author_label(), event.kind))
+            .unwrap_or_else(|| format!("quote {}", short_id(&uri.primary_id)));
+        wrap_prefixed(&label, width, "", muted_style())
+    }
+
     fn node_height(&self, index: usize, width: usize) -> u16 {
         let Some(node) = self.tree.node(index) else {
             return 0;
@@ -405,12 +420,9 @@ impl<'a> NostrContentView<'a> {
                     .preferred_height()
                     .saturating_add(1)
             }
-            WireNode::EventRef(_) | WireNode::BlockQuote { .. } => {
-                NostrQuoteCard::new(self.tree, node)
-                    .render_data(self.render_data)
-                    .media_images(self.media_images)
-                    .preferred_height(width)
-                    .saturating_add(1)
+            WireNode::EventRef(uri) => self.event_ref_lines(uri, width).len().max(1) as u16,
+            WireNode::BlockQuote { children } => {
+                self.blockquote_lines(children, width).len().max(1) as u16
             }
             _ => {
                 let mut lines = Vec::new();

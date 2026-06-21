@@ -37,10 +37,6 @@ fn cross_platform_tui_content_view() {
             "src/components/nostr_content/nostr_media_grid.rs",
         ),
         (
-            nc.join("nostr_quote_card.rs"),
-            "src/components/nostr_content/nostr_quote_card.rs",
-        ),
-        (
             nc.join("content_kind_registry/mod.rs"),
             "src/components/nostr_content/content_kind_registry/mod.rs",
         ),
@@ -79,7 +75,6 @@ fn cross_platform_tui_content_view() {
         "tui/content-kind-registry",
         "tui/content-mention-chip",
         "tui/content-media-grid",
-        "tui/content-quote-card",
         "tui/content-view",
     ] {
         assert!(

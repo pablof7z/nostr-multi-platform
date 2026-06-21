@@ -50,18 +50,15 @@
 use std::ffi::c_char;
 use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{ClosureInterestShape, PullFeedController};
 use nmp_ffi::{
-    nmp_app_close_contact_feed, nmp_app_close_interest, nmp_app_open_contact_feed,
-    nmp_app_open_interest, NmpApp,
+    clear_active_follows_feed, declare_active_follows_feed, nmp_app_close_interest, NmpApp,
 };
 use nmp_nip01::op_feed::{
     encode_op_feed_snapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
 use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
-use nmp_store::{EventStore, StoreQuery, StoredEvent};
 
 use super::helpers::{author_feed_shape, c_string_opt, make_pull_fn, thread_feed_shape};
 
@@ -77,10 +74,6 @@ fn feed_acquisition_kinds() -> Option<Vec<u32>> {
         .ok()
         .map(|kinds| kinds.into_iter().collect())
 }
-
-/// Bound store seeding so an old account with a large author history cannot
-/// make a screen open unbounded. Live relay pushes continue filling the feed.
-const FEED_SEED_LIMIT: usize = 512;
 
 /// Scope passed to `open_interest`: `1` = Global (account-agnostic). A visited
 /// profile / open thread is NOT re-routed on account switch — it pins a
@@ -171,7 +164,9 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
         pubkey.clone(),
         acquisition_kinds.clone(),
     ));
-    seed_author_feed_from_store(app_ref, &feed, &pubkey);
+    // ADR-0062: no store seeding here; the kernel owns catch-up via
+    // open_observed_interest (register_feed_with_observer → muted observer
+    // → OpenObservedInterest command replays self.events → activate).
     let key = author_feed_key(&pubkey);
     // B1: drain store history by ingest seq via PullFeedController (FlatFeed = push observer).
     // PullFeedController::new always succeeds; load_older fails closed if the
@@ -184,7 +179,11 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     let pull = make_pull_fn(app_ref.event_store_handle());
     let apply: nmp_feed::FeedApply = {
         let f = feed.clone();
-        Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev))
+        Arc::new(move |ev| {
+            let before = f.len();
+            KernelEventObserver::on_kernel_event(&*f, ev);
+            f.len() > before
+        })
     };
     // After a drained page is ingested, grow the render viewport so the newly-
     // pulled older rows become user-visible in the emitted sidecar (they sort
@@ -196,11 +195,32 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
         })
     };
     let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
-    app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
+    // register_feed_with_observer now returns the muted observer id (ADR-0062).
+    let observer_id = app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
+    // ADR-0062 author replay: one shape covering `{"authors":[pk],"kinds":[1,6]}`.
+    let replay_shapes: Vec<nmp_planner::InterestShape> = {
+        let pk_str = pubkey.clone();
+        let k = acquisition_kinds
+            .iter()
+            .map(|k| k.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let json = format!(r#"{{"kinds":[{k}],"authors":["{pk_str}"]}}"#);
+        nmp_planner::InterestShape::from_filter_json(&json)
+            .map(|s| vec![s])
+            .unwrap_or_default()
+    };
     if let Some(filter_json) = feed_filter_json("authors", &pubkey) {
-        open_interest_for(app, &filter_json, &author_consumer(&pubkey));
+        app_ref.open_observed_interest(
+            &filter_json,
+            &author_consumer(&pubkey),
+            SCOPE_GLOBAL,
+            observer_id,
+            replay_shapes,
+            nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+        );
     }
 }
 
@@ -255,9 +275,11 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
         root_id.clone(),
         acquisition_kinds.clone(),
     ));
-    seed_thread_feed_from_store(app_ref, &feed, &root_id);
+    // ADR-0062: no store seeding here; the kernel owns catch-up via
+    // open_observed_interest. Two shapes cover the thread: `#e` replies +
+    // root-by-id (the root itself may already be in the read-cache).
     let key = thread_feed_key(&root_id);
-    // B1: pull the reply tail (#e-covered shape); root-by-id seeded above.
+    // B1: pull the reply tail (#e-covered shape); root-by-id replayed below.
     // PullFeedController::new always succeeds; load_older fails closed if the
     // provider returns None (which cannot happen here — root_id is always valid).
     let root_for_shape = root_id.clone();
@@ -268,7 +290,11 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     let pull = make_pull_fn(app_ref.event_store_handle());
     let apply: nmp_feed::FeedApply = {
         let f = feed.clone();
-        Arc::new(move |ev| KernelEventObserver::on_kernel_event(&*f, ev))
+        Arc::new(move |ev| {
+            let before = f.len();
+            KernelEventObserver::on_kernel_event(&*f, ev);
+            f.len() > before
+        })
     };
     // Viewport grow after each drained page — reveals the newly-pulled reply
     // tail in the emitted sidecar (viewport-only, no second pull).
@@ -279,11 +305,37 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
         })
     };
     let pull_ctrl = PullFeedController::new(provider, pull, apply, advance);
-    app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
+    // register_feed_with_observer now returns the muted observer id (ADR-0062).
+    let observer_id = app_ref.register_feed_with_observer(key.clone(), pull_ctrl, feed.clone());
     register_typed_feed_sidecar(app_ref, key, feed);
 
+    // ADR-0062 thread replay: two shapes — `#e` replies and root-by-id.
+    let replay_shapes: Vec<nmp_planner::InterestShape> = {
+        let k = acquisition_kinds
+            .iter()
+            .map(|k| k.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let etag_json = format!(r##"{{"kinds":[{k}],"#e":["{root_id}"]}}"##);
+        let id_json = format!(r#"{{"ids":["{root_id}"]}}"#);
+        let mut shapes = Vec::new();
+        if let Some(s) = nmp_planner::InterestShape::from_filter_json(&etag_json) {
+            shapes.push(s);
+        }
+        if let Some(s) = nmp_planner::InterestShape::from_filter_json(&id_json) {
+            shapes.push(s);
+        }
+        shapes
+    };
     if let Some(filter_json) = feed_filter_json("#e", &root_id) {
-        open_interest_for(app, &filter_json, &thread_consumer(&root_id));
+        app_ref.open_observed_interest(
+            &filter_json,
+            &thread_consumer(&root_id),
+            SCOPE_GLOBAL,
+            observer_id,
+            replay_shapes,
+            nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+        );
     }
 }
 
@@ -309,36 +361,33 @@ pub extern "C" fn nmp_app_chirp_close_thread_feed(app: *mut NmpApp, event_id_hex
 
 /// Chirp's home-feed primary content kind declaration: kind:1 text notes.
 ///
-/// Repost wrappers are derived by the generic `nmp_app_open_contact_feed` verb;
-/// Chirp does not enumerate kind:6 as primary feed policy.
+/// Repost wrappers are derived below this app-facing declaration; Chirp does
+/// not enumerate kind:6 as primary feed policy.
 ///
 /// `pub(crate)` so in-crate tests can assert the constant value without
 /// duplicating the literal.
 pub(crate) const HOME_FEED_PRIMARY_KINDS_JSON: &str = "[1]";
 
-/// Open Chirp's home (contact) feed — the subscription that REQs kind:1 events
-/// and derived repost wrappers from the active account's follow set.
+/// Declare Chirp's home feed from the active account's current follow set.
 ///
-/// Delegates to the generic `nmp_app_open_contact_feed` with
+/// Delegates to the Rust declared-feed helper with
 /// `HOME_FEED_PRIMARY_KINDS_JSON = "[1]"`. App shells that previously called
-/// `nmp_app_open_timeline` must call this instead (ADR-0042 amendment
-/// 2026-06-12).
+/// `nmp_app_open_timeline` must call this instead.
 ///
-/// D6 — a null `app` is a silent no-op (forwarded by `nmp_app_open_contact_feed`).
+/// D6 — a null `app` is a silent no-op.
 #[no_mangle]
 pub extern "C" fn nmp_app_chirp_open_home_feed(app: *mut NmpApp) {
     if let Ok(kinds_c) = std::ffi::CString::new(HOME_FEED_PRIMARY_KINDS_JSON) {
-        nmp_app_open_contact_feed(app, kinds_c.as_ptr());
+        declare_active_follows_feed(app, kinds_c.as_ptr());
     }
 }
 
-/// Close Chirp's home (contact) feed. Mirrors `nmp_app_chirp_open_home_feed`;
-/// withdraws all follow-feed M2 interests and emits CLOSE frames.
+/// Clear Chirp's active-follows home-feed declaration.
 ///
 /// D6 — a null `app` is a silent no-op.
 #[no_mangle]
 pub extern "C" fn nmp_app_chirp_close_home_feed(app: *mut NmpApp) {
-    nmp_app_close_contact_feed(app);
+    clear_active_follows_feed(app);
 }
 
 /// Refcount-owner key for an author interest. Stable per author so a re-open
@@ -354,21 +403,8 @@ fn thread_consumer(root_id_hex: &str) -> String {
     format!("thread-{root_id_hex}")
 }
 
-/// Push a kernel `open_interest` through the existing validated C-ABI seam
-/// (reuses its malformed-filter rejection + `InterestShape` dedup). The
-/// filter/consumer strings are short-lived `CString`s passed by pointer for the
-/// duration of the call.
-fn open_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
-    let (Ok(filter), Ok(consumer)) = (
-        std::ffi::CString::new(filter_json),
-        std::ffi::CString::new(consumer_id),
-    ) else {
-        return;
-    };
-    nmp_app_open_interest(app, filter.as_ptr(), consumer.as_ptr(), SCOPE_GLOBAL);
-}
-
-/// Push a kernel `close_interest` mirroring [`open_interest_for`].
+/// Push a kernel `close_interest` for an interest opened via
+/// `open_observed_interest`.
 fn close_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
     let (Ok(filter), Ok(consumer)) = (
         std::ffi::CString::new(filter_json),
@@ -379,80 +415,6 @@ fn close_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
     nmp_app_close_interest(app, filter.as_ptr(), consumer.as_ptr(), SCOPE_GLOBAL);
 }
 
-fn seed_author_feed_from_store(app: &NmpApp, feed: &FlatFeed, pubkey_hex: &str) {
-    let Some(author) = hex32(pubkey_hex) else {
-        return;
-    };
-    let Some(store) = event_store(app) else {
-        return;
-    };
-    let Some(kinds) = feed_acquisition_kinds() else {
-        return;
-    };
-    seed_query(
-        feed,
-        &*store,
-        StoreQuery::AuthorKind {
-            author,
-            kinds,
-            since: None,
-            until: None,
-        },
-    );
-}
-
-fn seed_thread_feed_from_store(app: &NmpApp, feed: &FlatFeed, root_id_hex: &str) {
-    if let Some(root) = app.event_by_id(root_id_hex) {
-        KernelEventObserver::on_kernel_event(feed, &root);
-    }
-    let Some(target) = hex32(root_id_hex) else {
-        return;
-    };
-    let Some(store) = event_store(app) else {
-        return;
-    };
-    let Some(kinds) = feed_acquisition_kinds() else {
-        return;
-    };
-    seed_query(feed, &*store, StoreQuery::Etag { target, kinds });
-}
-
-fn seed_query(feed: &FlatFeed, store: &dyn EventStore, query: StoreQuery) {
-    let Ok(events) = store.query(&query, FEED_SEED_LIMIT) else {
-        return;
-    };
-    for stored in events {
-        KernelEventObserver::on_kernel_event(feed, &kernel_event_from_stored(&stored, store));
-    }
-}
-
-fn event_store(app: &NmpApp) -> Option<Arc<dyn EventStore>> {
-    app.event_store_handle().lock().ok()?.clone()
-}
-
-fn kernel_event_from_stored(stored: &StoredEvent, store: &dyn EventStore) -> KernelEvent {
-    KernelEvent {
-        id: stored.raw.id.clone(),
-        author: stored.raw.pubkey.clone(),
-        created_at: stored.raw.created_at,
-        kind: stored.raw.kind,
-        tags: stored.raw.tags.clone(),
-        content: stored.raw.content.clone(),
-        relay_provenance: nmp_core::slots::relay_provenance_for_event(store, &stored.raw.id),
-    }
-}
-
-fn hex32(value: &str) -> Option<[u8; 32]> {
-    if value.len() != 64 {
-        return None;
-    }
-    let mut out = [0u8; 32];
-    for (idx, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
-        let pair = std::str::from_utf8(chunk).ok()?;
-        out[idx] = u8::from_str_radix(pair, 16).ok()?;
-    }
-    Some(out)
-}
 
 #[cfg(test)]
 #[path = "interest_feed/tests.rs"]

@@ -6,9 +6,9 @@
 //!      no-op (idempotence gate) — it must not re-run the follow-feed
 //!      reconcile / cache-serve teardown on an unchanged account.
 //!
-//! B3 — After `set_active_account` + compiled acquisition kinds + kind:3
-//!      ingest, `tick()` must emit a contact-feed REQ whose filter carries both
-//!      the followed author pubkeys AND the compiled acquisition kinds.
+//! B3 — After `set_active_account` + active-follows declaration + kind:3
+//!      ingest, `tick()` must emit a REQ whose filter carries both the followed
+//!      author pubkeys AND the compiled acquisition kinds.
 
 use super::*;
 use crate::app::KernelAction;
@@ -44,12 +44,12 @@ fn set_active_account_twice_same_pubkey_is_a_noop() {
 #[test]
 fn kind3_ingest_followed_by_tick_emits_req_with_follows_and_kinds() {
     // B3 — E2E acceptance test: kind:3 arrives for the active viewer →
-    // tick() must emit a contact-feed REQ carrying both the followed author
+    // tick() must emit an active-follows REQ carrying both the followed author
     // pubkeys AND the compiled acquisition kinds.
     //
-    // Negative proof (break-without-fix): if `set_follow_feed_kinds` is
+    // Negative proof (break-without-fix): if the active-follows declaration is
     // skipped, `follow_feed_kinds` is empty and no follow-feed interests are
-    // registered → tick() emits no REQ with follow authors.
+    // registered -> tick() emits no REQ with follow authors.
     let viewer_keys = ::nostr::Keys::generate();
     let viewer_pk = viewer_keys.public_key().to_hex();
     let follow_pk = ::nostr::Keys::generate().public_key().to_hex();
@@ -61,7 +61,7 @@ fn kind3_ingest_followed_by_tick_emits_req_with_follows_and_kinds() {
 
     // Establish viewer identity and seed compiled acquisition kinds {1, 6}.
     let _ = r.set_active_account(viewer_pk.clone());
-    let _ = r.set_follow_feed_kinds([1u32, 6u32].into_iter().collect());
+    let _ = r.declare_active_follows_feed([1u32, 6u32].into_iter().collect());
 
     // Seed the follow's NIP-65 relay list so the planner can resolve their
     // write relay and compile a REQ.

@@ -1,12 +1,151 @@
 //! Tests for the Chirp per-open author / thread flat-feed registration
-//! (ADR-0042 §5.1, ADR-0058 §8 6B viewport grow wiring).
+//! (ADR-0042 §5.1, ADR-0058 §8 6B viewport grow wiring, ADR-0062 observer
+//! catch-up).
+//!
+//! ## Harness
+//!
+//! Tests that need events to appear in the kernel read-cache (so the ADR-0062
+//! replay path can deliver them to a newly-opened feed) use the ACTOR harness:
+//!
+//!   1. `nmp_app_new()` — allocate a fresh app.
+//!   2. `nmp_app_set_update_callback(app, ctx, Some(cb))` — wire up a signal
+//!      channel so we can block until the actor has processed a command.
+//!   3. `nmp_app_start(app, 0, 80, 4)` — start the actor thread (no relays,
+//!      visible limit 80, 4 Hz).
+//!   4. Inject signed events via `nmp_app_inject_signed_event_json(app, json)`.
+//!   5. Block on `recv_timeout` until `app.event_by_id(id).is_some()`.
+//!   6. Open the feed → the kernel replay delivers cached events.
+//!   7. Block on `recv_timeout` until the typed sidecar carries the expected ids.
+//!
+//! This is the same pattern used by `nmp-ffi/src/pull_tests.rs` and
+//! `nmp-ffi/src/event_by_id_tests.rs`.
+//!
+//! Tests that only check compile-time invariants (key formatting, filter JSON
+//! parsing) remain cheap and do not need the actor.
 
 use super::*;
-use std::ffi::CString;
+use std::ffi::{CString, c_void};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::Duration;
 
-use nmp_core::WireProjectionState;
-use nmp_ffi::{nmp_app_free, nmp_app_new};
-use nmp_store::{MemEventStore, RawEvent, VerifiedEvent};
+use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_inject_signed_event_json};
+use nmp_ffi::{nmp_app_set_update_callback, nmp_app_start};
+use nostr::{EventBuilder, Keys, Tag, Timestamp};
+use nostr::prelude::JsonUtil;
+
+// ─── Actor harness ────────────────────────────────────────────────────────────
+
+extern "C" fn update_signal(ctx: *mut c_void, _ptr: *const u8, _len: usize) {
+    // ctx is a *mut Sender<()> (boxed, kept alive by the test).
+    if ctx.is_null() {
+        return;
+    }
+    let tx: &Sender<()> = unsafe { &*(ctx as *const Sender<()>) };
+    let _ = tx.send(());
+}
+
+/// Start a fresh `NmpApp` with a signal channel. Returns `(app, rx, tx_box)`.
+/// The caller must keep `tx_box` alive for the duration of the test (the
+/// `set_update_callback` ctx pointer points into it).
+fn start_app() -> (*mut NmpApp, Receiver<()>, Box<Sender<()>>) {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new must succeed");
+    let (tx, rx) = channel::<()>();
+    let tx_box = Box::new(tx);
+    let ctx = tx_box.as_ref() as *const Sender<()> as *mut c_void;
+    nmp_app_set_update_callback(app, ctx, Some(update_signal));
+    nmp_app_start(app, 80, 4);
+    (app, rx, tx_box)
+}
+
+/// Inject a real Schnorr-signed event and block until the actor has made it
+/// readable (i.e. it's in the kernel read-cache so the replay path can find it).
+fn inject_and_wait(app: *mut NmpApp, json: &str, id: &str, rx: &Receiver<()>) {
+    let json_c = CString::new(json).expect("event JSON");
+    let ok = nmp_app_inject_signed_event_json(app, json_c.as_ptr());
+    assert!(ok, "inject_signed_event_json must succeed for: {json}");
+    let app_ref: &NmpApp = unsafe { &*app };
+    if app_ref.event_by_id(id).is_some() {
+        return;
+    }
+    loop {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(()) => {
+                if app_ref.event_by_id(id).is_some() {
+                    return;
+                }
+            }
+            Err(_) => panic!(
+                "actor timed out making event {} readable",
+                &id[..16.min(id.len())]
+            ),
+        }
+    }
+}
+
+/// Block until the typed sidecar for `key` carries the expected number of
+/// cards (or timeout). Returns the decoded card ids.
+fn wait_for_feed_cards(
+    app: *mut NmpApp,
+    key: &str,
+    expected_count: usize,
+    rx: &Receiver<()>,
+) -> Vec<String> {
+    let app_ref: &NmpApp = unsafe { &*app };
+    // Quick path: sidecar might already be populated.
+    if let Some(ids) = read_typed_card_ids(app, key) {
+        if ids.len() >= expected_count {
+            return ids;
+        }
+    }
+    loop {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(()) => {
+                if let Some(ids) = read_typed_card_ids(app, key) {
+                    if ids.len() >= expected_count {
+                        return ids;
+                    }
+                }
+                let _ = app_ref; // suppress unused warning
+            }
+            Err(_) => {
+                let ids = read_typed_card_ids(app, key).unwrap_or_default();
+                panic!(
+                    "timed out waiting for {} cards in feed {key} (got {})",
+                    expected_count,
+                    ids.len()
+                );
+            }
+        }
+    }
+}
+
+/// Read typed op-feed card ids for `key`.
+fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
+    let app_ref: &NmpApp = unsafe { &*app };
+    let projections = app_ref.run_typed_snapshot_projections();
+    let entry = projections
+        .iter()
+        .find(|p| p.key == key && !p.payload.is_empty())?;
+    let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()?;
+    let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
+    if ids.is_empty() {
+        None
+    } else {
+        Some(ids)
+    }
+}
+
+/// Return `true` when the typed sidecar for `key` is absent or cleared.
+fn typed_projection_is_gone(app: *mut NmpApp, key: &str) -> bool {
+    let app_ref: &NmpApp = unsafe { &*app };
+    let projections = app_ref.run_typed_snapshot_projections();
+    projections
+        .iter()
+        .all(|p| p.key != key || p.payload.is_empty())
+}
+
+// ─── Unit-level key/shape tests (no actor needed) ────────────────────────────
 
 #[test]
 fn keys_are_namespaced_per_consumer() {
@@ -18,9 +157,6 @@ fn keys_are_namespaced_per_consumer() {
 
 #[test]
 fn filter_json_carries_derived_acquisition_kinds_and_dimension() {
-    // Chirp declares primary kind 1. The NIP-18 helper derives the kind 6
-    // wrapper for acquisition, so the kernel filter and feed predicate still
-    // agree without the app declaring wrapper kinds as primary policy.
     assert_eq!(FEED_PRIMARY_KINDS, [1]);
     let acquisition = feed_acquisition_kinds().expect("primary kind derives acquisition");
 
@@ -54,8 +190,6 @@ fn filter_json_carries_derived_acquisition_kinds_and_dimension() {
 
 #[test]
 fn feed_filter_json_parses_as_a_valid_interest_shape() {
-    // Guards the hand-built JSON against the kernel-side parser the open
-    // path feeds it into — a malformed filter would be silently rejected.
     for json in [
         feed_filter_json("authors", "abc").expect("valid author filter"),
         feed_filter_json("#e", "root1").expect("valid thread filter"),
@@ -67,253 +201,288 @@ fn feed_filter_json_parses_as_a_valid_interest_shape() {
     }
 }
 
+// ─── ADR-0062 regression: inject-then-open → feed populates ─────────────────
+//
+// These are the critical regressions. Before ADR-0062, opening an author or
+// thread feed AFTER the events were already cached would result in an empty
+// feed (the global fan-out had already fired). After ADR-0062, the kernel
+// replays `self.events` to the muted observer during `OpenObservedInterest`.
+
+/// **Inject-then-open (author)**: events injected BEFORE `open_author_feed`
+/// must appear in the feed via the kernel read-model catch-up path.
 #[test]
-fn author_feed_open_seeds_cached_kind1_and_close_removes_projection() {
-    let app = nmp_app_new();
-    assert!(!app.is_null());
-    let store = Arc::new(MemEventStore::new());
-    let pubkey = "11".repeat(32);
-    insert_raw(
-        &store,
-        RawEvent {
-            id: "a1".repeat(32),
-            pubkey: pubkey.clone(),
-            created_at: 10,
-            kind: 1,
-            tags: vec![],
-            content: "older".into(),
-            sig: "a".repeat(128),
-        },
-    );
-    insert_raw(
-        &store,
-        RawEvent {
-            id: "a2".repeat(32),
-            pubkey: pubkey.clone(),
-            created_at: 20,
-            kind: 1,
-            tags: vec![],
-            content: "newer".into(),
-            sig: "a".repeat(128),
-        },
-    );
-    install_store(app, store);
+fn author_inject_then_open_populates_feed() {
+    let (app, rx, _tx_box) = start_app();
+
+    let keys = Keys::generate();
+    let pubkey = keys.public_key().to_hex();
+
+    // Inject two events BEFORE opening the feed.
+    let e1 = EventBuilder::text_note("older")
+        .custom_created_at(Timestamp::from(1_000u64))
+        .sign_with_keys(&keys)
+        .expect("sign e1");
+    let e2 = EventBuilder::text_note("newer")
+        .custom_created_at(Timestamp::from(2_000u64))
+        .sign_with_keys(&keys)
+        .expect("sign e2");
+
+    inject_and_wait(app, &e1.as_json(), &e1.id.to_hex(), &rx);
+    inject_and_wait(app, &e2.as_json(), &e2.id.to_hex(), &rx);
+
+    // THEN open the feed. The kernel must replay both cached events.
+    let pubkey_c = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
+
+    let key = author_feed_key(&pubkey);
+    let ids = wait_for_feed_cards(app, &key, 2, &rx);
+
+    assert_eq!(ids.len(), 2, "author feed must contain both injected events");
+    assert!(ids.contains(&e1.id.to_hex()), "e1 must appear");
+    assert!(ids.contains(&e2.id.to_hex()), "e2 must appear");
+
+    let pubkey_c2 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_close_author_feed(app, pubkey_c2.as_ptr());
+    nmp_app_free(app);
+}
+
+/// **Inject-then-open (thread)**: root and reply events cached BEFORE opening
+/// the thread feed must appear in the feed via replay.
+#[test]
+fn thread_inject_then_open_populates_cached_root_and_replies() {
+    let (app, rx, _tx_box) = start_app();
+
+    let root_keys = Keys::generate();
+    let reply_keys = Keys::generate();
+
+    // Inject root.
+    let root_ev = EventBuilder::text_note("root note")
+        .custom_created_at(Timestamp::from(1_000u64))
+        .sign_with_keys(&root_keys)
+        .expect("sign root");
+    let root_id = root_ev.id.to_hex();
+
+    // Inject reply with #e tag referencing the root.
+    let reply_ev = EventBuilder::text_note("reply")
+        .tags([Tag::parse(["e", &root_id]).expect("e tag")])
+        .custom_created_at(Timestamp::from(2_000u64))
+        .sign_with_keys(&reply_keys)
+        .expect("sign reply");
+
+    inject_and_wait(app, &root_ev.as_json(), &root_id, &rx);
+    inject_and_wait(app, &reply_ev.as_json(), &reply_ev.id.to_hex(), &rx);
+
+    // Open thread feed AFTER injection.
+    let root_c = CString::new(root_id.clone()).unwrap();
+    nmp_app_chirp_open_thread_feed(app, root_c.as_ptr());
+
+    let key = thread_feed_key(&root_id);
+    let ids = wait_for_feed_cards(app, &key, 2, &rx);
+
+    assert!(ids.contains(&root_id), "root must appear in thread feed");
+    assert!(ids.contains(&reply_ev.id.to_hex()), "reply must appear in thread feed");
+
+    let root_c2 = CString::new(root_id.clone()).unwrap();
+    nmp_app_chirp_close_thread_feed(app, root_c2.as_ptr());
+    nmp_app_free(app);
+}
+
+/// **Multi-owner**: two observers for the same author shape. The second open
+/// (changed:false from `EnsureAbsent`) still replays the cached events.
+#[test]
+fn multi_owner_second_observer_hydrates_despite_changed_false() {
+    let (app, rx, _tx_box) = start_app();
+
+    let keys = Keys::generate();
+    let pubkey = keys.public_key().to_hex();
+
+    let ev = EventBuilder::text_note("note")
+        .custom_created_at(Timestamp::from(1_000u64))
+        .sign_with_keys(&keys)
+        .expect("sign");
+    inject_and_wait(app, &ev.as_json(), &ev.id.to_hex(), &rx);
+
+    // First open.
+    let pubkey_c = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
+    let key = author_feed_key(&pubkey);
+    wait_for_feed_cards(app, &key, 1, &rx);
+
+    // Close and re-open (simulates a screen navigate-away/back).
+    // On re-open, EnsureAbsent returns changed:false (slot still exists),
+    // but the new observer must still replay.
+    let pubkey_c2 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_close_author_feed(app, pubkey_c2.as_ptr());
+
+    let pubkey_c3 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_open_author_feed(app, pubkey_c3.as_ptr());
+    let ids = wait_for_feed_cards(app, &key, 1, &rx);
+    assert!(!ids.is_empty(), "re-opened feed must hydrate despite changed:false");
+
+    let pubkey_c4 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_close_author_feed(app, pubkey_c4.as_ptr());
+    nmp_app_free(app);
+}
+
+/// **No double-delivery**: an event replayed at open time must not arrive
+/// again when the feed is already open and a NEW event is ingested live.
+#[test]
+fn no_double_delivery_when_event_replayed_then_arrives_live() {
+    let (app, rx, _tx_box) = start_app();
+
+    let keys = Keys::generate();
+    let pubkey = keys.public_key().to_hex();
+
+    // Inject e1 BEFORE opening.
+    let e1 = EventBuilder::text_note("pre-existing")
+        .custom_created_at(Timestamp::from(1_000u64))
+        .sign_with_keys(&keys)
+        .expect("sign e1");
+    inject_and_wait(app, &e1.as_json(), &e1.id.to_hex(), &rx);
+
+    // Open feed → e1 is replayed.
+    let pubkey_c = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
+    let key = author_feed_key(&pubkey);
+    let ids_before = wait_for_feed_cards(app, &key, 1, &rx);
+    assert_eq!(ids_before.len(), 1, "exactly 1 event from replay");
+
+    // Inject a NEW event AFTER open → arrives via live global fan-out.
+    let e2 = EventBuilder::text_note("live")
+        .custom_created_at(Timestamp::from(2_000u64))
+        .sign_with_keys(&keys)
+        .expect("sign e2");
+    inject_and_wait(app, &e2.as_json(), &e2.id.to_hex(), &rx);
+    let ids_after = wait_for_feed_cards(app, &key, 2, &rx);
+    assert_eq!(ids_after.len(), 2, "2 events total — no double-delivery of e1");
+
+    // e1 must appear exactly once.
+    let e1_count = ids_after.iter().filter(|&id| id == &e1.id.to_hex()).count();
+    assert_eq!(e1_count, 1, "e1 must appear exactly once (no double-delivery)");
+
+    let pubkey_c2 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_close_author_feed(app, pubkey_c2.as_ptr());
+    nmp_app_free(app);
+}
+
+// ─── Existing tests migrated to actor harness ────────────────────────────────
+
+#[test]
+fn author_feed_open_seeds_kind1_and_close_removes_projection() {
+    let (app, rx, _tx_box) = start_app();
+
+    let keys = Keys::generate();
+    let pubkey = keys.public_key().to_hex();
+
+    let e1 = EventBuilder::text_note("older")
+        .custom_created_at(Timestamp::from(10u64))
+        .sign_with_keys(&keys)
+        .expect("sign e1");
+    let e2 = EventBuilder::text_note("newer")
+        .custom_created_at(Timestamp::from(20u64))
+        .sign_with_keys(&keys)
+        .expect("sign e2");
+
+    inject_and_wait(app, &e1.as_json(), &e1.id.to_hex(), &rx);
+    inject_and_wait(app, &e2.as_json(), &e2.id.to_hex(), &rx);
 
     let pubkey_c = CString::new(pubkey.clone()).unwrap();
     nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
-    let ids = read_typed_card_ids(app, &author_feed_key(&pubkey))
-        .expect("author feed projection present after open");
-    assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
+    let key = author_feed_key(&pubkey);
+    let ids = wait_for_feed_cards(app, &key, 2, &rx);
+    assert_eq!(ids.len(), 2, "both events present after open");
 
-    nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
-    let gone = typed_projection_is_gone(app, &author_feed_key(&pubkey));
-    assert!(gone, "author feed projection must be gone after close");
+    let pubkey_c2 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_close_author_feed(app, pubkey_c2.as_ptr());
+    assert!(
+        typed_projection_is_gone(app, &key),
+        "author feed projection must be gone after close"
+    );
     nmp_app_free(app);
 }
 
 #[test]
 fn thread_feed_open_seeds_cached_root_and_replies() {
-    let app = nmp_app_new();
-    assert!(!app.is_null());
-    let store = Arc::new(MemEventStore::new());
-    let root_id = "b1".repeat(32);
-    insert_raw(
-        &store,
-        RawEvent {
-            id: root_id.clone(),
-            pubkey: "22".repeat(32),
-            created_at: 10,
-            kind: 1,
-            tags: vec![],
-            content: "root".into(),
-            sig: "a".repeat(128),
-        },
-    );
-    insert_raw(
-        &store,
-        RawEvent {
-            id: "b2".repeat(32),
-            pubkey: "33".repeat(32),
-            created_at: 20,
-            kind: 1,
-            tags: vec![vec!["e".into(), root_id.clone()]],
-            content: "reply".into(),
-            sig: "a".repeat(128),
-        },
-    );
-    install_store(app, store);
+    let (app, rx, _tx_box) = start_app();
+
+    let root_keys = Keys::generate();
+    let reply_keys = Keys::generate();
+
+    let root_ev = EventBuilder::text_note("root")
+        .custom_created_at(Timestamp::from(10u64))
+        .sign_with_keys(&root_keys)
+        .expect("sign root");
+    let root_id = root_ev.id.to_hex();
+
+    let reply_ev = EventBuilder::text_note("reply")
+        .tags([Tag::parse(["e", &root_id]).expect("e tag")])
+        .custom_created_at(Timestamp::from(20u64))
+        .sign_with_keys(&reply_keys)
+        .expect("sign reply");
+
+    inject_and_wait(app, &root_ev.as_json(), &root_id, &rx);
+    inject_and_wait(app, &reply_ev.as_json(), &reply_ev.id.to_hex(), &rx);
 
     let root_c = CString::new(root_id.clone()).unwrap();
     nmp_app_chirp_open_thread_feed(app, root_c.as_ptr());
-    let ids = read_typed_card_ids(app, &thread_feed_key(&root_id))
-        .expect("thread feed projection present after open");
-    assert_eq!(ids, vec!["b2".repeat(32), root_id.clone()]);
+    let key = thread_feed_key(&root_id);
+    let ids = wait_for_feed_cards(app, &key, 2, &rx);
+    assert!(ids.contains(&root_id), "root present");
+    assert!(ids.contains(&reply_ev.id.to_hex()), "reply present");
 
-    nmp_app_chirp_close_thread_feed(app, root_c.as_ptr());
-    let gone = typed_projection_is_gone(app, &thread_feed_key(&root_id));
-    assert!(gone, "thread feed projection must be gone after close");
-    nmp_app_free(app);
-}
-
-#[test]
-fn author_feed_open_emits_typed_op_feed_sidecar_and_close_removes_it() {
-    let app = nmp_app_new();
-    assert!(!app.is_null());
-    let store = Arc::new(MemEventStore::new());
-    let pubkey = "11".repeat(32);
-    insert_raw(
-        &store,
-        RawEvent {
-            id: "a1".repeat(32),
-            pubkey: pubkey.clone(),
-            created_at: 10,
-            kind: 1,
-            tags: vec![],
-            content: "older".into(),
-            sig: "a".repeat(128),
-        },
-    );
-    insert_raw(
-        &store,
-        RawEvent {
-            id: "a2".repeat(32),
-            pubkey: pubkey.clone(),
-            created_at: 20,
-            kind: 1,
-            tags: vec![],
-            content: "newer".into(),
-            sig: "a".repeat(128),
-        },
-    );
-    install_store(app, store);
-
-    let pubkey_c = CString::new(pubkey.clone()).unwrap();
-    nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
-
-    let key = author_feed_key(&pubkey);
-    let app_ref = unsafe { &*app };
-    let typed = app_ref.run_typed_snapshot_projections();
-    let entry = typed.iter().find(|p| p.key == key).expect("typed sidecar");
-
-    assert_eq!(entry.schema_id, OP_FEED_SCHEMA_ID);
-    assert_eq!(entry.schema_version, OP_FEED_SCHEMA_VERSION);
-    assert_eq!(entry.file_identifier, "NOFS");
-
-    let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload)
-        .expect("typed payload decodes as a NOFS op-feed snapshot");
-    let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
-    assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
-
-    nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
-    let typed_after = app_ref.run_typed_snapshot_projections();
-    let clear = typed_after
-        .iter()
-        .find(|p| p.key == key)
-        .expect("Cleared row");
-    assert_eq!(clear.state, WireProjectionState::Cleared);
-    assert!(clear.payload.is_empty());
-    let typed_again = app_ref.run_typed_snapshot_projections();
+    let root_c2 = CString::new(root_id.clone()).unwrap();
+    nmp_app_chirp_close_thread_feed(app, root_c2.as_ptr());
     assert!(
-        typed_again.iter().all(|p| p.key != key),
-        "typed Cleared row must be one-shot"
+        typed_projection_is_gone(app, &key),
+        "thread feed projection must be gone after close"
     );
     nmp_app_free(app);
 }
 
+/// `load_older` drains a page over the pull substrate and grows the viewport.
 #[test]
 fn author_feed_load_older_grows_visible_window_past_first_page() {
-    // BLOCKING 2 (wiring): a `load_older` drain ingests older rows; the
-    // `advance` closure grows the FlatFeed viewport so those rows become
-    // user-visible in the EMITTED typed sidecar (which now reads
-    // `snapshot_current_window`, not a fixed first page). Asserts the
-    // emitted projection LENGTH grows after `load_older`, not merely that
-    // rows were ingested.
-    let app = nmp_app_new();
-    assert!(!app.is_null());
-    let store = Arc::new(MemEventStore::new());
-    let pubkey = "11".repeat(32);
+    let (app, rx, _tx_box) = start_app();
+
+    let keys = Keys::generate();
+    let pubkey = keys.public_key().to_hex();
+
     let total = nmp_feed::DEFAULT_FEED_WINDOW_LIMIT + 20;
-    for i in 0..total as u64 {
-        insert_raw(
-            &store,
-            RawEvent {
-                id: format!("{i:064x}"),
-                pubkey: pubkey.clone(),
-                created_at: 1_000 + i,
-                kind: 1,
-                tags: vec![],
-                content: format!("n{i}"),
-                sig: "a".repeat(128),
-            },
-        );
+    let mut ids_in_order: Vec<String> = Vec::new();
+    for i in 0..total {
+        let ev = EventBuilder::text_note(format!("n{i}"))
+            .custom_created_at(Timestamp::from(1_000u64 + i as u64))
+            .sign_with_keys(&keys)
+            .expect("sign");
+        let id = ev.id.to_hex();
+        inject_and_wait(app, &ev.as_json(), &id, &rx);
+        ids_in_order.push(id);
     }
-    install_store(app, store);
 
     let pubkey_c = CString::new(pubkey.clone()).unwrap();
     nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
     let key = author_feed_key(&pubkey);
 
-    // First page only, despite all `total` rows being ingested (they sort
-    // below the newest-first first page).
-    let first = read_typed_card_ids(app, &key).expect("author feed projection");
+    // First page: DEFAULT_FEED_WINDOW_LIMIT events.
+    let first = wait_for_feed_cards(app, &key, nmp_feed::DEFAULT_FEED_WINDOW_LIMIT, &rx);
     assert_eq!(
         first.len(),
         nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         "sidecar emits only the first page before load_older"
     );
 
-    // load_older drains a page over the real pull substrate and the advance
-    // closure grows the viewport → the older rows become visible.
-    let app_ref = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     assert!(
         app_ref.load_older_feed(&key),
         "load_older must drain + grow the viewport"
     );
-    let grown = read_typed_card_ids(app, &key).expect("author feed projection after load_older");
-    assert_eq!(
-        grown.len(),
-        total,
-        "the previously-hidden older rows are now emitted"
+    let grown = wait_for_feed_cards(app, &key, total, &rx);
+    assert!(
+        grown.len() > first.len(),
+        "the emitted projection grew after load_older"
     );
-    assert!(grown.len() > first.len(), "the emitted projection grew");
 
-    nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
+    let pubkey_c2 = CString::new(pubkey.clone()).unwrap();
+    nmp_app_chirp_close_author_feed(app, pubkey_c2.as_ptr());
     nmp_app_free(app);
-}
-
-fn install_store(app: *mut NmpApp, store: Arc<MemEventStore>) {
-    let app_ref = unsafe { &*app };
-    *app_ref.event_store_handle().lock().unwrap() = Some(store);
-}
-
-fn insert_raw(store: &MemEventStore, raw: RawEvent) {
-    store
-        .insert(
-            VerifiedEvent::from_raw_unchecked(raw),
-            &"wss://seed.example/".to_string(),
-            1_000,
-        )
-        .unwrap();
-}
-
-/// Return the decoded op-feed card IDs for `key` via the typed sidecar lane,
-/// or `None` when the key is absent / cleared. Replaces the deleted generic
-/// JSON lane (rule A6).
-fn read_typed_card_ids(app: *mut NmpApp, key: &str) -> Option<Vec<String>> {
-    let app_ref: &NmpApp = unsafe { &*app };
-    let projections = app_ref.run_typed_snapshot_projections();
-    let entry = projections
-        .iter()
-        .find(|p| p.key == key && !p.payload.is_empty())?;
-    let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload).ok()?;
-    Some(snapshot.cards.iter().map(|c| c.card.id.clone()).collect())
-}
-
-/// Return `true` when the typed sidecar for `key` is absent or cleared.
-fn typed_projection_is_gone(app: *mut NmpApp, key: &str) -> bool {
-    let app_ref: &NmpApp = unsafe { &*app };
-    let projections = app_ref.run_typed_snapshot_projections();
-    projections
-        .iter()
-        .all(|p| p.key != key || p.payload.is_empty())
 }

@@ -22,7 +22,7 @@ impl Kernel {
     /// the existing `nmp-core` test suite drives directly, routing through the
     /// SAME production chokepoint so the tests exercise the real path (no
     /// shadow ingest logic). It declares the event's kind as a follow-feed kind
-    /// first — exactly what a host does via `OpenContactFeed { kinds }` — so the
+    /// first — exactly what the active-follows declaration path does — so the
     /// timeline projection fires; production never calls this method.
     ///
     /// Returns `true` iff the store accepted the event as canonical

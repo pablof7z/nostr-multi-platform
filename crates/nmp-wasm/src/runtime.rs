@@ -30,14 +30,13 @@ use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 
 use crate::dispatch_routing::browser_driver_missing_reason;
 use crate::protocol::{
-    CapabilityFailure, RuntimeStatus, SetSigner, StartConfig, WorkerEvent, WorkerRequest,
+    CapabilityFailure, RuntimeStatus, StartConfig, WorkerEvent, WorkerRequest,
 };
 // `AppAction` is only named as a type by the wasm32-only async-publish path
 // (`start_publish_app_action`); the native `WorkerRequest::AppAction(_)` arm
 // destructures the enum variant without naming the inner type.
 #[cfg(target_arch = "wasm32")]
 use crate::protocol::AppAction;
-use crate::signer_slot;
 use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
 
 const PROTOCOL_VERSION: u16 = 1;
@@ -357,42 +356,6 @@ impl WasmRuntime {
         Ok(())
     }
 
-    /// V-01 Stage 3b — install a signer from a [`SetSigner`] request.
-    ///
-    /// Pure: no I/O, no JS-event-loop interaction. Construction failure
-    /// surfaces as `CapabilityFailure` with a stable code (e.g.
-    /// `unsupported_signer_kind`, `invalid_signer_pubkey`); success
-    /// surfaces as `ActionAccepted` with `action_type = "nmp.set_signer"`
-    /// so the host can resolve a spinner the same way it does for any
-    /// other dispatched action.
-    ///
-    /// PR-3 viewer-pubkey hand-off: on success the pubkey from the signer
-    /// request is fed into the kernel via `set_active_account` so
-    /// contact-feed resolution and bootstrap interests know whose follows
-    /// to load without waiting for a separate `set_active_account` action.
-    fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
-        match signer_slot::install_from_request(&request) {
-            Ok((signer, canonical_pubkey)) => {
-                self.signer = Some(signer);
-                // Use the canonical (lowercase) hex from the parsed key, not
-                // the raw wire string — guards against uppercase input that
-                // would seed a non-canonical active_account (B2).
-                let outbound =
-                    self.reducer.borrow_mut().set_active_account(canonical_pubkey);
-                self.fan_outbound(outbound);
-                self.accepted_with_snapshot(
-                    "nmp.set_signer".to_string(),
-                    request.correlation_id,
-                )
-            }
-            Err(error) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-                capability: "nmp.set_signer".to_string(),
-                correlation_id: request.correlation_id,
-                reason: error.detail(),
-            })],
-        }
-    }
-
     /// Fan `outbound` messages to live relay drivers (wasm32) or drop them
     /// (native — the driver pool does not exist in test builds).
     fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
@@ -414,21 +377,6 @@ impl WasmRuntime {
     fn snapshot_event(&mut self) -> WorkerEvent {
         let bytes = build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow());
         WorkerEvent::UpdateBytes { bytes }
-    }
-
-    /// V-51 phase 2 — JSON snapshot of the kernel's recent routing
-    /// decisions. Sibling of the FFI `nmp_app_recent_routing_decisions`
-    /// symbol; same payload shape on both surfaces so the web Chirp shell
-    /// and the iOS Chirp shell can share a single routing-inspector
-    /// renderer (V-51 phase 3).
-    ///
-    /// Pull-only: the runtime does not push this on every snapshot tick
-    /// (routing traces are diagnostic; the cost model is "pay when a host
-    /// asks"). The `wasm-bindgen` wrapper exposes this as
-    /// `NmpWasmRuntime::recent_routing_decisions()`.
-    #[must_use]
-    pub fn recent_routing_decisions(&self) -> String {
-        self.reducer.borrow().recent_routing_decisions_json()
     }
 
     /// V-01 Stage 3c — start an async publish for an `AppAction`. Wasm32-only.
@@ -485,8 +433,22 @@ impl WasmRuntime {
             .await
         }
     }
-
 }
+
+// Routing diagnostics. Production code (all targets); the methods are public
+// app-facing API on `WasmRuntime`.
+#[path = "runtime/diagnostics.rs"]
+mod diagnostics;
+
+// Feed-declaration helpers. Production code (all targets); the methods are
+// public app-facing API on `WasmRuntime`.
+#[path = "runtime/feed.rs"]
+mod feed;
+
+// Signer installation helper. Production code (all targets); split out for the
+// LOC ceiling without changing the runtime surface.
+#[path = "runtime/signer.rs"]
+mod signer;
 
 // Action-dispatch routing arm of `handle` — split out for the LOC ceiling.
 // Production code (all targets); the methods are defined on `impl WasmRuntime`.

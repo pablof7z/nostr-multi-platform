@@ -620,9 +620,9 @@ pub(crate) fn follow(
     }
 }
 
-/// (Re)open the contact-feed subscription for the active account.
+/// Declare the active-account-follows feed for app primary content kinds.
 ///
-/// `kinds` is the compiled acquisition kind set the follow-set REQ should
+/// `acquisition_kinds` is the compiled acquisition kind set the follow-set REQ should
 /// carry. D0: `nmp-core` does not know which primary kinds or wrapper policy
 /// belong to the host's app concept; the caller supplies the compiled set so
 /// the substrate carries no app-specific social knowledge.
@@ -633,7 +633,8 @@ pub(crate) fn follow(
 /// arrival, reading the same stored kinds); this command covers re-opens
 /// (screen re-entry) before a new kind:3 arrives, and is also where the host
 /// first activates the subscription by supplying acquisition kinds. An empty
-/// `kinds` set clears the subscription (equivalent to `close_contact_feed`).
+/// `acquisition_kinds` set clears the subscription (equivalent to
+/// `clear_active_follows_feed`).
 ///
 /// The compiled acquisition kinds are stored UNCONDITIONALLY — including before any
 /// account is active (#1493 P4). Both Chirp shells mount the home-feed view at
@@ -648,10 +649,10 @@ pub(crate) fn follow(
 /// path). `set_follow_feed_kinds` calls `register_follow_feed_for_active_account`
 /// internally, which correctly early-returns while no account is active, so
 /// storing the kinds registers no interest yet — it only primes the kernel.
-pub(crate) fn open_contact_feed(
+pub(crate) fn declare_active_follows_feed(
     _identity: &IdentityRuntime,
     kernel: &mut Kernel,
-    kinds: std::collections::BTreeSet<u32>,
+    acquisition_kinds: std::collections::BTreeSet<u32>,
 ) -> Vec<OutboundMessage> {
     // Store the compiled acquisition kinds and (re-)register M2 follow-feed interests
     // so drain_lifecycle_tick emits REQ frames for the follow set on the next
@@ -659,11 +660,11 @@ pub(crate) fn open_contact_feed(
     // only persists the kinds (registration early-returns); the subsequent
     // identity-change reconcile reads them back. An empty set clears all
     // follow-feed interests (D5 CLEAR branch).
-    kernel.set_follow_feed_kinds(kinds);
+    kernel.set_follow_feed_kinds(acquisition_kinds);
     Vec::new()
 }
 
-/// Tear down the contact-feed subscription opened by `open_contact_feed`.
+/// Tear down the active-follows feed declaration.
 ///
 /// Passes an empty kinds set to the kernel so it withdraws all follow-feed
 /// M2 interests from the lifecycle registry. The `FollowListChanged` trigger
@@ -671,7 +672,7 @@ pub(crate) fn open_contact_feed(
 ///
 /// D6: no active account (or no prior open) is a silent no-op — the kernel's
 /// `follow_feed_kinds` is already empty for a not-signed-in session.
-pub(crate) fn close_contact_feed(
+pub(crate) fn clear_active_follows_feed(
     _identity: &IdentityRuntime,
     kernel: &mut Kernel,
 ) -> Vec<OutboundMessage> {

@@ -44,6 +44,18 @@ pub(super) fn get_by_id(
     Ok(result)
 }
 
+/// Pure point-read — does NOT stamp the LRU access counter.
+///
+/// Use for read paths that must not bias GC victim selection (e.g. replay).
+pub(super) fn peek_by_id(
+    store: &MemEventStore,
+    id: &EventId,
+) -> Result<Option<StoredEvent>, StoreError> {
+    let hex = bytes_to_hex(id);
+    let st = store.lock()?;
+    Ok(st.events.get(&hex).cloned())
+}
+
 pub(super) fn scan_by_author_kind<'a>(
     store: &'a MemEventStore,
     author: &PubKey,

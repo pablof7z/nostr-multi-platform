@@ -76,7 +76,6 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
     let status_str = fbb.create_string(&status.status);
     let relay_url = fbb.create_string(&status.relay_url);
     let wallet_npub = fbb.create_string(&status.wallet_npub);
-    let wallet_npub_short = fbb.create_string(&status.wallet_npub_short);
     let wallet_pubkey_hex = fbb.create_string(&status.wallet_pubkey_hex);
 
     let root = fb::WalletStatus::create(
@@ -89,7 +88,8 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
             balance_msats: status.balance_msats.unwrap_or_default(),
             has_balance_sats: status.balance_sats.is_some(),
             balance_sats: status.balance_sats.unwrap_or_default(),
-            wallet_npub_short: Some(wallet_npub_short),
+            // `wallet_npub_short` vtable slot is deprecated (#1678, D7);
+            // not written — shells abbreviate `wallet_npub` themselves.
             is_ready: status.is_ready,
             is_connected: status.is_connected,
             has_connection_state: status.connection_state.is_some(),
@@ -123,7 +123,8 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
         wallet_npub: str_field(root.wallet_npub(), "WalletStatus.wallet_npub")?,
         balance_msats: optional_u64(root.has_balance_msats(), root.balance_msats()),
         balance_sats: optional_u64(root.has_balance_sats(), root.balance_sats()),
-        wallet_npub_short: str_field(root.wallet_npub_short(), "WalletStatus.wallet_npub_short")?,
+        // `wallet_npub_short` removed (#1678, D7); deprecated vtable slot is
+        // not decoded — shells abbreviate `wallet_npub` themselves.
         wallet_pubkey_hex: str_field(
             root.wallet_pubkey_hex(),
             "WalletStatus.wallet_pubkey_hex",

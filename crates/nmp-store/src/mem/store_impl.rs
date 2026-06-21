@@ -22,6 +22,10 @@ impl EventStore for MemEventStore {
         query::get_by_id(self, id)
     }
 
+    fn peek_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
+        query::peek_by_id(self, id)
+    }
+
     fn scan_by_author_kind<'a>(
         &'a self,
         author: &PubKey,

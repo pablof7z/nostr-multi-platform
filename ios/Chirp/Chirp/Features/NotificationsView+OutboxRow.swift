@@ -3,11 +3,11 @@ import SwiftUI
 // Per-row UI for `NotificationsView`. Lifted into a sibling file so the
 // parent screen stays focused on the summary + section composition.
 //
-// ADR-0032 / doctrine §4.4: `title`, `preview`, `statusLabel`, `systemImage`
+// ADR-0032 / aim.md §2 #4: `title`, `preview`, `statusLabel`, `systemImage`
 // are no longer carried on the wire projection. This file owns the shell-side
 // presentation helpers (`kindTitle`, `iconName`, `preview`, `statusLabel`).
 // The kernel still owns policy: `canRetry`, raw `status` token, `attempt`
-// count. Presentation chooses colors (aim.md §4.4: no kind-number switches
+// count. Presentation chooses colors (aim.md §2 #4: no kind-number switches
 // drive _policy_ — only icon/label presentation here).
 //
 // ADR-0032 / V-115: `targetSummary` and `createdAtDisplay` were removed from

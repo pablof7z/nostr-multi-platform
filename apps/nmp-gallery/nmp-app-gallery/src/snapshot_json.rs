@@ -181,9 +181,10 @@ fn relay_role_options_model_json(model: &RelayRoleOptionsModel) -> Value {
             .options
             .iter()
             .map(|option| {
+                // `label` removed from the wire (#1678, D7) — shells map
+                // value→label themselves.
                 json!({
                     "value": option.value,
-                    "label": option.label,
                     "tint": option.tint,
                     "is_default": option.is_default,
                 })

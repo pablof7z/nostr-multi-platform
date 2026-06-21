@@ -268,6 +268,9 @@ impl ChainDriver {
             .iter()
             .filter_map(|c| match c {
                 ActorCommand::ShowToast { message } => Some(message.as_str()),
+                // issue #1682 — DM failures now ride structured tokens; the
+                // fallback prose is the same English the toast carried before.
+                ActorCommand::ShowErrorToken { token } => Some(token.fallback_prose()),
                 _ => None,
             })
             .collect()

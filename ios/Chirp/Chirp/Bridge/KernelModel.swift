@@ -154,6 +154,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// Snapshot-derived AND user-clearable, so we cannot fold this into the
     /// `snapshot` accessor — the clear gesture has nowhere else to land.
     @Published private(set) var lastErrorToast: String?
+    /// Snapshot-driven machine error CODE (issue #1682), carried alongside
+    /// `lastErrorToast`. The shell maps this stable code to LOCALIZED prose via
+    /// `localizedErrorToast`; `lastErrorToast` is the English fallback when the
+    /// code is unknown. Rust owns the code; the shell owns the prose.
+    @Published private(set) var lastErrorCategory: String?
     /// Success toast — set by Swift (not the Rust snapshot) when an async
     /// action settles with `Accepted`. Cleared by the overlay's `.task` TTL,
     /// same lifecycle as `lastErrorToast`.
@@ -195,7 +200,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     // ── Stores & capabilities (non-published) ────────────────────────────
 
-    private let kernel = KernelHandle()
+    let kernel = KernelHandle()
     /// Re-entrance guard for `start()`. The snapshot-driven `isRunning`
     /// accessor only flips after the first tick lands, so a re-entrant
     /// `start()` before then would dispatch the FFI twice.
@@ -378,6 +383,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // with the kernel `reset()` above — no Swift-side mirror to clear.
         lastDispatchError = nil
         lastErrorToast = nil
+        lastErrorCategory = nil
         capabilities.start()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         startedKernel = true
@@ -751,7 +757,22 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         track(kernel.publishRelayList(relays: relays))
     }
     func openTimeline() { kernel.openTimeline() }
-    func clearErrorToast() { lastErrorToast = nil }
+    func clearErrorToast() {
+        lastErrorToast = nil
+        lastErrorCategory = nil
+    }
+
+    /// Localized user-facing error prose for the current error toast
+    /// (issue #1682). The shell OWNS the prose: it maps the Rust-supplied
+    /// stable machine code (`lastErrorCategory`) to localized copy. Codes the
+    /// shell does not recognize (e.g. relay-CLOSED categories, or any
+    /// post-dated Rust code) fall back to the Rust English `lastErrorToast`.
+    /// `nil` ⇒ no error toast on screen.
+    var localizedErrorToast: String? {
+        guard let toast = lastErrorToast else { return nil }
+        guard let code = lastErrorCategory else { return toast }
+        return UiErrorProse.localized(code: code) ?? toast
+    }
     func showSuccessToast(_ message: String) { lastSuccessToast = message }
     func clearSuccessToast() { lastSuccessToast = nil }
 
@@ -867,6 +888,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // Snapshot-driven error toast, re-homed onto the typed envelope. Stays
         // in this distinct slot because tap-to-dismiss has nowhere else to land.
         lastErrorToast = env.lastErrorToast
+        lastErrorCategory = env.lastErrorCategory
 
         #if DEBUG
         // B1: track the typed-decode success rate. A nil `typedHomeFeed` means
@@ -1006,13 +1028,4 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedEnvelope = nil
     }
 
-}
-
-extension KernelModel: EventClaimSinkProtocol {
-    func claim(uri: String, consumerId: String) {
-        kernel.claimEvent(uri: uri, consumerID: consumerId)
-    }
-    func release(uri: String, consumerId: String) {
-        kernel.releaseEvent(uri: uri, consumerID: consumerId)
-    }
 }

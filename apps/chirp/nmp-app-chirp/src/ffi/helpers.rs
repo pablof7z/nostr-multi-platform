@@ -34,8 +34,8 @@ pub(super) fn author_feed_shape(pubkey_hex: &str, kinds: &[u32]) -> Option<Inter
 }
 
 /// Build the `InterestShape` for the reply tail of a thread feed (the `#e`
-/// covered shape). The root-by-id half is event-id-only (uncovered) and must
-/// be seeded separately.
+/// covered shape). The root-by-id half is event-id-only and is replayed from
+/// the kernel read-cache via `open_observed_interest` (ADR-0062 catch-up).
 #[must_use]
 pub(super) fn thread_feed_shape(root_id_hex: &str, kinds: &[u32]) -> Option<InterestShape> {
     let k = kinds.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",");

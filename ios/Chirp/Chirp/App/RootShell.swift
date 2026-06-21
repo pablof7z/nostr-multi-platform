@@ -105,7 +105,7 @@ struct RootShell: View {
                     try? await Task.sleep(for: .seconds(3))
                     model.clearSuccessToast()
                 }
-        } else if let msg = model.lastErrorToast {
+        } else if let msg = model.localizedErrorToast {
             Text(msg)
                 .font(ChirpFont.callout)
                 .foregroundStyle(.primary)

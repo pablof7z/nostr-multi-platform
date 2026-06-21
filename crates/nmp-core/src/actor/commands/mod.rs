@@ -97,7 +97,7 @@ mod relays;
 // runtime (publish / dm / relays helpers, `run_actor`, etc.). They share
 // the `native` gate with the modules they drive.
 #[cfg(all(test, feature = "native"))]
-mod open_contact_feed_prelogin_tests;
+mod active_follows_feed_prelogin_tests;
 #[cfg(all(test, feature = "native"))]
 mod registration_seed_follow_tests;
 #[cfg(all(test, feature = "native"))]
@@ -186,6 +186,8 @@ pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_P
 // `KernelEventObserverSlot` and `notify_observers` are used by kernel/event_observer.rs
 // unconditionally. The slot constructors and registration helpers are native FFI only.
 pub(crate) use event_observer::notify_observers;
+// ADR-0062: targeted observer delivery (crate-internal replay path).
+pub(crate) use event_observer::notify_observer_by_id;
 // `KernelEventObserverSlot` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::KernelEventObserverSlot`.
 pub use event_observer::KernelEventObserverSlot;
@@ -201,6 +203,11 @@ pub(crate) use event_observer::new_event_observer_slot_headless;
 // KernelEventObservers. `new_event_observer_slot` and `unregister_observer`
 // remain native-only (used by the FFI / actor-thread shutdown path).
 pub use event_observer::register_rust_observer;
+// ADR-0062: muted observer registration and activation are available on all
+// targets. The kernel replay path activates muted observers after targeted
+// catch-up, so wasm/no-native reducer builds need the same pure helper.
+pub use event_observer::activate_observer;
+pub use event_observer::register_rust_observer_muted;
 // Slot constructor + unregister helper reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`.
 #[cfg(feature = "native")]
@@ -217,8 +224,8 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    close_contact_feed, follow, open_contact_feed, publish_profile, publish_signed_event,
-    publish_unsigned_event, publish_unsigned_event_to_relays,
+    clear_active_follows_feed, declare_active_follows_feed, follow, publish_profile,
+    publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

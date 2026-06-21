@@ -47,6 +47,7 @@ mod reconcile;
 pub mod register;
 pub mod runtime;
 pub mod status;
+pub mod ui_codes;
 pub mod wire;
 
 pub use register::{register_wallet, wallet_typed_projection};

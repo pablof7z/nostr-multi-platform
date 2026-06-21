@@ -75,7 +75,6 @@ use nmp_ffi::NmpApp;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
 use crate::service::MarmotService;
-use crate::projection::display;
 use crate::projection::payload::{
     KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
 };
@@ -335,14 +334,10 @@ impl MarmotProjection {
                         .map(|m| m.len() as u32)
                         .unwrap_or(0);
                     let unread_count = if unread == 0 { None } else { Some(unread) };
-                    let display_name = display::group_display_name(&g.name);
-                    let initials = display::initials(&display_name);
                     let member_count = u32::try_from(members.len()).unwrap_or(u32::MAX);
                     MarmotGroupRow {
                         id_hex,
                         name: g.name.clone(),
-                        display_name,
-                        initials,
                         members,
                         member_count,
                         unread_count,
@@ -359,11 +354,9 @@ impl MarmotProjection {
             .map(|(id_hex, c)| PendingWelcomeRow {
                 id_hex: id_hex.clone(),
                 group_name: c.group_name.clone(),
-                display_name: display::welcome_display_name(&c.group_name),
                 inviter_npub: c.inviter_npub.clone(),
             })
             .collect();
-        let invites_chip_label = display::invites_chip_label(pending_welcomes.len());
 
         // Reaching this snapshot path means the iOS shell has a live
         // `MarmotHandle`, so the identity IS registered. The `false` branch
@@ -397,7 +390,6 @@ impl MarmotProjection {
             pending_welcomes,
             key_package,
             cached_kp_pubkeys,
-            invites_chip_label,
             is_registered: true,
             orphaned_commit_count,
             keyring_unavailable,
