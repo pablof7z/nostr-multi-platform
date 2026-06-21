@@ -10,6 +10,10 @@ const AUTHOR_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const AUTHOR_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const AUTHOR_C: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
+fn address(author: &str, d_tag: &str) -> String {
+    format!("{KIND_LONG_FORM_ARTICLE}:{author}:{d_tag}")
+}
+
 fn article(id: &str, author: &str, d_tag: &str, created_at: u64, topic: &str) -> KernelEvent {
     KernelEvent {
         id: id.to_string(),
@@ -80,7 +84,7 @@ fn primary_kind30023_acquires_kind16_not_kind6() {
 }
 
 #[test]
-fn kind16_embedded_article_repost_uses_target_id_and_wrapper_sort() {
+fn kind16_embedded_article_repost_uses_address_identity_and_wrapper_sort() {
     let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|author| {
         author == AUTHOR_C
     })));
@@ -96,7 +100,7 @@ fn kind16_embedded_article_repost_uses_target_id_and_wrapper_sort() {
     let snapshot = feed.snapshot(&FeedRequest::default());
     assert_eq!(snapshot.cards.len(), 1);
     let row = &snapshot.cards[0].card;
-    assert_eq!(row.id, "target");
+    assert_eq!(row.id, address(AUTHOR_A, "article-a"));
     assert_eq!(row.article.as_ref().unwrap().id, "target");
     assert_eq!(row.article.as_ref().unwrap().created_at, 10);
     assert_eq!(row.reposted_by.as_ref().unwrap().author_pubkey, AUTHOR_C);
@@ -123,7 +127,7 @@ fn tag_only_kind16_uses_injected_local_lookup_without_claiming_target() {
     let snapshot = feed.snapshot(&FeedRequest::default());
     assert_eq!(snapshot.cards.len(), 1);
     let row = &snapshot.cards[0].card;
-    assert_eq!(row.id, "target");
+    assert_eq!(row.id, address(AUTHOR_A, "article-a"));
     assert_eq!(row.article.as_ref().unwrap().author_pubkey, AUTHOR_A);
     assert_eq!(row.reposted_by.as_ref().unwrap().repost_event_id, "wrapper");
 }
@@ -138,12 +142,12 @@ fn later_wrapper_bumps_order_without_changing_article_created_at() {
     feed.on_kernel_event(&embedded_repost("wrapper", AUTHOR_C, &target, 50));
 
     let snapshot = feed.snapshot(&FeedRequest::default());
-    assert_eq!(snapshot.cards[0].card.id, "target");
+    assert_eq!(snapshot.cards[0].card.id, address(AUTHOR_A, "target"));
     assert_eq!(
         snapshot.cards[0].card.article.as_ref().unwrap().created_at,
         10
     );
-    assert_eq!(snapshot.cards[1].card.id, "older");
+    assert_eq!(snapshot.cards[1].card.id, address(AUTHOR_B, "older"));
 }
 
 #[test]
@@ -196,5 +200,46 @@ fn topic_feed_admits_repost_only_when_target_matches_topic() {
 
     let snapshot = feed.snapshot(&FeedRequest::default());
     assert_eq!(snapshot.cards.len(), 1);
-    assert_eq!(snapshot.cards[0].card.id, "target");
+    assert_eq!(snapshot.cards[0].card.id, address(AUTHOR_A, "article-a"));
+}
+
+#[test]
+fn unresolved_tag_only_kind16_is_ignored_without_fetching_target() {
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+
+    feed.on_kernel_event(&tag_only_repost("wrapper", AUTHOR_C, "target", 40));
+
+    assert!(
+        feed.is_empty(),
+        "longform address identity cannot be proven from an event-id-only repost"
+    );
+}
+
+#[test]
+fn replaceable_article_repost_dedupes_by_address_and_keeps_freshest_article() {
+    let feed = LongformFeed::new(longform_feed_predicate(Arc::new(|_| true)));
+    let v1 = article("event-v1", AUTHOR_A, "same-article", 10, "nostr");
+    let v2 = article("event-v2", AUTHOR_A, "same-article", 40, "nostr");
+    let v3 = article("event-v3", AUTHOR_A, "same-article", 60, "nostr");
+
+    feed.on_kernel_event(&v1);
+    feed.on_kernel_event(&embedded_repost("wrapper", AUTHOR_C, &v1, 50));
+    feed.on_kernel_event(&v2);
+
+    let snapshot = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snapshot.cards.len(), 1);
+    let row = &snapshot.cards[0].card;
+    assert_eq!(row.id, address(AUTHOR_A, "same-article"));
+    assert_eq!(row.article.as_ref().unwrap().id, "event-v2");
+    assert_eq!(row.reposted_by.as_ref().unwrap().repost_event_id, "wrapper");
+
+    feed.on_kernel_event(&v3);
+
+    let snapshot = feed.snapshot(&FeedRequest::default());
+    let row = &snapshot.cards[0].card;
+    assert_eq!(row.article.as_ref().unwrap().id, "event-v3");
+    assert!(
+        row.reposted_by.is_none(),
+        "newer direct article now positions the row"
+    );
 }

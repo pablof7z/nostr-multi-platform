@@ -40,7 +40,7 @@ pub struct LongformRepostAttribution {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LongformFeedEntry {
-    /// Canonical row id: target article event id, not wrapper event id.
+    /// Canonical row id: target article address (`kind:author:d`), not wrapper id.
     pub id: String,
     /// Article summary when the target is direct, embedded, or locally known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -172,15 +172,16 @@ fn article_item_from_target(
     topic: Option<&str>,
 ) -> Option<FlatFeedItem<LongformFeedEntry>> {
     let article = article_summary_from_event(event)?;
+    let id = article.address.clone();
     if topic.is_some_and(|topic| !event_has_topic(event, topic)) {
         return None;
     }
     Some(FlatFeedItem {
-        id: article.id.clone(),
+        id: id.clone(),
         source_id: event.id.clone(),
         sort_created_at: article.created_at,
         card: LongformFeedEntry {
-            id: article.id.clone(),
+            id,
             article: Some(article),
             reposted_by: None,
             relay_provenance: event.relay_provenance.clone(),
@@ -194,15 +195,9 @@ fn article_item_from_repost(
     topic: Option<&str>,
 ) -> Option<FlatFeedItem<LongformFeedEntry>> {
     let record = nmp_nip18::try_from_kernel_event(event)?;
-    let target_id = record.target_event_id.clone()?;
     let target = article_from_repost_target(&record, event, event_lookup, topic);
-    if target.is_none() && (record.target_kind != Some(KIND_LONG_FORM_ARTICLE) || topic.is_some()) {
-        return None;
-    }
-    let Some(article) = target else {
-        return Some(placeholder_repost_item(event, target_id));
-    };
-    let id = article.id.clone();
+    let article = target?;
+    let id = article.address.clone();
 
     Some(FlatFeedItem {
         id: id.clone(),
@@ -215,23 +210,6 @@ fn article_item_from_repost(
             relay_provenance: event.relay_provenance.clone(),
         },
     })
-}
-
-fn placeholder_repost_item(
-    event: &KernelEvent,
-    target_id: String,
-) -> FlatFeedItem<LongformFeedEntry> {
-    FlatFeedItem {
-        id: target_id.clone(),
-        source_id: event.id.clone(),
-        sort_created_at: event.created_at,
-        card: LongformFeedEntry {
-            id: target_id,
-            article: None,
-            reposted_by: Some(repost_attribution(event)),
-            relay_provenance: event.relay_provenance.clone(),
-        },
-    }
 }
 
 fn article_from_repost_target(
@@ -318,13 +296,26 @@ fn merge_longform_sources(
         (existing.clone(), incoming)
     };
 
-    if best.card.article.is_none() {
-        best.card.article = other.card.article.clone();
-        if best.card.relay_provenance.is_empty() {
-            best.card.relay_provenance = other.card.relay_provenance;
-        }
+    if let Some(article) = freshest_article(best.card.article.as_ref(), other.card.article.as_ref())
+    {
+        best.card.article = Some(article);
+    }
+    if best.card.relay_provenance.is_empty() {
+        best.card.relay_provenance = other.card.relay_provenance;
     }
     best
+}
+
+fn freshest_article(
+    left: Option<&ArticleFeedItem>,
+    right: Option<&ArticleFeedItem>,
+) -> Option<ArticleFeedItem> {
+    match (left, right) {
+        (Some(left), Some(right)) if right.created_at > left.created_at => Some(right.clone()),
+        (Some(left), _) => Some(left.clone()),
+        (None, Some(right)) => Some(right.clone()),
+        (None, None) => None,
+    }
 }
 
 #[cfg(test)]
