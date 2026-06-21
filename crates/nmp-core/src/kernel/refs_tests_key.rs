@@ -12,6 +12,31 @@ use super::requests::parse_event_key;
 use super::*;
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
+/// Mirror of the interest-inspection helper in `tests_refs_event.rs` — collect
+/// every active registry interest that addresses the addressable coordinate
+/// `(kind, author, d_tag)`.  Used in `assert_coord_key_accepted` to prove that
+/// the resolver registered the interest with the correct fields end-to-end.
+impl Kernel {
+    fn coord_interest_shapes_for_test(
+        &self,
+        kind: u32,
+        author: &str,
+        d_tag: &str,
+    ) -> Vec<crate::planner::InterestShape> {
+        self.lifecycle
+            .registry()
+            .iter_active()
+            .into_iter()
+            .filter(|i| {
+                i.shape.kinds.contains(&kind)
+                    && i.shape.authors.contains(author)
+                    && i.shape.tags.get("d").is_some_and(|v| v.contains(d_tag))
+            })
+            .map(|i| i.shape.clone())
+            .collect()
+    }
+}
+
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
@@ -195,6 +220,44 @@ fn assert_coord_key_accepted(key: &str, expected_kind: u32, expected_pubkey: &st
     assert!(
         kernel.event_claims.contains_key(key),
         "coord key {key:?}: expected a claim row but event_claims is empty"
+    );
+
+    // Resolver-level assertion: the registry must hold exactly ONE active
+    // interest whose shape encodes the expected coordinate fields.  This
+    // proves the interest is correct end-to-end, not merely that a claim
+    // row exists in `event_claims`.
+    let shapes = kernel.coord_interest_shapes_for_test(expected_kind, expected_pubkey, expected_d);
+    assert_eq!(
+        shapes.len(),
+        1,
+        "coord key {key:?}: expected exactly 1 active interest for \
+         kinds={{{}}} authors={{{}}} #d={{{}}} — got {}",
+        expected_kind,
+        expected_pubkey,
+        expected_d,
+        shapes.len(),
+    );
+    let shape = &shapes[0];
+    assert!(
+        shape.kinds.contains(&expected_kind),
+        "coord key {key:?}: interest kinds {:?} does not contain expected kind {}",
+        shape.kinds,
+        expected_kind,
+    );
+    assert!(
+        shape.authors.contains(expected_pubkey),
+        "coord key {key:?}: interest authors {:?} does not contain expected pubkey {}",
+        shape.authors,
+        expected_pubkey,
+    );
+    assert!(
+        shape
+            .tags
+            .get("d")
+            .is_some_and(|v| v.contains(expected_d)),
+        "coord key {key:?}: interest #d tag {:?} does not contain expected d {:?}",
+        shape.tags.get("d"),
+        expected_d,
     );
 }
 
