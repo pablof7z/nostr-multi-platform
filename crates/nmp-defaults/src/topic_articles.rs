@@ -9,17 +9,18 @@
 //!
 //! 1. **Shell dispatches Claim.** The shell calls `dispatch_action` with the
 //!    `"op":"claim"` variant when the user opens a discovery view.
-//! 2. **Kernel opens the subscription.** `execute()` sends
-//!    `ActorCommand::EnsureInterest`. On the next planner tick the kernel
-//!    emits a REQ to the relay(s). No relay logic is in the shell.
-//! 3. **Events arrive reactively.** Matching kind:30023 events flow through
-//!    any registered `KernelEventObserver` into the app's read model, then
-//!    into the push projection the shell reads off each snapshot frame.
-//!    The shell does not poll; the kernel pushes.
+//! 2. **Kernel opens the subscriptions.** `execute()` sends
+//!    `ActorCommand::EnsureInterest` for the direct article lane and for the
+//!    generic-repost lane. On the next planner tick the kernel emits REQs to
+//!    the relay(s). No relay logic is in the shell.
+//! 3. **Events arrive reactively.** Matching kind:30023 events and kind:16
+//!    wrappers flow through any registered `KernelEventObserver` into the app's
+//!    read model, then into the push projection the shell reads off each
+//!    snapshot frame. The shell does not poll; the kernel pushes.
 //! 4. **Shell dispatches Release.** When the view closes the shell dispatches
 //!    the `"op":"release"` variant with the same `topic` and `consumer_id`.
-//!    `execute()` sends `ActorCommand::DropInterestOwner`. When the last
-//!    owner drops, the registry GCs the slot and sends CLOSE.
+//!    `execute()` sends `ActorCommand::DropInterestOwner` for both lanes.
+//!    When the last owner drops, the registry GCs the slots and sends CLOSE.
 //!
 //! # Why Claim/Release live in the same module
 //!
@@ -35,7 +36,8 @@
 //! `consumer_id` is the caller's stable view-instance identifier (e.g.
 //! `"discover-view"`, `"sidebar-widget"`). Multiple consumers may hold
 //! independent Claim registrations for the same `topic` — the registry keeps
-//! **one** REQ alive and GCs it only when every consumer has Released. Use a
+//! one direct lane and one repost lane alive and GCs each only when every
+//! consumer has Released. Use a
 //! stable, unique `consumer_id` per call-site; do not reuse the same id
 //! across unrelated views unless you intentionally want them to share the
 //! refcount.
@@ -57,13 +59,13 @@
 //! cannot do (keyring, audio, file storage). Relay operations belong to the
 //! kernel exclusively; this module is how you reach them.
 
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
-use nmp_planner::stable_hash::stable_hash64;
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
 };
 use nmp_core::ActorCommand;
+use nmp_planner::stable_hash::stable_hash64;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
 
 /// NIP-23 long-form article kind.
@@ -75,10 +77,11 @@ pub const KIND_LONG_FORM_ARTICLE: u32 = 30023;
 pub const TOPIC_ARTICLES_LIMIT: u32 = 50;
 
 pub const TOPIC_ARTICLES_NAMESPACE: &str = "nmp.app.topic_articles";
+const TOPIC_ARTICLES_REPOST_LANE: &str = "reposts";
 
 // ── Interest helpers ──────────────────────────────────────────────────────────
 
-/// Stable [`InterestId`] for the topic-articles subscription keyed to `topic`.
+/// Stable [`InterestId`] for the direct topic-articles subscription keyed to `topic`.
 ///
 /// Derived by hashing the module namespace + the topic string so the same
 /// (namespace, topic) pair always maps to the same registry slot, across
@@ -88,7 +91,17 @@ pub fn topic_articles_interest_id(topic: &str) -> InterestId {
     InterestId(stable_hash64((TOPIC_ARTICLES_NAMESPACE, topic)))
 }
 
-/// Build the tailing [`LogicalInterest`] for kind:30023 events tagged
+/// Stable [`InterestId`] for the topic-article repost lane keyed to `topic`.
+#[must_use]
+pub fn topic_article_reposts_interest_id(topic: &str) -> InterestId {
+    InterestId(stable_hash64((
+        TOPIC_ARTICLES_NAMESPACE,
+        TOPIC_ARTICLES_REPOST_LANE,
+        topic,
+    )))
+}
+
+/// Build the tailing direct [`LogicalInterest`] for kind:30023 events tagged
 /// `#t=topic`.
 ///
 /// `is_indexer_discovery: true` routes the initial bootstrap through the
@@ -111,17 +124,63 @@ pub fn topic_articles_interest(topic: &str) -> LogicalInterest {
     interest
 }
 
+/// Build the tailing repost [`LogicalInterest`] for generic kind:16 wrappers.
+///
+/// A single Nostr filter cannot express `(kind:30023 AND #t=topic) OR
+/// (kind:16 AND #k=30023)`. The direct topic lane stays constrained by `#t`;
+/// this wrapper lane asks only for long-form repost wrappers, and the
+/// long-form feed adapter admits a row for a topic only when the embedded or
+/// locally-known target article has that topic. It does not fetch missing
+/// targets.
+#[must_use]
+pub fn topic_article_reposts_interest(topic: &str) -> LogicalInterest {
+    let mut interest = ViewDependencies {
+        kinds: vec![nmp_nip18::KIND_GENERIC_REPOST],
+        tag_refs: vec![("k".to_string(), KIND_LONG_FORM_ARTICLE.to_string())],
+        limit: Some(TOPIC_ARTICLES_LIMIT),
+        ..Default::default()
+    }
+    .into_logical_interest(
+        topic_article_reposts_interest_id(topic),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    );
+    interest.is_indexer_discovery = true;
+    interest
+}
+
 /// Build the [`SubIdentity`] ownership triple for a `(topic, consumer_id)` pair.
 ///
 /// The owner key folds in the module namespace so keys from different modules
 /// never collide even if `topic` and `consumer_id` strings happen to match.
 /// The slot key folds only `topic` (not `consumer_id`) so all consumers of the
-/// same topic share one registry slot and one REQ on the wire.
+/// same topic share the direct registry slot and direct REQ on the wire.
 #[must_use]
 pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
     SubIdentity::new(
         SubOwnerKey::new((TOPIC_ARTICLES_NAMESPACE, "owner", topic, consumer_id)),
-        SubKey::builder(TOPIC_ARTICLES_NAMESPACE).with(topic).finish(),
+        SubKey::builder(TOPIC_ARTICLES_NAMESPACE)
+            .with(topic)
+            .finish(),
+        SubScope::Global,
+    )
+}
+
+/// Build the [`SubIdentity`] ownership triple for the kind:16 repost lane.
+#[must_use]
+pub fn topic_article_reposts_identity(topic: &str, consumer_id: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new((
+            TOPIC_ARTICLES_NAMESPACE,
+            "owner",
+            TOPIC_ARTICLES_REPOST_LANE,
+            topic,
+            consumer_id,
+        )),
+        SubKey::builder(TOPIC_ARTICLES_NAMESPACE)
+            .with(topic)
+            .with(TOPIC_ARTICLES_REPOST_LANE)
+            .finish(),
         SubScope::Global,
     )
 }
@@ -139,12 +198,12 @@ pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "op")]
 pub enum TopicArticlesAction {
-    /// Open (or join) the kind:30023 subscription for `topic`.
+    /// Open (or join) the direct kind:30023 and kind:16 wrapper lanes for `topic`.
     ///
     /// Idempotent: a second Claim from the same `consumer_id` on the same
     /// `topic` is a no-op at the registry level. A Claim from a different
     /// `consumer_id` on the same `topic` attaches another owner — the
-    /// kernel keeps one REQ open for both.
+    /// kernel keeps one REQ open per lane for both.
     Claim {
         /// The `#t` tag value to filter on (e.g. `"bitcoin"`, `"nostr"`).
         topic: String,
@@ -153,9 +212,9 @@ pub enum TopicArticlesAction {
         /// Release without affecting others. Must be non-empty.
         consumer_id: String,
     },
-    /// Release this consumer's ownership of the `topic` subscription.
+    /// Release this consumer's ownership of the `topic` feed lanes.
     ///
-    /// When the last owner releases, the registry GCs the slot and the
+    /// When the last owner releases, the registry GCs the slots and the
     /// kernel sends CLOSE to the relay.
     Release {
         /// Must match the `topic` passed to the corresponding Claim.
@@ -201,6 +260,10 @@ impl ActionModule for TopicArticlesModule {
                     identity: topic_articles_identity(topic, consumer_id),
                     interest: topic_articles_interest(topic),
                 });
+                send(ActorCommand::EnsureInterest {
+                    identity: topic_article_reposts_identity(topic, consumer_id),
+                    interest: topic_article_reposts_interest(topic),
+                });
             }
             TopicArticlesAction::Release {
                 ref topic,
@@ -210,6 +273,9 @@ impl ActionModule for TopicArticlesModule {
                     topic,
                     consumer_id,
                 )));
+                send(ActorCommand::DropInterestOwner(
+                    topic_article_reposts_identity(topic, consumer_id),
+                ));
             }
         }
         Ok(())
@@ -219,14 +285,9 @@ impl ActionModule for TopicArticlesModule {
 impl TopicArticlesAction {
     fn parts(&self) -> (&str, &str) {
         match self {
-            Self::Claim {
-                topic,
-                consumer_id,
+            Self::Claim { topic, consumer_id } | Self::Release { topic, consumer_id } => {
+                (topic, consumer_id)
             }
-            | Self::Release {
-                topic,
-                consumer_id,
-            } => (topic, consumer_id),
         }
     }
 }
@@ -239,119 +300,6 @@ pub fn register_topic_articles_actions(app: &mut impl ActionRegistrar) {
     app.register_action(TopicArticlesModule);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const TOPIC: &str = "bitcoin";
-    const CONSUMER: &str = "discover-view";
-
-    fn run_execute(action: TopicArticlesAction) -> Vec<ActorCommand> {
-        let cmds = std::cell::RefCell::new(Vec::new());
-        TopicArticlesModule.execute(action, "test-cid", &|cmd| cmds.borrow_mut().push(cmd))
-            .expect("execute must not fail for valid input");
-        cmds.into_inner()
-    }
-
-    #[test]
-    fn claim_sends_ensure_interest_for_correct_kind_and_tag() {
-        let action = TopicArticlesAction::Claim {
-            topic: TOPIC.to_string(),
-            consumer_id: CONSUMER.to_string(),
-        };
-        let cmds = run_execute(action);
-        assert_eq!(cmds.len(), 1);
-        let ActorCommand::EnsureInterest { identity, interest } = &cmds[0] else {
-            panic!("expected EnsureInterest, got {:?}", cmds[0]);
-        };
-        assert_eq!(*identity, topic_articles_identity(TOPIC, CONSUMER));
-        assert_eq!(interest.id, topic_articles_interest_id(TOPIC));
-        assert!(interest.shape.kinds.contains(&KIND_LONG_FORM_ARTICLE));
-        assert_eq!(
-            interest.shape.tags.get("t").and_then(|v| v.iter().next().map(|s| s.as_str())),
-            Some(TOPIC)
-        );
-        assert!(interest.is_indexer_discovery);
-    }
-
-    #[test]
-    fn release_sends_drop_interest_owner_with_matching_identity() {
-        let action = TopicArticlesAction::Release {
-            topic: TOPIC.to_string(),
-            consumer_id: CONSUMER.to_string(),
-        };
-        let cmds = run_execute(action);
-        assert_eq!(cmds.len(), 1);
-        let ActorCommand::DropInterestOwner(identity) = &cmds[0] else {
-            panic!("expected DropInterestOwner, got {:?}", cmds[0]);
-        };
-        assert_eq!(*identity, topic_articles_identity(TOPIC, CONSUMER));
-    }
-
-    #[test]
-    fn claim_and_release_derive_identical_identity() {
-        let claim = topic_articles_identity(TOPIC, CONSUMER);
-        let release = topic_articles_identity(TOPIC, CONSUMER);
-        assert_eq!(claim, release, "claim and release must share the same SubIdentity");
-    }
-
-    #[test]
-    fn different_consumers_same_topic_have_distinct_owner_keys() {
-        let a = topic_articles_identity(TOPIC, "view-a");
-        let b = topic_articles_identity(TOPIC, "view-b");
-        // Different owners — each holds an independent refcount.
-        assert_ne!(a.owner, b.owner);
-        // Same slot key — both attach to the same registry slot (one REQ).
-        assert_eq!(a.key, b.key);
-        assert_eq!(a.scope, b.scope);
-    }
-
-    #[test]
-    fn different_topics_have_distinct_slot_keys() {
-        let btc = topic_articles_identity("bitcoin", CONSUMER);
-        let zap = topic_articles_identity("zaps", CONSUMER);
-        assert_ne!(btc.key, zap.key, "distinct topics must produce distinct slot keys");
-    }
-
-    #[test]
-    fn start_rejects_empty_topic() {
-        let mut ctx = ActionContext::default();
-        let action = TopicArticlesAction::Claim {
-            topic: String::new(),
-            consumer_id: CONSUMER.to_string(),
-        };
-        assert!(matches!(
-            TopicArticlesModule.start(&mut ctx, action),
-            Err(ActionRejection::Invalid(_))
-        ));
-    }
-
-    #[test]
-    fn start_rejects_empty_consumer_id() {
-        let mut ctx = ActionContext::default();
-        let action = TopicArticlesAction::Claim {
-            topic: TOPIC.to_string(),
-            consumer_id: String::new(),
-        };
-        assert!(matches!(
-            TopicArticlesModule.start(&mut ctx, action),
-            Err(ActionRejection::Invalid(_))
-        ));
-    }
-
-    #[test]
-    fn interest_id_is_stable_across_calls() {
-        assert_eq!(
-            topic_articles_interest_id(TOPIC),
-            topic_articles_interest_id(TOPIC),
-            "InterestId must be deterministic"
-        );
-        assert_ne!(
-            topic_articles_interest_id("bitcoin"),
-            topic_articles_interest_id("nostr"),
-            "different topics must produce different InterestIds"
-        );
-    }
-}
+#[path = "topic_articles_tests.rs"]
+mod tests;

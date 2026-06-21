@@ -36,8 +36,8 @@ register_snapshot_projection ←── reads the observer's state on every tick
 register_action           ←── dispatches EnsureInterest / DropInterestOwner
 ```
 
-The action opens (or closes) the subscription. The observer catches arriving
-events and populates an `Arc<Mutex<AppState>>`. The projection reads that
+The action opens (or closes) the subscription slots. The observer catches
+arriving events and populates an `Arc<Mutex<AppState>>`. The projection reads that
 state and emits a JSON slice the shell sees on the next pushed frame. Nothing
 is polling. Nothing is in the shell.
 
@@ -73,10 +73,15 @@ impl ActionModule for TopicArticlesModule {
                     identity: topic_articles_identity(topic, consumer_id),
                     interest: topic_articles_interest(topic),
                 });
+                send(ActorCommand::EnsureInterest {
+                    identity: topic_article_reposts_identity(topic, consumer_id),
+                    interest: topic_article_reposts_interest(topic),
+                });
             }
             TopicArticlesAction::Release { ref topic, ref consumer_id } => {
+                send(ActorCommand::DropInterestOwner(topic_articles_identity(topic, consumer_id)));
                 send(ActorCommand::DropInterestOwner(
-                    topic_articles_identity(topic, consumer_id),
+                    topic_article_reposts_identity(topic, consumer_id),
                 ));
             }
         }
@@ -104,7 +109,7 @@ Shell dispatch JSON:
 
 - **`SubKey`** — what slot. Derived from the subscription's logical identity
   (kind + filter discriminant). All owners of the same data share one `SubKey`
-  → one REQ on the wire.
+  → one REQ on the wire. Multi-lane feeds use one `SubKey` per lane.
 
 - **`SubScope`** — account context. `Global` for content not tied to a
   specific account; `Account(pubkey)` for inbox-style subscriptions scoped to
@@ -274,6 +279,8 @@ pub fn topic_articles_interest_id(topic: &str) -> InterestId {
 
 Same inputs → same hash → same slot across restarts. Idempotent re-claims
 attach a new owner to the existing slot without opening a second REQ.
+If the action opens multiple lanes, each lane gets its own stable `InterestId`
+and corresponding `SubIdentity`, and Release drops every lane.
 
 ## Ensure vs set: the silent footgun
 
@@ -384,8 +391,8 @@ shell calls this app-core `register()` once before `nmp_app_start`.
 
 ## Multi-owner refcounting in practice
 
-Two views may independently claim the same topic. The registry keeps one slot
-and one REQ:
+Two views may independently claim the same topic. Per lane, the registry keeps
+one slot and one REQ:
 
 ```
 View A: Claim { topic: "bitcoin", consumer_id: "feed-column" }
@@ -485,10 +492,4 @@ The subscription should close when…
 - [ ] Tailing subscriptions have a Release path the shell calls on view close.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
 
-See also: [05a — Substrate traits](05a-substrate-traits.md) ·
-[06 — Reactivity contract](06-reactivity-contract.md) ·
-[07 — Subscription planner](07-subscription-planner.md) ·
-[16 — Capabilities](16-capabilities.md) ·
-[20 — Adding a protocol module](20-new-protocol-module.md) ·
-`crates/nmp-nip01/src/visible_relations.rs` (production reference) ·
-`crates/nmp-defaults/src/topic_articles.rs` (illustrative example)
+See also: [05a — Substrate traits](05a-substrate-traits.md) · [06 — Reactivity contract](06-reactivity-contract.md) · [07 — Subscription planner](07-subscription-planner.md) · [16 — Capabilities](16-capabilities.md) · [20 — Adding a protocol module](20-new-protocol-module.md) · `crates/nmp-nip01/src/visible_relations.rs` · `crates/nmp-defaults/src/topic_articles.rs`
