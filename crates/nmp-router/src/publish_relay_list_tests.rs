@@ -16,6 +16,17 @@ fn build_produces_kind_10002() {
 }
 
 #[test]
+fn build_drops_ws_scheme_to_match_ingest_gate() {
+    // The kind:10002 ingest parser only admits `wss://`. The build side must
+    // drop `ws://` so it can't emit a tag its own ingest later drops (#967).
+    let event = build_relay_list_event(&[
+        entry("ws://insecure.example", RelayMarker::Both),
+        entry("wss://secure.example", RelayMarker::Both),
+    ]);
+    assert_eq!(event.tags, vec![vec!["r".to_string(), "wss://secure.example".to_string()]]);
+}
+
+#[test]
 fn build_uses_created_at_zero_sentinel() {
     let event = build_relay_list_event(&[entry("wss://relay.example", RelayMarker::Both)]);
     assert_eq!(

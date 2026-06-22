@@ -54,13 +54,13 @@ use serde::{Deserialize, Serialize};
 /// `relay` marker, NOT `r` (that is kind:10002, NIP-65). There is no role
 /// marker; every entry is a DM-inbox relay.
 ///
-/// URLs are canonicalized via [`nmp_core::canonical_relay_url`] (lowercase
-/// scheme+host, trailing-`/` stripped on empty path) and deduplicated in
-/// first-seen order. URLs that do not parse as `ws://` or `wss://` are dropped
-/// — this matches the ingest parser's `wss://` gate so a build → ingest
-/// round-trip is stable. NIP-17 § 2 recommends `wss://` for DM relays; an
-/// explicit `ws://` URL is accepted by the canonicalizer but will be SKIPPED by
-/// `parse_dm_relay_list` on ingest, so callers should configure `wss://`.
+/// URLs are gated to `wss://` and canonicalized via the single authority
+/// [`nmp_core::canonical_relay_url`] (lowercase scheme+host, trailing-`/`
+/// stripped on empty path), then deduplicated in first-seen order. Non-`wss://`
+/// URLs (including `ws://`, which the shared authority would otherwise accept)
+/// are dropped here so the build side cannot emit a `relay` tag the kind:10050
+/// ingest parser's `wss://` gate later drops — build → ingest is symmetric.
+/// NIP-17 § 2 recommends `wss://` for DM relays (#967).
 ///
 /// The returned event:
 /// - has `kind = 10050`,
@@ -73,6 +73,14 @@ pub fn build_dm_relay_list_event(relay_urls: &[String]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(relay_urls.len());
     let mut seen = std::collections::HashSet::new();
     for raw in relay_urls {
+        // Match the kind:10050 ingest gate (`wss://` only — see
+        // `kind10050_parser::parse_dm_relay_list`). The shared authority also
+        // accepts `ws://`, so without this gate the build side could emit a
+        // `ws://` `relay` tag that its own ingest silently drops on round-trip
+        // (#967). NIP-17 § 2 recommends `wss://` for DM relays.
+        if !raw.trim_start().to_ascii_lowercase().starts_with("wss://") {
+            continue;
+        }
         let Some(canonical) = canonical_relay_url(raw) else {
             continue;
         };
@@ -178,6 +186,20 @@ mod tests {
     fn build_produces_kind_10050() {
         let event = build_dm_relay_list_event(&["wss://relay.example".to_string()]);
         assert_eq!(event.kind, 10050);
+    }
+
+    #[test]
+    fn build_drops_ws_scheme_to_match_ingest_gate() {
+        // The kind:10050 ingest parser only admits `wss://`. The build side
+        // must drop `ws://` so it can't emit a tag its own ingest drops (#967).
+        let event = build_dm_relay_list_event(&[
+            "ws://insecure.example".to_string(),
+            "wss://secure.example".to_string(),
+        ]);
+        assert_eq!(
+            event.tags,
+            vec![vec!["relay".to_string(), "wss://secure.example".to_string()]],
+        );
     }
 
     #[test]

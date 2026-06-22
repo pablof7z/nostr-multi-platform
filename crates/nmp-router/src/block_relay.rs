@@ -107,7 +107,14 @@ fn build_blocked_relay_list_event(blocked_urls: &BTreeSet<String>) -> UnsignedEv
 /// block invisible. Rejecting early prevents a silent no-op.
 fn validate_and_canonicalize(url: &str) -> Result<String, ActionRejection> {
     if url.starts_with("wss://") {
-        Ok(canonicalize_relay_url(url))
+        // Fail-closed: reject a `wss://`-prefixed but hostless URL the
+        // canonical authority cannot canonicalize, rather than persisting a
+        // malformed block entry (#967).
+        canonicalize_relay_url(url).ok_or_else(|| {
+            ActionRejection::Invalid(format!(
+                "block/unblock relay: not a valid wss:// URL (no host); got {url:?}"
+            ))
+        })
     } else if url.starts_with("ws://") {
         // Reject: the NIP-51 ingest parser requires wss://; a ws:// entry
         // would be silently skipped and the block would have no effect.
@@ -197,7 +204,11 @@ impl ActionModule for BlockRelayAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        let canonical = canonicalize_relay_url(&action.url);
+        // `start` already validated the URL canonicalizes; re-derive here and
+        // fail-closed if it somehow does not (#967) rather than inserting a raw
+        // malformed key.
+        let canonical = canonicalize_relay_url(&action.url)
+            .ok_or_else(|| format!("block relay: not a valid wss:// URL: {:?}", action.url))?;
         // Re-read the current blocked set (may have changed since `start`).
         let current = self.cache.blocked_relays(&action.account_pubkey);
         let mut new_set: BTreeSet<String> = current.iter().cloned().collect();
@@ -286,7 +297,10 @@ impl ActionModule for UnblockRelayAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        let canonical = canonicalize_relay_url(&action.url);
+        // `start` already validated the URL canonicalizes; re-derive here and
+        // fail-closed if it somehow does not (#967).
+        let canonical = canonicalize_relay_url(&action.url)
+            .ok_or_else(|| format!("unblock relay: not a valid wss:// URL: {:?}", action.url))?;
         let current = self.cache.blocked_relays(&action.account_pubkey);
         let mut new_set: BTreeSet<String> = current.iter().cloned().collect();
         new_set.remove(&canonical);

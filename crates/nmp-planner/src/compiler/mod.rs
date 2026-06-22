@@ -3,8 +3,10 @@
 //!
 //! ## Pipeline stages
 //!
-//! 1. **Resolve authors → mailboxes** — consult `MailboxCache` (phase 1 stub:
-//!    `EmptyMailboxCache`; real impl in `nmp-nip65`).
+//! 1. **Resolve authors → mailboxes** — consult `MailboxCache` (the
+//!    planner-side seam; the kernel injects `KernelMailboxes`, which bridges the
+//!    `nmp-router`-owned substrate NIP-65 cache + the `DmInboxRelayLookup`
+//!    seam onto it. Tests use `EmptyMailboxCache` / `InMemoryMailboxCache`).
 //! 2. **Indexer fallback** — authors with no known mailbox route to the
 //!    configured indexer set.
 //! 3. **Per-relay shape merge** — group by relay URL; merge compatible shapes

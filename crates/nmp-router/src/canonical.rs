@@ -24,31 +24,34 @@
 //!   case-sensitive)
 //!
 //! Only `wss://` URLs reach here in production; the callers gate the scheme
-//! before calling. `debug_assert!` guards the precondition in test/debug
-//! builds; a non-`wss://` input in release returns the input unchanged rather
-//! than panicking (fail-open, never crash a routing path — D2/D15).
+//! before calling.
+//!
+//! ## Single normalization authority + fail-closed (#967)
+//!
+//! The canonicalization *rules* are NOT re-implemented here — they live in the
+//! one workspace-wide authority [`nmp_core::substrate::canonicalize_relay_url`]
+//! (the substrate routing layer). This module is a thin scheme-gated adapter
+//! over that authority so the router can never drift from the kernel's canonical
+//! form.
+//!
+//! It is **fail-closed**: a URL that passes the caller's cheap `starts_with`
+//! gate but is not actually a canonicalizable `wss://` URL (a bare `wss://` or
+//! `wss:///path` with no host) returns `None`, and every caller drops/rejects
+//! it rather than admitting a malformed key into a routing cache. (The previous
+//! fail-open fallback re-admitted exactly those malformed keys.)
 
 /// Canonicalise a `wss://` relay URL: lowercase scheme + host, strip the
-/// empty-path trailing slash. See the module docs for the exact rules.
+/// empty-path trailing slash. Returns `None` (fail-closed) when the authority
+/// rejects the URL (no host); the caller MUST drop / reject it.
+///
+/// Delegates to the single authority [`nmp_core::substrate::canonicalize_relay_url`].
 #[must_use]
-pub(crate) fn canonicalize_relay_url(url: &str) -> String {
-    const PREFIX: &str = "wss://";
+pub(crate) fn canonicalize_relay_url(url: &str) -> Option<String> {
     debug_assert!(
-        url.starts_with(PREFIX),
+        url.starts_with("wss://"),
         "canonicalize_relay_url expects a wss:// URL"
     );
-    let Some(rest) = url.strip_prefix(PREFIX) else {
-        // Release-build fail-open: a non-wss URL slipped past the caller's
-        // scheme gate. Return it unchanged rather than panic on a routing path.
-        return url.to_string();
-    };
-    let (host_port, path) = match rest.find('/') {
-        Some(idx) => (&rest[..idx], &rest[idx..]),
-        None => (rest, ""),
-    };
-    let canonical_host = host_port.to_lowercase();
-    let canonical_path = if path == "/" { "" } else { path };
-    format!("{PREFIX}{canonical_host}{canonical_path}")
+    nmp_core::substrate::canonicalize_relay_url(url)
 }
 
 #[cfg(test)]
@@ -58,38 +61,46 @@ mod tests {
     #[test]
     fn lowercases_host() {
         assert_eq!(
-            canonicalize_relay_url("wss://Block.Example"),
-            "wss://block.example"
+            canonicalize_relay_url("wss://Block.Example").as_deref(),
+            Some("wss://block.example")
         );
     }
 
     #[test]
     fn strips_empty_path_trailing_slash() {
         assert_eq!(
-            canonicalize_relay_url("wss://relay.example/"),
-            "wss://relay.example"
+            canonicalize_relay_url("wss://relay.example/").as_deref(),
+            Some("wss://relay.example")
         );
     }
 
     #[test]
     fn lowercases_host_and_strips_slash_together() {
         assert_eq!(
-            canonicalize_relay_url("wss://RELAY.EXAMPLE/"),
-            "wss://relay.example"
+            canonicalize_relay_url("wss://RELAY.EXAMPLE/").as_deref(),
+            Some("wss://relay.example")
         );
     }
 
     #[test]
     fn preserves_non_empty_path_verbatim() {
         assert_eq!(
-            canonicalize_relay_url("wss://Relay.Example/SomePath"),
-            "wss://relay.example/SomePath"
+            canonicalize_relay_url("wss://Relay.Example/SomePath").as_deref(),
+            Some("wss://relay.example/SomePath")
         );
     }
 
     #[test]
     fn idempotent_on_already_canonical() {
-        let once = canonicalize_relay_url("wss://relay.example");
-        assert_eq!(canonicalize_relay_url(&once), once);
+        let once = canonicalize_relay_url("wss://relay.example").expect("canonical");
+        assert_eq!(canonicalize_relay_url(&once).as_deref(), Some(once.as_str()));
+    }
+
+    #[test]
+    fn fail_closed_on_hostless_wss() {
+        // Passes the caller's cheap `starts_with("wss://")` gate but has no
+        // host — the authority rejects it and we drop it (#967).
+        assert_eq!(canonicalize_relay_url("wss://"), None);
+        assert_eq!(canonicalize_relay_url("wss:///path"), None);
     }
 }

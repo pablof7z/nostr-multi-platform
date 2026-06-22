@@ -52,7 +52,7 @@ use nmp_core::slots::{
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use nmp_store::{EventStore, PubKey, StoredEvent};
-use nmp_core::substrate::BlockedRelaySet;
+use nmp_core::substrate::{BlockedRelaySet, canonicalize_relay_url};
 use nmp_kinds::ptags_are_recipients;
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
@@ -302,14 +302,18 @@ fn parse_nip65_tags(stored: &StoredEvent) -> (Vec<RelayUrl>, Vec<RelayUrl>) {
         if tag.first().map(String::as_str) != Some("r") {
             continue;
         }
-        let Some(url) = tag.get(1) else {
+        let Some(raw_url) = tag.get(1) else {
             tracing::debug!(target: "nmp.router.nip65", reason = "missing url", "skipping malformed kind:10002 tag");
             continue;
         };
-        if !is_relay_url(url) {
-            tracing::debug!(target: "nmp.router.nip65", url = %url, reason = "non-wss scheme", "skipping malformed kind:10002 tag");
+        // Canonicalize via the single workspace authority (nmp-relay-url Layer 0).
+        // Fail-closed: a tag that cannot be canonicalized (bad scheme, missing
+        // authority, etc.) is dropped so it can never bypass the blocked-relay
+        // filter under a different spelling.
+        let Some(url) = canonicalize_relay_url(raw_url) else {
+            tracing::debug!(target: "nmp.router.nip65", url = %raw_url, reason = "un-canonicalizable url", "skipping malformed kind:10002 tag");
             continue;
-        }
+        };
         match tag.get(2).map(String::as_str) {
             Some("write") => writes.push(url.clone()),
             Some("read") => reads.push(url.clone()),
@@ -353,10 +357,14 @@ fn hex_nibble(b: u8) -> Option<u8> {
     }
 }
 
+/// Returns `true` iff `url` is a usable relay URL — validated by the single
+/// workspace authority [`canonicalize_relay_url`] (None ⇒ not usable).
+///
+/// Note: `parse_nip65_tags` now calls `canonicalize_relay_url` directly rather
+/// than this predicate, so this function is no longer on the hot path. It is
+/// retained as a named utility for external callers / tests.
 fn is_relay_url(url: &str) -> bool {
-    // Conservative: only accept ws:// or wss://. NIP-65 specifies relay URLs,
-    // not HTTP; reject obvious garbage early.
-    url.starts_with("wss://") || url.starts_with("ws://")
+    canonicalize_relay_url(url).is_some()
 }
 
 #[cfg(test)]

@@ -4522,6 +4522,7 @@ dependencies = [
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-planner",
+ "nmp-relay-url",
  "nmp-signer-iface",
  "nmp-store",
  "nostr",
@@ -4680,6 +4681,7 @@ dependencies = [
  "js-sys",
  "mio",
  "nmp-nip42-types",
+ "nmp-relay-url",
  "rustls",
  "serde_json",
  "tungstenite",
@@ -4956,6 +4958,7 @@ dependencies = [
 name = "nmp-planner"
 version = "0.8.0"
 dependencies = [
+ "nmp-relay-url",
  "serde",
  "serde_json",
 ]
@@ -4972,6 +4975,10 @@ dependencies = [
  "nmp-planner",
  "serde",
 ]
+
+[[package]]
+name = "nmp-relay-url"
+version = "0.8.0"
 
 [[package]]
 name = "nmp-router"

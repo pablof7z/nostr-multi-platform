@@ -17,5 +17,11 @@ path = "src/lib.rs"
 # nmp-core now re-exports it from `nmp_planner::stable_hash` so existing
 # `use nmp_core::stable_hash::stable_hash64` paths keep working without
 # creating a circular dependency.
+#
+# `nmp-relay-url` is a Layer-0 (vocabulary) crate — depending on it does NOT
+# violate the layer rule (Layer 2 may depend on Layer 0). It is the single
+# relay-URL canonicalization authority, so the planner shares one normalization
+# with the kernel/router instead of carrying its own copy (#967).
+nmp-relay-url = { path = "../nmp-relay-url" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

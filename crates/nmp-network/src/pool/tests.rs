@@ -26,23 +26,17 @@ use super::{
 };
 use crate::role::RelayRole;
 
-/// canonicalize: case-fold the URL scheme so `WSS://` and `wss://`
-/// share a pool slot. The full URL parser is the actor's job; the
-/// pool just lowers the obvious case differences.
+/// canonicalize: delegates to the single Layer-0 authority — case-folds the
+/// scheme/host and trims whitespace (so `WSS://` and a stray newline don't
+/// fragment the pool), and is fail-closed (an off-contract URL yields `None`,
+/// so `ensure_open` refuses to dial it) (#967).
 #[test]
-fn canonicalize_lowercases_scheme() {
-    assert_eq!(canonicalize("WSS://relay.example"), "wss://relay.example");
-    assert_eq!(canonicalize("wss://relay.example"), "wss://relay.example");
-}
-
-/// canonicalize: leading/trailing whitespace is trimmed so a stray
-/// newline in a configured-relays list doesn't fragment the pool.
-#[test]
-fn canonicalize_trims_whitespace() {
-    assert_eq!(
-        canonicalize("  wss://relay.example\n"),
-        "wss://relay.example"
-    );
+fn canonicalize_normalizes_and_fails_closed() {
+    assert_eq!(canonicalize("WSS://relay.example").as_deref(), Some("wss://relay.example"));
+    assert_eq!(canonicalize("  wss://relay.example\n").as_deref(), Some("wss://relay.example"));
+    assert_eq!(canonicalize("not a url"), None);
+    assert_eq!(canonicalize("http://relay.example"), None);
+    assert_eq!(canonicalize("wss://"), None);
 }
 
 /// Two `ensure_open` calls for the same URL share a slot.

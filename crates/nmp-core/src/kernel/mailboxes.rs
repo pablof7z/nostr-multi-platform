@@ -285,12 +285,15 @@ impl Kernel {
 /// kind:10050 in practice, but unnamed at this seam) as a planner-side
 /// [`PlannerMailboxCache`].
 ///
-/// Two traits, one bridge. The planner trait pre-dates the substrate
-/// trait introduced in step 1.c / 1.d, and uses a different shape
-/// (`get` → `MailboxSnapshot` with read/write/both *separate*, plus
-/// `dm_inbox_relays`). Step 9 extracts the planner crate and the two
-/// traits collapse into one then; until then this adapter is the
-/// translation layer.
+/// Two traits, one bridge — and the bridge is the **durable** resolution,
+/// not a temporary shim (#967). The planner trait (`get` → `MailboxSnapshot`
+/// with read/write/both *separate*, plus `dm_inbox_relays`, `generation`,
+/// `request_probe`) lives in Layer-2 `nmp-planner`, which MUST NOT depend on
+/// Layer-3 `nmp-core`; the substrate `MailboxCache` is NIP-65-only and lives
+/// here. The two CANNOT collapse into one trait without a forbidden
+/// `nmp-planner -> nmp-core` dependency inversion, so this adapter — owned by
+/// the one crate that legally sees both layers — is the single, permanent
+/// point of translation. (See `substrate/routing.rs` module docs.)
 ///
 /// Lifetime: holds an `Arc` clone of each substrate handle (cheap — both
 /// are already `Arc<dyn …>`). The adapter is built per

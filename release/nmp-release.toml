@@ -197,6 +197,10 @@ name = "nmp-nwc"
 path = "crates/nmp-nwc"
 
 [[public_crates]]
+name = "nmp-relay-url"
+path = "crates/nmp-relay-url"
+
+[[public_crates]]
 name = "nmp-signer-broker"
 path = "crates/nmp-signer-broker"
 

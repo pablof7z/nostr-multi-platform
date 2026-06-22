@@ -115,23 +115,17 @@ impl TestDmInboxRelayCache {
     }
 }
 
-/// Canonicalise `url` the same way [`crate::CanonicalRelayUrl`] does
-/// (lowercase scheme+host, strip the empty-path trailing slash). Kept
-/// inline rather than reaching for the kernel's helper because
-/// `dm_inbox_relays` lives in `substrate/`, which must not depend on
-/// `crate::relay::*`.
+/// Canonicalise `url` through the single workspace authority
+/// [`crate::substrate::canonicalize_relay_url`] (lowercase scheme+host, strip
+/// the empty-path trailing slash). The authority lives in the same `substrate/`
+/// layer, so this no longer needs an inline copy that reaches up into
+/// `crate::relay::*` (a layering violation) — and it can never drift from the
+/// kernel's canonical form (#967). Falls back to the raw string for an
+/// off-contract URL so a malformed test seed is stored verbatim rather than
+/// dropped.
 #[cfg(any(test, feature = "test-support"))]
 fn canonicalize_test_relay(url: &str) -> String {
-    if let Some(rest) = url.strip_prefix("wss://") {
-        let (host_port, path) = match rest.find('/') {
-            Some(idx) => (&rest[..idx], &rest[idx..]),
-            None => (rest, ""),
-        };
-        let canonical_host = host_port.to_lowercase();
-        let canonical_path = if path == "/" { "" } else { path };
-        return format!("wss://{canonical_host}{canonical_path}");
-    }
-    url.to_string()
+    crate::substrate::canonicalize_relay_url(url).unwrap_or_else(|| url.to_string())
 }
 
 #[cfg(any(test, feature = "test-support"))]
