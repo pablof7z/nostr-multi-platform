@@ -1,0 +1,23 @@
+namespace nmp.blossom;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.blossom.upload`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter (S3) decodes against THIS schema, gating `schema_version`
+// BEFORE `start()` (fail-closed on mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-blossom/src/wire/generated \
+//         crates/nmp-blossom/schema/upload.fbs
+
+table UploadPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  file_path:string (required);
+  content_type:string;
+  servers:[string];
+  signer_pubkey:string;
+}
+
+file_identifier "BUPL";
+root_type UploadPayload;

@@ -23,6 +23,9 @@ pub mod action;
 pub mod auth;
 pub mod kinds;
 pub mod upload;
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload codec (`ActionPayload`
+// impl for `UploadInput`).
+mod wire;
 
 pub use action::{UploadAction, UploadInput};
 pub use auth::{authorization_header_value, build_upload_auth, AUTH_TTL_SECS};
