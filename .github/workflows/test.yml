@@ -1,17 +1,33 @@
 name: test
 
-# Runs `cargo test` on every PR and every push to master. This is the first
+# Runs `cargo nextest` on every PR and every push to master. This is the first
 # build/test gate in CI — the other workflows (doctrine-lint, file-size-gate,
 # supply-chain) lint and audit but never compile or run the test suite.
 #
+# The test suite is split into FIVE parallel jobs to cut wall time from ~21m
+# (single sequential job) to ~10m (parallel critical path). Each job restores
+# its own slice of the target cache via Swatinem/rust-cache, which does
+# fingerprinted incremental caching instead of the old all-or-nothing 9.8GB
+# actions/cache blob that cost ~6m of pure I/O per run.
+#
 # Excluded crates (do not build on a bare `ubuntu-latest` runner):
-#   - nmp-chirp-android-ffi : standalone `[workspace]` table, not a parent member.
-#   - nmp-app-chirp   : app crate tests compile separately below with
-#                       no default features so host-only optional stacks do
-#                       not enter the workspace-wide lane.
+#   - nmp-chirp-android-ffi : standalone `[workspace]` table, not a parent
+#     member. Gated by the separate `android-ffi` job below.
+#   - nmp-app-chirp   : app crate tests compile separately in the `app-crates`
+#     job with no default features so host-only optional stacks do not enter
+#     the workspace-wide lane.
 #   - nmp-gallery-desktop : uses iced, which pulls `winit` needing
-#                       libxkbcommon/wayland/xcb apt packages absent on the
-#                       bare runner. It is a thin GUI shell with no tests.
+#     libxkbcommon/wayland/xcb apt packages absent on the bare runner. It is
+#     a thin GUI shell with no tests.
+#
+# Serial-test crates (run in the `serial-crates` job with --test-threads=1):
+#   - nmp-defaults, nmp-nip29, nmp-testing : integration tests that spin up
+#     real `NmpApp` instances via `nmp_app_new`. Each test binary has a
+#     `static SERIAL: Mutex<()>` guard, but nextest runs each test binary in
+#     its own process so the mutex does not cross binary boundaries. Running
+#     these crates with --test-threads=1 serializes test execution within the
+#     nextest invocation, preventing the global-actor-thread races that
+#     caused op_feed_* failures under parallel nextest on Linux CI.
 
 on:
   push:
@@ -20,16 +36,22 @@ on:
     branches: [master]
 
 jobs:
-  test:
-    name: cargo test
+  # Shared setup steps for all four test jobs. Each job calls these via
+  # `uses: ./` (not supported) — instead we duplicate the 3 setup steps. The
+  # duplication is deliberate: GitHub Actions lacks reusable step fragments
+  # without composite actions, and a composite action here would obscure the
+  # per-job cache key and feature flags that differ across lanes.
+
+  workspace:
+    name: cargo nextest (workspace, default features)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # The full workspace build + all test binaries (secp256k1, lmdb, openmls,
-      # flatbuffers, …) exhaust the ~14 GB free on a bare `ubuntu-latest`
-      # runner during linking ("No space left on device" / ld Bus error). Drop
-      # the preinstalled SDKs we never use to reclaim ~25 GB before building.
+      # The full workspace build + all test binaries (secp256k1, lmdb,
+      # openmls, flatbuffers, …) exhaust the ~14 GB free on a bare
+      # `ubuntu-latest` runner during linking. Drop the preinstalled SDKs we
+      # never use to reclaim ~25 GB before building.
       - name: Free disk space
         run: |
           df -h /
@@ -42,71 +64,203 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      # Swatinem/rust-cache fingerprints the target/ directory by crate +
+      # feature set + Cargo.lock, so a dep change only re-uploads the slice
+      # that actually changed. This replaces the old actions/cache@v4 entry
+      # that uploaded the entire 9.8GB target/ dir on every Cargo.lock bump
+      # (~2.5m upload + ~3.5m restore of pure I/O waste per run).
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: workspace-default
 
-      - name: cargo test (default features)
-        run: cargo test --workspace --exclude nmp-chirp-android-ffi --exclude nmp-app-chirp --exclude nmp-gallery-desktop
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
-      # Issue #1553 — compile app-crate test targets that the workspace lane
-      # intentionally excludes. `--no-run` is enough to catch E0560-class wire
-      # shape breaks in integration tests such as typed_feed_parity.rs, while
-      # `--no-default-features` keeps host-only optional stacks out of this
-      # Ubuntu gate.
-      - name: cargo test --no-run (nmp-app-chirp test targets)
-        run: cargo test -p nmp-app-chirp --no-run --no-default-features
+      - name: cargo nextest (workspace, default features)
+        run: |
+          cargo nextest run --workspace --no-fail-fast \
+            --exclude nmp-chirp-android-ffi \
+            --exclude nmp-app-chirp \
+            --exclude nmp-gallery-desktop \
+            --exclude nmp-defaults \
+            --exclude nmp-nip29 \
+            --exclude nmp-testing
 
-      - name: cargo test (lmdb-backend)
-        run: cargo test -p nmp-core --features lmdb-backend
-        env:
-          RUSTFLAGS: ""
+  # Serial-test crates — integration tests that spin up real `NmpApp` instances
+  # via `nmp_app_new`. Each test binary has a `static SERIAL: Mutex<()>` guard,
+  # but nextest runs each test binary in its own process so the mutex does not
+  # cross binary boundaries. Running these crates with `--test-threads=1`
+  # serializes test execution within the nextest invocation, preventing the
+  # global-actor-thread races that caused op_feed_* failures under parallel
+  # nextest on Linux CI.
+  serial-crates:
+    name: cargo nextest (serial NmpApp crates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: serial-crates
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: cargo nextest (serial NmpApp crates)
+        run: |
+          cargo nextest run --no-fail-fast --test-threads=1 \
+            -p nmp-defaults \
+            -p nmp-nip29 \
+            -p nmp-testing
+
+  lmdb:
+    name: cargo nextest (lmdb-backend acceptance gates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: lmdb-backend
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       # Epic #1523 cache adoption acceptance gates.
       #
       # cache_no_materialization_gate: proves that early ControlFlow::Break in
       #   query_visit stops LMDB event conversion immediately — no over-scan.
-      # cache_serve_replay_fixtures: Mem ≡ LMDB parity fixtures (5 query shapes,
-      #   both backends via for_each_backend!).
-      - name: cargo test nmp-testing (lmdb acceptance gates)
+      # cache_serve_replay_fixtures: Mem ≡ LMDB parity fixtures (5 query
+      #   shapes, both backends via for_each_backend!).
+      #
+      # nmp-core --features lmdb-backend: exercises the LMDB storage path
+      #   that the default-features workspace lane does not compile.
+      - name: cargo nextest (lmdb-backend)
         run: |
-          cargo test -p nmp-testing --features lmdb-backend --test cache_no_materialization_gate
-          cargo test -p nmp-testing --features lmdb-backend --test cache_serve_replay_fixtures
+          cargo nextest run -p nmp-core --features lmdb-backend --no-fail-fast
+          cargo nextest run -p nmp-testing --features lmdb-backend --test cache_no_materialization_gate --no-fail-fast
+          cargo nextest run -p nmp-testing --features lmdb-backend --test cache_serve_replay_fixtures --no-fail-fast
         env:
           RUSTFLAGS: ""
 
+  ffi-features:
+    name: cargo nextest (feature-gated surfaces)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ffi-features
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       # ADR-0048 Stage 2 NIP-55 proof gate (advances #1124).
       #
-      # `cargo test --workspace` (above) runs nmp-ffi with default features,
-      # which excludes the `external-signer` feature. The signin_loop_* tests
-      # in `crates/nmp-ffi/src/external_signer.rs` are therefore skipped by
-      # the default lane. This step adds the explicit `--features
-      # external-signer` pass to prove those tests are run and green.
-      #
-      # The feature is cheap: it activates `nmp-signer-iface` + `nmp-signers`
-      # (already compiled for the default test run), so this step costs only
-      # the incremental delta for the feature-gated code paths.
-      - name: cargo test (nmp-ffi --features external-signer)
-        run: cargo test -p nmp-ffi --features external-signer
+      # `cargo nextest --workspace` (workspace job) runs nmp-ffi with default
+      # features, which excludes the `external-signer` feature. The
+      # signin_loop_* tests in `crates/nmp-ffi/src/external_signer.rs` are
+      # therefore skipped by the default lane. This step adds the explicit
+      # `--features external-signer` pass to prove those tests are run and
+      # green.
+      - name: cargo nextest (nmp-ffi --features external-signer)
+        run: cargo nextest run -p nmp-ffi --features external-signer --no-fail-fast
 
       # ADR-0048 Stage 2 — nmp-app-gallery android-ffi feature check.
       #
-      # `nmp-app-gallery` is a workspace member, so `cargo test --workspace`
-      # compiles it with default features. The `android-ffi` feature enables
-      # the JNI shim surface (`Java_org_nmp_gallery_*` symbols, `jni` dep)
-      # that no other workspace build exercises. This `cargo check` catches
-      # compile breaks in the JNI glue without requiring a cross-compiled .so
-      # or an emulator.
-      #
-      # Host-target check only (same posture as `nmp-chirp-android-ffi` below).
+      # `nmp-app-gallery` is a workspace member, so the workspace job compiles
+      # it with default features. The `android-ffi` feature enables the JNI
+      # shim surface (`Java_org_nmp_gallery_*` symbols, `jni` dep) that no
+      # other workspace build exercises. This `cargo check` catches compile
+      # breaks in the JNI glue without requiring a cross-compiled .so or an
+      # emulator. Host-target check only.
       - name: cargo check (nmp-app-gallery --features android-ffi)
         run: cargo check -p nmp-app-gallery --features android-ffi
+
+  app-crates:
+    name: cargo nextest (app crates, no-default-features)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: app-crates
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      # Issue #1553 — compile app-crate test targets that the workspace lane
+      # intentionally excludes. `--no-run` is enough to catch E0560-class
+      # wire shape breaks in integration tests such as typed_feed_parity.rs,
+      # while `--no-default-features` keeps host-only optional stacks out of
+      # this Ubuntu gate.
+      - name: cargo test --no-run (nmp-app-chirp test targets)
+        run: cargo test -p nmp-app-chirp --no-run --no-default-features
 
   android-ffi:
     # ADR-0048 Stage 2 — nmp-chirp-android-ffi host test gate (advances #1124).
@@ -116,15 +270,16 @@ jobs:
     # there is otherwise invisible to CI until an Android build runs.
     #
     # This job runs THREE gates of increasing fidelity:
-    #   1. `cargo test` — host unit + integration tests (JNI symbol parity, Rust
-    #      re-export coverage, and the #1218 openssl-src pin guard). Hermetic
-    #      string-search over `include_str!` source/manifest files; links the
-    #      test binary against the host target, no NDK or emulator needed.
-    #   2. `cargo check --features marmot` — fast host-target scope check for the
-    #      Marmot feature graph (catches Rust import/trait errors).
-    #   3. `cargo ndk ... x86_64-linux-android` — a REAL single-ABI cross-compile
-    #      that exercises the vendored-OpenSSL build the APK depends on. This is
-    #      the gate that would have caught #1218 (host check #2 is blind to it).
+    #   1. `cargo test` — host unit + integration tests (JNI symbol parity,
+    #      Rust re-export coverage, and the #1218 openssl-src pin guard).
+    #      Hermetic string-search over `include_str!` source/manifest files;
+    #      links the test binary against the host target, no NDK or emulator.
+    #   2. `cargo check --features marmot` — fast host-target scope check for
+    #      the Marmot feature graph (catches Rust import/trait errors).
+    #   3. `cargo ndk ... x86_64-linux-android` — a REAL single-ABI
+    #      cross-compile that exercises the vendored-OpenSSL build the APK
+    #      depends on. This is the gate that would have caught #1218 (host
+    #      check #2 is blind to it).
     name: cargo test (android-ffi)
     runs-on: ubuntu-latest
     steps:
@@ -133,15 +288,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            apps/chirp/nmp-chirp-android-ffi/target
-          key: ${{ runner.os }}-cargo-android-ffi-${{ hashFiles('apps/chirp/nmp-chirp-android-ffi/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-android-ffi-
+          workspaces: apps/chirp/nmp-chirp-android-ffi
+          key: android-ffi
 
       - name: cargo test (nmp-chirp-android-ffi standalone workspace)
         run: cd apps/chirp/nmp-chirp-android-ffi && cargo test
@@ -156,8 +307,8 @@ jobs:
       # This step catches scope/trait/import errors (e.g. missing
       # `jstring_to_cstring` import, missing `zeroize std` feature, missing
       # `libsqlite3-sys` vendored OpenSSL dep) on the host target. It is fast
-      # because it never cross-compiles, but for that same reason it is BLIND to
-      # NDK-only failures — most notably #1218, where the vendored OpenSSL
+      # because it never cross-compiles, but for that same reason it is BLIND
+      # to NDK-only failures — most notably #1218, where the vendored OpenSSL
       # `providers/ml_kem` source failed to cross-compile for
       # `x86_64-linux-android` under NDK 26 while the host build stayed green.
       - name: cargo check (nmp-chirp-android-ffi --features marmot)
@@ -167,12 +318,13 @@ jobs:
       #
       # The host `cargo check` above cannot see vendored-OpenSSL cross-compile
       # breakage because no Android target is built. This step runs the SAME
-      # `cargo ndk` invocation the APK uses (android/app/build.gradle.kts), but
-      # scoped to a SINGLE ABI: `x86_64-linux-android`. x86_64 is the cheapest
-      # ABI to build in CI (native host arch — no QEMU) AND is precisely the ABI
-      # that #1218 broke, so it is the highest-signal/lowest-cost gate. A green
-      # here proves the vendored OpenSSL (pinned to a pre-ml_kem 3.4.x line)
-      # actually cross-compiles, not merely that the Rust scopes resolve.
+      # `cargo ndk` invocation the APK uses (android/app/build.gradle.kts),
+      # but scoped to a SINGLE ABI: `x86_64-linux-android`. x86_64 is the
+      # cheapest ABI to build in CI (native host arch — no QEMU) AND is
+      # precisely the ABI that #1218 broke, so it is the
+      # highest-signal/lowest-cost gate. A green here proves the vendored
+      # OpenSSL (pinned to a pre-ml_kem 3.4.x line) actually cross-compiles,
+      # not merely that the Rust scopes resolve.
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         with:
