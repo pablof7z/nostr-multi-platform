@@ -1,0 +1,24 @@
+namespace nmp.nip47;
+
+// ADR-0064 (#1756) — typed FlatBuffers payload for the `nmp.wallet.disconnect`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Mirrors `WalletDisconnectAction::Disconnect` — a unit variant with no fields.
+// The `schema_version` tripwire is still carried so the fail-closed gate has a
+// RAW value to read on this namespace too (additive forward-compat headroom).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip47/src/wire/generated \
+//         crates/nmp-nip47/schema/wallet_disconnect.fbs
+
+table WalletDisconnectPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode). The only
+  // field — disconnect carries no action data.
+  schema_version:uint;
+}
+
+file_identifier "N47D";
+root_type WalletDisconnectPayload;

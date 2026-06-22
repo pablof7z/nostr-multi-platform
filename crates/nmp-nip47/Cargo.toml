@@ -18,5 +18,7 @@ zeroize = { version = "1", features = ["derive"] }
 tracing = "0.1"
 
 [dev-dependencies]
-nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# `native` pulls in the `__ffi_internal::ActionRegistry` seam the
+# dispatch_integration test drives through `start_bytes` (ADR-0064 / #1756).
+nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 tempfile = "3"

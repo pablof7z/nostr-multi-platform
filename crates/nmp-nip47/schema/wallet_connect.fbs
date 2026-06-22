@@ -1,0 +1,27 @@
+namespace nmp.nip47;
+
+// ADR-0064 (#1756) — typed FlatBuffers payload for the `nmp.wallet.connect`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). WRITE-direction action payload; distinct
+// from `wallet_status.fbs`, which is the READ-direction snapshot sidecar.
+//
+// Mirrors `WalletConnectAction::Connect { uri }`. The `uri` is the raw
+// `nostr+walletconnect://` NWC connection URI; scheme/non-empty validation stays
+// in the module's `start()` (this is a pure shape decode).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip47/src/wire/generated \
+//         crates/nmp-nip47/schema/wallet_connect.fbs
+
+table WalletConnectPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The raw NWC connection URI (`nostr+walletconnect://…`). Scheme/non-empty
+  // validation stays in the module's start() — this is a pure shape decode.
+  uri:string (required);
+}
+
+file_identifier "N47C";
+root_type WalletConnectPayload;
