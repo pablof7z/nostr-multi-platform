@@ -237,7 +237,7 @@ impl Kernel {
                 // from `dispatch_due`. Drain any terminal verdicts that
                 // produced so the queue entry never lingers at
                 // `accepted_locally` past the engine's view.
-                self.apply_engine_completions();
+                self.drain_engine_terminals_into_ledger();
                 self.bump_publish_if_engine_view_changed(engine_rev_before);
                 frames
             }
@@ -324,9 +324,9 @@ impl Kernel {
             target_relays,
             status: "accepted_locally".to_string(),
             can_retry: false,
-            // Empty until the engine settles — T128 fills this via
-            // `apply_engine_completions` once the per-relay state machine
-            // reaches a terminal verdict.
+            // Empty until the engine settles — T128 fills this via the engine
+            // terminal fold (`drain_engine_terminals_into_ledger`) once the
+            // per-relay state machine reaches a terminal verdict (S11 slice 4).
             relay_outcomes: Vec::new(),
             signed_event: Some(signed.clone()),
             target: Some(target),
@@ -412,7 +412,7 @@ impl Kernel {
         // T128: a terminal ack (Ok or final give-up) may have just settled
         // the publish — apply the terminal verdict to the queue entry before
         // any retry frame drain so the iOS snapshot reflects the new status.
-        self.apply_engine_completions();
+        self.drain_engine_terminals_into_ledger();
         // Any retry the engine scheduled (transient backoff that is already
         // due) was pushed into the queue dispatcher; drain it. An auth-required
         // ack parks the relay instead (no synchronous frame here — the

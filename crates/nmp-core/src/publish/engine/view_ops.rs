@@ -3,12 +3,12 @@
 //! Extracted from `engine.rs` to keep the orchestrator file under the 500-LOC
 //! hand-authored ceiling (AGENTS.md / V-12). These methods are the snapshot
 //! plumbing — `flush_view`, `emit_no_targets`, the `record_terminal` family,
-//! and the per-tick drains the kernel consumes (`take_completed`,
-//! `take_pending_terminals`). No relay I/O, no retry policy decisions.
+//! and the per-tick drain the kernel consumes (`take_pending_terminals` — the
+//! single engine→ledger terminal stream). No relay I/O, no retry policy decisions.
 
 use super::super::action::PublishHandle;
 use super::super::view::{EventPublishStatus, RecentFailure};
-use super::types::{LastTerminal, TerminalOutcome};
+use super::types::LastTerminal;
 use super::PublishEngine;
 use crate::substrate::SignedEvent;
 
@@ -67,9 +67,10 @@ impl PublishEngine {
         });
         // Direction review #24: NoTargets is a terminal "failed" outcome — the
         // publish never gets queued and `start_publish` returns Err(NoTargets),
-        // so it never reaches the `recently_completed` / `on_ack` paths.
-        // Record it here so `action_results` reports the failure and the
-        // host clears its spinner instead of waiting on an op that never ran.
+        // so it never reaches the relay-settlement (`on_ack`) path. Record it
+        // here so `action_results` reports the failure and the host clears its
+        // spinner instead of waiting on an op that never ran. Its `publish_queue`
+        // payload is `None`: the kernel error path pushes the queue row itself.
         //
         // Report the dispatch correlation_id when one was supplied (the
         // `PublishRaw` path), otherwise the handle — same fallback rule as
@@ -84,6 +85,10 @@ impl PublishEngine {
             event_id: Some(handle.clone()),
             result_json: None,
             reason_code: None,
+            // `NoTargets` returns `Err` from `start_publish` before any in-flight
+            // row; the kernel error path pushes the queue row itself, so this
+            // terminal does NOT refine the queue (S11 slice 4, #1758).
+            publish_queue: super::types::PublishQueueTerminal::None,
         });
         self.view.bump_rev();
     }
@@ -104,19 +109,6 @@ impl PublishEngine {
     // through the engine `pending_terminals` `Vec`. The engine transport keeps
     // only terminals that ORIGINATE inside the engine (relay ack/tick via
     // `from_outcome`, `emit_no_targets`, cancel).
-
-    /// T128: drain every terminal verdict recorded since the last call. The
-    /// kernel calls this after every engine entrypoint (`start_publish` /
-    /// `on_ack` / `tick` / `resume_from_store`) and applies the verdicts to
-    /// its `PublishQueueEntry` projection. Pure drain — the engine retains no
-    /// per-publish history after this call (the snapshot's `recent_ok` /
-    /// `recent_errors` carry the longer view).
-    #[must_use]
-    pub(crate) fn take_completed(&mut self) -> Vec<TerminalOutcome> {
-        std::mem::take(&mut self.recently_completed)
-            .into_values()
-            .collect()
-    }
 
     /// Direction review #29: drain every terminal verdict recorded since the
     /// last call. The kernel calls this from the snapshot path

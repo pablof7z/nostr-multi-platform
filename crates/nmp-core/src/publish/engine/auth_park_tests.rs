@@ -13,15 +13,33 @@
 
 use std::sync::Arc;
 
+use super::types::PublishQueueTerminal;
 use super::PublishEngine;
 use crate::publish::action::{PublishAction, PublishTarget};
 use crate::publish::state::{PerRelayState, RelayAck, RetryPolicy};
 use crate::publish::traits::{
     InMemoryPublishStore, NoopSigner, RelayDispatcher, ReplayDispatcher, StaticOutbox,
 };
+use crate::publish::TerminalOutcome;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
 const AUTH_RELAY: &str = "wss://auth-relay.test";
+
+/// Drain the engine's single terminal stream, collecting the per-relay
+/// [`TerminalOutcome`]s carried on `PublishQueueTerminal::Settled` payloads (S11
+/// slice 4, #1758 — the settled-publish facet the kernel folds into the
+/// `PublishQueueEntry`). A parked publish produces no settled terminal, so the
+/// result is empty until the relay authenticates and the publish settles.
+fn drain_settled_outcomes(engine: &mut PublishEngine) -> Vec<TerminalOutcome> {
+    engine
+        .take_pending_terminals()
+        .into_iter()
+        .filter_map(|t| match t.publish_queue {
+            PublishQueueTerminal::Settled(outcome) => Some(outcome),
+            PublishQueueTerminal::Cancelled { .. } | PublishQueueTerminal::None => None,
+        })
+        .collect()
+}
 
 fn signed_event(id: &str, author: &str) -> SignedEvent {
     SignedEvent {
@@ -89,7 +107,7 @@ fn auth_required_ack_parks_relay_pending_does_not_settle_failed() {
 
     // The publish has NOT settled — no terminal outcome was recorded.
     assert!(
-        engine.take_completed().is_empty(),
+        drain_settled_outcomes(&mut engine).is_empty(),
         "a parked publish must not settle (no terminal outcome)"
     );
 
@@ -145,7 +163,7 @@ fn parked_publish_dispatches_and_succeeds_when_relay_becomes_available() {
     engine.mark_relay_available(AUTH_RELAY, 300).unwrap();
 
     // The publish re-dispatched (second scripted ack = OK) and settled Ok.
-    let drained = engine.take_completed();
+    let drained = drain_settled_outcomes(&mut engine);
     assert_eq!(drained.len(), 1, "parked publish settles once after auth");
     let outcome = &drained[0];
     assert_eq!(outcome.event_id, "ev-park-2");
@@ -215,7 +233,7 @@ fn auth_round_trip_does_not_consume_transient_retry_budget() {
         ),
     }
     assert!(
-        engine.take_completed().is_empty(),
+        drain_settled_outcomes(&mut engine).is_empty(),
         "still retrying transiently — not terminally failed by a budget the auth park stole"
     );
 }

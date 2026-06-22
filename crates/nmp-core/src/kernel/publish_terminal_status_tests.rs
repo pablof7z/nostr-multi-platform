@@ -95,7 +95,7 @@ fn entry_for<'a>(kernel: &'a Kernel, event_id: &str) -> &'a crate::kernel::Publi
 #[test]
 fn t128_all_relays_ack_flips_status_to_ok_with_full_outcome_map() {
     // Happy path: both NIP-65 write relays land OK acks → engine settles the
-    // publish terminally → `apply_engine_completions` flips the queue
+    // publish terminally → the engine-terminal fold flips the queue
     // entry's `status` from `accepted_locally` to `"ok"` and fills
     // `relay_outcomes` with one `"ok"` row per relay.
     let author = "22".repeat(32);
@@ -138,9 +138,9 @@ fn t128_all_relays_ack_flips_status_to_ok_with_full_outcome_map() {
         );
     }
 
-    // Second ack — every relay has now settled → engine drains a
-    // `TerminalOutcome` into `recently_completed` → `apply_engine_completions`
-    // applies it → queue entry flips to `"ok"`.
+    // Second ack — every relay has now settled → the engine records a terminal
+    // carrying a `PublishQueueTerminal::Settled` payload → the single
+    // engine-terminal fold derives the queue status → queue entry flips to `"ok"`.
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 1_020);
     let entry = entry_for(&kernel, &signed.id);
     assert_eq!(entry.status, "ok", "all-ACK publish settles as ok");
@@ -316,7 +316,7 @@ fn t128_late_ack_after_terminal_does_not_re_flip_status() {
     let outcomes_before = entry_for(&kernel, &signed.id).relay_outcomes.clone();
 
     // Late duplicate ack for r1 — engine has already evicted the in-flight
-    // row, so `on_ack` is a no-op and `take_completed` returns nothing
+    // row, so `on_ack` is a no-op and the engine-terminal fold drains nothing
     // → `set_publish_entry_terminal` is never called again
     // → the queue entry must be unchanged.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 1_000);
@@ -605,9 +605,9 @@ fn action_results_reports_failed_when_no_relays_resolve() {
 #[test]
 fn action_results_reports_cancelled_on_user_cancel() {
     // User cancels an in-flight publish → `action_results` carries one
-    // `{status:"cancelled", error:null}`. Cancellation never flows through
-    // `recently_completed`, so the engine records the terminal directly in
-    // `cancel_publish` — this test pins that path.
+    // `{status:"cancelled", error:null}`. The cancel terminal's
+    // `PublishQueueTerminal::Cancelled` payload makes the single engine-terminal
+    // fold both record the `cancelled` action result AND flip the queue row.
     let author = "a4".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);

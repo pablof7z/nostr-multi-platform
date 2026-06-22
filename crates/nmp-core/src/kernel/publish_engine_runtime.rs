@@ -26,7 +26,7 @@ impl Kernel {
         // T128: `tick` -> `dispatch_pending` -> synchronous `dispatch_due` may
         // return an OK / failure ack inline. Drain any settled verdicts so
         // the queue entry flips to `"ok"` / `"failed"` on the same tick.
-        self.apply_engine_completions();
+        self.drain_engine_terminals_into_ledger();
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;
@@ -68,7 +68,7 @@ impl Kernel {
             self.bump_publish_if_engine_view_changed(engine_rev_before);
             return Vec::new();
         }
-        self.apply_engine_completions();
+        self.drain_engine_terminals_into_ledger();
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;
@@ -102,7 +102,7 @@ impl Kernel {
         // entry for resumed publishes was pushed by the original kernel
         // process; on a fresh kernel B in tests there is no entry to flip,
         // so `set_publish_entry_terminal` is a no-op in that case.)
-        self.apply_engine_completions();
+        self.drain_engine_terminals_into_ledger();
         let drained = self.publish_dispatcher.drain();
         self.bump_publish_if_engine_view_changed(engine_rev_before);
         drained.into_iter().map(content_message).collect()
