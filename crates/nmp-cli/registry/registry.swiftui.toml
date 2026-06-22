@@ -7,7 +7,7 @@
 id = "swiftui/content-core"
 version = "0.2.0"
 target = "swiftui"
-description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components."
+description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components. Includes the article-reading callback seams (onTextSelected highlight-creation, onDecorationTap range-overlay tap)."
 [[components.files]]
 source = "swiftui/content-core/NostrContentRenderer.swift"
 target = "Components/NostrContent/NostrContentRenderer.swift"
@@ -66,9 +66,9 @@ role = "source"
 
 [[components]]
 id = "swiftui/content-view"
-version = "0.2.0"
+version = "0.3.0"
 target = "swiftui"
-description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, kind-dispatched event-ref embeds, and typed placeholders."
+description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, kind-dispatched event-ref embeds, and typed placeholders. Article-reading surfaces opt into text selection → highlight-creation, NIP-84 range overlays, and footnote markers + scroll-to navigation."
 dependencies = [
     "swiftui/content-core",
     "swiftui/content-media-grid",
@@ -81,6 +81,22 @@ role = "source"
 [[components.files]]
 source = "swiftui/content-view/NostrContentGrouping.swift"
 target = "Components/NostrContent/NostrContentGrouping.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-view/NostrContentHighlights.swift"
+target = "Components/NostrContent/NostrContentHighlights.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-view/NostrContentAttributed.swift"
+target = "Components/NostrContent/NostrContentAttributed.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-view/NostrContentArticleView.swift"
+target = "Components/NostrContent/NostrContentArticleView.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-view/NostrSelectableText.swift"
+target = "Components/NostrContent/NostrSelectableText.swift"
 role = "source"
 [[components.files]]
 source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"

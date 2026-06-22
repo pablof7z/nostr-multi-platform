@@ -43,7 +43,48 @@ struct NostrContentViewPreview: View {
     }
 }
 
+/// Article-reading surface: text selection → highlight, a range overlay, and a
+/// footnote. Selecting body text surfaces a "Highlight" edit-menu action; the
+/// "world" span is decorated; `[^1]` renders as a tappable footnote marker that
+/// scrolls to its definition.
+struct NostrContentArticlePreview: View {
+    var body: some View {
+        let tree = ContentTreeWire(
+            nodes: [
+                .text("Hello world — a body worth highlighting.[^1]"),
+                .paragraph(children: [0]),
+                .text("[^1]: A footnote definition rendered at the foot."),
+                .paragraph(children: [2]),
+            ],
+            roots: [1, 3],
+            mode: nil
+        )
+        return ScrollView {
+            NostrContentView(
+                tree: tree,
+                decorations: [
+                    NostrContentDecoration(id: "demo", quote: "world", color: .yellow.opacity(0.4))
+                ],
+                selectionEnabled: true
+            )
+            .padding()
+        }
+    }
+}
+
 #Preview {
     NostrContentViewPreview()
         .nostrContentRenderer(NostrContentRenderer())
+}
+
+#Preview("Article (selection / overlay / footnote)") {
+    NostrContentArticlePreview()
+        .nostrContentRenderer(
+            NostrContentRenderer(
+                callbacks: NostrContentCallbacks(
+                    onTextSelected: { quote, _ in print("highlight:", quote) },
+                    onDecorationTap: { id in print("tapped decoration:", id.raw) }
+                )
+            )
+        )
 }
